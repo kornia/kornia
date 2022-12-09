@@ -136,6 +136,7 @@ class TestRandomPerspective:
             kornia.augmentation.RandomPerspective(torch.tensor(0.5, device=device, dtype=dtype), p=0.0),
             (input,),
             raise_exception=True,
+            fast_mode=True,
         )
 
 
@@ -196,4 +197,4 @@ class TestRandomAffine:
         input = torch.rand(1, 2, 5, 7).to(device)
         input = utils.tensor_to_gradcheck_var(input)  # to var
         # TODO: turned off with p=0
-        assert gradcheck(kornia.augmentation.RandomAffine(10, p=0.0), (input,), raise_exception=True)
+        assert gradcheck(kornia.augmentation.RandomAffine(10, p=0.0), (input,), raise_exception=True, fast_mode=True)

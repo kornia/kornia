@@ -20,12 +20,11 @@ class TestKeyNet:
         out = keynet(inp)
         assert out.shape == inp.shape
 
-    @pytest.mark.skip("jacobian not well computed")
     def test_gradcheck(self, device):
         patches = torch.rand(2, 1, 16, 16, device=device)
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
         keynet = KeyNet().to(patches.device, patches.dtype)
-        assert gradcheck(keynet, (patches,), eps=1e-4, atol=1e-4, raise_exception=True)
+        assert gradcheck(keynet, (patches,), eps=1e-4, atol=1e-4, nondet_tol=1e-8, raise_exception=True, fast_mode=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):

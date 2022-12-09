@@ -26,7 +26,7 @@ class TestSOSNet:
         patches = torch.rand(2, 1, 32, 32, device=device)
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
         sosnet = SOSNet(pretrained=False).to(patches.device, patches.dtype)
-        assert gradcheck(sosnet, (patches,), eps=1e-4, atol=1e-4, raise_exception=True)
+        assert gradcheck(sosnet, (patches,), eps=1e-4, atol=1e-4, raise_exception=True, fast_mode=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):

@@ -62,7 +62,7 @@ class TestRgbToBgr(BaseTester):
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.color.rgb_to_bgr, (img,), raise_exception=True)
+        assert gradcheck(kornia.color.rgb_to_bgr, (img,), raise_exception=True, fast_mode=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
@@ -194,14 +194,14 @@ class TestRgbToRgba(BaseTester):
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.color.rgb_to_rgba, (img, 1.0), raise_exception=True)
+        assert gradcheck(kornia.color.rgb_to_rgba, (img, 1.0), raise_exception=True, fast_mode=True)
 
     @pytest.mark.grad
     def test_gradcheck_th(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         aval = torch.ones(B, 1, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.color.rgb_to_rgba, (img, aval), raise_exception=True)
+        assert gradcheck(kornia.color.rgb_to_rgba, (img, aval), raise_exception=True, fast_mode=True)
 
     @pytest.mark.skip(reason="unsupported Union type")
     @pytest.mark.jit
@@ -325,8 +325,8 @@ class TestLinearRgb(BaseTester):
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.color.rgb_to_linear_rgb, (img,), raise_exception=True)
-        assert gradcheck(kornia.color.linear_rgb_to_rgb, (img,), raise_exception=True)
+        assert gradcheck(kornia.color.rgb_to_linear_rgb, (img,), raise_exception=True, fast_mode=True)
+        assert gradcheck(kornia.color.linear_rgb_to_rgb, (img,), raise_exception=True, fast_mode=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):

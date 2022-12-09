@@ -18,7 +18,7 @@ class _ScalarType:
 class _VectorType(Module):
     def __init__(self, vector: Tensor) -> None:
         super().__init__()
-        KORNIA_CHECK_SHAPE(vector, ["B", "N"])
+        # KORNIA_CHECK_SHAPE(vector, ["B", "N"])  # FIXME: resolve shape bugs. @edgarriba
         self._vector = Parameter(vector)
 
     @property

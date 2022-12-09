@@ -167,4 +167,4 @@ class TestAugmentationBase2D:
 
             apply_transform.return_value = output
             compute_transformation.return_value = other_transform
-            assert gradcheck(augmentation, ((input, input_param)), raise_exception=True)
+            assert gradcheck(augmentation, ((input, input_param)), raise_exception=True, fast_mode=True)

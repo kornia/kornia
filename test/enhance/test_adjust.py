@@ -34,7 +34,7 @@ class TestInvert(BaseTester):
         B, C, H, W = 1, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         max_val = torch.tensor(1.0, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.enhance.invert, (img, max_val), raise_exception=True)
+        assert gradcheck(kornia.enhance.invert, (img, max_val), raise_exception=True, fast_mode=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
@@ -125,13 +125,15 @@ class TestAdjustSaturation(BaseTester):
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.enhance.adjust_saturation, (img, 2.0), raise_exception=True)
+        assert gradcheck(kornia.enhance.adjust_saturation, (img, 2.0), raise_exception=True, fast_mode=True)
 
     def test_gradcheck_with_gray_subtraction(self, device, dtype):
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.enhance.adjust_saturation_with_gray_subtraction, (img, 2.0), raise_exception=True)
+        assert gradcheck(
+            kornia.enhance.adjust_saturation_with_gray_subtraction, (img, 2.0), raise_exception=True, fast_mode=True
+        )
 
     @pytest.mark.skip(reason="not implemented yet")
     def test_exception(self, device, dtype):
@@ -203,7 +205,7 @@ class TestAdjustHue(BaseTester):
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.enhance.adjust_hue, (img, 2.0), raise_exception=True)
+        assert gradcheck(kornia.enhance.adjust_hue, (img, 2.0), raise_exception=True, fast_mode=True)
 
     @pytest.mark.skip(reason="not implemented yet")
     def test_exception(self, device, dtype):
@@ -312,7 +314,7 @@ class TestAdjustGamma(BaseTester):
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
         img = tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.enhance.adjust_gamma, (img, 1.0, 2.0), raise_exception=True)
+        assert gradcheck(kornia.enhance.adjust_gamma, (img, 1.0, 2.0), raise_exception=True, fast_mode=True)
 
     @pytest.mark.skip(reason="not implemented yet")
     def test_exception(self, device, dtype):
@@ -606,13 +608,15 @@ class TestAdjustContrast(BaseTester):
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.enhance.adjust_contrast, (img, 2.0), raise_exception=True)
+        assert gradcheck(kornia.enhance.adjust_contrast, (img, 2.0), raise_exception=True, fast_mode=True)
 
     def test_gradcheck_with_mean_subtraction(self, device, dtype):
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.enhance.adjust_contrast_with_mean_subtraction, (img, 2.0), raise_exception=True)
+        assert gradcheck(
+            kornia.enhance.adjust_contrast_with_mean_subtraction, (img, 2.0), raise_exception=True, fast_mode=True
+        )
 
     @pytest.mark.skip(reason="not implemented yet")
     def test_exception(self, device, dtype):
@@ -702,13 +706,15 @@ class TestAdjustBrightness(BaseTester):
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.enhance.adjust_brightness, (img, 1.0), raise_exception=True)
+        assert gradcheck(kornia.enhance.adjust_brightness, (img, 1.0), raise_exception=True, fast_mode=True)
 
     def test_gradcheck_accumulative(self, device, dtype):
         batch_size, channels, height, width = 2, 3, 4, 5
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.enhance.adjust_brightness_accumulative, (img, 2.0), raise_exception=True)
+        assert gradcheck(
+            kornia.enhance.adjust_brightness_accumulative, (img, 2.0), raise_exception=True, fast_mode=True
+        )
 
     @pytest.mark.skip(reason="not implemented yet")
     def test_gradcheck(self, device, dtype):
@@ -781,7 +787,7 @@ class TestAdjustSigmoid(BaseTester):
         bs, channels, height, width = 1, 2, 3, 3
         inputs = torch.ones(bs, channels, height, width, device=device, dtype=dtype)
         inputs = tensor_to_gradcheck_var(inputs)
-        assert gradcheck(kornia.enhance.adjust_sigmoid, inputs, raise_exception=True)
+        assert gradcheck(kornia.enhance.adjust_sigmoid, inputs, raise_exception=True, fast_mode=True)
 
     @pytest.mark.skip(reason="not implemented yet")
     def test_cardinality(self, device, dtype):
@@ -851,7 +857,7 @@ class TestAdjustLog(BaseTester):
         bs, channels, height, width = 1, 2, 3, 3
         inputs = torch.ones(bs, channels, height, width, device=device, dtype=dtype)
         inputs = tensor_to_gradcheck_var(inputs)
-        assert gradcheck(kornia.enhance.adjust_log, (inputs, 0.1), raise_exception=True)
+        assert gradcheck(kornia.enhance.adjust_log, (inputs, 0.1), raise_exception=True, fast_mode=True)
 
     @pytest.mark.skip(reason="not implemented yet")
     def test_cardinality(self, device, dtype):
@@ -1184,7 +1190,7 @@ class TestSharpness(BaseTester):
         bs, channels, height, width = 2, 3, 4, 5
         inputs = torch.rand(bs, channels, height, width, device=device, dtype=dtype)
         inputs = tensor_to_gradcheck_var(inputs)
-        assert gradcheck(TestSharpness.f, (inputs, 0.8), raise_exception=True)
+        assert gradcheck(TestSharpness.f, (inputs, 0.8), raise_exception=True, fast_mode=True)
 
     @pytest.mark.skip(reason="union type input")
     @pytest.mark.jit
@@ -1274,7 +1280,7 @@ class TestSolarize(BaseTester):
         bs, channels, height, width = 2, 3, 4, 5
         inputs = torch.rand(bs, channels, height, width, device=device, dtype=dtype)
         inputs = tensor_to_gradcheck_var(inputs)
-        assert gradcheck(TestSolarize.f, (inputs, 0.8), raise_exception=True)
+        assert gradcheck(TestSolarize.f, (inputs, 0.8), raise_exception=True, fast_mode=True)
 
     # TODO: implement me
     @pytest.mark.skip(reason="union type input")
@@ -1355,7 +1361,7 @@ class TestPosterize(BaseTester):
         bs, channels, height, width = 2, 3, 4, 5
         inputs = torch.rand(bs, channels, height, width, device=device, dtype=dtype)
         inputs = tensor_to_gradcheck_var(inputs)
-        assert gradcheck(TestPosterize.f, (inputs, 0), raise_exception=True)
+        assert gradcheck(TestPosterize.f, (inputs, 0), raise_exception=True, fast_mode=True)
 
     # TODO: implement me
     @pytest.mark.skip(reason="union type input")

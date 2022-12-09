@@ -101,7 +101,7 @@ class TestRgbToLab(BaseTester):
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.color.rgb_to_lab, (img,), raise_exception=True)
+        assert gradcheck(kornia.color.rgb_to_lab, (img,), raise_exception=True, fast_mode=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
@@ -247,7 +247,7 @@ class TestLabToRgb(BaseTester):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         img = kornia.color.rgb_to_lab(img)
-        assert gradcheck(kornia.color.lab_to_rgb, (img,), raise_exception=True)
+        assert gradcheck(kornia.color.lab_to_rgb, (img,), raise_exception=True, fast_mode=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):

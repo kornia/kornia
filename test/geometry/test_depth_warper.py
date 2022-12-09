@@ -172,6 +172,7 @@ class TestDepthWarper:
             kornia.geometry.depth.depth_warp,
             (pinhole_dst, pinhole_src, depth_src, img_dst, height, width),
             raise_exception=True,
+            fast_mode=True,
         )
 
     # TODO(edgar): we should include a test showing some kind of occlusion
