@@ -5,13 +5,8 @@ from kornia.core import Tensor, tensor
 from kornia.testing import KORNIA_CHECK_SHAPE
 from kornia.utils.misc import reduce_first_dims
 
-
 _RGB2SEPIA_WEIGHTS = tensor(
-    [
-        [[[0.393]], [[0.769]], [[0.189]]],
-        [[[0.349]], [[0.686]], [[0.168]]],
-        [[[0.272]], [[0.534]], [[0.131]]],
-    ]
+    [[[[0.393]], [[0.769]], [[0.189]]], [[[0.349]], [[0.686]], [[0.168]]], [[[0.272]], [[0.534]], [[0.131]]]]
 )  # 3x3x1x1
 
 

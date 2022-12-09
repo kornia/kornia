@@ -5,7 +5,6 @@ from kornia.core import Tensor, tensor
 from kornia.testing import KORNIA_CHECK_SHAPE
 from kornia.utils.misc import reduce_first_dims
 
-
 _RGB2XYZ_WEIGHTS = tensor(
     [
         [[[0.412453]], [[0.357580]], [[0.180423]]],

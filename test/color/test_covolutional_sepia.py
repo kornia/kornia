@@ -1,10 +1,10 @@
+import pytest
+import torch
+from torch.autograd import gradcheck
+
 import kornia.color as color
 import kornia.color.covolutional as covolutional_color
 import kornia.testing as utils
-import pytest
-import torch
-
-from torch.autograd import gradcheck
 
 
 class TestSepia(utils.BaseTester):
