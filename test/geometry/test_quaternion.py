@@ -7,7 +7,7 @@ from kornia.testing import assert_close
 
 class TestQuaternion:
     def _make_rand_data(self, device, dtype, batch_size):
-        shape = [] if batch_size is None else [batch_size]
+        shape = [1] if batch_size is None else [batch_size]
         return torch.rand(shape + [4], device=device, dtype=dtype)
 
     def assert_close(self, actual, expected, rtol=None, atol=None):
@@ -25,9 +25,9 @@ class TestQuaternion:
     def test_smoke(self, device, dtype):
         q = Quaternion.from_coeffs(1.0, 0.0, 0.0, 0.0)
         q = q.to(device, dtype)
-        q_data = torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype)
+        q_data = torch.tensor([[1.0, 0.0, 0.0, 0.0]], device=device, dtype=dtype)
         assert isinstance(q, Quaternion)
-        assert q.shape == (4,)
+        assert q.shape == (1, 4)
         self.assert_close(q.data, q_data)
         self.assert_close(q.q, q_data)
         self.assert_close(q.real, q_data[..., 0])
@@ -170,7 +170,7 @@ class TestQuaternion:
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_norm_shape(self, device, dtype, batch_size):
         q = Quaternion.random(batch_size, device, dtype)
-        expected_shape = () if batch_size is None else (batch_size,)
+        expected_shape = (1, ) if batch_size is None else (batch_size,)
         self.assert_close(tuple(q.norm().shape), expected_shape)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
@@ -211,8 +211,8 @@ class TestQuaternion:
     def test_slerp(self, device, dtype, batch_size):
         for axis in torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]):
             axis = axis.to(device, dtype)
-            if batch_size is not None:
-                axis = axis.repeat(batch_size, 1)
+            batch_size = batch_size if batch_size is not None else 1
+            axis = axis.repeat(batch_size, 1)
             q1 = Quaternion.from_axis_angle(axis * 0)
             q1.to(device, dtype)
             q2 = Quaternion.from_axis_angle(axis * 3.14159)

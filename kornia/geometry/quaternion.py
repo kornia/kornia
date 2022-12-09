@@ -228,6 +228,15 @@ class Quaternion(Module):
         """
         return (self.scalar / self.norm()).acos()
 
+    def view(self, *shape) -> "Quaternion":
+        return Quaternion(self.data.view(*shape))
+
+    def repeat(self, *shape) -> "Quaternion":
+        return Quaternion(self.data.repeat(*shape))
+
+    def expand(self, *shape) -> "Quaternion":
+        return Quaternion(self.data.expand(*shape))
+
     def matrix(self) -> Tensor:
         """Convert the quaternion to a rotation matrix of shape :math:`(B, 3, 3)`.
 
@@ -287,8 +296,8 @@ class Quaternion(Module):
             tensor([1., 0., 0., 0.], requires_grad=True)
         """
         data: Tensor = tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype)
-        if batch_size is not None:
-            data = data.repeat(batch_size, 1)
+        batch_size = batch_size if batch_size is not None else 1
+        data = data.repeat(batch_size, 1)
         return cls(data)
 
     @classmethod
@@ -307,13 +316,13 @@ class Quaternion(Module):
             Parameter containing:
             tensor([1., 0., 0., 0.], requires_grad=True)
         """
-        return cls(tensor([w, x, y, z]))
+        return cls(tensor([[w, x, y, z]]))
 
     # TODO: update signature
     # def random(cls, shape: Optional[List] = None, device = None, dtype = None) -> 'Quaternion':
     @classmethod
     def random(cls, batch_size: Optional[int] = None, device=None, dtype=None) -> 'Quaternion':
-        """Create a random unit quaternion of shape :math:`(B, 4)`.
+        """Create a random unit quaternion of shape :math:`(*, 4)`.
 
         Uniformly distributed across the rotation space as per: http://planning.cs.uiuc.edu/node198.html
 
@@ -324,7 +333,7 @@ class Quaternion(Module):
             >>> q = Quaternion.random()
             >>> q = Quaternion.random(batch_size=2)
         """
-        rand_shape = (batch_size,) if batch_size is not None else ()
+        rand_shape = (batch_size,) if batch_size is not None else (1, )
 
         r1, r2, r3 = rand((3,) + rand_shape, device=device, dtype=dtype)
         q1 = (1.0 - r1).sqrt() * ((2 * pi * r2).sin())
