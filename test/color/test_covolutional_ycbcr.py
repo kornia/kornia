@@ -7,47 +7,51 @@ from kornia.testing import BaseTester
 from torch.autograd import gradcheck
 
 
-class TestRgbToXyz(BaseTester):
+class TestRgbToYcbcr(BaseTester):
     def test_smoke(self, device, dtype):
-        B, C, H, W = 2, 3, 4, 5
-        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
-        assert isinstance(covolutional_color.rgb_to_xyz(img), torch.Tensor)
+        C, H, W = 3, 4, 5
+        img = torch.rand(C, H, W, device=device, dtype=dtype)
+        assert isinstance(covolutional_color.rgb_to_ycbcr(img), torch.Tensor)
 
     @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1), (3, 2, 1)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.ones(shape, device=device, dtype=dtype)
-        assert covolutional_color.rgb_to_xyz(img).shape == shape
+        assert covolutional_color.rgb_to_ycbcr(img).shape == shape
+
+    @pytest.mark.parametrize("shape", [(3, 4, 4), (2, 3, 4, 4)])
+    def test_rgb_to_y(self, device, dtype, shape):
+        img = torch.rand(*shape, device=device, dtype=dtype)
+        output_y = covolutional_color.rgb_to_y(img)
+        output_ycbcr = covolutional_color.rgb_to_ycbcr(img)
+        self.assert_close(output_y, output_ycbcr[..., 0:1, :, :])
 
     def test_exception(self, device, dtype):
         with pytest.raises(TypeError):
-            assert covolutional_color.rgb_to_xyz([0.0])
+            assert covolutional_color.rgb_to_ycbcr([0.0])
 
         with pytest.raises(TypeError):
             img = torch.ones(1, 1, device=device, dtype=dtype)
-            assert covolutional_color.rgb_to_xyz(img)
+            assert covolutional_color.rgb_to_ycbcr(img)
 
         with pytest.raises(TypeError):
             img = torch.ones(2, 1, 1, device=device, dtype=dtype)
-            assert covolutional_color.rgb_to_xyz(img)
+            assert covolutional_color.rgb_to_ycbcr(img)
 
     def test_unit(self, device, dtype):
         data = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)
-        self.assert_close(color.rgb_to_xyz(data), covolutional_color.rgb_to_xyz(data))
+        self.assert_close(color.rgb_to_ycbcr(data), covolutional_color.rgb_to_ycbcr(data), low_tolerance=True)
 
-    def test_forth_and_back(self, device, dtype):
-        data = torch.rand(3, 4, 5, device=device, dtype=dtype)
-        xyz = covolutional_color.rgb_to_xyz
-        rgb = covolutional_color.xyz_to_rgb
-
-        data_out = xyz(rgb(data))
-        self.assert_close(data_out, data)
+    # TODO: investigate and implement me
+    # def test_forth_and_back(self, device, dtype):
+    #    pass
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(covolutional_color.rgb_to_xyz, (img,), raise_exception=True)
+        assert gradcheck(covolutional_color.rgb_to_ycbcr, (img,), raise_exception=True, fast_mode=True)
 
+    @pytest.mark.jit
     def test_jit(self, device, dtype):
         pass
 
@@ -55,47 +59,44 @@ class TestRgbToXyz(BaseTester):
         pass
 
 
-class TestXyzToRgb(BaseTester):
+class TestYcbcrToRgb(BaseTester):
     def test_smoke(self, device, dtype):
-        B, C, H, W = 2, 3, 4, 5
-        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
-        assert isinstance(covolutional_color.xyz_to_rgb(img), torch.Tensor)
+        C, H, W = 3, 4, 5
+        img = torch.rand(C, H, W, device=device, dtype=dtype)
+        assert isinstance(covolutional_color.ycbcr_to_rgb(img), torch.Tensor)
 
     @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 1), (3, 2, 1)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.ones(shape, device=device, dtype=dtype)
-        assert covolutional_color.xyz_to_rgb(img).shape == shape
+        assert covolutional_color.ycbcr_to_rgb(img).shape == shape
 
     def test_exception(self, device, dtype):
         with pytest.raises(TypeError):
-            assert covolutional_color.xyz_to_rgb([0.0])
+            assert covolutional_color.ycbcr_to_rgb([0.0])
 
         with pytest.raises(TypeError):
             img = torch.ones(1, 1, device=device, dtype=dtype)
-            assert covolutional_color.xyz_to_rgb(img)
+            assert covolutional_color.ycbcr_to_rgb(img)
 
         with pytest.raises(TypeError):
             img = torch.ones(2, 1, 1, device=device, dtype=dtype)
-            assert covolutional_color.xyz_to_rgb(img)
+            assert covolutional_color.ycbcr_to_rgb(img)
 
     def test_unit(self, device, dtype):
         data = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)
-        self.assert_close(color.xyz_to_rgb(data), covolutional_color.xyz_to_rgb(data))
+        self.assert_close(color.ycbcr_to_rgb(data), covolutional_color.ycbcr_to_rgb(data), low_tolerance=True)
 
-    def test_forth_and_back(self, device, dtype):
-        data = torch.rand(3, 4, 5, device=device, dtype=dtype)
-        xyz = covolutional_color.rgb_to_xyz
-        rgb = covolutional_color.xyz_to_rgb
-
-        data_out = rgb(xyz(data))
-        self.assert_close(data_out, data, low_tolerance=True)
+    # TODO: investigate and implement me
+    # def test_forth_and_back(self, device, dtype):
+    #    pass
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(covolutional_color.xyz_to_rgb, (img,), raise_exception=True)
+        assert gradcheck(covolutional_color.ycbcr_to_rgb, (img,), raise_exception=True, fast_mode=True)
 
+    @pytest.mark.jit
     def test_jit(self, device, dtype):
         pass
 
