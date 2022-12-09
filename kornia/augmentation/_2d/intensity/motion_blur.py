@@ -1,11 +1,11 @@
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import torch
-from torch import Tensor
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.constants import BorderType, Resample
+from kornia.core import Tensor
 from kornia.filters import motion_blur
 
 
@@ -83,7 +83,14 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
 
     def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, Tensor]:
         params = super().generate_parameters(batch_shape)
-        params["idx"] = torch.randint(batch_shape[0], (1,)).item()
+        # We have to apply the same kernel size to all samples in the batch, thus we pick a random index
+        # from which we will later select the applied kernel size. this is relevant for video sequential
+        # as well, since it flattens the first two dimensions to create an effectively larger batch, to
+        # which we have to use the same kernel size. We use an integer index and not a tensor so its value
+        # will not be repeated by the `VideoSequential.__repeat_param_across_channels__` method, and the
+        # `apply_transform` method will receive one index for the larger batch rather than a list of the
+        # repeated index.
+        params["idx"] = 0 if batch_shape[0] == 0 else torch.randint(batch_shape[0], (1,)).item()
         return params
 
     def apply_transform(

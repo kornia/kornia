@@ -131,8 +131,11 @@ class VideoSequential(ImageSequential):
         (B1, B2, ..., Bn) => (B1, ... B1, B2, ..., B2, ..., Bn, ..., Bn)
                               | ch_size | | ch_size |  ..., | ch_size |
         """
-        repeated = param[:, None, ...].repeat(1, frame_num, *([1] * len(param.shape[1:])))
-        return repeated.reshape(-1, *list(param.shape[1:]))
+        # repeat param only if it's a Tensor. Otherwise - return it as it is.
+        if isinstance(param, Tensor):
+            repeated = param[:, None, ...].repeat(1, frame_num, *([1] * len(param.shape[1:])))
+            param = repeated.reshape(-1, *list(param.shape[1:]))
+        return param
 
     def _input_shape_convert_in(
         self, input: Tensor, label: Optional[Tensor], frame_num: int
