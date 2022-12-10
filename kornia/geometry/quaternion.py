@@ -14,7 +14,7 @@ from kornia.geometry.conversions import (
     rotation_matrix_to_quaternion,
 )
 from kornia.geometry.linalg import batched_dot_product
-from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
+from kornia.testing import KORNIA_CHECK_TYPE
 
 
 class Quaternion(Module):
