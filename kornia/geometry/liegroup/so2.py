@@ -1,6 +1,6 @@
 # kornia.geometry.so2 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so2.py
-from typing import Optional, Union
+from typing import Optional, overload
 
 from kornia.core import Module, Parameter, Tensor, complex, rand, stack, tensor, zeros_like
 from kornia.geometry.liegroup._utils import (
@@ -56,7 +56,15 @@ class So2(Module):
     def __getitem__(self, idx: int) -> 'So2':
         return So2(self._z[idx][..., None])
 
-    def __mul__(self, right: Union['So2', Tensor]) -> Union['So2', Tensor]:
+    @overload
+    def __mul__(self, right: 'So2') -> 'So2':
+        ...
+
+    @overload
+    def __mul__(self, right: Tensor) -> Tensor:
+        ...
+
+    def __mul__(self, right):
         """Performs a left-multiplication either rotation concatenation or point-transform.
 
         Args:
@@ -65,20 +73,19 @@ class So2(Module):
         Return:
             The resulting So2 transformation.
         """
-        out: Union['So2', Tensor]
+        z = self.z
         if isinstance(right, So2):
-            out = So2(self.z * right.z)
+            return So2(z * right.z)
         elif isinstance(right, Tensor):
             # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
             check_so2_t_shape(right)
             x = right[..., 0]
             y = right[..., 1]
-            real = self.z.real
-            imag = self.z.imag
-            out = stack((real * x - imag * y, imag * x + real * y), -1)
+            real = z.real
+            imag = z.imag
+            return stack((real * x - imag * y, imag * x + real * y), -1)
         else:
             raise TypeError(f"Not So2 or Tensor type. Got: {type(right)}")
-        return out
 
     @property
     def z(self) -> Tensor:
