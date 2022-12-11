@@ -53,7 +53,7 @@ class TestHyperplane(BaseTester):
         p0 = Vector3.random(shape, device, dtype)
         n0 = Vector3.random(shape, device, dtype).normalized()
         pl0 = Hyperplane.from_vector(n0, p0)
-        assert pl0.normal.shape == (shape + (3,) if shape is not None else (3,))
+        assert pl0.normal.shape == shape or () + (3,)
         assert pl0.offset.shape == (shape + () if shape is not None else ())
 
     # TODO: implement `Vector2`
@@ -73,8 +73,26 @@ class TestHyperplane(BaseTester):
         v2 = Vector3.random(shape, device, dtype)
         # TODO: improve api so that we can accept Vector too
         p0 = Hyperplane.through(v0, v1, v2)
-        assert p0.normal.shape == (shape + (3,) if shape is not None else (3,))
+        assert p0.normal.shape == shape or () + (3,)
         assert p0.offset.shape == (shape + () if shape is not None else ())
+
+    @pytest.mark.parametrize("shape", (None, (1,), (2, 1)))
+    def test_abs_signed_distance(self, device, dtype, shape):
+        p0 = Vector3.random(shape, device, dtype)
+        p1 = Vector3.random(shape, device, dtype)
+
+        n0 = Vector3.random(shape, device, dtype).normalized()
+        n1 = Vector3.random(shape, device, dtype).normalized()
+
+        s1 = torch.rand(shape or (), device=device, dtype=dtype)
+
+        pl0 = Hyperplane.from_vector(n0, p0)
+        pl1 = Hyperplane.from_vector(n1, p1)
+
+        expected = torch.ones(shape or (), device=device, dtype=dtype)
+        assert (pl0.abs_distance(p0) < expected).all()
+        assert (pl1.signed_distance(pl1.projection(p0)) < expected).all()
+        assert (pl1.abs_distance(p1 + pl1.normal * s1) < expected).all()
 
     def test_signed_distance(self, device, dtype):
         v0 = Vector3.from_coords(1.0, 0.0, 0.0)

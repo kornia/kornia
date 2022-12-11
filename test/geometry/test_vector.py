@@ -40,9 +40,11 @@ class TestVector3(BaseTester):
     @pytest.mark.parametrize("shape", (None, (1,), (2, 1)))
     def test_dot(self, device, dtype, shape):
         p0 = Vector3.random(shape, device, dtype)
-        n0 = Vector3.random(shape, device, dtype)
+        n0 = Vector3.random(shape, device, dtype).normalized()
         res: Scalar = p0.dot(n0)
         assert res.shape == () if shape is None else shape
+        expected = torch.ones(shape or (), device=device, dtype=dtype)
+        self.assert_close(n0.dot(n0), expected)
 
     @pytest.mark.parametrize("shape", (None, (1,), (2, 1)))
     def test_squared_norm(self, device, dtype, shape):
