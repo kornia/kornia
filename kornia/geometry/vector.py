@@ -47,10 +47,12 @@ class Vector3(TensorWrapper):
         return cls(rand(shape + (3,), device=device, dtype=dtype))
 
     @classmethod
-    def from_coords(cls, x: Union[float, Tensor], y: Union[float, Tensor], z: Union[float, Tensor]) -> "Vector3":
+    def from_coords(
+        cls, x: Union[float, Tensor], y: Union[float, Tensor], z: Union[float, Tensor], device=None, dtype=None
+    ) -> "Vector3":
         if not (isinstance(x, Tensor) and isinstance(y, Tensor) and isinstance(z, Tensor)):
-            return Vec3(as_tensor((x, y, z)))
-        return Vec3(stack((x, y, z), -1))
+            return Vec3(as_tensor((x, y, z), device=device, dtype=dtype))
+        return Vec3(stack((x, y, z), -1, device=device, dtype=dtype))
 
 
 Vec3 = Vector3

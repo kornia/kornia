@@ -123,4 +123,4 @@ def fit_plane(points: Vector3) -> Hyperplane:
     direction = V[..., -1, :]  # BxD
     origin = mean[..., 0, :]  # BxD
 
-    return Hyperplane.from_vector(direction, origin)
+    return Hyperplane.from_vector(Vector3(direction), Vector3(origin))
