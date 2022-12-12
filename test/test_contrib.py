@@ -453,6 +453,7 @@ class TestImageStitcher:
         ):
             # NOTE: This will need to download the pretrained weights.
             # To avoid that, we mock as below
+            torch.manual_seed(0)
             matcher = kornia.feature.LoFTR(None)
             stitcher = kornia.contrib.ImageStitcher(matcher, estimator=estimator).to(device=device, dtype=dtype)
             out = stitcher(sample1, sample2)
