@@ -54,7 +54,7 @@ class So2(Module):
         return f"{self.z}"
 
     def __getitem__(self, idx: int) -> 'So2':
-        return So2(self._z[idx][..., None])
+        return So2(self._z[idx])
 
     @overload
     def __mul__(self, right: 'So2') -> 'So2':
