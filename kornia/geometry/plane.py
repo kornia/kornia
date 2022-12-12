@@ -54,7 +54,7 @@ class Hyperplane(Module):
     # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h#L154
     # TODO: tests
     def projection(self, p: Vector3) -> Vector3:
-        return p - (self.signed_distance(p) * self.normal).data
+        return Vector3(p - (self.signed_distance(p).view(-1, 1) * self.normal).data)
         # TODO: make that Vector can subtract Scalar
         # return p - self.signed_distance(p) * self.normal
 

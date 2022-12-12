@@ -52,7 +52,7 @@ class Vector3(TensorWrapper):
     ) -> "Vector3":
         if not (isinstance(x, Tensor) and isinstance(y, Tensor) and isinstance(z, Tensor)):
             return Vec3(as_tensor((x, y, z), device=device, dtype=dtype))
-        return Vec3(stack((x, y, z), -1, device=device, dtype=dtype))
+        return Vec3(stack((x, y, z), -1))
 
 
 Vec3 = Vector3

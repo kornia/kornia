@@ -14,7 +14,7 @@ if __name__ == "__main__":
     # generate a batch of random three-d points
     plane_h = 50
     plane_w = 50
-    rand_pts = Vec3.random([plane_h, plane_w])
+    rand_pts = Vec3.random((plane_h, plane_w))
 
     # define points from
     p0 = Vec3.from_coords(0.0, 0.0, 0.0)
@@ -25,7 +25,7 @@ if __name__ == "__main__":
     X, Y = mesh.permute(2, 0, 1)
     Z = 0 * X
 
-    mesh_pts = Vec3.from_coords_tensor(X, Y, Z)
+    mesh_pts = Vec3.from_coords(X, Y, Z)
 
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="3d")
@@ -34,17 +34,16 @@ if __name__ == "__main__":
     mesh_view = mesh_pts + rand_pts
 
     ax.scatter(mesh_view.x, mesh_view.y, mesh_view.z)
+    plt.show()
 
     # three-d plane
     plane_in_ground = Hyperplane.through(p0, p1, p2)
-    print(plane_in_ground)
 
-    mesh_projected = plane_in_ground.projection(mesh_view)
+    rand_points_projected: Vec3 = plane_in_ground.projection(rand_pts.view(-1, 3))
+    import pdb
 
-    ax.plot_surface(mesh_projected.x, mesh_projected.y, mesh_projected.z, alpha=0.5)
-    plt.show()
-
-    rand_points_projected: Vec3 = plane_in_ground.projection(rand_pts)
+    pdb.set_trace()
+    pass
     plane_in_ground_fit: Hyperplane = fit_plane(rand_points_projected)
     print(plane_in_ground_fit)
     pass
