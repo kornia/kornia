@@ -1,49 +1,59 @@
-# Example showing how to fit a 2d line with kornia / pytorch
+# Example showing how to fit a 3d plane
 import matplotlib.pyplot as plt
+import torch
 
+from kornia.geometry.liegroup import So3
 from kornia.geometry.plane import Hyperplane, fit_plane
-from kornia.geometry.vector import Vec3
+from kornia.geometry.vector import Vector3
 from kornia.utils import create_meshgrid
-
-std = 1.2  # standard deviation for the points
-num_points = 4  # total number of points
-
 
 if __name__ == "__main__":
 
-    # generate a batch of random three-d points
-    plane_h = 50
+    # define the plane
+    plane_h = 25
     plane_w = 50
-    rand_pts = Vec3.random((plane_h, plane_w))
 
-    # define points from
-    p0 = Vec3.from_coords(0.0, 0.0, 0.0)
-    p1 = Vec3.from_coords(0.0, 1.0, 0.0)
-    p2 = Vec3.from_coords(0.0, 0.0, 1.0)
-
-    mesh = create_meshgrid(plane_h, plane_w, False)[0]
-    X, Y = mesh.permute(2, 0, 1)
+    # create a base mesh in the ground z == 0
+    mesh = create_meshgrid(plane_h, plane_w, normalized_coordinates=True)
+    X, Y = mesh[..., 0], mesh[..., 1]
     Z = 0 * X
 
-    mesh_pts = Vec3.from_coords(X, Y, Z)
+    mesh_pts = Vector3.from_coords(X, Y, Z)
+
+    # add noise to the mesh
+    rand_pts = Vector3.random((plane_h, plane_w))
+    rand_pts.z.clamp_(min=-0.1, max=0.1)
+
+    mesh_view: Vector3 = mesh_pts + rand_pts
+    # mesh_view: Vector3 = mesh_pts
+
+    # visualize the plane as pointcloud
 
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="3d")
-    ax.set_box_aspect(aspect=(1, 1, 0.1))
 
-    mesh_view = mesh_pts + rand_pts
+    ax.scatter(mesh_view.x, mesh_view.y, mesh_view.z, c="blue")
 
-    ax.scatter(mesh_view.x, mesh_view.y, mesh_view.z)
-    plt.show()
+    # create rotation
+    angle_rad = torch.tensor(3.141616 / 4)
+    rot_x = So3.rot_x(angle_rad)
+    rot_z = So3.rot_z(angle_rad)
+    rot = rot_x * rot_z
+    print(rot)
 
-    # three-d plane
-    plane_in_ground = Hyperplane.through(p0, p1, p2)
+    # apply the rotation to the mesh points
+    # TODO: this should work as `rot * mesh_view`
+    points_rot = torch.stack([rot * x for x in mesh_view.view(-1, 3)]).detach()
+    points_rot = Vector3(points_rot)
 
-    rand_points_projected: Vec3 = plane_in_ground.projection(rand_pts.view(-1, 3))
-    import pdb
+    ax.scatter(points_rot.x, points_rot.y, points_rot.z, c="green")
 
-    pdb.set_trace()
-    pass
-    plane_in_ground_fit: Hyperplane = fit_plane(rand_points_projected)
+    # estimate the plane from the rotated points
+    plane_in_ground_fit: Hyperplane = fit_plane(points_rot)
     print(plane_in_ground_fit)
-    pass
+
+    # project the original points to the estimated plane
+    points_proj: Vector3 = plane_in_ground_fit.projection(mesh_view.view(-1, 3))
+
+    ax.scatter(points_proj.x, points_proj.y, points_proj.z, c="red")
+    plt.show()

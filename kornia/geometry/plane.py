@@ -54,7 +54,7 @@ class Hyperplane(Module):
     # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h#L154
     # TODO: tests
     def projection(self, p: Vector3) -> Vector3:
-        return Vector3(p - (self.signed_distance(p).view(-1, 1) * self.normal).data)
+        return p - self.signed_distance(p).view(-1, 1) * self.normal
         # TODO: make that Vector can subtract Scalar
         # return p - self.signed_distance(p) * self.normal
 
@@ -106,12 +106,12 @@ def fit_plane(points: Vector3) -> Hyperplane:
 
     Args:
         points: tensor containing a batch of sets of n-dimensional points. The  expected
-            shape of the tensor is :math:`(B, N, D)`.
+            shape of the tensor is :math:`(N, D)`.
 
     Return:
         The computed hyperplane object.
     """
-    KORNIA_CHECK_SHAPE(points, ["B", "N", "D"])
+    KORNIA_CHECK_SHAPE(points, ["N", "D"])
 
     mean = points.mean(-2, True)
     points_centered = points - mean
@@ -120,7 +120,7 @@ def fit_plane(points: Vector3) -> Hyperplane:
     U, S, V = _torch_svd_cast(points_centered)
 
     # the first left eigenvector is the direction on the fited line
-    direction = V[..., -1, :]  # BxD
+    direction = V[..., :, -1]  # BxD
     origin = mean[..., 0, :]  # BxD
 
     return Hyperplane.from_vector(Vector3(direction), Vector3(origin))
