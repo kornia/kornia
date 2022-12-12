@@ -32,6 +32,7 @@ class TestHomographyTracker:
 
     def test_real(self, device, dtype, data):
         # This is not unit test, but that is quite good integration test
+        torch.manual_seed(0)  # issue kornia#2027
         matcher = LocalFeatureMatcher(GFTTAffNetHardNet(1000), DescriptorMatcher('snn', 0.8)).to(device, dtype)
         tracker = HomographyTracker(matcher, matcher).to(device, dtype)
         for k in data.keys():
