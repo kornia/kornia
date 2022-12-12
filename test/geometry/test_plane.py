@@ -8,16 +8,15 @@ from kornia.testing import BaseTester
 
 # TODO: implement the rest of methods
 class TestFitPlane(BaseTester):
-    @pytest.mark.parametrize("B", (1, 2))
+    @pytest.mark.parametrize("N", (4, 10))
     @pytest.mark.parametrize("D", (3,))
     # @pytest.mark.parametrize("D", (2, 3, 4))
-    def test_smoke(self, device, dtype, B, D):
-        N: int = 10  # num points
-        points = torch.ones(B, N, D, device=device, dtype=dtype)
+    def test_smoke(self, device, dtype, N, D):
+        points = torch.ones(N, D, device=device, dtype=dtype)
         plane = fit_plane(points)
         assert isinstance(plane, Hyperplane)
-        assert plane.offset.shape == (B,)
-        assert plane.normal.shape == (B, D)
+        assert plane.offset.shape == ()
+        assert plane.normal.shape == (D,)
 
     @pytest.mark.skip(reason="not implemented yet")
     def test_cardinality(self, device, dtype):

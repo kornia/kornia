@@ -54,7 +54,12 @@ class Hyperplane(Module):
     # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h#L154
     # TODO: tests
     def projection(self, p: Vector3) -> Vector3:
-        return p - self.signed_distance(p).view(-1, 1) * self.normal
+        dist = self.signed_distance(p)
+        if len(dist.shape) != len(self.normal):
+            # non batched plane project a batch of points
+            dist = dist[..., None]  # Nx1
+        # TODO: TypeError: bad operand type for unary -: 'Scalar'
+        return p - dist.data * self.normal
         # TODO: make that Vector can subtract Scalar
         # return p - self.signed_distance(p) * self.normal
 
