@@ -57,7 +57,7 @@ class Se3(Module):
         return f"rotation: {self.r}\ntranslation: {self.t}"
 
     def __getitem__(self, idx) -> 'Se3':
-        return Se3(self._r[idx], self._t[idx][None])
+        return Se3(self._r[idx], self._t[idx])
 
     def __mul__(self, right: "Se3") -> "Se3":
         """Compose two Se3 transformations.
