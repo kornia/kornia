@@ -1,8 +1,6 @@
 import warnings
 from itertools import zip_longest
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
-
-from torch import Tensor
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from kornia.augmentation import (
     AugmentationBase3D,
@@ -18,6 +16,7 @@ from kornia.augmentation.container.patch import PatchSequential
 from kornia.augmentation.container.utils import ApplyInverse
 from kornia.augmentation.container.video import VideoSequential
 from kornia.constants import DataKey, Resample
+from kornia.core import Tensor
 from kornia.geometry.boxes import Boxes
 from kornia.utils import eye_like
 
@@ -144,7 +143,6 @@ class AugmentationSequential(ImageSequential):
         *args: Union[_AugmentationBase, ImageSequential],
         data_keys: List[Union[str, int, DataKey]] = [DataKey.INPUT],
         same_on_batch: Optional[bool] = None,
-        return_transform: Optional[bool] = None,
         keepdim: Optional[bool] = None,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
         random_apply_weights: Optional[List[float]] = None,
@@ -153,7 +151,6 @@ class AugmentationSequential(ImageSequential):
         super().__init__(
             *args,
             same_on_batch=same_on_batch,
-            return_transform=return_transform,
             keepdim=keepdim,
             random_apply=random_apply,
             random_apply_weights=random_apply_weights,
@@ -191,7 +188,7 @@ class AugmentationSequential(ImageSequential):
     def transform_matrix(self) -> Optional[Tensor]:
         return self._transform_matrix
 
-    def inverse(  # type: ignore
+    def inverse(  # type: ignore[override]
         self,
         *args: Tensor,
         params: Optional[List[ParamItem]] = None,
@@ -203,15 +200,11 @@ class AugmentationSequential(ImageSequential):
         ``self.data_keys`` by default.
         """
         if data_keys is None:
-            data_keys = cast(List[Union[str, int, DataKey]], self.data_keys)
+            _data_keys = self.data_keys
+        else:
+            _data_keys = [DataKey.get(inp) for inp in data_keys]
 
-        _data_keys: List[DataKey] = [DataKey.get(inp) for inp in data_keys]
-
-        if len(args) != len(data_keys):
-            raise AssertionError(
-                "The number of inputs must align with the number of data_keys, "
-                f"Got {len(args)} and {len(data_keys)}."
-            )
+        self._validate_args_datakeys(*args, data_keys=_data_keys)
 
         args = self._arguments_preproc(*args, data_keys=_data_keys)
 
@@ -223,11 +216,11 @@ class AugmentationSequential(ImageSequential):
                 )
             params = self._params
 
-        outputs: List[Tensor] = [None] * len(data_keys)  # type: ignore
-        for idx, (arg, dcate) in enumerate(zip(args, data_keys)):
+        outputs: List[Optional[Tensor]] = [None] * len(_data_keys)
+        for idx, (arg, dcate) in enumerate(zip(args, _data_keys)):
 
-            if DataKey.INPUT in self.extra_args:
-                extra_args = self.extra_args[DataKey.INPUT]
+            if dcate in self.extra_args:
+                extra_args = self.extra_args[dcate]
             else:
                 extra_args = {}
 
@@ -238,12 +231,18 @@ class AugmentationSequential(ImageSequential):
                 input = arg.data  # all boxes are in (B, N, 4, 2) format now.
             else:
                 input = arg
-            for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
+            for (name, module), _param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
                 if isinstance(module, (_AugmentationBase, ImageSequential)):
-                    # TODO(jian): verify what's happening here. Mypy was complaining,
-                    param = params[name] if name in params else param  # type: ignore
+                    _mb = [p for p in params if name in p]
+                    if len(_mb) > 0:
+                        param = _mb[0]
+                    elif isinstance(_param, ParamItem):
+                        param = _param
+                    else:
+                        param = None
                 else:
                     param = None
+
                 if (
                     isinstance(module, IntensityAugmentationBase2D)
                     and dcate in DataKey
@@ -277,21 +276,28 @@ class AugmentationSequential(ImageSequential):
             else:
                 outputs[idx] = input
 
-        if len(outputs) == 1 and isinstance(outputs, (tuple, list)):
-            return outputs[0]
+        _outputs = [i for i in outputs if isinstance(i, Tensor)]
 
-        return outputs
+        if len(_outputs) == 1 and isinstance(_outputs, list):
+            return _outputs[0]
 
-    def __packup_output__(  # type: ignore
+        return _outputs
+
+    def __packup_output__(  # type: ignore[override]
         self, output: List[Tensor], label: Optional[Tensor] = None
-    ) -> Union[Tensor, Tuple[Tensor, Optional[Tensor]], List[Tensor], Tuple[List[Tensor], Optional[Tensor]]]:
-        if len(output) == 1 and isinstance(output, (tuple, list)) and self.return_label:
-            return output[0], label
-        if len(output) == 1 and isinstance(output, (tuple, list)):
-            return output[0]
+    ) -> Union[Tensor, List[Tensor], Tuple[Union[Tensor, List[Tensor]], Optional[Tensor]]]:
+
+        _out: Union[Tensor, List[Tensor]]
+
+        if len(output) == 1 and isinstance(output, list):
+            _out = output[0]
+        else:
+            _out = output
+
         if self.return_label:
-            return output, label
-        return output
+            return _out, label
+
+        return _out
 
     def _validate_args_datakeys(self, *args: Tensor, data_keys: List[DataKey]):
         if len(args) != len(data_keys):
@@ -314,25 +320,24 @@ class AugmentationSequential(ImageSequential):
                     mode = "xywh"
                 else:
                     raise ValueError(f"Unsupported mode `{DataKey.get(dcate).name}`.")
-                inp.append(Boxes.from_tensor(arg, mode=mode))  # type: ignore
+                inp.append(Boxes.from_tensor(arg, mode=mode))
             else:
                 raise NotImplementedError(f"input type of {dcate} is not implemented.")
         return inp
 
-    def forward(  # type: ignore
+    def forward(  # type: ignore[override]
         self,
         *args: Tensor,
         label: Optional[Tensor] = None,
         params: Optional[List[ParamItem]] = None,
         data_keys: Optional[List[Union[str, int, DataKey]]] = None,
-    ) -> Union[Tensor, Tuple[Tensor, Optional[Tensor]], List[Tensor], Tuple[List[Tensor], Optional[Tensor]]]:
+    ) -> Union[Tensor, List[Tensor], Tuple[Union[Tensor, List[Tensor]], Optional[Tensor]]]:
         """Compute multiple tensors simultaneously according to ``self.data_keys``."""
-        _data_keys: List[DataKey]
         if data_keys is None:
             _data_keys = self.data_keys
         else:
             _data_keys = [DataKey.get(inp) for inp in data_keys]
-            self.data_keys = _data_keys
+
         self._validate_args_datakeys(*args, data_keys=_data_keys)
 
         args = self._arguments_preproc(*args, data_keys=_data_keys)
@@ -340,8 +345,7 @@ class AugmentationSequential(ImageSequential):
         if params is None:
             # image data must exist if params is not provided.
             if DataKey.INPUT in _data_keys:
-                _input = args[_data_keys.index(DataKey.INPUT)]
-                inp = _input
+                inp = args[_data_keys.index(DataKey.INPUT)]
                 if isinstance(inp, (tuple, list)):
                     raise ValueError(f"`INPUT` should be a tensor but `{type(inp)}` received.")
                 # A video input shall be BCDHW while an image input shall be BCHW
@@ -353,7 +357,7 @@ class AugmentationSequential(ImageSequential):
             else:
                 raise ValueError("`params` must be provided whilst INPUT is not in data_keys.")
 
-        outputs: List[Tensor] = [None] * len(_data_keys)  # type: ignore
+        outputs: List[Optional[Tensor]] = [None] * len(_data_keys)
 
         self.return_label = self.return_label or label is not None or self.contains_label_operations(params)
 
@@ -367,12 +371,14 @@ class AugmentationSequential(ImageSequential):
             if dcate == DataKey.INPUT:
                 _inp = args[idx]
 
-                _out = super().forward(_inp, label, params=params, extra_args=extra_args)  # type: ignore
+                _out = super().forward(_inp, label, params=params, extra_args=extra_args)
                 self._transform_matrix = self.get_transformation_matrix(_inp, params=params)
-                if self.return_label:
-                    _input, label = cast(Tuple[Tensor, Tensor], _out)
-                else:
-                    _input = cast(Tensor, _out)
+
+                if self.return_label and isinstance(_out, tuple):
+                    _input, label = _out
+                elif isinstance(_out, Tensor):
+                    _input = _out
+
                 outputs[idx] = _input
                 # NOTE: Skip the rest here.
                 continue
@@ -419,5 +425,5 @@ class AugmentationSequential(ImageSequential):
                 outputs[idx] = arg.to_tensor()
             else:
                 outputs[idx] = input
-
-        return self.__packup_output__(outputs, label)
+        _outputs = [i for i in outputs if isinstance(i, Tensor)]
+        return self.__packup_output__(_outputs, label)

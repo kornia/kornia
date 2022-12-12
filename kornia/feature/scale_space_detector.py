@@ -1,9 +1,9 @@
 from typing import List, Optional, Tuple
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 
+from kornia.core import Device, Module, Tensor, concatenate, eye
 from kornia.geometry.subpix import ConvSoftArgmax3d
 from kornia.geometry.transform import ScalePyramid
 
@@ -12,7 +12,7 @@ from .orientation import PassLAF
 from .responses import BlobHessian
 
 
-def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor, num_levels: int) -> torch.Tensor:
+def _scale_index_to_scale(max_coords: Tensor, sigmas: Tensor, num_levels: int) -> Tensor:
     r"""Auxiliary function for ScaleSpaceDetector. Converts scale level index from ConvSoftArgmax3d to the actual
     scale, using the sigmas from the ScalePyramid output.
 
@@ -32,20 +32,20 @@ def _scale_index_to_scale(max_coords: torch.Tensor, sigmas: torch.Tensor, num_le
     B, N, _ = max_coords.shape
     scale_coords = max_coords[:, :, 0].contiguous().view(-1, 1, 1, 1)
     # Replace the scale_x_y
-    out = torch.cat(
-        [sigmas[0, 0] * torch.pow(2.0, scale_coords / float(num_levels)).view(B, N, 1), max_coords[:, :, 1:]], dim=2
+    out = concatenate(
+        [sigmas[0, 0] * torch.pow(2.0, scale_coords / float(num_levels)).view(B, N, 1), max_coords[:, :, 1:]], 2
     )
     return out
 
 
-def _create_octave_mask(mask: torch.Tensor, octave_shape: List[int]) -> torch.Tensor:
+def _create_octave_mask(mask: Tensor, octave_shape: List[int]) -> Tensor:
     r"""Downsample a mask based on the given octave shape."""
     mask_shape = octave_shape[-2:]
-    mask_octave = F.interpolate(mask, mask_shape, mode='bilinear', align_corners=False)  # type: ignore
+    mask_octave = F.interpolate(mask, mask_shape, mode='bilinear', align_corners=False)
     return mask_octave.unsqueeze(1)
 
 
-class ScaleSpaceDetector(nn.Module):
+class ScaleSpaceDetector(Module):
     r"""Module for differentiable local feature detection, as close as possible to classical local feature detectors
     like Harris, Hessian-Affine or SIFT (DoG).
 
@@ -76,13 +76,13 @@ class ScaleSpaceDetector(nn.Module):
         self,
         num_features: int = 500,
         mr_size: float = 6.0,
-        scale_pyr_module: nn.Module = ScalePyramid(3, 1.6, 15),
-        resp_module: nn.Module = BlobHessian(),
-        nms_module: nn.Module = ConvSoftArgmax3d(
+        scale_pyr_module: Module = ScalePyramid(3, 1.6, 15),
+        resp_module: Module = BlobHessian(),
+        nms_module: Module = ConvSoftArgmax3d(
             (3, 3, 3), (1, 1, 1), (1, 1, 1), normalized_coordinates=False, output_value=True
         ),
-        ori_module: nn.Module = PassLAF(),
-        aff_module: nn.Module = PassLAF(),
+        ori_module: Module = PassLAF(),
+        aff_module: Module = PassLAF(),
         minima_are_also_good: bool = False,
         scale_space_response=False,
     ):
@@ -125,14 +125,13 @@ class ScaleSpaceDetector(nn.Module):
             + ')'
         )
 
-    def detect(
-        self, img: torch.Tensor, num_feats: int, mask: Optional[torch.Tensor] = None
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        dev: torch.device = img.device
+    def detect(self, img: Tensor, num_feats: int, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
+        dev: Device = img.device
         dtype: torch.dtype = img.dtype
+        sigmas: List[Tensor]
         sp, sigmas, _ = self.scale_pyr(img)
-        all_responses: List[torch.Tensor] = []
-        all_lafs: List[torch.Tensor] = []
+        all_responses: List[Tensor] = []
+        all_lafs: List[Tensor] = []
         for oct_idx, octave in enumerate(sp):
             sigmas_oct = sigmas[oct_idx]
             B, CH, L, H, W = octave.size()
@@ -146,14 +145,16 @@ class ScaleSpaceDetector(nn.Module):
                 # We want nms for scale responses, so reorder to (B, CH, L, H, W)
                 oct_resp = oct_resp.permute(0, 2, 1, 3, 4)
                 # 3rd extra level is required for DoG only
-                if self.scale_pyr.extra_levels % 2 != 0:  # type: ignore
+                if isinstance(self.scale_pyr.extra_levels, Tensor) and self.scale_pyr.extra_levels % 2 != 0:
                     oct_resp = oct_resp[:, :, :-1]
 
             if mask is not None:
-                oct_mask: torch.Tensor = _create_octave_mask(mask, oct_resp.shape)
+                oct_mask: Tensor = _create_octave_mask(mask, oct_resp.shape)
                 oct_resp = oct_mask * oct_resp
 
             # Differentiable nms
+            coord_max: Tensor
+            response_max: Tensor
             coord_max, response_max = self.nms(oct_resp)
             if self.minima_are_also_good:
                 coord_min, response_min = self.nms(-oct_resp)
@@ -174,18 +175,27 @@ class ScaleSpaceDetector(nn.Module):
             B, N = resp_flat_best.size()
 
             # Converts scale level index from ConvSoftArgmax3d to the actual scale, using the sigmas
-            max_coords_best = _scale_index_to_scale(
-                max_coords_best, sigmas_oct, self.scale_pyr.n_levels  # type: ignore
-            )
+
+            if isinstance(self.scale_pyr.n_levels, Tensor):
+                num_levels = int(self.scale_pyr.n_levels.item())
+            elif isinstance(self.scale_pyr.n_levels, int):
+                num_levels = self.scale_pyr.n_levels
+            else:
+                raise TypeError(
+                    'Expected the scale pyramid module to have `n_levels` as a Tensor or int.'
+                    f'Gotcha {type(self.scale_pyr.n_levels)}'
+                )
+
+            max_coords_best = _scale_index_to_scale(max_coords_best, sigmas_oct, num_levels)
 
             # Create local affine frames (LAFs)
-            rotmat = torch.eye(2, dtype=dtype, device=dev).view(1, 1, 2, 2)
-            current_lafs = torch.cat(
+            rotmat = eye(2, dtype=dtype, device=dev).view(1, 1, 2, 2)
+            current_lafs = concatenate(
                 [
                     self.mr_size * max_coords_best[:, :, 0].view(B, N, 1, 1) * rotmat,
                     max_coords_best[:, :, 1:3].view(B, N, 2, 1),
                 ],
-                dim=3,
+                3,
             )
 
             # Zero response lafs, which touch the boundary
@@ -199,15 +209,13 @@ class ScaleSpaceDetector(nn.Module):
             all_lafs.append(current_lafs)
 
         # Sort and keep best n
-        responses: torch.Tensor = torch.cat(all_responses, dim=1)
-        lafs: torch.Tensor = torch.cat(all_lafs, dim=1)
+        responses = concatenate(all_responses, 1)
+        lafs = concatenate(all_lafs, 1)
         responses, idxs = torch.topk(responses, k=num_feats, dim=1)
         lafs = torch.gather(lafs, 1, idxs.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, 2, 3))
         return responses, denormalize_laf(lafs, img)
 
-    def forward(  # type: ignore
-        self, img: torch.Tensor, mask: Optional[torch.Tensor] = None  # type: ignore
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, img: Tensor, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
         """Three stage local feature detection. First the location and scale of interest points are determined by
         detect function. Then affine shape and orientation.
 

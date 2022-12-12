@@ -136,7 +136,7 @@ class FaceDetector(nn.Module):
         keep_top_k: the maximum number of detections to return after the nms.
 
     Return:
-        A tensor of shape :math:`(N,15)` to be used with :py:class:`kornia.contrib.FaceDetectorResult`.
+        A list of B tensors with shape :math:`(N,15)` to be used with :py:class:`kornia.contrib.FaceDetectorResult`.
 
     Example:
         >>> img = torch.rand(1, 3, 320, 320)
@@ -169,7 +169,7 @@ class FaceDetector(nn.Module):
     def preprocess(self, image: torch.Tensor) -> torch.Tensor:
         return image
 
-    def postprocess(self, data: Dict[str, torch.Tensor], height: int, width: int) -> torch.Tensor:
+    def postprocess(self, data: Dict[str, torch.Tensor], height: int, width: int) -> List[torch.Tensor]:
         loc, conf, iou = data['loc'], data['conf'], data['iou']
 
         scale = torch.tensor(
@@ -181,32 +181,43 @@ class FaceDetector(nn.Module):
         priors = _PriorBox(self.min_sizes, self.steps, self.clip, image_size=(height, width))
         priors = priors.to(loc.device, loc.dtype)
 
-        boxes = _decode(loc, priors(), self.variance)  # Nx14
-        boxes = boxes * scale
+        batched_dets: List[torch.Tensor] = []
+        for batch_elem in range(loc.shape[0]):
+            boxes = _decode(loc[batch_elem], priors(), self.variance)  # Nx14
+            boxes = boxes * scale
 
-        # clamp here for the compatibility for ONNX
-        cls_scores, iou_scores = conf[:, 1], iou[:, 0]
-        scores = (cls_scores * iou_scores.clamp(0.0, 1.0)).sqrt()
+            # clamp here for the compatibility for ONNX
+            cls_scores, iou_scores = conf[batch_elem, :, 1], iou[batch_elem, :, 0]
+            scores = (cls_scores * iou_scores.clamp(0.0, 1.0)).sqrt()
 
-        # ignore low scores
-        inds = scores > self.confidence_threshold
-        boxes, scores = boxes[inds], scores[inds]
+            # ignore low scores
+            inds = scores > self.confidence_threshold
+            boxes, scores = boxes[inds], scores[inds]
 
-        # keep top-K before NMS
-        order = scores.sort(descending=True)[1][: self.top_k]
-        boxes, scores = boxes[order], scores[order]
+            # keep top-K before NMS
+            order = scores.sort(descending=True)[1][: self.top_k]
+            boxes, scores = boxes[order], scores[order]
 
-        # performd NMS
-        # NOTE: nms need to be revise since does not export well to onnx
-        dets = torch.cat((boxes, scores[:, None]), dim=-1)  # Nx15
-        keep = self.nms(boxes[:, :4], scores, self.nms_threshold)
-        if len(keep) > 0:
-            dets = dets[keep, :]
+            # performd NMS
+            # NOTE: nms need to be revise since does not export well to onnx
+            dets = torch.cat((boxes, scores[:, None]), dim=-1)  # Nx15
+            keep = self.nms(boxes[:, :4], scores, self.nms_threshold)
+            if len(keep) > 0:
+                dets = dets[keep, :]
 
-        # keep top-K faster NMS
-        return dets[: self.keep_top_k]
+            # keep top-K faster NMS
+            batched_dets.append(dets[: self.keep_top_k])
+        return batched_dets
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
+    def forward(self, image: torch.Tensor) -> List[torch.Tensor]:
+        r"""Detect faces in a given batch of images.
+
+        Args:
+            image: batch of images :math:`(B,3,H,W)`
+
+        Return:
+            List[torch.Tensor]: list with the boxes found on each image. :math:`Bx(N,15)`.
+        """
         img = self.preprocess(image)
         out = self.model(img)
         return self.postprocess(out, img.shape[-2], img.shape[-1])
@@ -314,9 +325,7 @@ class YuFaceDetectNet(nn.Module):
         loc_data, conf_data, iou_data = head_data.split((14, 2, 1), dim=-1)
 
         if self.phase == "test":
-            loc_data = loc_data.view(-1, 14)
-            conf_data = torch.softmax(conf_data.view(-1, self.num_classes), dim=-1)
-            iou_data = iou_data.view(-1, 1)
+            conf_data = torch.softmax(conf_data, dim=-1)
         else:
             loc_data = loc_data.view(loc_data.size(0), -1, 14)
             conf_data = conf_data.view(conf_data.size(0), -1, self.num_classes)

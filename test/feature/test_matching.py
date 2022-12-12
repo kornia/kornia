@@ -46,7 +46,7 @@ class TestMatchNN:
         desc2 = torch.rand(7, 8, device=device)
         desc1 = utils.tensor_to_gradcheck_var(desc1)  # to var
         desc2 = utils.tensor_to_gradcheck_var(desc2)  # to var
-        assert gradcheck(match_mnn, (desc1, desc2), raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(match_mnn, (desc1, desc2), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
 
 
 class TestMatchMNN:
@@ -80,7 +80,7 @@ class TestMatchMNN:
         desc2 = torch.rand(7, 8, device=device)
         desc1 = utils.tensor_to_gradcheck_var(desc1)  # to var
         desc2 = utils.tensor_to_gradcheck_var(desc2)  # to var
-        assert gradcheck(match_mnn, (desc1, desc2), raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(match_mnn, (desc1, desc2), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
 
 
 class TestMatchSNN:
@@ -136,7 +136,7 @@ class TestMatchSNN:
         desc2 = torch.rand(7, 8, device=device)
         desc1 = utils.tensor_to_gradcheck_var(desc1)  # to var
         desc2 = utils.tensor_to_gradcheck_var(desc2)  # to var
-        assert gradcheck(match_snn, (desc1, desc2, 0.8), raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(match_snn, (desc1, desc2, 0.8), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
 
 
 class TestMatchSMNN:
@@ -219,8 +219,8 @@ class TestMatchSMNN:
         desc1 = utils.tensor_to_gradcheck_var(desc1)  # to var
         desc2 = utils.tensor_to_gradcheck_var(desc2)  # to var
         matcher = DescriptorMatcher('smnn', 0.8).to(device)
-        assert gradcheck(match_smnn, (desc1, desc2, 0.8), raise_exception=True, nondet_tol=1e-4)
-        assert gradcheck(matcher, (desc1, desc2), raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(match_smnn, (desc1, desc2, 0.8), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
+        assert gradcheck(matcher, (desc1, desc2), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
 
     @pytest.mark.jit
     @pytest.mark.parametrize("match_type", ["nn", "snn", "mnn", "smnn"])
@@ -330,7 +330,9 @@ class TestMatchFGINN:
         desc2 = utils.tensor_to_gradcheck_var(desc2)  # to var
         lafs1 = utils.tensor_to_gradcheck_var(lafs1)  # to var
         lafs2 = utils.tensor_to_gradcheck_var(lafs2)  # to var
-        assert gradcheck(match_fginn, (desc1, desc2, lafs1, lafs2, 0.8, 0.05), raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(
+            match_fginn, (desc1, desc2, lafs1, lafs2, 0.8, 0.05), raise_exception=True, nondet_tol=1e-4, fast_mode=True
+        )
 
     @pytest.mark.jit
     @pytest.mark.skip("keyword-arg expansion is not supported")

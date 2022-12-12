@@ -1,0 +1,45 @@
+name: Run typing tests
+
+on:
+  pull_request:
+    branches: [master]
+    types: [opened, reopened, synchronize, review_requested, ready_for_review]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: ${{ matrix.os }} - python-${{ matrix.python-version }}, torch-${{ matrix.pytorch-version }}
+    runs-on: ${{ matrix.os }}-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ['Ubuntu']
+        python-version: ['3.7']
+        pytorch-version: ['1.9.1', '1.13.0']
+
+    steps:
+      - name: Checkout kornia
+        uses: actions/checkout@v3
+
+      - name: Setting environment on ${{ matrix.os }} with python ${{ matrix.python-version }} and pytorch  ${{ matrix.pytorch-version }}
+        uses: ./.github/actions/env
+        with:
+          python-version: ${{ matrix.python-version }}
+          pytorch-version: ${{ matrix.pytorch-version }}
+
+      - name: Run typing tests
+        shell: bash -l {0}
+        run: mypy --cobertura-xml-report ./
+
+      - if: always()
+        name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          file: cobertura.xml
+          token: ${{ secrets.CODECOV_TOKEN }} # to not depend on build via GH API
+          flags: typing,${{ matrix.os }}_py-${{ matrix.python-version }}_pt-${{ matrix.pytorch-version }}_${{ matrix.pytorch-dtype }}
+          name: cpu-coverage-types

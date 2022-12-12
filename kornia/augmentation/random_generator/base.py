@@ -1,8 +1,9 @@
 from typing import Callable, Dict, Optional
 
 import torch
-import torch.nn as nn
 from torch.distributions import Distribution
+
+from kornia.core import Device, Module, Tensor
 
 
 class _PostInitInjectionMetaClass(type):
@@ -14,13 +15,14 @@ class _PostInitInjectionMetaClass(type):
         return obj
 
 
-class RandomGeneratorBase(nn.Module, metaclass=_PostInitInjectionMetaClass):
+class RandomGeneratorBase(Module, metaclass=_PostInitInjectionMetaClass):
     """Base class for generating random augmentation parameters."""
+
+    device: Optional[Device] = None
+    dtype: torch.dtype
 
     def __init__(self) -> None:
         super().__init__()
-        self.device = None
-        self.dtype = None
 
     def __post_init__(self) -> None:
         self.set_rng_device_and_dtype()
@@ -47,7 +49,7 @@ class RandomGeneratorBase(nn.Module, metaclass=_PostInitInjectionMetaClass):
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         raise NotImplementedError
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:  # type:ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
         raise NotImplementedError
 
 
@@ -76,23 +78,23 @@ class DistributionWithMapper(Distribution):
         tensor([0.8236, 0.4272, 0.1017, 0.6384, 0.2527, 0.1980, 0.5995, 0.6980])
     """
 
-    def __init__(self, dist: Distribution, map_fn: Optional[Callable] = None) -> None:
+    def __init__(self, dist: Distribution, map_fn: Optional[Callable[[Tensor], Tensor]] = None) -> None:
         self.dist = dist
         self.map_fn = map_fn
 
-    def rsample(self, sample_shape: torch.Size) -> torch.Tensor:  # type:ignore
+    def rsample(self, sample_shape: torch.Size) -> Tensor:  # type: ignore[override]
         out = self.dist.rsample(sample_shape)
         if self.map_fn is not None:
             out = self.map_fn(out)
         return out
 
-    def sample(self, sample_shape: torch.Size) -> torch.Tensor:  # type:ignore
+    def sample(self, sample_shape: torch.Size) -> Tensor:  # type: ignore[override]
         out = self.dist.sample(sample_shape)
         if self.map_fn is not None:
             out = self.map_fn(out)
         return out
 
-    def sample_n(self, n) -> torch.Tensor:
+    def sample_n(self, n) -> Tensor:
         out = self.dist.sample_n(n)
         if self.map_fn is not None:
             out = self.map_fn(out)

@@ -1,18 +1,29 @@
 from enum import Enum
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 import torch
-import torch.nn as nn
-from torch import Tensor
 from torch.distributions import Bernoulli
 
 from kornia.augmentation.random_generator import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_sampling, _transform_output_shape, override_parameters
+from kornia.core import Module, Tensor, tensor
 
 TensorWithTransformMat = Union[Tensor, Tuple[Tensor, Tensor]]
 
 
-class _BasicAugmentationBase(nn.Module):
+# Trick mypy into not applying contravariance rules to inputs by defining
+# forward as a value, rather than a function.  See also
+# https://github.com/python/mypy/issues/8795
+# Based on the trick that torch.nn.Module does for the forward method
+def _apply_transform_unimplemented(self, *input: Any) -> Tensor:
+    r"""Defines the computation performed at every call.
+
+    Should be overridden by all subclasses.
+    """
+    raise NotImplementedError(f"Module [{type(self).__name__}] is missing the required \"apply_tranform\" function")
+
+
+class _BasicAugmentationBase(Module):
     r"""_BasicAugmentationBase base class for customized augmentation implementations.
 
     Plain augmentation base class without the functionality of transformation matrix calculations.
@@ -50,6 +61,8 @@ class _BasicAugmentationBase(nn.Module):
         self.flags: Dict[str, Any] = {}
         self.set_rng_device_and_dtype(torch.device('cpu'), torch.get_default_dtype())
 
+    apply_transform: Callable[..., Tensor] = _apply_transform_unimplemented
+
     def __repr__(self) -> str:
         txt = f"p={self.p}, p_batch={self.p_batch}, same_on_batch={self.same_on_batch}"
         if isinstance(self._param_generator, RandomGeneratorBase):
@@ -77,9 +90,6 @@ class _BasicAugmentationBase(nn.Module):
             return self._param_generator(batch_shape, self.same_on_batch)
         return {}
 
-    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
-        raise NotImplementedError
-
     def set_rng_device_and_dtype(self, device: torch.device, dtype: torch.dtype) -> None:
         """Change the random generation device and dtype.
 
@@ -96,18 +106,18 @@ class _BasicAugmentationBase(nn.Module):
     ) -> Tensor:
         batch_prob: Tensor
         if p_batch == 1:
-            batch_prob = torch.tensor([True])
+            batch_prob = tensor([True])
         elif p_batch == 0:
-            batch_prob = torch.tensor([False])
+            batch_prob = tensor([False])
         else:
             batch_prob = _adapted_sampling((1,), self._p_batch_gen, same_on_batch).bool()
 
         if batch_prob.sum().item() == 1:
             elem_prob: Tensor
             if p == 1:
-                elem_prob = torch.tensor([True] * batch_shape[0])
+                elem_prob = tensor([True] * batch_shape[0])
             elif p == 0:
-                elem_prob = torch.tensor([False] * batch_shape[0])
+                elem_prob = tensor([False] * batch_shape[0])
             else:
                 elem_prob = _adapted_sampling((batch_shape[0],), self._p_gen, same_on_batch).bool()
             batch_prob = batch_prob * elem_prob
@@ -140,14 +150,14 @@ class _BasicAugmentationBase(nn.Module):
         _params['batch_prob'] = to_apply
         # Added another input_size parameter for geometric transformations
         # This might be needed for correctly inversing.
-        input_size = torch.tensor(batch_shape, dtype=torch.long)
+        input_size = tensor(batch_shape, dtype=torch.long)
         _params.update({'forward_input_shape': input_size})
         return _params
 
     def apply_func(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return self.apply_transform(input, params, flags)
 
-    def forward(self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs) -> Tensor:  # type: ignore
+    def forward(self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs) -> Tensor:
         """Perform forward operations.
 
         Args:
@@ -169,7 +179,7 @@ class _BasicAugmentationBase(nn.Module):
             params = self.forward_parameters(batch_shape)
 
         if 'batch_prob' not in params:
-            params['batch_prob'] = torch.tensor([True] * batch_shape[0])
+            params['batch_prob'] = tensor([True] * batch_shape[0])
 
         params, flags = self._process_kwargs_to_params_and_flags(params, self.flags, **kwargs)
 
@@ -229,7 +239,7 @@ class _AugmentationBase(_BasicAugmentationBase):
     ) -> Tensor:
         raise NotImplementedError
 
-    def apply_func(  # type: ignore
+    def apply_func(
         self, in_tensor: Tensor, params: Dict[str, Tensor], flags: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         if flags is None:

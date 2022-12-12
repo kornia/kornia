@@ -285,7 +285,9 @@ class TestFilter2D:
         # evaluate function gradient
         input = utils.tensor_to_gradcheck_var(input)  # to var
         kernel = utils.tensor_to_gradcheck_var(kernel)  # to var
-        assert gradcheck(kornia.filters.filter2d, (input, kernel), raise_exception=True)
+        assert gradcheck(
+            kornia.filters.filter2d, (input, kernel), nondet_tol=1e-8, raise_exception=True, fast_mode=True
+        )
 
     @pytest.mark.parametrize("padding", ["same", "valid"])
     def test_jit(self, padding, device, dtype):
@@ -611,7 +613,9 @@ class TestFilter3D:
         # evaluate function gradient
         input = utils.tensor_to_gradcheck_var(input)  # to var
         kernel = utils.tensor_to_gradcheck_var(kernel)  # to var
-        assert gradcheck(kornia.filters.filter3d, (input, kernel), raise_exception=True)
+        assert gradcheck(
+            kornia.filters.filter3d, (input, kernel), nondet_tol=1e-8, raise_exception=True, fast_mode=True
+        )
 
     def test_jit(self, device, dtype):
         op = kornia.filters.filter3d

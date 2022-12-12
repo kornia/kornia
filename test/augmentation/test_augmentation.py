@@ -264,7 +264,12 @@ class CommonTests(BaseTester):
     def _test_gradcheck_implementation(self, params):
         input_tensor = torch.rand((3, 5, 5), device=self.device, dtype=self.dtype)  # 3 x 3
         input_tensor = utils.tensor_to_gradcheck_var(input_tensor)  # to var
-        assert gradcheck(self._create_augmentation_from_params(**params, p=1.0), (input_tensor,), raise_exception=True)
+        assert gradcheck(
+            self._create_augmentation_from_params(**params, p=1.0),
+            (input_tensor,),
+            raise_exception=True,
+            fast_mode=True,
+        )
 
 
 class TestRandomEqualizeAlternative(CommonTests):
@@ -825,7 +830,7 @@ class TestRandomHorizontalFlip:
     def test_gradcheck(self, device, dtype):
         input = torch.rand((3, 3), device=device, dtype=dtype)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(RandomHorizontalFlip(p=1.0), (input,), raise_exception=True)
+        assert gradcheck(RandomHorizontalFlip(p=1.0), (input,), raise_exception=True, fast_mode=True)
 
 
 class TestRandomVerticalFlip(BaseTester):
@@ -1294,7 +1299,7 @@ class TestColorJiggle(BaseTester):
     def test_gradcheck(self, device, dtype):
         input = torch.rand((3, 5, 5), device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(ColorJiggle(p=1.0), (input,), raise_exception=True)
+        assert gradcheck(ColorJiggle(p=1.0), (input,), raise_exception=True, fast_mode=True)
 
     @pytest.mark.skip(reason="not implemented yet")
     def test_cardinality(self, device, dtype):
@@ -1622,7 +1627,7 @@ class TestColorJitter(BaseTester):
     def test_gradcheck(self, device, dtype):
         input = torch.rand((3, 5, 5), device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(ColorJitter(p=1.0), (input,), raise_exception=True)
+        assert gradcheck(ColorJitter(p=1.0), (input,), raise_exception=True, fast_mode=True)
 
     @pytest.mark.skip(reason="not implemented yet")
     def test_cardinality(self, device, dtype):
@@ -1726,7 +1731,7 @@ class TestRandomBrightness(BaseTester):
     def test_gradcheck(self, device, dtype):
         input = torch.rand((3, 5, 5), device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(RandomBrightness(p=1.0), (input,), raise_exception=True)
+        assert gradcheck(RandomBrightness(p=1.0), (input,), raise_exception=True, fast_mode=True)
 
     @pytest.mark.skip(reason="not implemented yet")
     def test_cardinality(self, device, dtype):
@@ -1828,7 +1833,7 @@ class TestRandomContrast(BaseTester):
     def test_gradcheck(self, device, dtype):
         input = torch.rand((3, 5, 5), device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(RandomContrast(p=1.0), (input,), raise_exception=True)
+        assert gradcheck(RandomContrast(p=1.0), (input,), raise_exception=True, fast_mode=True)
 
     @pytest.mark.skip(reason="not implemented yet")
     def test_cardinality(self, device, dtype):
@@ -1938,7 +1943,7 @@ class TestRandomHue(BaseTester):
     def test_gradcheck(self, device, dtype):
         input = torch.rand((3, 5, 5), device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(RandomHue(p=1.0), (input,), raise_exception=True)
+        assert gradcheck(RandomHue(p=1.0), (input,), raise_exception=True, fast_mode=True)
 
     @pytest.mark.skip(reason="not implemented yet")
     def test_cardinality(self, device, dtype):
@@ -2048,7 +2053,7 @@ class TestRandomSaturation(BaseTester):
     def test_gradcheck(self, device, dtype):
         input = torch.rand((3, 5, 5), device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(RandomSaturation(p=1.0), (input,), raise_exception=True)
+        assert gradcheck(RandomSaturation(p=1.0), (input,), raise_exception=True, fast_mode=True)
 
     @pytest.mark.skip(reason="not implemented yet")
     def test_cardinality(self, device, dtype):
@@ -2105,7 +2110,7 @@ class TestRectangleRandomErasing(BaseTester):
         # evaluate function gradient
         input = torch.rand(batch_shape, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(rand_rec, (input, rect_params), raise_exception=True)
+        assert gradcheck(rand_rec, (input, rect_params), raise_exception=True, fast_mode=True)
 
     @pytest.mark.skip(reason="not implemented yet")
     def test_smoke(self, device, dtype):
@@ -2235,7 +2240,7 @@ class TestRandomGamma(BaseTester):
     def test_gradcheck(self, device, dtype):
         input = torch.rand((3, 5, 5), device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(RandomGamma(p=1.0), (input,), raise_exception=True)
+        assert gradcheck(RandomGamma(p=1.0), (input,), raise_exception=True, fast_mode=True)
 
     @pytest.mark.skip(reason="not implemented yet")
     def test_cardinality(self, device, dtype):
@@ -2494,8 +2499,8 @@ class TestRandomGrayscale(BaseTester):
     def test_gradcheck(self, device, dtype):
         input = torch.rand((3, 5, 5), device=device, dtype=dtype)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(RandomGrayscale(p=1.0), (input,), raise_exception=True)
-        assert gradcheck(RandomGrayscale(p=0.0), (input,), raise_exception=True)
+        assert gradcheck(RandomGrayscale(p=1.0), (input,), raise_exception=True, fast_mode=True)
+        assert gradcheck(RandomGrayscale(p=0.0), (input,), raise_exception=True, fast_mode=True)
 
     @pytest.mark.skip(reason="not implemented yet")
     def test_cardinality(self, device, dtype):
@@ -2559,7 +2564,7 @@ class TestCenterCrop(BaseTester):
     def test_gradcheck(self, device, dtype):
         input = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(CenterCrop(3), (input,), raise_exception=True)
+        assert gradcheck(CenterCrop(3), (input,), raise_exception=True, fast_mode=True)
 
     @pytest.mark.skip(reason="not implemented yet")
     def test_smoke(self, device, dtype):
@@ -2733,7 +2738,7 @@ class TestRandomRotation(BaseTester):
 
         input = torch.rand((3, 3), device=device, dtype=dtype)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(RandomRotation(degrees=(15.0, 15.0), p=1.0), (input,), raise_exception=True)
+        assert gradcheck(RandomRotation(degrees=(15.0, 15.0), p=1.0), (input,), raise_exception=True, fast_mode=True)
 
     @pytest.mark.skip(reason="not implemented yet")
     def test_cardinality(self, device, dtype):
@@ -2965,7 +2970,7 @@ class TestRandomCrop(BaseTester):
         torch.manual_seed(0)  # for random reproductibility
         inp = torch.rand((3, 3, 3), device=device, dtype=dtype)  # 3 x 3
         inp = utils.tensor_to_gradcheck_var(inp)  # to var
-        assert gradcheck(RandomCrop(size=(3, 3), p=1.0), (inp,), raise_exception=True)
+        assert gradcheck(RandomCrop(size=(3, 3), p=1.0), (inp,), raise_exception=True, fast_mode=True)
 
     @pytest.mark.skip("Need to fix Union type")
     def test_jit(self, device, dtype):
@@ -3159,7 +3164,10 @@ class TestRandomResizedCrop(BaseTester):
         inp = torch.rand((1, 3, 3), device=device, dtype=dtype)  # 3 x 3
         inp = utils.tensor_to_gradcheck_var(inp)  # to var
         assert gradcheck(
-            RandomResizedCrop(size=(3, 3), scale=(1.0, 1.0), ratio=(1.0, 1.0)), (inp,), raise_exception=True
+            RandomResizedCrop(size=(3, 3), scale=(1.0, 1.0), ratio=(1.0, 1.0)),
+            (inp,),
+            raise_exception=True,
+            fast_mode=True,
         )
 
     @pytest.mark.skip(reason="not implemented yet")
@@ -3282,7 +3290,7 @@ class TestRandomEqualize(BaseTester):
 
         input = torch.rand((3, 3, 3), device=device, dtype=dtype)  # 3 x 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(RandomEqualize(p=0.5), (input,), raise_exception=True)
+        assert gradcheck(RandomEqualize(p=0.5), (input,), raise_exception=True, fast_mode=True)
 
     @staticmethod
     def build_input(channels, height, width, bs=1, row=None, device='cpu', dtype=torch.float32):
@@ -3459,7 +3467,10 @@ class TestNormalize(BaseTester):
         input = torch.rand((3, 3, 3), device=device, dtype=dtype)  # 3 x 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(
-            Normalize(mean=torch.tensor([1.0]), std=torch.tensor([1.0]), p=1.0), (input,), raise_exception=True
+            Normalize(mean=torch.tensor([1.0]), std=torch.tensor([1.0]), p=1.0),
+            (input,),
+            raise_exception=True,
+            fast_mode=True,
         )
 
     @pytest.mark.skip(reason="not implemented yet")
@@ -3525,7 +3536,10 @@ class TestDenormalize(BaseTester):
         input = torch.rand((3, 3, 3), device=device, dtype=dtype)  # 3 x 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(
-            Denormalize(mean=torch.tensor([1.0]), std=torch.tensor([1.0]), p=1.0), (input,), raise_exception=True
+            Denormalize(mean=torch.tensor([1.0]), std=torch.tensor([1.0]), p=1.0),
+            (input,),
+            raise_exception=True,
+            fast_mode=True,
         )
 
     @pytest.mark.skip(reason="not implemented yet")
@@ -3565,7 +3579,7 @@ class TestRandomFisheye:
         center_x = utils.tensor_to_gradcheck_var(center_x)  # to var
         center_y = utils.tensor_to_gradcheck_var(center_y)  # to var
         gamma = utils.tensor_to_gradcheck_var(gamma)  # to var
-        assert gradcheck(RandomFisheye(center_x, center_y, gamma), (img,), raise_exception=True)
+        assert gradcheck(RandomFisheye(center_x, center_y, gamma), (img,), raise_exception=True, fast_mode=True)
 
 
 class TestRandomElasticTransform:
@@ -3579,6 +3593,24 @@ class TestRandomElasticTransform:
         input = torch.eye(3, device=device, dtype=dtype).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 1, 1, 1)
         res = f(input)
         assert (res[0] == res[1]).all()
+
+    def test_mask_transform(self, device, dtype):
+        torch.manual_seed(0)
+        features = torch.rand(1, 1, 4, 4, dtype=dtype, device=device)
+        labels = torch.ones(1, 1, 4, 4, dtype=dtype, device=device) * 10
+        labels[:, :, :, :2] = 0
+        labels[:, :, :2, :] = 0
+
+        compose = AugmentationSequential(RandomElasticTransform(alpha=(10, 10)))
+
+        # Use an example which would produce invalid label values
+        torch.manual_seed(0)
+        labels_transformed = compose(features, labels, data_keys=["input", "input"])[1]
+        assert len(labels_transformed.unique()) > 2
+
+        # The transformed values are fine if we use mask input type
+        labels_transformed = compose(features, labels, data_keys=["input", "mask"])[1]
+        assert torch.all(labels_transformed.unique() == torch.tensor([0, 10], dtype=dtype, device=device))
 
 
 class TestRandomThinPlateSpline:
@@ -3610,6 +3642,7 @@ class TestResize:
         aug = Resize(size=(4, 5))
         out = aug(img)
         assert out.shape == (1, 1, 4, 5)
+        assert aug.inverse(out).shape == (1, 1, 4, 6)
 
 
 class TestSmallestMaxSize:

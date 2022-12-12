@@ -66,7 +66,7 @@ class TestSepia(BaseTester):
         # evaluate function gradient
         input_tensor = torch.rand(batch_shape, device=device, dtype=dtype)
         input_tensor = utils.tensor_to_gradcheck_var(input_tensor)
-        assert gradcheck(kornia.color.sepia, (input_tensor,), raise_exception=True)
+        assert gradcheck(kornia.color.sepia, (input_tensor,), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
         op = kornia.color.sepia

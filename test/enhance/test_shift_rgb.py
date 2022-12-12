@@ -41,7 +41,9 @@ class TestRGBShift:
         r_shift, g_shift, b_shift = torch.Tensor([0.4]), torch.Tensor([0.5]), torch.Tensor([0.2])
         image = torch.randn(2, 3, 5, 5, device=device, dtype=dtype)
         image = utils.tensor_to_gradcheck_var(image)  # to var
-        assert gradcheck(kornia.enhance.shift_rgb, (image, r_shift, g_shift, b_shift), raise_exception=True)
+        assert gradcheck(
+            kornia.enhance.shift_rgb, (image, r_shift, g_shift, b_shift), raise_exception=True, fast_mode=True
+        )
 
     def test_rgb_shift(self, device, dtype):
         r_shift, g_shift, b_shift = torch.Tensor([0.1]), torch.Tensor([0.3]), torch.Tensor([-0.3])

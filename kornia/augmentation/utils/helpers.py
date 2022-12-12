@@ -1,10 +1,10 @@
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
-from torch import Tensor
 from torch.distributions import Beta, Uniform
 
+from kornia.core import Tensor, as_tensor
 from kornia.utils import _extract_device_dtype
 
 
@@ -147,15 +147,14 @@ def _transform_output_shape(output: Tensor, shape: Tuple) -> Tensor:
     Returns:
         Tensor
     """
-    out_tensor: Tensor
-    out_tensor = cast(Tensor, output)
+    out_tensor = output.clone()
 
     for dim in range(len(out_tensor.shape) - len(shape)):
         if out_tensor.shape[0] != 1:
             raise AssertionError(f'Dimension {dim} of input is ' f'expected to be 1, got {out_tensor.shape[0]}')
         out_tensor = out_tensor.squeeze(0)
 
-    return out_tensor  # type: ignore
+    return out_tensor
 
 
 def _validate_shape(shape: Union[Tuple, torch.Size], required_shapes: Tuple[str, ...] = ("BCHW",)) -> None:
@@ -197,8 +196,11 @@ def _adapted_rsampling(
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]). By default,
     same_on_batch is set to False.
     """
+    if isinstance(shape, tuple):
+        shape = torch.Size(shape)
+
     if same_on_batch:
-        return dist.rsample((1, *shape[1:])).repeat(shape[0], *[1] * (len(shape) - 1))
+        return dist.rsample(torch.Size((1, *shape[1:]))).repeat(shape[0], *[1] * (len(shape) - 1))
     return dist.rsample(shape)
 
 
@@ -210,8 +212,11 @@ def _adapted_sampling(
     If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]). By default,
     same_on_batch is set to False.
     """
+    if isinstance(shape, tuple):
+        shape = torch.Size(shape)
+
     if same_on_batch:
-        return dist.sample((1, *shape[1:])).repeat(shape[0], *[1] * (len(shape) - 1))
+        return dist.sample(torch.Size((1, *shape[1:]))).repeat(shape[0], *[1] * (len(shape) - 1))
     return dist.sample(shape)
 
 
@@ -232,8 +237,8 @@ def _adapted_uniform(
     device, dtype = _extract_device_dtype(
         [low if isinstance(low, Tensor) else None, high if isinstance(high, Tensor) else None]
     )
-    low = torch.as_tensor(low, device=device, dtype=dtype)
-    high = torch.as_tensor(high, device=device, dtype=dtype)
+    low = as_tensor(low, device=device, dtype=dtype)
+    high = as_tensor(high, device=device, dtype=dtype)
     # validate_args=False to fix pytorch 1.7.1 error:
     #     ValueError: Uniform is not defined when low>= high.
     dist = Uniform(low, high, validate_args=False)
@@ -255,8 +260,8 @@ def _adapted_beta(
     in the same device/dtype as a/b tensor.
     """
     device, dtype = _extract_device_dtype([a if isinstance(a, Tensor) else None, b if isinstance(b, Tensor) else None])
-    a = torch.as_tensor(a, device=device, dtype=dtype)
-    b = torch.as_tensor(b, device=device, dtype=dtype)
+    a = as_tensor(a, device=device, dtype=dtype)
+    b = as_tensor(b, device=device, dtype=dtype)
     dist = Beta(a, b, validate_args=False)
     return _adapted_rsampling(shape, dist, same_on_batch)
 

@@ -150,19 +150,19 @@ class TestBoxes2D:
         boxes_vertices = box.to_tensor(mode='vertices')
         boxes_vertices_plus = box.to_tensor(mode='vertices_plus')
 
-        assert boxes_xyxy.shape == expected_box_xyxy.shape  # type: ignore
+        assert boxes_xyxy.shape == expected_box_xyxy.shape
         assert_allclose(boxes_xyxy, expected_box_xyxy)
 
-        assert boxes_xyxy_plus.shape == expected_box_xyxy_plus.shape  # type: ignore
+        assert boxes_xyxy_plus.shape == expected_box_xyxy_plus.shape
         assert_allclose(boxes_xyxy_plus, expected_box_xyxy_plus)
 
-        assert boxes_xywh.shape == expected_box_xywh.shape  # type: ignore
+        assert boxes_xywh.shape == expected_box_xywh.shape
         assert_allclose(boxes_xywh, expected_box_xywh)
 
-        assert boxes_vertices.shape == expected_vertices.shape  # type: ignore
+        assert boxes_vertices.shape == expected_vertices.shape
         assert_allclose(boxes_vertices, expected_vertices)
 
-        assert boxes_vertices_plus.shape == expected_vertices_plus.shape  # type: ignore
+        assert boxes_vertices_plus.shape == expected_vertices_plus.shape
         assert_allclose(boxes_vertices_plus, expected_vertices_plus)
 
     @pytest.mark.parametrize('mode', ['xyxy', 'xyxy_plus', 'xywh', 'vertices', 'vertices_plus'])
@@ -271,16 +271,30 @@ class TestBoxes2D:
         t_boxes_xyxy = utils.tensor_to_gradcheck_var(torch.tensor([[1.0, 3.0, 5.0, 6.0]]))
         t_boxes_xyxy1 = utils.tensor_to_gradcheck_var(t_boxes_xyxy.detach().clone())
 
-        assert gradcheck(partial(apply_boxes_method, method='to_tensor'), (t_boxes2,), raise_exception=True)
         assert gradcheck(
-            partial(apply_boxes_method, method='to_tensor', mode='xyxy_plus'), (t_boxes3,), raise_exception=True
+            partial(apply_boxes_method, method='to_tensor'), (t_boxes2,), raise_exception=True, fast_mode=True
         )
         assert gradcheck(
-            partial(apply_boxes_method, method='to_tensor', mode='vertices_plus'), (t_boxes4,), raise_exception=True
+            partial(apply_boxes_method, method='to_tensor', mode='xyxy_plus'),
+            (t_boxes3,),
+            raise_exception=True,
+            fast_mode=True,
         )
-        assert gradcheck(partial(apply_boxes_method, method='get_boxes_shape'), (t_boxes1,), raise_exception=True)
-        assert gradcheck(lambda x: Boxes.from_tensor(x, mode='xyxy_plus').data, (t_boxes_xyxy,), raise_exception=True)
-        assert gradcheck(lambda x: Boxes.from_tensor(x, mode='xywh').data, (t_boxes_xyxy1,), raise_exception=True)
+        assert gradcheck(
+            partial(apply_boxes_method, method='to_tensor', mode='vertices_plus'),
+            (t_boxes4,),
+            raise_exception=True,
+            fast_mode=True,
+        )
+        assert gradcheck(
+            partial(apply_boxes_method, method='get_boxes_shape'), (t_boxes1,), raise_exception=True, fast_mode=True
+        )
+        assert gradcheck(
+            lambda x: Boxes.from_tensor(x, mode='xyxy_plus').data, (t_boxes_xyxy,), raise_exception=True, fast_mode=True
+        )
+        assert gradcheck(
+            lambda x: Boxes.from_tensor(x, mode='xywh').data, (t_boxes_xyxy1,), raise_exception=True, fast_mode=True
+        )
 
 
 class TestTransformBoxes2D:
@@ -387,7 +401,7 @@ class TestTransformBoxes2D:
             boxes = boxes.transform_boxes(M)
             return boxes.data
 
-        assert gradcheck(_wrapper_transform_boxes, (t_boxes, trans_mat), raise_exception=True)
+        assert gradcheck(_wrapper_transform_boxes, (t_boxes, trans_mat), raise_exception=True, fast_mode=True)
 
 
 class TestBbox3D:
@@ -756,9 +770,17 @@ class TestBbox3D:
         # )
         # assert gradcheck(partial(apply_boxes_method, method='get_boxes_shape'), (t_boxes1,), raise_exception=True)
         assert gradcheck(
-            lambda x: Boxes3D.from_tensor(x, mode='xyzxyz_plus').data, (t_boxes_xyzxyz,), raise_exception=True
+            lambda x: Boxes3D.from_tensor(x, mode='xyzxyz_plus').data,
+            (t_boxes_xyzxyz,),
+            raise_exception=True,
+            fast_mode=True,
         )
-        assert gradcheck(lambda x: Boxes3D.from_tensor(x, mode='xyzwhd').data, (t_boxes_xyzxyz1,), raise_exception=True)
+        assert gradcheck(
+            lambda x: Boxes3D.from_tensor(x, mode='xyzwhd').data,
+            (t_boxes_xyzxyz1,),
+            raise_exception=True,
+            fast_mode=True,
+        )
 
 
 class TestTransformBoxes3D:
@@ -885,4 +907,4 @@ class TestTransformBoxes3D:
             boxes = boxes.transform_boxes(M)
             return boxes.data
 
-        assert gradcheck(_wrapper_transform_boxes, (t_boxes, trans_mat), raise_exception=True)
+        assert gradcheck(_wrapper_transform_boxes, (t_boxes, trans_mat), raise_exception=True, fast_mode=True)

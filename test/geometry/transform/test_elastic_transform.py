@@ -76,7 +76,7 @@ class TestElasticTransform:
     def test_gradcheck(self, device, dtype, requires_grad):
         image = torch.rand(1, 1, 3, 3, device=device, dtype=torch.float64, requires_grad=requires_grad)
         noise = torch.rand(1, 2, 3, 3, device=device, dtype=torch.float64, requires_grad=not requires_grad)
-        assert gradcheck(elastic_transform2d, (image, noise), raise_exception=True)
+        assert gradcheck(elastic_transform2d, (image, noise), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
         image = torch.rand(1, 4, 5, 5, device=device, dtype=dtype)

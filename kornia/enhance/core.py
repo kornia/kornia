@@ -1,8 +1,12 @@
-from kornia.core import Module, Tensor
+from typing import Union
+
+from kornia.core import Module, Tensor, tensor
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
 
 
-def add_weighted(src1: Tensor, alpha, src2: Tensor, beta, gamma) -> Tensor:
+def add_weighted(
+    src1: Tensor, alpha: Union[float, Tensor], src2: Tensor, beta: Union[float, Tensor], gamma: Union[float, Tensor]
+) -> Tensor:
     r"""Calculate the weighted sum of two Tensors.
 
     .. image:: _static/img/add_weighted.png
@@ -35,12 +39,21 @@ def add_weighted(src1: Tensor, alpha, src2: Tensor, beta, gamma) -> Tensor:
     KORNIA_CHECK_IS_TENSOR(src1)
     KORNIA_CHECK_IS_TENSOR(src2)
     KORNIA_CHECK(src1.shape == src2.shape, f"src1 and src2 have different shapes. Got {src1.shape} and {src2.shape}")
+
     if isinstance(alpha, Tensor):
         KORNIA_CHECK(src1.shape == alpha.shape, "alpha has a different shape than src.")
+    else:
+        alpha = tensor(alpha, dtype=src1.dtype, device=src1.device)
+
     if isinstance(beta, Tensor):
         KORNIA_CHECK(src1.shape == beta.shape, "beta has a different shape than src.")
+    else:
+        beta = tensor(beta, dtype=src1.dtype, device=src1.device)
+
     if isinstance(gamma, Tensor):
         KORNIA_CHECK(src1.shape == gamma.shape, "gamma has a different shape than src.")
+    else:
+        gamma = tensor(gamma, dtype=src1.dtype, device=src1.device)
 
     return src1 * alpha + src2 * beta + gamma
 
@@ -80,5 +93,5 @@ class AddWeighted(Module):
         self.beta = beta
         self.gamma = gamma
 
-    def forward(self, src1: Tensor, src2: Tensor) -> Tensor:  # type: ignore
+    def forward(self, src1: Tensor, src2: Tensor) -> Tensor:
         return add_weighted(src1, self.alpha, src2, self.beta, self.gamma)

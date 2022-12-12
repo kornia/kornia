@@ -52,7 +52,11 @@ class TestMotionBlur:
         input = torch.rand(batch_shape, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)
         assert gradcheck(
-            kornia.filters.motion_blur, (input, ksize, angle, direction, "replicate"), raise_exception=True
+            kornia.filters.motion_blur,
+            (input, ksize, angle, direction, "replicate"),
+            nondet_tol=1e-8,
+            raise_exception=True,
+            fast_mode=True,
         )
 
     @pytest.mark.skip("angle can be Union")

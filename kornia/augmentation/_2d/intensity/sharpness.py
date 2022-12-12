@@ -1,9 +1,8 @@
-from typing import Any, Dict, Optional, Tuple, Union, cast
-
-from torch import Tensor
+from typing import Any, Dict, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core import Tensor
 from kornia.enhance import sharpness
 
 
@@ -53,9 +52,7 @@ class RandomSharpness(IntensityAugmentationBase2D):
         return_transform: Optional[bool] = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._param_generator = cast(
-            rg.PlainUniformGenerator, rg.PlainUniformGenerator((sharpness, "sharpness", 0.0, (0, float("inf"))))
-        )
+        self._param_generator = rg.PlainUniformGenerator((sharpness, "sharpness", 0.0, (0, float("inf"))))
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None

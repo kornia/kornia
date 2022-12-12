@@ -10,3 +10,11 @@ kornia.geometry.liegroup
 .. autoclass:: Se3
    :members:
    :special-members:
+
+.. autoclass:: So2
+   :members:
+   :special-members:
+
+.. autoclass:: Se2
+   :members:
+   :special-members:

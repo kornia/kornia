@@ -42,7 +42,9 @@ class TestProjectPoints:
         # evaluate function gradient
         points_3d = tensor_to_gradcheck_var(points_3d)
         camera_matrix = tensor_to_gradcheck_var(camera_matrix)
-        assert gradcheck(kornia.geometry.camera.project_points, (points_3d, camera_matrix), raise_exception=True)
+        assert gradcheck(
+            kornia.geometry.camera.project_points, (points_3d, camera_matrix), raise_exception=True, fast_mode=True
+        )
 
     def test_jit(self, device, dtype):
         points_3d = torch.zeros(1, 3, device=device, dtype=dtype)
@@ -108,7 +110,10 @@ class TestUnprojectPoints:
         depth = tensor_to_gradcheck_var(depth)
         camera_matrix = tensor_to_gradcheck_var(camera_matrix)
         assert gradcheck(
-            kornia.geometry.camera.unproject_points, (points_2d, depth, camera_matrix), raise_exception=True
+            kornia.geometry.camera.unproject_points,
+            (points_2d, depth, camera_matrix),
+            raise_exception=True,
+            fast_mode=True,
         )
 
     def test_jit(self, device, dtype):
