@@ -442,10 +442,65 @@ class TestImageStitcher:
         )
         sample1 = sample1.expand((B, C, H, W))
         sample2 = sample2.expand((B, C, H, W))
+        torch.manual_seed(245)
         return_value = {
-            "keypoints0": torch.rand((15, 2), device=device, dtype=dtype),
-            "keypoints1": torch.rand((15, 2), device=device, dtype=dtype),
-            "confidence": torch.rand((15,), device=device, dtype=dtype),
+            "keypoints0": torch.tensor(
+                [
+                    [0.1546, 0.9391],
+                    [0.8077, 0.1051],
+                    [0.6768, 0.5596],
+                    [0.5092, 0.7195],
+                    [0.2856, 0.8889],
+                    [0.4342, 0.0203],
+                    [0.6701, 0.0585],
+                    [0.3828, 0.9038],
+                    [0.7301, 0.0762],
+                    [0.7864, 0.4490],
+                    [0.3509, 0.0756],
+                    [0.6782, 0.9297],
+                    [0.4132, 0.3664],
+                    [0.3134, 0.5039],
+                    [0.2073, 0.2552],
+                ]
+            ).to(device=device, dtype=dtype),
+            "keypoints1": torch.tensor(
+                [
+                    [0.2076, 0.2669],
+                    [0.9679, 0.8137],
+                    [0.9536, 0.8317],
+                    [0.3718, 0.2456],
+                    [0.3875, 0.8450],
+                    [0.7592, 0.1687],
+                    [0.5173, 0.6760],
+                    [0.9446, 0.4570],
+                    [0.6164, 0.1867],
+                    [0.4732, 0.1786],
+                    [0.4090, 0.8089],
+                    [0.9742, 0.8943],
+                    [0.5996, 0.7427],
+                    [0.7038, 0.9210],
+                    [0.6272, 0.0796],
+                ]
+            ).to(device=device, dtype=dtype),
+            "confidence": torch.tensor(
+                [
+                    0.9314,
+                    0.5951,
+                    0.4187,
+                    0.0318,
+                    0.1434,
+                    0.7952,
+                    0.8306,
+                    0.7511,
+                    0.6407,
+                    0.7379,
+                    0.4363,
+                    0.9220,
+                    0.8453,
+                    0.5075,
+                    0.8141,
+                ]
+            ).to(device=device, dtype=dtype),
             "batch_indexes": torch.zeros((15,), device=device, dtype=dtype),
         }
         with patch(
@@ -453,7 +508,6 @@ class TestImageStitcher:
         ):
             # NOTE: This will need to download the pretrained weights.
             # To avoid that, we mock as below
-            torch.manual_seed(0)
             matcher = kornia.feature.LoFTR(None)
             stitcher = kornia.contrib.ImageStitcher(matcher, estimator=estimator).to(device=device, dtype=dtype)
             out = stitcher(sample1, sample2)
