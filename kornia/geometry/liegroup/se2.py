@@ -56,7 +56,7 @@ class Se2(Module):
         return f"rotation: {self.r}\ntranslation: {self.t}"
 
     def __getitem__(self, idx) -> 'Se2':
-        return Se2(self._rotation[idx], self._translation[idx][None])
+        return Se2(self._rotation[idx], self._translation[idx])
 
     @overload
     def __mul__(self, right: 'Se2') -> 'Se2':

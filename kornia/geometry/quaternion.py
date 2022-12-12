@@ -73,7 +73,7 @@ class Quaternion(Module):
         return f"{self.data}"
 
     def __getitem__(self, idx) -> 'Quaternion':
-        return Quaternion(self.data[idx].reshape(1, -1))
+        return Quaternion(self.data[idx])
 
     def __neg__(self) -> 'Quaternion':
         """Inverts the sign of the quaternion data.
