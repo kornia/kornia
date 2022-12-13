@@ -442,7 +442,6 @@ class TestImageStitcher:
         )
         sample1 = sample1.expand((B, C, H, W))
         sample2 = sample2.expand((B, C, H, W))
-        torch.manual_seed(245)
         return_value = {
             "keypoints0": torch.tensor(
                 [
@@ -461,8 +460,10 @@ class TestImageStitcher:
                     [0.4132, 0.3664],
                     [0.3134, 0.5039],
                     [0.2073, 0.2552],
-                ]
-            ).to(device=device, dtype=dtype),
+                ],
+                device=device,
+                dtype=dtype,
+            ),
             "keypoints1": torch.tensor(
                 [
                     [0.2076, 0.2669],
@@ -480,8 +481,10 @@ class TestImageStitcher:
                     [0.5996, 0.7427],
                     [0.7038, 0.9210],
                     [0.6272, 0.0796],
-                ]
-            ).to(device=device, dtype=dtype),
+                ],
+                device=device,
+                dtype=dtype,
+            ),
             "confidence": torch.tensor(
                 [
                     0.9314,
@@ -499,8 +502,10 @@ class TestImageStitcher:
                     0.8453,
                     0.5075,
                     0.8141,
-                ]
-            ).to(device=device, dtype=dtype),
+                ],
+                device=device,
+                dtype=dtype,
+            ),
             "batch_indexes": torch.zeros((15,), device=device, dtype=dtype),
         }
         with patch(
@@ -510,6 +515,7 @@ class TestImageStitcher:
             # To avoid that, we mock as below
             matcher = kornia.feature.LoFTR(None)
             stitcher = kornia.contrib.ImageStitcher(matcher, estimator=estimator).to(device=device, dtype=dtype)
+            torch.manual_seed(1)  # issue kornia#2027
             out = stitcher(sample1, sample2)
             assert out.shape[:-1] == torch.Size([1, 3, 6])
             assert out.shape[-1] <= 12
