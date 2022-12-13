@@ -12,12 +12,12 @@ concurrency:
 jobs:
   tests-cpu:
     name: ${{ matrix.os }} - python-${{ matrix.python-version }}, torch-${{ matrix.pytorch-version }}, ${{ matrix.pytorch-dtype }}
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}-latest
 
     strategy:
-      fail-fast: false
+      fail-fast: false # TODO: enable it when CI be stable
       matrix:
-        os: [ubuntu-latest, windows-latest, macos]
+        os: ['Ubuntu', 'Windows', 'MacOS']
         python-version: ['3.7', '3.8']
         pytorch-version: ['1.9.1', '1.13.0']
         pytorch-dtype: ['float16', 'float32', 'float64']
@@ -42,5 +42,6 @@ jobs:
         uses: codecov/codecov-action@v3
         with:
           file: coverage.xml
-          flags: cpu,${{ matrix.os }}_python-${{ matrix.python-version }}_torch-${{ matrix.pytorch-version }}_${{ matrix.pytorch-dtype }}
+          token: ${{ secrets.CODECOV_TOKEN }} # to not depend on build via GH API
+          flags: cpu,${{ matrix.os }}_py-${{ matrix.python-version }}_pt-${{ matrix.pytorch-version }}_${{ matrix.pytorch-dtype }}
           name: cpu-coverage

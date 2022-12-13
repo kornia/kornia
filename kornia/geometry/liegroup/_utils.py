@@ -33,3 +33,23 @@ def check_so2_matrix_shape(matrix):
         or (len_matrix_shape > 3 or len_matrix_shape < 2)
     ):
         raise ValueError(f"Invalid input size, we expect [B, 2, 2] or [2, 2]. Got: {matrix_shape}")
+
+
+def check_se2_t_shape(t):
+    check_so2_t_shape(t)
+
+
+def check_se2_r_t_shape(r, t):
+    if ((len(r.z.shape) == 1) and (len(t.shape) == 2)) or ((len(r.z.shape) == 0) and len(t.shape) == 1):
+        check_se2_t_shape(t)
+    else:
+        raise ValueError(
+            f"Invalid input, both the inputs should be either batched or unbatched. Got: {r.z.shape} and {t.shape}"
+        )
+
+
+def check_v_shape(v):
+    v_shape = v.shape
+    len_v_shape = len(v_shape)
+    if ((len_v_shape == 2) and (v_shape[1] != 3)) or ((len_v_shape == 1) and (v_shape[0] != 3)) or (len_v_shape > 3):
+        raise ValueError(f"Invalid input shape, we expect [B, 3], [3] Got: {v_shape}")

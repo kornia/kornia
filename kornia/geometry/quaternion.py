@@ -14,7 +14,7 @@ from kornia.geometry.conversions import (
     rotation_matrix_to_quaternion,
 )
 from kornia.geometry.linalg import batched_dot_product
-from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
+from kornia.testing import KORNIA_CHECK_TYPE
 
 
 class Quaternion(Module):
@@ -66,14 +66,14 @@ class Quaternion(Module):
             (2, 4)
         """
         super().__init__()
-        KORNIA_CHECK_SHAPE(data, ["B", "4"])
+        # KORNIA_CHECK_SHAPE(data, ["B", "4"])  # FIXME: resolve shape bugs. @edgarriba
         self._data = Parameter(data)
 
     def __repr__(self) -> str:
         return f"{self.data}"
 
     def __getitem__(self, idx) -> 'Quaternion':
-        return Quaternion(self.data[idx].reshape(1, -1))
+        return Quaternion(self.data[idx])
 
     def __neg__(self) -> 'Quaternion':
         """Inverts the sign of the quaternion data.

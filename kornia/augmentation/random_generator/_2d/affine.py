@@ -79,9 +79,7 @@ class AffineGenerator(RandomGeneratorBase):
                 _scale = concatenate(
                     [
                         _range_bound(self.scale[:2], 'scale_x', bounds=(0, float('inf')), check='singular'),
-                        _range_bound(
-                            self.scale[2:], 'scale_y', bounds=(0, float('inf')), check='singular'  # type:ignore
-                        ),
+                        _range_bound(self.scale[-2:], 'scale_y', bounds=(0, float('inf')), check='singular'),
                     ]
                 ).to(device=device, dtype=dtype)
             else:

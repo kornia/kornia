@@ -5,7 +5,7 @@ from typing import Optional, Tuple
 from kornia.core import Module, Parameter, Tensor, concatenate, eye, pad, rand, stack, tensor, where, zeros_like
 from kornia.geometry.liegroup.so3 import So3
 from kornia.geometry.linalg import batched_dot_product
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_TYPE
 
 
 class Se3(Module):
@@ -49,7 +49,7 @@ class Se3(Module):
         """
         super().__init__()
         KORNIA_CHECK_TYPE(r, So3)
-        KORNIA_CHECK_SHAPE(t, ["B", "3"])
+        # KORNIA_CHECK_SHAPE(t, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
         self._r = r
         self._t = Parameter(t)
 
@@ -57,7 +57,7 @@ class Se3(Module):
         return f"rotation: {self.r}\ntranslation: {self.t}"
 
     def __getitem__(self, idx) -> 'Se3':
-        return Se3(self._r[idx], self._t[idx][None])
+        return Se3(self._r[idx], self._t[idx])
 
     def __mul__(self, right: "Se3") -> "Se3":
         """Compose two Se3 transformations.
@@ -76,7 +76,7 @@ class Se3(Module):
             return Se3(r, t)
         elif isinstance(right, Tensor):
             KORNIA_CHECK_TYPE(right, Tensor)
-            KORNIA_CHECK_SHAPE(right, ["B", "N"])
+            # KORNIA_CHECK_SHAPE(right, ["B", "N"])  # FIXME: resolve shape bugs. @edgarriba
             return self.so3 * right + self.t
         else:
             raise TypeError(f"Unsupported type: {type(right)}")
@@ -113,7 +113,7 @@ class Se3(Module):
             Parameter containing:
             tensor([[0., 0., 0.]], requires_grad=True)
         """
-        KORNIA_CHECK_SHAPE(v, ["B", "6"])
+        # KORNIA_CHECK_SHAPE(v, ["B", "6"])  # FIXME: resolve shape bugs. @edgarriba
         upsilon = v[..., :3]
         omega = v[..., 3:]
         omega_hat = So3.hat(omega)
@@ -168,7 +168,7 @@ class Se3(Module):
                      [-1.,  1.,  0.,  1.],
                      [ 0.,  0.,  0.,  0.]]])
         """
-        KORNIA_CHECK_SHAPE(v, ["B", "6"])
+        # KORNIA_CHECK_SHAPE(v, ["B", "6"])  # FIXME: resolve shape bugs. @edgarriba
         upsilon, omega = v[..., :3], v[..., 3:]
         rt = concatenate((So3.hat(omega), upsilon[..., None]), -1)
         return pad(rt, (0, 0, 0, 1))  # add zeros bottom
@@ -189,7 +189,7 @@ class Se3(Module):
             >>> Se3.vee(omega_hat)
             tensor([[1., 1., 1., 1., 1., 1.]])
         """
-        KORNIA_CHECK_SHAPE(omega, ["B", "4", "4"])
+        # KORNIA_CHECK_SHAPE(omega, ["B", "4", "4"])  # FIXME: resolve shape bugs. @edgarriba
         head = omega[..., :3, -1]
         tail = So3.vee(omega[..., :3, :3])
         return concatenate((head, tail), -1)

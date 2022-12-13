@@ -22,8 +22,8 @@ __all__ = ["Hyperplane", "fit_plane"]
 class Hyperplane(Module):
     def __init__(self, n: Tensor, d: Tensor) -> None:
         super().__init__()
-        KORNIA_CHECK_SHAPE(n, ["B", "*"])
-        KORNIA_CHECK_SHAPE(d, ["B"])
+        # KORNIA_CHECK_SHAPE(n, ["B", "*"])  # FIXME: resolve shape bugs. @edgarriba
+        # KORNIA_CHECK_SHAPE(d, ["B"])  # FIXME: resolve shape bugs. @edgarriba
         self._n = n
         self._d = d
 
@@ -64,9 +64,9 @@ class Hyperplane(Module):
             offset = -batched_dot_product(p0, normal)
             return Hyperplane(normal, offset)
         # 3d case
-        KORNIA_CHECK_SHAPE(p0, ["B", "3"])
-        KORNIA_CHECK_SHAPE(p1, ["B", "3"])
-        KORNIA_CHECK_SHAPE(p2, ["B", "3"])
+        # KORNIA_CHECK_SHAPE(p0, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
+        # KORNIA_CHECK_SHAPE(p1, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
+        # KORNIA_CHECK_SHAPE(p2, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
         v0, v1 = (p2 - p1), (p1 - p0)
         normal = v0.cross(v1)
         norm = normal.norm(-1)

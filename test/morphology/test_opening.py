@@ -67,7 +67,7 @@ class TestOpening:
     def test_gradcheck(self, device, dtype):
         tensor = torch.rand(2, 3, 4, 4, requires_grad=True, device=device, dtype=torch.float64)
         kernel = torch.rand(3, 3, requires_grad=True, device=device, dtype=torch.float64)
-        assert gradcheck(opening, (tensor, kernel), raise_exception=True)
+        assert gradcheck(opening, (tensor, kernel), raise_exception=True, fast_mode=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):

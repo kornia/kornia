@@ -30,7 +30,7 @@ class TestWarpAffine3d:
         # generate input data
         input = torch.rand(1, 3, 3, 4, 5, device=device, dtype=torch.float64, requires_grad=True)
         P = torch.rand(1, 3, 4, device=device, dtype=torch.float64)
-        assert gradcheck(proj.warp_affine3d, (input, P, (3, 3, 3)), raise_exception=True)
+        assert gradcheck(proj.warp_affine3d, (input, P, (3, 3, 3)), raise_exception=True, fast_mode=True)
 
     def test_forth_back(self, device, dtype):
         out_shape = (3, 4, 5)
@@ -271,7 +271,7 @@ class TestGetRotationMatrix3d:
         center = torch.rand(1, 3, device=device, dtype=torch.float64, requires_grad=True)
         angle = torch.rand(1, 3, device=device, dtype=torch.float64)
         scales: torch.Tensor = torch.ones_like(angle, device=device, dtype=torch.float64)
-        assert gradcheck(proj.get_projective_transform, (center, angle, scales), raise_exception=True)
+        assert gradcheck(proj.get_projective_transform, (center, angle, scales), raise_exception=True, fast_mode=True)
 
 
 class TestPerspectiveTransform3D:
@@ -363,5 +363,8 @@ class TestPerspectiveTransform3D:
         points_src = utils.tensor_to_gradcheck_var(src)  # to var
         points_dst = utils.tensor_to_gradcheck_var(dst)  # to var
         assert gradcheck(
-            kornia.geometry.transform.get_perspective_transform3d, (points_src, points_dst), raise_exception=True
+            kornia.geometry.transform.get_perspective_transform3d,
+            (points_src, points_dst),
+            raise_exception=True,
+            fast_mode=True,
         )

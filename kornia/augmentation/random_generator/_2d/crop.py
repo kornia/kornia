@@ -227,11 +227,11 @@ class ResizedCropGenerator(CropGenerator):
         if not cond_bool.all():
             # Fallback to center crop
             in_ratio = float(size[0]) / float(size[1])
-            _min = self.ratio.min() if isinstance(self.ratio, Tensor) else min(self.ratio)
-            if in_ratio < _min:  # type:ignore
+            _min = float(self.ratio.min()) if isinstance(self.ratio, Tensor) else min(self.ratio)
+            if in_ratio < _min:
                 h_ct = tensor(size[0], device=_device, dtype=_dtype)
                 w_ct = torch.round(h_ct / _min)
-            elif in_ratio > _min:  # type:ignore
+            elif in_ratio > _min:
                 w_ct = tensor(size[1], device=_device, dtype=_dtype)
                 h_ct = torch.round(w_ct * _min)
             else:  # whole image

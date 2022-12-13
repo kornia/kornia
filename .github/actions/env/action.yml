@@ -24,22 +24,23 @@ runs:
         auto-update-conda: true
         python-version: ${{ inputs.python-version }}
 
-    - if: ${{ contains(fromJson('["lts", "nightly"]'), inputs.pytorch-version ) }}
-      name: Install dependencies
+    - name: Install curl via conda
       shell: bash -l {0}
-      run: |
-        conda install curl -c conda-forge
-        conda install pytorch cpuonly -c pytorch-${{ inputs.pytorch-version }}
-        pip install .[dev,x]
+      run: conda install curl -c conda-forge
 
+    - if: ${{ contains(fromJson('["lts", "nightly"]'), inputs.pytorch-version ) }}
+      name: Install pytorch
+      shell: bash -l {0}
+      run: conda install pytorch cpuonly -c pytorch-${{ inputs.pytorch-version }}
 
     - if: ${{ contains(fromJson('["lts", "nightly"]'), inputs.pytorch-version ) == false}}
-      name: Install dependencies
+      name: Install pytorch
       shell: bash -l {0}
-      run: |
-        conda install curl -c conda-forge
-        conda install pytorch=${{ inputs.pytorch-version }} cpuonly -c pytorch
-        pip install .[dev,x]
+      run: conda install pytorch=${{ inputs.pytorch-version }} cpuonly -c pytorch
+
+    - name: Install Kornia dev
+      shell: bash -l {0}
+      run: pip install .[dev,x]
 
     - name: Environment
       shell: bash -l {0}

@@ -36,7 +36,10 @@ class TestImageHistogram2d:
         centers = torch.linspace(0, 255, 8, device=device, dtype=dtype)
         centers = utils.tensor_to_gradcheck_var(centers)
         assert gradcheck(
-            TestImageHistogram2d.fcn, (input, 0.0, 255.0, 256, None, centers, True, kernel), raise_exception=True
+            TestImageHistogram2d.fcn,
+            (input, 0.0, 255.0, 256, None, centers, True, kernel),
+            raise_exception=True,
+            fast_mode=True,
         )
 
     @pytest.mark.skipif(
@@ -115,7 +118,7 @@ class TestHistogram2d:
         bins = utils.tensor_to_gradcheck_var(bins)
         bandwidth = torch.tensor(0.9, device=device, dtype=dtype)
         bandwidth = utils.tensor_to_gradcheck_var(bandwidth)
-        assert gradcheck(TestHistogram2d.fcn, (inp1, inp2, bins, bandwidth), raise_exception=True)
+        assert gradcheck(TestHistogram2d.fcn, (inp1, inp2, bins, bandwidth), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
         input1 = torch.linspace(0, 255, 10, device=device, dtype=dtype).unsqueeze(0)
@@ -165,7 +168,7 @@ class TestHistogram:
         bins = utils.tensor_to_gradcheck_var(bins)
         bandwidth = torch.tensor(0.9, device=device, dtype=dtype)
         bandwidth = utils.tensor_to_gradcheck_var(bandwidth)
-        assert gradcheck(TestHistogram.fcn, (inp, bins, bandwidth), raise_exception=True)
+        assert gradcheck(TestHistogram.fcn, (inp, bins, bandwidth), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
         input1 = torch.linspace(0, 255, 10, device=device, dtype=dtype).unsqueeze(0)

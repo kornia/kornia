@@ -8,7 +8,6 @@ import kornia
 import kornia.testing as utils  # test utils
 from kornia.contrib.face_detection import FaceKeypoint
 from kornia.testing import assert_close
-from packaging import version
 
 
 class TestDiamondSquare:
@@ -141,13 +140,10 @@ class TestConnectedComponents:
         out = kornia.contrib.connected_components(img, num_iterations=10)
         assert_close(out, expected)
 
-    @pytest.mark.skipif(
-        version.parse(torch.__version__) < version.parse("1.9"), reason="Tuple cannot be used with PyTorch < v1.9"
-    )
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 1, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.contrib.connected_components, (img,), raise_exception=True)
+        assert gradcheck(kornia.contrib.connected_components, (img,), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 4, 4
@@ -278,7 +274,7 @@ class TestExtractTensorPatches:
     def test_gradcheck(self, device):
         img = torch.rand(2, 3, 4, 4).to(device)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.contrib.extract_tensor_patches, (img, 3), raise_exception=True)
+        assert gradcheck(kornia.contrib.extract_tensor_patches, (img, 3), raise_exception=True, fast_mode=True)
 
 
 class TestCombineTensorPatches:
@@ -369,7 +365,9 @@ class TestCombineTensorPatches:
             torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2)
         )
         img = utils.tensor_to_gradcheck_var(patches)  # to var
-        assert gradcheck(kornia.contrib.combine_tensor_patches, (img, (4, 4), (2, 2), (2, 2)), raise_exception=True)
+        assert gradcheck(
+            kornia.contrib.combine_tensor_patches, (img, (4, 4), (2, 2), (2, 2)), raise_exception=True, fast_mode=True
+        )
 
 
 class TestLambdaModule:
@@ -409,7 +407,7 @@ class TestLambdaModule:
         B, C, H, W = 1, 3, 4, 5
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         func = kornia.color.bgr_to_grayscale
-        assert gradcheck(kornia.contrib.Lambda(func), (img,), raise_exception=True)
+        assert gradcheck(kornia.contrib.Lambda(func), (img,), raise_exception=True, fast_mode=True)
 
 
 class TestImageStitcher:
@@ -606,7 +604,7 @@ class TestConvDistanceTransform:
     def test_gradcheck(self, device):
         B, C, H, W = 1, 1, 32, 32
         sample1 = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.contrib.distance_transform, (sample1), raise_exception=True)
+        assert gradcheck(kornia.contrib.distance_transform, (sample1), raise_exception=True, fast_mode=True)
 
     def test_loss_grad(self, device, dtype):
         B, C, H, W = 1, 1, 32, 32
@@ -654,7 +652,7 @@ class TestHistMatch:
         B, C, H, W = 1, 3, 32, 32
         src = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         dst = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.contrib.histogram_matching, (src, dst), raise_exception=True)
+        assert gradcheck(kornia.contrib.histogram_matching, (src, dst), raise_exception=True, fast_mode=True)
 
 
 class TestFaceDetection:

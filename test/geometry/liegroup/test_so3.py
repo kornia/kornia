@@ -53,7 +53,7 @@ class TestSo3(BaseTester):
         s = So3(q)
         for i in range(batch_size):
             s1 = s[i]
-            self.assert_close(s1.q.data[0], q.data[i])
+            self.assert_close(s1.q.data, q.data[i])
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_mul(self, device, dtype, batch_size):
@@ -81,9 +81,6 @@ class TestSo3(BaseTester):
         if batch_size is None:
             self.assert_close(s1.q.norm(), ones_vec)
             return
-
-        if batch_size is not None:
-            ones_vec = ones_vec[None]
 
         for i in range(batch_size):
             self.assert_close(s1[i].q.norm(), ones_vec)
@@ -153,9 +150,9 @@ class TestSo3(BaseTester):
             q1 = q[i]
             r1 = r[i, :, :]
             pvec = torch.rand(3, device=device, dtype=dtype)
-            pquat = Quaternion(torch.cat([torch.tensor([0]).to(device, dtype), pvec])[None, :])
+            pquat = Quaternion(torch.cat([torch.tensor([0], device=device, dtype=dtype), pvec]))
             qp_ = q1 * pquat * q1.inv()
-            rp_ = torch.matmul(r1, pvec)[None, :]
+            rp_ = torch.matmul(r1, pvec)
             self.assert_close(rp_, qp_.vec)  # p_ = R*p = q*p*q_inv
             self.assert_close(rp_.norm(), pvec.norm())
 

@@ -123,7 +123,7 @@ class TestRandomHorizontalFlip3D:
     def test_gradcheck(self, device):
         input = torch.rand((1, 3, 3)).to(device)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(RandomHorizontalFlip3D(p=1.0), (input,), raise_exception=True)
+        assert gradcheck(RandomHorizontalFlip3D(p=1.0), (input,), raise_exception=True, fast_mode=True)
 
 
 class TestRandomVerticalFlip3D:
@@ -241,7 +241,7 @@ class TestRandomVerticalFlip3D:
     def test_gradcheck(self, device):
         input = torch.rand((1, 3, 3)).to(device)  # 4 x 4
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(RandomVerticalFlip3D(p=1.0), (input,), raise_exception=True)
+        assert gradcheck(RandomVerticalFlip3D(p=1.0), (input,), raise_exception=True, fast_mode=True)
 
 
 class TestRandomDepthicalFlip3D:
@@ -379,7 +379,7 @@ class TestRandomDepthicalFlip3D:
     def test_gradcheck(self, device):
         input = torch.rand((1, 3, 3)).to(device)  # 4 x 4
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(RandomDepthicalFlip3D(p=1.0), (input,), raise_exception=True)
+        assert gradcheck(RandomDepthicalFlip3D(p=1.0), (input,), raise_exception=True, fast_mode=True)
 
 
 class TestRandomRotation3D:
@@ -628,7 +628,7 @@ class TestRandomRotation3D:
 
         input = torch.rand((3, 3, 3)).to(device)  # 3 x 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(RandomRotation3D(degrees=(15.0, 15.0), p=1.0), (input,), raise_exception=True)
+        assert gradcheck(RandomRotation3D(degrees=(15.0, 15.0), p=1.0), (input,), raise_exception=True, fast_mode=True)
 
 
 class TestRandomCrop3D:
@@ -774,7 +774,7 @@ class TestRandomCrop3D:
         torch.manual_seed(0)  # for random reproductibility
         inp = torch.rand((3, 3, 3), device=device, dtype=dtype)  # 3 x 3
         inp = utils.tensor_to_gradcheck_var(inp)  # to var
-        assert gradcheck(RandomCrop3D(size=(3, 3, 3), p=1.0), (inp,), raise_exception=True)
+        assert gradcheck(RandomCrop3D(size=(3, 3, 3), p=1.0), (inp,), raise_exception=True, fast_mode=True)
 
     @pytest.mark.skip("Need to fix Union type")
     def test_jit(self, device, dtype):
@@ -827,7 +827,7 @@ class TestCenterCrop3D:
     def test_gradcheck(self, device, dtype):
         input = torch.rand(1, 2, 3, 4, 5, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(CenterCrop3D(3), (input,), raise_exception=True)
+        assert gradcheck(CenterCrop3D(3), (input,), raise_exception=True, fast_mode=True)
 
 
 class TestRandomEqualize3D:
@@ -891,7 +891,7 @@ class TestRandomEqualize3D:
 
         inputs3d = torch.rand((3, 3, 3), device=device, dtype=dtype)  # 3 x 3 x 3
         inputs3d = utils.tensor_to_gradcheck_var(inputs3d)  # to var
-        assert gradcheck(RandomEqualize3D(p=0.5), (inputs3d,), raise_exception=True)
+        assert gradcheck(RandomEqualize3D(p=0.5), (inputs3d,), raise_exception=True, fast_mode=True)
 
     @staticmethod
     def build_input(channels, depth, height, width, bs=1, row=None, device='cpu', dtype=torch.float32):
