@@ -121,8 +121,10 @@ class RayDataset(Dataset):
             imgs.append(load_image(img_path, ImageLoadType.UNCHANGED))
         return imgs
 
-    def __len__(self):
-        return len(self._ray_sampler)
+    def __len__(self) -> int:
+        if isinstance(self._ray_sampler, RaySampler):
+            return len(self._ray_sampler)
+        return 0
 
     def __getitem__(self, idxs: Union[int, List[int]]) -> RayGroup:
         r"""Gets a dataset item.
