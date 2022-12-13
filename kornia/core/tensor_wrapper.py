@@ -95,6 +95,7 @@ class TensorWrapper:
 
         return wrap(func(*args, **kwargs), cls)
 
+    # TODO: `def __add__(self, other) -> Self:` when mypy release >0.991
     def __add__(self, other):
         return self.__unary_op__(torch.add, other)
 
