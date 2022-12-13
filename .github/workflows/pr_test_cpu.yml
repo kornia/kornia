@@ -15,7 +15,7 @@ jobs:
     runs-on: ${{ matrix.os }}-latest
 
     strategy:
-      fail-fast: true
+      fail-fast: false # TODO: enable it when CI be stable
       matrix:
         os: ['Ubuntu', 'Windows', 'MacOS']
         python-version: ['3.7', '3.8']
