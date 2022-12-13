@@ -1,9 +1,8 @@
 import torch
 from torch import Tensor
 
+from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, check_is_tensor
-
-from .conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 
 __all__ = [
     "compose_transformations",
