@@ -13,7 +13,7 @@ from kornia.utils.helpers import _torch_svd_cast
 __all__ = ["Hyperplane", "fit_plane"]
 
 
-def normalized(v, eps=1e-6):
+def normalized(v: Tensor, eps: float = 1e-6) -> Tensor:
     return v / batched_dot_product(v, v).add(eps).sqrt()
 
 
@@ -25,8 +25,8 @@ class Hyperplane(Module):
         # TODO: fix checkers
         # KORNIA_CHECK_SHAPE(n, ["B", "*"])
         # KORNIA_CHECK_SHAPE(d, ["B"])
-        self._n: Vector3 = n
-        self._d: Scalar = d
+        self._n = n
+        self._d = d
 
     def __str__(self) -> str:
         return f"Normal: {self.normal}\nOffset: {self.offset}"
@@ -66,9 +66,7 @@ class Hyperplane(Module):
     @classmethod
     def from_vector(self, n: Vector3, e: Vector3) -> "Hyperplane":
         normal: Vector3 = n
-        # TODO: implement as below
-        # offset: Scalar = -normal.dot(e)
-        offset: Scalar = -batched_dot_product(normal, e)
+        offset = -normal.dot(e)
         return Hyperplane(normal, Scalar(offset))
 
     @classmethod
@@ -79,15 +77,15 @@ class Hyperplane(Module):
             KORNIA_CHECK_SHAPE(p0, ["*", "2"])
             KORNIA_CHECK(p0.shape == p1.shape)
             # TODO: implement `.unitOrthonormal`
-            normal: Vector3 = normalized(p1 - p0)
-            offset: Tensor = -batched_dot_product(p0, normal)
-            return Hyperplane(normal, Scalar(offset))
+            normal2d = normalized(p1 - p0)
+            offset2d = -batched_dot_product(p0, normal2d)
+            return Hyperplane(wrap(normal2d, Vector3), wrap(offset2d, Scalar))
         # 3d case
         KORNIA_CHECK_SHAPE(p0, ["*", "3"])
         KORNIA_CHECK(p0.shape == p1.shape)
         KORNIA_CHECK(p1.shape == p2.shape)
         v0, v1 = (p2 - p0), (p1 - p0)
-        normal: Vector3 = v0.cross(v1)
+        normal = v0.cross(v1)
         norm = normal.norm(-1)
 
         # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h#L108
@@ -100,8 +98,8 @@ class Hyperplane(Module):
         normal_mask = norm <= v0.norm(-1) * v1.norm(-1) * 1e-6
         normal = where(normal_mask, compute_normal_svd(v0, v1), normal / (norm + 1e-6))
         offset = -batched_dot_product(p0, normal)
-        # NOTE: make sure  offset is tensor
-        return Hyperplane(normal, Scalar(offset))
+
+        return Hyperplane(wrap(normal, Vector3), wrap(offset, Scalar))
 
 
 # TODO: factor to avoid duplicated from line.py

@@ -135,7 +135,7 @@ def _torch_svd_cast(input: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
     """
     # if not isinstance(input, torch.Tensor):
     #    raise AssertionError(f"Input must be torch.Tensor. Got: {type(input)}.")
-    dtype: torch.dtype = input.dtype
+    dtype = input.dtype
     if dtype not in (torch.float32, torch.float64):
         dtype = torch.float32
 

@@ -1,7 +1,7 @@
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, Union, cast
 
 from kornia.core import Tensor, as_tensor, normalize, rand, stack
-from kornia.core.tensor_wrapper import TensorWrapper
+from kornia.core.tensor_wrapper import TensorWrapper, wrap
 from kornia.geometry.linalg import batched_dot_product, batched_squared_norm
 from kornia.testing import KORNIA_CHECK
 
@@ -46,13 +46,37 @@ class Vector3(TensorWrapper):
             shape = ()
         return cls(rand(shape + (3,), device=device, dtype=dtype))
 
+    # TODO: polish overload
+    # @overload
+    # @classmethod
+    # def from_coords(
+    #     cls, x: Tensor, y: Tensor, z: Tensor, device=None, dtype=None
+    # ) -> "Vector3":
+    #     KORNIA_CHECK(isinstance(x, Tensor))
+    #     KORNIA_CHECK(type(x) == type(y) == type(z))
+    #     return wrap(as_tensor((x, y, z), device=device, dtype=dtype), Vector3)
+
+    # TODO: polish overload
+    # @overload
+    # @classmethod
+    # def from_coords(
+    #     cls, x: float, y: float, z: float, device=None, dtype=None
+    # ) -> "Vector3":
+    #     KORNIA_CHECK(isinstance(x, float))
+    #     KORNIA_CHECK(type(x) == type(y) == type(z))
+    #     return wrap(as_tensor((x, y, z), device=device, dtype=dtype), Vector3)
+
     @classmethod
     def from_coords(
         cls, x: Union[float, Tensor], y: Union[float, Tensor], z: Union[float, Tensor], device=None, dtype=None
     ) -> "Vector3":
-        if not (isinstance(x, Tensor) and isinstance(y, Tensor) and isinstance(z, Tensor)):
-            return Vec3(as_tensor((x, y, z), device=device, dtype=dtype))
-        return Vec3(stack((x, y, z), -1))
+        KORNIA_CHECK(type(x) == type(y) == type(z))
+        KORNIA_CHECK(isinstance(x, (Tensor, float)))
+        if isinstance(x, float):
+            return wrap(as_tensor((x, y, z), device=device, dtype=dtype), Vector3)
+        # TODO: this is totally insane ...
+        tensors: Tuple[Tensor, ...] = (x, cast(Tensor, y), cast(Tensor, z))
+        return wrap(stack(tensors, -1), Vector3)
 
 
 Vec3 = Vector3

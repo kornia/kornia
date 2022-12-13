@@ -134,6 +134,9 @@ class TensorWrapper:
     def __int__(self):
         return self.__unary_op__(Tensor.__int__)
 
+    def __neg__(self):
+        return self.__unary_op__(Tensor.negative)
+
     def __unary_op__(self, func: Any, other=None):
         args = (self, other) if other is not None else (self,)
         return self.__torch_function__(func, (type(self),), args)

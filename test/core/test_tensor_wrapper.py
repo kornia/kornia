@@ -54,6 +54,7 @@ class TestTensorWrapper(BaseTester):
         self.assert_close(x.le(x), x <= x)
         self.assert_close(x.eq(x), x == x)
         self.assert_close(x.ne(x), x != x)
+        self.assert_close(-x, -data)
 
     def test_callable(self, device, dtype):
         data = torch.ones(2, device=device, dtype=dtype)
