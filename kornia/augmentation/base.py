@@ -81,7 +81,7 @@ class _BasicAugmentationBase(Module):
         """Standardize input tensors."""
         raise NotImplementedError
 
-    def transform_output_tensor(self, output: Tensor, output_shape: Tuple) -> Tensor:
+    def transform_output_tensor(self, output: Tensor, output_shape: Tuple[int, ...]) -> Tensor:
         """Standardize output tensors."""
         return _transform_output_shape(output, output_shape) if self.keepdim else output
 
