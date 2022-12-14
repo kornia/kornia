@@ -1,5 +1,5 @@
 import warnings
-from functools import partial, wraps
+from functools import wraps
 from inspect import isclass, isfunction
 from typing import TYPE_CHECKING, Any, Callable, List, Optional, Tuple, Union, overload
 
@@ -43,13 +43,10 @@ def map_location_to_cpu(storage: Union[str, Tensor], *args: Any, **kwargs: Any) 
     return storage
 
 
-def _deprecated(func: Optional[Callable] = None, replace_with: Optional[str] = None):
-    if func is None:
-        return partial(_deprecated, replace_with=replace_with)
-
+def _deprecated(func: Callable[..., Any], replace_with: Optional[str] = None):
     @wraps(func)
     def wrapper(*args, **kwargs):
-        name: str = ""
+        name = ""
         if isclass(func):
             name = func.__class__.__name__
         if isfunction(func):
