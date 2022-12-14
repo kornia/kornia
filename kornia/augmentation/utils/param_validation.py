@@ -113,23 +113,24 @@ def _tuple_range_reader(
     target_shape = torch.Size([target_size, 2])
 
     if isinstance(input_range, Tensor):
-        # TODO: Investigate if we should keeping ignoring the `device` argument when `input_range` is a Tensor
         if (len(input_range.shape) == 0) or (len(input_range.shape) == 1 and len(input_range) == 1):
             if input_range < 0:
                 raise ValueError(f"If input_range is only one number it must be a positive number. Got{input_range}")
-            input_range_tmp = input_range.repeat(2) * tensor([-1, 1], device=input_range.device, dtype=dtype)
+            input_range_tmp = input_range.repeat(2).to(device=device, dtype=dtype) * tensor(
+                [-1, 1], device=device, dtype=dtype
+            )
             input_range_tmp = input_range_tmp.repeat(target_shape[0], 1)
 
         elif len(input_range.shape) == 1 and len(input_range) == 2:
-            input_range_tmp = input_range.repeat(target_shape[0], 1)
+            input_range_tmp = input_range.repeat(target_shape[0], 1).to(device=device, dtype=dtype)
 
         elif len(input_range.shape) == 1 and len(input_range) == target_shape[0]:
-            input_range_tmp = input_range.unsqueeze(1).repeat(1, 2) * tensor(
-                [-1, 1], device=input_range.device, dtype=dtype
+            input_range_tmp = input_range.unsqueeze(1).repeat(1, 2).to(device=device, dtype=dtype) * tensor(
+                [-1, 1], device=device, dtype=dtype
             )
 
         elif input_range.shape == target_shape:
-            input_range_tmp = input_range.to(device=input_range.device, dtype=dtype)
+            input_range_tmp = input_range.to(device=device, dtype=dtype)
 
         else:
             raise ValueError(
