@@ -354,7 +354,7 @@ def KORNIA_UNWRAP(maybe_obj, typ):
         maybe_obj: the object to unwrap.
         typ: expected type after unwrap.
     """
-    return cast(typ, maybe_obj)
+    return cast(typ, maybe_obj)  # type: ignore # TODO: this function will change after kornia/pr#1987
 
 
 def KORNIA_CHECK_TYPE(x, typ, msg: Optional[str] = None):
