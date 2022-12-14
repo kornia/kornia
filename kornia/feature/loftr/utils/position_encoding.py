@@ -1,11 +1,14 @@
 import math
 
 import torch
-from torch import nn
+
+from kornia.core import Module, Tensor, zeros
 
 
-class PositionEncodingSine(nn.Module):
+class PositionEncodingSine(Module):
     """This is a sinusoidal position encoding that generalized to 2-dimensional images."""
+
+    pe: Tensor
 
     def __init__(self, d_model, max_shape=(256, 256), temp_bug_fix=True):
         """
@@ -29,7 +32,7 @@ class PositionEncodingSine(nn.Module):
         For 1/8 feature map (which is standard): If the input image size is H, W (both divisible by 8), the max_shape
         should be (H//8, W//8).
         """
-        pe = torch.zeros((self.d_model, *max_shape))
+        pe = zeros((self.d_model, *max_shape))
         y_position = torch.ones(max_shape).cumsum(0).float().unsqueeze(0)
         x_position = torch.ones(max_shape).cumsum(1).float().unsqueeze(0)
         if self.temp_bug_fix:

@@ -1,6 +1,6 @@
 from typing import Union
 
-import torch
+from kornia.core import Tensor
 
 
 class AverageMeter:
@@ -14,6 +14,11 @@ class AverageMeter:
         tensor(0.9900)
     """
 
+    val: Union[int, float, bool, Tensor]
+    avg: Union[int, float, Tensor]
+    sum: Union[int, float, Tensor]
+    count: int
+
     def __init__(self) -> None:
         self.reset()
 
@@ -23,7 +28,7 @@ class AverageMeter:
         self.sum = 0
         self.count = 0
 
-    def update(self, val: Union[int, float, bool, torch.Tensor], n: int = 1) -> None:
+    def update(self, val: Union[int, float, bool, Tensor], n: int = 1) -> None:
         self.val = val
         self.sum += val * n
         self.count += n
