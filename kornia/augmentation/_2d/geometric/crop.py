@@ -118,7 +118,7 @@ class RandomCrop(GeometricAugmentationBase2D):
                 raise RuntimeError(f"Expect `padding` to be a scalar, or length 2/4 list. Got {flags['padding']}.")
 
         if flags["pad_if_needed"]:
-            needed_padding: Tuple[int, int] = [flags["size"][0] - shape[-2], flags["size"][1] - shape[-1]]  # HW
+            needed_padding: Tuple[int, int] = (flags["size"][0] - shape[-2], flags["size"][1] - shape[-1])  # HW
             # If crop width is larger than input width pad equally left and right
             if needed_padding[1] > 0:
                 # Only use the extra padding if actually needed after possible fixed padding
