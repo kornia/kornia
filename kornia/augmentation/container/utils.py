@@ -372,6 +372,8 @@ class BBoxApplyInverse(ApplyInverseImpl):
     def _get_padding_size(cls, module: Module, param: Optional[ParamItem]) -> Optional[Tensor]:
         if isinstance(module, RandomCrop) and param is not None and isinstance(param.data, dict):
             return param.data["padding_size"]
+        elif param is not None and isinstance(param.data, list):
+            return next((p_.data['padding_size'] for p_ in param.data if 'padding_size' in p_.data), None)
         return None
 
     @classmethod
