@@ -116,6 +116,7 @@ class TestSolveCast:
 
 class TestSolveWithMask:
     def test_smoke(self, device, dtype):
+        torch.manual_seed(0)  # issue kornia#2027
         A = torch.randn(2, 3, 1, 4, 4, device=device, dtype=dtype)
         B = torch.randn(2, 3, 1, 4, 6, device=device, dtype=dtype)
 
