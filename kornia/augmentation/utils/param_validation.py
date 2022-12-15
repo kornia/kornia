@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
 
 import torch
 
@@ -96,7 +96,7 @@ def _singular_range_check(
 
 
 def _tuple_range_reader(
-    input_range: Union[Tensor, float, tuple],
+    input_range: Union[Tensor, float, Tuple[Any, ...]],
     target_size: int,
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,

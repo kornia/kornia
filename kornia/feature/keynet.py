@@ -1,35 +1,46 @@
 import math
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from typing_extensions import TypedDict
 
 from kornia.core import Module, Tensor, concatenate, tensor, where, zeros
 from kornia.filters import SpatialGradient
 from kornia.geometry.subpix import NonMaximaSuppression2d
 from kornia.geometry.transform import pyrdown
+from kornia.utils.helpers import map_location_to_cpu
 
 from .laf import laf_from_center_scale_ori
 from .orientation import PassLAF
 
-keynet_config = {
-    'KeyNet_default_config': {
-        # Key.Net Model
-        'num_filters': 8,
-        'num_levels': 3,
-        'kernel_size': 5,
-        # Extraction Parameters
-        'nms_size': 15,
-        'pyramid_levels': 4,
-        'up_levels': 1,
-        'scale_factor_levels': math.sqrt(2),
-        's_mult': 22,
-    }
+
+class KeyNet_conf(TypedDict):
+    num_filters: int
+    num_levels: int
+    kernel_size: int
+    nms_size: int
+    pyramid_levels: int
+    up_levels: int
+    scale_factor_levels: float
+    s_mult: float
+
+
+keynet_default_config: KeyNet_conf = {
+    # Key.Net Model
+    'num_filters': 8,
+    'num_levels': 3,
+    'kernel_size': 5,
+    # Extraction Parameters
+    'nms_size': 15,
+    'pyramid_levels': 4,
+    'up_levels': 1,
+    'scale_factor_levels': math.sqrt(2),
+    's_mult': 22.0,
 }
 
-urls: Dict[str, str] = {}
-urls["keynet"] = "https://github.com/axelBarroso/Key.Net-Pytorch/raw/main/model/weights/keynet_pytorch.pth"
+KeyNet_URL = "https://github.com/axelBarroso/Key.Net-Pytorch/raw/main/model/weights/keynet_pytorch.pth"
 
 
 class _FeatureExtractor(Module):
@@ -127,13 +138,13 @@ class KeyNet(Module):
         - Output: :math:`(B, 1, H, W)`
     """
 
-    def __init__(self, pretrained: bool = False, keynet_conf: Dict = keynet_config['KeyNet_default_config']):
+    def __init__(self, pretrained: bool = False, keynet_conf: KeyNet_conf = keynet_default_config):
         super().__init__()
 
         num_filters = keynet_conf['num_filters']
-        self.num_levels: int = keynet_conf['num_levels']
-        kernel_size: int = keynet_conf['kernel_size']
-        padding: int = kernel_size // 2
+        self.num_levels = keynet_conf['num_levels']
+        kernel_size = keynet_conf['kernel_size']
+        padding = kernel_size // 2
 
         self.feature_extractor = _FeatureExtractor()
         self.last_conv = nn.Sequential(
@@ -144,8 +155,7 @@ class KeyNet(Module):
         )
         # use torch.hub to load pretrained model
         if pretrained:
-            storage_fcn: Callable = lambda storage, loc: storage
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls['keynet'], map_location=storage_fcn)
+            pretrained_dict = torch.hub.load_state_dict_from_url(KeyNet_URL, map_location=map_location_to_cpu)
             self.load_state_dict(pretrained_dict['state_dict'], strict=True)
         self.eval()
 
@@ -185,18 +195,18 @@ class KeyNetDetector(Module):
         self,
         pretrained: bool = False,
         num_features: int = 2048,
-        keynet_conf: Dict = keynet_config['KeyNet_default_config'],
+        keynet_conf: KeyNet_conf = keynet_default_config,
         ori_module: Optional[Module] = None,
         aff_module: Optional[Module] = None,
     ):
         super().__init__()
         self.model = KeyNet(pretrained, keynet_conf)
         # Load extraction configuration
-        self.num_pyramid_levels: int = keynet_conf['pyramid_levels']
-        self.num_upscale_levels: int = keynet_conf['up_levels']
-        self.scale_factor_levels: float = keynet_conf['scale_factor_levels']
-        self.mr_size: float = keynet_conf['s_mult']
-        self.nms_size: int = keynet_conf['nms_size']
+        self.num_pyramid_levels = keynet_conf['pyramid_levels']
+        self.num_upscale_levels = keynet_conf['up_levels']
+        self.scale_factor_levels = keynet_conf['scale_factor_levels']
+        self.mr_size = keynet_conf['s_mult']
+        self.nms_size = keynet_conf['nms_size']
         self.nms = NonMaximaSuppression2d((self.nms_size, self.nms_size))
         self.num_features = num_features
 

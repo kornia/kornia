@@ -105,7 +105,7 @@ class StraightThroughEstimator(nn.Module):
                   [0.0422, 0.0566, 0.0626, 0.0422]]]])
     """
 
-    def __init__(self, target_fn: nn.Module, grad_fn: Optional[Callable] = None):
+    def __init__(self, target_fn: nn.Module, grad_fn: Optional[Callable[..., Any]] = None):
         super().__init__()
         self.target_fn = target_fn
         self.grad_fn = grad_fn
