@@ -2873,26 +2873,29 @@ class TestRandomCrop(BaseTester):
     def test_padding_batch_2(self, device, dtype):
         torch.manual_seed(42)
         batch_size = 2
+        padding = (0, 1)  # order: left-right, top-bottom
         inp = torch.tensor([[[0.0, 1.0, 2.0], [3.0, 4.0, 5.0], [6.0, 7.0, 8.0]]], device=device, dtype=dtype).repeat(
             batch_size, 1, 1, 1
         )
         expected = torch.tensor(
-            [[[[1.0, 2.0, 10.0], [4.0, 5.0, 10.0]]], [[[4.0, 5.0, 10.0], [7.0, 8.0, 10.0]]]], device=device, dtype=dtype
+            [[[[0.0, 1.0, 2.0], [3.0, 4.0, 5.0]]], [[[6.0, 7.0, 8.0], [10.0, 10.0, 10.0]]]], device=device, dtype=dtype
         )
-        rc = RandomCrop(size=(2, 3), padding=(0, 1), fill=10, align_corners=True, p=1.0)
+        rc = RandomCrop(size=(2, 3), padding=padding, fill=10, align_corners=True, p=1.0)
         out = rc(inp)
 
+        assert rc._params['input_size'][0][0] == (inp.shape[-2] + 2 * padding[1])  # height + top + bottom
+        assert rc._params['input_size'][0][1] == (inp.shape[-1] + 2 * padding[0])  # height + left + right
         self.assert_close(out, expected)
         torch.manual_seed(42)
         inversed = torch.tensor(
             [
-                [[[0.0, 1.0, 2.0], [0.0, 4.0, 5.0], [0.0, 0.0, 0.0]]],
-                [[[0.0, 0.0, 0.0], [0.0, 4.0, 5.0], [0.0, 7.0, 8.0]]],
+                [[[0.0, 1.0, 2.0], [3.0, 4.0, 5.0], [0.0, 0.0, 0.0]]],
+                [[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [6.0, 7.0, 8.0]]],
             ],
             device=device,
             dtype=dtype,
         )
-        aug = RandomCrop(size=(2, 3), padding=(0, 1), fill=10, align_corners=True, p=1.0, cropping_mode="resample")
+        aug = RandomCrop(size=(2, 3), padding=padding, fill=10, align_corners=True, p=1.0, cropping_mode="resample")
         out = aug(inp)
         self.assert_close(out, expected)
         self.assert_close(aug.inverse(out), inversed)
@@ -2900,22 +2903,25 @@ class TestRandomCrop(BaseTester):
     def test_padding_batch_3(self, device, dtype):
         torch.manual_seed(0)
         batch_size = 2
+        padding = (0, 1, 2, 3)  # order: left, top, right, bottom
         inp = torch.tensor([[[0.0, 1.0, 2.0], [3.0, 4.0, 5.0], [6.0, 7.0, 8.0]]], device=device, dtype=dtype).repeat(
             batch_size, 1, 1, 1
         )
         expected = torch.tensor(
-            [[[[8.0, 8.0, 8.0], [8.0, 0.0, 1.0]]], [[[8.0, 8.0, 8.0], [1.0, 2.0, 8.0]]]], device=device, dtype=dtype
+            [[[[8.0, 8.0, 8.0], [1.0, 2.0, 8.0]]], [[[8.0, 8.0, 8.0], [2.0, 8.0, 8.0]]]], device=device, dtype=dtype
         )
-        rc = RandomCrop(size=(2, 3), padding=(0, 1, 2, 3), fill=8, align_corners=True, p=1.0)
+        rc = RandomCrop(size=(2, 3), padding=padding, fill=8, align_corners=True, p=1.0)
         out = rc(inp)
 
+        assert rc._params['input_size'][0][0] == (inp.shape[-2] + padding[1] + padding[3])  # height + top + bottom
+        assert rc._params['input_size'][0][1] == (inp.shape[-1] + padding[0] + padding[2])  # height + left + right
         self.assert_close(out, expected, low_tolerance=True)
 
         torch.manual_seed(0)
         inversed = torch.tensor(
             [
-                [[[0.0, 1.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]],
                 [[[0.0, 1.0, 2.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]],
+                [[[0.0, 0.0, 2.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]],
             ],
             device=device,
             dtype=dtype,
@@ -2936,7 +2942,25 @@ class TestRandomCrop(BaseTester):
         self.assert_close(out, inp)
         self.assert_close(rc.transform_matrix, trans)
 
-    def test_pad_if_needed(self, device, dtype):
+    def test_pad_if_needed_width(self, device, dtype):
+        torch.manual_seed(0)
+        batch_size = 2
+        inp = torch.tensor([[[0.0], [1.0], [2.0]]], device=device, dtype=dtype).repeat(batch_size, 1, 1, 1)
+        expected = torch.tensor(
+            [[[[9.0, 0.0], [9.0, 1.0], [9.0, 2.0]]], [[[0.0, 9.0], [1.0, 9.0], [2.0, 9.0]]]], device=device, dtype=dtype
+        )
+        rc = RandomCrop(size=(3, 2), pad_if_needed=True, fill=9, align_corners=True, p=1.0)
+        out = rc(inp)
+
+        self.assert_close(out, expected)
+
+        torch.manual_seed(0)
+        aug = RandomCrop(size=(3, 2), pad_if_needed=True, fill=9, align_corners=True, p=1.0, cropping_mode="resample")
+        out = aug(inp)
+        self.assert_close(out, expected)
+        self.assert_close(aug.inverse(out), inp)
+
+    def test_pad_if_needed_height(self, device, dtype):
         torch.manual_seed(0)
         batch_size = 2
         inp = torch.tensor([[[0.0, 1.0, 2.0]]], device=device, dtype=dtype).repeat(batch_size, 1, 1, 1)
@@ -2949,11 +2973,28 @@ class TestRandomCrop(BaseTester):
         self.assert_close(out, expected)
 
         torch.manual_seed(0)
-        inversed = torch.tensor([[[[0.0, 1.0, 2.0]]], [[[0.0, 1.0, 2.0]]]], device=device, dtype=dtype)
         aug = RandomCrop(size=(2, 3), pad_if_needed=True, fill=9, align_corners=True, p=1.0, cropping_mode="resample")
         out = aug(inp)
         self.assert_close(out, expected)
-        self.assert_close(aug.inverse(out), inversed)
+        self.assert_close(aug.inverse(out), inp)
+
+    def test_pad_if_needed_both(self, device, dtype):
+        torch.manual_seed(0)
+        batch_size = 2
+        inp = torch.tensor([[[0.0], [1.0]]], device=device, dtype=dtype).repeat(batch_size, 1, 1, 1)
+        expected = torch.tensor(
+            [[[[9.0, 9.0], [9.0, 0.0], [9.0, 1.0]]], [[[9.0, 9.0], [0.0, 9.0], [1.0, 9.0]]]], device=device, dtype=dtype
+        )
+        rc = RandomCrop(size=(3, 2), pad_if_needed=True, fill=9, align_corners=True, p=1.0)
+        out = rc(inp)
+
+        self.assert_close(out, expected)
+
+        torch.manual_seed(0)
+        aug = RandomCrop(size=(3, 2), pad_if_needed=True, fill=9, align_corners=True, p=1.0, cropping_mode="resample")
+        out = aug(inp)
+        self.assert_close(out, expected)
+        self.assert_close(aug.inverse(out), inp)
 
     def test_crop_modes(self, device, dtype):
         torch.manual_seed(0)

@@ -106,23 +106,33 @@ class RandomCrop(GeometricAugmentationBase2D):
         flags = self.flags if flags is None else flags
         if len(shape) != 4:
             raise AssertionError(f"Expected BCHW. Got {shape}.")
-        padding = [0, 0, 0, 0]
+        padding = [0, 0, 0, 0]  # left, right, top, bottom
         if flags["padding"] is not None:
             if isinstance(flags["padding"], int):
                 padding = [flags["padding"]] * 4
             elif isinstance(flags["padding"], tuple) and len(flags["padding"]) == 2:
-                padding = [flags["padding"][1], flags["padding"][1], flags["padding"][0], flags["padding"][0]]
+                padding = [flags["padding"][0], flags["padding"][0], flags["padding"][1], flags["padding"][1]]
             elif isinstance(flags["padding"], tuple) and len(flags["padding"]) == 4:
-                padding = [flags["padding"][3], flags["padding"][2], flags["padding"][1], flags["padding"][0]]
+                padding = [flags["padding"][0], flags["padding"][2], flags["padding"][1], flags["padding"][3]]
             else:
                 raise RuntimeError(f"Expect `padding` to be a scalar, or length 2/4 list. Got {flags['padding']}.")
 
-        if flags["pad_if_needed"] and shape[-2] < flags["size"][0]:
-            padding = [0, 0, (flags["size"][0] - shape[-2]), flags["size"][0] - shape[-2]]
-
-        if flags["pad_if_needed"] and shape[-1] < flags["size"][1]:
-            padding = [flags["size"][1] - shape[-1], flags["size"][1] - shape[-1], 0, 0]
-
+        if flags["pad_if_needed"]:
+            needed_padding: Tuple[int, int] = (flags["size"][0] - shape[-2], flags["size"][1] - shape[-1])  # HW
+            # If crop width is larger than input width pad equally left and right
+            if needed_padding[1] > 0:
+                # Only use the extra padding if actually needed after possible fixed padding
+                if needed_padding[1] > padding[0]:
+                    padding[0] = needed_padding[1]
+                if needed_padding[1] > padding[1]:
+                    padding[1] = needed_padding[1]
+            # If crop height is larger than input height pad equally top and bottom
+            if needed_padding[0] > 0:
+                # Only use the extra padding if actually needed after possible fixed padding
+                if needed_padding[0] > padding[2]:
+                    padding[2] = needed_padding[0]
+                if needed_padding[0] > padding[3]:
+                    padding[3] = needed_padding[0]
         return padding
 
     def precrop_padding(
