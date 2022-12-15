@@ -346,7 +346,7 @@ class GeometryAwareDescriptorMatcher(nn.Module):
 
     known_modes = ['fginn', "adalam"]
 
-    def __init__(self, match_mode: str = 'fginn', params: Dict = {}) -> None:
+    def __init__(self, match_mode: str = 'fginn', params: Dict[str, Tensor] = {}) -> None:
         super().__init__()
         _match_mode: str = match_mode.lower()
         if _match_mode not in self.known_modes:

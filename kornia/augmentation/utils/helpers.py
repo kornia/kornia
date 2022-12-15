@@ -8,7 +8,7 @@ from kornia.core import Tensor, as_tensor
 from kornia.utils import _extract_device_dtype
 
 
-def _validate_input(f: Callable) -> Callable:
+def _validate_input(f: Callable[..., Any]) -> Callable[..., Any]:
     r"""Validate the 2D input of the wrapped function.
 
     Args:
@@ -31,7 +31,7 @@ def _validate_input(f: Callable) -> Callable:
     return wrapper
 
 
-def _validate_input3d(f: Callable) -> Callable:
+def _validate_input3d(f: Callable[..., Any]) -> Callable[..., Any]:
     r"""Validate the 3D input of the wrapped function.
 
     Args:
@@ -128,7 +128,7 @@ def _transform_input3d(input: Tensor) -> Tensor:
     return input
 
 
-def _validate_input_dtype(input: Tensor, accepted_dtypes: List) -> None:
+def _validate_input_dtype(input: Tensor, accepted_dtypes: List[torch.dtype]) -> None:
     r"""Check if the dtype of the input tensor is in the range of accepted_dtypes
     Args:
         input: Tensor
@@ -138,7 +138,7 @@ def _validate_input_dtype(input: Tensor, accepted_dtypes: List) -> None:
         raise TypeError(f"Expected input of {accepted_dtypes}. Got {input.dtype}")
 
 
-def _transform_output_shape(output: Tensor, shape: Tuple) -> Tensor:
+def _transform_output_shape(output: Tensor, shape: Tuple[int, ...]) -> Tensor:
     r"""Collapse the broadcasted batch dimensions an input tensor to be the specified shape.
     Args:
         input: Tensor
@@ -157,7 +157,7 @@ def _transform_output_shape(output: Tensor, shape: Tuple) -> Tensor:
     return out_tensor
 
 
-def _validate_shape(shape: Union[Tuple, torch.Size], required_shapes: Tuple[str, ...] = ("BCHW",)) -> None:
+def _validate_shape(shape: Union[Tuple[int, ...], torch.Size], required_shapes: Tuple[str, ...] = ("BCHW",)) -> None:
     r"""Check if the dtype of the input tensor is in the range of accepted_dtypes
     Args:
         shape: tensor shape
@@ -189,7 +189,7 @@ def _validate_input_shape(input: Tensor, channel_index: int, number: int) -> boo
 
 
 def _adapted_rsampling(
-    shape: Union[Tuple, torch.Size], dist: torch.distributions.Distribution, same_on_batch=False
+    shape: Union[Tuple[int, ...], torch.Size], dist: torch.distributions.Distribution, same_on_batch=False
 ) -> Tensor:
     r"""The uniform reparameterized sampling function that accepts 'same_on_batch'.
 
@@ -205,7 +205,7 @@ def _adapted_rsampling(
 
 
 def _adapted_sampling(
-    shape: Union[Tuple, torch.Size], dist: torch.distributions.Distribution, same_on_batch=False
+    shape: Union[Tuple[int, ...], torch.Size], dist: torch.distributions.Distribution, same_on_batch=False
 ) -> Tensor:
     r"""The uniform sampling function that accepts 'same_on_batch'.
 
@@ -221,7 +221,7 @@ def _adapted_sampling(
 
 
 def _adapted_uniform(
-    shape: Union[Tuple, torch.Size],
+    shape: Union[Tuple[int, ...], torch.Size],
     low: Union[float, int, Tensor],
     high: Union[float, int, Tensor],
     same_on_batch: bool = False,
@@ -246,7 +246,7 @@ def _adapted_uniform(
 
 
 def _adapted_beta(
-    shape: Union[Tuple, torch.Size],
+    shape: Union[Tuple[int, ...], torch.Size],
     a: Union[float, int, Tensor],
     b: Union[float, int, Tensor],
     same_on_batch: bool = False,
@@ -266,7 +266,7 @@ def _adapted_beta(
     return _adapted_rsampling(shape, dist, same_on_batch)
 
 
-def _shape_validation(param: Tensor, shape: Union[tuple, list], name: str) -> None:
+def _shape_validation(param: Tensor, shape: Union[Tuple[int, ...], List[int]], name: str) -> None:
     if param.shape != torch.Size(shape):
         raise AssertionError(f"Invalid shape for {name}. Expected {shape}. Got {param.shape}")
 

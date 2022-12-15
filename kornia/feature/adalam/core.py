@@ -2,11 +2,49 @@ import math
 from typing import Optional, Tuple, Union
 
 import torch
+from typing_extensions import NotRequired, TypedDict
 
-from kornia.core import Tensor, concatenate, tensor, where
+from kornia.core import Device, Tensor, concatenate, tensor, where
 
 from .ransac import ransac
 from .utils import dist_matrix, orientation_diff
+
+
+class AdalamConfig(TypedDict):
+    """
+    area_ratio: Ratio between seed circle area and image area. Higher values produce more seeds with smaller
+        neighborhoods
+    search_expansion: Expansion factor of the seed circle radius for the purpose of collecting neighborhoods.
+        Increases neighborhood radius without changing seed distribution
+    ransac_iters: Fixed number of inner GPU-RANSAC iterations
+    min_inliers: Minimum number of inliers required to accept inliers coming from a neighborhood
+    min_confidence: Threshold used by the confidence-based GPU-RANSAC
+    orientation_difference_threshold: Maximum difference in orientations for a point to be accepted in a
+        neighborhood. Set to None to disable the use of keypoint orientations
+    scale_rate_threshold: Maximum difference (ratio) in scales for a point to be accepted in a neighborhood. Set
+        to None to disable the use of keypoint scales
+    detected_scale_rate_threshold: Prior on maximum possible scale change detectable in image couples. Affinities
+        with higher scale changes are regarded as outliers
+    refit: Whether to perform refitting at the end of the RANSACs. Generally improves accuracy at the cost of
+        runtime
+    force_seed_mnn: Whether to consider only MNN for the purpose of selecting seeds. Generally improves accuracy
+        at the cost of runtime
+    device: Device to be used for running AdaLAM. Use GPU if available.
+    mnn: Default None. You can provide a MNN mask in input to skip MNN computation and still get the improvement.
+    """
+
+    area_ratio: NotRequired[int]
+    search_expansion: NotRequired[int]
+    ransac_iters: NotRequired[int]
+    min_inliers: NotRequired[int]
+    min_confidence: NotRequired[int]
+    orientation_difference_threshold: NotRequired[int]
+    scale_rate_threshold: NotRequired[float]
+    detected_scale_rate_threshold: NotRequired[int]
+    refit: NotRequired[bool]
+    force_seed_mnn: NotRequired[bool]
+    device: NotRequired[Device]
+    mnn: NotRequired[Tensor]
 
 
 def _no_match(dm: Tensor):
@@ -208,10 +246,10 @@ def adalam_core(
     k2: Tensor,
     fnn12: Tensor,
     scores1: Tensor,
-    config: dict,
+    config: AdalamConfig,
     mnn: Optional[Tensor] = None,
-    im1shape: Optional[Tuple] = None,
-    im2shape: Optional[Tuple] = None,
+    im1shape: Optional[Tuple[int, int]] = None,
+    im2shape: Optional[Tuple[int, int]] = None,
     o1: Optional[Tensor] = None,
     o2: Optional[Tensor] = None,
     s1: Optional[Tensor] = None,

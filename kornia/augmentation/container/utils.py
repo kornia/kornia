@@ -18,7 +18,7 @@ from kornia.testing import KORNIA_UNWRAP
 from kornia.utils.helpers import _torch_inverse_cast
 
 
-def _get_geometric_only_param(module: "kornia.augmentation.ImageSequential", param: List[ParamItem]) -> List[ParamItem]:
+def _get_geometric_only_param(module: 'kornia.augmentation.ImageSequential', param: List[ParamItem]) -> List[ParamItem]:
     named_modules: Iterator[Tuple[str, Module]] = module.get_forward_sequence(param)
 
     res: List[ParamItem] = []
@@ -66,7 +66,7 @@ class ApplyInverseInterface(metaclass=ABCMeta):
 class ApplyInverseImpl(ApplyInverseInterface):
     """Standard matrix apply and inverse methods."""
 
-    apply_func: Callable
+    apply_func: Callable[[Tensor, Tensor], Tensor]
 
     @classmethod
     def apply_trans(
@@ -207,23 +207,36 @@ class InputApplyInverse(ApplyInverseImpl):
             param: the corresponding parameters to the module.
         """
         if isinstance(module, GeometricAugmentationBase2D):
-            input = module.inverse(
-                input, params=None if param is None else cast(Dict, param.data), extra_args=extra_args
-            )
+            if param is None:
+                _params_geo = None
+            elif isinstance(param, ParamItem) and isinstance(param.data, dict):
+                _params_geo = param.data
+            else:
+                raise TypeError(f'Expected param (ParamItem.data) be a dictionary. Gotcha {type(param.data)}')
+
+            input = module.inverse(input, params=_params_geo, extra_args=extra_args)
+
         elif isinstance(module, kornia.augmentation.ImageSequential):
             temp = module.apply_inverse_func
             module.apply_inverse_func = InputApplyInverse
-            if isinstance(module, kornia.augmentation.AugmentationSequential):
-                input = cast(
-                    Tensor,
-                    module.inverse(
-                        input, params=None if param is None else cast(List, param.data), data_keys=[cls.data_key]
-                    ),
-                )
+            if param is None:
+                _params = None
+            elif isinstance(param, ParamItem) and isinstance(param.data, list):
+                _params = param.data
             else:
-                input = module.inverse(
-                    input, params=None if param is None else cast(List, param.data), extra_args=extra_args
-                )
+                raise TypeError(f'Expected param (ParamItem.data) be a list. Gotcha {type(param.data)}')
+
+            if isinstance(module, kornia.augmentation.AugmentationSequential):
+                _ret = module.inverse(input, params=_params, data_keys=[cls.data_key])
+                if isinstance(_ret, Tensor):
+                    input = _ret
+                else:
+                    raise TypeError(
+                        f'The return of the method inverse from {module} should be a Tensor. Gotcha {type(_ret)}'
+                    )
+            else:
+                input = module.inverse(input, params=_params, extra_args=extra_args)
+
             module.apply_inverse_func = temp
         return input
 
@@ -234,7 +247,7 @@ class MaskApplyInverse(ApplyInverseImpl):
     data_key = DataKey.MASK
 
     @classmethod
-    def make_input_only_sequential(cls, module: "kornia.augmentation.ImageSequential") -> Callable:
+    def make_input_only_sequential(cls, module: 'kornia.augmentation.ImageSequential') -> Callable[..., torch.Tensor]:
         """Disable all other additional inputs (e.g. ) for ImageSequential."""
 
         def f(*args, **kwargs):
@@ -264,23 +277,29 @@ class MaskApplyInverse(ApplyInverseImpl):
                 to apply transformations.
             param: the corresponding parameters to the module.
         """
-        if param is not None:
-            _param = param.data
-        else:
-            _param = None
-
         if isinstance(module, (GeometricAugmentationBase2D, RandomErasing)):
-            _param = cast(Dict[str, Tensor], _param).copy()
-            # TODO: Parametrize value to pad with across the board for different keys
-            if 'values' in _param:
-                _param['values'] = torch.zeros_like(_param['values'])  # Always pad with zeros
+            if isinstance(param, ParamItem) and isinstance(param.data, dict):
+                _param = param.data.copy()
+                # TODO: Parametrize value to pad with across the board for different keys
+                if 'values' in _param:
+                    _param['values'] = torch.zeros_like(_param['values'])  # Always pad with zeros
+            elif param is None:
+                _param = None
+            else:
+                raise TypeError(f'Expected param be None or ParamItem.data as a dict. Gotcha {type(_param)}')
 
             input = module(input, params=_param, **extra_args)
+
         elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
-            _param = cast(List[ParamItem], _param)
+            if param is None:
+                geo_param = None
+            elif isinstance(param, ParamItem) and isinstance(param.data, list):
+                geo_param = _get_geometric_only_param(module, param.data)
+            else:
+                raise TypeError(f'Expected param be None or ParamItem.data as a list. Gotcha {type(geo_param)}')
+
             temp = module.apply_inverse_func
             module.apply_inverse_func = MaskApplyInverse
-            geo_param: List[ParamItem] = _get_geometric_only_param(module, _param)
             if isinstance(module, kornia.augmentation.AugmentationSequential):
                 input = cls.make_input_only_sequential(module)(
                     input, label=None, params=geo_param, data_keys=[cls.data_key]
@@ -308,21 +327,37 @@ class MaskApplyInverse(ApplyInverseImpl):
         """
 
         if isinstance(module, GeometricAugmentationBase2D):
-            input = module.inverse(input, params=None if param is None else cast(Dict, param.data), **extra_args)
+            if param is None:
+                _params_geo = None
+            elif isinstance(param, ParamItem) and isinstance(param.data, dict):
+                _params_geo = param.data
+            else:
+                raise TypeError(f'Expected param (ParamItem.data) be a dict. Gotcha {type(param.data)}')
+
+            input = module.inverse(input, params=_params_geo, **extra_args)
+
         elif isinstance(module, kornia.augmentation.ImageSequential):
             temp = module.apply_inverse_func
             module.apply_inverse_func = MaskApplyInverse
-            if isinstance(module, kornia.augmentation.AugmentationSequential):
-                input = cast(
-                    Tensor,
-                    module.inverse(
-                        input, params=None if param is None else cast(List, param.data), data_keys=[cls.data_key]
-                    ),
-                )
+
+            if param is None:
+                _params = None
+            elif isinstance(param, ParamItem) and isinstance(param.data, list):
+                _params = param.data
             else:
-                input = module.inverse(
-                    input, params=None if param is None else cast(List, param.data), extra_args=extra_args
-                )
+                raise TypeError(f'Expected param (ParamItem.data) be a list. Gotcha {type(param.data)}')
+
+            if isinstance(module, kornia.augmentation.AugmentationSequential):
+                _ret = module.inverse(input, params=_params, data_keys=[cls.data_key])
+                if isinstance(_ret, Tensor):
+                    input = _ret
+                else:
+                    raise TypeError(
+                        f'The return of the method inverse from {module} should be a Tensor. Gotcha {type(_ret)}'
+                    )
+            else:
+                input = module.inverse(input, params=_params, extra_args=extra_args)
+
             module.apply_inverse_func = temp
         return input
 

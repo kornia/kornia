@@ -25,8 +25,8 @@ class _HausdorffERLossBase(torch.jit.ScriptModule):
         Estimated Hausdorff Loss.
     """
 
-    conv: Callable
-    max_pool: Callable
+    conv: Callable[..., Tensor]
+    max_pool: Callable[..., Tensor]
 
     def __init__(self, alpha: float = 2.0, k: int = 10, reduction: str = 'mean') -> None:
         super().__init__()
