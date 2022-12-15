@@ -205,7 +205,7 @@ class Se2(Module):
         check_se2_omega_shape(omega)
         upsilon = omega[..., 2, :2]
         theta = So2.vee(omega[..., :2, :2])
-        return concatenate((upsilon, theta.unsqueeze(-1)), -1)
+        return concatenate((upsilon, theta[..., None]), -1)
 
     @classmethod
     def identity(cls, batch_size: Optional[int] = None, device=None, dtype=None) -> 'Se2':
