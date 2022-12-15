@@ -1,5 +1,5 @@
 """Implements several backbone networks."""
-from typing import Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
 import torch
 import torch.nn as nn
@@ -379,7 +379,7 @@ class SOLD2Net(Module):
             descriptors: semi-dense descriptors.
     """
 
-    def __init__(self, model_cfg: Dict):
+    def __init__(self, model_cfg: Dict[str, Any]):
         super().__init__()
         self.cfg = model_cfg
 

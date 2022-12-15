@@ -1,5 +1,5 @@
 import math
-from typing import Callable, Dict, Optional
+from typing import Dict, Optional
 
 import torch
 import torch.nn as nn
@@ -9,6 +9,7 @@ from kornia.constants import pi
 from kornia.filters import SpatialGradient, get_gaussian_kernel2d
 from kornia.geometry import rad2deg
 from kornia.testing import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
+from kornia.utils.helpers import map_location_to_cpu
 
 from .laf import extract_patches_from_pyramid, get_laf_orientation, set_laf_orientation
 
@@ -165,8 +166,7 @@ class OriNet(nn.Module):
         self.eps = eps
         # use torch.hub to load pretrained model
         if pretrained:
-            storage_fcn: Callable = lambda storage, loc: storage
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls['orinet'], map_location=storage_fcn)
+            pretrained_dict = torch.hub.load_state_dict_from_url(urls['orinet'], map_location=map_location_to_cpu)
             self.load_state_dict(pretrained_dict['state_dict'], strict=False)
         self.eval()
 
