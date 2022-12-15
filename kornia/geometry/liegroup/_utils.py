@@ -53,3 +53,14 @@ def check_v_shape(v):
     len_v_shape = len(v_shape)
     if ((len_v_shape == 2) and (v_shape[1] != 3)) or ((len_v_shape == 1) and (v_shape[0] != 3)) or (len_v_shape > 3):
         raise ValueError(f"Invalid input shape, we expect [B, 3], [3] Got: {v_shape}")
+
+
+def check_se2_omega_shape(matrix):
+    matrix_shape = matrix.shape
+    len_matrix_shape = len(matrix_shape)
+    if (
+        (len_matrix_shape == 3 and (matrix_shape[1] != 3 or matrix_shape[2] != 3))
+        or (len_matrix_shape == 2 and (matrix_shape[0] != 3 or matrix_shape[1] != 3))
+        or (len_matrix_shape > 3 or len_matrix_shape < 2)
+    ):
+        raise ValueError(f"Invalid input size, we expect [B, 3, 3] or [3, 3]. Got: {matrix_shape}")

@@ -147,6 +147,19 @@ class TestSo2(BaseTester):
         self.assert_close((m @ o).reshape(-1, 2, 1), theta.reshape(-1, 1, 1).repeat(1, 2, 1))
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_vee(self, device, dtype, batch_size):
+        omega = self._make_rand_data(device, dtype, (batch_size, 2, 2))
+        theta = So2.vee(omega)
+        self.assert_close(omega[..., 0, 1], theta)
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_hat_vee(self, device, dtype, batch_size):
+        a = self._make_rand_data(device, dtype, (batch_size,))
+        omega = So2.hat(a)
+        b = So2.vee(omega)
+        self.assert_close(b, a)
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_matrix(self, device, dtype, batch_size):
         theta = self._make_rand_data(device, dtype, (batch_size,))
         t = self._make_rand_data(device, dtype, (batch_size, 2))
