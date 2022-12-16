@@ -93,7 +93,7 @@ class Hyperplane(Module):
             # NOTE: for reason TensorWrapper does not stack well
             m = stack((unwrap(v0), unwrap(v1)), -2)  # Bx2x3
             _, _, V = _torch_svd_cast(m)  # kornia solution lies in the last row
-            return wrap(V[..., -1, :], Vector3)  # Bx3
+            return wrap(V[..., :, -1], Vector3)  # Bx3
 
         normal_mask = norm <= v0.norm(-1) * v1.norm(-1) * 1e-6
         normal = where(normal_mask, compute_normal_svd(v0, v1), normal / (norm + 1e-6))
@@ -123,7 +123,7 @@ def fit_plane(points: Vector3) -> Hyperplane:
     points_centered = points - mean
 
     # NOTE: not optimal for 2d points, but for now works for other dimensions
-    U, S, V = _torch_svd_cast(points_centered)
+    _, _, V = _torch_svd_cast(points_centered)
 
     # the first left eigenvector is the direction on the fited line
     direction = V[..., :, -1]  # BxD

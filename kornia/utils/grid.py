@@ -60,8 +60,13 @@ def create_meshgrid(
         xs = (xs / (width - 1) - 0.5) * 2
         ys = (ys / (height - 1) - 0.5) * 2
     # generate grid by stacking coordinates
-    x, y = torch_meshgrid([xs, ys], indexing="xy")
-    return stack([x, y], -1).unsqueeze(0)  # 1xHxWx2
+    # TODO: torchscript doesn't like `torch_version_ge`
+    # if torch_version_ge(1, 13, 0):
+    #     x, y = torch_meshgrid([xs, ys], indexing="xy")
+    #     return stack([x, y], -1).unsqueeze(0)  # 1xHxWx2
+    # TODO: remove after we drop support of old versions
+    base_grid: Tensor = stack(torch_meshgrid([xs, ys], indexing="ij"), dim=-1)  # WxHx2
+    return base_grid.permute(1, 0, 2).unsqueeze(0)  # 1xHxWx2
 
 
 def create_meshgrid3d(
