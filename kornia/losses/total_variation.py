@@ -29,6 +29,10 @@ def total_variation(img: Tensor, reduction: str = "sum") -> Tensor:
     Reference:
         [1] https://en.wikipedia.org/wiki/Total_variation
     """
+    # TODO: here torchscript doesn't like KORNIA_CHECK_TYPE
+    if not isinstance(img, Tensor):
+        raise TypeError(f"Not a Tensor type. Got: {type(img)}")
+
     KORNIA_CHECK_SHAPE(img, ["*", "H", "W"])
     KORNIA_CHECK(reduction in ("mean", "sum"), f"Expected reduction to be one of 'mean'/'sum', but got '{reduction}'.")
 
