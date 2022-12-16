@@ -283,8 +283,11 @@ def assert_close(
 
 # Logger api
 
+# TODO: add somehow type check, or enforce to do it before
+# TODO: get rid of torchscript test because prevents us to have type safe code
 
-def KORNIA_CHECK_SHAPE(x, shape: List[str]) -> None:
+
+def KORNIA_CHECK_SHAPE(x: Tensor, shape: List[str]) -> None:
     """Check whether a tensor has a specified shape.
 
     The shape can be specified with a implicit or explicit list of strings.
@@ -304,9 +307,6 @@ def KORNIA_CHECK_SHAPE(x, shape: List[str]) -> None:
         >>> x = torch.rand(2, 3, 4, 4)
         >>> KORNIA_CHECK_SHAPE(x, ["2","3", "H", "W"])  # explicit
     """
-    # Desired shape here is list and not tuple, because torch.jit
-    # does not like variable-length tuples
-    KORNIA_CHECK_IS_TENSOR(x)
 
     if '*' == shape[0]:
         shape_to_check = shape[1:]
