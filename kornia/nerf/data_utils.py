@@ -21,7 +21,7 @@ def _is_list_of_tensors(lst: Sequence[object]) -> TypeGuard[List[Tensor]]:
     return isinstance(lst, list) and all(isinstance(x, Tensor) for x in lst)
 
 
-class RayDataset(Dataset):
+class RayDataset(Dataset[RayGroup]):
     r"""Class to represent a dataset of rays.
 
     Args:
@@ -121,8 +121,10 @@ class RayDataset(Dataset):
             imgs.append(load_image(img_path, ImageLoadType.UNCHANGED))
         return imgs
 
-    def __len__(self):
-        return len(self._ray_sampler)
+    def __len__(self) -> int:
+        if isinstance(self._ray_sampler, RaySampler):
+            return len(self._ray_sampler)
+        return 0
 
     def __getitem__(self, idxs: Union[int, List[int]]) -> RayGroup:
         r"""Gets a dataset item.
@@ -151,7 +153,7 @@ class RayDataset(Dataset):
         return origins, directions, rgbs
 
 
-def instantiate_ray_dataloader(dataset: RayDataset, batch_size: int = 1, shuffle: bool = True) -> DataLoader:
+def instantiate_ray_dataloader(dataset: RayDataset, batch_size: int = 1, shuffle: bool = True) -> DataLoader[RayGroup]:
     r"""Initializes a dataloader to manage a ray dataset.
 
     Args:

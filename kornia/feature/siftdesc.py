@@ -32,7 +32,7 @@ def get_sift_pooling_kernel(ksize: int = 25) -> Tensor:
     return kernel
 
 
-def get_sift_bin_ksize_stride_pad(patch_size: int, num_spatial_bins: int) -> Tuple:
+def get_sift_bin_ksize_stride_pad(patch_size: int, num_spatial_bins: int) -> Tuple[int, int, int]:
     r"""Return a tuple with SIFT parameters.
 
     Args:
@@ -162,11 +162,13 @@ class SIFTDescriptor(Module):
         wo0_big = (1.0 - wo1_big_) * mag
         wo1_big = wo1_big_ * mag
 
-        ang_bins = []
-        for i in range(0, self.num_ang_bins):
-            out = self.pk((bo0_big == i).to(input.dtype) * wo0_big + (bo1_big == i).to(input.dtype) * wo1_big)
-            ang_bins.append(out)
-        ang_bins = concatenate(ang_bins, 1)
+        ang_bins = concatenate(
+            [
+                self.pk((bo0_big == i).to(input.dtype) * wo0_big + (bo1_big == i).to(input.dtype) * wo1_big)
+                for i in range(0, self.num_ang_bins)
+            ],
+            1,
+        )
         ang_bins = ang_bins.view(B, -1)
         ang_bins = normalize(ang_bins, p=2)
         ang_bins = torch.clamp(ang_bins, 0.0, float(self.clipval))

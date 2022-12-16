@@ -211,7 +211,7 @@ class ImageSequential(SequentialBase):
         named_modules: Iterator[Tuple[str, Module]] = self.get_forward_sequence()
 
         params: List[ParamItem] = []
-        mod_param: Union[dict, list]
+        mod_param: Union[Dict[str, Tensor], List[ParamItem]]
         for name, module in named_modules:
             if isinstance(module, RandomCrop):
                 mod_param = module.forward_parameters_precrop(batch_shape)

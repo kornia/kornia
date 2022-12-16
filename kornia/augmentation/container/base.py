@@ -14,7 +14,7 @@ __all__ = ["SequentialBase", "ParamItem"]
 class ParamItem(NamedTuple):
     name: str
     # TODO: add type List['ParamItem'] when mypy > 0.991 be available (see python/mypy#14200)
-    data: Optional[Union[Dict[str, Tensor], list]]
+    data: Optional[Union[Dict[str, Tensor], List]]  # type: ignore [type-arg]
 
 
 class SequentialBase(nn.Sequential):
@@ -149,7 +149,7 @@ class SequentialBase(nn.Sequential):
         for name, _ in named_modules:
             yield ParamItem(name, None)
 
-    def contains_label_operations(self, params: List) -> bool:
+    def contains_label_operations(self, params: List[ParamItem]) -> bool:
         raise NotImplementedError
 
     def autofill_dim(self, input: Tensor, dim_range: Tuple[int, int] = (2, 4)) -> Tuple[torch.Size, torch.Size]:

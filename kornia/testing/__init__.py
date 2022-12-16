@@ -4,7 +4,7 @@ import math
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from itertools import product
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import Any, Dict, List, Optional, Tuple, TypeVar, cast
 
 import torch
 from torch.testing import assert_close as _assert_close
@@ -67,8 +67,11 @@ def tensor_to_gradcheck_var(tensor, dtype=torch.float64, requires_grad=True):
     return tensor.requires_grad_(requires_grad).type(dtype)
 
 
-def dict_to(data: dict, device: torch.device, dtype: torch.dtype) -> dict:
-    out: dict = {}
+T = TypeVar('T')
+
+
+def dict_to(data: Dict[T, Any], device: torch.device, dtype: torch.dtype) -> Dict[T, Any]:
+    out: Dict[T, Any] = {}
     for key, val in data.items():
         out[key] = val.to(device, dtype) if isinstance(val, Tensor) else val
     return out
@@ -355,7 +358,7 @@ def KORNIA_UNWRAP(maybe_obj, typ):
         maybe_obj: the object to unwrap.
         typ: expected type after unwrap.
     """
-    return cast(typ, maybe_obj)
+    return cast(typ, maybe_obj)  # type: ignore # TODO: this function will change after kornia/pr#1987
 
 
 def KORNIA_CHECK_TYPE(x, typ, msg: Optional[str] = None):

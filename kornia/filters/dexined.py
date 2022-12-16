@@ -1,4 +1,5 @@
 # adapted from: https://github.com/xavysp/DexiNed/blob/d944b70eb6eaf40e22f8467c1e12919aa600d8e4/model.py
+from collections import OrderedDict
 from typing import List
 
 import torch
@@ -56,15 +57,18 @@ class CoFusion(Module):
 
 class _DenseLayer(nn.Sequential):
     def __init__(self, input_features, out_features):
-        super().__init__()
-        self.add_module('relu1', nn.ReLU(inplace=True)),
-        self.add_module(
-            'conv1', nn.Conv2d(input_features, out_features, kernel_size=3, stride=1, padding=2, bias=True)
-        ),
-        self.add_module('norm1', nn.BatchNorm2d(out_features)),
-        self.add_module('relu2', nn.ReLU(inplace=True)),
-        self.add_module('conv2', nn.Conv2d(out_features, out_features, kernel_size=3, stride=1, bias=True)),
-        self.add_module('norm2', nn.BatchNorm2d(out_features))
+        super().__init__(
+            OrderedDict(
+                [
+                    ('relu1', nn.ReLU(inplace=True)),
+                    ('conv1', nn.Conv2d(input_features, out_features, kernel_size=3, stride=1, padding=2, bias=True)),
+                    ('norm1', nn.BatchNorm2d(out_features)),
+                    ('relu2', nn.ReLU(inplace=True)),
+                    ('conv2', nn.Conv2d(out_features, out_features, kernel_size=3, stride=1, bias=True)),
+                    ('norm2', nn.BatchNorm2d(out_features)),
+                ]
+            )
+        )
 
     def forward(self, x: List[Tensor]) -> List[Tensor]:
         x1, x2 = x[0], x[1]
@@ -100,8 +104,8 @@ class UpConvBlock(Module):
             raise Exception("layers cannot be none")
         self.features = nn.Sequential(*layers)
 
-    def make_deconv_layers(self, in_features, up_scale):
-        layers = []
+    def make_deconv_layers(self, in_features: int, up_scale: int) -> List[Module]:
+        layers: List[Module] = []
         all_pads = [0, 0, 1, 3, 7]
         for i in range(up_scale):
             kernel_size = 2**up_scale
@@ -113,7 +117,7 @@ class UpConvBlock(Module):
             in_features = out_features
         return layers
 
-    def compute_out_features(self, idx, up_scale):
+    def compute_out_features(self, idx: int, up_scale: int):
         return 1 if idx == up_scale - 1 else self.constant_features
 
     def forward(self, x: Tensor, out_shape: List[int]) -> Tensor:

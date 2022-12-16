@@ -1,10 +1,9 @@
 from typing import Callable
 
-import torch
-import torch.nn as nn
+from kornia.core import Module, Tensor
 
 
-class Lambda(nn.Module):
+class Lambda(Module):
     """Applies user-defined lambda as a transform.
 
     Args:
@@ -21,12 +20,12 @@ class Lambda(nn.Module):
         torch.Size([1, 1, 5, 5])
     """
 
-    def __init__(self, func: Callable) -> None:
+    def __init__(self, func: Callable[..., Tensor]) -> None:
         super().__init__()
         if not callable(func):
             raise TypeError(f"Argument lambd should be callable, got {repr(type(func).__name__)}")
 
         self.func = func
 
-    def forward(self, img: torch.Tensor, *args, **kwargs) -> torch.Tensor:
+    def forward(self, img: Tensor, *args, **kwargs) -> Tensor:
         return self.func(img, *args, **kwargs)

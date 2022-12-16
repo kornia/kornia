@@ -2,34 +2,32 @@
 # https://github.com/cavalli1234/AdaLAM
 # Copyright (c) 2020, Luca Cavalli
 
-from typing import Dict, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import torch
-from torch import Tensor
 
+from kornia.core import Tensor
 from kornia.feature.laf import get_laf_center, get_laf_orientation, get_laf_scale
 from kornia.testing import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 
-from .core import _no_match, adalam_core
+from .core import AdalamConfig, _no_match, adalam_core
 from .utils import dist_matrix
 
 
-def get_adalam_default_config():
-    DEFAULT_CONFIG = {
-        'area_ratio': 100,  # Ratio between seed circle area and image area. Higher values produce more seeds with smaller neighborhoods.    # noqa: E501
-        'search_expansion': 4,  # Expansion factor of the seed circle radius for the purpose of collecting neighborhoods. Increases neighborhood radius without changing seed distribution    # noqa: E501
-        'ransac_iters': 128,  # Fixed number of inner GPU-RANSAC iterations
-        'min_inliers': 6,  # Minimum number of inliers required to accept inliers coming from a neighborhood    # noqa: E501
-        'min_confidence': 200,  # Threshold used by the confidence-based GPU-RANSAC
-        'orientation_difference_threshold': 30,  # Maximum difference in orientations for a point to be accepted in a neighborhood. Set to None to disable the use of keypoint orientations.   # noqa: E501
-        'scale_rate_threshold': 1.5,  # Maximum difference (ratio) in scales for a point to be accepted in a neighborhood. Set to None to disable the use of keypoint scales.   # noqa: E501
-        'detected_scale_rate_threshold': 5,  # Prior on maximum possible scale change detectable in image couples. Affinities with higher scale changes are regarded as outliers.   # noqa: E501
-        'refit': True,  # Whether to perform refitting at the end of the RANSACs. Generally improves accuracy at the cost of runtime.   # noqa: E501
-        'force_seed_mnn': True,  # Whether to consider only MNN for the purpose of selecting seeds. Generally improves accuracy at the cost of runtime.    # noqa: E501
-        # You can provide a MNN mask in input to skip MNN computation and still get the improvement.
-        'device': torch.device('cpu'),  # Device to be used for running AdaLAM. Use GPU if available.
-    }
-    return DEFAULT_CONFIG
+def get_adalam_default_config() -> AdalamConfig:
+    return AdalamConfig(
+        area_ratio=100,
+        search_expansion=4,
+        ransac_iters=128,
+        min_inliers=6,
+        min_confidence=200,
+        orientation_difference_threshold=30,
+        scale_rate_threshold=1.5,
+        detected_scale_rate_threshold=5,
+        refit=True,
+        force_seed_mnn=True,
+        device=torch.device('cpu'),
+    )
 
 
 def match_adalam(
@@ -37,7 +35,7 @@ def match_adalam(
     desc2: Tensor,
     lafs1: Tensor,
     lafs2: Tensor,
-    config: Optional[Dict] = None,
+    config: Optional[AdalamConfig] = None,
     hw1: Optional[Tensor] = None,
     hw2: Optional[Tensor] = None,
     dm: Optional[Tensor] = None,
@@ -88,40 +86,31 @@ def match_adalam(
 
 
 class AdalamFilter:
-    DEFAULT_CONFIG = get_adalam_default_config()
-
-    def __init__(self, custom_config: Optional[dict] = None):
+    def __init__(self, custom_config: Optional[AdalamConfig] = None):
         """This class acts as a wrapper to the method AdaLAM for outlier filtering.
 
         init args:
             custom_config: dictionary overriding the default configuration. Missing parameters are kept as default.
                            See documentation of DEFAULT_CONFIG for specific explanations on the accepted parameters.
         """
-        self.config = AdalamFilter.DEFAULT_CONFIG.copy()
-
         if custom_config is not None:
-            for key, val in custom_config.items():
-                if key not in self.config.keys():
-                    print(
-                        f"WARNING: custom configuration contains a key which is not recognized ({key}). "
-                        f"Known configurations are {list(self.config.keys())}."
-                    )
-                    continue
-                self.config[key] = val
+            self.config = custom_config
+        else:
+            self.config = get_adalam_default_config()
 
     def filter_matches(
         self,
-        k1: torch.Tensor,
-        k2: torch.Tensor,
-        putative_matches: torch.Tensor,
-        scores: torch.Tensor,
-        mnn: Optional[torch.Tensor] = None,
-        im1shape: Optional[tuple] = None,
-        im2shape: Optional[tuple] = None,
-        o1: Optional[torch.Tensor] = None,
-        o2: Optional[torch.Tensor] = None,
-        s1: Optional[torch.Tensor] = None,
-        s2: Optional[torch.Tensor] = None,
+        k1: Tensor,
+        k2: Tensor,
+        putative_matches: Tensor,
+        scores: Tensor,
+        mnn: Optional[Tensor] = None,
+        im1shape: Optional[Tuple[int, int]] = None,
+        im2shape: Optional[Tuple[int, int]] = None,
+        o1: Optional[Tensor] = None,
+        o2: Optional[Tensor] = None,
+        s1: Optional[Tensor] = None,
+        s2: Optional[Tensor] = None,
         return_dist: bool = False,
     ) -> Union[Tuple[Tensor, Tensor], Tensor]:
         """Call the core functionality of AdaLAM, i.e. just outlier filtering. No sanity check is performed on the
@@ -134,19 +123,22 @@ class AdalamFilter:
                 Expected a float32 tensor with shape (num_keypoints_in_destination_image, 2).
             putative_matches: Initial set of putative matches to be filtered.
                               The current implementation assumes that these are unfiltered nearest neighbor matches,
-                              so it requires this to be a list of indices a_i such that the source keypoint i is associated to the destination keypoint a_i.
-                              For now to use AdaLAM on different inputs a workaround on the input format is required.
+                              so it requires this to be a list of indices a_i such that the source keypoint i is
+                              associated to the destination keypoint a_i. For now to use AdaLAM on different inputs a
+                              workaround on the input format is required.
                               Expected a long tensor with shape (num_keypoints_in_source_image,).
             scores: Confidence scores on the putative_matches. Usually holds Lowe's ratio scores.
-            mnn: A mask indicating which putative matches are also mutual nearest neighbors. See documentation on 'force_seed_mnn' in the DEFAULT_CONFIG.
-                 If None, it disables the mutual nearest neighbor filtering on seed point selection.
-                 Expected a bool tensor with shape (num_keypoints_in_source_image,)
-            im1shape: Shape of the source image. If None, it is inferred from keypoints max and min, at the cost of wasted runtime. So please provide it.
-                      Expected a tuple with (width, height) or (height, width) of source image
-            im2shape: Shape of the destination image. If None, it is inferred from keypoints max and min, at the cost of wasted runtime. So please provide it.
-                      Expected a tuple with (width, height) or (height, width) of destination image
-            o1/o2: keypoint orientations in degrees. They can be None if 'orientation_difference_threshold' in config is set to None.
-                   See documentation on 'orientation_difference_threshold' in the DEFAULT_CONFIG.
+            mnn: A mask indicating which putative matches are also mutual nearest neighbors. See documentation on
+                 'force_seed_mnn' in the DEFAULT_CONFIG. If None, it disables the mutual nearest neighbor filtering on
+                 seed point selection. Expected a bool tensor with shape (num_keypoints_in_source_image,)
+            im1shape: Shape of the source image. If None, it is inferred from keypoints max and min, at the cost of
+                      wasted runtime. So please provide it. Expected a tuple with (width, height) or (height, width)
+                      of source image
+            im2shape: Shape of the destination image. If None, it is inferred from keypoints max and min, at the cost
+                      of wasted runtime. So please provide it. Expected a tuple with (width, height) or (height, width)
+                      of destination image
+            o1/o2: keypoint orientations in degrees. They can be None if 'orientation_difference_threshold' in config
+                   is set to None. See documentation on 'orientation_difference_threshold' in the DEFAULT_CONFIG.
                    Expected a float32 tensor with shape (num_keypoints_in_source/destination_image,)
             s1/s2: keypoint scales. They can be None if 'scale_rate_threshold' in config is set to None.
                    See documentation on 'scale_rate_threshold' in the DEFAULT_CONFIG.
@@ -156,7 +148,7 @@ class AdalamFilter:
         Returns:
             Filtered putative matches.
             A long tensor with shape (num_filtered_matches, 2) with indices of corresponding keypoints in k1 and k2.
-        """  # noqa: E501
+        """
         with torch.no_grad():
             return adalam_core(
                 k1,

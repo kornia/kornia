@@ -287,7 +287,7 @@ def crop_by_transform_mat(
 def crop_by_indices(
     input_tensor: Tensor,
     src_box: Tensor,
-    size: Optional[Tuple] = None,
+    size: Optional[Tuple[int, int]] = None,
     interpolation: str = 'bilinear',
     align_corners: Optional[bool] = None,
     antialias: bool = False,

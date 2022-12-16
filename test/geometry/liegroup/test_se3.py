@@ -63,8 +63,8 @@ class TestSe3(BaseTester):
         s = Se3(So3(q), t)
         for i in range(batch_size):
             s1 = s[i]
-            self.assert_close(s1.r.q.data[0], q.data[i])
-            self.assert_close(s1.t[0], t[i])
+            self.assert_close(s1.r.q.data, q.data[i])
+            self.assert_close(s1.t, t[i])
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_mul(self, device, dtype, batch_size):

@@ -1,6 +1,8 @@
-from typing import List, Optional, Tuple, Union, cast
+from typing import Any, List, Optional, Tuple, Union
 
 import torch
+
+from kornia.core import Tensor, as_tensor, tensor
 
 
 def _common_param_check(batch_size: int, same_on_batch: Optional[bool] = None):
@@ -12,18 +14,18 @@ def _common_param_check(batch_size: int, same_on_batch: Optional[bool] = None):
 
 
 def _range_bound(
-    factor: Union[torch.Tensor, float, Tuple[float, float], List[float]],
+    factor: Union[Tensor, float, Tuple[float, float], List[float]],
     name: str,
     center: float = 0.0,
     bounds: Tuple[float, float] = (0, float('inf')),
     check: Optional[str] = 'joint',
     device: torch.device = torch.device('cpu'),
     dtype: torch.dtype = torch.get_default_dtype(),
-) -> torch.Tensor:
+) -> Tensor:
     r"""Check inputs and compute the corresponding factor bounds."""
-    if not isinstance(factor, (torch.Tensor)):
-        factor = torch.tensor(factor, device=device, dtype=dtype)
-    factor_bound: torch.Tensor
+    if not isinstance(factor, (Tensor)):
+        factor = tensor(factor, device=device, dtype=dtype)
+    factor_bound: Tensor
 
     if factor.dim() == 0:
         if factor < 0:
@@ -31,10 +33,10 @@ def _range_bound(
         # Should be something other than clamp
         # Currently, single value factor will not out of scope as long as the user provided it.
         # Note: I personally think throw an error will be better than a coarse clamp.
-        factor_bound = factor.repeat(2) * torch.tensor([-1.0, 1.0], device=factor.device, dtype=factor.dtype) + center
+        factor_bound = factor.repeat(2) * tensor([-1.0, 1.0], device=factor.device, dtype=factor.dtype) + center
         factor_bound = factor_bound.clamp(bounds[0], bounds[1]).to(device=device, dtype=dtype)
     else:
-        factor_bound = torch.as_tensor(factor, device=device, dtype=dtype)
+        factor_bound = as_tensor(factor, device=device, dtype=dtype)
 
     if check is not None:
         if check == 'joint':
@@ -47,7 +49,7 @@ def _range_bound(
     return factor_bound
 
 
-def _joint_range_check(ranged_factor: torch.Tensor, name: str, bounds: Optional[Tuple[float, float]] = None) -> None:
+def _joint_range_check(ranged_factor: Tensor, name: str, bounds: Optional[Tuple[float, float]] = None) -> None:
     """Check if bounds[0] <= ranged_factor[0] <= ranged_factor[1] <= bounds[1]"""
     if bounds is None:
         bounds = (float('-inf'), float('inf'))
@@ -64,7 +66,7 @@ def _joint_range_check(ranged_factor: torch.Tensor, name: str, bounds: Optional[
 
 
 def _singular_range_check(
-    ranged_factor: torch.Tensor,
+    ranged_factor: Tensor,
     name: str,
     bounds: Optional[Tuple[float, float]] = None,
     skip_none: bool = False,
@@ -94,28 +96,51 @@ def _singular_range_check(
 
 
 def _tuple_range_reader(
-    input_range: Union[torch.Tensor, float, tuple],
+    input_range: Union[Tensor, float, Tuple[Any, ...]],
     target_size: int,
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
-) -> torch.Tensor:
+) -> Tensor:
     """Given target_size, it will generate the corresponding (target_size, 2) range tensor for element-wise params.
 
     Example:
-    >>> degree = torch.tensor([0.2, 0.3])
+    >>> degree = tensor([0.2, 0.3])
     >>> _tuple_range_reader(degree, 3)  # read degree for yaw, pitch and roll.
     tensor([[0.2000, 0.3000],
             [0.2000, 0.3000],
             [0.2000, 0.3000]])
     """
     target_shape = torch.Size([target_size, 2])
-    if not torch.is_tensor(input_range):
+
+    if isinstance(input_range, Tensor):
+        # TODO: Investigate if we should keeping ignoring the `device` argument when `input_range` is a Tensor
+        if (len(input_range.shape) == 0) or (len(input_range.shape) == 1 and len(input_range) == 1):
+            if input_range < 0:
+                raise ValueError(f"If input_range is only one number it must be a positive number. Got{input_range}")
+            input_range_tmp = input_range.repeat(2) * tensor([-1, 1], device=input_range.device, dtype=dtype)
+            input_range_tmp = input_range_tmp.repeat(target_shape[0], 1)
+
+        elif len(input_range.shape) == 1 and len(input_range) == 2:
+            input_range_tmp = input_range.repeat(target_shape[0], 1)
+
+        elif len(input_range.shape) == 1 and len(input_range) == target_shape[0]:
+            input_range_tmp = input_range.unsqueeze(1).repeat(1, 2) * tensor(
+                [-1, 1], device=input_range.device, dtype=dtype
+            )
+
+        elif input_range.shape == target_shape:
+            input_range_tmp = input_range.to(device=input_range.device, dtype=dtype)
+
+        else:
+            raise ValueError(
+                f"Degrees must be a {list(target_shape)} tensor for the degree range for independent operation."
+                f"Got {input_range}"
+            )
+    else:
         if isinstance(input_range, (float, int)):
             if input_range < 0:
                 raise ValueError(f"If input_range is only one number it must be a positive number. Got{input_range}")
-            input_range_tmp = torch.tensor([-input_range, input_range], device=device, dtype=dtype).repeat(
-                target_shape[0], 1
-            )
+            input_range_tmp = tensor([-input_range, input_range], device=device, dtype=dtype).repeat(target_shape[0], 1)
 
         elif (
             isinstance(input_range, (tuple, list))
@@ -123,54 +148,26 @@ def _tuple_range_reader(
             and isinstance(input_range[0], (float, int))
             and isinstance(input_range[1], (float, int))
         ):
-            input_range_tmp = torch.tensor(input_range, device=device, dtype=dtype).repeat(target_shape[0], 1)
+            input_range_tmp = tensor(input_range, device=device, dtype=dtype).repeat(target_shape[0], 1)
 
         elif (
             isinstance(input_range, (tuple, list))
             and len(input_range) == target_shape[0]
             and all(isinstance(x, (float, int)) for x in input_range)
         ):
-            input_range_tmp = torch.tensor([(-s, s) for s in input_range], device=device, dtype=dtype)
+            input_range_tmp = tensor([(-s, s) for s in input_range], device=device, dtype=dtype)
 
         elif (
             isinstance(input_range, (tuple, list))
             and len(input_range) == target_shape[0]
             and all(isinstance(x, (tuple, list)) for x in input_range)
         ):
-            input_range_tmp = torch.tensor(input_range, device=device, dtype=dtype)
+            input_range_tmp = tensor(input_range, device=device, dtype=dtype)
 
         else:
             raise TypeError(
                 "If not pass a tensor, it must be float, (float, float) for isotropic operation or a tuple of "
                 f"{target_size} floats or {target_size} (float, float) for independent operation. Got {input_range}."
-            )
-
-    else:
-        # https://mypy.readthedocs.io/en/latest/casts.html cast to please mypy gods
-        input_range = cast(torch.Tensor, input_range)
-        if (len(input_range.shape) == 0) or (len(input_range.shape) == 1 and len(input_range) == 1):
-            if input_range < 0:
-                raise ValueError(f"If input_range is only one number it must be a positive number. Got{input_range}")
-            input_range_tmp = input_range.repeat(2) * torch.tensor(
-                [-1.0, 1.0], device=input_range.device, dtype=input_range.dtype
-            )
-            input_range_tmp = input_range_tmp.repeat(target_shape[0], 1)
-
-        elif len(input_range.shape) == 1 and len(input_range) == 2:
-            input_range_tmp = input_range.repeat(target_shape[0], 1)
-
-        elif len(input_range.shape) == 1 and len(input_range) == target_shape[0]:
-            input_range_tmp = input_range.unsqueeze(1).repeat(1, 2) * torch.tensor(
-                [-1, 1], device=input_range.device, dtype=input_range.dtype
-            )
-
-        elif input_range.shape == target_shape:
-            input_range_tmp = input_range
-
-        else:
-            raise ValueError(
-                f"Degrees must be a {list(target_shape)} tensor for the degree range for independent operation."
-                f"Got {input_range}"
             )
 
     return input_range_tmp

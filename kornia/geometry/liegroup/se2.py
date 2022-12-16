@@ -3,7 +3,7 @@
 from typing import Optional, Tuple, overload
 
 from kornia.core import Module, Parameter, Tensor, concatenate, pad, rand, stack, tensor, where
-from kornia.geometry.liegroup._utils import check_se2_r_t_shape, check_v_shape
+from kornia.geometry.liegroup._utils import check_se2_omega_shape, check_se2_r_t_shape, check_v_shape
 from kornia.geometry.liegroup.so2 import So2
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_TYPE
 
@@ -56,7 +56,7 @@ class Se2(Module):
         return f"rotation: {self.r}\ntranslation: {self.t}"
 
     def __getitem__(self, idx) -> 'Se2':
-        return Se2(self._rotation[idx], self._translation[idx][None])
+        return Se2(self._rotation[idx], self._translation[idx])
 
     @overload
     def __mul__(self, right: 'Se2') -> 'Se2':
@@ -167,10 +167,10 @@ class Se2(Module):
 
     @staticmethod
     def hat(v):
-        """Converts elements from vector space to lie algebra. Returns matrix of shape :math:`(B, 2, 2)`.
+        """Converts elements from vector space to lie algebra. Returns matrix of shape :math:`(B, 3, 3)`.
 
         Args:
-            theta: angle in radians of shape :math:`(B)`.
+            v: vector of shape:math:`(B, 3)`.
 
         Example:
             >>> theta = torch.tensor(3.1415/2)
@@ -184,6 +184,28 @@ class Se2(Module):
         theta = v[..., 2]
         col0 = concatenate((So2.hat(theta), upsilon.unsqueeze(-2)), -2)
         return pad(col0, (0, 1))
+
+    @staticmethod
+    def vee(omega) -> Tensor:
+        """Converts elements from lie algebra to vector space.
+
+        Args:
+            omega: 3x3-matrix representing lie algebra of shape :math:`(B, 3, 3)`.
+
+        Returns:
+            vector of shape :math:`(B, 3)`.
+
+        Example:
+            >>> v = torch.ones(3)
+            >>> omega_hat = Se2.hat(v)
+            >>> Se2.vee(omega_hat)
+            tensor([1., 1., 1.])
+        """
+        # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
+        check_se2_omega_shape(omega)
+        upsilon = omega[..., 2, :2]
+        theta = So2.vee(omega[..., :2, :2])
+        return concatenate((upsilon, theta[..., None]), -1)
 
     @classmethod
     def identity(cls, batch_size: Optional[int] = None, device=None, dtype=None) -> 'Se2':

@@ -54,7 +54,7 @@ class So2(Module):
         return f"{self.z}"
 
     def __getitem__(self, idx: int) -> 'So2':
-        return So2(self._z[idx][..., None])
+        return So2(self._z[idx])
 
     @overload
     def __mul__(self, right: 'So2') -> 'So2':
@@ -140,6 +140,23 @@ class So2(Module):
         row0 = stack((z, theta), -1)
         row1 = stack((theta, z), -1)
         return stack((row0, row1), -1)
+
+    @staticmethod
+    def vee(omega: Tensor) -> Tensor:
+        """Converts elements from lie algebra to vector space. Returns vector of shape :math:`(B,)`.
+
+        Args:
+            omega: 2x2-matrix representing lie algebra.
+
+        Example:
+            >>> v = torch.ones(3)
+            >>> omega = So2.hat(v)
+            >>> So2.vee(omega)
+            tensor([1., 1., 1.])
+        """
+        # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
+        check_so2_matrix_shape(omega)
+        return omega[..., 0, 1]
 
     def matrix(self) -> Tensor:
         """Convert the complex number to a rotation matrix of shape :math:`(B, 2, 2)`.

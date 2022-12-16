@@ -1,4 +1,8 @@
+from typing import Tuple
+
 import torch
+
+from kornia.core import Tensor
 
 from .utils import arange_sequence, batch_2x2_ellipse, batch_2x2_inv, draw_first_k_couples, piecewise_arange
 
@@ -73,8 +77,16 @@ def confidence_based_inlier_selection(residuals, ransidx, rdims, idxoffsets, dv,
     return inl_ransidx, inl_sampleidx, inl_counts, inl_iters, inl_counts.float() / expected_extra_inl
 
 
-def sample_padded_inliers(xsamples, ysamples, inlier_counts, inl_ransidx, inl_sampleidx, numransacs, dv):
-    maxinliers = torch.max(inlier_counts).item()
+def sample_padded_inliers(
+    xsamples: Tensor,
+    ysamples: Tensor,
+    inlier_counts: Tensor,
+    inl_ransidx: Tensor,
+    inl_sampleidx: Tensor,
+    numransacs: int,
+    dv: torch.device,
+) -> Tuple[Tensor, Tensor]:
+    maxinliers = int(torch.max(inlier_counts).item())
     dtype = xsamples.dtype
     padded_inlier_x = torch.zeros(size=(numransacs, maxinliers, 2), device=dv, dtype=dtype)
     padded_inlier_y = torch.zeros(size=(numransacs, maxinliers, 2), device=dv, dtype=dtype)
@@ -85,10 +97,10 @@ def sample_padded_inliers(xsamples, ysamples, inlier_counts, inl_ransidx, inl_sa
     return padded_inlier_x, padded_inlier_y
 
 
-def ransac(xsamples, ysamples, rdims, config, iters=128, refit=True):
+def ransac(xsamples, ysamples, rdims: Tensor, config, iters=128, refit=True):
     DET_THR = config['detected_scale_rate_threshold']
     MIN_CONFIDENCE = config['min_confidence']
-    dv = config['device']
+    dv: torch.device = config['device']
 
     numransacs = rdims.shape[0]
     ransidx = torch.arange(numransacs, device=dv).repeat_interleave(rdims)

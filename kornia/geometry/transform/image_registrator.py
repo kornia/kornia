@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
+from kornia.core import Tensor
 from kornia.geometry.conversions import angle_to_rotation_matrix, convert_affinematrix_to_homography
 
 from .homography_warper import HomographyWarper
@@ -29,7 +30,7 @@ class Homography(nn.Module):
         """Initializes the model with identity transform."""
         torch.nn.init.eye_(self.model)
 
-    def forward(self) -> torch.Tensor:
+    def forward(self) -> Tensor:
         r"""Single-batch homography".
 
         Returns:
@@ -37,7 +38,7 @@ class Homography(nn.Module):
         """
         return torch.unsqueeze(self.model / self.model[2, 2], dim=0)  # 1x3x3
 
-    def forward_inverse(self) -> torch.Tensor:
+    def forward_inverse(self) -> Tensor:
         r"""Interted Single-batch homography".
 
         Returns:
@@ -82,7 +83,7 @@ class Similarity(nn.Module):
         torch.nn.init.zeros_(self.shift)
         torch.nn.init.ones_(self.scale)
 
-    def forward(self) -> torch.Tensor:
+    def forward(self) -> Tensor:
         r"""Single-batch similarity transform".
 
         Returns:
@@ -92,7 +93,7 @@ class Similarity(nn.Module):
         out = convert_affinematrix_to_homography(torch.cat([rot, self.shift], dim=2))
         return out
 
-    def forward_inverse(self) -> torch.Tensor:
+    def forward_inverse(self) -> Tensor:
         r"""Single-batch inverse similarity transform".
 
         Returns:
@@ -128,7 +129,7 @@ class ImageRegistrator(nn.Module):
         self,
         model_type='homography',
         optimizer=optim.Adam,
-        loss_fn: Callable = F.l1_loss,
+        loss_fn: Callable[..., Tensor] = F.l1_loss,
         pyramid_levels: int = 5,
         lr: float = 1e-3,
         num_iterations: int = 100,
@@ -168,9 +169,7 @@ class ImageRegistrator(nn.Module):
         self.num_iterations = num_iterations
         self.tolerance = tolerance
 
-    def get_single_level_loss(
-        self, img_src: torch.Tensor, img_dst: torch.Tensor, transform_model: torch.Tensor
-    ) -> torch.Tensor:
+    def get_single_level_loss(self, img_src: Tensor, img_dst: Tensor, transform_model: Tensor) -> Tensor:
         """Warp img_src into img_dst with transform_model and returns loss."""
         # ToDo: Make possible registration of images of different shape
         if img_src.shape != img_dst.shape:
@@ -192,12 +191,8 @@ class ImageRegistrator(nn.Module):
         self.model.reset_model()
 
     def register(
-        self,
-        src_img: torch.Tensor,
-        dst_img: torch.Tensor,
-        verbose: bool = False,
-        output_intermediate_models: bool = False,
-    ) -> Union[torch.Tensor, Tuple[torch.Tensor, List[torch.Tensor]]]:
+        self, src_img: Tensor, dst_img: Tensor, verbose: bool = False, output_intermediate_models: bool = False
+    ) -> Union[Tensor, Tuple[Tensor, List[Tensor]]]:
         r"""Estimate the tranformation' which warps src_img into dst_img by gradient descent. The shape of the
         tensors is not checked, because it may depend on the model, e.g. volume registration.
 
@@ -243,14 +238,14 @@ class ImageRegistrator(nn.Module):
             return self.model(), aux_models
         return self.model()
 
-    def warp_src_into_dst(self, src_img: torch.Tensor) -> torch.Tensor:
+    def warp_src_into_dst(self, src_img: Tensor) -> Tensor:
         r"""Warp src_img with estimated model."""
         _height, _width = src_img.shape[-2:]
         warper = self.warper(_height, _width)
         img_src_to_dst = warper(src_img, self.model())
         return img_src_to_dst
 
-    def warp_dst_inro_src(self, dst_img: torch.Tensor) -> torch.Tensor:
+    def warp_dst_inro_src(self, dst_img: Tensor) -> Tensor:
         r"""Warp src_img with inverted estimated model."""
         _height, _width = dst_img.shape[-2:]
         warper = self.warper(_height, _width)
