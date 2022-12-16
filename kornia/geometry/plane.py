@@ -114,7 +114,10 @@ def fit_plane(points: Vector3) -> Hyperplane:
     Return:
         The computed hyperplane object.
     """
-    KORNIA_CHECK_SHAPE(points, ["N", "D"])
+    # TODO: fix to support more type check here
+    # KORNIA_CHECK_SHAPE(points, ["N", "D"])
+    if points.shape[-1] != 3:
+        raise TypeError("vector must be (*, 3)")
 
     mean = points.mean(-2, True)
     points_centered = points - mean

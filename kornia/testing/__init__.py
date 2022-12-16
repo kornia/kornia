@@ -10,7 +10,6 @@ import torch
 from torch.testing import assert_close as _assert_close
 
 from kornia.core import Tensor, eye, tensor
-from kornia.core.tensor_wrapper import TensorWrapper
 
 __all__ = [
     "tensor_to_gradcheck_var",
