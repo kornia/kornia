@@ -141,13 +141,13 @@ class ParametrizedLine(Module):
             - the lambda value used to compute the look at point.
             - the intersected point.
         """
-        dot_prod = batched_dot_product(plane.normal, self.direction)
+        dot_prod = batched_dot_product(plane.normal.data, self.direction.data)
         dot_prod_mask = dot_prod.abs() >= eps
 
         # TODO: add check for dot product
         res_lambda = where(
             dot_prod_mask,
-            -(plane.offset + batched_dot_product(plane.normal, self.origin)) / dot_prod,
+            -(plane.offset + batched_dot_product(plane.normal.data, self.origin.data)) / dot_prod,
             torch.empty_like(dot_prod),
         )
 
