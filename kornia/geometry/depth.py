@@ -387,16 +387,15 @@ def depth_from_disparity(disparity: Tensor, baseline: Union[float, Tensor], foca
         torch.Size([1, 1, 4, 4])
     """
     KORNIA_CHECK_IS_TENSOR(disparity, f"Input disparity type is not a Tensor. Got {type(disparity)}.")
-
     KORNIA_CHECK_SHAPE(disparity, ["B", "1", "H", "W"])
-
     KORNIA_CHECK(
         isinstance(baseline, (float, Tensor)),
         f"Input baseline should be either a float or Tensor. " f"Got {type(baseline)}",
     )
-
+    KORNIA_CHECK_SHAPE(baseline, ["1"])
     KORNIA_CHECK(
         isinstance(focal, (float, Tensor)), f"Input focal should be either a float or Tensor. " f"Got {type(focal)}"
     )
+    KORNIA_CHECK_SHAPE(focal, ["1"])
 
     return baseline * focal / disparity
