@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 from kornia.core import Module, Tensor, concatenate, tensor
 from kornia.filters.sobel import spatial_gradient
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE, KORNIA_CHECK_IS_TENSOR
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.utils import create_meshgrid
 
 from .camera import PinholeCamera, cam2pixel, pixel2cam, project_points, unproject_points
@@ -387,7 +387,7 @@ def depth_from_disparity(disparity: Tensor, baseline: Union[float, Tensor], foca
         torch.Size([1, 1, 4, 4])
     """
     KORNIA_CHECK_IS_TENSOR(disparity, f"Input disparity type is not a Tensor. Got {type(disparity)}.")
-    
+
     KORNIA_CHECK_SHAPE(disparity, ["B", "1", "H", "W"])
 
     KORNIA_CHECK(
@@ -396,8 +396,7 @@ def depth_from_disparity(disparity: Tensor, baseline: Union[float, Tensor], foca
     )
 
     KORNIA_CHECK(
-        isinstance(focal, (float, Tensor)),
-        f"Input focal should be either a float or Tensor. " f"Got {type(focal)}",
+        isinstance(focal, (float, Tensor)), f"Input focal should be either a float or Tensor. " f"Got {type(focal)}"
     )
 
     return baseline * focal / disparity
