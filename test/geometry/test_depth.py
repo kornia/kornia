@@ -333,48 +333,21 @@ class TestWarpFrameDepth:
 
 class TestDepthFromDisparity:
     def test_smoke(self, device, dtype):
-        disparity = torch.rand(1, 1, 3, 4, device=device, dtype=dtype)
-        baseline = torch.rand(1, device=device, dtype=dtype).item()
-        focal = torch.rand(1, device=device, dtype=dtype)
-
-        points3d = kornia.geometry.depth.depth_from_disparity(disparity, baseline, focal)
-        assert points3d.shape == (1, 1, 3, 4)
-
-    @pytest.mark.parametrize("batch_size", [2, 4, 5])
-    def test_shapes(self, batch_size, device, dtype):
-        disparity = torch.rand(batch_size, 1, 3, 4, device=device, dtype=dtype)
-        baseline = torch.rand(4, device=device, dtype=dtype)
-        focal = torch.rand(4, device=device, dtype=dtype)
-
-        points3d = kornia.geometry.depth.depth_from_disparity(disparity, baseline, focal)
-        assert points3d.shape == (batch_size, 1, 3, 4)
-
-    @pytest.mark.parametrize("shape", [1, 4, (3, 4)])
-    def test_tensors_for_baseline_focal(self, shape, device, dtype):
-        disparity = torch.rand(1, 1, 3, 4, device=device, dtype=dtype)
-        baseline = torch.rand(shape, device=device, dtype=dtype)
-        focal = torch.rand(shape, device=device, dtype=dtype)
-
-        points3d = kornia.geometry.depth.depth_from_disparity(disparity, baseline, focal)
-        assert points3d.shape == (1, 1, 3, 4)
-
-    def test_simple(self, device, dtype):
-        # this is for default normalize_points=False
         disparity = 2 * torch.tensor(
             [[[[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]]]], device=device, dtype=dtype
         )
 
-        baseline = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype)
-        focal = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype)
+        baseline = torch.tensor([1.0], device=device, dtype=dtype)
+        focal = torch.tensor([1.0], device=device, dtype=dtype)
 
         depth_expected = torch.tensor(
             [
                 [
                     [
-                        [0.5000, 0.0000, 0.0000],
-                        [0.5000, 0.0000, 0.0000],
-                        [0.5000, 0.0000, 0.0000],
-                        [0.5000, 0.0000, 0.0000],
+                        [0.5000, 0.5000, 0.5000],
+                        [0.5000, 0.5000, 0.5000],
+                        [0.5000, 0.5000, 0.5000],
+                        [0.5000, 0.5000, 0.5000]
                     ]
                 ]
             ],
@@ -385,15 +358,34 @@ class TestDepthFromDisparity:
         depth = kornia.geometry.depth.depth_from_disparity(disparity, baseline, focal)
         assert_close(depth, depth_expected, rtol=1e-3, atol=1e-3)
 
-    def test_gradcheck(self, device, dtype):
+    @pytest.mark.parametrize("batch_size", [2, 4, 5])
+    def test_shapes(self, batch_size, device, dtype):
+        disparity = torch.rand(batch_size, 1, 3, 4, device=device, dtype=dtype)
+        baseline = torch.rand(1, device=device, dtype=dtype)
+        focal = torch.rand(1, device=device, dtype=dtype)
+
+        points3d = kornia.geometry.depth.depth_from_disparity(disparity, baseline, focal)
+        assert points3d.shape == (batch_size, 1, 3, 4)
+
+    @pytest.mark.parametrize("shape", [2, 4, 5])
+    @pytest.mark.parametrize("batch_size", [2, 4, 5])
+    def test_tensors_for_baseline_focal(self, shape, batch_size, device, dtype):
+        disparity = torch.rand(batch_size, 1, 3, 4, device=device, dtype=dtype)
+        baseline = torch.rand(shape, device=device, dtype=dtype)
+        focal = torch.rand(shape, device=device, dtype=dtype)
+
+        points3d = kornia.geometry.depth.depth_from_disparity(disparity, baseline, focal)
+        assert points3d.shape == (batch_size, 1, 3, 4)
+
+    def test_gradcheck(self, device):
         # generate input data
-        disparity = torch.rand(1, 1, 3, 4, device=device, dtype=dtype)
+        disparity = torch.rand(1, 1, 3, 4, device=device)
         disparity = utils.tensor_to_gradcheck_var(disparity)  # to var
 
-        baseline = torch.rand(1, device=device, dtype=dtype)
+        baseline = torch.rand(1, device=device)
         baseline = utils.tensor_to_gradcheck_var(baseline)  # to var
 
-        focal = torch.rand(1, device=device, dtype=dtype)
+        focal = torch.rand(1, device=device)
         focal = utils.tensor_to_gradcheck_var(focal)  # to var
 
         # evaluate function gradient
