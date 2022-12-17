@@ -347,7 +347,7 @@ class TestDepthFromDisparity:
                         [0.5000, 0.5000, 0.5000],
                         [0.5000, 0.5000, 0.5000],
                         [0.5000, 0.5000, 0.5000],
-                        [0.5000, 0.5000, 0.5000],
+                        [0.5000, 0.5000, 0.5000]
                     ]
                 ]
             ],
@@ -363,16 +363,6 @@ class TestDepthFromDisparity:
         disparity = torch.rand(batch_size, 1, 3, 4, device=device, dtype=dtype)
         baseline = torch.rand(1, device=device, dtype=dtype)
         focal = torch.rand(1, device=device, dtype=dtype)
-
-        points3d = kornia.geometry.depth.depth_from_disparity(disparity, baseline, focal)
-        assert points3d.shape == (batch_size, 1, 3, 4)
-
-    @pytest.mark.parametrize("shape", [2, 4, 5])
-    @pytest.mark.parametrize("batch_size", [2, 4, 5])
-    def test_tensors_for_baseline_focal(self, shape, batch_size, device, dtype):
-        disparity = torch.rand(batch_size, 1, 3, 4, device=device, dtype=dtype)
-        baseline = torch.rand(shape, device=device, dtype=dtype)
-        focal = torch.rand(shape, device=device, dtype=dtype)
 
         points3d = kornia.geometry.depth.depth_from_disparity(disparity, baseline, focal)
         assert points3d.shape == (batch_size, 1, 3, 4)
