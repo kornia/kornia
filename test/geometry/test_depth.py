@@ -374,7 +374,7 @@ class TestDepthFromDisparity:
                         [0.5000, 0.0000, 0.0000],
                         [0.5000, 0.0000, 0.0000],
                         [0.5000, 0.0000, 0.0000],
-                        [0.5000, 0.0000, 0.0000]
+                        [0.5000, 0.0000, 0.0000],
                     ]
                 ]
             ],
@@ -398,5 +398,8 @@ class TestDepthFromDisparity:
 
         # evaluate function gradient
         assert gradcheck(
-            kornia.geometry.depth.depth_from_disparity, (disparity, baseline, focal), raise_exception=True, fast_mode=True
+            kornia.geometry.depth.depth_from_disparity,
+            (disparity, baseline, focal),
+            raise_exception=True,
+            fast_mode=True,
         )
