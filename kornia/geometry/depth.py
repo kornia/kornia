@@ -365,3 +365,36 @@ def depth_warp(
     warper = DepthWarper(pinhole_dst, height, width, align_corners=align_corners)
     warper.compute_projection_matrix(pinhole_src)
     return warper(depth_src, patch_dst)
+
+
+def depth_from_disparity(disparity: Tensor, baseline: Union[float, Tensor], focal: Union[float, Tensor]) -> Tensor:
+    """Computes depth from disparity.
+
+    Args:
+        disparity: Disparity tensor of shape :math:`(B, 1, H, W)`.
+        baseline: float/tensor containing the distance between the two lenses.
+        focal: float/tensor containing the focal length.
+
+    Return:
+        Depth map of the shape :math:`(B, 1, H, W)`.
+
+    Example:
+        >>> disparity = torch.rand(1, 1, 4, 4)
+        >>> baseline = torch.rand(4)
+        >>> focal = torch.rand(4)
+        >>> depth_from_disparity(disparity, baseline, focal).shape
+        torch.Size([1, 1, 4, 4])
+    """
+    if not isinstance(disparity, Tensor):
+        raise TypeError(f"Input disparity type is not a Tensor. Got {type(disparity)}.")
+
+    if not (len(disparity.shape) == 4 and disparity.shape[-3] == 1):
+        raise ValueError(f"Input disparity musth have a shape (B, 1, H, W). Got: {disparity.shape}")
+
+    if not isinstance(baseline, (float, Tensor)):
+        raise TypeError(f"Input baseline should be either a float or Tensor. " f"Got {type(baseline)}")
+
+    if not isinstance(focal, (float, Tensor)):
+        raise TypeError(f"Input focal should be either a float or Tensor. " f"Got {type(focal)}")
+
+    return baseline * focal / disparity
