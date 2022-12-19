@@ -212,7 +212,7 @@ class TestComputeCorrespondEpilines:
             lines_T_hops[:, i, ...] = epi.compute_correspond_epilines(point[:, i, ...], F_mat[:, i, ...])
         lines_one_hop = epi.compute_correspond_epilines(point, F_mat)
 
-        assert_close(lines_T_hops, lines_one_hop, atol=1e-8, rtol=1e-8)
+        assert_close(lines_T_hops, lines_one_hop, atol=2e-7, rtol=2e-7)
 
     def test_opencv(self, device, dtype):
         point = torch.rand(1, 2, 2, device=device, dtype=dtype)
