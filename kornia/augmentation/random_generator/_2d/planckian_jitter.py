@@ -15,7 +15,6 @@ class PlanckianJitterGenerator(RandomGeneratorBase):
         self.domain = domain
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-
         idx_range = _range_bound(self.domain, 'idx_range', device=device, dtype=dtype)
 
         _joint_range_check(idx_range, 'idx_range', (0, self.domain[1]))

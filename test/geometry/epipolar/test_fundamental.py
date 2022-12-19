@@ -164,7 +164,6 @@ class TestFindFundamental:
 
     @pytest.mark.xfail(reason="TODO: fix #685")
     def test_synthetic_sampson(self, device, dtype):
-
         scene: Dict[str, torch.Tensor] = utils.generate_two_view_random_scene(device, dtype)
 
         x1 = scene['x1']

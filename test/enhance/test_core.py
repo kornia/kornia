@@ -16,7 +16,6 @@ def random_shape(dim, min_elem=1, max_elem=10):
 
 
 class TestAddWeighted:
-
     fcn = kornia.enhance.add_weighted
 
     def get_input(self, device, dtype, size, max_elem=10):

@@ -90,7 +90,6 @@ class TestImageHistogram2d:
 
 
 class TestHistogram2d:
-
     fcn = kornia.enhance.histogram2d
 
     def test_shape(self, device, dtype):
@@ -144,7 +143,6 @@ class TestHistogram2d:
 
 
 class TestHistogram:
-
     fcn = kornia.enhance.histogram
 
     def test_shape(self, device, dtype):
