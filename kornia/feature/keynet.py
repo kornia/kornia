@@ -69,7 +69,6 @@ class _HandcraftedBlock(Module):
         self.spatial_gradient = SpatialGradient('sobel', 1)
 
     def forward(self, x: Tensor) -> Tensor:
-
         sobel = self.spatial_gradient(x)
         dx, dy = sobel[:, :, 0, :, :], sobel[:, :, 1, :, :]
 
