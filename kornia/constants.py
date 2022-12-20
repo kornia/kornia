@@ -85,7 +85,6 @@ class DType(Enum, metaclass=_KORNIA_EnumMeta):
 
     @classmethod
     def get(cls, value: Union[str, int, torch.dtype, Tensor, 'DType']) -> 'DType':
-
         if isinstance(value, torch.dtype):
             return cls[str(value).upper()[6:]]
 

@@ -88,7 +88,6 @@ class NerfModel(nn.Module):
         self._rgb[0].bias.data = torch.tensor([0.02, 0.02, 0.02]).float()
 
     def forward(self, origins: Tensor, directions: Tensor) -> Tensor:
-
         # Sample xyz for ray parameters
         batch_size = origins.shape[0]
         lengths = sample_lengths(

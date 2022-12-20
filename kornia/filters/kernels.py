@@ -29,8 +29,7 @@ def gaussian(window_size: int, sigma: float) -> Tensor:
 def gaussian_discrete_erf(window_size: int, sigma) -> Tensor:
     r"""Discrete Gaussian by interpolating the error function.
 
-    Adapted from:
-    https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
+    Adapted from: https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
     """
     device = sigma.device if isinstance(sigma, Tensor) else None
     sigma = as_tensor(sigma, dtype=torch.float, device=device)
@@ -107,8 +106,7 @@ def _modified_bessel_i(n: int, x: Tensor) -> Tensor:
 def gaussian_discrete(window_size, sigma) -> Tensor:
     r"""Discrete Gaussian kernel based on the modified Bessel functions.
 
-    Adapted from:
-    https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
+    Adapted from: https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
     """
     device = sigma.device if isinstance(sigma, Tensor) else None
     sigma = as_tensor(sigma, dtype=torch.float, device=device)
