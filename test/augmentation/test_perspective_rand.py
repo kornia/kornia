@@ -8,7 +8,6 @@ from kornia.testing import assert_close
 
 
 class TestRandomPerspective:
-
     torch.manual_seed(0)  # for random reproductibility
 
     def test_smoke_no_transform_float(self, device):
@@ -141,7 +140,6 @@ class TestRandomPerspective:
 
 
 class TestRandomAffine:
-
     torch.manual_seed(0)  # for random reproductibility
 
     def test_smoke_no_transform(self, device):

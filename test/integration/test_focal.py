@@ -33,7 +33,6 @@ class TestIntegrationFocalLoss:
             torch.nn.init.xavier_uniform_(m.weight)
 
     def test_conv2d_relu(self, device):
-
         # we generate base sample
         target = torch.LongTensor(1, 6, 5).fill_(0).to(device)
         for i in range(1, self.num_classes):

@@ -20,7 +20,6 @@ from kornia.testing import assert_close
 
 
 class TestRandomHorizontalFlip3D:
-
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
@@ -30,7 +29,6 @@ class TestRandomHorizontalFlip3D:
         assert str(f) == repr
 
     def test_random_hflip(self, device):
-
         f = RandomHorizontalFlip3D(p=1.0)
         f1 = RandomHorizontalFlip3D(p=0.0)
 
@@ -69,7 +67,6 @@ class TestRandomHorizontalFlip3D:
         assert (f1.transform_matrix == identity).all()
 
     def test_batch_random_hflip(self, device):
-
         f = RandomHorizontalFlip3D(p=1.0)
 
         input = torch.tensor([[[[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]]]]])  # 1 x 1 x 1 x 3 x 3
@@ -103,7 +100,6 @@ class TestRandomHorizontalFlip3D:
         assert (res[0] == res[1]).all()
 
     def test_sequential(self, device):
-
         f = AugmentationSequential(RandomHorizontalFlip3D(p=1.0), RandomHorizontalFlip3D(p=1.0))
 
         input = torch.tensor([[[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]]]])  # 1 x 1 x 3 x 3
@@ -127,7 +123,6 @@ class TestRandomHorizontalFlip3D:
 
 
 class TestRandomVerticalFlip3D:
-
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
@@ -137,7 +132,6 @@ class TestRandomVerticalFlip3D:
         assert str(f) == repr
 
     def test_random_vflip(self, device, dtype):
-
         f = RandomVerticalFlip3D(p=1.0)
         f1 = RandomVerticalFlip3D(p=0.0)
 
@@ -185,7 +179,6 @@ class TestRandomVerticalFlip3D:
         assert_close(f1.transform_matrix, identity)
 
     def test_batch_random_vflip(self, device):
-
         f = RandomVerticalFlip3D(p=1.0)
         f1 = RandomVerticalFlip3D(p=0.0)
 
@@ -222,7 +215,6 @@ class TestRandomVerticalFlip3D:
         assert (res[0] == res[1]).all()
 
     def test_sequential(self, device):
-
         f = AugmentationSequential(RandomVerticalFlip3D(p=1.0), RandomVerticalFlip3D(p=1.0))
 
         input = torch.tensor([[[[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]]]]])  # 1 x 1 x 1 x 4 x 4
@@ -245,7 +237,6 @@ class TestRandomVerticalFlip3D:
 
 
 class TestRandomDepthicalFlip3D:
-
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
@@ -255,7 +246,6 @@ class TestRandomDepthicalFlip3D:
         assert str(f) == repr
 
     def test_random_dflip(self, device, dtype):
-
         f = RandomDepthicalFlip3D(p=1.0)
         f1 = RandomDepthicalFlip3D(p=0.0)
 
@@ -303,7 +293,6 @@ class TestRandomDepthicalFlip3D:
         assert_close(f1.transform_matrix, identity)
 
     def test_batch_random_dflip(self, device):
-
         f = RandomDepthicalFlip3D(p=1.0)
         f1 = RandomDepthicalFlip3D(p=0.0)
 
@@ -351,7 +340,6 @@ class TestRandomDepthicalFlip3D:
         assert (res[0] == res[1]).all()
 
     def test_sequential(self, device):
-
         f = AugmentationSequential(RandomDepthicalFlip3D(p=1.0), RandomDepthicalFlip3D(p=1.0))
 
         input = torch.tensor(
@@ -383,7 +371,6 @@ class TestRandomDepthicalFlip3D:
 
 
 class TestRandomRotation3D:
-
     torch.manual_seed(0)  # for random reproductibility
 
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
@@ -462,7 +449,6 @@ class TestRandomRotation3D:
         assert_close(f.transform_matrix, expected_transform, rtol=1e-6, atol=1e-4)
 
     def test_batch_random_rotation(self, device, dtype):
-
         torch.manual_seed(24)  # for random reproductibility
 
         f = RandomRotation3D(degrees=45.0)
@@ -562,7 +548,6 @@ class TestRandomRotation3D:
         assert (res[0] == res[1]).all()
 
     def test_sequential(self, device, dtype):
-
         torch.manual_seed(24)  # for random reproductibility
 
         f = AugmentationSequential(RandomRotation3D(torch.tensor([-45.0, 90])), RandomRotation3D(10.4))
@@ -623,7 +608,6 @@ class TestRandomRotation3D:
         assert_close(f.transform_matrix, expected_transform, rtol=1e-6, atol=1e-4)
 
     def test_gradcheck(self, device):
-
         torch.manual_seed(0)  # for random reproductibility
 
         input = torch.rand((3, 3, 3)).to(device)  # 3 x 3 x 3
