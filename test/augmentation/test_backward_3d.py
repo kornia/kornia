@@ -46,7 +46,6 @@ class TestRandomAffine3DBackward:
     @pytest.mark.parametrize("align_corners", [True, False])
     @pytest.mark.parametrize("same_on_batch", [True, False])
     def test_param(self, degrees, translate, scale, shear, resample, align_corners, same_on_batch, device, dtype):
-
         _degrees = (
             degrees
             if isinstance(degrees, (int, float, list, tuple))
@@ -158,7 +157,6 @@ class TestRandomRotation3DBackward:
     @pytest.mark.parametrize("align_corners", [True, False])
     @pytest.mark.parametrize("same_on_batch", [True, False])
     def test_param(self, degrees, resample, align_corners, same_on_batch, device, dtype):
-
         _degrees = (
             degrees
             if isinstance(degrees, (int, float, list, tuple))
@@ -198,7 +196,6 @@ class TestRandomPerspective3DBackward:
     @pytest.mark.parametrize("align_corners", [True, False])
     @pytest.mark.parametrize("same_on_batch", [True, False])
     def test_param(self, distortion_scale, resample, align_corners, same_on_batch, device, dtype):
-
         _distortion_scale = (
             distortion_scale
             if isinstance(distortion_scale, (float, int))
@@ -246,7 +243,6 @@ class TestRandomMotionBlur3DBackward:
     @pytest.mark.parametrize("resample", ['bilinear'])  # TODO: Ignore nearest for now.
     @pytest.mark.parametrize("same_on_batch", [True, False])
     def test_param(self, angle, direction, border_type, resample, same_on_batch, device, dtype):
-
         _angle = (
             angle
             if isinstance(angle, (float, int, list, tuple))

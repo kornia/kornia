@@ -555,7 +555,6 @@ class KeypointsApplyInverse(BBoxApplyInverse):
 
     @classmethod
     def pad(cls, input: Tensor, padding_size: Tensor) -> Tensor:
-
         if len(input.shape) not in (2, 3):
             raise AssertionError(input.shape)
 
@@ -578,7 +577,6 @@ class KeypointsApplyInverse(BBoxApplyInverse):
 
     @classmethod
     def unpad(cls, input: Tensor, padding_size: Tensor) -> Tensor:
-
         if len(input.shape) not in (2, 3):
             raise AssertionError(input.shape)
         if len(padding_size.shape) != 2:
