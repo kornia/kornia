@@ -175,3 +175,10 @@ class TestSe2(BaseTester):
         self.assert_close(se2_in_se2.so2.z.real, i.so2.z.real)
         self.assert_close(se2_in_se2.so2.z.imag, i.so2.z.imag)
         self.assert_close(se2_in_se2.t, i.t)
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_adjoint(self, device, dtype, batch_size):
+        x = Se2.random(batch_size)
+        y = Se2.random(batch_size)
+        self.assert_close(x.inverse().adjoint(), x.adjoint().inverse())
+        self.assert_close((x * y).adjoint(), x.adjoint() @ y.adjoint())

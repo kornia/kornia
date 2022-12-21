@@ -280,3 +280,17 @@ class Se2(Module):
             KORNIA_CHECK(batch_size >= 1, msg="batch_size must be positive")
             shape = (batch_size, 2)
         return cls(r, rand(shape, device=device, dtype=dtype))
+
+    def adjoint(self) -> Tensor:
+        """Returns the adjoint matrix of shape :math:`(B, 3, 3)`.
+
+        Example:
+            >>> s = Se2.identity()
+            >>> s.adjoint()
+            tensor([[1., -0., 0.],
+                    [0., 1., -0.],
+                    [0., 0., 1.]], grad_fn=<CopySlices>)
+        """
+        rt = self.matrix()
+        rt[..., 0:2, 2] = stack((self.t[..., 1], -self.t[..., 0]), -1)
+        return rt

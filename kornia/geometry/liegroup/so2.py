@@ -242,3 +242,15 @@ class So2(Module):
             real_data = rand((), device=device, dtype=dtype)
             imag_data = rand((), device=device, dtype=dtype)
         return cls(complex(real_data, imag_data))
+
+    def adjoint(self) -> Tensor:
+        """Returns the adjoint matrix of shape :math:`(B, 2, 2)`.
+
+        Example:
+            >>> s = So2.identity()
+            >>> s.adjoint()
+            tensor([[1., -0.],
+                    [0., 1.]], grad_fn=<StackBackward0>)
+        """
+        batch_size = len(self.z) if len(self.z.shape) > 0 else None
+        return self.identity(batch_size, self.z.device, self.z.real.dtype).matrix()
