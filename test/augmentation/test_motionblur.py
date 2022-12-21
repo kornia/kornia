@@ -9,7 +9,6 @@ from kornia.testing import assert_close, tensor_to_gradcheck_var
 
 # TODO: add kornia.testing.BaseTester
 class TestRandomMotionBlur:
-
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
@@ -43,7 +42,6 @@ class TestRandomMotionBlur:
 
     @pytest.mark.parametrize("input_shape", [(1, 1, 5, 5), (2, 1, 5, 5)])
     def test_against_functional(self, input_shape):
-
         input = torch.randn(*input_shape)
 
         f = RandomMotionBlur(kernel_size=(3, 5), angle=(10, 30), direction=0.5, p=1.0)
@@ -113,7 +111,6 @@ class TestRandomMotionBlur3D:
 
     @pytest.mark.parametrize("input_shape", [(1, 1, 5, 6, 7), (2, 1, 5, 6, 7)])
     def test_against_functional(self, input_shape):
-
         input = torch.randn(*input_shape)
 
         f = RandomMotionBlur3D(kernel_size=(3, 5), angle=(10, 30), direction=0.5, p=1.0)

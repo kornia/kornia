@@ -2,10 +2,10 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se2.py
 from typing import Optional, Tuple, overload
 
-from kornia.core import Module, Parameter, Tensor, concatenate, pad, rand, stack, tensor, where
+from kornia.core import Module, Parameter, Tensor, concatenate, pad, rand, stack, tensor, where, zeros_like
 from kornia.geometry.liegroup._utils import check_se2_omega_shape, check_se2_r_t_shape, check_v_shape
 from kornia.geometry.liegroup.so2 import So2
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_TYPE
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_TYPE
 
 
 class Se2(Module):
@@ -32,8 +32,8 @@ class Se2(Module):
         Internally represented by a complex number `z` and a translation 2-vector.
 
         Args:
-            r: So2 group encompassing a rotation.
-            t: translation vector with the shape of :math:`(B, 2)`.
+            rotation: So2 group encompassing a rotation.
+            translation: translation vector with the shape of :math:`(B, 2)`.
 
         Example:
             >>> so2 = So2.identity(1)
@@ -280,3 +280,51 @@ class Se2(Module):
             KORNIA_CHECK(batch_size >= 1, msg="batch_size must be positive")
             shape = (batch_size, 2)
         return cls(r, rand(shape, device=device, dtype=dtype))
+
+    @classmethod
+    def trans(cls, x: Tensor, y: Tensor) -> "Se2":
+        """Construct a translation only Se2 instance.
+
+        Args:
+            x: the x-axis translation.
+            y: the y-axis translation.
+        """
+        KORNIA_CHECK(x.shape == y.shape)
+        KORNIA_CHECK_SAME_DEVICES([x, y])
+        batch_size = x.shape[0] if len(x.shape) > 0 else None
+        rotation = So2.identity(batch_size, x.device, x.dtype)
+        return cls(rotation, stack((x, y), -1))
+
+    @classmethod
+    def trans_x(cls, x: Tensor) -> "Se2":
+        """Construct a x-axis translation.
+
+        Args:
+            x: the x-axis translation.
+        """
+        zs = zeros_like(x)
+        return cls.trans(x, zs)
+
+    @classmethod
+    def trans_y(cls, y: Tensor) -> "Se2":
+        """Construct a y-axis translation.
+
+        Args:
+            y: the y-axis translation.
+        """
+        zs = zeros_like(y)
+        return cls.trans(zs, y)
+
+    def adjoint(self) -> Tensor:
+        """Returns the adjoint matrix of shape :math:`(B, 3, 3)`.
+
+        Example:
+            >>> s = Se2.identity()
+            >>> s.adjoint()
+            tensor([[1., -0., 0.],
+                    [0., 1., -0.],
+                    [0., 0., 1.]], grad_fn=<CopySlices>)
+        """
+        rt = self.matrix()
+        rt[..., 0:2, 2] = stack((self.t[..., 1], -self.t[..., 0]), -1)
+        return rt
