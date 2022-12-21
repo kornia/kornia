@@ -177,6 +177,30 @@ class TestSe2(BaseTester):
         self.assert_close(se2_in_se2.t, i.t)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_trans(self, device, dtype, batch_size):
+        trans = self._make_rand_data(device, dtype, (batch_size, 2))
+        x, y = trans[..., 0], trans[..., 1]
+        se2 = Se2.trans(x, y)
+        self.assert_close(se2.t, trans)
+        self.assert_close(se2.so2.matrix(), So2.identity(batch_size, device, dtype).matrix())
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_trans_x(self, device, dtype, batch_size):
+        x = self._make_rand_data(device, dtype, (batch_size, 1)).squeeze(-1)
+        zs = torch.zeros_like(x)
+        se2 = Se2.trans_x(x)
+        self.assert_close(se2.t, torch.stack((x, zs), -1))
+        self.assert_close(se2.so2.matrix(), So2.identity(batch_size, device, dtype).matrix())
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_trans_y(self, device, dtype, batch_size):
+        y = self._make_rand_data(device, dtype, (batch_size, 1)).squeeze(-1)
+        zs = torch.zeros_like(y)
+        se2 = Se2.trans_y(y)
+        self.assert_close(se2.t, torch.stack((zs, y), -1))
+        self.assert_close(se2.so2.matrix(), So2.identity(batch_size, device, dtype).matrix())
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_adjoint(self, device, dtype, batch_size):
         x = Se2.random(batch_size)
         y = Se2.random(batch_size)
