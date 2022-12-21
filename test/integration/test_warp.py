@@ -22,7 +22,6 @@ class TestWarping:
     num_iterations = 100
 
     def test_smoke(self, device):
-
         img_src_t: torch.Tensor = torch.rand(1, 3, 120, 120).to(device)
         img_dst_t: torch.Tensor = torch.rand(1, 3, 120, 120).to(device)
 

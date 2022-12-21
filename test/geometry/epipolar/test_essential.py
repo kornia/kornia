@@ -42,7 +42,6 @@ class TestEssentialFromFundamental:
         assert E_mat.shape == (1, 2, 3, 3)
 
     def test_from_fundamental(self, device, dtype):
-
         scene = utils.generate_two_view_random_scene(device, dtype)
 
         F_mat = scene['F']
@@ -144,7 +143,6 @@ class TestEssentalFromRt:
 
     @pytest.mark.xfail(reason="TODO: fix #685")
     def test_from_fundamental_Rt(self, device, dtype):
-
         scene = utils.generate_two_view_random_scene(device, dtype)
 
         E_from_Rt = epi.essential_from_Rt(scene['R1'], scene['t1'], scene['R2'], scene['t2'])
@@ -308,7 +306,6 @@ class TestMotionFromEssentialChooseSolution:
         assert_close(X, Xm[1:-1, :])
 
     def test_two_view(self, device, dtype):
-
         scene = utils.generate_two_view_random_scene(device, dtype)
 
         E_mat = epi.essential_from_Rt(scene['R1'], scene['t1'], scene['R2'], scene['t2'])

@@ -640,10 +640,10 @@ class TestDexiNed:
     def test_inference(self, device, dtype, data):
         model = kornia.filters.DexiNed(pretrained=False)
         model.load_state_dict(data, strict=True)
-        model.eval()
         model = model.to(device, dtype)
+        model.eval()
 
-        img = torch.tensor([[[[0, 255, 0], [0, 255, 0], [0, 255, 0]]]], device=device, dtype=dtype)
+        img = torch.tensor([[[[0.0, 255.0, 0.0], [0.0, 255.0, 0.0], [0.0, 255.0, 0.0]]]], device=device, dtype=dtype)
         img = img.repeat(1, 3, 1, 1)
 
         expect = torch.tensor(
@@ -652,8 +652,8 @@ class TestDexiNed:
             dtype=dtype,
         )
 
-        out = model(img)
-        assert_close(out[-1][:, :1], expect, atol=1e-4, rtol=1e-4)
+        out = model(img)[-1]
+        assert_close(out, expect, atol=3e-4, rtol=3e-4)
 
     def test_jit(self, device, dtype):
         op = kornia.filters.DexiNed(pretrained=False).to(device, dtype)
