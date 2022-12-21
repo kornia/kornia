@@ -27,14 +27,14 @@ class Se3(Module):
         tensor([1., 1., 1.], requires_grad=True)
     """
 
-    def __init__(self, r: So3, t: Tensor) -> None:
+    def __init__(self, rotation: So3, translation: Tensor) -> None:
         """Constructor for the base class.
 
         Internally represented by a unit quaternion `q` and a translation 3-vector.
 
         Args:
-            r: So3 group encompassing a rotation.
-            t: translation vector with the shape of :math:`(B, 3)`.
+            rotation: So3 group encompassing a rotation.
+            translation: translation vector with the shape of :math:`(B, 3)`.
 
         Example:
             >>> from kornia.geometry.quaternion import Quaternion
@@ -48,16 +48,16 @@ class Se3(Module):
             tensor([[1., 1., 1.]], requires_grad=True)
         """
         super().__init__()
-        KORNIA_CHECK_TYPE(r, So3)
+        KORNIA_CHECK_TYPE(rotation, So3)
         # KORNIA_CHECK_SHAPE(t, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
-        self._r = r
-        self._t = Parameter(t)
+        self._rotation = rotation
+        self._translation = Parameter(translation)
 
     def __repr__(self) -> str:
         return f"rotation: {self.r}\ntranslation: {self.t}"
 
     def __getitem__(self, idx) -> 'Se3':
-        return Se3(self._r[idx], self._t[idx])
+        return Se3(self._rotation[idx], self._translation[idx])
 
     def __mul__(self, right: "Se3") -> "Se3":
         """Compose two Se3 transformations.
@@ -68,33 +68,45 @@ class Se3(Module):
         Return:
             The resulting Se3 transformation.
         """
+        so3 = self.so3
+        t = self.t
         if isinstance(right, Se3):
             KORNIA_CHECK_TYPE(right, Se3)
             # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py#L97
-            r = self.so3 * right.so3
-            t = self.t + self.so3 * right.t
-            return Se3(r, t)
+            _r = so3 * right.so3
+            _t = t + so3 * right.t
+            return Se3(_r, _t)
         elif isinstance(right, Tensor):
             KORNIA_CHECK_TYPE(right, Tensor)
             # KORNIA_CHECK_SHAPE(right, ["B", "N"])  # FIXME: resolve shape bugs. @edgarriba
-            return self.so3 * right + self.t
+            return so3 * right + t
         else:
             raise TypeError(f"Unsupported type: {type(right)}")
 
     @property
     def so3(self) -> So3:
         """Return the underlying rotation(So3)."""
-        return self._r
+        return self._rotation
 
     @property
     def r(self) -> So3:
         """Return the underlying rotation(So3)."""
-        return self._r
+        return self._rotation
 
     @property
     def t(self) -> Tensor:
         """Return the underlying translation vector of shape :math:`(B,3)`."""
-        return self._t
+        return self._translation
+
+    @property
+    def rotation(self) -> So3:
+        """Return the underlying rotation(So3)."""
+        return self._rotation
+
+    @property
+    def translation(self) -> Tensor:
+        """Return the underlying translation vector of shape :math:`(B,3)`."""
+        return self._translation
 
     @staticmethod
     def exp(v) -> 'Se3':
