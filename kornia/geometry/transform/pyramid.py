@@ -213,9 +213,8 @@ class ScalePyramid(Module):
                 sigmas[-1][:, level_idx] = cur_sigma
                 pixel_dists[-1][:, level_idx] = pixel_distance
             _pyr = pyr[-1][-self.extra_levels]
-            nextOctaveFirstLevel = F.interpolate(
-                _pyr, size=(_pyr.size(-2) // 2, _pyr.size(-1) // 2), mode='nearest'
-            )  # Nearest matches OpenCV SIFT
+            nextOctaveFirstLevel = _pyr[:, :, ::2, ::2]
+
             pixel_distance *= 2.0
             cur_sigma = self.init_sigma
             if min(nextOctaveFirstLevel.size(2), nextOctaveFirstLevel.size(3)) <= self.min_size:
