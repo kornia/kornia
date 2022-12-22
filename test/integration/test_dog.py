@@ -3,7 +3,6 @@ import math
 import cv2 as cv
 import numpy as np
 import torch
-from PIL import Image
 
 import kornia.utils
 from kornia.feature.integrated import SIFTFeature
@@ -174,8 +173,7 @@ def draw_matches(kps1, kps2, tentative_matches, H_est, H_gt, inlier_mask, img1, 
 def read_imgs(file_paths, crop=None):
     imgs = []
     for i, file in enumerate(file_paths):
-        img = Image.open(file)
-        img = np.array(img)
+        img = cv.imread(file)
 
         def modulo32(n, modulo):
             n_n = n - ((n - modulo) % 32)
@@ -277,8 +275,9 @@ class TestDog:
                 [9.9064973e-05, -5.8498673e-05, 1.0000000e00],
             ],
         ]
-        Hs_boat = np.array(Hs_boat)
-        files_boat = [f"imgs/boat/img{i + 1}.pgm" for i in range(6)]
+        # test/integration/imgs/boat/img5.pgm changes by the pre-commit hook
+        Hs_boat = np.array(Hs_boat[:-2])
+        files_boat = [f"imgs/boat/img{i + 1}.pgm" for i in range(4)]
         imgs_boat = read_imgs(files_boat)
 
         print("BOAT experiment hompographies decomposition")
@@ -350,15 +349,13 @@ def scale_img(img, scale):
     H_gt = np.array([[scale, 0.0, 0.5 * (scale - 1)], [0.0, scale, 0.5 * (scale - 1)], [0.0, 0.0, 1.0]])
 
     dsize = (round(w * scale), round(h * scale))
-    pil = Image.fromarray(img)
-    pil_resized = pil.resize(size=dsize, resample=Image.Resampling.LANCZOS)
-    img_scaled = np.array(pil_resized)
+    img_scaled = cv.warpPerspective(img, H_gt, dsize, flags=cv.INTER_LANCZOS4)
     return H_gt, img_scaled
 
 
 def Hs_imgs_for_rotation(file, crop=None):
-    img = Image.open(file)
-    img = np.array(img)
+
+    img = cv.imread(file)
 
     def modulo32(n, modulo):
         n_n = n - ((n - modulo) % 32)
@@ -382,8 +379,7 @@ def Hs_imgs_for_rotation(file, crop=None):
 
 
 def Hs_imgs_for_scaling(file, scales, crop_h2=False):
-    img = Image.open(file)
-    img = np.array(img)
+    img = cv.imread(file)
     # this assures a large gcd(w, h) and thus can be scaled without change to the aspect ratio
     if crop_h2:
         img = img[: img.shape[0] - 2]
