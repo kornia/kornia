@@ -333,9 +333,7 @@ def get_integer_scale(scale, h, w):
     real_scale = real_scale_gcd / gcd
 
     if real_scale == 0.0 or math.fabs(real_scale - scale) > 0.1:
-        raise Exception(
-            f"scale {scale} cannot be effectively realized for w, h = {w}, {h} in integer domain"
-        )
+        raise Exception(f"scale {scale} cannot be effectively realized for w, h = {w}, {h} in integer domain")
 
     return real_scale
 
@@ -354,7 +352,6 @@ def scale_img(img, scale):
 
 
 def Hs_imgs_for_rotation(file, crop=None):
-
     img = cv.imread(file)
 
     def modulo32(n, modulo):
