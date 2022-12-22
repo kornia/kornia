@@ -6,6 +6,7 @@ import torch.nn.functional as F
 
 from kornia.core import Module, Tensor, concatenate, tensor
 from kornia.filters.sobel import spatial_gradient
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.utils import create_meshgrid
 
 from .camera import PinholeCamera, cam2pixel, pixel2cam, project_points, unproject_points
@@ -365,3 +366,40 @@ def depth_warp(
     warper = DepthWarper(pinhole_dst, height, width, align_corners=align_corners)
     warper.compute_projection_matrix(pinhole_src)
     return warper(depth_src, patch_dst)
+
+
+def depth_from_disparity(disparity: Tensor, baseline: Union[float, Tensor], focal: Union[float, Tensor]) -> Tensor:
+    """Computes depth from disparity.
+
+    Args:
+        disparity: Disparity tensor of shape :math:`(*, H, W)`.
+        baseline: float/tensor containing the distance between the two lenses.
+        focal: float/tensor containing the focal length.
+
+    Return:
+        Depth map of the shape :math:`(*, H, W)`.
+
+    Example:
+        >>> disparity = torch.rand(4, 1, 4, 4)
+        >>> baseline = torch.rand(1)
+        >>> focal = torch.rand(1)
+        >>> depth_from_disparity(disparity, baseline, focal).shape
+        torch.Size([4, 1, 4, 4])
+    """
+    KORNIA_CHECK_IS_TENSOR(disparity, f"Input disparity type is not a Tensor. Got {type(disparity)}.")
+    KORNIA_CHECK_SHAPE(disparity, ["*", "H", "W"])
+    KORNIA_CHECK(
+        isinstance(baseline, (float, Tensor)),
+        f"Input baseline should be either a float or Tensor. " f"Got {type(baseline)}",
+    )
+    KORNIA_CHECK(
+        isinstance(focal, (float, Tensor)), f"Input focal should be either a float or Tensor. " f"Got {type(focal)}"
+    )
+
+    if isinstance(baseline, Tensor):
+        KORNIA_CHECK_SHAPE(baseline, ["1"])
+
+    if isinstance(focal, Tensor):
+        KORNIA_CHECK_SHAPE(focal, ["1"])
+
+    return baseline * focal / disparity
