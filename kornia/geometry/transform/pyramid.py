@@ -171,7 +171,7 @@ class ScalePyramid(Module):
         cur_sigma = 0.5
         # Same as in OpenCV up to interpolation difference
         if self.double_image:
-            x = F.interpolate(input, scale_factor=2.0, mode='bilinear', align_corners=False)
+            x = upscale_double(input)
             pixel_distance = 0.5
             cur_sigma *= 2.0
         else:
@@ -409,3 +409,24 @@ def build_laplacian_pyramid(
         laplacian_pyramid.append(laplacian)
     laplacian_pyramid.append(gaussian_pyramid[-1])
     return laplacian_pyramid
+
+
+def upscale_double(x):
+    r"""Upscale image by the factor of 2, even indices maps to original indices.
+
+    Odd indices are linearly interpolated from the even ones.
+
+    Args:
+        x : input image.
+    Shape:
+        - Input: :math:`(B, C, H, W)`
+        - Output :math:`(B, C, H, W)`
+    """
+    B, CH, H, W = x.shape
+    upscaled = torch.zeros((B, CH, H * 2, W * 2))
+    upscaled[:, :, ::2, ::2] = x
+    upscaled[:, :, ::2, 1::2][..., :-1] = (upscaled[:, :, ::2, ::2][..., :-1] + upscaled[:, :, ::2, 2::2]) / 2
+    upscaled[:, :, ::2, -1] = upscaled[:, :, ::2, -2]
+    upscaled[:, :, 1::2, :][..., :-1, :] = (upscaled[:, :, ::2, :][..., :-1, :] + upscaled[:, :, 2::2, :]) / 2
+    upscaled[:, :, -1, :] = upscaled[:, :, -2, :]
+    return upscaled
