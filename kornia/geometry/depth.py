@@ -380,22 +380,26 @@ def depth_from_disparity(disparity: Tensor, baseline: Union[float, Tensor], foca
         Depth map of the shape :math:`(B, 1, H, W)`.
 
     Example:
-        >>> disparity = torch.rand(1, 1, 4, 4)
+        >>> disparity = torch.rand(4, 1, 4, 4)
         >>> baseline = torch.rand(1)
         >>> focal = torch.rand(1)
         >>> depth_from_disparity(disparity, baseline, focal).shape
         torch.Size([1, 1, 4, 4])
     """
     KORNIA_CHECK_IS_TENSOR(disparity, f"Input disparity type is not a Tensor. Got {type(disparity)}.")
-    KORNIA_CHECK_SHAPE(disparity, ["B", "1", "H", "W"])
+    KORNIA_CHECK_SHAPE(disparity, ["*", "H", "W"])
     KORNIA_CHECK(
         isinstance(baseline, (float, Tensor)),
         f"Input baseline should be either a float or Tensor. " f"Got {type(baseline)}",
     )
-    KORNIA_CHECK_SHAPE(baseline, ["1"])
     KORNIA_CHECK(
         isinstance(focal, (float, Tensor)), f"Input focal should be either a float or Tensor. " f"Got {type(focal)}"
     )
-    KORNIA_CHECK_SHAPE(focal, ["1"])
+
+    if isinstance(baseline, Tensor):
+        KORNIA_CHECK_SHAPE(baseline, ["1"])
+
+    if isinstance(focal, Tensor):
+        KORNIA_CHECK_SHAPE(focal, ["1"])
 
     return baseline * focal / disparity

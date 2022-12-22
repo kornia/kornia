@@ -347,7 +347,7 @@ class TestDepthFromDisparity:
                         [0.5000, 0.5000, 0.5000],
                         [0.5000, 0.5000, 0.5000],
                         [0.5000, 0.5000, 0.5000],
-                        [0.5000, 0.5000, 0.5000],
+                        [0.5000, 0.5000, 0.5000]
                     ]
                 ]
             ],
@@ -359,13 +359,22 @@ class TestDepthFromDisparity:
         assert_close(depth, depth_expected, rtol=1e-3, atol=1e-3)
 
     @pytest.mark.parametrize("batch_size", [2, 4, 5])
-    def test_shapes(self, batch_size, device, dtype):
+    def test_cardinality(self, batch_size, device, dtype):
         disparity = torch.rand(batch_size, 1, 3, 4, device=device, dtype=dtype)
         baseline = torch.rand(1, device=device, dtype=dtype)
         focal = torch.rand(1, device=device, dtype=dtype)
 
         points3d = kornia.geometry.depth.depth_from_disparity(disparity, baseline, focal)
         assert points3d.shape == (batch_size, 1, 3, 4)
+
+    @pytest.mark.parametrize("shape", [(1, 1, 3, 4), (4, 1, 3, 4), (4, 3, 4), (1, 3, 4), (3, 4)])
+    def test_shapes(self, shape, device, dtype):
+        disparity = torch.randn(shape, device=device, dtype=dtype)
+        baseline = torch.rand(1, device=device, dtype=dtype)
+        focal = torch.rand(1, device=device, dtype=dtype)
+
+        points3d = kornia.geometry.depth.depth_from_disparity(disparity, baseline, focal)
+        assert points3d.shape == shape
 
     def test_gradcheck(self, device):
         # generate input data
