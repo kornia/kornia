@@ -1,7 +1,6 @@
 import math
 
 import cv2 as cv
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from PIL import Image
@@ -168,7 +167,7 @@ def draw_matches(kps1, kps2, tentative_matches, H_est, H_gt, inlier_mask, img1, 
     return img_out
 
 
-def read_imgs(file_paths, show=False, crop=None):
+def read_imgs(file_paths, crop=None):
     imgs = []
     for i, file in enumerate(file_paths):
         img = Image.open(file)
@@ -183,14 +182,8 @@ def read_imgs(file_paths, show=False, crop=None):
             w = modulo32(w, crop)
             h = modulo32(h, crop)
             img = img[:h, :w]
-
         imgs.append(img)
-        if show:
-            plt.figure()
-            plt.imshow(img)
-            plt.title(i + 1)
-            plt.show()
-            plt.close()
+
     return imgs
 
 
@@ -242,7 +235,7 @@ class TestDog:
 
         Hs_bark = np.array(Hs_bark)
         files_bark = [f"imgs/bark/img{i + 1}.ppm" for i in range(6)]
-        imgs_bark = read_imgs(files_bark, show=False)
+        imgs_bark = read_imgs(files_bark)
 
         print("BARK experiment hompographies decomposition")
         print_Hs_decomposition(Hs_bark)
@@ -271,7 +264,7 @@ class TestDog:
         ]
         Hs_boat = np.array(Hs_boat)
         files_boat = [f"imgs/boat/img{i + 1}.pgm" for i in range(6)]
-        imgs_boat = read_imgs(files_boat, show=False)
+        imgs_boat = read_imgs(files_boat)
 
         print("BOAT experiment hompographies decomposition")
         print_Hs_decomposition(Hs_boat)
