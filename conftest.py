@@ -94,7 +94,7 @@ def pytest_addoption(parser):
 
 
 @pytest.fixture(autouse=True)
-def add_np(doctest_namespace):
+def add_doctest_deps(doctest_namespace):
     doctest_namespace["np"] = numpy
     doctest_namespace["torch"] = torch
     doctest_namespace["kornia"] = kornia
