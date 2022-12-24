@@ -72,7 +72,7 @@ class TestRgbToYuv420(BaseTester):
         assert isinstance(kornia.color.rgb_to_yuv420(img)[0], torch.Tensor)
         assert isinstance(kornia.color.rgb_to_yuv420(img)[1], torch.Tensor)
 
-    @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 2), (3, 2, 2)])
+    @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 2), (3, 2, 2), (3, 3, 3, 4, 4)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.ones(shape, device=device, dtype=dtype)
         shapey = list(shape)
@@ -229,7 +229,7 @@ class TestRgbToYuv422(BaseTester):
         assert isinstance(kornia.color.rgb_to_yuv422(img)[0], torch.Tensor)
         assert isinstance(kornia.color.rgb_to_yuv422(img)[1], torch.Tensor)
 
-    @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 2), (3, 2, 2)])
+    @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 2), (3, 2, 2), (3, 3, 3, 4, 4)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.ones(shape, device=device, dtype=dtype)
         shapey = list(shape)
