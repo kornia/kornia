@@ -5,7 +5,7 @@ from torch import Tensor
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_DEVICE, KORNIA_CHECK_SAME_SHAPE
 
 
-def welsch_loss(img1: Tensor, img2: Tensor, reduction: str = "mean") -> Tensor:
+def welsch_loss(img1: Tensor, img2: Tensor, reduction: str = "none") -> Tensor:
     r"""Criterion that computes the Welsch [2] (aka. Leclerc [3]) loss.
 
     According to [1], we compute the Welsch loss as follows:
