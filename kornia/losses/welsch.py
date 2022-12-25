@@ -96,7 +96,7 @@ class WelschLoss(nn.Module):
         >>> criterion = WelschLoss(reduction="mean")
         >>> img1 = torch.randn(2, 3, 32, 1904, requires_grad=True)
         >>> img2 = torch.randn(2, 3, 32, 1904)
-        >>> output = criterion(img1, img2)
+        >>> output = criterion(img1, img2, reduction="mean")
         >>> output.backward()
     """
 

@@ -36,7 +36,7 @@ def cauchy_loss(img1: Tensor, img2: Tensor, reduction: str = "none") -> Tensor:
     Example:
         >>> img1 = torch.randn(2, 3, 32, 32, requires_grad=True)
         >>> img2 = torch.randn(2, 3, 32, 32)
-        >>> output = cauchy_loss(img1, img2)
+        >>> output = cauchy_loss(img1, img2, reduction="mean")
         >>> output.backward()
     """
     KORNIA_CHECK_IS_TENSOR(img1)

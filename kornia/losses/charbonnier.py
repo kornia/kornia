@@ -42,7 +42,7 @@ def charbonnier_loss(img1: Tensor, img2: Tensor, reduction: str = "none") -> Ten
     Example:
         >>> img1 = torch.randn(2, 3, 32, 32, requires_grad=True)
         >>> img2 = torch.randn(2, 3, 32, 32)
-        >>> output = charbonnier_loss(img1, img2)
+        >>> output = charbonnier_loss(img1, img2, reduction="sum")
         >>> output.backward()
     """
     KORNIA_CHECK_IS_TENSOR(img1)
