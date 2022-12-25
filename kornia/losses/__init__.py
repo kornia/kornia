@@ -3,6 +3,7 @@ from .depth_smooth import InverseDepthSmoothnessLoss, inverse_depth_smoothness_l
 from .dice import DiceLoss, dice_loss
 from .divergence import js_div_loss_2d, kl_div_loss_2d
 from .focal import BinaryFocalLossWithLogits, FocalLoss, binary_focal_loss_with_logits, focal_loss
+from .geman_mcclure import GemanMcclureLoss, geman_mcclure_loss
 from .hausdorff import HausdorffERLoss, HausdorffERLoss3D
 from .lovasz_hinge import LovaszHingeLoss, lovasz_hinge_loss
 from .lovasz_softmax import LovaszSoftmaxLoss, lovasz_softmax_loss
@@ -43,4 +44,6 @@ __all__ = [
     "welsch_loss",
     "CauchyLoss",
     "cauchy_loss",
+    "GemanMcclureLoss",
+    "geman_mcclure_loss",
 ]
