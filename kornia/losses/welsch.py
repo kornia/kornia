@@ -24,7 +24,7 @@ def welsch_loss(img1: Tensor, img2: Tensor, reduction: str = "none") -> Tensor:
 
     Args:
         img1: the predicted tensor with shape :math:`(*)`.
-        img2: the target tensor with tha same shape as img1.
+        img2: the target tensor with the same shape as img1.
         reduction: Specifies the reduction to apply to the
           output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
           will be applied (default), ``'mean'``: the sum of the output will be divided
@@ -90,7 +90,7 @@ class WelschLoss(nn.Module):
 
     Shape:
         - img1: the predicted tensor with shape :math:`(*)`.
-        - img2: the target tensor with tha same shape as img1.
+        - img2: the target tensor with the same shape as img1.
 
     Example:
         >>> criterion = WelschLoss(reduction="mean")
