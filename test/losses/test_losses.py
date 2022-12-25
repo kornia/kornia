@@ -807,7 +807,7 @@ class TestWelschLoss:
     def test_reduction(self, device, dtype):
         criterion = kornia.losses.WelschLoss(reduction="test")
         with pytest.raises(Exception):
-            criterion(torch.rand(2, 3, 3, 2), torch.rand(2, 3, 3))
+            criterion(torch.rand(3, 3), torch.rand(3, 3))
 
 class TestCauchyLoss:
     def test_smoke(self, device, dtype):
@@ -862,7 +862,7 @@ class TestCauchyLoss:
     def test_reduction(self, device, dtype):
         criterion = kornia.losses.CauchyLoss(reduction="test")
         with pytest.raises(Exception):
-            criterion(torch.rand(2, 3, 3, 2), torch.rand(2, 3, 3))
+            criterion(torch.rand(2, 2), torch.rand(2, 2))
 
 class TestGemanMcclureLossLoss:
     def test_smoke(self, device, dtype):
@@ -917,4 +917,4 @@ class TestGemanMcclureLossLoss:
     def test_reduction(self, device, dtype):
         criterion = kornia.losses.GemanMcclureLoss(reduction="test")
         with pytest.raises(Exception):
-            criterion(torch.rand(2, 3, 3, 2), torch.rand(2, 3, 3))
+            criterion(torch.rand(4, 4), torch.rand(4, 4))
