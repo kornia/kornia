@@ -8,7 +8,7 @@ from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SA
 def geman_mcclure_loss(img1: Tensor, img2: Tensor, reduction: str = "none") -> Tensor:
     r"""Criterion that computes the Geman-McClure loss [2].
 
-    According to [1], we compute the Cauchy loss as follows:
+    According to [1], we compute the Geman-McClure loss as follows:
 
     .. math::
 
@@ -66,7 +66,7 @@ def geman_mcclure_loss(img1: Tensor, img2: Tensor, reduction: str = "none") -> T
 class GemanMcclureLoss(nn.Module):
     r"""Criterion that computes the Geman-McClure loss [2].
 
-    According to [1], we compute the Cauchy loss as follows:
+    According to [1], we compute the Geman-McClure loss as follows:
 
     .. math::
 
