@@ -808,3 +808,58 @@ class TestWelschLoss:
         criterion = kornia.losses.WelschLoss(reduction="test")
         with pytest.raises(Exception):
             criterion(torch.rand(2, 3, 3, 2), torch.rand(2, 3, 3))
+
+class TestCauchyLoss:
+    def test_smoke(self, device, dtype):
+        img1 = torch.rand(2, 3, 2, device=device, dtype=dtype)
+        img2 = torch.rand(2, 3, 2)
+        img2 = img2.to(device).long()
+
+        criterion = kornia.losses.CauchyLoss()
+        assert criterion(img1, img2) is not None
+
+    def test_gradcheck(self, device, dtype):
+        img1 = torch.rand(2, 3, 64, 12, device=device, dtype=dtype)
+        img2 = torch.rand(2, 3, 64, 12)
+        img2 = img2.to(device).long()
+
+        img1 = utils.tensor_to_gradcheck_var(img1)  # to var
+        assert gradcheck(kornia.losses.cauchy_loss, (img1, img2), raise_exception=True, fast_mode=True)
+
+    def test_jit(self, device, dtype):
+        img1 = torch.rand(2, 3, 64, 1904, device=device, dtype=dtype)
+        img2 = torch.rand(2, 3, 64, 1904)
+        img2 = img2.to(device).long()
+
+        op = kornia.losses.cauchy_loss
+        op_script = torch.jit.script(op)
+
+        assert_close(op(img1, img2), op_script(img1, img2))
+
+    def test_module(self, device, dtype):
+        img1 = torch.rand(2, 3, 32, 1904, device=device, dtype=dtype)
+        img2 = torch.rand(2, 3, 32, 1904)
+        img2 = img2.to(device).long()
+
+        op = kornia.losses.cauchy_loss
+        op_module = kornia.losses.CauchyLoss()
+
+        assert_close(op(img1, img2), op_module(img1, img2))
+
+    def test_perfect_prediction(self, device, dtype):
+        img1 = torch.ones(100,  device=device, dtype=dtype)
+        img2 = torch.ones(100, device=device, dtype=torch.int64)
+
+        criterion = kornia.losses.CauchyLoss()
+        loss = criterion(img1, img2)
+        assert_close(loss, torch.zeros_like(loss), rtol=1e-3, atol=1e-3)
+
+    def test_shape(self, device, dtype):
+        criterion = kornia.losses.CauchyLoss()
+        with pytest.raises(Exception):
+            criterion(torch.rand(2, 3, 3, 2), torch.rand(2, 3, 3))
+
+    def test_reduction(self, device, dtype):
+        criterion = kornia.losses.CauchyLoss(reduction="test")
+        with pytest.raises(Exception):
+            criterion(torch.rand(2, 3, 3, 2), torch.rand(2, 3, 3))
