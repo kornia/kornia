@@ -93,7 +93,7 @@ class TestBinaryFocalLossWithLogits:
         logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
         labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
 
-        kwargs = {"alpha": 0.25, "gamma": 2.0, "reduction": 'mean'}
+        kwargs = {"alpha": 0.25, "gamma": 2.0, "reduction": "mean"}
 
         assert kornia.losses.binary_focal_loss_with_logits(
             logits, labels, **kwargs
@@ -327,7 +327,7 @@ class TestDepthSmoothnessLoss:
 
 class TestDivergenceLoss:
     @pytest.mark.parametrize(
-        'input,target,expected',
+        "input,target,expected",
         [
             (torch.full((1, 1, 2, 4), 0.125), torch.full((1, 1, 2, 4), 0.125), 0.0),
             (torch.full((1, 7, 2, 4), 0.125), torch.full((1, 7, 2, 4), 0.125), 0.0),
@@ -341,7 +341,7 @@ class TestDivergenceLoss:
         assert_close(actual, expected)
 
     @pytest.mark.parametrize(
-        'input,target,expected',
+        "input,target,expected",
         [
             (torch.full((1, 1, 2, 4), 0.125), torch.full((1, 1, 2, 4), 0.125), 0.0),
             (torch.full((1, 7, 2, 4), 0.125), torch.full((1, 7, 2, 4), 0.125), 0.0),
@@ -355,7 +355,7 @@ class TestDivergenceLoss:
         assert_close(actual, expected)
 
     @pytest.mark.parametrize(
-        'input,target,expected',
+        "input,target,expected",
         [
             (torch.full((1, 1, 2, 4), 0.125), torch.full((1, 1, 2, 4), 0.125), torch.full((1, 1), 0.0)),
             (torch.full((1, 7, 2, 4), 0.125), torch.full((1, 7, 2, 4), 0.125), torch.full((1, 7), 0.0)),
@@ -364,11 +364,11 @@ class TestDivergenceLoss:
         ],
     )
     def test_kl_div_loss_2d_without_reduction(self, device, dtype, input, target, expected):
-        actual = kornia.losses.kl_div_loss_2d(input.to(device, dtype), target.to(device, dtype), reduction='none')
+        actual = kornia.losses.kl_div_loss_2d(input.to(device, dtype), target.to(device, dtype), reduction="none")
         assert_close(actual, expected.to(device, dtype))
 
     @pytest.mark.parametrize(
-        'input,target,expected',
+        "input,target,expected",
         [
             (torch.full((1, 1, 2, 4), 0.125), torch.full((1, 1, 2, 4), 0.125), 0.0),
             (torch.full((1, 7, 2, 4), 0.125), torch.full((1, 7, 2, 4), 0.125), 0.0),
@@ -384,7 +384,7 @@ class TestDivergenceLoss:
         assert_close(actual, expected)
 
     @pytest.mark.parametrize(
-        'input,target,expected',
+        "input,target,expected",
         [
             (torch.full((1, 1, 2, 4), 0.125), torch.full((1, 1, 2, 4), 0.125), 0.0),
             (torch.full((1, 7, 2, 4), 0.125), torch.full((1, 7, 2, 4), 0.125), 0.0),
@@ -437,7 +437,7 @@ class TestDivergenceLoss:
 class TestTotalVariation:
     # Total variation of constant vectors is 0
     @pytest.mark.parametrize(
-        'input, expected',
+        "input, expected",
         [
             (torch.ones(3, 4, 5), torch.tensor([0.0, 0.0, 0.0])),
             (2 * torch.ones(2, 3, 4, 5), torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])),
@@ -449,7 +449,7 @@ class TestTotalVariation:
 
     # Total variation for 3D tensors
     @pytest.mark.parametrize(
-        'input, expected',
+        "input, expected",
         [
             (
                 torch.tensor(
@@ -488,7 +488,7 @@ class TestTotalVariation:
 
     # Total variation for 4D tensors
     @pytest.mark.parametrize(
-        'input, expected',
+        "input, expected",
         [
             (
                 torch.tensor(
@@ -523,7 +523,7 @@ class TestTotalVariation:
         actual = kornia.losses.total_variation(input.to(device, dtype))
         assert_close(actual, expected.to(device, dtype), rtol=1e-3, atol=1e-3)
 
-    @pytest.mark.parametrize('input', [torch.rand(3, 5, 5), torch.rand(4, 3, 5, 5), torch.rand(4, 2, 3, 5, 5)])
+    @pytest.mark.parametrize("input", [torch.rand(3, 5, 5), torch.rand(4, 3, 5, 5), torch.rand(4, 2, 3, 5, 5)])
     def test_tv_shapes(self, device, dtype, input):
         input = input.to(device, dtype)
         actual_lesser_dims = []
@@ -534,15 +534,15 @@ class TestTotalVariation:
         actual_higher_dims = kornia.losses.total_variation(input)
         assert_close(actual_lesser_dims, actual_higher_dims.to(device, dtype), rtol=1e-3, atol=1e-3)
 
-    @pytest.mark.parametrize('reduction, expected', [('sum', torch.tensor(20)), ('mean', torch.tensor(1))])
+    @pytest.mark.parametrize("reduction, expected", [("sum", torch.tensor(20)), ("mean", torch.tensor(1))])
     def test_tv_reduction(self, device, dtype, reduction, expected):
-        input, _ = torch_meshgrid([torch.arange(5), torch.arange(5)], 'ij')
+        input, _ = torch_meshgrid([torch.arange(5), torch.arange(5)], "ij")
         input = input.to(device, dtype)
         actual = kornia.losses.total_variation(input, reduction=reduction)
         assert_close(actual, expected.to(device, dtype), rtol=1e-3, atol=1e-3)
 
     # Expect TypeError to be raised when non-torch tensors are passed
-    @pytest.mark.parametrize('input', [1, [1, 2]])
+    @pytest.mark.parametrize("input", [1, [1, 2]])
     def test_tv_on_invalid_types(self, device, dtype, input):
         with pytest.raises(TypeError):
             kornia.losses.total_variation(input)
@@ -754,6 +754,7 @@ class TestLovaszSoftmaxLoss:
 
         assert_close(op(logits, labels), op_module(logits, labels))
 
+
 class TestWelschLoss:
     def test_smoke(self, device, dtype):
         img1 = torch.rand(2, 3, 2, device=device, dtype=dtype)
@@ -792,7 +793,7 @@ class TestWelschLoss:
         assert_close(op(img1, img2), op_module(img1, img2))
 
     def test_perfect_prediction(self, device, dtype):
-        img1 = torch.ones(100,  device=device, dtype=dtype)
+        img1 = torch.ones(100, device=device, dtype=dtype)
         img2 = torch.ones(100, device=device, dtype=torch.int64)
 
         criterion = kornia.losses.WelschLoss()
@@ -808,6 +809,7 @@ class TestWelschLoss:
         criterion = kornia.losses.WelschLoss(reduction="test")
         with pytest.raises(Exception):
             criterion(torch.rand(3, 3), torch.rand(3, 3))
+
 
 class TestCauchyLoss:
     def test_smoke(self, device, dtype):
@@ -847,7 +849,7 @@ class TestCauchyLoss:
         assert_close(op(img1, img2), op_module(img1, img2))
 
     def test_perfect_prediction(self, device, dtype):
-        img1 = torch.ones(100,  device=device, dtype=dtype)
+        img1 = torch.ones(100, device=device, dtype=dtype)
         img2 = torch.ones(100, device=device, dtype=torch.int64)
 
         criterion = kornia.losses.CauchyLoss()
@@ -863,6 +865,7 @@ class TestCauchyLoss:
         criterion = kornia.losses.CauchyLoss(reduction="test")
         with pytest.raises(Exception):
             criterion(torch.rand(2, 2), torch.rand(2, 2))
+
 
 class TestGemanMcclureLossLoss:
     def test_smoke(self, device, dtype):
@@ -902,7 +905,7 @@ class TestGemanMcclureLossLoss:
         assert_close(op(img1, img2), op_module(img1, img2))
 
     def test_perfect_prediction(self, device, dtype):
-        img1 = torch.ones(100,  device=device, dtype=dtype)
+        img1 = torch.ones(100, device=device, dtype=dtype)
         img2 = torch.ones(100, device=device, dtype=torch.int64)
 
         criterion = kornia.losses.GemanMcclureLoss()
@@ -916,5 +919,61 @@ class TestGemanMcclureLossLoss:
 
     def test_reduction(self, device, dtype):
         criterion = kornia.losses.GemanMcclureLoss(reduction="test")
+        with pytest.raises(Exception):
+            criterion(torch.rand(4, 4), torch.rand(4, 4))
+
+
+class TestCharbonnierLoss:
+    def test_smoke(self, device, dtype):
+        img1 = torch.rand(2, 3, 2, device=device, dtype=dtype)
+        img2 = torch.rand(2, 3, 2)
+        img2 = img2.to(device).long()
+
+        criterion = kornia.losses.CharbonnierLoss()
+        assert criterion(img1, img2) is not None
+
+    def test_gradcheck(self, device, dtype):
+        img1 = torch.rand(2, 3, 64, 12, device=device, dtype=dtype)
+        img2 = torch.rand(2, 3, 64, 12)
+        img2 = img2.to(device).long()
+
+        img1 = utils.tensor_to_gradcheck_var(img1)  # to var
+        assert gradcheck(kornia.losses.charbonnier_loss, (img1, img2), raise_exception=True, fast_mode=True)
+
+    def test_jit(self, device, dtype):
+        img1 = torch.rand(2, 3, 64, 1904, device=device, dtype=dtype)
+        img2 = torch.rand(2, 3, 64, 1904)
+        img2 = img2.to(device).long()
+
+        op = kornia.losses.charbonnier_loss
+        op_script = torch.jit.script(op)
+
+        assert_close(op(img1, img2), op_script(img1, img2))
+
+    def test_module(self, device, dtype):
+        img1 = torch.rand(2, 3, 32, 1904, device=device, dtype=dtype)
+        img2 = torch.rand(2, 3, 32, 1904)
+        img2 = img2.to(device).long()
+
+        op = kornia.losses.charbonnier_loss
+        op_module = kornia.losses.CharbonnierLoss()
+
+        assert_close(op(img1, img2), op_module(img1, img2))
+
+    def test_perfect_prediction(self, device, dtype):
+        img1 = torch.ones(100, device=device, dtype=dtype)
+        img2 = torch.ones(100, device=device, dtype=torch.int64)
+
+        criterion = kornia.losses.CharbonnierLoss()
+        loss = criterion(img1, img2)
+        assert_close(loss, torch.zeros_like(loss), rtol=1e-3, atol=1e-3)
+
+    def test_shape(self, device, dtype):
+        criterion = kornia.losses.CharbonnierLoss()
+        with pytest.raises(Exception):
+            criterion(torch.rand(2, 3, 3, 2), torch.rand(2, 3, 3))
+
+    def test_reduction(self, device, dtype):
+        criterion = kornia.losses.CharbonnierLoss(reduction="test")
         with pytest.raises(Exception):
             criterion(torch.rand(4, 4), torch.rand(4, 4))
