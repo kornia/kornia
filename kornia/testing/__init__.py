@@ -451,7 +451,7 @@ def KORNIA_CHECK_SAME_SHAPE(x: Tensor, y: Tensor):
         >>> x2 = torch.rand(2, 3, 3)
         >>> KORNIA_CHECK_SAME_SHAPE(x1, x2)
     """
-    if x.shape == y.shape:
+    if x.shape != y.shape:
         raise TypeError(f"Not same shape for tensors. Got: {x.shape} and {y.shape}")
 
 
