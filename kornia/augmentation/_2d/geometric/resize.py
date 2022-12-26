@@ -37,8 +37,12 @@ class Resize(GeometricAugmentationBase2D):
         super().__init__(p=1.0, return_transform=return_transform, same_on_batch=True, p_batch=p, keepdim=keepdim)
         self._param_generator = rg.ResizeGenerator(resize_to=size, side=side)
         self.flags = dict(
-            size=size, side=side, resample=Resample.get(resample), align_corners=align_corners, antialias=antialias,
-            padding_mode='zeros'
+            size=size,
+            side=side,
+            resample=Resample.get(resample),
+            align_corners=align_corners,
+            antialias=antialias,
+            padding_mode='zeros',
         )
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
@@ -86,8 +90,12 @@ class Resize(GeometricAugmentationBase2D):
             raise TypeError(f'Expected the transform be a Tensor. Gotcha {type(transform)}')
 
         return crop_by_transform_mat(
-            input, transform[:, :2, :], size, flags["resample"].name.lower(), flags["padding_mode"],
-            flags["align_corners"]
+            input,
+            transform[:, :2, :],
+            size,
+            flags["resample"].name.lower(),
+            flags["padding_mode"],
+            flags["align_corners"],
         )
 
 
