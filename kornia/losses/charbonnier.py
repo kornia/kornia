@@ -1,5 +1,5 @@
-import torch.nn as nn
 from torch import Tensor
+from torch.nn import Module
 
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_DEVICE, KORNIA_CHECK_SAME_SHAPE
 
@@ -68,7 +68,7 @@ def charbonnier_loss(img1: Tensor, img2: Tensor, reduction: str = "none") -> Ten
     return loss
 
 
-class CharbonnierLoss(nn.Module):
+class CharbonnierLoss(Module):
     r"""Criterion that computes the Charbonnier [2] (aka. L1-L2 [3]) loss.
 
     According to [1], we compute the Charbonnier loss as follows:

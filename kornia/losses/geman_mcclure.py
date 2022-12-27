@@ -1,5 +1,5 @@
-import torch.nn as nn
 from torch import Tensor
+from torch.nn import Module
 
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_DEVICE, KORNIA_CHECK_SAME_SHAPE
 
@@ -62,7 +62,7 @@ def geman_mcclure_loss(img1: Tensor, img2: Tensor, reduction: str = "none") -> T
     return loss
 
 
-class GemanMcclureLoss(nn.Module):
+class GemanMcclureLoss(Module):
     r"""Criterion that computes the Geman-McClure loss [2].
 
     According to [1], we compute the Geman-McClure loss as follows:

@@ -1,5 +1,5 @@
-import torch.nn as nn
 from torch import Tensor
+from torch.nn import Module
 
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_DEVICE, KORNIA_CHECK_SAME_SHAPE
 
@@ -62,7 +62,7 @@ def cauchy_loss(img1: Tensor, img2: Tensor, reduction: str = "none") -> Tensor:
     return loss
 
 
-class CauchyLoss(nn.Module):
+class CauchyLoss(Module):
     r"""Criterion that computes the Cauchy [2] (aka. Lorentzian) loss.
 
     According to [1], we compute the Cauchy loss as follows:
