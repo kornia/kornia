@@ -426,6 +426,27 @@ class TestAugmentationSequential:
         assert out_inv[3].shape == points.shape
         assert_close(out_inv[3], points, atol=1e-4, rtol=1e-4)
 
+    def test_bbox(self, device, dtype):
+        img = torch.rand((3, 3, 10, 10), device=device, dtype=dtype)
+        bbox = [
+            torch.tensor([[1, 5, 2, 7], [0, 3, 9, 9]], device=device, dtype=dtype),
+            torch.tensor([[1, 5, 2, 7], [0, 3, 9, 9], [0, 5, 8, 7]], device=device, dtype=dtype),
+            torch.empty((0, 4), device=device, dtype=dtype),
+        ]
+
+        inputs = [img, bbox]
+
+        aug = K.AugmentationSequential(K.Resize((30, 30)), data_keys=['input', 'bbox_xyxy'])
+
+        transformed = aug(*inputs)
+
+        assert len(transformed) == len(inputs)
+        bboxes_transformed = transformed[-1]
+        assert len(bboxes_transformed) == len(bbox)
+        assert len(bboxes_transformed[0]) == 2
+        assert len(bboxes_transformed[1]) == 3
+        assert len(bboxes_transformed[2]) == 0
+
     @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 10, True, False])
     def test_forward_and_inverse(self, random_apply, device, dtype):
         inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
