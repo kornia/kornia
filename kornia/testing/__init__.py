@@ -435,7 +435,7 @@ def KORNIA_CHECK_SAME_DEVICES(tensors: List[Tensor], msg: Optional[str] = None):
         raise Exception(f"Not same device for tensors. Got: {[x.device for x in tensors]}.\n{msg}")
 
 
-def KORNIA_CHECK_SAME_SHAPE(x: Tensor, y: Tensor):
+def KORNIA_CHECK_SAME_SHAPE(x: Tensor, y: Tensor) -> None:
     """Check whether two tensor have the same shape.
 
     Args:
