@@ -50,7 +50,7 @@ def geman_mcclure_loss(img1: Tensor, img2: Tensor, reduction: str = "none") -> T
     KORNIA_CHECK(reduction in ("mean", "sum", "none"), f"Given type of reduction is not supported. Got: {reduction}")
 
     # compute loss
-    loss: Tensor = 2.0 * (img1 - img2) ** 2 / ((img1 - img2) ** 2 + 4.0)
+    loss = 2.0 * (img1 - img2) ** 2 / ((img1 - img2) ** 2 + 4.0)
 
     # perform reduction
     if reduction == "mean":
@@ -100,7 +100,7 @@ class GemanMcclureLoss(Module):
 
     def __init__(self, reduction: str = "none") -> None:
         super().__init__()
-        self.reduction: str = reduction
+        self.reduction = reduction
 
     def forward(self, img1: Tensor, img2: Tensor) -> Tensor:
         return geman_mcclure_loss(img1=img1, img2=img2, reduction=self.reduction)

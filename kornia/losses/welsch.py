@@ -51,7 +51,7 @@ def welsch_loss(img1: Tensor, img2: Tensor, reduction: str = "none") -> Tensor:
     KORNIA_CHECK(reduction in ("mean", "sum", "none"), f"Given type of reduction is not supported. Got: {reduction}")
 
     # compute loss
-    loss: Tensor = 1.0 - (-0.5 * (img1 - img2) ** 2).exp()
+    loss = 1.0 - (-0.5 * (img1 - img2) ** 2).exp()
 
     # perform reduction
     if reduction == "mean":
@@ -102,7 +102,7 @@ class WelschLoss(Module):
 
     def __init__(self, reduction: str = "none") -> None:
         super().__init__()
-        self.reduction: str = reduction
+        self.reduction = reduction
 
     def forward(self, img1: Tensor, img2: Tensor) -> Tensor:
         return welsch_loss(img1=img1, img2=img2, reduction=self.reduction)

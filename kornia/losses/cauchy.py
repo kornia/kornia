@@ -50,7 +50,7 @@ def cauchy_loss(img1: Tensor, img2: Tensor, reduction: str = "none") -> Tensor:
     KORNIA_CHECK(reduction in ("mean", "sum", "none"), f"Given type of reduction is not supported. Got: {reduction}")
 
     # compute loss
-    loss: Tensor = (0.5 * (img1 - img2) ** 2 + 1.0).log()
+    loss = (0.5 * (img1 - img2) ** 2 + 1.0).log()
 
     # perform reduction
     if reduction == "mean":
@@ -100,7 +100,7 @@ class CauchyLoss(Module):
 
     def __init__(self, reduction: str = "none") -> None:
         super().__init__()
-        self.reduction: str = reduction
+        self.reduction = reduction
 
     def forward(self, img1: Tensor, img2: Tensor) -> Tensor:
         return cauchy_loss(img1=img1, img2=img2, reduction=self.reduction)

@@ -56,7 +56,7 @@ def charbonnier_loss(img1: Tensor, img2: Tensor, reduction: str = "none") -> Ten
     KORNIA_CHECK(reduction in ("mean", "sum", "none"), f"Given type of reduction is not supported. Got: {reduction}")
 
     # compute loss
-    loss: Tensor = ((img1 - img2) ** 2 + 1.0).sqrt() - 1.0
+    loss = ((img1 - img2) ** 2 + 1.0).sqrt() - 1.0
 
     # perform reduction
     if reduction == "mean":
@@ -112,7 +112,7 @@ class CharbonnierLoss(Module):
 
     def __init__(self, reduction: str = "none") -> None:
         super().__init__()
-        self.reduction: str = reduction
+        self.reduction = reduction
 
     def forward(self, img1: Tensor, img2: Tensor) -> Tensor:
         return charbonnier_loss(img1=img1, img2=img2, reduction=self.reduction)
