@@ -1,6 +1,6 @@
 from torch import Tensor
-from torch.nn import Module
 
+from kornia.core import Module
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_DEVICE, KORNIA_CHECK_SAME_SHAPE
 
 
