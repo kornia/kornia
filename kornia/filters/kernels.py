@@ -4,6 +4,8 @@ from typing import List, Tuple
 
 import torch
 
+from kornia.testing import KORNIA_CHECK_SHAPE
+
 from kornia.core import Tensor, as_tensor, stack, tensor, zeros
 
 
@@ -15,15 +17,21 @@ def normalize_kernel2d(input: Tensor) -> Tensor:
     return input / (norm.unsqueeze(-1).unsqueeze(-1))
 
 
-def gaussian(window_size: int, sigma: float) -> Tensor:
-    device, dtype = None, None
-    if isinstance(sigma, Tensor):
-        device, dtype = sigma.device, sigma.dtype
-    x = torch.arange(window_size, device=device, dtype=dtype) - window_size // 2
+def gaussian(window_size: int, sigma: float) -> torch.Tensor:
+    sigma_t = torch.tensor(sigma)
+
+    return gaussian_t(window_size, sigma_t)
+
+
+def gaussian_t(window_size: int, sigma: torch.Tensor) -> torch.Tensor:
+    device, dtype = sigma.device, sigma.dtype
+    sigma = sigma.unsqueeze(-1)
+    batch_size = sigma.shape[0]
+    x = (torch.arange(window_size, device=device, dtype=dtype) - window_size // 2).expand(batch_size, -1)
     if window_size % 2 == 0:
         x = x + 0.5
-    gauss = torch.exp(-(x**2.0) / (2 * sigma**2))
-    return gauss / gauss.sum()
+    gauss = torch.exp(-x.pow(2.0) / (2 * sigma.pow(2.0)))
+    return gauss / gauss.sum(-1, keepdim=True)
 
 
 def gaussian_discrete_erf(window_size: int, sigma) -> Tensor:
@@ -351,22 +359,56 @@ def get_gaussian_kernel1d(kernel_size: int, sigma: float, force_even: bool = Fal
         force_even: overrides requirement for odd kernel size.
 
     Returns:
-        1D tensor with gaussian filter coefficients.
+        gaussian filter coefficients
 
     Shape:
-        - Output: :math:`(\text{kernel_size})`
+        - Output: :math:`(B, \text{kernel_size})`.
 
     Examples:
 
         >>> get_gaussian_kernel1d(3, 2.5)
-        tensor([0.3243, 0.3513, 0.3243])
+        tensor([[0.3243, 0.3513, 0.3243]])
 
         >>> get_gaussian_kernel1d(5, 1.5)
-        tensor([0.1201, 0.2339, 0.2921, 0.2339, 0.1201])
+        tensor([[0.1201, 0.2339, 0.2921, 0.2339, 0.1201]])
     """
+    sigma_t = torch.tensor(sigma).unsqueeze(0)
+
+    return get_gaussian_kernel1d_t(kernel_size, sigma_t, force_even)
+
+
+def get_gaussian_kernel1d_t(kernel_size: int, sigma: torch.Tensor, force_even: bool = False) -> torch.Tensor:
+    r"""Function that returns Gaussian filter coefficients.
+
+    Args:
+        kernel_size: filter size. It should be odd and positive.
+        sigma: gaussian standard deviation with shape of
+          :math:`(B)`.
+        force_even: overrides requirement for odd kernel size.
+
+    Returns:
+        gaussian filter coefficients
+
+    Shape:
+        - Output: :math:`(B, \text{kernel_size})`.
+
+    Examples:
+
+        >>> get_gaussian_kernel1d_t(3, torch.tensor([2.5]))
+        tensor([[0.3243, 0.3513, 0.3243]])
+
+        >>> get_gaussian_kernel1d_t(5, torch.tensor([1.5]))
+        tensor([[0.1201, 0.2339, 0.2921, 0.2339, 0.1201]])
+
+        >>> get_gaussian_kernel1d_t(5, torch.tensor([1.5, 0.7]))
+        tensor([[0.1201, 0.2339, 0.2921, 0.2339, 0.1201],
+                [0.0096, 0.2054, 0.5699, 0.2054, 0.0096]])
+    """
+
     if not isinstance(kernel_size, int) or ((kernel_size % 2 == 0) and not force_even) or (kernel_size <= 0):
         raise TypeError("kernel_size must be an odd positive integer. " "Got {}".format(kernel_size))
-    window_1d: Tensor = gaussian(kernel_size, sigma)
+
+    window_1d: torch.Tensor = gaussian_t(kernel_size, sigma)
     return window_1d
 
 
@@ -428,41 +470,98 @@ def get_gaussian_erf_kernel1d(kernel_size: int, sigma: float, force_even: bool =
     return window_1d
 
 
-def get_gaussian_kernel2d(kernel_size: Tuple[int, int], sigma: Tuple[float, float], force_even: bool = False) -> Tensor:
+def get_gaussian_kernel2d(
+    kernel_size: Tuple[int, int], sigma: Tuple[float, float], force_even: bool = False
+) -> torch.Tensor:
     r"""Function that returns Gaussian filter matrix coefficients.
 
     Args:
         kernel_size: filter sizes in the x and y direction.
          Sizes should be odd and positive.
-        sigma: gaussian standard deviation in the x and y
-         direction.
+        sigma: gaussian standard deviation in the x and y.
         force_even: overrides requirement for odd kernel size.
 
     Returns:
         2D tensor with gaussian filter matrix coefficients.
 
     Shape:
-        - Output: :math:`(\text{kernel_size}_x, \text{kernel_size}_y)`
+        - Output: :math:`(B, \text{kernel_size}_x, \text{kernel_size}_y)`
 
     Examples:
-        >>> get_gaussian_kernel2d((3, 3), (1.5, 1.5))
-        tensor([[0.0947, 0.1183, 0.0947],
-                [0.1183, 0.1478, 0.1183],
-                [0.0947, 0.1183, 0.0947]])
+
+        >>> get_gaussian_kernel2d((5, 5), (1.5, 1.5))
+        tensor([[[0.0144, 0.0281, 0.0351, 0.0281, 0.0144],
+                 [0.0281, 0.0547, 0.0683, 0.0547, 0.0281],
+                 [0.0351, 0.0683, 0.0853, 0.0683, 0.0351],
+                 [0.0281, 0.0547, 0.0683, 0.0547, 0.0281],
+                 [0.0144, 0.0281, 0.0351, 0.0281, 0.0144]]])
+
         >>> get_gaussian_kernel2d((3, 5), (1.5, 1.5))
-        tensor([[0.0370, 0.0720, 0.0899, 0.0720, 0.0370],
-                [0.0462, 0.0899, 0.1123, 0.0899, 0.0462],
-                [0.0370, 0.0720, 0.0899, 0.0720, 0.0370]])
+        tensor([[[0.0370, 0.0720, 0.0899, 0.0720, 0.0370],
+                 [0.0462, 0.0899, 0.1123, 0.0899, 0.0462],
+                 [0.0370, 0.0720, 0.0899, 0.0720, 0.0370]]])
+    """
+
+    sigma_t = torch.tensor(sigma).unsqueeze(0)
+
+    return get_gaussian_kernel2d_t(kernel_size, sigma_t, force_even)
+
+
+def get_gaussian_kernel2d_t(
+    kernel_size: Tuple[int, int], sigma: torch.Tensor, force_even: bool = False
+) -> torch.Tensor:
+    r"""Function that returns Gaussian filter matrix coefficients.
+
+    Args:
+        kernel_size: filter sizes in the x and y direction.
+         Sizes should be odd and positive.
+        sigma: gaussian standard deviation in the x and y
+         direction with shape of :math:`(B, 2)`.
+        force_even: overrides requirement for odd kernel size.
+
+    Returns:
+        2D tensor with gaussian filter matrix coefficients.
+
+    Shape:
+        - Output: :math:`(B, \text{kernel_size}_x, \text{kernel_size}_y)`
+
+    Examples:
+
+        >>> get_gaussian_kernel2d_t((5, 5), torch.tensor([[1.5, 1.5]]))
+        tensor([[[0.0144, 0.0281, 0.0351, 0.0281, 0.0144],
+                 [0.0281, 0.0547, 0.0683, 0.0547, 0.0281],
+                 [0.0351, 0.0683, 0.0853, 0.0683, 0.0351],
+                 [0.0281, 0.0547, 0.0683, 0.0547, 0.0281],
+                 [0.0144, 0.0281, 0.0351, 0.0281, 0.0144]]])
+
+        >>> get_gaussian_kernel2d_t((3, 5), torch.tensor([[1.5, 1.5]]))
+        tensor([[[0.0370, 0.0720, 0.0899, 0.0720, 0.0370],
+                 [0.0462, 0.0899, 0.1123, 0.0899, 0.0462],
+                 [0.0370, 0.0720, 0.0899, 0.0720, 0.0370]]])
+
+        >>> get_gaussian_kernel2d_t((5, 5), torch.tensor([[1.5, 1.5], [0.5, 0.5]]))
+        tensor([[[1.4419e-02, 2.8084e-02, 3.5073e-02, 2.8084e-02, 1.4419e-02],
+                 [2.8084e-02, 5.4700e-02, 6.8312e-02, 5.4700e-02, 2.8084e-02],
+                 [3.5073e-02, 6.8312e-02, 8.5312e-02, 6.8312e-02, 3.5073e-02],
+                 [2.8084e-02, 5.4700e-02, 6.8312e-02, 5.4700e-02, 2.8084e-02],
+                 [1.4419e-02, 2.8084e-02, 3.5073e-02, 2.8084e-02, 1.4419e-02]],
+        <BLANKLINE>
+                [[6.9625e-08, 2.8089e-05, 2.0755e-04, 2.8089e-05, 6.9625e-08],
+                 [2.8089e-05, 1.1332e-02, 8.3731e-02, 1.1332e-02, 2.8089e-05],
+                 [2.0755e-04, 8.3731e-02, 6.1869e-01, 8.3731e-02, 2.0755e-04],
+                 [2.8089e-05, 1.1332e-02, 8.3731e-02, 1.1332e-02, 2.8089e-05],
+                 [6.9625e-08, 2.8089e-05, 2.0755e-04, 2.8089e-05, 6.9625e-08]]])
     """
     if not isinstance(kernel_size, tuple) or len(kernel_size) != 2:
         raise TypeError(f"kernel_size must be a tuple of length two. Got {kernel_size}")
-    if not isinstance(sigma, tuple) or len(sigma) != 2:
-        raise TypeError(f"sigma must be a tuple of length two. Got {sigma}")
+
+    KORNIA_CHECK_SHAPE(sigma, ["B", "2"])
+
     ksize_x, ksize_y = kernel_size
-    sigma_x, sigma_y = sigma
-    kernel_x: Tensor = get_gaussian_kernel1d(ksize_x, sigma_x, force_even)
-    kernel_y: Tensor = get_gaussian_kernel1d(ksize_y, sigma_y, force_even)
-    kernel_2d: Tensor = torch.matmul(kernel_x.unsqueeze(-1), kernel_y.unsqueeze(-1).t())
+    sigma_x, sigma_y = sigma[:, 0], sigma[:, 1]
+    kernel_x: torch.Tensor = get_gaussian_kernel1d_t(ksize_x, sigma_x, force_even)
+    kernel_y: torch.Tensor = get_gaussian_kernel1d_t(ksize_y, sigma_y, force_even)
+    kernel_2d: torch.Tensor = torch.matmul(kernel_x.unsqueeze(-1), kernel_y.unsqueeze(-1).transpose(2, 1))
     return kernel_2d
 
 
