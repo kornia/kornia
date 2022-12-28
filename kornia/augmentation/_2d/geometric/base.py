@@ -1,10 +1,10 @@
 import warnings
 from typing import Any, Dict, Optional, Tuple
 
-from kornia.geometry.boxes import Boxes
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.augmentation.utils import override_parameters
 from kornia.core import Tensor, as_tensor
+from kornia.geometry.boxes import Boxes
 from kornia.utils.helpers import _torch_inverse_cast
 
 
@@ -165,7 +165,8 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
 
 
 class NonRigidGeometricAugmentationBase2D(AugmentationBase2D):
-    r"""NonRigidGeometricAugmentationBase2D base class for customized non-rigid geometric augmentation implementations.
+    r"""NonRigidGeometricAugmentationBase2D base class for customized non-rigid geometric augmentation
+    implementations.
 
     Args:
         p: probability for applying an augmentation. This param controls the augmentation probabilities

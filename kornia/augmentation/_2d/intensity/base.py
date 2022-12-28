@@ -2,8 +2,8 @@ from typing import Any, Dict, Optional
 
 from torch import Tensor
 
-from kornia.geometry.boxes import Boxes
 from kornia.augmentation._2d.base import AugmentationBase2D
+from kornia.geometry.boxes import Boxes
 
 
 class IntensityAugmentationBase2D(AugmentationBase2D):

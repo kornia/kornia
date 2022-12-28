@@ -6,8 +6,8 @@ from torch.distributions import Bernoulli
 
 from kornia.augmentation.random_generator import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_sampling, _transform_output_shape, override_parameters
-from kornia.geometry.boxes import Boxes
 from kornia.core import Module, Tensor, tensor
+from kornia.geometry.boxes import Boxes
 
 TensorWithTransformMat = Union[Tensor, Tuple[Tensor, Tensor]]
 
