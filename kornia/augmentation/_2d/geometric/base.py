@@ -1,6 +1,7 @@
 import warnings
 from typing import Any, Dict, Optional, Tuple
 
+from kornia.geometry.boxes import Boxes
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.augmentation.utils import override_parameters
 from kornia.core import Tensor, as_tensor
@@ -19,6 +20,8 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
     """
+
+    transform_matrix: Tensor
 
     def inverse_transform(
         self,
@@ -113,3 +116,63 @@ class GeometricAugmentationBase2D(AugmentationBase2D):
             return self.transform_output_tensor(output, input_shape)
 
         return output
+
+    def apply_non_transform(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        # For the images where batch_prob == False.
+        return input
+
+    def apply_non_transform_mask(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        raise NotImplementedError
+
+    def apply_transform_mask(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        return input
+
+    def apply_non_transform_boxes(
+        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Boxes:
+        return input
+
+    def apply_transform_boxes(
+        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Boxes:
+        raise NotImplementedError
+
+    def apply_non_transform_keypoint(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        return input
+
+    def apply_transform_keypoint(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        raise NotImplementedError
+
+    def apply_non_transform_class(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        return input
+
+    def apply_transform_class(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        raise NotImplementedError
+
+
+class NonRigidGeometricAugmentationBase2D(AugmentationBase2D):
+    r"""NonRigidGeometricAugmentationBase2D base class for customized non-rigid geometric augmentation implementations.
+
+    Args:
+        p: probability for applying an augmentation. This param controls the augmentation probabilities
+          element-wise for a batch.
+        p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
+          probabilities batch-wise.
+        same_on_batch: apply the same transformation across the batch.
+        keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
+          to the batch form ``False``.
+    """

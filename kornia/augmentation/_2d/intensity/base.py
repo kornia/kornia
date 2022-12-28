@@ -1,7 +1,8 @@
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from torch import Tensor
 
+from kornia.geometry.boxes import Boxes
 from kornia.augmentation._2d.base import AugmentationBase2D
 
 
@@ -23,3 +24,49 @@ class IntensityAugmentationBase2D(AugmentationBase2D):
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return self.identity_matrix(input)
+
+    def apply_non_transform(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        # For the images where batch_prob == False.
+        return input
+
+    def apply_non_transform_mask(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        return input
+
+    def apply_transform_mask(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        return input
+
+    def apply_non_transform_boxes(
+        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Boxes:
+        return input
+
+    def apply_transform_boxes(
+        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Boxes:
+        return input
+
+    def apply_non_transform_keypoint(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        return input
+
+    def apply_transform_keypoint(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        return input
+
+    def apply_non_transform_class(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        return input
+
+    def apply_transform_class(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        return input
