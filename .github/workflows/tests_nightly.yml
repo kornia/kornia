@@ -1,6 +1,9 @@
-name: (scheduled) Tests on CPU
+name: Tests on CPU (nightly)
 
 on:
+  pull_request:
+    branches: [master]
+    types: [opened, reopened, synchronize, review_requested, ready_for_review]
   push:
     branches: [master]
   schedule:
@@ -20,8 +23,8 @@ jobs:
       matrix:
         os: ['Ubuntu', 'Windows', 'MacOS']
         python-version: ['3.7', '3.8']
-        pytorch-version: ['1.9.1', '1.10.2', '1.12.1', '1.13.1']
-        pytorch-dtype: ['float16', 'float32', 'float64']
+        pytorch-version: ['nightly']
+        pytorch-dtype: ['float32', 'float64']
 
     steps:
       - name: Checkout kornia

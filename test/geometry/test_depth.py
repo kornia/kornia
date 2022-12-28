@@ -329,3 +329,68 @@ class TestWarpFrameDepth:
             raise_exception=True,
             fast_mode=True,
         )
+
+
+class TestDepthFromDisparity:
+    def test_smoke(self, device, dtype):
+        disparity = 2 * torch.tensor(
+            [[[[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]]]], device=device, dtype=dtype
+        )
+
+        baseline = torch.tensor([1.0], device=device, dtype=dtype)
+        focal = torch.tensor([1.0], device=device, dtype=dtype)
+
+        depth_expected = torch.tensor(
+            [
+                [
+                    [
+                        [0.5000, 0.5000, 0.5000],
+                        [0.5000, 0.5000, 0.5000],
+                        [0.5000, 0.5000, 0.5000],
+                        [0.5000, 0.5000, 0.5000],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        depth = kornia.geometry.depth.depth_from_disparity(disparity, baseline, focal)
+        assert_close(depth, depth_expected, rtol=1e-3, atol=1e-3)
+
+    @pytest.mark.parametrize("batch_size", [2, 4, 5])
+    def test_cardinality(self, batch_size, device, dtype):
+        disparity = torch.rand(batch_size, 1, 3, 4, device=device, dtype=dtype)
+        baseline = torch.rand(1, device=device, dtype=dtype)
+        focal = torch.rand(1, device=device, dtype=dtype)
+
+        points3d = kornia.geometry.depth.depth_from_disparity(disparity, baseline, focal)
+        assert points3d.shape == (batch_size, 1, 3, 4)
+
+    @pytest.mark.parametrize("shape", [(1, 1, 3, 4), (4, 1, 3, 4), (4, 3, 4), (1, 3, 4), (3, 4)])
+    def test_shapes(self, shape, device, dtype):
+        disparity = torch.randn(shape, device=device, dtype=dtype)
+        baseline = torch.rand(1, device=device, dtype=dtype)
+        focal = torch.rand(1, device=device, dtype=dtype)
+
+        points3d = kornia.geometry.depth.depth_from_disparity(disparity, baseline, focal)
+        assert points3d.shape == shape
+
+    def test_gradcheck(self, device):
+        # generate input data
+        disparity = torch.rand(1, 1, 3, 4, device=device)
+        disparity = utils.tensor_to_gradcheck_var(disparity)  # to var
+
+        baseline = torch.rand(1, device=device)
+        baseline = utils.tensor_to_gradcheck_var(baseline)  # to var
+
+        focal = torch.rand(1, device=device)
+        focal = utils.tensor_to_gradcheck_var(focal)  # to var
+
+        # evaluate function gradient
+        assert gradcheck(
+            kornia.geometry.depth.depth_from_disparity,
+            (disparity, baseline, focal),
+            raise_exception=True,
+            fast_mode=True,
+        )

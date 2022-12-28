@@ -28,12 +28,14 @@ runs:
       shell: bash -l {0}
       run: conda install curl -c conda-forge
 
-    - if: ${{ contains(fromJson('["lts", "nightly"]'), inputs.pytorch-version ) }}
-      name: Install pytorch
+    - if: ${{ contains(fromJson('["nightly"]'), inputs.pytorch-version ) }}
+      name: Install dependencies
       shell: bash -l {0}
-      run: conda install pytorch cpuonly -c pytorch-${{ inputs.pytorch-version }}
+      run: |
+            pip install numpy --pre torch[dynamo] --force-reinstall --extra-index-url https://download.pytorch.org/whl/nightly/cpu/
+            pip install onnx
 
-    - if: ${{ contains(fromJson('["lts", "nightly"]'), inputs.pytorch-version ) == false}}
+    - if: ${{ contains(fromJson('["nightly"]'), inputs.pytorch-version ) == false}}
       name: Install pytorch
       shell: bash -l {0}
       run: conda install pytorch=${{ inputs.pytorch-version }} cpuonly -c pytorch
