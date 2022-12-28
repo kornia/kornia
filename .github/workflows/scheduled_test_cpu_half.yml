@@ -1,8 +1,6 @@
-name: Tests on CPU (scheduled)
+name: Tests on CPU (float16)
 
 on:
-  push:
-    branches: [master]
   schedule:
     - cron: "0 4 * * *"
 
@@ -21,7 +19,7 @@ jobs:
         os: ['Ubuntu', 'Windows', 'MacOS']
         python-version: ['3.7', '3.8']
         pytorch-version: ['1.9.1', '1.10.2', '1.12.1', '1.13.1']
-        pytorch-dtype: ['float32', 'float64']
+        pytorch-dtype: ['float16']
 
     steps:
       - name: Checkout kornia
