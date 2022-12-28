@@ -3,7 +3,7 @@ import numpy as np
 import torch
 from dog_cv import homography_est_cv
 
-import kornia.utils
+from kornia.utils import image_to_tensor
 from kornia.feature import match_mnn
 from kornia.feature.integrated import SIFTFeature
 from kornia.geometry import RANSAC
@@ -15,7 +15,7 @@ class TestDog:
         img = cv.imread("imgs/boat/img1.pgm")
         img = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
 
-        img_t = (kornia.utils.image_to_tensor(img, False).float() / 255.0).to(device=device)
+        img_t = (image_to_tensor(img, False).float() / 255.0).to(device=device)
         Hs_gt_t = torch.tensor(
             [
                 [[0.0, 1.0, 0.0], [-1.0, 0.0, img_t.shape[-1] - 1], [0.0, 0.0, 1.0]],
