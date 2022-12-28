@@ -1,6 +1,7 @@
+import cv2 as cv
 import numpy as np
 import torch
-import cv2 as cv
+
 from kornia.feature.integrated import SIFTFeature
 from kornia.utils import image_to_tensor
 
@@ -49,6 +50,7 @@ def get_tentatives(kpts0, desc0, kpts1, desc1, ratio_threshold):
 
 def get_visible_part_mean_absolute_reprojection_error_np(img1, img2, H_gt, H):
     """We reproject the image 1 mask to image2 and back to get the visible part mask.
+
     Then we average the reprojection absolute error over that area
     """
 
@@ -73,7 +75,6 @@ def get_visible_part_mean_absolute_reprojection_error_np(img1, img2, H_gt, H):
 
 
 def homography_est_cv(Hs_gt, imgs):
-
     sift_feature = SIFTFeature(device=torch.device("cpu"))
 
     ratio_threshold = 0.8

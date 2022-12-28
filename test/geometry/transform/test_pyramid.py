@@ -195,10 +195,8 @@ class TestBuildLaplacianPyramid:
 
 
 class TestUpscaleDouble:
-
     @pytest.mark.parametrize("shape", ((10, 10), (3, 10, 10), (1, 3, 10, 10)))
     def test_upscale_double(self, shape, device, dtype):
-
         print(f"shape: {shape}")
         print(f"device: {device}")
         print(f"dtype: {dtype}")
@@ -216,6 +214,9 @@ class TestUpscaleDouble:
             x[..., 1, :, :] = ym
 
         upscaled = kornia.geometry.transform.upscale_double(x)
-        assert torch.all(upscaled[..., 1::2, 1::2][..., :-1, :-1] == (upscaled[..., ::2, ::2][..., :-1, :-1] + upscaled[..., ::2, ::2][..., 1:, 1:]) / 2)
+        assert torch.all(
+            upscaled[..., 1::2, 1::2][..., :-1, :-1]
+            == (upscaled[..., ::2, ::2][..., :-1, :-1] + upscaled[..., ::2, ::2][..., 1:, 1:]) / 2
+        )
         downscaled_back = upscaled[..., ::2, ::2]
         assert torch.all(x == downscaled_back)

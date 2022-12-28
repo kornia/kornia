@@ -3,7 +3,7 @@ from typing import Tuple, Union
 import torch
 import torch.nn.functional as F
 
-from kornia.core import Module, Tensor, concatenate, stack, tensor, zeros, where
+from kornia.core import Module, Tensor, concatenate, stack, tensor, where, zeros
 from kornia.filters.sobel import spatial_gradient3d
 from kornia.geometry.conversions import normalize_pixel_coordinates, normalize_pixel_coordinates3d
 from kornia.utils import create_meshgrid, create_meshgrid3d

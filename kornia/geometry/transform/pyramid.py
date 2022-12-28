@@ -8,7 +8,16 @@ from kornia.core import Module, Tensor, pad, stack, tensor
 from kornia.filters import filter2d, gaussian_blur2d
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
-__all__ = ["PyrDown", "PyrUp", "ScalePyramid", "pyrdown", "pyrup", "build_pyramid", "build_laplacian_pyramid", "upscale_double"]
+__all__ = [
+    "PyrDown",
+    "PyrUp",
+    "ScalePyramid",
+    "pyrdown",
+    "pyrup",
+    "build_pyramid",
+    "build_laplacian_pyramid",
+    "upscale_double",
+]
 
 
 def _get_pyramid_gaussian_kernel() -> Tensor:
