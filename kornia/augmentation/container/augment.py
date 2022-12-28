@@ -18,6 +18,7 @@ from kornia.augmentation.container.video import VideoSequential
 from kornia.constants import DataKey, Resample
 from kornia.core import Tensor
 from kornia.geometry.boxes import Boxes
+from kornia.testing import KORNIA_CHECK_IS_LIST_OF_TENSOR
 from kornia.utils import eye_like
 
 __all__ = ["AugmentationSequential"]
@@ -193,7 +194,7 @@ class AugmentationSequential(ImageSequential):
         *args: Tensor,
         params: Optional[List[ParamItem]] = None,
         data_keys: Optional[List[Union[str, int, DataKey]]] = None,
-    ) -> Union[Tensor, List[Tensor]]:
+    ) -> Union[Tensor, List[Tensor], List[Union[Tensor, List[Tensor]]]]:
         """Reverse the transformation applied.
 
         Number of input tensors must align with the number of``data_keys``. If ``data_keys`` is not set, use
@@ -276,7 +277,7 @@ class AugmentationSequential(ImageSequential):
             else:
                 outputs[idx] = input
 
-        _outputs = [i for i in outputs if isinstance(i, Tensor)]
+        _outputs = [i for i in outputs if isinstance(i, Tensor) or KORNIA_CHECK_IS_LIST_OF_TENSOR(i)]
 
         if len(_outputs) == 1 and isinstance(_outputs, list):
             return _outputs[0]
@@ -284,10 +285,15 @@ class AugmentationSequential(ImageSequential):
         return _outputs
 
     def __packup_output__(  # type: ignore[override]
-        self, output: List[Tensor], label: Optional[Tensor] = None
-    ) -> Union[Tensor, List[Tensor], Tuple[Union[Tensor, List[Tensor]], Optional[Tensor]]]:
+        self, output: List[Union[Tensor, List[Tensor]]], label: Optional[Tensor] = None
+    ) -> Union[
+        Tensor,
+        List[Tensor],
+        List[Union[Tensor, List[Tensor]]],
+        Tuple[Union[Tensor, List[Tensor], List[Union[Tensor, List[Tensor]]]], Optional[Tensor]],
+    ]:
 
-        _out: Union[Tensor, List[Tensor]]
+        _out: Union[Tensor, List[Tensor], List[Union[Tensor, List[Tensor]]]]
 
         if len(output) == 1 and isinstance(output, list):
             _out = output[0]
@@ -331,7 +337,12 @@ class AugmentationSequential(ImageSequential):
         label: Optional[Tensor] = None,
         params: Optional[List[ParamItem]] = None,
         data_keys: Optional[List[Union[str, int, DataKey]]] = None,
-    ) -> Union[Tensor, List[Tensor], Tuple[Union[Tensor, List[Tensor]], Optional[Tensor]]]:
+    ) -> Union[
+        Tensor,
+        List[Tensor],
+        List[Union[Tensor, List[Tensor]]],
+        Tuple[Union[Tensor, List[Tensor], List[Union[Tensor, List[Tensor]]]], Optional[Tensor]],
+    ]:
         """Compute multiple tensors simultaneously according to ``self.data_keys``."""
         if data_keys is None:
             _data_keys = self.data_keys
@@ -425,5 +436,6 @@ class AugmentationSequential(ImageSequential):
                 outputs[idx] = arg.to_tensor()
             else:
                 outputs[idx] = input
-        _outputs = [i for i in outputs if isinstance(i, Tensor)]
+        _outputs = [i for i in outputs if isinstance(i, Tensor) or KORNIA_CHECK_IS_LIST_OF_TENSOR(i)]
+
         return self.__packup_output__(_outputs, label)
