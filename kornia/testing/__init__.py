@@ -4,10 +4,11 @@ import math
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from itertools import product
-from typing import Any, Dict, List, Optional, Tuple, TypeVar, cast
+from typing import Any, Dict, List, Optional, Sequence, Tuple, TypeVar, cast
 
 import torch
 from torch.testing import assert_close as _assert_close
+from typing_extensions import TypeGuard
 
 from kornia.core import Tensor, eye, tensor
 
@@ -21,6 +22,7 @@ __all__ = [
     "KORNIA_UNWRAP",
     "KORNIA_CHECK_TYPE",
     "KORNIA_CHECK_IS_TENSOR",
+    "KORNIA_CHECK_IS_LIST_OF_TENSOR",
     "KORNIA_CHECK_SAME_DEVICE",
     "KORNIA_CHECK_SAME_DEVICES",
     "KORNIA_CHECK_IS_COLOR",
@@ -394,6 +396,25 @@ def KORNIA_CHECK_IS_TENSOR(x, msg: Optional[str] = None):
     """
     if not isinstance(x, Tensor):
         raise TypeError(f"Not a Tensor type. Got: {type(x)}.\n{msg}")
+
+
+def KORNIA_CHECK_IS_LIST_OF_TENSOR(x: Optional[Sequence[object]]) -> TypeGuard[List[Tensor]]:
+    """Check the input variable is a List of Tensors.
+
+    Args:
+        x: Any sequence of objects
+
+    Return:
+        True if the input is a list of Tensors, otherwise return False.
+
+    Example:
+        >>> x = torch.rand(2, 3, 3)
+        >>> KORNIA_CHECK_IS_LIST_OF_TENSOR(x)
+        False
+        >>> KORNIA_CHECK_IS_LIST_OF_TENSOR([x])
+        True
+    """
+    return isinstance(x, list) and all(isinstance(d, Tensor) for d in x)
 
 
 def KORNIA_CHECK_SAME_DEVICE(x: Tensor, y: Tensor):
