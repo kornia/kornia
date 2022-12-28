@@ -8,7 +8,7 @@ from kornia.core import Module, Tensor, pad, stack, tensor
 from kornia.filters import filter2d, gaussian_blur2d
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
-__all__ = ["PyrDown", "PyrUp", "ScalePyramid", "pyrdown", "pyrup", "build_pyramid", "build_laplacian_pyramid"]
+__all__ = ["PyrDown", "PyrUp", "ScalePyramid", "pyrdown", "pyrup", "build_pyramid", "build_laplacian_pyramid", "upscale_double"]
 
 
 def _get_pyramid_gaussian_kernel() -> Tensor:
@@ -411,7 +411,7 @@ def build_laplacian_pyramid(
     return laplacian_pyramid
 
 
-def upscale_double(x):
+def upscale_double(x: Tensor) -> Tensor:
     r"""Upscale image by the factor of 2, even indices maps to original indices.
 
     Odd indices are linearly interpolated from the even ones.
@@ -419,14 +419,15 @@ def upscale_double(x):
     Args:
         x : input image.
     Shape:
-        - Input: :math:`(B, C, H, W)`
-        - Output :math:`(B, C, H, W)`
+        - Input: :math:`(*, H, W)`
+        - Output :math:`(*, H, W)`
     """
-    B, CH, H, W = x.shape
-    upscaled = torch.zeros((B, CH, H * 2, W * 2))
-    upscaled[:, :, ::2, ::2] = x
-    upscaled[:, :, ::2, 1::2][..., :-1] = (upscaled[:, :, ::2, ::2][..., :-1] + upscaled[:, :, ::2, 2::2]) / 2
-    upscaled[:, :, ::2, -1] = upscaled[:, :, ::2, -2]
-    upscaled[:, :, 1::2, :][..., :-1, :] = (upscaled[:, :, ::2, :][..., :-1, :] + upscaled[:, :, 2::2, :]) / 2
-    upscaled[:, :, -1, :] = upscaled[:, :, -2, :]
+    KORNIA_CHECK_SHAPE(x, ["*", "H", "W"])
+    double_shape = x.shape[:-2] + (x.shape[-2] * 2, x.shape[-1] * 2)
+    upscaled = torch.zeros(double_shape)
+    upscaled[..., ::2, ::2] = x
+    upscaled[..., ::2, 1::2][..., :-1] = (upscaled[..., ::2, ::2][..., :-1] + upscaled[..., ::2, 2::2]) / 2
+    upscaled[..., ::2, -1] = upscaled[..., ::2, -2]
+    upscaled[..., 1::2, :][..., :-1, :] = (upscaled[..., ::2, :][..., :-1, :] + upscaled[..., 2::2, :]) / 2
+    upscaled[..., -1, :] = upscaled[..., -2, :]
     return upscaled

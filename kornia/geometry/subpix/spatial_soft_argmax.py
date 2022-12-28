@@ -3,7 +3,7 @@ from typing import Tuple, Union
 import torch
 import torch.nn.functional as F
 
-from kornia.core import Module, Tensor, concatenate, stack, tensor, zeros
+from kornia.core import Module, Tensor, concatenate, stack, tensor, zeros, where
 from kornia.filters.sobel import spatial_gradient3d
 from kornia.geometry.conversions import normalize_pixel_coordinates, normalize_pixel_coordinates3d
 from kornia.utils import create_meshgrid, create_meshgrid3d
@@ -620,7 +620,7 @@ def conv_quad_interp3d(input: Tensor, strict_maxima_bonus: float = 10.0, eps: fl
     #  Kill those points, where we cannot solve
     new_nms_mask = nms_mask.masked_scatter(nms_mask, solved_correctly)
 
-    x_solved[torch.where(new_nms_mask.view(-1, 1, 1))[0]] = x_solved_masked[solved_correctly]
+    x_solved[where(new_nms_mask.view(-1, 1, 1))[0]] = x_solved_masked[solved_correctly]
 
     dx: Tensor = -x_solved
 
@@ -633,7 +633,7 @@ def conv_quad_interp3d(input: Tensor, strict_maxima_bonus: float = 10.0, eps: fl
         y_max += strict_maxima_bonus * new_nms_mask.to(input.dtype)
 
     dx_res: Tensor = dx.flip(1).reshape(B, CH, D, H, W, 3).permute(0, 1, 5, 2, 3, 4)
-    dx_res[:, :, [1, 2]] = dx_res[:, :, [2, 1]]
+    dx_res[:, :, (1, 2)] = dx_res[:, :, (2, 1)]
 
     coords_max: Tensor = grid_global.repeat(B, 1, 1, 1, 1).unsqueeze(1)
     coords_max = coords_max + dx_res
