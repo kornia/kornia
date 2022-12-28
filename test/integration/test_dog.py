@@ -3,11 +3,11 @@ import numpy as np
 import torch
 from dog_cv import homography_est_cv
 
-from kornia.utils import image_to_tensor
 from kornia.feature import match_mnn
 from kornia.feature.integrated import SIFTFeature
 from kornia.geometry import RANSAC
 from kornia.geometry.transform import warp_perspective
+from kornia.utils import image_to_tensor
 
 
 class TestDog:
