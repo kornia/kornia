@@ -12,7 +12,7 @@ from kornia.utils import image_to_tensor
 
 class TestDog:
     def test_dog(self, device):
-        img = cv.imread("imgs/boat/img1.pgm")
+        img = cv.imread("test/integration/imgs/boat/img1.pgm")
         img = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
 
         img_t = (image_to_tensor(img, False).float() / 255.0).to(device=device)
