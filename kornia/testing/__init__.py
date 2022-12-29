@@ -119,9 +119,9 @@ class BaseTester(ABC):
     def test_cardinality(self, device, dtype):
         raise NotImplementedError("Implement a stupid routine.")
 
-    @abstractmethod
-    def test_jit(self, device, dtype):
-        raise NotImplementedError("Implement a stupid routine.")
+    # TODO: add @abstractmethod
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        pass
 
     @abstractmethod
     def test_gradcheck(self, device):
