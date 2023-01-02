@@ -242,6 +242,8 @@ class TestUpscaleDouble:
 
         if len(shape) == 2:
             expected = expected[0]
+        elif len(shape) == 4:
+            expected = expected[None]
 
         assert_close(upscaled, expected)
         assert torch.all(upscaled == expected)
