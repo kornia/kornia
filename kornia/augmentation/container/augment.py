@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from kornia.augmentation import (
     AugmentationBase3D,
-    GeometricAugmentationBase2D,
+    AugmentationBase2D,
     IntensityAugmentationBase2D,
     RandomErasing,
 )
@@ -243,13 +243,7 @@ class AugmentationSequential(ImageSequential):
                 else:
                     param = None
 
-                if (
-                    isinstance(module, IntensityAugmentationBase2D)
-                    and dcate in DataKey
-                    and not isinstance(module, RandomErasing)
-                ):
-                    pass  # Do nothing
-                elif isinstance(module, ImageSequential) and module.is_intensity_only() and dcate in DataKey:
+                if isinstance(module, ImageSequential) and module.is_intensity_only() and dcate in DataKey:
                     pass  # Do nothing
                 elif isinstance(module, VideoSequential) and dcate not in [DataKey.INPUT, DataKey.MASK]:
                     batch_size: int = input.size(0)
@@ -262,7 +256,7 @@ class AugmentationSequential(ImageSequential):
                     # AugmentationSequential shall not take the extra_args arguments.
                     input = ApplyInverse.inverse_by_key(input, module, param, dcate)
                 elif (
-                    isinstance(module, (GeometricAugmentationBase2D, ImageSequential, RandomErasing))
+                    isinstance(module, (AugmentationBase2D, ImageSequential))
                     and dcate in DataKey
                 ):
                     input = ApplyInverse.inverse_by_key(input, module, param, dcate, extra_args=extra_args)
@@ -284,8 +278,8 @@ class AugmentationSequential(ImageSequential):
         return _outputs
 
     def __packup_output__(  # type: ignore[override]
-        self, output: List[Tensor], label: Optional[Tensor] = None
-    ) -> Union[Tensor, List[Tensor], Tuple[Union[Tensor, List[Tensor]], Optional[Tensor]]]:
+        self, output: List[Tensor],
+    ) -> Union[Tensor, List[Tensor]]:
 
         _out: Union[Tensor, List[Tensor]]
 
@@ -293,9 +287,6 @@ class AugmentationSequential(ImageSequential):
             _out = output[0]
         else:
             _out = output
-
-        if self.return_label:
-            return _out, label
 
         return _out
 
@@ -328,10 +319,9 @@ class AugmentationSequential(ImageSequential):
     def forward(  # type: ignore[override]
         self,
         *args: Tensor,
-        label: Optional[Tensor] = None,
         params: Optional[List[ParamItem]] = None,
         data_keys: Optional[List[Union[str, int, DataKey]]] = None,
-    ) -> Union[Tensor, List[Tensor], Tuple[Union[Tensor, List[Tensor]], Optional[Tensor]]]:
+    ) -> Union[Tensor, List[Tensor]]:
         """Compute multiple tensors simultaneously according to ``self.data_keys``."""
         if data_keys is None:
             _data_keys = self.data_keys
@@ -359,8 +349,6 @@ class AugmentationSequential(ImageSequential):
 
         outputs: List[Optional[Tensor]] = [None] * len(_data_keys)
 
-        self.return_label = self.return_label or label is not None or self.contains_label_operations(params)
-
         for idx, (arg, dcate) in enumerate(zip(args, _data_keys)):
             # Forward the param to all input data keys
             if dcate in self.extra_args:
@@ -371,13 +359,10 @@ class AugmentationSequential(ImageSequential):
             if dcate == DataKey.INPUT:
                 _inp = args[idx]
 
-                _out = super().forward(_inp, label, params=params, extra_args=extra_args)
+                _out = super().forward(_inp, params=params, extra_args=extra_args)
                 self._transform_matrix = self.get_transformation_matrix(_inp, params=params)
 
-                if self.return_label and isinstance(_out, tuple):
-                    _input, label = _out
-                elif isinstance(_out, Tensor):
-                    _input = _out
+                _input = _out
 
                 outputs[idx] = _input
                 # NOTE: Skip the rest here.
@@ -391,26 +376,20 @@ class AugmentationSequential(ImageSequential):
 
             for param in params:
                 module = self.get_submodule(param.name)
-                if (
-                    isinstance(module, IntensityAugmentationBase2D)
-                    and dcate in DataKey
-                    and not isinstance(module, RandomErasing)
-                ):
-                    pass  # Do nothing
-                elif isinstance(module, ImageSequential) and module.is_intensity_only() and dcate in DataKey:
+                if isinstance(module, ImageSequential) and module.is_intensity_only() and dcate in DataKey:
                     pass  # Do nothing
                 elif isinstance(module, VideoSequential) and dcate not in [DataKey.INPUT, DataKey.MASK]:
                     batch_size: int = input.size(0)
                     input = input.view(-1, *input.shape[2:])
-                    input, label = ApplyInverse.apply_by_key(input, label, module, param, dcate, extra_args=extra_args)
+                    input = ApplyInverse.apply_by_key(input, module, param, dcate, extra_args=extra_args)
                     input = input.view(batch_size, -1, *input.shape[1:])
                 elif isinstance(module, PatchSequential):
                     raise NotImplementedError("Geometric involved PatchSequential is not supported.")
                 elif (
-                    isinstance(module, (GeometricAugmentationBase2D, ImageSequential, RandomErasing))
+                    isinstance(module, (AugmentationBase2D, ImageSequential))
                     and dcate in DataKey
                 ):
-                    input, label = ApplyInverse.apply_by_key(input, label, module, param, dcate, extra_args=extra_args)
+                    input = ApplyInverse.apply_by_key(input, module, param, dcate, extra_args=extra_args)
                 elif isinstance(module, MixAugmentationBaseV2):
                     if dcate in [DataKey.BBOX_XYXY, DataKey.BBOX_XYWH]:
                         dcate = DataKey.BBOX
@@ -426,4 +405,4 @@ class AugmentationSequential(ImageSequential):
             else:
                 outputs[idx] = input
         _outputs = [i for i in outputs if isinstance(i, Tensor)]
-        return self.__packup_output__(_outputs, label)
+        return self.__packup_output__(_outputs)

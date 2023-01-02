@@ -1,9 +1,10 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 from torch import Tensor, float16, float32, float64
 
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils import _transform_input, _validate_input_dtype
 from kornia.utils import eye_like
+from kornia.geometry.boxes import Boxes
 
 
 class AugmentationBase2D(_AugmentationBase):
@@ -82,6 +83,35 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
                 (to_apply,), self.compute_transformation(in_tensor[to_apply], params=params, flags=flags)
             )
         return trans_matrix
+
+    def inverse_inputs(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        raise NotImplementedError
+
+    def inverse_masks(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        raise NotImplementedError
+
+    def inverse_boxes(
+        self,
+        input: Union[Tensor, Boxes],
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[Tensor] = None,
+    ) -> Boxes:
+        raise NotImplementedError
+
+    def inverse_keypoints(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        raise NotImplementedError
+
+    def inverse_classes(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        raise NotImplementedError
 
     def apply_func(
         self, in_tensor: Tensor, params: Dict[str, Tensor], flags: Optional[Dict[str, Any]] = None

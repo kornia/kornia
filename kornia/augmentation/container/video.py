@@ -135,7 +135,7 @@ class VideoSequential(ImageSequential):
         return repeated.reshape(-1, *list(param.shape[1:]))
 
     def _input_shape_convert_in(
-        self, input: Tensor, label: Optional[Tensor], frame_num: int
+        self, input: Tensor, frame_num: int
     ) -> Tuple[Tensor, Optional[Tensor]]:
         # Convert any shape to (B, T, C, H, W)
         if self.data_format == "BCTHW":
@@ -144,22 +144,11 @@ class VideoSequential(ImageSequential):
         if self.data_format == "BTCHW":
             pass
 
-        if label is not None:
-            if label.shape == input.shape[:2]:
-                # if label is provided as (B, T)
-                label = label.view(-1)
-            elif label.shape == input.shape[:1]:
-                label = label[..., None].repeat(1, frame_num).view(-1)
-            elif label.shape == torch.Size([input.shape[0] * input.shape[1]]):
-                # Skip the conversion if label is provided as (B * T,)
-                pass
-            else:
-                raise NotImplementedError(f"Invalid label shape of {label.shape}.")
         input = input.reshape(-1, *input.shape[2:])
-        return input, label
+        return input
 
     def _input_shape_convert_back(
-        self, input: Tensor, label: Optional[Tensor], frame_num: int
+        self, input: Tensor, frame_num: int
     ) -> Tuple[Tensor, Optional[Tensor]]:
         input = input.view(-1, frame_num, *input.shape[1:])
         if self.data_format == "BCTHW":
@@ -167,9 +156,7 @@ class VideoSequential(ImageSequential):
         if self.data_format == "BTCHW":
             pass
 
-        if label is not None:
-            label = label.view(input.size(0), frame_num, -1)
-        return input, label
+        return input
 
     def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
         frame_num = batch_shape[self._temporal_channel]
@@ -241,7 +228,6 @@ class VideoSequential(ImageSequential):
     def forward(
         self,
         input: Tensor,
-        label: Optional[Tensor] = None,
         params: Optional[List[ParamItem]] = None,
         extra_args: Dict[str, Any] = {},
     ) -> Union[Tensor, Tuple[Tensor, Optional[Tensor]]]:
@@ -255,33 +241,16 @@ class VideoSequential(ImageSequential):
         # Size of T
         if self.apply_inverse_func in (InputApplyInverse, MaskApplyInverse):
             frame_num: int = input.size(self._temporal_channel)
-            input, label = self._input_shape_convert_in(input, label, frame_num)
+            input = self._input_shape_convert_in(input, frame_num)
         else:
-            if label is not None:
-                raise ValueError(f"Invalid label value. Got {label}")
             batch_size: int = input.size(0)
             input = input.view(-1, *input.shape[2:])
 
-        out = super().forward(input, label, params, extra_args=extra_args)
-        if self.return_label:
-            output, label = cast(Tuple[Tensor, Tensor], out)
-        else:
-            output = cast(Tensor, out)
+        output = super().forward(input, params, extra_args=extra_args)
 
-        if isinstance(output, (tuple, list)):
-            if self.apply_inverse_func in (InputApplyInverse, MaskApplyInverse):
-                _out, label = self._input_shape_convert_back(output[0], label, frame_num)
-                output = (_out, output[1])
-            else:
-                if label is not None:
-                    raise ValueError(f"Invalid label value. Got {label}")
-                output = output[0].view(batch_size, -1, *output[0].shape[1:])
+        if self.apply_inverse_func in (InputApplyInverse, MaskApplyInverse):
+            output = self._input_shape_convert_back(output, frame_num)
         else:
-            if self.apply_inverse_func in (InputApplyInverse, MaskApplyInverse):
-                output, label = self._input_shape_convert_back(output, label, frame_num)
-            else:
-                if label is not None:
-                    raise ValueError(f"Invalid label value. Got {label}")
-                output = output.view(batch_size, -1, *output.shape[1:])
+            output = output.view(batch_size, -1, *output.shape[1:])
 
-        return self.__packup_output__(output, label)
+        return output

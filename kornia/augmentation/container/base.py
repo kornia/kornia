@@ -149,9 +149,6 @@ class SequentialBase(nn.Sequential):
         for name, _ in named_modules:
             yield ParamItem(name, None)
 
-    def contains_label_operations(self, params: List[ParamItem]) -> bool:
-        raise NotImplementedError
-
     def autofill_dim(self, input: Tensor, dim_range: Tuple[int, int] = (2, 4)) -> Tuple[torch.Size, torch.Size]:
         """Fill tensor dim to the upper bound of dim_range.
 

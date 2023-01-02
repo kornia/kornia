@@ -45,7 +45,7 @@ class ImageSequential(SequentialBase):
     Examples:
         >>> _ = torch.manual_seed(77)
         >>> import kornia
-        >>> input, label = torch.randn(2, 3, 5, 6), torch.tensor([0, 1])
+        >>> input = torch.randn(2, 3, 5, 6)
         >>> aug_list = ImageSequential(
         ...     kornia.color.BgrToRgb(),
         ...     kornia.augmentation.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
@@ -56,16 +56,14 @@ class ImageSequential(SequentialBase):
         ...     same_on_batch=True,
         ...     random_apply=10,
         ... )
-        >>> out, lab = aug_list(input, label=label)
+        >>> out = aug_list(input)
         >>> lab
         tensor([0, 1])
-        >>> out.shape
-        torch.Size([2, 3, 5, 6])
 
         Reproduce with provided params.
-        >>> out2, lab2 = aug_list(input, label=label, params=aug_list._params)
-        >>> torch.equal(out, out2), torch.equal(lab, lab2)
-        (True, True)
+        >>> out2, lab2 = aug_list(input, params=aug_list._params)
+        >>> torch.equal(out, out2)
+        True
 
     Perform ``OneOf`` transformation with ``random_apply=1`` and ``random_apply_weights`` in ``ImageSequential``.
 
@@ -102,7 +100,6 @@ class ImageSequential(SequentialBase):
                 f"Got {len(random_apply_weights)} and {len(self)}."
             )
         self.random_apply_weights = as_tensor(random_apply_weights or torch.ones((len(self),)))
-        self.return_label: Optional[bool] = None
         self.apply_inverse_func: Type[ApplyInverseInterface] = InputApplyInverse
         self.if_unsupported_ops = if_unsupported_ops
 
@@ -138,6 +135,9 @@ class ImageSequential(SequentialBase):
 
     def get_random_forward_sequence(self, with_mix: bool = True) -> Tuple[Iterator[Tuple[str, Module]], bool]:
         """Get a forward sequence when random apply is in need.
+
+        Args:
+            with_mix: if to require a mix augmentation for the sequence.
 
         Note:
             Mix augmentations (e.g. RandomMixUp) will be only applied once even in a random forward.
@@ -188,7 +188,7 @@ class ImageSequential(SequentialBase):
             if len(mix_indices) > 1:
                 raise ValueError(
                     "Multiple mix augmentation is prohibited without enabling random_apply."
-                    f"Detected {len(mix_indices)}."
+                    f"Detected {len(mix_indices)} mix augmentations."
                 )
 
             return self.named_children()
@@ -198,14 +198,13 @@ class ImageSequential(SequentialBase):
     def apply_to_input(
         self,
         input: Tensor,
-        label: Optional[Tensor],
         module: Optional[Module],
         param: ParamItem,
         extra_args: Dict[str, Any],
     ) -> Tuple[Tensor, Optional[Tensor]]:
         if module is None:
             module = self.get_submodule(param.name)
-        return self.apply_inverse_func.apply_trans(input, label, module, param, extra_args)
+        return self.apply_inverse_func.apply_trans(input, module, param, extra_args)
 
     def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
         named_modules: Iterator[Tuple[str, Module]] = self.get_forward_sequence()
@@ -224,21 +223,6 @@ class ImageSequential(SequentialBase):
             batch_shape = _get_new_batch_shape(param, batch_shape)
             params.append(param)
         return params
-
-    def contains_label_operations(self, params: List[ParamItem]) -> bool:
-        """Check if current sequential contains label-involved operations like MixUp."""
-        for param in params:
-            if param.name.startswith("RandomMixUp_") or param.name.startswith("RandomCutMix_"):
-                return True
-        return False
-
-    def __packup_output__(
-        self, output: Tensor, label: Optional[Tensor] = None
-    ) -> Union[Tensor, Tuple[Tensor, Optional[Tensor]]]:
-        if self.return_label:
-            # Implicitly indicating the label cannot be optional since there is a mix aug
-            return output, label
-        return output
 
     def identity_matrix(self, input) -> Tensor:
         """Return identity matrix."""
@@ -363,26 +347,23 @@ class ImageSequential(SequentialBase):
     def forward(
         self,
         input: Tensor,
-        label: Optional[Tensor] = None,
         params: Optional[List[ParamItem]] = None,
         extra_args: Dict[str, Any] = {},
-    ) -> Union[Tensor, Tuple[Tensor, Optional[Tensor]]]:
+    ) -> Tensor:
         self.clear_state()
         if params is None:
             inp = input
             _, out_shape = self.autofill_dim(inp, dim_range=(2, 4))
             params = self.forward_parameters(out_shape)
-        if self.return_label is None:
-            self.return_label = label is not None or self.contains_label_operations(params)
         for param in params:
             module = self.get_submodule(param.name)
-            input, label = self.apply_to_input(input, label, module, param=param, extra_args=extra_args)
+            input = self.apply_to_input(input, module, param=param, extra_args=extra_args)
             if isinstance(module, (_AugmentationBase, MixAugmentationBaseV2, SequentialBase)):
                 param = ParamItem(param.name, module._params)
             else:
                 param = ParamItem(param.name, None)
             self.update_params(param)
-        return self.__packup_output__(input, label)
+        return input
 
 
 def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size) -> torch.Size:

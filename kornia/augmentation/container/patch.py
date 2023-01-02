@@ -151,12 +151,6 @@ class PatchSequential(ImageSequential):
         self.padding = padding
         self.patchwise_apply = patchwise_apply
 
-    def contains_label_operations(self, params: List[PatchParamItem]) -> bool:  # type: ignore[override]
-        for param in params:
-            if param.param.name.startswith("RandomMixUp") or param.param.name.startswith("RandomCutMix"):
-                return True
-        return False
-
     def compute_padding(
         self, input: Tensor, padding: str, grid_size: Optional[Tuple[int, int]] = None
     ) -> Tuple[int, int, int, int]:
@@ -304,20 +298,14 @@ class PatchSequential(ImageSequential):
                         yield ParamItem(s[0], None), i
 
     def apply_by_param(
-        self, input: Tensor, label: Optional[Tensor], params: PatchParamItem
+        self, input: Tensor, params: PatchParamItem
     ) -> Tuple[Tensor, Optional[Tensor], PatchParamItem]:
         _input: Tensor
         in_shape = input.shape
         _input = input[params.indices]
 
-        _label: Optional[Tensor]
-        if label is not None:
-            _label = label[params.indices]
-        else:
-            _label = label
-
         module = self.get_submodule(params.param.name)
-        output, out_label = self.apply_to_input(_input, _label, module, params.param, extra_args={})
+        output = self.apply_to_input(_input, module, params.param, extra_args={})
 
         if isinstance(module, (_AugmentationBase, SequentialBase, MixAugmentationBaseV2)):
             out_param = ParamItem(params.param.name, module._params)
@@ -335,46 +323,21 @@ class PatchSequential(ImageSequential):
         elif not isinstance(output, (tuple,)) and not isinstance(input, (tuple,)):
             input[params.indices] = output
 
-        # TODO: this label handling is naive that may not be able to handle complex cases.
-        _label = None
-        if label is not None and out_label is not None:
-            if len(out_label.shape) == 1:
-                # Weird the mypy error though it is as same as in the next block
-                _label = torch.ones(in_shape[0] * in_shape[1], device=out_label.device, dtype=out_label.dtype) * -1
-                _label = label
-            else:
-                _label = (
-                    torch.ones(in_shape[0], *out_label.shape[1:], device=out_label.device, dtype=out_label.dtype) * -1
-                )
-                _label[:, 0] = label
-            _label[params.indices] = out_label
-        elif label is None and out_label is not None:
-            if len(out_label.shape) == 1:
-                _label = torch.ones(in_shape[0] * in_shape[1], device=out_label.device, dtype=out_label.dtype) * -1
-            else:
-                _label = (
-                    torch.ones(in_shape[0], *out_label.shape[1:], device=out_label.device, dtype=out_label.dtype) * -1
-                )
-            _label[params.indices] = out_label
-
-        return input, _label, PatchParamItem(params.indices, param=out_param)
+        return input, PatchParamItem(params.indices, param=out_param)
 
     def forward_by_params(
-        self, input: Tensor, label: Optional[Tensor], params: List[PatchParamItem]
+        self, input: Tensor, params: List[PatchParamItem]
     ) -> Union[Tensor, Tuple[Tensor, Optional[Tensor]]]:
         _input: Tensor
         in_shape = input.shape
         _input = input.reshape(-1, *in_shape[-3:])
 
-        if label is not None:
-            label = concatenate([label] * in_shape[1], 0)
-
         self.clear_state()
         for patch_param in params:
-            _input, label, out_param = self.apply_by_param(_input, label, params=patch_param)
+            _input, out_param = self.apply_by_param(_input, params=patch_param)
             self.update_params(out_param)
         _input = _input.reshape(in_shape)
-        return _input, label
+        return _input
 
     def inverse(
         self, input: Tensor, params: Optional[List[ParamItem]] = None, extra_args: Dict[str, Any] = {}
@@ -390,7 +353,7 @@ class PatchSequential(ImageSequential):
         raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
 
     def forward(  # type: ignore[override]
-        self, input: Tensor, label: Optional[Tensor] = None, params: Optional[List[PatchParamItem]] = None
+        self, input: Tensor, params: Optional[List[PatchParamItem]] = None
     ) -> Union[Tensor, Tuple[Tensor, Optional[Tensor]]]:
         """Input transformation will be returned if input is a tuple."""
         # BCHW -> B(patch)CHW
@@ -404,10 +367,8 @@ class PatchSequential(ImageSequential):
         if params is None:
             params = self.forward_parameters(input.shape)
 
-        _input, label = self.forward_by_params(input, label, params)
+        _input = self.forward_by_params(input, params)
 
         _input = self.restore_from_patches(_input, self.grid_size, pad=pad)
 
-        self.return_label = label is not None or self.contains_label_operations(params)
-
-        return self.__packup_output__(_input, label)
+        return _input

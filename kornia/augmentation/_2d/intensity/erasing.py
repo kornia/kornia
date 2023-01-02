@@ -79,3 +79,9 @@ class RandomErasing(IntensityAugmentationBase2D):
         mask = mask.unsqueeze(1).repeat(1, c, 1, 1).to(input)  # Transform to B, c, H, W
         transformed = where(mask == 1.0, values, input)
         return transformed
+
+    def apply_transform_mask(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        # Erase the corresponding areas on masks.
+        return self.apply_transform(input, params, flags, transform)

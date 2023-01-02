@@ -34,13 +34,12 @@ class ApplyInverseInterface(metaclass=ABCMeta):
     @classmethod
     @abstractmethod
     def apply_trans(
-        cls, input: Tensor, label: Optional[Tensor], module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}
+        cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}
     ) -> Tuple[Tensor, Optional[Tensor]]:
         """Apply a transformation with respect to the parameters.
 
         Args:
             input: the input tensor.
-            label: the optional label tensor.
             module: any torch Module but only kornia augmentation modules will count
                 to apply transformations.
             param: the corresponding parameters to the module.
@@ -70,13 +69,12 @@ class ApplyInverseImpl(ApplyInverseInterface):
 
     @classmethod
     def apply_trans(
-        cls, input: Tensor, label: Optional[Tensor], module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}
+        cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}
     ) -> Tuple[Tensor, Optional[Tensor]]:
         """Apply a transformation with respect to the parameters.
 
         Args:
             input: the input tensor.
-            label: the optional label tensor.
             module: any torch Module but only kornia augmentation modules will count
                 to apply transformations.
             param: the corresponding parameters to the module.
@@ -98,7 +96,7 @@ class ApplyInverseImpl(ApplyInverseInterface):
         if mat is not None and to_apply is not None and to_apply.sum() != 0 and input.numel() > 0:
             input[to_apply] = cls.apply_func(mat[to_apply], input[to_apply])
 
-        return input, label
+        return input
 
     @classmethod
     def inverse(
@@ -160,13 +158,12 @@ class InputApplyInverse(ApplyInverseImpl):
 
     @classmethod
     def apply_trans(
-        cls, input: Tensor, label: Optional[Tensor], module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}
+        cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}
     ) -> Tuple[Tensor, Optional[Tensor]]:
         """Apply a transformation with respect to the parameters.
 
         Args:
             input: the input tensor.
-            label: the optional label tensor.
             module: any torch Module but only kornia augmentation modules will count
                 to apply transformations.
             param: the corresponding parameters to the module.
@@ -175,15 +172,12 @@ class InputApplyInverse(ApplyInverseImpl):
             input = module(input, params=param.data, **extra_args)
         elif isinstance(module, kornia.augmentation.ImageSequential):
             temp = module.apply_inverse_func
-            temp2 = module.return_label
             module.apply_inverse_func = InputApplyInverse
-            module.return_label = True
             if isinstance(module, kornia.augmentation.AugmentationSequential):
-                input, label = module(input, label=label, params=param.data, data_keys=[cls.data_key])
+                input = module(input, params=param.data, data_keys=[cls.data_key])
             else:
-                input, label = module(input, label=label, params=param.data, extra_args=extra_args)
+                input = module(input, params=param.data, extra_args=extra_args)
             module.apply_inverse_func = temp
-            module.return_label = temp2
         else:
             if param.data is not None:
                 raise AssertionError(f"Non-augmentaion operation {param.name} require empty parameters. Got {param}.")
@@ -192,7 +186,7 @@ class InputApplyInverse(ApplyInverseImpl):
                 input = (module(input[0]), input[1])
             else:
                 input = module(input)
-        return input, label
+        return input
 
     @classmethod
     def inverse(
@@ -251,10 +245,7 @@ class MaskApplyInverse(ApplyInverseImpl):
         """Disable all other additional inputs (e.g. ) for ImageSequential."""
 
         def f(*args, **kwargs):
-            if_return_label = module.return_label
-            module.return_label = False
             out = module(*args, **kwargs)
-            module.return_label = if_return_label
             return out
 
         return f
@@ -263,7 +254,6 @@ class MaskApplyInverse(ApplyInverseImpl):
     def apply_trans(
         cls,
         input: Tensor,
-        label: Optional[Tensor],
         module: Module,
         param: Optional[ParamItem] = None,
         extra_args: Dict[str, Any] = {},
@@ -272,7 +262,6 @@ class MaskApplyInverse(ApplyInverseImpl):
 
         Args:
             input: the input tensor.
-            label: the optional label tensor.
             module: any torch Module but only kornia augmentation modules will count
                 to apply transformations.
             param: the corresponding parameters to the module.
@@ -302,16 +291,16 @@ class MaskApplyInverse(ApplyInverseImpl):
             module.apply_inverse_func = MaskApplyInverse
             if isinstance(module, kornia.augmentation.AugmentationSequential):
                 input = cls.make_input_only_sequential(module)(
-                    input, label=None, params=geo_param, data_keys=[cls.data_key]
+                    input, params=geo_param, data_keys=[cls.data_key]
                 )
             else:
                 input = cls.make_input_only_sequential(module)(
-                    input, label=None, params=geo_param, extra_args=extra_args
+                    input, params=geo_param, extra_args=extra_args
                 )
             module.apply_inverse_func = temp
         else:
             pass  # No need to update anything
-        return input, label
+        return input
 
     @classmethod
     def inverse(
@@ -432,13 +421,12 @@ class BBoxApplyInverse(ApplyInverseImpl):
 
     @classmethod
     def apply_trans(
-        cls, input: Tensor, label: Optional[Tensor], module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}
-    ) -> Tuple[Tensor, Optional[Tensor]]:
+        cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}
+    ) -> Tensor:
         """Apply a transformation with respect to the parameters.
 
         Args:
             input: the input tensor, (B, N, 4, 2) or (B, 4, 2).
-            label: the optional label tensor.
             module: any torch Module but only kornia augmentation modules will count
                 to apply transformations.
             param: the corresponding parameters to the module.
@@ -449,11 +437,11 @@ class BBoxApplyInverse(ApplyInverseImpl):
         if padding_size is not None:
             _input = cls.pad(_input, padding_size.to(_input))
 
-        _input, label = super().apply_trans(_input, label, module, param, extra_args=extra_args)
+        _input = super().apply_trans(_input, module, param, extra_args=extra_args)
 
         # TODO: Filter/crop boxes outside crop (with negative or larger than crop size coords)?
 
-        return _input, label
+        return _input
 
     @classmethod
     def inverse(
@@ -504,10 +492,10 @@ class BBoxXYXYApplyInverse(BBoxApplyInverse):
 
     @classmethod
     def apply_trans(
-        cls, input: Tensor, label: Optional[Tensor], module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}
-    ) -> Tuple[Tensor, Optional[Tensor]]:
+        cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}
+    ) -> Tensor:
         warnings.warn("BBoxXYXYApplyInverse is no longer maintained. Please use BBoxApplyInverse instead.")
-        return super().apply_trans(input, label=label, module=module, param=param, extra_args=extra_args)
+        return super().apply_trans(input, module=module, param=param, extra_args=extra_args)
 
     @classmethod
     def inverse(
@@ -612,13 +600,14 @@ class ApplyInverse:
             return BBoxApplyInverse
         if DataKey.get(dcate) in [DataKey.KEYPOINTS]:
             return KeypointsApplyInverse
+        if DataKey.get(dcate) in [DataKey.CLASS]:
+            raise NotImplementedError
         raise NotImplementedError(f"input type of {dcate} is not implemented.")
 
     @classmethod
     def apply_by_key(
         cls,
         input: Tensor,
-        label: Optional[Tensor],
         module: Module,
         param: ParamItem,
         dcate: Union[str, int, DataKey] = DataKey.INPUT,
@@ -628,7 +617,6 @@ class ApplyInverse:
 
         Args:
             input: the input tensor.
-            label: the optional label tensor.
             module: any torch Module but only kornia augmentation modules will count
                 to apply transformations.
             param: the corresponding parameters to the module.
@@ -636,11 +624,7 @@ class ApplyInverse:
                 By default, it is set to 'input'.
         """
         func: Type[ApplyInverseInterface] = cls._get_func_by_key(dcate)
-
-        if isinstance(input, (tuple,)):
-            # If the input is a tuple with (input, mat) or something else
-            return (func.apply_trans(input[0], label, module, param, extra_args), *input[1:])
-        return func.apply_trans(input, label, module=module, param=param, extra_args=extra_args)
+        return func.apply_trans(input, module=module, param=param, extra_args=extra_args)
 
     @classmethod
     def inverse_by_key(
