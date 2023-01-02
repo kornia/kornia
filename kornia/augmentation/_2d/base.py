@@ -55,8 +55,10 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
           form ``False``.
     """
 
+    _transform_matrix: Optional[Tensor]
+
     @property
-    def transform_matrix(self,) -> Tensor:
+    def transform_matrix(self,) -> Optional[Tensor]:
         return self._transform_matrix
 
     def identity_matrix(self, input) -> Tensor:

@@ -1,18 +1,11 @@
 import warnings
+from typing import Any, Dict, Optional, Tuple, Union
 
-from abc import ABCMeta, abstractmethod
-from functools import partial
-from typing import Any, Callable, Dict, Optional, Tuple, Union, cast
-import torch
-
-from kornia.augmentation._2d.base import _AugmentationBase, RigidAffineAugmentationBase2D
+from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
 from kornia.augmentation.utils import override_parameters
-from kornia.core import Module, Tensor, as_tensor
+from kornia.core import Tensor, as_tensor
 from kornia.geometry.boxes import Boxes
-from kornia.utils.helpers import _torch_inverse_cast
-from kornia.geometry.bbox import transform_bbox
-from kornia.geometry.linalg import transform_points
-from kornia.testing import KORNIA_UNWRAP
+from kornia.geometry.keypoints import Keypoints
 from kornia.utils.helpers import _torch_inverse_cast
 
 
@@ -63,8 +56,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
     def apply_non_transform_mask(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        """Process masks corresponding to the inputs that are no transformation applied.
-        """
+        """Process masks corresponding to the inputs that are no transformation applied."""
         return input
 
     def apply_transform_mask(
@@ -87,8 +79,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
     def apply_non_transform_box(
         self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Boxes:
-        """Process boxes corresponding to the inputs that are no transformation applied.
-        """
+        """Process boxes corresponding to the inputs that are no transformation applied."""
         padding_size = None
         if "padding_size" in params:
             # Mostly for operations like RandomCrop.
@@ -98,40 +89,54 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
     def apply_transform_box(
         self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Boxes:
-        """Process boxes corresponding to the inputs that are transformed.
-        """
-        raise NotImplementedError
+        """Process boxes corresponding to the inputs that are transformed."""
+        if transform is None:
+            if self.transform_matrix is None:
+                raise RuntimeError("No valid transformation matrix found. Please either pass one or forward one first.")
+            transform = self.transform_matrix
+        input = self.apply_non_transform_box(input, params, flags, transform)
+        return input.transform_boxes_(transform)
 
     def apply_non_transform_keypoint(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Keypoints:
         """Process keypoints corresponding to the inputs that are no transformation applied.
         """
-        return input
+        padding_size = None
+        if "padding_size" in params:
+            # Mostly for operations like RandomCrop.
+            padding_size = params["padding_size"]
+        return input.pad(padding_size)
 
     def apply_transform_keypoint(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
-        """Process keypoints corresponding to the inputs that are transformed.
-        """
-        raise NotImplementedError
+        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Keypoints:
+        """Process keypoints corresponding to the inputs that are transformed."""
+        if transform is None:
+            if self.transform_matrix is None:
+                raise RuntimeError("No valid transformation matrix found. Please either pass one or forward one first.")
+            transform = self.transform_matrix
+        input = self.apply_non_transform_keypoint(input, params, flags, transform)
+        return input.transform_keypoints_(transform)
 
     def apply_non_transform_class(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        """Process class tags corresponding to the inputs that are no transformation applied.
-        """
+        """Process class tags corresponding to the inputs that are no transformation applied."""
         return input
 
     def apply_transform_class(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        """Process class tags corresponding to the inputs that are transformed.
-        """
+        """Process class tags corresponding to the inputs that are transformed."""
         return input
 
     def inverse_inputs(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Tensor
+        self,
+        input: Tensor,
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[Tensor] = None,
     ) -> Tensor:
         in_tensor = self.transform_tensor(input)
         output = in_tensor.clone()
@@ -148,19 +153,20 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             output = in_tensor
         # if all data needs to be augmented
         elif to_apply.all():
-            transform = self.compute_inverse_transformation(transform)
             output = self.inverse_transform(in_tensor, flags=flags, transform=transform, size=size)
         else:
-            transform[to_apply] = self.compute_inverse_transformation(transform[to_apply])
             output[to_apply] = self.inverse_transform(
                 in_tensor[to_apply], transform=transform[to_apply], size=size, flags=flags
             )
         return output
 
     def inverse_masks(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Tensor
+        self,
+        input: Tensor,
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[Tensor] = None,
     ) -> Tensor:
-        
         resample_method: Optional[str]
         if "resample" in flags:
             resample_method = flags["resample"]
@@ -177,16 +183,60 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
     ) -> Boxes:
+        in_tensor = self.preprocess_boxes(input)
+        output = in_tensor.clone()
+        to_apply = params['batch_prob']
+
         padding_size = None
         if "padding_size" in params:
             # Mostly for operations like RandomCrop.
             padding_size = params["padding_size"]
+
+        # if no augmentation needed
+        if not to_apply.any():
+            output = in_tensor
+        # if all data needs to be augmented
+        elif to_apply.all():
+            output = in_tensor.transform_boxes_(transform)
+        else:
+            output[to_apply] = in_tensor[to_apply].transform_boxes_(transform[to_apply])
+
         return input.unpad(padding_size)
 
     def inverse_keypoints(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
-        raise NotImplementedError
+        self,
+        input: Union[Tensor, Keypoints],
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[Tensor] = None
+    ) -> Keypoints:
+        """Inverse the transformation on keypoints.
+
+        Args:
+            input: input keypoints tensor or object.
+            params: the corresponding parameters for an operation.
+            flags: static parameters.
+            transform: the inverse tansformation matrix
+        """
+        in_tensor = self.preprocess_keypoints(input)
+        output = in_tensor.clone()
+        to_apply = params['batch_prob']
+
+        padding_size = None
+        if "padding_size" in params:
+            # Mostly for operations like RandomCrop.
+            padding_size = params["padding_size"]
+
+        # if no augmentation needed
+        if not to_apply.any():
+            output = in_tensor
+        # if all data needs to be augmented
+        elif to_apply.all():
+            output = in_tensor.transform_keypoints_(transform)
+        else:
+            output[to_apply] = in_tensor[to_apply].transform_keypoints_(transform[to_apply])
+
+        return input.unpad(padding_size)
 
     def inverse_classes(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
@@ -226,6 +276,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             params['batch_prob'] = as_tensor([True] * batch_shape[0])
             warnings.warn("`batch_prob` is not found in params. Will assume applying on all data.")
 
+        transform = self.compute_inverse_transformation(transform)
         output = self.inverse_inputs(in_tensor, params, flags, transform)
 
         if self.keepdim:

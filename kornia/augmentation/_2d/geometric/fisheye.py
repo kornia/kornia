@@ -1,7 +1,7 @@
 from typing import Any, Dict, Optional
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.geometric.base import AugmentationBase2D
+from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.core import Tensor
 from kornia.geometry.transform import remap
 from kornia.utils import create_meshgrid

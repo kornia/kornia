@@ -214,10 +214,9 @@ class RandomCrop(GeometricAugmentationBase2D):
         self,
         input: Tensor,
         params: Optional[Dict[str, Tensor]] = None,
-        size: Optional[Tuple[int, int]] = None,
         **kwargs,
     ) -> Tensor:
-        out = super().inverse(input, params, size, **kwargs)
+        out = super().inverse(input, params, **kwargs)
         if params is None:
             params = self._params
         if "padding_size" in params:

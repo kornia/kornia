@@ -5,8 +5,6 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from kornia.augmentation import (
     AugmentationBase3D,
     AugmentationBase2D,
-    IntensityAugmentationBase2D,
-    RandomErasing,
 )
 from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.augmentation.base import _AugmentationBase

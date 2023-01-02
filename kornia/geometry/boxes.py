@@ -216,6 +216,15 @@ class Boxes:
         self._data = boxes
         self._mode = mode
 
+    def __getitem__(self, key) -> "Boxes":
+        new_box = Boxes(self._data[key], False)
+        new_box._mode = self._mode
+        return new_box
+
+    def __setitem__(self, key, value: "Boxes") -> "Boxes":
+        self._data[key] = value._data
+        return self
+
     def get_boxes_shape(self) -> Tuple[torch.Tensor, torch.Tensor]:
         r"""Compute boxes heights and widths.
 
@@ -247,7 +256,10 @@ class Boxes:
         if inplace:
             self._data = data
             return self
-        return Boxes(data, False)
+
+        obj = Boxes(data, False)
+        obj._mode = self._mode
+        return obj
 
     def index_put(
         self, indices: Optional[Union[Tuple[Tensor, ...], List[Tensor]]], values: Tensor, inplace: bool = False
@@ -261,31 +273,34 @@ class Boxes:
 
         if inplace:
             return self
-        return Boxes(_data, False)
+
+        obj = Boxes(_data, False)
+        obj._mode = self._mode
+        return obj
 
     def pad(
         self,
-        inner_size: Optional[Union[Tensor, Tuple[int, int]]] = None,
         outer_size: Optional[Union[Tensor, Tuple[int, int]]] = None,
+        inner_size: Optional[Union[Tensor, Tuple[int, int]]] = None,
     ) -> "Boxes":
         """Pad a bounding box.
-        
+
         Args:
-            inner_size: pad the spaces inside the boxes (width, height).
             outer_size: pad the spaces outside the boxes (left, top).
+            inner_size: pad the spaces inside the boxes (width, height).
         """
         raise NotImplementedError
 
     def unpad(
         self,
-        inner_size: Optional[Union[Tensor, Tuple[int, int]]] = None,
         outer_size: Optional[Union[Tensor, Tuple[int, int]]] = None,
+        inner_size: Optional[Union[Tensor, Tuple[int, int]]] = None,
     ) -> "Boxes":
         """Pad a bounding box.
-        
+
         Args:
-            inner_size: unpad the spaces inside the boxes (width, height).
             outer_size: unpad the spaces outside the boxes (left, top).
+            inner_size: unpad the spaces inside the boxes (width, height).
         """
         raise NotImplementedError
 
@@ -315,7 +330,10 @@ class Boxes:
         _data[..., 1][_data[..., 1] > botright_y] = botright_y[_data[..., 1] > botright_y]
         if inplace:
             return self
-        return Boxes(_data, False)
+
+        obj = Boxes(_data, False)
+        obj._mode = self._mode
+        return obj
 
     def trim(self, correspondence_preserve: bool = False, inplace: bool = False) -> "Boxes":
         """Trim out zero padded boxes.
@@ -352,7 +370,10 @@ class Boxes:
             _data[area > max_area] = 0.0
         if inplace:
             return self
-        return Boxes(_data, False)
+
+        obj = Boxes(_data, False)
+        obj._mode = self._mode
+        return obj
 
     def compute_area(self) -> torch.Tensor:
         """Returns :math:`(B, N)`."""
@@ -560,7 +581,9 @@ class Boxes:
             self._data = transformed_boxes
             return self
 
-        return Boxes(transformed_boxes, False)
+        obj = Boxes(transformed_boxes, False)
+        obj._mode = self._mode
+        return obj
 
     def transform_boxes_(self, M: torch.Tensor) -> "Boxes":
         """Inplace version of :func:`Boxes.transform_boxes`"""
@@ -615,7 +638,9 @@ class Boxes:
         return self
 
     def clone(self) -> "Boxes":
-        return Boxes(self._data.clone(), False)
+        obj = Boxes(self._data.clone(), False)
+        obj._mode = self._mode
+        return obj
 
 
 @torch.jit.script
@@ -659,6 +684,15 @@ class Boxes3D:
 
         self._data = boxes
         self._mode = mode
+
+    def __getitem__(self, key) -> "Boxes3D":
+        new_box = Boxes3D(self._data[key], False, mode="xyzxyz_plus")
+        new_box._mode = self._mode
+        return new_box
+
+    def __setitem__(self, key, value: "Boxes3D") -> "Boxes3D":
+        self._data[key] = value._data
+        return self
 
     def get_boxes_shape(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         r"""Compute boxes heights and widths.

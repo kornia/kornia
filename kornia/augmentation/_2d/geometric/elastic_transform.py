@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 from torch import Tensor
 
-from kornia.augmentation._2d.geometric.base import AugmentationBase2D
+from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.constants import Resample
 from kornia.geometry.transform import elastic_transform2d
 

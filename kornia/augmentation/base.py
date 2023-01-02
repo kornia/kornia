@@ -8,6 +8,7 @@ from kornia.augmentation.random_generator import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_sampling, _transform_output_shape, override_parameters
 from kornia.core import Module, Tensor, tensor
 from kornia.geometry.boxes import Boxes
+from kornia.geometry.keypoints import Keypoints
 
 TensorWithTransformMat = Union[Tensor, Tuple[Tensor, Tensor]]
 
@@ -221,11 +222,19 @@ class _AugmentationBase(_BasicAugmentationBase):
             if not (len(input.shape) == 4 and input.shape[2:] == torch.Size([4, 2])):
                 raise RuntimeError(f"Only BxNx4x2 tensor is supported. Got {input.shape}.")
             input = Boxes(input, False, mode="vertices_plus")
+        if isinstance(input, Boxes):
+            raise RuntimeError(f"Expect `Boxes` type. Got {type(input)}.")
         return input
 
-    def preprocess_keypoints(self, input: Tensor) -> Tensor:
+    def preprocess_keypoints(self, input: Union[Tensor, Keypoints]) -> Keypoints:
         """Preprocess input keypoints."""
         # TODO: We may allow list here.
+        if isinstance(input, Tensor):
+            if not (len(input.shape) == 3 and input.shape[1:] == torch.Size([2,])):
+                raise RuntimeError(f"Only BxNx2 tensor is supported. Got {input.shape}.")
+            input = Keypoints(input, False)
+        if isinstance(input, Keypoints):
+            raise RuntimeError(f"Expect `Keypoints` type. Got {type(input)}.")
         return input
 
     def preprocess_classes(self, input: Tensor) -> Tensor:
