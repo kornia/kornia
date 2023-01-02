@@ -243,6 +243,7 @@ class TestUpscaleDouble:
         if len(shape) == 2:
             expected = expected[0]
 
-        assert torch.all(expected == upscaled)
+        assert_close(upscaled, expected)
+        assert torch.all(upscaled == expected)
         downscaled_back = upscaled[..., ::2, ::2]
         assert torch.all(x == downscaled_back)
