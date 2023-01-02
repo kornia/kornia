@@ -1,4 +1,3 @@
-import warnings
 from abc import ABCMeta, abstractmethod
 from functools import partial
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Type, Union, cast
@@ -6,7 +5,7 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Type, U
 import torch
 
 import kornia  # lazy loading for circular dependencies
-from kornia.augmentation import GeometricAugmentationBase2D, MixAugmentationBaseV2, RandomCrop, RandomErasing
+from kornia.augmentation import GeometricAugmentationBase2D, MixAugmentationBaseV2
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import ParamItem
 from kornia.augmentation.utils import override_parameters
@@ -181,11 +180,7 @@ class InputApplyInverse(ApplyInverseImpl):
         else:
             if param.data is not None:
                 raise AssertionError(f"Non-augmentaion operation {param.name} require empty parameters. Got {param}.")
-            # In case of return_transform = True
-            if isinstance(input, (tuple, list)):
-                input = (module(input[0]), input[1])
-            else:
-                input = module(input)
+            input = module(input)
         return input
 
     @classmethod
@@ -208,7 +203,7 @@ class InputApplyInverse(ApplyInverseImpl):
             else:
                 raise TypeError(f'Expected param (ParamItem.data) be a dictionary. Gotcha {type(param.data)}')
 
-            input = module.inverse(input, params=_params_geo, extra_args=extra_args)
+            input = module.inverse(input, params=_params_geo, **extra_args)
 
         elif isinstance(module, kornia.augmentation.ImageSequential):
             temp = module.apply_inverse_func
@@ -266,7 +261,7 @@ class MaskApplyInverse(ApplyInverseImpl):
                 to apply transformations.
             param: the corresponding parameters to the module.
         """
-        if isinstance(module, (GeometricAugmentationBase2D, RandomErasing)):
+        if isinstance(module, (_AugmentationBase)):
             if isinstance(param, ParamItem) and isinstance(param.data, dict):
                 _param = param.data.copy()
                 # TODO: Parametrize value to pad with across the board for different keys
@@ -323,7 +318,7 @@ class MaskApplyInverse(ApplyInverseImpl):
             else:
                 raise TypeError(f'Expected param (ParamItem.data) be a dict. Gotcha {type(param.data)}')
 
-            input = module.inverse(input, params=_params_geo, **extra_args)
+            input = module.inverse_masks(input, params=_params_geo, **extra_args)
 
         elif isinstance(module, kornia.augmentation.ImageSequential):
             temp = module.apply_inverse_func
@@ -351,73 +346,11 @@ class MaskApplyInverse(ApplyInverseImpl):
         return input
 
 
-class BBoxApplyInverse(ApplyInverseImpl):
+class BBoxApplyInverse(ApplyInverseInterface):
     """Apply and inverse transformations for bounding box tensors.
 
     This is for transform boxes in the format (B, N, 4, 2).
     """
-
-    @classmethod
-    def _get_padding_size(cls, module: Module, param: Optional[ParamItem]) -> Optional[Tensor]:
-        if isinstance(module, RandomCrop) and param is not None and isinstance(param.data, dict):
-            return param.data["padding_size"]
-        return None
-
-    @classmethod
-    def pad(cls, input: Tensor, padding_size: Tensor) -> Tensor:
-        """
-        Args:
-            input: (B, N, 4, 2)
-            padding_size: (B, 4)
-        """
-        if len(input.shape) not in (3, 4):
-            raise AssertionError(input.shape)
-
-        if len(padding_size.shape) != 2:
-            raise AssertionError(padding_size.shape)
-
-        _input = input.clone()
-
-        if input.dim() == 3:
-            # B,4,2 to B,1,4,2
-            _input = _input[:, None]
-
-        _input[..., 0] += padding_size[..., None, :1]  # left padding
-        _input[..., 1] += padding_size[..., None, 2:3]  # top padding
-
-        if input.dim() == 3:
-            _input = _input[:, 0]  # squeeze back
-
-        return _input
-
-    @classmethod
-    def unpad(cls, input: Tensor, padding_size: Tensor) -> Tensor:
-        """
-        Args:
-            input: (B, N, 4, 2)
-            padding_size: (B, 4)
-        """
-        if len(input.shape) not in (3, 4):
-            raise AssertionError(input.shape)
-
-        if len(padding_size.shape) != 2:
-            raise AssertionError(padding_size.shape)
-
-        _input = input.clone()
-
-        if input.dim() == 3:
-            # B,4,2 to B,1,4,2
-            _input = _input[:, None]
-
-        _input[..., 0] -= padding_size[..., None, :1]  # left padding
-        _input[..., 1] -= padding_size[..., None, 2:3]  # top padding
-
-        if input.dim() == 3:
-            _input = _input[:, 0]  # squeeze back
-
-        return _input
-
-    apply_func = partial(transform_bbox, mode="xyxy", restore_coordinates=True)
 
     @classmethod
     def apply_trans(
@@ -433,13 +366,9 @@ class BBoxApplyInverse(ApplyInverseImpl):
         """
         _input = input.clone()
 
-        padding_size = cls._get_padding_size(module, param)
-        if padding_size is not None:
-            _input = cls.pad(_input, padding_size.to(_input))
-
-        _input = super().apply_trans(_input, module, param, extra_args=extra_args)
-
-        # TODO: Filter/crop boxes outside crop (with negative or larger than crop size coords)?
+        if isinstance(module, (GeometricAugmentationBase2D,)):
+            transform = module.compute_inverse_transformation(module.transform_matrix)
+            _input = module.transform_boxes(_input, param, module.flags, transform=transform, **extra_args)
 
         return _input
 
@@ -457,82 +386,14 @@ class BBoxApplyInverse(ApplyInverseImpl):
         """
         _input = input.clone()
 
-        _input = super().inverse(_input, module, param, extra_args=extra_args)
-
-        padding_size = cls._get_padding_size(module, param)
-        if padding_size is not None:
-            _input = cls.unpad(_input, padding_size.to(input))
+        if isinstance(module, (GeometricAugmentationBase2D,)):
+            transform = module.compute_inverse_transformation(module.transform_matrix)
+            _input = module.inverse_boxes(_input, param, module.flags, transform=transform, **extra_args)
 
         return _input
 
 
-class BBoxXYXYApplyInverse(BBoxApplyInverse):
-    """Apply and inverse transformations for bounding box tensors.
-
-    This is for transform boxes in the format [xmin, ymin, xmax, ymax].
-    """
-
-    apply_func = partial(transform_bbox, mode="xyxy", restore_coordinates=True)
-
-    @classmethod
-    def pad(cls, input, padding_size):
-        _padding_size = padding_size.to(input)
-        for i in range(len(_padding_size)):
-            input[i, :, 0::2] += _padding_size[i][0]  # left padding
-            input[i, :, 1::2] += _padding_size[i][2]  # top padding
-        return input
-
-    @classmethod
-    def unpad(cls, input, padding_size):
-        _padding_size = padding_size.to(input)
-        for i in range(len(_padding_size)):
-            input[i, :, 0::2] -= _padding_size[i][0]  # left padding
-            input[i, :, 1::2] -= _padding_size[i][2]  # top padding
-        return input
-
-    @classmethod
-    def apply_trans(
-        cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}
-    ) -> Tensor:
-        warnings.warn("BBoxXYXYApplyInverse is no longer maintained. Please use BBoxApplyInverse instead.")
-        return super().apply_trans(input, module=module, param=param, extra_args=extra_args)
-
-    @classmethod
-    def inverse(
-        cls, input: Tensor, module: Module, param: Optional[ParamItem] = None, extra_args: Dict[str, Any] = {}
-    ) -> Tensor:
-        warnings.warn("BBoxXYXYApplyInverse is no longer maintained. Please use BBoxApplyInverse instead.")
-        return super().inverse(input, module=module, param=param, extra_args=extra_args)
-
-
-class BBoxXYWHApplyInverse(BBoxXYXYApplyInverse):
-    """Apply and inverse transformations for bounding box tensors.
-
-    This is for transform boxes in the format [xmin, ymin, width, height].
-    """
-
-    apply_func = partial(transform_bbox, mode="xywh", restore_coordinates=True)
-
-    @classmethod
-    def pad(cls, input, padding_size):
-        _padding_size = padding_size.to(input)
-        # pad only xy, not wh
-        for i in range(len(_padding_size)):
-            input[i, :, 0] += _padding_size[i][0]  # left padding
-            input[i, :, 1] += _padding_size[i][2]  # top padding
-        return input
-
-    @classmethod
-    def unpad(cls, input, padding_size):
-        _padding_size = padding_size.to(input)
-        # unpad only xy, not wh
-        for i in range(len(_padding_size)):
-            input[i, :, 0] -= _padding_size[i][0]  # left padding
-            input[i, :, 1] -= _padding_size[i][2]  # top padding
-        return input
-
-
-class KeypointsApplyInverse(BBoxApplyInverse):
+class KeypointsApplyInverse(ApplyInverseInterface):
     """Apply and inverse transformations for keypoints tensors.
 
     This is for transform keypoints in the format (B, N, 2).
@@ -540,50 +401,6 @@ class KeypointsApplyInverse(BBoxApplyInverse):
 
     # Hot fix for the typing mismatching
     apply_func = partial(transform_points)
-
-    @classmethod
-    def pad(cls, input: Tensor, padding_size: Tensor) -> Tensor:
-        if len(input.shape) not in (2, 3):
-            raise AssertionError(input.shape)
-
-        if len(padding_size.shape) != 2:
-            raise AssertionError(padding_size.shape)
-
-        _input = input.clone()
-
-        if input.dim() == 2:
-            # B,2 to B,1,2
-            _input = _input[:, None]
-
-        _input[..., 0] += padding_size[..., :1]  # left padding
-        _input[..., 1] += padding_size[..., 2:3]  # top padding
-
-        if input.dim() == 2:
-            _input = _input[:, 0]  # squeeze back
-
-        return _input
-
-    @classmethod
-    def unpad(cls, input: Tensor, padding_size: Tensor) -> Tensor:
-        if len(input.shape) not in (2, 3):
-            raise AssertionError(input.shape)
-        if len(padding_size.shape) != 2:
-            raise AssertionError(padding_size.shape)
-
-        _input = input.clone()
-
-        if input.dim() == 2:
-            # B,2 to B,1,2
-            _input = _input[:, None]
-
-        # unpad only xy, not wh
-        _input[..., 0] -= padding_size[..., :1]  # left padding
-        _input[..., 1] -= padding_size[..., 2:3]  # top padding
-
-        if input.dim() == 2:
-            _input = _input[:, 0]  # squeeze back
-
-        return _input
 
 
 class ApplyInverse:

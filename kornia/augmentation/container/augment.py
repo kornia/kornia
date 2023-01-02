@@ -383,15 +383,15 @@ class AugmentationSequential(ImageSequential):
                     input = input.view(batch_size, -1, *input.shape[1:])
                 elif isinstance(module, PatchSequential):
                     raise NotImplementedError("Geometric involved PatchSequential is not supported.")
+                elif isinstance(module, MixAugmentationBaseV2):
+                    if dcate in [DataKey.BBOX_XYXY, DataKey.BBOX_XYWH]:
+                        dcate = DataKey.BBOX
+                    input = module(input, params=param.data, data_keys=[dcate])
                 elif (
                     isinstance(module, (AugmentationBase2D, ImageSequential))
                     and dcate in DataKey
                 ):
                     input = ApplyInverse.apply_by_key(input, module, param, dcate, extra_args=extra_args)
-                elif isinstance(module, MixAugmentationBaseV2):
-                    if dcate in [DataKey.BBOX_XYXY, DataKey.BBOX_XYWH]:
-                        dcate = DataKey.BBOX
-                    input = module(input, params=param.data, data_keys=[dcate])
                 elif isinstance(module, (SequentialBase,)):
                     raise ValueError(f"Unsupported Sequential {module}.")
                 else:

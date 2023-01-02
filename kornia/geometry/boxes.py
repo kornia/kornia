@@ -280,29 +280,27 @@ class Boxes:
 
     def pad(
         self,
-        outer_size: Optional[Union[Tensor, Tuple[int, int]]] = None,
-        inner_size: Optional[Union[Tensor, Tuple[int, int]]] = None,
+        padding_size: Tensor
     ) -> "Boxes":
         """Pad a bounding box.
 
         Args:
-            outer_size: pad the spaces outside the boxes (left, top).
-            inner_size: pad the spaces inside the boxes (width, height).
+            padding_size: (B, 4)
         """
-        raise NotImplementedError
+        self._data[..., 0] += padding_size[..., None, :1]  # left padding
+        self._data[..., 1] += padding_size[..., None, 2:3]  # top padding
 
     def unpad(
         self,
-        outer_size: Optional[Union[Tensor, Tuple[int, int]]] = None,
-        inner_size: Optional[Union[Tensor, Tuple[int, int]]] = None,
+        padding_size: Tensor
     ) -> "Boxes":
         """Pad a bounding box.
 
         Args:
-            outer_size: unpad the spaces outside the boxes (left, top).
-            inner_size: unpad the spaces inside the boxes (width, height).
+            padding_size: (B, 4)
         """
-        raise NotImplementedError
+        self._data[..., 0] -= padding_size[..., None, :1]  # left padding
+        self._data[..., 1] -= padding_size[..., None, 2:3]  # top padding
 
     def clamp(
         self,

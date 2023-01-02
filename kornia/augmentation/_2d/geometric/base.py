@@ -2,7 +2,6 @@ import warnings
 from typing import Any, Dict, Optional, Tuple, Union
 
 from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
-from kornia.augmentation.utils import override_parameters
 from kornia.core import Tensor, as_tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
@@ -137,10 +136,14 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         params: Dict[str, Tensor],
         flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
+        **kwargs,
     ) -> Tensor:
         in_tensor = self.transform_tensor(input)
         output = in_tensor.clone()
         to_apply = params['batch_prob']
+
+        params, flags = self._process_kwargs_to_params_and_flags(
+            self._params if params is None else params, flags, **kwargs)
 
         size = None
         if "forward_input_shape" in params:
@@ -166,12 +169,13 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         params: Dict[str, Tensor],
         flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
+        **kwargs,
     ) -> Tensor:
         resample_method: Optional[str]
         if "resample" in flags:
             resample_method = flags["resample"]
             flags["resample"] = "nearest"
-        output = self.inverse_inputs(input, params, flags, transform)
+        output = self.inverse_inputs(input, params, flags, transform, **kwargs)
         if resample_method is not None:
             flags["resample"] = resample_method
         return output
@@ -182,10 +186,14 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         params: Dict[str, Tensor],
         flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
+        **kwargs,
     ) -> Boxes:
         in_tensor = self.preprocess_boxes(input)
         output = in_tensor.clone()
         to_apply = params['batch_prob']
+
+        params, flags = self._process_kwargs_to_params_and_flags(
+            self._params if params is None else params, flags, **kwargs)
 
         padding_size = None
         if "padding_size" in params:
@@ -208,7 +216,8 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         input: Union[Tensor, Keypoints],
         params: Dict[str, Tensor],
         flags: Dict[str, Any],
-        transform: Optional[Tensor] = None
+        transform: Optional[Tensor] = None,
+        **kwargs,
     ) -> Keypoints:
         """Inverse the transformation on keypoints.
 
@@ -221,6 +230,9 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         in_tensor = self.preprocess_keypoints(input)
         output = in_tensor.clone()
         to_apply = params['batch_prob']
+
+        params, flags = self._process_kwargs_to_params_and_flags(
+            self._params if params is None else params, flags, **kwargs)
 
         padding_size = None
         if "padding_size" in params:
@@ -239,7 +251,12 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         return input.unpad(padding_size)
 
     def inverse_classes(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self,
+        input: Tensor,
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[Tensor] = None,
+        **kwargs,
     ) -> Tensor:
         return input
 
@@ -261,12 +278,8 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         in_tensor = self.transform_tensor(input)
         batch_shape = input.shape
 
-        if len(kwargs.keys()) != 0:
-            _src_params = self._params if params is None else params
-            params = override_parameters(_src_params, kwargs, in_place=False)
-            flags = override_parameters(self.flags, kwargs, in_place=False)
-        else:
-            flags = self.flags
+        params, flags = self._process_kwargs_to_params_and_flags(
+            self._params if params is None else params, self.flags, **kwargs)
 
         if params is None:
             params = self._params

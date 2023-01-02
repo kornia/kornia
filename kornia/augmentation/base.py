@@ -128,11 +128,14 @@ class _BasicAugmentationBase(Module):
         return batch_prob
 
     def _process_kwargs_to_params_and_flags(
-        self, params: Dict[str, Tensor], flags: Dict[str, Any], **kwargs
+        self, params: Optional[Dict[str, Tensor]] = None, flags: Optional[Dict[str, Any]] = None, **kwargs
     ) -> Tuple[Dict[str, Tensor], Dict[str, Any]]:
 
         # NOTE: determine how to save self._params
         save_kwargs = kwargs["save_kwargs"] if "save_kwargs" in kwargs else False
+
+        params = self._params if params is None else params
+        flags = self.flags if flags is None else flags
 
         if save_kwargs:
             params = override_parameters(params, kwargs, in_place=True)
@@ -141,7 +144,7 @@ class _BasicAugmentationBase(Module):
             self._params = params
             params = override_parameters(params, kwargs, in_place=False)
 
-        flags = override_parameters(self.flags, kwargs, in_place=False)
+        flags = override_parameters(flags, kwargs, in_place=False)
         return params, flags
 
     def forward_parameters(self, batch_shape) -> Dict[str, Tensor]:
@@ -256,8 +259,13 @@ class _AugmentationBase(_BasicAugmentationBase):
         return input
 
     def transform_inputs(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None,
+        **kwargs
     ) -> Tensor:
+
+        params, flags = self.__override_param_flags_temp__(
+            self._params if params is None else params, flags, **kwargs)
+
         to_apply = params['batch_prob']
         ori_shape = input.shape
         in_tensor = self.preprocess_inputs(input)
@@ -273,8 +281,13 @@ class _AugmentationBase(_BasicAugmentationBase):
         return output
 
     def transform_masks(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None,
+        **kwargs
     ) -> Tensor:
+
+        params, flags = self.__override_param_flags_temp__(
+            self._params if params is None else params, flags, **kwargs)
+
         to_apply = params['batch_prob']
         in_tensor = self.preprocess_masks(input)
         if to_apply.all():
@@ -293,7 +306,12 @@ class _AugmentationBase(_BasicAugmentationBase):
         params: Dict[str, Tensor],
         flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
+        **kwargs
     ) -> Boxes:
+
+        params, flags = self.__override_param_flags_temp__(
+            self._params if params is None else params, flags, **kwargs)
+
         to_apply = params['batch_prob']
         in_tensor = self.preprocess_boxes(input)
         output: Boxes
@@ -308,8 +326,13 @@ class _AugmentationBase(_BasicAugmentationBase):
         return output
 
     def transform_keypoints(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None,
+        **kwargs
     ) -> Tensor:
+
+        params, flags = self.__override_param_flags_temp__(
+            self._params if params is None else params, flags, **kwargs)
+
         to_apply = params['batch_prob']
         in_tensor = self.preprocess_keypoints(input)
         if to_apply.all():
@@ -323,8 +346,13 @@ class _AugmentationBase(_BasicAugmentationBase):
         return output
 
     def transform_classes(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None,
+        **kwargs
     ) -> Tensor:
+
+        params, flags = self.__override_param_flags_temp__(
+            self._params if params is None else params, flags, **kwargs)
+
         to_apply = params['batch_prob']
         in_tensor = self.preprocess_classes(input)
         if to_apply.all():
