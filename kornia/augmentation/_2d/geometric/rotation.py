@@ -67,9 +67,8 @@ class RandomRotation(GeometricAugmentationBase2D):
         align_corners: bool = True,
         p: float = 0.5,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator = rg.PlainUniformGenerator((degrees, "degrees", 0.0, (-360.0, 360.0)))
 
         self.flags = dict(resample=Resample.get(resample), align_corners=align_corners)
@@ -93,6 +92,11 @@ class RandomRotation(GeometricAugmentationBase2D):
     ) -> Tensor:
         if not isinstance(transform, Tensor):
             raise TypeError(f'Expected the transform be a Tensor. Gotcha {type(transform)}')
+
+        try:
+            affine(input, transform[..., :2, :3], flags["resample"].name.lower(), "zeros", flags["align_corners"])
+        except:
+            assert False, (input.shape, transform.shape, self.compute_transformation(input, params, self.flags).shape)
 
         return affine(input, transform[..., :2, :3], flags["resample"].name.lower(), "zeros", flags["align_corners"])
 

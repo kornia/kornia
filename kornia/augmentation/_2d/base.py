@@ -1,15 +1,13 @@
+from typing import Any, Dict, Optional
 from torch import Tensor, float16, float32, float64
 
-import kornia
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils import _transform_input, _validate_input_dtype
+from kornia.utils import eye_like
 
 
 class AugmentationBase2D(_AugmentationBase):
     r"""AugmentationBase2D base class for customized augmentation implementations.
-
-    For any augmentation, the implementation of "generate_parameters" and "apply_transform" are required while the
-    "compute_transformation" is only required when passing "return_transform" as True.
 
     Args:
         p: probability for applying an augmentation. This param controls the augmentation probabilities
@@ -42,6 +40,57 @@ class AugmentationBase2D(_AugmentationBase):
         _validate_input_dtype(input, accepted_dtypes=[float16, float32, float64])
         return _transform_input(input)
 
+
+class RigidAffineAugmentationBase2D(AugmentationBase2D):
+    r"""AugmentationBase2D base class for rigid/affine augmentation implementations.
+
+    Args:
+        p: probability for applying an augmentation. This param controls the augmentation probabilities
+          element-wise for a batch.
+        p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
+          probabilities batch-wise.
+        same_on_batch: apply the same transformation across the batch.
+        keepdim: whether to keep the output shape the same as input ``True`` or broadcast it to the batch
+          form ``False``.
+    """
+
+    @property
+    def transform_matrix(self,) -> Tensor:
+        return self._transform_matrix
+
     def identity_matrix(self, input) -> Tensor:
         """Return 3x3 identity matrix."""
-        return kornia.eye_like(3, input)
+        return eye_like(3, input)
+
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+        raise NotImplementedError
+
+    def generate_transformation_matrix(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
+    ) -> Tensor:
+        """Generate transformation matrices with the given input and param settings.
+        """
+        to_apply = params['batch_prob']
+        in_tensor = self.transform_tensor(input)
+        if not to_apply.any():
+            trans_matrix = self.identity_matrix(in_tensor)
+        elif to_apply.all():
+            trans_matrix = self.compute_transformation(in_tensor, params=params, flags=flags)
+        else:
+            trans_matrix = self.identity_matrix(in_tensor)
+            trans_matrix = trans_matrix.index_put(
+                (to_apply,), self.compute_transformation(in_tensor[to_apply], params=params, flags=flags)
+            )
+        return trans_matrix
+
+    def apply_func(
+        self, in_tensor: Tensor, params: Dict[str, Tensor], flags: Optional[Dict[str, Any]] = None
+    ) -> Tensor:
+        if flags is None:
+            flags = self.flags
+
+        trans_matrix = self.generate_transformation_matrix(in_tensor, params, flags)
+        output = self.transform_inputs(in_tensor, params, flags, trans_matrix)
+        self._transform_matrix = trans_matrix
+
+        return output

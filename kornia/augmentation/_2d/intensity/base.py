@@ -2,15 +2,12 @@ from typing import Any, Dict, Optional
 
 from torch import Tensor
 
-from kornia.augmentation._2d.base import AugmentationBase2D
+from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
 from kornia.geometry.boxes import Boxes
 
 
-class IntensityAugmentationBase2D(AugmentationBase2D):
+class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
     r"""IntensityAugmentationBase2D base class for customized intensity augmentation implementations.
-
-    For any augmentation, the implementation of "generate_parameters" and "apply_transform" are required while the
-    "compute_transformation" is only required when passing "return_transform" as True.
 
     Args:
         p: probability for applying an augmentation. This param controls the augmentation probabilities

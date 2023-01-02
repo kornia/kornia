@@ -1,13 +1,13 @@
 from typing import Any, Dict, Optional
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
+from kornia.augmentation._2d.geometric.base import AugmentationBase2D
 from kornia.core import Tensor
 from kornia.geometry.transform import remap
 from kornia.utils import create_meshgrid
 
 
-class RandomFisheye(GeometricAugmentationBase2D):
+class RandomFisheye(AugmentationBase2D):
     r"""Add random camera radial distortion.
 
     .. image:: _static/img/RandomFisheye.png
@@ -46,10 +46,9 @@ class RandomFisheye(GeometricAugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
     ) -> None:
         super().__init__(
-            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
+            p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
         )
         self._check_tensor(center_x)
         self._check_tensor(center_y)

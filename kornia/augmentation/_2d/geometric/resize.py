@@ -31,10 +31,9 @@ class Resize(GeometricAugmentationBase2D):
         align_corners: bool = True,
         antialias: bool = False,
         p: float = 1.0,
-        return_transform: Optional[bool] = None,
         keepdim: bool = False,
     ) -> None:
-        super().__init__(p=1.0, return_transform=return_transform, same_on_batch=True, p_batch=p, keepdim=keepdim)
+        super().__init__(p=1.0, same_on_batch=True, p_batch=p, keepdim=keepdim)
         self._param_generator = rg.ResizeGenerator(resize_to=size, side=side)
         self.flags = dict(
             size=size, side=side, resample=Resample.get(resample), align_corners=align_corners, antialias=antialias
@@ -102,14 +101,12 @@ class LongestMaxSize(Resize):
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         align_corners: bool = True,
         p: float = 1.0,
-        return_transform: Optional[bool] = None,
     ) -> None:
         # TODO: Support max_size list input to randomly select from
         super().__init__(
             size=max_size,
             side="long",
             resample=resample,
-            return_transform=return_transform,
             align_corners=align_corners,
             p=p,
         )
@@ -128,14 +125,12 @@ class SmallestMaxSize(Resize):
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         align_corners: bool = True,
         p: float = 1.0,
-        return_transform: Optional[bool] = None,
     ) -> None:
         # TODO: Support max_size list input to randomly select from
         super().__init__(
             size=max_size,
             side="short",
             resample=resample,
-            return_transform=return_transform,
             align_corners=align_corners,
             p=p,
         )

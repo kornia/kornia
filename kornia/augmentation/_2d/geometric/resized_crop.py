@@ -18,9 +18,6 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         scale: range of size of the origin size cropped.
         ratio: range of aspect ratio of the origin aspect ratio cropped.
         resample: the interpolation mode.
-        return_transform: if ``True`` return the matrix describing the transformation applied to each
-                          input tensor. If ``False`` and the input is a tuple the applied transformation
-                          won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
@@ -73,11 +70,10 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         p: float = 1.0,
         keepdim: bool = False,
         cropping_mode: str = "slice",
-        return_transform: Optional[bool] = None,
     ) -> None:
         # Since PyTorch does not support ragged tensor. So cropping function happens all the time.
         super().__init__(
-            p=1.0, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim
+            p=1.0, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim
         )
         self._param_generator = rg.ResizedCropGenerator(size, scale, ratio)
         self.flags = dict(

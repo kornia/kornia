@@ -249,6 +249,21 @@ class Boxes:
             return self
         return Boxes(data, False)
 
+    def index_put(
+        self, indices: Optional[Union[Tuple[Tensor, ...], List[Tensor]]], values: Tensor, inplace: bool = False
+    ) -> "Boxes":
+        if inplace:
+            _data = self._data
+        else:
+            _data = self._data.clone()
+        
+        _data.index_put_(indices, values)
+
+        if inplace:
+            return self
+        return Boxes(_data, False)
+
+
     def clamp(
         self,
         topleft: Optional[Union[Tensor, Tuple[int, int]]] = None,

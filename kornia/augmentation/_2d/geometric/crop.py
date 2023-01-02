@@ -84,11 +84,10 @@ class RandomCrop(GeometricAugmentationBase2D):
         p: float = 1.0,
         keepdim: bool = False,
         cropping_mode: str = "slice",
-        return_transform: Optional[bool] = None,
     ) -> None:
         # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
         super().__init__(
-            p=1.0, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim
+            p=1.0, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim
         )
         self._param_generator = rg.CropGenerator(size)
         self.flags = dict(

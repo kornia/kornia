@@ -75,10 +75,9 @@ class ColorJitter(IntensityAugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
         silence_instantiation_warning: bool = False,
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
 
         if not silence_instantiation_warning:
             warnings.warn(
