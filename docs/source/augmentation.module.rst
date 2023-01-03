@@ -38,6 +38,7 @@ Geometric
 ~~~~~~~~~
 
 .. autoclass:: CenterCrop
+.. autoclass:: PadTo
 .. autoclass:: RandomAffine
 .. autoclass:: RandomCrop
 .. autoclass:: RandomErasing

@@ -184,3 +184,8 @@ class TestSo2(BaseTester):
         i = So2.identity(batch_size=batch_size, device=device, dtype=dtype)
         self.assert_close(s_in_s.z.real, i.z.real)
         self.assert_close(s_in_s.z.imag, i.z.imag)
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_adjoint(self, device, dtype, batch_size):
+        s = So2.identity(batch_size, device=device, dtype=dtype)
+        self.assert_close(s.matrix(), s.adjoint())

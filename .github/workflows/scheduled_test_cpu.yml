@@ -1,4 +1,4 @@
-name: (scheduled) Run tests on CPU
+name: (scheduled) Tests on CPU
 
 on:
   push:
@@ -20,7 +20,7 @@ jobs:
       matrix:
         os: ['Ubuntu', 'Windows', 'MacOS']
         python-version: ['3.7', '3.8']
-        pytorch-version: ['1.9.1', '1.10.2', '1.12.1', '1.13.0', 'nightly']
+        pytorch-version: ['1.9.1', '1.10.2', '1.12.1', '1.13.1']
         pytorch-dtype: ['float16', 'float32', 'float64']
 
     steps:

@@ -56,6 +56,7 @@ def main():
     augmentations_list: dict = {
         "CenterCrop": ((184, 184), 1, 2018),
         "ColorJiggle": ((0.3, 0.3, 0.3, 0.3), 2, 2018),
+        "PadTo": (((220, 450),), 1, 2022),
         "RandomAffine": (((-15.0, 20.0), (0.1, 0.1), (0.7, 1.3), 20), 2, 2019),
         "RandomBoxBlur": (((7, 7),), 1, 2020),
         "RandomCrop": ((img1.shape[-2:], (50, 50)), 2, 2020),
@@ -89,19 +90,33 @@ def main():
         img_in = img1.repeat(num_samples, 1, 1, 1)
         # dynamically create the class instance
         cls = getattr(mod, aug_name)
-        aug = cls(*args, p=1.0)
+        try:
+            aug = cls(*args, p=1.0)
+        except TypeError:
+            aug = cls(*args)
+
         # set seed
         torch.manual_seed(seed)
         # apply the augmentation to the image and concat
         out = aug(img_in)
 
+        # save ori image to concatenate into the out image
+        ori = img_in[0]
         if aug_name == "CenterCrop":
             h, w = img1.shape[-2:]
             h_new, w_new = out.shape[-2:]
             h_dif, w_dif = int(h - h_new), int(w - w_new)
             out = torch.nn.functional.pad(out, (w_dif // 2, w_dif // 2, 0, h_dif))
+        elif aug_name == "PadTo":
+            # Convert to RGBA, and center the original image with transparent pad
+            w_pad = abs(int(img1.shape[-1] - out.shape[-1]) // 2)
+            h_pad = abs(int(img1.shape[-2] - out.shape[-2]) // 2)
+            ori = torch.nn.functional.pad(
+                K.color.rgb_to_rgba(img_in[0], 1.0), (w_pad, w_pad, h_pad, h_pad), 'constant', 0.0
+            )
+            out = K.color.rgb_to_rgba(out, 1.0)  # To match the dims
 
-        out = torch.cat([img_in[0], *(out[i] for i in range(out.size(0)))], dim=-1)
+        out = torch.cat([ori, *(out[i] for i in range(out.size(0)))], dim=-1)
         # save the output image
         out_np = K.utils.tensor_to_image((out * 255.0).byte())
         cv2.imwrite(str(OUTPUT_PATH / f"{aug_name}.png"), out_np)

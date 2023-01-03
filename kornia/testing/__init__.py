@@ -4,10 +4,11 @@ import math
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from itertools import product
-from typing import Any, Dict, List, Optional, Tuple, TypeVar, cast
+from typing import Any, Dict, List, Optional, Sequence, Tuple, TypeVar, cast
 
 import torch
 from torch.testing import assert_close as _assert_close
+from typing_extensions import TypeGuard
 
 from kornia.core import Tensor, eye, tensor
 
@@ -21,6 +22,7 @@ __all__ = [
     "KORNIA_UNWRAP",
     "KORNIA_CHECK_TYPE",
     "KORNIA_CHECK_IS_TENSOR",
+    "KORNIA_CHECK_IS_LIST_OF_TENSOR",
     "KORNIA_CHECK_SAME_DEVICE",
     "KORNIA_CHECK_SAME_DEVICES",
     "KORNIA_CHECK_IS_COLOR",
@@ -283,8 +285,11 @@ def assert_close(
 
 # Logger api
 
+# TODO: add somehow type check, or enforce to do it before
+# TODO: get rid of torchscript test because prevents us to have type safe code
 
-def KORNIA_CHECK_SHAPE(x, shape: List[str]) -> None:
+
+def KORNIA_CHECK_SHAPE(x: Tensor, shape: List[str]) -> None:
     """Check whether a tensor has a specified shape.
 
     The shape can be specified with a implicit or explicit list of strings.
@@ -304,9 +309,6 @@ def KORNIA_CHECK_SHAPE(x, shape: List[str]) -> None:
         >>> x = torch.rand(2, 3, 4, 4)
         >>> KORNIA_CHECK_SHAPE(x, ["2","3", "H", "W"])  # explicit
     """
-    # Desired shape here is list and not tuple, because torch.jit
-    # does not like variable-length tuples
-    KORNIA_CHECK_IS_TENSOR(x)
 
     if '*' == shape[0]:
         shape_to_check = shape[1:]
@@ -394,6 +396,25 @@ def KORNIA_CHECK_IS_TENSOR(x, msg: Optional[str] = None):
     """
     if not isinstance(x, Tensor):
         raise TypeError(f"Not a Tensor type. Got: {type(x)}.\n{msg}")
+
+
+def KORNIA_CHECK_IS_LIST_OF_TENSOR(x: Optional[Sequence[object]]) -> TypeGuard[List[Tensor]]:
+    """Check the input variable is a List of Tensors.
+
+    Args:
+        x: Any sequence of objects
+
+    Return:
+        True if the input is a list of Tensors, otherwise return False.
+
+    Example:
+        >>> x = torch.rand(2, 3, 3)
+        >>> KORNIA_CHECK_IS_LIST_OF_TENSOR(x)
+        False
+        >>> KORNIA_CHECK_IS_LIST_OF_TENSOR([x])
+        True
+    """
+    return isinstance(x, list) and all(isinstance(d, Tensor) for d in x)
 
 
 def KORNIA_CHECK_SAME_DEVICE(x: Tensor, y: Tensor):

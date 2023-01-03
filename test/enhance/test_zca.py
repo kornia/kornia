@@ -10,7 +10,6 @@ from kornia.testing import BaseTester
 class TestZCA(BaseTester):
     @pytest.mark.parametrize("unbiased", [True, False])
     def test_zca_unbiased(self, unbiased, device, dtype):
-
         data = torch.tensor([[0, 1], [1, 0], [-1, 0], [0, -1]], device=device, dtype=dtype)
 
         if unbiased:
@@ -92,7 +91,6 @@ class TestZCA(BaseTester):
         assert gradcheck(zca_T_inv, (data,), raise_exception=True)
 
     def test_grad_zca_with_fit(self, device, dtype):
-
         data = torch.tensor([[2, 0], [0, 1], [-2, 0], [0, -1]], device=device, dtype=dtype)
 
         data = utils.tensor_to_gradcheck_var(data)
@@ -104,7 +102,6 @@ class TestZCA(BaseTester):
         assert gradcheck(zca_fit, (data,), raise_exception=True)
 
     def test_grad_detach_zca(self, device, dtype):
-
         data = torch.tensor([[1, 0], [0, 1], [-2, 0], [0, -1]], device=device, dtype=dtype)
 
         data = utils.tensor_to_gradcheck_var(data)
@@ -115,7 +112,6 @@ class TestZCA(BaseTester):
         assert gradcheck(zca, (data,), raise_exception=True)
 
     def test_not_fitted(self, device, dtype):
-
         with pytest.raises(RuntimeError):
             data = torch.rand(10, 2, device=device, dtype=dtype)
 
@@ -123,7 +119,6 @@ class TestZCA(BaseTester):
             zca(data)
 
     def test_not_fitted_inv(self, device, dtype):
-
         with pytest.raises(RuntimeError):
             data = torch.rand(10, 2, device=device, dtype=dtype)
 
@@ -131,7 +126,6 @@ class TestZCA(BaseTester):
             zca.inverse_transform(data)
 
     def test_jit(self, device, dtype):
-
         data = torch.rand(10, 3, 1, 2, device=device, dtype=dtype)
         zca = kornia.enhance.ZCAWhitening().fit(data)
         zca_jit = kornia.enhance.ZCAWhitening().fit(data)
@@ -140,7 +134,6 @@ class TestZCA(BaseTester):
 
     @pytest.mark.parametrize("unbiased", [True, False])
     def test_zca_whiten_func_unbiased(self, unbiased, device, dtype):
-
         data = torch.tensor([[0, 1], [1, 0], [-1, 0], [0, -1]], device=device, dtype=dtype)
 
         if unbiased:

@@ -157,7 +157,6 @@ class Denormalize(nn.Module):
     """
 
     def __init__(self, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]) -> None:
-
         super().__init__()
 
         self.mean = mean

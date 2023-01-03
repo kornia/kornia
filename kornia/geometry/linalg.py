@@ -1,9 +1,8 @@
 import torch
 from torch import Tensor
 
+from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, check_is_tensor
-
-from .conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 
 __all__ = [
     "compose_transformations",
@@ -229,12 +228,12 @@ def point_line_distance(point: Tensor, line: Tensor, eps: float = 1e-9) -> Tenso
 
 def batched_dot_product(x: Tensor, y: Tensor, keepdim: bool = False) -> Tensor:
     """Return a batched version of .dot()"""
-    # KORNIA_CHECK_SHAPE(x, ["B", "N"])  # FIXME: resolve shape bugs. @edgarriba
-    # KORNIA_CHECK_SHAPE(y, ["B", "N"])  # FIXME: resolve shape bugs. @edgarriba
+    KORNIA_CHECK_SHAPE(x, ["*", "N"])
+    KORNIA_CHECK_SHAPE(y, ["*", "N"])
     return (x * y).sum(-1, keepdim)
 
 
-def squared_norm(x: Tensor, keepdim: bool = False) -> Tensor:
+def batched_squared_norm(x: Tensor, keepdim: bool = False) -> Tensor:
     """Return the squared norm of a vector."""
     return batched_dot_product(x, x, keepdim)
 
@@ -243,7 +242,6 @@ def euclidean_distance(x: Tensor, y: Tensor, keepdim: bool = False, eps: float =
     """Compute the Euclidean distance between two set of n-dimensional points.
 
     More: https://en.wikipedia.org/wiki/Euclidean_distance
-
     Args:
         x: first set of points of shape :math:`(*, N)`.
         y: second set of points of shape :math:`(*, N)`.
@@ -258,7 +256,7 @@ def euclidean_distance(x: Tensor, y: Tensor, keepdim: bool = False, eps: float =
 
 
 # aliases
-batched_squared_norm = squared_norm
+squared_norm = batched_squared_norm
 
 # TODO:
 # - project_points: from opencv

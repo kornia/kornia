@@ -1,6 +1,9 @@
-name: (scheduled) Run typing tests
+name: Tests on CPU (nightly)
 
 on:
+  pull_request:
+    branches: [master]
+    types: [opened, reopened, synchronize, review_requested, ready_for_review]
   push:
     branches: [master]
   schedule:
@@ -11,16 +14,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  tests:
-    name: ${{ matrix.os }} - python-${{ matrix.python-version }}, torch-${{ matrix.pytorch-version }}
+  tests-cpu:
+    name: ${{ matrix.os }} - python-${{ matrix.python-version }}, torch-${{ matrix.pytorch-version }}, ${{ matrix.pytorch-dtype }}
     runs-on: ${{ matrix.os }}-latest
 
     strategy:
       fail-fast: false
       matrix:
-        os: ['Ubuntu']
-        python-version: ['3.7']
-        pytorch-version: ['1.9.1', '1.10.2', '1.12.1', '1.13.1', 'nightly']
+        os: ['Ubuntu', 'Windows', 'MacOS']
+        python-version: ['3.7', '3.8']
+        pytorch-version: ['nightly']
+        pytorch-dtype: ['float32', 'float64']
 
     steps:
       - name: Checkout kornia
@@ -32,15 +36,16 @@ jobs:
           python-version: ${{ matrix.python-version }}
           pytorch-version: ${{ matrix.pytorch-version }}
 
-      - name: Run typing tests
+      - name: Run CPU tests ${{ matrix.pytorch-dtype }}
         shell: bash -l {0}
-        run: mypy --cobertura-xml-report ./
+        run: pytest -v --device cpu --dtype ${{ matrix.pytorch-dtype }} --cov=kornia --cov-report xml ./test
+
 
       - if: always()
         name: Upload coverage
         uses: codecov/codecov-action@v3
         with:
-          file: cobertura.xml
+          file: coverage.xml
           token: ${{ secrets.CODECOV_TOKEN }} # to not depend on build via GH API
-          flags: typing,${{ matrix.os }}_py-${{ matrix.python-version }}_pt-${{ matrix.pytorch-version }}_${{ matrix.pytorch-dtype }}
-          name: cpu-coverage-types
+          flags: cpu,${{ matrix.os }}_py-${{ matrix.python-version }}_pt-${{ matrix.pytorch-version }}_${{ matrix.pytorch-dtype }}
+          name: cpu-coverage
