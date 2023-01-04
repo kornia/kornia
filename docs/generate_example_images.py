@@ -142,6 +142,7 @@ def main():
         "rgb_to_ycbcr": ((), 1),
         "rgb_to_yuv": ((), 1),
         "rgb_to_linear_rgb": ((), 1),
+        "apply_colormap": ((K.color.colormap.AUTUMN(255),), 1),
     }
     # ITERATE OVER THE TRANSFORMS
     for fn_name, (args, num_samples) in color_transforms_list.items():
@@ -149,6 +150,9 @@ def main():
         fn = getattr(mod, fn_name)
         if fn_name == "grayscale_to_rgb":
             out = fn(K.color.rgb_to_grayscale(img2), *args)
+        elif fn_name == "apply_colormap":
+            gray_image = (K.color.rgb_to_grayscale(img2) * 255.0).round()
+            out = K.color.rgb_to_bgr(fn(gray_image, *args))
         else:
             out = fn(img2, *args)
         # perform normalization to visualize
@@ -162,7 +166,7 @@ def main():
         if out.shape[1] != 3:
             out = out.repeat(1, 3, 1, 1)
         # save the output image
-        if fn_name == "grayscale_to_rgb":
+        if fn_name in ("grayscale_to_rgb", "apply_colormap"):
             out = torch.cat(
                 [K.color.rgb_to_grayscale(img2[0]).repeat(3, 1, 1), *(out[i] for i in range(out.size(0)))], dim=-1
             )
@@ -172,6 +176,21 @@ def main():
         cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for {fn_name}. {sig}")
+
+    colormaps_list = {"AUTUMN": (256,)}
+    bar_img_gray = torch.range(0, 255).repeat(1, 40, 1)  # 1x1x40x256
+    bar_img = K.color.grayscale_to_rgb(bar_img_gray)
+    # ITERATE OVER THE COLORMAPS
+    for colormap_name, args in colormaps_list.items():
+        cm = getattr(mod, colormap_name)(*args)
+        out = K.color.rgb_to_bgr(K.color.apply_colormap(bar_img_gray, cm))
+
+        out = torch.cat([bar_img, out], dim=-1)
+
+        out_np = K.utils.tensor_to_image((out * 255.0).byte())
+        cv2.imwrite(str(OUTPUT_PATH / f"{colormap_name}.png"), out_np)
+        sig = f"{colormap_name}({', '.join([str(a) for a in args])})"
+        print(f"Generated image example for {colormap_name}. {sig}")
 
     # korna.enhance module
     mod = importlib.import_module("kornia.enhance")

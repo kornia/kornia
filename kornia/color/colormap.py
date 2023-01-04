@@ -111,7 +111,10 @@ _BASE_AUTUMN: List[RGBColor] = [
 
 # Generate complete color map
 class AUTUMN(ColorMap):
-    r"""The GNU Octave colormap `autumn`"""
+    r"""The GNU Octave colormap `autumn`
+
+    .. image:: _static/img/AUTUMN.png
+    """
 
     def __init__(
         self, num_colors: int = 64, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None
@@ -120,7 +123,11 @@ class AUTUMN(ColorMap):
 
 
 def apply_colormap(input_tensor: Tensor, colormap: ColorMap) -> Tensor:
-    r"""Apply to a gray tensor (integer tensor) a colormap.
+    r"""Apply to a gray tensor a colormap.
+
+        The image data is assumed to be integer values.
+
+    .. image:: _static/img/apply_colormap.png
 
     Args:
         input_tensor: the input tensor of a gray image.
