@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 from kornia.core import Module, Tensor, pad, stack, tensor
 from kornia.filters import filter2d, gaussian_blur2d
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE, KORNIA_CHECK_IS_TENSOR
 
 __all__ = [
     "PyrDown",
@@ -431,6 +431,7 @@ def upscale_double(x: Tensor) -> Tensor:
         - Input: :math:`(*, H, W)`
         - Output :math:`(*, H, W)`
     """
+    KORNIA_CHECK_IS_TENSOR(x)
     KORNIA_CHECK_SHAPE(x, ["*", "H", "W"])
     double_shape = x.shape[:-2] + (x.shape[-2] * 2, x.shape[-1] * 2)
     upscaled = torch.zeros(double_shape)

@@ -4,7 +4,7 @@ from torch.autograd import gradcheck
 
 import kornia
 import kornia.testing as utils  # test utils
-from kornia.testing import assert_close
+from kornia.testing import assert_close, BaseTester
 
 
 class TestPyrUp:
@@ -194,21 +194,42 @@ class TestBuildLaplacianPyramid:
         )
 
 
-class TestUpscaleDouble:
+class TestUpscaleDouble(BaseTester):
+
     @pytest.mark.parametrize("shape", ((5, 5), (2, 5, 5), (1, 2, 5, 5)))
-    def test_upscale_double(self, shape, device, dtype):
-        xm = torch.tensor([[0, 0, 0, 0, 0], [1, 1, 1, 1, 1], [2, 2, 2, 2, 2], [3, 3, 3, 3, 3], [4, 4, 4, 4, 4]])
+    def test_smoke(self, shape, device, dtype):
+        x = self.prepare_data(shape, device, dtype)
+        assert kornia.geometry.transform.upscale_double(x) is not None
 
-        ym = torch.tensor([[0, 1, 2, 3, 4], [0, 1, 2, 3, 4], [0, 1, 2, 3, 4], [0, 1, 2, 3, 4], [0, 1, 2, 3, 4]])
+    def test_exception(self, device, dtype):
+        with pytest.raises(TypeError):
+            assert kornia.geometry.transform.upscale_double(None)
 
-        x = torch.zeros(shape, device=device, dtype=dtype)
+    def test_cardinality(self, device, dtype):
+        with pytest.raises(TypeError):
+            img = torch.rand((10))
+            assert kornia.geometry.transform.upscale_double(img)
 
-        if len(shape) == 2:
-            x = xm
-        else:
-            x[..., 0, :, :] = xm
-            x[..., 1, :, :] = ym
+    @pytest.mark.jit
+    def test_jit(self, device, dtype):
+        img = self.prepare_data((1, 2, 5, 5), device, dtype)
+        op = kornia.geometry.transform.upscale_double
+        op_jit = torch.jit.script(op)
+        assert_close(op(img), op_jit(img))
 
+    @pytest.mark.grad
+    def test_gradcheck(self, device, dtype):
+        x = self.prepare_data((1, 2, 5, 5), device, dtype, requires_grad=True)
+        assert gradcheck(kornia.geometry.transform.upscale_double, (x,), rtol=5e-2, raise_exception=True, fast_mode=False)
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_module(self, device, dtype):
+        pass
+
+    @pytest.mark.parametrize("shape", ((5, 5), (2, 5, 5), (1, 2, 5, 5)))
+    def test_upscale_double_and_back(self, shape, device, dtype):
+
+        x = self.prepare_data(shape, device, dtype)
         upscaled = kornia.geometry.transform.upscale_double(x)
 
         expected = torch.tensor(
@@ -249,3 +270,26 @@ class TestUpscaleDouble:
         assert torch.all(upscaled == expected)
         downscaled_back = upscaled[..., ::2, ::2]
         assert torch.all(x == downscaled_back)
+
+    @staticmethod
+    def prepare_data(shape, device, dtype, requires_grad=False):
+        xm = torch.tensor([[0, 0, 0, 0, 0],
+                           [1, 1, 1, 1, 1],
+                           [2, 2, 2, 2, 2],
+                           [3, 3, 3, 3, 3],
+                           [4, 4, 4, 4, 4]]).to(dtype=dtype)
+        ym = torch.tensor([[0, 1, 2, 3, 4],
+                           [0, 1, 2, 3, 4],
+                           [0, 1, 2, 3, 4],
+                           [0, 1, 2, 3, 4],
+                           [0, 1, 2, 3, 4]]).to(dtype=dtype)
+
+        x = torch.zeros(shape, device=device, dtype=dtype)
+        if len(shape) == 2:
+            x = xm
+        else:
+            x[..., 0, :, :] = xm
+            x[..., 1, :, :] = ym
+        if requires_grad:
+            x.requires_grad_()
+        return x
