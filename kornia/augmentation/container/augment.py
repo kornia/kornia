@@ -1,18 +1,16 @@
 import warnings
-from itertools import zip_longest
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from kornia.augmentation import (
     AugmentationBase3D,
     AugmentationBase2D,
 )
-from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.augmentation.base import _AugmentationBase
-from kornia.augmentation.container.base import SequentialBase
+from kornia.augmentation.container.ops import DataType
 from kornia.augmentation.container.image import ImageSequential, ParamItem
 from kornia.augmentation.container.patch import PatchSequential
-from kornia.augmentation.container.utils import ApplyInverse
 from kornia.augmentation.container.video import VideoSequential
+from kornia.augmentation.container.ops import AugmentationSequentialOps
 from kornia.constants import DataKey, Resample
 from kornia.core import Tensor
 from kornia.geometry.boxes import Boxes
@@ -157,10 +155,12 @@ class AugmentationSequential(ImageSequential):
         self.data_keys = [DataKey.get(inp) for inp in data_keys]
 
         if not all(in_type in DataKey for in_type in self.data_keys):
-            raise AssertionError(f"`data_keys` must be in {DataKey}. Got {data_keys}.")
+            raise AssertionError(f"`data_keys` must be in {DataKey}. Got {self.data_keys}.")
 
         if self.data_keys[0] != DataKey.INPUT:
             raise NotImplementedError(f"The first input must be {DataKey.INPUT}.")
+
+        self.transform_op = AugmentationSequentialOps(self.data_keys)
 
         self.contains_video_sequential: bool = False
         self.contains_3d_augmentation: bool = False
@@ -188,10 +188,10 @@ class AugmentationSequential(ImageSequential):
 
     def inverse(  # type: ignore[override]
         self,
-        *args: Tensor,
+        *args: DataType,
         params: Optional[List[ParamItem]] = None,
         data_keys: Optional[List[Union[str, int, DataKey]]] = None,
-    ) -> Union[Tensor, List[Tensor]]:
+    ) -> Union[DataType, List[DataType]]:
         """Reverse the transformation applied.
 
         Number of input tensors must align with the number of``data_keys``. If ``data_keys`` is not set, use
@@ -214,66 +214,16 @@ class AugmentationSequential(ImageSequential):
                 )
             params = self._params
 
-        outputs: List[Optional[Tensor]] = [None] * len(_data_keys)
-        for idx, (arg, dcate) in enumerate(zip(args, _data_keys)):
+        outputs: List[Optional[Tensor]] = [None] * len(self.transform_op.data_keys)
+        for param in params:
+            module = self.get_submodule(param.name)
+            outputs = self.transform_op.inverse(
+                *args, module=module, param=param, extra_args=self.extra_args)
 
-            if dcate in self.extra_args:
-                extra_args = self.extra_args[dcate]
-            else:
-                extra_args = {}
+        if len(outputs) == 1 and isinstance(outputs, list):
+            return outputs[0]
 
-            if dcate == DataKey.INPUT and isinstance(arg, (tuple, list)):
-                input, _ = arg  # ignore the transformation matrix whilst inverse
-            # Using tensors straight-away
-            elif isinstance(arg, (Boxes,)):
-                input = arg.data  # all boxes are in (B, N, 4, 2) format now.
-            else:
-                input = arg
-            for (name, module), _param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
-                if isinstance(module, (_AugmentationBase, ImageSequential)):
-                    _mb = [p for p in params if name in p]
-                    if len(_mb) > 0:
-                        param = _mb[0]
-                    elif isinstance(_param, ParamItem):
-                        param = _param
-                    else:
-                        param = None
-                else:
-                    param = None
-
-                if isinstance(module, ImageSequential) and module.is_intensity_only() and dcate in DataKey:
-                    pass  # Do nothing
-                elif isinstance(module, VideoSequential) and dcate not in [DataKey.INPUT, DataKey.MASK]:
-                    batch_size: int = input.size(0)
-                    input = input.view(-1, *input.shape[2:])
-                    input = ApplyInverse.inverse_by_key(input, module, param, dcate, extra_args=extra_args)
-                    input = input.view(batch_size, -1, *input.shape[1:])
-                elif isinstance(module, PatchSequential):
-                    raise NotImplementedError("Geometric involved PatchSequential is not supported.")
-                elif isinstance(module, (AugmentationSequential)) and dcate in DataKey:
-                    # AugmentationSequential shall not take the extra_args arguments.
-                    input = ApplyInverse.inverse_by_key(input, module, param, dcate)
-                elif (
-                    isinstance(module, (AugmentationBase2D, ImageSequential))
-                    and dcate in DataKey
-                ):
-                    input = ApplyInverse.inverse_by_key(input, module, param, dcate, extra_args=extra_args)
-                elif isinstance(module, (SequentialBase,)):
-                    raise ValueError(f"Unsupported Sequential {module}.")
-                else:
-                    raise NotImplementedError(f"data_key {dcate} is not implemented for {module}.")
-            if isinstance(arg, (Boxes,)):
-                arg._data = input
-                outputs[idx] = arg.to_tensor()
-            else:
-                outputs[idx] = input
-
-        _outputs = [i for i in outputs if isinstance(i, Tensor)]
-
-        if len(_outputs) == 1 and isinstance(_outputs, list):
-            return _outputs[0]
-
-        return _outputs
+        return outputs
 
     def __packup_output__(  # type: ignore[override]
         self, output: List[Tensor],
@@ -316,24 +266,21 @@ class AugmentationSequential(ImageSequential):
 
     def forward(  # type: ignore[override]
         self,
-        *args: Tensor,
+        *args: DataType,
         params: Optional[List[ParamItem]] = None,
         data_keys: Optional[List[Union[str, int, DataKey]]] = None,
-    ) -> Union[Tensor, List[Tensor]]:
+    ) -> Union[DataType, List[DataType]]:
         """Compute multiple tensors simultaneously according to ``self.data_keys``."""
-        if data_keys is None:
-            _data_keys = self.data_keys
-        else:
-            _data_keys = [DataKey.get(inp) for inp in data_keys]
+        self.transform_op.data_keys = self.transform_op.preproc_datakeys(data_keys)
 
-        self._validate_args_datakeys(*args, data_keys=_data_keys)
+        self._validate_args_datakeys(*args, data_keys=self.transform_op.data_keys)
 
-        args = self._arguments_preproc(*args, data_keys=_data_keys)
+        args = self._arguments_preproc(*args, data_keys=self.transform_op.data_keys)
 
         if params is None:
             # image data must exist if params is not provided.
-            if DataKey.INPUT in _data_keys:
-                inp = args[_data_keys.index(DataKey.INPUT)]
+            if DataKey.INPUT in self.transform_op.data_keys:
+                inp = args[self.transform_op.data_keys.index(DataKey.INPUT)]
                 if isinstance(inp, (tuple, list)):
                     raise ValueError(f"`INPUT` should be a tensor but `{type(inp)}` received.")
                 # A video input shall be BCDHW while an image input shall be BCHW
@@ -345,62 +292,13 @@ class AugmentationSequential(ImageSequential):
             else:
                 raise ValueError("`params` must be provided whilst INPUT is not in data_keys.")
 
-        outputs: List[Optional[Tensor]] = [None] * len(_data_keys)
+        outputs: List[Optional[DataType]] = [None] * len(self.transform_op.data_keys)
+        for param in params:
+            module = self.get_submodule(param.name)
+            outputs = self.transform_op.transform(
+                *args, module=module, param=param, extra_args=self.extra_args)
 
-        for idx, (arg, dcate) in enumerate(zip(args, _data_keys)):
-            # Forward the param to all input data keys
-            if dcate in self.extra_args:
-                extra_args = self.extra_args[dcate]
-            else:
-                extra_args = {}
+        # Restore it back
+        self.transform_op.data_keys = self.data_keys
 
-            if dcate == DataKey.INPUT:
-                _inp = args[idx]
-
-                _out = super().forward(_inp, params=params, extra_args=extra_args)
-                self._transform_matrix = self.get_transformation_matrix(_inp, params=params)
-
-                _input = _out
-
-                outputs[idx] = _input
-                # NOTE: Skip the rest here.
-                continue
-
-            # Using tensors straight-away
-            if isinstance(arg, (Boxes,)):
-                input = arg.data  # all boxes are in (B, N, 4, 2) format now.
-            else:
-                input = arg
-
-            for param in params:
-                module = self.get_submodule(param.name)
-                if isinstance(module, ImageSequential) and module.is_intensity_only() and dcate in DataKey:
-                    pass  # Do nothing
-                elif isinstance(module, VideoSequential) and dcate not in [DataKey.INPUT, DataKey.MASK]:
-                    batch_size: int = input.size(0)
-                    input = input.view(-1, *input.shape[2:])
-                    input = ApplyInverse.apply_by_key(input, module, param, dcate, extra_args=extra_args)
-                    input = input.view(batch_size, -1, *input.shape[1:])
-                elif isinstance(module, PatchSequential):
-                    raise NotImplementedError("Geometric involved PatchSequential is not supported.")
-                elif isinstance(module, MixAugmentationBaseV2):
-                    if dcate in [DataKey.BBOX_XYXY, DataKey.BBOX_XYWH]:
-                        dcate = DataKey.BBOX
-                    input = module(input, params=param.data, data_keys=[dcate])
-                elif (
-                    isinstance(module, (AugmentationBase2D, ImageSequential))
-                    and dcate in DataKey
-                ):
-                    input = ApplyInverse.apply_by_key(input, module, param, dcate, extra_args=extra_args)
-                elif isinstance(module, (SequentialBase,)):
-                    raise ValueError(f"Unsupported Sequential {module}.")
-                else:
-                    raise NotImplementedError(f"data_key {dcate} is not implemented for {module}.")
-
-            if isinstance(arg, (Boxes,)):
-                arg._data = input
-                outputs[idx] = arg.to_tensor()
-            else:
-                outputs[idx] = input
-        _outputs = [i for i in outputs if isinstance(i, Tensor)]
-        return self.__packup_output__(_outputs)
+        return self.__packup_output__(outputs)

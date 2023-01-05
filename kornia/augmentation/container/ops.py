@@ -1,0 +1,369 @@
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
+from abc import ABCMeta, abstractmethod
+
+import torch
+
+import kornia
+from kornia.augmentation import GeometricAugmentationBase2D, MixAugmentationBaseV2
+from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.container.base import ParamItem
+from kornia.core import Module, Tensor
+from kornia.constants import DataKey
+from kornia.geometry.boxes import Boxes
+from kornia.geometry.keypoints import Keypoints
+
+DataType = Union[Tensor, Boxes, Keypoints]
+
+
+class SequentialOpsInterface(metaclass=ABCMeta):
+    """Abstract interface for applying and inversing transformations."""
+
+    @classmethod
+    def get_instance_module_param(cls, param: ParamItem) -> Optional[Dict[str, Tensor]]:
+        if param is None:
+            _params = None
+        elif isinstance(param, ParamItem) and isinstance(param.data, dict):
+            _params = param.data
+        else:
+            raise TypeError(f'Expected param (ParamItem.data) be a dictionary. Gotcha {type(param.data)}')
+        return _params
+
+    @classmethod
+    def get_sequential_module_param(cls, param: ParamItem) -> Optional[List[ParamItem]]:
+        if param is None:
+            _params = None
+        elif isinstance(param, ParamItem) and isinstance(param.data, list):
+            _params = param.data
+        else:
+            raise TypeError(f'Expected param (ParamItem.data) be a list. Gotcha {type(param.data)}')
+        return _params
+
+    @classmethod
+    @abstractmethod
+    def transform(
+        cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}
+    ) -> Tuple[Tensor, Optional[Tensor]]:
+        """Apply a transformation with respect to the parameters.
+
+        Args:
+            input: the input tensor.
+            module: any torch Module but only kornia augmentation modules will count
+                to apply transformations.
+            param: the corresponding parameters to the module.
+        """
+        raise NotImplementedError
+
+    @classmethod
+    @abstractmethod
+    def inverse(
+        cls, input: Tensor, module: Module, param: Optional[ParamItem] = None, extra_args: Dict[str, Any] = {}
+    ) -> Tensor:
+        """Inverse a transformation with respect to the parameters.
+
+        Args:
+            input: the input tensor.
+            module: any torch Module but only kornia augmentation modules will count
+                to apply transformations.
+            param: the corresponding parameters to the module.
+        """
+        raise NotImplementedError
+
+
+class AugmentationSequentialOps:
+
+    def __init__(self, data_keys: List[DataKey]) -> None:
+        self._data_keys = data_keys
+
+    @property
+    def data_keys(self,) -> List[DataKey]:
+        return self._data_keys
+
+    @data_keys.setter
+    def data_keys(self, data_keys: List[DataKey]) -> None:
+        self._data_keys = [DataKey.get(inp) for inp in data_keys]
+
+    def preproc_datakeys(self, data_keys: Optional[List[Union[str, int, DataKey]]] = None) -> List[DataKey]:
+        if data_keys is None:
+            return self.data_keys
+        else:
+            return [DataKey.get(inp) for inp in data_keys]
+
+    def _get_op(self, data_key: DataKey) -> SequentialOpsInterface:
+        """Return the corresponding operation given a data key."""
+        if data_key == DataKey.INPUT:
+            return InputSequentialOps
+        if data_key == DataKey.MASK:
+            return MaskSequentialOps
+        if data_key == DataKey.BBOX or data_key == DataKey.BBOX_XYWH or data_key == DataKey.BBOX_XYXY:
+            return BoxSequentialOps
+        if data_key == DataKey.KEYPOINTS:
+            return KeypointSequentialOps
+        raise RuntimeError(f"Operation for `{data_key.name}` is not found.")
+
+    def transform(
+        self,
+        *arg: DataType,
+        module: Module,
+        param: ParamItem,
+        extra_args: Dict[str, Any],
+        data_keys: Optional[List[Union[str, int, DataKey]]] = None,
+    ) -> Union[DataType, List[DataType]]:
+        data_keys = self.preproc_datakeys(data_keys)
+        outputs = []
+        for inp, dcate in zip(arg, data_keys):
+            op = self._get_op(dcate)
+            extra_arg = extra_args[dcate] if dcate in extra_args else {}
+            outputs.append(op.transform(inp, module, param=param, extra_args=extra_arg))
+        if len(outputs) == 1:
+            return outputs[0]
+        return outputs
+
+    def inverse(
+        self,
+        *arg: DataType,
+        module: Module,
+        param: ParamItem,
+        extra_args: Dict[str, Any],
+        data_keys: Optional[List[Union[str, int, DataKey]]] = None,
+    ) -> Union[DataType, List[DataType]]:
+        data_keys = self.preproc_datakeys(data_keys)
+        outputs = []
+        for inp, dcate in zip(arg, data_keys):
+            op = self._get_op(dcate)
+            extra_arg = extra_args[dcate] if dcate in extra_args else {}
+            outputs.append(op.inverse(inp, module, param=param, extra_args=extra_arg))
+        if len(outputs) == 1:
+            return outputs[0]
+        return outputs
+
+
+def make_input_only_sequential(module: 'kornia.augmentation.ImageSequential') -> Callable[..., Tensor]:
+    """Disable all other additional inputs (e.g. ) for ImageSequential."""
+
+    def f(*args, **kwargs):
+        out = module(*args, **kwargs)
+        return out
+
+    return f
+
+
+def get_geometric_only_param(
+    module: 'kornia.augmentation.ImageSequential', param: List[ParamItem]
+) -> List[ParamItem]:
+    named_modules: Iterator[Tuple[str, Module]] = module.get_forward_sequence(param)
+
+    res: List[ParamItem] = []
+    for (_, mod), p in zip(named_modules, param):
+        if isinstance(mod, (GeometricAugmentationBase2D,)):
+            res.append(p)
+    return res
+
+
+class InputSequentialOps(SequentialOpsInterface):
+
+    @classmethod
+    def transform(
+        cls,
+        input: Tensor,
+        module: Module,
+        param: ParamItem,
+        extra_args: Dict[str, Any],
+    ) -> Tensor:
+        if isinstance(module, (_AugmentationBase, MixAugmentationBaseV2)):
+            input = module(input, params=cls.get_instance_module_param(param), **extra_args)
+        elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
+            input = module.transform_input(
+                input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
+        else:
+            if param.data is not None:
+                raise AssertionError(f"Non-augmentaion operation {param.name} require empty parameters. Got {param}.")
+            input = module(input)
+        return input
+
+    @classmethod
+    def inverse(
+        cls,
+        input: Tensor,
+        module: Optional[Module],
+        param: ParamItem,
+        extra_args: Dict[str, Any],
+    ) -> Tensor:
+        if isinstance(module, GeometricAugmentationBase2D):
+            input = module.inverse(input, params=cls.get_instance_module_param(param), **extra_args)
+        elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
+            input = module.inverse_input(
+                input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
+        return input
+
+
+class MaskSequentialOps(SequentialOpsInterface):
+    """Apply and inverse transformations for mask tensors."""
+
+    @classmethod
+    def transform(
+        cls,
+        input: Tensor,
+        module: Module,
+        param: Optional[ParamItem] = None,
+        extra_args: Dict[str, Any] = {},
+    ) -> Tuple[Tensor, Optional[Tensor]]:
+        """Apply a transformation with respect to the parameters.
+
+        Args:
+            input: the input tensor.
+            module: any torch Module but only kornia augmentation modules will count
+                to apply transformations.
+            param: the corresponding parameters to the module.
+        """
+        if isinstance(module, (_AugmentationBase)):
+            if isinstance(param, ParamItem) and isinstance(param.data, dict):
+                _param = param.data.copy()
+                # TODO: Parametrize value to pad with across the board for different keys
+                if 'values' in _param:
+                    _param['values'] = torch.zeros_like(_param['values'])  # Always pad with zeros
+            elif param is None:
+                _param = None
+            else:
+                raise TypeError(f'Expected param be None or ParamItem.data as a dict. Gotcha {type(_param)}')
+
+            input = module.transform_masks(input, params=_param, **extra_args)
+
+        elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
+            input = module.transform_masks(
+                input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
+        return input
+
+    @classmethod
+    def inverse(
+        cls, input: Tensor, module: Module, param: Optional[ParamItem] = None, extra_args: Dict[str, Any] = {}
+    ) -> Tensor:
+        """Inverse a transformation with respect to the parameters.
+
+        Args:
+            input: the input tensor.
+            module: any torch Module but only kornia augmentation modules will count
+                to apply transformations.
+            param: the corresponding parameters to the module.
+        """
+
+        if isinstance(module, GeometricAugmentationBase2D):
+
+            input = module.inverse_masks(input, params=cls.get_instance_module_param(param), **extra_args)
+
+        elif isinstance(module, kornia.augmentation.ImageSequential):
+            input = module.inverse_masks(
+                input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
+
+        return input
+
+
+class BoxSequentialOps(SequentialOpsInterface):
+    """Apply and inverse transformations for bounding box tensors.
+
+    This is for transform boxes in the format (B, N, 4, 2).
+    """
+
+    @classmethod
+    def transform(
+        cls, input: Boxes, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}
+    ) -> Boxes:
+        """Apply a transformation with respect to the parameters.
+
+        Args:
+            input: the input tensor, (B, N, 4, 2) or (B, 4, 2).
+            module: any torch Module but only kornia augmentation modules will count
+                to apply transformations.
+            param: the corresponding parameters to the module.
+        """
+        _input = input.clone()
+
+        if isinstance(module, (GeometricAugmentationBase2D,)):
+            transform = module.compute_inverse_transformation(module.transform_matrix)
+            _input = module.transform_boxes(
+                _input, cls.get_instance_module_param(param), module.flags, transform=transform, **extra_args)
+
+        elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
+            _input = module.transform_boxes(
+                _input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
+
+        return _input
+
+    @classmethod
+    def inverse(
+        cls, input: Boxes, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}
+    ) -> Boxes:
+        """Inverse a transformation with respect to the parameters.
+
+        Args:
+            input: the input tensor.
+            module: any torch Module but only kornia augmentation modules will count
+                to apply transformations.
+            param: the corresponding parameters to the module.
+        """
+        _input = input.clone()
+
+        if isinstance(module, (GeometricAugmentationBase2D,)):
+            transform = module.compute_inverse_transformation(module.transform_matrix)
+            _input = module.inverse_boxes(_input, param.data, module.flags, transform=transform, **extra_args)
+
+        elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
+            _input = module.inverse_boxes(
+                _input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
+        return _input
+
+
+class KeypointSequentialOps(SequentialOpsInterface):
+    """Apply and inverse transformations for keypoints tensors.
+
+    This is for transform keypoints in the format (B, N, 2).
+    """
+
+    @classmethod
+    def transform(
+        cls, input: Keypoints, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}
+    ) -> Keypoints:
+        """Apply a transformation with respect to the parameters.
+
+        Args:
+            input: the input tensor, (B, N, 4, 2) or (B, 4, 2).
+            module: any torch Module but only kornia augmentation modules will count
+                to apply transformations.
+            param: the corresponding parameters to the module.
+        """
+        _input = input.clone()
+
+        if isinstance(module, (GeometricAugmentationBase2D,)):
+            transform = module.compute_inverse_transformation(module.transform_matrix)
+            _input = module.transform_keypoints(
+                _input, cls.get_instance_module_param(param), module.flags, transform=transform, **extra_args)
+
+        elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
+            _input = module.transform_keypoints(
+                _input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
+
+        return _input
+
+    @classmethod
+    def inverse(
+        cls, input: Keypoints, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}
+    ) -> Keypoints:
+        """Inverse a transformation with respect to the parameters.
+
+        Args:
+            input: the input tensor.
+            module: any torch Module but only kornia augmentation modules will count
+                to apply transformations.
+            param: the corresponding parameters to the module.
+        """
+        _input = input.clone()
+
+        if isinstance(module, (GeometricAugmentationBase2D,)):
+            transform = module.compute_inverse_transformation(module.transform_matrix)
+            _input = module.inverse_keypoints(
+                _input, cls.get_instance_module_param(param), module.flags, transform=transform, **extra_args)
+
+        elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
+            _input = module.inverse_keypoints(
+                _input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
+
+        return _input

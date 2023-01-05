@@ -50,6 +50,10 @@ class Keypoints:
         self._data[key] = value._data
         return self
 
+    @property
+    def data(self,):
+        return self._data
+
     def pad(
         self,
         padding_size: Tensor,

@@ -305,7 +305,7 @@ class PatchSequential(ImageSequential):
         _input = input[params.indices]
 
         module = self.get_submodule(params.param.name)
-        output = self.apply_to_input(_input, module, params.param, extra_args={})
+        output = self.transform_op.transform(_input, module, params.param, extra_args={})
 
         if isinstance(module, (_AugmentationBase, SequentialBase, MixAugmentationBaseV2)):
             out_param = ParamItem(params.param.name, module._params)
@@ -327,17 +327,83 @@ class PatchSequential(ImageSequential):
 
     def forward_by_params(
         self, input: Tensor, params: List[PatchParamItem]
-    ) -> Union[Tensor, Tuple[Tensor, Optional[Tensor]]]:
-        _input: Tensor
+    ) -> Tensor:
         in_shape = input.shape
-        _input = input.reshape(-1, *in_shape[-3:])
+        input = input.reshape(-1, *in_shape[-3:])
 
         self.clear_state()
         for patch_param in params:
-            _input, out_param = self.apply_by_param(_input, params=patch_param)
+            input, out_param = self.apply_by_param(input, params=patch_param)
             self.update_params(out_param)
-        _input = _input.reshape(in_shape)
-        return _input
+        input = input.reshape(in_shape)
+        return input
+
+    def transform_input(
+        self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Tensor:
+
+        pad = self.compute_padding(input, self.padding)
+        input = self.extract_patches(input, self.grid_size, pad)
+        input = self.forward_by_params(input, params)
+        input = self.restore_from_patches(input, self.grid_size, pad=pad)
+
+        return input
+
+    def inverse_input(
+        self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Tensor:
+        if self.is_intensity_only():
+            return input
+
+        raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
+
+    def transform_masks(
+        self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Tensor:
+        if self.is_intensity_only():
+            return input
+
+        raise NotImplementedError("PatchSequential for boxes cannot be used with geometric transformations.")
+
+    def inverse_masks(
+        self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Tensor:
+        if self.is_intensity_only():
+            return input
+
+        raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
+
+    def transform_boxes(
+        self, input: Boxes, params: List[ParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Boxes:
+        if self.is_intensity_only():
+            return input
+
+        raise NotImplementedError("PatchSequential for boxes cannot be used with geometric transformations.")
+
+    def inverse_boxes(
+        self, input: Boxes, params: List[ParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Boxes:
+        if self.is_intensity_only():
+            return input
+
+        raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
+
+    def transform_keypoints(
+        self, input: Keypoints, params: List[ParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Keypoints:
+        if self.is_intensity_only():
+            return input
+
+        raise NotImplementedError("PatchSequential for keypoints cannot be used with geometric transformations.")
+
+    def inverse_keypoints(
+        self, input: Keypoints, params: List[ParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Keypoints:
+        if self.is_intensity_only():
+            return input
+
+        raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
 
     def inverse(
         self, input: Tensor, params: Optional[List[ParamItem]] = None, extra_args: Dict[str, Any] = {}
@@ -359,16 +425,8 @@ class PatchSequential(ImageSequential):
         # BCHW -> B(patch)CHW
         if isinstance(input, (tuple,)):
             raise ValueError("tuple input is not currently supported.")
-        _input: Tensor
-
-        pad = self.compute_padding(input, self.padding)
-        input = self.extract_patches(input, self.grid_size, pad)
 
         if params is None:
             params = self.forward_parameters(input.shape)
 
-        _input = self.forward_by_params(input, params)
-
-        _input = self.restore_from_patches(_input, self.grid_size, pad=pad)
-
-        return _input
+        return self.transform_input(input, params=params)

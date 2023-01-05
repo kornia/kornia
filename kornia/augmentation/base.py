@@ -83,6 +83,10 @@ class _BasicAugmentationBase(Module):
         """Standardize input tensors."""
         raise NotImplementedError
 
+    def validate_tensor(self, input: Tensor) -> bool:
+        """Check if the input tensor is formated as expected."""
+        raise NotImplementedError
+
     def transform_output_tensor(self, output: Tensor, output_shape: Tuple[int, ...]) -> Tensor:
         """Standardize output tensors."""
         return _transform_output_shape(output, output_shape) if self.keepdim else output
@@ -207,44 +211,6 @@ class _AugmentationBase(_BasicAugmentationBase):
           to the batch form ``False``.
     """
 
-    def preprocess_inputs(self, input: Tensor) -> Tensor:
-        """Preprocess input images."""
-        # TODO: We may allow list here.
-        return self.transform_tensor(input)
-
-    def preprocess_masks(self, input: Tensor) -> Tensor:
-        """Preprocess input masks."""
-        # TODO: We may allow list here.
-        return input
-
-    def preprocess_boxes(self, input: Union[Tensor, Boxes]) -> Boxes:
-        """Preprocess input boxes."""
-        # TODO: We may allow list here.
-        # input is BxNx4x2 or Boxes.
-        if isinstance(input, Tensor):
-            if not (len(input.shape) == 4 and input.shape[2:] == torch.Size([4, 2])):
-                raise RuntimeError(f"Only BxNx4x2 tensor is supported. Got {input.shape}.")
-            input = Boxes(input, False, mode="vertices_plus")
-        if isinstance(input, Boxes):
-            raise RuntimeError(f"Expect `Boxes` type. Got {type(input)}.")
-        return input
-
-    def preprocess_keypoints(self, input: Union[Tensor, Keypoints]) -> Keypoints:
-        """Preprocess input keypoints."""
-        # TODO: We may allow list here.
-        if isinstance(input, Tensor):
-            if not (len(input.shape) == 3 and input.shape[1:] == torch.Size([2,])):
-                raise RuntimeError(f"Only BxNx2 tensor is supported. Got {input.shape}.")
-            input = Keypoints(input, False)
-        if isinstance(input, Keypoints):
-            raise RuntimeError(f"Expect `Keypoints` type. Got {type(input)}.")
-        return input
-
-    def preprocess_classes(self, input: Tensor) -> Tensor:
-        """Preprocess input class tags."""
-        # TODO: We may allow list here.
-        return input
-
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
@@ -262,20 +228,20 @@ class _AugmentationBase(_BasicAugmentationBase):
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None,
         **kwargs
     ) -> Tensor:
+        self.validate_tensor(input)
 
-        params, flags = self.__override_param_flags_temp__(
+        params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, flags, **kwargs)
 
         to_apply = params['batch_prob']
         ori_shape = input.shape
-        in_tensor = self.preprocess_inputs(input)
         if to_apply.all():
-            output = self.apply_transform(in_tensor, params, flags, transform=transform)
+            output = self.apply_transform(input, params, flags, transform=transform)
         elif not to_apply.any():
-            output = self.apply_non_transform(in_tensor, params, flags, transform=transform)
+            output = self.apply_non_transform(input, params, flags, transform=transform)
         else:  # If any tensor needs to be transformed.
-            output = self.apply_non_transform(in_tensor, params, flags, transform=transform)
-            applied = self.apply_transform(in_tensor[to_apply], params, flags, transform=transform[to_apply])
+            output = self.apply_non_transform(input, params, flags, transform=transform)
+            applied = self.apply_transform(input[to_apply], params, flags, transform=transform[to_apply])
             output = output.index_put((to_apply,), applied)
         output = _transform_output_shape(output, ori_shape) if self.keepdim else output
         return output
@@ -284,64 +250,68 @@ class _AugmentationBase(_BasicAugmentationBase):
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None,
         **kwargs
     ) -> Tensor:
+        self.validate_tensor(input)
 
-        params, flags = self.__override_param_flags_temp__(
+        params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, flags, **kwargs)
 
         to_apply = params['batch_prob']
-        in_tensor = self.preprocess_masks(input)
         if to_apply.all():
-            output = self.apply_transform_mask(in_tensor, params, flags, transform=transform)
+            output = self.apply_transform_mask(input, params, flags, transform=transform)
         elif not to_apply.any():
-            output = self.apply_non_transform_mask(in_tensor, params, flags, transform=transform)
+            output = self.apply_non_transform_mask(input, params, flags, transform=transform)
         else:  # If any tensor needs to be transformed.
-            output = self.apply_non_transform_mask(in_tensor, params, flags, transform=transform)
-            applied = self.apply_transform_mask(in_tensor[to_apply], params, flags, transform=transform[to_apply])
+            output = self.apply_non_transform_mask(input, params, flags, transform=transform)
+            applied = self.apply_transform_mask(input[to_apply], params, flags, transform=transform[to_apply])
             output = output.index_put((to_apply,), applied)
         return output
 
     def transform_boxes(
         self,
-        input: Union[Tensor, Boxes],
+        input: Boxes,
         params: Dict[str, Tensor],
         flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
         **kwargs
     ) -> Boxes:
 
-        params, flags = self.__override_param_flags_temp__(
+        if not isinstance(input, Boxes):
+            raise RuntimeError(f"Only `Boxes` is supported. Got {type(input)}.")
+
+        params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, flags, **kwargs)
 
         to_apply = params['batch_prob']
-        in_tensor = self.preprocess_boxes(input)
         output: Boxes
         if to_apply.all():
-            output = self.apply_transform_box(in_tensor, params, flags, transform=transform)
+            output = self.apply_transform_box(input, params, flags, transform=transform)
         elif not to_apply.any():
-            output = self.apply_non_transform_box(in_tensor, params, flags, transform=transform)
+            output = self.apply_non_transform_box(input, params, flags, transform=transform)
         else:  # If any tensor needs to be transformed.
-            output = self.apply_non_transform_box(in_tensor, params, flags, transform=transform)
-            applied = self.apply_transform_box(in_tensor[to_apply], params, flags, transform=transform[to_apply])
+            output = self.apply_non_transform_box(input, params, flags, transform=transform)
+            applied = self.apply_transform_box(input[to_apply], params, flags, transform=transform[to_apply])
             output = output.index_put((to_apply,), applied)
         return output
 
     def transform_keypoints(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None,
+        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None,
         **kwargs
     ) -> Tensor:
 
-        params, flags = self.__override_param_flags_temp__(
+        if not isinstance(input, Keypoints):
+            raise RuntimeError(f"Only `Keypoints` is supported. Got {type(input)}.")
+
+        params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, flags, **kwargs)
 
         to_apply = params['batch_prob']
-        in_tensor = self.preprocess_keypoints(input)
         if to_apply.all():
-            output = self.apply_transform_keypoint(in_tensor, params, flags, transform=transform)
+            output = self.apply_transform_keypoint(input, params, flags, transform=transform)
         elif not to_apply.any():
-            output = self.apply_non_transform_keypoint(in_tensor, params, flags, transform=transform)
+            output = self.apply_non_transform_keypoint(input, params, flags, transform=transform)
         else:  # If any tensor needs to be transformed.
-            output = self.apply_non_transform_keypoint(in_tensor, params, flags, transform=transform)
-            applied = self.apply_transform_keypoint(in_tensor[to_apply], params, flags, transform=transform[to_apply])
+            output = self.apply_non_transform_keypoint(input, params, flags, transform=transform)
+            applied = self.apply_transform_keypoint(input[to_apply], params, flags, transform=transform[to_apply])
             output = output.index_put((to_apply,), applied)
         return output
 
@@ -350,7 +320,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         **kwargs
     ) -> Tensor:
 
-        params, flags = self.__override_param_flags_temp__(
+        params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, flags, **kwargs)
 
         to_apply = params['batch_prob']

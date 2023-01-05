@@ -79,11 +79,13 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Boxes:
         """Process boxes corresponding to the inputs that are no transformation applied."""
-        padding_size = None
+
         if "padding_size" in params:
             # Mostly for operations like RandomCrop.
             padding_size = params["padding_size"]
-        return input.pad(padding_size)
+            return input.pad(padding_size)
+        return input
+        
 
     def apply_transform_box(
         self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None

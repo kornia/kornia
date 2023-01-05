@@ -7,8 +7,17 @@ from kornia.augmentation import MixAugmentationBaseV2, RandomCrop
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import SequentialBase
 from kornia.augmentation.container.image import ImageSequential, ParamItem, _get_new_batch_shape
-from kornia.augmentation.container.utils import InputApplyInverse, MaskApplyInverse
+from kornia.augmentation.container.ops import (
+    DataType,
+    SequentialOps,
+    InputSequentialOps,
+    MaskSequentialOps,
+    BoxSequentialOps,
+    KeypointSequentialOps,
+)
 from kornia.core import Module, Tensor
+from kornia.geometry.boxes import Boxes
+from kornia.geometry.keypoints import Keypoints
 
 __all__ = ["VideoSequential"]
 
@@ -136,7 +145,7 @@ class VideoSequential(ImageSequential):
 
     def _input_shape_convert_in(
         self, input: Tensor, frame_num: int
-    ) -> Tuple[Tensor, Optional[Tensor]]:
+    ) -> Tensor:
         # Convert any shape to (B, T, C, H, W)
         if self.data_format == "BCTHW":
             # Convert (B, C, T, H, W) to (B, T, C, H, W)
@@ -149,7 +158,7 @@ class VideoSequential(ImageSequential):
 
     def _input_shape_convert_back(
         self, input: Tensor, frame_num: int
-    ) -> Tuple[Tensor, Optional[Tensor]]:
+    ) -> Tensor:
         input = input.view(-1, frame_num, *input.shape[1:])
         if self.data_format == "BCTHW":
             input = input.transpose(1, 2)
@@ -202,6 +211,125 @@ class VideoSequential(ImageSequential):
             params.append(param)
         return params
 
+    def transform_input(
+        self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Tensor:
+        frame_num: int = input.size(self._temporal_channel)
+        input = self._input_shape_convert_in(input, None, frame_num)
+
+        input = super().transform_input(input, params, extra_args=extra_args)
+
+        input = self._input_shape_convert_back(input, None, frame_num)
+        return input
+
+    def inverse_input(
+        self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Tensor:
+        frame_num: int = input.size(self._temporal_channel)
+        input = self._input_shape_convert_in(input, None, frame_num)
+
+        input = super().inverse_input(input, params, extra_args=extra_args)
+
+        input = self._input_shape_convert_back(input, None, frame_num)
+        return input
+
+    def transform_masks(
+        self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Tensor:
+        frame_num: int = input.size(self._temporal_channel)
+        input = self._input_shape_convert_in(input, None, frame_num)
+
+        input = super().transform_masks(input, params, extra_args=extra_args)
+
+        input = self._input_shape_convert_back(input, None, frame_num)
+        return input
+
+    def inverse_masks(
+        self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Tensor:
+        frame_num: int = input.size(self._temporal_channel)
+        input = self._input_shape_convert_in(input, None, frame_num)
+
+        input = super().inverse_masks(input, params, extra_args=extra_args)
+
+        input = self._input_shape_convert_back(input, None, frame_num)
+        return input
+
+    def transform_boxes(
+        self, input: Union[Tensor, Boxes], params: List[ParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Union[Tensor, Boxes]:
+        """Transform bounding boxes.
+
+        Args:
+            input: tensor with shape :math:`(B, T, N, 4, 2)`.
+                If input is a `Keypoints` type, the internal shape is :math:`(B * T, N, 4, 2)`.
+        """
+        if isinstance(input, Tensor):
+            batchsize, frame_num = input.size(0), input.size(1)
+            input = Boxes.from_tensor(
+                input.view(-1, input.size(2), input.size(3), input.size(4)), mode="vertices_plus")
+            input = super().transform_boxes(input, params, extra_args=extra_args)
+            input = input.data.view(batchsize, frame_num, -1, 4, 2)
+        else:
+            input = super().transform_boxes(input, params, extra_args=extra_args)
+        return input
+
+    def inverse_boxes(
+        self, input: Union[Tensor, Boxes], params: List[ParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Union[Tensor, Boxes]:
+        """Transform bounding boxes.
+
+        Args:
+            input: tensor with shape :math:`(B, T, N, 4, 2)`.
+                If input is a `Keypoints` type, the internal shape is :math:`(B * T, N, 4, 2)`.
+        """
+        if isinstance(input, Tensor):
+            batchsize, frame_num = input.size(0), input.size(1)
+            input = Boxes.from_tensor(
+                input.view(-1, input.size(2), input.size(3), input.size(4)), mode="vertices_plus")
+            input = super().inverse_boxes(input, params, extra_args=extra_args)
+            input = input.data.view(batchsize, frame_num, -1, 4, 2)
+        else:
+            input = super().inverse_boxes(input, params, extra_args=extra_args)
+        return input
+
+    def transform_keypoints(
+        self, input: Keypoints, params: List[ParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Keypoints:
+        """Transform bounding boxes.
+
+        Args:
+            input: tensor with shape :math:`(B, T, N, 2)`.
+                If input is a `Keypoints` type, the internal shape is :math:`(B * T, N, 2)`.
+        """
+        if isinstance(input, Tensor):
+            batchsize, frame_num = input.size(0), input.size(1)
+            input = Keypoints(input.view(-1, input.size(2), input.size(3)))
+            input = super().transform_keypoints(input, params, extra_args=extra_args)
+            input = input.data.view(batchsize, frame_num, -1, 2)
+        else:
+            input = super().transform_boxes(input, params, extra_args=extra_args)
+        return input
+
+    def inverse_keypoints(
+        self, input: Keypoints, params: List[ParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Keypoints:
+        """Transform bounding boxes.
+
+        Args:
+            input: tensor with shape :math:`(B, T, N, 2)`.
+                If input is a `Keypoints` type, the internal shape is :math:`(B * T, N, 2)`.
+        """
+        if isinstance(input, Tensor):
+            frame_num, batchsize = input.size(0), input.size(1)
+            input = Keypoints(input.view(-1, input.size(2), input.size(3)))
+            input = super().transform_boxes(input, params, extra_args=extra_args)
+            input = input.data.view(batchsize, frame_num, -1, 2)
+        else:
+            input = super().transform_boxes(input, params, extra_args=extra_args)
+        return input
+
+
     def inverse(
         self, input: Tensor, params: Optional[List[ParamItem]] = None, extra_args: Dict[str, Any] = {}
     ) -> Tensor:
@@ -210,18 +338,12 @@ class VideoSequential(ImageSequential):
         Used to inverse a tensor according to the performed transformation by a forward pass, or with respect to
         provided parameters.
         """
-        if self.apply_inverse_func in (InputApplyInverse, MaskApplyInverse):
-            frame_num: int = input.size(self._temporal_channel)
-            input, _ = self._input_shape_convert_in(input, None, frame_num)
-        else:
-            batch_size: int = input.size(0)
-            input = input.view(-1, *input.shape[2:])
+        frame_num: int = input.size(self._temporal_channel)
+        input = self._input_shape_convert_in(input, None, frame_num)
 
         input = super().inverse(input, params, extra_args=extra_args)
-        if self.apply_inverse_func in (InputApplyInverse, MaskApplyInverse):
-            input, _ = self._input_shape_convert_back(input, None, frame_num)
-        else:
-            input = input.view(batch_size, -1, *input.shape[1:])
+
+        input = self._input_shape_convert_back(input, None, frame_num)
 
         return input
 
@@ -239,18 +361,11 @@ class VideoSequential(ImageSequential):
             params = self.forward_parameters(input.shape)
 
         # Size of T
-        if self.apply_inverse_func in (InputApplyInverse, MaskApplyInverse):
-            frame_num: int = input.size(self._temporal_channel)
-            input = self._input_shape_convert_in(input, frame_num)
-        else:
-            batch_size: int = input.size(0)
-            input = input.view(-1, *input.shape[2:])
+        frame_num: int = input.size(self._temporal_channel)
+        input = self._input_shape_convert_in(input, frame_num)
 
         output = super().forward(input, params, extra_args=extra_args)
 
-        if self.apply_inverse_func in (InputApplyInverse, MaskApplyInverse):
-            output = self._input_shape_convert_back(output, frame_num)
-        else:
-            output = output.view(batch_size, -1, *output.shape[1:])
+        output = self._input_shape_convert_back(output, frame_num)
 
         return output

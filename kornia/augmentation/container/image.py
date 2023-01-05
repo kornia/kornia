@@ -12,9 +12,16 @@ from kornia.augmentation import (
 )
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import ParamItem, SequentialBase
-from kornia.augmentation.container.utils import ApplyInverseInterface, InputApplyInverse
+from kornia.augmentation.container.ops import (
+    InputSequentialOps,
+    MaskSequentialOps,
+    BoxSequentialOps,
+    KeypointSequentialOps,
+)
 from kornia.augmentation.utils import override_parameters
 from kornia.core import Module, Tensor, as_tensor
+from kornia.geometry.boxes import Boxes
+from kornia.geometry.keypoints import Keypoints
 
 __all__ = ["ImageSequential"]
 
@@ -57,11 +64,11 @@ class ImageSequential(SequentialBase):
         ...     random_apply=10,
         ... )
         >>> out = aug_list(input)
-        >>> lab
-        tensor([0, 1])
+        >>> out.shape
+        torch.Size([2, 3, 5, 6])
 
         Reproduce with provided params.
-        >>> out2, lab2 = aug_list(input, params=aug_list._params)
+        >>> out2 = aug_list(input, params=aug_list._params)
         >>> torch.equal(out, out2)
         True
 
@@ -100,7 +107,6 @@ class ImageSequential(SequentialBase):
                 f"Got {len(random_apply_weights)} and {len(self)}."
             )
         self.random_apply_weights = as_tensor(random_apply_weights or torch.ones((len(self),)))
-        self.apply_inverse_func: Type[ApplyInverseInterface] = InputApplyInverse
         self.if_unsupported_ops = if_unsupported_ops
 
     def _read_random_apply(
@@ -195,17 +201,6 @@ class ImageSequential(SequentialBase):
 
         return self.get_children_by_params(params)
 
-    def apply_to_input(
-        self,
-        input: Tensor,
-        module: Optional[Module],
-        param: ParamItem,
-        extra_args: Dict[str, Any],
-    ) -> Tuple[Tensor, Optional[Tensor]]:
-        if module is None:
-            module = self.get_submodule(param.name)
-        return self.apply_inverse_func.apply_trans(input, module, param, extra_args)
-
     def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
         named_modules: Iterator[Tuple[str, Module]] = self.get_forward_sequence()
 
@@ -251,8 +246,7 @@ class ImageSequential(SequentialBase):
         res_mat: Optional[Tensor] = None
         for (_, module), param in zip(named_modules, params if params is not None else []):
             if (
-                isinstance(module, (_AugmentationBase,))
-                and not isinstance(module, MixAugmentationBaseV2)
+                isinstance(module, (GeometricAugmentationBase2D,))
                 and isinstance(param.data, dict)
             ):
                 to_apply = param.data['batch_prob']
@@ -286,6 +280,7 @@ class ImageSequential(SequentialBase):
                 res_mat = mat if res_mat is None else mat @ res_mat
         return res_mat
 
+    # TODO: Make this as a class property to avoid running every time.
     def is_intensity_only(self, strict: bool = True) -> bool:
         """Check if all transformations are intensity-based.
 
@@ -309,6 +304,78 @@ class ImageSequential(SequentialBase):
                 return False
         return True
 
+    def transform_input(
+        self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Tensor:
+        for param in params:
+            module = self.get_submodule(param.name)
+            input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
+        return input
+
+    def inverse_input(
+        self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Tensor:
+        for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
+            if isinstance(module, (ImageSequential,)):
+                _mb: List[ParamItem] = [p for p in params if name in p]
+                param = _mb if len(_mb) > 0 else [param]
+            input = InputSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
+        return input
+
+    def transform_masks(
+        self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Tensor:
+        for param in params:
+            module = self.get_submodule(param.name)
+            input = MaskSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
+        return input
+
+    def inverse_masks(
+        self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Tensor:
+        for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
+            if isinstance(module, (ImageSequential,)):
+                _mb: List[ParamItem] = [p for p in params if name in p]
+                param = _mb if len(_mb) > 0 else [param]
+            input = MaskSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
+        return input
+
+    def transform_boxes(
+        self, input: Boxes, params: List[ParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Boxes:
+        for param in params:
+            module = self.get_submodule(param.name)
+            input = BoxSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
+        return input
+
+    def inverse_boxes(
+        self, input: Boxes, params: List[ParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Boxes:
+        for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
+            if isinstance(module, (ImageSequential,)):
+                _mb: List[ParamItem] = [p for p in params if name in p]
+                param = _mb if len(_mb) > 0 else [param]
+            input = BoxSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
+        return input
+
+    def transform_keypoints(
+        self, input: Keypoints, params: List[ParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Keypoints:
+        for param in params:
+            module = self.get_submodule(param.name)
+            input = KeypointSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
+        return input
+
+    def inverse_keypoints(
+        self, input: Keypoints, params: List[ParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Keypoints:
+        for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
+            if isinstance(module, (ImageSequential,)):
+                _mb: List[ParamItem] = [p for p in params if name in p]
+                param = _mb if len(_mb) > 0 else [param]
+            input = KeypointSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
+        return input
+
     def inverse(
         self, input: Tensor, params: Optional[List[ParamItem]] = None, extra_args: Dict[str, Any] = {}
     ) -> Tensor:
@@ -325,22 +392,7 @@ class ImageSequential(SequentialBase):
                 )
             params = self._params
 
-        for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
-            if isinstance(module, (_AugmentationBase, ImageSequential)):
-                _mb: List[ParamItem] = [p for p in params if name in p]
-                maybe_param = _mb if len(_mb) > 0 else [param]
-
-            if isinstance(module, IntensityAugmentationBase2D):
-                pass  # Do nothing
-            elif isinstance(module, ImageSequential) and module.is_intensity_only():
-                pass  # Do nothing
-            elif isinstance(module, ImageSequential) and isinstance(maybe_param, ParamItem):
-                input = module.inverse(input, maybe_param, extra_args=extra_args)
-            elif isinstance(module, (GeometricAugmentationBase2D,)):
-                input = self.apply_inverse_func.inverse(input, module, param, extra_args=extra_args)
-            else:
-                pass
-                # raise NotImplementedError(f"`inverse` is not implemented for {module}.")
+        input = self.inverse_input(input, params, extra_args=extra_args)
 
         return input
 
@@ -357,7 +409,7 @@ class ImageSequential(SequentialBase):
             params = self.forward_parameters(out_shape)
         for param in params:
             module = self.get_submodule(param.name)
-            input = self.apply_to_input(input, module, param=param, extra_args=extra_args)
+            input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
             if isinstance(module, (_AugmentationBase, MixAugmentationBaseV2, SequentialBase)):
                 param = ParamItem(param.name, module._params)
             else:
