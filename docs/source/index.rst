@@ -61,6 +61,7 @@ Join the community
    applications/image_stitching
    applications/image_registration
    applications/semantic_segmentation
+   applications/image_denoising
 
 .. toctree::
    :caption: KORNIA MODELS

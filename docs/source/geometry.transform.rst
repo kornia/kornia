@@ -39,7 +39,7 @@ Image 2d transforms
 Matrix transformations
 ----------------------
 
-.. autofunction:: get_perspective_transform
+1.. autofunction:: get_perspective_transform
 .. autofunction:: get_perspective_transform3d
 .. autofunction:: get_projective_transform
 .. autofunction:: get_rotation_matrix2d
@@ -94,5 +94,10 @@ Interactive Demo
 ----------------
 
 .. raw:: html
-    :file: gradio/resize_antialias.html
-    :file: gradio/geometry_image_transform.html
+
+    <gradio-app space="kornia/kornia-resize-antialias"></gradio-app>
+
+
+.. raw:: html
+
+    <gradio-app space="kornia/geometry_image_transform_with_kornia"></gradio-app>

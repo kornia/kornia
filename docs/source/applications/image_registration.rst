@@ -26,6 +26,8 @@ To reproduce the same results as in the showed video you can go through or full 
 Interactive Demo
 ----------------
 .. raw:: html
-   :file: gradio/image_registration.html.html
 
-Visit the demo on `Hugging Face Spaces <https://huggingface.co/spaces/kornia/image-registration-with-kornia>`_.
+   <gradio-app space="kornia/image-registration-with-kornia"></gradio-app>
+
+
+Visit the `image registration demo on the Hugging Face Spaces <https://huggingface.co/spaces/kornia/image-registration-with-kornia>`_.

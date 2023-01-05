@@ -187,15 +187,14 @@ def get_perpendicular(lines: Tensor, points: Tensor) -> Tensor:
 
 
 def get_closest_point_on_epipolar_line(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> Tensor:
-    r"""Return closest point on the epipolar line to the correspondence, given the fundamental matrix.
+    """Return closest point on the epipolar line to the correspondence, given the fundamental matrix.
 
     Args:
-        pts1: correspondences from the left images with shape
-          (*, N, 2 or 3). If they are not homogeneous, converted automatically.
-        pts2: correspondences from the right images with shape
-          (*, N, 2 or 3). If they are not homogeneous, converted automatically.
-        Fm: Fundamental matrices with shape :math:`(*, 3, 3)`. Called Fm to
-          avoid ambiguity with torch.nn.functional.
+        pts1: correspondences from the left images with shape :math:`(*, N, (2|3))`. If they are not homogeneous,
+              converted automatically.
+        pts2: correspondences from the right images with shape :math:`(*, N, (2|3))`. If they are not homogeneous,
+              converted automatically.
+        Fm: Fundamental matrices with shape :math:`(*, 3, 3)`. Called Fm to avoid ambiguity with torch.nn.functional.
 
     Returns:
         point on epipolar line :math:`(*, N, 2)`.

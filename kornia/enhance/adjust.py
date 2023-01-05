@@ -542,8 +542,8 @@ def adjust_sigmoid(image: Tensor, cutoff: float = 0.5, gain: float = 10, inv: bo
     The input image is expected to be in the range of [0, 1].
 
     Reference:
-    [1]: Gustav J. Braun, "Image Lightness Rescaling Using Sigmoidal Contrast Enhancement Functions",
-        http://markfairchild.org/PDFs/PAP07.pdf
+        [1]: Gustav J. Braun, "Image Lightness Rescaling Using Sigmoidal Contrast Enhancement Functions",
+             http://markfairchild.org/PDFs/PAP07.pdf
 
     Args:
         image: Image to be adjusted in the shape of :math:`(*, H, W)`.
@@ -1304,8 +1304,8 @@ class AdjustSigmoid(Module):
     The input image is expected to be in the range of [0, 1].
 
     Reference:
-    [1]: Gustav J. Braun, "Image Lightness Rescaling Using Sigmoidal Contrast Enhancement Functions",
-        http://markfairchild.org/PDFs/PAP07.pdf
+        [1]: Gustav J. Braun, "Image Lightness Rescaling Using Sigmoidal Contrast Enhancement Functions",
+             http://markfairchild.org/PDFs/PAP07.pdf
 
     Args:
         image: Image to be adjusted in the shape of :math:`(*, H, W)`.
