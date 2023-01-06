@@ -10,6 +10,7 @@ import requests
 import torch
 
 import kornia as K
+from kornia.core import Tensor
 
 
 def read_img_from_url(url: str, resize_to: Optional[Tuple[int, int]] = None) -> torch.Tensor:
@@ -27,6 +28,13 @@ def read_img_from_url(url: str, resize_to: Optional[Tuple[int, int]] = None) -> 
     else:
         img_t = K.geometry.resize(img_t, resize_to)
     return img_t
+
+
+def transparent_pad(src: Tensor, shape: Tuple[int, int]) -> Tensor:
+    """Apply a transparent pad to src (centerized) to match with shape (h, w)"""
+    w_pad = abs(int(src.shape[-1] - shape[-1]) // 2)
+    h_pad = abs(int(src.shape[-2] - shape[-2]) // 2)
+    return torch.nn.functional.pad(K.color.rgb_to_rgba(src, 1.0), (w_pad, w_pad, h_pad, h_pad), 'constant', 0.0)
 
 
 def main():
@@ -103,17 +111,12 @@ def main():
         # save ori image to concatenate into the out image
         ori = img_in[0]
         if aug_name == "CenterCrop":
-            h, w = img1.shape[-2:]
-            h_new, w_new = out.shape[-2:]
-            h_dif, w_dif = int(h - h_new), int(w - w_new)
-            out = torch.nn.functional.pad(out, (w_dif // 2, w_dif // 2, 0, h_dif))
+            # Convert to RGBA, and center the output image with transparent pad
+            out = transparent_pad(out, tuple(img1[-2:].shape))
+            ori = K.color.rgb_to_rgba(ori, 1.0)  # To match the dims
         elif aug_name == "PadTo":
             # Convert to RGBA, and center the original image with transparent pad
-            w_pad = abs(int(img1.shape[-1] - out.shape[-1]) // 2)
-            h_pad = abs(int(img1.shape[-2] - out.shape[-2]) // 2)
-            ori = torch.nn.functional.pad(
-                K.color.rgb_to_rgba(img_in[0], 1.0), (w_pad, w_pad, h_pad, h_pad), 'constant', 0.0
-            )
+            ori = transparent_pad(img_in[0], tuple(out.shape[-2:]))
             out = K.color.rgb_to_rgba(out, 1.0)  # To match the dims
 
         out = torch.cat([ori, *(out[i] for i in range(out.size(0)))], dim=-1)
