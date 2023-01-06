@@ -6,6 +6,7 @@ from kornia.core import Tensor, as_tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 from kornia.utils.helpers import _torch_inverse_cast
+from kornia.constants import Resample
 
 
 class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
@@ -66,10 +67,10 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         Note:
             Convert "resample" arguments to "nearest" by default.
         """
-        resample_method: Optional[str]
+        resample_method: Optional[Resample]
         if "resample" in flags:
             resample_method = flags["resample"]
-            flags["resample"] = "nearest"
+            flags["resample"] = Resample.get("nearest")
         output = self.apply_transform(input, params, flags, transform)
         if resample_method is not None:
             flags["resample"] = resample_method
@@ -85,7 +86,6 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             padding_size = params["padding_size"]
             return input.pad(padding_size)
         return input
-        
 
     def apply_transform_box(
         self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
@@ -107,7 +107,9 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         if "padding_size" in params:
             # Mostly for operations like RandomCrop.
             padding_size = params["padding_size"]
-        return input.pad(padding_size)
+            return input.pad(padding_size)
+
+        return input
 
     def apply_transform_keypoint(
         self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
@@ -173,10 +175,10 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         transform: Optional[Tensor] = None,
         **kwargs,
     ) -> Tensor:
-        resample_method: Optional[str]
+        resample_method: Optional[Resample]
         if "resample" in flags:
             resample_method = flags["resample"]
-            flags["resample"] = "nearest"
+            flags["resample"] = Resample.get("nearest")
         output = self.inverse_inputs(input, params, flags, transform, **kwargs)
         if resample_method is not None:
             flags["resample"] = resample_method
@@ -184,38 +186,38 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
 
     def inverse_boxes(
         self,
-        input: Union[Tensor, Boxes],
+        input: Boxes,
         params: Dict[str, Tensor],
         flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
         **kwargs,
     ) -> Boxes:
-        in_tensor = self.preprocess_boxes(input)
-        output = in_tensor.clone()
+        output = input.clone()
         to_apply = params['batch_prob']
 
         params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, flags, **kwargs)
 
+        # if no augmentation needed
+        if not to_apply.any():
+            output = input
+        # if all data needs to be augmented
+        elif to_apply.all():
+            output = input.transform_boxes_(transform)
+        else:
+            output[to_apply] = input[to_apply].transform_boxes_(transform[to_apply])
+
         padding_size = None
         if "padding_size" in params:
             # Mostly for operations like RandomCrop.
             padding_size = params["padding_size"]
+            return output.unpad(padding_size)
 
-        # if no augmentation needed
-        if not to_apply.any():
-            output = in_tensor
-        # if all data needs to be augmented
-        elif to_apply.all():
-            output = in_tensor.transform_boxes_(transform)
-        else:
-            output[to_apply] = in_tensor[to_apply].transform_boxes_(transform[to_apply])
-
-        return input.unpad(padding_size)
+        return output
 
     def inverse_keypoints(
         self,
-        input: Union[Tensor, Keypoints],
+        input: Keypoints,
         params: Dict[str, Tensor],
         flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
@@ -229,28 +231,28 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             flags: static parameters.
             transform: the inverse tansformation matrix
         """
-        in_tensor = self.preprocess_keypoints(input)
-        output = in_tensor.clone()
+        output = input.clone()
         to_apply = params['batch_prob']
 
         params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, flags, **kwargs)
 
+        # if no augmentation needed
+        if not to_apply.any():
+            output = input
+        # if all data needs to be augmented
+        elif to_apply.all():
+            output = input.transform_keypoints_(transform)
+        else:
+            output[to_apply] = input[to_apply].transform_keypoints_(transform[to_apply])
+
         padding_size = None
         if "padding_size" in params:
             # Mostly for operations like RandomCrop.
             padding_size = params["padding_size"]
+            return output.unpad(padding_size)
 
-        # if no augmentation needed
-        if not to_apply.any():
-            output = in_tensor
-        # if all data needs to be augmented
-        elif to_apply.all():
-            output = in_tensor.transform_keypoints_(transform)
-        else:
-            output[to_apply] = in_tensor[to_apply].transform_keypoints_(transform[to_apply])
-
-        return input.unpad(padding_size)
+        return output
 
     def inverse_classes(
         self,

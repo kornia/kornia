@@ -203,24 +203,24 @@ class VideoSequential(ImageSequential):
             params.append(param)
         return params
 
-    def transform_input(
+    def transform_inputs(
         self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
     ) -> Tensor:
         frame_num: int = input.size(self._temporal_channel)
         input = self._input_shape_convert_in(input, frame_num)
 
-        input = super().transform_input(input, params, extra_args=extra_args)
+        input = super().transform_inputs(input, params, extra_args=extra_args)
 
         input = self._input_shape_convert_back(input, frame_num)
         return input
 
-    def inverse_input(
+    def inverse_inputs(
         self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
     ) -> Tensor:
         frame_num: int = input.size(self._temporal_channel)
         input = self._input_shape_convert_in(input, frame_num)
 
-        input = super().inverse_input(input, params, extra_args=extra_args)
+        input = super().inverse_inputs(input, params, extra_args=extra_args)
 
         input = self._input_shape_convert_back(input, frame_num)
         return input
@@ -333,7 +333,7 @@ class VideoSequential(ImageSequential):
         if params is None:
             params = self._params
 
-        return self.inverse_input(input, params, extra_args=extra_args)
+        return self.inverse_inputs(input, params, extra_args=extra_args)
 
     def forward(
         self,
@@ -348,7 +348,7 @@ class VideoSequential(ImageSequential):
         if params is None:
             params = self.forward_parameters(input.shape)
 
-        output = self.transform_input(input, params, extra_args=extra_args)
+        output = self.transform_inputs(input, params, extra_args=extra_args)
         self._params = params
 
         return output

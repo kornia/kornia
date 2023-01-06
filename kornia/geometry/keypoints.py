@@ -1,6 +1,6 @@
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Union
 
-from torch import Tensor
+from kornia.core import Tensor
 from kornia.geometry import transform_points
 
 
@@ -43,12 +43,16 @@ class Keypoints:
         self._data = keypoints
 
     def __getitem__(self, key) -> "Keypoints":
-        new_obj = Keypoints(self._data[key], False)
+        new_obj = type(self)(self._data[key], False)
         return new_obj
 
     def __setitem__(self, key, value: "Keypoints") -> "Keypoints":
         self._data[key] = value._data
         return self
+
+    @property
+    def shape(self,):
+        return self.data.shape
 
     @property
     def data(self,):
@@ -63,8 +67,11 @@ class Keypoints:
         Args:
             padding_size: (B, 4)
         """
+        assert len(padding_size.shape) == 2 and padding_size.size(1) == 4, \
+            f"Expected padding_size as (B, 4). Got {padding_size.shape}."
         self._data[..., 0] += padding_size[..., :1]  # left padding
         self._data[..., 1] += padding_size[..., 2:3]  # top padding
+        return self
 
     def unpad(
         self,
@@ -75,8 +82,11 @@ class Keypoints:
         Args:
             padding_size: (B, 4)
         """
+        assert len(padding_size.shape) == 2 and padding_size.size(1) == 4, \
+            f"Expected padding_size as (B, 4). Got {padding_size.shape}."
         self._data[..., 0] -= padding_size[..., :1]  # left padding
         self._data[..., 1] -= padding_size[..., 2:3]  # top padding
+        return self
 
     def transform_keypoints(self, M: Tensor, inplace: bool = False) -> "Keypoints":
         r"""Apply a transformation matrix to the 2D keypoints.
@@ -91,7 +101,7 @@ class Keypoints:
         if not 2 <= M.ndim <= 3 or M.shape[-2:] != (3, 3):
             raise ValueError(f"The transformation matrix shape must be (3, 3) or (B, 3, 3). Got {M.shape}.")
 
-        transformed_boxes = transform_points(self._data, M)
+        transformed_boxes = transform_points(M, self._data)
         if inplace:
             self._data = transformed_boxes
             return self
@@ -101,6 +111,10 @@ class Keypoints:
     def transform_keypoints_(self, M: Tensor) -> "Keypoints":
         """Inplace version of :func:`Keypoints.transform_keypoints`"""
         return self.transform_keypoints(M, inplace=True)
+
+    @classmethod
+    def from_tensor(cls, keypoints: Tensor) -> "Keypoints":
+        return cls(keypoints)
 
     def to_tensor(
         self, as_padded_sequence: bool = False
@@ -116,9 +130,46 @@ class Keypoints:
             Keypoints tensor :math:`(B, N, 2)`
         """
 
-        if not as_padded_sequence:
+        if as_padded_sequence:
             raise NotImplementedError
         return self._data
 
     def clone(self) -> "Keypoints":
         return Keypoints(self._data.clone(), False)
+
+
+class VideoKeypoints(Keypoints):
+
+    temporal_channel_size: int
+
+    @classmethod
+    def from_tensor(
+        cls, boxes: Union[Tensor, List[Tensor]], validate_boxes: bool = True
+    ) -> "VideoKeypoints":
+        if isinstance(boxes, (list,)) or (boxes.dim() != 4 or boxes.shape[-1] != 2):
+            raise ValueError("Input box type is not yet supported. Pleae input an `BxTxNx2` tensor directly.")
+
+        temporal_channel_size = boxes.size(1)
+
+        # Due to some torch.jit.script bug (at least <= 1.9), you need to pass all arguments to __init__ when
+        # constructing the class from inside of a method.
+        out = cls(boxes.view(boxes.size(0) * boxes.size(1), -1, boxes.size(3)))
+        out.temporal_channel_size = temporal_channel_size
+        return out
+
+    def to_tensor(self) -> Tensor:
+        out: Tensor = super().to_tensor(as_padded_sequence=False)
+        return out.view(-1, self.temporal_channel_size, *out.shape[1:])
+
+    def transform_keypoints(self, M: Tensor, inplace: bool = False) -> "VideoKeypoints":
+        out = super().transform_keypoints(M, inplace=inplace)
+        if inplace:
+            return out
+        out = VideoKeypoints(out.data, False)
+        out.temporal_channel_size = self.temporal_channel_size
+        return out
+
+    def clone(self) -> "VideoKeypoints":
+        out = VideoKeypoints(self._data.clone(), False)
+        out.temporal_channel_size = self.temporal_channel_size
+        return out

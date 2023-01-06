@@ -226,7 +226,7 @@ class TestAugmentationSequential:
     def test_video(self, device, dtype):
         input = torch.randn(2, 3, 5, 6, device=device, dtype=dtype)[None]
         bbox = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype).expand(
-            2, -1, -1
+            2, 1, -1, -1
         )[None]
         points = torch.tensor([[[1.0, 1.0]]], device=device, dtype=dtype).expand(2, -1, -1)[None]
         aug_list = K.AugmentationSequential(

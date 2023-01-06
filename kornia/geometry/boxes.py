@@ -162,7 +162,6 @@ def _boxes3d_to_polygons3d(
     return polygons3d
 
 
-# NOTE: Cannot jit with Union types with torch <= 0.10
 # @torch.jit.script
 class Boxes:
     r"""2D boxes containing N or BxN boxes.
@@ -217,13 +216,17 @@ class Boxes:
         self._mode = mode
 
     def __getitem__(self, key) -> "Boxes":
-        new_box = Boxes(self._data[key], False)
+        new_box = type(self)(self._data[key], False)
         new_box._mode = self._mode
         return new_box
 
     def __setitem__(self, key, value: "Boxes") -> "Boxes":
         self._data[key] = value._data
         return self
+
+    @property
+    def shape(self,):
+        return self.data.shape
 
     def get_boxes_shape(self) -> Tuple[torch.Tensor, torch.Tensor]:
         r"""Compute boxes heights and widths.
@@ -257,8 +260,8 @@ class Boxes:
             self._data = data
             return self
 
-        obj = Boxes(data, False)
-        obj._mode = self._mode
+        obj = self.clone()
+        obj._data = data
         return obj
 
     def index_put(
@@ -274,8 +277,8 @@ class Boxes:
         if inplace:
             return self
 
-        obj = Boxes(_data, False)
-        obj._mode = self._mode
+        obj = self.clone()
+        obj._data = _data
         return obj
 
     def pad(
@@ -287,8 +290,11 @@ class Boxes:
         Args:
             padding_size: (B, 4)
         """
+        assert len(padding_size.shape) == 2 and padding_size.size(1) == 4, \
+            f"Expected padding_size as (B, 4). Got {padding_size.shape}."
         self._data[..., 0] += padding_size[..., None, :1]  # left padding
         self._data[..., 1] += padding_size[..., None, 2:3]  # top padding
+        return self
 
     def unpad(
         self,
@@ -299,8 +305,11 @@ class Boxes:
         Args:
             padding_size: (B, 4)
         """
+        assert len(padding_size.shape) == 2 and padding_size.size(1) == 4, \
+            f"Expected padding_size as (B, 4). Got {padding_size.shape}."
         self._data[..., 0] -= padding_size[..., None, :1]  # left padding
         self._data[..., 1] -= padding_size[..., None, 2:3]  # top padding
+        return self
 
     def clamp(
         self,
@@ -329,8 +338,8 @@ class Boxes:
         if inplace:
             return self
 
-        obj = Boxes(_data, False)
-        obj._mode = self._mode
+        obj = self.clone()
+        obj._data = _data
         return obj
 
     def trim(self, correspondence_preserve: bool = False, inplace: bool = False) -> "Boxes":
@@ -369,8 +378,8 @@ class Boxes:
         if inplace:
             return self
 
-        obj = Boxes(_data, False)
-        obj._mode = self._mode
+        obj = self.clone()
+        obj._data = _data
         return obj
 
     def compute_area(self) -> torch.Tensor:
@@ -579,8 +588,8 @@ class Boxes:
             self._data = transformed_boxes
             return self
 
-        obj = Boxes(transformed_boxes, False)
-        obj._mode = self._mode
+        obj = self.clone()
+        obj._data = transformed_boxes
         return obj
 
     def transform_boxes_(self, M: torch.Tensor) -> "Boxes":
@@ -636,8 +645,45 @@ class Boxes:
         return self
 
     def clone(self) -> "Boxes":
-        obj = Boxes(self._data.clone(), False)
+        obj = type(self)(self._data.clone(), False)
         obj._mode = self._mode
+        return obj
+
+
+class VideoBoxes(Boxes):
+
+    temporal_channel_size: int
+
+    @classmethod
+    def from_tensor(
+        cls, boxes: Union[torch.Tensor, List[torch.Tensor]], validate_boxes: bool = True
+    ) -> "VideoBoxes":
+        if isinstance(boxes, (list,)) or (boxes.dim() != 5 or boxes.shape[-2:] != torch.Size([4, 2])):
+            raise ValueError("Input box type is not yet supported. Pleae input an `BxTxNx4x2` tensor directly.")
+
+        temporal_channel_size = boxes.size(1)
+
+        quadrilaterals = _boxes_to_quadrilaterals(
+            boxes.view(boxes.size(0) * boxes.size(1), -1, boxes.size(3), boxes.size(4)),
+            mode="vertices_plus",
+            validate_boxes=validate_boxes
+        )
+        # Due to some torch.jit.script bug (at least <= 1.9), you need to pass all arguments to __init__ when
+        # constructing the class from inside of a method.
+        out = cls(quadrilaterals, False, "vertices_plus")
+        out.temporal_channel_size = temporal_channel_size
+        return out
+
+    def to_tensor(
+        self, mode: Optional[str] = None
+    ) -> Union[torch.Tensor, List[torch.Tensor]]:
+        out = super().to_tensor(mode, as_padded_sequence=False)
+        return out.view(-1, self.temporal_channel_size, *out.shape[1:])
+
+    def clone(self) -> "VideoBoxes":
+        obj = type(self)(self._data.clone(), False)
+        obj._mode = self._mode
+        obj.temporal_channel_size = self.temporal_channel_size
         return obj
 
 
@@ -691,6 +737,10 @@ class Boxes3D:
     def __setitem__(self, key, value: "Boxes3D") -> "Boxes3D":
         self._data[key] = value._data
         return self
+
+    @property
+    def shape(self,):
+        return self.data.shape
 
     def get_boxes_shape(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         r"""Compute boxes heights and widths.

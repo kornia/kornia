@@ -316,7 +316,7 @@ class PatchSequential(ImageSequential):
         input = input.reshape(in_shape)
         return input
 
-    def transform_input(
+    def transform_inputs(
         self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
     ) -> Tensor:
 
@@ -327,7 +327,7 @@ class PatchSequential(ImageSequential):
 
         return input
 
-    def inverse_input(
+    def inverse_inputs(
         self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
     ) -> Tensor:
         if self.is_intensity_only():

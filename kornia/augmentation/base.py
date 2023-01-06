@@ -324,14 +324,13 @@ class _AugmentationBase(_BasicAugmentationBase):
             self._params if params is None else params, flags, **kwargs)
 
         to_apply = params['batch_prob']
-        in_tensor = self.preprocess_classes(input)
         if to_apply.all():
-            output = self.apply_transform_class(in_tensor, params, flags, transform=transform)
+            output = self.apply_transform_class(input, params, flags, transform=transform)
         elif not to_apply.any():
-            output = self.apply_non_transform_class(in_tensor, params, flags, transform=transform)
+            output = self.apply_non_transform_class(input, params, flags, transform=transform)
         else:  # If any tensor needs to be transformed.
-            output = self.apply_non_transform_class(in_tensor, params, flags, transform=transform)
-            applied = self.apply_transform_class(in_tensor[to_apply], params, flags, transform=transform[to_apply])
+            output = self.apply_non_transform_class(input, params, flags, transform=transform)
+            applied = self.apply_transform_class(input[to_apply], params, flags, transform=transform[to_apply])
             output = output.index_put((to_apply,), applied)
         return output
 

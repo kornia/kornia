@@ -304,7 +304,7 @@ class ImageSequential(SequentialBase):
                 return False
         return True
 
-    def transform_input(
+    def transform_inputs(
         self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
     ) -> Tensor:
         for param in params:
@@ -312,13 +312,10 @@ class ImageSequential(SequentialBase):
             input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
         return input
 
-    def inverse_input(
+    def inverse_inputs(
         self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
     ) -> Tensor:
         for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
-            if isinstance(module, (ImageSequential,)):
-                _mb: List[ParamItem] = [p for p in params if name in p]
-                param = _mb if len(_mb) > 0 else [param]
             input = InputSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
         return input
 
@@ -334,9 +331,6 @@ class ImageSequential(SequentialBase):
         self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
     ) -> Tensor:
         for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
-            if isinstance(module, (ImageSequential,)):
-                _mb: List[ParamItem] = [p for p in params if name in p]
-                param = _mb if len(_mb) > 0 else [param]
             input = MaskSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
         return input
 
@@ -352,9 +346,6 @@ class ImageSequential(SequentialBase):
         self, input: Boxes, params: List[ParamItem], extra_args: Dict[str, Any] = {}
     ) -> Boxes:
         for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
-            if isinstance(module, (ImageSequential,)):
-                _mb: List[ParamItem] = [p for p in params if name in p]
-                param = _mb if len(_mb) > 0 else [param]
             input = BoxSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
         return input
 
@@ -370,9 +361,6 @@ class ImageSequential(SequentialBase):
         self, input: Keypoints, params: List[ParamItem], extra_args: Dict[str, Any] = {}
     ) -> Keypoints:
         for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
-            if isinstance(module, (ImageSequential,)):
-                _mb: List[ParamItem] = [p for p in params if name in p]
-                param = _mb if len(_mb) > 0 else [param]
             input = KeypointSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
         return input
 
@@ -392,7 +380,7 @@ class ImageSequential(SequentialBase):
                 )
             params = self._params
 
-        input = self.inverse_input(input, params, extra_args=extra_args)
+        input = self.inverse_inputs(input, params, extra_args=extra_args)
 
         return input
 
