@@ -39,7 +39,7 @@ Image 2d transforms
 Matrix transformations
 ----------------------
 
-1.. autofunction:: get_perspective_transform
+.. autofunction:: get_perspective_transform
 .. autofunction:: get_perspective_transform3d
 .. autofunction:: get_projective_transform
 .. autofunction:: get_rotation_matrix2d
