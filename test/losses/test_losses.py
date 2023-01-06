@@ -99,6 +99,15 @@ class TestBinaryFocalLossWithLogits:
             logits, labels, **kwargs
         ) == kornia.losses.BinaryFocalLossWithLogits(**kwargs)(logits, labels)
 
+    def test_numeric_stability(self, device, dtype):
+        logits = torch.tensor([[100.0, -100]], dtype=dtype, device=device)
+        labels = torch.tensor([[1.0, 0.0]], dtype=dtype, device=device)
+        expected = torch.tensor([[0.0, 0.0]], dtype=dtype, device=device)
+
+        kwargs = {"alpha": 0.25, "gamma": 2.0, "reduction": 'none'}
+        actual = kornia.losses.binary_focal_loss_with_logits(logits, labels, **kwargs)
+        assert_close(actual, expected, atol=1e-3, rtol=1e-3)
+
 
 class TestFocalLoss:
     def test_smoke_none(self, device, dtype):
