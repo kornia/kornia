@@ -3,7 +3,7 @@ name: Run tests on CPU
 on:
   pull_request:
     branches: [master]
-    types: [opened, reopened, synchronize, review_requested, ready_for_review]
+    types: [opened, reopened, synchronize, review_requested, ready_for_review, labeled]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -50,3 +50,30 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }} # to not depend on build via GH API
           flags: cpu,${{ matrix.os }}_py-${{ matrix.python-version }}_pt-${{ matrix.pytorch-version }}_${{ matrix.pytorch-dtype }}
           name: cpu-coverage
+
+  tests-nightly:
+    if: ${{ github.event.label.name == 'nightly' }}
+    name: ${{ matrix.os }} - python-${{ matrix.python-version }}, torch-${{ matrix.pytorch-version }}, ${{ matrix.pytorch-dtype }}
+    runs-on: ${{ matrix.os }}-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ['Ubuntu', 'Windows', 'MacOS']
+        python-version: ['3.7', '3.8']
+        pytorch-version: ['nightly']
+        pytorch-dtype: ['float32', 'float64']
+
+    steps:
+      - name: Checkout kornia
+        uses: actions/checkout@v3
+
+      - name: Setting environment on ${{ matrix.os }} with python ${{ matrix.python-version }} and pytorch  ${{ matrix.pytorch-version }}
+        uses: ./.github/actions/env
+        with:
+          python-version: ${{ matrix.python-version }}
+          pytorch-version: ${{ matrix.pytorch-version }}
+
+      - name: Run CPU tests ${{ matrix.pytorch-dtype }}
+        shell: bash -l {0}
+        run: pytest -v --device cpu --dtype ${{ matrix.pytorch-dtype }}

@@ -1,9 +1,6 @@
 name: Tests on CPU (nightly)
 
 on:
-  pull_request:
-    branches: [master]
-    types: [opened, reopened, synchronize, review_requested, ready_for_review]
   push:
     branches: [master]
   schedule:
