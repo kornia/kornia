@@ -3,6 +3,7 @@ from kornia.augmentation.random_generator._2d.color_jiggle import *
 from kornia.augmentation.random_generator._2d.color_jitter import *
 from kornia.augmentation.random_generator._2d.crop import *
 from kornia.augmentation.random_generator._2d.cutmix import *
+from kornia.augmentation.random_generator._2d.gaussian_blur import *
 from kornia.augmentation.random_generator._2d.jigsaw import *
 from kornia.augmentation.random_generator._2d.mixup import *
 from kornia.augmentation.random_generator._2d.mosaic import *
