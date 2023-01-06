@@ -53,7 +53,7 @@ jobs:
 
   tests-nightly:
     if: ${{ github.event.label.name == 'nightly' }}
-    name: ${{ matrix.os }} - python-${{ matrix.python-version }}, torch-${{ matrix.pytorch-version }}, ${{ matrix.pytorch-dtype }}
+    name: ${{ matrix.os }} - python-${{ matrix.python-version }}, torch-nightly, ${{ matrix.pytorch-dtype }}
     runs-on: ${{ matrix.os }}-latest
 
     strategy:
