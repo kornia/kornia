@@ -402,7 +402,6 @@ class ImageSequential(SequentialBase):
         params: Optional[List[ParamItem]] = None,
         extra_args: Dict[str, Any] = {},
     ) -> Tensor:
-        self.clear_state()
         if params is None:
             inp = input
             _, out_shape = self.autofill_dim(inp, dim_range=(2, 4))
@@ -410,11 +409,8 @@ class ImageSequential(SequentialBase):
         for param in params:
             module = self.get_submodule(param.name)
             input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
-            if isinstance(module, (_AugmentationBase, MixAugmentationBaseV2, SequentialBase)):
-                param = ParamItem(param.name, module._params)
-            else:
-                param = ParamItem(param.name, None)
-            self.update_params(param)
+        
+        self._params = params
         return input
 
 

@@ -122,13 +122,6 @@ class SequentialBase(nn.Sequential):
         """Reset self._params state to None."""
         self._params = None
 
-    def update_params(self, param: Any) -> None:
-        """Update self._params state."""
-        if self._params is None:
-            self._params = [param]
-        else:
-            self._params.append(param)
-
     # TODO: Implement this for all submodules.
     def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
         raise NotImplementedError

@@ -7,9 +7,12 @@ from kornia.augmentation import MixAugmentationBaseV2
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import SequentialBase
 from kornia.augmentation.container.image import ImageSequential, ParamItem
+from kornia.augmentation.container.ops import InputSequentialOps
 from kornia.contrib.extract_patches import extract_tensor_patches
 from kornia.core import Module, Tensor, concatenate
 from kornia.core import pad as fpad
+from kornia.geometry.boxes import Boxes
+from kornia.geometry.keypoints import Keypoints
 
 __all__ = ["PatchSequential"]
 
@@ -297,44 +300,19 @@ class PatchSequential(ImageSequential):
                     else:
                         yield ParamItem(s[0], None), i
 
-    def apply_by_param(
-        self, input: Tensor, params: PatchParamItem
-    ) -> Tuple[Tensor, Optional[Tensor], PatchParamItem]:
-        _input: Tensor
-        in_shape = input.shape
-        _input = input[params.indices]
-
-        module = self.get_submodule(params.param.name)
-        output = self.transform_op.transform(_input, module, params.param, extra_args={})
-
-        if isinstance(module, (_AugmentationBase, SequentialBase, MixAugmentationBaseV2)):
-            out_param = ParamItem(params.param.name, module._params)
-        else:
-            out_param = ParamItem(params.param.name, None)
-
-        if isinstance(output, (tuple,)) and isinstance(input, (tuple,)):
-            input[0][params.indices] = output[0]
-            input[1][params.indices] = output[1]
-        elif isinstance(output, (tuple,)) and not isinstance(input, (tuple,)):
-            input[params.indices] = output[0]
-            input = (input, output[1])
-        elif not isinstance(output, (tuple,)) and isinstance(input, (tuple,)):
-            input[0][params.indices] = output
-        elif not isinstance(output, (tuple,)) and not isinstance(input, (tuple,)):
-            input[params.indices] = output
-
-        return input, PatchParamItem(params.indices, param=out_param)
-
     def forward_by_params(
         self, input: Tensor, params: List[PatchParamItem]
     ) -> Tensor:
         in_shape = input.shape
         input = input.reshape(-1, *in_shape[-3:])
 
-        self.clear_state()
         for patch_param in params:
-            input, out_param = self.apply_by_param(input, params=patch_param)
-            self.update_params(out_param)
+            # input, out_param = self.apply_by_param(input, params=patch_param)
+            module = self.get_submodule(patch_param.param.name)
+            _input = input[patch_param.indices]
+            output = InputSequentialOps.transform(_input, module, patch_param.param, extra_args={})
+            input[patch_param.indices] = output
+
         input = input.reshape(in_shape)
         return input
 
@@ -374,32 +352,32 @@ class PatchSequential(ImageSequential):
         raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
 
     def transform_boxes(
-        self, input: Boxes, params: List[ParamItem], extra_args: Dict[str, Any] = {}
-    ) -> Boxes:
+        self, input: Union[Tensor, Boxes], params: List[ParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Union[Tensor, Boxes]:
         if self.is_intensity_only():
             return input
 
         raise NotImplementedError("PatchSequential for boxes cannot be used with geometric transformations.")
 
     def inverse_boxes(
-        self, input: Boxes, params: List[ParamItem], extra_args: Dict[str, Any] = {}
-    ) -> Boxes:
+        self, input: Union[Tensor, Boxes], params: List[ParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Union[Tensor, Boxes]:
         if self.is_intensity_only():
             return input
 
         raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
 
     def transform_keypoints(
-        self, input: Keypoints, params: List[ParamItem], extra_args: Dict[str, Any] = {}
-    ) -> Keypoints:
+        self, input: Union[Tensor, Keypoints], params: List[ParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Union[Tensor, Keypoints]:
         if self.is_intensity_only():
             return input
 
         raise NotImplementedError("PatchSequential for keypoints cannot be used with geometric transformations.")
 
     def inverse_keypoints(
-        self, input: Keypoints, params: List[ParamItem], extra_args: Dict[str, Any] = {}
-    ) -> Keypoints:
+        self, input: Union[Tensor, Keypoints], params: List[ParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Union[Tensor, Keypoints]:
         if self.is_intensity_only():
             return input
 
@@ -429,4 +407,8 @@ class PatchSequential(ImageSequential):
         if params is None:
             params = self.forward_parameters(input.shape)
 
-        return self.transform_input(input, params=params)
+        output = self.transform_input(input, params=params)
+
+        self._params = params
+
+        return output

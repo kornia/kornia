@@ -7,14 +7,6 @@ from kornia.augmentation import MixAugmentationBaseV2, RandomCrop
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import SequentialBase
 from kornia.augmentation.container.image import ImageSequential, ParamItem, _get_new_batch_shape
-from kornia.augmentation.container.ops import (
-    DataType,
-    SequentialOps,
-    InputSequentialOps,
-    MaskSequentialOps,
-    BoxSequentialOps,
-    KeypointSequentialOps,
-)
 from kornia.core import Module, Tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
@@ -49,7 +41,7 @@ class VideoSequential(ImageSequential):
         If set `same_on_frame` to True, we would expect the same augmentation has been applied to each
         timeframe.
 
-        >>> input, label = torch.randn(2, 3, 1, 5, 6).repeat(1, 1, 4, 1, 1), torch.tensor([0, 1])
+        >>> input = torch.randn(2, 3, 1, 5, 6).repeat(1, 1, 4, 1, 1)
         >>> aug_list = VideoSequential(
         ...     kornia.augmentation.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
         ...     kornia.color.BgrToRgb(),
@@ -73,14 +65,14 @@ class VideoSequential(ImageSequential):
         ...     kornia.augmentation.RandomMixUpV2(p=1.0),
         ... data_format="BCTHW",
         ... same_on_frame=False)
-        >>> output, lab = aug_list(input)
-        >>> output.shape, lab.shape
-        (torch.Size([3, 4, 5, 6]), torch.Size([3, 4, 5, 6]))
+        >>> output = aug_list(input)
+        >>> output.shape
+        torch.Size([2, 3, 4, 5, 6])
         >>> (output[0, :, 0] == output[0, :, 1]).all()
         tensor(False)
 
         Reproduce with provided params.
-        >>> out2, lab2 = aug_list(input, label, params=aug_list._params)
+        >>> out2 = aug_list(input, params=aug_list._params)
         >>> torch.equal(output, out2)
         True
 
@@ -97,8 +89,8 @@ class VideoSequential(ImageSequential):
         ... random_apply=1,
         ... random_apply_weights=[0.5, 0.3, 0.8]
         ... )
-        >>> out= aug_list(input, label)
-        >>> out[0].shape
+        >>> out = aug_list(input)
+        >>> out.shape
         torch.Size([2, 3, 4, 5, 6])
     """
 
@@ -215,44 +207,44 @@ class VideoSequential(ImageSequential):
         self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
     ) -> Tensor:
         frame_num: int = input.size(self._temporal_channel)
-        input = self._input_shape_convert_in(input, None, frame_num)
+        input = self._input_shape_convert_in(input, frame_num)
 
         input = super().transform_input(input, params, extra_args=extra_args)
 
-        input = self._input_shape_convert_back(input, None, frame_num)
+        input = self._input_shape_convert_back(input, frame_num)
         return input
 
     def inverse_input(
         self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
     ) -> Tensor:
         frame_num: int = input.size(self._temporal_channel)
-        input = self._input_shape_convert_in(input, None, frame_num)
+        input = self._input_shape_convert_in(input, frame_num)
 
         input = super().inverse_input(input, params, extra_args=extra_args)
 
-        input = self._input_shape_convert_back(input, None, frame_num)
+        input = self._input_shape_convert_back(input, frame_num)
         return input
 
     def transform_masks(
         self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
     ) -> Tensor:
         frame_num: int = input.size(self._temporal_channel)
-        input = self._input_shape_convert_in(input, None, frame_num)
+        input = self._input_shape_convert_in(input, frame_num)
 
         input = super().transform_masks(input, params, extra_args=extra_args)
 
-        input = self._input_shape_convert_back(input, None, frame_num)
+        input = self._input_shape_convert_back(input, frame_num)
         return input
 
     def inverse_masks(
         self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
     ) -> Tensor:
         frame_num: int = input.size(self._temporal_channel)
-        input = self._input_shape_convert_in(input, None, frame_num)
+        input = self._input_shape_convert_in(input, frame_num)
 
         input = super().inverse_masks(input, params, extra_args=extra_args)
 
-        input = self._input_shape_convert_back(input, None, frame_num)
+        input = self._input_shape_convert_back(input, frame_num)
         return input
 
     def transform_boxes(
@@ -294,8 +286,8 @@ class VideoSequential(ImageSequential):
         return input
 
     def transform_keypoints(
-        self, input: Keypoints, params: List[ParamItem], extra_args: Dict[str, Any] = {}
-    ) -> Keypoints:
+        self, input: Union[Tensor, Keypoints], params: List[ParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Union[Tensor, Keypoints]:
         """Transform bounding boxes.
 
         Args:
@@ -308,12 +300,12 @@ class VideoSequential(ImageSequential):
             input = super().transform_keypoints(input, params, extra_args=extra_args)
             input = input.data.view(batchsize, frame_num, -1, 2)
         else:
-            input = super().transform_boxes(input, params, extra_args=extra_args)
+            input = super().transform_keypoints(input, params, extra_args=extra_args)
         return input
 
     def inverse_keypoints(
-        self, input: Keypoints, params: List[ParamItem], extra_args: Dict[str, Any] = {}
-    ) -> Keypoints:
+        self, input: Union[Tensor, Keypoints], params: List[ParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Union[Tensor, Keypoints]:
         """Transform bounding boxes.
 
         Args:
@@ -323,10 +315,10 @@ class VideoSequential(ImageSequential):
         if isinstance(input, Tensor):
             frame_num, batchsize = input.size(0), input.size(1)
             input = Keypoints(input.view(-1, input.size(2), input.size(3)))
-            input = super().transform_boxes(input, params, extra_args=extra_args)
+            input = super().inverse_keypoints(input, params, extra_args=extra_args)
             input = input.data.view(batchsize, frame_num, -1, 2)
         else:
-            input = super().transform_boxes(input, params, extra_args=extra_args)
+            input = super().inverse_keypoints(input, params, extra_args=extra_args)
         return input
 
 
@@ -338,14 +330,10 @@ class VideoSequential(ImageSequential):
         Used to inverse a tensor according to the performed transformation by a forward pass, or with respect to
         provided parameters.
         """
-        frame_num: int = input.size(self._temporal_channel)
-        input = self._input_shape_convert_in(input, None, frame_num)
+        if params is None:
+            params = self._params
 
-        input = super().inverse(input, params, extra_args=extra_args)
-
-        input = self._input_shape_convert_back(input, None, frame_num)
-
-        return input
+        return self.inverse_input(input, params, extra_args=extra_args)
 
     def forward(
         self,
@@ -360,12 +348,7 @@ class VideoSequential(ImageSequential):
         if params is None:
             params = self.forward_parameters(input.shape)
 
-        # Size of T
-        frame_num: int = input.size(self._temporal_channel)
-        input = self._input_shape_convert_in(input, frame_num)
-
-        output = super().forward(input, params, extra_args=extra_args)
-
-        output = self._input_shape_convert_back(output, frame_num)
+        output = self.transform_input(input, params, extra_args=extra_args)
+        self._params = params
 
         return output
