@@ -370,7 +370,7 @@ class AugmentationSequential(ImageSequential):
         if DataKey.get(dcate) in [DataKey.BBOX]:
             mode = "vertices_plus"
         elif DataKey.get(dcate) in [DataKey.BBOX_XYXY]:
-            mode = "xyxy"
+            mode = "xyxy_plus"
         elif DataKey.get(dcate) in [DataKey.BBOX_XYWH]:
             mode = "xywh"
         else:
@@ -389,7 +389,7 @@ class AugmentationSequential(ImageSequential):
         if DataKey.get(dcate) in [DataKey.BBOX]:
             mode = "vertices_plus"
         elif DataKey.get(dcate) in [DataKey.BBOX_XYXY]:
-            mode = "xyxy"
+            mode = "xyxy_plus"
         elif DataKey.get(dcate) in [DataKey.BBOX_XYWH]:
             mode = "xywh"
         else:

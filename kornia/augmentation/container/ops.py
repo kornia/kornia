@@ -216,15 +216,6 @@ class MaskSequentialOps(SequentialOpsInterface):
             param: the corresponding parameters to the module.
         """
         if isinstance(module, (GeometricAugmentationBase2D,)):
-            # if isinstance(param, ParamItem) and isinstance(param.data, dict):
-            #     _param = param.data.copy()
-            #     # TODO: Parametrize value to pad with across the board for different keys
-            #     if 'values' in _param:
-            #         _param['values'] = torch.zeros_like(_param['values'])  # Always pad with zeros
-            # elif param is None:
-            #     _param = None
-            # else:
-            #     raise TypeError(f'Expected param be None or ParamItem.data as a dict. Gotcha {type(_param)}')
             input = module.transform_masks(
                 input,
                 params=cls.get_instance_module_param(param),
@@ -256,11 +247,12 @@ class MaskSequentialOps(SequentialOpsInterface):
         """
 
         if isinstance(module, GeometricAugmentationBase2D):
+            transform = module.compute_inverse_transformation(module.transform_matrix)
             input = module.inverse_masks(
                 input,
                 params=cls.get_instance_module_param(param),
                 flags=module.flags,
-                transform=module.transform_matrix,
+                transform=transform,
                 **extra_args
             )
         elif isinstance(module, kornia.augmentation.ImageSequential):
@@ -291,9 +283,10 @@ class BoxSequentialOps(SequentialOpsInterface):
         _input = input.clone()
 
         if isinstance(module, (GeometricAugmentationBase2D,)):
-            transform = module.compute_inverse_transformation(module.transform_matrix)
             _input = module.transform_boxes(
-                _input, cls.get_instance_module_param(param), module.flags, transform=transform, **extra_args)
+                _input, cls.get_instance_module_param(param), module.flags,
+                transform=module.transform_matrix, **extra_args
+            )
 
         elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
             _input = module.transform_boxes(
@@ -346,9 +339,10 @@ class KeypointSequentialOps(SequentialOpsInterface):
         _input = input.clone()
 
         if isinstance(module, (GeometricAugmentationBase2D,)):
-            transform = module.compute_inverse_transformation(module.transform_matrix)
             _input = module.transform_keypoints(
-                _input, cls.get_instance_module_param(param), module.flags, transform=transform, **extra_args)
+                _input, cls.get_instance_module_param(param), module.flags,
+                transform=module.transform_matrix, **extra_args
+            )
 
         elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
             _input = module.transform_keypoints(

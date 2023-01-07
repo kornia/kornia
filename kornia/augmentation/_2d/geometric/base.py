@@ -88,7 +88,8 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         """Process boxes corresponding to the inputs that are transformed."""
         if transform is None:
             if self.transform_matrix is None:
-                raise RuntimeError("No valid transformation matrix found. Please either pass one or forward one first.")
+                raise RuntimeError(
+                    "No valid transformation matrix found. Please either pass one or forward one first.")
             transform = self.transform_matrix
         input = self.apply_non_transform_box(input, params, flags, transform)
         return input.transform_boxes_(transform)

@@ -153,29 +153,32 @@ class RandomCrop(GeometricAugmentationBase2D):
             return transform
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
-    def apply_non_transform_keypoint(
+    def apply_transform_keypoint(
         self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Keypoints:
         """Process keypoints corresponding to the inputs that are no transformation applied.
         """
-        input = super().apply_non_transform_keypoint(input=input, params=params, flags=flags, transform=transform)
         # For pad the keypoints properly.
         padding_size = params["padding_size"]
-        return input.pad(padding_size)
+        input = input.pad(padding_size)
+        return super().apply_transform_keypoint(input=input, params=params, flags=flags, transform=transform)
 
-    def apply_non_transform_box(
+    def apply_transform_box(
         self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Boxes:
         """Process keypoints corresponding to the inputs that are no transformation applied.
         """
-        input = super().apply_non_transform_box(input=input, params=params, flags=flags, transform=transform)
         # For pad the boxes properly.
         padding_size = params["padding_size"]
-        return input.pad(padding_size)
+        input = input.pad(padding_size)
+        return super().apply_transform_box(input=input, params=params, flags=flags, transform=transform)
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
+        padding_size = params.get("padding_size").unique(dim=0).cpu().squeeze().numpy().tolist()
+        input = self.precrop_padding(input, padding_size, flags)
+
         flags = self.flags if flags is None else flags
         if flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
             transform = cast(Tensor, transform)
@@ -232,23 +235,7 @@ class RandomCrop(GeometricAugmentationBase2D):
             align_corners=flags["align_corners"],
         )
 
-    def inverse(
-        self,
-        input: Tensor,
-        params: Optional[Dict[str, Tensor]] = None,
-        **kwargs,
-    ) -> Tensor:
-        out = super().inverse(input, params, **kwargs)
-        if params is None:
-            params = self._params
-        if "padding_size" in params:
-            padding_size = params["padding_size"].unique(dim=0).cpu().squeeze().numpy().tolist()
-            padding_size = [-padding_size[0], -padding_size[1], -padding_size[2], -padding_size[3]]
-        else:
-            padding_size = [0, 0, 0, 0]
-        return self.precrop_padding(out, padding_size)
-
-    def inverse_masks(
+    def inverse_inputs(
         self,
         input: Tensor,
         params: Dict[str, Tensor],
@@ -256,7 +243,13 @@ class RandomCrop(GeometricAugmentationBase2D):
         transform: Optional[Tensor] = None,
         **kwargs
     ) -> Tensor:
-        out = super().inverse_masks(input, params, flags, transform, **kwargs)
+        if flags["cropping_mode"] != "resample":
+            raise NotImplementedError(
+                f"`inverse` is only applicable for resample cropping mode. Got {flags['cropping_mode']}."
+            )
+        out = super().inverse_inputs(input, params, flags, transform, **kwargs)
+        if not params["batch_prob"].all():
+            return out
         padding_size = params["padding_size"].unique(dim=0).cpu().squeeze().numpy().tolist()
         padding_size = [-padding_size[0], -padding_size[1], -padding_size[2], -padding_size[3]]
         return self.precrop_padding(out, padding_size)
@@ -269,7 +262,13 @@ class RandomCrop(GeometricAugmentationBase2D):
         transform: Optional[Tensor] = None,
         **kwargs,
     ) -> Boxes:
+        if flags["cropping_mode"] != "resample":
+            raise NotImplementedError(
+                f"`inverse` is only applicable for resample cropping mode. Got {flags['cropping_mode']}."
+            )
         output = super().inverse_boxes(input, params, flags, transform, **kwargs)
+        if not params["batch_prob"].all():
+            return output
         padding_size = params["padding_size"]
         return output.unpad(padding_size)
 
@@ -281,11 +280,18 @@ class RandomCrop(GeometricAugmentationBase2D):
         transform: Optional[Tensor] = None,
         **kwargs,
     ) -> Keypoints:
+        if flags["cropping_mode"] != "resample":
+            raise NotImplementedError(
+                f"`inverse` is only applicable for resample cropping mode. Got {flags['cropping_mode']}."
+            )
         output = super().inverse_keypoints(input, params, flags, transform, **kwargs)
+        if not params["batch_prob"].all():
+            return output
         padding_size = params["padding_size"]
         return output.unpad(padding_size)
 
-    def forward_parameters_precrop(self, batch_shape) -> Dict[str, Tensor]:
+    # Override parameters for precrop
+    def forward_parameters(self, batch_shape) -> Dict[str, Tensor]:
         input_pad = self.compute_padding(batch_shape)
         batch_shape_new = (
             *batch_shape[:2],
@@ -296,32 +302,3 @@ class RandomCrop(GeometricAugmentationBase2D):
         _params = super().forward_parameters(batch_shape_new)
         _params.update({"padding_size": padding_size})
         return _params
-
-    def forward(self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs) -> Tensor:
-        padding_size = params.get("padding_size") if params else None
-        if padding_size is not None:
-            input_pad = padding_size.unique(dim=0).cpu().squeeze().numpy().tolist()
-        else:
-            input_pad = None
-
-        flags = override_parameters(self.flags, kwargs, in_place=False)
-
-        ori_shape = input.shape
-        input_temp = _transform_input(input)
-        input_pad = self.compute_padding(input_temp.shape, flags) if input_pad is None else input_pad
-        _input = self.precrop_padding(input_temp, input_pad, flags)
-        _input = _transform_output_shape(_input, ori_shape) if self.keepdim else _input
-
-        out = super().forward(_input, params, **kwargs)
-
-        # Update the actual input size for inverse
-        if "padding_size" not in self._params:
-            _padding_size = tensor(tuple(input_pad), device=input_temp.device, dtype=torch.long).expand(
-                input_temp.size(0), -1
-            )
-            self._params.update({"padding_size": _padding_size})
-
-        if not self._params["batch_prob"].all():
-            # undo the pre-crop if nothing happened.
-            return input
-        return out

@@ -207,10 +207,7 @@ class ImageSequential(SequentialBase):
         params: List[ParamItem] = []
         mod_param: Union[Dict[str, Tensor], List[ParamItem]]
         for name, module in named_modules:
-            if isinstance(module, RandomCrop):
-                mod_param = module.forward_parameters_precrop(batch_shape)
-                param = ParamItem(name, mod_param)
-            elif isinstance(module, (_AugmentationBase, MixAugmentationBaseV2, ImageSequential)):
+            if isinstance(module, (_AugmentationBase, MixAugmentationBaseV2, ImageSequential)):
                 mod_param = module.forward_parameters(batch_shape)
                 param = ParamItem(name, mod_param)
             else:
