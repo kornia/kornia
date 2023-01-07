@@ -10,6 +10,10 @@ from kornia.geometry.boxes import Boxes
 class AugmentationBase2D(_AugmentationBase):
     r"""AugmentationBase2D base class for customized augmentation implementations.
 
+    AugmentationBase2D aims at offering a generic base class for a greater level of customization.
+    If the subclass contains routined matrix-based transformations, `RigidAffineAugmentationBase2D`
+    might be a better fit.
+
     Args:
         p: probability for applying an augmentation. This param controls the augmentation probabilities
           element-wise for a batch.
@@ -26,22 +30,6 @@ class AugmentationBase2D(_AugmentationBase):
         if len(input.shape) != 4:
             raise RuntimeError(f"Expect (B, C, H, W). Got {input.shape}.")
 
-    def __check_batching__(self, input: Tensor):
-        if isinstance(input, tuple):
-            inp, mat = input
-            if len(inp.shape) == 4:
-                if len(mat.shape) != 3:
-                    raise AssertionError('Input tensor is in batch mode ' 'but transformation matrix is not')
-                if mat.shape[0] != inp.shape[0]:
-                    raise AssertionError(
-                        f"In batch dimension, input has {inp.shape[0]} but transformation matrix has {mat.shape[0]}"
-                    )
-            elif len(inp.shape) in (2, 3):
-                if len(mat.shape) != 2:
-                    raise AssertionError("Input tensor is in non-batch mode but transformation matrix is not")
-            else:
-                raise ValueError(f'Unrecognized output shape. Expected 2, 3, or 4, got {len(inp.shape)}')
-
     def transform_tensor(self, input: Tensor) -> Tensor:
         """Convert any incoming (H, W), (C, H, W) and (B, C, H, W) into (B, C, H, W)."""
         _validate_input_dtype(input, accepted_dtypes=[float16, float32, float64])
@@ -50,6 +38,9 @@ class AugmentationBase2D(_AugmentationBase):
 
 class RigidAffineAugmentationBase2D(AugmentationBase2D):
     r"""AugmentationBase2D base class for rigid/affine augmentation implementations.
+
+    RigidAffineAugmentationBase2D enables routined transformation with given transformation matrices
+    for different data types like masks, boxes, and keypoints.
 
     Args:
         p: probability for applying an augmentation. This param controls the augmentation probabilities

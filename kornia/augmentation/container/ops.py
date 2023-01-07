@@ -114,7 +114,7 @@ class AugmentationSequentialOps:
             op = self._get_op(dcate)
             extra_arg = extra_args[dcate] if dcate in extra_args else {}
             outputs.append(op.transform(inp, module, param=param, extra_args=extra_arg))
-        if len(outputs) == 1:
+        if len(outputs) == 1 and isinstance(outputs, (list, tuple,)):
             return outputs[0]
         return outputs
 
@@ -132,7 +132,7 @@ class AugmentationSequentialOps:
             op = self._get_op(dcate)
             extra_arg = extra_args[dcate] if dcate in extra_args else {}
             outputs.append(op.inverse(inp, module, param=param, extra_args=extra_arg))
-        if len(outputs) == 1:
+        if len(outputs) == 1 and isinstance(outputs, (list, tuple,)):
             return outputs[0]
         return outputs
 

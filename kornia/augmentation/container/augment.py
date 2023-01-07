@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 from kornia.augmentation import (
     AugmentationBase3D,
-    AugmentationBase2D,
+    RigidAffineAugmentationBase2D
 )
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.ops import DataType
@@ -12,7 +12,7 @@ from kornia.augmentation.container.patch import PatchSequential
 from kornia.augmentation.container.video import VideoSequential
 from kornia.augmentation.container.ops import AugmentationSequentialOps
 from kornia.constants import DataKey, Resample
-from kornia.core import Tensor
+from kornia.core import Tensor, Module
 from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints, VideoKeypoints
 from kornia.utils import eye_like
@@ -43,6 +43,13 @@ class AugmentationSequential(ImageSequential):
             If (a, b), x number of transformations (a <= x <= b) will be selected.
             If True, the whole list of args will be processed as a sequence in a random order.
             If False, the whole list of args will be processed as a sequence in original order.
+        transformation_matrix: computation mode for the chained transformation matrix,
+            via `.transform_matrix` attribute.
+            If `silence`, transformation matrix will be computed silently and the non-rigid modules
+                will be ignored as identity tranformations.
+            If `rigid`, transformation matrix will be computed silently and the non-rigid modules
+                will trigger errors.
+            If `skip`, transformation matrix will be totally ignored.
         extra_args: to control the behaviour for each datakeys. By default, masks are handled
             by nearest interpolation strategies.
 
@@ -135,6 +142,9 @@ class AugmentationSequential(ImageSequential):
         [torch.Size([1, 2, 3, 5, 6]), torch.Size([1, 2, 3, 5, 6]), torch.Size([1, 2, 1, 4, 2]), torch.Size([1, 2, 1, 2])]
     """
 
+    _transform_matrix: Optional[Tensor]
+    _transform_matrices: List[Tensor] = []
+
     def __init__(
         self,
         *args: Union[_AugmentationBase, ImageSequential],
@@ -143,6 +153,7 @@ class AugmentationSequential(ImageSequential):
         keepdim: Optional[bool] = None,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
         random_apply_weights: Optional[List[float]] = None,
+        transformation_matrix: str = "silence",
         extra_args: Dict[DataKey, Dict[str, Any]] = {DataKey.MASK: dict(resample=Resample.NEAREST, align_corners=True)},
     ) -> None:
         super().__init__(
@@ -163,6 +174,14 @@ class AugmentationSequential(ImageSequential):
 
         self.transform_op = AugmentationSequentialOps(self.data_keys)
 
+        _valid_transformation_matrix_args = ["silence", "rigid", "skip"]
+        if transformation_matrix not in _valid_transformation_matrix_args:
+            raise ValueError(
+                f"`transformation_matrix` has to be one of {_valid_transformation_matrix_args}. "
+                f"Got {transformation_matrix}."
+            )
+        self._transformation_matrix_arg = transformation_matrix
+
         self.contains_video_sequential: bool = False
         self.contains_3d_augmentation: bool = False
         for arg in args:
@@ -176,16 +195,45 @@ class AugmentationSequential(ImageSequential):
         self._transform_matrix: Optional[Tensor] = None
         self.extra_args = extra_args
 
+    def clear_state(self) -> None:
+        self._transform_matrix = None
+        self._transform_matrices = []
+        return super().clear_state()
+
+    @property
+    def transform_matrix(self,) -> Optional[Tensor]:
+        # In AugmentationSequential, the parent class is accessed first.
+        # So that it was None in the begining. We hereby use lazy computation here.
+        if self._transform_matrix is None and len(self._transform_matrices) != 0:
+            self._transform_matrix = self._transform_matrices[0]
+            for mat in self._transform_matrices[1:]:
+                self._update_transform_matrix(mat)
+        return self._transform_matrix
+
+    def _update_transform_matrix_by_module(self, module: Module) -> None:
+        if self._transformation_matrix_arg == "skip":
+            return
+        if isinstance(module, (RigidAffineAugmentationBase2D, AugmentationSequential,)):
+            self._transform_matrices.append(module.transform_matrix)
+            # self._update_transform_matrix(module.transform_matrix)
+        elif self._transformation_matrix_arg == "rigid":
+            raise RuntimeError(
+                f"Non-rigid module `{module}` is not supported under `rigid` compuatation mode. "
+                "Please either update the module or change the `transformation_matrix` argument."
+            )
+
+    def _update_transform_matrix(self, transform_matrix: Tensor) -> None:
+        if self._transform_matrix is None:
+            self._transform_matrix = transform_matrix
+        else:
+            self._transform_matrix = transform_matrix @ self._transform_matrix
+
     def identity_matrix(self, input: Tensor) -> Tensor:
         """Return identity matrix."""
         if self.contains_3d_augmentation:
             return eye_like(4, input)
         else:
             return eye_like(3, input)
-
-    @property
-    def transform_matrix(self) -> Optional[Tensor]:
-        return self._transform_matrix
 
     def inverse(  # type: ignore[override]
         self,
@@ -198,14 +246,11 @@ class AugmentationSequential(ImageSequential):
         Number of input tensors must align with the number of``data_keys``. If ``data_keys`` is not set, use
         ``self.data_keys`` by default.
         """
-        if data_keys is None:
-            _data_keys = self.data_keys
-        else:
-            _data_keys = [DataKey.get(inp) for inp in data_keys]
+        self.transform_op.data_keys = self.transform_op.preproc_datakeys(data_keys)
 
-        self._validate_args_datakeys(*args, data_keys=_data_keys)
+        self._validate_args_datakeys(*args, data_keys=self.transform_op.data_keys)
 
-        in_args = self._arguments_preproc(*args, data_keys=_data_keys)
+        in_args = self._arguments_preproc(*args, data_keys=self.transform_op.data_keys)
 
         if params is None:
             if self._params is None:
@@ -216,10 +261,10 @@ class AugmentationSequential(ImageSequential):
             params = self._params
 
         outputs: List[DataType] = in_args
-        for param in params:
+        for param in params[::-1]:
             module = self.get_submodule(param.name)
             outputs = self.transform_op.inverse(
-                *in_args, module=module, param=param, extra_args=self.extra_args)
+                *outputs, module=module, param=param, extra_args=self.extra_args)
 
         outputs = self._arguments_postproc(args, outputs, data_keys=self.transform_op.data_keys)
 
@@ -241,28 +286,9 @@ class AugmentationSequential(ImageSequential):
             if DataKey.get(dcate) in [DataKey.INPUT, DataKey.MASK]:
                 inp.append(arg)
             elif DataKey.get(dcate) in [DataKey.KEYPOINTS]:
-                if self.contains_video_sequential:
-                    inp.append(VideoKeypoints.from_tensor(arg))
-                else:
-                    inp.append(Keypoints.from_tensor(arg))
+                inp.append(self._preproc_keypoints(arg, dcate))
             elif DataKey.get(dcate) in [DataKey.BBOX, DataKey.BBOX_XYXY, DataKey.BBOX_XYWH]:
-                if DataKey.get(dcate) in [DataKey.BBOX]:
-                    mode = "vertices_plus"
-                elif DataKey.get(dcate) in [DataKey.BBOX_XYXY]:
-                    mode = "xyxy"
-                elif DataKey.get(dcate) in [DataKey.BBOX_XYWH]:
-                    mode = "xywh"
-                else:
-                    raise ValueError(f"Unsupported mode `{DataKey.get(dcate).name}`.")
-                # TODO: handle 3d scenarios
-                if isinstance(arg, (Boxes,)):
-                    inp.append(arg)
-                elif self.contains_video_sequential:
-                    arg = cast(Tensor, arg)
-                    inp.append(VideoBoxes.from_tensor(arg))
-                else:
-                    arg = cast(Tensor, arg)
-                    inp.append(Boxes.from_tensor(arg, mode=mode))
+                inp.append(self._preproc_boxes(arg, dcate))
             else:
                 raise NotImplementedError(f"input type of {dcate} is not implemented.")
         return inp
@@ -279,26 +305,9 @@ class AugmentationSequential(ImageSequential):
                 # TODO: may add the float to integer, etc.
                 out.append(out_arg)
             elif DataKey.get(dcate) in [DataKey.KEYPOINTS]:
-                out_arg = cast(Keypoints, out_arg)
-                if isinstance(in_arg, (Keypoints,)):
-                    out.append(out_arg)
-                else:
-                    out.append(out_arg.to_tensor())
+                out.append(self._postproc_keypoint(in_arg, out_arg, dcate))
             elif DataKey.get(dcate) in [DataKey.BBOX, DataKey.BBOX_XYXY, DataKey.BBOX_XYWH]:
-                out_arg = cast(Boxes, out_arg)
-                if DataKey.get(dcate) in [DataKey.BBOX]:
-                    mode = "vertices_plus"
-                elif DataKey.get(dcate) in [DataKey.BBOX_XYXY]:
-                    mode = "xyxy"
-                elif DataKey.get(dcate) in [DataKey.BBOX_XYWH]:
-                    mode = "xywh"
-                else:
-                    raise ValueError(f"Unsupported mode `{DataKey.get(dcate).name}`.")
-                # TODO: handle 3d scenarios
-                if isinstance(in_arg, (Boxes,)):
-                    out.append(out_arg)
-                else:
-                    out.append(out_arg.to_tensor(mode=mode))
+                out.append(self._postproc_boxes(in_arg, out_arg, dcate))
             else:
                 raise NotImplementedError(f"input type of {dcate} is not implemented.")
 
@@ -311,6 +320,7 @@ class AugmentationSequential(ImageSequential):
         data_keys: Optional[List[Union[str, int, DataKey]]] = None,
     ) -> Union[DataType, List[DataType]]:
         """Compute multiple tensors simultaneously according to ``self.data_keys``."""
+
         self.transform_op.data_keys = self.transform_op.preproc_datakeys(data_keys)
 
         self._validate_args_datakeys(*args, data_keys=self.transform_op.data_keys)
@@ -332,11 +342,15 @@ class AugmentationSequential(ImageSequential):
             else:
                 raise ValueError("`params` must be provided whilst INPUT is not in data_keys.")
 
-        outputs: List[DataType] = in_args
+        outputs: Union[Tensor, List[DataType]] = in_args
         for param in params:
             module = self.get_submodule(param.name)
             outputs = self.transform_op.transform(
                 *outputs, module=module, param=param, extra_args=self.extra_args)
+            if not isinstance(outputs, (list, tuple,)):
+                # Make sure we are unpacking a list whilst post-proc
+                outputs = [outputs]
+            self._update_transform_matrix_by_module(module)
 
         outputs = self._arguments_postproc(args, outputs, data_keys=self.transform_op.data_keys)
         # Restore it back
@@ -348,4 +362,50 @@ class AugmentationSequential(ImageSequential):
             return outputs[0]
 
         return outputs
-        
+
+    def _preproc_boxes(self, arg: DataType, dcate: DataKey) -> Boxes:
+        if DataKey.get(dcate) in [DataKey.BBOX]:
+            mode = "vertices_plus"
+        elif DataKey.get(dcate) in [DataKey.BBOX_XYXY]:
+            mode = "xyxy"
+        elif DataKey.get(dcate) in [DataKey.BBOX_XYWH]:
+            mode = "xywh"
+        else:
+            raise ValueError(f"Unsupported mode `{DataKey.get(dcate).name}`.")
+        # TODO: handle 3d scenarios
+        if isinstance(arg, (Boxes,)):
+            return arg
+        elif self.contains_video_sequential:
+            arg = cast(Tensor, arg)
+            return VideoBoxes.from_tensor(arg)
+        else:
+            arg = cast(Tensor, arg)
+            return Boxes.from_tensor(arg, mode=mode)
+
+    def _postproc_boxes(self, in_arg: DataType, out_arg: Boxes, dcate: DataKey) -> Union[Tensor, Boxes]:
+        if DataKey.get(dcate) in [DataKey.BBOX]:
+            mode = "vertices_plus"
+        elif DataKey.get(dcate) in [DataKey.BBOX_XYXY]:
+            mode = "xyxy"
+        elif DataKey.get(dcate) in [DataKey.BBOX_XYWH]:
+            mode = "xywh"
+        else:
+            raise ValueError(f"Unsupported mode `{DataKey.get(dcate).name}`.")
+        # TODO: handle 3d scenarios
+        if isinstance(in_arg, (Boxes,)):
+            return out_arg
+        else:
+            return out_arg.to_tensor(mode=mode)
+
+    def _preproc_keypoints(self, arg: DataType, dcate: DataKey) -> Keypoints:
+        if self.contains_video_sequential:
+            return VideoKeypoints.from_tensor(arg)
+        else:
+            return Keypoints.from_tensor(arg)
+
+    def _postproc_keypoint(self, in_arg: DataType, out_arg: Boxes, dcate: DataKey) -> Union[Tensor, Keypoints]:
+        out_arg = cast(Keypoints, out_arg)
+        if isinstance(in_arg, (Keypoints,)):
+            return out_arg
+        else:
+            return out_arg.to_tensor()

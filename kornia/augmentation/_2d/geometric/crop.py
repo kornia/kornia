@@ -247,20 +247,12 @@ class RandomCrop(GeometricAugmentationBase2D):
 
         flags = override_parameters(self.flags, kwargs, in_place=False)
 
-        if isinstance(input, (tuple, list)):
-            ori_shape = input[0].shape
-            input_temp = _transform_input(input[0])
-            input_pad = self.compute_padding(input[0].shape, flags) if input_pad is None else input_pad
-            _input = (self.precrop_padding(input_temp, input_pad, flags), input[1])
-            _input = _transform_output_shape(_input, ori_shape) if self.keepdim else _input
-        else:
-            ori_shape = input.shape
-            input_temp = _transform_input(input)
-            input_pad = self.compute_padding(input_temp.shape, flags) if input_pad is None else input_pad
-            _input = self.precrop_padding(input_temp, input_pad, flags)
-            _input = _transform_output_shape(_input, ori_shape) if self.keepdim else _input
-        if params is not None:
-            params, flags = self._process_kwargs_to_params_and_flags(params, self.flags, **kwargs)
+        ori_shape = input.shape
+        input_temp = _transform_input(input)
+        input_pad = self.compute_padding(input_temp.shape, flags) if input_pad is None else input_pad
+        _input = self.precrop_padding(input_temp, input_pad, flags)
+        _input = _transform_output_shape(_input, ori_shape) if self.keepdim else _input
+
         out = super().forward(_input, params, **kwargs)
 
         # Update the actual input size for inverse
@@ -272,9 +264,5 @@ class RandomCrop(GeometricAugmentationBase2D):
 
         if not self._params["batch_prob"].all():
             # undo the pre-crop if nothing happened.
-            if isinstance(out, tuple) and isinstance(input, tuple):
-                return input[0], out[1]
-            if isinstance(out, tuple) and not isinstance(input, tuple):
-                return input, out[1]
             return input
         return out

@@ -235,13 +235,14 @@ class _AugmentationBase(_BasicAugmentationBase):
 
         to_apply = params['batch_prob']
         ori_shape = input.shape
+        in_tensor = self.transform_tensor(input)
         if to_apply.all():
-            output = self.apply_transform(input, params, flags, transform=transform)
+            output = self.apply_transform(in_tensor, params, flags, transform=transform)
         elif not to_apply.any():
-            output = self.apply_non_transform(input, params, flags, transform=transform)
+            output = self.apply_non_transform(in_tensor, params, flags, transform=transform)
         else:  # If any tensor needs to be transformed.
-            output = self.apply_non_transform(input, params, flags, transform=transform)
-            applied = self.apply_transform(input[to_apply], params, flags, transform=transform[to_apply])
+            output = self.apply_non_transform(in_tensor, params, flags, transform=transform)
+            applied = self.apply_transform(in_tensor[to_apply], params, flags, transform=transform[to_apply])
             output = output.index_put((to_apply,), applied)
         output = _transform_output_shape(output, ori_shape) if self.keepdim else output
         return output
@@ -256,14 +257,17 @@ class _AugmentationBase(_BasicAugmentationBase):
             self._params if params is None else params, flags, **kwargs)
 
         to_apply = params['batch_prob']
+        ori_shape = input.shape
+        in_tensor = self.transform_tensor(input)
         if to_apply.all():
-            output = self.apply_transform_mask(input, params, flags, transform=transform)
+            output = self.apply_transform_mask(in_tensor, params, flags, transform=transform)
         elif not to_apply.any():
-            output = self.apply_non_transform_mask(input, params, flags, transform=transform)
+            output = self.apply_non_transform_mask(in_tensor, params, flags, transform=transform)
         else:  # If any tensor needs to be transformed.
-            output = self.apply_non_transform_mask(input, params, flags, transform=transform)
-            applied = self.apply_transform_mask(input[to_apply], params, flags, transform=transform[to_apply])
+            output = self.apply_non_transform_mask(in_tensor, params, flags, transform=transform)
+            applied = self.apply_transform_mask(in_tensor[to_apply], params, flags, transform=transform[to_apply])
             output = output.index_put((to_apply,), applied)
+        output = _transform_output_shape(output, ori_shape) if self.keepdim else output
         return output
 
     def transform_boxes(

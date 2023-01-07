@@ -45,7 +45,7 @@ from kornia.augmentation._2d import (
     Resize,
     SmallestMaxSize,
 )
-from kornia.augmentation._2d.base import AugmentationBase2D
+from kornia.augmentation._2d.base import AugmentationBase2D, RigidAffineAugmentationBase2D
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
@@ -73,6 +73,7 @@ from kornia.augmentation.container import (
 
 __all__ = [
     "AugmentationBase2D",
+    "RigidAffineAugmentationBase2D",
     "GeometricAugmentationBase2D",
     "IntensityAugmentationBase2D",
     "MixAugmentationBaseV2",
