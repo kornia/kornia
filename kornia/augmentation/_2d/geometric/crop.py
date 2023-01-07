@@ -8,6 +8,8 @@ from kornia.augmentation.utils import _transform_input, _transform_output_shape,
 from kornia.constants import Resample
 from kornia.core import Tensor, pad, tensor
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
+from kornia.geometry.boxes import Boxes
+from kornia.geometry.keypoints import Keypoints
 
 
 class RandomCrop(GeometricAugmentationBase2D):
@@ -151,6 +153,26 @@ class RandomCrop(GeometricAugmentationBase2D):
             return transform
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
+    def apply_non_transform_keypoint(
+        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Keypoints:
+        """Process keypoints corresponding to the inputs that are no transformation applied.
+        """
+        input = super().apply_non_transform_keypoint(input=input, params=params, flags=flags, transform=transform)
+        # For pad the keypoints properly.
+        padding_size = params["padding_size"]
+        return input.pad(padding_size)
+
+    def apply_non_transform_box(
+        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Boxes:
+        """Process keypoints corresponding to the inputs that are no transformation applied.
+        """
+        input = super().apply_non_transform_box(input=input, params=params, flags=flags, transform=transform)
+        # For pad the boxes properly.
+        padding_size = params["padding_size"]
+        return input.pad(padding_size)
+
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
@@ -225,6 +247,43 @@ class RandomCrop(GeometricAugmentationBase2D):
         else:
             padding_size = [0, 0, 0, 0]
         return self.precrop_padding(out, padding_size)
+
+    def inverse_masks(
+        self,
+        input: Tensor,
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[Tensor] = None,
+        **kwargs
+    ) -> Tensor:
+        out = super().inverse_masks(input, params, flags, transform, **kwargs)
+        padding_size = params["padding_size"].unique(dim=0).cpu().squeeze().numpy().tolist()
+        padding_size = [-padding_size[0], -padding_size[1], -padding_size[2], -padding_size[3]]
+        return self.precrop_padding(out, padding_size)
+
+    def inverse_boxes(
+        self,
+        input: Boxes,
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[Tensor] = None,
+        **kwargs,
+    ) -> Boxes:
+        output = super().inverse_boxes(input, params, flags, transform, **kwargs)
+        padding_size = params["padding_size"]
+        return output.unpad(padding_size)
+
+    def inverse_keypoints(
+        self,
+        input: Keypoints,
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[Tensor] = None,
+        **kwargs,
+    ) -> Keypoints:
+        output = super().inverse_keypoints(input, params, flags, transform, **kwargs)
+        padding_size = params["padding_size"]
+        return output.unpad(padding_size)
 
     def forward_parameters_precrop(self, batch_shape) -> Dict[str, Tensor]:
         input_pad = self.compute_padding(batch_shape)

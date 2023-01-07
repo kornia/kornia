@@ -80,11 +80,6 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Boxes:
         """Process boxes corresponding to the inputs that are no transformation applied."""
-
-        if "padding_size" in params:
-            # Mostly for operations like RandomCrop.
-            padding_size = params["padding_size"]
-            return input.pad(padding_size)
         return input
 
     def apply_transform_box(
@@ -103,12 +98,6 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
     ) -> Keypoints:
         """Process keypoints corresponding to the inputs that are no transformation applied.
         """
-        padding_size = None
-        if "padding_size" in params:
-            # Mostly for operations like RandomCrop.
-            padding_size = params["padding_size"]
-            return input.pad(padding_size)
-
         return input
 
     def apply_transform_keypoint(
@@ -207,12 +196,6 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         else:
             output[to_apply] = input[to_apply].transform_boxes_(transform[to_apply])
 
-        padding_size = None
-        if "padding_size" in params:
-            # Mostly for operations like RandomCrop.
-            padding_size = params["padding_size"]
-            return output.unpad(padding_size)
-
         return output
 
     def inverse_keypoints(
@@ -245,12 +228,6 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             output = input.transform_keypoints_(transform)
         else:
             output[to_apply] = input[to_apply].transform_keypoints_(transform[to_apply])
-
-        padding_size = None
-        if "padding_size" in params:
-            # Mostly for operations like RandomCrop.
-            padding_size = params["padding_size"]
-            return output.unpad(padding_size)
 
         return output
 
