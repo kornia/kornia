@@ -3,10 +3,10 @@ from typing import Any, Dict, Optional
 import torch
 from torch import Tensor
 
-from kornia.augmentation._3d.base import AugmentationBase3D
+from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 
 
-class RandomDepthicalFlip3D(AugmentationBase3D):
+class RandomDepthicalFlip3D(GeometricAugmentationBase3D):
     r"""Apply random flip along the depth axis of 3D volumes (5D tensor).
 
     Input should be a tensor of shape :math:`(C, D, H, W)` or a batch of tensors :math:`(*, C, D, H, W)`.
@@ -59,12 +59,11 @@ class RandomDepthicalFlip3D(AugmentationBase3D):
 
     def __init__(
         self,
-        return_transform: Optional[bool] = None,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         d: int = input.shape[-3]

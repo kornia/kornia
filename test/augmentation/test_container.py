@@ -336,8 +336,8 @@ class TestAugmentationSequential:
         # horizontally flip boxes based on crop width
         xmins = expected_out_bbox[..., 0].clone()
         xmaxs = expected_out_bbox[..., 2].clone()
-        expected_out_bbox[..., 0] = crop_width - xmaxs
-        expected_out_bbox[..., 2] = crop_width - xmins
+        expected_out_bbox[..., 0] = crop_width - xmaxs - 1
+        expected_out_bbox[..., 2] = crop_width - xmins - 1
 
         out = aug(input, bbox, params=_params)
         assert out[1].shape == bbox.shape

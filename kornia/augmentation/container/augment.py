@@ -375,12 +375,13 @@ class AugmentationSequential(ImageSequential):
             mode = "xywh"
         else:
             raise ValueError(f"Unsupported mode `{DataKey.get(dcate).name}`.")
-        # TODO: handle 3d scenarios
         if isinstance(arg, (Boxes,)):
             return arg
         elif self.contains_video_sequential:
             arg = cast(Tensor, arg)
             return VideoBoxes.from_tensor(arg)
+        elif self.contains_3d_augmentation:
+            raise NotImplementedError("3D box handlers are not yet supported.")
         else:
             arg = cast(Tensor, arg)
             return Boxes.from_tensor(arg, mode=mode)
@@ -403,6 +404,8 @@ class AugmentationSequential(ImageSequential):
     def _preproc_keypoints(self, arg: DataType, dcate: DataKey) -> Keypoints:
         if self.contains_video_sequential:
             return VideoKeypoints.from_tensor(arg)
+        elif self.contains_3d_augmentation:
+            raise NotImplementedError("3D keypoint handlers are not yet supported.")
         else:
             return Keypoints.from_tensor(arg)
 
