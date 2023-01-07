@@ -265,6 +265,9 @@ class AugmentationSequential(ImageSequential):
             module = self.get_submodule(param.name)
             outputs = self.transform_op.inverse(
                 *outputs, module=module, param=param, extra_args=self.extra_args)
+            if not isinstance(outputs, (list, tuple,)):
+                # Make sure we are unpacking a list whilst post-proc
+                outputs = [outputs]
 
         outputs = self._arguments_postproc(args, outputs, data_keys=self.transform_op.data_keys)
 

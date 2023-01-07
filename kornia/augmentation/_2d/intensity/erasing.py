@@ -65,7 +65,6 @@ class RandomErasing(IntensityAugmentationBase2D):
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self.scale = scale
         self.ratio = ratio
-        self.value: float = float(value)
         self._param_generator = rg.RectangleEraseGenerator(scale, ratio, float(value))
 
     def apply_transform(
@@ -83,5 +82,14 @@ class RandomErasing(IntensityAugmentationBase2D):
     def apply_transform_mask(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
+        _, c, h, w = input.size()
+
+        values = params["values"].unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).repeat(1, *input.shape[1:]).to(input)
         # Erase the corresponding areas on masks.
-        return self.apply_transform(input, params, flags, transform)
+        values = values.zero_()
+
+        bboxes = bbox_generator(params["xs"], params["ys"], params["widths"], params["heights"])
+        mask = bbox_to_mask(bboxes, w, h)  # Returns B, H, W
+        mask = mask.unsqueeze(1).repeat(1, c, 1, 1).to(input)  # Transform to B, c, H, W
+        transformed = where(mask == 1.0, values, input)
+        return transformed
