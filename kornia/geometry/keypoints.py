@@ -9,13 +9,7 @@ def _merge_keypoint_list(keypoints: List[Tensor]) -> Tensor:
 
 
 class Keypoints:
-
-    def __init__(
-        self,
-        keypoints: Union[Tensor, List[Tensor]],
-        raise_if_not_floating_point: bool = True,
-    ) -> None:
-
+    def __init__(self, keypoints: Union[Tensor, List[Tensor]], raise_if_not_floating_point: bool = True) -> None:
         self._N: Optional[List[int]] = None
 
         if isinstance(keypoints, list):
@@ -51,39 +45,35 @@ class Keypoints:
         return self
 
     @property
-    def shape(self,):
+    def shape(self):
         return self.data.shape
 
     @property
-    def data(self,):
+    def data(self):
         return self._data
 
-    def pad(
-        self,
-        padding_size: Tensor,
-    ) -> "Keypoints":
+    def pad(self, padding_size: Tensor) -> "Keypoints":
         """Pad a bounding keypoints.
 
         Args:
             padding_size: (B, 4)
         """
-        assert len(padding_size.shape) == 2 and padding_size.size(1) == 4, \
-            f"Expected padding_size as (B, 4). Got {padding_size.shape}."
+        assert (
+            len(padding_size.shape) == 2 and padding_size.size(1) == 4
+        ), f"Expected padding_size as (B, 4). Got {padding_size.shape}."
         self._data[..., 0] += padding_size[..., :1]  # left padding
         self._data[..., 1] += padding_size[..., 2:3]  # top padding
         return self
 
-    def unpad(
-        self,
-        padding_size: Tensor,
-    ) -> "Keypoints":
+    def unpad(self, padding_size: Tensor) -> "Keypoints":
         """Pad a bounding keypoints.
 
         Args:
             padding_size: (B, 4)
         """
-        assert len(padding_size.shape) == 2 and padding_size.size(1) == 4, \
-            f"Expected padding_size as (B, 4). Got {padding_size.shape}."
+        assert (
+            len(padding_size.shape) == 2 and padding_size.size(1) == 4
+        ), f"Expected padding_size as (B, 4). Got {padding_size.shape}."
         self._data[..., 0] -= padding_size[..., :1]  # left padding
         self._data[..., 1] -= padding_size[..., 2:3]  # top padding
         return self
@@ -116,11 +106,9 @@ class Keypoints:
     def from_tensor(cls, keypoints: Tensor) -> "Keypoints":
         return cls(keypoints)
 
-    def to_tensor(
-        self, as_padded_sequence: bool = False
-    ) -> Union[Tensor, List[Tensor]]:
-        r"""Cast :class:`Keypoints` to a tensor. ``mode`` controls which 2D keypoints format should be use to represent
-        keypoints in the tensor.
+    def to_tensor(self, as_padded_sequence: bool = False) -> Union[Tensor, List[Tensor]]:
+        r"""Cast :class:`Keypoints` to a tensor. ``mode`` controls which 2D keypoints format should be use to
+        represent keypoints in the tensor.
 
         Args:
             as_padded_sequence: whether to keep the pads for a list of keypoints. This parameter is only valid
@@ -139,13 +127,10 @@ class Keypoints:
 
 
 class VideoKeypoints(Keypoints):
-
     temporal_channel_size: int
 
     @classmethod
-    def from_tensor(
-        cls, boxes: Union[Tensor, List[Tensor]], validate_boxes: bool = True
-    ) -> "VideoKeypoints":
+    def from_tensor(cls, boxes: Union[Tensor, List[Tensor]], validate_boxes: bool = True) -> "VideoKeypoints":
         if isinstance(boxes, (list,)) or (boxes.dim() != 4 or boxes.shape[-1] != 2):
             raise ValueError("Input box type is not yet supported. Pleae input an `BxTxNx2` tensor directly.")
 
@@ -176,13 +161,7 @@ class VideoKeypoints(Keypoints):
 
 
 class Keypoints3D:
-
-    def __init__(
-        self,
-        keypoints: Union[Tensor, List[Tensor]],
-        raise_if_not_floating_point: bool = True,
-    ) -> None:
-
+    def __init__(self, keypoints: Union[Tensor, List[Tensor]], raise_if_not_floating_point: bool = True) -> None:
         self._N: Optional[List[int]] = None
 
         if isinstance(keypoints, list):
@@ -218,17 +197,14 @@ class Keypoints3D:
         return self
 
     @property
-    def shape(self,):
+    def shape(self):
         return self.data.shape
 
     @property
-    def data(self,):
+    def data(self):
         return self._data
 
-    def pad(
-        self,
-        padding_size: Tensor,
-    ) -> "Keypoints3D":
+    def pad(self, padding_size: Tensor) -> "Keypoints3D":
         """Pad a bounding keypoints.
 
         Args:
@@ -236,10 +212,7 @@ class Keypoints3D:
         """
         raise NotImplementedError
 
-    def unpad(
-        self,
-        padding_size: Tensor,
-    ) -> "Keypoints3D":
+    def unpad(self, padding_size: Tensor) -> "Keypoints3D":
         """Pad a bounding keypoints.
 
         Args:
@@ -267,11 +240,9 @@ class Keypoints3D:
     def from_tensor(cls, keypoints: Tensor) -> "Keypoints3D":
         return cls(keypoints)
 
-    def to_tensor(
-        self, as_padded_sequence: bool = False
-    ) -> Union[Tensor, List[Tensor]]:
-        r"""Cast :class:`Keypoints` to a tensor. ``mode`` controls which 2D keypoints format should be use to represent
-        keypoints in the tensor.
+    def to_tensor(self, as_padded_sequence: bool = False) -> Union[Tensor, List[Tensor]]:
+        r"""Cast :class:`Keypoints` to a tensor. ``mode`` controls which 2D keypoints format should be use to
+        represent keypoints in the tensor.
 
         Args:
             as_padded_sequence: whether to keep the pads for a list of keypoints. This parameter is only valid

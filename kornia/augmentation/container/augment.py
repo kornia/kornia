@@ -1,18 +1,14 @@
 import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
-from kornia.augmentation import (
-    AugmentationBase3D,
-    RigidAffineAugmentationBase2D
-)
+from kornia.augmentation import AugmentationBase3D, RigidAffineAugmentationBase2D
 from kornia.augmentation.base import _AugmentationBase
-from kornia.augmentation.container.ops import DataType
 from kornia.augmentation.container.image import ImageSequential, ParamItem
+from kornia.augmentation.container.ops import AugmentationSequentialOps, DataType
 from kornia.augmentation.container.patch import PatchSequential
 from kornia.augmentation.container.video import VideoSequential
-from kornia.augmentation.container.ops import AugmentationSequentialOps
 from kornia.constants import DataKey, Resample
-from kornia.core import Tensor, Module
+from kornia.core import Module, Tensor
 from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints, VideoKeypoints
 from kornia.utils import eye_like
@@ -201,7 +197,7 @@ class AugmentationSequential(ImageSequential):
         return super().clear_state()
 
     @property
-    def transform_matrix(self,) -> Optional[Tensor]:
+    def transform_matrix(self) -> Optional[Tensor]:
         # In AugmentationSequential, the parent class is accessed first.
         # So that it was None in the begining. We hereby use lazy computation here.
         if self._transform_matrix is None and len(self._transform_matrices) != 0:
@@ -213,7 +209,7 @@ class AugmentationSequential(ImageSequential):
     def _update_transform_matrix_by_module(self, module: Module) -> None:
         if self._transformation_matrix_arg == "skip":
             return
-        if isinstance(module, (RigidAffineAugmentationBase2D, AugmentationSequential,)):
+        if isinstance(module, (RigidAffineAugmentationBase2D, AugmentationSequential)):
             self._transform_matrices.append(module.transform_matrix)
             # self._update_transform_matrix(module.transform_matrix)
         elif self._transformation_matrix_arg == "rigid":
@@ -263,9 +259,8 @@ class AugmentationSequential(ImageSequential):
         outputs: List[DataType] = in_args
         for param in params[::-1]:
             module = self.get_submodule(param.name)
-            outputs = self.transform_op.inverse(
-                *outputs, module=module, param=param, extra_args=self.extra_args)
-            if not isinstance(outputs, (list, tuple,)):
+            outputs = self.transform_op.inverse(*outputs, module=module, param=param, extra_args=self.extra_args)
+            if not isinstance(outputs, (list, tuple)):
                 # Make sure we are unpacking a list whilst post-proc
                 outputs = [outputs]
 
@@ -348,9 +343,8 @@ class AugmentationSequential(ImageSequential):
         outputs: Union[Tensor, List[DataType]] = in_args
         for param in params:
             module = self.get_submodule(param.name)
-            outputs = self.transform_op.transform(
-                *outputs, module=module, param=param, extra_args=self.extra_args)
-            if not isinstance(outputs, (list, tuple,)):
+            outputs = self.transform_op.transform(*outputs, module=module, param=param, extra_args=self.extra_args)
+            if not isinstance(outputs, (list, tuple)):
                 # Make sure we are unpacking a list whilst post-proc
                 outputs = [outputs]
             self._update_transform_matrix_by_module(module)
@@ -358,7 +352,7 @@ class AugmentationSequential(ImageSequential):
         outputs = self._arguments_postproc(args, outputs, data_keys=self.transform_op.data_keys)
         # Restore it back
         self.transform_op.data_keys = self.data_keys
-    
+
         self._params = params
 
         if len(outputs) == 1 and isinstance(outputs, list):

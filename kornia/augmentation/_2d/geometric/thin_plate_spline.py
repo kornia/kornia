@@ -44,9 +44,7 @@ class RandomThinPlateSpline(AugmentationBase2D):
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
-        super().__init__(
-            p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
-        )
+        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self.flags = dict(align_corners=align_corners)
         self.dist = torch.distributions.Uniform(-scale, scale)
 

@@ -13,10 +13,10 @@ from kornia.augmentation import (
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import ParamItem, SequentialBase
 from kornia.augmentation.container.ops import (
-    InputSequentialOps,
-    MaskSequentialOps,
     BoxSequentialOps,
+    InputSequentialOps,
     KeypointSequentialOps,
+    MaskSequentialOps,
 )
 from kornia.augmentation.utils import override_parameters
 from kornia.core import Module, Tensor, as_tensor
@@ -242,10 +242,7 @@ class ImageSequential(SequentialBase):
         # Define as 1 for broadcasting
         res_mat: Optional[Tensor] = None
         for (_, module), param in zip(named_modules, params if params is not None else []):
-            if (
-                isinstance(module, (GeometricAugmentationBase2D,))
-                and isinstance(param.data, dict)
-            ):
+            if isinstance(module, (GeometricAugmentationBase2D,)) and isinstance(param.data, dict):
                 to_apply = param.data['batch_prob']
                 ori_shape = input.shape
                 try:
@@ -301,47 +298,35 @@ class ImageSequential(SequentialBase):
                 return False
         return True
 
-    def transform_inputs(
-        self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
-    ) -> Tensor:
+    def transform_inputs(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
         for param in params:
             module = self.get_submodule(param.name)
             input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
         return input
 
-    def inverse_inputs(
-        self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
-    ) -> Tensor:
+    def inverse_inputs(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
         for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
             input = InputSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
         return input
 
-    def transform_masks(
-        self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
-    ) -> Tensor:
+    def transform_masks(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
         for param in params:
             module = self.get_submodule(param.name)
             input = MaskSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
         return input
 
-    def inverse_masks(
-        self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
-    ) -> Tensor:
+    def inverse_masks(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
         for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
             input = MaskSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
         return input
 
-    def transform_boxes(
-        self, input: Boxes, params: List[ParamItem], extra_args: Dict[str, Any] = {}
-    ) -> Boxes:
+    def transform_boxes(self, input: Boxes, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Boxes:
         for param in params:
             module = self.get_submodule(param.name)
             input = BoxSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
         return input
 
-    def inverse_boxes(
-        self, input: Boxes, params: List[ParamItem], extra_args: Dict[str, Any] = {}
-    ) -> Boxes:
+    def inverse_boxes(self, input: Boxes, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Boxes:
         for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
             input = BoxSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
         return input
@@ -382,10 +367,7 @@ class ImageSequential(SequentialBase):
         return input
 
     def forward(
-        self,
-        input: Tensor,
-        params: Optional[List[ParamItem]] = None,
-        extra_args: Dict[str, Any] = {},
+        self, input: Tensor, params: Optional[List[ParamItem]] = None, extra_args: Dict[str, Any] = {}
     ) -> Tensor:
         if params is None:
             inp = input
@@ -394,7 +376,7 @@ class ImageSequential(SequentialBase):
         for param in params:
             module = self.get_submodule(param.name)
             input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
-        
+
         self._params = params
         return input
 

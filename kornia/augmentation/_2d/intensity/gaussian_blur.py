@@ -63,9 +63,7 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         keepdim: bool = False,
         silence_instantiation_warning: bool = False,
     ) -> None:
-        super().__init__(
-            p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
-        )
+        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
 
         if not silence_instantiation_warning:
             warnings.warn(

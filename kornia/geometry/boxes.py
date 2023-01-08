@@ -225,7 +225,7 @@ class Boxes:
         return self
 
     @property
-    def shape(self,):
+    def shape(self):
         return self.data.shape
 
     def get_boxes_shape(self) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -271,7 +271,7 @@ class Boxes:
             _data = self._data
         else:
             _data = self._data.clone()
-        
+
         _data.index_put_(indices, values)
 
         if inplace:
@@ -281,32 +281,28 @@ class Boxes:
         obj._data = _data
         return obj
 
-    def pad(
-        self,
-        padding_size: Tensor
-    ) -> "Boxes":
+    def pad(self, padding_size: Tensor) -> "Boxes":
         """Pad a bounding box.
 
         Args:
             padding_size: (B, 4)
         """
-        assert len(padding_size.shape) == 2 and padding_size.size(1) == 4, \
-            f"Expected padding_size as (B, 4). Got {padding_size.shape}."
+        assert (
+            len(padding_size.shape) == 2 and padding_size.size(1) == 4
+        ), f"Expected padding_size as (B, 4). Got {padding_size.shape}."
         self._data[..., 0] += padding_size[..., None, :1]  # left padding
         self._data[..., 1] += padding_size[..., None, 2:3]  # top padding
         return self
 
-    def unpad(
-        self,
-        padding_size: Tensor
-    ) -> "Boxes":
+    def unpad(self, padding_size: Tensor) -> "Boxes":
         """Pad a bounding box.
 
         Args:
             padding_size: (B, 4)
         """
-        assert len(padding_size.shape) == 2 and padding_size.size(1) == 4, \
-            f"Expected padding_size as (B, 4). Got {padding_size.shape}."
+        assert (
+            len(padding_size.shape) == 2 and padding_size.size(1) == 4
+        ), f"Expected padding_size as (B, 4). Got {padding_size.shape}."
         self._data[..., 0] -= padding_size[..., None, :1]  # left padding
         self._data[..., 1] -= padding_size[..., None, 2:3]  # top padding
         return self
@@ -651,13 +647,10 @@ class Boxes:
 
 
 class VideoBoxes(Boxes):
-
     temporal_channel_size: int
 
     @classmethod
-    def from_tensor(
-        cls, boxes: Union[torch.Tensor, List[torch.Tensor]], validate_boxes: bool = True
-    ) -> "VideoBoxes":
+    def from_tensor(cls, boxes: Union[torch.Tensor, List[torch.Tensor]], validate_boxes: bool = True) -> "VideoBoxes":
         if isinstance(boxes, (list,)) or (boxes.dim() != 5 or boxes.shape[-2:] != torch.Size([4, 2])):
             raise ValueError("Input box type is not yet supported. Pleae input an `BxTxNx4x2` tensor directly.")
 
@@ -666,7 +659,7 @@ class VideoBoxes(Boxes):
         quadrilaterals = _boxes_to_quadrilaterals(
             boxes.view(boxes.size(0) * boxes.size(1), -1, boxes.size(3), boxes.size(4)),
             mode="vertices_plus",
-            validate_boxes=validate_boxes
+            validate_boxes=validate_boxes,
         )
         # Due to some torch.jit.script bug (at least <= 1.9), you need to pass all arguments to __init__ when
         # constructing the class from inside of a method.
@@ -674,9 +667,7 @@ class VideoBoxes(Boxes):
         out.temporal_channel_size = temporal_channel_size
         return out
 
-    def to_tensor(
-        self, mode: Optional[str] = None
-    ) -> Union[torch.Tensor, List[torch.Tensor]]:
+    def to_tensor(self, mode: Optional[str] = None) -> Union[torch.Tensor, List[torch.Tensor]]:
         out = super().to_tensor(mode, as_padded_sequence=False)
         return out.view(-1, self.temporal_channel_size, *out.shape[1:])
 
@@ -739,7 +730,7 @@ class Boxes3D:
         return self
 
     @property
-    def shape(self,):
+    def shape(self):
         return self.data.shape
 
     def get_boxes_shape(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:

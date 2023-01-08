@@ -103,13 +103,7 @@ class LongestMaxSize(Resize):
         p: float = 1.0,
     ) -> None:
         # TODO: Support max_size list input to randomly select from
-        super().__init__(
-            size=max_size,
-            side="long",
-            resample=resample,
-            align_corners=align_corners,
-            p=p,
-        )
+        super().__init__(size=max_size, side="long", resample=resample, align_corners=align_corners, p=p)
 
 
 class SmallestMaxSize(Resize):
@@ -127,10 +121,4 @@ class SmallestMaxSize(Resize):
         p: float = 1.0,
     ) -> None:
         # TODO: Support max_size list input to randomly select from
-        super().__init__(
-            size=max_size,
-            side="short",
-            resample=resample,
-            align_corners=align_corners,
-            p=p,
-        )
+        super().__init__(size=max_size, side="short", resample=resample, align_corners=align_corners, p=p)

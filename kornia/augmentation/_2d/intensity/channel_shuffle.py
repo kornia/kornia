@@ -34,15 +34,8 @@ class RandomChannelShuffle(IntensityAugmentationBase2D):
         tensor(True)
     """
 
-    def __init__(
-        self,
-        same_on_batch: bool = False,
-        p: float = 0.5,
-        keepdim: bool = False,
-    ) -> None:
-        super().__init__(
-            p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
-        )
+    def __init__(self, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False) -> None:
+        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
 
     def generate_parameters(self, shape: torch.Size) -> Dict[str, Tensor]:
         B, C, _, _ = shape

@@ -42,12 +42,7 @@ class RandomEqualize(IntensityAugmentationBase2D):
         tensor(True)
     """
 
-    def __init__(
-        self,
-        same_on_batch: bool = False,
-        p: float = 0.5,
-        keepdim: bool = False,
-    ) -> None:
+    def __init__(self, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
 
     def apply_transform(

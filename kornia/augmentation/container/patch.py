@@ -300,9 +300,7 @@ class PatchSequential(ImageSequential):
                     else:
                         yield ParamItem(s[0], None), i
 
-    def forward_by_params(
-        self, input: Tensor, params: List[PatchParamItem]
-    ) -> Tensor:
+    def forward_by_params(self, input: Tensor, params: List[PatchParamItem]) -> Tensor:
         in_shape = input.shape
         input = input.reshape(-1, *in_shape[-3:])
 
@@ -316,10 +314,7 @@ class PatchSequential(ImageSequential):
         input = input.reshape(in_shape)
         return input
 
-    def transform_inputs(
-        self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
-    ) -> Tensor:
-
+    def transform_inputs(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
         pad = self.compute_padding(input, self.padding)
         input = self.extract_patches(input, self.grid_size, pad)
         input = self.forward_by_params(input, params)
@@ -327,25 +322,19 @@ class PatchSequential(ImageSequential):
 
         return input
 
-    def inverse_inputs(
-        self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
-    ) -> Tensor:
+    def inverse_inputs(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
         if self.is_intensity_only():
             return input
 
         raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
 
-    def transform_masks(
-        self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
-    ) -> Tensor:
+    def transform_masks(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
         if self.is_intensity_only():
             return input
 
         raise NotImplementedError("PatchSequential for boxes cannot be used with geometric transformations.")
 
-    def inverse_masks(
-        self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
-    ) -> Tensor:
+    def inverse_masks(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
         if self.is_intensity_only():
             return input
 

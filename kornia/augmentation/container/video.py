@@ -135,9 +135,7 @@ class VideoSequential(ImageSequential):
         repeated = param[:, None, ...].repeat(1, frame_num, *([1] * len(param.shape[1:])))
         return repeated.reshape(-1, *list(param.shape[1:]))
 
-    def _input_shape_convert_in(
-        self, input: Tensor, frame_num: int
-    ) -> Tensor:
+    def _input_shape_convert_in(self, input: Tensor, frame_num: int) -> Tensor:
         # Convert any shape to (B, T, C, H, W)
         if self.data_format == "BCTHW":
             # Convert (B, C, T, H, W) to (B, T, C, H, W)
@@ -148,9 +146,7 @@ class VideoSequential(ImageSequential):
         input = input.reshape(-1, *input.shape[2:])
         return input
 
-    def _input_shape_convert_back(
-        self, input: Tensor, frame_num: int
-    ) -> Tensor:
+    def _input_shape_convert_back(self, input: Tensor, frame_num: int) -> Tensor:
         input = input.view(-1, frame_num, *input.shape[1:])
         if self.data_format == "BCTHW":
             input = input.transpose(1, 2)
@@ -203,9 +199,7 @@ class VideoSequential(ImageSequential):
             params.append(param)
         return params
 
-    def transform_inputs(
-        self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
-    ) -> Tensor:
+    def transform_inputs(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
         frame_num: int = input.size(self._temporal_channel)
         input = self._input_shape_convert_in(input, frame_num)
 
@@ -214,9 +208,7 @@ class VideoSequential(ImageSequential):
         input = self._input_shape_convert_back(input, frame_num)
         return input
 
-    def inverse_inputs(
-        self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
-    ) -> Tensor:
+    def inverse_inputs(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
         frame_num: int = input.size(self._temporal_channel)
         input = self._input_shape_convert_in(input, frame_num)
 
@@ -225,9 +217,7 @@ class VideoSequential(ImageSequential):
         input = self._input_shape_convert_back(input, frame_num)
         return input
 
-    def transform_masks(
-        self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
-    ) -> Tensor:
+    def transform_masks(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
         frame_num: int = input.size(self._temporal_channel)
         input = self._input_shape_convert_in(input, frame_num)
 
@@ -236,9 +226,7 @@ class VideoSequential(ImageSequential):
         input = self._input_shape_convert_back(input, frame_num)
         return input
 
-    def inverse_masks(
-        self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}
-    ) -> Tensor:
+    def inverse_masks(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
         frame_num: int = input.size(self._temporal_channel)
         input = self._input_shape_convert_in(input, frame_num)
 
@@ -258,8 +246,7 @@ class VideoSequential(ImageSequential):
         """
         if isinstance(input, Tensor):
             batchsize, frame_num = input.size(0), input.size(1)
-            input = Boxes.from_tensor(
-                input.view(-1, input.size(2), input.size(3), input.size(4)), mode="vertices_plus")
+            input = Boxes.from_tensor(input.view(-1, input.size(2), input.size(3), input.size(4)), mode="vertices_plus")
             input = super().transform_boxes(input, params, extra_args=extra_args)
             input = input.data.view(batchsize, frame_num, -1, 4, 2)
         else:
@@ -277,8 +264,7 @@ class VideoSequential(ImageSequential):
         """
         if isinstance(input, Tensor):
             batchsize, frame_num = input.size(0), input.size(1)
-            input = Boxes.from_tensor(
-                input.view(-1, input.size(2), input.size(3), input.size(4)), mode="vertices_plus")
+            input = Boxes.from_tensor(input.view(-1, input.size(2), input.size(3), input.size(4)), mode="vertices_plus")
             input = super().inverse_boxes(input, params, extra_args=extra_args)
             input = input.data.view(batchsize, frame_num, -1, 4, 2)
         else:
@@ -321,7 +307,6 @@ class VideoSequential(ImageSequential):
             input = super().inverse_keypoints(input, params, extra_args=extra_args)
         return input
 
-
     def inverse(
         self, input: Tensor, params: Optional[List[ParamItem]] = None, extra_args: Dict[str, Any] = {}
     ) -> Tensor:
@@ -336,10 +321,7 @@ class VideoSequential(ImageSequential):
         return self.inverse_inputs(input, params, extra_args=extra_args)
 
     def forward(
-        self,
-        input: Tensor,
-        params: Optional[List[ParamItem]] = None,
-        extra_args: Dict[str, Any] = {},
+        self, input: Tensor, params: Optional[List[ParamItem]] = None, extra_args: Dict[str, Any] = {}
     ) -> Union[Tensor, Tuple[Tensor, Optional[Tensor]]]:
         """Define the video computation performed."""
         if len(input.shape) != 5:

@@ -1,5 +1,5 @@
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 from abc import ABCMeta, abstractmethod
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import torch
 
@@ -7,8 +7,8 @@ import kornia
 from kornia.augmentation import GeometricAugmentationBase2D, MixAugmentationBaseV2
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import ParamItem
-from kornia.core import Module, Tensor
 from kornia.constants import DataKey
+from kornia.core import Module, Tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
@@ -70,12 +70,11 @@ class SequentialOpsInterface(metaclass=ABCMeta):
 
 
 class AugmentationSequentialOps:
-
     def __init__(self, data_keys: List[DataKey]) -> None:
         self._data_keys = data_keys
 
     @property
-    def data_keys(self,) -> List[DataKey]:
+    def data_keys(self) -> List[DataKey]:
         return self._data_keys
 
     @data_keys.setter
@@ -114,7 +113,7 @@ class AugmentationSequentialOps:
             op = self._get_op(dcate)
             extra_arg = extra_args[dcate] if dcate in extra_args else {}
             outputs.append(op.transform(inp, module, param=param, extra_args=extra_arg))
-        if len(outputs) == 1 and isinstance(outputs, (list, tuple,)):
+        if len(outputs) == 1 and isinstance(outputs, (list, tuple)):
             return outputs[0]
         return outputs
 
@@ -132,7 +131,7 @@ class AugmentationSequentialOps:
             op = self._get_op(dcate)
             extra_arg = extra_args[dcate] if dcate in extra_args else {}
             outputs.append(op.inverse(inp, module, param=param, extra_args=extra_arg))
-        if len(outputs) == 1 and isinstance(outputs, (list, tuple,)):
+        if len(outputs) == 1 and isinstance(outputs, (list, tuple)):
             return outputs[0]
         return outputs
 
@@ -147,9 +146,7 @@ def make_input_only_sequential(module: 'kornia.augmentation.ImageSequential') ->
     return f
 
 
-def get_geometric_only_param(
-    module: 'kornia.augmentation.ImageSequential', param: List[ParamItem]
-) -> List[ParamItem]:
+def get_geometric_only_param(module: 'kornia.augmentation.ImageSequential', param: List[ParamItem]) -> List[ParamItem]:
     named_modules: Iterator[Tuple[str, Module]] = module.get_forward_sequence(param)
 
     res: List[ParamItem] = []
@@ -160,20 +157,12 @@ def get_geometric_only_param(
 
 
 class InputSequentialOps(SequentialOpsInterface):
-
     @classmethod
-    def transform(
-        cls,
-        input: Tensor,
-        module: Module,
-        param: ParamItem,
-        extra_args: Dict[str, Any],
-    ) -> Tensor:
+    def transform(cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any]) -> Tensor:
         if isinstance(module, (_AugmentationBase, MixAugmentationBaseV2)):
             input = module(input, params=cls.get_instance_module_param(param), **extra_args)
         elif isinstance(module, kornia.augmentation.ImageSequential):
-            input = module.transform_inputs(
-                input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
+            input = module.transform_inputs(input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
         else:
             if param.data is not None:
                 raise AssertionError(f"Non-augmentaion operation {param.name} require empty parameters. Got {param}.")
@@ -181,18 +170,11 @@ class InputSequentialOps(SequentialOpsInterface):
         return input
 
     @classmethod
-    def inverse(
-        cls,
-        input: Tensor,
-        module: Optional[Module],
-        param: ParamItem,
-        extra_args: Dict[str, Any],
-    ) -> Tensor:
+    def inverse(cls, input: Tensor, module: Optional[Module], param: ParamItem, extra_args: Dict[str, Any]) -> Tensor:
         if isinstance(module, GeometricAugmentationBase2D):
             input = module.inverse(input, params=cls.get_instance_module_param(param), **extra_args)
         elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
-            input = module.inverse_inputs(
-                input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
+            input = module.inverse_inputs(input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
         return input
 
 
@@ -201,11 +183,7 @@ class MaskSequentialOps(SequentialOpsInterface):
 
     @classmethod
     def transform(
-        cls,
-        input: Tensor,
-        module: Module,
-        param: Optional[ParamItem] = None,
-        extra_args: Dict[str, Any] = {},
+        cls, input: Tensor, module: Module, param: Optional[ParamItem] = None, extra_args: Dict[str, Any] = {}
     ) -> Tuple[Tensor, Optional[Tensor]]:
         """Apply a transformation with respect to the parameters.
 
@@ -221,16 +199,16 @@ class MaskSequentialOps(SequentialOpsInterface):
                 params=cls.get_instance_module_param(param),
                 flags=module.flags,
                 transform=module.transform_matrix,
-                **extra_args
+                **extra_args,
             )
 
         elif isinstance(module, (_AugmentationBase)):
             input = module.transform_masks(
-                input, params=cls.get_instance_module_param(param), flags=module.flags, **extra_args)
+                input, params=cls.get_instance_module_param(param), flags=module.flags, **extra_args
+            )
 
         elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
-            input = module.transform_masks(
-                input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
+            input = module.transform_masks(input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
         return input
 
     @classmethod
@@ -253,11 +231,10 @@ class MaskSequentialOps(SequentialOpsInterface):
                 params=cls.get_instance_module_param(param),
                 flags=module.flags,
                 transform=transform,
-                **extra_args
+                **extra_args,
             )
         elif isinstance(module, kornia.augmentation.ImageSequential):
-            input = module.inverse_masks(
-                input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
+            input = module.inverse_masks(input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
 
         return input
 
@@ -269,9 +246,7 @@ class BoxSequentialOps(SequentialOpsInterface):
     """
 
     @classmethod
-    def transform(
-        cls, input: Boxes, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}
-    ) -> Boxes:
+    def transform(cls, input: Boxes, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}) -> Boxes:
         """Apply a transformation with respect to the parameters.
 
         Args:
@@ -284,20 +259,22 @@ class BoxSequentialOps(SequentialOpsInterface):
 
         if isinstance(module, (GeometricAugmentationBase2D,)):
             _input = module.transform_boxes(
-                _input, cls.get_instance_module_param(param), module.flags,
-                transform=module.transform_matrix, **extra_args
+                _input,
+                cls.get_instance_module_param(param),
+                module.flags,
+                transform=module.transform_matrix,
+                **extra_args,
             )
 
         elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
             _input = module.transform_boxes(
-                _input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
+                _input, params=cls.get_sequential_module_param(param), extra_args=extra_args
+            )
 
         return _input
 
     @classmethod
-    def inverse(
-        cls, input: Boxes, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}
-    ) -> Boxes:
+    def inverse(cls, input: Boxes, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}) -> Boxes:
         """Inverse a transformation with respect to the parameters.
 
         Args:
@@ -313,8 +290,7 @@ class BoxSequentialOps(SequentialOpsInterface):
             _input = module.inverse_boxes(_input, param.data, module.flags, transform=transform, **extra_args)
 
         elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
-            _input = module.inverse_boxes(
-                _input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
+            _input = module.inverse_boxes(_input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
         return _input
 
 
@@ -340,20 +316,22 @@ class KeypointSequentialOps(SequentialOpsInterface):
 
         if isinstance(module, (GeometricAugmentationBase2D,)):
             _input = module.transform_keypoints(
-                _input, cls.get_instance_module_param(param), module.flags,
-                transform=module.transform_matrix, **extra_args
+                _input,
+                cls.get_instance_module_param(param),
+                module.flags,
+                transform=module.transform_matrix,
+                **extra_args,
             )
 
         elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
             _input = module.transform_keypoints(
-                _input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
+                _input, params=cls.get_sequential_module_param(param), extra_args=extra_args
+            )
 
         return _input
 
     @classmethod
-    def inverse(
-        cls, input: Keypoints, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}
-    ) -> Keypoints:
+    def inverse(cls, input: Keypoints, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}) -> Keypoints:
         """Inverse a transformation with respect to the parameters.
 
         Args:
@@ -367,10 +345,12 @@ class KeypointSequentialOps(SequentialOpsInterface):
         if isinstance(module, (GeometricAugmentationBase2D,)):
             transform = module.compute_inverse_transformation(module.transform_matrix)
             _input = module.inverse_keypoints(
-                _input, cls.get_instance_module_param(param), module.flags, transform=transform, **extra_args)
+                _input, cls.get_instance_module_param(param), module.flags, transform=transform, **extra_args
+            )
 
         elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
             _input = module.inverse_keypoints(
-                _input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
+                _input, params=cls.get_sequential_module_param(param), extra_args=extra_args
+            )
 
         return _input

@@ -90,9 +90,7 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
-        super().__init__(
-            p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
-        )
+        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self.flags = dict(border_type=BorderType.get(border_type), resample=Resample.get(resample))
         self._param_generator = rg.MotionBlurGenerator3D(kernel_size, angle, direction)
 

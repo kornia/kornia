@@ -2,11 +2,11 @@ import warnings
 from typing import Any, Dict, Optional, Tuple, Union
 
 from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
+from kornia.constants import Resample
 from kornia.core import Tensor, as_tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 from kornia.utils.helpers import _torch_inverse_cast
-from kornia.constants import Resample
 
 
 class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
@@ -88,8 +88,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         """Process boxes corresponding to the inputs that are transformed."""
         if transform is None:
             if self.transform_matrix is None:
-                raise RuntimeError(
-                    "No valid transformation matrix found. Please either pass one or forward one first.")
+                raise RuntimeError("No valid transformation matrix found. Please either pass one or forward one first.")
             transform = self.transform_matrix
         input = self.apply_non_transform_box(input, params, flags, transform)
         return input.transform_boxes_(transform)
@@ -97,8 +96,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
     def apply_non_transform_keypoint(
         self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Keypoints:
-        """Process keypoints corresponding to the inputs that are no transformation applied.
-        """
+        """Process keypoints corresponding to the inputs that are no transformation applied."""
         return input
 
     def apply_transform_keypoint(
@@ -137,7 +135,8 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         to_apply = params['batch_prob']
 
         params, flags = self._process_kwargs_to_params_and_flags(
-            self._params if params is None else params, flags, **kwargs)
+            self._params if params is None else params, flags, **kwargs
+        )
 
         size = None
         if "forward_input_shape" in params:
@@ -186,7 +185,8 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         to_apply = params['batch_prob']
 
         params, flags = self._process_kwargs_to_params_and_flags(
-            self._params if params is None else params, flags, **kwargs)
+            self._params if params is None else params, flags, **kwargs
+        )
 
         # if no augmentation needed
         if not to_apply.any():
@@ -219,7 +219,8 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         to_apply = params['batch_prob']
 
         params, flags = self._process_kwargs_to_params_and_flags(
-            self._params if params is None else params, flags, **kwargs)
+            self._params if params is None else params, flags, **kwargs
+        )
 
         # if no augmentation needed
         if not to_apply.any():
@@ -242,12 +243,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
     ) -> Tensor:
         return input
 
-    def inverse(
-        self,
-        input: Tensor,
-        params: Optional[Dict[str, Tensor]] = None,
-        **kwargs,
-    ) -> Tensor:
+    def inverse(self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs) -> Tensor:
         """Perform inverse operations.
 
         Args:
@@ -261,7 +257,8 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         batch_shape = input.shape
 
         params, flags = self._process_kwargs_to_params_and_flags(
-            self._params if params is None else params, self.flags, **kwargs)
+            self._params if params is None else params, self.flags, **kwargs
+        )
 
         if params is None:
             params = self._params

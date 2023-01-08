@@ -72,9 +72,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         cropping_mode: str = "slice",
     ) -> None:
         # Since PyTorch does not support ragged tensor. So cropping function happens all the time.
-        super().__init__(
-            p=1.0, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim
-        )
+        super().__init__(p=1.0, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim)
         self._param_generator = rg.ResizedCropGenerator(size, scale, ratio)
         self.flags = dict(
             size=size,

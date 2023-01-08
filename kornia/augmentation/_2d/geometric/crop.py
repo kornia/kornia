@@ -7,9 +7,9 @@ from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.augmentation.utils import _transform_input, _transform_output_shape, override_parameters
 from kornia.constants import Resample
 from kornia.core import Tensor, pad, tensor
-from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
+from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
 
 
 class RandomCrop(GeometricAugmentationBase2D):
@@ -88,9 +88,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         cropping_mode: str = "slice",
     ) -> None:
         # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
-        super().__init__(
-            p=1.0, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim
-        )
+        super().__init__(p=1.0, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim)
         self._param_generator = rg.CropGenerator(size)
         self.flags = dict(
             size=size,
@@ -156,8 +154,7 @@ class RandomCrop(GeometricAugmentationBase2D):
     def apply_transform_keypoint(
         self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Keypoints:
-        """Process keypoints corresponding to the inputs that are no transformation applied.
-        """
+        """Process keypoints corresponding to the inputs that are no transformation applied."""
         # For pad the keypoints properly.
         padding_size = params["padding_size"]
         input = input.pad(padding_size)
@@ -166,8 +163,7 @@ class RandomCrop(GeometricAugmentationBase2D):
     def apply_transform_box(
         self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Boxes:
-        """Process keypoints corresponding to the inputs that are no transformation applied.
-        """
+        """Process keypoints corresponding to the inputs that are no transformation applied."""
         # For pad the boxes properly.
         padding_size = params["padding_size"]
         input = input.pad(padding_size)
@@ -241,7 +237,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         params: Dict[str, Tensor],
         flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
-        **kwargs
+        **kwargs,
     ) -> Tensor:
         if flags["cropping_mode"] != "resample":
             raise NotImplementedError(

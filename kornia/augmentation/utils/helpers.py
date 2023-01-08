@@ -365,7 +365,7 @@ def preprocess_keypoints(input: Union[Tensor, Keypoints]) -> Keypoints:
     """Preprocess input keypoints."""
     # TODO: We may allow list here.
     if isinstance(input, Tensor):
-        if not (len(input.shape) == 3 and input.shape[1:] == torch.Size([2,])):
+        if not (len(input.shape) == 3 and input.shape[1:] == torch.Size([2])):
             raise RuntimeError(f"Only BxNx2 tensor is supported. Got {input.shape}.")
         input = Keypoints(input, False)
     if isinstance(input, Keypoints):

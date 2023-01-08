@@ -42,9 +42,7 @@ class RandomPlasmaBrightness(IntensityAugmentationBase2D):
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
-        super().__init__(
-            p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
-        )
+        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self._param_generator = rg.PlainUniformGenerator(
             (roughness, "roughness", None, None), (intensity, "intensity", None, None)
         )
@@ -94,9 +92,7 @@ class RandomPlasmaContrast(IntensityAugmentationBase2D):
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
-        super().__init__(
-            p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
-        )
+        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self._param_generator = rg.PlainUniformGenerator((roughness, "roughness", None, None))
 
     def apply_transform(
@@ -146,9 +142,7 @@ class RandomPlasmaShadow(IntensityAugmentationBase2D):
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
-        super().__init__(
-            p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
-        )
+        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self._param_generator = rg.PlainUniformGenerator(
             (roughness, "roughness", None, None),
             (shade_intensity, "shade_intensity", None, None),

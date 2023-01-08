@@ -1,10 +1,11 @@
 from typing import Any, Dict, Optional, Union
+
 from torch import Tensor, float16, float32, float64
 
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils import _transform_input, _validate_input_dtype
-from kornia.utils import eye_like
 from kornia.geometry.boxes import Boxes
+from kornia.utils import eye_like
 
 
 class AugmentationBase2D(_AugmentationBase):
@@ -55,7 +56,7 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
     _transform_matrix: Optional[Tensor]
 
     @property
-    def transform_matrix(self,) -> Optional[Tensor]:
+    def transform_matrix(self) -> Optional[Tensor]:
         return self._transform_matrix
 
     def identity_matrix(self, input) -> Tensor:
@@ -65,11 +66,8 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         raise NotImplementedError
 
-    def generate_transformation_matrix(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
-        """Generate transformation matrices with the given input and param settings.
-        """
+    def generate_transformation_matrix(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+        """Generate transformation matrices with the given input and param settings."""
         to_apply = params['batch_prob']
         in_tensor = self.transform_tensor(input)
         if not to_apply.any():

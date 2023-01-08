@@ -47,9 +47,7 @@ class RandomFisheye(AugmentationBase2D):
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
-        super().__init__(
-            p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
-        )
+        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self._check_tensor(center_x)
         self._check_tensor(center_y)
         self._check_tensor(gamma)

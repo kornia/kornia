@@ -5,8 +5,8 @@ from torch import Tensor
 
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.constants import Resample
-from kornia.geometry.transform import elastic_transform2d
 from kornia.geometry.boxes import Boxes
+from kornia.geometry.transform import elastic_transform2d
 
 
 class RandomElasticTransform(AugmentationBase2D):
@@ -59,9 +59,7 @@ class RandomElasticTransform(AugmentationBase2D):
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
-        super().__init__(
-            p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
-        )
+        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
 
         self.flags = dict(
             kernel_size=kernel_size,
@@ -97,21 +95,18 @@ class RandomElasticTransform(AugmentationBase2D):
     def apply_transform_mask(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        """Process masks corresponding to the inputs that are transformed.
-        """
+        """Process masks corresponding to the inputs that are transformed."""
         return self.apply_transform(input, params=params, flags=flags, transform=transform)
 
     def apply_transform_box(
         self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Boxes:
-        """Process masks corresponding to the inputs that are transformed.
-        """
+        """Process masks corresponding to the inputs that are transformed."""
         # We assume that boxes may not be affected too much by the deformation.
         return input
 
     def apply_transform_class(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        """Process class tags corresponding to the inputs that are transformed.
-        """
+        """Process class tags corresponding to the inputs that are transformed."""
         return input

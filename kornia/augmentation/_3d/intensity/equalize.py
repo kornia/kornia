@@ -49,12 +49,7 @@ class RandomEqualize3D(IntensityAugmentationBase3D):
         tensor(True)
     """
 
-    def __init__(
-        self,
-        p: float = 0.5,
-        same_on_batch: bool = False,
-        keepdim: bool = False,
-    ) -> None:
+    def __init__(self, p: float = 0.5, same_on_batch: bool = False, keepdim: bool = False) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:

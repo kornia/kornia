@@ -76,9 +76,7 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         keepdim: bool = False,
     ) -> None:
         # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
-        super().__init__(
-            p=1.0, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim
-        )
+        super().__init__(p=1.0, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim)
         self.flags = dict(
             size=size,
             padding=padding,
