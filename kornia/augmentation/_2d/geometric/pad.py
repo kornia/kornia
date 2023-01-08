@@ -7,7 +7,9 @@ from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 
 
 class PadTo(GeometricAugmentationBase2D):
-    r"""Pad the given sample to a specific size.
+    r"""Pad the given sample to a specific size. Always occurs (p=1.0).
+
+    .. image:: _static/img/PadTo.png
 
     Args:
         size: a tuple of ints in the format (height, width) that give the spatial
@@ -15,8 +17,6 @@ class PadTo(GeometricAugmentationBase2D):
         pad_mode: the type of padding to perform on the image (valid values
             are those accepted by torch.nn.functional.pad)
         pad_value: fill value for 'constant' padding applied to the image
-        p: probability of the image being flipped.
-        same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
 

@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 from .filter import filter2d, filter2d_separable
-from .kernels import get_gaussian_kernel1d, get_gaussian_kernel2d
+from .kernels import get_gaussian_kernel1d_t, get_gaussian_kernel2d_t
 
 
 def gaussian_blur2d(
@@ -43,13 +43,58 @@ def gaussian_blur2d(
         >>> output.shape
         torch.Size([2, 4, 5, 5])
     """
+    device, dtype = input.device, input.dtype
+    sigma_t = torch.tensor(sigma, device=device, dtype=dtype).unsqueeze(0)
+
+    return gaussian_blur2d_t(input, kernel_size, sigma_t, border_type, separable)
+
+
+def gaussian_blur2d_t(
+    input: torch.Tensor,
+    kernel_size: Tuple[int, int],
+    sigma: torch.Tensor,
+    border_type: str = 'reflect',
+    separable: bool = True,
+) -> torch.Tensor:
+    r"""Create an operator that blurs a tensor using a Gaussian filter.
+
+    .. image:: _static/img/gaussian_blur2d.png
+
+    The operator smooths the given tensor with a gaussian kernel by convolving
+    it to each channel. It supports batched operation.
+
+    Arguments:
+        input: the input tensor with shape :math:`(B,C,H,W)`.
+        kernel_size: the size of the kernel.
+        sigma: the standard deviation of the kernel with shape :math:`(B,2)`.
+        border_type: the padding mode to be applied before convolving.
+          The expected modes are: ``'constant'``, ``'reflect'``,
+          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+        separable: run as composition of two 1d-convolutions.
+
+    Returns:
+        the blurred tensor with shape :math:`(B, C, H, W)`.
+
+    .. note::
+       See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
+       gaussian_blur.html>`__.
+
+    Examples:
+        >>> input = torch.rand(2, 4, 5, 5)
+        >>> output = gaussian_blur2d_t(input, (3, 3), torch.tensor([[1.5, 1.5]]))
+        >>> output.shape
+        torch.Size([2, 4, 5, 5])
+    """
+    device, dtype = input.device, input.dtype
+    sigma = sigma.to(device=device, dtype=dtype)
+
     if separable:
-        kernel_x: torch.Tensor = get_gaussian_kernel1d(kernel_size[1], sigma[1])
-        kernel_y: torch.Tensor = get_gaussian_kernel1d(kernel_size[0], sigma[0])
-        out = filter2d_separable(input, kernel_x[None], kernel_y[None], border_type)
+        kernel_x: torch.Tensor = get_gaussian_kernel1d_t(kernel_size[1], sigma[:, 1])
+        kernel_y: torch.Tensor = get_gaussian_kernel1d_t(kernel_size[0], sigma[:, 0])
+        out = filter2d_separable(input, kernel_x, kernel_y, border_type)
     else:
-        kernel: torch.Tensor = get_gaussian_kernel2d(kernel_size, sigma)
-        out = filter2d(input, kernel[None], border_type)
+        kernel: torch.Tensor = get_gaussian_kernel2d_t(kernel_size, sigma)
+        out = filter2d(input, kernel, border_type)
     return out
 
 
