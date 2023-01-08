@@ -68,7 +68,7 @@ def rgb_to_yuv420(image: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
 
     yuvimage = rgb_to_yuv(image)
 
-    return (yuvimage[..., :1, :, :], torch.nn.functional.avg_pool2d(yuvimage[..., 1:3, :, :], (2, 2)))
+    return (yuvimage[..., :1, :, :], yuvimage[..., 1:3, :, :].unfold(-2, 2, 2).unfold(-2, 2, 2).mean((-1, -2)))
 
 
 def rgb_to_yuv422(image: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -99,7 +99,7 @@ def rgb_to_yuv422(image: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
 
     yuvimage = rgb_to_yuv(image)
 
-    return (yuvimage[..., :1, :, :], torch.nn.functional.avg_pool2d(yuvimage[..., 1:3, :, :], (1, 2)))
+    return (yuvimage[..., :1, :, :], yuvimage[..., 1:3, :, :].unfold(-1, 2, 2).mean(-1))
 
 
 def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:

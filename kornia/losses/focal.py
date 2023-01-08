@@ -212,9 +212,12 @@ def binary_focal_loss_with_logits(
     probs_pos = input.sigmoid()
     probs_neg = (-input).sigmoid()
 
+    log_probs_pos = nn.functional.logsigmoid(input)
+    log_probs_neg = nn.functional.logsigmoid(-input)
+
     loss_tmp = (
-        -alpha * pos_weight * probs_neg.pow(gamma) * target * probs_pos.log()
-        - (1 - alpha) * probs_pos.pow(gamma) * (1.0 - target) * probs_neg.log()
+        -alpha * pos_weight * probs_neg.pow(gamma) * target * log_probs_pos
+        - (1 - alpha) * probs_pos.pow(gamma) * (1.0 - target) * log_probs_neg
     )
 
     if reduction == 'none':
