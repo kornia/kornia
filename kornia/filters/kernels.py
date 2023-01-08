@@ -685,3 +685,49 @@ def get_hanning_kernel2d(kernel_size: Tuple[int, int], device=torch.device('cpu'
     kx: Tensor = get_hanning_kernel1d(kernel_size[1], device, dtype)[None]
     kernel2d = ky @ kx
     return kernel2d
+
+
+def get_gaussian_kernel3d(kernel_size: Tuple[int, int], sigma: Tuple[float, float], force_even: bool = False) -> Tensor:
+    r"""Function that returns Gaussian filter matrix coefficients.
+
+    Args:
+        kernel_size: filter sizes in the x, y and z direction.
+         Sizes should be odd and positive.
+        sigma: gaussian standard deviation in the x, y and z
+         direction.
+        force_even: overrides requirement for odd kernel size.
+
+    Returns:
+        3D tensor with gaussian filter matrix coefficients.
+
+    Shape:
+        - Output: :math:`(\text{kernel_size}_x, \text{kernel_size}_y,  \text{kernel_size}_z)`
+
+    Examples:
+        >>> get_gaussian_kernel3d((3, 3, 3), (1.5, 1.5, 1.5))
+            tensor([[[0.0292, 0.0364, 0.0292],
+                    [0.0364, 0.0455, 0.0364],
+                    [0.0292, 0.0364, 0.0292]],
+
+                    [[0.0364, 0.0455, 0.0364],
+                    [0.0455, 0.0568, 0.0455],
+                    [0.0364, 0.0455, 0.0364]],
+
+                    [[0.0292, 0.0364, 0.0292],
+                    [0.0364, 0.0455, 0.0364],
+                    [0.0292, 0.0364, 0.0292]]])
+        >>> get_gaussian_kernel3d((3, 3, 3), (1.5, 1.5, 1.5)).sum()
+            tensor(1.)
+    """
+    if not isinstance(kernel_size, tuple) or len(kernel_size) != 3:
+        raise TypeError(f"kernel_size must be a tuple of length three. Got {kernel_size}")
+    if not isinstance(sigma, tuple) or len(sigma) != 3:
+        raise TypeError(f"sigma must be a tuple of length three. Got {sigma}")
+    ksize_x, ksize_y, ksize_z = kernel_size
+    sigma_x, sigma_y, sigma_z = sigma
+    kernel_x: Tensor = get_gaussian_kernel1d(ksize_x, sigma_x, force_even)
+    kernel_y: Tensor = get_gaussian_kernel1d(ksize_y, sigma_y, force_even)
+    kernel_z: Tensor = get_gaussian_kernel1d(ksize_z, sigma_z, force_even)
+    kernel_2d: Tensor = torch.matmul(kernel_x.unsqueeze(-1), kernel_y.unsqueeze(-1).t())
+    kernel_3d: Tensor = torch.matmul(kernel_z.unsqueeze(1), kernel_2d.reshape(1, -1)).reshape(kernel_size)
+    return kernel_3d
