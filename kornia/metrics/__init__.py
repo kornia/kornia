@@ -18,5 +18,5 @@ __all__ = [
     "ssim",
     "ssim3d",
     "SSIM",
-    "SSIM3D"
+    "SSIM3D",
 ]

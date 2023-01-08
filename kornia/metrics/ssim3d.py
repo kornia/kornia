@@ -10,8 +10,15 @@ from kornia.filters.filter import _compute_padding
 def _crop(img: torch.Tensor, cropping_shape: List[int]) -> torch.Tensor:
     """Crop out the part of "valid" convolution area."""
     return torch.nn.functional.pad(
-        img, (-cropping_shape[4], -cropping_shape[5], -cropping_shape[2], -
-              cropping_shape[3], -cropping_shape[0], -cropping_shape[1])
+        img,
+        (
+            -cropping_shape[4],
+            -cropping_shape[5],
+            -cropping_shape[2],
+            -cropping_shape[3],
+            -cropping_shape[0],
+            -cropping_shape[1],
+        ),
     )
 
 
