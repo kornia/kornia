@@ -3727,10 +3727,16 @@ class TestResize:
 
 class TestSmallestMaxSize:
     def test_smoke(self, device, dtype):
-        img = torch.rand(1, 1, 4, 6, device=device, dtype=dtype)
+        img_A = torch.rand(1, 1, 4, 6, device=device, dtype=dtype)
+        img_B = torch.rand(1, 1, 9, 6, device=device, dtype=dtype)
         aug = SmallestMaxSize(max_size=2)
-        out = aug(img)
-        assert out.shape == (1, 1, 2, 3)
+
+        assert aug(img_A).shape == (1, 1, 2, 3)
+        assert aug(img_B).shape == (1, 1, 3, 2)
+
+        aug = SmallestMaxSize(max_size=2)
+        assert aug(img_B).shape == (1, 1, 3, 2)
+        assert aug(img_A).shape == (1, 1, 2, 3)
 
 
 class TestLongestMaxSize:
