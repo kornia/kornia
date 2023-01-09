@@ -114,6 +114,12 @@ class LongestMaxSize(Resize):
             p=p,
         )
 
+    def apply_transform(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        self._param_generator = rg.ResizeGenerator(resize_to=self.flags['size'], side=self.flags['side'])
+        return super().apply_transform(input, params, flags, transform)
+
 
 class SmallestMaxSize(Resize):
     """Rescale an image so that minimum side is equal to max_size, keeping the aspect ratio of the initial image.
