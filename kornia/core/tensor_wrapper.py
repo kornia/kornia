@@ -35,14 +35,21 @@ class TensorWrapper:
         self.__dict__["used_attrs"] = set()
         self.__dict__["used_calls"] = set()
 
-    @property
-    def data(self) -> Tensor:
-        return self._data
+    def unwrap(self):
+        return unwrap(self)
+
+    def __getstate__(self):
+        return self.__dict__
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
 
     def __repr__(self) -> str:
-        return f"{self.data}"
+        return f"{self._data}"
 
     def __getattr__(self, name):
+        if name == "data":
+            return self._data
         if name in self.__dict__:
             return self.__dict__[name]
         self.used_attrs.add(name)

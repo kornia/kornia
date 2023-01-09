@@ -1,8 +1,10 @@
+import tempfile
+
 import pytest
 import torch
 
 from kornia.core import Tensor
-from kornia.core.tensor_wrapper import TensorWrapper, unwrap, wrap
+from kornia.core.tensor_wrapper import TensorWrapper, wrap
 from kornia.testing import BaseTester
 
 
@@ -15,15 +17,24 @@ class TestTensorWrapper(BaseTester):
         assert tensor.shape == (1, 2, 3, 4)
         assert tensor.device == device
         assert tensor.dtype == dtype
-        self.assert_close(data, tensor.data)
-        self.assert_close(data, unwrap(tensor))
+        self.assert_close(data, tensor.unwrap())
+
+    def test_serialization(self, device, dtype):
+        data = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
+        tensor: TensorWrapper = wrap(data, TensorWrapper)
+
+        with tempfile.NamedTemporaryFile() as tmp:
+            file_path = tmp.name + ".pt"
+            torch.save(tensor, file_path)
+            loaded_tensor: TensorWrapper = torch.load(file_path)
+            self.assert_close(loaded_tensor.unwrap(), tensor.unwrap())
 
     def test_wrap_list(self, device, dtype):
         data_list = [torch.rand(2, device=device, dtype=dtype), torch.rand(3, device=device, dtype=dtype)]
         tensor_list = wrap(data_list, TensorWrapper)
         assert isinstance(tensor_list, list)
         assert len(tensor_list) == 2
-        tensor_list_data = unwrap(tensor_list)
+        tensor_list_data = tensor_list.unwrap()
         assert len(tensor_list_data) == 2
         self.assert_close(tensor_list_data[0], data_list[0])
         self.assert_close(tensor_list_data[1], data_list[1])
