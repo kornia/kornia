@@ -24,7 +24,7 @@ on:
 
 jobs:
   tests:
-    name: ${{ inputs.os }} / ${{ inputs.pytorch-dtype }} / python-${{ matrix.python-version }}, torch-${{ matrix.pytorch-version }}
+    name: python-${{ matrix.python-version }}, torch-${{ matrix.pytorch-version }}
     runs-on: ${{ inputs.os }}
     strategy:
       matrix:
