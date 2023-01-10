@@ -60,10 +60,12 @@ def ssim3d(
     """
     KORNIA_CHECK_IS_TENSOR(img1)
     KORNIA_CHECK_IS_TENSOR(img2)
-    KORNIA_CHECK(isinstance(max_val, float), f"Input max_val type is not a float. Got {type(max_val)}")
     KORNIA_CHECK_SHAPE(img1, ["B", "C", "D", "H", "W"])
     KORNIA_CHECK_SHAPE(img2, ["B", "C", "D", "H", "W"])
     KORNIA_CHECK(img1.shape == img2.shape, f"img1 and img2 shapes must be the same. Got: {img1.shape} and {img2.shape}")
+
+    if not isinstance(max_val, float):
+        raise TypeError(f"Input max_val type is not a float. Got {type(max_val)}")
 
     # prepare kernel
     kernel: Tensor = get_gaussian_kernel3d((window_size, window_size, window_size), (1.5, 1.5, 1.5))
