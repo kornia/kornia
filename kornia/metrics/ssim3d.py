@@ -1,15 +1,14 @@
 from typing import List
 
-import torch
-import torch.nn as nn
-
 from kornia.filters import filter3d, get_gaussian_kernel3d
 from kornia.filters.filter import _compute_padding
+from kornia.core import Module, Tensor, pad
+from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
 
 
-def _crop(img: torch.Tensor, cropping_shape: List[int]) -> torch.Tensor:
+def _crop(img: Tensor, cropping_shape: List[int]) -> Tensor:
     """Crop out the part of "valid" convolution area."""
-    return torch.nn.functional.pad(
+    return pad(
         img,
         (
             -cropping_shape[4],
@@ -23,13 +22,13 @@ def _crop(img: torch.Tensor, cropping_shape: List[int]) -> torch.Tensor:
 
 
 def ssim3d(
-    img1: torch.Tensor,
-    img2: torch.Tensor,
+    img1: Tensor,
+    img2: Tensor,
     window_size: int,
     max_val: float = 1.0,
     eps: float = 1e-12,
     padding: str = 'same',
-) -> torch.Tensor:
+) -> Tensor:
     r"""Function that computes the Structural Similarity (SSIM) index map between two images.
 
     Measures the (SSIM) index between each element in the input `x` and target `y`.
@@ -64,34 +63,23 @@ def ssim3d(
         >>> input2 = torch.rand(1, 4, 5, 5, 5)
         >>> ssim_map = ssim(input1, input2, 5)  # 1x4x5x5x5
     """
-    if not isinstance(img1, torch.Tensor):
-        raise TypeError(f"Input img1 type is not a torch.Tensor. Got {type(img1)}")
-
-    if not isinstance(img2, torch.Tensor):
-        raise TypeError(f"Input img2 type is not a torch.Tensor. Got {type(img2)}")
-
-    if not isinstance(max_val, float):
-        raise TypeError(f"Input max_val type is not a float. Got {type(max_val)}")
-
-    if not len(img1.shape) == 5:
-        raise ValueError(f"Invalid img1 shape, we expect BxCxDxHxW. Got: {img1.shape}")
-
-    if not len(img2.shape) == 5:
-        raise ValueError(f"Invalid img2 shape, we expect BxCxDxHxW. Got: {img2.shape}")
-
-    if not img1.shape == img2.shape:
-        raise ValueError(f"img1 and img2 shapes must be the same. Got: {img1.shape} and {img2.shape}")
+    KORNIA_CHECK_IS_TENSOR(img1)
+    KORNIA_CHECK_IS_TENSOR(img2)
+    KORNIA_CHECK(isinstance(max_val, float), f"Input max_val type is not a float. Got {type(max_val)}")
+    KORNIA_CHECK_SHAPE(img1, ["B", "C", "D", "H", "W"])
+    KORNIA_CHECK_SHAPE(img2, ["B", "C", "D", "H", "W"])
+    KORNIA_CHECK(img1.shape == img2.shape, f"img1 and img2 shapes must be the same. Got: {img1.shape} and {img2.shape}")
 
     # prepare kernel
-    kernel: torch.Tensor = get_gaussian_kernel3d((window_size, window_size, window_size), (1.5, 1.5, 1.5))
+    kernel: Tensor = get_gaussian_kernel3d((window_size, window_size, window_size), (1.5, 1.5, 1.5))
 
     # compute coefficients
     C1: float = (0.01 * max_val) ** 2
     C2: float = (0.03 * max_val) ** 2
 
     # compute local mean per channel
-    mu1: torch.Tensor = filter3d(img1, kernel)
-    mu2: torch.Tensor = filter3d(img2, kernel)
+    mu1: Tensor = filter3d(img1, kernel)
+    mu2: Tensor = filter3d(img2, kernel)
 
     cropping_shape: List[int] = []
     if padding == 'valid':
@@ -123,13 +111,13 @@ def ssim3d(
     sigma12 = mu_img1_img2 - mu1_mu2
 
     # compute the similarity index map
-    num: torch.Tensor = (2.0 * mu1_mu2 + C1) * (2.0 * sigma12 + C2)
-    den: torch.Tensor = (mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2)
+    num: Tensor = (2.0 * mu1_mu2 + C1) * (2.0 * sigma12 + C2)
+    den: Tensor = (mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2)
 
     return num / (den + eps)
 
 
-class SSIM3D(nn.Module):
+class SSIM3D(Module):
     r"""Create a module that computes the Structural Similarity (SSIM) index between two 3D images.
 
     Measures the (SSIM) index between each element in the input `x` and target `y`.
@@ -173,5 +161,5 @@ class SSIM3D(nn.Module):
         self.eps = eps
         self.padding = padding
 
-    def forward(self, img1: torch.Tensor, img2: torch.Tensor) -> torch.Tensor:
+    def forward(self, img1: Tensor, img2: Tensor) -> Tensor:
         return ssim3d(img1, img2, self.window_size, self.max_val, self.eps, self.padding)

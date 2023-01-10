@@ -663,9 +663,7 @@ def get_gaussian_kernel3d_t(
                 [0.0089, 0.0660, 0.0089],
                 [0.0012, 0.0089, 0.0012]]]])
     """
-    if not isinstance(kernel_size, tuple) or len(kernel_size) != 3:
-        raise TypeError(f"kernel_size must be a tuple of length three. Got {kernel_size}")
-
+    KORNIA_CHECK(isinstance(kernel_size, tuple) or len(kernel_size) != 3, f"kernel_size must be a tuple of length three. Got {kernel_size}")
     KORNIA_CHECK_IS_TENSOR(sigma, "signma must be a tensor")
     KORNIA_CHECK_SHAPE(sigma, ["B", "3"])
 
