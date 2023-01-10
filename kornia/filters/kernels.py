@@ -5,7 +5,7 @@ from typing import List, Tuple
 import torch
 
 from kornia.core import Tensor, as_tensor, stack, tensor, zeros
-from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 
 def normalize_kernel2d(input: Tensor) -> Tensor:
@@ -564,7 +564,9 @@ def get_gaussian_kernel2d_t(
     return kernel_2d
 
 
-def get_gaussian_kernel3d(kernel_size: Tuple[int, int, int], sigma: Tuple[float, float, float], force_even: bool = False) -> Tensor:
+def get_gaussian_kernel3d(
+    kernel_size: Tuple[int, int, int], sigma: Tuple[float, float, float], force_even: bool = False
+) -> Tensor:
     r"""Function that returns Gaussian filter matrix coefficients.
 
     Args:
@@ -663,7 +665,10 @@ def get_gaussian_kernel3d_t(
                 [0.0089, 0.0660, 0.0089],
                 [0.0012, 0.0089, 0.0012]]]])
     """
-    KORNIA_CHECK(isinstance(kernel_size, tuple) or len(kernel_size) != 3, f"kernel_size must be a tuple of length three. Got {kernel_size}")
+    KORNIA_CHECK(
+        isinstance(kernel_size, tuple) or len(kernel_size) != 3,
+        f"kernel_size must be a tuple of length three. Got {kernel_size}",
+    )
     KORNIA_CHECK_IS_TENSOR(sigma, "signma must be a tensor")
     KORNIA_CHECK_SHAPE(sigma, ["B", "3"])
 

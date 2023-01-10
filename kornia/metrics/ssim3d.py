@@ -1,9 +1,9 @@
 from typing import List
 
+from kornia.core import Module, Tensor, pad
 from kornia.filters import filter3d, get_gaussian_kernel3d
 from kornia.filters.filter import _compute_padding
-from kornia.core import Module, Tensor, pad
-from kornia.testing import KORNIA_CHECK_SHAPE, KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 
 def _crop(img: Tensor, cropping_shape: List[int]) -> Tensor:
@@ -22,12 +22,7 @@ def _crop(img: Tensor, cropping_shape: List[int]) -> Tensor:
 
 
 def ssim3d(
-    img1: Tensor,
-    img2: Tensor,
-    window_size: int,
-    max_val: float = 1.0,
-    eps: float = 1e-12,
-    padding: str = 'same',
+    img1: Tensor, img2: Tensor, window_size: int, max_val: float = 1.0, eps: float = 1e-12, padding: str = 'same'
 ) -> Tensor:
     r"""Function that computes the Structural Similarity (SSIM) index map between two images.
 

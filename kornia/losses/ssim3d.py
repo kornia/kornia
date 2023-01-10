@@ -1,6 +1,5 @@
 import kornia.metrics as metrics
-
-from kornia.core import Tensor, Module
+from kornia.core import Module, Tensor
 
 
 def ssim3d_loss(
