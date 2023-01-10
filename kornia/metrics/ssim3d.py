@@ -56,7 +56,7 @@ def ssim3d(
     Examples:
         >>> input1 = torch.rand(1, 4, 5, 5, 5)
         >>> input2 = torch.rand(1, 4, 5, 5, 5)
-        >>> ssim_map = ssim(input1, input2, 5)  # 1x4x5x5x5
+        >>> ssim_map = ssim3d(input1, input2, 5)  # 1x4x5x5x5
     """
     KORNIA_CHECK_IS_TENSOR(img1)
     KORNIA_CHECK_IS_TENSOR(img2)
@@ -145,7 +145,7 @@ class SSIM3D(Module):
     Examples:
         >>> input1 = torch.rand(1, 4, 5, 5, 5)
         >>> input2 = torch.rand(1, 4, 5, 5, 5)
-        >>> ssim = SSIM(5)
+        >>> ssim = SSIM3D(5)
         >>> ssim_map = ssim(input1, input2)  # 1x4x5x5x5
     """
 
