@@ -2,7 +2,7 @@ name: Tests on CPU (scheduled)
 
 on:
   push:
-    branches: [master]
+    branches: [master, test-me-*]
   schedule:
     - cron: "0 4 * * *"
 
@@ -12,42 +12,15 @@ concurrency:
 
 jobs:
   tests-cpu:
-    name: ${{ matrix.os }} - python-${{ matrix.python-version }}, torch-${{ matrix.pytorch-version }}, ${{ matrix.pytorch-dtype }}
-    runs-on: ${{ matrix.os }}-latest
-
     strategy:
       fail-fast: false
       matrix:
         os: ['Ubuntu', 'Windows', 'MacOS']
-        python-version: ['3.7', '3.8', '3.9', '3.10']
-        pytorch-version: ['1.9.1', '1.10.2', '1.11.0', '1.12.1', '1.13.1']
         pytorch-dtype: ['float16', 'float32', 'float64']
-        exclude:
-            - pytorch-version: '1.9.1'
-              python-version: '3.10'
-            - pytorch-version: '1.10.2'
-              python-version: '3.10'
 
-    steps:
-      - name: Checkout kornia
-        uses: actions/checkout@v3
-
-      - name: Setting environment on ${{ matrix.os }} with python ${{ matrix.python-version }} and pytorch  ${{ matrix.pytorch-version }}
-        uses: ./.github/actions/env
-        with:
-          python-version: ${{ matrix.python-version }}
-          pytorch-version: ${{ matrix.pytorch-version }}
-
-      - name: Run CPU tests ${{ matrix.pytorch-dtype }}
-        shell: bash -l {0}
-        run: pytest -v --device cpu --dtype ${{ matrix.pytorch-dtype }} --cov=kornia --cov-report xml ./test
-
-
-      - if: always()
-        name: Upload coverage
-        uses: codecov/codecov-action@v3
-        with:
-          file: coverage.xml
-          token: ${{ secrets.CODECOV_TOKEN }} # to not depend on build via GH API
-          flags: cpu,${{ matrix.os }}_py-${{ matrix.python-version }}_pt-${{ matrix.pytorch-version }}_${{ matrix.pytorch-dtype }}
-          name: cpu-coverage
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: ${{ matrix.os }}
+      python-version: '["3.7", "3.8", "3.9", "3.10"]'
+      pytorch-version: '["1.9.1", "1.10.2", "1.11.0", "1.12.1", "1.13.1"]'
+      pytorch-dtype: ${{ matrix.pytorch-dtype }}
