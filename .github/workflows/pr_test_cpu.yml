@@ -38,7 +38,6 @@ jobs:
     with:
       os: ${{ matrix.os }}
       python-version: '["3.9"]'
-      pytorch-version: '["1.9.1"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
       continue-on-error: ${{ contains('float16', matrix.pytorch-dtype) }} # Remove this when float16 stop raising errors
 

@@ -2,11 +2,11 @@ on:
   workflow_call:
     inputs:
       python-version:
-        required: true
+        required: false
         type: string
         default: '["3.7"]'
       pytorch-version:
-        required: true
+        required: false
         type: string
         default: '["1.9.1"]'
       os:
