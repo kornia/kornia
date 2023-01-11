@@ -27,6 +27,21 @@ jobs:
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
       continue-on-error: ${{ contains('float16', matrix.pytorch-dtype) }} # Remove this when float16 stop raising errors
 
+  tests-cpu-old-torch-new-py:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ['Ubuntu', 'Windows', 'MacOS']
+        pytorch-dtype: ['float16', 'float32', 'float64']
+
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: ${{ matrix.os }}
+      python-version: '["3.9"]'
+      pytorch-version: '["1.9.1"]'
+      pytorch-dtype: ${{ matrix.pytorch-dtype }}
+      continue-on-error: ${{ contains('float16', matrix.pytorch-dtype) }} # Remove this when float16 stop raising errors
+
   tests-nightly:
     if: ${{ github.event.label.name == 'nightly' }}
     name: ${{ matrix.os }} - python-${{ matrix.python-version }}, torch-nightly, ${{ matrix.pytorch-dtype }}
