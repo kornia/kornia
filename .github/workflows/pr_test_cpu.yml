@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false # TODO: enable it when CI be stable
       matrix:
-        os: ['Ubuntu', 'Windows', 'MacOS']
+        os: ['Ubuntu-latest', 'Windows-latest', 'MacOS-latest']
         pytorch-dtype: ['float16', 'float32', 'float64']
     uses: ./.github/workflows/tests.yml
     with:
@@ -31,7 +31,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ['Ubuntu', 'Windows', 'MacOS']
+        os: ['Ubuntu-latest', 'Windows-latest', 'MacOS-latest']
         pytorch-dtype: ['float16', 'float32', 'float64']
 
     uses: ./.github/workflows/tests.yml
