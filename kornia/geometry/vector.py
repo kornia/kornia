@@ -78,6 +78,7 @@ class Vector3(TensorWrapper):
         tensors: Tuple[Tensor, ...] = (x, cast(Tensor, y), cast(Tensor, z))
         return wrap(stack(tensors, -1), Vector3)
 
+
 class Vector2(TensorWrapper):
     def __init__(self, vector: Tensor) -> None:
         super().__init__(vector)
@@ -105,6 +106,17 @@ class Vector2(TensorWrapper):
         if shape is None:
             shape = ()
         return cls(rand(shape + (2,), device=device, dtype=dtype))
+
+    @classmethod
+    def from_coords(cls, x: Union[float, Tensor], y: Union[float, Tensor], device=None, dtype=None) -> "Vector2":
+        KORNIA_CHECK(type(x) == type(y))
+        KORNIA_CHECK(isinstance(x, (Tensor, float)))
+        if isinstance(x, float):
+            return wrap(as_tensor((x, y), device=device, dtype=dtype), Vector2)
+        # TODO: this is totally insane ...
+        tensors: Tuple[Tensor, ...] = (x, cast(Tensor, y))
+        return wrap(stack(tensors, -1), Vector2)
+
 
 Vec3 = Vector3
 Vec2 = Vector2
