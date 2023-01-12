@@ -12,7 +12,7 @@ class RandomBrightness(IntensityAugmentationBase2D):
 
     This implementation aligns PIL. Hence, the output is close to TorchVision.
 
-    .. image:: _static/img/RandomBrighness.png
+    .. image:: _static/img/RandomBrightness.png
 
     Args:
         p: probability of applying the transformation.
@@ -29,7 +29,7 @@ class RandomBrightness(IntensityAugmentationBase2D):
     .. note::
         This function internally uses :func:`kornia.enhance.adjust_brightness`
 
-        Examples:
+    Examples:
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.rand(1, 3, 3, 3)
         >>> aug = RandomBrightness(brightness = (0.5,2.),p=1.)
@@ -47,6 +47,7 @@ class RandomBrightness(IntensityAugmentationBase2D):
                   [0.0000, 0.1072, 0.5070]]]])
 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+
         >>> input = torch.rand(1, 3, 32, 32)
         >>> aug = RandomBrightness((0.8,1.2), p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()

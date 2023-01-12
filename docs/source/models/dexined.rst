@@ -1,7 +1,7 @@
 .. _dexined_model:
 
 Dexined (edge detection)
-.....
+------------------------
 
 .. card::
     :link: https://www.computer.org/csdl/proceedings-article/wacv/2020/09093290/1jPbjFHmwi4

@@ -9,7 +9,7 @@ from kornia.core import Tensor, stack, zeros
 class RandomMixUpV2(MixAugmentationBaseV2):
     r"""Apply MixUp augmentation to a batch of tensor images.
 
-    .. image:: _static/img/RandomMixUp.png
+    .. image:: _static/img/RandomMixUpV2.png
 
     Implementation for `mixup: BEYOND EMPIRICAL RISK MINIMIZATION` :cite:`zhang2018mixup`.
 

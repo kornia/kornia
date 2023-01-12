@@ -170,15 +170,16 @@ class Boxes:
     Args:
         boxes: 2D boxes, shape of :math:`(N, 4, 2)`, :math:`(B, N, 4, 2)` or a list of :math:`(N, 4, 2)`.
             See below for more details.
-        raise_if_not_floating_point: flag to control floating point casting behaviour when `boxes` is not a floating
-            point tensor. True to raise an error when `boxes` isn't a floating point tensor, False to cast to float.
+        raise_if_not_floating_point: flag to control floating point casting behaviour when `boxes` is not a
+            floating point tensor. True to raise an error when `boxes` isn't a floating point tensor, False
+            to cast to float.
         mode: the box format of the input boxes.
 
     Note:
         **2D boxes format** is defined as a floating data type tensor of shape ``Nx4x2`` or ``BxNx4x2``
-        where each box is a `quadrilateral <https://en.wikipedia.org/wiki/Quadrilateral>`_ defined by it's 4 vertices
-        coordinates (A, B, C, D). Coordinates must be in ``x, y`` order. The height and width of a box is defined as
-        ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``. Examples of
+        where each box is a `quadrilateral <https://en.wikipedia.org/wiki/Quadrilateral>`_ defined by it's
+        4 vertices coordinates (A, B, C, D). Coordinates must be in ``x, y`` order. The height and width of
+        a box is defined as ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``. Examples of
         `quadrilaterals <https://en.wikipedia.org/wiki/Quadrilateral>`_ are rectangles, rhombus and trapezoids.
     """
 
@@ -281,20 +282,28 @@ class Boxes:
         """Trim out zero padded boxes.
 
         Given box arrangements of shape :math:`(4, 4, Box)`:
-            -- Box -- Box -- Box  -- Box --
-            --  0  --  0  -- Box  -- Box --
-            --  0  -- Box --  0   --  0  --
-            --  0  --  0  --  0   --  0  --
+            == === == === == === == === ==
+            -- Box -- Box -- Box -- Box --
+            --  0  --  0  -- Box -- Box --
+            --  0  -- Box --  0  --  0  --
+            --  0  --  0  --  0  --  0  --
+            == === == === == === == === ==
 
-        Nothing will change if correspondence_preserve is True. Only pure zero layers will be
-        removed, resulting in shape :math:`(4, 3, Box)`:
-            -- Box -- Box -- Box  -- Box --
-            --  0  --  0  -- Box  -- Box --
-            --  0  -- Box --  0   --  0  --
+        Nothing will change if correspondence_preserve is True. Only pure zero layers will be removed, resulting in
+        shape :math:`(4, 3, Box)`:
+
+            == === == === == === == === ==
+            -- Box -- Box -- Box -- Box --
+            --  0  --  0  -- Box -- Box --
+            --  0  -- Box --  0  --  0  --
+            == === == === == === == === ==
 
         Otherwise, you will get :math:`(4, 2, Box)`:
-            -- Box -- Box -- Box  -- Box --
-            --  0  -- Box -- Box  -- Box --
+
+            == === == === == === == === ==
+            -- Box -- Box -- Box -- Box --
+            --  0  -- Box -- Box -- Box --
+            == === == === == === == === ==
         """
         raise NotImplementedError
 

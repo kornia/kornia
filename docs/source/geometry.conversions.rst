@@ -57,8 +57,8 @@ Angle Axis
 Euler Angles
 ------------
 
-.. autofuction:: quaternion_from_euler
-.. autofuction:: euler_from_quaternion
+.. autofunction:: quaternion_from_euler
+.. autofunction:: euler_from_quaternion
 
 Pose
 ----------
