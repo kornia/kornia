@@ -31,6 +31,7 @@ setup(
             'PyYAML>=5.1,<6.1.0',
             'furo',
             'matplotlib',
+            'opencv-python',
             'sphinx>=4.0',
             'sphinx-autodoc-defaultargs',
             'sphinx-autodoc-typehints>=1.0',
