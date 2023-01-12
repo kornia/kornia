@@ -50,7 +50,7 @@ class TensorWrapper:
     def __getattr__(self, name):
         if name == "data":
             return self._data
-        if name in self.__dict__:
+        elif name in self.__dict__:
             return self.__dict__[name]
         self.used_attrs.add(name)
 
