@@ -10,7 +10,7 @@ from kornia.geometry.bbox import bbox_to_mask, infer_bbox_shape
 class RandomCutMixV2(MixAugmentationBaseV2):
     r"""Apply CutMix augmentation to a batch of tensor images.
 
-    .. image:: _static/img/RandomCutMix.png
+    .. image:: _static/img/RandomCutMixV2.png
 
     Implementation for `CutMix: Regularization Strategy to Train Strong Classifiers with
     Localizable Features` :cite:`yun2019cutmix`.

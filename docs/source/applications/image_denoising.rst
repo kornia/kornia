@@ -1,2 +1,8 @@
+Image Denoising
+===============
+
+
+
 .. raw:: html
-    :file: gradio/total_variation_denoising.html
+
+    <gradio-app space="kornia/total_variation_denoising"></gradio-app>
