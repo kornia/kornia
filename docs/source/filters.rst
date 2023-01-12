@@ -22,7 +22,8 @@ Interactive Demo
 
     <gradio-app space="kornia/kornia-image-filtering"></gradio-app>
 
-Visit the demo on `Hugging Face Spaces <https://huggingface.co/spaces/kornia/kornia-image-filtering>`_.
+Visit the `Kornia image filtering demo on the Hugging Face Spaces
+<https://huggingface.co/spaces/kornia/kornia-image-filtering>`_.
 
 Edge detection
 --------------
@@ -48,7 +49,8 @@ Interactive Demo
 
     <gradio-app space="kornia/edge_detector"></gradio-app>
 
-Visit the demo on `Hugging Face Spaces <https://huggingface.co/spaces/kornia/edge_detector>`_.
+Visit the `Kornia edge detector demo on the Hugging Face Spaces
+<https://huggingface.co/spaces/kornia/edge_detector>`_.
 
 
 Filtering API
