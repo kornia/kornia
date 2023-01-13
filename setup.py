@@ -10,4 +10,39 @@ if sys.version_info < (3, 7, 0):
 
 from setuptools import setup
 
-setup()
+setup(
+    install_requires=['packaging', 'torch>=1.9.1'],
+    tests_require=['pytest'],
+    setup_requires=['pytest-runner'],
+    extras_require={
+        'dev': [
+            'isort',
+            'kornia-rs==0.0.8',
+            'mypy[reports]',
+            'numpy',
+            'opencv-python',
+            'pre-commit>=2.0',
+            'pydocstyle',
+            'pytest==7.2.0',
+            'pytest-cov==4.0.0',
+            'scipy',
+        ],
+        'docs': [
+            'PyYAML>=5.1,<6.1.0',
+            'furo',
+            'matplotlib',
+            'opencv-python',
+            'sphinx>=4.0',
+            'sphinx-autodoc-defaultargs',
+            'sphinx-autodoc-typehints>=1.0',
+            'sphinx-copybutton>=0.3',
+            'sphinx-design',
+            'sphinx-rtd-theme>0.5',
+            'sphinxcontrib-bibtex',
+            'sphinxcontrib-gtagjs',
+            'sphinxcontrib-youtube',
+            'torchvision',
+        ],
+        'x': ['accelerate==0.15.0'],
+    },
+)
