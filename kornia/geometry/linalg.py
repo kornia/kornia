@@ -242,6 +242,7 @@ def euclidean_distance(x: Tensor, y: Tensor, keepdim: bool = False, eps: float =
     """Compute the Euclidean distance between two set of n-dimensional points.
 
     More: https://en.wikipedia.org/wiki/Euclidean_distance
+
     Args:
         x: first set of points of shape :math:`(*, N)`.
         y: second set of points of shape :math:`(*, N)`.

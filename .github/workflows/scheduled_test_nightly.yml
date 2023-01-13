@@ -1,9 +1,6 @@
 name: Tests on CPU (nightly)
 
 on:
-  pull_request:
-    branches: [master]
-    types: [opened, reopened, synchronize, review_requested, ready_for_review]
   push:
     branches: [master]
   schedule:
@@ -22,7 +19,7 @@ jobs:
       fail-fast: false
       matrix:
         os: ['Ubuntu', 'Windows', 'MacOS']
-        python-version: ['3.7', '3.8']
+        python-version: ['3.7', '3.8', '3.9', '3.10']
         pytorch-version: ['nightly']
         pytorch-dtype: ['float32', 'float64']
 

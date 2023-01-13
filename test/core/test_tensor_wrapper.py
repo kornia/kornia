@@ -15,20 +15,36 @@ class TestTensorWrapper(BaseTester):
         assert tensor.shape == (1, 2, 3, 4)
         assert tensor.device == device
         assert tensor.dtype == dtype
-        self.assert_close(data, tensor.data)
-        self.assert_close(data, unwrap(tensor))
+        self.assert_close(data, tensor.unwrap())
+
+    def test_serialization(self, device, dtype, tmp_path):
+        data = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
+        tensor: TensorWrapper = wrap(data, TensorWrapper)
+
+        file_path = tmp_path / "tensor.pt"
+        torch.save(tensor, file_path)
+        file_path.is_file()
+
+        loaded_tensor: TensorWrapper = torch.load(file_path)
+        assert isinstance(loaded_tensor, TensorWrapper)
+
+        self.assert_close(loaded_tensor.unwrap(), tensor.unwrap())
 
     def test_wrap_list(self, device, dtype):
         data_list = [torch.rand(2, device=device, dtype=dtype), torch.rand(3, device=device, dtype=dtype)]
         tensor_list = wrap(data_list, TensorWrapper)
         assert isinstance(tensor_list, list)
         assert len(tensor_list) == 2
+
         tensor_list_data = unwrap(tensor_list)
         assert len(tensor_list_data) == 2
+
         self.assert_close(tensor_list_data[0], data_list[0])
         self.assert_close(tensor_list_data[1], data_list[1])
 
-    # TODO: implement me
+        for i in range(len(tensor_list_data)):
+            self.assert_close(tensor_list[i].unwrap(), data_list[i])
+
     def test_accessors(self, device, dtype):
         data = torch.tensor([0.0, 1.0, 0.0], device=device, dtype=dtype)
         x = wrap(data, TensorWrapper)

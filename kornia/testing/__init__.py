@@ -27,7 +27,6 @@ __all__ = [
     "KORNIA_CHECK_SAME_DEVICES",
     "KORNIA_CHECK_IS_COLOR",
     "KORNIA_CHECK_IS_GRAY",
-    "KORNIA_CHECK_IS_COLR_OR_GRAY",
     "KORNIA_CHECK_DM_DESC",
     "KORNIA_CHECK_LAF",
 ]
@@ -455,6 +454,26 @@ def KORNIA_CHECK_SAME_DEVICES(tensors: List[Tensor], msg: Optional[str] = None):
     KORNIA_CHECK(isinstance(tensors, list) and len(tensors) >= 1, "Expected a list with at least one element")
     if not all(tensors[0].device == x.device for x in tensors):
         raise Exception(f"Not same device for tensors. Got: {[x.device for x in tensors]}.\n{msg}")
+
+
+def KORNIA_CHECK_SAME_SHAPE(x: Tensor, y: Tensor) -> None:
+    """Check whether two tensor have the same shape.
+
+    Args:
+        x: first tensor to evaluate.
+        y: sencod tensor to evaluate.
+        msg: message to show in the exception.
+
+    Raises:
+        TypeException: if the two tensors have not the same shape.
+
+    Example:
+        >>> x1 = torch.rand(2, 3, 3)
+        >>> x2 = torch.rand(2, 3, 3)
+        >>> KORNIA_CHECK_SAME_SHAPE(x1, x2)
+    """
+    if x.shape != y.shape:
+        raise TypeError(f"Not same shape for tensors. Got: {x.shape} and {y.shape}")
 
 
 def KORNIA_CHECK_IS_COLOR(x: Tensor, msg: Optional[str] = None):
