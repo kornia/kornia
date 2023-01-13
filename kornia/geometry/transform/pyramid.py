@@ -435,7 +435,7 @@ def upscale_double(x: Tensor) -> Tensor:
     KORNIA_CHECK_IS_TENSOR(x)
     KORNIA_CHECK_SHAPE(x, ["*", "H", "W"])
     double_shape = x.shape[:-2] + (x.shape[-2] * 2, x.shape[-1] * 2)
-    upscaled = torch.zeros(double_shape)
+    upscaled = torch.zeros(double_shape, device=x.device, dtype=x.dtype)
     upscaled[..., ::2, ::2] = x
     upscaled[..., ::2, 1::2][..., :-1] = (upscaled[..., ::2, ::2][..., :-1] + upscaled[..., ::2, 2::2]) / 2
     upscaled[..., ::2, -1] = upscaled[..., ::2, -2]
