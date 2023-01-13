@@ -426,7 +426,8 @@ def upscale_double(x: Tensor) -> Tensor:
     Odd indices are linearly interpolated from the even ones.
 
     Args:
-        x : input image.
+        x: input image.
+
     Shape:
         - Input: :math:`(*, H, W)`
         - Output :math:`(*, H, W)`
