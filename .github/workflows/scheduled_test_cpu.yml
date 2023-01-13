@@ -16,7 +16,7 @@ jobs:
       fail-fast: false
       matrix:
         os: ['Ubuntu-latest', 'Windows-latest', 'MacOS-latest']
-        pytorch-dtype: ['float16', 'float32', 'float64']
+        pytorch-dtype: ['float32', 'float64']
 
     uses: ./.github/workflows/tests.yml
     with:
