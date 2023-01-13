@@ -273,8 +273,16 @@ class TestUpscaleDouble(BaseTester):
 
     @staticmethod
     def prepare_data(shape, device, dtype, requires_grad=False):
-        xm = torch.tensor([[0, 0, 0, 0, 0], [1, 1, 1, 1, 1], [2, 2, 2, 2, 2], [3, 3, 3, 3, 3], [4, 4, 4, 4, 4]], device=device, dtype=dtype)
-        ym = torch.tensor([[0, 1, 2, 3, 4], [0, 1, 2, 3, 4], [0, 1, 2, 3, 4], [0, 1, 2, 3, 4], [0, 1, 2, 3, 4]], device=device, dtype=dtype)
+        xm = torch.tensor(
+            [[0, 0, 0, 0, 0], [1, 1, 1, 1, 1], [2, 2, 2, 2, 2], [3, 3, 3, 3, 3], [4, 4, 4, 4, 4]],
+            device=device,
+            dtype=dtype,
+        )
+        ym = torch.tensor(
+            [[0, 1, 2, 3, 4], [0, 1, 2, 3, 4], [0, 1, 2, 3, 4], [0, 1, 2, 3, 4], [0, 1, 2, 3, 4]],
+            device=device,
+            dtype=dtype,
+        )
 
         x = torch.zeros(shape, device=device, dtype=dtype)
         if len(shape) == 2:
