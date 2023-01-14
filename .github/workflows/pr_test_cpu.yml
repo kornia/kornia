@@ -42,7 +42,7 @@ jobs:
       continue-on-error: ${{ contains('float16', matrix.pytorch-dtype) }} # Remove this when float16 stop raising errors
 
   tests-nightly:
-    if: ${{ github.event.label.name == 'nightly' }}
+    if:  contains(github.event.pull_request.labels.*.name, 'nightly')
     name: ${{ matrix.os }} - python-${{ matrix.python-version }}, torch-nightly, ${{ matrix.pytorch-dtype }}
 
     strategy:
