@@ -7,7 +7,7 @@ from kornia.core import Device, Module, Tensor, concatenate, eye
 from kornia.geometry.subpix import ConvSoftArgmax3d
 from kornia.geometry.transform import ScalePyramid
 
-from .laf import denormalize_laf, laf_is_inside_image, normalize_laf
+from .laf import laf_is_inside_image
 from .orientation import PassLAF
 from .responses import BlobHessian
 
@@ -132,6 +132,7 @@ class ScaleSpaceDetector(Module):
         sp, sigmas, _ = self.scale_pyr(img)
         all_responses: List[Tensor] = []
         all_lafs: List[Tensor] = []
+        px_size = 0.5 if self.scale_pyr.double_image else 1.0
         for oct_idx, octave in enumerate(sp):
             sigmas_oct = sigmas[oct_idx]
             B, CH, L, H, W = octave.size()
@@ -203,17 +204,18 @@ class ScaleSpaceDetector(Module):
             resp_flat_best = resp_flat_best * good_mask.to(dev, dtype)
 
             # Normalize LAFs
-            current_lafs = normalize_laf(current_lafs, octave[:, 0])  # We don`t need # of scale levels, only shape
+            current_lafs *= px_size
 
             all_responses.append(resp_flat_best)
             all_lafs.append(current_lafs)
+            px_size *= 2
 
         # Sort and keep best n
         responses = concatenate(all_responses, 1)
         lafs = concatenate(all_lafs, 1)
         responses, idxs = torch.topk(responses, k=num_feats, dim=1)
         lafs = torch.gather(lafs, 1, idxs.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, 2, 3))
-        return responses, denormalize_laf(lafs, img)
+        return responses, lafs
 
     def forward(self, img: Tensor, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
         """Three stage local feature detection. First the location and scale of interest points are determined by
