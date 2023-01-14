@@ -4,8 +4,9 @@ import torch
 from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
-from kornia.augmentation.utils import _adapted_rsampling, _adapted_uniform, _common_param_check, _tuple_range_reader
-from kornia.utils.helpers import _deprecated, _extract_device_dtype
+from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _tuple_range_reader
+from kornia.core import Tensor
+from kornia.utils.helpers import _extract_device_dtype
 
 
 class RotationGenerator3D(RandomGeneratorBase):
@@ -23,9 +24,9 @@ class RotationGenerator3D(RandomGeneratorBase):
 
     Returns:
         A dict of parameters to be passed for transformation.
-            - yaw (torch.Tensor): element-wise rotation yaws with a shape of (B,).
-            - pitch (torch.Tensor): element-wise rotation pitches with a shape of (B,).
-            - roll (torch.Tensor): element-wise rotation rolls with a shape of (B,).
+            - yaw (Tensor): element-wise rotation yaws with a shape of (B,).
+            - pitch (Tensor): element-wise rotation pitches with a shape of (B,).
+            - roll (Tensor): element-wise rotation rolls with a shape of (B,).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes. By default,
@@ -36,7 +37,7 @@ class RotationGenerator3D(RandomGeneratorBase):
     def __init__(
         self,
         degrees: Union[
-            torch.Tensor,
+            Tensor,
             float,
             Tuple[float, float, float],
             Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]],
@@ -55,7 +56,7 @@ class RotationGenerator3D(RandomGeneratorBase):
         self.pitch_sampler = Uniform(degrees[1][0], degrees[1][1], validate_args=False)
         self.roll_sampler = Uniform(degrees[2][0], degrees[2][1], validate_args=False)
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:  # type:ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.degrees])
@@ -65,41 +66,3 @@ class RotationGenerator3D(RandomGeneratorBase):
             pitch=_adapted_rsampling((batch_size,), self.pitch_sampler, same_on_batch).to(device=_device, dtype=_dtype),
             roll=_adapted_rsampling((batch_size,), self.roll_sampler, same_on_batch).to(device=_device, dtype=_dtype),
         )
-
-
-@_deprecated(replace_with=RotationGenerator3D.__name__)
-def random_rotation_generator3d(
-    batch_size: int,
-    degrees: torch.Tensor,
-    same_on_batch: bool = False,
-    device: torch.device = torch.device('cpu'),
-    dtype: torch.dtype = torch.float32,
-) -> Dict[str, torch.Tensor]:
-    r"""Get parameters for ``rotate`` for a random rotate transform.
-
-    Args:
-        batch_size (int): the tensor batch size.
-        degrees (torch.Tensor): Ranges of degrees (3, 2) for yaw, pitch and roll.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        device (torch.device): the device on which the random numbers will be generated. Default: cpu.
-        dtype (torch.dtype): the data type of the generated random numbers. Default: float32.
-
-    Returns:
-        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - yaw (torch.Tensor): element-wise rotation yaws with a shape of (B,).
-            - pitch (torch.Tensor): element-wise rotation pitches with a shape of (B,).
-            - roll (torch.Tensor): element-wise rotation rolls with a shape of (B,).
-    """
-    if degrees.shape != torch.Size([3, 2]):
-        raise AssertionError(f"'degrees' must be the shape of (3, 2). Got {degrees.shape}.")
-    _device, _dtype = _extract_device_dtype([degrees])
-    degrees = degrees.to(device=device, dtype=dtype)
-    yaw = _adapted_uniform((batch_size,), degrees[0][0], degrees[0][1], same_on_batch)
-    pitch = _adapted_uniform((batch_size,), degrees[1][0], degrees[1][1], same_on_batch)
-    roll = _adapted_uniform((batch_size,), degrees[2][0], degrees[2][1], same_on_batch)
-
-    return dict(
-        yaw=yaw.to(device=_device, dtype=_dtype),
-        pitch=pitch.to(device=_device, dtype=_dtype),
-        roll=roll.to(device=_device, dtype=_dtype),
-    )

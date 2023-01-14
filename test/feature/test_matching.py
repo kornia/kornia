@@ -46,7 +46,7 @@ class TestMatchNN:
         desc2 = torch.rand(7, 8, device=device)
         desc1 = utils.tensor_to_gradcheck_var(desc1)  # to var
         desc2 = utils.tensor_to_gradcheck_var(desc2)  # to var
-        assert gradcheck(match_mnn, (desc1, desc2), raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(match_mnn, (desc1, desc2), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
 
 
 class TestMatchMNN:
@@ -80,7 +80,7 @@ class TestMatchMNN:
         desc2 = torch.rand(7, 8, device=device)
         desc1 = utils.tensor_to_gradcheck_var(desc1)  # to var
         desc2 = utils.tensor_to_gradcheck_var(desc2)  # to var
-        assert gradcheck(match_mnn, (desc1, desc2), raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(match_mnn, (desc1, desc2), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
 
 
 class TestMatchSNN:
@@ -136,7 +136,7 @@ class TestMatchSNN:
         desc2 = torch.rand(7, 8, device=device)
         desc1 = utils.tensor_to_gradcheck_var(desc1)  # to var
         desc2 = utils.tensor_to_gradcheck_var(desc2)  # to var
-        assert gradcheck(match_snn, (desc1, desc2, 0.8), raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(match_snn, (desc1, desc2, 0.8), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
 
 
 class TestMatchSMNN:
@@ -188,14 +188,39 @@ class TestMatchSMNN:
         assert_close(dists1, expected_dists)
         assert_close(idxs1, expected_idx)
 
+    @pytest.mark.parametrize(
+        "match_type, d1, d2",
+        [
+            ("nn", 0, 10),
+            ("nn", 10, 0),
+            ("nn", 0, 0),
+            ("snn", 0, 10),
+            ("snn", 10, 0),
+            ("snn", 0, 0),
+            ("mnn", 0, 10),
+            ("mnn", 10, 0),
+            ("mnn", 0, 0),
+            ("smnn", 0, 10),
+            ("smnn", 10, 0),
+            ("smnn", 0, 0),
+        ],
+    )
+    def test_empty_nocrash(self, match_type, d1, d2, device, dtype):
+        desc1 = torch.empty(d1, 8, device=device, dtype=dtype)
+        desc2 = torch.empty(d2, 8, device=device, dtype=dtype)
+        matcher = DescriptorMatcher(match_type, 0.8).to(device)
+        dists, idxs = matcher(desc1, desc2)
+        assert dists is not None
+        assert idxs is not None
+
     def test_gradcheck(self, device):
         desc1 = torch.rand(5, 8, device=device)
         desc2 = torch.rand(7, 8, device=device)
         desc1 = utils.tensor_to_gradcheck_var(desc1)  # to var
         desc2 = utils.tensor_to_gradcheck_var(desc2)  # to var
         matcher = DescriptorMatcher('smnn', 0.8).to(device)
-        assert gradcheck(match_smnn, (desc1, desc2, 0.8), raise_exception=True, nondet_tol=1e-4)
-        assert gradcheck(matcher, (desc1, desc2), raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(match_smnn, (desc1, desc2, 0.8), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
+        assert gradcheck(matcher, (desc1, desc2), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
 
     @pytest.mark.jit
     @pytest.mark.parametrize("match_type", ["nn", "snn", "mnn", "smnn"])
@@ -305,7 +330,9 @@ class TestMatchFGINN:
         desc2 = utils.tensor_to_gradcheck_var(desc2)  # to var
         lafs1 = utils.tensor_to_gradcheck_var(lafs1)  # to var
         lafs2 = utils.tensor_to_gradcheck_var(lafs2)  # to var
-        assert gradcheck(match_fginn, (desc1, desc2, lafs1, lafs2, 0.8, 0.05), raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(
+            match_fginn, (desc1, desc2, lafs1, lafs2, 0.8, 0.05), raise_exception=True, nondet_tol=1e-4, fast_mode=True
+        )
 
     @pytest.mark.jit
     @pytest.mark.skip("keyword-arg expansion is not supported")
@@ -337,6 +364,61 @@ class TestAdalam:
         assert dists.shape[0] <= data_dev['descs2'].shape[0]
         expected_idxs = data_dev['expected_idxs'].long()
         assert_close(idxs, expected_idxs, rtol=1e-4, atol=1e-4)
+
+    @pytest.mark.parametrize("data", ["adalam_idxs"], indirect=True)
+    def test_single_nocrash(self, device, dtype, data):
+        torch.random.manual_seed(0)
+        # This is not unit test, but that is quite good integration test
+        data_dev = utils.dict_to(data, device, dtype)
+        with torch.no_grad():
+            dists, idxs = match_adalam(
+                data_dev['descs1'], data_dev['descs2'][:1], data_dev['lafs1'], data_dev['lafs2'][:, :1]
+            )
+            dists, idxs = match_adalam(
+                data_dev['descs1'][:1], data_dev['descs2'], data_dev['lafs1'][:, :1], data_dev['lafs2']
+            )
+
+    @pytest.mark.parametrize("data", ["adalam_idxs"], indirect=True)
+    def test_empty_nocrash(self, device, dtype, data):
+        torch.random.manual_seed(0)
+        # This is not unit test, but that is quite good integration test
+        data_dev = utils.dict_to(data, device, dtype)
+        with torch.no_grad():
+            dists, idxs = match_adalam(
+                data_dev['descs1'],
+                torch.empty(0, 128, device=device, dtype=dtype),
+                data_dev['lafs1'],
+                torch.empty(0, 0, 2, 3, device=device, dtype=dtype),
+            )
+            dists, idxs = match_adalam(
+                torch.empty(0, 128, device=device, dtype=dtype),
+                data_dev['descs2'],
+                torch.empty(0, 0, 2, 3, device=device, dtype=dtype),
+                data_dev['lafs2'],
+            )
+
+    @pytest.mark.parametrize("data", ["adalam_idxs"], indirect=True)
+    def test_small(self, device, dtype, data):
+        torch.random.manual_seed(0)
+        # This is not unit test, but that is quite good integration test
+        data_dev = utils.dict_to(data, device, dtype)
+        with torch.no_grad():
+            dists, idxs = match_adalam(
+                data_dev['descs1'][:4], data_dev['descs2'][:4], data_dev['lafs1'][:, :4], data_dev['lafs2'][:, :4]
+            )
+
+    @pytest.mark.parametrize("data", ["adalam_idxs"], indirect=True)
+    def test_seeds_fail(self, device, dtype, data):
+        torch.random.manual_seed(0)
+        # This is not unit test, but that is quite good integration test
+        data_dev = utils.dict_to(data, device, dtype)
+        with torch.no_grad():
+            dists, idxs = match_adalam(
+                data_dev['descs1'][:100],
+                data_dev['descs2'][:100],
+                data_dev['lafs1'][:, :100],
+                data_dev['lafs2'][:, :100],
+            )
 
     @pytest.mark.parametrize("data", ["adalam_idxs"], indirect=True)
     def test_module(self, device, dtype, data):

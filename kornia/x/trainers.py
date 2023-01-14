@@ -1,9 +1,9 @@
-from typing import Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
-import torch
-import torch.nn as nn
+from torch.optim import Optimizer, lr_scheduler
 from torch.utils.data import DataLoader
 
+from kornia.core import Module, Tensor, stack
 from kornia.metrics import accuracy, mean_average_precision, mean_iou
 
 from .trainer import Trainer
@@ -22,7 +22,7 @@ class ImageClassifierTrainer(Trainer):
         `example <https://github.com/kornia/kornia/blob/master/examples/train/image_classifier/>`__.
     """
 
-    def compute_metrics(self, *args: torch.Tensor) -> Dict[str, float]:
+    def compute_metrics(self, *args: Tensor) -> Dict[str, float]:
         if len(args) != 2:
             raise AssertionError
         out, target = args
@@ -41,7 +41,7 @@ class SemanticSegmentationTrainer(Trainer):
         `example <https://github.com/kornia/kornia/blob/master/examples/train/semantic_segmentation/>`__.
     """
 
-    def compute_metrics(self, *args: torch.Tensor) -> Dict[str, float]:
+    def compute_metrics(self, *args: Tensor) -> Dict[str, float]:
         if len(args) != 2:
             raise AssertionError
         out, target = args
@@ -62,15 +62,15 @@ class ObjectDetectionTrainer(Trainer):
 
     def __init__(
         self,
-        model: nn.Module,
-        train_dataloader: DataLoader,
-        valid_dataloader: DataLoader,
-        criterion: Optional[nn.Module],
-        optimizer: torch.optim.Optimizer,
-        scheduler: torch.optim.lr_scheduler.CosineAnnealingLR,
+        model: Module,
+        train_dataloader: DataLoader[Any],
+        valid_dataloader: DataLoader[Any],
+        criterion: Optional[Module],
+        optimizer: Optimizer,
+        scheduler: lr_scheduler.CosineAnnealingLR,
         config: Configuration,
         num_classes: int,
-        callbacks: Dict[str, Callable] = None,
+        callbacks: Optional[Dict[str, Callable[..., None]]] = None,
         loss_computed_by_model: Optional[bool] = None,
     ) -> None:
         if callbacks is None:
@@ -80,22 +80,22 @@ class ObjectDetectionTrainer(Trainer):
         self.loss_computed_by_model = loss_computed_by_model
         self.num_classes = num_classes
 
-    def on_model(self, model: nn.Module, sample: dict):
+    def on_model(self, model: Module, sample: Dict[str, Tensor]):
         if self.loss_computed_by_model and model.training:
             return model(sample["input"], sample["target"])
         return model(sample["input"])
 
-    def compute_loss(self, *args: torch.Tensor) -> torch.Tensor:
+    def compute_loss(self, *args: Tensor) -> Tensor:
         if self.loss_computed_by_model:
             # Note: in case of dict losses obtained
             if isinstance(args[0], dict):
-                return torch.stack([v for _, v in args[0].items()]).mean()
-            return torch.stack(list(args[0])).sum()
+                return stack([v for _, v in args[0].items()]).mean()
+            return stack(list(args[0])).sum()
         if self.criterion is None:
             raise RuntimeError("`criterion` should not be None if `loss_computed_by_model` is False.")
         return self.criterion(*args)
 
-    def compute_metrics(self, *args: torch.Tensor) -> Dict[str, float]:
+    def compute_metrics(self, *args: Tensor) -> Dict[str, float]:
         if (
             isinstance(args[0], dict)
             and "boxes" in args[0]

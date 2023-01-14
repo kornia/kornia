@@ -1,0 +1,26 @@
+name: Tests on CPU (nightly)
+
+on:
+  push:
+    branches: [master, test-me-*]
+  schedule:
+    - cron: "0 4 * * *"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests-cpu:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ['Ubuntu-latest', 'Windows-latest', 'MacOS-latest']
+        pytorch-dtype: ['float32', 'float64']
+
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: ${{ matrix.os }}
+      python-version: '["3.7", "3.8", "3.9", "3.10"]'
+      pytorch-version: '["nightly"]'
+      pytorch-dtype: ${{ matrix.pytorch-dtype }}

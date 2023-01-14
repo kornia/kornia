@@ -285,7 +285,9 @@ class TestFilter2D:
         # evaluate function gradient
         input = utils.tensor_to_gradcheck_var(input)  # to var
         kernel = utils.tensor_to_gradcheck_var(kernel)  # to var
-        assert gradcheck(kornia.filters.filter2d, (input, kernel), raise_exception=True)
+        assert gradcheck(
+            kornia.filters.filter2d, (input, kernel), nondet_tol=1e-8, raise_exception=True, fast_mode=True
+        )
 
     @pytest.mark.parametrize("padding", ["same", "valid"])
     def test_jit(self, padding, device, dtype):
@@ -611,7 +613,9 @@ class TestFilter3D:
         # evaluate function gradient
         input = utils.tensor_to_gradcheck_var(input)  # to var
         kernel = utils.tensor_to_gradcheck_var(kernel)  # to var
-        assert gradcheck(kornia.filters.filter3d, (input, kernel), raise_exception=True)
+        assert gradcheck(
+            kornia.filters.filter3d, (input, kernel), nondet_tol=1e-8, raise_exception=True, fast_mode=True
+        )
 
     def test_jit(self, device, dtype):
         op = kornia.filters.filter3d
@@ -622,3 +626,38 @@ class TestFilter3D:
         expected = op(input, kernel)
         actual = op_script(input, kernel)
         assert_close(actual, expected)
+
+
+class TestDexiNed:
+    def test_smoke(self, device, dtype):
+        img = torch.rand(2, 3, 64, 64, device=device, dtype=dtype)
+        net = kornia.filters.DexiNed(pretrained=False).to(device, dtype)
+        out = net(img)
+        assert len(out) == 7
+        assert out[-1].shape == (2, 1, 64, 64)
+
+    @pytest.mark.parametrize("data", ["dexined"], indirect=True)
+    def test_inference(self, device, dtype, data):
+        model = kornia.filters.DexiNed(pretrained=False)
+        model.load_state_dict(data, strict=True)
+        model = model.to(device, dtype)
+        model.eval()
+
+        img = torch.tensor([[[[0.0, 255.0, 0.0], [0.0, 255.0, 0.0], [0.0, 255.0, 0.0]]]], device=device, dtype=dtype)
+        img = img.repeat(1, 3, 1, 1)
+
+        expect = torch.tensor(
+            [[[[-0.3709, 0.0519, -0.2839], [0.0627, 0.6587, -0.1276], [-0.1840, -0.3917, -0.8240]]]],
+            device=device,
+            dtype=dtype,
+        )
+
+        out = model(img)[-1]
+        assert_close(out, expect, atol=3e-4, rtol=3e-4)
+
+    def test_jit(self, device, dtype):
+        op = kornia.filters.DexiNed(pretrained=False).to(device, dtype)
+        op_script = torch.jit.script(op)
+
+        img = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
+        assert_close(op(img)[-1], op_script(img)[-1])

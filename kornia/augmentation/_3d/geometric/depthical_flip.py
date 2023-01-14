@@ -71,7 +71,7 @@ class RandomDepthicalFlip3D(AugmentationBase3D):
         flip_mat: Tensor = torch.tensor(
             [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, -1, d - 1], [0, 0, 0, 1]], device=input.device, dtype=input.dtype
         )
-        return flip_mat.repeat(input.size(0), 1, 1)
+        return flip_mat.expand(input.shape[0], 4, 4)
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None

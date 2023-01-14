@@ -3,8 +3,8 @@ import math
 from typing import Callable, List, Optional, Tuple, Union
 
 import torch
-from torch import Tensor
 
+from kornia.core import Tensor
 from kornia.enhance import normalize_min_max
 from kornia.filters import filter2d
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
@@ -18,7 +18,7 @@ def _diamond_square_seed(
     replicates: int,
     width: int,
     height: int,
-    random_fn: Callable,
+    random_fn: Callable[..., Tensor],
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
 ) -> Tensor:
@@ -73,7 +73,7 @@ def _diamond_square_seed(
 def _one_diamond_one_square(
     img: Tensor,
     random_scale: Union[float, Tensor],
-    random_fn: Callable = torch.rand,
+    random_fn: Callable[..., Tensor] = torch.rand,
     diamond_kernel: Optional[Tensor] = None,
     square_kernel: Optional[Tensor] = None,
 ) -> Tensor:
@@ -141,7 +141,7 @@ def diamond_square(
     output_size: Tuple[int, int, int, int],
     roughness: Union[float, Tensor] = 0.5,
     random_scale: Union[float, Tensor] = 1.0,
-    random_fn: Callable = torch.rand,
+    random_fn: Callable[..., Tensor] = torch.rand,
     normalize_range: Optional[Tuple[int, int]] = None,
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,

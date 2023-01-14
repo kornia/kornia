@@ -2,9 +2,10 @@
 from typing import Tuple, Union
 
 import torch
+from torch.linalg import qr as linalg_qr
 
 from kornia.utils import eye_like, vec_like
-from kornia.utils._compat import linalg_qr
+from kornia.utils.helpers import _torch_svd_cast
 
 from .numeric import cross_product_matrix
 
@@ -48,7 +49,7 @@ def random_intrinsics(low: Union[float, torch.Tensor], high: Union[float, torch.
         the random camera matrix with the shape of :math:`(1, 3, 3)`.
     """
     sampler = torch.distributions.Uniform(low, high)
-    fx, fy, cx, cy = (sampler.sample((1,)) for _ in range(4))
+    fx, fy, cx, cy = (sampler.sample(torch.Size((1,))) for _ in range(4))
     zeros, ones = torch.zeros_like(fx), torch.ones_like(fx)
     camera_matrix: torch.Tensor = torch.cat([fx, zeros, cx, zeros, fy, cy, zeros, zeros, ones])
     return camera_matrix.view(1, 3, 3)
@@ -171,8 +172,8 @@ def _nullspace(A):
 
     Return the smallest singular value and the corresponding vector.
     """
-    _, s, vh = torch.svd(A)
-    return s[..., -1], vh[..., -1]
+    _, s, v = _torch_svd_cast(A)
+    return s[..., -1], v[..., -1]
 
 
 def projections_from_fundamental(F_mat: torch.Tensor) -> torch.Tensor:

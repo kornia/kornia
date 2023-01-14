@@ -10,3 +10,11 @@ kornia.geometry.line
 .. autofunction:: fit_line
 
 .. autoclass:: Hyperplane
+
+
+Interactive Demo
+----------------
+
+.. raw:: html
+
+   <gradio-app space="kornia/line-segment-matching"></gradio-app>

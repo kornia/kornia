@@ -26,7 +26,9 @@
 [![Twitter](https://img.shields.io/twitter/follow/kornia_foss?style=social)](https://twitter.com/kornia_foss)
 
 [![tests-cpu](https://github.com/kornia/kornia/actions/workflows/tests_cpu.yml/badge.svg)](https://github.com/kornia/kornia/actions/workflows/tests_cpu.yml)
+[![tests-cpu-nightly](https://github.com/kornia/kornia/actions/workflows/scheduled_test_nightly.yml/badge.svg?event=schedule&&branch=master)](https://github.com/kornia/kornia/actions/workflows/scheduled_test_nightly.yml)
 [![tests-cuda](https://github.com/kornia/kornia/actions/workflows/tests_cuda.yml/badge.svg)](https://github.com/kornia/kornia/actions/workflows/tests_cuda.yml)
+[![tests-cpu-float16](https://github.com/kornia/kornia/actions/workflows/scheduled_test_cpu_half.yml/badge.svg?event=schedule&&branch=master)](https://github.com/kornia/kornia/actions/workflows/scheduled_test_cpu_half.yml)
 [![codecov](https://codecov.io/gh/kornia/kornia/branch/master/graph/badge.svg?token=FzCb7e0Bso)](https://codecov.io/gh/kornia/kornia)
 [![Documentation Status](https://readthedocs.org/projects/kornia/badge/?version=latest)](https://kornia.readthedocs.io/en/latest/?badge=latest)
 [![pre-commit.ci status](https://results.pre-commit.ci/badge/github/kornia/kornia/master.svg)](https://results.pre-commit.ci/latest/github/kornia/kornia/master)

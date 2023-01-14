@@ -1,13 +1,12 @@
 import math
-from typing import Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import torch
-import torch.nn as nn
-from torch import Tensor, tensor
 
+from kornia.core import Module, Tensor, concatenate, stack, tensor, where, zeros
 from kornia.geometry.bbox import nms
 from kornia.testing import KORNIA_CHECK_SHAPE
-from packaging import version
+from kornia.utils import map_location_to_cpu, torch_meshgrid
 
 from .backbones import SOLD2Net
 
@@ -42,7 +41,7 @@ default_detector_cfg = {
 }
 
 
-class SOLD2_detector(nn.Module):
+class SOLD2_detector(Module):
     r"""Module, which detects line segments in an image.
 
     This is based on the original code from the paper "SOLD²: Self-supervised
@@ -62,7 +61,7 @@ class SOLD2_detector(nn.Module):
         >>> line_segments = sold2_detector(img)["line_segments"]
     """
 
-    def __init__(self, pretrained: bool = True, config: Dict = None):
+    def __init__(self, pretrained: bool = True, config: Optional[Dict[str, Any]] = None):
         super().__init__()
         # Initialize some parameters
         self.config = default_detector_cfg if config is None else config
@@ -73,9 +72,7 @@ class SOLD2_detector(nn.Module):
         # Load the pre-trained model
         self.model = SOLD2Net(self.config)
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(
-                urls["wireframe"], map_location=lambda storage, loc: storage
-            )
+            pretrained_dict = torch.hub.load_state_dict_from_url(urls["wireframe"], map_location=map_location_to_cpu)
             state_dict = self.adapt_state_dict(pretrained_dict['model_state_dict'])
             self.model.load_state_dict(state_dict)
         self.eval()
@@ -94,7 +91,7 @@ class SOLD2_detector(nn.Module):
         del state_dict["heatmap_decoder.conv_block_lst.2.bias"]
         return state_dict
 
-    def forward(self, img: Tensor) -> Dict:
+    def forward(self, img: Tensor) -> Dict[str, Any]:
         """
         Args:
             img: batched images with shape :math:`(B, 1, H, W)`.
@@ -193,7 +190,7 @@ class LineSegmentDetectionModule:
         if self.use_junction_refinement and self.junction_refine_cfg is None:
             raise ValueError("[Error] Missing junction refinement config.")
 
-    def detect(self, junctions: Tensor, heatmap: Tensor) -> Tuple:
+    def detect(self, junctions: Tensor, heatmap: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         """Main function performing line segment detection."""
         KORNIA_CHECK_SHAPE(heatmap, ["H", "W"])
         H, W = heatmap.shape
@@ -216,7 +213,7 @@ class LineSegmentDetectionModule:
 
         # Initialize empty line map
         num_junctions = len(junctions)
-        line_map_pred = torch.zeros([num_junctions, num_junctions], device=device, dtype=torch.int32)
+        line_map_pred = zeros([num_junctions, num_junctions], device=device, dtype=torch.int32)
 
         # Stop if there are not enough junctions
         if num_junctions < 2:
@@ -232,8 +229,8 @@ class LineSegmentDetectionModule:
             candidate_map = self.candidate_suppression(junctions, candidate_map)
 
         # Fetch the candidates
-        candidate_indices = torch.where(candidate_map)
-        candidate_index_map = torch.cat([candidate_indices[0][..., None], candidate_indices[1][..., None]], dim=-1)
+        candidate_indices = where(candidate_map)
+        candidate_index_map = concatenate([candidate_indices[0][..., None], candidate_indices[1][..., None]], -1)
 
         # Get the corresponding start and end junctions
         candidate_junc_start = junctions[candidate_index_map[:, 0]]
@@ -272,7 +269,7 @@ class LineSegmentDetectionModule:
                     normalized_seg_length_ = normalized_seg_length[iter_idx * group_size :]
                 sampled_feat_ = self.detect_local_max(heatmap, cand_h_, cand_w_, H, W, normalized_seg_length_, device)
                 sampled_feat_lst.append(sampled_feat_)
-            sampled_feat = torch.cat(sampled_feat_lst, dim=0)
+            sampled_feat = concatenate(sampled_feat_lst, 0)
         else:
             sampled_feat = self.detect_local_max(heatmap, cand_h, cand_w, H, W, normalized_seg_length, device)
 
@@ -323,8 +320,8 @@ class LineSegmentDetectionModule:
         w_block = round(W / (1 + (num_blocks - 1) * increase_ratio))
 
         # Iterate through each block
-        count_map = torch.zeros(heatmap.shape, dtype=torch.int, device=heatmap.device)
-        heatmap_output = torch.zeros(heatmap.shape, dtype=torch.float, device=heatmap.device)
+        count_map = zeros(heatmap.shape, dtype=torch.int, device=heatmap.device)
+        heatmap_output = zeros(heatmap.shape, dtype=torch.float, device=heatmap.device)
         for h_idx in range(num_blocks):
             for w_idx in range(num_blocks):
                 # Fetch the heatmap
@@ -354,7 +351,7 @@ class LineSegmentDetectionModule:
         line_dist_map = torch.sum((torch.unsqueeze(junctions, dim=1) - junctions[None, ...]) ** 2, dim=-1) ** 0.5
 
         # Fetch all the "detected lines"
-        seg_indexes = torch.where(torch.triu(candidate_map, diagonal=1))
+        seg_indexes = where(torch.triu(candidate_map, diagonal=1))
         start_point_idxs = seg_indexes[0]
         end_point_idxs = seg_indexes[1]
         start_points = junctions[start_point_idxs, :]
@@ -393,7 +390,7 @@ class LineSegmentDetectionModule:
 
     def refine_junction_perturb(
         self, junctions: Tensor, line_map: Tensor, heatmap: Tensor, H: int, W: int, device: torch.device
-    ) -> Tuple:
+    ) -> Tuple[Tensor, Tensor]:
         """Refine the line endpoints in a similar way as in LSD."""
         # Fetch refinement parameters
         num_perturbs = self.junction_refine_cfg["num_perturbs"]
@@ -407,22 +404,21 @@ class LineSegmentDetectionModule:
             step=perturb_interval,
             device=device,
         )
-        if version.parse(torch.__version__) < version.parse('1.10'):
-            h1_grid, w1_grid, h2_grid, w2_grid = torch.meshgrid(perturb_vec, perturb_vec, perturb_vec, perturb_vec)
-        else:
-            h1_grid, w1_grid, h2_grid, w2_grid = torch.meshgrid(
-                perturb_vec, perturb_vec, perturb_vec, perturb_vec, indexing='ij'
-            )
-        perturb_tensor = torch.cat(
-            [h1_grid[..., None], w1_grid[..., None], h2_grid[..., None], w2_grid[..., None]], dim=-1
+
+        h1_grid, w1_grid, h2_grid, w2_grid = torch_meshgrid(
+            [perturb_vec, perturb_vec, perturb_vec, perturb_vec], indexing='ij'
+        )
+
+        perturb_tensor = concatenate(
+            [h1_grid[..., None], w1_grid[..., None], h2_grid[..., None], w2_grid[..., None]], -1
         )
         perturb_tensor_flat = perturb_tensor.view(-1, 2, 2)
 
         # Fetch all the detected lines
-        detected_seg_indexes = torch.where(torch.triu(line_map, diagonal=1))
+        detected_seg_indexes = where(torch.triu(line_map, diagonal=1))
         start_points = junctions[detected_seg_indexes[0]]
         end_points = junctions[detected_seg_indexes[1]]
-        line_segments = torch.stack([start_points, end_points], dim=1)
+        line_segments = stack([start_points, end_points], 1)
 
         line_segment_candidates = line_segments.unsqueeze(dim=1) + perturb_tensor_flat[None]
         # Clip the boundaries
@@ -454,10 +450,10 @@ class LineSegmentDetectionModule:
             refined_segment_lst.append(segment[max_idx][None])
 
         # Concatenate back to segments
-        refined_segments = torch.cat(refined_segment_lst, dim=0)
+        refined_segments = concatenate(refined_segment_lst, 0)
 
         # Convert back to junctions and line_map
-        junctions_new = torch.cat([refined_segments[:, 0, :], refined_segments[:, 1, :]], dim=0)
+        junctions_new = concatenate([refined_segments[:, 0, :], refined_segments[:, 1, :]], 0)
         junctions_new = torch.unique(junctions_new, dim=0)
         line_map_new = self.segments_to_line_map(junctions_new, refined_segments)
 
@@ -467,11 +463,11 @@ class LineSegmentDetectionModule:
         """Convert the list of segments to line map."""
         # Create empty line map
         num_junctions = len(junctions)
-        line_map = torch.zeros([num_junctions, num_junctions], device=junctions.device)
+        line_map = zeros([num_junctions, num_junctions], device=junctions.device)
 
         # Get the indices of paired junctions
-        _, idx_junc1 = torch.where(torch.all(junctions[None] == segments[:, None, 0], dim=2))
-        _, idx_junc2 = torch.where(torch.all(junctions[None] == segments[:, None, 1], dim=2))
+        _, idx_junc1 = where(torch.all(junctions[None] == segments[:, None, 0], dim=2))
+        _, idx_junc2 = where(torch.all(junctions[None] == segments[:, None, 1], dim=2))
 
         # Assign the labels
         line_map[idx_junc1, idx_junc2] = 1
@@ -514,16 +510,14 @@ class LineSegmentDetectionModule:
         dist_thresh = torch.repeat_interleave(dist_thresh[..., None], self.num_samples, dim=-1)
 
         # Compute the candidate points
-        cand_points = torch.cat([cand_h[..., None], cand_w[..., None]], dim=-1)
+        cand_points = concatenate([cand_h[..., None], cand_w[..., None]], -1)
         cand_points_round = torch.round(cand_points)  # N x 64 x 2
 
         # Construct local patches 9x9 = 81
-        patch_mask = torch.zeros(
-            [int(2 * self.local_patch_radius + 1), int(2 * self.local_patch_radius + 1)], device=device
-        )
+        patch_mask = zeros([int(2 * self.local_patch_radius + 1), int(2 * self.local_patch_radius + 1)], device=device)
         patch_center = tensor([[self.local_patch_radius, self.local_patch_radius]], device=device, dtype=torch.float32)
-        H_patch_points, W_patch_points = torch.where(patch_mask >= 0)
-        patch_points = torch.cat([H_patch_points[..., None], W_patch_points[..., None]], dim=-1)
+        H_patch_points, W_patch_points = where(patch_mask >= 0)
+        patch_points = concatenate([H_patch_points[..., None], W_patch_points[..., None]], -1)
         # Fetch the circle region
         patch_center_dist = torch.sqrt(torch.sum((patch_points - patch_center) ** 2, dim=-1))
         patch_points = patch_points[patch_center_dist <= self.local_patch_radius, :]
@@ -538,7 +532,7 @@ class LineSegmentDetectionModule:
         # Get all points => num_points_center x num_patch_points x 2
         points_H = torch.clamp(patch_points_shifted[:, :, :, 0], min=0, max=H - 1).to(torch.long)
         points_W = torch.clamp(patch_points_shifted[:, :, :, 1], min=0, max=W - 1).to(torch.long)
-        points = torch.cat([points_H[..., None], points_W[..., None]], dim=-1)
+        points = concatenate([points_H[..., None], points_W[..., None]], -1)
 
         # Sample the feature (N x 64 x 81)
         sampled_feat = heatmap[points[:, :, :, 0], points[:, :, :, 1]]
@@ -554,20 +548,20 @@ class LineSegmentDetectionModule:
 
 def line_map_to_segments(junctions: Tensor, line_map: Tensor) -> Tensor:
     """Convert a junction connectivity map to a Nx2x2 tensor of segments."""
-    junc_loc1, junc_loc2 = torch.where(torch.triu(line_map))
-    segments = torch.stack([junctions[junc_loc1], junctions[junc_loc2]], dim=1)
+    junc_loc1, junc_loc2 = where(torch.triu(line_map))
+    segments = stack([junctions[junc_loc1], junctions[junc_loc2]], 1)
     return segments
 
 
 def prob_to_junctions(prob: Tensor, dist: float, prob_thresh: float = 0.01, top_k: int = 0) -> Tensor:
     """Extract junctions from a probability map, apply NMS, and extract the top k candidates."""
     # Extract the junctions
-    junctions = torch.stack(torch.where(prob >= prob_thresh), dim=-1).float()
+    junctions = stack(where(prob >= prob_thresh), -1).float()
     if len(junctions) == 0:
         return junctions
 
     # Perform NMS
-    boxes = torch.cat([junctions - dist / 2, junctions + dist / 2], dim=1)
+    boxes = concatenate([junctions - dist / 2, junctions + dist / 2], 1)
     scores = prob[prob >= prob_thresh]
     remainings = nms(boxes, scores, 0.001)
     junctions = junctions[remainings]

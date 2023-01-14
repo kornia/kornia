@@ -1,21 +1,16 @@
 # kornia.geometry.line module inspired by Eigen::geometry::ParametrizedLine
 # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/ParametrizedLine.h
-from typing import Optional, Union
+from typing import Optional, Tuple, Union
 
 import torch
 
-from kornia.core import Module, Parameter, Tensor, normalize
-from kornia.geometry.linalg import squared_norm
+from kornia.core import Module, Parameter, Tensor, normalize, where
+from kornia.geometry.linalg import batched_dot_product, squared_norm
+from kornia.geometry.plane import Hyperplane
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.utils.helpers import _torch_svd_cast
 
 __all__ = ["ParametrizedLine", "fit_line"]
-
-
-# TODO: implement me: https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h
-class Hyperplane:
-    """Not implemented yet: https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h."""
-
-    pass
 
 
 class ParametrizedLine(Module):
@@ -86,10 +81,6 @@ class ParametrizedLine(Module):
         """
         return ParametrizedLine(p0, normalize((p1 - p0), p=2, dim=-1))
 
-    @classmethod
-    def from_hyperplane(cls, plane: Hyperplane) -> "ParametrizedLine":
-        raise NotImplementedError(f"Plane not implemented yet {plane}.")
-
     def point_at(self, t: Union[float, Tensor]) -> Tensor:
         """The point at :math:`t` along this line.
 
@@ -139,18 +130,42 @@ class ParametrizedLine(Module):
     # - intersection_parameter
     # - intersection_point
 
+    # TODO: add tests, and possibly return a mask
+    def intersect(self, plane: Hyperplane, eps: float = 1e-6) -> Tuple[Tensor, Tensor]:
+        """Return the intersection point between the line and a given plane.
+
+        Args:
+            plane: the plane to compute the intersection point.
+
+        Return:
+            - the lambda value used to compute the look at point.
+            - the intersected point.
+        """
+        dot_prod = batched_dot_product(plane.normal.data, self.direction.data)
+        dot_prod_mask = dot_prod.abs() >= eps
+
+        # TODO: add check for dot product
+        res_lambda = where(
+            dot_prod_mask,
+            -(plane.offset + batched_dot_product(plane.normal.data, self.origin.data)) / dot_prod,
+            torch.empty_like(dot_prod),
+        )
+
+        res_point = self.point_at(res_lambda)
+        return res_lambda, res_point
+
 
 def fit_line(points: Tensor, weights: Optional[Tensor] = None) -> ParametrizedLine:
     """Fit a line from a set of points.
 
     Args:
         points: tensor containing a batch of sets of n-dimensional points. The  expected
-            shape of the tensor is :math:`(B,N,D)`.
+            shape of the tensor is :math:`(B, N, D)`.
         weights: weights to use to solve the equations system. The  expected
-            shape of the tensor is :math:`(B,N)`.
+            shape of the tensor is :math:`(B, N)`.
 
     Return:
-        A tensor containing the direction of the fited line of shape :math:`(B,D)`.
+        A tensor containing the direction of the fited line of shape :math:`(B, D)`.
 
     Example:
         >>> points = torch.rand(2, 10, 3)
@@ -167,14 +182,15 @@ def fit_line(points: Tensor, weights: Optional[Tensor] = None) -> ParametrizedLi
 
     if weights is not None:
         KORNIA_CHECK_IS_TENSOR(weights, "weights must be a tensor")
-        KORNIA_CHECK_SHAPE(weights, ["B"])
+        KORNIA_CHECK_SHAPE(weights, ["B", "N"])
         KORNIA_CHECK(points.shape[0] == weights.shape[0])
         A = A.transpose(-2, -1) @ torch.diag_embed(weights) @ A
     else:
         A = A.transpose(-2, -1) @ A
 
     # NOTE: not optimal for 2d points, but for now works for other dimensions
-    _, _, V = torch.linalg.svd(A)
+    _, _, V = _torch_svd_cast(A)
+    V = V.transpose(-2, -1)
 
     # the first left eigenvector is the direction on the fited line
     direction = V[..., 0, :]  # BxD

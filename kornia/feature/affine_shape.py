@@ -1,6 +1,6 @@
 import math
 import warnings
-from typing import Callable, Dict, Optional
+from typing import Dict, Optional
 
 import torch
 import torch.nn as nn
@@ -8,6 +8,7 @@ import torch.nn as nn
 from kornia.filters.kernels import get_gaussian_kernel2d
 from kornia.filters.sobel import SpatialGradient
 from kornia.testing import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
+from kornia.utils.helpers import map_location_to_cpu
 
 from .laf import (
     ellipse_to_laf,
@@ -189,8 +190,7 @@ class LAFAffNetShapeEstimator(nn.Module):
         self.patch_size = 32
         # use torch.hub to load pretrained model
         if pretrained:
-            storage_fcn: Callable = lambda storage, loc: storage
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls['affnet'], map_location=storage_fcn)
+            pretrained_dict = torch.hub.load_state_dict_from_url(urls['affnet'], map_location=map_location_to_cpu)
             self.load_state_dict(pretrained_dict['state_dict'], strict=False)
         self.preserve_orientation = preserve_orientation
         if preserve_orientation:

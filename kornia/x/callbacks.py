@@ -84,7 +84,7 @@ class ModelCheckpoint:
         )
     """
 
-    def __init__(self, filepath: str, monitor: str, filename_fcn: Optional[Callable] = None) -> None:
+    def __init__(self, filepath: str, monitor: str, filename_fcn: Optional[Callable[..., str]] = None) -> None:
         self.filepath = filepath
         self.monitor = monitor
         self._filename_fcn = filename_fcn or default_filename_fcn

@@ -1,10 +1,11 @@
 import torch
-import torch.nn as nn
+
+from kornia.core import Module, Tensor
 
 __all__ = ["Vflip", "Hflip", "Rot180", "rot180", "hflip", "vflip"]
 
 
-class Vflip(nn.Module):
+class Vflip(Module):
     r"""Vertically flip a tensor image or a batch of tensor images.
 
     Input must be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
@@ -28,14 +29,14 @@ class Vflip(nn.Module):
                   [0., 0., 0.]]]])
     """
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
+    def forward(self, input: Tensor) -> Tensor:
         return vflip(input)
 
     def __repr__(self):
         return self.__class__.__name__
 
 
-class Hflip(nn.Module):
+class Hflip(Module):
     r"""Horizontally flip a tensor image or a batch of tensor images.
 
     Input must be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
@@ -59,14 +60,14 @@ class Hflip(nn.Module):
                   [1., 1., 0.]]]])
     """
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
+    def forward(self, input: Tensor) -> Tensor:
         return hflip(input)
 
     def __repr__(self):
         return self.__class__.__name__
 
 
-class Rot180(nn.Module):
+class Rot180(Module):
     r"""Rotate a tensor image or a batch of tensor images 180 degrees.
 
     Input must be a tensor of shape (C, H, W) or a batch of tensors :math:`(*, C, H, W)`.
@@ -87,14 +88,14 @@ class Rot180(nn.Module):
                   [0., 0., 0.]]]])
     """
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
+    def forward(self, input: Tensor) -> Tensor:
         return rot180(input)
 
     def __repr__(self):
         return self.__class__.__name__
 
 
-def rot180(input: torch.Tensor) -> torch.Tensor:
+def rot180(input: Tensor) -> Tensor:
     r"""Rotate a tensor image or a batch of tensor images 180 degrees.
 
     .. image:: _static/img/rot180.png
@@ -111,7 +112,7 @@ def rot180(input: torch.Tensor) -> torch.Tensor:
     return torch.flip(input, [-2, -1])
 
 
-def hflip(input: torch.Tensor) -> torch.Tensor:
+def hflip(input: Tensor) -> Tensor:
     r"""Horizontally flip a tensor image or a batch of tensor images.
 
     .. image:: _static/img/hflip.png
@@ -128,7 +129,7 @@ def hflip(input: torch.Tensor) -> torch.Tensor:
     return input[..., torch.arange(w - 1, -1, -1, device=input.device)]
 
 
-def vflip(input: torch.Tensor) -> torch.Tensor:
+def vflip(input: Tensor) -> Tensor:
     r"""Vertically flip a tensor image or a batch of tensor images.
 
     .. image:: _static/img/vflip.png

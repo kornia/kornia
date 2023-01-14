@@ -1,9 +1,8 @@
-from typing import Any, Dict, List, Optional, Union, cast
-
-from torch import Tensor, stack
+from typing import Any, Dict, List, Optional, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core import Tensor, stack
 
 _planckian_coeffs = {
     'blackbody': Tensor(
@@ -170,18 +169,24 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         else:
             self.register_buffer('pl', _planckian_coeffs_ratio[mode])
 
+        if not isinstance(self.pl, Tensor):
+            raise TypeError(f'Expected the `pl` property be a Tensor. Gotcha {type(self.pl)}')
+
         # the range of the sampling parameters
         _param_min: float = 0.0
-        _param_max: float = float(cast(Tensor, self.pl).shape[0])
+        _param_max: float = float(self.pl.shape[0])
 
-        self._param_generator = cast(rg.PlanckianJitterGenerator, rg.PlanckianJitterGenerator([_param_min, _param_max]))
+        self._param_generator = rg.PlanckianJitterGenerator([_param_min, _param_max])
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
 
         list_idx = params['idx'].tolist()
-        coeffs = cast(Tensor, self.pl)[list_idx]
+
+        if not isinstance(self.pl, Tensor):
+            raise TypeError(f'Expected the `pl` property be a Tensor. Gotcha {type(self.pl)}')
+        coeffs = self.pl[list_idx]
 
         r_w = coeffs[:, 0][..., None, None]
         b_w = coeffs[:, 1][..., None, None]

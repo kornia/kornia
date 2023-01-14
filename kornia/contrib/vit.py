@@ -41,7 +41,7 @@ class MultiHeadAttention(nn.Module):
         super().__init__()
         self.emb_size = emb_size
         self.num_heads = num_heads
-        head_size = emb_size // num_heads  # fom timm
+        head_size = emb_size // num_heads  # from timm
         self.scale = head_size**-0.5  # from timm
 
         # fuse the queries, keys and values in one matrix

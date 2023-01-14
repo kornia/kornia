@@ -26,13 +26,13 @@ Create the dataloaders and transforms:
 
 .. literalinclude:: ../../../examples/train/semantic_segmentation/main.py
    :language: python
-   :lines: 20-46
+   :lines: 17-50
 
 Define your model, losses, optimizers and schedulers:
 
 .. literalinclude:: ../../../examples/train/semantic_segmentation/main.py
    :language: python
-   :lines: 48-60
+   :lines: 52-60
 
 Create your preprocessing and augmentations pipeline:
 

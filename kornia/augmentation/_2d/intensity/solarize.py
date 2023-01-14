@@ -1,9 +1,8 @@
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
-
-from torch import Tensor
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core import Tensor
 from kornia.enhance import solarize
 
 
@@ -59,11 +58,8 @@ class RandomSolarize(IntensityAugmentationBase2D):
         return_transform: Optional[bool] = None,
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._param_generator = cast(
-            rg.PlainUniformGenerator,
-            rg.PlainUniformGenerator(
-                (thresholds, "thresholds", 0.5, (0.0, 1.0)), (additions, "additions", 0.0, (-0.5, 0.5))
-            ),
+        self._param_generator = rg.PlainUniformGenerator(
+            (thresholds, "thresholds", 0.5, (0.0, 1.0)), (additions, "additions", 0.0, (-0.5, 0.5))
         )
 
     def apply_transform(

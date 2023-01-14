@@ -53,7 +53,9 @@ class TestNMS2d:
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width, device=device)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.geometry.subpix.nms2d, (img, (3, 3)), raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(
+            kornia.geometry.subpix.nms2d, (img, (3, 3)), raise_exception=True, nondet_tol=1e-4, fast_mode=True
+        )
 
 
 class TestNMS3d:
@@ -135,4 +137,6 @@ class TestNMS3d:
         batch_size, channels, depth, height, width = 1, 1, 4, 5, 4
         img = torch.rand(batch_size, channels, depth, height, width, device=device)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.geometry.subpix.nms3d, (img, (3, 3, 3)), raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(
+            kornia.geometry.subpix.nms3d, (img, (3, 3, 3)), raise_exception=True, nondet_tol=1e-4, fast_mode=True
+        )

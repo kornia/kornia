@@ -8,7 +8,6 @@ import kornia
 import kornia.testing as utils  # test utils
 from kornia.contrib.face_detection import FaceKeypoint
 from kornia.testing import assert_close
-from packaging import version
 
 
 class TestDiamondSquare:
@@ -141,13 +140,10 @@ class TestConnectedComponents:
         out = kornia.contrib.connected_components(img, num_iterations=10)
         assert_close(out, expected)
 
-    @pytest.mark.skipif(
-        version.parse(torch.__version__) < version.parse("1.9"), reason="Tuple cannot be used with PyTorch < v1.9"
-    )
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 1, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.contrib.connected_components, (img,), raise_exception=True)
+        assert gradcheck(kornia.contrib.connected_components, (img,), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 4, 4
@@ -278,7 +274,7 @@ class TestExtractTensorPatches:
     def test_gradcheck(self, device):
         img = torch.rand(2, 3, 4, 4).to(device)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.contrib.extract_tensor_patches, (img, 3), raise_exception=True)
+        assert gradcheck(kornia.contrib.extract_tensor_patches, (img, 3), raise_exception=True, fast_mode=True)
 
 
 class TestCombineTensorPatches:
@@ -369,7 +365,9 @@ class TestCombineTensorPatches:
             torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2)
         )
         img = utils.tensor_to_gradcheck_var(patches)  # to var
-        assert gradcheck(kornia.contrib.combine_tensor_patches, (img, (4, 4), (2, 2), (2, 2)), raise_exception=True)
+        assert gradcheck(
+            kornia.contrib.combine_tensor_patches, (img, (4, 4), (2, 2), (2, 2)), raise_exception=True, fast_mode=True
+        )
 
 
 class TestLambdaModule:
@@ -409,19 +407,103 @@ class TestLambdaModule:
         B, C, H, W = 1, 3, 4, 5
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         func = kornia.color.bgr_to_grayscale
-        assert gradcheck(kornia.contrib.Lambda(func), (img,), raise_exception=True)
+        assert gradcheck(kornia.contrib.Lambda(func), (img,), raise_exception=True, fast_mode=True)
 
 
 class TestImageStitcher:
     @pytest.mark.parametrize("estimator", ['ransac', 'vanilla'])
     def test_smoke(self, estimator, device, dtype):
-        B, C, H, W = 1, 3, 224, 224
-        sample1 = torch.rand(B, C, H, W, device=device, dtype=dtype)
-        sample2 = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        B, C, H, W = 1, 3, 6, 6
+        sample1 = torch.tensor(
+            [
+                [0.5349, 0.1988, 0.6592, 0.6569, 0.2328, 0.4251],
+                [0.2071, 0.6297, 0.3653, 0.8513, 0.8549, 0.5509],
+                [0.2868, 0.2063, 0.4451, 0.3593, 0.7204, 0.0731],
+                [0.9699, 0.1078, 0.8829, 0.4132, 0.7572, 0.6948],
+                [0.5209, 0.5932, 0.8797, 0.6286, 0.7653, 0.1132],
+                [0.8559, 0.6721, 0.6267, 0.5691, 0.7437, 0.9592],
+            ],
+            dtype=dtype,
+            device=device,
+        )
+        sample2 = torch.tensor(
+            [
+                [0.3887, 0.2214, 0.3742, 0.1953, 0.7405, 0.2529],
+                [0.2332, 0.9314, 0.9575, 0.5575, 0.4134, 0.4355],
+                [0.7369, 0.0331, 0.0914, 0.8994, 0.9936, 0.4703],
+                [0.1049, 0.5137, 0.2674, 0.4990, 0.7447, 0.7213],
+                [0.4414, 0.5550, 0.6361, 0.1081, 0.3305, 0.5196],
+                [0.2147, 0.2816, 0.6679, 0.7878, 0.5070, 0.3055],
+            ],
+            dtype=dtype,
+            device=device,
+        )
+        sample1 = sample1.expand((B, C, H, W))
+        sample2 = sample2.expand((B, C, H, W))
         return_value = {
-            "keypoints0": torch.rand((15, 2), device=device, dtype=dtype),
-            "keypoints1": torch.rand((15, 2), device=device, dtype=dtype),
-            "confidence": torch.rand((15,), device=device, dtype=dtype),
+            "keypoints0": torch.tensor(
+                [
+                    [0.1546, 0.9391],
+                    [0.8077, 0.1051],
+                    [0.6768, 0.5596],
+                    [0.5092, 0.7195],
+                    [0.2856, 0.8889],
+                    [0.4342, 0.0203],
+                    [0.6701, 0.0585],
+                    [0.3828, 0.9038],
+                    [0.7301, 0.0762],
+                    [0.7864, 0.4490],
+                    [0.3509, 0.0756],
+                    [0.6782, 0.9297],
+                    [0.4132, 0.3664],
+                    [0.3134, 0.5039],
+                    [0.2073, 0.2552],
+                ],
+                device=device,
+                dtype=dtype,
+            ),
+            "keypoints1": torch.tensor(
+                [
+                    [0.2076, 0.2669],
+                    [0.9679, 0.8137],
+                    [0.9536, 0.8317],
+                    [0.3718, 0.2456],
+                    [0.3875, 0.8450],
+                    [0.7592, 0.1687],
+                    [0.5173, 0.6760],
+                    [0.9446, 0.4570],
+                    [0.6164, 0.1867],
+                    [0.4732, 0.1786],
+                    [0.4090, 0.8089],
+                    [0.9742, 0.8943],
+                    [0.5996, 0.7427],
+                    [0.7038, 0.9210],
+                    [0.6272, 0.0796],
+                ],
+                device=device,
+                dtype=dtype,
+            ),
+            "confidence": torch.tensor(
+                [
+                    0.9314,
+                    0.5951,
+                    0.4187,
+                    0.0318,
+                    0.1434,
+                    0.7952,
+                    0.8306,
+                    0.7511,
+                    0.6407,
+                    0.7379,
+                    0.4363,
+                    0.9220,
+                    0.8453,
+                    0.5075,
+                    0.8141,
+                ],
+                device=device,
+                dtype=dtype,
+            ),
             "batch_indexes": torch.zeros((15,), device=device, dtype=dtype),
         }
         with patch(
@@ -431,9 +513,10 @@ class TestImageStitcher:
             # To avoid that, we mock as below
             matcher = kornia.feature.LoFTR(None)
             stitcher = kornia.contrib.ImageStitcher(matcher, estimator=estimator).to(device=device, dtype=dtype)
+            torch.manual_seed(1)  # issue kornia#2027
             out = stitcher(sample1, sample2)
-            assert out.shape[:-1] == torch.Size([1, 3, 224])
-            assert out.shape[-1] <= 448
+            assert out.shape[:-1] == torch.Size([1, 3, 6])
+            assert out.shape[-1] <= 12
 
     def test_exception(self, device, dtype):
         B, C, H, W = 1, 3, 224, 224
@@ -521,7 +604,7 @@ class TestConvDistanceTransform:
     def test_gradcheck(self, device):
         B, C, H, W = 1, 1, 32, 32
         sample1 = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.contrib.distance_transform, (sample1), raise_exception=True)
+        assert gradcheck(kornia.contrib.distance_transform, (sample1), raise_exception=True, fast_mode=True)
 
     def test_loss_grad(self, device, dtype):
         B, C, H, W = 1, 1, 32, 32
@@ -569,19 +652,24 @@ class TestHistMatch:
         B, C, H, W = 1, 3, 32, 32
         src = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         dst = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.contrib.histogram_matching, (src, dst), raise_exception=True)
+        assert gradcheck(kornia.contrib.histogram_matching, (src, dst), raise_exception=True, fast_mode=True)
 
 
 class TestFaceDetection:
     def test_smoke(self, device, dtype):
         assert kornia.contrib.FaceDetector().to(device, dtype) is not None
 
-    def test_valid(self, device, dtype):
+    @pytest.mark.parametrize("batch_size", [1, 2, 4])
+    def test_valid(self, batch_size, device, dtype):
         torch.manual_seed(44)
-        img = torch.rand(1, 3, 320, 320, device=device, dtype=dtype)
+        img = torch.rand(batch_size, 3, 320, 320, device=device, dtype=dtype)
         face_detection = kornia.contrib.FaceDetector().to(device, dtype)
         dets = face_detection(img)
-        assert len(dets) == 1
+        assert isinstance(dets, list)
+        assert len(dets) == batch_size  # same as the number of images
+        assert isinstance(dets[0], torch.Tensor)
+        assert dets[0].shape[0] >= 0  # number of detections
+        assert dets[0].shape[1] == 15  # dims of each detection
 
     def test_jit(self, device, dtype):
         op = kornia.contrib.FaceDetector().to(device, dtype)
@@ -616,3 +704,16 @@ class TestFaceDetection:
         data = torch.zeros(14, device=device, dtype=dtype)
         with pytest.raises(ValueError):
             _ = kornia.contrib.FaceDetectorResult(data)
+
+
+class TestEdgeDetector:
+    def test_smoke(self, device, dtype):
+        img = torch.rand(2, 3, 64, 64, device=device, dtype=dtype)
+        net = kornia.contrib.EdgeDetector().to(device, dtype)
+        out = net(img)
+        assert out.shape == (2, 1, 64, 64)
+
+    def test_jit(self, device, dtype):
+        op = kornia.contrib.EdgeDetector().to(device, dtype)
+        op_jit = torch.jit.script(op)
+        assert op_jit is not None

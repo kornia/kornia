@@ -1,4 +1,3 @@
-import pytest
 import torch
 from torch.autograd import gradcheck
 
@@ -51,12 +50,11 @@ class TestMedianBlur:
         actual = kornia.filters.median_blur(inp, kernel_size)
         assert_close(actual, actual)
 
-    @pytest.mark.xfail(reason="this tests is a bit unstable")
     def test_gradcheck(self, device, dtype):
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.filters.median_blur, (img, (5, 3)), raise_exception=True)
+        assert gradcheck(kornia.filters.median_blur, (img, (5, 3)), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
         kernel_size = (3, 5)

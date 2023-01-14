@@ -1,38 +1,49 @@
 import math
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch import Tensor
+from typing_extensions import TypedDict
 
+from kornia.core import Module, Tensor, concatenate, tensor, where, zeros
 from kornia.filters import SpatialGradient
 from kornia.geometry.subpix import NonMaximaSuppression2d
 from kornia.geometry.transform import pyrdown
+from kornia.utils.helpers import map_location_to_cpu
 
 from .laf import laf_from_center_scale_ori
 from .orientation import PassLAF
 
-keynet_config = {
-    'KeyNet_default_config': {
-        # Key.Net Model
-        'num_filters': 8,
-        'num_levels': 3,
-        'kernel_size': 5,
-        # Extraction Parameters
-        'nms_size': 15,
-        'pyramid_levels': 4,
-        'up_levels': 1,
-        'scale_factor_levels': math.sqrt(2),
-        's_mult': 22,
-    }
+
+class KeyNet_conf(TypedDict):
+    num_filters: int
+    num_levels: int
+    kernel_size: int
+    nms_size: int
+    pyramid_levels: int
+    up_levels: int
+    scale_factor_levels: float
+    s_mult: float
+
+
+keynet_default_config: KeyNet_conf = {
+    # Key.Net Model
+    'num_filters': 8,
+    'num_levels': 3,
+    'kernel_size': 5,
+    # Extraction Parameters
+    'nms_size': 15,
+    'pyramid_levels': 4,
+    'up_levels': 1,
+    'scale_factor_levels': math.sqrt(2),
+    's_mult': 22.0,
 }
 
-urls: Dict[str, str] = {}
-urls["keynet"] = "https://github.com/axelBarroso/Key.Net-Pytorch/raw/main/model/weights/keynet_pytorch.pth"
+KeyNet_URL = "https://github.com/axelBarroso/Key.Net-Pytorch/raw/main/model/weights/keynet_pytorch.pth"
 
 
-class _FeatureExtractor(nn.Module):
+class _FeatureExtractor(Module):
     """Helper class for KeyNet.
 
     It loads both, the handcrafted and learnable blocks
@@ -50,7 +61,7 @@ class _FeatureExtractor(nn.Module):
         return x_lb
 
 
-class _HandcraftedBlock(nn.Module):
+class _HandcraftedBlock(Module):
     """Helper class for KeyNet, it defines the handcrafted filters within the Key.Net handcrafted block."""
 
     def __init__(self):
@@ -58,7 +69,6 @@ class _HandcraftedBlock(nn.Module):
         self.spatial_gradient = SpatialGradient('sobel', 1)
 
     def forward(self, x: Tensor) -> Tensor:
-
         sobel = self.spatial_gradient(x)
         dx, dy = sobel[:, :, 0, :, :], sobel[:, :, 1, :, :]
 
@@ -68,7 +78,7 @@ class _HandcraftedBlock(nn.Module):
         sobel_dy = self.spatial_gradient(dy)
         dyy = sobel_dy[:, :, 1, :, :]
 
-        hc_feats = torch.cat([dx, dy, dx**2.0, dy**2.0, dx * dy, dxy, dxy**2.0, dxx, dyy, dxx * dyy], dim=1)
+        hc_feats = concatenate([dx, dy, dx**2.0, dy**2.0, dx * dy, dxy, dxy**2.0, dxx, dyy, dxx * dyy], 1)
 
         return hc_feats
 
@@ -110,7 +120,7 @@ def _KeyNetConvBlock(
     )
 
 
-class KeyNet(nn.Module):
+class KeyNet(Module):
     """Key.Net model definition -- local feature detector (response function). This is based on the original code
     from paper "Key.Net: Keypoint Detection by Handcrafted and Learned CNN Filters". See :cite:`KeyNet2019` for
     more details.
@@ -127,13 +137,13 @@ class KeyNet(nn.Module):
         - Output: :math:`(B, 1, H, W)`
     """
 
-    def __init__(self, pretrained: bool = False, keynet_conf: Dict = keynet_config['KeyNet_default_config']):
+    def __init__(self, pretrained: bool = False, keynet_conf: KeyNet_conf = keynet_default_config):
         super().__init__()
 
         num_filters = keynet_conf['num_filters']
-        self.num_levels: int = keynet_conf['num_levels']
-        kernel_size: int = keynet_conf['kernel_size']
-        padding: int = kernel_size // 2
+        self.num_levels = keynet_conf['num_levels']
+        kernel_size = keynet_conf['kernel_size']
+        padding = kernel_size // 2
 
         self.feature_extractor = _FeatureExtractor()
         self.last_conv = nn.Sequential(
@@ -144,8 +154,7 @@ class KeyNet(nn.Module):
         )
         # use torch.hub to load pretrained model
         if pretrained:
-            storage_fcn: Callable = lambda storage, loc: storage
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls['keynet'], map_location=storage_fcn)
+            pretrained_dict = torch.hub.load_state_dict_from_url(KeyNet_URL, map_location=map_location_to_cpu)
             self.load_state_dict(pretrained_dict['state_dict'], strict=True)
         self.eval()
 
@@ -160,11 +169,11 @@ class KeyNet(nn.Module):
             feats_i = self.feature_extractor(x)
             feats_i = F.interpolate(feats_i, size=(shape_im[2], shape_im[3]), mode='bilinear')
             feats.append(feats_i)
-        scores = self.last_conv(torch.cat(feats, dim=1))
+        scores = self.last_conv(concatenate(feats, 1))
         return scores
 
 
-class KeyNetDetector(nn.Module):
+class KeyNetDetector(Module):
     """Multi-scale feature detector based on KeyNet.
 
     This is based on the original code from paper
@@ -185,22 +194,30 @@ class KeyNetDetector(nn.Module):
         self,
         pretrained: bool = False,
         num_features: int = 2048,
-        keynet_conf: Dict = keynet_config['KeyNet_default_config'],
-        ori_module: nn.Module = PassLAF(),
-        aff_module: nn.Module = PassLAF(),
+        keynet_conf: KeyNet_conf = keynet_default_config,
+        ori_module: Optional[Module] = None,
+        aff_module: Optional[Module] = None,
     ):
         super().__init__()
         self.model = KeyNet(pretrained, keynet_conf)
         # Load extraction configuration
-        self.num_pyramid_levels: int = keynet_conf['pyramid_levels']
-        self.num_upscale_levels: int = keynet_conf['up_levels']
-        self.scale_factor_levels: float = keynet_conf['scale_factor_levels']
-        self.mr_size: float = keynet_conf['s_mult']
-        self.nms_size: int = keynet_conf['nms_size']
+        self.num_pyramid_levels = keynet_conf['pyramid_levels']
+        self.num_upscale_levels = keynet_conf['up_levels']
+        self.scale_factor_levels = keynet_conf['scale_factor_levels']
+        self.mr_size = keynet_conf['s_mult']
+        self.nms_size = keynet_conf['nms_size']
         self.nms = NonMaximaSuppression2d((self.nms_size, self.nms_size))
         self.num_features = num_features
-        self.ori = ori_module
-        self.aff = aff_module
+
+        if ori_module is None:
+            self.ori: Module = PassLAF()
+        else:
+            self.ori = ori_module
+
+        if aff_module is None:
+            self.aff: Module = PassLAF()
+        else:
+            self.aff = aff_module
 
     def remove_borders(self, score_map, borders: int = 15):
         """It removes the borders of the image to avoid detections on the corners."""
@@ -219,20 +236,16 @@ class KeyNetDetector(nn.Module):
 
         scores_sorted, indices = torch.sort(scores, descending=True)
 
-        indices = indices[torch.where(scores_sorted > 0.0)]
+        indices = indices[where(scores_sorted > 0.0)]
         yx = yx[:, indices[:num_kp]].t()
         current_kp_num = len(yx)
-        xy_projected = yx.view(1, current_kp_num, 2).flip(2) * torch.tensor(factor, device=device, dtype=dtype)
+        xy_projected = yx.view(1, current_kp_num, 2).flip(2) * tensor(factor, device=device, dtype=dtype)
         scale_factor = 0.5 * (factor[0] + factor[1])
         scale = scale_factor * self.mr_size * torch.ones(1, current_kp_num, 1, 1, device=device, dtype=dtype)
-        lafs = laf_from_center_scale_ori(
-            xy_projected, scale, torch.zeros(1, current_kp_num, 1, device=device, dtype=dtype)
-        )
+        lafs = laf_from_center_scale_ori(xy_projected, scale, zeros(1, current_kp_num, 1, device=device, dtype=dtype))
         return scores_sorted[:num_kp], lafs
 
-    def detect(  # type: ignore
-        self, img: Tensor, mask: Optional[Tensor] = None  # type: ignore
-    ) -> Tuple[Tensor, Tensor]:
+    def detect(self, img: Tensor, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
         # Compute points per level
         num_features_per_level: List[float] = []
         tmp = 0.0
@@ -283,16 +296,14 @@ class KeyNetDetector(nn.Module):
             cur_scores, cur_lafs = self.detect_features_on_single_level(cur_img, num_points_level, factor)
             all_responses.append(cur_scores.view(1, -1))
             all_lafs.append(cur_lafs)
-        responses: Tensor = torch.cat(all_responses, dim=1)
-        lafs: Tensor = torch.cat(all_lafs, dim=1)
+        responses: Tensor = concatenate(all_responses, 1)
+        lafs: Tensor = concatenate(all_lafs, 1)
         if lafs.shape[1] > self.num_features:
             responses, idxs = torch.topk(responses, k=self.num_features, dim=1)
             lafs = torch.gather(lafs, 1, idxs.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, 2, 3))
         return responses, lafs
 
-    def forward(  # type: ignore
-        self, img: Tensor, mask: Optional[Tensor] = None  # type: ignore
-    ) -> Tuple[Tensor, Tensor]:
+    def forward(self, img: Tensor, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
         """Three stage local feature detection. First the location and scale of interest points are determined by
         detect function. Then affine shape and orientation.
 

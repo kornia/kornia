@@ -357,6 +357,18 @@ class TestAugmentationSequential:
         out = aug(input, input)
         assert torch.all(out[1][out[0] == fill_value] == 0.0)
 
+    def test_resize(self, device, dtype):
+        size = 50
+        input = torch.randn(3, 3, 100, 100, device=device, dtype=dtype)
+        mask = torch.randn(3, 1, 100, 100, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.Resize((size, size), p=1.0), data_keys=["input", "mask"])
+
+        reproducibility_test((input, mask), aug)
+
+        out = aug(input, mask)
+        assert out[0].shape == (3, 3, size, size)
+        assert out[1].shape == (3, 1, size, size)
+
     def test_random_crops(self, device, dtype):
         torch.manual_seed(233)
         input = torch.randn(3, 3, 3, 3, device=device, dtype=dtype)
@@ -414,6 +426,27 @@ class TestAugmentationSequential:
         assert out_inv[3].shape == points.shape
         assert_close(out_inv[3], points, atol=1e-4, rtol=1e-4)
 
+    def test_bbox(self, device, dtype):
+        img = torch.rand((3, 3, 10, 10), device=device, dtype=dtype)
+        bbox = [
+            torch.tensor([[1, 5, 2, 7], [0, 3, 9, 9]], device=device, dtype=dtype),
+            torch.tensor([[1, 5, 2, 7], [0, 3, 9, 9], [0, 5, 8, 7]], device=device, dtype=dtype),
+            torch.empty((0, 4), device=device, dtype=dtype),
+        ]
+
+        inputs = [img, bbox]
+
+        aug = K.AugmentationSequential(K.Resize((30, 30)), data_keys=['input', 'bbox_xyxy'])
+
+        transformed = aug(*inputs)
+
+        assert len(transformed) == len(inputs)
+        bboxes_transformed = transformed[-1]
+        assert len(bboxes_transformed) == len(bbox)
+        assert len(bboxes_transformed[0]) == 2
+        assert len(bboxes_transformed[1]) == 3
+        assert len(bboxes_transformed[2]) == 0
+
     @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 10, True, False])
     def test_forward_and_inverse(self, random_apply, device, dtype):
         inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
@@ -440,12 +473,14 @@ class TestAugmentationSequential:
         assert out[1].shape == mask.shape
         assert out[2].shape == bbox.shape
         assert out[3].shape == keypoints.shape
+        assert set(out[1].unique().tolist()).issubset(set(mask.unique().tolist()))
 
         out_inv = aug.inverse(*out)
         assert out_inv[0].shape == inp.shape
         assert out_inv[1].shape == mask.shape
         assert out_inv[2].shape == bbox.shape
         assert out_inv[3].shape == keypoints.shape
+        assert set(out_inv[1].unique().tolist()).issubset(set(mask.unique().tolist()))
 
         if random_apply is False:
             reproducibility_test((inp, mask, bbox, keypoints), aug)
@@ -665,3 +700,76 @@ class TestPatchSequential:
             grid_size=(2, 2),
         )
         assert seq.is_intensity_only()
+
+
+class TestDispatcher:
+    def test_many_to_many(self, device, dtype):
+        input_1 = torch.randn(2, 3, 5, 6, device=device, dtype=dtype)
+        input_2 = torch.randn(2, 3, 5, 6, device=device, dtype=dtype)
+        mask_1 = torch.ones(2, 1, 5, 6, device=device, dtype=dtype)
+        mask_2 = torch.ones(2, 1, 5, 6, device=device, dtype=dtype)
+        aug_list = K.ManyToManyAugmentationDispather(
+            K.AugmentationSequential(
+                kornia.augmentation.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
+                kornia.augmentation.RandomAffine(360, p=1.0),
+                data_keys=["input", "mask"],
+            ),
+            K.AugmentationSequential(
+                kornia.augmentation.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
+                kornia.augmentation.RandomAffine(360, p=1.0),
+                data_keys=["input", "mask"],
+            ),
+        )
+        output = aug_list((input_1, mask_1), (input_2, mask_2))
+
+        assert output[0][0].shape == input_1.shape
+        assert output[1][0].shape == input_2.shape
+        assert output[0][1].shape == mask_1.shape
+        assert output[1][1].shape == mask_2.shape
+
+    @pytest.mark.parametrize('strict', [True, False])
+    def test_many_to_one(self, strict, device, dtype):
+        input = torch.randn(2, 3, 5, 6, device=device, dtype=dtype)
+        mask = torch.ones(2, 1, 5, 6, device=device, dtype=dtype)
+        aug_list = K.ManyToOneAugmentationDispather(
+            K.AugmentationSequential(
+                kornia.augmentation.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
+                kornia.augmentation.RandomAffine(360, p=1.0),
+                data_keys=["input", "mask"],
+            ),
+            K.AugmentationSequential(
+                kornia.augmentation.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
+                kornia.augmentation.RandomAffine(360, p=1.0),
+                data_keys=["input", "mask"],
+            ),
+            strict=strict,
+        )
+        output = aug_list(input, mask)
+
+        assert output[0][0].shape == input.shape
+        assert output[1][0].shape == input.shape
+        assert output[0][1].shape == mask.shape
+        assert output[1][1].shape == mask.shape
+
+    @pytest.mark.parametrize('strict', [True, False])
+    def test_many_to_one_strict_mode(self, strict):
+        def _init_many_to_one(strict):
+            K.ManyToOneAugmentationDispather(
+                K.AugmentationSequential(
+                    kornia.augmentation.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
+                    kornia.augmentation.RandomAffine(360, p=1.0),
+                    data_keys=["input"],
+                ),
+                K.AugmentationSequential(
+                    kornia.augmentation.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
+                    kornia.augmentation.RandomAffine(360, p=1.0),
+                    data_keys=["input", "mask"],
+                ),
+                strict=strict,
+            )
+
+        if strict:
+            with pytest.raises(RuntimeError):
+                _init_many_to_one(strict)  # fails
+        else:
+            _init_many_to_one(strict)  # passes

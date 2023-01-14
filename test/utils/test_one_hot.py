@@ -5,16 +5,16 @@ from kornia.testing import assert_close
 
 
 class TestOneHot:
-    def test_smoke(self):
+    def test_smoke(self, device, dtype):
         num_classes = 4
-        labels = torch.zeros(2, 2, 1, dtype=torch.int64)
+        labels = torch.zeros(2, 2, 1, dtype=torch.int64, device=device)
         labels[0, 0, 0] = 0
         labels[0, 1, 0] = 1
         labels[1, 0, 0] = 2
         labels[1, 1, 0] = 3
 
         # convert labels to one hot tensor
-        one_hot = kornia.utils.one_hot(labels, num_classes)
+        one_hot = kornia.utils.one_hot(labels, num_classes, device, dtype)
 
         assert_close(one_hot[0, labels[0, 0, 0], 0, 0].item(), 1.0)
         assert_close(one_hot[0, labels[0, 1, 0], 1, 0].item(), 1.0)

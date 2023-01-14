@@ -1,11 +1,11 @@
-from typing import Any, Dict, Optional, Tuple, Union, cast
+from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
-from torch import Tensor
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
+from kornia.core import Tensor
 from kornia.geometry.transform import crop_by_transform_mat, get_perspective_transform, resize
 from kornia.utils import eye_like
 
@@ -35,7 +35,7 @@ class Resize(GeometricAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=1.0, return_transform=return_transform, same_on_batch=True, p_batch=p, keepdim=keepdim)
-        self._param_generator = cast(rg.ResizeGenerator, rg.ResizeGenerator(resize_to=size, side=side))
+        self._param_generator = rg.ResizeGenerator(resize_to=size, side=side)
         self.flags = dict(
             size=size, side=side, resample=Resample.get(resample), align_corners=align_corners, antialias=antialias
         )
@@ -64,7 +64,9 @@ class Resize(GeometricAugmentationBase2D):
                 input[i : i + 1, :, y1:y2, x1:x2],
                 out_size,
                 interpolation=flags["resample"].name.lower(),
-                align_corners=flags["align_corners"],
+                align_corners=flags["align_corners"]
+                if flags["resample"] in [Resample.BILINEAR, Resample.BICUBIC]
+                else None,
                 antialias=flags["antialias"],
             )
         return out
@@ -76,10 +78,14 @@ class Resize(GeometricAugmentationBase2D):
         transform: Optional[Tensor] = None,
         size: Optional[Tuple[int, int]] = None,
     ) -> Tensor:
-        size = cast(Tuple[int, int], size)
-        transform = cast(Tensor, transform)
+        if not isinstance(size, tuple):
+            raise TypeError(f'Expected the size be a tuple. Gotcha {type(size)}')
+
+        if not isinstance(transform, Tensor):
+            raise TypeError(f'Expected the transform be a Tensor. Gotcha {type(transform)}')
+
         return crop_by_transform_mat(
-            input, transform[:, :2, :], size, flags["resample"], flags["padding_mode"], flags["align_corners"]
+            input, transform[:, :2, :], size, flags["resample"].name.lower(), "zeros", flags["align_corners"]
         )
 
 

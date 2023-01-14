@@ -1,11 +1,10 @@
 import warnings
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
-
-from torch import Tensor
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.constants import pi
+from kornia.core import Tensor
 from kornia.enhance import (
     adjust_brightness_accumulative,
     adjust_contrast_with_mean_subtraction,
@@ -61,6 +60,7 @@ class ColorJitter(IntensityAugmentationBase2D):
                   [0.9993, 0.9993, 0.9993]]]])
 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+
         >>> input = torch.randn(1, 3, 32, 32)
         >>> aug = ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
@@ -92,9 +92,7 @@ class ColorJitter(IntensityAugmentationBase2D):
         self.contrast = contrast
         self.saturation = saturation
         self.hue = hue
-        self._param_generator = cast(
-            rg.ColorJitterGenerator, rg.ColorJitterGenerator(brightness, contrast, saturation, hue)
-        )
+        self._param_generator = rg.ColorJitterGenerator(brightness, contrast, saturation, hue)
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None

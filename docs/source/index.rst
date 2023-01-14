@@ -61,6 +61,7 @@ Join the community
    applications/image_stitching
    applications/image_registration
    applications/semantic_segmentation
+   applications/image_denoising
 
 .. toctree::
    :caption: KORNIA MODELS
@@ -74,6 +75,7 @@ Join the community
    models/hardnet
    models/affnet
    models/sold2
+   models/dexined
 
 
 .. toctree::
@@ -93,6 +95,7 @@ Join the community
    metrics
    morphology
    tracking
+   testing
    utils
    x
 

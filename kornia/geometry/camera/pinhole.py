@@ -1,9 +1,11 @@
-from typing import Iterable, Optional
+from typing import Iterable, List
 
 import torch
 
+from kornia.core import Device, Tensor
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.linalg import inverse_transformation, transform_points
+from kornia.testing import KORNIA_CHECK_SAME_DEVICE
 from kornia.utils.helpers import _torch_inverse_cast
 
 
@@ -23,29 +25,28 @@ class PinholeCamera:
         advantage of PyTorch parallelism to boost computing performance.
     """
 
-    def __init__(
-        self, intrinsics: torch.Tensor, extrinsics: torch.Tensor, height: torch.Tensor, width: torch.Tensor
-    ) -> None:
+    def __init__(self, intrinsics: Tensor, extrinsics: Tensor, height: Tensor, width: Tensor) -> None:
         # verify batch size and shapes
         self._check_valid([intrinsics, extrinsics, height, width])
         self._check_valid_params(intrinsics, "intrinsics")
         self._check_valid_params(extrinsics, "extrinsics")
         self._check_valid_shape(height, "height")
         self._check_valid_shape(width, "width")
+        self._check_consistent_device([intrinsics, extrinsics, height, width])
         # set class attributes
-        self.height: torch.Tensor = height
-        self.width: torch.Tensor = width
-        self._intrinsics: torch.Tensor = intrinsics
-        self._extrinsics: torch.Tensor = extrinsics
+        self.height: Tensor = height
+        self.width: Tensor = width
+        self._intrinsics: Tensor = intrinsics
+        self._extrinsics: Tensor = extrinsics
 
     @staticmethod
-    def _check_valid(data_iter: Iterable[torch.Tensor]) -> bool:
+    def _check_valid(data_iter: Iterable[Tensor]) -> bool:
         if not all(data.shape[0] for data in data_iter):
             raise ValueError("Arguments shapes must match")
         return True
 
     @staticmethod
-    def _check_valid_params(data: torch.Tensor, data_name: str) -> bool:
+    def _check_valid_params(data: Tensor, data_name: str) -> bool:
         if len(data.shape) not in (3, 4) and data.shape[-2:] != (4, 4):  # Shouldn't this be an OR logic than AND?
             raise ValueError(
                 "Argument {} shape must be in the following shape"
@@ -54,15 +55,29 @@ class PinholeCamera:
         return True
 
     @staticmethod
-    def _check_valid_shape(data: torch.Tensor, data_name: str) -> bool:
+    def _check_valid_shape(data: Tensor, data_name: str) -> bool:
         if not len(data.shape) == 1:
             raise ValueError(
                 "Argument {} shape must be in the following shape" " B. Got {}".format(data_name, data.shape)
             )
         return True
 
+    @staticmethod
+    def _check_consistent_device(data_iter: List[Tensor]) -> None:
+        first = data_iter[0]
+        for data in data_iter:
+            KORNIA_CHECK_SAME_DEVICE(data, first)
+
+    def device(self) -> torch.device:
+        r"""Returns the device for camera buffers.
+
+        Returns:
+            Device type
+        """
+        return self._intrinsics.device
+
     @property
-    def intrinsics(self) -> torch.Tensor:
+    def intrinsics(self) -> Tensor:
         r"""The full 4x4 intrinsics matrix.
 
         Returns:
@@ -73,7 +88,7 @@ class PinholeCamera:
         return self._intrinsics
 
     @property
-    def extrinsics(self) -> torch.Tensor:
+    def extrinsics(self) -> Tensor:
         r"""The full 4x4 extrinsics matrix.
 
         Returns:
@@ -93,7 +108,7 @@ class PinholeCamera:
         return self.intrinsics.shape[0]
 
     @property
-    def fx(self) -> torch.Tensor:
+    def fx(self) -> Tensor:
         r"""Return the focal length in the x-direction.
 
         Returns:
@@ -102,7 +117,7 @@ class PinholeCamera:
         return self.intrinsics[..., 0, 0]
 
     @property
-    def fy(self) -> torch.Tensor:
+    def fy(self) -> Tensor:
         r"""Return the focal length in the y-direction.
 
         Returns:
@@ -111,7 +126,7 @@ class PinholeCamera:
         return self.intrinsics[..., 1, 1]
 
     @property
-    def cx(self) -> torch.Tensor:
+    def cx(self) -> Tensor:
         r"""Return the x-coordinate of the principal point.
 
         Returns:
@@ -120,7 +135,7 @@ class PinholeCamera:
         return self.intrinsics[..., 0, 2]
 
     @property
-    def cy(self) -> torch.Tensor:
+    def cy(self) -> Tensor:
         r"""Return the y-coordinate of the principal point.
 
         Returns:
@@ -129,7 +144,7 @@ class PinholeCamera:
         return self.intrinsics[..., 1, 2]
 
     @property
-    def tx(self) -> torch.Tensor:
+    def tx(self) -> Tensor:
         r"""Return the x-coordinate of the translation vector.
 
         Returns:
@@ -144,7 +159,7 @@ class PinholeCamera:
         return self
 
     @property
-    def ty(self) -> torch.Tensor:
+    def ty(self) -> Tensor:
         r"""Return the y-coordinate of the translation vector.
 
         Returns:
@@ -159,7 +174,7 @@ class PinholeCamera:
         return self
 
     @property
-    def tz(self) -> torch.Tensor:
+    def tz(self) -> Tensor:
         r"""Returns the z-coordinate of the translation vector.
 
         Returns:
@@ -174,7 +189,7 @@ class PinholeCamera:
         return self
 
     @property
-    def rt_matrix(self) -> torch.Tensor:
+    def rt_matrix(self) -> Tensor:
         r"""Return the 3x4 rotation-translation matrix.
 
         Returns:
@@ -183,7 +198,7 @@ class PinholeCamera:
         return self.extrinsics[..., :3, :4]
 
     @property
-    def camera_matrix(self) -> torch.Tensor:
+    def camera_matrix(self) -> Tensor:
         r"""Return the 3x3 camera matrix containing the intrinsics.
 
         Returns:
@@ -192,7 +207,7 @@ class PinholeCamera:
         return self.intrinsics[..., :3, :3]
 
     @property
-    def rotation_matrix(self) -> torch.Tensor:
+    def rotation_matrix(self) -> Tensor:
         r"""Return the 3x3 rotation matrix from the extrinsics.
 
         Returns:
@@ -201,7 +216,7 @@ class PinholeCamera:
         return self.extrinsics[..., :3, :3]
 
     @property
-    def translation_vector(self) -> torch.Tensor:
+    def translation_vector(self) -> Tensor:
         r"""Return the translation vector from the extrinsics.
 
         Returns:
@@ -211,13 +226,13 @@ class PinholeCamera:
 
     def clone(self) -> 'PinholeCamera':
         r"""Return a deep copy of the current object instance."""
-        height: torch.Tensor = self.height.clone()
-        width: torch.Tensor = self.width.clone()
-        intrinsics: torch.Tensor = self.intrinsics.clone()
-        extrinsics: torch.Tensor = self.extrinsics.clone()
+        height: Tensor = self.height.clone()
+        width: Tensor = self.width.clone()
+        intrinsics: Tensor = self.intrinsics.clone()
+        extrinsics: Tensor = self.extrinsics.clone()
         return PinholeCamera(intrinsics, extrinsics, height, width)
 
-    def intrinsics_inverse(self) -> torch.Tensor:
+    def intrinsics_inverse(self) -> Tensor:
         r"""Return the inverse of the 4x4 instrisics matrix.
 
         Returns:
@@ -237,14 +252,14 @@ class PinholeCamera:
             the camera model with scaled parameters.
         """
         # scale the intrinsic parameters
-        intrinsics: torch.Tensor = self.intrinsics.clone()
+        intrinsics: Tensor = self.intrinsics.clone()
         intrinsics[..., 0, 0] *= scale_factor
         intrinsics[..., 1, 1] *= scale_factor
         intrinsics[..., 0, 2] *= scale_factor
         intrinsics[..., 1, 2] *= scale_factor
         # scale the image height/width
-        height: torch.Tensor = scale_factor * self.height.clone()
-        width: torch.Tensor = scale_factor * self.width.clone()
+        height: Tensor = scale_factor * self.height.clone()
+        width: Tensor = scale_factor * self.width.clone()
         return PinholeCamera(intrinsics, self.extrinsics, height, width)
 
     def scale_(self, scale_factor) -> 'PinholeCamera':
@@ -268,7 +283,7 @@ class PinholeCamera:
         self.width *= scale_factor
         return self
 
-    def project(self, point_3d: torch.Tensor) -> torch.Tensor:
+    def project(self, point_3d: Tensor) -> Tensor:
         r"""Project a 3d point in world coordinates onto the 2d camera plane.
 
         Args:
@@ -292,7 +307,7 @@ class PinholeCamera:
         P = self.intrinsics @ self.extrinsics
         return convert_points_from_homogeneous(transform_points(P, point_3d))
 
-    def unproject(self, point_2d: torch.Tensor, depth: torch.Tensor):
+    def unproject(self, point_2d: Tensor, depth: Tensor):
         r"""Unproject a 2d point in 3d.
 
         Transform coordinates in the pixel frame to the world frame.
@@ -328,19 +343,7 @@ class PinholeCamera:
     # NOTE: just for test. Decide if we keep it.
     @classmethod
     def from_parameters(
-        self,
-        fx,
-        fy,
-        cx,
-        cy,
-        height,
-        width,
-        tx,
-        ty,
-        tz,
-        batch_size=1,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+        self, fx, fy, cx, cy, height, width, tx, ty, tz, batch_size, device: Device, dtype: torch.dtype
     ):
         # create the camera matrix
         intrinsics = torch.zeros(batch_size, 4, 4, device=device, dtype=dtype)
@@ -396,10 +399,10 @@ class PinholeCamerasList(PinholeCamera):
             intrinsics.append(pinhole.intrinsics)
             extrinsics.append(pinhole.extrinsics)
         # contatenate and set members. We will assume BxNx4x4
-        self.height: torch.Tensor = torch.stack(height, dim=1)
-        self.width: torch.Tensor = torch.stack(width, dim=1)
-        self._intrinsics: torch.Tensor = torch.stack(intrinsics, dim=1)
-        self._extrinsics: torch.Tensor = torch.stack(extrinsics, dim=1)
+        self.height: Tensor = torch.stack(height, dim=1)
+        self.width: Tensor = torch.stack(width, dim=1)
+        self._intrinsics: Tensor = torch.stack(intrinsics, dim=1)
+        self._extrinsics: Tensor = torch.stack(extrinsics, dim=1)
         return self
 
     @property
@@ -412,14 +415,14 @@ class PinholeCamerasList(PinholeCamera):
 
     def get_pinhole(self, idx: int) -> PinholeCamera:
         r"""Return a PinholeCamera object with parameters such as Bx4x4."""
-        height: torch.Tensor = self.height[..., idx]
-        width: torch.Tensor = self.width[..., idx]
-        intrinsics: torch.Tensor = self.intrinsics[:, idx]
-        extrinsics: torch.Tensor = self.extrinsics[:, idx]
+        height: Tensor = self.height[..., idx]
+        width: Tensor = self.width[..., idx]
+        intrinsics: Tensor = self.intrinsics[:, idx]
+        extrinsics: Tensor = self.extrinsics[:, idx]
         return PinholeCamera(intrinsics, extrinsics, height, width)
 
 
-def pinhole_matrix(pinholes: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
+def pinhole_matrix(pinholes: Tensor, eps: float = 1e-6) -> Tensor:
     r"""Function that returns the pinhole matrix from a pinhole model.
 
     .. note::
@@ -463,7 +466,7 @@ def pinhole_matrix(pinholes: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
     return k
 
 
-def inverse_pinhole_matrix(pinhole: torch.Tensor, eps: float = 1e-6) -> torch.Tensor:
+def inverse_pinhole_matrix(pinhole: Tensor, eps: float = 1e-6) -> Tensor:
     r"""Return the inverted pinhole matrix from a pinhole model.
 
     .. note::
@@ -507,7 +510,7 @@ def inverse_pinhole_matrix(pinhole: torch.Tensor, eps: float = 1e-6) -> torch.Te
     return k
 
 
-def scale_pinhole(pinholes: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
+def scale_pinhole(pinholes: Tensor, scale: Tensor) -> Tensor:
     r"""Scale the pinhole matrix for each pinhole model.
 
     .. note::
@@ -545,7 +548,7 @@ def scale_pinhole(pinholes: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
     return pinholes_scaled
 
 
-def get_optical_pose_base(pinholes: torch.Tensor) -> torch.Tensor:
+def get_optical_pose_base(pinholes: Tensor) -> Tensor:
     """Compute extrinsic transformation matrices for pinholes.
 
     Args:
@@ -566,7 +569,7 @@ def get_optical_pose_base(pinholes: torch.Tensor) -> torch.Tensor:
     # return rtvec_to_pose(optical_pose_parent)   type: ignore
 
 
-def homography_i_H_ref(pinhole_i: torch.Tensor, pinhole_ref: torch.Tensor) -> torch.Tensor:
+def homography_i_H_ref(pinhole_i: Tensor, pinhole_ref: Tensor) -> Tensor:
     r"""Homography from reference to ith pinhole.
 
     .. note::
@@ -617,7 +620,7 @@ def homography_i_H_ref(pinhole_i: torch.Tensor, pinhole_ref: torch.Tensor) -> to
 # https://github.com/ClementPinard/SfmLearner-Pytorch/blob/master/inverse_warp.py#L26
 
 
-def pixel2cam(depth: torch.Tensor, intrinsics_inv: torch.Tensor, pixel_coords: torch.Tensor) -> torch.Tensor:
+def pixel2cam(depth: Tensor, intrinsics_inv: Tensor, pixel_coords: Tensor) -> Tensor:
     r"""Transform coordinates in the pixel frame to the camera frame.
 
     Args:
@@ -634,7 +637,7 @@ def pixel2cam(depth: torch.Tensor, intrinsics_inv: torch.Tensor, pixel_coords: t
         raise ValueError("Input intrinsics_inv has to be in the shape of " "Bx4x4. Got {}".format(intrinsics_inv.shape))
     if not len(pixel_coords.shape) == 4 and pixel_coords.shape[3] == 3:
         raise ValueError("Input pixel_coords has to be in the shape of " "BxHxWx3. Got {}".format(intrinsics_inv.shape))
-    cam_coords: torch.Tensor = transform_points(intrinsics_inv[:, None], pixel_coords)
+    cam_coords: Tensor = transform_points(intrinsics_inv[:, None], pixel_coords)
     return cam_coords * depth.permute(0, 2, 3, 1)
 
 
@@ -642,7 +645,7 @@ def pixel2cam(depth: torch.Tensor, intrinsics_inv: torch.Tensor, pixel_coords: t
 # https://github.com/ClementPinard/SfmLearner-Pytorch/blob/master/inverse_warp.py#L43
 
 
-def cam2pixel(cam_coords_src: torch.Tensor, dst_proj_src: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
+def cam2pixel(cam_coords_src: Tensor, dst_proj_src: Tensor, eps: float = 1e-12) -> Tensor:
     r"""Transform coordinates in the camera frame to the pixel frame.
 
     Args:
@@ -661,17 +664,17 @@ def cam2pixel(cam_coords_src: torch.Tensor, dst_proj_src: torch.Tensor, eps: flo
     if not len(dst_proj_src.shape) == 3 and dst_proj_src.shape[-2:] == (4, 4):
         raise ValueError("Input dst_proj_src has to be in the shape of " "Bx4x4. Got {}".format(dst_proj_src.shape))
     # apply projection matrix to points
-    point_coords: torch.Tensor = transform_points(dst_proj_src[:, None], cam_coords_src)
-    x_coord: torch.Tensor = point_coords[..., 0]
-    y_coord: torch.Tensor = point_coords[..., 1]
-    z_coord: torch.Tensor = point_coords[..., 2]
+    point_coords: Tensor = transform_points(dst_proj_src[:, None], cam_coords_src)
+    x_coord: Tensor = point_coords[..., 0]
+    y_coord: Tensor = point_coords[..., 1]
+    z_coord: Tensor = point_coords[..., 2]
 
     # compute pixel coordinates
-    u_coord: torch.Tensor = x_coord / (z_coord + eps)
-    v_coord: torch.Tensor = y_coord / (z_coord + eps)
+    u_coord: Tensor = x_coord / (z_coord + eps)
+    v_coord: Tensor = y_coord / (z_coord + eps)
 
     # stack and return the coordinates, that's the actual flow
-    pixel_coords_dst: torch.Tensor = torch.stack([u_coord, v_coord], dim=-1)
+    pixel_coords_dst: Tensor = torch.stack([u_coord, v_coord], dim=-1)
     return pixel_coords_dst  # BxHxWx2
 
 

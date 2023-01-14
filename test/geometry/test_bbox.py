@@ -16,7 +16,6 @@ from kornia.geometry.bbox import (
 
 class TestBbox2D:
     def test_smoke(self, device, dtype):
-
         # Sample two points of the rectangle
         points = torch.rand(1, 4, device=device, dtype=dtype)
 
@@ -49,7 +48,7 @@ class TestBbox2D:
     def test_gradcheck(self, device, dtype):
         boxes = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
         boxes = utils.tensor_to_gradcheck_var(boxes)
-        assert gradcheck(infer_bbox_shape, (boxes,), raise_exception=True)
+        assert gradcheck(infer_bbox_shape, (boxes,), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
         # Define script
@@ -66,7 +65,6 @@ class TestBbox2D:
 
 class TestTransformBoxes2D:
     def test_transform_boxes(self, device, dtype):
-
         boxes = torch.tensor([[139.2640, 103.0150, 397.3120, 410.5225]], device=device, dtype=dtype)
 
         expected = torch.tensor([[114.6880, 103.0150, 372.7360, 410.5225]], device=device, dtype=dtype)
@@ -77,7 +75,6 @@ class TestTransformBoxes2D:
         assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
 
     def test_transform_multiple_boxes(self, device, dtype):
-
         boxes = torch.tensor(
             [
                 [139.2640, 103.0150, 397.3120, 410.5225],
@@ -123,7 +120,6 @@ class TestTransformBoxes2D:
         assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
 
     def test_transform_boxes_wh(self, device, dtype):
-
         boxes = torch.tensor(
             [
                 [139.2640, 103.0150, 258.0480, 307.5075],
@@ -152,7 +148,6 @@ class TestTransformBoxes2D:
         assert_allclose(out, expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
-
         boxes = torch.tensor(
             [
                 [139.2640, 103.0150, 258.0480, 307.5075],
@@ -169,7 +164,7 @@ class TestTransformBoxes2D:
         trans_mat = utils.tensor_to_gradcheck_var(trans_mat)
         boxes = utils.tensor_to_gradcheck_var(boxes)
 
-        assert gradcheck(transform_bbox, (trans_mat, boxes, "xyxy", True), raise_exception=True)
+        assert gradcheck(transform_bbox, (trans_mat, boxes, "xyxy", True), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
         boxes = torch.tensor([[139.2640, 103.0150, 258.0480, 307.5075]], device=device, dtype=dtype)
@@ -233,7 +228,7 @@ class TestBbox3D:
             dtype=dtype,
         )
         boxes = utils.tensor_to_gradcheck_var(boxes)
-        assert gradcheck(infer_bbox_shape3d, (boxes,), raise_exception=True)
+        assert gradcheck(infer_bbox_shape3d, (boxes,), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
         # Define script

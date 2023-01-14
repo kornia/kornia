@@ -1,9 +1,9 @@
 from typing import Optional, Tuple, Union, cast
 
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 from torch.nn.modules.utils import _pair
+
+from kornia.core import Module, Tensor, concatenate, pad
 
 PadType = Union[Tuple[int, int], Tuple[int, int, int, int]]
 
@@ -57,7 +57,7 @@ def compute_padding(
     return (padt, padb, padl, padr)
 
 
-class ExtractTensorPatches(nn.Module):
+class ExtractTensorPatches(Module):
     r"""Module that extract patches from tensors and stack them.
 
     In the simplest case, the output value of the operator with input size
@@ -126,11 +126,11 @@ class ExtractTensorPatches(nn.Module):
         self.stride: Tuple[int, int] = _pair(stride)
         self.padding: PadType = _pair(padding)
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:  # type: ignore
+    def forward(self, input: Tensor) -> Tensor:
         return extract_tensor_patches(input, self.window_size, stride=self.stride, padding=self.padding)
 
 
-class CombineTensorPatches(nn.Module):
+class CombineTensorPatches(Module):
     r"""Module that combine patches from tensors.
 
     In the simplest case, the output value of the operator with input size
@@ -197,19 +197,19 @@ class CombineTensorPatches(nn.Module):
         self.window_size: Tuple[int, int] = _pair(window_size)
         self.unpadding: PadType = _pair(unpadding)
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: Tensor) -> Tensor:
         return combine_tensor_patches(
             input, self.original_size, self.window_size, stride=self.window_size, unpadding=self.unpadding
         )
 
 
 def combine_tensor_patches(
-    patches: torch.Tensor,
+    patches: Tensor,
     original_size: Union[int, Tuple[int, int]],
     window_size: Union[int, Tuple[int, int]],
     stride: Union[int, Tuple[int, int]],
     unpadding: Union[int, PadType] = 0,
-) -> torch.Tensor:
+) -> Tensor:
     r"""Restore input from patches.
 
     See :class:`~kornia.contrib.CombineTensorPatches` for details.
@@ -275,18 +275,16 @@ def combine_tensor_patches(
         )
 
     patches_tensor = patches.view(-1, window_size[0], window_size[1], *patches.shape[-3:])
-    restored_tensor = torch.cat(torch.chunk(patches_tensor, window_size[0], dim=1), -2).squeeze(1)
-    restored_tensor = torch.cat(torch.chunk(restored_tensor, window_size[1], dim=1), -1).squeeze(1)
+    restored_tensor = concatenate(torch.chunk(patches_tensor, window_size[0], 1), -2).squeeze(1)
+    restored_tensor = concatenate(torch.chunk(restored_tensor, window_size[1], 1), -1).squeeze(1)
 
     if unpadding:
         unpadding = cast(Tuple[int, int, int, int], unpadding)
-        restored_tensor = F.pad(restored_tensor, [-i for i in unpadding])
+        restored_tensor = pad(restored_tensor, [-i for i in unpadding])
     return restored_tensor
 
 
-def _extract_tensor_patchesnd(
-    input: torch.Tensor, window_sizes: Tuple[int, ...], strides: Tuple[int, ...]
-) -> torch.Tensor:
+def _extract_tensor_patchesnd(input: Tensor, window_sizes: Tuple[int, ...], strides: Tuple[int, ...]) -> Tensor:
     batch_size, num_channels = input.size()[:2]
     dims = range(2, input.dim())
     for dim, patch_size, stride in zip(dims, window_sizes, strides):
@@ -296,11 +294,11 @@ def _extract_tensor_patchesnd(
 
 
 def extract_tensor_patches(
-    input: torch.Tensor,
+    input: Tensor,
     window_size: Union[int, Tuple[int, int]],
     stride: Union[int, Tuple[int, int]] = 1,
     padding: Union[int, PadType] = 0,
-) -> torch.Tensor:
+) -> Tensor:
     r"""Function that extract patches from tensors and stack them.
 
     See :class:`~kornia.contrib.ExtractTensorPatches` for details.
@@ -326,7 +324,7 @@ def extract_tensor_patches(
                   [6., 7., 8.]]]])
     """
     if not torch.is_tensor(input):
-        raise TypeError(f"Input input type is not a torch.Tensor. Got {type(input)}")
+        raise TypeError(f"Input input type is not a Tensor. Got {type(input)}")
 
     if len(input.shape) != 4:
         raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
@@ -344,6 +342,6 @@ def extract_tensor_patches(
             pad_vert = padding[:2]
             pad_horz = padding[2:]
         padding = cast(Tuple[int, int, int, int], pad_horz + pad_vert)
-        input = F.pad(input, padding)
+        input = pad(input, padding)
 
     return _extract_tensor_patchesnd(input, _pair(window_size), _pair(stride))

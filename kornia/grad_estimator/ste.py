@@ -1,4 +1,4 @@
-from typing import Callable, Optional, Tuple
+from typing import Any, Callable, Optional, Tuple
 
 import torch.nn as nn
 from torch import Tensor
@@ -36,8 +36,8 @@ class STEFunction(Function):
     """
 
     @staticmethod
-    def forward(  # type:ignore
-        ctx, input: Tensor, output: Tensor, grad_fn: Optional[Callable] = None
+    def forward(  # type: ignore[override]
+        ctx: Any, input: Tensor, output: Tensor, grad_fn: Optional[Callable[..., Any]] = None
     ) -> Tensor:
         ctx.in_shape = input.shape
         ctx.out_shape = output.shape
@@ -45,7 +45,7 @@ class STEFunction(Function):
         return output
 
     @staticmethod
-    def backward(ctx, grad_output: Tensor) -> Tuple[Tensor, Tensor, None]:  # type:ignore
+    def backward(ctx: Any, grad_output: Tensor) -> Tuple[Tensor, Tensor, None]:  # type: ignore[override]
         if ctx.grad_fn is None:
             return grad_output.sum_to_size(ctx.in_shape), grad_output.sum_to_size(ctx.out_shape), None
         return (
@@ -105,7 +105,7 @@ class StraightThroughEstimator(nn.Module):
                   [0.0422, 0.0566, 0.0626, 0.0422]]]])
     """
 
-    def __init__(self, target_fn: nn.Module, grad_fn: Optional[Callable] = None):
+    def __init__(self, target_fn: nn.Module, grad_fn: Optional[Callable[..., Any]] = None):
         super().__init__()
         self.target_fn = target_fn
         self.grad_fn = grad_fn

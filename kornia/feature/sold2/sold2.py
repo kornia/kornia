@@ -1,12 +1,12 @@
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
-from torch import Tensor
 
+from kornia.core import Module, Tensor, concatenate, pad, stack
 from kornia.geometry.conversions import normalize_pixel_coordinates
 from kornia.testing import KORNIA_CHECK_SHAPE
+from kornia.utils import map_location_to_cpu
 
 from .backbones import SOLD2Net
 from .sold2_detector import LineSegmentDetectionModule, line_map_to_segments, prob_to_junctions
@@ -15,7 +15,7 @@ urls: Dict[str, str] = {}
 urls["wireframe"] = "http://cmp.felk.cvut.cz/~mishkdmy/models/sold2_wireframe.pth"
 
 
-default_cfg: Dict = {
+default_cfg: Dict[str, Any] = {
     'backbone_cfg': {'input_channel': 1, 'depth': 4, 'num_stacks': 2, 'num_blocks': 1, 'num_classes': 5},
     'use_descriptor': True,
     'grid_size': 8,
@@ -49,7 +49,7 @@ default_cfg: Dict = {
 }
 
 
-class SOLD2(nn.Module):
+class SOLD2(Module):
     r"""Module, which detects and describe line segments in an image.
 
     This is based on the original code from the paper "SOLD²: Self-supervised
@@ -75,7 +75,7 @@ class SOLD2(nn.Module):
         >>> matches = sold2.match(line_seg1, line_seg2, desc1[None], desc2[None])
     """
 
-    def __init__(self, pretrained: bool = True, config: Optional[Dict] = None):
+    def __init__(self, pretrained: bool = True, config: Optional[Dict[str, Any]] = None):
         super().__init__()
         # Initialize some parameters
         self.config = default_cfg if config is None else config
@@ -86,9 +86,7 @@ class SOLD2(nn.Module):
         # Load the pre-trained model
         self.model = SOLD2Net(self.config)
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(
-                urls["wireframe"], map_location=lambda storage, loc: storage
-            )
+            pretrained_dict = torch.hub.load_state_dict_from_url(urls["wireframe"], map_location=map_location_to_cpu)
             state_dict = self.adapt_state_dict(pretrained_dict['model_state_dict'])
             self.model.load_state_dict(state_dict)
         self.eval()
@@ -100,7 +98,7 @@ class SOLD2(nn.Module):
         # Initialize the line matcher
         self.line_matcher = WunschLineMatcher(**self.config["line_matcher_cfg"])
 
-    def forward(self, img: Tensor) -> Dict:
+    def forward(self, img: Tensor) -> Dict[str, Any]:
         """
         Args:
             img: batched images with shape :math:`(B, 1, H, W)`.
@@ -156,7 +154,7 @@ class SOLD2(nn.Module):
         return state_dict
 
 
-class WunschLineMatcher(nn.Module):
+class WunschLineMatcher(Module):
     """Class matching two sets of line segments with the Needleman-Wunsch algorithm.
 
     TODO: move it later in kornia.feature.matching
@@ -227,7 +225,7 @@ class WunschLineMatcher(nn.Module):
 
         return matches
 
-    def sample_line_points(self, line_seg: Tensor) -> Tuple:
+    def sample_line_points(self, line_seg: Tensor) -> Tuple[Tensor, Tensor]:
         """Regularly sample points along each line segments, with a minimal distance between each point.
 
         Pad the remaining points.
@@ -254,10 +252,10 @@ class WunschLineMatcher(nn.Module):
             cur_line_seg = line_seg[cur_mask]
             line_points_x = batched_linspace(cur_line_seg[:, 0, 0], cur_line_seg[:, 1, 0], n_samp, dim=-1)
             line_points_y = batched_linspace(cur_line_seg[:, 0, 1], cur_line_seg[:, 1, 1], n_samp, dim=-1)
-            cur_line_points = torch.stack([line_points_x, line_points_y], dim=-1)
+            cur_line_points = stack([line_points_x, line_points_y], -1)
 
             # Pad
-            cur_line_points = F.pad(cur_line_points, (0, 0, 0, self.num_samples - n_samp))
+            cur_line_points = pad(cur_line_points, (0, 0, 0, self.num_samples - n_samp))
             cur_valid_points = torch.ones(len(cur_line_seg), self.num_samples, dtype=torch.bool)
             cur_valid_points[:, n_samp:] = False
 
@@ -288,10 +286,11 @@ class WunschLineMatcher(nn.Module):
         line_scores = (line_scores1 + line_scores2) / 2
         topk_lines = torch.argsort(line_scores, dim=1)[:, -self.top_k_candidates :]
         # topk_lines.shape = (n_lines1, top_k_candidates)
+
         top_scores = torch.take_along_dim(scores, topk_lines[:, :, None, None], dim=1)
 
         # Consider the reversed line segments as well
-        top_scores = torch.cat([top_scores, torch.flip(top_scores, dims=[-1])], dim=1)
+        top_scores = concatenate([top_scores, torch.flip(top_scores, dims=[-1])], 1)
 
         # Compute the line distance matrix with Needleman-Wunsch algo and
         # retrieve the closest line neighbor
@@ -330,7 +329,7 @@ class WunschLineMatcher(nn.Module):
         return nw_grid[:, -1, -1]
 
 
-def keypoints_to_grid(keypoints: Tensor, img_size: tuple) -> Tensor:
+def keypoints_to_grid(keypoints: Tensor, img_size: Tuple[int, int]) -> Tensor:
     """Convert a list of keypoints into a grid in [-1, 1]² that can be used in torch.nn.functional.interpolate.
 
     Args:
