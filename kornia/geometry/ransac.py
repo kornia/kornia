@@ -5,6 +5,7 @@ from typing import Callable, Optional, Tuple
 import torch
 
 from kornia.core import Device, Module, Tensor, zeros
+from kornia.core.logger import KORNIA_CHECK_SHAPE
 from kornia.geometry import (
     find_fundamental,
     find_homography_dlt,
@@ -18,7 +19,6 @@ from kornia.geometry.homography import (
     oneway_transfer_error,
     sample_is_valid_for_homography,
 )
-from kornia.testing import KORNIA_CHECK_SHAPE
 
 __all__ = ["RANSAC"]
 

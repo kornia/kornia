@@ -5,7 +5,7 @@ from typing import List, Tuple
 import torch
 
 from kornia.core import Tensor, as_tensor, stack, tensor, zeros
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.logger import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 
 def normalize_kernel2d(input: Tensor) -> Tensor:

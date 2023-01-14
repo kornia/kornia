@@ -1,9 +1,9 @@
 from typing import List
 
 from kornia.core import Module, Tensor, pad
+from kornia.core.logger import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.filters import filter3d, get_gaussian_kernel3d
 from kornia.filters.filter import _compute_padding
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 
 def _crop(img: Tensor, cropping_shape: List[int]) -> Tensor:

@@ -1,8 +1,8 @@
 import torch
 from torch import Tensor
 
+from kornia.core.logger import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, check_is_tensor
 
 __all__ = [
     "compose_transformations",
@@ -171,8 +171,8 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
         >>> trans_01 = torch.eye(4).view(1, 4, 4)  # Bx4x4
         >>> points_0 = transform_points(trans_01, points_1)  # BxNx3
     """
-    check_is_tensor(trans_01)
-    check_is_tensor(points_1)
+    KORNIA_CHECK_IS_TENSOR(trans_01)
+    KORNIA_CHECK_IS_TENSOR(points_1)
     if not trans_01.shape[0] == points_1.shape[0] and trans_01.shape[0] != 1:
         raise ValueError(
             "Input batch size must be the same for both tensors or 1." f"Got {trans_01.shape} and {points_1.shape}"

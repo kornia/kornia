@@ -17,8 +17,8 @@ from kornia.augmentation.container.utils import ApplyInverse
 from kornia.augmentation.container.video import VideoSequential
 from kornia.constants import DataKey, Resample
 from kornia.core import Tensor
+from kornia.core.logger import KORNIA_CHECK_IS_LIST_OF_TENSOR
 from kornia.geometry.boxes import Boxes
-from kornia.testing import KORNIA_CHECK_IS_LIST_OF_TENSOR
 from kornia.utils import eye_like
 
 __all__ = ["AugmentationSequential"]

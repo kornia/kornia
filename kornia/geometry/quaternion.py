@@ -6,6 +6,7 @@ from math import pi
 from typing import Optional, Tuple, Union
 
 from kornia.core import Module, Parameter, Tensor, concatenate, rand, stack, tensor, where
+from kornia.core.logger import KORNIA_CHECK_TYPE
 from kornia.geometry.conversions import (
     QuaternionCoeffOrder,
     angle_axis_to_quaternion,
@@ -14,7 +15,6 @@ from kornia.geometry.conversions import (
     rotation_matrix_to_quaternion,
 )
 from kornia.geometry.linalg import batched_dot_product
-from kornia.testing import KORNIA_CHECK_TYPE
 
 
 class Quaternion(Module):

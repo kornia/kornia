@@ -5,9 +5,9 @@ from typing import Optional, Tuple, Union
 import torch
 
 from kornia.core import Module, Parameter, Tensor, normalize, where
+from kornia.core.logger import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.geometry.linalg import batched_dot_product, squared_norm
 from kornia.geometry.plane import Hyperplane
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.utils.helpers import _torch_svd_cast
 
 __all__ = ["ParametrizedLine", "fit_line"]

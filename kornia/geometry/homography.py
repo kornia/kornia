@@ -4,7 +4,7 @@ from typing import Optional, Tuple
 import torch
 
 from kornia.core import Tensor
-from kornia.testing import KORNIA_CHECK_SHAPE
+from kornia.core.logger import KORNIA_CHECK_SHAPE
 from kornia.utils import _extract_device_dtype, safe_inverse_with_mask, safe_solve_with_mask
 from kornia.utils.helpers import _torch_svd_cast
 

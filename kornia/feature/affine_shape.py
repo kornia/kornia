@@ -5,9 +5,9 @@ from typing import Dict, Optional
 import torch
 import torch.nn as nn
 
+from kornia.core.logger import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 from kornia.filters.kernels import get_gaussian_kernel2d
 from kornia.filters.sobel import SpatialGradient
-from kornia.testing import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 from kornia.utils.helpers import map_location_to_cpu
 
 from .laf import (

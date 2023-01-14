@@ -12,9 +12,9 @@ from kornia.augmentation.container.base import ParamItem
 from kornia.augmentation.utils import override_parameters
 from kornia.constants import DataKey
 from kornia.core import Module, Tensor, as_tensor
+from kornia.core.logger import KORNIA_UNWRAP
 from kornia.geometry.bbox import transform_bbox
 from kornia.geometry.linalg import transform_points
-from kornia.testing import KORNIA_UNWRAP
 from kornia.utils.helpers import _torch_inverse_cast
 
 

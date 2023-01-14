@@ -5,7 +5,7 @@ import torch
 from torch.nn.functional import interpolate
 
 from kornia.core import Module, Tensor, tensor
-from kornia.testing import KORNIA_CHECK_IS_GRAY
+from kornia.core.logger import KORNIA_CHECK_IS_GRAY
 
 RGBColor = List[float]
 
