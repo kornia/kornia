@@ -23,7 +23,7 @@ setup(
             'opencv-python',
             'pre-commit>=2.0',
             'pydocstyle',
-            'pytest==7.2.0',
+            'pytest==7.2.1',
             'pytest-cov==4.0.0',
             'scipy',
         ],
