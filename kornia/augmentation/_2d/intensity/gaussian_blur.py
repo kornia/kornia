@@ -81,7 +81,10 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        sigma = params["sigma"].to(device=input.device, dtype=input.dtype).unsqueeze(-1).expand(-1, 2)
+        # The dimension of the sigma tensor may be used to retrieve the batch dimension
+        # so we select only those where a transformation should be applied
+        sigma = params["sigma"][params["batch_prob"]]
+        sigma = sigma.to(device=input.device, dtype=input.dtype).unsqueeze(-1).expand(-1, 2)
         return gaussian_blur2d_t(
             input,
             self.flags["kernel_size"],
