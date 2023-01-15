@@ -90,6 +90,9 @@ class TestBasicAugmentationBase:
         params = aug.forward_parameters(x.shape)
         params["batch_prob"] = torch.tensor(batch_prob, device=params["batch_prob"].device)
 
+        # There is usually only a sigma value for the batch images which get transformed
+        params["sigma"] = params["sigma"][params["batch_prob"]]
+
         with torch.autocast(device.type):
             res = aug(x, params)
 
