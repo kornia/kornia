@@ -78,6 +78,9 @@ class TestBasicAugmentationBase:
 
     @pytest.mark.parametrize("batch_prob", [[True, True], [False, True], [False, False]])
     def test_autocast(self, batch_prob, device, dtype):
+        if not hasattr(torch, "autocast"):
+            pytest.skip("PyTorch version without autocast support")
+
         torch.manual_seed(42)
 
         aug = RandomGaussianBlur((3, 3), (0.1, 3), p=1)
