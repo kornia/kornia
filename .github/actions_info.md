@@ -41,5 +41,7 @@ Has the inputs:
   the tests with pytest.
 - `continue-on-error`: (boolean, default: `false`) to set the
   `continue-on-error` behavior on the test step.
+- `fail-fast`: (boolean, default: `false`) to set the `fail-fast` behavior on
+  the matrix strategy.
 
 A matrix strategy will be adopted from the list of python and pytorch version.
