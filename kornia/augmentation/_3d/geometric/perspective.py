@@ -1,10 +1,9 @@
-from typing import Any, Dict, Optional, Union, cast
-
-from torch import Tensor
+from typing import Any, Dict, Optional, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.base import AugmentationBase3D
 from kornia.constants import Resample
+from kornia.core import Tensor
 from kornia.geometry import get_perspective_transform3d, warp_perspective3d
 
 
@@ -76,7 +75,7 @@ class RandomPerspective3D(AugmentationBase3D):
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
         self.flags = dict(resample=Resample.get(resample), align_corners=align_corners)
-        self._param_generator = cast(rg.PerspectiveGenerator3D, rg.PerspectiveGenerator3D(distortion_scale))
+        self._param_generator = rg.PerspectiveGenerator3D(distortion_scale)
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return get_perspective_transform3d(params["start_points"], params["end_points"]).to(input)
@@ -84,7 +83,9 @@ class RandomPerspective3D(AugmentationBase3D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        transform = cast(Tensor, transform)
+        if not isinstance(transform, Tensor):
+            raise TypeError(f'Expected the transform to be a Tensor. Gotcha {type(transform)}')
+
         return warp_perspective3d(
             input,
             transform,

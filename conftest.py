@@ -24,7 +24,7 @@ def get_test_devices() -> Dict[str, torch.device]:
 
         devices["tpu"] = xm.xla_device()
     if hasattr(torch.backends, 'mps'):
-        if torch.backends.mps.is_available():  # type: ignore
+        if torch.backends.mps.is_available():
             devices["mps"] = torch.device("mps")
     return devices
 
@@ -94,7 +94,7 @@ def pytest_addoption(parser):
 
 
 @pytest.fixture(autouse=True)
-def add_np(doctest_namespace):
+def add_doctest_deps(doctest_namespace):
     doctest_namespace["np"] = numpy
     doctest_namespace["torch"] = torch
     doctest_namespace["kornia"] = kornia

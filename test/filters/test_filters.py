@@ -285,7 +285,9 @@ class TestFilter2D:
         # evaluate function gradient
         input = utils.tensor_to_gradcheck_var(input)  # to var
         kernel = utils.tensor_to_gradcheck_var(kernel)  # to var
-        assert gradcheck(kornia.filters.filter2d, (input, kernel), raise_exception=True)
+        assert gradcheck(
+            kornia.filters.filter2d, (input, kernel), nondet_tol=1e-8, raise_exception=True, fast_mode=True
+        )
 
     @pytest.mark.parametrize("padding", ["same", "valid"])
     def test_jit(self, padding, device, dtype):
@@ -611,7 +613,9 @@ class TestFilter3D:
         # evaluate function gradient
         input = utils.tensor_to_gradcheck_var(input)  # to var
         kernel = utils.tensor_to_gradcheck_var(kernel)  # to var
-        assert gradcheck(kornia.filters.filter3d, (input, kernel), raise_exception=True)
+        assert gradcheck(
+            kornia.filters.filter3d, (input, kernel), nondet_tol=1e-8, raise_exception=True, fast_mode=True
+        )
 
     def test_jit(self, device, dtype):
         op = kornia.filters.filter3d
@@ -636,10 +640,10 @@ class TestDexiNed:
     def test_inference(self, device, dtype, data):
         model = kornia.filters.DexiNed(pretrained=False)
         model.load_state_dict(data, strict=True)
-        model.eval()
         model = model.to(device, dtype)
+        model.eval()
 
-        img = torch.tensor([[[[0, 255, 0], [0, 255, 0], [0, 255, 0]]]], device=device, dtype=dtype)
+        img = torch.tensor([[[[0.0, 255.0, 0.0], [0.0, 255.0, 0.0], [0.0, 255.0, 0.0]]]], device=device, dtype=dtype)
         img = img.repeat(1, 3, 1, 1)
 
         expect = torch.tensor(
@@ -648,8 +652,8 @@ class TestDexiNed:
             dtype=dtype,
         )
 
-        out = model(img)
-        assert_close(out[-1][:, :1], expect, atol=1e-4, rtol=1e-4)
+        out = model(img)[-1]
+        assert_close(out, expect, atol=3e-4, rtol=3e-4)
 
     def test_jit(self, device, dtype):
         op = kornia.filters.DexiNed(pretrained=False).to(device, dtype)

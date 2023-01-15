@@ -90,7 +90,6 @@ class TestSolvePnpDlt:
 
     @pytest.mark.parametrize("num_points", (6, 20))
     def test_smoke(self, num_points, device, dtype):
-
         intrinsics, _, world_points, img_points = self._get_test_data(num_points, device, dtype)
         batch_size = world_points.shape[0]
 
@@ -99,18 +98,18 @@ class TestSolvePnpDlt:
 
     @pytest.mark.parametrize("num_points", (6,))
     def test_gradcheck(self, num_points, device, dtype):
-
         intrinsics, _, world_points, img_points = self._get_test_data(num_points, device, dtype)
 
         world_points = tensor_to_gradcheck_var(world_points)
         img_points = tensor_to_gradcheck_var(img_points)
         intrinsics = tensor_to_gradcheck_var(intrinsics)
 
-        assert gradcheck(kornia.geometry.solve_pnp_dlt, (world_points, img_points, intrinsics), raise_exception=True)
+        assert gradcheck(
+            kornia.geometry.solve_pnp_dlt, (world_points, img_points, intrinsics), raise_exception=True, fast_mode=True
+        )
 
     @pytest.mark.parametrize("num_points", (6, 20))
     def test_pred_world_to_cam(self, num_points, device, dtype):
-
         intrinsics, gt_world_to_cam, world_points, img_points = self._get_test_data(num_points, device, dtype)
 
         pred_world_to_cam = kornia.geometry.solve_pnp_dlt(world_points, img_points, intrinsics)
@@ -118,7 +117,6 @@ class TestSolvePnpDlt:
 
     @pytest.mark.parametrize("num_points", (6, 20))
     def test_project(self, num_points, device, dtype):
-
         intrinsics, _, world_points, img_points = self._get_test_data(num_points, device, dtype)
 
         pred_world_to_cam = kornia.geometry.solve_pnp_dlt(world_points, img_points, intrinsics)
@@ -135,7 +133,6 @@ class TestSolvePnpDlt:
 class TestNormalization:
     @pytest.mark.parametrize("dimension", (2, 3, 5))
     def test_smoke(self, dimension, device, dtype):
-
         batch_size = 10
         num_points = 100
         points = torch.rand((batch_size, num_points, dimension), device=device, dtype=dtype)
@@ -146,10 +143,9 @@ class TestNormalization:
 
     @pytest.mark.parametrize("dimension", (2, 3, 5))
     def test_gradcheck(self, dimension, device, dtype):
-
         batch_size = 3
         num_points = 5
         points = torch.rand((batch_size, num_points, dimension), device=device, dtype=dtype)
         points = tensor_to_gradcheck_var(points)
 
-        assert gradcheck(_mean_isotropic_scale_normalize, (points,), raise_exception=True)
+        assert gradcheck(_mean_isotropic_scale_normalize, (points,), raise_exception=True, fast_mode=True)

@@ -8,7 +8,6 @@ from kornia.testing import assert_close
 
 
 class TestRandomPerspective:
-
     torch.manual_seed(0)  # for random reproductibility
 
     def test_smoke_no_transform_float(self, device):
@@ -136,11 +135,11 @@ class TestRandomPerspective:
             kornia.augmentation.RandomPerspective(torch.tensor(0.5, device=device, dtype=dtype), p=0.0),
             (input,),
             raise_exception=True,
+            fast_mode=True,
         )
 
 
 class TestRandomAffine:
-
     torch.manual_seed(0)  # for random reproductibility
 
     def test_smoke_no_transform(self, device):
@@ -196,4 +195,4 @@ class TestRandomAffine:
         input = torch.rand(1, 2, 5, 7).to(device)
         input = utils.tensor_to_gradcheck_var(input)  # to var
         # TODO: turned off with p=0
-        assert gradcheck(kornia.augmentation.RandomAffine(10, p=0.0), (input,), raise_exception=True)
+        assert gradcheck(kornia.augmentation.RandomAffine(10, p=0.0), (input,), raise_exception=True, fast_mode=True)

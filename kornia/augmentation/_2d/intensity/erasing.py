@@ -1,10 +1,8 @@
-from typing import Any, Dict, Optional, Tuple, Union, cast
-
-import torch
-from torch import Tensor
+from typing import Any, Dict, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core import Tensor, where
 from kornia.geometry.bbox import bbox_generator, bbox_to_mask
 
 
@@ -69,7 +67,7 @@ class RandomErasing(IntensityAugmentationBase2D):
         self.scale = scale
         self.ratio = ratio
         self.value: float = float(value)
-        self._param_generator = cast(rg.RectangleEraseGenerator, rg.RectangleEraseGenerator(scale, ratio, float(value)))
+        self._param_generator = rg.RectangleEraseGenerator(scale, ratio, float(value))
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
@@ -80,5 +78,5 @@ class RandomErasing(IntensityAugmentationBase2D):
         bboxes = bbox_generator(params["xs"], params["ys"], params["widths"], params["heights"])
         mask = bbox_to_mask(bboxes, w, h)  # Returns B, H, W
         mask = mask.unsqueeze(1).repeat(1, c, 1, 1).to(input)  # Transform to B, c, H, W
-        transformed = torch.where(mask == 1.0, values, input)
+        transformed = where(mask == 1.0, values, input)
         return transformed

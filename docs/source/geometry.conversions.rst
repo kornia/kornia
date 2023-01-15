@@ -22,6 +22,9 @@ Coordinates
 .. autofunction:: normalize_pixel_coordinates
 .. autofunction:: denormalize_pixel_coordinates3d
 .. autofunction:: normalize_pixel_coordinates3d
+.. autofunction:: normalize_points_with_intrinsics
+.. autofunction:: denormalize_points_with_intrinsics
+
 
 Homography
 ----------
@@ -50,6 +53,12 @@ Angle Axis
 
 .. autofunction:: angle_axis_to_quaternion
 .. autofunction:: angle_axis_to_rotation_matrix
+
+Euler Angles
+------------
+
+.. autofunction:: quaternion_from_euler
+.. autofunction:: euler_from_quaternion
 
 Pose
 ----------

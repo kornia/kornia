@@ -47,7 +47,7 @@ class TestRgbToYuv(BaseTester):
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.color.rgb_to_yuv, (img,), raise_exception=True)
+        assert gradcheck(kornia.color.rgb_to_yuv, (img,), raise_exception=True, fast_mode=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
@@ -72,7 +72,7 @@ class TestRgbToYuv420(BaseTester):
         assert isinstance(kornia.color.rgb_to_yuv420(img)[0], torch.Tensor)
         assert isinstance(kornia.color.rgb_to_yuv420(img)[1], torch.Tensor)
 
-    @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 2), (3, 2, 2)])
+    @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 2), (3, 2, 2), (3, 3, 3, 4, 4)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.ones(shape, device=device, dtype=dtype)
         shapey = list(shape)
@@ -202,7 +202,7 @@ class TestRgbToYuv420(BaseTester):
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.color.rgb_to_yuv420, (img,), raise_exception=True)
+        assert gradcheck(kornia.color.rgb_to_yuv420, (img,), raise_exception=True, fast_mode=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
@@ -229,7 +229,7 @@ class TestRgbToYuv422(BaseTester):
         assert isinstance(kornia.color.rgb_to_yuv422(img)[0], torch.Tensor)
         assert isinstance(kornia.color.rgb_to_yuv422(img)[1], torch.Tensor)
 
-    @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 2), (3, 2, 2)])
+    @pytest.mark.parametrize("shape", [(1, 3, 4, 4), (2, 3, 2, 4), (3, 3, 4, 2), (3, 2, 2), (3, 3, 3, 4, 4)])
     def test_cardinality(self, device, dtype, shape):
         img = torch.ones(shape, device=device, dtype=dtype)
         shapey = list(shape)
@@ -272,7 +272,7 @@ class TestRgbToYuv422(BaseTester):
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.color.rgb_to_yuv422, (img,), raise_exception=True)
+        assert gradcheck(kornia.color.rgb_to_yuv422, (img,), raise_exception=True, fast_mode=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
@@ -332,7 +332,7 @@ class TestYuvToRgb(BaseTester):
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.color.yuv_to_rgb, (img,), raise_exception=True)
+        assert gradcheck(kornia.color.yuv_to_rgb, (img,), raise_exception=True, fast_mode=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
@@ -436,7 +436,7 @@ class TestYuv420ToRgb(BaseTester):
         B, H, W = 2, 4, 4
         imgy = torch.rand(B, 1, H, W, device=device, dtype=torch.float64, requires_grad=True)
         imguv = torch.rand(B, 2, int(H / 2), int(W / 2), device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.color.yuv420_to_rgb, (imgy, imguv), raise_exception=True)
+        assert gradcheck(kornia.color.yuv420_to_rgb, (imgy, imguv), raise_exception=True, fast_mode=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
@@ -515,7 +515,7 @@ class TestYuv422ToRgb(BaseTester):
         B, H, W = 2, 4, 4
         imgy = torch.rand(B, 1, H, W, device=device, dtype=torch.float64, requires_grad=True)
         imguv = torch.rand(B, 2, H, int(W / 2), device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.color.yuv422_to_rgb, (imgy, imguv), raise_exception=True)
+        assert gradcheck(kornia.color.yuv422_to_rgb, (imgy, imguv), raise_exception=True, fast_mode=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):

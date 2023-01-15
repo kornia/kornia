@@ -2,6 +2,8 @@ import math
 
 import torch
 
+from kornia.core import Tensor
+
 
 def arange_sequence(ranges):
     """
@@ -34,7 +36,7 @@ def orientation_diff(o1, o2):
     return diff
 
 
-def piecewise_arange(piecewise_idxer):
+def piecewise_arange(piecewise_idxer: Tensor):
     """
     count repeated indices
     Example:
@@ -42,9 +44,10 @@ def piecewise_arange(piecewise_idxer):
     """
     dv = piecewise_idxer.device
     # print(piecewise_idxer)
+    uni: Tensor
     uni, counts = torch.unique_consecutive(piecewise_idxer, return_counts=True)
     # print(counts)
-    maxcnt = torch.max(counts).item()
+    maxcnt = int(torch.max(counts).item())
     numuni = uni.shape[0]
     tmp = torch.zeros(size=(numuni, maxcnt), device=dv).bool()
     ranges = torch.arange(maxcnt, device=dv).unsqueeze(0).expand(numuni, -1)
@@ -108,14 +111,15 @@ def batch_2x2_ellipse(m):
     return eigenvals, eigenvecs
 
 
-def draw_first_k_couples(k: int, rdims: int, dv: torch.device):
+def draw_first_k_couples(k: int, rdims: Tensor, dv: torch.device):
     # exhaustive search over the first n samples:
     # n(n+1)/2 = n2/2 + n/2 couples
     # max n for which we can exhaustively sample with k couples:
     # n2/2 + n/2 = k
     # n = sqrt(1/4 + 2k)-1/2 = (sqrt(8k+1)-1)/2
     max_exhaustive_search = int(math.sqrt(2 * k + 0.25) - 0.5)
-    residual_search = k - max_exhaustive_search * (max_exhaustive_search + 1) / 2
+    residual_search = int(k - max_exhaustive_search * (max_exhaustive_search + 1) / 2)
+
     repeats = torch.cat(
         [
             torch.arange(max_exhaustive_search, dtype=torch.long, device=dv) + 1,

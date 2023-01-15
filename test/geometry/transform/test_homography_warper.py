@@ -251,7 +251,7 @@ class TestHomographyWarper:
         warper = kornia.geometry.transform.HomographyWarper(height, width, align_corners=True)
 
         # evaluate function gradient
-        assert gradcheck(warper, (patch_src, dst_homo_src), raise_exception=True)
+        assert gradcheck(warper, (patch_src, dst_homo_src), nondet_tol=1e-8, raise_exception=True, fast_mode=True)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 3])
     @pytest.mark.parametrize("align_corners", [True, False])

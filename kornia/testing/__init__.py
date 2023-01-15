@@ -1,16 +1,16 @@
 """The testing package contains testing-specific utilities."""
-import contextlib
 import importlib
 import math
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from itertools import product
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, Optional, Sequence, Tuple, TypeVar, cast
 
 import torch
-from torch.nn import Parameter
+from torch.testing import assert_close as _assert_close
+from typing_extensions import TypeGuard
 
-from kornia.core import Tensor
+from kornia.core import Tensor, eye, tensor
 
 __all__ = [
     "tensor_to_gradcheck_var",
@@ -22,11 +22,11 @@ __all__ = [
     "KORNIA_UNWRAP",
     "KORNIA_CHECK_TYPE",
     "KORNIA_CHECK_IS_TENSOR",
+    "KORNIA_CHECK_IS_LIST_OF_TENSOR",
     "KORNIA_CHECK_SAME_DEVICE",
     "KORNIA_CHECK_SAME_DEVICES",
     "KORNIA_CHECK_IS_COLOR",
     "KORNIA_CHECK_IS_GRAY",
-    "KORNIA_CHECK_IS_COLR_OR_GRAY",
     "KORNIA_CHECK_DM_DESC",
     "KORNIA_CHECK_LAF",
 ]
@@ -47,7 +47,7 @@ def is_mps_tensor_safe(x: Tensor) -> bool:
 # TODO: Isn't this function duplicated with eye_like?
 def create_eye_batch(batch_size, eye_size, device=None, dtype=None):
     """Create a batch of identity matrices of shape Bx3x3."""
-    return torch.eye(eye_size, device=device, dtype=dtype).view(1, eye_size, eye_size).expand(batch_size, -1, -1)
+    return eye(eye_size, device=device, dtype=dtype).view(1, eye_size, eye_size).expand(batch_size, -1, -1)
 
 
 def create_random_homography(batch_size, eye_size, std_val=1e-3):
@@ -67,10 +67,13 @@ def tensor_to_gradcheck_var(tensor, dtype=torch.float64, requires_grad=True):
     return tensor.requires_grad_(requires_grad).type(dtype)
 
 
-def dict_to(data: dict, device: torch.device, dtype: torch.dtype) -> dict:
-    out: dict = {}
+T = TypeVar('T')
+
+
+def dict_to(data: Dict[T, Any], device: torch.device, dtype: torch.dtype) -> Dict[T, Any]:
+    out: Dict[T, Any] = {}
     for key, val in data.items():
-        out[key] = val.to(device, dtype) if isinstance(val, torch.Tensor) else val
+        out[key] = val.to(device, dtype) if isinstance(val, Tensor) else val
     return out
 
 
@@ -81,14 +84,14 @@ def compute_patch_error(x, y, h, w):
 
 def check_is_tensor(obj):
     """Check whether the supplied object is a tensor."""
-    if not isinstance(obj, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(obj)}")
+    if not isinstance(obj, Tensor):
+        raise TypeError(f"Input type is not a Tensor. Got {type(obj)}")
 
 
 def create_rectified_fundamental_matrix(batch_size):
     """Create a batch of rectified fundamental matrices of shape Bx3x3."""
-    F_rect = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]]).view(1, 3, 3)
-    F_repeat = F_rect.repeat(batch_size, 1, 1)
+    F_rect = tensor([[0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]]).view(1, 3, 3)
+    F_repeat = F_rect.expand(batch_size, 3, 3)
     return F_repeat
 
 
@@ -146,9 +149,9 @@ class BaseTester(ABC):
                 This parameter allows to reduce tolerance. Half the decimal places.
                 Example, 1e-4 -> 1e-2 or 1e-6 -> 1e-3
         """
-        if isinstance(actual, Parameter):
+        if hasattr(actual, "data"):
             actual = actual.data
-        if isinstance(expected, Parameter):
+        if hasattr(expected, "data"):
             expected = expected.data
 
         if 'xla' in actual.device.type or 'xla' in expected.device.type:
@@ -168,13 +171,13 @@ class BaseTester(ABC):
 
 def generate_two_view_random_scene(
     device: torch.device = torch.device("cpu"), dtype: torch.dtype = torch.float32
-) -> Dict[str, torch.Tensor]:
+) -> Dict[str, Tensor]:
     from kornia.geometry import epipolar as epi
 
     num_views: int = 2
     num_points: int = 30
 
-    scene: Dict[str, torch.Tensor] = epi.generate_scene(num_views, num_points)
+    scene: Dict[str, Tensor] = epi.generate_scene(num_views, num_points)
 
     # internal parameters (same K)
     K1 = scene['K'].to(device, dtype)
@@ -247,51 +250,45 @@ def _get_precision_by_name(
     return tol_val_default
 
 
-try:
-    # torch.testing.assert_close is only available for torch>=1.9
-    from torch.testing import assert_close as _assert_close  # type: ignore
-    from torch.testing._core import _get_default_tolerance  # type: ignore
+# {dtype: (rtol, atol)}
+_DTYPE_PRECISIONS = {torch.float16: (1e-3, 1e-3), torch.float32: (1e-4, 1e-5), torch.float64: (1e-5, 1e-8)}
 
-    def assert_close(
-        actual: torch.Tensor,
-        expected: torch.Tensor,
-        *,
-        rtol: Optional[float] = None,
-        atol: Optional[float] = None,
-        **kwargs: Any,
-    ) -> None:
-        if rtol is None and atol is None:
-            with contextlib.suppress(Exception):
-                rtol, atol = _get_default_tolerance(actual, expected)
 
-        return _assert_close(actual, expected, rtol=rtol, atol=atol, check_stride=False, equal_nan=True, **kwargs)
+def _default_tolerances(*inputs: Any) -> Tuple[float, float]:
+    rtols, atols = zip(*[_DTYPE_PRECISIONS.get(torch.as_tensor(input).dtype, (0.0, 0.0)) for input in inputs])
+    return max(rtols), max(atols)
 
-except ImportError:
-    # Partial backport of torch.testing.assert_close for torch<1.9
-    # TODO: remove this branch if kornia relies on torch>=1.9
-    from torch.testing import assert_allclose as _assert_close
 
-    class UsageError(Exception):
-        pass
+def assert_close(
+    actual: Tensor, expected: Tensor, *, rtol: Optional[float] = None, atol: Optional[float] = None, **kwargs: Any
+) -> None:
+    if rtol is None and atol is None:
+        # `torch.testing.assert_close` used different default tolerances than `torch.testing.assert_allclose`.
+        # TODO: remove this special handling as soon as https://github.com/kornia/kornia/issues/1134 is resolved
+        #  Basically, this whole wrapper function can be removed and `torch.testing.assert_close` can be used
+        #  directly.
+        rtol, atol = _default_tolerances(actual, expected)
 
-    def assert_close(
-        actual: torch.Tensor,
-        expected: torch.Tensor,
-        *,
-        rtol: Optional[float] = None,
-        atol: Optional[float] = None,
-        **kwargs: Any,
-    ) -> None:
-        try:
-            return _assert_close(actual, expected, rtol=rtol, atol=atol, **kwargs)
-        except ValueError as error:
-            raise UsageError(str(error)) from error
+    return _assert_close(
+        actual,
+        expected,
+        rtol=rtol,
+        atol=atol,
+        # this is the default value for torch>=1.10, but not for torch==1.9
+        # TODO: remove this if kornia relies on torch>=1.10
+        check_stride=False,
+        equal_nan=False,
+        **kwargs,
+    )
 
 
 # Logger api
 
+# TODO: add somehow type check, or enforce to do it before
+# TODO: get rid of torchscript test because prevents us to have type safe code
 
-def KORNIA_CHECK_SHAPE(x, shape: List[str]) -> None:
+
+def KORNIA_CHECK_SHAPE(x: Tensor, shape: List[str]) -> None:
     """Check whether a tensor has a specified shape.
 
     The shape can be specified with a implicit or explicit list of strings.
@@ -311,28 +308,29 @@ def KORNIA_CHECK_SHAPE(x, shape: List[str]) -> None:
         >>> x = torch.rand(2, 3, 4, 4)
         >>> KORNIA_CHECK_SHAPE(x, ["2","3", "H", "W"])  # explicit
     """
-    # Desired shape here is list and not tuple, because torch.jit
-    # does not like variable-length tuples
-    KORNIA_CHECK_IS_TENSOR(x)
+
     if '*' == shape[0]:
-        start_idx: int = 1
+        shape_to_check = shape[1:]
         x_shape_to_check = x.shape[-len(shape) + 1 :]
     elif '*' == shape[-1]:
-        start_idx: int = 0
+        shape_to_check = shape[:-1]
         x_shape_to_check = x.shape[: len(shape) - 1]
     else:
-        start_idx = 0
+        shape_to_check = shape
         x_shape_to_check = x.shape
 
-    for i in range(start_idx, len(x_shape_to_check)):
+    if len(x_shape_to_check) != len(shape_to_check):
+        raise TypeError(f"{x} shape must be [{shape}]. Got {x.shape}")
+
+    for i in range(len(x_shape_to_check)):
         # The voodoo below is because torchscript does not like
         # that dim can be both int and str
-        dim_: str = shape[i]
+        dim_: str = shape_to_check[i]
         if not dim_.isnumeric():
             continue
         dim = int(dim_)
         if x_shape_to_check[i] != dim:
-            raise TypeError(f"{x} shape should be must be [{shape}]. Got {x.shape}")
+            raise TypeError(f"{x} shape must be [{shape}]. Got {x.shape}")
 
 
 def KORNIA_CHECK(condition: bool, msg: Optional[str] = None) -> None:
@@ -360,7 +358,7 @@ def KORNIA_UNWRAP(maybe_obj, typ):
         maybe_obj: the object to unwrap.
         typ: expected type after unwrap.
     """
-    return cast(typ, maybe_obj)
+    return cast(typ, maybe_obj)  # type: ignore # TODO: this function will change after kornia/pr#1987
 
 
 def KORNIA_CHECK_TYPE(x, typ, msg: Optional[str] = None):
@@ -397,6 +395,25 @@ def KORNIA_CHECK_IS_TENSOR(x, msg: Optional[str] = None):
     """
     if not isinstance(x, Tensor):
         raise TypeError(f"Not a Tensor type. Got: {type(x)}.\n{msg}")
+
+
+def KORNIA_CHECK_IS_LIST_OF_TENSOR(x: Optional[Sequence[object]]) -> TypeGuard[List[Tensor]]:
+    """Check the input variable is a List of Tensors.
+
+    Args:
+        x: Any sequence of objects
+
+    Return:
+        True if the input is a list of Tensors, otherwise return False.
+
+    Example:
+        >>> x = torch.rand(2, 3, 3)
+        >>> KORNIA_CHECK_IS_LIST_OF_TENSOR(x)
+        False
+        >>> KORNIA_CHECK_IS_LIST_OF_TENSOR([x])
+        True
+    """
+    return isinstance(x, list) and all(isinstance(d, Tensor) for d in x)
 
 
 def KORNIA_CHECK_SAME_DEVICE(x: Tensor, y: Tensor):
@@ -437,6 +454,26 @@ def KORNIA_CHECK_SAME_DEVICES(tensors: List[Tensor], msg: Optional[str] = None):
     KORNIA_CHECK(isinstance(tensors, list) and len(tensors) >= 1, "Expected a list with at least one element")
     if not all(tensors[0].device == x.device for x in tensors):
         raise Exception(f"Not same device for tensors. Got: {[x.device for x in tensors]}.\n{msg}")
+
+
+def KORNIA_CHECK_SAME_SHAPE(x: Tensor, y: Tensor) -> None:
+    """Check whether two tensor have the same shape.
+
+    Args:
+        x: first tensor to evaluate.
+        y: sencod tensor to evaluate.
+        msg: message to show in the exception.
+
+    Raises:
+        TypeException: if the two tensors have not the same shape.
+
+    Example:
+        >>> x1 = torch.rand(2, 3, 3)
+        >>> x2 = torch.rand(2, 3, 3)
+        >>> KORNIA_CHECK_SAME_SHAPE(x1, x2)
+    """
+    if x.shape != y.shape:
+        raise TypeError(f"Not same shape for tensors. Got: {x.shape} and {y.shape}")
 
 
 def KORNIA_CHECK_IS_COLOR(x: Tensor, msg: Optional[str] = None):

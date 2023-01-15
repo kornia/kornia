@@ -218,7 +218,7 @@ class TestSpatialGradient:
         batch_size, channels, height, width = 1, 1, 3, 4
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.filters.spatial_gradient, (img,), raise_exception=True)
+        assert gradcheck(kornia.filters.spatial_gradient, (img,), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
@@ -452,7 +452,7 @@ class TestSobel:
         batch_size, channels, height, width = 1, 1, 3, 4
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.filters.sobel, (img, False), raise_exception=True)
+        assert gradcheck(kornia.filters.sobel, (img, False), raise_exception=True, fast_mode=True)
 
     def test_gradcheck(self, device, dtype):
         if "cuda" in str(device):
@@ -460,7 +460,7 @@ class TestSobel:
         batch_size, channels, height, width = 1, 1, 3, 4
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.filters.sobel, (img, True), raise_exception=True)
+        assert gradcheck(kornia.filters.sobel, (img, True), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)

@@ -1,11 +1,10 @@
 """Module containing RANSAC modules."""
 import math
-from typing import Optional, Tuple
+from typing import Callable, Optional, Tuple
 
 import torch
-import torch.nn as nn
 
-from kornia.core import Tensor
+from kornia.core import Device, Module, Tensor, zeros
 from kornia.geometry import (
     find_fundamental,
     find_homography_dlt,
@@ -24,7 +23,7 @@ from kornia.testing import KORNIA_CHECK_SHAPE
 __all__ = ["RANSAC"]
 
 
-class RANSAC(nn.Module):
+class RANSAC(Module):
     """Module for robust geometry estimation with RANSAC. https://en.wikipedia.org/wiki/Random_sample_consensus.
 
     Args:
@@ -55,29 +54,32 @@ class RANSAC(nn.Module):
         self.confidence = confidence
         self.max_lo_iters = max_lo_iters
         self.model_type = model_type
+
+        self.error_fn: Callable[..., Tensor]
+        self.minimal_solver: Callable[..., Tensor]
+        self.polisher_solver: Callable[..., Tensor]
+
         if model_type == 'homography':
-            self.error_fn = oneway_transfer_error  # type: ignore
-            self.minimal_solver = find_homography_dlt  # type: ignore
-            self.polisher_solver = find_homography_dlt_iterated  # type: ignore
+            self.error_fn = oneway_transfer_error
+            self.minimal_solver = find_homography_dlt
+            self.polisher_solver = find_homography_dlt_iterated
             self.minimal_sample_size = 4
         elif model_type == 'homography_from_linesegments':
-            self.error_fn = line_segment_transfer_error_one_way  # type: ignore
-            self.minimal_solver = find_homography_lines_dlt  # type: ignore
-            self.polisher_solver = find_homography_lines_dlt_iterated  # type: ignore
+            self.error_fn = line_segment_transfer_error_one_way
+            self.minimal_solver = find_homography_lines_dlt
+            self.polisher_solver = find_homography_lines_dlt_iterated
             self.minimal_sample_size = 4
         elif model_type == 'fundamental':
-            self.error_fn = symmetrical_epipolar_distance  # type: ignore
-            self.minimal_solver = find_fundamental  # type: ignore
+            self.error_fn = symmetrical_epipolar_distance
+            self.minimal_solver = find_fundamental
             self.minimal_sample_size = 8
             # ToDo: implement 7pt solver instead of 8pt minimal_solver
             # https://github.com/opencv/opencv/blob/master/modules/calib3d/src/fundam.cpp#L498
-            self.polisher_solver = find_fundamental  # type: ignore
+            self.polisher_solver = find_fundamental
         else:
             raise NotImplementedError(f"{model_type} is unknown. Try one of {self.supported_models}")
 
-    def sample(
-        self, sample_size: int, pop_size: int, batch_size: int, device: torch.device = torch.device('cpu')
-    ) -> Tensor:
+    def sample(self, sample_size: int, pop_size: int, batch_size: int, device: Device = torch.device('cpu')) -> Tensor:
         """Minimal sampler, but unlike traditional RANSAC we sample in batches to get benefit of the parallel
         processing, esp.
 
@@ -179,8 +181,8 @@ class RANSAC(nn.Module):
         self.validate_inputs(kp1, kp2, weights)
         best_score_total: float = float(self.minimal_sample_size)
         num_tc: int = len(kp1)
-        best_model_total = torch.zeros(3, 3, dtype=kp1.dtype, device=kp1.device)
-        inliers_best_total: Tensor = torch.zeros(num_tc, 1, device=kp1.device, dtype=torch.bool)
+        best_model_total = zeros(3, 3, dtype=kp1.dtype, device=kp1.device)
+        inliers_best_total: Tensor = zeros(num_tc, 1, device=kp1.device, dtype=torch.bool)
         for i in range(self.max_iter):
             # Sample minimal samples in batch to estimate models
             idxs = self.sample(self.minimal_sample_size, num_tc, self.batch_size, kp1.device)

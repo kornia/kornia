@@ -1,11 +1,10 @@
-from typing import Any, Dict, Optional, Tuple, Union, cast
-
-from torch import Tensor
+from typing import Any, Dict, Optional, Tuple, Union
 
 import kornia
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.base import AugmentationBase3D
 from kornia.constants import Resample
+from kornia.core import Tensor
 from kornia.geometry import affine3d
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix3d, _compute_tensor_center3d
 
@@ -88,7 +87,7 @@ class RandomRotation3D(AugmentationBase3D):
     ) -> None:
         super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
         self.flags = dict(resample=Resample.get(resample), align_corners=align_corners)
-        self._param_generator = cast(rg.RotationGenerator3D, rg.RotationGenerator3D(degrees))
+        self._param_generator = rg.RotationGenerator3D(degrees)
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         yaw: Tensor = params["yaw"].to(input)
@@ -109,5 +108,7 @@ class RandomRotation3D(AugmentationBase3D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        transform = cast(Tensor, transform)
+        if not isinstance(transform, Tensor):
+            raise TypeError(f'Expected the transform to be a Tensor. Gotcha {type(transform)}')
+
         return affine3d(input, transform[..., :3, :4], flags["resample"].name.lower(), "zeros", flags["align_corners"])

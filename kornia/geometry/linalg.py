@@ -1,9 +1,8 @@
 import torch
 from torch import Tensor
 
-from kornia.testing import KORNIA_CHECK_IS_TENSOR, check_is_tensor
-
-from .conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
+from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, check_is_tensor
 
 __all__ = [
     "compose_transformations",
@@ -12,6 +11,8 @@ __all__ = [
     "transform_points",
     "point_line_distance",
     "squared_norm",
+    "batched_dot_product",
+    "euclidean_distance",
 ]
 
 
@@ -225,10 +226,38 @@ def point_line_distance(point: Tensor, line: Tensor, eps: float = 1e-9) -> Tenso
     return numerator / (denominator + eps)
 
 
-def squared_norm(x: Tensor) -> Tensor:
-    """Return the squared norm of a vector."""
-    return x.pow(2).sum(-1)
+def batched_dot_product(x: Tensor, y: Tensor, keepdim: bool = False) -> Tensor:
+    """Return a batched version of .dot()"""
+    KORNIA_CHECK_SHAPE(x, ["*", "N"])
+    KORNIA_CHECK_SHAPE(y, ["*", "N"])
+    return (x * y).sum(-1, keepdim)
 
+
+def batched_squared_norm(x: Tensor, keepdim: bool = False) -> Tensor:
+    """Return the squared norm of a vector."""
+    return batched_dot_product(x, x, keepdim)
+
+
+def euclidean_distance(x: Tensor, y: Tensor, keepdim: bool = False, eps: float = 1e-6) -> Tensor:
+    """Compute the Euclidean distance between two set of n-dimensional points.
+
+    More: https://en.wikipedia.org/wiki/Euclidean_distance
+
+    Args:
+        x: first set of points of shape :math:`(*, N)`.
+        y: second set of points of shape :math:`(*, N)`.
+        keepdim: whether to keep the dimension after reduction.
+        eps: small value to have numerical stability.
+    """
+    KORNIA_CHECK_SHAPE(x, ["*", "N"])
+    KORNIA_CHECK_SHAPE(y, ["*", "N"])
+    KORNIA_CHECK(x.shape == y.shape)
+
+    return (x - y + eps).pow(2).sum(-1, keepdim).sqrt()
+
+
+# aliases
+squared_norm = batched_squared_norm
 
 # TODO:
 # - project_points: from opencv

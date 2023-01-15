@@ -3,6 +3,8 @@ from typing import Callable
 import torch
 import torch.nn as nn
 
+from kornia.core import Tensor, as_tensor, stack, tensor, where, zeros_like
+
 
 class _HausdorffERLossBase(torch.jit.ScriptModule):
     """Base class for binary Hausdorff loss based on morphological erosion.
@@ -23,8 +25,8 @@ class _HausdorffERLossBase(torch.jit.ScriptModule):
         Estimated Hausdorff Loss.
     """
 
-    conv: Callable
-    max_pool: Callable
+    conv: Callable[..., Tensor]
+    max_pool: Callable[..., Tensor]
 
     def __init__(self, alpha: float = 2.0, k: int = 10, reduction: str = 'mean') -> None:
         super().__init__()
@@ -33,15 +35,15 @@ class _HausdorffERLossBase(torch.jit.ScriptModule):
         self.reduction = reduction
         self.register_buffer("kernel", self.get_kernel())
 
-    def get_kernel(self) -> torch.Tensor:
+    def get_kernel(self) -> Tensor:
         """Get kernel for image morphology convolution."""
         raise NotImplementedError
 
-    def perform_erosion(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    def perform_erosion(self, pred: Tensor, target: Tensor) -> Tensor:
         bound = (pred - target) ** 2
 
-        kernel = torch.as_tensor(self.kernel, device=pred.device, dtype=pred.dtype)
-        eroded = torch.zeros_like(bound, device=pred.device, dtype=pred.dtype)
+        kernel = as_tensor(self.kernel, device=pred.device, dtype=pred.dtype)
+        eroded = zeros_like(bound, device=pred.device, dtype=pred.dtype)
         mask = torch.ones_like(bound, device=pred.device, dtype=torch.bool)
 
         # Same padding, assuming kernel is odd and square (cube) shaped.
@@ -65,7 +67,7 @@ class _HausdorffERLossBase(torch.jit.ScriptModule):
                 #       erosion[to_norm] = (erosion[to_norm] - erosion_min[to_norm]) / (
                 #           erosion_max[to_norm] - erosion_min[to_norm])
                 _erosion_to_fill = (erosion - erosion_min) / (erosion_max - erosion_min)
-                erosion = torch.where(mask * _to_norm, _erosion_to_fill, erosion)
+                erosion = where(mask * _to_norm, _erosion_to_fill, erosion)
 
             # save erosion and add to loss
             eroded = eroded + erosion * (k + 1) ** self.alpha
@@ -74,7 +76,7 @@ class _HausdorffERLossBase(torch.jit.ScriptModule):
         return eroded
 
     # NOTE: we add type ignore because the forward pass does not work well with subclassing
-    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:  # type: ignore
+    def forward(self, pred: Tensor, target: Tensor) -> Tensor:  # type: ignore[override]
         """Compute Hausdorff loss.
 
         Args:
@@ -94,14 +96,14 @@ class _HausdorffERLossBase(torch.jit.ScriptModule):
         if pred.size(1) < target.max().item():
             raise ValueError("Invalid target value.")
 
-        out = torch.stack(
+        out = stack(
             [
                 self.perform_erosion(
                     pred[:, i : i + 1],
-                    torch.where(
+                    where(
                         target == i,
-                        torch.tensor(1, device=target.device, dtype=target.dtype),
-                        torch.tensor(0, device=target.device, dtype=target.dtype),
+                        tensor(1, device=target.device, dtype=target.dtype),
+                        tensor(0, device=target.device, dtype=target.dtype),
                     ),
                 )
                 for i in range(pred.size(1))
@@ -159,14 +161,14 @@ class HausdorffERLoss(_HausdorffERLossBase):
     conv = torch.conv2d
     max_pool = nn.AdaptiveMaxPool2d(1)
 
-    def get_kernel(self) -> torch.Tensor:
+    def get_kernel(self) -> Tensor:
         """Get kernel for image morphology convolution."""
-        cross = torch.tensor([[[0, 1, 0], [1, 1, 1], [0, 1, 0]]])
+        cross = tensor([[[0, 1, 0], [1, 1, 1], [0, 1, 0]]])
         kernel = cross * 0.2
         return kernel[None]
 
     # NOTE: we add type ignore because the forward pass does not work well with subclassing
-    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:  # type: ignore
+    def forward(self, pred: Tensor, target: Tensor) -> Tensor:  # type: ignore[override]
         """Compute Hausdorff loss.
 
         Args:
@@ -226,18 +228,18 @@ class HausdorffERLoss3D(_HausdorffERLossBase):
     conv = torch.conv3d
     max_pool = nn.AdaptiveMaxPool3d(1)
 
-    def get_kernel(self) -> torch.Tensor:
+    def get_kernel(self) -> Tensor:
         """Get kernel for image morphology convolution."""
-        cross = torch.tensor([[[0, 1, 0], [1, 1, 1], [0, 1, 0]]])
-        bound = torch.tensor([[[0, 0, 0], [0, 1, 0], [0, 0, 0]]])
+        cross = tensor([[[0, 1, 0], [1, 1, 1], [0, 1, 0]]])
+        bound = tensor([[[0, 0, 0], [0, 1, 0], [0, 0, 0]]])
         # NOTE: The original repo claimed it shaped as (3, 1, 3, 3)
         #    which Jian suspect it is wrongly implemented.
         # https://github.com/PatRyg99/HausdorffLoss/blob/9f580acd421af648e74b45d46555ccb7a876c27c/hausdorff_loss.py#L94
-        kernel = torch.stack([bound, cross, bound], dim=1) * (1 / 7)
+        kernel = stack([bound, cross, bound], 1) * (1 / 7)
         return kernel[None]
 
     # NOTE: we add type ignore because the forward pass does not work well with subclassing
-    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:  # type: ignore
+    def forward(self, pred: Tensor, target: Tensor) -> Tensor:  # type: ignore[override]
         """Compute 3D Hausdorff loss.
 
         Args:

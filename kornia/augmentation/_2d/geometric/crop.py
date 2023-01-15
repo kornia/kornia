@@ -1,13 +1,12 @@
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import torch
-from torch import Tensor
-from torch.nn.functional import pad
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.augmentation.utils import _transform_input, _transform_output_shape, override_parameters
 from kornia.constants import Resample
+from kornia.core import Tensor, pad, tensor
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
 
 
@@ -91,7 +90,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         super().__init__(
             p=1.0, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim
         )
-        self._param_generator = cast(rg.CropGenerator, rg.CropGenerator(size))
+        self._param_generator = rg.CropGenerator(size)
         self.flags = dict(
             size=size,
             padding=padding,
@@ -107,23 +106,33 @@ class RandomCrop(GeometricAugmentationBase2D):
         flags = self.flags if flags is None else flags
         if len(shape) != 4:
             raise AssertionError(f"Expected BCHW. Got {shape}.")
-        padding = [0, 0, 0, 0]
+        padding = [0, 0, 0, 0]  # left, right, top, bottom
         if flags["padding"] is not None:
             if isinstance(flags["padding"], int):
                 padding = [flags["padding"]] * 4
             elif isinstance(flags["padding"], tuple) and len(flags["padding"]) == 2:
-                padding = [flags["padding"][1], flags["padding"][1], flags["padding"][0], flags["padding"][0]]
+                padding = [flags["padding"][0], flags["padding"][0], flags["padding"][1], flags["padding"][1]]
             elif isinstance(flags["padding"], tuple) and len(flags["padding"]) == 4:
-                padding = [flags["padding"][3], flags["padding"][2], flags["padding"][1], flags["padding"][0]]
+                padding = [flags["padding"][0], flags["padding"][2], flags["padding"][1], flags["padding"][3]]
             else:
                 raise RuntimeError(f"Expect `padding` to be a scalar, or length 2/4 list. Got {flags['padding']}.")
 
-        if flags["pad_if_needed"] and shape[-2] < flags["size"][0]:
-            padding = [0, 0, (flags["size"][0] - shape[-2]), flags["size"][0] - shape[-2]]
-
-        if flags["pad_if_needed"] and shape[-1] < flags["size"][1]:
-            padding = [flags["size"][1] - shape[-1], flags["size"][1] - shape[-1], 0, 0]
-
+        if flags["pad_if_needed"]:
+            needed_padding: Tuple[int, int] = (flags["size"][0] - shape[-2], flags["size"][1] - shape[-1])  # HW
+            # If crop width is larger than input width pad equally left and right
+            if needed_padding[1] > 0:
+                # Only use the extra padding if actually needed after possible fixed padding
+                if needed_padding[1] > padding[0]:
+                    padding[0] = needed_padding[1]
+                if needed_padding[1] > padding[1]:
+                    padding[1] = needed_padding[1]
+            # If crop height is larger than input height pad equally top and bottom
+            if needed_padding[0] > 0:
+                # Only use the extra padding if actually needed after possible fixed padding
+                if needed_padding[0] > padding[2]:
+                    padding[2] = needed_padding[0]
+                if needed_padding[0] > padding[3]:
+                    padding[3] = needed_padding[0]
         return padding
 
     def precrop_padding(
@@ -226,7 +235,7 @@ class RandomCrop(GeometricAugmentationBase2D):
             batch_shape[2] + input_pad[2] + input_pad[3],  # original height + top + bottom padding
             batch_shape[3] + input_pad[0] + input_pad[1],  # original width + left + right padding
         )
-        padding_size = torch.tensor(tuple(input_pad), dtype=torch.long).expand(batch_shape[0], -1)
+        padding_size = tensor(tuple(input_pad), dtype=torch.long).expand(batch_shape[0], -1)
         _params = super().forward_parameters(batch_shape_new)
         _params.update({"padding_size": padding_size})
         return _params
@@ -245,21 +254,20 @@ class RandomCrop(GeometricAugmentationBase2D):
             input_temp = _transform_input(input[0])
             input_pad = self.compute_padding(input[0].shape, flags) if input_pad is None else input_pad
             _input = (self.precrop_padding(input_temp, input_pad, flags), input[1])
-            _input = _transform_output_shape(_input, ori_shape) if self.keepdim else _input  # type:ignore
+            _input = _transform_output_shape(_input, ori_shape) if self.keepdim else _input
         else:
-            input = cast(Tensor, input)
             ori_shape = input.shape
             input_temp = _transform_input(input)
             input_pad = self.compute_padding(input_temp.shape, flags) if input_pad is None else input_pad
-            _input = self.precrop_padding(input_temp, input_pad, flags)  # type: ignore
-            _input = _transform_output_shape(_input, ori_shape) if self.keepdim else _input  # type:ignore
+            _input = self.precrop_padding(input_temp, input_pad, flags)
+            _input = _transform_output_shape(_input, ori_shape) if self.keepdim else _input
         if params is not None:
             params, flags = self._process_kwargs_to_params_and_flags(params, self.flags, **kwargs)
-        out = super().forward(_input, params, **kwargs)  # type:ignore
+        out = super().forward(_input, params, **kwargs)
 
         # Update the actual input size for inverse
         if "padding_size" not in self._params:
-            _padding_size = torch.tensor(tuple(input_pad), device=input_temp.device, dtype=torch.long).expand(
+            _padding_size = tensor(tuple(input_pad), device=input_temp.device, dtype=torch.long).expand(
                 input_temp.size(0), -1
             )
             self._params.update({"padding_size": _padding_size})

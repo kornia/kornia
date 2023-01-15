@@ -1,9 +1,13 @@
 # adapted from: https://github.com/xavysp/DexiNed/blob/d944b70eb6eaf40e22f8467c1e12919aa600d8e4/model.py
+from collections import OrderedDict
 from typing import List
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+from kornia.core import Module, Tensor, concatenate
+from kornia.utils import map_location_to_cpu
 
 url: str = "http://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth"
 
@@ -31,7 +35,7 @@ def weight_init(m):
             torch.nn.init.zeros_(m.bias)
 
 
-class CoFusion(nn.Module):
+class CoFusion(Module):
     def __init__(self, in_ch, out_ch):
         super().__init__()
         self.conv1 = nn.Conv2d(in_ch, 64, kernel_size=3, stride=1, padding=1)
@@ -41,7 +45,7 @@ class CoFusion(nn.Module):
         self.norm_layer1 = nn.GroupNorm(4, 64)
         self.norm_layer2 = nn.GroupNorm(4, 64)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         # fusecat = torch.cat(x, dim=1)
         attn = self.relu(self.norm_layer1(self.conv1(x)))
         attn = self.relu(self.norm_layer2(self.conv2(attn)))
@@ -53,19 +57,22 @@ class CoFusion(nn.Module):
 
 class _DenseLayer(nn.Sequential):
     def __init__(self, input_features, out_features):
-        super().__init__()
-        self.add_module('relu1', nn.ReLU(inplace=True)),
-        self.add_module(
-            'conv1', nn.Conv2d(input_features, out_features, kernel_size=3, stride=1, padding=2, bias=True)
-        ),
-        self.add_module('norm1', nn.BatchNorm2d(out_features)),
-        self.add_module('relu2', nn.ReLU(inplace=True)),
-        self.add_module('conv2', nn.Conv2d(out_features, out_features, kernel_size=3, stride=1, bias=True)),
-        self.add_module('norm2', nn.BatchNorm2d(out_features))
+        super().__init__(
+            OrderedDict(
+                [
+                    ('relu1', nn.ReLU(inplace=True)),
+                    ('conv1', nn.Conv2d(input_features, out_features, kernel_size=3, stride=1, padding=2, bias=True)),
+                    ('norm1', nn.BatchNorm2d(out_features)),
+                    ('relu2', nn.ReLU(inplace=True)),
+                    ('conv2', nn.Conv2d(out_features, out_features, kernel_size=3, stride=1, bias=True)),
+                    ('norm2', nn.BatchNorm2d(out_features)),
+                ]
+            )
+        )
 
-    def forward(self, x: List[torch.Tensor]) -> List[torch.Tensor]:
+    def forward(self, x: List[Tensor]) -> List[Tensor]:
         x1, x2 = x[0], x[1]
-        x3: torch.Tensor = x1
+        x3: Tensor = x1
         for mod in self:
             x3 = mod(x3)
         return [0.5 * (x3 + x2), x2]
@@ -79,14 +86,14 @@ class _DenseBlock(nn.Sequential):
             self.add_module('denselayer%d' % (i + 1), layer)
             input_features = out_features
 
-    def forward(self, x: List[torch.Tensor]) -> List[torch.Tensor]:
+    def forward(self, x: List[Tensor]) -> List[Tensor]:
         x_out = x
         for mod in self:
             x_out = mod(x_out)
         return x_out
 
 
-class UpConvBlock(nn.Module):
+class UpConvBlock(Module):
     def __init__(self, in_features, up_scale):
         super().__init__()
         self.up_factor = 2
@@ -97,8 +104,8 @@ class UpConvBlock(nn.Module):
             raise Exception("layers cannot be none")
         self.features = nn.Sequential(*layers)
 
-    def make_deconv_layers(self, in_features, up_scale):
-        layers = []
+    def make_deconv_layers(self, in_features: int, up_scale: int) -> List[Module]:
+        layers: List[Module] = []
         all_pads = [0, 0, 1, 3, 7]
         for i in range(up_scale):
             kernel_size = 2**up_scale
@@ -110,24 +117,24 @@ class UpConvBlock(nn.Module):
             in_features = out_features
         return layers
 
-    def compute_out_features(self, idx, up_scale):
+    def compute_out_features(self, idx: int, up_scale: int):
         return 1 if idx == up_scale - 1 else self.constant_features
 
-    def forward(self, x: torch.Tensor, out_shape: List[int]) -> torch.Tensor:
+    def forward(self, x: Tensor, out_shape: List[int]) -> Tensor:
         out = self.features(x)
         if out.shape[-2:] != out_shape:
             out = F.interpolate(out, out_shape, mode='bilinear')
         return out
 
 
-class SingleConvBlock(nn.Module):
+class SingleConvBlock(Module):
     def __init__(self, in_features, out_features, stride, use_bs=True):
         super().__init__()
         self.use_bn = use_bs
         self.conv = nn.Conv2d(in_features, out_features, 1, stride=stride, bias=True)
         self.bn = nn.BatchNorm2d(out_features)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         x = self.conv(x)
         if self.use_bn:
             x = self.bn(x)
@@ -148,7 +155,7 @@ class DoubleConvBlock(nn.Sequential):
             self.add_module("relu2", nn.ReLU(inplace=True))
 
 
-class DexiNed(nn.Module):
+class DexiNed(Module):
     r"""Definition of the DXtrem network from :cite:`xsoria2020dexined`.
 
     Return:
@@ -204,11 +211,11 @@ class DexiNed(nn.Module):
 
     def load_from_file(self, path_file: str):
         # use torch.hub to load pretrained model
-        pretrained_dict = torch.hub.load_state_dict_from_url(path_file, map_location=torch.device("cpu"))
+        pretrained_dict = torch.hub.load_state_dict_from_url(path_file, map_location=map_location_to_cpu)
         self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
-    def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
+    def forward(self, x: Tensor) -> List[Tensor]:
         # Block 1
         block_1 = self.block_1(x)
         block_1_side = self.side_1(block_1)
@@ -254,7 +261,7 @@ class DexiNed(nn.Module):
         results = [out_1, out_2, out_3, out_4, out_5, out_6]
 
         # concatenate multiscale outputs
-        block_cat = torch.cat(results, dim=1)  # Bx6xHxW
+        block_cat = concatenate(results, 1)  # Bx6xHxW
         block_cat = self.block_cat(block_cat)  # Bx1xHxW
 
         # return results
