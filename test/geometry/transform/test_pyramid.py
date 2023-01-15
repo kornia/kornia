@@ -200,27 +200,33 @@ class TestUpscaleDouble(BaseTester):
         x = self.prepare_data(shape, device, dtype)
         assert kornia.geometry.transform.upscale_double(x) is not None
 
-    def test_exception(self, device, dtype):
+    def test_exception(self):
         with pytest.raises(TypeError):
-            assert kornia.geometry.transform.upscale_double(None)
+            kornia.geometry.transform.upscale_double(None)
 
-    def test_cardinality(self, device, dtype):
-        with pytest.raises(TypeError):
-            img = torch.rand(10)
-            assert kornia.geometry.transform.upscale_double(img)
+    @pytest.mark.parametrize("shape", ((5, 5), (2, 5, 5), (1, 2, 5, 5)))
+    def test_cardinality(self, shape, device, dtype):
+        x = self.prepare_data(shape, device, dtype)
+        actual = kornia.geometry.transform.upscale_double(x)
+
+        h, w = shape[-2:]
+        expected = (*shape[:-2], h * 2, w * 2)
+
+        assert tuple(actual.shape) == expected
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
         img = self.prepare_data((1, 2, 5, 5), device, dtype)
         op = kornia.geometry.transform.upscale_double
         op_jit = torch.jit.script(op)
-        assert_close(op(img), op_jit(img))
+        self.assert_close(op(img), op_jit(img))
 
     @pytest.mark.grad
-    def test_gradcheck(self, device, dtype):
-        x = self.prepare_data((1, 2, 5, 5), device, dtype, requires_grad=True)
+    def test_gradcheck(self, device):
+        x = self.prepare_data((1, 2, 5, 5), device)
+        x = utils.tensor_to_gradcheck_var(x)
         assert gradcheck(
-            kornia.geometry.transform.upscale_double, (x,), rtol=5e-2, raise_exception=True, fast_mode=False
+            kornia.geometry.transform.upscale_double, (x,), rtol=5e-2, raise_exception=True, fast_mode=True
         )
 
     @pytest.mark.skip(reason="not implemented yet")
@@ -268,13 +274,13 @@ class TestUpscaleDouble(BaseTester):
         elif len(shape) == 4:
             expected = expected[None]
 
-        assert_close(upscaled, expected)
-        assert torch.all(upscaled == expected)
+        self.assert_close(upscaled, expected)
+
         downscaled_back = upscaled[..., ::2, ::2]
-        assert torch.all(x == downscaled_back)
+        self.assert_close(x, downscaled_back)
 
     @staticmethod
-    def prepare_data(shape, device, dtype, requires_grad=False):
+    def prepare_data(shape, device, dtype=torch.float32):
         xm = torch.tensor(
             [[0, 0, 0, 0, 0], [1, 1, 1, 1, 1], [2, 2, 2, 2, 2], [3, 3, 3, 3, 3], [4, 4, 4, 4, 4]],
             device=device,
@@ -292,6 +298,5 @@ class TestUpscaleDouble(BaseTester):
         else:
             x[..., 0, :, :] = xm
             x[..., 1, :, :] = ym
-        if requires_grad:
-            x.requires_grad_()
+
         return x
