@@ -21,6 +21,15 @@ Face Detection
     :members:
     :undoc-members:
 
+Interactive Demo
+~~~~~~~~~~~~~~~~
+.. raw:: html
+
+    <gradio-app space="kornia/Face-Detection"></gradio-app>
+
+Visit the `Kornia face detection demo on the Hugging Face Spaces
+<https://huggingface.co/spaces/kornia/Face-Detection>`_.
+
 Image Segmentation
 ------------------
 
