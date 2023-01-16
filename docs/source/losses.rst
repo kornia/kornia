@@ -7,11 +7,13 @@ Reconstruction
 --------------
 
 .. autofunction:: ssim_loss
+.. autofunction:: ssim3d_loss
 .. autofunction:: psnr_loss
 .. autofunction:: total_variation
 .. autofunction:: inverse_depth_smoothness_loss
 
 .. autoclass:: SSIMLoss
+.. autoclass:: SSIM3DLoss
 .. autoclass:: MS_SSIMLoss
 .. autoclass:: TotalVariation
 .. autoclass:: PSNRLoss
