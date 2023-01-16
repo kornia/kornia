@@ -176,7 +176,7 @@ class BaseTester(ABC):
         *,
         raise_exception: bool = True,
         fast_mode: bool = True,
-        **kwargs: Dict[str, Any],
+        **kwargs: Any,
     ) -> bool:
         return gradcheck(func, inputs, raise_exception=raise_exception, fast_mode=fast_mode, **kwargs)
 
