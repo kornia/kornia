@@ -4,9 +4,10 @@ import math
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from itertools import product
-from typing import Any, Dict, List, Optional, Sequence, Tuple, TypeVar, cast
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, TypeVar, Union, cast
 
 import torch
+from torch.autograd import gradcheck
 from torch.testing import assert_close as _assert_close
 from typing_extensions import TypeGuard
 
@@ -167,6 +168,17 @@ class BaseTester(ABC):
             atol = math.sqrt(atol) if low_tolerance else atol
 
         return assert_close(actual, expected, rtol=rtol, atol=atol)
+
+    @staticmethod
+    def gradcheck(
+        func: Callable[..., Union[torch.Tensor, Sequence[torch.Tensor]]],
+        inputs: Union[torch.Tensor, Sequence[torch.Tensor]],
+        *,
+        raise_exception: bool = True,
+        fast_mode: bool = True,
+        **kwargs: Dict[str, Any],
+    ) -> bool:
+        return gradcheck(func, inputs, raise_exception=raise_exception, fast_mode=fast_mode, **kwargs)
 
 
 def generate_two_view_random_scene(
