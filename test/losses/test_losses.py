@@ -1041,57 +1041,95 @@ class TestGemanMcclureLossLoss(BaseTester):
         self.assert_close(actual, expected)
 
 
-class TestCharbonnierLoss:
-    def test_smoke(self, device, dtype):
-        img1 = torch.rand(2, 3, 2, device=device, dtype=dtype)
-        img2 = torch.rand(2, 3, 2)
-        img2 = img2.to(device).long()
+class TestCharbonnierLoss(BaseTester):
+    @pytest.mark.parametrize("reduction", ["mean", "sum", "none"])
+    @pytest.mark.parametrize("shape", [(1, 2, 9, 9), (2, 4, 3, 6)])
+    def test_smoke(self, device, dtype, reduction, shape):
+        img1 = torch.rand(shape, device=device, dtype=dtype)
+        img2 = torch.rand(shape, device=device, dtype=dtype)
 
-        criterion = kornia.losses.CharbonnierLoss()
-        assert criterion(img1, img2) is not None
+        assert kornia.losses.charbonnier_loss(img1, img2, reduction) is not None
 
-    def test_gradcheck(self, device, dtype):
-        img1 = torch.rand(2, 3, 64, 12, device=device, dtype=dtype)
-        img2 = torch.rand(2, 3, 64, 12)
-        img2 = img2.to(device).long()
+    def test_exception(self, device, dtype):
+        img = torch.rand(3, 3, 3, device=device, dtype=dtype)
+
+        # wrong reduction
+        with pytest.raises(Exception) as execinfo:
+            kornia.losses.charbonnier_loss(img, img, reduction='test')
+        assert 'Given type of reduction is not supported. Got: test' in str(execinfo)
+
+        # Check if both are tensors
+        with pytest.raises(TypeError) as errinfo:
+            kornia.losses.charbonnier_loss(1.0, img)
+        assert 'Not a Tensor type. Got:' in str(errinfo)
+
+        with pytest.raises(TypeError) as errinfo:
+            kornia.losses.charbonnier_loss(img, 1.0)
+        assert 'Not a Tensor type. Got:' in str(errinfo)
+
+        # Check if same shape
+        img_b = torch.rand(1, 1, 3, 3, 4, device=device, dtype=dtype)
+        with pytest.raises(TypeError) as errinfo:
+            kornia.losses.charbonnier_loss(img, img_b, 3)
+        assert 'Not same shape for tensors. Got:' in str(errinfo)
+
+    @pytest.mark.parametrize("shape", [(1, 3, 5, 5), (2, 5, 5)])
+    def test_cardinality(self, shape, device, dtype):
+        img = torch.rand(shape, device=device, dtype=dtype)
+
+        actual = kornia.losses.charbonnier_loss(img, img, reduction='none')
+        assert actual.shape == shape
+
+        actual = kornia.losses.charbonnier_loss(img, img, reduction='sum')
+        assert actual.shape == ()
+
+        actual = kornia.losses.charbonnier_loss(img, img, reduction='mean')
+        assert actual.shape == ()
+
+    def test_gradcheck(self, device):
+        img1 = torch.rand(2, 3, 3, 3, device=device)
+        img2 = torch.rand(2, 3, 3, 3, device=device)
 
         img1 = tensor_to_gradcheck_var(img1)  # to var
-        assert gradcheck(kornia.losses.charbonnier_loss, (img1, img2), raise_exception=True, fast_mode=True)
+        img2 = tensor_to_gradcheck_var(img2)  # to var
+        self.gradcheck(kornia.losses.charbonnier_loss, (img1, img2))
 
     def test_jit(self, device, dtype):
-        img1 = torch.rand(2, 3, 64, 1904, device=device, dtype=dtype)
-        img2 = torch.rand(2, 3, 64, 1904)
-        img2 = img2.to(device).long()
+        img1 = torch.rand(2, 3, 3, 3, device=device, dtype=dtype)
+        img2 = torch.rand(2, 3, 3, 3, device=device, dtype=dtype)
 
         op = kornia.losses.charbonnier_loss
         op_script = torch.jit.script(op)
 
-        assert_close(op(img1, img2), op_script(img1, img2))
+        self.assert_close(op(img1, img2), op_script(img1, img2))
 
     def test_module(self, device, dtype):
-        img1 = torch.rand(2, 3, 32, 1904, device=device, dtype=dtype)
-        img2 = torch.rand(2, 3, 32, 1904)
-        img2 = img2.to(device).long()
+        img1 = torch.rand(2, 3, 3, 3, device=device, dtype=dtype)
+        img2 = torch.rand(2, 3, 3, 3, device=device, dtype=dtype)
 
         op = kornia.losses.charbonnier_loss
         op_module = kornia.losses.CharbonnierLoss()
 
-        assert_close(op(img1, img2), op_module(img1, img2))
+        self.assert_close(op(img1, img2), op_module(img1, img2))
 
-    def test_perfect_prediction(self, device, dtype):
-        img1 = torch.ones(100, device=device, dtype=dtype)
-        img2 = torch.ones(100, device=device, dtype=torch.int64)
+    @pytest.mark.parametrize("reduction", ["mean", "sum"])
+    @pytest.mark.parametrize("shape", [(1, 2, 9, 9), (2, 4, 3, 6)])
+    def test_perfect_prediction(self, device, dtype, reduction, shape):
+        # Sanity test
+        img = torch.rand(shape, device=device, dtype=dtype)
+        actual = kornia.losses.charbonnier_loss(img, img, reduction=reduction)
+        expected = torch.tensor(0.0, device=device, dtype=dtype)
+        self.assert_close(actual, expected)
 
-        criterion = kornia.losses.CharbonnierLoss()
-        loss = criterion(img1, img2)
-        assert_close(loss, torch.zeros_like(loss), rtol=1e-3, atol=1e-3)
+        # Check loss computation
+        img1 = torch.ones(shape, device=device, dtype=dtype)
+        img2 = torch.zeros(shape, device=device, dtype=dtype)
 
-    def test_shape(self, device, dtype):
-        criterion = kornia.losses.CharbonnierLoss()
-        with pytest.raises(Exception):
-            criterion(torch.rand(2, 3, 3, 2), torch.rand(2, 3, 3))
+        actual = kornia.losses.charbonnier_loss(img1, img2, reduction=reduction)
 
-    def test_reduction(self, device, dtype):
-        criterion = kornia.losses.CharbonnierLoss(reduction="test")
-        with pytest.raises(Exception):
-            criterion(torch.rand(4, 4), torch.rand(4, 4))
+        if reduction == 'mean':
+            expected = torch.tensor(0.41421356237, device=device, dtype=dtype)
+        elif reduction == 'sum':
+            expected = (torch.ones_like(img1, device=device, dtype=dtype) * 0.41421356237).sum()
+
+        self.assert_close(actual, expected)
