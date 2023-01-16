@@ -5,6 +5,7 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia.testing as utils  # test utils
+from kornia.augmentation import RandomGaussianBlur
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.augmentation.base import _BasicAugmentationBase
 from kornia.testing import assert_close
@@ -74,6 +75,28 @@ class TestBasicAugmentationBase:
             output = augmentation(input)
             assert output.shape == expected_output.shape
             assert_close(output, expected_output)
+
+    @pytest.mark.parametrize("batch_prob", [[True, True], [False, True], [False, False]])
+    def test_autocast(self, batch_prob, device, dtype):
+        if not hasattr(torch, "autocast"):
+            pytest.skip("PyTorch version without autocast support")
+
+        torch.manual_seed(42)
+
+        aug = RandomGaussianBlur((3, 3), (0.1, 3), p=1)
+        x = torch.rand(len(batch_prob), 3, 100, 100, dtype=dtype).to(device)
+
+        # Explicitly set the batch probability to trigger the different conditions in apply_func()
+        params = aug.forward_parameters(x.shape)
+        params["batch_prob"] = torch.tensor(batch_prob, device=params["batch_prob"].device)
+
+        # There is usually only a sigma value for the batch images which get transformed
+        params["sigma"] = params["sigma"][params["batch_prob"]]
+
+        with torch.autocast(device.type):
+            res = aug(x, params)
+
+        assert res.dtype == dtype, "The output dtype should match the input dtype"
 
 
 class TestAugmentationBase2D:
