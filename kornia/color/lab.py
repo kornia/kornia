@@ -17,7 +17,7 @@ def rgb_to_lab(image: torch.Tensor) -> torch.Tensor:
 
     .. image:: _static/img/rgb_to_lab.png
 
-    The image data is assumed to be in the range of :math:`[0, 1]`. Lab
+    The input RGB image is assumed to be in the range of :math:`[0, 1]`. Lab
     color is computed using the D65 illuminant and Observer 2.
 
     Args:
@@ -25,7 +25,7 @@ def rgb_to_lab(image: torch.Tensor) -> torch.Tensor:
 
     Returns:
         Lab version of the image with shape :math:`(*, 3, H, W)`.
-        The L channel values are in the range 0..100. a and b are in the range -127..127.
+        The L channel values are in the range 0..100. a and b are in the range -128..127.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
@@ -67,12 +67,16 @@ def rgb_to_lab(image: torch.Tensor) -> torch.Tensor:
 def lab_to_rgb(image: torch.Tensor, clip: bool = True) -> torch.Tensor:
     r"""Convert a Lab image to RGB.
 
+    The L channel is assumed to be in the range of :math:`[0, 100]`. 
+    a and b channels are in the range of :math:`[-128, 127]`.
+    
     Args:
         image: Lab image to be converted to RGB with shape :math:`(*, 3, H, W)`.
         clip: Whether to apply clipping to insure output RGB values in range :math:`[0, 1]`.
 
     Returns:
         Lab version of the image with shape :math:`(*, 3, H, W)`.
+        The output RGB image are in the range of :math:`[0, 1]`.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
