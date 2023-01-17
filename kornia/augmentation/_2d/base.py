@@ -102,11 +102,7 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
         raise NotImplementedError
 
     def inverse_boxes(
-        self,
-        input: Boxes,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
+        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Boxes:
         raise NotImplementedError
 

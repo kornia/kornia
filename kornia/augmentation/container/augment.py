@@ -260,7 +260,8 @@ class AugmentationSequential(ImageSequential):
         for param in params[::-1]:
             module = self.get_submodule(param.name)
             outputs = self.transform_op.inverse(  # type: ignore
-                *outputs, module=module, param=param, extra_args=self.extra_args)
+                *outputs, module=module, param=param, extra_args=self.extra_args
+            )
             if not isinstance(outputs, (list, tuple)):
                 # Make sure we are unpacking a list whilst post-proc
                 outputs = [outputs]
@@ -346,7 +347,8 @@ class AugmentationSequential(ImageSequential):
         for param in params:
             module = self.get_submodule(param.name)
             outputs = self.transform_op.transform(  # type: ignore
-                *outputs, module=module, param=param, extra_args=self.extra_args)
+                *outputs, module=module, param=param, extra_args=self.extra_args
+            )
             if not isinstance(outputs, (list, tuple)):
                 # Make sure we are unpacking a list whilst post-proc
                 outputs = [outputs]

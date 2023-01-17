@@ -36,9 +36,7 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
 
     @classmethod
     @abstractmethod
-    def transform(
-        cls, input: T, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}
-    ) -> T:
+    def transform(cls, input: T, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}) -> T:
         """Apply a transformation with respect to the parameters.
 
         Args:
@@ -51,9 +49,7 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
 
     @classmethod
     @abstractmethod
-    def inverse(
-        cls, input: T, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}
-    ) -> T:
+    def inverse(cls, input: T, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}) -> T:
         """Inverse a transformation with respect to the parameters.
 
         Args:
@@ -183,9 +179,7 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
     """Apply and inverse transformations for mask tensors."""
 
     @classmethod
-    def transform(
-        cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}
-    ) -> Tensor:
+    def transform(cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}) -> Tensor:
         """Apply a transformation with respect to the parameters.
 
         Args:
@@ -218,9 +212,7 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
         return input
 
     @classmethod
-    def inverse(
-        cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}
-    ) -> Tensor:
+    def inverse(cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}) -> Tensor:
         """Inverse a transformation with respect to the parameters.
 
         Args:
@@ -309,7 +301,8 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
                 raise ValueError(f"No valid transformation matrix found in {module.__class__}.")
             transform = module.compute_inverse_transformation(module.transform_matrix)
             _input = module.inverse_boxes(
-                _input, param.data, module.flags, transform=transform, **extra_args)  # type: ignore
+                _input, param.data, module.flags, transform=transform, **extra_args
+            )  # type: ignore
 
         elif isinstance(module, (GeometricAugmentationBase3D,)):
             raise NotImplementedError(
