@@ -1,5 +1,5 @@
 from abc import ABCMeta, abstractmethod
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import kornia
 from kornia.augmentation import GeometricAugmentationBase2D, GeometricAugmentationBase3D, MixAugmentationBaseV2
