@@ -67,9 +67,9 @@ def rgb_to_lab(image: torch.Tensor) -> torch.Tensor:
 def lab_to_rgb(image: torch.Tensor, clip: bool = True) -> torch.Tensor:
     r"""Convert a Lab image to RGB.
 
-    The L channel is assumed to be in the range of :math:`[0, 100]`. 
+    The L channel is assumed to be in the range of :math:`[0, 100]`.
     a and b channels are in the range of :math:`[-128, 127]`.
-    
+
     Args:
         image: Lab image to be converted to RGB with shape :math:`(*, 3, H, W)`.
         clip: Whether to apply clipping to insure output RGB values in range :math:`[0, 1]`.
