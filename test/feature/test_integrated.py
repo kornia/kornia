@@ -276,7 +276,7 @@ class TestLocalFeatureMatcher:
     def test_real_sift_preextract(self, device, dtype, data):
         torch.random.manual_seed(0)
         # This is not unit test, but that is quite good integration test
-        feat = SIFTFeature(1000)
+        feat = SIFTFeature(1000).to(device, dtype)
         matcher = LocalFeatureMatcher(feat, DescriptorMatcher('snn', 0.8)).to(device)
         ransac = RANSAC('homography', 1.0, 1024, 5).to(device, dtype)
         data_dev = utils.dict_to(data, device, dtype)
