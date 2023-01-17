@@ -394,7 +394,7 @@ class TestBlobDoGSingle:
         assert_close(scores, expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
-        batch_size, channels, height, width = 1, 2, 5, 4
+        batch_size, channels, height, width = 1, 2, 9, 11
         img = torch.rand(batch_size, channels, height, width, device=device)
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(
@@ -407,7 +407,7 @@ class TestBlobDoGSingle:
         def op_script(input):
             return kornia.feature.dog_response_single(input)
 
-        img = torch.rand(2, 3, 4, 5, device=device)
+        img = torch.rand(2, 3, 9, 9, device=device)
         actual = op_script(img)
         expected = kornia.feature.dog_response_single(img)
         assert_close(actual, expected)
