@@ -1,7 +1,7 @@
 import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
-from kornia.augmentation import AugmentationBase3D, RigidAffineAugmentationBase3D, RigidAffineAugmentationBase2D
+from kornia.augmentation import AugmentationBase3D, RigidAffineAugmentationBase2D, RigidAffineAugmentationBase3D
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.image import ImageSequential, ParamItem
 from kornia.augmentation.container.ops import AugmentationSequentialOps, DataType

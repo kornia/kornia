@@ -2,11 +2,7 @@ from abc import ABCMeta, abstractmethod
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import kornia
-from kornia.augmentation import (
-    GeometricAugmentationBase2D,
-    GeometricAugmentationBase3D,
-    MixAugmentationBaseV2
-)
+from kornia.augmentation import GeometricAugmentationBase2D, GeometricAugmentationBase3D, MixAugmentationBaseV2
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import ParamItem
 from kornia.constants import DataKey
@@ -153,7 +149,7 @@ def get_geometric_only_param(module: 'kornia.augmentation.ImageSequential', para
 
     res: List[ParamItem] = []
     for (_, mod), p in zip(named_modules, param):
-        if isinstance(mod, (GeometricAugmentationBase2D, GeometricAugmentationBase3D,)):
+        if isinstance(mod, (GeometricAugmentationBase2D, GeometricAugmentationBase3D)):
             res.append(p)
     return res
 
@@ -173,7 +169,7 @@ class InputSequentialOps(SequentialOpsInterface):
 
     @classmethod
     def inverse(cls, input: Tensor, module: Optional[Module], param: ParamItem, extra_args: Dict[str, Any]) -> Tensor:
-        if isinstance(module, GeometricAugmentationBase2D,):
+        if isinstance(module, GeometricAugmentationBase2D):
             input = module.inverse(input, params=cls.get_instance_module_param(param), **extra_args)
         elif isinstance(module, (GeometricAugmentationBase3D,)):
             raise NotImplementedError(
