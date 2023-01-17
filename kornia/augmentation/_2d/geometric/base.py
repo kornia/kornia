@@ -152,8 +152,10 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             output = self.inverse_transform(in_tensor, flags=flags, transform=transform, size=size)
         else:
             output[to_apply] = self.inverse_transform(
-                in_tensor[to_apply], transform=transform[to_apply] if transform is not None else transform,
-                size=size, flags=flags
+                in_tensor[to_apply],
+                transform=transform[to_apply] if transform is not None else transform,
+                size=size,
+                flags=flags,
             )
         return output
 

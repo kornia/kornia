@@ -266,10 +266,7 @@ class Boxes:
         return obj
 
     def index_put(
-        self,
-        indices: Union[Tuple[Tensor, ...], List[Tensor]],
-        values: Union[Tensor, "Boxes"],
-        inplace: bool = False
+        self, indices: Union[Tuple[Tensor, ...], List[Tensor]], values: Union[Tensor, "Boxes"], inplace: bool = False
     ) -> "Boxes":
         if inplace:
             _data = self._data

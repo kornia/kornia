@@ -393,9 +393,7 @@ class PatchSequential(ImageSequential):
 
         raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
 
-    def forward(  # type: ignore[override]
-        self, input: Tensor, params: Optional[List[PatchParamItem]] = None
-    ) -> Tensor:
+    def forward(self, input: Tensor, params: Optional[List[PatchParamItem]] = None) -> Tensor:  # type: ignore[override]
         """Input transformation will be returned if input is a tuple."""
         # BCHW -> B(patch)CHW
         if isinstance(input, (tuple,)):

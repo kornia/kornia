@@ -1,4 +1,4 @@
-from typing import cast, List, Optional, Union, Tuple
+from typing import List, Optional, Tuple, Union, cast
 
 from kornia.core import Tensor
 from kornia.geometry import transform_points
@@ -56,7 +56,7 @@ class Keypoints:
         self,
         indices: Union[Tuple[Tensor, ...], List[Tensor]],
         values: Union[Tensor, "Keypoints"],
-        inplace: bool = False
+        inplace: bool = False,
     ) -> "Keypoints":
         if inplace:
             _data = self._data
