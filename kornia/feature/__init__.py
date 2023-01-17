@@ -48,15 +48,18 @@ from .mkd import MKDDescriptor
 from .orientation import LAFOrienter, OriNet, PatchDominantGradientOrientation
 from .responses import (
     BlobDoG,
+    BlobDoGSingle,
     BlobHessian,
     CornerGFTT,
     CornerHarris,
     dog_response,
+    dog_response,
+    dog_response_single,
     gftt_response,
     harris_response,
     hessian_response,
 )
-from .scale_space_detector import PassLAF, ScaleSpaceDetector
+from .scale_space_detector import PassLAF, ScaleSpaceDetector, FastScaleSpaceDetector
 from .siftdesc import DenseSIFTDescriptor, SIFTDescriptor
 from .sold2 import SOLD2, SOLD2_detector
 from .sosnet import SOSNet
@@ -74,6 +77,7 @@ __all__ = [
     "get_laf_descriptors",
     "LAFDescriptor",
     "LocalFeature",
+    "FastScaleSpaceDetector",
     "SIFTFeature",
     "GFTTAffNetHardNet",
     "LocalFeatureMatcher",
@@ -83,10 +87,12 @@ __all__ = [
     "gftt_response",
     "hessian_response",
     "dog_response",
+    "dog_response_single",
     "CornerHarris",
     "CornerGFTT",
     "BlobHessian",
     "BlobDoG",
+    "BlobDoGSingle",
     "extract_patches_from_pyramid",
     "extract_patches_simple",
     "normalize_laf",
