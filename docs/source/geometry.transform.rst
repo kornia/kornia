@@ -35,6 +35,7 @@ Image 2d transforms
 .. autofunction:: pyrup
 .. autofunction:: build_pyramid
 .. autofunction:: build_laplacian_pyramid
+.. autofunction:: upscale_double
 
 Matrix transformations
 ----------------------
@@ -94,5 +95,10 @@ Interactive Demo
 ----------------
 
 .. raw:: html
-    :file: gradio/resize_antialias.html
-    :file: gradio/geometry_image_transform.html
+
+    <gradio-app space="kornia/kornia-resize-antialias"></gradio-app>
+
+
+.. raw:: html
+
+    <gradio-app space="kornia/geometry_image_transform_with_kornia"></gradio-app>

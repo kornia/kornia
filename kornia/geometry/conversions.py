@@ -1243,13 +1243,12 @@ def normalize_homography3d(
 
 
 def normalize_points_with_intrinsics(point_2d: Tensor, camera_matrix: Tensor):
-    r"""Normalizes points with intrinsics. Useful for conversion of keypoints to be used with essential matrix.
+    """Normalizes points with intrinsics. Useful for conversion of keypoints to be used with essential matrix.
 
     Args:
-        point_2d: tensor containing the 2d points in the image pixel coordinates.
-        The shape of the tensor can be :math:`(*, 2)`.
-        camera_matrix: tensor containing the intrinsics camera
-            matrix. The tensor shape must be :math:`(*, 3, 3)`.
+        point_2d: tensor containing the 2d points in the image pixel coordinates. The shape of the tensor can be
+                  :math:`(*, 2)`.
+        camera_matrix: tensor containing the intrinsics camera matrix. The tensor shape must be :math:`(*, 3, 3)`.
 
     Returns:
         tensor of (u, v) cam coordinates with shape :math:`(*, 2)`.
@@ -1286,13 +1285,12 @@ def normalize_points_with_intrinsics(point_2d: Tensor, camera_matrix: Tensor):
 
 
 def denormalize_points_with_intrinsics(point_2d_norm: Tensor, camera_matrix: Tensor):
-    r"""Normalizes points with intrinsics. Useful for conversion of keypoints to be used with essential matrix.
+    """Normalizes points with intrinsics. Useful for conversion of keypoints to be used with essential matrix.
 
     Args:
-        point_2d_norm: tensor containing the 2d points in the image pixel coordinates.
-        The shape of the tensor can be :math:`(*, 2)`.
-        camera_matrix: tensor containing the intrinsics camera
-            matrix. The tensor shape must be :math:`(*, 3, 3)`.
+        point_2d_norm: tensor containing the 2d points in the image pixel coordinates. The shape of the tensor can be
+                       :math:`(*, 2)`.
+        camera_matrix: tensor containing the intrinsics camera matrix. The tensor shape must be :math:`(*, 3, 3)`.
 
     Returns:
         tensor of (u, v) cam coordinates with shape :math:`(*, 2)`.

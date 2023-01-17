@@ -27,9 +27,9 @@ class RandomHue(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     .. note::
-        This function internally uses :func:`kornia.enhance.adjust_hue
+        This function internally uses :func:`kornia.enhance.adjust_hue`
 
-        Examples:
+    Examples:
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.rand(1, 3, 3, 3)
         >>> aug = RandomHue(hue = (-0.5,0.5),p=1.)
@@ -47,6 +47,7 @@ class RandomHue(IntensityAugmentationBase2D):
                   [0.5185, 0.8964, 0.4556]]]])
 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+
         >>> input = torch.rand(1, 3, 32, 32)
         >>> aug = RandomHue((-0.2,0.2), p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()

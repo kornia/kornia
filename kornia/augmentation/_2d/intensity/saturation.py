@@ -26,9 +26,9 @@ class RandomSaturation(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     .. note::
-        This function internally uses :func:`kornia.enhance.adjust_saturation
+        This function internally uses :func:`kornia.enhance.adjust_saturation`
 
-        Examples:
+    Examples:
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.rand(1, 3, 3, 3)
         >>> aug = RandomSaturation(saturation = (0.5,2.),p=1.)
@@ -46,6 +46,7 @@ class RandomSaturation(IntensityAugmentationBase2D):
                   [0.4636, 0.7060, 0.9527]]]])
 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+
         >>> input = torch.rand(1, 3, 32, 32)
         >>> aug = RandomSaturation((0.8,1.2), p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()

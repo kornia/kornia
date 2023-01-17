@@ -415,4 +415,4 @@ class _AugmentationBase(_BasicAugmentationBase):
 
         output = self.transform_inputs(in_tensor, params, flags)
 
-        return output
+        return output.type(in_tensor.dtype)

@@ -27,12 +27,12 @@ class RandomContrast(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     .. note::
-        This function internally uses :func:`kornia.enhance.adjust_contrast
+        This function internally uses :func:`kornia.enhance.adjust_contrast`
 
-        Examples:
+    Examples:
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.rand(1, 3, 3, 3)
-        >>> aug = RandomContrast(contrast = (0.5,2.),p=1.)
+        >>> aug = RandomContrast(contrast = (0.5, 2.), p = 1.)
         >>> aug(inputs)
         tensor([[[[0.2750, 0.4258, 0.0490],
                   [0.0732, 0.1704, 0.3514],
@@ -47,6 +47,7 @@ class RandomContrast(IntensityAugmentationBase2D):
                   [0.2325, 0.3064, 0.5281]]]])
 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+
         >>> input = torch.rand(1, 3, 32, 32)
         >>> aug = RandomContrast((0.8,1.2), p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()

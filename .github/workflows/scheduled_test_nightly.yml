@@ -1,4 +1,4 @@
-name: Tests on CPU (scheduled)
+name: Tests on CPU (nightly)
 
 on:
   push:
@@ -22,5 +22,5 @@ jobs:
     with:
       os: ${{ matrix.os }}
       python-version: '["3.7", "3.8", "3.9", "3.10"]'
-      pytorch-version: '["1.9.1", "1.10.2", "1.11.0", "1.12.1", "1.13.1"]'
+      pytorch-version: '["nightly"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}

@@ -63,7 +63,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
             output = self.apply_non_transform(in_tensor, params, flags)
             output = output.index_put((to_apply,), self.apply_non_transform(applied, params, flags))
         output = _transform_output_shape(output, ori_shape) if self.keepdim else output
-        return output
+        return output.type(in_tensor.dtype)
 
     def transform_mask(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         to_apply = params['batch_prob']

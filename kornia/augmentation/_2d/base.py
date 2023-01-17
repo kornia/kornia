@@ -68,18 +68,27 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
 
     def generate_transformation_matrix(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         """Generate transformation matrices with the given input and param settings."""
+        # Note about the explicit type conversions here:
+        # If this code is run in an autocast-enabled region, the transformation matrix or the output
+        # may be float16 even though the input was float32 (e.g. torch.mm produces float16 output),
+        # see also the documentation on autocasting: https://pytorch.org/docs/stable/amp.html.
+        # It may be unexpected for the user if the output type changes and it can also lead to errors
+        # for the index_put operation below (see also https://github.com/kornia/kornia/issues/1737)
+        # In case the type already matches the input type, the conversions are no-ops
+
         to_apply = params['batch_prob']
         in_tensor = self.transform_tensor(input)
         if not to_apply.any():
             trans_matrix = self.identity_matrix(in_tensor)
         elif to_apply.all():
-            trans_matrix = self.compute_transformation(in_tensor, params=params, flags=flags)
+            trans_matrix = self.compute_transformation(in_tensor, params=params, flags=flags).type(in_tensor.dtype)
         else:
             trans_matrix = self.identity_matrix(in_tensor)
             trans_matrix = trans_matrix.index_put(
-                (to_apply,), self.compute_transformation(in_tensor[to_apply], params=params, flags=flags)
+                (to_apply,),
+                self.compute_transformation(in_tensor[to_apply], params=params, flags=flags).type(in_tensor.dtype)
             )
-        return trans_matrix
+        return trans_matrix.type(in_tensor.dtype)
 
     def inverse_inputs(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None

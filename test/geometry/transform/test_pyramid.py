@@ -4,7 +4,7 @@ from torch.autograd import gradcheck
 
 import kornia
 import kornia.testing as utils  # test utils
-from kornia.testing import assert_close
+from kornia.testing import BaseTester, assert_close
 
 
 class TestPyrUp:
@@ -192,3 +192,111 @@ class TestBuildLaplacianPyramid:
             raise_exception=True,
             fast_mode=True,
         )
+
+
+class TestUpscaleDouble(BaseTester):
+    @pytest.mark.parametrize("shape", ((5, 5), (2, 5, 5), (1, 2, 5, 5)))
+    def test_smoke(self, shape, device, dtype):
+        x = self.prepare_data(shape, device, dtype)
+        assert kornia.geometry.transform.upscale_double(x) is not None
+
+    def test_exception(self):
+        with pytest.raises(TypeError):
+            kornia.geometry.transform.upscale_double(None)
+
+    @pytest.mark.parametrize("shape", ((5, 5), (2, 5, 5), (1, 2, 5, 5)))
+    def test_cardinality(self, shape, device, dtype):
+        x = self.prepare_data(shape, device, dtype)
+        actual = kornia.geometry.transform.upscale_double(x)
+
+        h, w = shape[-2:]
+        expected = (*shape[:-2], h * 2, w * 2)
+
+        assert tuple(actual.shape) == expected
+
+    @pytest.mark.jit
+    def test_jit(self, device, dtype):
+        img = self.prepare_data((1, 2, 5, 5), device, dtype)
+        op = kornia.geometry.transform.upscale_double
+        op_jit = torch.jit.script(op)
+        self.assert_close(op(img), op_jit(img))
+
+    @pytest.mark.grad
+    def test_gradcheck(self, device):
+        x = self.prepare_data((1, 2, 5, 5), device)
+        x = utils.tensor_to_gradcheck_var(x)
+        assert gradcheck(
+            kornia.geometry.transform.upscale_double, (x,), rtol=5e-2, raise_exception=True, fast_mode=True
+        )
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_module(self, device, dtype):
+        pass
+
+    @pytest.mark.parametrize("shape", ((5, 5), (2, 5, 5), (1, 2, 5, 5)))
+    def test_upscale_double_and_back(self, shape, device, dtype):
+        x = self.prepare_data(shape, device, dtype)
+        upscaled = kornia.geometry.transform.upscale_double(x)
+
+        expected = torch.tensor(
+            [
+                [
+                    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5],
+                    [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+                    [1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5, 1.5],
+                    [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0],
+                    [2.5, 2.5, 2.5, 2.5, 2.5, 2.5, 2.5, 2.5, 2.5, 2.5],
+                    [3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0],
+                    [3.5, 3.5, 3.5, 3.5, 3.5, 3.5, 3.5, 3.5, 3.5, 3.5],
+                    [4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0],
+                    [4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0],
+                ],
+                [
+                    [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.0],
+                    [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.0],
+                    [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.0],
+                    [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.0],
+                    [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.0],
+                    [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.0],
+                    [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.0],
+                    [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.0],
+                    [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.0],
+                    [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.0],
+                ],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        if len(shape) == 2:
+            expected = expected[0]
+        elif len(shape) == 4:
+            expected = expected[None]
+
+        self.assert_close(upscaled, expected)
+
+        downscaled_back = upscaled[..., ::2, ::2]
+        self.assert_close(x, downscaled_back)
+
+    @staticmethod
+    def prepare_data(shape, device, dtype=torch.float32):
+        xm = torch.tensor(
+            [[0, 0, 0, 0, 0], [1, 1, 1, 1, 1], [2, 2, 2, 2, 2], [3, 3, 3, 3, 3], [4, 4, 4, 4, 4]],
+            device=device,
+            dtype=dtype,
+        )
+        ym = torch.tensor(
+            [[0, 1, 2, 3, 4], [0, 1, 2, 3, 4], [0, 1, 2, 3, 4], [0, 1, 2, 3, 4], [0, 1, 2, 3, 4]],
+            device=device,
+            dtype=dtype,
+        )
+
+        x = torch.zeros(shape, device=device, dtype=dtype)
+        if len(shape) == 2:
+            x = xm
+        else:
+            x[..., 0, :, :] = xm
+            x[..., 1, :, :] = ym
+
+        return x

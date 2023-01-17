@@ -118,7 +118,8 @@ def draw_first_k_couples(k: int, rdims: Tensor, dv: torch.device):
     # n2/2 + n/2 = k
     # n = sqrt(1/4 + 2k)-1/2 = (sqrt(8k+1)-1)/2
     max_exhaustive_search = int(math.sqrt(2 * k + 0.25) - 0.5)
-    residual_search = k - max_exhaustive_search * (max_exhaustive_search + 1) / 2
+    residual_search = int(k - max_exhaustive_search * (max_exhaustive_search + 1) / 2)
+
     repeats = torch.cat(
         [
             torch.arange(max_exhaustive_search, dtype=torch.long, device=dv) + 1,

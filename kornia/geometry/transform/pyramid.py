@@ -6,9 +6,18 @@ import torch.nn.functional as F
 
 from kornia.core import Module, Tensor, pad, stack, tensor
 from kornia.filters import filter2d, gaussian_blur2d
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
-__all__ = ["PyrDown", "PyrUp", "ScalePyramid", "pyrdown", "pyrup", "build_pyramid", "build_laplacian_pyramid"]
+__all__ = [
+    "PyrDown",
+    "PyrUp",
+    "ScalePyramid",
+    "pyrdown",
+    "pyrup",
+    "build_pyramid",
+    "build_laplacian_pyramid",
+    "upscale_double",
+]
 
 
 def _get_pyramid_gaussian_kernel() -> Tensor:
@@ -171,7 +180,7 @@ class ScalePyramid(Module):
         cur_sigma = 0.5
         # Same as in OpenCV up to interpolation difference
         if self.double_image:
-            x = F.interpolate(input, scale_factor=2.0, mode='bilinear', align_corners=False)
+            x = upscale_double(input)
             pixel_distance = 0.5
             cur_sigma *= 2.0
         else:
@@ -213,9 +222,8 @@ class ScalePyramid(Module):
                 sigmas[-1][:, level_idx] = cur_sigma
                 pixel_dists[-1][:, level_idx] = pixel_distance
             _pyr = pyr[-1][-self.extra_levels]
-            nextOctaveFirstLevel = F.interpolate(
-                _pyr, size=(_pyr.size(-2) // 2, _pyr.size(-1) // 2), mode='nearest'
-            )  # Nearest matches OpenCV SIFT
+            nextOctaveFirstLevel = _pyr[:, :, ::2, ::2]
+
             pixel_distance *= 2.0
             cur_sigma = self.init_sigma
             if min(nextOctaveFirstLevel.size(2), nextOctaveFirstLevel.size(3)) <= self.min_size:
@@ -410,3 +418,27 @@ def build_laplacian_pyramid(
         laplacian_pyramid.append(laplacian)
     laplacian_pyramid.append(gaussian_pyramid[-1])
     return laplacian_pyramid
+
+
+def upscale_double(x: Tensor) -> Tensor:
+    r"""Upscale image by the factor of 2, even indices maps to original indices.
+
+    Odd indices are linearly interpolated from the even ones.
+
+    Args:
+        x: input image.
+
+    Shape:
+        - Input: :math:`(*, H, W)`
+        - Output :math:`(*, H, W)`
+    """
+    KORNIA_CHECK_IS_TENSOR(x)
+    KORNIA_CHECK_SHAPE(x, ["*", "H", "W"])
+    double_shape = x.shape[:-2] + (x.shape[-2] * 2, x.shape[-1] * 2)
+    upscaled = torch.zeros(double_shape, device=x.device, dtype=x.dtype)
+    upscaled[..., ::2, ::2] = x
+    upscaled[..., ::2, 1::2][..., :-1] = (upscaled[..., ::2, ::2][..., :-1] + upscaled[..., ::2, 2::2]) / 2
+    upscaled[..., ::2, -1] = upscaled[..., ::2, -2]
+    upscaled[..., 1::2, :][..., :-1, :] = (upscaled[..., ::2, :][..., :-1, :] + upscaled[..., 2::2, :]) / 2
+    upscaled[..., -1, :] = upscaled[..., -2, :]
+    return upscaled
