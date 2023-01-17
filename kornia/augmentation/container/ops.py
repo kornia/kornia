@@ -232,7 +232,7 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
 
         if isinstance(module, (GeometricAugmentationBase2D,)):
             if module.transform_matrix is None:
-                raise ValueError(f"No valid transformation matrix found in {module.__name__}.")
+                raise ValueError(f"No valid transformation matrix found in {module.__class__}.")
             transform = module.compute_inverse_transformation(module.transform_matrix)
             input = module.inverse_masks(
                 input,
@@ -306,7 +306,7 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
 
         if isinstance(module, (GeometricAugmentationBase2D,)):
             if module.transform_matrix is None:
-                raise ValueError(f"No valid transformation matrix found in {module.__name__}.")
+                raise ValueError(f"No valid transformation matrix found in {module.__class__}.")
             transform = module.compute_inverse_transformation(module.transform_matrix)
             _input = module.inverse_boxes(
                 _input, param.data, module.flags, transform=transform, **extra_args)  # type: ignore
@@ -377,7 +377,7 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
 
         if isinstance(module, (GeometricAugmentationBase2D,)):
             if module.transform_matrix is None:
-                raise ValueError(f"No valid transformation matrix found in {module.__name__}.")
+                raise ValueError(f"No valid transformation matrix found in {module.__class__}.")
             transform = module.compute_inverse_transformation(module.transform_matrix)
             _input = module.inverse_keypoints(
                 _input, cls.get_instance_module_param(param), module.flags, transform=transform, **extra_args

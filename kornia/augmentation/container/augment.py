@@ -210,10 +210,8 @@ class AugmentationSequential(ImageSequential):
         if self._transformation_matrix_arg == "skip":
             return
         if isinstance(module, (RigidAffineAugmentationBase2D, RigidAffineAugmentationBase3D, AugmentationSequential)):
-            if module.transform_matrix is None:
-                raise RuntimeError(f"No valid transformation matrix for {module.__name__}.")
-            self._transform_matrices.append(module.transform_matrix)
-            # self._update_transform_matrix(module.transform_matrix)
+            # Passed in pointer, allows lazy transformation matrix computation
+            self._transform_matrices.append(module.transform_matrix)  # type: ignore
         elif self._transformation_matrix_arg == "rigid":
             raise RuntimeError(
                 f"Non-rigid module `{module}` is not supported under `rigid` compuatation mode. "
