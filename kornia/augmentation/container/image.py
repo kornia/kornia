@@ -4,11 +4,7 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple, Type, Union, cast
 import torch
 
 import kornia
-from kornia.augmentation import (
-    GeometricAugmentationBase2D,
-    IntensityAugmentationBase2D,
-    MixAugmentationBaseV2,
-)
+from kornia.augmentation import GeometricAugmentationBase2D, IntensityAugmentationBase2D, MixAugmentationBaseV2
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import ParamItem, SequentialBase
 from kornia.augmentation.container.ops import (

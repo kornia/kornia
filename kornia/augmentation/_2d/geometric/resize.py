@@ -44,7 +44,8 @@ class Resize(GeometricAugmentationBase2D):
             return eye_like(3, input)
 
         transform: Tensor = torch.as_tensor(
-            get_perspective_transform(params["src"], params["dst"]), dtype=input.dtype, device=input.device)
+            get_perspective_transform(params["src"], params["dst"]), dtype=input.dtype, device=input.device
+        )
         transform = transform.expand(input.shape[0], -1, -1)
         return transform
 

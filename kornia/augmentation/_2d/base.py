@@ -86,7 +86,7 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
             trans_matrix = self.identity_matrix(in_tensor)
             trans_matrix = trans_matrix.index_put(
                 (to_apply,),
-                self.compute_transformation(in_tensor[to_apply], params=params, flags=flags).type(in_tensor.dtype)
+                self.compute_transformation(in_tensor[to_apply], params=params, flags=flags).type(in_tensor.dtype),
             )
         return trans_matrix.type(in_tensor.dtype)
 

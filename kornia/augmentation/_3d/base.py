@@ -3,9 +3,9 @@ from typing import Any, Dict, Optional
 from torch import float16, float32, float64
 
 import kornia
-from kornia.core import Tensor
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils import _transform_input3d, _validate_input_dtype
+from kornia.core import Tensor
 from kornia.geometry.boxes import Boxes3D
 from kornia.geometry.keypoints import Keypoints3D
 
