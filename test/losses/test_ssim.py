@@ -126,7 +126,7 @@ class TestMS_SSIMLoss:
 class TestSSIM3DLoss(BaseTester):
     def test_smoke(self, device, dtype):
         # input data
-        img1 = torch.rand(1, 1, 2, 4, 4, device=device, dtype=dtype)
+        img1 = torch.rand(1, 1, 2, 4, 3, device=device, dtype=dtype)
         img2 = torch.rand(1, 1, 2, 4, 4, device=device, dtype=dtype)
 
         ssim1 = kornia.losses.ssim3d_loss(img1, img1, window_size=3, reduction="none")
