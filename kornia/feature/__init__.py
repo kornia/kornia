@@ -5,6 +5,7 @@ from .hynet import TLU, FilterResponseNorm2d, HyNet
 from .integrated import (
     GFTTAffNetHardNet,
     KeyNetAffNetHardNet,
+    HesAffNetHardNet,
     KeyNetHardNet,
     LAFDescriptor,
     LocalFeature,
@@ -79,6 +80,7 @@ __all__ = [
     "FastScaleSpaceDetector",
     "SIFTFeature",
     "GFTTAffNetHardNet",
+    "HesAffNetHardNet",
     "LocalFeatureMatcher",
     "SOSNet",
     "KeyNet",
