@@ -15,7 +15,7 @@ from .keynet import KeyNetDetector
 from .laf import extract_patches_from_pyramid, get_laf_center, scale_laf
 from .orientation import LAFOrienter, OriNet, PassLAF
 from .responses import BlobDoG, BlobDoGSingle, CornerGFTT
-from .scale_space_detector import ScaleSpaceDetector, FastScaleSpaceDetector, Detector_config, default_detector_config
+from .scale_space_detector import Detector_config, FastScaleSpaceDetector, ScaleSpaceDetector, default_detector_config
 from .siftdesc import SIFTDescriptor
 
 
@@ -153,7 +153,7 @@ class SIFTFeature(LocalFeature):
         upright: bool = False,
         rootsift: bool = True,
         device: Device = torch.device('cpu'),
-        config: Detector_config = default_detector_config
+        config: Detector_config = default_detector_config,
     ):
         patch_size: int = 41
         detector = FastScaleSpaceDetector(
@@ -161,7 +161,7 @@ class SIFTFeature(LocalFeature):
             num_features,
             config,
             ori_module=PassLAF() if upright else LAFOrienter(19),
-            aff_module=LAFAffNetShapeEstimator(True).eval()
+            aff_module=LAFAffNetShapeEstimator(True).eval(),
         ).to(device)
         descriptor = LAFDescriptor(
             SIFTDescriptor(patch_size=patch_size, rootsift=rootsift), patch_size=patch_size, grayscale_descriptor=True
@@ -172,16 +172,19 @@ class SIFTFeature(LocalFeature):
 class GFTTAffNetHardNet(LocalFeature):
     """Convenience module, which implements GFTT detector + AffNet-HardNet descriptor."""
 
-    def __init__(self, num_features: int = 8000,
-                       upright: bool = False,
-                       device: Device = torch.device('cpu'),
-                       config: Detector_config = default_detector_config):
+    def __init__(
+        self,
+        num_features: int = 8000,
+        upright: bool = False,
+        device: Device = torch.device('cpu'),
+        config: Detector_config = default_detector_config,
+    ):
         detector = FastScaleSpaceDetector(
             CornerGFTT(),
             num_features,
             config,
             ori_module=PassLAF() if upright else LAFOrienter(19),
-            aff_module=LAFAffNetShapeEstimator(True).eval()
+            aff_module=LAFAffNetShapeEstimator(True).eval(),
         ).to(device)
         descriptor = LAFDescriptor(None, patch_size=32, grayscale_descriptor=True).to(device)
         super().__init__(detector, descriptor)
@@ -190,16 +193,19 @@ class GFTTAffNetHardNet(LocalFeature):
 class HesAffNetHardNet(LocalFeature):
     """Convenience module, which implements GFTT detector + AffNet-HardNet descriptor."""
 
-    def __init__(self, num_features: int = 2048,
-                       upright: bool = False,
-                       device: Device = torch.device('cpu'),
-                       config: Detector_config = default_detector_config):
+    def __init__(
+        self,
+        num_features: int = 2048,
+        upright: bool = False,
+        device: Device = torch.device('cpu'),
+        config: Detector_config = default_detector_config,
+    ):
         detector = FastScaleSpaceDetector(
             BlobHessian(),
             num_features,
             config,
             ori_module=PassLAF() if upright else LAFOrienter(19),
-            aff_module=LAFAffNetShapeEstimator(True).eval()
+            aff_module=LAFAffNetShapeEstimator(True).eval(),
         ).to(device)
         descriptor = LAFDescriptor(None, patch_size=32, grayscale_descriptor=True).to(device)
         super().__init__(detector, descriptor)

@@ -53,13 +53,12 @@ from .responses import (
     CornerGFTT,
     CornerHarris,
     dog_response,
-    dog_response,
     dog_response_single,
     gftt_response,
     harris_response,
     hessian_response,
 )
-from .scale_space_detector import PassLAF, ScaleSpaceDetector, FastScaleSpaceDetector
+from .scale_space_detector import FastScaleSpaceDetector, PassLAF, ScaleSpaceDetector
 from .siftdesc import DenseSIFTDescriptor, SIFTDescriptor
 from .sold2 import SOLD2, SOLD2_detector
 from .sosnet import SOSNet

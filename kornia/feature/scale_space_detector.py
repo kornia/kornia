@@ -1,15 +1,15 @@
+import math
 from typing import List, Optional, Tuple
 
 import torch
-import math
 import torch.nn.functional as F
 from typing_extensions import TypedDict
 
-from kornia.core import Device, Module, Tensor, concatenate, eye, where, zeros, tensor
+from kornia.core import Device, Module, Tensor, concatenate, eye, tensor, where, zeros
 from kornia.geometry.subpix import ConvSoftArgmax3d, NonMaximaSuppression2d
 from kornia.geometry.transform import ScalePyramid, pyrdown
 
-from .laf import laf_is_inside_image, laf_from_center_scale_ori
+from .laf import laf_from_center_scale_ori, laf_is_inside_image
 from .orientation import PassLAF
 from .responses import BlobHessian
 
@@ -245,6 +245,7 @@ class Detector_config(TypedDict):
     scale_factor_levels: float
     s_mult: float
 
+
 default_detector_config: Detector_config = {
     # Extraction Parameters
     'nms_size': 15,
@@ -256,7 +257,7 @@ default_detector_config: Detector_config = {
 
 
 class FastScaleSpaceDetector(Module):
-    """Multi-scale feature detector, based on code from KeyNet. Can be used with any responce function
+    """Multi-scale feature detector, based on code from KeyNet. Can be used with any responce function.
 
     This is based on the original code from paper
     "Key.Net: Keypoint Detection by Handcrafted and Learned CNN Filters".
@@ -274,7 +275,7 @@ class FastScaleSpaceDetector(Module):
 
     def __init__(
         self,
-        model: Module ,
+        model: Module,
         num_features: int = 2048,
         config: Detector_config = default_detector_config,
         ori_module: Optional[Module] = None,

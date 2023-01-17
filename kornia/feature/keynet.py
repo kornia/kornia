@@ -13,11 +13,7 @@ from kornia.utils.helpers import map_location_to_cpu
 
 from .laf import laf_from_center_scale_ori
 from .orientation import PassLAF
-from .scale_space_detector import (
-Detector_config,
-default_detector_config,
-FastScaleSpaceDetector
-)
+from .scale_space_detector import Detector_config, FastScaleSpaceDetector, default_detector_config
 
 
 class KeyNet_conf(TypedDict):
@@ -26,13 +22,14 @@ class KeyNet_conf(TypedDict):
     kernel_size: int
     Detector_conf: Detector_config
 
+
 keynet_default_config: KeyNet_conf = {
     # Key.Net Model
     'num_filters': 8,
     'num_levels': 3,
     'kernel_size': 5,
     # Extraction Parameters
-    'Detector_conf' : default_detector_config,
+    'Detector_conf': default_detector_config,
 }
 
 KeyNet_URL = "https://github.com/axelBarroso/Key.Net-Pytorch/raw/main/model/weights/keynet_pytorch.pth"
