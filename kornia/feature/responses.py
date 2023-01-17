@@ -312,7 +312,7 @@ class BlobDoGSingle(Module):
         return
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ + 'sigma1=' + self.sigma1 + ', sigma2=' + self.sigma2 + ')'
+        return f'{self.__class__.__name__}, sigma1={self.sigma1}, sigma2={self.sigma2})'
 
     def forward(self, input: Tensor, sigmas: Optional[Tensor] = None) -> Tensor:
         return dog_response_single(input, self.sigma1, self.sigma2)
