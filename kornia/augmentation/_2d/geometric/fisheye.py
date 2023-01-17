@@ -64,10 +64,6 @@ class RandomFisheye(AugmentationBase2D):
         if len(data.shape) != 1 and data.shape[0] != 2:
             raise ValueError(f"Tensor must be of shape (2,). Got: {data.shape}.")
 
-    # TODO: It is incorrect to return identity
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
-        return self.identity_matrix(input)
-
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:

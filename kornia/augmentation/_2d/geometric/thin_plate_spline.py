@@ -54,10 +54,6 @@ class RandomThinPlateSpline(AugmentationBase2D):
         dst = src + self.dist.rsample(src.shape)
         return dict(src=src, dst=dst)
 
-    # TODO: It is incorrect to return identity
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
-        return self.identity_matrix(input)
-
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:

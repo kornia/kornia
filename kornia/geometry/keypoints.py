@@ -1,4 +1,4 @@
-from typing import List, Optional, Union
+from typing import cast, List, Optional, Union, Tuple
 
 from kornia.core import Tensor
 from kornia.geometry import transform_points
@@ -51,6 +51,29 @@ class Keypoints:
     @property
     def data(self):
         return self._data
+
+    def index_put(
+        self,
+        indices: Union[Tuple[Tensor, ...], List[Tensor]],
+        values: Union[Tensor, "Keypoints"],
+        inplace: bool = False
+    ) -> "Keypoints":
+        if inplace:
+            _data = self._data
+        else:
+            _data = self._data.clone()
+
+        if isinstance(values, Keypoints):
+            _data.index_put_(indices, values.data)
+        else:
+            _data.index_put_(indices, values)
+
+        if inplace:
+            return self
+
+        obj = self.clone()
+        obj._data = _data
+        return obj
 
     def pad(self, padding_size: Tensor) -> "Keypoints":
         """Pad a bounding keypoints.
@@ -142,14 +165,15 @@ class VideoKeypoints(Keypoints):
         out.temporal_channel_size = temporal_channel_size
         return out
 
-    def to_tensor(self) -> Tensor:
-        out: Tensor = super().to_tensor(as_padded_sequence=False)
+    def to_tensor(self) -> Tensor:  # type: ignore[override]
+        out = super().to_tensor(as_padded_sequence=False)
+        out = cast(Tensor, out)
         return out.view(-1, self.temporal_channel_size, *out.shape[1:])
 
     def transform_keypoints(self, M: Tensor, inplace: bool = False) -> "VideoKeypoints":
         out = super().transform_keypoints(M, inplace=inplace)
         if inplace:
-            return out
+            return self
         out = VideoKeypoints(out.data, False)
         out.temporal_channel_size = self.temporal_channel_size
         return out

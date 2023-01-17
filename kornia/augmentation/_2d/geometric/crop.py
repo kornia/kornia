@@ -171,7 +171,10 @@ class RandomCrop(GeometricAugmentationBase2D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        padding_size = params.get("padding_size").unique(dim=0).cpu().squeeze().numpy().tolist()
+        _padding_size = params.get("padding_size")
+        padding_size: Optional[List[int]] = None
+        if _padding_size is not None:
+            padding_size = _padding_size.unique(dim=0).cpu().squeeze().numpy().tolist()
         input = self.precrop_padding(input, padding_size, flags)
 
         flags = self.flags if flags is None else flags

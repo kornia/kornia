@@ -1,5 +1,5 @@
 from abc import ABCMeta, abstractmethod
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Generic, List, Optional, Type, TypeVar, Union
 
 import kornia
 from kornia.augmentation import GeometricAugmentationBase2D, GeometricAugmentationBase3D, MixAugmentationBaseV2
@@ -12,25 +12,23 @@ from kornia.geometry.keypoints import Keypoints
 
 DataType = Union[Tensor, List[Tensor], Boxes, Keypoints]
 
+T = TypeVar('T')
 
-class SequentialOpsInterface(metaclass=ABCMeta):
+
+class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
     """Abstract interface for applying and inversing transformations."""
 
     @classmethod
-    def get_instance_module_param(cls, param: ParamItem) -> Optional[Dict[str, Tensor]]:
-        if param is None:
-            _params = None
-        elif isinstance(param, ParamItem) and isinstance(param.data, dict):
+    def get_instance_module_param(cls, param: ParamItem) -> Dict[str, Tensor]:
+        if isinstance(param, ParamItem) and isinstance(param.data, dict):
             _params = param.data
         else:
             raise TypeError(f'Expected param (ParamItem.data) be a dictionary. Gotcha {param}.')
         return _params
 
     @classmethod
-    def get_sequential_module_param(cls, param: ParamItem) -> Optional[List[ParamItem]]:
-        if param is None:
-            _params = None
-        elif isinstance(param, ParamItem) and isinstance(param.data, list):
+    def get_sequential_module_param(cls, param: ParamItem) -> List[ParamItem]:
+        if isinstance(param, ParamItem) and isinstance(param.data, list):
             _params = param.data
         else:
             raise TypeError(f'Expected param (ParamItem.data) be a list. Gotcha {param}.')
@@ -39,8 +37,8 @@ class SequentialOpsInterface(metaclass=ABCMeta):
     @classmethod
     @abstractmethod
     def transform(
-        cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}
-    ) -> Tuple[Tensor, Optional[Tensor]]:
+        cls, input: T, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}
+    ) -> T:
         """Apply a transformation with respect to the parameters.
 
         Args:
@@ -54,8 +52,8 @@ class SequentialOpsInterface(metaclass=ABCMeta):
     @classmethod
     @abstractmethod
     def inverse(
-        cls, input: Tensor, module: Module, param: Optional[ParamItem] = None, extra_args: Dict[str, Any] = {}
-    ) -> Tensor:
+        cls, input: T, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}
+    ) -> T:
         """Inverse a transformation with respect to the parameters.
 
         Args:
@@ -85,7 +83,7 @@ class AugmentationSequentialOps:
         else:
             return [DataKey.get(inp) for inp in data_keys]
 
-    def _get_op(self, data_key: DataKey) -> SequentialOpsInterface:
+    def _get_op(self, data_key: DataKey) -> Type[SequentialOpsInterface[Any]]:
         """Return the corresponding operation given a data key."""
         if data_key == DataKey.INPUT:
             return InputSequentialOps
@@ -102,12 +100,12 @@ class AugmentationSequentialOps:
         *arg: DataType,
         module: Module,
         param: ParamItem,
-        extra_args: Dict[str, Any],
+        extra_args: Dict[DataKey, Dict[str, Any]],
         data_keys: Optional[List[Union[str, int, DataKey]]] = None,
     ) -> Union[DataType, List[DataType]]:
-        data_keys = self.preproc_datakeys(data_keys)
+        _data_keys = self.preproc_datakeys(data_keys)
         outputs = []
-        for inp, dcate in zip(arg, data_keys):
+        for inp, dcate in zip(arg, _data_keys):
             op = self._get_op(dcate)
             extra_arg = extra_args[dcate] if dcate in extra_args else {}
             outputs.append(op.transform(inp, module, param=param, extra_args=extra_arg))
@@ -120,12 +118,12 @@ class AugmentationSequentialOps:
         *arg: DataType,
         module: Module,
         param: ParamItem,
-        extra_args: Dict[str, Any],
+        extra_args: Dict[DataKey, Dict[str, Any]],
         data_keys: Optional[List[Union[str, int, DataKey]]] = None,
     ) -> Union[DataType, List[DataType]]:
-        data_keys = self.preproc_datakeys(data_keys)
+        _data_keys = self.preproc_datakeys(data_keys)
         outputs = []
-        for inp, dcate in zip(arg, data_keys):
+        for inp, dcate in zip(arg, _data_keys):
             op = self._get_op(dcate)
             extra_arg = extra_args[dcate] if dcate in extra_args else {}
             outputs.append(op.inverse(inp, module, param=param, extra_args=extra_arg))
@@ -154,9 +152,9 @@ def get_geometric_only_param(module: 'kornia.augmentation.ImageSequential', para
     return res
 
 
-class InputSequentialOps(SequentialOpsInterface):
+class InputSequentialOps(SequentialOpsInterface[Tensor]):
     @classmethod
-    def transform(cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any]) -> Tensor:
+    def transform(cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}) -> Tensor:
         if isinstance(module, (_AugmentationBase, MixAugmentationBaseV2)):
             input = module(input, params=cls.get_instance_module_param(param), **extra_args)
         elif isinstance(module, kornia.augmentation.ImageSequential):
@@ -168,7 +166,7 @@ class InputSequentialOps(SequentialOpsInterface):
         return input
 
     @classmethod
-    def inverse(cls, input: Tensor, module: Optional[Module], param: ParamItem, extra_args: Dict[str, Any]) -> Tensor:
+    def inverse(cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}) -> Tensor:
         if isinstance(module, GeometricAugmentationBase2D):
             input = module.inverse(input, params=cls.get_instance_module_param(param), **extra_args)
         elif isinstance(module, (GeometricAugmentationBase3D,)):
@@ -181,13 +179,13 @@ class InputSequentialOps(SequentialOpsInterface):
         return input
 
 
-class MaskSequentialOps(SequentialOpsInterface):
+class MaskSequentialOps(SequentialOpsInterface[Tensor]):
     """Apply and inverse transformations for mask tensors."""
 
     @classmethod
     def transform(
-        cls, input: Tensor, module: Module, param: Optional[ParamItem] = None, extra_args: Dict[str, Any] = {}
-    ) -> Tuple[Tensor, Optional[Tensor]]:
+        cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}
+    ) -> Tensor:
         """Apply a transformation with respect to the parameters.
 
         Args:
@@ -221,7 +219,7 @@ class MaskSequentialOps(SequentialOpsInterface):
 
     @classmethod
     def inverse(
-        cls, input: Tensor, module: Module, param: Optional[ParamItem] = None, extra_args: Dict[str, Any] = {}
+        cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}
     ) -> Tensor:
         """Inverse a transformation with respect to the parameters.
 
@@ -233,6 +231,8 @@ class MaskSequentialOps(SequentialOpsInterface):
         """
 
         if isinstance(module, (GeometricAugmentationBase2D,)):
+            if module.transform_matrix is None:
+                raise ValueError(f"No valid transformation matrix found in {module.__name__}.")
             transform = module.compute_inverse_transformation(module.transform_matrix)
             input = module.inverse_masks(
                 input,
@@ -253,7 +253,7 @@ class MaskSequentialOps(SequentialOpsInterface):
         return input
 
 
-class BoxSequentialOps(SequentialOpsInterface):
+class BoxSequentialOps(SequentialOpsInterface[Boxes]):
     """Apply and inverse transformations for bounding box tensors.
 
     This is for transform boxes in the format (B, N, 4, 2).
@@ -305,8 +305,11 @@ class BoxSequentialOps(SequentialOpsInterface):
         _input = input.clone()
 
         if isinstance(module, (GeometricAugmentationBase2D,)):
+            if module.transform_matrix is None:
+                raise ValueError(f"No valid transformation matrix found in {module.__name__}.")
             transform = module.compute_inverse_transformation(module.transform_matrix)
-            _input = module.inverse_boxes(_input, param.data, module.flags, transform=transform, **extra_args)
+            _input = module.inverse_boxes(
+                _input, param.data, module.flags, transform=transform, **extra_args)  # type: ignore
 
         elif isinstance(module, (GeometricAugmentationBase3D,)):
             raise NotImplementedError(
@@ -318,7 +321,7 @@ class BoxSequentialOps(SequentialOpsInterface):
         return _input
 
 
-class KeypointSequentialOps(SequentialOpsInterface):
+class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
     """Apply and inverse transformations for keypoints tensors.
 
     This is for transform keypoints in the format (B, N, 2).
@@ -373,6 +376,8 @@ class KeypointSequentialOps(SequentialOpsInterface):
         _input = input.clone()
 
         if isinstance(module, (GeometricAugmentationBase2D,)):
+            if module.transform_matrix is None:
+                raise ValueError(f"No valid transformation matrix found in {module.__name__}.")
             transform = module.compute_inverse_transformation(module.transform_matrix)
             _input = module.inverse_keypoints(
                 _input, cls.get_instance_module_param(param), module.flags, transform=transform, **extra_args

@@ -152,7 +152,8 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             output = self.inverse_transform(in_tensor, flags=flags, transform=transform, size=size)
         else:
             output[to_apply] = self.inverse_transform(
-                in_tensor[to_apply], transform=transform[to_apply], size=size, flags=flags
+                in_tensor[to_apply], transform=transform[to_apply] if transform is not None else transform,
+                size=size, flags=flags
             )
         return output
 
@@ -183,6 +184,9 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
     ) -> Boxes:
         output = input.clone()
         to_apply = params['batch_prob']
+
+        if transform is None:
+            raise RuntimeError("transform matrix shall not be `None`.")
 
         params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, flags, **kwargs
@@ -217,6 +221,9 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         """
         output = input.clone()
         to_apply = params['batch_prob']
+
+        if transform is None:
+            raise RuntimeError("transform matrix shall not be `None`.")
 
         params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, flags, **kwargs

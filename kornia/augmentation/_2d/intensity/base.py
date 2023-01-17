@@ -4,6 +4,7 @@ from torch import Tensor
 
 from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
 from kornia.geometry.boxes import Boxes
+from kornia.geometry.keypoints import Keypoints
 
 
 class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
@@ -49,13 +50,13 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
         return input
 
     def apply_non_transform_keypoint(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Keypoints:
         return input
 
     def apply_transform_keypoint(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Keypoints:
         return input
 
     def apply_non_transform_class(

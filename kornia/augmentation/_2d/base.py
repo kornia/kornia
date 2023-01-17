@@ -1,10 +1,11 @@
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional
 
 from torch import Tensor, float16, float32, float64
 
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils import _transform_input, _validate_input_dtype
 from kornia.geometry.boxes import Boxes
+from kornia.geometry.keypoints import Keypoints
 from kornia.utils import eye_like
 
 
@@ -25,7 +26,7 @@ class AugmentationBase2D(_AugmentationBase):
           form ``False``.
     """
 
-    def validate_tensor(self, input: Tensor) -> bool:
+    def validate_tensor(self, input: Tensor) -> None:
         """Check if the input tensor is formated as expected."""
         _validate_input_dtype(input, accepted_dtypes=[float16, float32, float64])
         if len(input.shape) != 4:
@@ -102,7 +103,7 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
 
     def inverse_boxes(
         self,
-        input: Union[Tensor, Boxes],
+        input: Boxes,
         params: Dict[str, Tensor],
         flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
@@ -110,8 +111,8 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
         raise NotImplementedError
 
     def inverse_keypoints(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Keypoints:
         raise NotImplementedError
 
     def inverse_classes(

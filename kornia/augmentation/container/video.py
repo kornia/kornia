@@ -236,7 +236,7 @@ class VideoSequential(ImageSequential):
         input = self._input_shape_convert_back(input, frame_num)
         return input
 
-    def transform_boxes(
+    def transform_boxes(  # type: ignore[override]
         self, input: Union[Tensor, Boxes], params: List[ParamItem], extra_args: Dict[str, Any] = {}
     ) -> Union[Tensor, Boxes]:
         """Transform bounding boxes.
@@ -254,7 +254,7 @@ class VideoSequential(ImageSequential):
             input = super().transform_boxes(input, params, extra_args=extra_args)
         return input
 
-    def inverse_boxes(
+    def inverse_boxes(  # type: ignore[override]
         self, input: Union[Tensor, Boxes], params: List[ParamItem], extra_args: Dict[str, Any] = {}
     ) -> Union[Tensor, Boxes]:
         """Transform bounding boxes.
@@ -272,7 +272,7 @@ class VideoSequential(ImageSequential):
             input = super().inverse_boxes(input, params, extra_args=extra_args)
         return input
 
-    def transform_keypoints(
+    def transform_keypoints(  # type: ignore[override]
         self, input: Union[Tensor, Keypoints], params: List[ParamItem], extra_args: Dict[str, Any] = {}
     ) -> Union[Tensor, Keypoints]:
         """Transform bounding boxes.
@@ -290,7 +290,7 @@ class VideoSequential(ImageSequential):
             input = super().transform_keypoints(input, params, extra_args=extra_args)
         return input
 
-    def inverse_keypoints(
+    def inverse_keypoints(  # type: ignore[override]
         self, input: Union[Tensor, Keypoints], params: List[ParamItem], extra_args: Dict[str, Any] = {}
     ) -> Union[Tensor, Keypoints]:
         """Transform bounding boxes.
@@ -317,19 +317,22 @@ class VideoSequential(ImageSequential):
         provided parameters.
         """
         if params is None:
-            params = self._params
+            if self._params is not None:  # type: ignore
+                params = self._params  # type: ignore
+            else:
+                raise RuntimeError("No valid params to inverse the transformation.")
 
         return self.inverse_inputs(input, params, extra_args=extra_args)
 
     def forward(
         self, input: Tensor, params: Optional[List[ParamItem]] = None, extra_args: Dict[str, Any] = {}
-    ) -> Union[Tensor, Tuple[Tensor, Optional[Tensor]]]:
+    ) -> Tensor:
         """Define the video computation performed."""
         if len(input.shape) != 5:
             raise AssertionError(f"Input must be a 5-dim tensor. Got {input.shape}.")
 
         if params is None:
-            if self._params is None:
+            if self._params is None:  # type: ignore
                 self._params = self.forward_parameters(input.shape)
             params = self._params
 

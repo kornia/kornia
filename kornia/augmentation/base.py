@@ -83,7 +83,7 @@ class _BasicAugmentationBase(Module):
         """Standardize input tensors."""
         raise NotImplementedError
 
-    def validate_tensor(self, input: Tensor) -> bool:
+    def validate_tensor(self, input: Tensor) -> None:
         """Check if the input tensor is formated as expected."""
         raise NotImplementedError
 
@@ -247,7 +247,9 @@ class _AugmentationBase(_BasicAugmentationBase):
             output = self.apply_non_transform(in_tensor, params, flags, transform=transform)
         else:  # If any tensor needs to be transformed.
             output = self.apply_non_transform(in_tensor, params, flags, transform=transform)
-            applied = self.apply_transform(in_tensor[to_apply], params, flags, transform=transform[to_apply])
+            applied = self.apply_transform(
+                in_tensor[to_apply], params, flags, transform=transform if transform is None else transform[to_apply]
+            )
             output = output.index_put((to_apply,), applied)
         output = _transform_output_shape(output, ori_shape) if self.keepdim else output
         return output
@@ -275,7 +277,9 @@ class _AugmentationBase(_BasicAugmentationBase):
             output = self.apply_non_transform_mask(in_tensor, params, flags, transform=transform)
         else:  # If any tensor needs to be transformed.
             output = self.apply_non_transform_mask(in_tensor, params, flags, transform=transform)
-            applied = self.apply_transform_mask(in_tensor[to_apply], params, flags, transform=transform[to_apply])
+            applied = self.apply_transform_mask(
+                in_tensor[to_apply], params, flags, transform=transform if transform is None else transform[to_apply]
+            )
             output = output.index_put((to_apply,), applied)
         output = _transform_output_shape(output, ori_shape) if self.keepdim else output
         return output
@@ -304,7 +308,9 @@ class _AugmentationBase(_BasicAugmentationBase):
             output = self.apply_non_transform_box(input, params, flags, transform=transform)
         else:  # If any tensor needs to be transformed.
             output = self.apply_non_transform_box(input, params, flags, transform=transform)
-            applied = self.apply_transform_box(input[to_apply], params, flags, transform=transform[to_apply])
+            applied = self.apply_transform_box(
+                input[to_apply], params, flags, transform=transform if transform is None else transform[to_apply]
+            )
             output = output.index_put((to_apply,), applied)
         return output
 
@@ -315,7 +321,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
         **kwargs,
-    ) -> Tensor:
+    ) -> Keypoints:
 
         if not isinstance(input, Keypoints):
             raise RuntimeError(f"Only `Keypoints` is supported. Got {type(input)}.")
@@ -331,7 +337,9 @@ class _AugmentationBase(_BasicAugmentationBase):
             output = self.apply_non_transform_keypoint(input, params, flags, transform=transform)
         else:  # If any tensor needs to be transformed.
             output = self.apply_non_transform_keypoint(input, params, flags, transform=transform)
-            applied = self.apply_transform_keypoint(input[to_apply], params, flags, transform=transform[to_apply])
+            applied = self.apply_transform_keypoint(
+                input[to_apply], params, flags, transform=transform if transform is None else transform[to_apply]
+            )
             output = output.index_put((to_apply,), applied)
         return output
 
@@ -355,7 +363,9 @@ class _AugmentationBase(_BasicAugmentationBase):
             output = self.apply_non_transform_class(input, params, flags, transform=transform)
         else:  # If any tensor needs to be transformed.
             output = self.apply_non_transform_class(input, params, flags, transform=transform)
-            applied = self.apply_transform_class(input[to_apply], params, flags, transform=transform[to_apply])
+            applied = self.apply_transform_class(
+                input[to_apply], params, flags, transform=transform if transform is None else transform[to_apply]
+            )
             output = output.index_put((to_apply,), applied)
         return output
 
@@ -384,14 +394,14 @@ class _AugmentationBase(_BasicAugmentationBase):
         raise NotImplementedError
 
     def apply_non_transform_keypoint(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Keypoints:
         """Process keypoints corresponding to the inputs that are no transformation applied."""
         return input
 
     def apply_transform_keypoint(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Keypoints:
         """Process keypoints corresponding to the inputs that are transformed."""
         raise NotImplementedError
 

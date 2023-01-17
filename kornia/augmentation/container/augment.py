@@ -210,6 +210,8 @@ class AugmentationSequential(ImageSequential):
         if self._transformation_matrix_arg == "skip":
             return
         if isinstance(module, (RigidAffineAugmentationBase2D, RigidAffineAugmentationBase3D, AugmentationSequential)):
+            if module.transform_matrix is None:
+                raise RuntimeError(f"No valid transformation matrix for {module.__name__}.")
             self._transform_matrices.append(module.transform_matrix)
             # self._update_transform_matrix(module.transform_matrix)
         elif self._transformation_matrix_arg == "rigid":
@@ -259,19 +261,20 @@ class AugmentationSequential(ImageSequential):
         outputs: List[DataType] = in_args
         for param in params[::-1]:
             module = self.get_submodule(param.name)
-            outputs = self.transform_op.inverse(*outputs, module=module, param=param, extra_args=self.extra_args)
+            outputs = self.transform_op.inverse(  # type: ignore
+                *outputs, module=module, param=param, extra_args=self.extra_args)
             if not isinstance(outputs, (list, tuple)):
                 # Make sure we are unpacking a list whilst post-proc
                 outputs = [outputs]
 
-        outputs = self._arguments_postproc(args, outputs, data_keys=self.transform_op.data_keys)
+        outputs = self._arguments_postproc(args, outputs, data_keys=self.transform_op.data_keys)  # type: ignore
 
         if len(outputs) == 1 and isinstance(outputs, list):
             return outputs[0]
 
         return outputs
 
-    def _validate_args_datakeys(self, *args: Tensor, data_keys: List[DataKey]):
+    def _validate_args_datakeys(self, *args: DataType, data_keys: List[DataKey]):
         if len(args) != len(data_keys):
             raise AssertionError(
                 f"The number of inputs must align with the number of data_keys. Got {len(args)} and {len(data_keys)}."
@@ -303,9 +306,9 @@ class AugmentationSequential(ImageSequential):
                 # TODO: may add the float to integer, etc.
                 out.append(out_arg)
             elif DataKey.get(dcate) in [DataKey.KEYPOINTS]:
-                out.append(self._postproc_keypoint(in_arg, out_arg, dcate))
+                out.append(self._postproc_keypoint(in_arg, cast(Keypoints, out_arg), dcate))
             elif DataKey.get(dcate) in [DataKey.BBOX, DataKey.BBOX_XYXY, DataKey.BBOX_XYWH]:
-                out.append(self._postproc_boxes(in_arg, out_arg, dcate))
+                out.append(self._postproc_boxes(in_arg, cast(Boxes, out_arg), dcate))
             else:
                 raise NotImplementedError(f"input type of {dcate} is not implemented.")
 
@@ -330,7 +333,7 @@ class AugmentationSequential(ImageSequential):
             # image data must exist if params is not provided.
             if DataKey.INPUT in self.transform_op.data_keys:
                 inp = in_args[self.transform_op.data_keys.index(DataKey.INPUT)]
-                if isinstance(inp, (tuple, list)):
+                if not isinstance(inp, (Tensor,)):
                     raise ValueError(f"`INPUT` should be a tensor but `{type(inp)}` received.")
                 # A video input shall be BCDHW while an image input shall be BCHW
                 if self.contains_video_sequential or self.contains_3d_augmentation:
@@ -344,13 +347,14 @@ class AugmentationSequential(ImageSequential):
         outputs: Union[Tensor, List[DataType]] = in_args
         for param in params:
             module = self.get_submodule(param.name)
-            outputs = self.transform_op.transform(*outputs, module=module, param=param, extra_args=self.extra_args)
+            outputs = self.transform_op.transform(  # type: ignore
+                *outputs, module=module, param=param, extra_args=self.extra_args)
             if not isinstance(outputs, (list, tuple)):
                 # Make sure we are unpacking a list whilst post-proc
                 outputs = [outputs]
             self._update_transform_matrix_by_module(module)
 
-        outputs = self._arguments_postproc(args, outputs, data_keys=self.transform_op.data_keys)
+        outputs = self._arguments_postproc(args, outputs, data_keys=self.transform_op.data_keys)  # type: ignore
         # Restore it back
         self.transform_op.data_keys = self.data_keys
 
@@ -381,7 +385,7 @@ class AugmentationSequential(ImageSequential):
             arg = cast(Tensor, arg)
             return Boxes.from_tensor(arg, mode=mode)
 
-    def _postproc_boxes(self, in_arg: DataType, out_arg: Boxes, dcate: DataKey) -> Union[Tensor, Boxes]:
+    def _postproc_boxes(self, in_arg: DataType, out_arg: Boxes, dcate: DataKey) -> Union[Tensor, List[Tensor], Boxes]:
         if DataKey.get(dcate) in [DataKey.BBOX]:
             mode = "vertices_plus"
         elif DataKey.get(dcate) in [DataKey.BBOX_XYXY]:
@@ -398,14 +402,18 @@ class AugmentationSequential(ImageSequential):
 
     def _preproc_keypoints(self, arg: DataType, dcate: DataKey) -> Keypoints:
         if self.contains_video_sequential:
+            arg = cast(Union[Tensor, List[Tensor]], arg)
             return VideoKeypoints.from_tensor(arg)
         elif self.contains_3d_augmentation:
             raise NotImplementedError("3D keypoint handlers are not yet supported.")
         else:
+            arg = cast(Tensor, arg)
+            # TODO: Add List[Tensor] in the future.
             return Keypoints.from_tensor(arg)
 
-    def _postproc_keypoint(self, in_arg: DataType, out_arg: Boxes, dcate: DataKey) -> Union[Tensor, Keypoints]:
-        out_arg = cast(Keypoints, out_arg)
+    def _postproc_keypoint(
+        self, in_arg: DataType, out_arg: Keypoints, dcate: DataKey
+    ) -> Union[Tensor, List[Tensor], Keypoints]:
         if isinstance(in_arg, (Keypoints,)):
             return out_arg
         else:
