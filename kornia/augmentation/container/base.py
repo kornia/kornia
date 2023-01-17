@@ -56,9 +56,6 @@ class SequentialBase(nn.Sequential):
                     mod.same_on_batch = same_on_batch
                 if keepdim is not None:
                     mod.keepdim = keepdim
-            if isinstance(mod, _AugmentationBase):
-                if return_transform is not None:
-                    mod.return_transform = return_transform
             if isinstance(mod, SequentialBase):
                 mod.update_attribute(same_on_batch, return_transform, keepdim)
 

@@ -45,7 +45,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         """
         flags = self.flags if flags is None else flags
         if params is not None:
-            transform = self.compute_transformation(input[params['batch_prob']], params=params, flags=flags)
+            transform = self.generate_transformation_matrix(input, params, flags)
         elif self.transform_matrix is None:
             params = self.forward_parameters(input.shape)
             transform = self.generate_transformation_matrix(input, params, flags)

@@ -93,6 +93,7 @@ class VideoSequential(ImageSequential):
         >>> out.shape
         torch.Size([2, 3, 4, 5, 6])
     """
+    # TODO: implement transform_matrix
 
     def __init__(
         self,
@@ -328,9 +329,10 @@ class VideoSequential(ImageSequential):
             raise AssertionError(f"Input must be a 5-dim tensor. Got {input.shape}.")
 
         if params is None:
-            params = self.forward_parameters(input.shape)
+            if self._params is None:
+                self._params = self.forward_parameters(input.shape)
+            params = self._params
 
         output = self.transform_inputs(input, params, extra_args=extra_args)
-        self._params = params
 
         return output

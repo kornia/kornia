@@ -93,11 +93,6 @@ class RandomRotation(GeometricAugmentationBase2D):
         if not isinstance(transform, Tensor):
             raise TypeError(f'Expected the transform be a Tensor. Gotcha {type(transform)}')
 
-        try:
-            affine(input, transform[..., :2, :3], flags["resample"].name.lower(), "zeros", flags["align_corners"])
-        except:
-            assert False, (input.shape, transform.shape, self.compute_transformation(input, params, self.flags).shape)
-
         return affine(input, transform[..., :2, :3], flags["resample"].name.lower(), "zeros", flags["align_corners"])
 
     def inverse_transform(

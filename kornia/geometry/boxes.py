@@ -460,7 +460,7 @@ class Boxes:
                 * 'vertices_plus': similar to 'vertices' mode but where box width and length are defined as
                   ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``. ymin + 1``.
             as_padded_sequence: whether to keep the pads for a list of boxes. This parameter is only valid
-                if the boxes are from a box list.
+                if the boxes are from a box list whilst `from_tensor`.
 
         Returns:
             Boxes tensor in the ``mode`` format. The shape depends with the ``mode`` value:
@@ -643,6 +643,8 @@ class Boxes:
     def clone(self) -> "Boxes":
         obj = type(self)(self._data.clone(), False)
         obj._mode = self._mode
+        obj._N = self._N
+        obj._is_batched = self._is_batched
         return obj
 
 

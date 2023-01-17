@@ -4,7 +4,6 @@ import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
-from kornia.augmentation.utils import _transform_input, _transform_output_shape, override_parameters
 from kornia.constants import Resample
 from kornia.core import Tensor, pad, tensor
 from kornia.geometry.boxes import Boxes
@@ -265,8 +264,8 @@ class RandomCrop(GeometricAugmentationBase2D):
         output = super().inverse_boxes(input, params, flags, transform, **kwargs)
         if not params["batch_prob"].all():
             return output
-        padding_size = params["padding_size"]
-        return output.unpad(padding_size)
+
+        return output.unpad(params["padding_size"])
 
     def inverse_keypoints(
         self,
@@ -283,8 +282,8 @@ class RandomCrop(GeometricAugmentationBase2D):
         output = super().inverse_keypoints(input, params, flags, transform, **kwargs)
         if not params["batch_prob"].all():
             return output
-        padding_size = params["padding_size"]
-        return output.unpad(padding_size)
+
+        return output.unpad(params["padding_size"])
 
     # Override parameters for precrop
     def forward_parameters(self, batch_shape) -> Dict[str, Tensor]:

@@ -61,7 +61,9 @@ from kornia.augmentation._3d import (
     RandomRotation3D,
     RandomVerticalFlip3D,
 )
-from kornia.augmentation._3d.base import AugmentationBase3D
+from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmentationBase3D
+from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
+from kornia.augmentation._3d.intensity.base import IntensityAugmentationBase3D
 from kornia.augmentation.container import (
     AugmentationSequential,
     ImageSequential,
@@ -123,6 +125,9 @@ __all__ = [
     "Resize",
     "SmallestMaxSize",
     "AugmentationBase3D",
+    "RigidAffineAugmentationBase3D",
+    "GeometricAugmentationBase3D",
+    "IntensityAugmentationBase3D",
     "CenterCrop3D",
     "RandomAffine3D",
     "RandomCrop3D",

@@ -8,7 +8,6 @@ from kornia.augmentation import (
     GeometricAugmentationBase2D,
     IntensityAugmentationBase2D,
     MixAugmentationBaseV2,
-    RandomCrop,
 )
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import ParamItem, SequentialBase
@@ -369,6 +368,9 @@ class ImageSequential(SequentialBase):
     def forward(
         self, input: Tensor, params: Optional[List[ParamItem]] = None, extra_args: Dict[str, Any] = {}
     ) -> Tensor:
+
+        self.clear_state()
+
         if params is None:
             inp = input
             _, out_shape = self.autofill_dim(inp, dim_range=(2, 4))

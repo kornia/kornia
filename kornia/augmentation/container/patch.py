@@ -311,8 +311,7 @@ class PatchSequential(ImageSequential):
             output = InputSequentialOps.transform(_input, module, patch_param.param, extra_args={})
             input[patch_param.indices] = output
 
-        input = input.reshape(in_shape)
-        return input
+        return input.reshape(in_shape)
 
     def transform_inputs(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
         pad = self.compute_padding(input, self.padding)
@@ -396,7 +395,7 @@ class PatchSequential(ImageSequential):
         if params is None:
             params = self.forward_parameters(input.shape)
 
-        output = self.transform_input(input, params=params)
+        output = self.transform_inputs(input, params=params)
 
         self._params = params
 

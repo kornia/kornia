@@ -1,7 +1,7 @@
 import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
-from kornia.augmentation import AugmentationBase3D, RigidAffineAugmentationBase2D
+from kornia.augmentation import AugmentationBase3D, RigidAffineAugmentationBase3D, RigidAffineAugmentationBase2D
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.image import ImageSequential, ParamItem
 from kornia.augmentation.container.ops import AugmentationSequentialOps, DataType
@@ -209,7 +209,7 @@ class AugmentationSequential(ImageSequential):
     def _update_transform_matrix_by_module(self, module: Module) -> None:
         if self._transformation_matrix_arg == "skip":
             return
-        if isinstance(module, (RigidAffineAugmentationBase2D, AugmentationSequential)):
+        if isinstance(module, (RigidAffineAugmentationBase2D, RigidAffineAugmentationBase3D, AugmentationSequential)):
             self._transform_matrices.append(module.transform_matrix)
             # self._update_transform_matrix(module.transform_matrix)
         elif self._transformation_matrix_arg == "rigid":
@@ -318,6 +318,7 @@ class AugmentationSequential(ImageSequential):
         data_keys: Optional[List[Union[str, int, DataKey]]] = None,
     ) -> Union[DataType, List[DataType]]:
         """Compute multiple tensors simultaneously according to ``self.data_keys``."""
+        self.clear_state()
 
         self.transform_op.data_keys = self.transform_op.preproc_datakeys(data_keys)
 

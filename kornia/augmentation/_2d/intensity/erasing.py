@@ -84,7 +84,7 @@ class RandomErasing(IntensityAugmentationBase2D):
     ) -> Tensor:
         _, c, h, w = input.size()
 
-        values = params["values"].unsqueeze(-1).unsqueeze(-1).unsqueeze(-1).repeat(1, *input.shape[1:]).to(input)
+        values = params["values"][..., None, None, None].repeat(1, *input.shape[1:]).to(input)
         # Erase the corresponding areas on masks.
         values = values.zero_()
 
