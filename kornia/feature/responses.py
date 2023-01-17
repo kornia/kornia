@@ -309,7 +309,6 @@ class BlobDoGSingle(Module):
         super().__init__()
         self.sigma1 = sigma1
         self.sigma2 = sigma2
-        return
 
     def __repr__(self) -> str:
         return f'{self.__class__.__name__}, sigma1={self.sigma1}, sigma2={self.sigma2})'

@@ -363,7 +363,7 @@ class TestBlobDoGSingle:
                 ],
             ],
             device=device,
-        ).repeat(2, 1, 1, 1)
+        ).expand(2, 1, 1, 1)
         expected = torch.tensor(
             [
                 [
@@ -388,7 +388,7 @@ class TestBlobDoGSingle:
                 ]
             ],
             device=device,
-        ).repeat(2, 1, 1, 1)
+        ).expand(2, 1, 1, 1)
         det = kornia.feature.BlobDoGSingle(1.0, 1.6).to(device)
         scores = det(inp)
         assert_close(scores, expected, atol=1e-4, rtol=1e-4)

@@ -246,14 +246,15 @@ class Detector_config(TypedDict):
     s_mult: float
 
 
-default_detector_config: Detector_config = {
-    # Extraction Parameters
-    'nms_size': 15,
-    'pyramid_levels': 4,
-    'up_levels': 1,
-    'scale_factor_levels': math.sqrt(2),
-    's_mult': 22.0,
-}
+def default_detector_config() -> Detector_config: 
+    return {
+      # Extraction Parameters
+      'nms_size': 15,
+      'pyramid_levels': 4,
+      'up_levels': 1,
+      'scale_factor_levels': math.sqrt(2),
+      's_mult': 22.0,
+    }
 
 
 class FastScaleSpaceDetector(Module):
@@ -302,7 +303,7 @@ class FastScaleSpaceDetector(Module):
         else:
             self.aff = aff_module
 
-    def remove_borders(self, score_map, borders: int = 15):
+    def remove_borders(self, score_map: Tensor, borders: int = 15) -> Tensor:
         """It removes the borders of the image to avoid detections on the corners."""
         mask = torch.zeros_like(score_map)
         mask[:, :, borders:-borders, borders:-borders] = 1
@@ -338,7 +339,7 @@ class FastScaleSpaceDetector(Module):
             tmp += factor_points ** (-1 * (idx_level - self.num_upscale_levels))
             nf = self.num_features * factor_points ** (-1 * (idx_level - self.num_upscale_levels))
             num_features_per_level.append(nf)
-        num_features_per_level = list(map(lambda x: int(x / tmp), num_features_per_level))
+        num_features_per_level = [int(x / tmp) for x in num_features_per_level]
 
         _, _, h, w = img.shape
         img_up = img
@@ -373,17 +374,17 @@ class FastScaleSpaceDetector(Module):
             num_points_level = int(num_features_per_level[idx_level])
             if idx_level > 0 or (self.num_upscale_levels > 0):
                 nf2 = [num_features_per_level[a] for a in range(0, idx_level + 1 + self.num_upscale_levels)]
-                res_points = Tensor(nf2).sum().item()
+                res_points = tensor(nf2).sum().item()
                 num_points_level = int(res_points)
 
             cur_scores, cur_lafs = self.detect_features_on_single_level(cur_img, num_points_level, factor)
             all_responses.append(cur_scores.view(1, -1))
             all_lafs.append(cur_lafs)
-        responses: Tensor = concatenate(all_responses, 1)
-        lafs: Tensor = concatenate(all_lafs, 1)
+        responses = concatenate(all_responses, 1)
+        lafs = concatenate(all_lafs, 1)
         if lafs.shape[1] > self.num_features:
             responses, idxs = torch.topk(responses, k=self.num_features, dim=1)
-            lafs = torch.gather(lafs, 1, idxs.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, 2, 3))
+            lafs = torch.gather(lafs, 1, idxs[..., None, None].expand(1, 1, 2, 3))
         return responses, lafs
 
     def forward(self, img: Tensor, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
