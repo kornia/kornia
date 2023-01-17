@@ -1,5 +1,5 @@
 import warnings
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple
 
 from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
 from kornia.constants import Resample

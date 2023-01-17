@@ -14,7 +14,7 @@ from kornia.core import Module, Tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
-DataType = Union[Tensor, Boxes, Keypoints]
+DataType = Union[Tensor, List[Tensor], Boxes, Keypoints]
 
 
 class SequentialOpsInterface(metaclass=ABCMeta):
