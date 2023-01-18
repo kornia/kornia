@@ -33,7 +33,8 @@ class TestCornerHarris:
                     ]
                 ]
             ],
-            device=device, dtype=dtype,
+            device=device,
+            dtype=dtype,
         ).float()
 
         expected = torch.tensor(
@@ -50,7 +51,8 @@ class TestCornerHarris:
                     ]
                 ]
             ],
-            device=device, dtype=dtype,
+            device=device,
+            dtype=dtype,
         ).float()
         harris = kornia.feature.CornerHarris(k=0.04).to(device)
         scores = harris(inp)
@@ -78,7 +80,8 @@ class TestCornerHarris:
                     [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                 ],
             ],
-            device=device, dtype=dtype,
+            device=device,
+            dtype=dtype,
         ).repeat(2, 1, 1, 1)
         expected = (
             torch.tensor(
@@ -102,7 +105,8 @@ class TestCornerHarris:
                         [0.0053, 0.0066, 0.0035, 0.0034, 0.0060, 0.0025, 0.0008],
                     ],
                 ],
-                device=device, dtype=dtype,
+                device=device,
+                dtype=dtype,
             ).repeat(2, 1, 1, 1)
             / 10.0
         )
@@ -157,7 +161,8 @@ class TestCornerGFTT:
                     ]
                 ]
             ],
-            device=device, dtype=dtype,
+            device=device,
+            dtype=dtype,
         ).float()
 
         expected = torch.tensor(
@@ -174,7 +179,8 @@ class TestCornerGFTT:
                     ]
                 ]
             ],
-            device=device, dtype=dtype,
+            device=device,
+            dtype=dtype,
         ).float()
         shi_tomasi = kornia.feature.CornerGFTT().to(device)
         scores = shi_tomasi(inp)
@@ -202,7 +208,8 @@ class TestCornerGFTT:
                     [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                 ],
             ],
-            device=device, dtype=dtype,
+            device=device,
+            dtype=dtype,
         ).repeat(2, 1, 1, 1)
         expected = torch.tensor(
             [
@@ -225,7 +232,8 @@ class TestCornerGFTT:
                     [0.0112, 0.0119, 0.0084, 0.0083, 0.0114, 0.0084, 0.0046],
                 ],
             ],
-            device=device, dtype=dtype,
+            device=device,
+            dtype=dtype,
         ).repeat(2, 1, 1, 1)
         shi_tomasi = kornia.feature.CornerGFTT().to(device)
         scores = shi_tomasi(inp)
@@ -282,7 +290,8 @@ class TestBlobHessian:
                     [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                 ],
             ],
-            device=device, dtype=dtype,
+            device=device,
+            dtype=dtype,
         ).repeat(2, 1, 1, 1)
         expected = torch.tensor(
             [
@@ -305,7 +314,8 @@ class TestBlobHessian:
                     [0.0000, -0.0005, -0.0057, -0.0080, -0.0080, -0.0057, -0.0005],
                 ],
             ],
-            device=device, dtype=dtype,
+            device=device,
+            dtype=dtype,
         ).repeat(2, 1, 1, 1)
         shi_tomasi = kornia.feature.BlobHessian().to(device)
         scores = shi_tomasi(inp)
@@ -362,7 +372,8 @@ class TestBlobDoGSingle:
                     [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                 ],
             ],
-            device=device, dtype=dtype,
+            device=device,
+            dtype=dtype,
         ).expand(2, 2, 7, 7)
         expected = torch.tensor(
             [
@@ -387,7 +398,8 @@ class TestBlobDoGSingle:
                     ],
                 ]
             ],
-            device=device, dtype=dtype,
+            device=device,
+            dtype=dtype,
         ).expand(2, 2, 7, 7)
         det = kornia.feature.BlobDoGSingle(1.0, 1.6).to(device)
         scores = det(inp)

@@ -15,7 +15,12 @@ from .keynet import KeyNetDetector
 from .laf import extract_patches_from_pyramid, get_laf_center, scale_laf
 from .orientation import LAFOrienter, OriNet, PassLAF
 from .responses import BlobDoG, BlobDoGSingle, BlobHessian, CornerGFTT
-from .scale_space_detector import Detector_config, FastScaleSpaceDetector, ScaleSpaceDetector, get_default_detector_config
+from .scale_space_detector import (
+    Detector_config,
+    FastScaleSpaceDetector,
+    ScaleSpaceDetector,
+    get_default_detector_config,
+)
 from .siftdesc import SIFTDescriptor
 
 
