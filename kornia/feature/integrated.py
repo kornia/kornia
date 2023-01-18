@@ -15,7 +15,7 @@ from .keynet import KeyNetDetector
 from .laf import extract_patches_from_pyramid, get_laf_center, scale_laf
 from .orientation import LAFOrienter, OriNet, PassLAF
 from .responses import BlobDoG, BlobDoGSingle, BlobHessian, CornerGFTT
-from .scale_space_detector import Detector_config, FastScaleSpaceDetector, ScaleSpaceDetector, default_detector_config
+from .scale_space_detector import Detector_config, FastScaleSpaceDetector, ScaleSpaceDetector, get_default_detector_config
 from .siftdesc import SIFTDescriptor
 
 
@@ -153,7 +153,7 @@ class SIFTFeature(LocalFeature):
         upright: bool = False,
         rootsift: bool = True,
         device: Device = torch.device('cpu'),
-        config: Detector_config = default_detector_config,
+        config: Detector_config = get_default_detector_config(),
     ):
         patch_size: int = 41
         detector = FastScaleSpaceDetector(
@@ -177,7 +177,7 @@ class GFTTAffNetHardNet(LocalFeature):
         num_features: int = 8000,
         upright: bool = False,
         device: Device = torch.device('cpu'),
-        config: Detector_config = default_detector_config,
+        config: Detector_config = get_default_detector_config(),
     ):
         detector = FastScaleSpaceDetector(
             CornerGFTT(),
@@ -198,7 +198,7 @@ class HesAffNetHardNet(LocalFeature):
         num_features: int = 2048,
         upright: bool = False,
         device: Device = torch.device('cpu'),
-        config: Detector_config = default_detector_config,
+        config: Detector_config = get_default_detector_config(),
     ):
         detector = FastScaleSpaceDetector(
             BlobHessian(),

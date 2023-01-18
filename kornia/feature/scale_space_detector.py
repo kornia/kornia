@@ -7,7 +7,8 @@ from typing_extensions import TypedDict
 
 from kornia.core import Device, Module, Tensor, concatenate, eye, tensor, where, zeros
 from kornia.geometry.subpix import ConvSoftArgmax3d, NonMaximaSuppression2d
-from kornia.geometry.transform import ScalePyramid, pyrdown
+from kornia.geometry.transform import ScalePyramid, pyrdown, resize
+from kornia.testing import KORNIA_CHECK_SHAPE
 
 from .laf import laf_from_center_scale_ori, laf_is_inside_image
 from .orientation import PassLAF
@@ -246,7 +247,7 @@ class Detector_config(TypedDict):
     s_mult: float
 
 
-def default_detector_config() -> Detector_config:
+def get_default_detector_config() -> Detector_config:
     return {
         # Extraction Parameters
         'nms_size': 15,
@@ -278,7 +279,7 @@ class FastScaleSpaceDetector(Module):
         self,
         model: Module,
         num_features: int = 2048,
-        config: Detector_config = default_detector_config,
+        config: Detector_config = get_default_detector_config,
         ori_module: Optional[Module] = None,
         aff_module: Optional[Module] = None,
     ):
@@ -355,7 +356,7 @@ class FastScaleSpaceDetector(Module):
             up_factor = self.scale_factor_levels ** (1 + idx_level)
             nh, nw = int(h * up_factor), int(w * up_factor)
             up_factor_kpts = (float(w) / float(nw), float(h) / float(nh))
-            img_up = F.interpolate(img_up, (nh, nw), mode='bilinear', align_corners=False)
+            img_up = resize(img_up, (nh, nw), interpolation='bilinear', align_corners=False)
 
             cur_scores, cur_lafs = self.detect_features_on_single_level(img_up, num_points_level, up_factor_kpts)
 
@@ -384,7 +385,7 @@ class FastScaleSpaceDetector(Module):
         lafs = concatenate(all_lafs, 1)
         if lafs.shape[1] > self.num_features:
             responses, idxs = torch.topk(responses, k=self.num_features, dim=1)
-            lafs = torch.gather(lafs, 1, idxs[..., None, None].expand(1, 1, 2, 3))
+            lafs = torch.gather(lafs, 1, idxs[..., None, None].expand(-1, -1, 2, 3))
         return responses, lafs
 
     def forward(self, img: Tensor, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
@@ -401,8 +402,7 @@ class FastScaleSpaceDetector(Module):
             lafs: shape [1xNx2x3]. Detected local affine frames.
             responses: shape [1xNx1]. Response function values for corresponding lafs
         """
-        if img.shape[0] != 1:
-            raise ValueError("FastScaleSpaceDetector supports only single-image input")
+        KORNIA_CHECK_SHAPE(img, ["1", "C", "H", "W"])
         responses, lafs = self.detect(img, mask)
         lafs = self.aff(lafs, img)
         lafs = self.ori(lafs, img)
