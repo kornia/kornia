@@ -10,6 +10,7 @@ Detectors
 .. autofunction:: harris_response
 .. autofunction:: hessian_response
 .. autofunction:: dog_response
+.. autofunction:: dog_response_single
 .. autoclass:: SOLD2_detector
    :members: forward
 
@@ -56,14 +57,20 @@ Matching
 .. autoclass:: SIFTFeature
    :members: forward
 
+.. autoclass:: SIFTFeatureScaleSpace
+   :members: forward
+
 .. autoclass:: GFTTAffNetHardNet
    :members: forward
 
+.. autoclass::HesAffNetHardNet
+   :members: forward
+
 .. autoclass:: KeyNetAffNetHardNet
-  :members: forward
+   :members: forward
 
 .. autoclass:: KeyNetHardNet
-  :members: forward
+   :members: forward
 
 .. autoclass:: LocalFeatureMatcher
    :members: forward
@@ -100,13 +107,21 @@ Module
 .. autoclass:: CornerGFTT
 .. autoclass:: CornerHarris
 .. autoclass:: BlobDoG
+.. autoclass:: BlobDoGSingle
 .. autoclass:: KeyNet
 .. autoclass:: FilterResponseNorm2d
 .. autoclass:: TLU
 
 
-.. autoclass:: ScaleSpaceDetector
+.. autoclass:: MultiResolutionDetector
    :members: forward
+   :members: remove_borders
+   :members: detect_features_on_single_level
+   :members: detect
+
+
+.. autoclass:: ScaleSpaceDetector
+  :members: forward
 
 .. autoclass:: KeyNetDetector
    :members: forward
