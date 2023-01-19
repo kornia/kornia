@@ -11,12 +11,6 @@ def torch_version() -> str:
     return torch.__version__.split('+')[0]
 
 
-# TODO: replace by torch_version_ge``
-def torch_version_geq(major, minor) -> bool:
-    _version = version.parse(torch_version())
-    return _version >= version.parse(f"{major}.{minor}")
-
-
 def torch_version_lt(major: int, minor: int, patch: int) -> bool:
     _version = version.parse(torch_version())
     return _version < version.parse(f"{major}.{minor}.{patch}")
@@ -27,9 +21,12 @@ def torch_version_le(major: int, minor: int, patch: int) -> bool:
     return _version <= version.parse(f"{major}.{minor}.{patch}")
 
 
-def torch_version_ge(major: int, minor: int, patch: int) -> bool:
+def torch_version_ge(major: int, minor: int, patch: Optional[int] = None) -> bool:
     _version = version.parse(torch_version())
-    return _version >= version.parse(f"{major}.{minor}.{patch}")
+    if patch is None:
+        return _version >= version.parse(f"{major}.{minor}")
+    else:
+        return _version >= version.parse(f"{major}.{minor}.{patch}")
 
 
 if TYPE_CHECKING:

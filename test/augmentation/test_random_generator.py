@@ -19,7 +19,7 @@ from kornia.augmentation.random_generator import (
     random_mixup_generator,
 )
 from kornia.testing import assert_close
-from kornia.utils._compat import torch_version_geq
+from kornia.utils._compat import torch_version_ge
 
 
 class RandomGeneratorBaseTests:
@@ -131,7 +131,7 @@ class TestColorJiggleGen(RandomGeneratorBaseTests):
 
     def test_random_gen(self, device, dtype):
         # TODO(jian): crashes with pytorch 1.10, cuda and fp64
-        if torch_version_geq(1, 10) and "cuda" in str(device):
+        if torch_version_ge(1, 10) and "cuda" in str(device):
             pytest.skip("AssertionError: Tensor-likes are not close!")
         torch.manual_seed(42)
         batch_size = 8
@@ -179,7 +179,7 @@ class TestColorJiggleGen(RandomGeneratorBaseTests):
 
     def test_random_gen_accumulative_additive_additive(self, device, dtype):
         # TODO(jian): crashes with pytorch 1.10, cuda and fp64
-        if torch_version_geq(1, 10) and "cuda" in str(device):
+        if torch_version_ge(1, 10) and "cuda" in str(device):
             pytest.skip("AssertionError: Tensor-likes are not close!")
         torch.manual_seed(42)
         batch_size = 8
@@ -307,7 +307,7 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
 
     def test_random_gen(self, device, dtype):
         # TODO(jian): crashes with pytorch 1.10, cuda and fp64
-        if torch_version_geq(1, 10) and "cuda" in str(device):
+        if torch_version_ge(1, 10) and "cuda" in str(device):
             pytest.skip("AssertionError: Tensor-likes are not close!")
         torch.manual_seed(42)
         batch_size = 8
