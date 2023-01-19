@@ -279,7 +279,7 @@ class MultiResolutionDetector(Module):
         self,
         model: Module,
         num_features: int = 2048,
-        config: Detector_config = get_default_detector_config,
+        config: Detector_config = get_default_detector_config(),
         ori_module: Optional[Module] = None,
         aff_module: Optional[Module] = None,
     ):
