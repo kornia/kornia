@@ -14,8 +14,13 @@ from .hardnet import HardNet
 from .keynet import KeyNetDetector
 from .laf import extract_patches_from_pyramid, get_laf_center, scale_laf
 from .orientation import LAFOrienter, OriNet, PassLAF
-from .responses import BlobDoG, CornerGFTT
-from .scale_space_detector import ScaleSpaceDetector
+from .responses import BlobDoG, BlobDoGSingle, BlobHessian, CornerGFTT
+from .scale_space_detector import (
+    Detector_config,
+    MultiResolutionDetector,
+    ScaleSpaceDetector,
+    get_default_detector_config,
+)
 from .siftdesc import SIFTDescriptor
 
 
@@ -144,6 +149,36 @@ class LocalFeature(Module):
 class SIFTFeature(LocalFeature):
     """Convenience module, which implements DoG detector + (Root)SIFT descriptor.
 
+    Using `kornia.feature.MultiResolutionDetector` without blur pyramid Still not as good as OpenCV/VLFeat because of
+    https://github.com/kornia/kornia/pull/884, but we are working on it
+    """
+
+    def __init__(
+        self,
+        num_features: int = 8000,
+        upright: bool = False,
+        rootsift: bool = True,
+        device: Device = torch.device('cpu'),
+        config: Detector_config = get_default_detector_config(),
+    ):
+        patch_size: int = 41
+        detector = MultiResolutionDetector(
+            BlobDoGSingle(1.0, 1.6),
+            num_features,
+            config,
+            ori_module=PassLAF() if upright else LAFOrienter(19),
+            aff_module=PassLAF(),
+        ).to(device)
+        descriptor = LAFDescriptor(
+            SIFTDescriptor(patch_size=patch_size, rootsift=rootsift), patch_size=patch_size, grayscale_descriptor=True
+        ).to(device)
+        super().__init__(detector, descriptor)
+
+
+class SIFTFeatureScaleSpace(LocalFeature):
+    """Convenience module, which implements DoG detector + (Root)SIFT descriptor. Using
+    `kornia.feature.ScaleSpaceDetector` with blur pyramid.
+
     Still not as good as OpenCV/VLFeat because of https://github.com/kornia/kornia/pull/884, but we are working on it
     """
 
@@ -174,15 +209,40 @@ class SIFTFeature(LocalFeature):
 class GFTTAffNetHardNet(LocalFeature):
     """Convenience module, which implements GFTT detector + AffNet-HardNet descriptor."""
 
-    def __init__(self, num_features: int = 8000, upright: bool = False, device: Device = torch.device('cpu')):
-        detector = ScaleSpaceDetector(
+    def __init__(
+        self,
+        num_features: int = 8000,
+        upright: bool = False,
+        device: Device = torch.device('cpu'),
+        config: Detector_config = get_default_detector_config(),
+    ):
+        detector = MultiResolutionDetector(
+            CornerGFTT(),
             num_features,
-            resp_module=CornerGFTT(),
-            nms_module=ConvQuadInterp3d(10, 1e-5),
-            scale_pyr_module=ScalePyramid(3, 1.6, 32, double_image=False),
+            config,
             ori_module=PassLAF() if upright else LAFOrienter(19),
             aff_module=LAFAffNetShapeEstimator(True).eval(),
-            mr_size=6.0,
+        ).to(device)
+        descriptor = LAFDescriptor(None, patch_size=32, grayscale_descriptor=True).to(device)
+        super().__init__(detector, descriptor)
+
+
+class HesAffNetHardNet(LocalFeature):
+    """Convenience module, which implements GFTT detector + AffNet-HardNet descriptor."""
+
+    def __init__(
+        self,
+        num_features: int = 2048,
+        upright: bool = False,
+        device: Device = torch.device('cpu'),
+        config: Detector_config = get_default_detector_config(),
+    ):
+        detector = MultiResolutionDetector(
+            BlobHessian(),
+            num_features,
+            config,
+            ori_module=PassLAF() if upright else LAFOrienter(19),
+            aff_module=LAFAffNetShapeEstimator(True).eval(),
         ).to(device)
         descriptor = LAFDescriptor(None, patch_size=32, grayscale_descriptor=True).to(device)
         super().__init__(detector, descriptor)

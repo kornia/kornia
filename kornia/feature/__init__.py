@@ -4,12 +4,14 @@ from .hardnet import HardNet, HardNet8
 from .hynet import TLU, FilterResponseNorm2d, HyNet
 from .integrated import (
     GFTTAffNetHardNet,
+    HesAffNetHardNet,
     KeyNetAffNetHardNet,
     KeyNetHardNet,
     LAFDescriptor,
     LocalFeature,
     LocalFeatureMatcher,
     SIFTFeature,
+    SIFTFeatureScaleSpace,
     get_laf_descriptors,
 )
 from .keynet import KeyNet, KeyNetDetector
@@ -48,15 +50,17 @@ from .mkd import MKDDescriptor
 from .orientation import LAFOrienter, OriNet, PatchDominantGradientOrientation
 from .responses import (
     BlobDoG,
+    BlobDoGSingle,
     BlobHessian,
     CornerGFTT,
     CornerHarris,
     dog_response,
+    dog_response_single,
     gftt_response,
     harris_response,
     hessian_response,
 )
-from .scale_space_detector import PassLAF, ScaleSpaceDetector
+from .scale_space_detector import MultiResolutionDetector, PassLAF, ScaleSpaceDetector
 from .siftdesc import DenseSIFTDescriptor, SIFTDescriptor
 from .sold2 import SOLD2, SOLD2_detector
 from .sosnet import SOSNet
@@ -74,8 +78,11 @@ __all__ = [
     "get_laf_descriptors",
     "LAFDescriptor",
     "LocalFeature",
+    "MultiResolutionDetector",
     "SIFTFeature",
+    "SIFTFeatureScaleSpace",
     "GFTTAffNetHardNet",
+    "HesAffNetHardNet",
     "LocalFeatureMatcher",
     "SOSNet",
     "KeyNet",
@@ -83,10 +90,12 @@ __all__ = [
     "gftt_response",
     "hessian_response",
     "dog_response",
+    "dog_response_single",
     "CornerHarris",
     "CornerGFTT",
     "BlobHessian",
     "BlobDoG",
+    "BlobDoGSingle",
     "extract_patches_from_pyramid",
     "extract_patches_simple",
     "normalize_laf",

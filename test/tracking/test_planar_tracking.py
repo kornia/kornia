@@ -5,6 +5,7 @@ from kornia.feature import DescriptorMatcher, GFTTAffNetHardNet, LocalFeatureMat
 from kornia.geometry import rescale, transform_points
 from kornia.testing import assert_close
 from kornia.tracking import HomographyTracker
+from kornia.utils._compat import torch_version_le
 
 
 @pytest.fixture
@@ -30,6 +31,7 @@ class TestHomographyTracker:
         _, success = tracker(torch.zeros_like(data["image0"]))
         assert not success
 
+    @pytest.mark.skipif(torch_version_le(1, 9, 1), reason="Fails for bached torch.linalg.solve")
     def test_real(self, device, dtype, data):
         # This is not unit test, but that is quite good integration test
         for k in data.keys():
