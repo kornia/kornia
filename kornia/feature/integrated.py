@@ -17,7 +17,7 @@ from .orientation import LAFOrienter, OriNet, PassLAF
 from .responses import BlobDoG, BlobDoGSingle, BlobHessian, CornerGFTT
 from .scale_space_detector import (
     Detector_config,
-    FastScaleSpaceDetector,
+    MultiResolutionDetector,
     ScaleSpaceDetector,
     get_default_detector_config,
 )
@@ -161,7 +161,7 @@ class SIFTFeature(LocalFeature):
         config: Detector_config = get_default_detector_config(),
     ):
         patch_size: int = 41
-        detector = FastScaleSpaceDetector(
+        detector = MultiResolutionDetector(
             BlobDoGSingle(1.0, 1.6),
             num_features,
             config,
@@ -184,7 +184,7 @@ class GFTTAffNetHardNet(LocalFeature):
         device: Device = torch.device('cpu'),
         config: Detector_config = get_default_detector_config(),
     ):
-        detector = FastScaleSpaceDetector(
+        detector = MultiResolutionDetector(
             CornerGFTT(),
             num_features,
             config,
@@ -205,7 +205,7 @@ class HesAffNetHardNet(LocalFeature):
         device: Device = torch.device('cpu'),
         config: Detector_config = get_default_detector_config(),
     ):
-        detector = FastScaleSpaceDetector(
+        detector = MultiResolutionDetector(
             BlobHessian(),
             num_features,
             config,

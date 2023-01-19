@@ -59,7 +59,7 @@ from .responses import (
     harris_response,
     hessian_response,
 )
-from .scale_space_detector import FastScaleSpaceDetector, PassLAF, ScaleSpaceDetector
+from .scale_space_detector import MultiResolutionDetector, PassLAF, ScaleSpaceDetector
 from .siftdesc import DenseSIFTDescriptor, SIFTDescriptor
 from .sold2 import SOLD2, SOLD2_detector
 from .sosnet import SOSNet
@@ -77,7 +77,7 @@ __all__ = [
     "get_laf_descriptors",
     "LAFDescriptor",
     "LocalFeature",
-    "FastScaleSpaceDetector",
+    "MultiResolutionDetector",
     "SIFTFeature",
     "GFTTAffNetHardNet",
     "HesAffNetHardNet",

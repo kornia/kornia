@@ -258,7 +258,7 @@ def get_default_detector_config() -> Detector_config:
     }
 
 
-class FastScaleSpaceDetector(Module):
+class MultiResolutionDetector(Module):
     """Multi-scale feature detector, based on code from KeyNet. Can be used with any responce function.
 
     This is based on the original code from paper

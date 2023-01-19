@@ -110,7 +110,7 @@ Module
 .. autoclass:: TLU
 
 
-.. autoclass:: FastScaleSpaceDetector
+.. autoclass:: MultiResolutionDetector
    :members: forward
    :members: remove_borders
    :members: detect_features_on_single_level

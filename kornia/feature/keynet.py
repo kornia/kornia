@@ -13,7 +13,7 @@ from kornia.utils.helpers import map_location_to_cpu
 
 from .laf import laf_from_center_scale_ori
 from .orientation import PassLAF
-from .scale_space_detector import Detector_config, FastScaleSpaceDetector, get_default_detector_config
+from .scale_space_detector import Detector_config, MultiResolutionDetector, get_default_detector_config
 
 
 class KeyNet_conf(TypedDict):
@@ -165,7 +165,7 @@ class KeyNet(Module):
         return scores
 
 
-class KeyNetDetector(FastScaleSpaceDetector):
+class KeyNetDetector(MultiResolutionDetector):
     """Multi-scale feature detector based on KeyNet.
 
     This is based on the original code from paper
