@@ -31,10 +31,9 @@ class NonMaximaSuppression2d(Module):
     """
     kernel: Tensor
 
-    def __init__(self, kernel_size: Tuple[int, int], minima_are_also_good: bool = False):
+    def __init__(self, kernel_size: Tuple[int, int]):
         super().__init__()
         self.kernel_size: Tuple[int, int] = kernel_size
-        self.minima_are_also_good = minima_are_also_good
         self.padding: Tuple[int, int, int, int] = self._compute_zero_padding2d(kernel_size)
         self.register_buffer('kernel', _get_nms_kernel2d(*kernel_size))
 
@@ -64,14 +63,8 @@ class NonMaximaSuppression2d(Module):
         )
         max_non_center = neighborhood.max(dim=2)[0]
         mask = x > max_non_center
-        if self.minima_are_also_good:
-            min_non_center = neighborhood.min(dim=2)[0]
-            mask = mask | (x < min_non_center)
-
         if mask_only:
             return mask
-        if self.minima_are_also_good:
-            return x.abs() * (mask.to(x.dtype))
         return x * (mask.to(x.dtype))
 
 
@@ -157,8 +150,7 @@ class NonMaximaSuppression3d(Module):
 
 
 def nms2d(
-    input: Tensor, kernel_size: Tuple[int, int], mask_only: bool = False, minima_are_also_good: bool = False
-) -> Tensor:
+    input: Tensor, kernel_size: Tuple[int, int], mask_only: bool = False) -> Tensor:
     r"""Apply non maxima suppression to filter.
 
     See :class:`~kornia.geometry.subpix.NonMaximaSuppression2d` for details.

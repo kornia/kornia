@@ -11,6 +11,7 @@ from .integrated import (
     LocalFeature,
     LocalFeatureMatcher,
     SIFTFeature,
+    SIFTFeatureScaleSpace,
     get_laf_descriptors,
 )
 from .keynet import KeyNet, KeyNetDetector
@@ -79,6 +80,7 @@ __all__ = [
     "LocalFeature",
     "MultiResolutionDetector",
     "SIFTFeature",
+    "SIFTFeatureScaleSpace",
     "GFTTAffNetHardNet",
     "HesAffNetHardNet",
     "LocalFeatureMatcher",

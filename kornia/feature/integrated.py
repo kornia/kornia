@@ -162,7 +162,6 @@ class SIFTFeature(LocalFeature):
         config: Detector_config = get_default_detector_config(),
     ):
         patch_size: int = 41
-        config['minima_are_also_good'] = True
         detector = MultiResolutionDetector(
             BlobDoGSingle(1.0, 1.6),
             num_features,

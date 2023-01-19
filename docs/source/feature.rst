@@ -57,17 +57,20 @@ Matching
 .. autoclass:: SIFTFeature
    :members: forward
 
+.. autoclass:: SIFTFeatureScaleSpace
+   :members: forward
+
 .. autoclass:: GFTTAffNetHardNet
    :members: forward
 
 .. autoclass::HesAffNetHardNet
-  :members: forward
+   :members: forward
 
 .. autoclass:: KeyNetAffNetHardNet
-  :members: forward
+   :members: forward
 
 .. autoclass:: KeyNetHardNet
-  :members: forward
+   :members: forward
 
 .. autoclass:: LocalFeatureMatcher
    :members: forward
