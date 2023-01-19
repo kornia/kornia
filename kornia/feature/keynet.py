@@ -1,18 +1,15 @@
-import math
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing_extensions import TypedDict
 
-from kornia.core import Module, Tensor, concatenate, tensor, where, zeros
+from kornia.core import Module, Tensor, concatenate
 from kornia.filters import SpatialGradient
 from kornia.geometry.transform import pyrdown
 from kornia.utils.helpers import map_location_to_cpu
 
-from .laf import laf_from_center_scale_ori
-from .orientation import PassLAF
 from .scale_space_detector import Detector_config, MultiResolutionDetector, get_default_detector_config
 
 
