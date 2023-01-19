@@ -149,8 +149,7 @@ class NonMaximaSuppression3d(Module):
 # functional api
 
 
-def nms2d(
-    input: Tensor, kernel_size: Tuple[int, int], mask_only: bool = False) -> Tensor:
+def nms2d(input: Tensor, kernel_size: Tuple[int, int], mask_only: bool = False) -> Tensor:
     r"""Apply non maxima suppression to filter.
 
     See :class:`~kornia.geometry.subpix.NonMaximaSuppression2d` for details.

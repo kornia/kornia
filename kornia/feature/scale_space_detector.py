@@ -254,7 +254,7 @@ def get_default_detector_config() -> Detector_config:
         'pyramid_levels': 4,
         'up_levels': 1,
         'scale_factor_levels': math.sqrt(2),
-        's_mult': 22.0
+        's_mult': 22.0,
     }
 
 
