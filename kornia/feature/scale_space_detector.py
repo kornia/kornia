@@ -245,6 +245,7 @@ class Detector_config(TypedDict):
     up_levels: int
     scale_factor_levels: float
     s_mult: float
+    minima_are_also_good: bool
 
 
 def get_default_detector_config() -> Detector_config:
@@ -255,11 +256,12 @@ def get_default_detector_config() -> Detector_config:
         'up_levels': 1,
         'scale_factor_levels': math.sqrt(2),
         's_mult': 22.0,
+        'minima_are_also_good': False
     }
 
 
 class MultiResolutionDetector(Module):
-    """Multi-scale feature detector, based on code from KeyNet. Can be used with any responce function.
+    """Multi-scale feature detector, based on code from KeyNet. Can be used with any response function.
 
     This is based on the original code from paper
     "Key.Net: Keypoint Detection by Handcrafted and Learned CNN Filters".
@@ -289,9 +291,11 @@ class MultiResolutionDetector(Module):
         self.num_pyramid_levels = config['pyramid_levels']
         self.num_upscale_levels = config['up_levels']
         self.scale_factor_levels = config['scale_factor_levels']
+        self.minima_are_also_good = config['minima_are_also_good']
         self.mr_size = config['s_mult']
         self.nms_size = config['nms_size']
-        self.nms = NonMaximaSuppression2d((self.nms_size, self.nms_size))
+        self.nms = NonMaximaSuppression2d((self.nms_size, self.nms_size),
+                                          minima_are_also_good=self.minima_are_also_good)
         self.num_features = num_features
 
         if ori_module is None:
