@@ -5,6 +5,7 @@ from kornia.feature import DescriptorMatcher, GFTTAffNetHardNet, LocalFeatureMat
 from kornia.geometry import rescale, transform_points
 from kornia.testing import assert_close
 from kornia.tracking import HomographyTracker
+from kornia.utils._compat import torch_version_le
 
 
 @pytest.fixture
