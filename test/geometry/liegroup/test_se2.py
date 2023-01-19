@@ -43,9 +43,36 @@ class TestSe2(BaseTester):
         assert s.inverse().so2.z.shape == input_shape
         assert s.inverse().t.shape == t_input_shape
 
-    # TODO: implement me
-    def test_exception(self, device, dtype):
-        pass
+    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    def test_exception(self, device, dtype, batch_size):
+        with pytest.raises(ValueError):
+            r = So2.random(batch_size)
+            t1 = torch.randn((batch_size, 1), dtype=dtype, device=device)
+            t2 = torch.randn((batch_size, 3), dtype=dtype, device=device)
+            assert Se2(r, t1)
+            assert Se2(r, t2)
+        with pytest.raises(ValueError):
+            theta = torch.rand((batch_size, 2), dtype=dtype, device=device)
+            assert Se2.exp(theta)
+        with pytest.raises(ValueError):
+            v = torch.rand((batch_size, 2), dtype=dtype, device=device)
+            assert Se2.hat(v)
+        with pytest.raises(ValueError):
+            omega = torch.rand((4, 4), dtype=dtype, device=device)
+            assert Se2.vee(omega)
+        with pytest.raises(TypeError):
+            assert Se2.identity(1, device, dtype) * [1.0, 2.0, 1.0]
+        with pytest.raises(ValueError):
+            theta = torch.rand((batch_size, 2), dtype=dtype, device=device)
+            assert Se2.hat(theta)
+        with pytest.raises(Exception):
+            assert Se2.identity(batch_size=0)
+        with pytest.raises(Exception):
+            assert Se2.random(batch_size=0)
+        with pytest.raises(Exception):
+            x = torch.rand(5, dtype=dtype, device=device)
+            y = torch.rand(3, dtype=dtype, device=device)
+            assert Se2.trans(x, y)
 
     # TODO: implement me
     def test_gradcheck(self, device):
