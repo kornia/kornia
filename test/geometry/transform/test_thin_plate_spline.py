@@ -4,7 +4,7 @@ from torch.autograd import gradcheck
 
 import kornia
 from kornia.testing import assert_close
-from kornia.utils._compat import torch_version_geq
+from kornia.utils._compat import torch_version_ge
 
 
 def _sample_points(batch_size, device, dtype=torch.float32):
@@ -154,7 +154,7 @@ class TestWarpImage:
         assert warp.shape == tensor.shape
 
     @pytest.mark.skipif(
-        torch_version_geq(1, 10), reason="for some reason the solver detects singular matrices in pytorch >=1.10."
+        torch_version_ge(1, 10), reason="for some reason the solver detects singular matrices in pytorch >=1.10."
     )
     @pytest.mark.parametrize('batch_size', [1, 3])
     def test_warp(self, batch_size, device, dtype):

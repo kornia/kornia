@@ -11,8 +11,7 @@ def torch_version() -> str:
     return torch.__version__.split('+')[0]
 
 
-# TODO: replace by torch_version_ge``
-def torch_version_geq(major, minor) -> bool:
+def torch_version_ge(major, minor) -> bool:
     _version = version.parse(torch_version())
     return _version >= version.parse(f"{major}.{minor}")
 
