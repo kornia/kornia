@@ -25,8 +25,10 @@ def _get_nms_kernel3d(kd: int, ky: int, kx: int) -> Tensor:
 
 
 class NonMaximaSuppression2d(Module):
-    r"""Apply non maxima suppression to filter. Flag `minima_are_also_good` is useful,
-    when you want to detect both maxima and minima, e.g. for DoG"""
+    r"""Apply non maxima suppression to filter.
+
+    Flag `minima_are_also_good` is useful, when you want to detect both maxima and minima, e.g. for DoG
+    """
     kernel: Tensor
 
     def __init__(self, kernel_size: Tuple[int, int], minima_are_also_good: bool = False):
@@ -57,9 +59,8 @@ class NonMaximaSuppression2d(Module):
         x_padded = pad(x, list(self.padding)[::-1], mode='replicate')
         B, CH, HP, WP = x_padded.size()
 
-        neighborhood = (
-            F.conv2d(x_padded.view(B * CH, 1, HP, WP), self.kernel.to(x.device, x.dtype), stride=1)
-            .view(B, CH, -1, H, W)
+        neighborhood = F.conv2d(x_padded.view(B * CH, 1, HP, WP), self.kernel.to(x.device, x.dtype), stride=1).view(
+            B, CH, -1, H, W
         )
         max_non_center = neighborhood.max(dim=2)[0]
         mask = x > max_non_center
@@ -155,7 +156,9 @@ class NonMaximaSuppression3d(Module):
 # functional api
 
 
-def nms2d(input: Tensor, kernel_size: Tuple[int, int], mask_only: bool = False, minima_are_also_good: bool = False) -> Tensor:
+def nms2d(
+    input: Tensor, kernel_size: Tuple[int, int], mask_only: bool = False, minima_are_also_good: bool = False
+) -> Tensor:
     r"""Apply non maxima suppression to filter.
 
     See :class:`~kornia.geometry.subpix.NonMaximaSuppression2d` for details.

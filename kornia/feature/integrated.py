@@ -148,8 +148,9 @@ class LocalFeature(Module):
 
 class SIFTFeature(LocalFeature):
     """Convenience module, which implements DoG detector + (Root)SIFT descriptor.
-    Using `kornia.feature.MultiResolutionDetector` without blur pyramid
-    Still not as good as OpenCV/VLFeat because of https://github.com/kornia/kornia/pull/884, but we are working on it
+
+    Using `kornia.feature.MultiResolutionDetector` without blur pyramid Still not as good as OpenCV/VLFeat because of
+    https://github.com/kornia/kornia/pull/884, but we are working on it
     """
 
     def __init__(
@@ -176,8 +177,8 @@ class SIFTFeature(LocalFeature):
 
 
 class SIFTFeatureScaleSpace(LocalFeature):
-    """Convenience module, which implements DoG detector + (Root)SIFT descriptor.
-    Using `kornia.feature.ScaleSpaceDetector` with blur pyramid
+    """Convenience module, which implements DoG detector + (Root)SIFT descriptor. Using
+    `kornia.feature.ScaleSpaceDetector` with blur pyramid.
 
     Still not as good as OpenCV/VLFeat because of https://github.com/kornia/kornia/pull/884, but we are working on it
     """
@@ -187,19 +188,19 @@ class SIFTFeatureScaleSpace(LocalFeature):
         num_features: int = 8000,
         upright: bool = False,
         rootsift: bool = True,
-        device: Device = torch.device('cpu')
+        device: Device = torch.device('cpu'),
     ):
         patch_size: int = 41
         detector = ScaleSpaceDetector(
-             num_features,
-             resp_module=BlobDoG(),
-             nms_module=ConvQuadInterp3d(10),
-             scale_pyr_module=ScalePyramid(3, 1.6, 32, double_image=True),
-             ori_module=PassLAF() if upright else LAFOrienter(19),
-             scale_space_response=True,
-             minima_are_also_good=True,
-             mr_size=6.0,
-         ).to(device)
+            num_features,
+            resp_module=BlobDoG(),
+            nms_module=ConvQuadInterp3d(10),
+            scale_pyr_module=ScalePyramid(3, 1.6, 32, double_image=True),
+            ori_module=PassLAF() if upright else LAFOrienter(19),
+            scale_space_response=True,
+            minima_are_also_good=True,
+            mr_size=6.0,
+        ).to(device)
         descriptor = LAFDescriptor(
             SIFTDescriptor(patch_size=patch_size, rootsift=rootsift), patch_size=patch_size, grayscale_descriptor=True
         ).to(device)

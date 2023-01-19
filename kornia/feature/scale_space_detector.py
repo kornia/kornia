@@ -256,7 +256,7 @@ def get_default_detector_config() -> Detector_config:
         'up_levels': 1,
         'scale_factor_levels': math.sqrt(2),
         's_mult': 22.0,
-        'minima_are_also_good': False
+        'minima_are_also_good': False,
     }
 
 
@@ -294,8 +294,9 @@ class MultiResolutionDetector(Module):
         self.minima_are_also_good = config['minima_are_also_good']
         self.mr_size = config['s_mult']
         self.nms_size = config['nms_size']
-        self.nms = NonMaximaSuppression2d((self.nms_size, self.nms_size),
-                                          minima_are_also_good=self.minima_are_also_good)
+        self.nms = NonMaximaSuppression2d(
+            (self.nms_size, self.nms_size), minima_are_also_good=self.minima_are_also_good
+        )
         self.num_features = num_features
 
         if ori_module is None:
