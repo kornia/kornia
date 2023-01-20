@@ -232,6 +232,14 @@ class _AugmentationBase(_BasicAugmentationBase):
         transform: Optional[Tensor] = None,
         **kwargs,
     ) -> Tensor:
+        # Note about the explicit type conversions here:
+        # If this code is run in an autocast-enabled region, the transformation matrix or the output
+        # may be float16 even though the input was float32 (e.g. torch.mm produces float16 output),
+        # see also the documentation on autocasting: https://pytorch.org/docs/stable/amp.html.
+        # It may be unexpected for the user if the output type changes and it can also lead to errors
+        # for the index_put operation below (see also https://github.com/kornia/kornia/issues/1737)
+        # In case the type already matches the input type, the conversions are no-ops
+
         self.validate_tensor(input)
 
         params, flags = self._process_kwargs_to_params_and_flags(
@@ -250,8 +258,15 @@ class _AugmentationBase(_BasicAugmentationBase):
             applied = self.apply_transform(
                 in_tensor[to_apply], params, flags, transform=transform if transform is None else transform[to_apply]
             )
+
+            if torch.is_autocast_enabled() or torch.is_autocast_cpu_enabled():
+                output = output.type(input.dtype)
+                applied = applied.type(input.dtype)
             output = output.index_put((to_apply,), applied)
         output = _transform_output_shape(output, ori_shape) if self.keepdim else output
+
+        if torch.is_autocast_enabled() or torch.is_autocast_cpu_enabled():
+            output = output.type(input.dtype)
         return output
 
     def transform_masks(
@@ -425,4 +440,4 @@ class _AugmentationBase(_BasicAugmentationBase):
 
         output = self.transform_inputs(in_tensor, params, flags)
 
-        return output.type(in_tensor.dtype)
+        return output
