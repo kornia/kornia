@@ -49,8 +49,8 @@ class TestSe2(BaseTester):
             r = So2.random(batch_size)
             t1 = torch.randn((batch_size, 1), dtype=dtype, device=device)
             t2 = torch.randn((batch_size, 3), dtype=dtype, device=device)
-            assert Se2(r, t1)
-            assert Se2(r, t2)
+            Se2(r, t1)
+            Se2(r, t2)
         with pytest.raises(ValueError):
             theta = torch.rand((batch_size, 2), dtype=dtype, device=device)
             assert Se2.exp(theta)
