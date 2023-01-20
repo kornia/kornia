@@ -23,7 +23,7 @@ class Vector3(TensorWrapper):
         return f"x: {self.x}\ny: {self.y}\nz: {self.z}"
 
     def __getitem__(self, idx) -> "Vector3":
-        return Vector3(stack((self.data[idx, 0], self.data[idx, 1], self.data[idx, 2])))
+        return Vector3(self.data[idx, ...])
 
     @property
     def x(self) -> Tensor:
@@ -94,7 +94,7 @@ class Vector2(TensorWrapper):
         return f"x: {self.x}\ny: {self.y}"
 
     def __getitem__(self, idx) -> "Vector2":
-        return Vector2(stack((self.data[idx, 0], self.data[idx, 1])))
+        return Vector2(self.data[idx, ...])
 
     @property
     def x(self) -> Tensor:
