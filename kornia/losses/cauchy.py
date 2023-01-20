@@ -14,8 +14,8 @@ def cauchy_loss(img1: Tensor, img2: Tensor, reduction: str = "none") -> Tensor:
         \text{WL}(x, y) = log(\frac{1}{2} (x - y)^{2} + 1)
 
     Where:
-       - :math:`x` expects to be the prediction.
-       - :math:`z` expects to be the target to be regressed to.
+       - :math:`x` is the prediction.
+       - :math:`y` is the target to be regressed to.
 
     Reference:
         [1] https://arxiv.org/pdf/1701.03077.pdf
@@ -72,8 +72,8 @@ class CauchyLoss(Module):
         \text{WL}(x, y) = log(\frac{1}{2} (x - y)^{2} + 1)
 
     Where:
-       - :math:`x` expects to be the prediction.
-       - :math:`z` expects to be the target to be regressed to.
+       - :math:`x` is the prediction.
+       - :math:`y` is the target to be regressed to.
 
     Reference:
         [1] https://arxiv.org/pdf/1701.03077.pdf
