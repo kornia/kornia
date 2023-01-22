@@ -100,7 +100,6 @@ class TestBasicAugmentationBase:
 
 
 class TestAugmentationBase2D:
-
     def test_forward(self, device, dtype):
         torch.manual_seed(42)
         input = torch.rand((2, 3, 4, 5), device=device, dtype=dtype)
