@@ -81,7 +81,7 @@ class Keypoints:
         Args:
             padding_size: (B, 4)
         """
-        if len(padding_size.shape) == 2 and padding_size.size(1) == 4:
+        if not (len(padding_size.shape) == 2 and padding_size.size(1) == 4):
             raise RuntimeError(f"Expected padding_size as (B, 4). Got {padding_size.shape}.")
         self._data[..., 0] += padding_size[..., :1]  # left padding
         self._data[..., 1] += padding_size[..., 2:3]  # top padding
@@ -93,7 +93,7 @@ class Keypoints:
         Args:
             padding_size: (B, 4)
         """
-        if len(padding_size.shape) == 2 and padding_size.size(1) == 4:
+        if not (len(padding_size.shape) == 2 and padding_size.size(1) == 4):
             raise RuntimeError(f"Expected padding_size as (B, 4). Got {padding_size.shape}.")
         self._data[..., 0] -= padding_size[..., :1]  # left padding
         self._data[..., 1] -= padding_size[..., 2:3]  # top padding

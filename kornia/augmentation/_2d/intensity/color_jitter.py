@@ -1,4 +1,3 @@
-import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg

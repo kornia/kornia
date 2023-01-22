@@ -107,8 +107,8 @@ class AugmentationSequential(ImageSequential):
         ...     data_keys=["input", "mask", "bbox", "keypoints"]
         ... )
         >>> out = aug_list(input, mask, bbox, points)
-        >>> [o.shape for o in out]
-        [torch.Size([1, 2, 3, 5, 6]), torch.Size([1, 2, 3, 5, 6]), torch.Size([1, 2, 1, 4, 2]), torch.Size([1, 2, 1, 2])]
+        >>> [o.shape for o in out]  # doctest: +ELLIPSIS
+        [torch.Size([1, 2, 3, 5, 6]), torch.Size([1, 2, 3, 5, 6]), ...([1, 2, 1, 4, 2]), torch.Size([1, 2, 1, 2])]
 
     Perform ``OneOf`` transformation with ``random_apply=1`` and ``random_apply_weights``
     in ``AugmentationSequential``.
