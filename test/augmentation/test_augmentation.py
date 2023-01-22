@@ -1583,11 +1583,11 @@ class TestColorJitter(BaseTester):
 
         f = AugmentationSequential(ColorJiggle(), ColorJiggle())
 
-        input = torch.rand(3, 5, 5, device=device, dtype=dtype).unsqueeze(0)  # 1 x 3 x 5 x 5
+        input = torch.rand(3, 5, 5, device=device, dtype=dtype).unsqueeze(0).repeat(4, 1, 1, 1)  # 4 x 3 x 5 x 5
 
         expected = input
 
-        expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
+        expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0).repeat(4, 1, 1)  # 4 x 3 x 3
 
         self.assert_close(f(input), expected)
         self.assert_close(f.transform_matrix, expected_transform)

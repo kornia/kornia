@@ -1,13 +1,13 @@
 from typing import Any, Dict, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._3d.base import AugmentationBase3D
+from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 from kornia.constants import Resample
 from kornia.core import Tensor, pad
 from kornia.geometry import crop_by_transform_mat3d, get_perspective_transform3d
 
 
-class RandomCrop3D(AugmentationBase3D):
+class RandomCrop3D(GeometricAugmentationBase3D):
     r"""Apply random crop on 3D volumes (5D tensor).
 
     Crops random sub-volumes on a given size.
@@ -29,8 +29,6 @@ class RandomCrop3D(AugmentationBase3D):
             This value is only used when the padding_mode is constant.
         padding_mode: Type of padding. Should be: constant, edge, reflect or symmetric. Default is constant.
         resample: resample mode from "nearest" (0) or "bilinear" (1).
-        return_transform: if ``True`` return the matrix describing the transformation applied to each
-          input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
@@ -72,16 +70,13 @@ class RandomCrop3D(AugmentationBase3D):
         fill: int = 0,
         padding_mode: str = "constant",
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-        return_transform: Optional[bool] = None,
         same_on_batch: bool = False,
         align_corners: bool = True,
         p: float = 1.0,
         keepdim: bool = False,
     ) -> None:
         # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
-        super().__init__(
-            p=1.0, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim
-        )
+        super().__init__(p=1.0, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim)
         self.flags = dict(
             size=size,
             padding=padding,

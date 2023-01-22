@@ -59,9 +59,8 @@ class RandomSaturation(IntensityAugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self.saturation: Tensor = _range_bound(saturation, 'saturation', center=1.0)
         self._param_generator = rg.PlainUniformGenerator((self.saturation, "saturation_factor", None, None))
 

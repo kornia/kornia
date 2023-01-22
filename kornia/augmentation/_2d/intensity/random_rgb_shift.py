@@ -81,9 +81,8 @@ class RandomRGBShift(IntensityAugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator = rg.PlainUniformGenerator(
             (r_shift_limit, "r_shift", 0, (-r_shift_limit, r_shift_limit)),
             (g_shift_limit, "g_shift", 0, (-g_shift_limit, g_shift_limit)),
