@@ -301,8 +301,8 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
                 raise ValueError(f"No valid transformation matrix found in {module.__class__}.")
             transform = module.compute_inverse_transformation(module.transform_matrix)
             _input = module.inverse_boxes(
-                _input, param.data, module.flags, transform=transform, **extra_args
-            )  # type: ignore
+                _input, param.data, module.flags, transform=transform, **extra_args  # type: ignore
+            )
 
         elif isinstance(module, (GeometricAugmentationBase3D,)):
             raise NotImplementedError(

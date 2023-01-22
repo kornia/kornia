@@ -123,7 +123,8 @@ def filter2d(
 
     # convolve the tensor with the kernel.
     # NOTE: type(...) to fix getting `torch.bfloat16` type.
-    output = F.conv2d(input, tmp_kernel, groups=tmp_kernel.size(0), padding=0, stride=1)
+    # TODO: @johnnv1, fix it through the Augmentation Base.
+    output = F.conv2d(input, tmp_kernel, groups=tmp_kernel.size(0), padding=0, stride=1).type(input.dtype)
 
     if padding == 'same':
         out = output.view(b, c, h, w)
