@@ -42,7 +42,7 @@ class AugmentationSequential(ImageSequential):
         transformation_matrix: computation mode for the chained transformation matrix,
             via `.transform_matrix` attribute.
             If `silence`, transformation matrix will be computed silently and the non-rigid modules
-                will be ignored as identity tranformations.
+                will be ignored as identity transformations.
             If `rigid`, transformation matrix will be computed silently and the non-rigid modules
                 will trigger errors.
             If `skip`, transformation matrix will be totally ignored.
@@ -110,7 +110,8 @@ class AugmentationSequential(ImageSequential):
         >>> [o.shape for o in out]
         [torch.Size([1, 2, 3, 5, 6]), torch.Size([1, 2, 3, 5, 6]), torch.Size([1, 2, 1, 4, 2]), torch.Size([1, 2, 1, 2])]
 
-    Perform ``OneOf`` transformation with ``random_apply=1`` and ``random_apply_weights`` in ``AugmentationSequential``.
+    Perform ``OneOf`` transformation with ``random_apply=1`` and ``random_apply_weights``
+    in ``AugmentationSequential``.
 
         >>> import kornia
         >>> input = torch.randn(2, 3, 5, 6)[None]
@@ -134,8 +135,8 @@ class AugmentationSequential(ImageSequential):
         ...     random_apply_weights=[0.5, 0.3]
         ... )
         >>> out = aug_list(input, mask, bbox, points)
-        >>> [o.shape for o in out]
-        [torch.Size([1, 2, 3, 5, 6]), torch.Size([1, 2, 3, 5, 6]), torch.Size([1, 2, 1, 4, 2]), torch.Size([1, 2, 1, 2])]
+        >>> [o.shape for o in out]  # doctest: +ELLIPSIS
+        [torch.Size([1, 2, 3, 5, 6]), torch.Size([1, 2, 3, 5, 6]), ...([1, 2, 1, 4, 2]), torch.Size([1, 2, 1, 2])]
     """
 
     _transform_matrix: Optional[Tensor]
@@ -199,7 +200,7 @@ class AugmentationSequential(ImageSequential):
     @property
     def transform_matrix(self) -> Optional[Tensor]:
         # In AugmentationSequential, the parent class is accessed first.
-        # So that it was None in the begining. We hereby use lazy computation here.
+        # So that it was None in the beginning. We hereby use lazy computation here.
         if self._transform_matrix is None and len(self._transform_matrices) != 0:
             self._transform_matrix = self._transform_matrices[0]
             for mat in self._transform_matrices[1:]:
@@ -214,7 +215,7 @@ class AugmentationSequential(ImageSequential):
             self._transform_matrices.append(module.transform_matrix)  # type: ignore
         elif self._transformation_matrix_arg == "rigid":
             raise RuntimeError(
-                f"Non-rigid module `{module}` is not supported under `rigid` compuatation mode. "
+                f"Non-rigid module `{module}` is not supported under `rigid` computation mode. "
                 "Please either update the module or change the `transformation_matrix` argument."
             )
 

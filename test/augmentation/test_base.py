@@ -100,28 +100,12 @@ class TestBasicAugmentationBase:
 
 
 class TestAugmentationBase2D:
-    @pytest.mark.parametrize(
-        'input_shape, in_trans_shape',
-        [
-            ((2, 3, 4, 5), (2, 3, 3)),
-            ((3, 4, 5), (3, 3)),
-            ((4, 5), (3, 3)),
-            pytest.param((1, 2, 3, 4, 5), (2, 3, 3), marks=pytest.mark.xfail),
-            pytest.param((2, 3, 4, 5), (1, 3, 3), marks=pytest.mark.xfail),
-            pytest.param((2, 3, 4, 5), (3, 3), marks=pytest.mark.xfail),
-        ],
-    )
-    def test_check_batching(self, device, dtype, input_shape, in_trans_shape):
-        input = torch.rand(input_shape, device=device, dtype=dtype)
-        in_trans = torch.rand(in_trans_shape, device=device, dtype=dtype)
-        augmentation = AugmentationBase2D(p=1.0, p_batch=1)
 
     def test_forward(self, device, dtype):
         torch.manual_seed(42)
         input = torch.rand((2, 3, 4, 5), device=device, dtype=dtype)
         # input_transform = torch.rand((2, 3, 3), device=device, dtype=dtype)
         expected_output = torch.rand((2, 3, 4, 5), device=device, dtype=dtype)
-        expected_transform = torch.rand((2, 3, 3), device=device, dtype=dtype)
         augmentation = AugmentationBase2D(p=1.0)
 
         with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform, patch.object(

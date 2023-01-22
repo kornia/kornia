@@ -27,7 +27,7 @@ class AugmentationBase2D(_AugmentationBase):
     """
 
     def validate_tensor(self, input: Tensor) -> None:
-        """Check if the input tensor is formated as expected."""
+        """Check if the input tensor is formatted as expected."""
         _validate_input_dtype(input, accepted_dtypes=[float16, float32, float64])
         if len(input.shape) != 4:
             raise RuntimeError(f"Expect (B, C, H, W). Got {input.shape}.")

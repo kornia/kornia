@@ -84,7 +84,7 @@ class _BasicAugmentationBase(Module):
         raise NotImplementedError
 
     def validate_tensor(self, input: Tensor) -> None:
-        """Check if the input tensor is formated as expected."""
+        """Check if the input tensor is formatted as expected."""
         raise NotImplementedError
 
     def transform_output_tensor(self, output: Tensor, output_shape: Tuple[int, ...]) -> Tensor:

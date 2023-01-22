@@ -81,9 +81,8 @@ class Keypoints:
         Args:
             padding_size: (B, 4)
         """
-        assert (
-            len(padding_size.shape) == 2 and padding_size.size(1) == 4
-        ), f"Expected padding_size as (B, 4). Got {padding_size.shape}."
+        if len(padding_size.shape) == 2 and padding_size.size(1) == 4:
+            raise RuntimeError(f"Expected padding_size as (B, 4). Got {padding_size.shape}.")
         self._data[..., 0] += padding_size[..., :1]  # left padding
         self._data[..., 1] += padding_size[..., 2:3]  # top padding
         return self
@@ -94,9 +93,8 @@ class Keypoints:
         Args:
             padding_size: (B, 4)
         """
-        assert (
-            len(padding_size.shape) == 2 and padding_size.size(1) == 4
-        ), f"Expected padding_size as (B, 4). Got {padding_size.shape}."
+        if len(padding_size.shape) == 2 and padding_size.size(1) == 4:
+            raise RuntimeError(f"Expected padding_size as (B, 4). Got {padding_size.shape}.")
         self._data[..., 0] -= padding_size[..., :1]  # left padding
         self._data[..., 1] -= padding_size[..., 2:3]  # top padding
         return self
@@ -155,7 +153,7 @@ class VideoKeypoints(Keypoints):
     @classmethod
     def from_tensor(cls, boxes: Union[Tensor, List[Tensor]], validate_boxes: bool = True) -> "VideoKeypoints":
         if isinstance(boxes, (list,)) or (boxes.dim() != 4 or boxes.shape[-1] != 2):
-            raise ValueError("Input box type is not yet supported. Pleae input an `BxTxNx2` tensor directly.")
+            raise ValueError("Input box type is not yet supported. Please input an `BxTxNx2` tensor directly.")
 
         temporal_channel_size = boxes.size(1)
 

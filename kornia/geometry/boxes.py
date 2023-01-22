@@ -291,9 +291,8 @@ class Boxes:
         Args:
             padding_size: (B, 4)
         """
-        assert (
-            len(padding_size.shape) == 2 and padding_size.size(1) == 4
-        ), f"Expected padding_size as (B, 4). Got {padding_size.shape}."
+        if len(padding_size.shape) == 2 and padding_size.size(1) == 4:
+            raise RuntimeError(f"Expected padding_size as (B, 4). Got {padding_size.shape}.")
         self._data[..., 0] += padding_size[..., None, :1]  # left padding
         self._data[..., 1] += padding_size[..., None, 2:3]  # top padding
         return self
@@ -304,9 +303,8 @@ class Boxes:
         Args:
             padding_size: (B, 4)
         """
-        assert (
-            len(padding_size.shape) == 2 and padding_size.size(1) == 4
-        ), f"Expected padding_size as (B, 4). Got {padding_size.shape}."
+        if len(padding_size.shape) == 2 and padding_size.size(1) == 4:
+            raise RuntimeError(f"Expected padding_size as (B, 4). Got {padding_size.shape}.")
         self._data[..., 0] -= padding_size[..., None, :1]  # left padding
         self._data[..., 1] -= padding_size[..., None, 2:3]  # top padding
         return self
@@ -668,7 +666,7 @@ class VideoBoxes(Boxes):
         cls, boxes: Union[torch.Tensor, List[torch.Tensor]], validate_boxes: bool = True
     ) -> "VideoBoxes":
         if isinstance(boxes, (list,)) or (boxes.dim() != 5 or boxes.shape[-2:] != torch.Size([4, 2])):
-            raise ValueError("Input box type is not yet supported. Pleae input an `BxTxNx4x2` tensor directly.")
+            raise ValueError("Input box type is not yet supported. Please input an `BxTxNx4x2` tensor directly.")
 
         temporal_channel_size = boxes.size(1)
 
