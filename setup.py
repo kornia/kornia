@@ -34,7 +34,7 @@ setup(
             'opencv-python',
             'sphinx>=4.0',
             'sphinx-autodoc-defaultargs',
-            'sphinx-autodoc-typehints==1.21.3',  # TODO: verify if works with > 1.24.4
+            'sphinx-autodoc-typehints',
             'sphinx-copybutton>=0.3',
             'sphinx-design',
             'sphinx-rtd-theme>0.5',
