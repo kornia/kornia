@@ -1,5 +1,5 @@
 from collections import OrderedDict
-from typing import Any, Dict, Iterator, List, NamedTuple, Optional, Tuple, Union
+from typing import Dict, Iterator, List, NamedTuple, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -56,9 +56,6 @@ class SequentialBase(nn.Sequential):
                     mod.same_on_batch = same_on_batch
                 if keepdim is not None:
                     mod.keepdim = keepdim
-            if isinstance(mod, _AugmentationBase):
-                if return_transform is not None:
-                    mod.return_transform = return_transform
             if isinstance(mod, SequentialBase):
                 mod.update_attribute(same_on_batch, return_transform, keepdim)
 
@@ -122,13 +119,6 @@ class SequentialBase(nn.Sequential):
         """Reset self._params state to None."""
         self._params = None
 
-    def update_params(self, param: Any) -> None:
-        """Update self._params state."""
-        if self._params is None:
-            self._params = [param]
-        else:
-            self._params.append(param)
-
     # TODO: Implement this for all submodules.
     def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
         raise NotImplementedError
@@ -148,9 +138,6 @@ class SequentialBase(nn.Sequential):
         # This will not take module._params
         for name, _ in named_modules:
             yield ParamItem(name, None)
-
-    def contains_label_operations(self, params: List[ParamItem]) -> bool:
-        raise NotImplementedError
 
     def autofill_dim(self, input: Tensor, dim_range: Tuple[int, int] = (2, 4)) -> Tuple[torch.Size, torch.Size]:
         """Fill tensor dim to the upper bound of dim_range.

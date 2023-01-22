@@ -3,10 +3,10 @@ from typing import Any, Dict, Optional
 import torch
 from torch import Tensor
 
-from kornia.augmentation._3d.base import AugmentationBase3D
+from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 
 
-class RandomHorizontalFlip3D(AugmentationBase3D):
+class RandomHorizontalFlip3D(GeometricAugmentationBase3D):
     r"""Apply random horizontal flip to 3D volumes (5D tensor).
 
     Args:
@@ -51,14 +51,8 @@ class RandomHorizontalFlip3D(AugmentationBase3D):
         tensor(True)
     """
 
-    def __init__(
-        self,
-        same_on_batch: bool = False,
-        p: float = 0.5,
-        keepdim: bool = False,
-        return_transform: Optional[bool] = None,
-    ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
+    def __init__(self, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False) -> None:
+        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         w: int = input.shape[-1]
