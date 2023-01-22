@@ -7,9 +7,12 @@ from kornia.augmentation import MixAugmentationBaseV2
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import SequentialBase
 from kornia.augmentation.container.image import ImageSequential, ParamItem
+from kornia.augmentation.container.ops import InputSequentialOps
 from kornia.contrib.extract_patches import extract_tensor_patches
 from kornia.core import Module, Tensor, concatenate
 from kornia.core import pad as fpad
+from kornia.geometry.boxes import Boxes
+from kornia.geometry.keypoints import Keypoints
 
 __all__ = ["PatchSequential"]
 
@@ -150,12 +153,7 @@ class PatchSequential(ImageSequential):
         self.grid_size = grid_size
         self.padding = padding
         self.patchwise_apply = patchwise_apply
-
-    def contains_label_operations(self, params: List[PatchParamItem]) -> bool:  # type: ignore[override]
-        for param in params:
-            if param.param.name.startswith("RandomMixUp") or param.param.name.startswith("RandomCutMix"):
-                return True
-        return False
+        self._params: Optional[List[PatchParamItem]]  # type: ignore[assignment]
 
     def compute_padding(
         self, input: Tensor, padding: str, grid_size: Optional[Tuple[int, int]] = None
@@ -303,81 +301,87 @@ class PatchSequential(ImageSequential):
                     else:
                         yield ParamItem(s[0], None), i
 
-    def apply_by_param(
-        self, input: Tensor, label: Optional[Tensor], params: PatchParamItem
-    ) -> Tuple[Tensor, Optional[Tensor], PatchParamItem]:
-        _input: Tensor
+    def forward_by_params(self, input: Tensor, params: List[PatchParamItem]) -> Tensor:
         in_shape = input.shape
-        _input = input[params.indices]
+        input = input.reshape(-1, *in_shape[-3:])
 
-        _label: Optional[Tensor]
-        if label is not None:
-            _label = label[params.indices]
-        else:
-            _label = label
-
-        module = self.get_submodule(params.param.name)
-        output, out_label = self.apply_to_input(_input, _label, module, params.param, extra_args={})
-
-        if isinstance(module, (_AugmentationBase, SequentialBase, MixAugmentationBaseV2)):
-            out_param = ParamItem(params.param.name, module._params)
-        else:
-            out_param = ParamItem(params.param.name, None)
-
-        if isinstance(output, (tuple,)) and isinstance(input, (tuple,)):
-            input[0][params.indices] = output[0]
-            input[1][params.indices] = output[1]
-        elif isinstance(output, (tuple,)) and not isinstance(input, (tuple,)):
-            input[params.indices] = output[0]
-            input = (input, output[1])
-        elif not isinstance(output, (tuple,)) and isinstance(input, (tuple,)):
-            input[0][params.indices] = output
-        elif not isinstance(output, (tuple,)) and not isinstance(input, (tuple,)):
-            input[params.indices] = output
-
-        # TODO: this label handling is naive that may not be able to handle complex cases.
-        _label = None
-        if label is not None and out_label is not None:
-            if len(out_label.shape) == 1:
-                # Weird the mypy error though it is as same as in the next block
-                _label = torch.ones(in_shape[0] * in_shape[1], device=out_label.device, dtype=out_label.dtype) * -1
-                _label = label
-            else:
-                _label = (
-                    torch.ones(in_shape[0], *out_label.shape[1:], device=out_label.device, dtype=out_label.dtype) * -1
-                )
-                _label[:, 0] = label
-            _label[params.indices] = out_label
-        elif label is None and out_label is not None:
-            if len(out_label.shape) == 1:
-                _label = torch.ones(in_shape[0] * in_shape[1], device=out_label.device, dtype=out_label.dtype) * -1
-            else:
-                _label = (
-                    torch.ones(in_shape[0], *out_label.shape[1:], device=out_label.device, dtype=out_label.dtype) * -1
-                )
-            _label[params.indices] = out_label
-
-        return input, _label, PatchParamItem(params.indices, param=out_param)
-
-    def forward_by_params(
-        self, input: Tensor, label: Optional[Tensor], params: List[PatchParamItem]
-    ) -> Union[Tensor, Tuple[Tensor, Optional[Tensor]]]:
-        _input: Tensor
-        in_shape = input.shape
-        _input = input.reshape(-1, *in_shape[-3:])
-
-        if label is not None:
-            label = concatenate([label] * in_shape[1], 0)
-
-        self.clear_state()
         for patch_param in params:
-            _input, label, out_param = self.apply_by_param(_input, label, params=patch_param)
-            self.update_params(out_param)
-        _input = _input.reshape(in_shape)
-        return _input, label
+            # input, out_param = self.apply_by_param(input, params=patch_param)
+            module = self.get_submodule(patch_param.param.name)
+            _input = input[patch_param.indices]
+            output = InputSequentialOps.transform(_input, module, patch_param.param, extra_args={})
+            input[patch_param.indices] = output
 
-    def inverse(
-        self, input: Tensor, params: Optional[List[ParamItem]] = None, extra_args: Dict[str, Any] = {}
+        return input.reshape(in_shape)
+
+    def transform_inputs(  # type: ignore[override]
+        self, input: Tensor, params: List[PatchParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Tensor:
+        pad = self.compute_padding(input, self.padding)
+        input = self.extract_patches(input, self.grid_size, pad)
+        input = self.forward_by_params(input, params)
+        input = self.restore_from_patches(input, self.grid_size, pad=pad)
+
+        return input
+
+    def inverse_inputs(  # type: ignore[override]
+        self, input: Tensor, params: List[PatchParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Tensor:
+        if self.is_intensity_only():
+            return input
+
+        raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
+
+    def transform_masks(  # type: ignore[override]
+        self, input: Tensor, params: List[PatchParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Tensor:
+        if self.is_intensity_only():
+            return input
+
+        raise NotImplementedError("PatchSequential for boxes cannot be used with geometric transformations.")
+
+    def inverse_masks(  # type: ignore[override]
+        self, input: Tensor, params: List[PatchParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Tensor:
+        if self.is_intensity_only():
+            return input
+
+        raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
+
+    def transform_boxes(  # type: ignore[override]
+        self, input: Boxes, params: List[PatchParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Boxes:
+        if self.is_intensity_only():
+            return input
+
+        raise NotImplementedError("PatchSequential for boxes cannot be used with geometric transformations.")
+
+    def inverse_boxes(  # type: ignore[override]
+        self, input: Boxes, params: List[PatchParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Boxes:
+        if self.is_intensity_only():
+            return input
+
+        raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
+
+    def transform_keypoints(  # type: ignore[override]
+        self, input: Keypoints, params: List[PatchParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Keypoints:
+        if self.is_intensity_only():
+            return input
+
+        raise NotImplementedError("PatchSequential for keypoints cannot be used with geometric transformations.")
+
+    def inverse_keypoints(  # type: ignore[override]
+        self, input: Keypoints, params: List[PatchParamItem], extra_args: Dict[str, Any] = {}
+    ) -> Keypoints:
+        if self.is_intensity_only():
+            return input
+
+        raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
+
+    def inverse(  # type: ignore[override]
+        self, input: Tensor, params: Optional[List[PatchParamItem]] = None, extra_args: Dict[str, Any] = {}
     ) -> Tensor:
         """Inverse transformation.
 
@@ -389,25 +393,17 @@ class PatchSequential(ImageSequential):
 
         raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
 
-    def forward(  # type: ignore[override]
-        self, input: Tensor, label: Optional[Tensor] = None, params: Optional[List[PatchParamItem]] = None
-    ) -> Union[Tensor, Tuple[Tensor, Optional[Tensor]]]:
+    def forward(self, input: Tensor, params: Optional[List[PatchParamItem]] = None) -> Tensor:  # type: ignore[override]
         """Input transformation will be returned if input is a tuple."""
         # BCHW -> B(patch)CHW
         if isinstance(input, (tuple,)):
             raise ValueError("tuple input is not currently supported.")
-        _input: Tensor
-
-        pad = self.compute_padding(input, self.padding)
-        input = self.extract_patches(input, self.grid_size, pad)
 
         if params is None:
             params = self.forward_parameters(input.shape)
 
-        _input, label = self.forward_by_params(input, label, params)
+        output = self.transform_inputs(input, params=params)
 
-        _input = self.restore_from_patches(_input, self.grid_size, pad=pad)
+        self._params = params
 
-        self.return_label = label is not None or self.contains_label_operations(params)
-
-        return self.__packup_output__(_input, label)
+        return output

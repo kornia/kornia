@@ -88,9 +88,8 @@ class RandomAffine(GeometricAugmentationBase2D):
         padding_mode: Union[str, int, SamplePadding] = SamplePadding.ZEROS.name,
         p: float = 0.5,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator: rg.AffineGenerator = rg.AffineGenerator(degrees, translate, scale, shear)
         self.flags = dict(
             resample=Resample.get(resample), padding_mode=SamplePadding.get(padding_mode), align_corners=align_corners

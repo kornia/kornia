@@ -3,11 +3,11 @@ from typing import Any, Dict, Optional
 import torch
 from torch import Tensor
 
-from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
+from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.geometry.transform import get_tps_transform, warp_image_tps
 
 
-class RandomThinPlateSpline(GeometricAugmentationBase2D):
+class RandomThinPlateSpline(AugmentationBase2D):
     r"""Add random noise to the Thin Plate Spline algorithm.
 
     .. image:: _static/img/RandomThinPlateSpline.png
@@ -43,11 +43,8 @@ class RandomThinPlateSpline(GeometricAugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
     ) -> None:
-        super().__init__(
-            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
-        )
+        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self.flags = dict(align_corners=align_corners)
         self.dist = torch.distributions.Uniform(-scale, scale)
 
@@ -56,10 +53,6 @@ class RandomThinPlateSpline(GeometricAugmentationBase2D):
         src = torch.tensor([[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0], [0.0, 0.0]]]).expand(B, 5, 2)  # Bx5x2
         dst = src + self.dist.rsample(src.shape)
         return dict(src=src, dst=dst)
-
-    # TODO: It is incorrect to return identity
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
-        return self.identity_matrix(input)
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
