@@ -20,12 +20,13 @@ Grayscale
 .. autofunction:: bgr_to_grayscale
 .. autofunction:: grayscale_to_rgb
 .. autofunction:: apply_colormap
-
+    :noindex:
 
 .. autoclass:: GrayscaleToRgb
 .. autoclass:: RgbToGrayscale
 .. autoclass:: BgrToGrayscale
 .. autoclass:: ApplyColorMap
+    :noindex:
 
 RGB
 ---
