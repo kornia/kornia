@@ -114,10 +114,7 @@ Module
 
 
 .. autoclass:: MultiResolutionDetector
-   :members: forward
-   :members: remove_borders
-   :members: detect_features_on_single_level
-   :members: detect
+   :members: forward, remove_borders, detect_features_on_single_level, detect
 
 
 .. autoclass:: ScaleSpaceDetector
