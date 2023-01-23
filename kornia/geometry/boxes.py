@@ -344,6 +344,7 @@ class Boxes:
         """Trim out zero padded boxes.
 
         Given box arrangements of shape :math:`(4, 4, Box)`:
+
             == === == === == === == === ==
             -- Box -- Box -- Box -- Box --
             --  0  --  0  -- Box -- Box --

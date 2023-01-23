@@ -19,35 +19,37 @@ __all__ = ["AugmentationSequential"]
 class AugmentationSequential(ImageSequential):
     r"""AugmentationSequential for handling multiple input types like inputs, masks, keypoints at once.
 
-    .. image:: https://kornia-tutorials.readthedocs.io/en/latest/_images/data_augmentation_sequential_5_1.png
-        :width: 49 %
-    .. image:: https://kornia-tutorials.readthedocs.io/en/latest/_images/data_augmentation_sequential_7_0.png
-        :width: 49 %
+    .. image:: _static/img/AugmentationSequential.png
 
     Args:
         *args: a list of kornia augmentation modules.
-        data_keys: the input type sequential for applying augmentations.
-            Accepts "input", "mask", "bbox", "bbox_xyxy", "bbox_xywh", "keypoints".
-        same_on_batch: apply the same transformation across the batch.
-            If None, it will not overwrite the function-wise settings.
-        keepdim: whether to keep the output shape the same as input (True) or broadcast it
-            to the batch form (False). If None, it will not overwrite the function-wise settings.
-        random_apply: randomly select a sublist (order agnostic) of args to
-            apply transformation.
-            If int, a fixed number of transformations will be selected.
-            If (a,), x number of transformations (a <= x <= len(args)) will be selected.
-            If (a, b), x number of transformations (a <= x <= b) will be selected.
-            If True, the whole list of args will be processed as a sequence in a random order.
-            If False, the whole list of args will be processed as a sequence in original order.
-        transformation_matrix: computation mode for the chained transformation matrix,
-            via `.transform_matrix` attribute.
-            If `silence`, transformation matrix will be computed silently and the non-rigid modules
-                will be ignored as identity transformations.
-            If `rigid`, transformation matrix will be computed silently and the non-rigid modules
-                will trigger errors.
-            If `skip`, transformation matrix will be totally ignored.
-        extra_args: to control the behaviour for each datakeys. By default, masks are handled
-            by nearest interpolation strategies.
+
+        data_keys: the input type sequential for applying augmentations. Accepts "input", "mask", "bbox", "bbox_xyxy",
+                   "bbox_xywh", "keypoints".
+
+        same_on_batch: apply the same transformation across the batch. If None, it will not overwrite the function-wise
+                       settings.
+
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it to the batch form (False).
+                 If None, it will not overwrite the function-wise settings.
+
+        random_apply: randomly select a sublist (order agnostic) of args to apply transformation.
+                      If int, a fixed number of transformations will be selected.
+                      If (a,), x number of transformations (a <= x <= len(args)) will be selected.
+                      If (a, b), x number of transformations (a <= x <= b) will be selected.
+                      If True, the whole list of args will be processed as a sequence in a random order.
+                      If False, the whole list of args will be processed as a sequence in original order.
+
+        transformation_matrix: computation mode for the chained transformation matrix, via `.transform_matrix`
+                               attribute.
+                               If `silence`, transformation matrix will be computed silently and the non-rigid modules
+                               will be ignored as identity transformations.
+                               If `rigid`, transformation matrix will be computed silently and the non-rigid modules
+                               will trigger errors.
+                               If `skip`, transformation matrix will be totally ignored.
+
+        extra_args: to control the behaviour for each datakeys. By default, masks are handled by nearest interpolation
+                    strategies.
 
     .. note::
         Mix augmentations (e.g. RandomMixUp, RandomCutMix) can only be working with "input" data key.
