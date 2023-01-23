@@ -53,26 +53,26 @@ class TestSe2(BaseTester):
             Se2(r, t2)
         with pytest.raises(ValueError):
             theta = torch.rand((batch_size, 2), dtype=dtype, device=device)
-            assert Se2.exp(theta)
+            Se2.exp(theta)
         with pytest.raises(ValueError):
             v = torch.rand((batch_size, 2), dtype=dtype, device=device)
-            assert Se2.hat(v)
+            Se2.hat(v)
         with pytest.raises(ValueError):
             omega = torch.rand((4, 4), dtype=dtype, device=device)
-            assert Se2.vee(omega)
+            Se2.vee(omega)
         with pytest.raises(TypeError):
-            assert Se2.identity(1, device, dtype) * [1.0, 2.0, 1.0]
+            Se2.identity(1, device, dtype) * [1.0, 2.0, 1.0]
         with pytest.raises(ValueError):
             theta = torch.rand((batch_size, 2), dtype=dtype, device=device)
-            assert Se2.hat(theta)
+            Se2.hat(theta)
         with pytest.raises(Exception):
-            assert Se2.identity(batch_size=0)
+            Se2.identity(batch_size=0)
         with pytest.raises(Exception):
-            assert Se2.random(batch_size=0)
+            Se2.random(batch_size=0)
         with pytest.raises(Exception):
             x = torch.rand(5, dtype=dtype, device=device)
             y = torch.rand(3, dtype=dtype, device=device)
-            assert Se2.trans(x, y)
+            Se2.trans(x, y)
 
     # TODO: implement me
     def test_gradcheck(self, device):
