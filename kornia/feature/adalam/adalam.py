@@ -72,7 +72,7 @@ def match_adalam(
             if key not in config_.keys():
                 print(
                     f"WARNING: custom configuration contains a key which is not recognized ({key}). "
-                    f"Known configurations are {list(self.config.keys())}."
+                    f"Known configurations are {list(config_.keys())}."
                 )
                 continue
             config_[key] = val
