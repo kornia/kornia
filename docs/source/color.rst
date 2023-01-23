@@ -19,10 +19,13 @@ Grayscale
 .. autofunction:: rgb_to_grayscale
 .. autofunction:: bgr_to_grayscale
 .. autofunction:: grayscale_to_rgb
+.. autofunction:: apply_colormap
+
 
 .. autoclass:: GrayscaleToRgb
 .. autoclass:: RgbToGrayscale
 .. autoclass:: BgrToGrayscale
+.. autoclass:: ApplyColorMap
 
 RGB
 ---
@@ -187,3 +190,28 @@ Bayer RAW
 
 .. autoclass:: RawToRgb
 .. autoclass:: RgbToRaw
+
+Sepia
+-----
+
+.. autoclass:: Sepia
+.. autofunction:: sepia
+
+
+Color Maps
+----------
+You can create your custom color map with
+
+.. autoclass:: ColorMap
+.. autoclass:: RGBColor
+
+
+Color maps availables:
+
+.. autoclass:: AUTUMN
+
+
+Functions and modules to use the color maps:
+
+.. autofunction:: apply_colormap
+.. autoclass:: ApplyColorMap

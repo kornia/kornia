@@ -1,0 +1,94 @@
+{
+    "name": "Python 3",
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": "..",
+        "args": {
+            // Update 'VARIANT' to pick a Python version: 3, 3.7, 3.8, 3.9, 3.10
+            "VARIANT": "3.8",
+            // Options
+            "INSTALL_NODE": "true",
+            "NODE_VERSION": "lts/*"
+        },
+    },
+    "runArgs": [
+        // Enable GPU passthrough, requires WSL2 on Windows
+        //"--gpus=all",
+        // One of the following options is required for torch multiprocessing
+        //"--ipc=host",
+        //"--shm-size=4gb",
+    ],
+    "settings": {
+        "editor.formatOnSave": true,
+        "editor.rulers": [
+            120
+        ],
+        "python.pythonPath": "/usr/local/bin/python",
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.languageServer": "Pylance",
+        "python.autoComplete.addBrackets": true,
+        "python.analysis.autoImportCompletions": true,
+        "python.analysis.completeFunctionParens": true,
+        "python.analysis.autoSearchPaths": true,
+        "python.analysis.useImportHeuristic": true,
+        "python.analysis.diagnosticMode": "workspace",
+        "python.sortImports": true,
+        "python.sortImports.args": [
+            // isort recommends pyproject.toml
+            // "--settings-path=${workspaceFolder}/pyproject.toml",
+            "--settings-path=${workspaceFolder}/setup.cfg"
+        ],
+        "python.formatting.autopep8Path": "/usr/local/py-utils/bin/autopep8",
+        "python.formatting.blackPath": "/usr/local/py-utils/bin/black",
+        "python.formatting.provider": "black",
+        "python.formatting.blackArgs": [
+            "--config=${workspaceFolder}/pyproject.toml"
+        ],
+        "python.linting.banditPath": "/usr/local/py-utils/bin/bandit",
+        "python.linting.flake8Path": "/usr/local/py-utils/bin/flake8",
+        "python.linting.mypyPath": "/usr/local/py-utils/bin/mypy",
+        "python.linting.pycodestylePath": "/usr/local/py-utils/bin/pycodestyle",
+        "python.linting.pydocstylePath": "/usr/local/py-utils/bin/pydocstyle",
+        "python.linting.pylintPath": "/usr/local/py-utils/bin/pylint",
+        "python.linting.enabled": true,
+        "python.linting.pylintEnabled": false,
+        "python.linting.flake8Enabled": true,
+        "python.linting.flake8Args": [
+            "--config=${workspaceFolder}/setup.cfg",
+            "--verbose"
+        ],
+        "python.testing.pytestArgs": [
+            "test"
+        ],
+        "python.testing.unittestEnabled": false,
+        "python.testing.pytestEnabled": true,
+        "restructuredtext.confPath": "${workspaceFolder}/docs/source",
+        "restructuredtext.builtDocumentationPath": "${workspaceFolder}/docs/build",
+        "restructuredtext.languageServer.disabled": false,
+        "[python]": {
+            "editor.codeActionsOnSave": {
+                "source.organizeImports": true,
+            }
+        }
+    },
+    // Add the IDs of extensions you want installed when the container is created.
+    "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "visualstudioexptteam.vscodeintellicode",
+        "kevinrose.vsc-python-indent",
+        "littlefoxteam.vscode-python-test-adapter",
+        "hbenl.vscode-test-explorer",
+        "medo64.render-crlf",
+        "shardulm94.trailing-spaces",
+        "njqdev.vscode-python-typehint",
+        "lextudio.restructuredtext",
+        "trond-snekvik.simple-rst",
+    ],
+    // Use 'forwardPorts' to make a list of ports inside the container available locally.
+    // "forwardPorts": [],
+    // Use 'postCreateCommand' to run commands after the container is created.
+    "postCreateCommand": "pre-commit install && sudo /usr/local/bin/python setup.py develop",
+    // Comment out connect as root instead. More info: https://aka.ms/vscode-remote/containers/non-root.
+    "remoteUser": "vscode"
+}

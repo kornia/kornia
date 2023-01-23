@@ -16,6 +16,15 @@ Blurring
 .. autofunction:: motion_blur
 .. autofunction:: unsharp_mask
 
+Interactive Demo
+~~~~~~~~~~~~~~~~
+.. raw:: html
+
+    <gradio-app space="kornia/kornia-image-filtering"></gradio-app>
+
+Visit the `Kornia image filtering demo on the Hugging Face Spaces
+<https://huggingface.co/spaces/kornia/kornia-image-filtering>`_.
+
 Edge detection
 --------------
 
@@ -24,6 +33,25 @@ Edge detection
 .. autofunction:: sobel
 .. autofunction:: spatial_gradient
 .. autofunction:: spatial_gradient3d
+
+
+.. autoclass:: Laplacian
+.. autoclass:: Sobel
+.. autoclass:: Canny
+.. autoclass:: SpatialGradient
+.. autoclass:: SpatialGradient3d
+.. autoclass:: DexiNed
+
+
+Interactive Demo
+~~~~~~~~~~~~~~~~
+.. raw:: html
+
+    <gradio-app space="kornia/edge_detector"></gradio-app>
+
+Visit the `Kornia edge detector demo on the Hugging Face Spaces
+<https://huggingface.co/spaces/kornia/edge_detector>`_.
+
 
 Filtering API
 -------------
@@ -39,6 +67,8 @@ Kernels
 .. autofunction:: get_gaussian_erf_kernel1d
 .. autofunction:: get_gaussian_discrete_kernel1d
 .. autofunction:: get_gaussian_kernel2d
+.. autofunction:: get_hanning_kernel1d
+.. autofunction:: get_hanning_kernel2d
 .. autofunction:: get_laplacian_kernel1d
 .. autofunction:: get_laplacian_kernel2d
 .. autofunction:: get_motion_kernel2d
@@ -51,10 +81,5 @@ Module
 .. autoclass:: MaxBlurPool2D
 .. autoclass:: MedianBlur
 .. autoclass:: GaussianBlur2d
-.. autoclass:: Laplacian
-.. autoclass:: Sobel
-.. autoclass:: Canny
-.. autoclass:: SpatialGradient
-.. autoclass:: SpatialGradient3d
 .. autoclass:: MotionBlur
 .. autoclass:: UnsharpMask

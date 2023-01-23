@@ -27,12 +27,17 @@ Fundamental
 .. autofunction:: compute_correspond_epilines
 .. autofunction:: normalize_points
 .. autofunction:: normalize_transformation
+.. autofunction:: get_perpendicular
+.. autofunction:: get_closest_point_on_epipolar_line
+
 
 Metrics
 -------
 
 .. autofunction:: sampson_epipolar_distance
 .. autofunction:: symmetrical_epipolar_distance
+.. autofunction:: left_to_right_epipolar_distance
+.. autofunction:: right_to_left_epipolar_distance
 
 Projection
 ----------

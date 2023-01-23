@@ -46,9 +46,9 @@ def spvs_coarse(data, config):
 
     # 2. warp grids
     # create kpts in meshgrid and resize them to image resolution
-    grid_pt0_c = create_meshgrid(h0, w0, False, device).reshape(1, h0 * w0, 2).repeat(N, 1, 1)    # [N, hw, 2]
+    grid_pt0_c = create_meshgrid(h0, w0, False, device).reshape(1, h0 * w0, 2).expand(N, h0 * w0, 2)  # [N, hw, 2]
     grid_pt0_i = scale0 * grid_pt0_c
-    grid_pt1_c = create_meshgrid(h1, w1, False, device).reshape(1, h1 * w1, 2).repeat(N, 1, 1)
+    grid_pt1_c = create_meshgrid(h1, w1, False, device).reshape(1, h1 * w1, 2).expand(N, h1 * w1, 2)
     grid_pt1_i = scale1 * grid_pt1_c
 
     # mask padded region to (0, 0), so no need to manually mask conf_matrix_gt
@@ -73,6 +73,7 @@ def spvs_coarse(data, config):
     # corner case: out of boundary
     def out_bound_mask(pt, w, h):
         return (pt[..., 0] < 0) + (pt[..., 0] >= w) + (pt[..., 1] < 0) + (pt[..., 1] >= h)
+
     nearest_index1[out_bound_mask(w_pt0_c_round, w1, h1)] = 0
     nearest_index0[out_bound_mask(w_pt1_c_round, w0, h0)] = 0
 
@@ -95,17 +96,10 @@ def spvs_coarse(data, config):
         i_ids = torch.tensor([0], device=device)
         j_ids = torch.tensor([0], device=device)
 
-    data.update({
-        'spv_b_ids': b_ids,
-        'spv_i_ids': i_ids,
-        'spv_j_ids': j_ids
-    })
+    data.update({'spv_b_ids': b_ids, 'spv_i_ids': i_ids, 'spv_j_ids': j_ids})
 
     # 6. save intermediate results (for fast fine-level computation)
-    data.update({
-        'spv_w_pt0_i': w_pt0_i,
-        'spv_pt1_i': grid_pt1_i
-    })
+    data.update({'spv_w_pt0_i': w_pt0_i, 'spv_pt1_i': grid_pt1_i})
 
 
 def compute_supervision_coarse(data, config):
@@ -119,6 +113,7 @@ def compute_supervision_coarse(data, config):
 
 
 #  Fine-Level supervision
+
 
 @torch.no_grad()
 def spvs_fine(data, config):

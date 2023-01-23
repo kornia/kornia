@@ -3,7 +3,6 @@ from typing import List
 import torch
 import torch.nn.functional as F
 
-from .__tmp__ import _deprecation_wrapper
 from .kernels import normalize_kernel2d
 
 
@@ -13,26 +12,29 @@ def _compute_padding(kernel_size: List[int]) -> List[int]:
     # https://pytorch.org/docs/stable/nn.html#torch.nn.functional.pad
     if len(kernel_size) < 2:
         raise AssertionError(kernel_size)
-    computed = [k // 2 for k in kernel_size]
+    computed = [k - 1 for k in kernel_size]
 
     # for even kernels we need to do asymmetric padding :(
-
     out_padding = 2 * len(kernel_size) * [0]
 
     for i in range(len(kernel_size)):
         computed_tmp = computed[-(i + 1)]
-        if kernel_size[i] % 2 == 0:
-            padding = computed_tmp - 1
-        else:
-            padding = computed_tmp
-        out_padding[2 * i + 0] = padding
-        out_padding[2 * i + 1] = computed_tmp
+
+        pad_front = computed_tmp // 2
+        pad_rear = computed_tmp - pad_front
+
+        out_padding[2 * i + 0] = pad_front
+        out_padding[2 * i + 1] = pad_rear
+
     return out_padding
 
 
 def filter2d(
-    input: torch.Tensor, kernel: torch.Tensor, border_type: str = 'reflect', normalized: bool = False,
-    padding: str = 'same'
+    input: torch.Tensor,
+    kernel: torch.Tensor,
+    border_type: str = 'reflect',
+    normalized: bool = False,
+    padding: str = 'same',
 ) -> torch.Tensor:
     r"""Convolve a tensor with a 2d kernel.
 
@@ -82,8 +84,10 @@ def filter2d(
         raise TypeError(f"Input border_type is not string. Got {type(border_type)}")
 
     if border_type not in ['constant', 'reflect', 'replicate', 'circular']:
-        raise ValueError(f"Invalid border type, we expect 'constant', \
-        'reflect', 'replicate', 'circular'. Got:{border_type}")
+        raise ValueError(
+            f"Invalid border type, we expect 'constant', \
+        'reflect', 'replicate', 'circular'. Got:{border_type}"
+        )
 
     if not isinstance(padding, str):
         raise TypeError(f"Input padding is not string. Got {type(padding)}")
@@ -118,7 +122,9 @@ def filter2d(
     input = input.view(-1, tmp_kernel.size(0), input.size(-2), input.size(-1))
 
     # convolve the tensor with the kernel.
-    output = F.conv2d(input, tmp_kernel, groups=tmp_kernel.size(0), padding=0, stride=1)
+    # NOTE: type(...) to fix getting `torch.bfloat16` type.
+    # TODO: @johnnv1, fix it through the Augmentation Base.
+    output = F.conv2d(input, tmp_kernel, groups=tmp_kernel.size(0), padding=0, stride=1).type(input.dtype)
 
     if padding == 'same':
         out = output.view(b, c, h, w)
@@ -128,12 +134,14 @@ def filter2d(
     return out
 
 
-def filter2d_separable(input: torch.Tensor,
-                       kernel_x: torch.Tensor,
-                       kernel_y: torch.Tensor,
-                       border_type: str = 'reflect',
-                       normalized: bool = False,
-                       padding: str = 'same') -> torch.Tensor:
+def filter2d_separable(
+    input: torch.Tensor,
+    kernel_x: torch.Tensor,
+    kernel_y: torch.Tensor,
+    border_type: str = 'reflect',
+    normalized: bool = False,
+    padding: str = 'same',
+) -> torch.Tensor:
     r"""Convolve a tensor with two 1d kernels, in x and y directions.
 
     The function applies a given kernel to a tensor. The kernel is applied
@@ -175,7 +183,7 @@ def filter2d_separable(input: torch.Tensor,
                   [0., 5., 5., 5., 0.],
                   [0., 0., 0., 0., 0.]]]])
     """
-    out_x = filter2d(input, kernel_x.unsqueeze(0), border_type, normalized, padding)
+    out_x = filter2d(input, kernel_x.unsqueeze(-2), border_type, normalized, padding)
     out = filter2d(out_x, kernel_y.unsqueeze(-1), border_type, normalized, padding)
     return out
 
@@ -280,8 +288,3 @@ def filter3d(
     output = F.conv3d(input_pad, tmp_kernel, groups=tmp_kernel.size(0), padding=0, stride=1)
 
     return output.view(b, c, d, h, w)
-
-
-# for backward compatibility.
-filter2D = _deprecation_wrapper(filter2d, 'filter2D')
-filter3D = _deprecation_wrapper(filter3d, 'filter3D')

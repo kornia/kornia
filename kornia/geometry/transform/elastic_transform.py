@@ -3,7 +3,8 @@ from typing import Tuple
 import torch
 import torch.nn.functional as F
 
-from kornia.filters import filter2d, get_gaussian_kernel2d
+from kornia.filters import filter2d
+from kornia.filters.kernels import get_gaussian_kernel2d_t
 from kornia.utils import create_meshgrid
 
 __all__ = ["elastic_transform2d"]
@@ -17,7 +18,7 @@ def elastic_transform2d(
     alpha: Tuple[float, float] = (1.0, 1.0),
     align_corners: bool = False,
     mode: str = 'bilinear',
-    padding_mode: str = 'zeros'
+    padding_mode: str = 'zeros',
 ) -> torch.Tensor:
     r"""Apply elastic transform of images as described in :cite:`Simard2003BestPF`.
 
@@ -74,9 +75,15 @@ def elastic_transform2d(
     if not len(noise.shape) == 4 or noise.shape[1] != 2:
         raise ValueError(f"Invalid noise shape, we expect Bx2xHxW. Got: {noise.shape}")
 
+    device, dtype = image.device, image.dtype
+    if isinstance(sigma, tuple):
+        sigma_t = torch.tensor(sigma, device=device, dtype=dtype)
+    elif isinstance(sigma, torch.Tensor):
+        sigma_t = sigma.to(device=device, dtype=dtype)
+
     # Get Gaussian kernel for 'y' and 'x' displacement
-    kernel_x: torch.Tensor = get_gaussian_kernel2d(kernel_size, (sigma[0], sigma[0]))[None]
-    kernel_y: torch.Tensor = get_gaussian_kernel2d(kernel_size, (sigma[1], sigma[1]))[None]
+    kernel_x: torch.Tensor = get_gaussian_kernel2d_t(kernel_size, sigma_t[0].expand(2).unsqueeze(0))
+    kernel_y: torch.Tensor = get_gaussian_kernel2d_t(kernel_size, sigma_t[1].expand(2).unsqueeze(0))
 
     # Convolve over a random displacement matrix and scale them with 'alpha'
     disp_x: torch.Tensor = noise[:, :1]
@@ -91,7 +98,8 @@ def elastic_transform2d(
     # Warp image based on displacement matrix
     _, _, h, w = image.shape
     grid = create_meshgrid(h, w, device=image.device).to(image.dtype)
-    warped = F.grid_sample(image, (grid + disp).clamp(-1, 1), align_corners=align_corners, mode=mode,
-                           padding_mode=padding_mode)
+    warped = F.grid_sample(
+        image, (grid + disp).clamp(-1, 1), align_corners=align_corners, mode=mode, padding_mode=padding_mode
+    )
 
     return warped

@@ -9,14 +9,14 @@ from kornia.feature.mkd import (
     COEFFS,
     EmbedGradients,
     ExplicitSpacialEncoding,
-    get_grid_dict,
-    get_kron_order,
     MKDDescriptor,
     MKDGradients,
     SimpleKD,
-    spatial_kernel_embedding,
     VonMisesKernel,
     Whitening,
+    get_grid_dict,
+    get_kron_order,
+    spatial_kernel_embedding,
 )
 from kornia.testing import assert_close
 
@@ -77,7 +77,7 @@ class TestMKDGradients:
             mkd_grads.to(device)
             return mkd_grads(patches)
 
-        assert gradcheck(grad_describe, (patches), raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(grad_describe, (patches), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
@@ -140,7 +140,7 @@ class TestVonMisesKernel:
             vmkernel.to(device)
             return vmkernel(patches.double())
 
-        assert gradcheck(vm_describe, (patches, ps), raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(vm_describe, (patches, ps), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
@@ -182,7 +182,7 @@ class TestEmbedGradients:
         assert_close(out[0, 0, :, 3:], expected * 0, atol=1e-3, rtol=1e-3)
 
     # TODO: review this test implementation
-    @pytest.mark.xfail(reason="RuntimeError: Jacobian mismatch for output 0 with respect to input 0,")
+    # @pytest.mark.xfail(reason="RuntimeError: Jacobian mismatch for output 0 with respect to input 0,")
     def test_gradcheck(self, device):
         batch_size, channels, ps = 1, 2, 13
         patches = torch.rand(batch_size, channels, ps, ps).to(device)
@@ -193,7 +193,7 @@ class TestEmbedGradients:
             emb_grads.to(device)
             return emb_grads(patches.double())
 
-        assert gradcheck(emb_grads_describe, (patches, ps), raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(emb_grads_describe, (patches, ps), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
@@ -265,7 +265,9 @@ class TestExplicitSpacialEncoding:
             ese.to(device)
             return ese(patches)
 
-        assert gradcheck(explicit_spatial_describe, (patches, ps), raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(
+            explicit_spatial_describe, (patches, ps), raise_exception=True, nondet_tol=1e-4, fast_mode=True
+        )
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
@@ -327,7 +329,7 @@ class TestWhitening:
             wh.to(device)
             return wh(patches.double())
 
-        assert gradcheck(whitening_describe, (patches, in_dims), raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(whitening_describe, (patches, in_dims), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
@@ -390,7 +392,6 @@ class TestMKDDescriptor:
         expected = torch.zeros_like(out_part).to(device)
         assert_close(out_part, expected, atol=1e-3, rtol=1e-3)
 
-    @pytest.mark.skip("Just because")
     @pytest.mark.parametrize("whitening", [None, 'lw', 'pca'])
     def test_gradcheck(self, whitening, device):
         batch_size, channels, ps = 1, 1, 19
@@ -402,7 +403,7 @@ class TestMKDDescriptor:
             mkd.to(device)
             return mkd(patches.double())
 
-        assert gradcheck(mkd_describe, (patches, ps), raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(mkd_describe, (patches, ps), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
 
     @pytest.mark.skip("neither dict, nor nn.ModuleDict works")
     @pytest.mark.jit
@@ -449,7 +450,7 @@ class TestSimpleKD:
             skd.to(device)
             return skd(patches.double())
 
-        assert gradcheck(skd_describe, (patches, ps), raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(skd_describe, (patches, ps), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):

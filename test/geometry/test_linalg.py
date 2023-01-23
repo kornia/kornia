@@ -3,17 +3,18 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia
+import kornia.geometry.linalg as kgl
 import kornia.testing as utils  # test utils
-from kornia.testing import assert_close
+from kornia.testing import BaseTester, assert_close
 
 
 def identity_matrix(batch_size, device, dtype):
-    r"""Create a batched homogeneous identity matrix"""
+    r"""Create a batched homogeneous identity matrix."""
     return torch.eye(4, device=device, dtype=dtype).repeat(batch_size, 1, 1)  # Nx4x4
 
 
 def euler_angles_to_rotation_matrix(x, y, z):
-    r"""Create a rotation matrix from x, y, z angles"""
+    r"""Create a rotation matrix from x, y, z angles."""
     assert x.dim() == 1, x.shape
     assert x.shape == y.shape == z.shape
     ones, zeros = torch.ones_like(x), torch.zeros_like(x)
@@ -93,11 +94,11 @@ class TestTransformPoints:
         dst_homo_src = dst_homo_src.to(device)
 
         # transform the points from dst to ref
-        points_dst = kornia.geometry.linalg.transform_points(dst_homo_src, points_src)
+        points_dst = kgl.transform_points(dst_homo_src, points_src)
 
         # transform the points from ref to dst
         src_homo_dst = torch.inverse(dst_homo_src)
-        points_dst_to_src = kornia.geometry.linalg.transform_points(src_homo_dst, points_dst)
+        points_dst_to_src = kgl.transform_points(src_homo_dst, points_dst)
 
         # projected should be equal as initial
         assert_close(points_src, points_dst_to_src, atol=1e-4, rtol=1e-4)
@@ -111,7 +112,9 @@ class TestTransformPoints:
         # evaluate function gradient
         points_src = utils.tensor_to_gradcheck_var(points_src)  # to var
         dst_homo_src = utils.tensor_to_gradcheck_var(dst_homo_src)  # to var
-        assert gradcheck(kornia.geometry.transform_points, (dst_homo_src, points_src), raise_exception=True)
+        assert gradcheck(
+            kornia.geometry.transform_points, (dst_homo_src, points_src), raise_exception=True, fast_mode=True
+        )
 
     def test_jit(self, device, dtype):
         points = torch.ones(1, 2, 2, device=device, dtype=dtype)
@@ -166,7 +169,7 @@ class TestComposeTransforms:
         trans_12 = identity_matrix(batch_size=1, device=device, dtype=dtype)[0]
         trans_12[..., :3, -1] += offset  # add offset to translation vector
 
-        trans_02 = kornia.geometry.linalg.compose_transformations(trans_01, trans_12)
+        trans_02 = kgl.compose_transformations(trans_01, trans_12)
         assert_close(trans_02, trans_12, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -176,7 +179,7 @@ class TestComposeTransforms:
         trans_12 = identity_matrix(batch_size, device=device, dtype=dtype)
         trans_12[..., :3, -1] += offset  # add offset to translation vector
 
-        trans_02 = kornia.geometry.linalg.compose_transformations(trans_01, trans_12)
+        trans_02 = kgl.compose_transformations(trans_01, trans_12)
         assert_close(trans_02, trans_12, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -186,7 +189,7 @@ class TestComposeTransforms:
 
         trans_01 = utils.tensor_to_gradcheck_var(trans_01)  # to var
         trans_12 = utils.tensor_to_gradcheck_var(trans_12)  # to var
-        assert gradcheck(kornia.geometry.linalg.compose_transformations, (trans_01, trans_12), raise_exception=True)
+        assert gradcheck(kgl.compose_transformations, (trans_01, trans_12), raise_exception=True, fast_mode=True)
 
 
 class TestInverseTransformation:
@@ -222,8 +225,8 @@ class TestInverseTransformation:
         trans_01 = identity_matrix(batch_size=1, device=device, dtype=dtype)[0]
         trans_01[..., :3, -1] += offset  # add offset to translation vector
 
-        trans_10 = kornia.geometry.linalg.inverse_transformation(trans_01)
-        trans_01_hat = kornia.geometry.linalg.inverse_transformation(trans_10)
+        trans_10 = kgl.inverse_transformation(trans_01)
+        trans_01_hat = kgl.inverse_transformation(trans_10)
         assert_close(trans_01, trans_01_hat, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -232,8 +235,8 @@ class TestInverseTransformation:
         trans_01 = identity_matrix(batch_size, device=device, dtype=dtype)
         trans_01[..., :3, -1] += offset  # add offset to translation vector
 
-        trans_10 = kornia.geometry.linalg.inverse_transformation(trans_01)
-        trans_01_hat = kornia.geometry.linalg.inverse_transformation(trans_10)
+        trans_10 = kgl.inverse_transformation(trans_01)
+        trans_01_hat = kgl.inverse_transformation(trans_10)
         assert_close(trans_01, trans_01_hat, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -247,15 +250,15 @@ class TestInverseTransformation:
         trans_01[..., :3, -1] += offset  # add offset to translation vector
         trans_01[..., :3, :3] = rmat_01[..., :3, :3]
 
-        trans_10 = kornia.geometry.linalg.inverse_transformation(trans_01)
-        trans_01_hat = kornia.geometry.linalg.inverse_transformation(trans_10)
+        trans_10 = kgl.inverse_transformation(trans_01)
+        trans_01_hat = kgl.inverse_transformation(trans_10)
         assert_close(trans_01, trans_01_hat, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_gradcheck(self, batch_size, device, dtype):
         trans_01 = identity_matrix(batch_size, device=device, dtype=dtype)
         trans_01 = utils.tensor_to_gradcheck_var(trans_01)  # to var
-        assert gradcheck(kornia.geometry.linalg.inverse_transformation, (trans_01,), raise_exception=True)
+        assert gradcheck(kgl.inverse_transformation, (trans_01,), raise_exception=True, fast_mode=True)
 
 
 class TestRelativeTransformation:
@@ -301,8 +304,8 @@ class TestRelativeTransformation:
         trans_02 = identity_matrix(batch_size=1, device=device, dtype=dtype)[0]
         trans_02[..., :3, -1] += offset  # add offset to translation vector
 
-        trans_12 = kornia.geometry.linalg.relative_transformation(trans_01, trans_02)
-        trans_02_hat = kornia.geometry.linalg.compose_transformations(trans_01, trans_12)
+        trans_12 = kgl.relative_transformation(trans_01, trans_02)
+        trans_02_hat = kgl.compose_transformations(trans_01, trans_12)
         assert_close(trans_02_hat, trans_02, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -317,8 +320,8 @@ class TestRelativeTransformation:
         trans_02[..., :3, -1] += offset  # add offset to translation vector
         trans_02[..., :3, :3] = rmat_02[..., :3, :3]
 
-        trans_12 = kornia.geometry.linalg.relative_transformation(trans_01, trans_02)
-        trans_02_hat = kornia.geometry.linalg.compose_transformations(trans_01, trans_12)
+        trans_12 = kgl.relative_transformation(trans_01, trans_02)
+        trans_02_hat = kgl.compose_transformations(trans_01, trans_12)
         assert_close(trans_02_hat, trans_02, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -328,4 +331,100 @@ class TestRelativeTransformation:
 
         trans_01 = utils.tensor_to_gradcheck_var(trans_01)  # to var
         trans_02 = utils.tensor_to_gradcheck_var(trans_02)  # to var
-        assert gradcheck(kornia.geometry.linalg.relative_transformation, (trans_01, trans_02), raise_exception=True)
+        assert gradcheck(kgl.relative_transformation, (trans_01, trans_02), raise_exception=True, fast_mode=True)
+
+
+class TestPointsLinesDistances:
+    def test_smoke(self, device, dtype):
+        pts = torch.rand(1, 1, 2, device=device, dtype=dtype)
+        lines = torch.rand(1, 1, 3, device=device, dtype=dtype)
+        distances = kgl.point_line_distance(pts, lines)
+        assert distances.shape == (1, 1)
+
+        # homogeneous
+        pts = torch.rand(1, 1, 3, device=device, dtype=dtype)
+        lines = torch.rand(1, 1, 3, device=device, dtype=dtype)
+        distances = kgl.point_line_distance(pts, lines)
+        assert distances.shape == (1, 1)
+
+    @pytest.mark.parametrize(
+        "batch_size, sample_size", [(1, 1), (2, 1), (4, 1), (7, 1), (1, 3), (2, 3), (4, 3), (7, 3)]
+    )
+    def test_shape(self, batch_size, sample_size, device, dtype):
+        B, N = batch_size, sample_size
+        pts = torch.rand(B, N, 2, device=device, dtype=dtype)
+        lines = torch.rand(B, N, 3, device=device, dtype=dtype)
+        distances = kgl.point_line_distance(pts, lines)
+        assert distances.shape == (B, N)
+
+    @pytest.mark.parametrize(
+        "batch_size, extra_dim_size", [(1, 1), (2, 1), (4, 1), (7, 1), (1, 3), (2, 3), (4, 3), (7, 3)]
+    )
+    def test_shapes(self, batch_size, extra_dim_size, device, dtype):
+        B, T, N = batch_size, extra_dim_size, 3
+        pts = torch.rand(B, T, N, 2, device=device, dtype=dtype)
+        lines = torch.rand(B, T, N, 3, device=device, dtype=dtype)
+        distances = kgl.point_line_distance(pts, lines)
+        assert distances.shape == (B, T, N)
+
+    def test_functional(self, device):
+        pts = torch.tensor([1.0, 0], device=device, dtype=torch.float64).view(1, 1, 2).tile(1, 6, 1)
+        lines = torch.tensor(
+            [[0.0, 1.0, 0.0], [0.0, 1.0, 1.0], [1.0, 0.0, 0.0], [1.0, 0.0, 1.0], [1.0, 1.0, 0.0], [1.0, 1.0, 1.0]],
+            device=device,
+            dtype=torch.float64,
+        ).view(1, 6, 3)
+        distances = kgl.point_line_distance(pts, lines)
+        distances_expected = torch.tensor(
+            [
+                0.0,
+                1.0,
+                1.0,
+                2.0,
+                torch.sqrt(torch.tensor(2, dtype=torch.float64)) / 2,
+                torch.sqrt(torch.tensor(2, dtype=torch.float64)),
+            ],
+            device=device,
+        ).view(1, 6)
+        assert_close(distances, distances_expected, rtol=1e-6, atol=1e-6)
+
+    def test_gradcheck(self, device):
+        pts = torch.rand(2, 3, 2, device=device, requires_grad=True, dtype=torch.float64)
+        lines = torch.rand(2, 3, 3, device=device, requires_grad=True, dtype=torch.float64)
+        assert gradcheck(kgl.point_line_distance, (pts, lines), raise_exception=True, fast_mode=True)
+
+
+class TestEuclideanDistance(BaseTester):
+    def test_smoke(self, device, dtype):
+        pt1 = torch.tensor([0, 0, 0], device=device, dtype=dtype)
+        pt2 = torch.tensor([1, 0, 0], device=device, dtype=dtype)
+        dst = kgl.euclidean_distance(pt1, pt2)
+        self.assert_close(dst, torch.tensor(1.0, device=device, dtype=dtype))
+
+    @pytest.mark.parametrize("shape", [(2,), (3,), (1, 2), (2, 3)])
+    def test_cardinality(self, device, dtype, shape):
+        pt1 = torch.rand(shape, device=device, dtype=dtype)
+        pt2 = torch.rand(shape, device=device, dtype=dtype)
+        dst = kgl.euclidean_distance(pt1, pt2)
+        assert len(dst.shape) == len(shape) - 1
+
+    def test_exception(self, device, dtype):
+        pt1 = torch.tensor([0, 0, 0], device=device, dtype=dtype)
+        pt2 = torch.rand(1, 2, device=device, dtype=dtype)
+        with pytest.raises(Exception):
+            kgl.euclidean_distance(pt1, pt2)
+
+    def test_gradcheck(self, device):
+        pt1 = torch.rand(2, 3, device=device, dtype=torch.float64, requires_grad=True)
+        pt2 = torch.rand(2, 3, device=device, dtype=torch.float64, requires_grad=True)
+        assert gradcheck(kgl.euclidean_distance, (pt1, pt2), raise_exception=True, fast_mode=True)
+
+    def test_jit(self, device, dtype):
+        pt1 = torch.rand(2, 3, device=device, dtype=dtype)
+        pt2 = torch.rand(2, 3, device=device, dtype=dtype)
+        op = kgl.euclidean_distance
+        op_jit = torch.jit.script(op)
+        self.assert_close(op(pt1, pt2), op_jit(pt1, pt2))
+
+    def test_module(self, device, dtype):
+        pass

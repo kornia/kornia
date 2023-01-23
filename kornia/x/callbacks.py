@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import torch
 import torch.nn as nn
@@ -7,17 +7,20 @@ import torch.nn as nn
 from .utils import TrainerState
 
 
+# default function to generate the filename in the model checkpoint
+def default_filename_fcn(x) -> str:
+    return f"model_{x}.pt"
+
+
 class EarlyStopping:
     """Callback that evaluates whether there is improvement in the loss function.
 
     The module track the losses and in case of finish patience sends a termination signal to the trainer.
-    In case of termination, the module will save the last model.
 
     Args:
         monitor: the name of the value to track.
         min_delta: the minimum difference between losses to increase the patience counter.
         patience: the number of times to wait until the trainer does not terminate.
-        filepath: a backup filename to save the file in case of termination.
 
     **Usage example:**
 
@@ -28,10 +31,11 @@ class EarlyStopping:
         )
 
         trainer = ImageClassifierTrainer(...,
-            callbacks={"terminate", early_stop}
+            callbacks={"on_checkpoint", early_stop}
         )
     """
-    def __init__(self, monitor: str, min_delta: float = 0., patience: int = 8) -> None:
+
+    def __init__(self, monitor: str, min_delta: float = 0.0, patience: int = 8) -> None:
         self.monitor = monitor
         self.min_delta = min_delta
         self.patience = patience
@@ -41,9 +45,8 @@ class EarlyStopping:
         self.early_stop: bool = False
 
     def __call__(self, model: nn.Module, epoch: int, valid_metric) -> TrainerState:
-        score: float = -valid_metric[self.monitor].avg
+        score: float = valid_metric[self.monitor].avg
 
-        # TODO: rethink about this logic - doesn't seem to do the job.
         if self.best_score is None:
             self.best_score = score
         elif score < self.best_score + self.min_delta:
@@ -55,9 +58,6 @@ class EarlyStopping:
             self.counter = 0
 
         if self.early_stop:
-            # TODO: figure out later how and where to save
-            # store old metric and save new model
-            # torch.save(model, self.filepath)
             print(f"[INFO] Early-Stopping the training process. Epoch: {epoch}.")
             return TrainerState.TERMINATE
 
@@ -65,7 +65,7 @@ class EarlyStopping:
 
 
 class ModelCheckpoint:
-    """Callback that save the model at the end of everyepoch.
+    """Callback that save the model at the end of every epoch.
 
     Args:
         filepath: the where to save the mode.
@@ -80,15 +80,17 @@ class ModelCheckpoint:
         )
 
         trainer = ImageClassifierTrainer(...,
-            callbacks={"checkpoint", model_checkpoint}
+            callbacks={"on_checkpoint", model_checkpoint}
         )
     """
-    def __init__(self, filepath: str, monitor: str) -> None:
+
+    def __init__(self, filepath: str, monitor: str, filename_fcn: Optional[Callable[..., str]] = None) -> None:
         self.filepath = filepath
         self.monitor = monitor
+        self._filename_fcn = filename_fcn or default_filename_fcn
 
         # track best model
-        self.best_metric: float = 0.
+        self.best_metric: float = 0.0
 
         # create directory
         Path(self.filepath).mkdir(parents=True, exist_ok=True)
@@ -98,6 +100,5 @@ class ModelCheckpoint:
         if valid_metric_value > self.best_metric:
             self.best_metric = valid_metric_value
             # store old metric and save new model
-            filename = Path(self.filepath) / f"model_{epoch}.pt"
+            filename = Path(self.filepath) / self._filename_fcn(epoch)
             torch.save(model, filename)
-        ...

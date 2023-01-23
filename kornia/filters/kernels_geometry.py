@@ -1,17 +1,15 @@
-from typing import cast, Tuple, Union
+from typing import Tuple, Union
 
 import torch
 
+from kornia.core import Tensor, pad, stack, tensor, zeros
 from kornia.geometry.transform import rotate, rotate3d
 from kornia.utils import _extract_device_dtype
 
 
 def get_motion_kernel2d(
-    kernel_size: int,
-    angle: Union[torch.Tensor, float],
-    direction: Union[torch.Tensor, float] = 0.0,
-    mode: str = 'nearest',
-) -> torch.Tensor:
+    kernel_size: int, angle: Union[Tensor, float], direction: Union[Tensor, float] = 0.0, mode: str = 'nearest'
+) -> Tensor:
     r"""Return 2D motion blur filter.
 
     Args:
@@ -40,16 +38,14 @@ def get_motion_kernel2d(
                  [0.5000, 0.0000, 0.0000]]])
     """
     device, dtype = _extract_device_dtype(
-        [angle if isinstance(angle, torch.Tensor) else None, direction if isinstance(direction, torch.Tensor) else None]
+        [angle if isinstance(angle, Tensor) else None, direction if isinstance(direction, Tensor) else None]
     )
 
     if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or kernel_size < 3:
         raise TypeError("ksize must be an odd integer >= than 3")
 
-    if not isinstance(angle, torch.Tensor):
-        angle = torch.tensor([angle], device=device, dtype=dtype)
-
-    angle = cast(torch.Tensor, angle)
+    if not isinstance(angle, Tensor):
+        angle = tensor([angle], device=device, dtype=dtype)
 
     if angle.dim() == 0:
         angle = angle.unsqueeze(0)
@@ -57,10 +53,8 @@ def get_motion_kernel2d(
     if angle.dim() != 1:
         raise AssertionError(f"angle must be a 1-dim tensor. Got {angle}.")
 
-    if not isinstance(direction, torch.Tensor):
-        direction = torch.tensor([direction], device=device, dtype=dtype)
-
-    direction = cast(torch.Tensor, direction)
+    if not isinstance(direction, Tensor):
+        direction = tensor([direction], device=device, dtype=dtype)
 
     if direction.dim() == 0:
         direction = direction.unsqueeze(0)
@@ -83,8 +77,8 @@ def get_motion_kernel2d(
     # Alternatively
     # m = ((1 - 2 * direction)[:, None].repeat(1, kernel_size) / (kernel_size - 1))
     # kernel[:, kernel_size // 2, :] = direction[:, None].repeat(1, kernel_size) + m * torch.arange(0, kernel_size)
-    k = torch.stack([(direction + ((1 - 2 * direction) / (kernel_size - 1)) * i) for i in range(kernel_size)], dim=-1)
-    kernel = torch.nn.functional.pad(k[:, None], [0, 0, kernel_size // 2, kernel_size // 2, 0, 0])
+    k = stack([(direction + ((1 - 2 * direction) / (kernel_size - 1)) * i) for i in range(kernel_size)], -1)
+    kernel = pad(k[:, None], [0, 0, kernel_size // 2, kernel_size // 2, 0, 0])
 
     if kernel.shape != torch.Size([direction.size(0), *kernel_tuple]):
         raise AssertionError
@@ -99,10 +93,10 @@ def get_motion_kernel2d(
 
 def get_motion_kernel3d(
     kernel_size: int,
-    angle: Union[torch.Tensor, Tuple[float, float, float]],
-    direction: Union[torch.Tensor, float] = 0.0,
+    angle: Union[Tensor, Tuple[float, float, float]],
+    direction: Union[Tensor, float] = 0.0,
     mode: str = 'nearest',
-) -> torch.Tensor:
+) -> Tensor:
     r"""Return 3D motion blur filter.
 
     Args:
@@ -150,13 +144,11 @@ def get_motion_kernel3d(
         raise TypeError(f"ksize must be an odd integer >= than 3. Got {kernel_size}.")
 
     device, dtype = _extract_device_dtype(
-        [angle if isinstance(angle, torch.Tensor) else None, direction if isinstance(direction, torch.Tensor) else None]
+        [angle if isinstance(angle, Tensor) else None, direction if isinstance(direction, Tensor) else None]
     )
 
-    if not isinstance(angle, torch.Tensor):
-        angle = torch.tensor([angle], device=device, dtype=dtype)
-
-    angle = cast(torch.Tensor, angle)
+    if not isinstance(angle, Tensor):
+        angle = tensor([angle], device=device, dtype=dtype)
 
     if angle.dim() == 1:
         angle = angle.unsqueeze(0)
@@ -164,10 +156,8 @@ def get_motion_kernel3d(
     if not (len(angle.shape) == 2 and angle.size(1) == 3):
         raise AssertionError(f"angle must be (B, 3). Got {angle}.")
 
-    if not isinstance(direction, torch.Tensor):
-        direction = torch.tensor([direction], device=device, dtype=dtype)
-
-    direction = cast(torch.Tensor, direction)
+    if not isinstance(direction, Tensor):
+        direction = tensor([direction], device=device, dtype=dtype)
 
     if direction.dim() == 0:
         direction = direction.unsqueeze(0)
@@ -182,15 +172,13 @@ def get_motion_kernel3d(
 
     # direction from [-1, 1] to [0, 1] range
     direction = (torch.clamp(direction, -1.0, 1.0) + 1.0) / 2.0
-    kernel = torch.zeros((direction.size(0), *kernel_tuple), device=device, dtype=dtype)
+    kernel = zeros((direction.size(0), *kernel_tuple), device=device, dtype=dtype)
 
     # Element-wise linspace
     # kernel[:, kernel_size // 2, kernel_size // 2, :] = torch.stack(
     #     [(direction + ((1 - 2 * direction) / (kernel_size - 1)) * i) for i in range(kernel_size)], dim=-1)
-    k = torch.stack([(direction + ((1 - 2 * direction) / (kernel_size - 1)) * i) for i in range(kernel_size)], dim=-1)
-    kernel = torch.nn.functional.pad(
-        k[:, None, None], [0, 0, kernel_size // 2, kernel_size // 2, kernel_size // 2, kernel_size // 2, 0, 0]
-    )
+    k = stack([(direction + ((1 - 2 * direction) / (kernel_size - 1)) * i) for i in range(kernel_size)], -1)
+    kernel = pad(k[:, None, None], [0, 0, kernel_size // 2, kernel_size // 2, kernel_size // 2, kernel_size // 2, 0, 0])
 
     if kernel.shape != torch.Size([direction.size(0), *kernel_tuple]):
         raise AssertionError

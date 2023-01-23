@@ -132,7 +132,7 @@ This section provides general guidance for developing code for the project. The 
        x = x.to(torch.device(device_type))
        assert x.shape == (batch_size, 2, 3), x.shape
 
-- We give support to static type checker for Python >= 3.6
+- We give support to static type checker for Python >= 3.7
 
   - Please, read `MyPy cheatsheet <https://mypy.readthedocs.io/en/stable/cheat_sheet_py3.html#type-hints-cheat-sheet-python-3>`_ for Python 3.
   - It is recommended to use typing inside the function, when it would increase readability.

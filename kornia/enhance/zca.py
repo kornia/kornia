@@ -1,14 +1,13 @@
 from typing import List, Optional, Tuple
 
 import torch
-import torch.nn as nn
 
-from kornia.utils.helpers import _torch_svd_cast
+from kornia.core import Module, Tensor, concatenate, tensor
 
 __all__ = ["zca_mean", "zca_whiten", "linear_transform", "ZCAWhitening"]
 
 
-class ZCAWhitening(nn.Module):
+class ZCAWhitening(Module):
     r"""Compute the ZCA whitening matrix transform and the mean vector and applies the transform to the data.
 
     The data tensor is flattened, and the mean :math:`\mathbf{\mu}`
@@ -82,7 +81,11 @@ class ZCAWhitening(nn.Module):
 
         self.fitted = False
 
-    def fit(self, x: torch.Tensor):
+        self.mean_vector: Tensor
+        self.transform_matrix: Tensor
+        self.transform_inv: Optional[Tensor]
+
+    def fit(self, x: Tensor):
         r"""Fit ZCA whitening matrices to the data.
 
         Args:
@@ -95,10 +98,10 @@ class ZCAWhitening(nn.Module):
 
         T, mean, T_inv = zca_mean(x, self.dim, self.unbiased, self.eps, self.compute_inv)
 
-        self.mean_vector: torch.Tensor = mean
-        self.transform_matrix: torch.Tensor = T
+        self.mean_vector = mean
+        self.transform_matrix = T
         if T_inv is None:
-            self.transform_inv: Optional[torch.Tensor] = torch.empty([0])
+            self.transform_inv = torch.empty([0])
         else:
             self.transform_inv = T_inv
 
@@ -111,7 +114,7 @@ class ZCAWhitening(nn.Module):
 
         return self
 
-    def forward(self, x: torch.Tensor, include_fit: bool = False) -> torch.Tensor:
+    def forward(self, x: Tensor, include_fit: bool = False) -> Tensor:
         r"""Apply the whitening transform to the data.
 
         Args:
@@ -120,7 +123,6 @@ class ZCAWhitening(nn.Module):
 
         Returns:
             The transformed data.
-
         """
 
         if include_fit:
@@ -133,7 +135,7 @@ class ZCAWhitening(nn.Module):
 
         return x_whiten
 
-    def inverse_transform(self, x: torch.Tensor) -> torch.Tensor:
+    def inverse_transform(self, x: Tensor) -> Tensor:
         r"""Apply the inverse transform to the whitened data.
 
         Args:
@@ -149,16 +151,19 @@ class ZCAWhitening(nn.Module):
         if not self.compute_inv:
             raise RuntimeError("Did not compute inverse ZCA. Please set compute_inv to True")
 
-        mean_inv: torch.Tensor = -self.mean_vector.mm(self.transform_matrix)  # type: ignore
+        if self.transform_inv is None:
+            raise TypeError('The transform inverse should be a Tensor. Gotcha None.')
 
-        y = linear_transform(x, self.transform_inv, mean_inv)  # type: ignore
+        mean_inv: Tensor = -self.mean_vector.mm(self.transform_matrix)
+
+        y = linear_transform(x, self.transform_inv, mean_inv)
 
         return y
 
 
 def zca_mean(
-    inp: torch.Tensor, dim: int = 0, unbiased: bool = True, eps: float = 1e-6, return_inverse: bool = False
-) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+    inp: Tensor, dim: int = 0, unbiased: bool = True, eps: float = 1e-6, return_inverse: bool = False
+) -> Tuple[Tensor, Tensor, Optional[Tensor]]:
     r"""Compute the ZCA whitening matrix and mean vector.
 
     The output can be used with :py:meth:`~kornia.color.linear_transform`.
@@ -191,11 +196,10 @@ def zca_mean(
         >>> x = torch.rand(3,20,2,2)
         >>> transform_matrix, mean_vector, inv_transform = zca_mean(x, dim = 1, return_inverse = True)
         >>> # transform_matrix.size() equals (12,12) and the mean vector.size equal (1,12)
-
     """
 
-    if not isinstance(inp, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(inp)}")
+    if not isinstance(inp, Tensor):
+        raise TypeError(f"Input type is not a Tensor. Got {type(inp)}")
 
     if not isinstance(eps, float):
         raise TypeError(f"eps type is not a float. Got{type(eps)}")
@@ -221,21 +225,21 @@ def zca_mean(
     if dim < 0:
         dim = len(inp_size) + dim
 
-    feat_dims = torch.cat([torch.arange(0, dim), torch.arange(dim + 1, len(inp_size))])
+    feat_dims = concatenate([torch.arange(0, dim), torch.arange(dim + 1, len(inp_size))])
 
-    new_order: List[int] = torch.cat([torch.tensor([dim]), feat_dims]).tolist()
+    new_order: List[int] = concatenate([tensor([dim]), feat_dims]).tolist()
 
     inp_permute = inp.permute(new_order)
 
     N = inp_size[dim]
-    feature_sizes = torch.tensor(inp_size[0:dim] + inp_size[dim + 1::])
+    feature_sizes = tensor(inp_size[0:dim] + inp_size[dim + 1 : :])
     num_features: int = int(torch.prod(feature_sizes).item())
 
-    mean: torch.Tensor = torch.mean(inp_permute, dim=0, keepdim=True)
+    mean: Tensor = torch.mean(inp_permute, dim=0, keepdim=True)
 
     mean = mean.reshape((1, num_features))
 
-    inp_center_flat: torch.Tensor = inp_permute.reshape((N, num_features)) - mean
+    inp_center_flat: Tensor = inp_permute.reshape((N, num_features)) - mean
 
     cov = inp_center_flat.t().mm(inp_center_flat)
 
@@ -244,20 +248,20 @@ def zca_mean(
     else:
         cov = cov / float(N)
 
-    U, S, _ = _torch_svd_cast(cov)
+    U, S, _ = torch.linalg.svd(cov)
 
     S = S.reshape(-1, 1)
-    S_inv_root: torch.Tensor = torch.rsqrt(S + eps)
-    T: torch.Tensor = (U).mm(S_inv_root * U.t())
+    S_inv_root: Tensor = torch.rsqrt(S + eps)
+    T: Tensor = (U).mm(S_inv_root * U.t())
 
-    T_inv: Optional[torch.Tensor] = None
+    T_inv: Optional[Tensor] = None
     if return_inverse:
         T_inv = (U).mm(torch.sqrt(S + eps) * U.t())
 
     return T, mean, T_inv
 
 
-def zca_whiten(inp: torch.Tensor, dim: int = 0, unbiased: bool = True, eps: float = 1e-6) -> torch.Tensor:
+def zca_whiten(inp: Tensor, dim: int = 0, unbiased: bool = True, eps: float = 1e-6) -> Tensor:
     r"""Apply ZCA whitening transform.
 
     See :class:`~kornia.color.ZCAWhitening` for details.
@@ -283,8 +287,8 @@ def zca_whiten(inp: torch.Tensor, dim: int = 0, unbiased: bool = True, eps: floa
                 [-1.0000, -0.5773]])
     """
 
-    if not isinstance(inp, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(inp)}")
+    if not isinstance(inp, Tensor):
+        raise TypeError(f"Input type is not a Tensor. Got {type(inp)}")
 
     if not isinstance(eps, float):
         raise TypeError(f"eps type is not a float. Got{type(eps)}")
@@ -302,15 +306,10 @@ def zca_whiten(inp: torch.Tensor, dim: int = 0, unbiased: bool = True, eps: floa
     return inp_whiten
 
 
-def linear_transform(
-    inp: torch.Tensor, transform_matrix: torch.Tensor, mean_vector: torch.Tensor, dim: int = 0
-) -> torch.Tensor:
-    r"""
-
-    Given a transformation matrix and a mean vector, this function will flatten
-    the input tensor along the given dimension and subtract the mean vector
-    from it. Then the dot product with the transformation matrix will be computed
-    and then the resulting tensor is reshaped to the original input shape.
+def linear_transform(inp: Tensor, transform_matrix: Tensor, mean_vector: Tensor, dim: int = 0) -> Tensor:
+    r"""Given a transformation matrix and a mean vector, this function will flatten the input tensor along the given
+    dimension and subtract the mean vector from it. Then the dot product with the transformation matrix will be
+    computed and then the resulting tensor is reshaped to the original input shape.
 
     .. math::
 
@@ -360,15 +359,15 @@ def linear_transform(
     if dim < 0:
         dim = len(inp_size) + dim
 
-    feat_dims = torch.cat([torch.arange(0, dim), torch.arange(dim + 1, len(inp_size))])
+    feat_dims = concatenate([torch.arange(0, dim), torch.arange(dim + 1, len(inp_size))])
 
-    perm = torch.cat([torch.tensor([dim]), feat_dims])
+    perm = concatenate([tensor([dim]), feat_dims])
     perm_inv = torch.argsort(perm)
 
     new_order: List[int] = perm.tolist()
     inv_order: List[int] = perm_inv.tolist()
 
-    feature_sizes = torch.tensor(inp_size[0:dim] + inp_size[dim + 1::])
+    feature_sizes = tensor(inp_size[0:dim] + inp_size[dim + 1 : :])
     num_features: int = int(torch.prod(feature_sizes).item())
 
     inp_permute = inp.permute(new_order)

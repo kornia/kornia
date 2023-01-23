@@ -7,6 +7,7 @@ from kornia.feature.affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeE
 from kornia.testing import assert_close
 
 
+# TODO: add kornia.testing.BaseTester
 class TestPatchAffineShapeEstimator:
     def test_shape(self, device):
         inp = torch.rand(1, 1, 32, 32, device=device)
@@ -37,7 +38,7 @@ class TestPatchAffineShapeEstimator:
         ori = PatchAffineShapeEstimator(width).to(device)
         patches = torch.rand(batch_size, channels, height, width, device=device)
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
-        assert gradcheck(ori, (patches,), raise_exception=True, nondet_tol=1e-4)
+        assert gradcheck(ori, (patches,), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
 
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 13, 13
@@ -47,6 +48,7 @@ class TestPatchAffineShapeEstimator:
         assert_close(tfeat_jit(patches), tfeat(patches))
 
 
+# TODO: add kornia.testing.BaseTester
 class TestLAFAffineShapeEstimator:
     def test_shape(self, device):
         inp = torch.rand(1, 1, 32, 32, device=device)
@@ -66,13 +68,31 @@ class TestLAFAffineShapeEstimator:
         sift = LAFAffineShapeEstimator()
         sift.__repr__()
 
-    def test_toy(self, device):
-        aff = LAFAffineShapeEstimator(32).to(device)
+    def test_toy(self, device, dtype):
+        aff = LAFAffineShapeEstimator(32, preserve_orientation=False).to(device, dtype)
+        inp = torch.zeros(1, 1, 32, 32, device=device, dtype=dtype)
+        inp[:, :, 15:-15, 9:-9] = 1
+        laf = torch.tensor([[[[20.0, 0.0, 16.0], [0.0, 20.0, 16.0]]]], device=device, dtype=dtype)
+        new_laf = aff(laf, inp)
+        expected = torch.tensor([[[[36.643, 0.0, 16.0], [0.0, 10.916, 16.0]]]], device=device, dtype=dtype)
+        assert_close(new_laf, expected, atol=1e-4, rtol=1e-4)
+
+    def test_toy_preserve(self, device, dtype):
+        aff = LAFAffineShapeEstimator(32, preserve_orientation=True).to(device, dtype)
+        inp = torch.zeros(1, 1, 32, 32, device=device, dtype=dtype)
+        inp[:, :, 15:-15, 9:-9] = 1
+        laf = torch.tensor([[[[0.0, 20.0, 16.0], [-20.0, 0.0, 16.0]]]], device=device, dtype=dtype)
+        new_laf = aff(laf, inp)
+        expected = torch.tensor([[[[0.0, 36.643, 16.0], [-10.916, 0, 16.0]]]], device=device, dtype=dtype)
+        assert_close(new_laf, expected, atol=1e-4, rtol=1e-4)
+
+    def test_toy_not_preserve(self, device):
+        aff = LAFAffineShapeEstimator(32, preserve_orientation=False).to(device)
         inp = torch.zeros(1, 1, 32, 32, device=device)
         inp[:, :, 15:-15, 9:-9] = 1
-        laf = torch.tensor([[[[20.0, 0.0, 16.0], [0.0, 20.0, 16.0]]]], device=device)
+        laf = torch.tensor([[[[0.0, 20.0, 16.0], [-20.0, 0.0, 16.0]]]], device=device)
         new_laf = aff(laf, inp)
-        expected = torch.tensor([[[[36.643, 0.0, 16.0], [0.0, 10.916, 16.0]]]], device=device)
+        expected = torch.tensor([[[[36.643, 0, 16.0], [0, 10.916, 16.0]]]], device=device)
         assert_close(new_laf, expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
@@ -88,6 +108,7 @@ class TestLAFAffineShapeEstimator:
             rtol=1e-3,
             atol=1e-3,
             nondet_tol=1e-4,
+            fast_mode=True,
         )
 
     @pytest.mark.jit
@@ -102,6 +123,7 @@ class TestLAFAffineShapeEstimator:
         assert_close(tfeat_jit(laf, inp), tfeat(laf, inp))
 
 
+# TODO: add kornia.testing.BaseTester
 class TestLAFAffNetShapeEstimator:
     def test_shape(self, device):
         inp = torch.rand(1, 1, 32, 32, device=device)
@@ -128,16 +150,15 @@ class TestLAFAffNetShapeEstimator:
         sift = LAFAffNetShapeEstimator()
         sift.__repr__()
 
-    def test_toy(self, device):
-        aff = LAFAffNetShapeEstimator(True).to(device).eval()
-        inp = torch.zeros(1, 1, 32, 32, device=device)
+    def test_toy(self, device, dtype):
+        aff = LAFAffNetShapeEstimator(True).to(device, dtype).eval()
+        inp = torch.zeros(1, 1, 32, 32, device=device, dtype=dtype)
         inp[:, :, 15:-15, 9:-9] = 1
-        laf = torch.tensor([[[[20.0, 0.0, 16.0], [0.0, 20.0, 16.0]]]], device=device)
+        laf = torch.tensor([[[[20.0, 0.0, 16.0], [0.0, 20.0, 16.0]]]], device=device, dtype=dtype)
         new_laf = aff(laf, inp)
-        expected = torch.tensor([[[[40.8758, 0.0, 16.0], [-0.3824, 9.7857, 16.0]]]], device=device)
+        expected = torch.tensor([[[[40.8758, 0.0, 16.0], [-0.3824, 9.7857, 16.0]]]], device=device, dtype=dtype)
         assert_close(new_laf, expected, atol=1e-4, rtol=1e-4)
 
-    @pytest.mark.skip("jacobian not well computed")
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 1, 35, 35
         patches = torch.rand(batch_size, channels, height, width, device=device)
@@ -151,6 +172,7 @@ class TestLAFAffNetShapeEstimator:
             rtol=1e-3,
             atol=1e-3,
             nondet_tol=1e-4,
+            fast_mode=True,
         )
 
     @pytest.mark.jit
