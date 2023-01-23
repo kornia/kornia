@@ -76,7 +76,7 @@ def match_adalam(
                 )
                 continue
             # TypedDict does not support variable names. https://stackoverflow.com/a/59583427/1983544
-            config_[key] = val   # type: ignore
+            config_[key] = val  # type: ignore
     adalam_object = AdalamFilter(config_)
     idxs, quality = adalam_object.match_and_filter(
         get_laf_center(lafs1).reshape(-1, 2),
