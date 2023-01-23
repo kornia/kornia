@@ -19,10 +19,7 @@ __all__ = ["AugmentationSequential"]
 class AugmentationSequential(ImageSequential):
     r"""AugmentationSequential for handling multiple input types like inputs, masks, keypoints at once.
 
-    .. image:: https://kornia-tutorials.readthedocs.io/en/latest/_images/data_augmentation_sequential_5_1.png
-        :width: 49 %
-    .. image:: https://kornia-tutorials.readthedocs.io/en/latest/_images/data_augmentation_sequential_7_0.png
-        :width: 49 %
+    .. image:: _static/img/AugmentationSequential.png
 
     Args:
         *args: a list of kornia augmentation modules.

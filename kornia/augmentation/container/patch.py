@@ -25,7 +25,7 @@ class PatchParamItem(NamedTuple):
 class PatchSequential(ImageSequential):
     r"""Container for performing patch-level image data augmentation.
 
-    .. image:: https://kornia-tutorials.readthedocs.io/en/latest/_images/data_patch_sequential_7_0.png
+    .. image:: _static/img/PatchSequential.png
 
     PatchSequential breaks input images into patches by a given grid size, which will be resembled back
     afterwards.
