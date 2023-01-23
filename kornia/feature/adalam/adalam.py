@@ -63,11 +63,19 @@ def match_adalam(
     KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
     KORNIA_CHECK_LAF(lafs1)
     KORNIA_CHECK_LAF(lafs2)
+    config_ = get_adalam_default_config()
     if config is None:
-        config_ = get_adalam_default_config()
         config_['device'] = desc1.device
     else:
-        config_ = config
+        config_ = get_adalam_default_config()
+        for key, val in config.items():
+            if key not in config_.keys():
+                print(
+                 f"WARNING: custom configuration contains a key which is not recognized ({key}). "
+                 f"Known configurations are {list(self.config.keys())}."
+                )
+                continue
+            config_[key] = val
     adalam_object = AdalamFilter(config_)
     idxs, quality = adalam_object.match_and_filter(
         get_laf_center(lafs1).reshape(-1, 2),
