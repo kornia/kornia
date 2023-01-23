@@ -383,7 +383,7 @@ class TestAdalam:
         torch.random.manual_seed(0)
         # This is not unit test, but that is quite good integration test
         data_dev = utils.dict_to(data, device, dtype)
-        conf = {"device": device}
+        adalam_config = {"device": device}
         with torch.no_grad():
             dists, idxs = match_adalam(
                 data_dev['descs1'][:4],
