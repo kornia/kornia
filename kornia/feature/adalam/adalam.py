@@ -75,7 +75,7 @@ def match_adalam(
                     f"Known configurations are {list(config_.keys())}."
                 )
                 continue
-            config_[key] = val
+            config_[str(key)] = val
     adalam_object = AdalamFilter(config_)
     idxs, quality = adalam_object.match_and_filter(
         get_laf_center(lafs1).reshape(-1, 2),
