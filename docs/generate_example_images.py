@@ -37,6 +37,27 @@ def transparent_pad(src: Tensor, shape: Tuple[int, int]) -> Tensor:
     return torch.nn.functional.pad(K.color.rgb_to_rgba(src, 1.0), (w_pad, w_pad, h_pad, h_pad), 'constant', 0.0)
 
 
+def draw_bbox_kpts(imgs, bboxes, keypoints):
+    rectangle = torch.zeros(imgs.shape[0], imgs.shape[1], 4)
+    rectangle[..., 0] = bboxes[..., 0]  # x1
+    rectangle[..., 1] = bboxes[..., 1]  # y1
+    rectangle[..., 2] = bboxes[..., 0] + bboxes[..., -2]  # x2
+    rectangle[..., 3] = bboxes[..., 1] + bboxes[..., -1]  # y2
+    color = torch.tensor([1, 0, 0]).repeat(imgs.shape[0], imgs.shape[1], 1)
+    imgs_draw = K.utils.draw_rectangle(imgs, rectangle, color=color)
+
+    rectangle2 = torch.zeros(imgs.shape[0], imgs.shape[1], 4)
+    for n in range(keypoints.shape[-2]):
+        rectangle2[..., n, 0] = keypoints[..., n, 0] - 2
+        rectangle2[..., n, 1] = keypoints[..., n, 1] - 2
+        rectangle2[..., n, 2] = keypoints[..., n, 0] + 2
+        rectangle2[..., n, 3] = keypoints[..., n, 1] + 2
+    color = torch.tensor([0, 0, 1]).repeat(imgs.shape[0], imgs.shape[1], 1)
+    imgs_draw = K.utils.draw_rectangle(imgs_draw, rectangle2, color=color, fill=True)
+
+    return imgs_draw
+
+
 def main():
     # load the images
     BASE_IMAGE_URL1: str = "https://raw.githubusercontent.com/kornia/data/main/panda.jpg"  # augmentation
@@ -132,8 +153,7 @@ def main():
         sig = f"{aug_name}({', '.join([str(a) for a in args])}, p=1.0)"
         print(f"Generated image example for {aug_name}. {sig}")
 
-    mod = importlib.import_module("kornia.augmentation")
-    mix_augmentations_list: dict = {"RandomMixUpV2": ((), 2, 20), "RandomCutMixV2": ((), 2, 2019)}
+    mix_augmentations_list = {"RandomMixUpV2": ((), 2, 20), "RandomCutMixV2": ((), 2, 2019)}
     # ITERATE OVER THE TRANSFORMS
     for aug_name, (args, num_samples, seed) in mix_augmentations_list.items():
         img_in = torch.cat([img1, img2])
@@ -152,6 +172,67 @@ def main():
         sig = f"{aug_name}({', '.join([str(a) for a in args])}, p=1.0)"
         print(f"Generated image example for {aug_name}. {sig}")
 
+    # Containers
+    aug_container_list = {
+        'AugmentationSequential': (
+            {
+                'args': (
+                    K.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.0),
+                    K.augmentation.RandomAffine(360, [0.1, 0.1], [0.7, 1.2], [30.0, 50.0], p=1.0),
+                    K.augmentation.RandomPerspective(0.5, p=1.0),
+                ),
+                'data_keys': ["input", "bbox_xywh", "keypoints"],
+            },
+            (
+                torch.tensor([[[125, 5, 115, 80]]], dtype=torch.float32),  # bbox
+                torch.tensor([[[166, 42], [197, 42]]], dtype=torch.float32),  # keypoints
+            ),
+            2,
+            2023,
+        ),
+        'PatchSequential': (
+            {
+                'args': (
+                    K.augmentation.ColorJitter(0.2, 0.1, 0.1, 0.1, p=1),
+                    K.augmentation.RandomAffine(10, [0.1, 0.2], [0.7, 1.2], [0.0, 15.0], p=1),
+                    K.augmentation.RandomPerspective(0.3, p=1),
+                    K.augmentation.RandomSolarize(0.01, 0.05, p=0.6),
+                ),
+                'grid_size': (2, 2),
+                'same_on_batch': False,
+                'patchwise_apply': False,
+            },
+            (),
+            2,
+            2023,
+        ),
+    }
+    for aug_name, (args, labels, num_samples, seed) in aug_container_list.items():
+        img_in = img1.repeat(num_samples, 1, 1, 1)
+        cls = getattr(mod, aug_name)
+        tfms = args.pop('args')
+        augs = cls(*tfms, **args)
+
+        # set seed
+        torch.manual_seed(seed)
+        if aug_name == 'PatchSequential':
+            out = augs(img_in)
+            inp = img_in
+        else:
+            labels = (labels[0].expand(num_samples, -1, -1), labels[1].expand(num_samples, -1, -1))
+
+            out = augs(img_in, *labels)
+            out = draw_bbox_kpts(out[0], out[1].int(), out[2].int())
+            inp = draw_bbox_kpts(img_in, labels[0].int(), labels[1].int())
+        output = torch.cat([inp[0], *(out[i] for i in range(out.size(0)))], dim=-1)
+
+        # save the output image
+        out_np = K.utils.tensor_to_image((output * 255.0).byte())
+        cv2.imwrite(str(OUTPUT_PATH / f"{aug_name}.png"), out_np)
+        sig = f"{aug_name}({', '.join([str(a) for a in args])}, p=1.0)"
+        print(f"Generated image example for {aug_name}. {sig}")
+
+    # ------------------------------------------------------------------------------------
     mod = importlib.import_module("kornia.color")
     color_transforms_list: dict = {
         "grayscale_to_rgb": ((), 3),
