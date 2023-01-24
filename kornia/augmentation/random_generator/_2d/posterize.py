@@ -29,14 +29,14 @@ class PosterizeGenerator(RandomGeneratorBase):
 
     def __init__(self, bits: Union[int, Tuple[int, int], Tensor]) -> None:
         super().__init__()
-        self.bits = bits
+        self.bits_factor = bits
 
     def __repr__(self) -> str:
-        repr = f"bits={self.bits}"
+        repr = f"bits={self.bits_factor}"
         return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        bits = as_tensor(self.bits, device=device, dtype=dtype)
+        bits = as_tensor(self.bits_factor, device=device, dtype=dtype)
         if len(bits.size()) == 0:
             bits = bits.repeat(2)
             bits[1] = 8
@@ -48,6 +48,6 @@ class PosterizeGenerator(RandomGeneratorBase):
     def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
-        _device, _ = _extract_device_dtype([self.bits if isinstance(self.bits, Tensor) else None])
+        _device, _ = _extract_device_dtype([self.bits_factor if isinstance(self.bits_factor, Tensor) else None])
         bits_factor = _adapted_rsampling((batch_size,), self.bit_sampler, same_on_batch)
         return dict(bits_factor=bits_factor.to(device=_device, dtype=torch.int32))

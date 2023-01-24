@@ -391,7 +391,7 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size) -> torch.Siz
         for p in param.data:
             batch_shape = _get_new_batch_shape(p, batch_shape)
     elif 'output_size' in param.data:
-        if not param.data['batch_prob'][0]:
+        if not (param.data['batch_prob'] > 0.5)[0]:
             # Augmentations that change the image size must be applied equally to all elements in batch.
             # If the augmentation is not applied, return the same batch shape.
             return batch_shape

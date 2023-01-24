@@ -132,7 +132,8 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
     ) -> Tensor:
         in_tensor = self.transform_tensor(input)
         output = in_tensor.clone()
-        to_apply = params['batch_prob']
+        batch_prob = params['batch_prob']
+        to_apply = (batch_prob > 0.5).bool()  # NOTE: in case of Relaxed Distributions.
 
         params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, flags, **kwargs
@@ -185,7 +186,8 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         **kwargs,
     ) -> Boxes:
         output = input.clone()
-        to_apply = params['batch_prob']
+        batch_prob = params['batch_prob']
+        to_apply = (batch_prob > 0.5).bool()  # NOTE: in case of Relaxed Distributions.
 
         if transform is None:
             raise RuntimeError("transform matrix shall not be `None`.")
@@ -222,7 +224,8 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             transform: the inverse tansformation matrix
         """
         output = input.clone()
-        to_apply = params['batch_prob']
+        batch_prob = params['batch_prob']
+        to_apply = (batch_prob > 0.5).bool()  # NOTE: in case of Relaxed Distributions.
 
         if transform is None:
             raise RuntimeError("transform matrix shall not be `None`.")
@@ -274,7 +277,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         transform = self.get_transformation_matrix(in_tensor, params=params, flags=flags)
 
         if 'batch_prob' not in params:
-            params['batch_prob'] = as_tensor([True] * batch_shape[0])
+            params['batch_prob'] = as_tensor([1.] * batch_shape[0])
             warnings.warn("`batch_prob` is not found in params. Will assume applying on all data.")
 
         transform = self.compute_inverse_transformation(transform)

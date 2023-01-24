@@ -315,7 +315,7 @@ def adjust_contrast(image: Tensor, factor: Union[float, Tensor], clip_output: bo
             in the batch. 0 generates a completely black image, 1 does not modify
             the input image while any other non-negative number modify the
             brightness by this factor.
-            clip_output: whether to clip the output image with range of [0, 1].
+        clip_output: whether to clip the output image with range of [0, 1].
 
     Return:
         Adjusted image in the shape of :math:`(*, H, W)`.

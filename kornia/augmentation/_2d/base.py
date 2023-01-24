@@ -77,7 +77,8 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
         # for the index_put operation below (see also https://github.com/kornia/kornia/issues/1737)
         # In case the type already matches the input type, the conversions are no-ops
 
-        to_apply = params['batch_prob']
+        batch_prob = params['batch_prob']
+        to_apply = (batch_prob > 0.5).bool()  # NOTE: in case of Relaxed Distributions.
         in_tensor = self.transform_tensor(input)
         if not to_apply.any():
             trans_matrix = self.identity_matrix(in_tensor)
