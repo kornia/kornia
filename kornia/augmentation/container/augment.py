@@ -11,7 +11,7 @@ from kornia.constants import DataKey, Resample
 from kornia.core import Module, Tensor
 from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints, VideoKeypoints
-from kornia.utils import eye_like
+from kornia.utils import eye_like, is_autocast_enabled
 
 __all__ = ["AugmentationSequential"]
 
@@ -141,6 +141,10 @@ class AugmentationSequential(ImageSequential):
 
     _transform_matrix: Optional[Tensor]
     _transform_matrices: List[Tensor] = []
+
+    _boxes_options = {DataKey.BBOX, DataKey.BBOX_XYXY, DataKey.BBOX_XYWH}
+    _keypoints_options = {DataKey.KEYPOINTS}
+    _img_msk_options = {DataKey.INPUT, DataKey.MASK}
 
     def __init__(
         self,
@@ -284,11 +288,11 @@ class AugmentationSequential(ImageSequential):
     def _arguments_preproc(self, *args: DataType, data_keys: List[DataKey]) -> List[DataType]:
         inp: List[DataType] = []
         for arg, dcate in zip(args, data_keys):
-            if DataKey.get(dcate) in [DataKey.INPUT, DataKey.MASK]:
+            if DataKey.get(dcate) in self._img_msk_options:
                 inp.append(arg)
-            elif DataKey.get(dcate) in [DataKey.KEYPOINTS]:
+            elif DataKey.get(dcate) in self._keypoints_options:
                 inp.append(self._preproc_keypoints(arg, dcate))
-            elif DataKey.get(dcate) in [DataKey.BBOX, DataKey.BBOX_XYXY, DataKey.BBOX_XYWH]:
+            elif DataKey.get(dcate) in self._boxes_options:
                 inp.append(self._preproc_boxes(arg, dcate))
             else:
                 raise NotImplementedError(f"input type of {dcate} is not implemented.")
@@ -299,16 +303,23 @@ class AugmentationSequential(ImageSequential):
     ) -> List[DataType]:
         out: List[DataType] = []
         for in_arg, out_arg, dcate in zip(in_args, out_args, data_keys):
-            if DataKey.get(dcate) in [DataKey.INPUT]:
+            if DataKey.get(dcate) in self._img_msk_options:
                 # It is tensor type already.
                 out.append(out_arg)
-            elif DataKey.get(dcate) in [DataKey.MASK]:
-                # TODO: may add the float to integer, etc.
-                out.append(out_arg)
-            elif DataKey.get(dcate) in [DataKey.KEYPOINTS]:
-                out.append(self._postproc_keypoint(in_arg, cast(Keypoints, out_arg), dcate))
-            elif DataKey.get(dcate) in [DataKey.BBOX, DataKey.BBOX_XYXY, DataKey.BBOX_XYWH]:
-                out.append(self._postproc_boxes(in_arg, cast(Boxes, out_arg), dcate))
+                # TODO: may add the float to integer (for masks), etc.
+
+            elif DataKey.get(dcate) in self._keypoints_options:
+                _out = self._postproc_keypoint(in_arg, cast(Keypoints, out_arg), dcate)
+                if is_autocast_enabled():
+                    _out = _out.to(device=in_arg.device, dtype=in_arg.dtype)
+                out.append(_out)
+
+            elif DataKey.get(dcate) in self._boxes_options:
+                _out = self._postproc_boxes(in_arg, cast(Boxes, out_arg), dcate)
+                if is_autocast_enabled():
+                    _out = _out.to(device=in_arg.device, dtype=in_arg.dtype)
+                out.append(_out)
+
             else:
                 raise NotImplementedError(f"input type of {dcate} is not implemented.")
 
@@ -395,6 +406,7 @@ class AugmentationSequential(ImageSequential):
             mode = "xywh"
         else:
             raise ValueError(f"Unsupported mode `{DataKey.get(dcate).name}`.")
+
         # TODO: handle 3d scenarios
         if isinstance(in_arg, (Boxes,)):
             return out_arg
