@@ -657,6 +657,10 @@ class Boxes:
         obj._is_batched = self._is_batched
         return obj
 
+    def type(self, dtype: torch.dtype) -> "Boxes":
+        self._data = self._data.type(dtype)
+        return self
+
 
 class VideoBoxes(Boxes):
     temporal_channel_size: int

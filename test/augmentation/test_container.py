@@ -1,8 +1,12 @@
+from functools import partial
+from unittest.mock import patch
+
 import pytest
 import torch
 
 import kornia
 import kornia.augmentation as K
+from kornia.augmentation.container.base import ParamItem
 from kornia.constants import BorderType
 from kornia.geometry.bbox import bbox_to_mask
 from kornia.testing import assert_close
@@ -31,6 +35,22 @@ def reproducibility_test(input, seq):
         assert_close(output_1, output_2, msg=f"{seq._params}")
     else:
         assert False, ("cannot compare", type(output_1), type(output_2))
+
+
+def mock_forward_parameters_sequential(batch_shape, cls, batch_prob):
+    named_modules = cls.get_forward_sequence()
+    params = []
+    for name, module in named_modules:
+        if isinstance(module, (K.base._AugmentationBase, K.MixAugmentationBaseV2, K.ImageSequential)):
+            with patch.object(module, '__batch_prob_generator__', return_value=batch_prob):
+                mod_param = module.forward_parameters(batch_shape)
+
+            param = ParamItem(name, mod_param)
+        else:
+            param = ParamItem(name, None)
+        batch_shape = K.container.image._get_new_batch_shape(param, batch_shape)
+        params.append(param)
+    return params
 
 
 class TestVideoSequential:
@@ -635,12 +655,12 @@ class TestAugmentationSequential:
 
         to_apply = torch.tensor(batch_prob, device=device)
 
-        params = aug.forward_parameters(imgs.shape)
-        for p in params:
-            p.data['batch_prob'] = to_apply
+        fwd_params = partial(mock_forward_parameters_sequential, cls=aug, batch_prob=to_apply)
+        with patch.object(aug, 'forward_parameters', fwd_params):
+            params = aug.forward_parameters(imgs.shape)
 
         with torch.autocast(device.type):
-            outputs = aug(imgs, msk, bb, points)
+            outputs = aug(imgs, msk, bb, points, params=params)
 
         assert outputs[0].dtype == dtype, 'Output image dtype should match the input dtype'
         assert outputs[1].dtype == dtype, 'Output mask dtype should match the input dtype'

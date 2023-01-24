@@ -319,6 +319,10 @@ class _AugmentationBase(_BasicAugmentationBase):
             applied = self.apply_transform_box(
                 input[to_apply], params, flags, transform=transform if transform is None else transform[to_apply]
             )
+            if is_autocast_enabled():
+                output = output.type(input.dtype)
+                applied = applied.type(input.dtype)
+
             output = output.index_put((to_apply,), applied)
         return output
 
@@ -348,6 +352,9 @@ class _AugmentationBase(_BasicAugmentationBase):
             applied = self.apply_transform_keypoint(
                 input[to_apply], params, flags, transform=transform if transform is None else transform[to_apply]
             )
+            if is_autocast_enabled():
+                output = output.type(input.dtype)
+                applied = applied.type(input.dtype)
             output = output.index_put((to_apply,), applied)
         return output
 

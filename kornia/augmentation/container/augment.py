@@ -309,16 +309,22 @@ class AugmentationSequential(ImageSequential):
                 # TODO: may add the float to integer (for masks), etc.
 
             elif DataKey.get(dcate) in self._keypoints_options:
-                _out = self._postproc_keypoint(in_arg, cast(Keypoints, out_arg), dcate)
-                if is_autocast_enabled():
-                    _out = _out.to(device=in_arg.device, dtype=in_arg.dtype)
-                out.append(_out)
+                _out_k = self._postproc_keypoint(in_arg, cast(Keypoints, out_arg), dcate)
+                if is_autocast_enabled() and isinstance(in_arg, (Tensor, Keypoints)):
+                    if isinstance(_out_k, list):
+                        _out_k = [i.type(in_arg.dtype) for i in _out_k]
+                    else:
+                        _out_k = _out_k.type(in_arg.dtype)
+                out.append(_out_k)
 
             elif DataKey.get(dcate) in self._boxes_options:
-                _out = self._postproc_boxes(in_arg, cast(Boxes, out_arg), dcate)
-                if is_autocast_enabled():
-                    _out = _out.to(device=in_arg.device, dtype=in_arg.dtype)
-                out.append(_out)
+                _out_b = self._postproc_boxes(in_arg, cast(Boxes, out_arg), dcate)
+                if is_autocast_enabled() and isinstance(in_arg, (Tensor, Boxes)):
+                    if isinstance(_out_b, list):
+                        _out_b = [i.type(in_arg.dtype) for i in _out_b]
+                    else:
+                        _out_b = _out_b.type(in_arg.dtype)
+                out.append(_out_b)
 
             else:
                 raise NotImplementedError(f"input type of {dcate} is not implemented.")

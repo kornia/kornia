@@ -1,5 +1,7 @@
 from typing import List, Optional, Tuple, Union, cast
 
+import torch
+
 from kornia.core import Tensor
 from kornia.geometry import transform_points
 
@@ -51,6 +53,16 @@ class Keypoints:
     @property
     def data(self):
         return self._data
+
+    @property
+    def device(self) -> torch.device:
+        """Returns keypoints device."""
+        return self._data.device
+
+    @property
+    def dtype(self) -> torch.dtype:
+        """Returns keypoints dtype."""
+        return self._data.dtype
 
     def index_put(
         self,
@@ -145,6 +157,10 @@ class Keypoints:
 
     def clone(self) -> "Keypoints":
         return Keypoints(self._data.clone(), False)
+
+    def type(self, dtype: torch.dtype) -> "Keypoints":
+        self._data = self._data.type(dtype)
+        return self
 
 
 class VideoKeypoints(Keypoints):
