@@ -37,22 +37,6 @@ def reproducibility_test(input, seq):
         assert False, ("cannot compare", type(output_1), type(output_2))
 
 
-def mock_forward_parameters_sequential(batch_shape, cls, batch_prob):
-    named_modules = cls.get_forward_sequence()
-    params = []
-    for name, module in named_modules:
-        if isinstance(module, (K.base._AugmentationBase, K.MixAugmentationBaseV2, K.ImageSequential)):
-            with patch.object(module, '__batch_prob_generator__', return_value=batch_prob):
-                mod_param = module.forward_parameters(batch_shape)
-
-            param = ParamItem(name, mod_param)
-        else:
-            param = ParamItem(name, None)
-        batch_shape = K.container.image._get_new_batch_shape(param, batch_shape)
-        params.append(param)
-    return params
-
-
 class TestVideoSequential:
     @pytest.mark.parametrize('shape', [(3, 4), (2, 3, 4), (2, 3, 5, 6), (2, 3, 4, 5, 6, 7)])
     @pytest.mark.parametrize('data_format', ["BCTHW", "BTCHW"])
@@ -168,6 +152,23 @@ class TestVideoSequential:
         op = K.VideoSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1), same_on_frame=True)
         op_jit = torch.jit.script(op)
         assert_close(op(img), op_jit(img))
+
+    @pytest.mark.parametrize('data_format', ["BCTHW", "BTCHW"])
+    def test_autocast(self, data_format, device, dtype):
+        if not hasattr(torch, "autocast"):
+            pytest.skip("PyTorch version without autocast support")
+
+        tfs = (K.RandomAffine(0.5, (0.1, 0.5), (0.5, 1.5), 1.2, p=1.0), K.RandomGaussianBlur((3, 3), (0.1, 3), p=1))
+        aug = K.VideoSequential(*tfs, data_format=data_format, random_apply=True)
+        if data_format == 'BCTHW':
+            imgs = torch.randn(2, 3, 1, 5, 6, device=device, dtype=dtype).repeat(1, 1, 4, 1, 1)
+        elif data_format == 'BTCHW':
+            imgs = torch.randn(2, 1, 3, 5, 6, device=device, dtype=dtype).repeat(1, 4, 1, 1, 1)
+
+        with torch.autocast(device.type):
+            output = aug(imgs)
+
+        assert output.dtype == dtype, 'Output image dtype should match the input dtype'
 
 
 class TestSequential:
@@ -637,6 +638,21 @@ class TestAugmentationSequential:
         if not hasattr(torch, "autocast"):
             pytest.skip("PyTorch version without autocast support")
 
+        def mock_forward_parameters_sequential(batch_shape, cls, batch_prob):
+            named_modules = cls.get_forward_sequence()
+            params = []
+            for name, module in named_modules:
+                if isinstance(module, (K.base._AugmentationBase, K.MixAugmentationBaseV2, K.ImageSequential)):
+                    with patch.object(module, '__batch_prob_generator__', return_value=batch_prob):
+                        mod_param = module.forward_parameters(batch_shape)
+
+                    param = ParamItem(name, mod_param)
+                else:
+                    param = ParamItem(name, None)
+                batch_shape = K.container.image._get_new_batch_shape(param, batch_shape)
+                params.append(param)
+            return params
+
         tfs = (K.RandomAffine(0.5, (0.1, 0.5), (0.5, 1.5), 1.2, p=1.0), K.RandomGaussianBlur((3, 3), (0.1, 3), p=1))
         data_keys = ['input', 'mask', box, 'keypoints']
         aug = K.AugmentationSequential(*tfs, data_keys=data_keys, random_apply=True)
@@ -756,6 +772,19 @@ class TestPatchSequential:
             grid_size=(2, 2),
         )
         assert seq.is_intensity_only()
+
+    def test_autocast(self, device, dtype):
+        if not hasattr(torch, "autocast"):
+            pytest.skip("PyTorch version without autocast support")
+
+        tfs = (K.RandomAffine(0.5, (0.1, 0.5), (0.5, 1.5), 1.2, p=1.0), K.RandomGaussianBlur((3, 3), (0.1, 3), p=1))
+        aug = K.PatchSequential(*tfs, grid_size=(2, 2), random_apply=True)
+        imgs = torch.rand(2, 3, 7, 4, dtype=dtype, device=device)
+
+        with torch.autocast(device.type):
+            output = aug(imgs)
+
+        assert output.dtype == dtype, 'Output image dtype should match the input dtype'
 
 
 class TestDispatcher:
