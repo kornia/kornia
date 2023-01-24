@@ -263,8 +263,11 @@ def is_autocast_enabled(both: bool = True) -> bool:
         `torch.is_autocast_enabled() or torch.is_autocast_cpu_enabled()`. If both is Flase will return just
         `torch.is_autocast_enabled()`.
     """
-    if not torch_version_ge(1, 10, 2) or TYPE_CHECKING:
-        # TODO: remove `TYPE_CHECKING` statement when kornia relies on torch >= 1.10.2
+    if TYPE_CHECKING:
+        # TODO: remove this branch when kornia relies on torch >= 1.10.2
+        return False
+
+    if not torch_version_ge(1, 10, 2):
         return False
 
     if both:
