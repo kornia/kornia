@@ -611,6 +611,42 @@ class TestAugmentationSequential:
         op_jit = torch.jit.script(op)
         assert_close(op(img), op_jit(img))
 
+    @pytest.mark.parametrize("batch_prob", [[True, True], [False, True], [False, False]])
+    @pytest.mark.parametrize("box", ['bbox', 'bbox_xyxy', 'bbox_xywh'])
+    def test_autocast(self, batch_prob, box, device, dtype):
+        if not hasattr(torch, "autocast"):
+            pytest.skip("PyTorch version without autocast support")
+
+        tfs = (K.RandomAffine(0.5, (0.1, 0.5), (0.5, 1.5), 1.2, p=1.0), K.RandomGaussianBlur((3, 3), (0.1, 3), p=1))
+        data_keys = ['input', 'mask', box, 'keypoints']
+        aug = K.AugmentationSequential(*tfs, data_keys=data_keys, random_apply=True)
+        bs = len(batch_prob)
+        imgs = torch.rand(bs, 3, 7, 4, dtype=dtype, device=device)
+        if box == 'bbox':
+            bb = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]], dtype=dtype, device=device).expand(
+                bs, 1, -1, -1
+            )
+        else:
+            bb = torch.rand(bs, 1, 4, dtype=dtype, device=device)
+
+        msk = torch.zeros_like(imgs)
+        msk[..., 3:, 2] = 1.0
+        points = torch.rand(bs, 1, 2, dtype=dtype, device=device)
+
+        to_apply = torch.tensor(batch_prob, device=device)
+
+        params = aug.forward_parameters(imgs.shape)
+        for p in params:
+            p.data['batch_prob'] = to_apply
+
+        with torch.autocast(device.type):
+            outputs = aug(imgs, msk, bb, points)
+
+        assert outputs[0].dtype == dtype, 'Output image dtype should match the input dtype'
+        assert outputs[1].dtype == dtype, 'Output mask dtype should match the input dtype'
+        assert outputs[2].dtype == dtype, 'Output box dtype should match the input dtype'
+        assert outputs[3].dtype == dtype, 'Output keypoints dtype should match the input dtype'
+
 
 class TestPatchSequential:
     @pytest.mark.parametrize(
