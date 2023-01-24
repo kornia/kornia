@@ -233,14 +233,6 @@ class _AugmentationBase(_BasicAugmentationBase):
         transform: Optional[Tensor] = None,
         **kwargs,
     ) -> Tensor:
-        # Note about the explicit type conversions here:
-        # If this code is run in an autocast-enabled region, the transformation matrix or the output
-        # may be float16 even though the input was float32 (e.g. torch.mm produces float16 output),
-        # see also the documentation on autocasting: https://pytorch.org/docs/stable/amp.html.
-        # It may be unexpected for the user if the output type changes and it can also lead to errors
-        # for the index_put operation below (see also https://github.com/kornia/kornia/issues/1737)
-        # In case the type already matches the input type, the conversions are no-ops
-
         self.validate_tensor(input)
 
         params, flags = self._process_kwargs_to_params_and_flags(

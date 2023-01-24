@@ -7,7 +7,7 @@ from kornia.augmentation.utils import _transform_input, _validate_input_dtype
 from kornia.core import Tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
-from kornia.utils import eye_like
+from kornia.utils import eye_like, is_autocast_enabled
 
 
 class AugmentationBase2D(_AugmentationBase):
@@ -77,11 +77,14 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
         elif to_apply.all():
             trans_matrix = self.compute_transformation(in_tensor, params=params, flags=flags)
         else:
-            trans_matrix = self.identity_matrix(in_tensor)
+            trans_matrix_A = self.identity_matrix(in_tensor)
+            trans_matrix_B = self.compute_transformation(in_tensor[to_apply], params=params, flags=flags)
 
-            trans_matrix = trans_matrix.index_put(
-                (to_apply,), self.compute_transformation(in_tensor[to_apply], params=params, flags=flags)
-            )
+            if is_autocast_enabled():
+                trans_matrix_A = trans_matrix_A.type(input.dtype)
+                trans_matrix_B = trans_matrix_B.type(input.dtype)
+
+            trans_matrix = trans_matrix_A.index_put((to_apply,), trans_matrix_B)
 
         return trans_matrix
 
