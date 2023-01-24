@@ -19,7 +19,6 @@ def histogram_matching(source: torch.Tensor, template: torch.Tensor) -> torch.Te
     Note:
         This function does not matches histograms element-wisely if input a batched tensor.
     """
-
     oldshape = source.shape
     source = source.ravel()
     template = template.ravel()

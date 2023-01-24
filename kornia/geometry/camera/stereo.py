@@ -254,7 +254,6 @@ def _check_Q_matrix(Q_matrix: Tensor):
     Args:
         Q_matrix: The Q matrix for reprojecting disparity to a point cloud of shape :math:`(B, 4, 4)`
     """
-
     if not isinstance(Q_matrix, Tensor):
         raise StereoException(f"Expected 'Q_matrix' to be an instance of Tensor but got {type(Q_matrix)}.")
 

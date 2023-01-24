@@ -116,7 +116,6 @@ class LoFTR(Module):
             - ``confidence``, confidence score [0, 1] :math:`(NC)`.
             - ``batch_indexes``, batch indexes for the keypoints and lafs :math:`(NC)`.
         """
-
         # 1. Local Feature CNN
         _data: Dict[str, Union[Tensor, int, torch.Size]] = {
             'bs': data['image0'].size(0),
