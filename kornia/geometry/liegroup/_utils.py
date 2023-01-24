@@ -9,7 +9,7 @@ def check_so2_z_shape(z):
 def check_so2_t_shape(t):
     t_shape = t.shape
     len_t_shape = len(t_shape)
-    if ((len_t_shape == 2) and (t_shape[1] > 2)) or ((len_t_shape == 1) and (t_shape[0] != 2)) or (len_t_shape > 2):
+    if ((len_t_shape == 2) and (t_shape[1] != 2)) or ((len_t_shape == 1) and (t_shape[0] != 2)) or (len_t_shape > 2):
         raise ValueError(f"Invalid translation shape, we expect [B, 2], or [2] Got: {t_shape}")
 
 
