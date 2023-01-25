@@ -5,8 +5,11 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia.testing as utils  # test utils
-from kornia.augmentation import RandomGaussianBlur
 from kornia.augmentation._2d.base import AugmentationBase2D
+from kornia.augmentation._2d.geometric.affine import RandomAffine
+from kornia.augmentation._2d.intensity.gaussian_blur import RandomGaussianBlur
+from kornia.augmentation._3d.geometric.affine import RandomAffine3D
+from kornia.augmentation._3d.intensity.motion_blur import RandomMotionBlur3D
 from kornia.augmentation.base import _BasicAugmentationBase
 from kornia.testing import assert_close
 
@@ -76,28 +79,6 @@ class TestBasicAugmentationBase:
             assert output.shape == expected_output.shape
             assert_close(output, expected_output)
 
-    @pytest.mark.parametrize("batch_prob", [[True, True], [False, True], [False, False]])
-    def test_autocast(self, batch_prob, device, dtype):
-        if not hasattr(torch, "autocast"):
-            pytest.skip("PyTorch version without autocast support")
-
-        torch.manual_seed(42)
-
-        aug = RandomGaussianBlur((3, 3), (0.1, 3), p=1)
-        x = torch.rand(len(batch_prob), 3, 100, 100, dtype=dtype).to(device)
-
-        # Explicitly set the batch probability to trigger the different conditions in apply_func()
-        params = aug.forward_parameters(x.shape)
-        params["batch_prob"] = torch.tensor(batch_prob, device=params["batch_prob"].device)
-
-        # There is usually only a sigma value for the batch images which get transformed
-        params["sigma"] = params["sigma"][params["batch_prob"]]
-
-        with torch.autocast(device.type):
-            res = aug(x, params)
-
-        assert res.dtype == dtype, "The output dtype should match the input dtype"
-
 
 class TestAugmentationBase2D:
     def test_forward(self, device, dtype):
@@ -165,3 +146,87 @@ class TestAugmentationBase2D:
         with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform:
             apply_transform.return_value = output
             assert gradcheck(augmentation, ((input, input_param)), raise_exception=True, fast_mode=True)
+
+
+class TestGeometricAugmentationBase2D:
+    @pytest.mark.parametrize("batch_prob", [[True, True], [False, True], [False, False]])
+    def test_autocast(self, batch_prob, device, dtype):
+        if not hasattr(torch, "autocast"):
+            pytest.skip("PyTorch version without autocast support")
+
+        # Uses some subclass of `GeometricAugmentationBase2D` which perform some op which can mismatch the dtype
+        # Will cover AugmentationBase2D and RigidAffineAugmentationBase2D too
+        aug = RandomAffine(0.5, (0.1, 0.5), (0.5, 1.5), 1.2, p=1.0)
+        x = torch.rand(len(batch_prob), 5, 10, 7, dtype=dtype, device=device)
+
+        to_apply = torch.tensor(batch_prob, device=device)
+        with patch.object(aug, '__batch_prob_generator__', return_value=to_apply):
+            params = aug.forward_parameters(x.shape)
+
+        with torch.autocast(device.type):
+            res = aug(x, params)
+
+        assert res.dtype == dtype, "The output dtype should match the input dtype"
+
+
+class TestIntensityAugmentationBase2D:
+    @pytest.mark.parametrize("batch_prob", [[True, True], [False, True], [False, False]])
+    def test_autocast(self, batch_prob, device, dtype):
+        if not hasattr(torch, "autocast"):
+            pytest.skip("PyTorch version without autocast support")
+
+        # Uses some subclass of `IntensityAugmentationBase2D` which perform some op which can mismatch the dtype
+        # Will cover AugmentationBase2D and RigidAffineAugmentationBase2D too
+        aug = RandomGaussianBlur((3, 3), (0.1, 3), p=1)
+        x = torch.rand(len(batch_prob), 5, 10, 7, dtype=dtype, device=device)
+
+        to_apply = torch.tensor(batch_prob, device=device)
+        with patch.object(aug, '__batch_prob_generator__', return_value=to_apply):
+            params = aug.forward_parameters(x.shape)
+
+        with torch.autocast(device.type):
+            res = aug(x, params)
+
+        assert res.dtype == dtype, "The output dtype should match the input dtype"
+
+
+class TestIntensityAugmentationBase3D:
+    @pytest.mark.parametrize("batch_prob", [[True, True], [False, True], [False, False]])
+    def test_autocast(self, batch_prob, device, dtype):
+        if not hasattr(torch, "autocast"):
+            pytest.skip("PyTorch version without autocast support")
+
+        # Uses some subclass of `IntensityAugmentationBase3D` which perform some op which can mismatch the dtype
+        # Will cover RigidAffineAugmentationBase3D and AugmentationBase3D too
+        aug = RandomMotionBlur3D(3, 35.0, 0.5, p=1)
+        x = torch.rand(len(batch_prob), 1, 3, 10, 7, dtype=dtype, device=device)
+
+        to_apply = torch.tensor(batch_prob, device=device)
+        with patch.object(aug, '__batch_prob_generator__', return_value=to_apply):
+            params = aug.forward_parameters(x.shape)
+
+        with torch.autocast(device.type):
+            res = aug(x, params)
+
+        assert res.dtype == dtype, "The output dtype should match the input dtype"
+
+
+class TestGeometricAugmentationBase3D:
+    @pytest.mark.parametrize("batch_prob", [[True, True], [False, True], [False, False]])
+    def test_autocast(self, batch_prob, device, dtype):
+        if not hasattr(torch, "autocast"):
+            pytest.skip("PyTorch version without autocast support")
+
+        # Uses some subclass of `GeometricAugmentationBase3D` which perform some op which can mismatch the dtype
+        # Will cover RigidAffineAugmentationBase3D and AugmentationBase3D too
+        aug = RandomAffine3D((15.0, 20.0, 20.0), p=1)
+        x = torch.rand(len(batch_prob), 1, 3, 10, 7, dtype=dtype, device=device)
+
+        to_apply = torch.tensor(batch_prob, device=device)
+        with patch.object(aug, '__batch_prob_generator__', return_value=to_apply):
+            params = aug.forward_parameters(x.shape)
+
+        with torch.autocast(device.type):
+            res = aug(x, params)
+
+        assert res.dtype == dtype, "The output dtype should match the input dtype"
