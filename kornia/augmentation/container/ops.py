@@ -130,7 +130,6 @@ class AugmentationSequentialOps:
 
 def make_input_only_sequential(module: 'kornia.augmentation.ImageSequential') -> Callable[..., Tensor]:
     """Disable all other additional inputs (e.g. ) for ImageSequential."""
-
     def f(*args, **kwargs):
         out = module(*args, **kwargs)
         return out
@@ -221,7 +220,6 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
                 to apply transformations.
             param: the corresponding parameters to the module.
         """
-
         if isinstance(module, (GeometricAugmentationBase2D,)):
             if module.transform_matrix is None:
                 raise ValueError(f"No valid transformation matrix found in {module.__class__}.")

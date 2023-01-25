@@ -47,7 +47,6 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
                  [  0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.],
                  [  0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.]]])
     """
-
     if (len(p1) != 2) or (len(p2) != 2):
         raise ValueError("p1 and p2 must have length 2.")
 
@@ -220,7 +219,6 @@ def _get_convex_edges(polygon: Tensor, h: int, w: int) -> Tuple[Tensor, Tensor]:
     Returns:
         The left and right edges of the polygon of shape (B,B).
     """
-
     dtype = polygon.dtype
 
     # Check if polygons are in loop closed format, if not -> make it so

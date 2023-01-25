@@ -138,7 +138,6 @@ def create_spiral_path(cameras: PinholeCamera, rad: float, num_views: int, num_c
         num_views: Number of created cameras: int
         num_circles: Number of spiral circles: int
     """
-
     # Average locations over all cameras
     mean_center = cameras.translation_vector.mean(0, False).squeeze(-1)
     device = cameras.intrinsics.device
