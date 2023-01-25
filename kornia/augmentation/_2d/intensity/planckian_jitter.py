@@ -159,12 +159,9 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
 
         _pl = get_planckian_coeffs(mode)
         if select_from is not None:
-            self.register_buffer('pl', _pl[select_from])
+            self.pl = _pl[select_from]
         else:
-            self.register_buffer('pl', _pl)
-
-        if not isinstance(self.pl, Tensor):
-            raise TypeError(f'Expected the `pl` property be a Tensor. Gotcha {type(self.pl)}')
+            self.pl = _pl
 
         # the range of the sampling parameters
         _param_min: float = 0.0
@@ -178,10 +175,7 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
 
         list_idx = params['idx'].tolist()
 
-        if not isinstance(self.pl, Tensor):
-            raise TypeError(f'Expected the `pl` property be a Tensor. Gotcha {type(self.pl)}')
-        else:
-            self.pl = self.pl.to(device=input.device)
+        self.pl = self.pl.to(device=input.device)
 
         coeffs = self.pl[list_idx]
 
