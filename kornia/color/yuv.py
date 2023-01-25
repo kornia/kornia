@@ -155,7 +155,6 @@ def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
         >>> inputuv = torch.rand(2, 2, 2, 3)
         >>> output = yuv420_to_rgb(inputy, inputuv)  # 2x3x4x6
     """
-
     if not isinstance(imagey, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(imagey)}")
 
@@ -206,7 +205,6 @@ def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
         >>> inputuv = torch.rand(2, 2, 2, 3)
         >>> output = yuv420_to_rgb(inputy, inputuv)  # 2x3x4x5
     """
-
     if not isinstance(imagey, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(imagey)}")
 

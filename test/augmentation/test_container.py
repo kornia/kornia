@@ -226,7 +226,7 @@ class TestAugmentationSequential:
     def test_video(self, device, dtype):
         input = torch.randn(2, 3, 5, 6, device=device, dtype=dtype)[None]
         bbox = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype).expand(
-            2, -1, -1
+            2, 1, -1, -1
         )[None]
         points = torch.tensor([[[1.0, 1.0]]], device=device, dtype=dtype).expand(2, -1, -1)[None]
         aug_list = K.AugmentationSequential(
@@ -336,8 +336,8 @@ class TestAugmentationSequential:
         # horizontally flip boxes based on crop width
         xmins = expected_out_bbox[..., 0].clone()
         xmaxs = expected_out_bbox[..., 2].clone()
-        expected_out_bbox[..., 0] = crop_width - xmaxs
-        expected_out_bbox[..., 2] = crop_width - xmins
+        expected_out_bbox[..., 0] = crop_width - xmaxs - 1
+        expected_out_bbox[..., 2] = crop_width - xmins - 1
 
         out = aug(input, bbox, params=_params)
         assert out[1].shape == bbox.shape
@@ -442,9 +442,9 @@ class TestAugmentationSequential:
 
         assert len(transformed) == len(inputs)
         bboxes_transformed = transformed[-1]
-        assert len(bboxes_transformed) == len(bbox)
+        assert len(bboxes_transformed) == len(bbox) and isinstance(bboxes_transformed, (list,))
         assert len(bboxes_transformed[0]) == 2
-        assert len(bboxes_transformed[1]) == 3
+        assert len(bboxes_transformed[1]) == 3, bboxes_transformed[1]
         assert len(bboxes_transformed[2]) == 0
 
     @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 10, True, False])
@@ -454,7 +454,7 @@ class TestAugmentationSequential:
         keypoints = torch.tensor([[[465, 115], [545, 116]]], device=device, dtype=dtype)
         mask = bbox_to_mask(
             torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 1000, 500
-        )[:, None].float()
+        )[:, None]
         aug = K.AugmentationSequential(
             K.ImageSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)),
             K.AugmentationSequential(
@@ -487,11 +487,11 @@ class TestAugmentationSequential:
 
     def test_individual_forward_and_inverse(self, device, dtype):
         inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
-        bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
+        bbox = torch.tensor([[[[355, 10], [660, 10], [660, 250], [355, 250]]]], device=device, dtype=dtype)
         keypoints = torch.tensor([[[465, 115], [545, 116]]], device=device, dtype=dtype)
         mask = bbox_to_mask(
             torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 500, 1000
-        )[:, None].float()
+        )[:, None]
         crop_size = (200, 200)
 
         aug = K.AugmentationSequential(
@@ -535,7 +535,7 @@ class TestAugmentationSequential:
         keypoints = torch.tensor([[[465, 115], [545, 116]]], device=device, dtype=dtype)
         mask = bbox_to_mask(
             torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 1000, 500
-        )[:, None].float()
+        )[:, None]
         aug = K.AugmentationSequential(
             K.ImageSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)),
             K.AugmentationSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)),
@@ -579,7 +579,7 @@ class TestAugmentationSequential:
         keypoints = torch.tensor([[[465, 115], [545, 116]]], device=device, dtype=dtype)
         mask = bbox_to_mask(
             torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 1000, 500
-        )[:, None].float()
+        )[:, None]
         aug = K.AugmentationSequential(
             K.ImageSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)),
             K.AugmentationSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)),

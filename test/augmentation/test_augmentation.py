@@ -1583,11 +1583,11 @@ class TestColorJitter(BaseTester):
 
         f = AugmentationSequential(ColorJiggle(), ColorJiggle())
 
-        input = torch.rand(3, 5, 5, device=device, dtype=dtype).unsqueeze(0)  # 1 x 3 x 5 x 5
+        input = torch.rand(3, 5, 5, device=device, dtype=dtype).unsqueeze(0).repeat(4, 1, 1, 1)  # 4 x 3 x 5 x 5
 
         expected = input
 
-        expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
+        expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0).repeat(4, 1, 1)  # 4 x 3 x 3
 
         self.assert_close(f(input), expected)
         self.assert_close(f.transform_matrix, expected_transform)
@@ -3727,18 +3727,30 @@ class TestResize:
 
 class TestSmallestMaxSize:
     def test_smoke(self, device, dtype):
-        img = torch.rand(1, 1, 4, 6, device=device, dtype=dtype)
+        img_A = torch.rand(1, 1, 4, 6, device=device, dtype=dtype)
+        img_B = torch.rand(1, 1, 9, 6, device=device, dtype=dtype)
         aug = SmallestMaxSize(max_size=2)
-        out = aug(img)
-        assert out.shape == (1, 1, 2, 3)
+
+        assert aug(img_A).shape == (1, 1, 2, 3)
+        assert aug(img_B).shape == (1, 1, 3, 2)
+
+        aug = SmallestMaxSize(max_size=2)
+        assert aug(img_B).shape == (1, 1, 3, 2)
+        assert aug(img_A).shape == (1, 1, 2, 3)
 
 
 class TestLongestMaxSize:
     def test_smoke(self, device, dtype):
-        img = torch.rand(1, 1, 4, 6, device=device, dtype=dtype)
+        img_A = torch.rand(1, 1, 4, 6, device=device, dtype=dtype)
+        img_B = torch.rand(1, 1, 8, 6, device=device, dtype=dtype)
         aug = LongestMaxSize(max_size=3)
-        out = aug(img)
-        assert out.shape == (1, 1, 2, 3)
+
+        assert aug(img_A).shape == (1, 1, 2, 3)
+        assert aug(img_B).shape == (1, 1, 3, 2)
+
+        aug = LongestMaxSize(max_size=3)
+        assert aug(img_B).shape == (1, 1, 3, 2)
+        assert aug(img_A).shape == (1, 1, 2, 3)
 
 
 class TestRandomPosterize:

@@ -21,12 +21,17 @@ on:
         required: false
         type: boolean
         default: false
+      fail-fast:
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   tests:
     name: python-${{ matrix.python-version }}, torch-${{ matrix.pytorch-version }}
     runs-on: ${{ inputs.os }}
     strategy:
+      fail-fast: ${{ inputs.fail-fast }}
       matrix:
         python-version: ${{ fromJSON(inputs.python-version) }}
         pytorch-version: ${{ fromJSON(inputs.pytorch-version) }}

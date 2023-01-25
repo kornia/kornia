@@ -7,6 +7,8 @@ from torch.distributions import Bernoulli
 from kornia.augmentation.random_generator import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_sampling, _transform_output_shape, override_parameters
 from kornia.core import Module, Tensor, tensor
+from kornia.geometry.boxes import Boxes
+from kornia.geometry.keypoints import Keypoints
 
 TensorWithTransformMat = Union[Tensor, Tuple[Tensor, Tensor]]
 
@@ -81,6 +83,10 @@ class _BasicAugmentationBase(Module):
         """Standardize input tensors."""
         raise NotImplementedError
 
+    def validate_tensor(self, input: Tensor) -> None:
+        """Check if the input tensor is formatted as expected."""
+        raise NotImplementedError
+
     def transform_output_tensor(self, output: Tensor, output_shape: Tuple[int, ...]) -> Tensor:
         """Standardize output tensors."""
         return _transform_output_shape(output, output_shape) if self.keepdim else output
@@ -126,11 +132,14 @@ class _BasicAugmentationBase(Module):
         return batch_prob
 
     def _process_kwargs_to_params_and_flags(
-        self, params: Dict[str, Tensor], flags: Dict[str, Any], **kwargs
+        self, params: Optional[Dict[str, Tensor]] = None, flags: Optional[Dict[str, Any]] = None, **kwargs
     ) -> Tuple[Dict[str, Tensor], Dict[str, Any]]:
 
         # NOTE: determine how to save self._params
         save_kwargs = kwargs["save_kwargs"] if "save_kwargs" in kwargs else False
+
+        params = self._params if params is None else params
+        flags = self.flags if flags is None else flags
 
         if save_kwargs:
             params = override_parameters(params, kwargs, in_place=True)
@@ -139,7 +148,7 @@ class _BasicAugmentationBase(Module):
             self._params = params
             params = override_parameters(params, kwargs, in_place=False)
 
-        flags = override_parameters(self.flags, kwargs, in_place=False)
+        flags = override_parameters(flags, kwargs, in_place=False)
         return params, flags
 
     def forward_parameters(self, batch_shape) -> Dict[str, Tensor]:
@@ -202,41 +211,210 @@ class _AugmentationBase(_BasicAugmentationBase):
           to the batch form ``False``.
     """
 
-    def __init__(
-        self,
-        return_transform: Optional[bool] = None,
-        same_on_batch: bool = False,
-        p: float = 0.5,
-        p_batch: float = 1.0,
-        keepdim: bool = False,
-    ) -> None:
-        super().__init__(p, p_batch=p_batch, same_on_batch=same_on_batch, keepdim=keepdim)
-        self.p = p
-        self.p_batch = p_batch
-        self.return_transform = return_transform
-        self._transform_matrix: Tensor
-        if return_transform is not None:
-            raise ValueError(
-                "`return_transform` is deprecated. Please access the transformation matrix with "
-                "`.transform_matrix`. For chained matrices, please use `AugmentationSequential`."
-            )
-
-    @property
-    def transform_matrix(self) -> Tensor:
-        return self._transform_matrix
-
-    def __repr__(self) -> str:
-        return self.__class__.__name__ + f"({super().__repr__()})"
-
-    def identity_matrix(self, input: Tensor) -> Tensor:
-        raise NotImplementedError
-
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
-        raise NotImplementedError
-
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
+        # apply transform for the input image tensor
+        raise NotImplementedError
+
+    def apply_non_transform(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        # apply additional transform for the images that are skipped from transformation
+        # where batch_prob == False.
+        return input
+
+    def transform_inputs(
+        self,
+        input: Tensor,
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[Tensor] = None,
+        **kwargs,
+    ) -> Tensor:
+        self.validate_tensor(input)
+
+        params, flags = self._process_kwargs_to_params_and_flags(
+            self._params if params is None else params, flags, **kwargs
+        )
+
+        to_apply = params['batch_prob']
+        ori_shape = input.shape
+        in_tensor = self.transform_tensor(input)
+        if to_apply.all():
+            output = self.apply_transform(in_tensor, params, flags, transform=transform)
+        elif not to_apply.any():
+            output = self.apply_non_transform(in_tensor, params, flags, transform=transform)
+        else:  # If any tensor needs to be transformed.
+            output = self.apply_non_transform(in_tensor, params, flags, transform=transform)
+            applied = self.apply_transform(
+                in_tensor[to_apply], params, flags, transform=transform if transform is None else transform[to_apply]
+            )
+            output = output.index_put((to_apply,), applied)
+        output = _transform_output_shape(output, ori_shape) if self.keepdim else output
+        return output
+
+    def transform_masks(
+        self,
+        input: Tensor,
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[Tensor] = None,
+        **kwargs,
+    ) -> Tensor:
+        self.validate_tensor(input)
+
+        params, flags = self._process_kwargs_to_params_and_flags(
+            self._params if params is None else params, flags, **kwargs
+        )
+
+        to_apply = params['batch_prob']
+        ori_shape = input.shape
+        in_tensor = self.transform_tensor(input)
+        if to_apply.all():
+            output = self.apply_transform_mask(in_tensor, params, flags, transform=transform)
+        elif not to_apply.any():
+            output = self.apply_non_transform_mask(in_tensor, params, flags, transform=transform)
+        else:  # If any tensor needs to be transformed.
+            output = self.apply_non_transform_mask(in_tensor, params, flags, transform=transform)
+            applied = self.apply_transform_mask(
+                in_tensor[to_apply], params, flags, transform=transform if transform is None else transform[to_apply]
+            )
+            output = output.index_put((to_apply,), applied)
+        output = _transform_output_shape(output, ori_shape) if self.keepdim else output
+        return output
+
+    def transform_boxes(
+        self,
+        input: Boxes,
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[Tensor] = None,
+        **kwargs,
+    ) -> Boxes:
+
+        if not isinstance(input, Boxes):
+            raise RuntimeError(f"Only `Boxes` is supported. Got {type(input)}.")
+
+        params, flags = self._process_kwargs_to_params_and_flags(
+            self._params if params is None else params, flags, **kwargs
+        )
+
+        to_apply = params['batch_prob']
+        output: Boxes
+        if to_apply.all():
+            output = self.apply_transform_box(input, params, flags, transform=transform)
+        elif not to_apply.any():
+            output = self.apply_non_transform_box(input, params, flags, transform=transform)
+        else:  # If any tensor needs to be transformed.
+            output = self.apply_non_transform_box(input, params, flags, transform=transform)
+            applied = self.apply_transform_box(
+                input[to_apply], params, flags, transform=transform if transform is None else transform[to_apply]
+            )
+            output = output.index_put((to_apply,), applied)
+        return output
+
+    def transform_keypoints(
+        self,
+        input: Keypoints,
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[Tensor] = None,
+        **kwargs,
+    ) -> Keypoints:
+
+        if not isinstance(input, Keypoints):
+            raise RuntimeError(f"Only `Keypoints` is supported. Got {type(input)}.")
+
+        params, flags = self._process_kwargs_to_params_and_flags(
+            self._params if params is None else params, flags, **kwargs
+        )
+
+        to_apply = params['batch_prob']
+        if to_apply.all():
+            output = self.apply_transform_keypoint(input, params, flags, transform=transform)
+        elif not to_apply.any():
+            output = self.apply_non_transform_keypoint(input, params, flags, transform=transform)
+        else:  # If any tensor needs to be transformed.
+            output = self.apply_non_transform_keypoint(input, params, flags, transform=transform)
+            applied = self.apply_transform_keypoint(
+                input[to_apply], params, flags, transform=transform if transform is None else transform[to_apply]
+            )
+            output = output.index_put((to_apply,), applied)
+        return output
+
+    def transform_classes(
+        self,
+        input: Tensor,
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[Tensor] = None,
+        **kwargs,
+    ) -> Tensor:
+
+        params, flags = self._process_kwargs_to_params_and_flags(
+            self._params if params is None else params, flags, **kwargs
+        )
+
+        to_apply = params['batch_prob']
+        if to_apply.all():
+            output = self.apply_transform_class(input, params, flags, transform=transform)
+        elif not to_apply.any():
+            output = self.apply_non_transform_class(input, params, flags, transform=transform)
+        else:  # If any tensor needs to be transformed.
+            output = self.apply_non_transform_class(input, params, flags, transform=transform)
+            applied = self.apply_transform_class(
+                input[to_apply], params, flags, transform=transform if transform is None else transform[to_apply]
+            )
+            output = output.index_put((to_apply,), applied)
+        return output
+
+    def apply_non_transform_mask(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        """Process masks corresponding to the inputs that are no transformation applied."""
+        raise NotImplementedError
+
+    def apply_transform_mask(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        """Process masks corresponding to the inputs that are transformed."""
+        raise NotImplementedError
+
+    def apply_non_transform_box(
+        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Boxes:
+        """Process boxes corresponding to the inputs that are no transformation applied."""
+        return input
+
+    def apply_transform_box(
+        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Boxes:
+        """Process boxes corresponding to the inputs that are transformed."""
+        raise NotImplementedError
+
+    def apply_non_transform_keypoint(
+        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Keypoints:
+        """Process keypoints corresponding to the inputs that are no transformation applied."""
+        return input
+
+    def apply_transform_keypoint(
+        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Keypoints:
+        """Process keypoints corresponding to the inputs that are transformed."""
+        raise NotImplementedError
+
+    def apply_non_transform_class(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        """Process class tags corresponding to the inputs that are no transformation applied."""
+        return input
+
+    def apply_transform_class(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        """Process class tags corresponding to the inputs that are transformed."""
         raise NotImplementedError
 
     def apply_func(
@@ -244,27 +422,7 @@ class _AugmentationBase(_BasicAugmentationBase):
     ) -> Tensor:
         if flags is None:
             flags = self.flags
-        to_apply = params['batch_prob']
 
-        # if no augmentation needed
-        if not to_apply.any():
-            output = in_tensor
-            trans_matrix = self.identity_matrix(in_tensor)
-        # if all data needs to be augmented
-        elif to_apply.all():
-            trans_matrix = self.compute_transformation(in_tensor, params=params, flags=flags)
-            output = self.apply_transform(in_tensor, params=params, flags=flags, transform=trans_matrix)
-        else:
-            output = in_tensor.clone()
-            trans_matrix = self.identity_matrix(in_tensor)
-            trans_matrix = trans_matrix.index_put(
-                (to_apply,), self.compute_transformation(in_tensor[to_apply], params=params, flags=flags)
-            )
-            output = output.index_put(
-                (to_apply,),
-                self.apply_transform(in_tensor[to_apply], params=params, flags=flags, transform=trans_matrix[to_apply]),
-            )
+        output = self.transform_inputs(in_tensor, params, flags)
 
-        self._transform_matrix = trans_matrix
-
-        return output
+        return output.type(in_tensor.dtype)

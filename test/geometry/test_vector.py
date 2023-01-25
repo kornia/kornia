@@ -13,6 +13,14 @@ class TestVector3(BaseTester):
         vec.y is not None
         vec.z is not None
 
+    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    def test_getitem(self, device, dtype, batch_size):
+        xyz = torch.rand((batch_size, 3), device=device, dtype=dtype)
+        vec = Vector3(xyz)
+        for i in range(batch_size):
+            v = vec[i]
+            self.assert_close(v.data, xyz[i, ...])
+
     @pytest.mark.parametrize("shape", ((), (1,), (2, 4)))
     def test_cardinality(self, device, dtype, shape):
         vec = Vector3.random(shape, device, dtype)
@@ -75,6 +83,14 @@ class TestVector2(BaseTester):
         assert vec.shape == (2,)
         vec.x is not None
         vec.y is not None
+
+    @pytest.mark.parametrize("batch_size", (1, 2, 5))
+    def test_getitem(self, device, dtype, batch_size):
+        xy = torch.rand((batch_size, 2), device=device, dtype=dtype)
+        vec = Vector2(xy)
+        for i in range(batch_size):
+            v = vec[i]
+            self.assert_close(v.data, xy[i, ...])
 
     @pytest.mark.parametrize("shape", ((), (1,), (2, 4)))
     def test_cardinality(self, device, dtype, shape):

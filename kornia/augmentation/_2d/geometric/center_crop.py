@@ -70,11 +70,10 @@ class CenterCrop(GeometricAugmentationBase2D):
         p: float = 1.0,
         keepdim: bool = False,
         cropping_mode: str = "slice",
-        return_transform: Optional[bool] = None,
     ) -> None:
         # same_on_batch is always True for CenterCrop
         # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
-        super().__init__(p=1.0, return_transform=return_transform, same_on_batch=True, p_batch=p, keepdim=keepdim)
+        super().__init__(p=1.0, same_on_batch=True, p_batch=p, keepdim=keepdim)
         if isinstance(size, tuple):
             self.size = (size[0], size[1])
         elif isinstance(size, int):

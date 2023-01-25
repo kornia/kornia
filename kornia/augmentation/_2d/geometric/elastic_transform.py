@@ -3,12 +3,13 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 from torch import Tensor
 
-from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
+from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.constants import Resample
+from kornia.geometry.boxes import Boxes
 from kornia.geometry.transform import elastic_transform2d
 
 
-class RandomElasticTransform(GeometricAugmentationBase2D):
+class RandomElasticTransform(AugmentationBase2D):
     r"""Add random elastic transformation to a tensor image.
 
     .. image:: _static/img/RandomElasticTransform.png
@@ -57,11 +58,8 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
     ) -> None:
-        super().__init__(
-            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
-        )
+        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
 
         self.flags = dict(
             kernel_size=kernel_size,
@@ -80,10 +78,6 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
             noise = torch.rand(B, 2, H, W, device=self.device, dtype=self.dtype)
         return dict(noise=noise * 2 - 1)
 
-    # TODO: It is incorrect to return identity
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
-        return self.identity_matrix(input)
-
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
@@ -97,3 +91,22 @@ class RandomElasticTransform(GeometricAugmentationBase2D):
             flags["resample"].name.lower(),
             flags["padding_mode"],
         )
+
+    def apply_transform_mask(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        """Process masks corresponding to the inputs that are transformed."""
+        return self.apply_transform(input, params=params, flags=flags, transform=transform)
+
+    def apply_transform_box(
+        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Boxes:
+        """Process masks corresponding to the inputs that are transformed."""
+        # We assume that boxes may not be affected too much by the deformation.
+        return input
+
+    def apply_transform_class(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        """Process class tags corresponding to the inputs that are transformed."""
+        return input

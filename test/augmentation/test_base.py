@@ -5,6 +5,7 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia.testing as utils  # test utils
+from kornia.augmentation import RandomGaussianBlur
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.augmentation.base import _BasicAugmentationBase
 from kornia.testing import assert_close
@@ -75,45 +76,45 @@ class TestBasicAugmentationBase:
             assert output.shape == expected_output.shape
             assert_close(output, expected_output)
 
+    @pytest.mark.parametrize("batch_prob", [[True, True], [False, True], [False, False]])
+    def test_autocast(self, batch_prob, device, dtype):
+        if not hasattr(torch, "autocast"):
+            pytest.skip("PyTorch version without autocast support")
+
+        torch.manual_seed(42)
+
+        aug = RandomGaussianBlur((3, 3), (0.1, 3), p=1)
+        x = torch.rand(len(batch_prob), 3, 100, 100, dtype=dtype).to(device)
+
+        # Explicitly set the batch probability to trigger the different conditions in apply_func()
+        params = aug.forward_parameters(x.shape)
+        params["batch_prob"] = torch.tensor(batch_prob, device=params["batch_prob"].device)
+
+        # There is usually only a sigma value for the batch images which get transformed
+        params["sigma"] = params["sigma"][params["batch_prob"]]
+
+        with torch.autocast(device.type):
+            res = aug(x, params)
+
+        assert res.dtype == dtype, "The output dtype should match the input dtype"
+
 
 class TestAugmentationBase2D:
-    @pytest.mark.parametrize(
-        'input_shape, in_trans_shape',
-        [
-            ((2, 3, 4, 5), (2, 3, 3)),
-            ((3, 4, 5), (3, 3)),
-            ((4, 5), (3, 3)),
-            pytest.param((1, 2, 3, 4, 5), (2, 3, 3), marks=pytest.mark.xfail),
-            pytest.param((2, 3, 4, 5), (1, 3, 3), marks=pytest.mark.xfail),
-            pytest.param((2, 3, 4, 5), (3, 3), marks=pytest.mark.xfail),
-        ],
-    )
-    def test_check_batching(self, device, dtype, input_shape, in_trans_shape):
-        input = torch.rand(input_shape, device=device, dtype=dtype)
-        in_trans = torch.rand(in_trans_shape, device=device, dtype=dtype)
-        augmentation = AugmentationBase2D(p=1.0, p_batch=1)
-        augmentation.__check_batching__(input)
-        augmentation.__check_batching__((input, in_trans))
-
     def test_forward(self, device, dtype):
         torch.manual_seed(42)
         input = torch.rand((2, 3, 4, 5), device=device, dtype=dtype)
         # input_transform = torch.rand((2, 3, 3), device=device, dtype=dtype)
         expected_output = torch.rand((2, 3, 4, 5), device=device, dtype=dtype)
-        expected_transform = torch.rand((2, 3, 3), device=device, dtype=dtype)
         augmentation = AugmentationBase2D(p=1.0)
 
         with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform, patch.object(
             augmentation, "generate_parameters", autospec=True
-        ) as generate_parameters, patch.object(
-            augmentation, "compute_transformation", autospec=True
-        ) as compute_transformation:
+        ) as generate_parameters:
 
             # Calling the augmentation with a single tensor shall return the expected tensor using the generated params.
             params = {'params': {}, 'flags': {'foo': 0}}
             generate_parameters.return_value = params
             apply_transform.return_value = expected_output
-            compute_transformation.return_value = expected_transform
             output = augmentation(input)
             # RuntimeError: Boolean value of Tensor with more than one value is ambiguous
             # Not an easy fix, happens on verifying torch.tensor([True, True])
@@ -161,10 +162,6 @@ class TestAugmentationBase2D:
 
         augmentation = AugmentationBase2D(p=1.0)
 
-        with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform, patch.object(
-            augmentation, "compute_transformation", autospec=True
-        ) as compute_transformation:
-
+        with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform:
             apply_transform.return_value = output
-            compute_transformation.return_value = other_transform
             assert gradcheck(augmentation, ((input, input_param)), raise_exception=True, fast_mode=True)

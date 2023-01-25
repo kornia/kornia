@@ -403,7 +403,6 @@ def get_gaussian_kernel1d_t(kernel_size: int, sigma: torch.Tensor, force_even: b
         tensor([[0.1201, 0.2339, 0.2921, 0.2339, 0.1201],
                 [0.0096, 0.2054, 0.5699, 0.2054, 0.0096]])
     """
-
     if not isinstance(kernel_size, int) or ((kernel_size % 2 == 0) and not force_even) or (kernel_size <= 0):
         raise TypeError("kernel_size must be an odd positive integer. " "Got {}".format(kernel_size))
 

@@ -61,7 +61,6 @@ def joint_pdf(kernel_values1: torch.Tensor, kernel_values2: torch.Tensor, epsilo
     Returns:
         shape [BxNUM_BINSxNUM_BINS].
     """
-
     if not isinstance(kernel_values1, torch.Tensor):
         raise TypeError(f"Input kernel_values1 type is not a torch.Tensor. Got {type(kernel_values1)}")
 
@@ -108,7 +107,6 @@ def histogram(x: torch.Tensor, bins: torch.Tensor, bandwidth: torch.Tensor, epsi
         >>> hist.shape
         torch.Size([1, 128])
     """
-
     pdf, _ = marginal_pdf(x.unsqueeze(2), bins, bandwidth, epsilon)
 
     return pdf

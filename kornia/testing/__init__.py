@@ -4,9 +4,10 @@ import math
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from itertools import product
-from typing import Any, Dict, List, Optional, Sequence, Tuple, TypeVar, cast
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, TypeVar, Union, cast
 
 import torch
+from torch.autograd import gradcheck
 from torch.testing import assert_close as _assert_close
 from typing_extensions import TypeGuard
 
@@ -164,6 +165,17 @@ class BaseTester(ABC):
 
         return assert_close(actual, expected, rtol=rtol, atol=atol)
 
+    @staticmethod
+    def gradcheck(
+        func: Callable[..., Union[torch.Tensor, Sequence[torch.Tensor]]],
+        inputs: Union[torch.Tensor, Sequence[torch.Tensor]],
+        *,
+        raise_exception: bool = True,
+        fast_mode: bool = True,
+        **kwargs: Any,
+    ) -> bool:
+        return gradcheck(func, inputs, raise_exception=raise_exception, fast_mode=fast_mode, **kwargs)
+
 
 def generate_two_view_random_scene(
     device: torch.device = torch.device("cpu"), dtype: torch.dtype = torch.float32
@@ -304,7 +316,6 @@ def KORNIA_CHECK_SHAPE(x: Tensor, shape: List[str]) -> None:
         >>> x = torch.rand(2, 3, 4, 4)
         >>> KORNIA_CHECK_SHAPE(x, ["2","3", "H", "W"])  # explicit
     """
-
     if '*' == shape[0]:
         shape_to_check = shape[1:]
         x_shape_to_check = x.shape[-len(shape) + 1 :]
