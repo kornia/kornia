@@ -55,7 +55,9 @@ class ColorJiggleGenerator(RandomGeneratorBase):
         return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        self._brightness = _range_bound(self.brightness, 'brightness', center=1.0, bounds=(0, 2), device=device, dtype=dtype)
+        self._brightness = _range_bound(
+            self.brightness, 'brightness', center=1.0, bounds=(0, 2), device=device, dtype=dtype
+        )
         self._contrast: Tensor = _range_bound(self.contrast, 'contrast', center=1.0, device=device, dtype=dtype)
         self._saturation: Tensor = _range_bound(self.saturation, 'saturation', center=1.0, device=device, dtype=dtype)
         self._hue: Tensor = _range_bound(self.hue, 'hue', bounds=(-0.5, 0.5), device=device, dtype=dtype)
@@ -73,10 +75,14 @@ class ColorJiggleGenerator(RandomGeneratorBase):
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.brightness, self.contrast, self.hue, self.saturation])
 
-        generic_factors = _adapted_rsampling((batch_size * 4,), self.generic_sampler, same_on_batch).to(device=_device, dtype=_dtype)
+        generic_factors = _adapted_rsampling((batch_size * 4,), self.generic_sampler, same_on_batch).to(
+            device=_device, dtype=_dtype
+        )
 
-        brightness_factor = (generic_factors[:batch_size] - self._brightness[0]) / (self._brightness[1] - self._brightness[0])
-        
+        brightness_factor = (generic_factors[:batch_size] - self._brightness[0]) / (
+            self._brightness[1] - self._brightness[0]
+        )
+
         return dict(
             brightness_factor=brightness_factor,
             contrast_factor=...,
