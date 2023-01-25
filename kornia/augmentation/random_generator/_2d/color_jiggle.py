@@ -55,38 +55,34 @@ class ColorJiggleGenerator(RandomGeneratorBase):
         return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        self._brightness = _range_bound(
-            self.brightness, 'brightness', center=1.0, bounds=(0, 2), device=device, dtype=dtype
-        )
-        self._contrast: Tensor = _range_bound(self.contrast, 'contrast', center=1.0, device=device, dtype=dtype)
-        self._saturation: Tensor = _range_bound(self.saturation, 'saturation', center=1.0, device=device, dtype=dtype)
-        self._hue: Tensor = _range_bound(self.hue, 'hue', bounds=(-0.5, 0.5), device=device, dtype=dtype)
+        brightness = _range_bound(self.brightness, 'brightness', center=1.0, bounds=(0, 2), device=device, dtype=dtype)
+        contrast: Tensor = _range_bound(self.contrast, 'contrast', center=1.0, device=device, dtype=dtype)
+        saturation: Tensor = _range_bound(self.saturation, 'saturation', center=1.0, device=device, dtype=dtype)
+        hue: Tensor = _range_bound(self.hue, 'hue', bounds=(-0.5, 0.5), device=device, dtype=dtype)
 
-        _joint_range_check(self._brightness, "brightness", (0, 2))
-        _joint_range_check(self._contrast, "contrast", (0, float('inf')))
-        _joint_range_check(self._hue, "hue", (-0.5, 0.5))
-        _joint_range_check(self._saturation, "saturation", (0, float('inf')))
+        _joint_range_check(brightness, "brightness", (0, 2))
+        _joint_range_check(contrast, "contrast", (0, float('inf')))
+        _joint_range_check(hue, "hue", (-0.5, 0.5))
+        _joint_range_check(saturation, "saturation", (0, float('inf')))
 
+        self.brightness_sampler = Uniform(brightness[0], brightness[1], validate_args=False)
+        self.contrast_sampler = Uniform(contrast[0], contrast[1], validate_args=False)
+        self.hue_sampler = Uniform(hue[0], hue[1], validate_args=False)
+        self.saturation_sampler = Uniform(saturation[0], saturation[1], validate_args=False)
         self.randperm = partial(torch.randperm, device=device, dtype=dtype)
-        self.generic_sampler = Uniform(0, 1)
 
     def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.brightness, self.contrast, self.hue, self.saturation])
-
-        generic_factors = _adapted_rsampling((batch_size * 4,), self.generic_sampler, same_on_batch).to(
-            device=_device, dtype=_dtype
-        )
-
-        brightness_factor = (generic_factors[:batch_size] - self._brightness[0]) / (
-            self._brightness[1] - self._brightness[0]
-        )
-
+        brightness_factor = _adapted_rsampling((batch_size,), self.brightness_sampler, same_on_batch)
+        contrast_factor = _adapted_rsampling((batch_size,), self.contrast_sampler, same_on_batch)
+        hue_factor = _adapted_rsampling((batch_size,), self.hue_sampler, same_on_batch)
+        saturation_factor = _adapted_rsampling((batch_size,), self.saturation_sampler, same_on_batch)
         return dict(
-            brightness_factor=brightness_factor,
-            contrast_factor=...,
-            hue_factor=...,
-            saturation_factor=...,
+            brightness_factor=brightness_factor.to(device=_device, dtype=_dtype),
+            contrast_factor=contrast_factor.to(device=_device, dtype=_dtype),
+            hue_factor=hue_factor.to(device=_device, dtype=_dtype),
+            saturation_factor=saturation_factor.to(device=_device, dtype=_dtype),
             order=self.randperm(4).to(device=_device, dtype=_dtype).long(),
         )
