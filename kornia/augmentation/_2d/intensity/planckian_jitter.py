@@ -2,83 +2,77 @@ from typing import Any, Dict, List, Optional, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.core import Tensor, stack
+from kornia.core import Tensor, stack, tensor
+from kornia.utils import get_cuda_device_if_available
 
-_planckian_coeffs = {
-    'blackbody': Tensor(
-        [
-            [0.6743, 0.4029, 0.0013],
-            [0.6281, 0.4241, 0.1665],
-            [0.5919, 0.4372, 0.2513],
-            [0.5623, 0.4457, 0.3154],
-            [0.5376, 0.4515, 0.3672],
-            [0.5163, 0.4555, 0.4103],
-            [0.4979, 0.4584, 0.4468],
-            [0.4816, 0.4604, 0.4782],
-            [0.4672, 0.4619, 0.5053],
-            [0.4542, 0.4630, 0.5289],
-            [0.4426, 0.4638, 0.5497],
-            [0.4320, 0.4644, 0.5681],
-            [0.4223, 0.4648, 0.5844],
-            [0.4135, 0.4651, 0.5990],
-            [0.4054, 0.4653, 0.6121],
-            [0.3980, 0.4654, 0.6239],
-            [0.3911, 0.4655, 0.6346],
-            [0.3847, 0.4656, 0.6444],
-            [0.3787, 0.4656, 0.6532],
-            [0.3732, 0.4656, 0.6613],
-            [0.3680, 0.4655, 0.6688],
-            [0.3632, 0.4655, 0.6756],
-            [0.3586, 0.4655, 0.6820],
-            [0.3544, 0.4654, 0.6878],
-            [0.3503, 0.4653, 0.6933],
-        ]
-    ),
-    'CIED': Tensor(
-        [
-            [0.5829, 0.4421, 0.2288],
-            [0.5510, 0.4514, 0.2948],
-            [0.5246, 0.4576, 0.3488],
-            [0.5021, 0.4618, 0.3941],
-            [0.4826, 0.4646, 0.4325],
-            [0.4654, 0.4667, 0.4654],
-            [0.4502, 0.4681, 0.4938],
-            [0.4364, 0.4692, 0.5186],
-            [0.4240, 0.4700, 0.5403],
-            [0.4127, 0.4705, 0.5594],
-            [0.4023, 0.4709, 0.5763],
-            [0.3928, 0.4713, 0.5914],
-            [0.3839, 0.4715, 0.6049],
-            [0.3757, 0.4716, 0.6171],
-            [0.3681, 0.4717, 0.6281],
-            [0.3609, 0.4718, 0.6380],
-            [0.3543, 0.4719, 0.6472],
-            [0.3480, 0.4719, 0.6555],
-            [0.3421, 0.4719, 0.6631],
-            [0.3365, 0.4719, 0.6702],
-            [0.3313, 0.4719, 0.6766],
-            [0.3263, 0.4719, 0.6826],
-            [0.3217, 0.4719, 0.6882],
-        ]
-    ),
-}
 
-_planckian_coeffs_ratio = {
-    'blackbody': stack(
-        (
-            _planckian_coeffs['blackbody'][:, 0] / _planckian_coeffs['blackbody'][:, 1],
-            _planckian_coeffs['blackbody'][:, 2] / _planckian_coeffs['blackbody'][:, 1],
-        ),
-        1,
-    ),
-    'CIED': stack(
-        (
-            _planckian_coeffs['CIED'][:, 0] / _planckian_coeffs['CIED'][:, 1],
-            _planckian_coeffs['CIED'][:, 2] / _planckian_coeffs['CIED'][:, 1],
-        ),
-        1,
-    ),
-}
+def get_planckian_coeffs(mode: str) -> Tensor:
+    default_device = get_cuda_device_if_available()
+    if mode.lower() == 'blackbody':
+        coefs = tensor(
+            [
+                [0.6743, 0.4029, 0.0013],
+                [0.6281, 0.4241, 0.1665],
+                [0.5919, 0.4372, 0.2513],
+                [0.5623, 0.4457, 0.3154],
+                [0.5376, 0.4515, 0.3672],
+                [0.5163, 0.4555, 0.4103],
+                [0.4979, 0.4584, 0.4468],
+                [0.4816, 0.4604, 0.4782],
+                [0.4672, 0.4619, 0.5053],
+                [0.4542, 0.4630, 0.5289],
+                [0.4426, 0.4638, 0.5497],
+                [0.4320, 0.4644, 0.5681],
+                [0.4223, 0.4648, 0.5844],
+                [0.4135, 0.4651, 0.5990],
+                [0.4054, 0.4653, 0.6121],
+                [0.3980, 0.4654, 0.6239],
+                [0.3911, 0.4655, 0.6346],
+                [0.3847, 0.4656, 0.6444],
+                [0.3787, 0.4656, 0.6532],
+                [0.3732, 0.4656, 0.6613],
+                [0.3680, 0.4655, 0.6688],
+                [0.3632, 0.4655, 0.6756],
+                [0.3586, 0.4655, 0.6820],
+                [0.3544, 0.4654, 0.6878],
+                [0.3503, 0.4653, 0.6933],
+            ],
+            device=default_device,
+        )
+
+    elif mode.upper() == 'CIED':
+        coefs = tensor(
+            [
+                [0.5829, 0.4421, 0.2288],
+                [0.5510, 0.4514, 0.2948],
+                [0.5246, 0.4576, 0.3488],
+                [0.5021, 0.4618, 0.3941],
+                [0.4826, 0.4646, 0.4325],
+                [0.4654, 0.4667, 0.4654],
+                [0.4502, 0.4681, 0.4938],
+                [0.4364, 0.4692, 0.5186],
+                [0.4240, 0.4700, 0.5403],
+                [0.4127, 0.4705, 0.5594],
+                [0.4023, 0.4709, 0.5763],
+                [0.3928, 0.4713, 0.5914],
+                [0.3839, 0.4715, 0.6049],
+                [0.3757, 0.4716, 0.6171],
+                [0.3681, 0.4717, 0.6281],
+                [0.3609, 0.4718, 0.6380],
+                [0.3543, 0.4719, 0.6472],
+                [0.3480, 0.4719, 0.6555],
+                [0.3421, 0.4719, 0.6631],
+                [0.3365, 0.4719, 0.6702],
+                [0.3313, 0.4719, 0.6766],
+                [0.3263, 0.4719, 0.6826],
+                [0.3217, 0.4719, 0.6882],
+            ],
+            device=default_device,
+        )
+    else:
+        raise RuntimeError(f'Unexpected mode. Gotcha {mode}')
+
+    return stack((coefs[:, 0] / coefs[:, 1], coefs[:, 2] / coefs[:, 1]), 1)
 
 
 class RandomPlanckianJitter(IntensityAugmentationBase2D):
@@ -163,10 +157,11 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         if isinstance(select_from, int):
             select_from = [select_from]
 
+        _pl = get_planckian_coeffs(mode)
         if select_from is not None:
-            self.register_buffer('pl', _planckian_coeffs_ratio[mode][select_from])
+            self.register_buffer('pl', _pl[select_from])
         else:
-            self.register_buffer('pl', _planckian_coeffs_ratio[mode])
+            self.register_buffer('pl', _pl)
 
         if not isinstance(self.pl, Tensor):
             raise TypeError(f'Expected the `pl` property be a Tensor. Gotcha {type(self.pl)}')
@@ -185,6 +180,9 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
 
         if not isinstance(self.pl, Tensor):
             raise TypeError(f'Expected the `pl` property be a Tensor. Gotcha {type(self.pl)}')
+        else:
+            self.pl = self.pl.to(device=input.device)
+
         coeffs = self.pl[list_idx]
 
         r_w = coeffs[:, 0][..., None, None]
