@@ -50,14 +50,13 @@ class Attention(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         qkv = self.to_qkv(x).chunk(3, dim=-1)
 
-        B, P, N, HD = qkv[0].shape
-        q, k, v = map(lambda t: t.contiguous().view(B, P, self.heads, N, HD // self.heads), qkv)
+        b, p, n, hd = qkv[0].shape
+        q, k, v = map(lambda t: t.reshape(b, p, n, self.heads, hd // self.heads).transpose(2, 3), qkv)
 
         dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale
         attn = self.attend(dots)
         out = torch.matmul(attn, v)
-        B, P, H, N, D = out.shape
-        out = out.view(B, P, N, H * D)
+        out = out.transpose(2, 3).reshape(b, p, n, hd)
         return self.to_out(out)
 
 
@@ -189,11 +188,21 @@ class MobileViTBlock(nn.Module):
         x = self.conv1(x)
         x = self.conv2(x)
 
-        # Global representations
         b, d, h, w = x.shape
-        x = x.view(b, self.ph * self.pw, (h // self.ph) * (w // self.pw), d)
+        nh, nw = h // self.ph, w // self.pw
+
+        # Global representations
+        # [b, d, h, w] -> [b * d * nh, nw, ph, pw]
+        x = x.reshape(b * d * nh, self.ph, nw, self.pw).transpose(1, 2)
+        # [b * d * nh, nw, ph, pw] -> [b, (ph pw), (nh nw), d]
+        x = x.reshape(b, d, nh * nw, self.ph * self.pw).transpose(1, 3)
+
         x = self.transformer(x)
-        x = x.view(b, d, h, w)
+
+        # [b, (ph pw), (nh nw), d] -> [b * d * nh, nw, ph, pw]
+        x = x.transpose(1, 3).reshape(b * d * nh, nw, self.ph, self.pw)
+        # [b * d * nh, nw, ph, pw] -> [b, d, h, w]
+        x = x.transpose(1, 2).reshape(b, d, h, w)
 
         # Fusion
         x = self.conv3(x)
