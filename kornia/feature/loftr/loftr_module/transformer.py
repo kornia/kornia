@@ -89,7 +89,6 @@ class LocalFeatureTransformer(nn.Module):
             mask0 (torch.Tensor): [N, L] (optional)
             mask1 (torch.Tensor): [N, S] (optional)
         """
-
         if self.d_model != feat0.size(2):
             msg = "the feature number of src and transformer must be equal"
             raise ValueError(msg)
