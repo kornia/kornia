@@ -73,7 +73,6 @@ class FullAttention(Module):
         Returns:
             queried_values: (N, L, H, D)
         """
-
         # Compute the unnormalized attention and apply the masks
         QK = torch.einsum("nlhd,nshd->nlsh", queries, keys)
         if kv_mask is not None:

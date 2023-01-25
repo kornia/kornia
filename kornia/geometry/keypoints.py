@@ -138,7 +138,6 @@ class Keypoints:
         Returns:
             Keypoints tensor :math:`(B, N, 2)`
         """
-
         if as_padded_sequence:
             raise NotImplementedError
         return self._data
@@ -273,7 +272,6 @@ class Keypoints3D:
         Returns:
             Keypoints tensor :math:`(B, N, 3)`
         """
-
         if as_padded_sequence:
             raise NotImplementedError
         return self._data

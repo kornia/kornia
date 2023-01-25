@@ -96,7 +96,6 @@ class RaySampler:
             cameras: scene cameras: PinholeCamera
             points_2d_camera: a dictionary that groups Point2D objects by total number of casted rays
         """
-
         # Unproject 2d points in image plane to 3d world for two depths
         origins = []
         directions = []
