@@ -48,7 +48,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ['Ubuntu-latest', 'Windows-latest', 'MacOS-latest']
+        os: ['Ubuntu-latest', 'Windows-latest'] #, 'MacOS-latest'] add it when https://github.com/pytorch/pytorch/pull/89262 be merged
         pytorch-dtype: ['float32', 'float64']
     uses: ./.github/workflows/tests.yml
     with:
