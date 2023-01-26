@@ -66,10 +66,10 @@ repos:
           - "B101,B311"
 
   - repo: https://github.com/PyCQA/docformatter
-    rev: v1.6.0.rc1
+    rev: v1.5.1
     hooks:
       - id: docformatter
-        args: [--in-place, --wrap-summaries=115, --wrap-descriptions=120,  --pre-summary-space]
+        args: [--in-place, --wrap-summaries=115, --wrap-descriptions=120]
 
   - repo: https://github.com/asottile/yesqa
     rev: v1.4.0
