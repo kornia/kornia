@@ -100,8 +100,9 @@ class OperationBase(nn.Module):
     def eval(self: T) -> T:
         return self.train(False)
 
-    def forward(self, input: Tensor) -> Tensor:
-        mag = self.magnitude
+    def forward(self, input: Tensor, mag: Optional[Tensor] = None) -> Tensor:
+        if mag is None:
+            mag = self.magnitude
 
         # Need to setup the sampler again for each update.
         # Otherwise, an error for updating the same graph twice will be thrown.

@@ -4,6 +4,7 @@ import inspect
 
 import torch
 from kornia.augmentation.auto.autoaugment import AutoAugment
+from kornia.augmentation.auto.randaugment.randaugment import RandAugment, default_policy as randaug_config
 from kornia.augmentation.auto.operations import OperationBase
 import kornia.augmentation.auto.operations.ops as ops
 
@@ -44,6 +45,14 @@ class TestAutoAugment:
 
     @pytest.mark.parametrize("policy", ["imagenet", "cifar10", "svhn"])
     def test_smoke(self, policy):
-        aug = AutoAugment("imagenet")
+        aug = AutoAugment(policy)
+        in_tensor = torch.rand(10, 3, 10, 10, requires_grad=True)
+        aug(in_tensor)
+
+
+class TestRandAugment:
+
+    def test_smoke(self):
+        aug = RandAugment(n=len(randaug_config), m=15)
         in_tensor = torch.rand(10, 3, 10, 10, requires_grad=True)
         aug(in_tensor)

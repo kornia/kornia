@@ -1,4 +1,5 @@
 from typing import List, Union
+from types import ModuleType
 
 import torch
 import torch.nn as nn

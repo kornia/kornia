@@ -24,7 +24,7 @@ from kornia.grad_estimator import STEFunction
 
 __all__ = [
     "Brightness", "Contrast", "Hue", "Saturate", "Equalize", "Gray", "Invert", "Posterize",
-    "Solarize", "Sharpness", "HorizontalFlip", "VerticalFlip", "Rotate",
+    "Solarize", "SolarizeAdd", "Sharpness", "HorizontalFlip", "VerticalFlip", "Rotate",
 ]
 
 
@@ -162,6 +162,22 @@ class Solarize(OperationBase):
         super(Solarize, self).__init__(
             RandomSolarize(magnitude_range, additions=0., same_on_batch=False, p=initial_probability),
             initial_magnitude=[("thresholds", initial_magnitude)],
+            temperature=temperature,
+            gradient_estimator=STEFunction
+        )
+
+
+class SolarizeAdd(OperationBase):
+    def __init__(
+        self,
+        initial_magnitude: Optional[float] = 0.,
+        initial_probability: float = 0.5,
+        magnitude_range: Tuple[float, float] = (- 0.3, 0.3),
+        temperature: float = 0.1,
+    ):
+        super(SolarizeAdd, self).__init__(
+            RandomSolarize(thresholds=0.5, additions=magnitude_range, same_on_batch=False, p=initial_probability),
+            initial_magnitude=[("additions", initial_magnitude)],
             temperature=temperature,
             gradient_estimator=STEFunction
         )

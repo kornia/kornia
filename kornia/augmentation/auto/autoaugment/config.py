@@ -39,7 +39,7 @@ cifar10_policy: List[SUBPLOLICY_CONFIG] = [
     # (("shear_y", 0.5, 8), ("translate_y", 0.7, 9)),
     # (("auto_contrast", 0.5, None), ("equalize", 0.9, None)),
     # (("shear_y", 0.2, 7), ("posterize", 0.3, 7)),
-    (("color", 0.4, 3), ("brightness", 0.6, 7)),
+    # (("color", 0.4, 3), ("brightness", 0.6, 7)),
     (("sharpness", 0.3, 9), ("brightness", 0.7, 9)),
     (("equalize", 0.6, None), ("equalize", 0.5, None)),
     (("contrast", 0.6, 7), ("sharpness", 0.6, 5)),
