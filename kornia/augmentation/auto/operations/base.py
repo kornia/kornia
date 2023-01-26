@@ -18,7 +18,8 @@ class OperationBase(nn.Module):
         operation: Kornia augmentation module.
         initial_magnitude: targetted magnitude parameter name and its initial magnitude value.
             The magnitude parameter name shall align with the attribute inside the random_generator
-            in each augmentation. None means no magnitude.
+            in each augmentation. If None, the augmentation will be randomly applied according to
+            the augmentation sampling range.
         temperature: temperature for RelaxedBernoulli distribution used during training.
         is_batch_operation: determine if to obtain the probability from `p` or `p_batch`.
             Set to True for most non-shape-persistent operations (e.g. cropping).
@@ -27,7 +28,7 @@ class OperationBase(nn.Module):
     def __init__(
         self,
         operation: _AugmentationBase,
-        initial_magnitude: Optional[List[Tuple[str, float]]] = None,
+        initial_magnitude: Optional[List[Tuple[str, Optional[float]]]] = None,
         temperature: float = 0.1,
         is_batch_operation: bool = False,
         magnitude_fn: Optional[Callable] = None,
@@ -66,14 +67,17 @@ class OperationBase(nn.Module):
             self.magnitude_range = None
         else:
             self._factor_name = initial_magnitude[0][0]
-            self._magnitude = nn.Parameter(
-                torch.empty(1).fill_(initial_magnitude[0][1])
-            )
             if self.op._param_generator is not None:
                 self.magnitude_range = getattr(self.op._param_generator, self._factor_name)
             else:
                 raise ValueError(
                     f"No valid magnitude `{self._factor_name}` found in `{self.op._param_generator}`.")
+
+            self._magnitude = None
+            if initial_magnitude[0][1] is not None:
+                self._magnitude = nn.Parameter(
+                    torch.empty(1).fill_(initial_magnitude[0][1])
+                )
 
     def _update_probability_gen(self, relaxation: bool) -> None:
         if relaxation:

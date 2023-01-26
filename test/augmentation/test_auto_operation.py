@@ -3,8 +3,9 @@ import pytest
 import inspect
 
 import torch
-from kornia.augmentation.meta.operations import OperationBase
-import kornia.augmentation.meta.operations.ops as ops
+from kornia.augmentation.auto.autoaugment import AutoAugment
+from kornia.augmentation.auto.operations import OperationBase
+import kornia.augmentation.auto.operations.ops as ops
 
 
 def _find_all_ops() -> List[OperationBase]:
@@ -23,7 +24,7 @@ class TestOperations:
 
         optimizer = torch.optim.SGD(op.parameters(), lr=10, momentum=0.9)
 
-        for _ in range(2):
+        for _ in range(5):
             in_tensor = torch.rand(10, 3, 10, 10, requires_grad=True)
             optimizer.zero_grad()
             x = op(in_tensor)
@@ -37,3 +38,12 @@ class TestOperations:
             # NOTE: Equalize is somehow not working yet to update the probabilities.
             return
         assert init_prob != op.probability.item()
+
+
+class TestAutoAugment:
+
+    @pytest.mark.parametrize("policy", ["imagenet", "cifar10", "svhn"])
+    def test_smoke(self, policy):
+        aug = AutoAugment("imagenet")
+        in_tensor = torch.rand(10, 3, 10, 10, requires_grad=True)
+        aug(in_tensor)

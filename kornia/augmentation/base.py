@@ -117,9 +117,9 @@ class _BasicAugmentationBase(Module):
     ) -> Tensor:
         batch_prob: Tensor
         if p_batch == 1:
-            batch_prob = tensor([True])
+            batch_prob = tensor([1.])
         elif p_batch == 0:
-            batch_prob = tensor([False])
+            batch_prob = tensor([0.])
         else:
             # NOTE: there is no simple way to know if the sampler has `rsample` or not
             if isinstance(self._p_batch_gen, (RelaxedBernoulli,)):
@@ -130,9 +130,9 @@ class _BasicAugmentationBase(Module):
         if batch_prob.sum().item() == 1:
             elem_prob: Tensor
             if p == 1:
-                elem_prob = tensor([True] * batch_shape[0])
+                elem_prob = tensor([1.] * batch_shape[0])
             elif p == 0:
-                elem_prob = tensor([False] * batch_shape[0])
+                elem_prob = tensor([0.] * batch_shape[0])
             else:
                 if isinstance(self._p_gen, (RelaxedBernoulli,)):
                     elem_prob = _adapted_rsampling((batch_shape[0],), self._p_gen, same_on_batch)

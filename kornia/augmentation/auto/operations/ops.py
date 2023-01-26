@@ -1,8 +1,8 @@
-from typing import Tuple
+from typing import Optional, Tuple
 
 import torch
 
-from kornia.augmentation.meta.operations.base import OperationBase
+from kornia.augmentation.auto.operations.base import OperationBase
 from kornia.augmentation import (
     RandomAffine,
     RandomBrightness,
@@ -31,7 +31,7 @@ __all__ = [
 class Brightness(OperationBase):
     def __init__(
         self,
-        initial_magnitude: float = 0.5,
+        initial_magnitude: Optional[float] = 0.5,
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (0.2, 1.8),
         temperature: float = 0.1,
@@ -46,7 +46,7 @@ class Brightness(OperationBase):
 class Contrast(OperationBase):
     def __init__(
         self,
-        initial_magnitude: float = 0.5,
+        initial_magnitude: Optional[float] = 0.5,
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (0.2, 1.8),
         temperature: float = 0.1,
@@ -61,7 +61,7 @@ class Contrast(OperationBase):
 class Hue(OperationBase):
     def __init__(
         self,
-        initial_magnitude: float = 0.,
+        initial_magnitude: Optional[float] = 0.,
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (-.5, .5),
         temperature: float = 0.1,
@@ -76,7 +76,7 @@ class Hue(OperationBase):
 class Saturate(OperationBase):
     def __init__(
         self,
-        initial_magnitude: float = 0.5,
+        initial_magnitude: Optional[float] = 0.5,
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (0.2, 1.8),
         temperature: float = 0.1,
@@ -137,7 +137,7 @@ class Posterize(OperationBase):
 
     def __init__(
         self,
-        initial_magnitude: float = 4.,
+        initial_magnitude: Optional[float] = 4.,
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (1, 8),
         temperature: float = 0.1,
@@ -154,7 +154,7 @@ class Posterize(OperationBase):
 class Solarize(OperationBase):
     def __init__(
         self,
-        initial_magnitude: float = 0.5,
+        initial_magnitude: Optional[float] = 0.5,
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (0., 1.),
         temperature: float = 0.1,
@@ -170,9 +170,9 @@ class Solarize(OperationBase):
 class Sharpness(OperationBase):
     def __init__(
         self,
-        initial_magnitude: float = 0.5,
+        initial_magnitude: Optional[float] = 0.5,
         initial_probability: float = 0.5,
-        magnitude_range: Tuple[float, float] = (0., 1.),
+        magnitude_range: Tuple[float, float] = (0.1, 1.9),
         temperature: float = 0.1,
     ):
         super(Sharpness, self).__init__(
@@ -217,7 +217,7 @@ class Rotate(OperationBase):
 
     def __init__(
         self,
-        initial_magnitude: float = 15.,
+        initial_magnitude: Optional[float] = 15.,
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (-30., 30.),
         temperature: float = 0.1,
