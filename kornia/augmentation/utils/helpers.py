@@ -19,6 +19,7 @@ def _validate_input(f: Callable[..., Any]) -> Callable[..., Any]:
     Returns:
         the wrapped function after input is validated.
     """
+
     @wraps(f)
     def wrapper(input: Tensor, *args, **kwargs):
         if not torch.is_tensor(input):
@@ -41,6 +42,7 @@ def _validate_input3d(f: Callable[..., Any]) -> Callable[..., Any]:
     Returns:
         the wrapped function after input is validated.
     """
+
     @wraps(f)
     def wrapper(input: Tensor, *args, **kwargs):
         if not torch.is_tensor(input):
