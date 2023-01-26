@@ -3964,14 +3964,14 @@ class TestPlanckianJitter(BaseTester):
 
     def test_planckian_jitter_blackbody(self, device, dtype):
         torch.manual_seed(0)
-        f = RandomPlanckianJitter(select_from=1).to(device, dtype)
+        f = RandomPlanckianJitter(select_from=1)
         input = self._get_input(device, dtype)
         expected = self._get_expected_output_blackbody(device, dtype)
         self.assert_close(f(input), expected, low_tolerance=True)
 
     def test_planckian_jitter_cied(self, device, dtype):
         torch.manual_seed(0)
-        f = RandomPlanckianJitter(mode='CIED', select_from=1).to(device, dtype)
+        f = RandomPlanckianJitter(mode='CIED', select_from=1)
         input = self._get_input(device, dtype)
         expected = self._get_expected_output_cied(device, dtype)
         self.assert_close(f(input), expected, low_tolerance=True)
@@ -3981,7 +3981,7 @@ class TestPlanckianJitter(BaseTester):
         input = self._get_input(device, dtype).repeat(2, 1, 1, 1)
 
         select_from = [1, 2, 24]
-        f = RandomPlanckianJitter(select_from=select_from).to(device, dtype)
+        f = RandomPlanckianJitter(select_from=select_from)
         expected = self._get_expected_output_batch(device, dtype)
         self.assert_close(f(input), expected, low_tolerance=True)
 
@@ -3990,7 +3990,7 @@ class TestPlanckianJitter(BaseTester):
         input = self._get_input(device, dtype).repeat(2, 1, 1, 1)
 
         select_from = [1, 2, 24, 3, 4, 5]
-        f = RandomPlanckianJitter(select_from=select_from, same_on_batch=True, p=1.0).to(device, dtype)
+        f = RandomPlanckianJitter(select_from=select_from, same_on_batch=True, p=1.0)
         expected = self._get_expected_output_same_on_batch(device, dtype)
         self.assert_close(f(input), expected, low_tolerance=True)
 
