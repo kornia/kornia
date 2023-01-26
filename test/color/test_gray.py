@@ -87,13 +87,12 @@ class TestGrayscaleToRgb(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.grayscale_to_rgb, (img,), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit
-    def test_jit(self, device, dtype):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         B, C, H, W = 2, 1, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.grayscale_to_rgb
-        op_jit = torch.jit.script(op)
-        assert_close(op(img), op_jit(img))
+        op_optimized = torch_optimizer(op)
+        assert_close(op(img), op_optimized(img))
 
     def test_module(self, device, dtype):
         B, C, H, W = 2, 1, 4, 4
@@ -202,13 +201,12 @@ class TestRgbToGrayscale(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_grayscale, (img,), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit
-    def test_jit(self, device, dtype):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.rgb_to_grayscale
-        op_jit = torch.jit.script(op)
-        assert_close(op(img), op_jit(img))
+        op_optimized = torch_optimizer(op)
+        assert_close(op(img), op_optimized(img))
 
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
@@ -294,13 +292,12 @@ class TestBgrToGrayscale(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.bgr_to_grayscale, (img,), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit
-    def test_jit(self, device, dtype):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.rgb_to_grayscale
-        op_jit = torch.jit.script(op)
-        assert_close(op(img), op_jit(img))
+        op_optimized = torch_optimizer(op)
+        assert_close(op(img), op_optimized(img))
 
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
