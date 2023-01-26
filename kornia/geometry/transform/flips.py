@@ -124,8 +124,7 @@ def hflip(input: Tensor) -> Tensor:
     Returns:
         The horizontally flipped image tensor.
     """
-    w = input.shape[-1]
-    return input[..., torch.arange(w - 1, -1, -1, device=input.device)]
+    return input.flip(-1).contiguous()
 
 
 def vflip(input: Tensor) -> Tensor:
@@ -141,5 +140,4 @@ def vflip(input: Tensor) -> Tensor:
     Returns:
         The vertically flipped image tensor.
     """
-    h = input.shape[-2]
-    return input[..., torch.arange(h - 1, -1, -1, device=input.device), :]
+    return input.flip(-2).contiguous()
