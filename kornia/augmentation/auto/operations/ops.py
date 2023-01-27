@@ -28,6 +28,15 @@ __all__ = [
 
 
 class Brightness(OperationBase):
+    """Apply brightness operation.
+
+    Args:
+        initial_probability: the initial probability.
+        initial_magnitude: the initial magnitude.
+        magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
+        temperature: temperature for RelaxedBernoulli distribution used during training.
+    """
+
     def __init__(
         self,
         initial_magnitude: Optional[float] = 0.5,
@@ -43,6 +52,15 @@ class Brightness(OperationBase):
 
 
 class Contrast(OperationBase):
+    """Apply contrast operation.
+
+    Args:
+        initial_probability: the initial probability.
+        initial_magnitude: the initial magnitude.
+        magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
+        temperature: temperature for RelaxedBernoulli distribution used during training.
+    """
+
     def __init__(
         self,
         initial_magnitude: Optional[float] = 0.5,
@@ -58,6 +76,15 @@ class Contrast(OperationBase):
 
 
 class Hue(OperationBase):
+    """Apply hue operation.
+
+    Args:
+        initial_probability: the initial probability.
+        initial_magnitude: the initial magnitude.
+        magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
+        temperature: temperature for RelaxedBernoulli distribution used during training.
+    """
+
     def __init__(
         self,
         initial_magnitude: Optional[float] = 0.,
@@ -73,6 +100,15 @@ class Hue(OperationBase):
 
 
 class Saturate(OperationBase):
+    """Apply saturation operation.
+
+    Args:
+        initial_probability: the initial probability.
+        initial_magnitude: the initial magnitude.
+        magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
+        temperature: temperature for RelaxedBernoulli distribution used during training.
+    """
+
     def __init__(
         self,
         initial_magnitude: Optional[float] = 0.5,
@@ -89,6 +125,19 @@ class Saturate(OperationBase):
 
 # TODO: Equalize cannot update probabilities yet.
 class Equalize(OperationBase):
+    """Apply equalize operation.
+
+    Args:
+        initial_probability: the initial probability.
+        temperature: temperature for RelaxedBernoulli distribution used during training.
+
+    Note:
+        Equalize cannot update probabilities yet.
+
+    Note:
+        STE gradient estimator applied for back propagation.
+    """
+
     def __init__(
         self,
         initial_probability: float = 0.5,
@@ -103,6 +152,13 @@ class Equalize(OperationBase):
 
 
 class Gray(OperationBase):
+    """Apply grayscale operation.
+
+    Args:
+        initial_probability: the initial probability.
+        temperature: temperature for RelaxedBernoulli distribution used during training.
+    """
+
     def __init__(
         self,
         initial_probability: float = 0.5,
@@ -116,6 +172,13 @@ class Gray(OperationBase):
 
 
 class Invert(OperationBase):
+    """Apply invert operation.
+
+    Args:
+        initial_probability: the initial probability.
+        temperature: temperature for RelaxedBernoulli distribution used during training.
+    """
+
     def __init__(
         self,
         initial_probability: float = 0.5,
@@ -129,6 +192,17 @@ class Invert(OperationBase):
 
 
 class Posterize(OperationBase):
+    """Apply posterize operation.
+
+    Args:
+        initial_magnitude: the initial magnitude.
+        initial_probability: the initial probability.
+        magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
+        temperature: temperature for RelaxedBernoulli distribution used during training.
+
+    Note:
+        STE gradient estimator applied for back propagation.
+    """
 
     @staticmethod
     def _process_magnitude(magnitude: Tensor) -> Tensor:
@@ -151,6 +225,18 @@ class Posterize(OperationBase):
 
 
 class Solarize(OperationBase):
+    """Apply solarize operation.
+
+    Args:
+        initial_magnitude: the initial magnitude.
+        initial_probability: the initial probability.
+        magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
+        temperature: temperature for RelaxedBernoulli distribution used during training.
+
+    Note:
+        STE gradient estimator applied for back propagation.
+    """
+
     def __init__(
         self,
         initial_magnitude: Optional[float] = 0.5,
@@ -167,6 +253,18 @@ class Solarize(OperationBase):
 
 
 class SolarizeAdd(OperationBase):
+    """Apply solarize-addition operation with a fixed thresholds of 0.5.
+
+    Args:
+        initial_magnitude: the initial magnitude.
+        initial_probability: the initial probability.
+        magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
+        temperature: temperature for RelaxedBernoulli distribution used during training.
+
+    Note:
+        STE gradient estimator applied for back propagation.
+    """
+
     def __init__(
         self,
         initial_magnitude: Optional[float] = 0.,
@@ -183,6 +281,15 @@ class SolarizeAdd(OperationBase):
 
 
 class Sharpness(OperationBase):
+    """Apply sharpness operation.
+
+    Args:
+        initial_magnitude: the initial magnitude.
+        initial_probability: the initial probability.
+        magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
+        temperature: temperature for RelaxedBernoulli distribution used during training.
+    """
+
     def __init__(
         self,
         initial_magnitude: Optional[float] = 0.5,
@@ -198,6 +305,13 @@ class Sharpness(OperationBase):
 
 
 class HorizontalFlip(OperationBase):
+    """Apply horizontal flip operation.
+
+    Args:
+        initial_probability: the initial probability.
+        temperature: temperature for RelaxedBernoulli distribution used during training.
+    """
+
     def __init__(
         self,
         initial_probability: float = 0.5,
@@ -211,6 +325,13 @@ class HorizontalFlip(OperationBase):
 
 
 class VerticalFlip(OperationBase):
+    """Apply vertical flip operation.
+
+    Args:
+        initial_magnitude: the initial magnitude.
+        temperature: temperature for RelaxedBernoulli distribution used during training.
+    """
+
     def __init__(
         self,
         initial_probability: float = 0.5,
@@ -224,6 +345,14 @@ class VerticalFlip(OperationBase):
 
 
 class Rotate(OperationBase):
+    """Apply brightness operation.
+
+    Args:
+        initial_magnitude: the initial magnitude.
+        initial_probability: the initial probability.
+        magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
+        temperature: temperature for RelaxedBernoulli distribution used during training.
+    """
 
     @staticmethod
     def _process_magnitude(magnitude: Tensor) -> Tensor:
@@ -243,4 +372,3 @@ class Rotate(OperationBase):
             temperature=temperature,
             magnitude_fn=Rotate._process_magnitude
         )
-

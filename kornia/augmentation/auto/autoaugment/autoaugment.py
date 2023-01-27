@@ -1,5 +1,4 @@
 from typing import List, Union
-from types import ModuleType
 
 import torch
 import torch.nn as nn
@@ -17,6 +16,12 @@ from . import ops
 
 
 class SubPolicy(Module):
+    """Policy tuple for applying multiple operations.
+
+    Args:
+        operations: a list of operations to perform.
+    """
+
     def __init__(self, operations: List[OperationBase]) -> None:
         super().__init__()
         self.operations = operations
@@ -28,6 +33,12 @@ class SubPolicy(Module):
 
 
 class AutoAugment(Module):
+    """Apply AutoAugment :cite:`cubuk2018autoaugment` searched strategies.
+
+    Args:
+        policy: a customized policy config or presets of "imagenet", "cifar10", and "svhn".
+    """
+
     def __init__(self, policy: Union[str, List[SUBPLOLICY_CONFIG]] = "imagenet") -> None:
         super().__init__()
         if policy == "imagenet":
@@ -40,13 +51,13 @@ class AutoAugment(Module):
             _policy = policy
         else:
             raise NotImplementedError(f"Invalid policy `{policy}`.")
-        
+
         self.policies = self.compose_policy(_policy)
         selection_weights = torch.tensor([1. / len(self.policies)] * len(self.policies))
         self.rand_selector = Categorical(selection_weights)
 
     def compose_policy(self, policy: List[SUBPLOLICY_CONFIG]) -> nn.ModuleList:
-
+        """Obtain the policies according to the policy JSON."""
         def _get_subpolicy(subpolicy: SUBPLOLICY_CONFIG) -> SubPolicy:
             return SubPolicy([getattr(ops, name)(prob, mag) for name, prob, mag in subpolicy])
 

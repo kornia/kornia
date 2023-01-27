@@ -27,6 +27,12 @@ default_policy = [
 
 
 class TrivialAugment(Module):
+    """Apply TrivialAugment :cite:`muller2021trivialaugment` augmentation strategies.
+
+    Args:
+        policy: candidate transformations. If None, a default candidate list will be used.
+    """
+
     def __init__(self, policy: Optional[List[SUBPLOLICY_CONFIG]] = None) -> None:
         super().__init__()
 
@@ -40,6 +46,7 @@ class TrivialAugment(Module):
         self.rand_selector = Categorical(selection_weights)
 
     def compose_policy(self, policy: List[OperationBase]) -> nn.ModuleList:
+        """Obtain the policies according to the policy JSON."""
 
         def _get_op(subpolicy: SUBPLOLICY_CONFIG) -> OperationBase:
             name, low, high = subpolicy[0]

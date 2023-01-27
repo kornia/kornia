@@ -29,6 +29,14 @@ default_policy = [
 
 
 class RandAugment(Module):
+    """Apply RandAugment :cite:`cubuk2020randaugment` augmentation strategies.
+
+    Args:
+        n: the number of augmentations to apply sequentially.
+        m: magnitude for all the augmentations, ranged from [0, 30].
+        policy: candidate transformations. If None, a default candidate list will be used.
+    """
+
     def __init__(self, n: int, m: int, policy: Optional[List[SUBPLOLICY_CONFIG]] = None) -> None:
         super().__init__()
 
@@ -47,6 +55,7 @@ class RandAugment(Module):
         self.m = m
 
     def compose_policy(self, policy: List[OperationBase]) -> nn.ModuleList:
+        """Obtain the policies according to the policy JSON."""
 
         def _get_op(subpolicy: SUBPLOLICY_CONFIG) -> OperationBase:
             name, low, high = subpolicy[0]
