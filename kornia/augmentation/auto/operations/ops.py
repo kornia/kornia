@@ -4,7 +4,6 @@ import torch
 
 from kornia.augmentation.auto.operations.base import OperationBase
 from kornia.augmentation import (
-    RandomAffine,
     RandomBrightness,
     RandomContrast,
     RandomHue,

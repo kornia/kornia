@@ -4,7 +4,8 @@ import inspect
 
 import torch
 from kornia.augmentation.auto.autoaugment import AutoAugment
-from kornia.augmentation.auto.randaugment.randaugment import RandAugment, default_policy as randaug_config
+from kornia.augmentation.auto.trivial_augment import TrivialAugment
+from kornia.augmentation.auto.rand_augment.rand_augment import RandAugment, default_policy as randaug_config
 from kornia.augmentation.auto.operations import OperationBase
 import kornia.augmentation.auto.operations.ops as ops
 
@@ -54,5 +55,13 @@ class TestRandAugment:
 
     def test_smoke(self):
         aug = RandAugment(n=len(randaug_config), m=15)
+        in_tensor = torch.rand(10, 3, 10, 10, requires_grad=True)
+        aug(in_tensor)
+
+
+class TestTrivialAugment:
+
+    def test_smoke(self):
+        aug = TrivialAugment()
         in_tensor = torch.rand(10, 3, 10, 10, requires_grad=True)
         aug(in_tensor)
