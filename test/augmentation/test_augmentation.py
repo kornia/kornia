@@ -3391,7 +3391,7 @@ class TestRandomGaussianBlur(BaseTester):
         assert gradcheck(RandomGaussianBlur(kernel_size, sigma, "replicate", p=1.0), (input,), raise_exception=True)
 
     def test_jit(self, device, dtype):
-        op = kornia.filters.gaussian_blur2d_t
+        op = kornia.filters.gaussian_blur2d
         op_script = torch.jit.script(op)
         func_params = [(3, 3), torch.tensor([1.5, 1.5]).view(1, -1)]
         params = [(3, 3), torch.tensor([1.5, 1.5]).view(1, -1)]
@@ -3402,7 +3402,7 @@ class TestRandomGaussianBlur(BaseTester):
     def test_module(self, device, dtype):
         func_params = [(3, 3), torch.tensor([1.5, 1.5]).view(1, -1)]
         params = [(3, 3), (1.5, 1.5)]
-        op = kornia.filters.gaussian_blur2d_t
+        op = kornia.filters.gaussian_blur2d
         op_module = RandomGaussianBlur(*params)
 
         img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
