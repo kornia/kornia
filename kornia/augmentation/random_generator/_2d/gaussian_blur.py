@@ -1,4 +1,4 @@
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Union
 
 import torch
 from torch import Tensor
@@ -25,7 +25,7 @@ class RandomGaussianBlurGenerator(RandomGeneratorBase):
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
     """
 
-    def __init__(self, sigma: Tuple[float, float] = (0.1, 2.0)) -> None:
+    def __init__(self, sigma: Union[Tuple[float, float], Tensor] = (0.1, 2.0)) -> None:
         super().__init__()
         if sigma[1] < sigma[0]:
             raise TypeError(f"sigma_max should be higher than sigma_min: {sigma} passed.")

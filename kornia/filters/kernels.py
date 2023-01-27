@@ -1,6 +1,6 @@
 import math
 from math import sqrt
-from typing import List, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import torch
 
@@ -198,7 +198,7 @@ def get_diff_kernel_3x3() -> Tensor:
     return tensor([[-0.0, 0.0, 0.0], [-1.0, 0.0, 1.0], [-0.0, 0.0, 0.0]], device=get_cuda_device_if_available())
 
 
-def get_diff_kernel3d(device: Device = None, dtype: torch.dtype = None) -> Tensor:
+def get_diff_kernel3d(device: Optional[Device] = None, dtype: Optional[torch.dtype] = None) -> Tensor:
     """Utility function that returns a first order derivative kernel of 3x3x3."""
     kernel = tensor(
         [
@@ -224,7 +224,7 @@ def get_diff_kernel3d(device: Device = None, dtype: torch.dtype = None) -> Tenso
     return kernel.unsqueeze(1)
 
 
-def get_diff_kernel3d_2nd_order(device: Device = None, dtype: torch.dtype = None) -> Tensor:
+def get_diff_kernel3d_2nd_order(device: Optional[Device] = None, dtype: Optional[torch.dtype] = None) -> Tensor:
     """Utility function that returns a first order derivative kernel of 3x3x3."""
     kernel = tensor(
         [
