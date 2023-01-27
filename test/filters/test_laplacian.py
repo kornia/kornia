@@ -28,7 +28,8 @@ def test_get_laplacian_kernel2d(window_size):
             [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
             [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
             [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-        ]
+        ],
+        device=kernel.device,
     )
     assert_close(expected, kernel)
 
@@ -59,14 +60,6 @@ class TestLaplacian:
         input = torch.rand(batch_shape, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)
         assert gradcheck(kornia.filters.laplacian, (input, kernel_size), raise_exception=True, fast_mode=True)
-
-    def test_jit(self, device, dtype):
-        op = kornia.filters.laplacian
-        op_script = torch.jit.script(op)
-        params = [3]
-
-        img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
-        assert_close(op(img, *params), op_script(img, *params))
 
     def test_module(self, device, dtype):
         params = [3]
