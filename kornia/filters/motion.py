@@ -1,13 +1,12 @@
 from typing import Tuple, Union
 
-import torch
-import torch.nn as nn
+from kornia.core import Module, Tensor
 
 from .filter import filter2d, filter3d
 from .kernels_geometry import get_motion_kernel2d, get_motion_kernel3d
 
 
-class MotionBlur(nn.Module):
+class MotionBlur(Module):
     r"""Blur 2D images (4D tensor) using the motion filter.
 
     Args:
@@ -46,11 +45,11 @@ class MotionBlur(nn.Module):
             f'angle={self.angle}, direction={self.direction}, border_type={self.border_type})'
         )
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: Tensor):
         return motion_blur(x, self.kernel_size, self.angle, self.direction, self.border_type)
 
 
-class MotionBlur3D(nn.Module):
+class MotionBlur3D(Module):
     r"""Blur 3D volumes (5D tensor) using the motion filter.
 
     Args:
@@ -101,18 +100,18 @@ class MotionBlur3D(nn.Module):
             f'angle={self.angle}, direction={self.direction}, border_type={self.border_type})'
         )
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: Tensor):
         return motion_blur3d(x, self.kernel_size, self.angle, self.direction, self.border_type)
 
 
 def motion_blur(
-    input: torch.Tensor,
+    input: Tensor,
     kernel_size: int,
-    angle: Union[float, torch.Tensor],
-    direction: Union[float, torch.Tensor],
+    angle: Union[float, Tensor],
+    direction: Union[float, Tensor],
     border_type: str = 'constant',
     mode: str = 'nearest',
-) -> torch.Tensor:
+) -> Tensor:
     r"""Perform motion blur on tensor images.
 
     .. image:: _static/img/motion_blur.png
@@ -147,18 +146,18 @@ def motion_blur(
     """
     if border_type not in ["constant", "reflect", "replicate", "circular"]:
         raise AssertionError
-    kernel: torch.Tensor = get_motion_kernel2d(kernel_size, angle, direction, mode)
+    kernel: Tensor = get_motion_kernel2d(kernel_size, angle, direction, mode)
     return filter2d(input, kernel, border_type)
 
 
 def motion_blur3d(
-    input: torch.Tensor,
+    input: Tensor,
     kernel_size: int,
-    angle: Union[Tuple[float, float, float], torch.Tensor],
-    direction: Union[float, torch.Tensor],
+    angle: Union[Tuple[float, float, float], Tensor],
+    direction: Union[float, Tensor],
     border_type: str = 'constant',
     mode: str = 'nearest',
-) -> torch.Tensor:
+) -> Tensor:
     r"""Perform motion blur on 3D volumes (5D tensor).
 
     Args:
@@ -191,5 +190,5 @@ def motion_blur3d(
     """
     if border_type not in ["constant", "reflect", "replicate", "circular"]:
         raise AssertionError
-    kernel: torch.Tensor = get_motion_kernel3d(kernel_size, angle, direction, mode)
+    kernel: Tensor = get_motion_kernel3d(kernel_size, angle, direction, mode)
     return filter3d(input, kernel, border_type)

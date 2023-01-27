@@ -1,5 +1,5 @@
 import math
-from typing import Tuple
+from typing import Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -16,7 +16,7 @@ def canny(
     input: torch.Tensor,
     low_threshold: float = 0.1,
     high_threshold: float = 0.2,
-    kernel_size: Tuple[int, int] = (5, 5),
+    kernel_size: Union[Tuple[int, int], int] = (5, 5),
     sigma: Tuple[float, float] = (1, 1),
     hysteresis: bool = True,
     eps: float = 1e-6,

@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Union
 
 import torch
 import torch.nn.functional as F
@@ -43,7 +43,7 @@ class BlurPool2D(Module):
                   [0.0000, 0.0625, 0.3125]]]])
     """
 
-    def __init__(self, kernel_size: int, stride: int = 2):
+    def __init__(self, kernel_size: Union[Tuple[int, int], int], stride: int = 2):
         super().__init__()
         self.kernel_size = kernel_size
         self.stride = stride
@@ -89,7 +89,9 @@ class MaxBlurPool2D(Module):
                   [0.3125, 0.8750]]]])
     """
 
-    def __init__(self, kernel_size: int, stride: int = 2, max_pool_size: int = 2, ceil_mode: bool = False):
+    def __init__(
+        self, kernel_size: Union[Tuple[int, int], int], stride: int = 2, max_pool_size: int = 2, ceil_mode: bool = False
+    ):
         super().__init__()
         self.kernel_size = kernel_size
         self.stride = stride
@@ -105,7 +107,7 @@ class MaxBlurPool2D(Module):
         )
 
 
-def blur_pool2d(input: Tensor, kernel_size: int, stride: int = 2):
+def blur_pool2d(input: Tensor, kernel_size: Union[Tuple[int, int], int], stride: int = 2):
     r"""Compute blurs and downsample a given feature map.
 
     .. image:: _static/img/blur_pool2d.png
@@ -152,7 +154,11 @@ def blur_pool2d(input: Tensor, kernel_size: int, stride: int = 2):
 
 
 def max_blur_pool2d(
-    input: Tensor, kernel_size: int, stride: int = 2, max_pool_size: int = 2, ceil_mode: bool = False
+    input: Tensor,
+    kernel_size: Union[Tuple[int, int], int],
+    stride: int = 2,
+    max_pool_size: int = 2,
+    ceil_mode: bool = False,
 ) -> Tensor:
     r"""Compute pools and blurs and downsample a given feature map.
 
@@ -189,7 +195,7 @@ def _blur_pool_by_kernel2d(input: Tensor, kernel: Tensor, stride: int):
     """Compute blur_pool by a given :math:`CxC_{out}xNxN` kernel."""
     if not (len(kernel.shape) == 4 and kernel.shape[-1] == kernel.shape[-2]):
         raise AssertionError(f"Invalid kernel shape. Expect CxC_outxNxN, Got {kernel.shape}")
-    padding: Tuple[int, int] = _compute_zero_padding((kernel.shape[-2], kernel.shape[-1]))
+    padding = _compute_zero_padding((kernel.shape[-2], kernel.shape[-1]))
     return F.conv2d(input, kernel, padding=padding, stride=stride, groups=input.shape[1])
 
 
@@ -200,13 +206,13 @@ def _max_blur_pool_by_kernel2d(input: Tensor, kernel: Tensor, stride: int, max_p
     # compute local maxima
     input = F.max_pool2d(input, kernel_size=max_pool_size, padding=0, stride=1, ceil_mode=ceil_mode)
     # blur and downsample
-    padding: Tuple[int, int] = _compute_zero_padding((kernel.shape[-2], kernel.shape[-1]))
+    padding = _compute_zero_padding((kernel.shape[-2], kernel.shape[-1]))
     return F.conv2d(input, kernel, padding=padding, stride=stride, groups=input.size(1))
 
 
 def edge_aware_blur_pool2d(
     input: Tensor,
-    kernel_size: int,
+    kernel_size: Union[Tuple[int, int], int],
     edge_threshold: float = 1.25,
     edge_dilation_kernel_size: int = 3,
     epsilon: float = 1e-6,

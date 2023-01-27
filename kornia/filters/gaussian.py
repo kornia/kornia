@@ -3,12 +3,12 @@ from typing import Tuple, Union
 from kornia.core import Module, Tensor, as_tensor
 
 from .filter import filter2d, filter2d_separable
-from .kernels import get_gaussian_kernel1d, get_gaussian_kernel2d
+from .kernels import _unpack_2d_ks, get_gaussian_kernel1d, get_gaussian_kernel2d
 
 
 def gaussian_blur2d(
     input: Tensor,
-    kernel_size: Tuple[int, int],
+    kernel_size: Union[Tuple[int, int], int],
     sigma: Union[Tuple[float, float], Tensor],
     border_type: str = 'reflect',
     separable: bool = True,
@@ -52,8 +52,9 @@ def gaussian_blur2d(
         sigma = sigma.to(device=input.device, dtype=input.dtype)
 
     if separable:
-        kernel_x = get_gaussian_kernel1d(kernel_size[1], sigma[:, 1])
-        kernel_y = get_gaussian_kernel1d(kernel_size[0], sigma[:, 0])
+        ks = _unpack_2d_ks(kernel_size)
+        kernel_x = get_gaussian_kernel1d(ks[1], sigma[:, 1])
+        kernel_y = get_gaussian_kernel1d(ks[0], sigma[:, 0])
         out = filter2d_separable(input, kernel_x, kernel_y, border_type)
     else:
         kernel = get_gaussian_kernel2d(kernel_size, sigma)
@@ -94,7 +95,7 @@ class GaussianBlur2d(Module):
 
     def __init__(
         self,
-        kernel_size: Tuple[int, int],
+        kernel_size: Union[Tuple[int, int], int],
         sigma: Union[Tuple[float, float], Tensor],
         border_type: str = 'reflect',
         separable: bool = True,

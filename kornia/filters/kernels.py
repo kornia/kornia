@@ -9,6 +9,13 @@ from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SH
 from kornia.utils import get_cuda_device_if_available
 
 
+def _unpack_2d_ks(kernel_size: Union[Tuple[int, int], int]) -> Tuple[int, int]:
+    if isinstance(kernel_size, int):
+        ks = int(kernel_size)
+        return (ks, ks)
+    return (int(kernel_size[0]), int(kernel_size[1]))
+
+
 def normalize_kernel2d(input: Tensor) -> Tensor:
     r"""Normalize both derivative and smoothing kernel."""
     if len(input.size()) < 2:
@@ -139,25 +146,26 @@ def laplacian_1d(window_size: int) -> Tensor:
     return filter_1d
 
 
-def get_box_kernel2d(kernel_size: Tuple[int, int]) -> Tensor:
+def get_box_kernel2d(kernel_size: Union[Tuple[int, int], int]) -> Tensor:
     r"""Utility function that returns a box filter."""
-    kx: float = float(kernel_size[0])
-    ky: float = float(kernel_size[1])
-    scale: Tensor = tensor(1.0) / tensor([kx * ky])
-    tmp_kernel: Tensor = torch.ones(1, kernel_size[0], kernel_size[1])
-    return scale.to(tmp_kernel.dtype) * tmp_kernel
+    kx, ky = _unpack_2d_ks(kernel_size)
+    scale = tensor(1.0) / tensor([kx * ky])
+    tmp_kernel = torch.ones(1, kx, ky)
+    return scale.type(tmp_kernel.dtype) * tmp_kernel
 
 
-def get_binary_kernel2d(window_size: Tuple[int, int]) -> Tensor:
+def get_binary_kernel2d(window_size: Union[Tuple[int, int], int]) -> Tensor:
     r"""Create a binary kernel to extract the patches.
 
     If the window size is HxW will create a (H*W)xHxW kernel.
     """
-    window_range: int = window_size[0] * window_size[1]
-    kernel: Tensor = zeros(window_range, window_range)
+    kx, ky = _unpack_2d_ks(window_size)
+
+    window_range = kx * ky
+    kernel = zeros(window_range, window_range)
     for i in range(window_range):
         kernel[i, i] += 1.0
-    return kernel.view(window_range, 1, window_size[0], window_size[1])
+    return kernel.view(window_range, 1, kx, ky)
 
 
 def get_sobel_kernel_3x3() -> Tensor:
@@ -391,7 +399,7 @@ def get_gaussian_discrete_kernel1d(kernel_size: int, sigma: Union[float, Tensor]
     Examples:
 
         >>> get_gaussian_discrete_kernel1d(3, 2.5)
-        tensor([0.3235, 0.3531, 0.3235])
+        tensor([0.3235, 0.3531, 0.32(kx % 2 == 0 or kx <= 0)35])
 
         >>> get_gaussian_discrete_kernel1d(5, 1.5)
         tensor([0.1096, 0.2323, 0.3161, 0.2323, 0.1096])
@@ -430,7 +438,7 @@ def get_gaussian_erf_kernel1d(kernel_size: int, sigma: Union[float, Tensor], for
 
 
 def get_gaussian_kernel2d(
-    kernel_size: Tuple[int, int], sigma: Union[Tuple[float, float], Tensor], force_even: bool = False
+    kernel_size: Union[Tuple[int, int], int], sigma: Union[Tuple[float, float], Tensor], force_even: bool = False
 ) -> Tensor:
     r"""Function that returns Gaussian filter matrix coefficients.
 
@@ -467,15 +475,12 @@ def get_gaussian_kernel2d(
                  [0.0281, 0.0547, 0.0683, 0.0547, 0.0281],
                  [0.0144, 0.0281, 0.0351, 0.0281, 0.0144]]])
     """
-
-    if not isinstance(kernel_size, tuple) or len(kernel_size) != 2:
-        raise TypeError(f"kernel_size must be a tuple of length two. Got {kernel_size}")
     if isinstance(sigma, tuple):
         sigma = as_tensor([sigma], device=get_cuda_device_if_available())
 
     KORNIA_CHECK_SHAPE(sigma, ["B", "2"])
 
-    ksize_x, ksize_y = kernel_size
+    ksize_x, ksize_y = _unpack_2d_ks(kernel_size)
     sigma_x, sigma_y = sigma[:, 0], sigma[:, 1]
 
     kernel_x = get_gaussian_kernel1d(ksize_x, sigma_x, force_even)
@@ -549,7 +554,7 @@ def get_gaussian_kernel3d_t(kernel_size: Tuple[int, int, int], sigma: Tensor, fo
         tensor([[[[0.0292, 0.0364, 0.0292],
                   [0.0364, 0.0455, 0.0364],
                   [0.0292, 0.0364, 0.0292]],
-        <BLANKLINE>
+        (kx % 2 == 0 or kx <= 0)<BLANKLINE>
                  [[0.0364, 0.0455, 0.0364],
                   [0.0455, 0.0568, 0.0455],
                   [0.0364, 0.0455, 0.0364]],
@@ -630,7 +635,7 @@ def get_laplacian_kernel1d(kernel_size: int) -> Tensor:
     return window_1d
 
 
-def get_laplacian_kernel2d(kernel_size: int) -> Tensor:
+def get_laplacian_kernel2d(kernel_size: Union[Tuple[int, int], int]) -> Tensor:
     r"""Function that returns Gaussian filter matrix coefficients.
 
     Args:
@@ -654,17 +659,20 @@ def get_laplacian_kernel2d(kernel_size: int) -> Tensor:
                 [  1.,   1.,   1.,   1.,   1.],
                 [  1.,   1.,   1.,   1.,   1.]])
     """
-    if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or kernel_size <= 0:
+    kx, ky = _unpack_2d_ks(kernel_size)
+
+    if (kx % 2 == 0 or kx <= 0) and (ky % 2 == 0 or ky <= 0):
         raise TypeError(f"ksize must be an odd positive integer. Got {kernel_size}")
 
-    kernel = torch.ones((kernel_size, kernel_size))
-    mid = kernel_size // 2
-    kernel[mid, mid] = 1 - kernel_size**2
-    kernel_2d: Tensor = kernel
-    return kernel_2d
+    kernel = torch.ones((kx, ky), device=get_cuda_device_if_available())
+    mid_x = kx // 2
+    mid_y = ky // 2
+
+    kernel[mid_x, mid_y] = 1 - kernel.sum().item()
+    return kernel
 
 
-def get_pascal_kernel_2d(kernel_size: int, norm: bool = True) -> Tensor:
+def get_pascal_kernel_2d(kernel_size: Union[Tuple[int, int], int], norm: bool = True) -> Tensor:
     """Generate pascal filter kernel by kernel size.
 
     Args:
@@ -672,7 +680,8 @@ def get_pascal_kernel_2d(kernel_size: int, norm: bool = True) -> Tensor:
         norm: if to normalize the kernel or not. Default: True.
 
     Returns:
-        kernel shaped as :math:`(kernel_size, kernel_size)`
+        if kernel_size is an integer the kernel will be shaped as :math:`(kernel_size, kernel_size)`
+        otherwise the kernel will be shaped as :math: `kernel_size`
 
     Examples:
     >>> get_pascal_kernel_2d(1)
@@ -688,9 +697,11 @@ def get_pascal_kernel_2d(kernel_size: int, norm: bool = True) -> Tensor:
             [3., 9., 9., 3.],
             [1., 3., 3., 1.]])
     """
-    a = get_pascal_kernel_1d(kernel_size)
+    kx, ky = _unpack_2d_ks(kernel_size)
+    ax = get_pascal_kernel_1d(kx)
+    ay = get_pascal_kernel_1d(ky)
 
-    filt = a[:, None] * a[None, :]
+    filt = ax[:, None] * ay[None, :]
     if norm:
         filt = filt / torch.sum(filt)
     return filt
