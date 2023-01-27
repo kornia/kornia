@@ -41,8 +41,8 @@ class MultiHeadAttention(nn.Module):
         super().__init__()
         self.emb_size = emb_size
         self.num_heads = num_heads
-        head_size = emb_size // num_heads  # from timm
-        self.scale = head_size**-0.5  # from timm
+        self.head_size = emb_size // num_heads  # from timm
+        self.scale = self.head_size**-0.5  # from timm
 
         # fuse the queries, keys and values in one matrix
         self.qkv = nn.Linear(emb_size, emb_size * 3, bias=False)
@@ -53,7 +53,7 @@ class MultiHeadAttention(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         B, N, C = x.shape
         # split keys, queries and values in num_heads
-        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4) # timm
+        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, self.head_size).permute(2, 0, 3, 1, 4) # timm
         q, k, v = qkv[0], qkv[1], qkv[2]
 
         # sum up over the last axis
