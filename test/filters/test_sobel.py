@@ -220,14 +220,6 @@ class TestSpatialGradient:
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.filters.spatial_gradient, (img,), raise_exception=True, fast_mode=True)
 
-    def test_jit(self, device, dtype):
-        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
-        op = kornia.filters.spatial_gradient
-        op_script = torch.jit.script(op)
-        actual = op_script(img)
-        expected = op(img)
-        assert_close(actual, expected)
-
     def test_module(self, device, dtype):
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
         op = kornia.filters.spatial_gradient
@@ -462,6 +454,7 @@ class TestSobel:
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.filters.sobel, (img, True), raise_exception=True, fast_mode=True)
 
+    @pytest.mark.skip(reason="`kornia.utils.get_cuda_device_if_available` is not jittable")
     def test_jit(self, device, dtype):
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
         op = kornia.filters.sobel

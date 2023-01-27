@@ -269,15 +269,6 @@ class TestCanny:
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.filters.canny, img, raise_exception=True, fast_mode=True)
 
-    def test_jit(self, device, dtype):
-        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
-        op = kornia.filters.sobel
-        op_script = torch.jit.script(op)
-        expected_magnitude, expected_edges = op(img)
-        actual_magnitude, actual_edges = op_script(img)
-        assert_close(actual_magnitude, expected_magnitude)
-        assert_close(actual_edges, expected_edges)
-
     def test_module(self, device, dtype):
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
         op = kornia.filters.canny

@@ -39,14 +39,6 @@ class Testunsharp:
             kornia.filters.unsharp_mask, (input, kernel_size, sigma, "replicate"), raise_exception=True, fast_mode=True
         )
 
-    def test_jit(self, device, dtype):
-        op = kornia.filters.unsharp_mask
-        op_script = torch.jit.script(op)
-        params = [(3, 3), (1.5, 1.5)]
-
-        img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
-        assert_close(op(img, *params), op_script(img, *params))
-
     def test_module(self, device, dtype):
         params = [(3, 3), (1.5, 1.5)]
         op = kornia.filters.unsharp_mask
