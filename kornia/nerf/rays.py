@@ -54,7 +54,7 @@ class RaySampler:
             return 0
         return self.origins.shape[0]
 
-    def _calc_ray_directions_cam(self, cameras: PinholeCamera, points_2d: Tensor):
+    def _calc_ray_directions_cam(self, cameras: PinholeCamera, points_2d: Tensor) -> Tensor:
         # FIXME: This function should call perspective.unproject_points or, implement in PinholeCamera unproject to
         # camera coordinates that will call perspective.unproject_points
         fx = cameras.fx
@@ -345,7 +345,9 @@ class UniformRaySampler(RaySampler):
     def __init__(self, min_depth: float, max_depth: float, ndc: bool, device: Device, dtype: torch.dtype) -> None:
         super().__init__(min_depth, max_depth, ndc, device, dtype)
 
-    def sample_points_2d(self, heights: Tensor, widths: Tensor, sampling_step=1) -> Dict[int, RaySampler.Points2D]:
+    def sample_points_2d(
+        self, heights: Tensor, widths: Tensor, sampling_step: int = 1
+    ) -> Dict[int, RaySampler.Points2D]:
         r"""Uniformly sample pixel points in 2d for all scene camera pixels.
 
         Args:
@@ -379,7 +381,9 @@ class UniformRaySampler(RaySampler):
         self._calc_ray_params(cameras, points_2d_camera)
 
 
-def sample_lengths(num_rays: int, num_ray_points: int, device: Device, dtype: torch.dtype, irregular=False) -> Tensor:
+def sample_lengths(
+    num_rays: int, num_ray_points: int, device: Device, dtype: torch.dtype, irregular: bool = False
+) -> Tensor:
     if num_ray_points <= 1:
         raise ValueError('Number of ray points must be greater than 1')
     if not irregular:

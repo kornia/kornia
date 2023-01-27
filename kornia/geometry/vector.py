@@ -1,6 +1,6 @@
 from typing import Optional, Tuple, Union, cast
 
-from kornia.core import Tensor, as_tensor, normalize, rand, stack
+from kornia.core import Device, Dtype, Tensor, as_tensor, normalize, rand, stack
 from kornia.core.check import KORNIA_CHECK
 from kornia.core.tensor_wrapper import TensorWrapper, wrap
 from kornia.geometry.linalg import batched_dot_product, batched_squared_norm
@@ -47,7 +47,9 @@ class Vector3(TensorWrapper):
         return Scalar(batched_squared_norm(self.data))
 
     @classmethod
-    def random(cls, shape: Optional[Tuple[int, ...]] = None, device=None, dtype=None) -> "Vector3":
+    def random(
+        cls, shape: Optional[Tuple[int, ...]] = None, device: Optional[Device] = None, dtype: Dtype = None
+    ) -> "Vector3":
         if shape is None:
             shape = ()
         return cls(rand(shape + (3,), device=device, dtype=dtype))
@@ -74,7 +76,12 @@ class Vector3(TensorWrapper):
 
     @classmethod
     def from_coords(
-        cls, x: Union[float, Tensor], y: Union[float, Tensor], z: Union[float, Tensor], device=None, dtype=None
+        cls,
+        x: Union[float, Tensor],
+        y: Union[float, Tensor],
+        z: Union[float, Tensor],
+        device: Optional[Device] = None,
+        dtype: Dtype = None,
     ) -> "Vector3":
         KORNIA_CHECK(type(x) == type(y) == type(z))
         KORNIA_CHECK(isinstance(x, (Tensor, float)))

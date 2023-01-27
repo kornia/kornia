@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from torch.optim import Optimizer, lr_scheduler
 from torch.utils.data import DataLoader
@@ -80,7 +80,7 @@ class ObjectDetectionTrainer(Trainer):
         self.loss_computed_by_model = loss_computed_by_model
         self.num_classes = num_classes
 
-    def on_model(self, model: Module, sample: Dict[str, Tensor]):
+    def on_model(self, model: Module, sample: Dict[str, Tensor]) -> Tensor:
         if self.loss_computed_by_model and model.training:
             return model(sample["input"], sample["target"])
         return model(sample["input"])
@@ -95,7 +95,7 @@ class ObjectDetectionTrainer(Trainer):
             raise RuntimeError("`criterion` should not be None if `loss_computed_by_model` is False.")
         return self.criterion(*args)
 
-    def compute_metrics(self, *args: Tensor) -> Dict[str, float]:
+    def compute_metrics(self, *args: Tuple[Dict[str, Tensor]]) -> Dict[str, float]:
         if (
             isinstance(args[0], dict)
             and "boxes" in args[0]

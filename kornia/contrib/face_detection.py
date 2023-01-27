@@ -254,7 +254,7 @@ class Conv4layerBlock(nn.Sequential):
 
 
 class YuFaceDetectNet(nn.Module):
-    def __init__(self, phase, pretrained: bool):
+    def __init__(self, phase: str, pretrained: bool) -> None:
         super().__init__()
         self.phase = phase
         self.num_classes = 2

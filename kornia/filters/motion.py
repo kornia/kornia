@@ -8,7 +8,6 @@ from .kernels_geometry import get_motion_kernel2d, get_motion_kernel3d
 
 _VALID_BORDER = {"constant", "reflect", "replicate", "circular"}
 
-
 class MotionBlur(Module):
     r"""Blur 2D images (4D tensor) using the motion filter.
 
@@ -52,7 +51,7 @@ class MotionBlur(Module):
             f'angle={self.angle}, direction={self.direction}, border_type={self.border_type})'
         )
 
-    def forward(self, x: Tensor):
+    def forward(self, x: Tensor) -> Tensor:
         return motion_blur(x, self.kernel_size, self.angle, self.direction, self.border_type)
 
 
@@ -112,7 +111,7 @@ class MotionBlur3D(Module):
             f'angle={self.angle}, direction={self.direction}, border_type={self.border_type})'
         )
 
-    def forward(self, x: Tensor):
+    def forward(self, x: Tensor) -> Tensor:
         return motion_blur3d(x, self.kernel_size, self.angle, self.direction, self.border_type)
 
 

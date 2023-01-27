@@ -2,16 +2,19 @@
 # https://github.com/cavalli1234/AdaLAM
 # Copyright (c) 2020, Luca Cavalli
 
-from typing import Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Optional, Tuple, Union
 
 import torch
 
-from kornia.core import Tensor
+from kornia.core import Tensor, as_tensor
 from kornia.core.check import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 from kornia.feature.laf import get_laf_center, get_laf_orientation, get_laf_scale
 
 from .core import AdalamConfig, _no_match, adalam_core
 from .utils import dist_matrix
+
+if TYPE_CHECKING:
+    import numpy.typing as npt
 
 
 def get_adalam_default_config() -> AdalamConfig:
@@ -36,8 +39,8 @@ def match_adalam(
     lafs1: Tensor,
     lafs2: Tensor,
     config: Optional[AdalamConfig] = None,
-    hw1: Optional[Tensor] = None,
-    hw2: Optional[Tensor] = None,
+    hw1: Optional[Tuple[int, int]] = None,
+    hw2: Optional[Tuple[int, int]] = None,
     dm: Optional[Tensor] = None,
 ) -> Tuple[Tensor, Tensor]:
     """Function, which performs descriptor matching, followed by AdaLAM filtering (see :cite:`AdaLAM2020` for more
@@ -177,18 +180,18 @@ class AdalamFilter:
 
     def match_and_filter(
         self,
-        k1,
-        k2,
-        d1,
-        d2,
-        im1shape=None,
-        im2shape=None,
-        o1=None,
-        o2=None,
-        s1=None,
-        s2=None,
+        k1: Union[Tensor, 'npt.NDArray[Any]'],
+        k2: Union[Tensor, 'npt.NDArray[Any]'],
+        d1: Union[Tensor, 'npt.NDArray[Any]'],
+        d2: Union[Tensor, 'npt.NDArray[Any]'],
+        im1shape: Optional[Tuple[int, int]] = None,
+        im2shape: Optional[Tuple[int, int]] = None,
+        o1: Optional[Union[Tensor, 'npt.NDArray[Any]']] = None,
+        o2: Optional[Union[Tensor, 'npt.NDArray[Any]']] = None,
+        s1: Optional[Union[Tensor, 'npt.NDArray[Any]']] = None,
+        s2: Optional[Union[Tensor, 'npt.NDArray[Any]']] = None,
         return_dist: bool = False,
-    ):
+    ) -> Union[Tuple[Tensor, Tensor], Tensor]:
         """Standard matching and filtering with AdaLAM. This function:
 
             - performs some elementary sanity check on the inputs;
@@ -206,12 +209,14 @@ class AdalamFilter:
                 Expected an array with shape (num_keypoints_in_source_image, descriptor_size).
             d2: descriptors in the destination image.
                 Expected an array with shape (num_keypoints_in_destination_image, descriptor_size).
-            im1shape: Shape of the source image. If None, it is inferred from keypoints max and min, at the cost of wasted runtime. So please provide it.
-                      Expected a tuple with (width, height) or (height, width) of source image
-            im2shape: Shape of the destination image. If None, it is inferred from keypoints max and min, at the cost of wasted runtime. So please provide it.
-                      Expected a tuple with (width, height) or (height, width) of destination image
-            o1/o2: keypoint orientations in degrees. They can be None if 'orientation_difference_threshold' in config is set to None.
-                   See documentation on 'orientation_difference_threshold' in the DEFAULT_CONFIG.
+            im1shape: Shape of the source image. If None, it is inferred from keypoints max and min, at the cost of
+                      wasted runtime. So please provide it. Expected a tuple with (width, height) or (height, width)
+                      of source image
+            im2shape: Shape of the destination image. If None, it is inferred from keypoints max and min, at the cost
+                      of wasted runtime. So please provide it. Expected a tuple with (width, height) or (height, width)
+                      of destination image
+            o1/o2: keypoint orientations in degrees. They can be None if 'orientation_difference_threshold' in config
+                   is set to None. See documentation on 'orientation_difference_threshold' in the DEFAULT_CONFIG.
                    Expected an array with shape (num_keypoints_in_source/destination_image,)
             s1/s2: keypoint scales. They can be None if 'scale_rate_threshold' in config is set to None.
                    See documentation on 'scale_rate_threshold' in the DEFAULT_CONFIG.
@@ -221,7 +226,7 @@ class AdalamFilter:
         Returns:
             Filtered putative matches.
             A long tensor with shape (num_filtered_matches, 2) with indices of corresponding keypoints in k1 and k2.
-        """  # noqa: E501
+        """
         if s1 is None or s2 is None:
             if self.config['scale_rate_threshold'] is not None:
                 raise AttributeError(
@@ -234,29 +239,33 @@ class AdalamFilter:
                     "Current configuration considers keypoint orientations for filtering, but orientations have not been provided.\n"  # noqa: E501
                     "Please either provide orientations or set 'orientation_difference_threshold' to None to disable orientations filtering"  # noqa: E501
                 )
-        k1, k2, d1, d2, o1, o2, s1, s2 = self.__to_torch(k1, k2, d1, d2, o1, o2, s1, s2)
-        if (len(d2) <= 1) or (len(d1) <= 1):
-            idxs, dists = _no_match(d1)
+        _k1 = as_tensor(k1, device=self.config['device'], dtype=torch.float32)
+        _k2 = as_tensor(k2, device=self.config['device'], dtype=torch.float32)
+        _d1 = as_tensor(d1, device=self.config['device'], dtype=torch.float32)
+        _d2 = as_tensor(d2, device=self.config['device'], dtype=torch.float32)
+        _o1 = as_tensor(o1, device=self.config['device'], dtype=torch.float32)
+        _o2 = as_tensor(o2, device=self.config['device'], dtype=torch.float32)
+        _s1 = as_tensor(s1, device=self.config['device'], dtype=torch.float32)
+        _s2 = as_tensor(s2, device=self.config['device'], dtype=torch.float32)
+
+        if (len(_d2) <= 1) or (len(_d1) <= 1):
+            idxs, dists = _no_match(_d1)
             if return_dist:
                 return idxs, dists
             return idxs
-        distmat = dist_matrix(d1, d2, is_normalized=False)
+
+        distmat = dist_matrix(_d1, _d2, is_normalized=False)
         dd12, nn12 = torch.topk(distmat, k=2, dim=1, largest=False)  # (n1, 2)
 
         putative_matches = nn12[:, 0]
         scores = dd12[:, 0] / dd12[:, 1].clamp_min_(1e-3)
+
         if self.config['force_seed_mnn']:
             dd21, nn21 = torch.min(distmat, dim=0)  # (n2,)
-            mnn = nn21[putative_matches] == torch.arange(k1.shape[0], device=self.config['device'])
+            mnn = nn21[putative_matches] == torch.arange(_k1.shape[0], device=self.config['device'])
         else:
             mnn = None
 
         return self.filter_matches(
-            k1, k2, putative_matches, scores, mnn, im1shape, im2shape, o1, o2, s1, s2, return_dist
-        )
-
-    def __to_torch(self, *args):
-        return (
-            a if a is None or torch.is_tensor(a) else torch.tensor(a, device=self.config['device'], dtype=torch.float32)
-            for a in args
+            _k1, _k2, putative_matches, scores, mnn, im1shape, im2shape, _o1, _o2, _s1, _s2, return_dist
         )

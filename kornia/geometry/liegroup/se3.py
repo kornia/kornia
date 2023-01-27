@@ -1,8 +1,22 @@
 # kornia.geometry.so3 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
-from kornia.core import Module, Parameter, Tensor, concatenate, eye, pad, rand, stack, tensor, where, zeros_like
+from kornia.core import (
+    Device,
+    Dtype,
+    Module,
+    Parameter,
+    Tensor,
+    concatenate,
+    eye,
+    pad,
+    rand,
+    stack,
+    tensor,
+    where,
+    zeros_like,
+)
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_TYPE
 from kornia.geometry.liegroup.so3 import So3
 from kornia.geometry.linalg import batched_dot_product
@@ -56,7 +70,7 @@ class Se3(Module):
     def __repr__(self) -> str:
         return f"rotation: {self.r}\ntranslation: {self.t}"
 
-    def __getitem__(self, idx) -> 'Se3':
+    def __getitem__(self, idx: Union[int, slice]) -> 'Se3':
         return Se3(self._rotation[idx], self._translation[idx])
 
     def __mul__(self, right: "Se3") -> "Se3":
@@ -109,7 +123,7 @@ class Se3(Module):
         return self._translation
 
     @staticmethod
-    def exp(v) -> 'Se3':
+    def exp(v: Tensor) -> 'Se3':
         """Converts elements of lie algebra to elements of lie group.
 
         Args:
@@ -162,7 +176,7 @@ class Se3(Module):
         return concatenate((t, omega), -1)
 
     @staticmethod
-    def hat(v) -> Tensor:
+    def hat(v: Tensor) -> Tensor:
         """Converts elements from vector space to lie algebra.
 
         Args:
@@ -186,7 +200,7 @@ class Se3(Module):
         return pad(rt, (0, 0, 0, 1))  # add zeros bottom
 
     @staticmethod
-    def vee(omega) -> Tensor:
+    def vee(omega: Tensor) -> Tensor:
         """Converts elements from lie algebra to vector space.
 
         Args:
@@ -207,7 +221,7 @@ class Se3(Module):
         return concatenate((head, tail), -1)
 
     @classmethod
-    def identity(cls, batch_size: Optional[int] = None, device=None, dtype=None) -> 'Se3':
+    def identity(cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None) -> 'Se3':
         """Create a Se3 group representing an identity rotation and zero translation.
 
         Args:
@@ -222,7 +236,7 @@ class Se3(Module):
             Parameter containing:
             tensor([0., 0., 0.], requires_grad=True)
         """
-        t: Tensor = tensor([0.0, 0.0, 0.0], device=device, dtype=dtype)
+        t = tensor([0.0, 0.0, 0.0], device=device, dtype=dtype)
         if batch_size is not None:
             t = t.repeat(batch_size, 1)
 
@@ -261,7 +275,7 @@ class Se3(Module):
         return Se3(r_inv, r_inv * (-1 * self.t))
 
     @classmethod
-    def random(cls, batch_size: Optional[int] = None, device=None, dtype=None) -> 'Se3':
+    def random(cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None) -> 'Se3':
         """Create a Se3 group representing a random transformation.
 
         Args:

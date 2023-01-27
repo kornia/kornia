@@ -2,7 +2,6 @@
 # insipired by:
 # https://github.com/pytorch/pytorch/blob/591dfffa38848de54b7f5f4e49260847024c9281/test/test_overrides.py#L748
 import collections
-from typing import Any
 
 import torch
 from torch import Tensor
@@ -154,7 +153,7 @@ class TensorWrapper:
     def __neg__(self):
         return self.__unary_op__(Tensor.negative)
 
-    def __unary_op__(self, func: Any, other=None):
+    def __unary_op__(self, func, other=None):
         args = (self, other) if other is not None else (self,)
         return self.__torch_function__(func, (type(self),), args)
 
