@@ -53,9 +53,7 @@ class MultiHeadAttention(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         B, N, C = x.shape
         # split keys, queries and values in num_heads
-        # NOTE: the line below differs from timm
-        # timm: qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
-        qkv = self.qkv(x).reshape(B, N, 3, -1, C).permute(2, 0, 3, 1, 4)
+        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4) # timm
         q, k, v = qkv[0], qkv[1], qkv[2]
 
         # sum up over the last axis
@@ -65,7 +63,7 @@ class MultiHeadAttention(nn.Module):
 
         # sum up over the third axis
         out = torch.einsum('bhal, bhlv -> bhav ', att, v)
-        out = out.permute(0, 2, 1, 3).contiguous().view(B, N, -1)
+        out = out.permute(0, 2, 1, 3).contiguous().view(B, N, C)
         out = self.projection(out)
         out = self.projection_drop(out)
         return out
