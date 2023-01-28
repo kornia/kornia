@@ -25,7 +25,7 @@ class RandomHorizontalFlip(GeometricAugmentationBase2D):
                  to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
 
     .. note::
@@ -60,7 +60,7 @@ class RandomHorizontalFlip(GeometricAugmentationBase2D):
         return flip_mat.expand(input.shape[0], 3, 3)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         return hflip(input)
 

@@ -40,7 +40,7 @@ class RandomAffine(GeometricAugmentationBase2D):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
 
     .. note::
@@ -122,7 +122,14 @@ class RandomAffine(GeometricAugmentationBase2D):
         self,
         input: Tensor,
         flags: Dict[str, Any],
-        transform: Tensor,
+        transform: Optional[Tensor] = None,
         size: Optional[Tuple[int, int]] = None,
     ) -> Tensor:
-        return self.apply_transform(input, params=self._params, flags=flags)
+        return warp_affine(
+            input,
+            transform[:, :2, :],
+            (size[0], size[1]),
+            flags["resample"].name.lower(),
+            align_corners=flags["align_corners"],
+            padding_mode=flags["padding_mode"].name.lower(),
+        )

@@ -25,7 +25,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         self,
         input: Tensor,
         flags: Dict[str, Any],
-        transform: Tensor,
+        transform: Optional[Tensor] = None,
         size: Optional[Tuple[int, int]] = None,
     ) -> Tensor:
         """By default, the exact transformation as ``apply_transform`` will be used."""

@@ -7,7 +7,7 @@ from kornia.augmentation.utils import _transform_input, _validate_input_dtype
 from kornia.core import Tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
-from kornia.utils import eye_like, is_autocast_enabled
+from kornia.utils import eye_like
 
 
 class AugmentationBase2D(_AugmentationBase):
@@ -142,6 +142,6 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
 
         params, flags = self._process_kwargs_to_params_and_flags(params, flags, **kwargs)
 
-        output = self.transform_inputs(in_tensor, params, flags, transform=params["transform_matrix"])
+        output = self.transform_inputs(in_tensor, params, flags)
 
         return self.transform_output_tensor(output, input_shape) if self.keepdim else output

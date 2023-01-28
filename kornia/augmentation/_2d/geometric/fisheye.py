@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.base import AugmentationBase2D
@@ -65,7 +65,7 @@ class RandomFisheye(AugmentationBase2D):
             raise ValueError(f"Tensor must be of shape (2,). Got: {data.shape}.")
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         # create the initial sampling fields
         B, _, H, W = input.shape

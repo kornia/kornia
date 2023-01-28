@@ -1,10 +1,10 @@
 from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
-from torch import Tensor
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
+from kornia.core import Tensor
 from kornia.constants import Resample
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
 
@@ -29,7 +29,7 @@ class CenterCrop(GeometricAugmentationBase2D):
                        differentiability.
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, out_h, out_w)`
 
     .. note::
@@ -94,15 +94,16 @@ class CenterCrop(GeometricAugmentationBase2D):
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         if flags["cropping_mode"] in ("resample", "slice"):
-            transform: Tensor = get_perspective_transform(params["src"].to(input), params["dst"].to(input))
+            transform = get_perspective_transform(params["src"].to(input), params["dst"].to(input))
             transform = transform.expand(input.shape[0], -1, -1)
             return transform
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         if flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
+            transform = params["transform_matrix"]
             if not isinstance(transform, Tensor):
                 raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
 

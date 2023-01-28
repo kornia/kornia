@@ -152,25 +152,25 @@ class RandomCrop(GeometricAugmentationBase2D):
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
     def apply_transform_keypoint(
-        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Keypoints:
         """Process keypoints corresponding to the inputs that are no transformation applied."""
         # For pad the keypoints properly.
         padding_size = params["padding_size"].to(device=input.device)
         input = input.pad(padding_size)
-        return super().apply_transform_keypoint(input=input, params=params, flags=flags, transform=transform)
+        return super().apply_transform_keypoint(input=input, params=params, flags=flags)
 
     def apply_transform_box(
-        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Boxes:
         """Process keypoints corresponding to the inputs that are no transformation applied."""
         # For pad the boxes properly.
         padding_size = params["padding_size"]
         input = input.pad(padding_size)
-        return super().apply_transform_box(input=input, params=params, flags=flags, transform=transform)
+        return super().apply_transform_box(input=input, params=params, flags=flags)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         padding_size: Optional[List[int]] = None
         if "padding_size" in params and isinstance(params["padding_size"], Tensor):
@@ -179,8 +179,7 @@ class RandomCrop(GeometricAugmentationBase2D):
 
         flags = self.flags if flags is None else flags
         if flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
-            if not isinstance(transform, Tensor):
-                raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
+            transform = params["transform_matrix"]
             # Fit the arg to F.pad
             if flags['padding_mode'] == "constant":
                 padding_mode = "zeros"
@@ -241,14 +240,13 @@ class RandomCrop(GeometricAugmentationBase2D):
         input: Tensor,
         params: Dict[str, Tensor],
         flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
         **kwargs,
     ) -> Tensor:
         if flags["cropping_mode"] != "resample":
             raise NotImplementedError(
                 f"`inverse` is only applicable for resample cropping mode. Got {flags['cropping_mode']}."
             )
-        out = super().inverse_inputs(input, params, flags, transform, **kwargs)
+        out = super().inverse_inputs(input, params, flags, **kwargs)
         if not params["batch_prob"].all():
             return out
         padding_size = params["padding_size"].unique(dim=0).cpu().squeeze().numpy().tolist()
@@ -278,14 +276,13 @@ class RandomCrop(GeometricAugmentationBase2D):
         input: Keypoints,
         params: Dict[str, Tensor],
         flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
         **kwargs,
     ) -> Keypoints:
         if flags["cropping_mode"] != "resample":
             raise NotImplementedError(
                 f"`inverse` is only applicable for resample cropping mode. Got {flags['cropping_mode']}."
             )
-        output = super().inverse_keypoints(input, params, flags, transform, **kwargs)
+        output = super().inverse_keypoints(input, params, flags, **kwargs)
         if not params["batch_prob"].all():
             return output
 
