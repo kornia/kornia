@@ -59,8 +59,13 @@ class TestTensorWrapper(BaseTester):
         x = TensorWrapper(data)
 
         self.assert_close(x.add(x), x + x)
+        self.assert_close(x.add(1), 1 + x)
+        self.assert_close(x.add(1), x + 1)
         self.assert_close(x.mul(x), x * x)
+        self.assert_close(x.mul(1), 1 * x)
+        self.assert_close(x.mul(1), x * 1)
         self.assert_close(x.sub(x), x - x)
+        self.assert_close(x.sub(1), x - 1)
         self.assert_close(x.div(x), x / x)
         self.assert_close(x.true_divide(x), x / x)
         self.assert_close(x.floor_divide(x), x // x)
