@@ -119,9 +119,9 @@ class BaseTester(ABC):
     def test_cardinality(self, device, dtype):
         raise NotImplementedError("Implement a stupid routine.")
 
-    @abstractmethod
-    def test_jit(self, device, dtype):
-        raise NotImplementedError("Implement a stupid routine.")
+    # TODO: add @abstractmethod
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        pass
 
     @abstractmethod
     def test_gradcheck(self, device):
@@ -320,7 +320,6 @@ def KORNIA_CHECK_SHAPE(x: Tensor, shape: List[str]) -> None:
         >>> x = torch.rand(2, 3, 4, 4)
         >>> KORNIA_CHECK_SHAPE(x, ["2","3", "H", "W"])  # explicit
     """
-
     if '*' == shape[0]:
         shape_to_check = shape[1:]
         x_shape_to_check = x.shape[-len(shape) + 1 :]

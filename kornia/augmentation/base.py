@@ -14,6 +14,7 @@ from kornia.augmentation.utils import (
 from kornia.core import Module, Tensor, tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
+from kornia.utils import is_autocast_enabled
 
 TensorWithTransformMat = Union[Tensor, Tuple[Tensor, Tensor]]
 
@@ -266,8 +267,15 @@ class _AugmentationBase(_BasicAugmentationBase):
             applied = self.apply_transform(
                 in_tensor[to_apply], params, flags, transform=transform if transform is None else transform[to_apply]
             )
+
+            if is_autocast_enabled():
+                output = output.type(input.dtype)
+                applied = applied.type(input.dtype)
             output = output.index_put((to_apply,), applied)
         output = _transform_output_shape(output, ori_shape) if self.keepdim else output
+
+        if is_autocast_enabled():
+            output = output.type(input.dtype)
         return output
 
     def transform_masks(
@@ -329,6 +337,10 @@ class _AugmentationBase(_BasicAugmentationBase):
             applied = self.apply_transform_box(
                 input[to_apply], params, flags, transform=transform if transform is None else transform[to_apply]
             )
+            if is_autocast_enabled():
+                output = output.type(input.dtype)
+                applied = applied.type(input.dtype)
+
             output = output.index_put((to_apply,), applied)
         return output
 
@@ -359,6 +371,9 @@ class _AugmentationBase(_BasicAugmentationBase):
             applied = self.apply_transform_keypoint(
                 input[to_apply], params, flags, transform=transform if transform is None else transform[to_apply]
             )
+            if is_autocast_enabled():
+                output = output.type(input.dtype)
+                applied = applied.type(input.dtype)
             output = output.index_put((to_apply,), applied)
         return output
 
@@ -445,4 +460,4 @@ class _AugmentationBase(_BasicAugmentationBase):
 
         output = self.transform_inputs(in_tensor, params, flags)
 
-        return output.type(in_tensor.dtype)
+        return output

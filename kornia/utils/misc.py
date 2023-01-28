@@ -23,7 +23,7 @@ def eye_like(n: int, input: torch.Tensor, shared_memory: bool = False) -> torch.
     if len(input.shape) < 1:
         raise AssertionError(input.shape)
 
-    identity = torch.eye(n, device=input.device, dtype=input.dtype)
+    identity = torch.eye(n, device=input.device).type(input.dtype)
     return identity[None].expand(input.shape[0], n, n) if shared_memory else identity[None].repeat(input.shape[0], 1, 1)
 
 

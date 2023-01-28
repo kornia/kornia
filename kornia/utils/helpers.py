@@ -40,6 +40,7 @@ def map_location_to_cpu(storage: str) -> str:
 
 
 def map_location_to_cpu(storage: Union[str, Tensor], *args: Any, **kwargs: Any) -> Union[str, Tensor]:
+    """Map location of device to CPU, util for loading things from HUB."""
     return storage
 
 
@@ -248,3 +249,28 @@ def safe_inverse_with_mask(A: Tensor) -> Tuple[Tensor, Tensor]:
     inverse, info = inv_ex(A.to(dtype))
     mask = info == 0
     return inverse.to(dtype_original), mask
+
+
+def is_autocast_enabled(both: bool = True) -> bool:
+    """Check if torch autocast is enabled.
+
+    Args:
+        both: if True will consider autocast region for both types of devices
+
+    Returns:
+        Return a Bool,
+        will always return False for a torch without support, otherwise will be: if both is True
+        `torch.is_autocast_enabled() or torch.is_autocast_cpu_enabled()`. If both is Flase will return just
+        `torch.is_autocast_enabled()`.
+    """
+    if TYPE_CHECKING:
+        # TODO: remove this branch when kornia relies on torch >= 1.10.2
+        return False
+
+    if not torch_version_ge(1, 10, 2):
+        return False
+
+    if both:
+        return torch.is_autocast_enabled() or torch.is_autocast_cpu_enabled()
+
+    return torch.is_autocast_enabled()

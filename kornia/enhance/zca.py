@@ -95,7 +95,6 @@ class ZCAWhitening(Module):
         returns:
             Returns a fitted ZCAWhiten object instance.
         """
-
         T, mean, T_inv = zca_mean(x, self.dim, self.unbiased, self.eps, self.compute_inv)
 
         self.mean_vector = mean
@@ -124,7 +123,6 @@ class ZCAWhitening(Module):
         Returns:
             The transformed data.
         """
-
         if include_fit:
             self.fit(x)
 
@@ -144,7 +142,6 @@ class ZCAWhitening(Module):
         Returns:
             Original data.
         """
-
         if not self.fitted:
             raise RuntimeError("Needs to be fitted first before running. Please call fit or set include_fit to True.")
 
@@ -286,7 +283,6 @@ def zca_whiten(inp: Tensor, dim: int = 0, unbiased: bool = True, eps: float = 1e
                 [ 1.0000, -0.5773],
                 [-1.0000, -0.5773]])
     """
-
     if not isinstance(inp, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(inp)}")
 
@@ -346,7 +342,6 @@ def linear_transform(inp: Tensor, transform_matrix: Tensor, mean_vector: Tensor,
         >>> print(out.shape, out.unique()) # Should a be (10,2) tensor of 2s
         torch.Size([10, 2]) tensor([2.])
     """
-
     inp_size = inp.size()
 
     if dim >= len(inp_size) or dim < -len(inp_size):

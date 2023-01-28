@@ -221,7 +221,6 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
                 to apply transformations.
             param: the corresponding parameters to the module.
         """
-
         if isinstance(module, (GeometricAugmentationBase2D,)):
             if module.transform_matrix is None:
                 raise ValueError(f"No valid transformation matrix found in {module.__class__}.")
