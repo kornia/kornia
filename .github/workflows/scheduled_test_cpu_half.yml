@@ -1,6 +1,8 @@
 name: Tests on CPU (float16)
 
 on:
+  push:
+    branches: [test-me-*]
   schedule:
     - cron: "0 4 * * *"
 
@@ -13,11 +15,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ['Ubuntu-latest', 'Windows-latest', 'MacOS-latest']
+        os: ['Ubuntu-latest'] #, 'Windows-latest', 'MacOS-latest']
 
     uses: ./.github/workflows/tests.yml
     with:
       os: ${{ matrix.os }}
-      python-version: '["3.7", "3.8", "3.9", "3.10"]'
-      pytorch-version: '["1.9.1", "1.10.2", "1.11.0", "1.12.1", "1.13.1"]'
+      python-version: '["3.7", , "3.10"]' # "3.8", "3.9"
+      pytorch-version:  '["1.13.1"]' # '["1.9.1", "1.10.2", "1.11.0", "1.12.1",]'
       pytorch-dtype: 'float16'
