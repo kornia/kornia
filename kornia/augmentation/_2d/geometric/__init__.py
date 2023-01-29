@@ -11,3 +11,5 @@ from kornia.augmentation._2d.geometric.resized_crop import RandomResizedCrop
 from kornia.augmentation._2d.geometric.rotation import RandomRotation
 from kornia.augmentation._2d.geometric.thin_plate_spline import RandomThinPlateSpline
 from kornia.augmentation._2d.geometric.vertical_flip import RandomVerticalFlip
+from kornia.augmentation._2d.geometric.shear import RandomShear
+from kornia.augmentation._2d.geometric.translate import RandomTranslate

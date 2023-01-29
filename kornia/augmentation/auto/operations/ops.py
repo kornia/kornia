@@ -17,6 +17,8 @@ from kornia.augmentation import (
     RandomHorizontalFlip,
     RandomVerticalFlip,
     RandomRotation,
+    RandomShear,
+    RandomTranslate,
 )
 from kornia.core import Tensor
 from kornia.grad_estimator import STEFunction
@@ -24,6 +26,7 @@ from kornia.grad_estimator import STEFunction
 __all__ = [
     "Brightness", "Contrast", "Hue", "Saturate", "Equalize", "Gray", "Invert", "Posterize",
     "Solarize", "SolarizeAdd", "Sharpness", "HorizontalFlip", "VerticalFlip", "Rotate",
+    "ShearX", "ShearY", "TranslateX", "TranslateY",
 ]
 
 
@@ -345,7 +348,7 @@ class VerticalFlip(OperationBase):
 
 
 class Rotate(OperationBase):
-    """Apply brightness operation.
+    """Apply rotate operation.
 
     Args:
         initial_magnitude: the initial magnitude.
@@ -371,4 +374,112 @@ class Rotate(OperationBase):
             initial_magnitude=[("degrees", initial_magnitude)],
             temperature=temperature,
             magnitude_fn=Rotate._process_magnitude
+        )
+
+
+class ShearX(OperationBase):
+    """Apply shear operation along x-axis.
+
+    Args:
+        initial_magnitude: the initial magnitude.
+        initial_probability: the initial probability.
+        magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
+        temperature: temperature for RelaxedBernoulli distribution used during training.
+    """
+
+    @staticmethod
+    def _process_magnitude(magnitude: Tensor) -> Tensor:
+        # make it sign-agnostic
+        return magnitude * (torch.randint(0, 1, (1,)) * 2 - 1).item()
+
+    def __init__(
+        self,
+        initial_magnitude: Optional[float] = .0,
+        initial_probability: float = 0.5,
+        magnitude_range: Tuple[float, float] = (-.3, .3),
+        temperature: float = 0.1,
+    ):
+        super(ShearX, self).__init__(
+            RandomShear(magnitude_range, same_on_batch=False, p=initial_probability),
+            initial_magnitude=[("shear_x", initial_magnitude)],
+            temperature=temperature,
+            magnitude_fn=Rotate._process_magnitude
+        )
+
+
+class ShearY(OperationBase):
+    """Apply shear operation along y-axis.
+
+    Args:
+        initial_magnitude: the initial magnitude.
+        initial_probability: the initial probability.
+        magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
+        temperature: temperature for RelaxedBernoulli distribution used during training.
+    """
+
+    @staticmethod
+    def _process_magnitude(magnitude: Tensor) -> Tensor:
+        # make it sign-agnostic
+        return magnitude * (torch.randint(0, 1, (1,)) * 2 - 1).item()
+
+    def __init__(
+        self,
+        initial_magnitude: Optional[float] = .0,
+        initial_probability: float = 0.5,
+        magnitude_range: Tuple[float, float] = (-.3, .3),
+        temperature: float = 0.1,
+    ):
+        super(ShearY, self).__init__(
+            RandomShear((0., 0., *magnitude_range), same_on_batch=False, p=initial_probability),
+            initial_magnitude=[("shear_y", initial_magnitude)],
+            temperature=temperature,
+            magnitude_fn=Rotate._process_magnitude
+        )
+
+
+class TranslateX(OperationBase):
+    """Apply translate operation along x-axis.
+
+    Args:
+        initial_magnitude: the initial magnitude.
+        initial_probability: the initial probability.
+        magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
+        temperature: temperature for RelaxedBernoulli distribution used during training.
+    """
+
+    def __init__(
+        self,
+        initial_magnitude: Optional[float] = 0.,
+        initial_probability: float = 0.5,
+        magnitude_range: Tuple[float, float] = (0., .5),
+        temperature: float = 0.1,
+    ):
+        super(TranslateX, self).__init__(
+            RandomTranslate(magnitude_range, same_on_batch=False, p=initial_probability),
+            initial_magnitude=[("translate_x", initial_magnitude)],
+            temperature=temperature,
+        )
+
+
+class TranslateY(OperationBase):
+    """Apply translate operation along y-axis.
+
+    Args:
+        initial_magnitude: the initial magnitude.
+        initial_probability: the initial probability.
+        magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
+        temperature: temperature for RelaxedBernoulli distribution used during training.
+    """
+
+    def __init__(
+        self,
+        initial_magnitude: Optional[float] = 0.,
+        initial_probability: float = 0.5,
+        magnitude_range: Tuple[float, float] = (0., .5),
+        temperature: float = 0.1,
+    ):
+        super(TranslateY, self).__init__(
+            RandomTranslate(magnitude_range, same_on_batch=False, p=initial_probability),
+            initial_magnitude=[("translate_y", initial_magnitude)],
+            temperature=temperature,
         )

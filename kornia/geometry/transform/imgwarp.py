@@ -29,6 +29,7 @@ __all__ = [
     "invert_affine_transform",
     "get_affine_matrix2d",
     "get_affine_matrix3d",
+    "get_translation_matrix2d",
     "get_shear_matrix2d",
     "get_shear_matrix3d",
     "warp_affine3d",
@@ -599,6 +600,27 @@ def get_affine_matrix2d(
     if any(s is not None for s in [sx, sy]):
         shear_mat = get_shear_matrix2d(center, sx, sy)
         transform_h = transform_h @ shear_mat
+
+    return transform_h
+
+
+def get_translation_matrix2d(translations: Tensor) -> Tensor:
+    r"""Compose translation matrix from the components.
+
+    Args:
+        translations: tensor containing the translation vector with shape :math:`(B, 2)`.
+
+    Returns:
+        the affine transformation matrix :math:`(B, 3, 3)`.
+
+    .. note::
+        This function is often used in conjunction with :func:`warp_affine`, :func:`warp_perspective`.
+    """
+    transform: Tensor = eye_like(3, translations)[:, :2, :]
+    transform[..., 2] += translations  # tx/ty
+
+    # pad transform to get Bx3x3
+    transform_h = convert_affinematrix_to_homography(transform)
 
     return transform_h
 

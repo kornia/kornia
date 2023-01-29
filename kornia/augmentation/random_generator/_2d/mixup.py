@@ -14,6 +14,10 @@ from kornia.augmentation.utils import (
 )
 from kornia.utils.helpers import _extract_device_dtype
 
+__all__ = [
+    "MixupGenerator"
+]
+
 
 class MixupGenerator(RandomGeneratorBase):
     r"""Generate mixup indexes and lambdas for a batch of inputs.

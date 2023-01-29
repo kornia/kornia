@@ -3,35 +3,34 @@ from kornia.augmentation.auto.operations import OperationBase
 from kornia.augmentation.auto.operations import (
     Brightness,
     Contrast,
-    Hue,
-    Saturate,
     Equalize,
-    Gray,
     Invert,
     Posterize,
     Solarize,
     SolarizeAdd,
     Sharpness,
-    HorizontalFlip,
-    VerticalFlip,
-    Rotate
+    Rotate,
+    ShearX,
+    ShearY,
+    TranslateX,
+    TranslateY,
 )
 
 
 def shear_x(min_mag: float, max_mag: float) -> OperationBase:
-    raise NotImplementedError
+    return ShearX(None, 1., magnitude_range=(min_mag, max_mag))
 
 
 def shear_y(min_mag: float, max_mag: float) -> OperationBase:
-    raise NotImplementedError
+    return ShearY(None, 1., magnitude_range=(min_mag, max_mag))
 
 
 def translate_x(min_mag: float, max_mag: float) -> OperationBase:
-    raise NotImplementedError
+    return TranslateX(None, 1., magnitude_range=(min_mag, max_mag))
 
 
 def translate_y(min_mag: float, max_mag: float) -> OperationBase:
-    raise NotImplementedError
+    return TranslateY(None, 1., magnitude_range=(min_mag, max_mag))
 
 
 def rotate(min_mag: float, max_mag: float) -> OperationBase:

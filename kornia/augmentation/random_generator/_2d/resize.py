@@ -8,6 +8,10 @@ from kornia.core import Device, Tensor, tensor
 from kornia.geometry.bbox import bbox_generator
 from kornia.geometry.transform.affwarp import _side_to_image_size
 
+__all__ = [
+    "ResizeGenerator"
+]
+
 
 class ResizeGenerator(RandomGeneratorBase):
     r"""Get parameters for ```resize``` transformation for resize transform.

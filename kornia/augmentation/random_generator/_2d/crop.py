@@ -9,6 +9,10 @@ from kornia.core import Device, Tensor, tensor, where, zeros
 from kornia.geometry.bbox import bbox_generator
 from kornia.utils.helpers import _extract_device_dtype
 
+__all__ = [
+    "CropGenerator"
+]
+
 
 class CropGenerator(RandomGeneratorBase):
     r"""Get parameters for ```crop``` transformation for crop transform.

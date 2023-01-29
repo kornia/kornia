@@ -5,34 +5,41 @@ from kornia.augmentation.auto.operations import OperationBase
 from kornia.augmentation.auto.operations import (
     Brightness,
     Contrast,
-    Hue,
-    Saturate,
     Equalize,
-    Gray,
     Invert,
     Posterize,
     Solarize,
     Sharpness,
-    HorizontalFlip,
-    VerticalFlip,
-    Rotate
+    Rotate,
+    ShearX,
+    ShearY,
+    TranslateX,
+    TranslateY,
 )
 
 
 def shear_x(probability: float, magnitude: float) -> OperationBase:
-    raise NotImplementedError
+    magnitudes = torch.linspace(-0.3, 0.3, 11) * 180.
+    return ShearX(
+        None, probability, magnitude_range=(magnitudes[magnitude].item(), magnitudes[magnitude + 1].item()))
 
 
 def shear_y(probability: float, magnitude: float) -> OperationBase:
-    raise NotImplementedError
+    magnitudes = torch.linspace(-0.3, 0.3, 11) * 180.
+    return ShearY(
+        None, probability, magnitude_range=(magnitudes[magnitude].item(), magnitudes[magnitude + 1].item()))
 
 
 def translate_x(probability: float, magnitude: float) -> OperationBase:
-    raise NotImplementedError
+    magnitudes = torch.linspace(-0.5, 0.5, 11)
+    return TranslateX(
+        None, probability, magnitude_range=(magnitudes[magnitude].item(), magnitudes[magnitude + 1].item()))
 
 
 def translate_y(probability: float, magnitude: float) -> OperationBase:
-    raise NotImplementedError
+    magnitudes = torch.linspace(-0.5, 0.5, 11)
+    return TranslateY(
+        None, probability, magnitude_range=(magnitudes[magnitude].item(), magnitudes[magnitude + 1].item()))
 
 
 def rotate(probability: float, magnitude: float) -> OperationBase:
