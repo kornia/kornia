@@ -8,7 +8,6 @@ import torch
 
 from kornia.core import Device, Tensor, as_tensor, concatenate, stack, tensor, where, zeros, zeros_like
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
-from kornia.utils import get_cuda_device_if_available
 
 # TODO: Replace on the functions these alias
 _Device = Optional[Device]
@@ -257,12 +256,12 @@ def get_binary_kernel2d(window_size: tuple[int, int] | int, *, device: _Device =
     return kernel.view(window_range, 1, kx, ky)
 
 
-def get_sobel_kernel_3x3() -> Tensor:
+def get_sobel_kernel_3x3(*, device: _Device = None, dtype: _Dtype = None) -> Tensor:
     """Utility function that returns a sobel kernel of 3x3."""
-    return tensor([[-1.0, 0.0, 1.0], [-2.0, 0.0, 2.0], [-1.0, 0.0, 1.0]], device=get_cuda_device_if_available())
+    return tensor([[-1.0, 0.0, 1.0], [-2.0, 0.0, 2.0], [-1.0, 0.0, 1.0]], device=device, dtype=dtype)
 
 
-def get_sobel_kernel_5x5_2nd_order() -> Tensor:
+def get_sobel_kernel_5x5_2nd_order(*, device: _Device = None, dtype: _Dtype = None) -> Tensor:
     """Utility function that returns a 2nd order sobel kernel of 5x5."""
     return tensor(
         [
@@ -272,11 +271,12 @@ def get_sobel_kernel_5x5_2nd_order() -> Tensor:
             [-4.0, 0.0, 8.0, 0.0, -4.0],
             [-1.0, 0.0, 2.0, 0.0, -1.0],
         ],
-        device=get_cuda_device_if_available(),
+        device=device,
+        dtype=dtype,
     )
 
 
-def _get_sobel_kernel_5x5_2nd_order_xy() -> Tensor:
+def _get_sobel_kernel_5x5_2nd_order_xy(*, device: _Device = None, dtype: _Dtype = None) -> Tensor:
     """Utility function that returns a 2nd order sobel kernel of 5x5."""
     return tensor(
         [
@@ -286,13 +286,14 @@ def _get_sobel_kernel_5x5_2nd_order_xy() -> Tensor:
             [2.0, 4.0, 0.0, -4.0, -2.0],
             [1.0, 2.0, 0.0, -2.0, -1.0],
         ],
-        device=get_cuda_device_if_available(),
+        device=device,
+        dtype=dtype,
     )
 
 
-def get_diff_kernel_3x3() -> Tensor:
+def get_diff_kernel_3x3(*, device: _Device = None, dtype: _Dtype = None) -> Tensor:
     """Utility function that returns a first order derivative kernel of 3x3."""
-    return tensor([[-0.0, 0.0, 0.0], [-1.0, 0.0, 1.0], [-0.0, 0.0, 0.0]], device=get_cuda_device_if_available())
+    return tensor([[-0.0, 0.0, 0.0], [-1.0, 0.0, 1.0], [-0.0, 0.0, 0.0]], device=device, dtype=dtype)
 
 
 def get_diff_kernel3d(device: Device | None = None, dtype: torch.dtype | None = None) -> Tensor:
@@ -362,33 +363,33 @@ def get_diff_kernel3d_2nd_order(device: Device | None = None, dtype: torch.dtype
     return kernel.unsqueeze(1)
 
 
-def get_sobel_kernel2d() -> Tensor:
-    kernel_x = get_sobel_kernel_3x3()
+def get_sobel_kernel2d(*, device: _Device = None, dtype: _Dtype = None) -> Tensor:
+    kernel_x = get_sobel_kernel_3x3(device=device, dtype=dtype)
     kernel_y = kernel_x.transpose(0, 1)
     return stack([kernel_x, kernel_y])
 
 
-def get_diff_kernel2d() -> Tensor:
-    kernel_x = get_diff_kernel_3x3()
+def get_diff_kernel2d(*, device: _Device = None, dtype: _Dtype = None) -> Tensor:
+    kernel_x = get_diff_kernel_3x3(device=device, dtype=dtype)
     kernel_y = kernel_x.transpose(0, 1)
     return stack([kernel_x, kernel_y])
 
 
-def get_sobel_kernel2d_2nd_order() -> Tensor:
-    gxx = get_sobel_kernel_5x5_2nd_order()
+def get_sobel_kernel2d_2nd_order(*, device: _Device = None, dtype: _Dtype = None) -> Tensor:
+    gxx = get_sobel_kernel_5x5_2nd_order(device=device, dtype=dtype)
     gyy = gxx.transpose(0, 1)
-    gxy = _get_sobel_kernel_5x5_2nd_order_xy()
+    gxy = _get_sobel_kernel_5x5_2nd_order_xy(device=device, dtype=dtype)
     return stack([gxx, gxy, gyy])
 
 
-def get_diff_kernel2d_2nd_order() -> Tensor:
-    gxx = tensor([[0.0, 0.0, 0.0], [1.0, -2.0, 1.0], [0.0, 0.0, 0.0]], device=get_cuda_device_if_available())
+def get_diff_kernel2d_2nd_order(*, device: _Device = None, dtype: _Dtype = None) -> Tensor:
+    gxx = tensor([[0.0, 0.0, 0.0], [1.0, -2.0, 1.0], [0.0, 0.0, 0.0]], device=device, dtype=dtype)
     gyy = gxx.transpose(0, 1)
-    gxy = tensor([[-1.0, 0.0, 1.0], [0.0, 0.0, 0.0], [1.0, 0.0, -1.0]], device=get_cuda_device_if_available())
+    gxy = tensor([[-1.0, 0.0, 1.0], [0.0, 0.0, 0.0], [1.0, 0.0, -1.0]], device=device, dtype=dtype)
     return stack([gxx, gxy, gyy])
 
 
-def get_spatial_gradient_kernel2d(mode: str, order: int) -> Tensor:
+def get_spatial_gradient_kernel2d(mode: str, order: int, *, device: _Device = None, dtype: _Dtype = None) -> Tensor:
     r"""Function that returns kernel for 1st or 2nd order image gradients, using one of the following operators:
 
     sobel, diff.
@@ -408,19 +409,19 @@ def get_spatial_gradient_kernel2d(mode: str, order: int) -> Tensor:
             )
         )
     if mode == 'sobel' and order == 1:
-        kernel: Tensor = get_sobel_kernel2d()
+        kernel: Tensor = get_sobel_kernel2d(device=device, dtype=dtype)
     elif mode == 'sobel' and order == 2:
-        kernel = get_sobel_kernel2d_2nd_order()
+        kernel = get_sobel_kernel2d_2nd_order(device=device, dtype=dtype)
     elif mode == 'diff' and order == 1:
-        kernel = get_diff_kernel2d()
+        kernel = get_diff_kernel2d(device=device, dtype=dtype)
     elif mode == 'diff' and order == 2:
-        kernel = get_diff_kernel2d_2nd_order()
+        kernel = get_diff_kernel2d_2nd_order(device=device, dtype=dtype)
     else:
         raise NotImplementedError("")
     return kernel
 
 
-def get_spatial_gradient_kernel3d(mode: str, order: int, device=torch.device('cpu'), dtype=torch.float) -> Tensor:
+def get_spatial_gradient_kernel3d(mode: str, order: int, device: _Device = None, dtype: _Dtype = None) -> Tensor:
     r"""Function that returns kernel for 1st or 2nd order scale pyramid gradients, using one of the following
     operators: sobel, diff."""
     if mode not in ['sobel', 'diff']:
@@ -430,9 +431,9 @@ def get_spatial_gradient_kernel3d(mode: str, order: int, device=torch.device('cp
     if mode == 'sobel':
         raise NotImplementedError("Sobel kernel for 3d gradient is not implemented yet")
     if mode == 'diff' and order == 1:
-        kernel = get_diff_kernel3d(device, dtype)
+        kernel = get_diff_kernel3d(device=device, dtype=dtype)
     elif mode == 'diff' and order == 2:
-        kernel = get_diff_kernel3d_2nd_order(device, dtype)
+        kernel = get_diff_kernel3d_2nd_order(device=device, dtype=dtype)
     else:
         raise NotImplementedError("")
     return kernel

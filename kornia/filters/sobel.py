@@ -38,14 +38,13 @@ def spatial_gradient(input: Tensor, mode: str = 'sobel', order: int = 1, normali
     if not len(input.shape) == 4:
         raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
     # allocate kernel
-    kernel: Tensor = get_spatial_gradient_kernel2d(mode, order)
+    kernel = get_spatial_gradient_kernel2d(mode, order, device=input.device, dtype=input.dtype)
     if normalized:
         kernel = normalize_kernel2d(kernel)
 
     # prepare kernel
     b, c, h, w = input.shape
-    tmp_kernel: Tensor = kernel.to(input).detach()
-    tmp_kernel = tmp_kernel.unsqueeze(1)
+    tmp_kernel = kernel.unsqueeze(1)
 
     # Pad with "replicate for spatial dims, but with zeros for channel
     spatial_pad = [kernel.size(1) // 2, kernel.size(1) // 2, kernel.size(2) // 2, kernel.size(2) // 2]
@@ -95,13 +94,12 @@ def spatial_gradient3d(input: Tensor, mode: str = 'diff', order: int = 1) -> Ten
     else:
         # prepare kernel
         # allocate kernel
-        kernel: Tensor = get_spatial_gradient_kernel3d(mode, order)
+        kernel = get_spatial_gradient_kernel3d(mode, order, device=dev, dtype=dtype)
 
-        tmp_kernel: Tensor = kernel.to(input).detach()
-        tmp_kernel = tmp_kernel.repeat(c, 1, 1, 1, 1)
+        tmp_kernel = kernel.repeat(c, 1, 1, 1, 1)
 
         # convolve input tensor with grad kernel
-        kernel_flip: Tensor = tmp_kernel.flip(-3)
+        kernel_flip = tmp_kernel.flip(-3)
 
         # Pad with "replicate for spatial dims, but with zeros for channel
         spatial_pad = [
