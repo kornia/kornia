@@ -1,4 +1,4 @@
-from typing import Callable, List, Optional, Tuple, TypeVar
+from typing import cast, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
 import torch
 from torch import nn
@@ -7,6 +7,7 @@ from torch.distributions import RelaxedBernoulli, Bernoulli
 
 from kornia.core import Tensor
 from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.container.image import ImageSequential
 
 T = TypeVar('T', bound='OperationBase')
 
@@ -27,7 +28,7 @@ class OperationBase(nn.Module):
 
     def __init__(
         self,
-        operation: _AugmentationBase,
+        operation: Union[_AugmentationBase, ImageSequential],
         initial_magnitude: Optional[List[Tuple[str, Optional[float]]]] = None,
         temperature: float = 0.1,
         is_batch_operation: bool = False,
@@ -107,7 +108,10 @@ class OperationBase(nn.Module):
         # Need to setup the sampler again for each update.
         # Otherwise, an error for updating the same graph twice will be thrown.
         self._update_probability_gen(relaxation=True)
-        params = self.op.forward_parameters(input.shape)
+        if isinstance(self.op, (ImageSequential,)):
+            params = cast(Dict[str, Tensor], self.op.forward_parameters(input.shape)[0].data)
+        else:
+            params = self.op.forward_parameters(input.shape)
         batch_prob = params["batch_prob"]
 
         if mag is not None:

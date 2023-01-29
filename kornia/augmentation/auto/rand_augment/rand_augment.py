@@ -3,12 +3,12 @@ import torch
 import torch.nn as nn
 from torch.distributions import Categorical
 
+from kornia.augmentation.auto.base import SUBPLOLICY_CONFIG, PolicyAugmentBase
 from kornia.augmentation.auto.operations import OperationBase
-from kornia.augmentation.auto.autoaugment.autoaugment import SUBPLOLICY_CONFIG
-from kornia.core import Tensor, Module
+from kornia.core import Tensor
 from . import ops
 
-default_policy = [
+default_policy: List[SUBPLOLICY_CONFIG] = [
     # ("auto_contrast", 0, 1),
     [("equalize", 0, 1)],
     [("invert", 0, 1)],
@@ -28,7 +28,7 @@ default_policy = [
 ]
 
 
-class RandAugment(Module):
+class RandAugment(PolicyAugmentBase):
     """Apply RandAugment :cite:`cubuk2020randaugment` augmentation strategies.
 
     Args:
@@ -38,7 +38,6 @@ class RandAugment(Module):
     """
 
     def __init__(self, n: int, m: int, policy: Optional[List[SUBPLOLICY_CONFIG]] = None) -> None:
-        super().__init__()
 
         if m <= 0 or m >= 30:
             raise ValueError(f"Expect `m` in [0, 30]. Got {m}.")
@@ -48,13 +47,13 @@ class RandAugment(Module):
         else:
             _policy = policy
 
-        self.policies = self.compose_policy(_policy)
+        super().__init__(_policy)
         selection_weights = torch.tensor([1. / len(self.policies)] * len(self.policies))
         self.rand_selector = Categorical(selection_weights)
         self.n = n
         self.m = m
 
-    def compose_policy(self, policy: List[OperationBase]) -> nn.ModuleList:
+    def compose_policy(self, policy: List[SUBPLOLICY_CONFIG]) -> nn.ModuleList:
         """Obtain the policies according to the policy JSON."""
 
         def _get_op(subpolicy: SUBPLOLICY_CONFIG) -> OperationBase:

@@ -4,11 +4,14 @@ import torch.nn as nn
 from torch.distributions import Categorical
 
 import kornia.augmentation.auto.rand_augment.ops as ops
-from kornia.augmentation.auto.operations import OperationBase
-from kornia.augmentation.auto.autoaugment.autoaugment import SUBPLOLICY_CONFIG
-from kornia.core import Tensor, Module
+from kornia.augmentation.auto.base import (
+    PolicyAugmentBase,
+    PolicySequential,
+    SUBPLOLICY_CONFIG,
+)
+from kornia.core import Tensor
 
-default_policy = [
+default_policy: List[SUBPLOLICY_CONFIG] = [
     # [("identity", 0, 1)],
     # ("auto_contrast", 0, 1),
     [("equalize", 0, 1)],
@@ -26,7 +29,7 @@ default_policy = [
 ]
 
 
-class TrivialAugment(Module):
+class TrivialAugment(PolicyAugmentBase):
     """Apply TrivialAugment :cite:`muller2021trivialaugment` augmentation strategies.
 
     Args:
@@ -34,28 +37,21 @@ class TrivialAugment(Module):
     """
 
     def __init__(self, policy: Optional[List[SUBPLOLICY_CONFIG]] = None) -> None:
-        super().__init__()
 
         if policy is None:
             _policy = default_policy
         else:
             _policy = policy
 
-        self.policies = self.compose_policy(_policy)
+        super().__init__(_policy)
         selection_weights = torch.tensor([1. / len(self.policies)] * len(self.policies))
         self.rand_selector = Categorical(selection_weights)
 
-    def compose_policy(self, policy: List[OperationBase]) -> nn.ModuleList:
-        """Obtain the policies according to the policy JSON."""
-
-        def _get_op(subpolicy: SUBPLOLICY_CONFIG) -> OperationBase:
-            name, low, high = subpolicy[0]
-            return getattr(ops, name)(low, high)
-
-        policies = nn.ModuleList([])
-        for subpolicy in policy:
-            policies.append(_get_op(subpolicy))
-        return policies
+    def compose_subpolicy_sequential(self, subpolicy: SUBPLOLICY_CONFIG) -> PolicySequential:
+        if len(subpolicy) != 1:
+            raise RuntimeError(f"Each policy must have only one operation for TrivialAugment. Got {len(subpolicy)}.")
+        name, low, high = subpolicy[0]
+        return PolicySequential([getattr(ops, name)(low, high)])
 
     def forward(self, input: Tensor) -> Tensor:
         idx = self.rand_selector.sample()
