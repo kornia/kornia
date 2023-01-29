@@ -34,7 +34,7 @@ class OperationBase(nn.Module):
         is_batch_operation: bool = False,
         magnitude_fn: Optional[Callable] = None,
         gradient_estimator: Optional[Function] = None,
-        symmetric_megnitude: bool = False
+        symmetric_megnitude: bool = False,
     ) -> None:
         super().__init__()
         self.op = operation
@@ -58,7 +58,6 @@ class OperationBase(nn.Module):
         self._gradient_estimator = gradient_estimator
 
     def _init_magnitude_fn(self, magnitude_fn: Optional[Callable]) -> Callable:
-
         def _identity(x: Tensor) -> Tensor:
             return x
 
@@ -66,6 +65,7 @@ class OperationBase(nn.Module):
             def f(x: Tensor) -> Tensor:
                 flip = torch.rand((x.shape[0],), device=x.device) > 0.5
                 return fn(x) * flip
+
             return f
 
         if magnitude_fn is None:

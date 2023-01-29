@@ -185,7 +185,7 @@ class Gray(OperationBase):
             RandomGrayscale(same_on_batch=False, p=initial_probability),
             initial_magnitude=None,
             temperature=temperature,
-            symmetric_megnitude=symmetric_megnitude
+            symmetric_megnitude=symmetric_megnitude,
         )
 
 
@@ -202,7 +202,7 @@ class Invert(OperationBase):
             RandomInvert(same_on_batch=False, p=initial_probability),
             initial_magnitude=None,
             temperature=temperature,
-            symmetric_megnitude=symmetric_megnitude
+            symmetric_megnitude=symmetric_megnitude,
         )
 
 
@@ -335,9 +335,7 @@ class HorizontalFlip(OperationBase):
         temperature: temperature for RelaxedBernoulli distribution used during training.
     """
 
-    def __init__(
-        self, initial_probability: float = 0.5, temperature: float = 0.1, symmetric_megnitude: bool = False
-    ):
+    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1, symmetric_megnitude: bool = False):
         super().__init__(
             RandomHorizontalFlip(same_on_batch=False, p=initial_probability),
             initial_magnitude=None,
