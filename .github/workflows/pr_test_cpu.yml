@@ -5,7 +5,7 @@ on:
     branches: [test-me-*]
   pull_request:
     branches: [master]
-    types: [opened, reopened, synchronize, review_requested, ready_for_review, labeled]
+    types: [opened, reopened, synchronize, ready_for_review, labeled]
   workflow_dispatch:
 
 concurrency:
@@ -18,7 +18,7 @@ jobs:
       fail-fast: false # TODO: enable it when CI be stable
       matrix:
         os: ['Ubuntu-latest', 'Windows-latest', 'MacOS-latest']
-        pytorch-dtype: ['float16', 'float32', 'float64']
+        pytorch-dtype: ['float32', 'float64']
     uses: ./.github/workflows/tests.yml
     with:
       os: ${{ matrix.os }}
@@ -32,14 +32,13 @@ jobs:
       fail-fast: false
       matrix:
         os: ['Ubuntu-latest', 'Windows-latest', 'MacOS-latest']
-        pytorch-dtype: ['float16', 'float32', 'float64']
+        pytorch-dtype: ['float32', 'float64']
 
     uses: ./.github/workflows/tests.yml
     with:
       os: ${{ matrix.os }}
       python-version: '["3.9"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
-      continue-on-error: ${{ contains('float16', matrix.pytorch-dtype) }} # Remove this when float16 stop raising errors
 
   tests-nightly:
     if:  contains(github.event.pull_request.labels.*.name, 'nightly')
@@ -53,6 +52,17 @@ jobs:
     uses: ./.github/workflows/tests.yml
     with:
       os: ${{ matrix.os }}
-      python-version: '["3.7", "3.10"]'
+      python-version: '["3.10"]'
       pytorch-version: '["nightly"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
+
+  tests-cpu-half:
+    strategy:
+      fail-fast: false # TODO: enable it when CI be stable
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: 'Ubuntu-latest'
+      python-version: '["3.10"]'
+      pytorch-version: '["1.13.1"]'
+      pytorch-dtype: 'float16'
+      continue-on-error: true
