@@ -362,15 +362,6 @@ class TestSpatialGradient3d:
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.filters.spatial_gradient3d, (img,), raise_exception=True)
 
-    @pytest.mark.skip("issue with device in kernel generation")
-    def test_jit(self, device, dtype):
-        img = torch.rand(2, 3, 1, 4, 5, device=device, dtype=dtype)
-        op = kornia.filters.spatial_gradient3d
-        op_script = torch.jit.script(op)
-        expected = op(img)
-        actual = op_script(img)
-        assert_close(actual, expected)
-
     def test_module(self, device, dtype):
         img = torch.rand(2, 3, 1, 4, 5, device=device, dtype=dtype)
         op = kornia.filters.spatial_gradient3d
@@ -453,15 +444,6 @@ class TestSobel:
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.filters.sobel, (img, True), raise_exception=True, fast_mode=True)
-
-    @pytest.mark.skip(reason="`kornia.utils.get_cuda_device_if_available` is not jittable")
-    def test_jit(self, device, dtype):
-        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
-        op = kornia.filters.sobel
-        op_script = torch.jit.script(op)
-        expected = op(img)
-        actual = op_script(img)
-        assert_close(actual, expected)
 
     def test_module(self, device, dtype):
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)

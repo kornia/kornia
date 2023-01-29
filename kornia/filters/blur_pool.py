@@ -51,8 +51,8 @@ class BlurPool2D(Module):
 
     def forward(self, input: Tensor) -> Tensor:
         # To align the logic with the whole lib
-        kernel = torch.as_tensor(self.kernel, device=input.device, dtype=input.dtype)
-        return _blur_pool_by_kernel2d(input, kernel.repeat((input.shape[1], 1, 1, 1)), self.stride)
+        self.kernel = torch.as_tensor(self.kernel, device=input.device, dtype=input.dtype)
+        return _blur_pool_by_kernel2d(input, self.kernel.repeat((input.shape[1], 1, 1, 1)), self.stride)
 
 
 class MaxBlurPool2D(Module):
@@ -101,9 +101,9 @@ class MaxBlurPool2D(Module):
 
     def forward(self, input: Tensor) -> Tensor:
         # To align the logic with the whole lib
-        kernel = torch.as_tensor(self.kernel, device=input.device, dtype=input.dtype)
+        self.kernel = torch.as_tensor(self.kernel, device=input.device, dtype=input.dtype)
         return _max_blur_pool_by_kernel2d(
-            input, kernel.repeat((input.size(1), 1, 1, 1)), self.stride, self.max_pool_size, self.ceil_mode
+            input, self.kernel.repeat((input.size(1), 1, 1, 1)), self.stride, self.max_pool_size, self.ceil_mode
         )
 
 
@@ -149,7 +149,9 @@ def blur_pool2d(input: Tensor, kernel_size: tuple[int, int] | int, stride: int =
                   [0.0625, 0.3750, 0.0625],
                   [0.0000, 0.0625, 0.3125]]]])
     """
-    kernel = get_pascal_kernel_2d(kernel_size, norm=True).repeat((input.size(1), 1, 1, 1)).to(input)
+    kernel = get_pascal_kernel_2d(kernel_size, norm=True, device=input.device, dtype=input.dtype).repeat(
+        (input.size(1), 1, 1, 1)
+    )
     return _blur_pool_by_kernel2d(input, kernel, stride)
 
 
@@ -183,7 +185,9 @@ def max_blur_pool2d(
     """
     if not len(input.shape) == 4:
         raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
-    kernel = get_pascal_kernel_2d(kernel_size, norm=True).repeat((input.shape[1], 1, 1, 1)).to(input)
+    kernel = get_pascal_kernel_2d(kernel_size, norm=True, device=input.device, dtype=input.dtype).repeat(
+        (input.shape[1], 1, 1, 1)
+    )
     return _max_blur_pool_by_kernel2d(input, kernel, stride, max_pool_size, ceil_mode)
 
 

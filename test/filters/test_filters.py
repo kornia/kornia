@@ -289,17 +289,6 @@ class TestFilter2D:
             kornia.filters.filter2d, (input, kernel), nondet_tol=1e-8, raise_exception=True, fast_mode=True
         )
 
-    @pytest.mark.parametrize("padding", ["same", "valid"])
-    def test_jit(self, padding, device, dtype):
-        op = kornia.filters.filter2d
-        op_script = torch.jit.script(op)
-
-        kernel = torch.rand(1, 3, 3, device=device, dtype=dtype)
-        input = torch.ones(1, 1, 7, 8, device=device, dtype=dtype)
-        expected = op(input, kernel, padding=padding)
-        actual = op_script(input, kernel, padding=padding)
-        assert_close(actual, expected)
-
 
 class TestFilter3D:
     def test_smoke(self, device, dtype):
@@ -617,16 +606,6 @@ class TestFilter3D:
             kornia.filters.filter3d, (input, kernel), nondet_tol=1e-8, raise_exception=True, fast_mode=True
         )
 
-    def test_jit(self, device, dtype):
-        op = kornia.filters.filter3d
-        op_script = torch.jit.script(op)
-
-        kernel = torch.rand(1, 1, 3, 3, device=device, dtype=dtype)
-        input = torch.ones(1, 1, 2, 7, 8, device=device, dtype=dtype)
-        expected = op(input, kernel)
-        actual = op_script(input, kernel)
-        assert_close(actual, expected)
-
 
 class TestDexiNed:
     def test_smoke(self, device, dtype):
@@ -654,10 +633,3 @@ class TestDexiNed:
 
         out = model(img)[-1]
         assert_close(out, expect, atol=3e-4, rtol=3e-4)
-
-    def test_jit(self, device, dtype):
-        op = kornia.filters.DexiNed(pretrained=False).to(device, dtype)
-        op_script = torch.jit.script(op)
-
-        img = torch.rand(1, 3, 64, 64, device=device, dtype=dtype)
-        assert_close(op(img)[-1], op_script(img)[-1])

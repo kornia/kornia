@@ -58,15 +58,3 @@ class TestMotionBlur:
             raise_exception=True,
             fast_mode=True,
         )
-
-    @pytest.mark.skip("angle can be Union")
-    def test_jit(self, device, dtype):
-        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
-        ksize = 5
-        angle = 65.0
-        direction = 0.1
-        op = kornia.filters.motion_blur
-        op_script = torch.jit.script(op)
-        actual = op_script(img, ksize, angle, direction)
-        expected = op(img, ksize, angle, direction)
-        assert_close(actual, expected)

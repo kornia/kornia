@@ -4,6 +4,7 @@ from torch.autograd import gradcheck
 
 import kornia
 import kornia.testing as utils  # test utils
+from kornia.filters.gaussian import gaussian_blur2d
 from kornia.filters.kernels import (
     get_gaussian_discrete_kernel1d,
     get_gaussian_erf_kernel1d,
@@ -137,23 +138,29 @@ def test_get_gaussian_discrete_kernel1d_tensor(window_size, sigma, device, dtype
     assert_close(actual.sum(), expected.sum())
 
 
-# -----------------------------------------------------
+@pytest.mark.parametrize("ksize_x", [5, 11])
+@pytest.mark.parametrize("ksize_y", [3, 7])
+@pytest.mark.parametrize("sigma", [(1.5, 1.5), (2.1, 2.1)])
+def test_gaussian_blur2d_float(ksize_x, ksize_y, sigma, device, dtype):
+    input = torch.rand(1, 3, 16, 16, device=device, dtype=dtype)
+
+    actual = gaussian_blur2d(input, (ksize_x, ksize_y), sigma, "replicate", separable=False)
+    actual_sep = gaussian_blur2d(input, (ksize_x, ksize_y), sigma, "replicate", separable=True)
+
+    assert_close(actual, actual_sep)
 
 
 @pytest.mark.parametrize("ksize_x", [5, 11])
 @pytest.mark.parametrize("ksize_y", [3, 7])
-@pytest.mark.parametrize(
-    "sigma", [1.5, 2.1, torch.tensor([[1.5, 2.1], [1.5, 2.1]]), torch.tensor([[1.5, 2.1], [2.5, 2.1]])]
-)
-def test_separable(ksize_x, ksize_y, sigma, device, dtype):
-    input = torch.rand(2, 3, 16, 16, device=device, dtype=dtype)
-    if isinstance(sigma, float):
-        sigma = (sigma, sigma)
+@pytest.mark.parametrize("sigma", ([[1.5, 2.1], [1.5, 2.1], [5.0, 2.7]], [[1.5, 2.1], [3.5, 2.1]]))
+def test_gaussian_blur2d_tensor(ksize_x, ksize_y, sigma, device, dtype):
+    sigma = torch.tensor(sigma, device=device, dtype=dtype)
+    bs = sigma.shape[0]
+    input = torch.rand(bs, 3, 16, 16, device=device, dtype=dtype)
+    actual = gaussian_blur2d(input, (ksize_x, ksize_y), sigma, "replicate", separable=False)
+    actual_sep = gaussian_blur2d(input, (ksize_x, ksize_y), sigma, "replicate", separable=True)
 
-    out = kornia.filters.gaussian_blur2d(input, (ksize_x, ksize_y), sigma, "replicate", separable=False)
-    out_sep = kornia.filters.gaussian_blur2d(input, (ksize_x, ksize_y), sigma, "replicate", separable=True)
-
-    assert_close(out, out_sep)
+    assert_close(actual, actual_sep)
 
 
 class TestGaussianBlur2d:
@@ -189,15 +196,6 @@ class TestGaussianBlur2d:
             raise_exception=True,
             fast_mode=True,
         )
-
-    @pytest.mark.skip(reason="`kornia.utils.get_cuda_device_if_available` is not jittable")
-    def test_jit(self, device, dtype):
-        op = kornia.filters.gaussian_blur2d
-        op_script = torch.jit.script(op)
-        params = [(3, 3), (1.5, 1.5)]
-
-        img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
-        assert_close(op(img, *params), op_script(img, *params))
 
     def test_module(self, device, dtype):
         params = [(3, 3), (1.5, 1.5)]
