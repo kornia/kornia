@@ -129,16 +129,6 @@ class TestBoxBlur:
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.filters.box_blur, (img, (3, 3)), raise_exception=True)
 
-    def test_jit(self, device, dtype):
-        op = kornia.filters.box_blur
-        op_script = torch.jit.script(op)
-
-        kernel_size = (3, 3)
-        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
-        actual = op_script(img, kernel_size)
-        expected = op(img, kernel_size)
-        assert_close(actual, expected)
-
     def test_module(self, device, dtype):
         op = kornia.filters.box_blur
         op_module = kornia.filters.BoxBlur

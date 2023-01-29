@@ -1,4 +1,4 @@
-from typing import Tuple, Union
+from __future__ import annotations
 
 import torch
 import torch.nn.functional as F
@@ -43,7 +43,7 @@ class BlurPool2D(Module):
                   [0.0000, 0.0625, 0.3125]]]])
     """
 
-    def __init__(self, kernel_size: Union[Tuple[int, int], int], stride: int = 2):
+    def __init__(self, kernel_size: tuple[int, int] | int, stride: int = 2):
         super().__init__()
         self.kernel_size = kernel_size
         self.stride = stride
@@ -90,7 +90,7 @@ class MaxBlurPool2D(Module):
     """
 
     def __init__(
-        self, kernel_size: Union[Tuple[int, int], int], stride: int = 2, max_pool_size: int = 2, ceil_mode: bool = False
+        self, kernel_size: tuple[int, int] | int, stride: int = 2, max_pool_size: int = 2, ceil_mode: bool = False
     ):
         super().__init__()
         self.kernel_size = kernel_size
@@ -107,7 +107,7 @@ class MaxBlurPool2D(Module):
         )
 
 
-def blur_pool2d(input: Tensor, kernel_size: Union[Tuple[int, int], int], stride: int = 2):
+def blur_pool2d(input: Tensor, kernel_size: tuple[int, int] | int, stride: int = 2):
     r"""Compute blurs and downsample a given feature map.
 
     .. image:: _static/img/blur_pool2d.png
@@ -154,11 +154,7 @@ def blur_pool2d(input: Tensor, kernel_size: Union[Tuple[int, int], int], stride:
 
 
 def max_blur_pool2d(
-    input: Tensor,
-    kernel_size: Union[Tuple[int, int], int],
-    stride: int = 2,
-    max_pool_size: int = 2,
-    ceil_mode: bool = False,
+    input: Tensor, kernel_size: tuple[int, int] | int, stride: int = 2, max_pool_size: int = 2, ceil_mode: bool = False
 ) -> Tensor:
     r"""Compute pools and blurs and downsample a given feature map.
 
@@ -212,7 +208,7 @@ def _max_blur_pool_by_kernel2d(input: Tensor, kernel: Tensor, stride: int, max_p
 
 def edge_aware_blur_pool2d(
     input: Tensor,
-    kernel_size: Union[Tuple[int, int], int],
+    kernel_size: tuple[int, int] | int,
     edge_threshold: float = 1.25,
     edge_dilation_kernel_size: int = 3,
     epsilon: float = 1e-6,

@@ -34,16 +34,6 @@ class TestMaxBlurPool:
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.filters.max_blur_pool2d, (img, 3), raise_exception=True, fast_mode=True)
 
-    def test_jit(self, device, dtype):
-        op = kornia.filters.max_blur_pool2d
-        op_script = torch.jit.script(op)
-
-        kernel_size = 3
-        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
-        actual = op_script(img, kernel_size)
-        expected = op(img, kernel_size)
-        assert_close(actual, expected)
-
     def test_module(self, device, dtype):
         op = kornia.filters.max_blur_pool2d
         op_module = kornia.filters.MaxBlurPool2D
@@ -84,16 +74,6 @@ class TestBlurPool:
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.filters.blur_pool2d, (img, 3), raise_exception=True, fast_mode=True)
 
-    def test_jit(self, device, dtype):
-        op = kornia.filters.blur_pool2d
-        op_script = torch.jit.script(op)
-
-        kernel_size = 3
-        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
-        actual = op_script(img, kernel_size)
-        expected = op(img, kernel_size)
-        assert_close(actual, expected)
-
     def test_module(self, device, dtype):
         op = kornia.filters.blur_pool2d
         op_module = kornia.filters.BlurPool2D
@@ -120,16 +100,6 @@ class TestEdgeAwareBlurPool:
         img = torch.rand((1, 2, 5, 4), device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.filters.edge_aware_blur_pool2d, (img, 3), raise_exception=True, fast_mode=True)
-
-    def test_jit(self, device, dtype):
-        op = kornia.filters.edge_aware_blur_pool2d
-        op_script = torch.jit.script(op)
-
-        kernel_size = 3
-        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
-        actual = op_script(img, kernel_size)
-        expected = op(img, kernel_size)
-        assert_close(actual, expected)
 
     def test_smooth(self, device, dtype):
         img = torch.ones(1, 1, 5, 5).to(device, dtype)

@@ -1,6 +1,8 @@
 # adapted from: https://github.com/xavysp/DexiNed/blob/d944b70eb6eaf40e22f8467c1e12919aa600d8e4/model.py
+
+from __future__ import annotations
+
 from collections import OrderedDict
-from typing import List
 
 import torch
 import torch.nn as nn
@@ -70,7 +72,7 @@ class _DenseLayer(nn.Sequential):
             )
         )
 
-    def forward(self, x: List[Tensor]) -> List[Tensor]:
+    def forward(self, x: list[Tensor]) -> list[Tensor]:
         x1, x2 = x[0], x[1]
         x3: Tensor = x1
         for mod in self:
@@ -86,7 +88,7 @@ class _DenseBlock(nn.Sequential):
             self.add_module('denselayer%d' % (i + 1), layer)
             input_features = out_features
 
-    def forward(self, x: List[Tensor]) -> List[Tensor]:
+    def forward(self, x: list[Tensor]) -> list[Tensor]:
         x_out = x
         for mod in self:
             x_out = mod(x_out)
@@ -104,8 +106,8 @@ class UpConvBlock(Module):
             raise Exception("layers cannot be none")
         self.features = nn.Sequential(*layers)
 
-    def make_deconv_layers(self, in_features: int, up_scale: int) -> List[Module]:
-        layers: List[Module] = []
+    def make_deconv_layers(self, in_features: int, up_scale: int) -> list[Module]:
+        layers: list[Module] = []
         all_pads = [0, 0, 1, 3, 7]
         for i in range(up_scale):
             kernel_size = 2**up_scale
@@ -120,7 +122,7 @@ class UpConvBlock(Module):
     def compute_out_features(self, idx: int, up_scale: int):
         return 1 if idx == up_scale - 1 else self.constant_features
 
-    def forward(self, x: Tensor, out_shape: List[int]) -> Tensor:
+    def forward(self, x: Tensor, out_shape: list[int]) -> Tensor:
         out = self.features(x)
         if out.shape[-2:] != out_shape:
             out = F.interpolate(out, out_shape, mode='bilinear')
@@ -215,7 +217,7 @@ class DexiNed(Module):
         self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
-    def forward(self, x: Tensor) -> List[Tensor]:
+    def forward(self, x: Tensor) -> list[Tensor]:
         # Block 1
         block_1 = self.block_1(x)
         block_1_side = self.side_1(block_1)

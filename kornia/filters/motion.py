@@ -1,4 +1,4 @@
-from typing import Tuple, Union
+from __future__ import annotations
 
 from kornia.core import Module, Tensor
 
@@ -78,13 +78,13 @@ class MotionBlur3D(Module):
     def __init__(
         self,
         kernel_size: int,
-        angle: Union[float, Tuple[float, float, float]],
+        angle: float | tuple[float, float, float],
         direction: float,
         border_type: str = 'constant',
     ) -> None:
         super().__init__()
         self.kernel_size = kernel_size
-        self.angle: Tuple[float, float, float]
+        self.angle: tuple[float, float, float]
         if isinstance(angle, float):
             self.angle = (angle, angle, angle)
         elif isinstance(angle, (tuple, list)) and len(angle) == 3:
@@ -107,8 +107,8 @@ class MotionBlur3D(Module):
 def motion_blur(
     input: Tensor,
     kernel_size: int,
-    angle: Union[float, Tensor],
-    direction: Union[float, Tensor],
+    angle: float | Tensor,
+    direction: float | Tensor,
     border_type: str = 'constant',
     mode: str = 'nearest',
 ) -> Tensor:
@@ -153,8 +153,8 @@ def motion_blur(
 def motion_blur3d(
     input: Tensor,
     kernel_size: int,
-    angle: Union[Tuple[float, float, float], Tensor],
-    direction: Union[float, Tensor],
+    angle: tuple[float, float, float] | Tensor,
+    direction: float | Tensor,
     border_type: str = 'constant',
     mode: str = 'nearest',
 ) -> Tensor:

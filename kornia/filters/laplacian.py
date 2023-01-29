@@ -1,4 +1,4 @@
-from typing import Tuple, Union
+from __future__ import annotations
 
 from kornia.core import Module, Tensor
 
@@ -7,7 +7,7 @@ from .kernels import get_laplacian_kernel2d, normalize_kernel2d
 
 
 def laplacian(
-    input: Tensor, kernel_size: Union[Tuple[int, int], int], border_type: str = 'reflect', normalized: bool = True
+    input: Tensor, kernel_size: tuple[int, int] | int, border_type: str = 'reflect', normalized: bool = True
 ) -> Tensor:
     r"""Create an operator that returns a tensor using a Laplacian filter.
 

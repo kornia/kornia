@@ -1,4 +1,4 @@
-from typing import Tuple, Union
+from __future__ import annotations
 
 import torch.nn.functional as F
 
@@ -7,13 +7,13 @@ from kornia.core import Module, Tensor
 from .kernels import _unpack_2d_ks, get_binary_kernel2d
 
 
-def _compute_zero_padding(kernel_size: Union[Tuple[int, int], int]) -> Tuple[int, int]:
+def _compute_zero_padding(kernel_size: tuple[int, int] | int) -> tuple[int, int]:
     r"""Utility function that computes zero padding tuple."""
     kx, ky = _unpack_2d_ks(kernel_size)
     return (kx - 1) // 2, (ky - 1) // 2
 
 
-def median_blur(input: Tensor, kernel_size: Union[Tuple[int, int], int]) -> Tensor:
+def median_blur(input: Tensor, kernel_size: tuple[int, int] | int) -> Tensor:
     r"""Blur an image using the median filter.
 
     .. image:: _static/img/median_blur.png
@@ -76,9 +76,9 @@ class MedianBlur(Module):
         torch.Size([2, 4, 5, 7])
     """
 
-    def __init__(self, kernel_size: Tuple[int, int]) -> None:
+    def __init__(self, kernel_size: tuple[int, int]) -> None:
         super().__init__()
-        self.kernel_size: Tuple[int, int] = kernel_size
+        self.kernel_size: tuple[int, int] = kernel_size
 
     def forward(self, input: Tensor) -> Tensor:
         return median_blur(input, self.kernel_size)

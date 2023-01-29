@@ -1,4 +1,4 @@
-from typing import Tuple, Union
+from __future__ import annotations
 
 from kornia.core import Module, Tensor
 
@@ -7,7 +7,7 @@ from .kernels import get_box_kernel2d, normalize_kernel2d
 
 
 def box_blur(
-    input: Tensor, kernel_size: Union[Tuple[int, int], int], border_type: str = 'reflect', normalized: bool = True
+    input: Tensor, kernel_size: tuple[int, int] | int, border_type: str = 'reflect', normalized: bool = True
 ) -> Tensor:
     r"""Blur an image using the box filter.
 
@@ -87,7 +87,7 @@ class BoxBlur(Module):
     """
 
     def __init__(
-        self, kernel_size: Union[Tuple[int, int], int], border_type: str = 'reflect', normalized: bool = True
+        self, kernel_size: tuple[int, int] | int, border_type: str = 'reflect', normalized: bool = True
     ) -> None:
         super().__init__()
         self.kernel_size = kernel_size

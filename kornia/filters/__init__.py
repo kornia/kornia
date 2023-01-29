@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from .blur import BoxBlur, box_blur
 from .blur_pool import BlurPool2D, MaxBlurPool2D, blur_pool2d, edge_aware_blur_pool2d, max_blur_pool2d
 from .canny import Canny, canny

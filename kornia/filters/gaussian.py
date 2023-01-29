@@ -1,4 +1,4 @@
-from typing import Tuple, Union
+from __future__ import annotations
 
 from kornia.core import Module, Tensor, as_tensor
 
@@ -8,8 +8,8 @@ from .kernels import _unpack_2d_ks, get_gaussian_kernel1d, get_gaussian_kernel2d
 
 def gaussian_blur2d(
     input: Tensor,
-    kernel_size: Union[Tuple[int, int], int],
-    sigma: Union[Tuple[float, float], Tensor],
+    kernel_size: tuple[int, int] | int,
+    sigma: tuple[float, float] | Tensor,
     border_type: str = 'reflect',
     separable: bool = True,
 ) -> Tensor:
@@ -95,8 +95,8 @@ class GaussianBlur2d(Module):
 
     def __init__(
         self,
-        kernel_size: Union[Tuple[int, int], int],
-        sigma: Union[Tuple[float, float], Tensor],
+        kernel_size: tuple[int, int] | int,
+        sigma: tuple[float, float] | Tensor,
         border_type: str = 'reflect',
         separable: bool = True,
     ) -> None:

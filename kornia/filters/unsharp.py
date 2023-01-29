@@ -1,4 +1,4 @@
-from typing import Tuple, Union
+from __future__ import annotations
 
 from kornia.core import Module, Tensor
 
@@ -6,10 +6,7 @@ from .gaussian import gaussian_blur2d
 
 
 def unsharp_mask(
-    input: Tensor,
-    kernel_size: Union[Tuple[int, int], int],
-    sigma: Union[Tuple[float, float], Tensor],
-    border_type: str = 'reflect',
+    input: Tensor, kernel_size: tuple[int, int] | int, sigma: tuple[float, float] | Tensor, border_type: str = 'reflect'
 ) -> Tensor:
     r"""Create an operator that sharpens a tensor by applying operation out = 2 * image - gaussian_blur2d(image).
 
@@ -67,10 +64,7 @@ class UnsharpMask(Module):
     """
 
     def __init__(
-        self,
-        kernel_size: Union[Tuple[int, int], int],
-        sigma: Union[Tuple[float, float], Tensor],
-        border_type: str = 'reflect',
+        self, kernel_size: tuple[int, int] | int, sigma: tuple[float, float] | Tensor, border_type: str = 'reflect'
     ) -> None:
         super().__init__()
         self.kernel_size = kernel_size

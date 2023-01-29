@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import math
 from math import sqrt
-from typing import List, Optional, Tuple, Union
+from typing import Optional
 
 import torch
 
@@ -13,7 +15,7 @@ _Device = Optional[Device]
 _Dtype = Optional[torch.dtype]
 
 
-def _unpack_2d_ks(kernel_size: Union[Tuple[int, int], int]) -> Tuple[int, int]:
+def _unpack_2d_ks(kernel_size: tuple[int, int] | int) -> tuple[int, int]:
     if isinstance(kernel_size, int):
         ks = int(kernel_size)
         return (ks, ks)
@@ -30,7 +32,7 @@ def normalize_kernel2d(input: Tensor) -> Tensor:
     return input / (norm.unsqueeze(-1).unsqueeze(-1))
 
 
-def gaussian(window_size: int, sigma: Union[Tensor, float], *, device: _Device = None, dtype: _Dtype = None) -> Tensor:
+def gaussian(window_size: int, sigma: Tensor | float, *, device: _Device = None, dtype: _Dtype = None) -> Tensor:
     """Compute the gaussian values based on the window and sigma values.
 
     Args:
@@ -60,7 +62,7 @@ def gaussian(window_size: int, sigma: Union[Tensor, float], *, device: _Device =
 
 
 def gaussian_discrete_erf(
-    window_size: int, sigma: Union[Tensor, float], *, device: _Device = None, dtype: _Dtype = None
+    window_size: int, sigma: Tensor | float, *, device: _Device = None, dtype: _Dtype = None
 ) -> Tensor:
     r"""Discrete Gaussian by interpolating the error function.
 
@@ -190,7 +192,7 @@ def _modified_bessel_i(n: int, x: Tensor) -> Tensor:
 
 
 def gaussian_discrete(
-    window_size: int, sigma: Union[Tensor, float], *, device: _Device = None, dtype: _Dtype = None
+    window_size: int, sigma: Tensor | float, *, device: _Device = None, dtype: _Dtype = None
 ) -> Tensor:
     r"""Discrete Gaussian kernel based on the modified Bessel functions.
 
@@ -234,18 +236,14 @@ def laplacian_1d(window_size: int, *, device: _Device = None, dtype: _Dtype = No
     return filter_1d
 
 
-def get_box_kernel2d(
-    kernel_size: Union[Tuple[int, int], int], *, device: _Device = None, dtype: _Dtype = None
-) -> Tensor:
+def get_box_kernel2d(kernel_size: tuple[int, int] | int, *, device: _Device = None, dtype: _Dtype = None) -> Tensor:
     r"""Utility function that returns a box filter."""
     kx, ky = _unpack_2d_ks(kernel_size)
     scale = tensor(1.0, device=device, dtype=dtype) / tensor([kx * ky], device=device, dtype=dtype)
     return scale.expand(1, kx, ky)
 
 
-def get_binary_kernel2d(
-    window_size: Union[Tuple[int, int], int], *, device: _Device = None, dtype: _Dtype = None
-) -> Tensor:
+def get_binary_kernel2d(window_size: tuple[int, int] | int, *, device: _Device = None, dtype: _Dtype = None) -> Tensor:
     r"""Create a binary kernel to extract the patches.
 
     If the window size is HxW will create a (H*W)x1xHxW kernel.
@@ -297,7 +295,7 @@ def get_diff_kernel_3x3() -> Tensor:
     return tensor([[-0.0, 0.0, 0.0], [-1.0, 0.0, 1.0], [-0.0, 0.0, 0.0]], device=get_cuda_device_if_available())
 
 
-def get_diff_kernel3d(device: Optional[Device] = None, dtype: Optional[torch.dtype] = None) -> Tensor:
+def get_diff_kernel3d(device: Device | None = None, dtype: torch.dtype | None = None) -> Tensor:
     """Utility function that returns a first order derivative kernel of 3x3x3."""
     kernel = tensor(
         [
@@ -323,7 +321,7 @@ def get_diff_kernel3d(device: Optional[Device] = None, dtype: Optional[torch.dty
     return kernel.unsqueeze(1)
 
 
-def get_diff_kernel3d_2nd_order(device: Optional[Device] = None, dtype: Optional[torch.dtype] = None) -> Tensor:
+def get_diff_kernel3d_2nd_order(device: Device | None = None, dtype: torch.dtype | None = None) -> Tensor:
     """Utility function that returns a first order derivative kernel of 3x3x3."""
     kernel = tensor(
         [
@@ -441,12 +439,7 @@ def get_spatial_gradient_kernel3d(mode: str, order: int, device=torch.device('cp
 
 
 def get_gaussian_kernel1d(
-    kernel_size: int,
-    sigma: Union[float, Tensor],
-    force_even: bool = False,
-    *,
-    device: _Device = None,
-    dtype: _Dtype = None,
+    kernel_size: int, sigma: float | Tensor, force_even: bool = False, *, device: _Device = None, dtype: _Dtype = None
 ) -> Tensor:
     r"""Function that returns Gaussian filter coefficients.
 
@@ -482,12 +475,7 @@ def get_gaussian_kernel1d(
 
 
 def get_gaussian_discrete_kernel1d(
-    kernel_size: int,
-    sigma: Union[float, Tensor],
-    force_even: bool = False,
-    *,
-    device: _Device = None,
-    dtype: _Dtype = None,
+    kernel_size: int, sigma: float | Tensor, force_even: bool = False, *, device: _Device = None, dtype: _Dtype = None
 ) -> Tensor:
     r"""Function that returns Gaussian filter coefficients based on the modified Bessel functions. Adapted from:
     https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
@@ -523,12 +511,7 @@ def get_gaussian_discrete_kernel1d(
 
 
 def get_gaussian_erf_kernel1d(
-    kernel_size: int,
-    sigma: Union[float, Tensor],
-    force_even: bool = False,
-    *,
-    device: _Device = None,
-    dtype: _Dtype = None,
+    kernel_size: int, sigma: float | Tensor, force_even: bool = False, *, device: _Device = None, dtype: _Dtype = None
 ) -> Tensor:
     r"""Function that returns Gaussian filter coefficients by interpolating the error function, adapted from:
     https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
@@ -565,8 +548,8 @@ def get_gaussian_erf_kernel1d(
 
 
 def get_gaussian_kernel2d(
-    kernel_size: Union[Tuple[int, int], int],
-    sigma: Union[Tuple[float, float], Tensor],
+    kernel_size: tuple[int, int] | int,
+    sigma: tuple[float, float] | Tensor,
     force_even: bool = False,
     *,
     device: _Device = None,
@@ -625,8 +608,8 @@ def get_gaussian_kernel2d(
 
 
 def get_gaussian_kernel3d(
-    kernel_size: Tuple[int, int, int],
-    sigma: Union[Tuple[float, float, float], Tensor],
+    kernel_size: tuple[int, int, int],
+    sigma: tuple[float, float, float] | Tensor,
     force_even: bool = False,
     *,
     device: _Device = None,
@@ -716,7 +699,7 @@ def get_laplacian_kernel1d(kernel_size: int, *, device: _Device = None, dtype: _
 
 
 def get_laplacian_kernel2d(
-    kernel_size: Union[Tuple[int, int], int], *, device: _Device = None, dtype: _Dtype = None
+    kernel_size: tuple[int, int] | int, *, device: _Device = None, dtype: _Dtype = None
 ) -> Tensor:
     r"""Function that returns Gaussian filter matrix coefficients.
 
@@ -756,7 +739,7 @@ def get_laplacian_kernel2d(
     return kernel
 
 
-def get_pascal_kernel_2d(kernel_size: Union[Tuple[int, int], int], norm: bool = True) -> Tensor:
+def get_pascal_kernel_2d(kernel_size: tuple[int, int] | int, norm: bool = True) -> Tensor:
     """Generate pascal filter kernel by kernel size.
 
     Args:
@@ -815,8 +798,8 @@ def get_pascal_kernel_1d(kernel_size: int, norm: bool = False) -> Tensor:
     >>> get_pascal_kernel_1d(6)
     tensor([ 1.,  5., 10., 10.,  5.,  1.])
     """
-    pre: List[float] = []
-    cur: List[float] = []
+    pre: list[float] = []
+    cur: list[float] = []
     for i in range(kernel_size):
         cur = [1.0] * (i + 1)
 
@@ -901,7 +884,7 @@ def get_hanning_kernel1d(kernel_size: int, device=torch.device('cpu'), dtype=tor
     return x
 
 
-def get_hanning_kernel2d(kernel_size: Tuple[int, int], device=torch.device('cpu'), dtype=torch.float) -> Tensor:
+def get_hanning_kernel2d(kernel_size: tuple[int, int], device=torch.device('cpu'), dtype=torch.float) -> Tensor:
     r"""Returns 2d Hanning kernel, used in signal processing and KCF tracker.
 
     Args:
