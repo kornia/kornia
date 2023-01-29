@@ -1,7 +1,5 @@
 from typing import Optional, Tuple
 
-import torch
-
 from kornia.augmentation import (
     RandomBrightness,
     RandomContrast,
@@ -61,11 +59,13 @@ class Brightness(OperationBase):
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (0.2, 1.8),
         temperature: float = 0.1,
+        symmetric_megnitude: bool = False,
     ):
         super().__init__(
             RandomBrightness(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("brightness_factor", initial_magnitude)],
             temperature=temperature,
+            symmetric_megnitude=symmetric_megnitude,
         )
 
 
@@ -85,11 +85,13 @@ class Contrast(OperationBase):
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (0.2, 1.8),
         temperature: float = 0.1,
+        symmetric_megnitude: bool = False,
     ):
         super().__init__(
             RandomContrast(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("contrast_factor", initial_magnitude)],
             temperature=temperature,
+            symmetric_megnitude=symmetric_megnitude,
         )
 
 
@@ -109,11 +111,13 @@ class Hue(OperationBase):
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (-0.5, 0.5),
         temperature: float = 0.1,
+        symmetric_megnitude: bool = False,
     ):
         super().__init__(
             RandomHue(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("hue_factor", initial_magnitude)],
             temperature=temperature,
+            symmetric_megnitude=symmetric_megnitude,
         )
 
 
@@ -133,11 +137,13 @@ class Saturate(OperationBase):
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (0.2, 1.8),
         temperature: float = 0.1,
+        symmetric_megnitude: bool = False,
     ):
         super().__init__(
             RandomSaturation(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("saturation_factor", initial_magnitude)],
             temperature=temperature,
+            symmetric_megnitude=symmetric_megnitude,
         )
 
 
@@ -156,11 +162,12 @@ class Equalize(OperationBase):
         STE gradient estimator applied for back propagation.
     """
 
-    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1):
+    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1, symmetric_megnitude: bool = False):
         super().__init__(
             RandomEqualize(same_on_batch=False, p=initial_probability),
             initial_magnitude=None,
             temperature=temperature,
+            symmetric_megnitude=symmetric_megnitude,
             gradient_estimator=STEFunction,
         )
 
@@ -173,9 +180,12 @@ class Gray(OperationBase):
         temperature: temperature for RelaxedBernoulli distribution used during training.
     """
 
-    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1):
+    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1, symmetric_megnitude: bool = False):
         super().__init__(
-            RandomGrayscale(same_on_batch=False, p=initial_probability), initial_magnitude=None, temperature=temperature
+            RandomGrayscale(same_on_batch=False, p=initial_probability),
+            initial_magnitude=None,
+            temperature=temperature,
+            symmetric_megnitude=symmetric_megnitude
         )
 
 
@@ -187,9 +197,12 @@ class Invert(OperationBase):
         temperature: temperature for RelaxedBernoulli distribution used during training.
     """
 
-    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1):
+    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1, symmetric_megnitude: bool = False):
         super().__init__(
-            RandomInvert(same_on_batch=False, p=initial_probability), initial_magnitude=None, temperature=temperature
+            RandomInvert(same_on_batch=False, p=initial_probability),
+            initial_magnitude=None,
+            temperature=temperature,
+            symmetric_megnitude=symmetric_megnitude
         )
 
 
@@ -216,11 +229,13 @@ class Posterize(OperationBase):
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (1, 8),
         temperature: float = 0.1,
+        symmetric_megnitude: bool = False,
     ):
         super().__init__(
             RandomPosterize(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("bits_factor", initial_magnitude)],
             temperature=temperature,
+            symmetric_megnitude=symmetric_megnitude,
             magnitude_fn=Posterize._process_magnitude,
             gradient_estimator=STEFunction,
         )
@@ -245,11 +260,13 @@ class Solarize(OperationBase):
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (0.0, 1.0),
         temperature: float = 0.1,
+        symmetric_megnitude: bool = False,
     ):
         super().__init__(
             RandomSolarize(magnitude_range, additions=0.0, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("thresholds", initial_magnitude)],
             temperature=temperature,
+            symmetric_megnitude=symmetric_megnitude,
             gradient_estimator=STEFunction,
         )
 
@@ -273,11 +290,13 @@ class SolarizeAdd(OperationBase):
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (-0.3, 0.3),
         temperature: float = 0.1,
+        symmetric_megnitude: bool = False,
     ):
         super().__init__(
             RandomSolarize(thresholds=0.5, additions=magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("additions", initial_magnitude)],
             temperature=temperature,
+            symmetric_megnitude=symmetric_megnitude,
             gradient_estimator=STEFunction,
         )
 
@@ -298,11 +317,13 @@ class Sharpness(OperationBase):
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (0.1, 1.9),
         temperature: float = 0.1,
+        symmetric_megnitude: bool = False,
     ):
         super().__init__(
             RandomSharpness(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("sharpness", initial_magnitude)],
             temperature=temperature,
+            symmetric_megnitude=symmetric_megnitude,
         )
 
 
@@ -314,11 +335,14 @@ class HorizontalFlip(OperationBase):
         temperature: temperature for RelaxedBernoulli distribution used during training.
     """
 
-    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1):
+    def __init__(
+        self, initial_probability: float = 0.5, temperature: float = 0.1, symmetric_megnitude: bool = False
+    ):
         super().__init__(
             RandomHorizontalFlip(same_on_batch=False, p=initial_probability),
             initial_magnitude=None,
             temperature=temperature,
+            symmetric_megnitude=symmetric_megnitude,
         )
 
 
@@ -330,11 +354,12 @@ class VerticalFlip(OperationBase):
         temperature: temperature for RelaxedBernoulli distribution used during training.
     """
 
-    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1):
+    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1, symmetric_megnitude: bool = False):
         super().__init__(
             RandomVerticalFlip(same_on_batch=False, p=initial_probability),
             initial_magnitude=None,
             temperature=temperature,
+            symmetric_megnitude=symmetric_megnitude,
         )
 
 
@@ -348,19 +373,15 @@ class Rotate(OperationBase):
         temperature: temperature for RelaxedBernoulli distribution used during training.
     """
 
-    @staticmethod
-    def _process_magnitude(magnitude: Tensor) -> Tensor:
-        # make it sign-agnostic
-        return magnitude * (torch.randint(0, 1, (1,)) * 2 - 1).item()
-
     def __init__(
         self,
         initial_magnitude: Optional[float] = 15.0,
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (0.0, 30.0),
         temperature: float = 0.1,
+        symmetric_megnitude: bool = True,
     ):
-        if magnitude_range[0] < 0:
+        if symmetric_megnitude and magnitude_range[0] < 0:
             raise ValueError(
                 f"Lower bound of {self.__class__.__name__} is a symetric operation. "
                 f"The lower bound must above 0. Got {magnitude_range[0]}."
@@ -369,7 +390,7 @@ class Rotate(OperationBase):
             RandomRotation(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("degrees", initial_magnitude)],
             temperature=temperature,
-            magnitude_fn=Rotate._process_magnitude,
+            symmetric_megnitude=symmetric_megnitude,
         )
 
 
@@ -386,7 +407,7 @@ class ShearX(OperationBase):
     @staticmethod
     def _process_magnitude(magnitude: Tensor) -> Tensor:
         # make it sign-agnostic
-        return magnitude * (torch.randint(0, 1, (1,)) * 2 - 1).item() * 180
+        return magnitude * 180
 
     def __init__(
         self,
@@ -394,8 +415,9 @@ class ShearX(OperationBase):
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (0.0, 0.3),
         temperature: float = 0.1,
+        symmetric_megnitude: bool = True,
     ):
-        if magnitude_range[0] < 0:
+        if symmetric_megnitude and magnitude_range[0] < 0:
             raise ValueError(
                 f"Lower bound of {self.__class__.__name__} is a symetric operation. "
                 f"The lower bound must above 0. Got {magnitude_range[0]}."
@@ -404,6 +426,7 @@ class ShearX(OperationBase):
             RandomShear(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("shear_x", initial_magnitude)],
             temperature=temperature,
+            symmetric_megnitude=symmetric_megnitude,
             magnitude_fn=ShearX._process_magnitude,
         )
 
@@ -421,7 +444,7 @@ class ShearY(OperationBase):
     @staticmethod
     def _process_magnitude(magnitude: Tensor) -> Tensor:
         # make it sign-agnostic
-        return magnitude * (torch.randint(0, 1, (1,)) * 2 - 1).item() * 180
+        return magnitude * 180
 
     def __init__(
         self,
@@ -429,8 +452,9 @@ class ShearY(OperationBase):
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (0.0, 0.3),
         temperature: float = 0.1,
+        symmetric_megnitude: bool = True,
     ):
-        if magnitude_range[0] < 0:
+        if symmetric_megnitude and magnitude_range[0] < 0:
             raise ValueError(
                 f"Lower bound of {self.__class__.__name__} is a symetric operation. "
                 f"The lower bound must above 0. Got {magnitude_range[0]}."
@@ -439,6 +463,7 @@ class ShearY(OperationBase):
             RandomShear((0.0, 0.0, *magnitude_range), same_on_batch=False, p=initial_probability),
             initial_magnitude=[("shear_y", initial_magnitude)],
             temperature=temperature,
+            symmetric_megnitude=symmetric_megnitude,
             magnitude_fn=ShearY._process_magnitude,
         )
 
@@ -453,19 +478,15 @@ class TranslateX(OperationBase):
         temperature: temperature for RelaxedBernoulli distribution used during training.
     """
 
-    @staticmethod
-    def _process_magnitude(magnitude: Tensor) -> Tensor:
-        # make it sign-agnostic
-        return magnitude * (torch.randint(0, 1, (1,)) * 2 - 1).item()
-
     def __init__(
         self,
         initial_magnitude: Optional[float] = 0.0,
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (0.0, 0.5),
         temperature: float = 0.1,
+        symmetric_megnitude: bool = True,
     ):
-        if magnitude_range[0] < 0:
+        if symmetric_megnitude and magnitude_range[0] < 0:
             raise ValueError(
                 f"Lower bound of {self.__class__.__name__} is a symetric operation. "
                 f"The lower bound must above 0. Got {magnitude_range[0]}."
@@ -474,7 +495,7 @@ class TranslateX(OperationBase):
             RandomTranslate(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("translate_x", initial_magnitude)],
             temperature=temperature,
-            magnitude_fn=TranslateX._process_magnitude,
+            symmetric_megnitude=symmetric_megnitude,
         )
 
 
@@ -488,19 +509,15 @@ class TranslateY(OperationBase):
         temperature: temperature for RelaxedBernoulli distribution used during training.
     """
 
-    @staticmethod
-    def _process_magnitude(magnitude: Tensor) -> Tensor:
-        # make it sign-agnostic
-        return magnitude * (torch.randint(0, 1, (1,)) * 2 - 1).item()
-
     def __init__(
         self,
         initial_magnitude: Optional[float] = 0.0,
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (0.0, 0.5),
         temperature: float = 0.1,
+        symmetric_megnitude: bool = True,
     ):
-        if magnitude_range[0] < 0:
+        if symmetric_megnitude and magnitude_range[0] < 0:
             raise ValueError(
                 f"Lower bound of {self.__class__.__name__} is a symetric operation. "
                 f"The lower bound must above 0. Got {magnitude_range[0]}."
@@ -509,5 +526,5 @@ class TranslateY(OperationBase):
             RandomTranslate(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("translate_y", initial_magnitude)],
             temperature=temperature,
-            magnitude_fn=TranslateY._process_magnitude,
+            symmetric_megnitude=symmetric_megnitude,
         )

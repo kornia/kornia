@@ -34,6 +34,7 @@ class OperationBase(nn.Module):
         is_batch_operation: bool = False,
         magnitude_fn: Optional[Callable] = None,
         gradient_estimator: Optional[Function] = None,
+        symmetric_megnitude: bool = False
     ) -> None:
         super().__init__()
         self.op = operation
@@ -52,8 +53,28 @@ class OperationBase(nn.Module):
             raise ValueError(f"Expect temperature value greater than 0. Got {temperature}.")
         self.register_buffer("temperature", torch.empty(1).fill_(temperature))
 
-        self._magnitude_fn = magnitude_fn
+        self.symmetric_megnitude = symmetric_megnitude
+        self._magnitude_fn = self._init_magnitude_fn(magnitude_fn)
         self._gradient_estimator = gradient_estimator
+
+    def _init_magnitude_fn(self, magnitude_fn: Optional[Callable]) -> Callable:
+
+        def _identity(x: Tensor) -> Tensor:
+            return x
+
+        def _random_flip(fn: Callable) -> Callable:
+            def f(x: Tensor) -> Tensor:
+                flip = torch.rand((x.shape[0],), device=x.device) > 0.5
+                return fn(x) * flip
+            return f
+
+        if magnitude_fn is None:
+            magnitude_fn = _identity
+
+        if self.symmetric_megnitude:
+            return _random_flip(magnitude_fn)
+
+        return magnitude_fn
 
     def _init_magnitude(self, initial_magnitude: Optional[Tuple[str, float]]) -> None:
         if isinstance(initial_magnitude, (list, tuple)):
@@ -63,6 +84,7 @@ class OperationBase(nn.Module):
                 raise NotImplementedError("Multi magnitudes operations are not yet supported.")
 
         if initial_magnitude is None:
+            self._factor_name = None
             self._magnitude = None
             self.magnitude_range = None
         else:
@@ -116,7 +138,7 @@ class OperationBase(nn.Module):
         if self._gradient_estimator is not None:
             # skip the gradient computation if gradient estimator is provided.
             with torch.no_grad():
-                if self._magnitude_fn is not None:
+                if self._factor_name is not None:
                     params[self._factor_name] = self._magnitude_fn(params[self._factor_name])
                 output = self.op(input, params=params)
             output = batch_prob * output + (1 - batch_prob) * input
@@ -126,7 +148,7 @@ class OperationBase(nn.Module):
             # If magnitude is not None, make the grad w.r.t the magnitude
             return self._gradient_estimator.apply(mag, output)
 
-        if self._magnitude_fn is not None:
+        if self._factor_name is not None:
             params[self._factor_name] = self._magnitude_fn(params[self._factor_name])
         return batch_prob * self.op(input, params=params) + (1 - batch_prob) * input
 

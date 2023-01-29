@@ -1,7 +1,6 @@
 from typing import List, Union
 
 import torch
-import torch.nn as nn
 from torch.distributions import Categorical
 
 from kornia.augmentation.auto.base import SUBPLOLICY_CONFIG, PolicyAugmentBase, PolicySequential

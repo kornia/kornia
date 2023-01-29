@@ -22,7 +22,7 @@ def shear_x(min_mag: float, max_mag: float) -> OperationBase:
         raise ValueError(
             f"{ShearX.__name__} is a symetric operation that `- min_mag == max_mag`. Got [{min_mag}, {max_mag}]"
         )
-    return ShearX(None, 1.0, magnitude_range=(0.0, max_mag))
+    return ShearX(None, 1.0, magnitude_range=(0.0, max_mag), symmetric_megnitude=True)
 
 
 def shear_y(min_mag: float, max_mag: float) -> OperationBase:
@@ -30,7 +30,7 @@ def shear_y(min_mag: float, max_mag: float) -> OperationBase:
         raise ValueError(
             f"{ShearX.__name__} is a symetric operation that `- min_mag == max_mag`. Got [{min_mag}, {max_mag}]"
         )
-    return ShearY(None, 1.0, magnitude_range=(0.0, max_mag))
+    return ShearY(None, 1.0, magnitude_range=(0.0, max_mag), symmetric_megnitude=True)
 
 
 def translate_x(min_mag: float, max_mag: float) -> OperationBase:
@@ -38,7 +38,7 @@ def translate_x(min_mag: float, max_mag: float) -> OperationBase:
         raise ValueError(
             f"{ShearX.__name__} is a symetric operation that `- min_mag == max_mag`. Got [{min_mag}, {max_mag}]"
         )
-    return TranslateX(None, 1.0, magnitude_range=(0.0, max_mag))
+    return TranslateX(None, 1.0, magnitude_range=(0.0, max_mag), symmetric_megnitude=True)
 
 
 def translate_y(min_mag: float, max_mag: float) -> OperationBase:
@@ -46,7 +46,7 @@ def translate_y(min_mag: float, max_mag: float) -> OperationBase:
         raise ValueError(
             f"{ShearX.__name__} is a symetric operation that `- min_mag == max_mag`. Got [{min_mag}, {max_mag}]"
         )
-    return TranslateY(None, 1.0, magnitude_range=(0.0, max_mag))
+    return TranslateY(None, 1.0, magnitude_range=(0.0, max_mag), symmetric_megnitude=True)
 
 
 def rotate(min_mag: float, max_mag: float) -> OperationBase:
@@ -54,7 +54,7 @@ def rotate(min_mag: float, max_mag: float) -> OperationBase:
         raise ValueError(
             f"{ShearX.__name__} is a symetric operation that `- min_mag == max_mag`. Got [{min_mag}, {max_mag}]"
         )
-    return Rotate(None, 1.0, magnitude_range=(0.0, max_mag))
+    return Rotate(None, 1.0, magnitude_range=(0.0, max_mag), symmetric_megnitude=True)
 
 
 def auto_contrast(min_mag: float, max_mag: float) -> OperationBase:

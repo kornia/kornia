@@ -20,31 +20,52 @@ from kornia.augmentation.auto.operations import (
 
 def shear_x(probability: float, magnitude: float) -> OperationBase:
     magnitudes = torch.linspace(-0.3, 0.3, 11) * 180.0
-    return ShearX(None, probability, magnitude_range=(magnitudes[magnitude].item(), magnitudes[magnitude + 1].item()))
+    return ShearX(
+        None,
+        probability,
+        magnitude_range=(magnitudes[magnitude].item(), magnitudes[magnitude + 1].item()),
+        symmetric_megnitude=False,
+    )
 
 
 def shear_y(probability: float, magnitude: float) -> OperationBase:
     magnitudes = torch.linspace(-0.3, 0.3, 11) * 180.0
-    return ShearY(None, probability, magnitude_range=(magnitudes[magnitude].item(), magnitudes[magnitude + 1].item()))
+    return ShearY(
+        None,
+        probability,
+        magnitude_range=(magnitudes[magnitude].item(), magnitudes[magnitude + 1].item()),
+        symmetric_megnitude=False,
+    )
 
 
 def translate_x(probability: float, magnitude: float) -> OperationBase:
     magnitudes = torch.linspace(-0.5, 0.5, 11)
     return TranslateX(
-        None, probability, magnitude_range=(magnitudes[magnitude].item(), magnitudes[magnitude + 1].item())
+        None,
+        probability,
+        magnitude_range=(magnitudes[magnitude].item(), magnitudes[magnitude + 1].item()),
+        symmetric_megnitude=False,
     )
 
 
 def translate_y(probability: float, magnitude: float) -> OperationBase:
     magnitudes = torch.linspace(-0.5, 0.5, 11)
     return TranslateY(
-        None, probability, magnitude_range=(magnitudes[magnitude].item(), magnitudes[magnitude + 1].item())
+        None,
+        probability,
+        magnitude_range=(magnitudes[magnitude].item(), magnitudes[magnitude + 1].item()),
+        symmetric_megnitude=False,
     )
 
 
 def rotate(probability: float, magnitude: float) -> OperationBase:
     magnitudes = torch.linspace(-30, 30, 11)
-    return Rotate(None, probability, magnitude_range=(magnitudes[magnitude].item(), magnitudes[magnitude + 1].item()))
+    return Rotate(
+        None,
+        probability,
+        magnitude_range=(magnitudes[magnitude].item(), magnitudes[magnitude + 1].item()),
+        symmetric_megnitude=False,
+    )
 
 
 def auto_contrast(probability: float, magnitude: float) -> OperationBase:
