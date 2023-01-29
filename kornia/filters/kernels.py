@@ -4,7 +4,7 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 
-from kornia.core import Device, Tensor, as_tensor, stack, tensor, zeros
+from kornia.core import Device, Tensor, as_tensor, concatenate, stack, tensor, where, zeros, zeros_like
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.utils import get_cuda_device_if_available
 
@@ -98,16 +98,25 @@ def _modified_bessel_0(x: Tensor) -> Tensor:
 
     https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
     """
-    if torch.abs(x) < 3.75:
-        y = (x / 3.75) * (x / 3.75)
-        return 1.0 + y * (
+    ax = torch.abs(x)
+
+    out = zeros_like(x)
+    idx_a = ax < 3.75
+
+    if idx_a.any():
+        y = (x[idx_a] / 3.75) * (x[idx_a] / 3.75)
+        out[idx_a] = 1.0 + y * (
             3.5156229 + y * (3.0899424 + y * (1.2067492 + y * (0.2659732 + y * (0.360768e-1 + y * 0.45813e-2))))
         )
-    ax = torch.abs(x)
-    y = 3.75 / ax
-    ans = 0.916281e-2 + y * (-0.2057706e-1 + y * (0.2635537e-1 + y * (-0.1647633e-1 + y * 0.392377e-2)))
-    coef = 0.39894228 + y * (0.1328592e-1 + y * (0.225319e-2 + y * (-0.157565e-2 + y * ans)))
-    return (torch.exp(ax) / torch.sqrt(ax)) * coef
+
+    idx_b = ~idx_a
+    if idx_b.any():
+        y = 3.75 / ax[idx_b]
+        ans = 0.916281e-2 + y * (-0.2057706e-1 + y * (0.2635537e-1 + y * (-0.1647633e-1 + y * 0.392377e-2)))
+        coef = 0.39894228 + y * (0.1328592e-1 + y * (0.225319e-2 + y * (-0.157565e-2 + y * ans)))
+        out[idx_b] = (ax[idx_b].exp() / ax[idx_b].sqrt()) * coef
+
+    return out
 
 
 def _modified_bessel_1(x: Tensor) -> Tensor:
@@ -115,16 +124,25 @@ def _modified_bessel_1(x: Tensor) -> Tensor:
 
     https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
     """
-    if torch.abs(x) < 3.75:
-        y = (x / 3.75) * (x / 3.75)
-        ans = 0.51498869 + y * (0.15084934 + y * (0.2658733e-1 + y * (0.301532e-2 + y * 0.32411e-3)))
-        return torch.abs(x) * (0.5 + y * (0.87890594 + y * ans))
     ax = torch.abs(x)
-    y = 3.75 / ax
-    ans = 0.2282967e-1 + y * (-0.2895312e-1 + y * (0.1787654e-1 - y * 0.420059e-2))
-    ans = 0.39894228 + y * (-0.3988024e-1 + y * (-0.362018e-2 + y * (0.163801e-2 + y * (-0.1031555e-1 + y * ans))))
-    ans = ans * torch.exp(ax) / torch.sqrt(ax)
-    return -ans if x < 0.0 else ans
+
+    out = zeros_like(x)
+    idx_a = ax < 3.75
+
+    if idx_a.any():
+        y = (x[idx_a] / 3.75) * (x[idx_a] / 3.75)
+        ans = 0.51498869 + y * (0.15084934 + y * (0.2658733e-1 + y * (0.301532e-2 + y * 0.32411e-3)))
+        out[idx_a] = ax[idx_a] * (0.5 + y * (0.87890594 + y * ans))
+
+    idx_b = ~idx_a
+    if idx_b.any():
+        y = 3.75 / ax[idx_b]
+        ans = 0.2282967e-1 + y * (-0.2895312e-1 + y * (0.1787654e-1 - y * 0.420059e-2))
+        ans = 0.39894228 + y * (-0.3988024e-1 + y * (-0.362018e-2 + y * (0.163801e-2 + y * (-0.1031555e-1 + y * ans))))
+        ans = ans * ax[idx_b].exp() / ax[idx_b].sqrt()
+        out[idx_b] = where(x[idx_b] < 0, -ans, ans)
+
+    return out
 
 
 def _modified_bessel_i(n: int, x: Tensor) -> Tensor:
@@ -134,35 +152,64 @@ def _modified_bessel_i(n: int, x: Tensor) -> Tensor:
     """
     if n < 2:
         raise ValueError("n must be greater than 1.")
-    if x == 0.0:
+
+    if (x == 0.0).all():
         return x
-    device = x.device
-    tox = 2.0 / torch.abs(x)
-    ans = tensor(0.0, device=device)
-    bip = tensor(0.0, device=device)
-    bi = tensor(1.0, device=device)
+
+    batch_size = x.shape[0]
+
+    tox = 2.0 / x.abs()
+    ans = zeros(batch_size, 1, device=x.device, dtype=x.dtype)
+    bip = zeros(batch_size, 1, device=x.device, dtype=x.dtype)
+    bi = torch.ones(batch_size, 1, device=x.device, dtype=x.dtype)
+
     m = int(2 * (n + int(sqrt(40.0 * n))))
     for j in range(m, 0, -1):
         bim = bip + float(j) * tox * bi
         bip = bi
         bi = bim
-        if abs(bi) > 1.0e10:
-            ans = ans * 1.0e-10
-            bi = bi * 1.0e-10
-            bip = bip * 1.0e-10
+        idx = bi.abs() > 1.0e10
+
+        if idx.any():
+            ans[idx] = ans[idx] * 1.0e-10
+            bi[idx] = bi[idx] * 1.0e-10
+            bip[idx] = bip[idx] * 1.0e-10
+
         if j == n:
             ans = bip
-    ans = ans * _modified_bessel_0(x) / bi
-    return -ans if x < 0.0 and (n % 2) == 1 else ans
+
+    out = ans * _modified_bessel_0(x) / bi
+
+    if (n % 2) == 1:
+        out = where(x < 0.0, -out, out)
+
+    # TODO: skip the previous computation for x == 0, instead of forcing here
+    out = where(x == 0.0, x, out)
+
+    return out
 
 
-def gaussian_discrete(window_size: int, sigma: Union[Tensor, float]) -> Tensor:
+def gaussian_discrete(
+    window_size: int, sigma: Union[Tensor, float], *, device: _Device = None, dtype: _Dtype = None
+) -> Tensor:
     r"""Discrete Gaussian kernel based on the modified Bessel functions.
 
     Adapted from: https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
+
+    Args:
+        window_size: the size which drives the filter amount.
+        sigma: gaussian standard deviation. If a tensor, should be in a shape :math:`(B, 1)`
+        device: This value will be used if sigma is a float. Device desired to compute.
+        dtype: This value will be used if sigma is a float. Dtype desired for compute.
+
+    Returns:
+        A tensor withshape :math:`(B, \text{kernel_size})`, with discrete Gaussian values computed by modified Bessel
+        function.
     """
     if isinstance(sigma, float):
-        sigma = as_tensor(sigma, device=get_cuda_device_if_available())
+        sigma = as_tensor([[sigma]], device=device, dtype=dtype)
+
+    KORNIA_CHECK_SHAPE(sigma, ["B", "1"])
 
     sigma2 = sigma * sigma
     tail = int(window_size // 2) + 1
@@ -171,10 +218,11 @@ def gaussian_discrete(window_size: int, sigma: Union[Tensor, float]) -> Tensor:
         _modified_bessel_1(sigma2),
         *(_modified_bessel_i(k, sigma2) for k in range(2, tail)),
     ]
+    # NOTE: on monain is exp(-sig)
+    # https://github.com/Project-MONAI/MONAI/blob/dev/monai/networks/layers/convutils.py#L128
+    out = concatenate(bessels[:0:-1] + bessels, -1) * sigma2.exp()
 
-    out = stack(bessels[:0:-1] + bessels, 0) * torch.exp(sigma2)
-
-    return out / out.sum()
+    return out / out.sum(-1, keepdim=True)
 
 
 def laplacian_1d(window_size: int) -> Tensor:
@@ -419,7 +467,7 @@ def get_gaussian_kernel1d(
         >>> get_gaussian_kernel1d(5, 1.5)
         tensor([[0.1201, 0.2339, 0.2921, 0.2339, 0.1201]])
 
-        >>> get_gaussian_kernel1d(5, torch.tensor([1.5, 0.7]))
+        >>> get_gaussian_kernel1d(5, torch.tensor([[1.5], [0.7]]))
         tensor([[0.1201, 0.2339, 0.2921, 0.2339, 0.1201],
                 [0.0096, 0.2054, 0.5699, 0.2054, 0.0096]])
     """
@@ -442,26 +490,32 @@ def get_gaussian_discrete_kernel1d(
 
     Args:
         kernel_size: filter size. It should be odd and positive.
-        sigma: gaussian standard deviation.
+        sigma: gaussian standard deviation. If a tensor, should be in a shape :math:`(B, 1)`
         force_even: overrides requirement for odd kernel size.
+        device: This value will be used if sigma is a float. Device desired to compute.
+        dtype: This value will be used if sigma is a float. Dtype desired for compute.
 
     Returns:
         1D tensor with gaussian filter coefficients.
 
     Shape:
-        - Output: :math:`(\text{kernel_size})`
+        - Output: :math:`(B, \text{kernel_size})`
 
     Examples:
 
         >>> get_gaussian_discrete_kernel1d(3, 2.5)
-        tensor([0.3235, 0.3531, 0.32(kx % 2 == 0 or kx <= 0)35])
+        tensor([[0.3235, 0.3531, 0.3235]])
 
         >>> get_gaussian_discrete_kernel1d(5, 1.5)
-        tensor([0.1096, 0.2323, 0.3161, 0.2323, 0.1096])
+        tensor([[0.1096, 0.2323, 0.3161, 0.2323, 0.1096]])
+        >>> get_gaussian_discrete_kernel1d(5, torch.tensor([[1.5],[2.4]]))
+        tensor([[0.1096, 0.2323, 0.3161, 0.2323, 0.1096],
+                [0.1635, 0.2170, 0.2389, 0.2170, 0.1635]])
     """
     if not isinstance(kernel_size, int) or ((kernel_size % 2 == 0) and not force_even) or (kernel_size <= 0):
         raise TypeError(f"kernel_size must be an odd positive integer. Got {kernel_size}")
-    return gaussian_discrete(kernel_size, sigma)
+
+    return gaussian_discrete(kernel_size, sigma, device=device, dtype=dtype)
 
 
 def get_gaussian_erf_kernel1d(
@@ -491,12 +545,14 @@ def get_gaussian_erf_kernel1d(
     Examples:
 
         >>> get_gaussian_erf_kernel1d(3, 2.5)
-        tensor([0.3245, 0.3511, 0.3245])
+        tensor([[0.3245, 0.3511, 0.3245]])
 
         >>> get_gaussian_erf_kernel1d(5, 1.5)
-        tensor([0.1226, 0.2331, 0.2887, 0.2331, 0.1226])
+        tensor([[0.1226, 0.2331, 0.2887, 0.2331, 0.1226]])
 
         >>> get_gaussian_erf_kernel1d(5, torch.tensor([[1.5], [2.1]]))
+        tensor([[0.1226, 0.2331, 0.2887, 0.2331, 0.1226],
+                [0.1574, 0.2198, 0.2456, 0.2198, 0.1574]])
     """
     if not isinstance(kernel_size, int) or ((kernel_size % 2 == 0) and not force_even) or (kernel_size <= 0):
         raise TypeError(f"kernel_size must be an odd positive integer. Got {kernel_size}")
@@ -604,7 +660,7 @@ def get_gaussian_kernel3d(
         tensor(1.)
         >>> get_gaussian_kernel3d((3, 3, 3), (1.5, 1.5, 1.5)).shape
         torch.Size([1, 3, 3, 3])
-        >>> get_gaussian_kernel3d_t((3, 7, 5), torch.tensor([[1.5, 1.5, 1.5]])).shape
+        >>> get_gaussian_kernel3d((3, 7, 5), torch.tensor([[1.5, 1.5, 1.5]])).shape
         torch.Size([1, 3, 7, 5])
     """
     if isinstance(sigma, tuple):

@@ -5,6 +5,7 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.filters.kernels import (
+    get_gaussian_discrete_kernel1d,
     get_gaussian_erf_kernel1d,
     get_gaussian_kernel1d,
     get_gaussian_kernel2d,
@@ -113,44 +114,30 @@ def test_get_discrete_gaussian_erf_kernel1d_tensor(window_size, sigma, device, d
     assert_close(actual.sum(), expected.sum())
 
 
-# -----------------------------------------------------
-
-
 @pytest.mark.parametrize("window_size", [5, 11])
 @pytest.mark.parametrize("sigma", [1.5, 5.0])
-def test_get_gaussian_discrete_kernel(window_size, sigma):
-    kernel = kornia.filters.get_gaussian_discrete_kernel1d(window_size, sigma)
-    assert kernel.shape == (window_size,)
-    assert kernel.sum().item() == pytest.approx(1.0)
+def test_get_gaussian_discrete_kernel1d_float(window_size, sigma, device, dtype):
+    actual = get_gaussian_discrete_kernel1d(window_size, sigma, device=device, dtype=dtype)
+    expected = torch.ones(1, device=device, dtype=dtype)
+
+    assert actual.shape == (1, window_size)
+    assert_close(actual.sum(), expected.sum())
 
 
 @pytest.mark.parametrize("window_size", [5, 11])
-@pytest.mark.parametrize("sigma", [1.5, 5.0, torch.tensor([1.5, 5.0]), torch.tensor([1.5, 5.0])])
-def test_get_gaussian_erf_kernel(window_size, sigma):
-    kernel = kornia.filters.get_gaussian_erf_kernel1d(window_size, sigma)
+@pytest.mark.parametrize("sigma", [[[1.5]], [[1.5], [5.0]], [[1.5], [5.0]]])
+def test_get_gaussian_discrete_kernel1d_tensor(window_size, sigma, device, dtype):
+    sigma = torch.tensor(sigma, device=device, dtype=dtype)
+    bs = sigma.shape[0]
 
-    assert kernel.shape == (window_size,)
+    actual = get_gaussian_discrete_kernel1d(window_size, sigma)
+    expected = torch.ones(bs, device=device, dtype=dtype)
 
-    assert kernel.sum().item() == pytest.approx(1.0)
+    assert actual.shape == (bs, window_size)
+    assert_close(actual.sum(), expected.sum())
 
 
-@pytest.mark.parametrize("ksize_x", [5, 11])
-@pytest.mark.parametrize("ksize_y", [3, 7])
-@pytest.mark.parametrize(
-    "sigma", [(1.5, 1.5), (2.1, 2.1), torch.tensor([[1.5, 2.1], [1.5, 2.1]]), torch.tensor([[1.5, 2.1], [3.5, 2.1]])]
-)
-def test_get_gaussian_kernel2d(ksize_x, ksize_y, sigma):
-    kernel = kornia.filters.get_gaussian_kernel2d((ksize_x, ksize_y), sigma)
-
-    if isinstance(sigma, tuple):
-        bs = 1
-    else:
-        bs = sigma.shape[0]
-
-    assert kernel.shape == (bs, ksize_x, ksize_y)
-
-    expected = torch.ones(bs, device=kernel.device)
-    assert_close(kernel.sum(), expected.sum())
+# -----------------------------------------------------
 
 
 @pytest.mark.parametrize("ksize_x", [5, 11])
