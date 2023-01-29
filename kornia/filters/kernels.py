@@ -59,22 +59,38 @@ def gaussian(window_size: int, sigma: Union[Tensor, float], *, device: _Device =
     return gauss / gauss.sum(-1, keepdim=True)
 
 
-def gaussian_discrete_erf(window_size: int, sigma: Union[Tensor, float]) -> Tensor:
+def gaussian_discrete_erf(
+    window_size: int, sigma: Union[Tensor, float], *, device: _Device = None, dtype: _Dtype = None
+) -> Tensor:
     r"""Discrete Gaussian by interpolating the error function.
 
     Adapted from: https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
+
+    Args:
+        window_size: the size which drives the filter amount.
+        sigma: gaussian standard deviation. If a tensor, should be in a shape :math:`(B, 1)`
+        device: This value will be used if sigma is a float. Device desired to compute.
+        dtype: This value will be used if sigma is a float. Dtype desired for compute.
+
+    Returns:
+        A tensor withshape :math:`(B, \text{kernel_size})`, with discrete Gaussian values computed by approximation of
+        the error function.
     """
     if isinstance(sigma, float):
-        sigma = as_tensor(sigma, device=get_cuda_device_if_available())
+        sigma = as_tensor([[sigma]], device=device, dtype=dtype)
 
-    x = torch.arange(window_size, device=sigma.device, dtype=sigma.dtype) - window_size // 2
+    KORNIA_CHECK_SHAPE(sigma, ["B", "1"])
+    batch_size = sigma.shape[0]
+
+    x = (torch.arange(window_size, device=sigma.device, dtype=sigma.dtype) - window_size // 2).expand(batch_size, -1)
 
     t = 0.70710678 / sigma.abs()
+    # t = tensor(2, device=sigma.device, dtype=sigma.dtype).sqrt() / (sigma.abs() * 2)
 
     gauss = 0.5 * ((t * (x + 0.5)).erf() - (t * (x - 0.5)).erf())
     gauss = gauss.clamp(min=0)
 
-    return gauss / gauss.sum()
+    return gauss / gauss.sum(-1, keepdim=True)
 
 
 def _modified_bessel_0(x: Tensor) -> Tensor:
@@ -413,7 +429,14 @@ def get_gaussian_kernel1d(
     return gaussian(kernel_size, sigma, device=device, dtype=dtype)
 
 
-def get_gaussian_discrete_kernel1d(kernel_size: int, sigma: Union[float, Tensor], force_even: bool = False) -> Tensor:
+def get_gaussian_discrete_kernel1d(
+    kernel_size: int,
+    sigma: Union[float, Tensor],
+    force_even: bool = False,
+    *,
+    device: _Device = None,
+    dtype: _Dtype = None,
+) -> Tensor:
     r"""Function that returns Gaussian filter coefficients based on the modified Bessel functions. Adapted from:
     https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
 
@@ -441,20 +464,29 @@ def get_gaussian_discrete_kernel1d(kernel_size: int, sigma: Union[float, Tensor]
     return gaussian_discrete(kernel_size, sigma)
 
 
-def get_gaussian_erf_kernel1d(kernel_size: int, sigma: Union[float, Tensor], force_even: bool = False) -> Tensor:
+def get_gaussian_erf_kernel1d(
+    kernel_size: int,
+    sigma: Union[float, Tensor],
+    force_even: bool = False,
+    *,
+    device: _Device = None,
+    dtype: _Dtype = None,
+) -> Tensor:
     r"""Function that returns Gaussian filter coefficients by interpolating the error function, adapted from:
     https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
 
     Args:
         kernel_size: filter size. It should be odd and positive.
-        sigma: gaussian standard deviation.
+        sigma: gaussian standard deviation. If a tensor, should be in a shape :math:`(B, 1)`
         force_even: overrides requirement for odd kernel size.
+        device: This value will be used if sigma is a float. Device desired to compute.
+        dtype: This value will be used if sigma is a float. Dtype desired for compute.
 
     Returns:
         1D tensor with gaussian filter coefficients.
 
     Shape:
-        - Output: :math:`(\text{kernel_size})`
+        - Output: :math:`(B, \text{kernel_size})`
 
     Examples:
 
@@ -463,10 +495,13 @@ def get_gaussian_erf_kernel1d(kernel_size: int, sigma: Union[float, Tensor], for
 
         >>> get_gaussian_erf_kernel1d(5, 1.5)
         tensor([0.1226, 0.2331, 0.2887, 0.2331, 0.1226])
+
+        >>> get_gaussian_erf_kernel1d(5, torch.tensor([[1.5], [2.1]]))
     """
     if not isinstance(kernel_size, int) or ((kernel_size % 2 == 0) and not force_even) or (kernel_size <= 0):
         raise TypeError(f"kernel_size must be an odd positive integer. Got {kernel_size}")
-    return gaussian_discrete_erf(kernel_size, sigma)
+
+    return gaussian_discrete_erf(kernel_size, sigma, device=device, dtype=dtype)
 
 
 def get_gaussian_kernel2d(

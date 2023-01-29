@@ -4,13 +4,18 @@ from torch.autograd import gradcheck
 
 import kornia
 import kornia.testing as utils  # test utils
-from kornia.filters.kernels import get_gaussian_kernel1d, get_gaussian_kernel2d, get_gaussian_kernel3d
+from kornia.filters.kernels import (
+    get_gaussian_erf_kernel1d,
+    get_gaussian_kernel1d,
+    get_gaussian_kernel2d,
+    get_gaussian_kernel3d,
+)
 from kornia.testing import assert_close
 
 
 @pytest.mark.parametrize("window_size", [5, 11])
 @pytest.mark.parametrize("sigma", [1.5, 5.0])
-def test_get_gaussian_kernel_float(window_size, sigma, device, dtype):
+def test_get_gaussian_kernel1d_float(window_size, sigma, device, dtype):
     actual = get_gaussian_kernel1d(window_size, sigma, device=device, dtype=dtype)
     expected = torch.ones(1, device=device, dtype=dtype)
 
@@ -20,7 +25,7 @@ def test_get_gaussian_kernel_float(window_size, sigma, device, dtype):
 
 @pytest.mark.parametrize("window_size", [5, 11])
 @pytest.mark.parametrize("sigma", [[[1.5]], [[1.5], [5.0]], [[1.5], [5.0]]])
-def test_get_gaussian_kernel_tensor(window_size, sigma, device, dtype):
+def test_get_gaussian_kernel1d_tensor(window_size, sigma, device, dtype):
     sigma = torch.tensor(sigma, device=device, dtype=dtype)
     bs = sigma.shape[0]
 
@@ -83,6 +88,32 @@ def test_get_gaussian_kernel3d_tensor(ksize_x, ksize_y, ksize_z, sigma, device, 
 
     assert actual.shape == (bs, ksize_x, ksize_y, ksize_z)
     assert_close(actual.sum(), expected.sum())
+
+
+@pytest.mark.parametrize("window_size", [5, 11])
+@pytest.mark.parametrize("sigma", [1.5, 5.0])
+def test_get_discrete_gaussian_erf_kernel1d_float(window_size, sigma, device, dtype):
+    actual = get_gaussian_erf_kernel1d(window_size, sigma, device=device, dtype=dtype)
+    expected = torch.ones(1, device=device, dtype=dtype)
+
+    assert actual.shape == (1, window_size)
+    assert_close(actual.sum(), expected.sum())
+
+
+@pytest.mark.parametrize("window_size", [5, 11])
+@pytest.mark.parametrize("sigma", [[[1.5]], [[1.5], [5.0]], [[1.5], [5.0]]])
+def test_get_discrete_gaussian_erf_kernel1d_tensor(window_size, sigma, device, dtype):
+    sigma = torch.tensor(sigma, device=device, dtype=dtype)
+    bs = sigma.shape[0]
+
+    actual = get_gaussian_erf_kernel1d(window_size, sigma)
+    expected = torch.ones(bs, device=device, dtype=dtype)
+
+    assert actual.shape == (bs, window_size)
+    assert_close(actual.sum(), expected.sum())
+
+
+# -----------------------------------------------------
 
 
 @pytest.mark.parametrize("window_size", [5, 11])
