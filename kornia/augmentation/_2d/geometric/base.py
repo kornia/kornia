@@ -277,7 +277,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         transform = self.get_transformation_matrix(in_tensor, params=params, flags=flags)
 
         if 'batch_prob' not in params:
-            params['batch_prob'] = as_tensor([1.] * batch_shape[0])
+            params['batch_prob'] = as_tensor([1.0] * batch_shape[0])
             warnings.warn("`batch_prob` is not found in params. Will assume applying on all data.")
 
         transform = self.compute_inverse_transformation(transform)

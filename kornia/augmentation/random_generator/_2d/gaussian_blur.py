@@ -8,9 +8,7 @@ from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _joint_range_check
 from kornia.utils.helpers import _extract_device_dtype
 
-__all__ = [
-    "RandomGaussianBlurGenerator"
-]
+__all__ = ["RandomGaussianBlurGenerator"]
 
 
 class RandomGaussianBlurGenerator(RandomGeneratorBase):

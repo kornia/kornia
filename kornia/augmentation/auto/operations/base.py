@@ -1,13 +1,13 @@
-from typing import cast, Callable, Dict, List, Optional, Tuple, TypeVar, Union
+from typing import Callable, Dict, List, Optional, Tuple, TypeVar, Union, cast
 
 import torch
 from torch import nn
 from torch.autograd import Function
-from torch.distributions import RelaxedBernoulli, Bernoulli
+from torch.distributions import Bernoulli, RelaxedBernoulli
 
-from kornia.core import Tensor
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.image import ImageSequential
+from kornia.core import Tensor
 
 T = TypeVar('T', bound='OperationBase')
 
@@ -33,13 +33,13 @@ class OperationBase(nn.Module):
         temperature: float = 0.1,
         is_batch_operation: bool = False,
         magnitude_fn: Optional[Callable] = None,
-        gradient_estimator: Optional[Function] = None
+        gradient_estimator: Optional[Function] = None,
     ) -> None:
-        super(OperationBase, self).__init__()
+        super().__init__()
         self.op = operation
 
         self._init_magnitude(initial_magnitude)
-        
+
         # Avoid skipping the sampling in `__batch_prob_generator__`
         self.probability_range = (1e-7, 1 - 1e-7)
         self._is_batch_operation = is_batch_operation
@@ -56,9 +56,8 @@ class OperationBase(nn.Module):
         self._gradient_estimator = gradient_estimator
 
     def _init_magnitude(self, initial_magnitude: Optional[Tuple[str, float]]) -> None:
-
-        if isinstance(initial_magnitude, (list, tuple,)):
-            if not all([isinstance(ini_mag, (list, tuple,)) and len(ini_mag) == 2 for ini_mag in initial_magnitude]):
+        if isinstance(initial_magnitude, (list, tuple)):
+            if not all([isinstance(ini_mag, (list, tuple)) and len(ini_mag) == 2 for ini_mag in initial_magnitude]):
                 raise ValueError(f"`initial_magnitude` shall be a list of 2-element tuples. Got {initial_magnitude}")
             if len(initial_magnitude) != 1:
                 raise NotImplementedError("Multi magnitudes operations are not yet supported.")
@@ -71,14 +70,11 @@ class OperationBase(nn.Module):
             if self.op._param_generator is not None:
                 self.magnitude_range = getattr(self.op._param_generator, self._factor_name)
             else:
-                raise ValueError(
-                    f"No valid magnitude `{self._factor_name}` found in `{self.op._param_generator}`.")
+                raise ValueError(f"No valid magnitude `{self._factor_name}` found in `{self.op._param_generator}`.")
 
             self._magnitude = None
             if initial_magnitude[0][1] is not None:
-                self._magnitude = nn.Parameter(
-                    torch.empty(1).fill_(initial_magnitude[0][1])
-                )
+                self._magnitude = nn.Parameter(torch.empty(1).fill_(initial_magnitude[0][1]))
 
     def _update_probability_gen(self, relaxation: bool) -> None:
         if relaxation:
@@ -93,7 +89,6 @@ class OperationBase(nn.Module):
                 self.op._p_gen = Bernoulli(self.probability)
 
     def train(self: T, mode: bool = True) -> T:
-
         self._update_probability_gen(relaxation=mode)
 
         return super().train(mode=mode)

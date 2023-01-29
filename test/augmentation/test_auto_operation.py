@@ -1,13 +1,15 @@
-from typing import List
-import pytest
 import inspect
+from typing import List
 
+import pytest
 import torch
-from kornia.augmentation.auto.autoaugment import AutoAugment
-from kornia.augmentation.auto.trivial_augment import TrivialAugment
-from kornia.augmentation.auto.rand_augment.rand_augment import RandAugment, default_policy as randaug_config
-from kornia.augmentation.auto.operations import OperationBase
+
 import kornia.augmentation.auto.operations.ops as ops
+from kornia.augmentation.auto.autoaugment import AutoAugment
+from kornia.augmentation.auto.operations import OperationBase
+from kornia.augmentation.auto.rand_augment.rand_augment import RandAugment
+from kornia.augmentation.auto.rand_augment.rand_augment import default_policy as randaug_config
+from kornia.augmentation.auto.trivial_augment import TrivialAugment
 
 
 def _find_all_ops() -> List[OperationBase]:
@@ -16,7 +18,6 @@ def _find_all_ops() -> List[OperationBase]:
 
 
 class TestOperations:
-
     @pytest.mark.parametrize("op", _find_all_ops())
     def test_step_routine(self, op: OperationBase):
         op = op.train()
@@ -43,7 +44,6 @@ class TestOperations:
 
 
 class TestAutoAugment:
-
     @pytest.mark.parametrize("policy", ["imagenet", "cifar10", "svhn"])
     def test_smoke(self, policy):
         aug = AutoAugment(policy)
@@ -52,7 +52,6 @@ class TestAutoAugment:
 
 
 class TestRandAugment:
-
     def test_smoke(self):
         aug = RandAugment(n=len(randaug_config), m=15)
         in_tensor = torch.rand(10, 3, 10, 10, requires_grad=True)
@@ -60,7 +59,6 @@ class TestRandAugment:
 
 
 class TestTrivialAugment:
-
     def test_smoke(self):
         aug = TrivialAugment()
         in_tensor = torch.rand(10, 3, 10, 10, requires_grad=True)

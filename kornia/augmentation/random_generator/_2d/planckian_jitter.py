@@ -6,9 +6,7 @@ from torch.distributions import Uniform
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _joint_range_check, _range_bound
 
-__all__ = [
-    "PlanckianJitterGenerator"
-]
+__all__ = ["PlanckianJitterGenerator"]
 
 
 class PlanckianJitterGenerator(RandomGeneratorBase):

@@ -8,10 +8,7 @@ from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _
 from kornia.core import Tensor, as_tensor
 from kornia.utils.helpers import _extract_device_dtype
 
-__all__ = [
-    "ParameterBound",
-    "PlainUniformGenerator",
-]
+__all__ = ["ParameterBound", "PlainUniformGenerator"]
 
 # factor, name, center, range
 ParameterBound = Tuple[Any, str, Optional[float], Optional[Tuple[float, float]]]

@@ -14,9 +14,7 @@ from kornia.augmentation.utils import (
 )
 from kornia.utils.helpers import _extract_device_dtype
 
-__all__ = [
-    "MixupGenerator"
-]
+__all__ = ["MixupGenerator"]
 
 
 class MixupGenerator(RandomGeneratorBase):

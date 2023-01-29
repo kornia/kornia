@@ -1,8 +1,9 @@
 from typing import List, Tuple, Union
 
 import torch.nn as nn
+
 from kornia.augmentation.auto.operations import OperationBase
-from kornia.core import Tensor, Module
+from kornia.core import Module, Tensor
 
 NUMBER = Union[float, int]
 OP_CONFIG = Tuple[str, NUMBER, NUMBER]
@@ -27,8 +28,7 @@ class PolicySequential(Module):
 
 
 class PolicyAugmentBase(Module):
-    """
-    """
+    """"""
 
     def __init__(self, policy: List[SUBPLOLICY_CONFIG]) -> None:
         super().__init__()

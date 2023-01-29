@@ -9,9 +9,7 @@ from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _
 from kornia.core import Tensor
 from kornia.utils.helpers import _extract_device_dtype
 
-__all__ = [
-    "ColorJitterGenerator"
-]
+__all__ = ["ColorJitterGenerator"]
 
 
 class ColorJitterGenerator(RandomGeneratorBase):

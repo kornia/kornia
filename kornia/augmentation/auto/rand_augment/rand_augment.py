@@ -1,4 +1,5 @@
-from typing import Optional, List
+from typing import List, Optional
+
 import torch
 import torch.nn as nn
 from torch.distributions import Categorical
@@ -6,16 +7,17 @@ from torch.distributions import Categorical
 from kornia.augmentation.auto.base import SUBPLOLICY_CONFIG, PolicyAugmentBase
 from kornia.augmentation.auto.operations import OperationBase
 from kornia.core import Tensor
+
 from . import ops
 
 default_policy: List[SUBPLOLICY_CONFIG] = [
     # ("auto_contrast", 0, 1),
     [("equalize", 0, 1)],
     [("invert", 0, 1)],
-    [("rotate", -30., 30.)],
-    [("posterize", 0., 4)],
-    [("solarize", 0., 1.)],
-    [("solarize_add", 0., .43)],
+    [("rotate", -30.0, 30.0)],
+    [("posterize", 0.0, 4)],
+    [("solarize", 0.0, 1.0)],
+    [("solarize_add", 0.0, 0.43)],
     # (Color, 0.1, 1.9),
     [("contrast", 0.1, 1.9)],
     [("brightness", 0.1, 1.9)],
@@ -38,7 +40,6 @@ class RandAugment(PolicyAugmentBase):
     """
 
     def __init__(self, n: int, m: int, policy: Optional[List[SUBPLOLICY_CONFIG]] = None) -> None:
-
         if m <= 0 or m >= 30:
             raise ValueError(f"Expect `m` in [0, 30]. Got {m}.")
 
@@ -48,7 +49,7 @@ class RandAugment(PolicyAugmentBase):
             _policy = policy
 
         super().__init__(_policy)
-        selection_weights = torch.tensor([1. / len(self.policies)] * len(self.policies))
+        selection_weights = torch.tensor([1.0 / len(self.policies)] * len(self.policies))
         self.rand_selector = Categorical(selection_weights)
         self.n = n
         self.m = m

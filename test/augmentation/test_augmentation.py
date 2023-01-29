@@ -152,9 +152,7 @@ class CommonTests(BaseTester):
         to_apply = generated_params['batch_prob'] > 0.5
         expected_transformation_shape = torch.Size((to_apply.sum(), 3, 3))
         test_input = torch.ones(batch_shape, device=self.device, dtype=self.dtype)
-        transformation = augmentation.compute_transformation(
-            test_input[to_apply], generated_params, augmentation.flags
-        )
+        transformation = augmentation.compute_transformation(test_input[to_apply], generated_params, augmentation.flags)
         assert transformation.shape == expected_transformation_shape
 
         # apply_transform can be called and returns the correct batch sized output

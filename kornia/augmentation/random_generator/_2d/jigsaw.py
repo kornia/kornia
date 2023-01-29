@@ -6,9 +6,7 @@ from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.random_generator.utils import randperm
 from kornia.augmentation.utils import _common_param_check
 
-__all__ = [
-    "JigsawGenerator"
-]
+__all__ = ["JigsawGenerator"]
 
 
 class JigsawGenerator(RandomGeneratorBase):

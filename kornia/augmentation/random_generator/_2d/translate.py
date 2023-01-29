@@ -8,9 +8,7 @@ from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _
 from kornia.core import Tensor, stack
 from kornia.utils.helpers import _extract_device_dtype
 
-__all__ = [
-    "TranslateGenerator"
-]
+__all__ = ["TranslateGenerator"]
 
 
 class TranslateGenerator(RandomGeneratorBase):
@@ -41,14 +39,15 @@ class TranslateGenerator(RandomGeneratorBase):
         return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        _translate = _range_bound(
-            self.translate, 'translate', bounds=(0, 1), check='singular').to(device=device, dtype=dtype)
+        _translate = _range_bound(self.translate, 'translate', bounds=(0, 1), check='singular').to(
+            device=device, dtype=dtype
+        )
 
         self.translate_x = torch.stack([-_translate[0], _translate[0]], dim=-1)
         self.translate_y = torch.stack([-_translate[1], _translate[1]], dim=-1)
 
-        translate_x_sampler = Uniform(- self.translate_x[..., 0], self.translate_x[..., 1], validate_args=False)
-        translate_y_sampler = Uniform(- self.translate_y[..., 0], self.translate_y[..., 1], validate_args=False)
+        translate_x_sampler = Uniform(-self.translate_x[..., 0], self.translate_x[..., 1], validate_args=False)
+        translate_y_sampler = Uniform(-self.translate_y[..., 0], self.translate_y[..., 1], validate_args=False)
 
         self.translate_x_sampler = translate_x_sampler
         self.translate_y_sampler = translate_y_sampler
@@ -63,9 +62,13 @@ class TranslateGenerator(RandomGeneratorBase):
         if not (isinstance(width, (int,)) and isinstance(height, (int,)) and width > 0 and height > 0):
             raise AssertionError(f"`width` and `height` must be positive integers. Got {width}, {height}.")
 
-        translate_x = _adapted_rsampling(
-            (batch_size,), self.translate_x_sampler, same_on_batch).to(device=_device, dtype=_dtype) * width
-        translate_y = _adapted_rsampling(
-            (batch_size,), self.translate_y_sampler, same_on_batch).to(device=_device, dtype=_dtype) * height
+        translate_x = (
+            _adapted_rsampling((batch_size,), self.translate_x_sampler, same_on_batch).to(device=_device, dtype=_dtype)
+            * width
+        )
+        translate_y = (
+            _adapted_rsampling((batch_size,), self.translate_y_sampler, same_on_batch).to(device=_device, dtype=_dtype)
+            * height
+        )
 
         return dict(translate_x=translate_x, translate_y=translate_y)

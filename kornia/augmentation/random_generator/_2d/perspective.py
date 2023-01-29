@@ -8,9 +8,7 @@ from kornia.augmentation.utils import _adapted_rsampling, _common_param_check
 from kornia.core import Tensor, tensor
 from kornia.utils.helpers import _extract_device_dtype
 
-__all__ = [
-    "PerspectiveGenerator"
-]
+__all__ = ["PerspectiveGenerator"]
 
 
 class PerspectiveGenerator(RandomGeneratorBase):

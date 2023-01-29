@@ -1,23 +1,20 @@
-from typing import Optional, List
+from typing import List, Optional
+
 import torch
 import torch.nn as nn
 from torch.distributions import Categorical
 
 import kornia.augmentation.auto.rand_augment.ops as ops
-from kornia.augmentation.auto.base import (
-    PolicyAugmentBase,
-    PolicySequential,
-    SUBPLOLICY_CONFIG,
-)
+from kornia.augmentation.auto.base import SUBPLOLICY_CONFIG, PolicyAugmentBase, PolicySequential
 from kornia.core import Tensor
 
 default_policy: List[SUBPLOLICY_CONFIG] = [
     # [("identity", 0, 1)],
     # ("auto_contrast", 0, 1),
     [("equalize", 0, 1)],
-    [("rotate", -30., 30.)],
-    [("posterize", 0., 4)],
-    [("solarize", 0., 1.)],
+    [("rotate", -30.0, 30.0)],
+    [("posterize", 0.0, 4)],
+    [("solarize", 0.0, 1.0)],
     # (Color, 0.1, 1.9),
     [("contrast", 0.1, 1.9)],
     [("brightness", 0.1, 1.9)],
@@ -37,14 +34,13 @@ class TrivialAugment(PolicyAugmentBase):
     """
 
     def __init__(self, policy: Optional[List[SUBPLOLICY_CONFIG]] = None) -> None:
-
         if policy is None:
             _policy = default_policy
         else:
             _policy = policy
 
         super().__init__(_policy)
-        selection_weights = torch.tensor([1. / len(self.policies)] * len(self.policies))
+        selection_weights = torch.tensor([1.0 / len(self.policies)] * len(self.policies))
         self.rand_selector = Categorical(selection_weights)
 
     def compose_subpolicy_sequential(self, subpolicy: SUBPLOLICY_CONFIG) -> PolicySequential:

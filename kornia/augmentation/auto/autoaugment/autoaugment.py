@@ -4,12 +4,9 @@ import torch
 import torch.nn as nn
 from torch.distributions import Categorical
 
-from kornia.augmentation.auto.base import (
-    PolicyAugmentBase,
-    PolicySequential,
-    SUBPLOLICY_CONFIG,
-)
+from kornia.augmentation.auto.base import SUBPLOLICY_CONFIG, PolicyAugmentBase, PolicySequential
 from kornia.core import Tensor
+
 from . import ops
 
 imagenet_policy: List[SUBPLOLICY_CONFIG] = [
@@ -113,13 +110,13 @@ class AutoAugment(PolicyAugmentBase):
             _policy = cifar10_policy
         elif policy == "svhn":
             _policy = svhn_policy
-        elif isinstance(policy, (list, tuple,)):
+        elif isinstance(policy, (list, tuple)):
             _policy = policy
         else:
             raise NotImplementedError(f"Invalid policy `{policy}`.")
 
         super().__init__(_policy)
-        selection_weights = torch.tensor([1. / len(self.policies)] * len(self.policies))
+        selection_weights = torch.tensor([1.0 / len(self.policies)] * len(self.policies))
         self.rand_selector = Categorical(selection_weights)
 
     def compose_subpolicy_sequential(self, subpolicy: SUBPLOLICY_CONFIG) -> PolicySequential:

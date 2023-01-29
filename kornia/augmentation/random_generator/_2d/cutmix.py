@@ -16,9 +16,7 @@ from kornia.augmentation.utils import (
 from kornia.geometry.bbox import bbox_generator
 from kornia.utils.helpers import _extract_device_dtype
 
-__all__ = [
-    "CutmixGenerator"
-]
+__all__ = ["CutmixGenerator"]
 
 
 class CutmixGenerator(RandomGeneratorBase):
