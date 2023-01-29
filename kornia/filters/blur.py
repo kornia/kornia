@@ -44,7 +44,7 @@ def box_blur(
         >>> output.shape
         torch.Size([2, 4, 5, 7])
     """
-    kernel = get_box_kernel2d(kernel_size)
+    kernel = get_box_kernel2d(kernel_size, device=input.device, dtype=input.dtype)
     if normalized:
         kernel = normalize_kernel2d(kernel)
     return filter2d(input, kernel, border_type)

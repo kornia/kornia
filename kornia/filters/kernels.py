@@ -234,25 +234,28 @@ def laplacian_1d(window_size: int, *, device: _Device = None, dtype: _Dtype = No
     return filter_1d
 
 
-def get_box_kernel2d(kernel_size: Union[Tuple[int, int], int]) -> Tensor:
+def get_box_kernel2d(
+    kernel_size: Union[Tuple[int, int], int], *, device: _Device = None, dtype: _Dtype = None
+) -> Tensor:
     r"""Utility function that returns a box filter."""
     kx, ky = _unpack_2d_ks(kernel_size)
-    scale = tensor(1.0) / tensor([kx * ky])
-    tmp_kernel = torch.ones(1, kx, ky)
-    return scale.type(tmp_kernel.dtype) * tmp_kernel
+    scale = tensor(1.0, device=device, dtype=dtype) / tensor([kx * ky], device=device, dtype=dtype)
+    return scale.expand(1, kx, ky)
 
 
-def get_binary_kernel2d(window_size: Union[Tuple[int, int], int]) -> Tensor:
+def get_binary_kernel2d(
+    window_size: Union[Tuple[int, int], int], *, device: _Device = None, dtype: _Dtype = None
+) -> Tensor:
     r"""Create a binary kernel to extract the patches.
 
-    If the window size is HxW will create a (H*W)xHxW kernel.
+    If the window size is HxW will create a (H*W)x1xHxW kernel.
     """
     kx, ky = _unpack_2d_ks(window_size)
 
     window_range = kx * ky
-    kernel = zeros(window_range, window_range)
-    for i in range(window_range):
-        kernel[i, i] += 1.0
+    kernel = zeros((window_range, window_range), device=device, dtype=dtype)
+    idx = torch.arange(window_range, device=device)
+    kernel[idx, idx] += 1.0
     return kernel.view(window_range, 1, kx, ky)
 
 

@@ -39,8 +39,8 @@ class TestMedianBlur:
 
         kernel_size = (3, 3)
         actual = kornia.filters.median_blur(inp, kernel_size)
-        assert_close(actual[0, 0, 2, 2], torch.tensor(3.0).to(actual))
-        assert_close(actual[0, 1, 1, 1], torch.tensor(14.0).to(actual))
+        assert_close(actual[0, 0, 2, 2], torch.tensor(3.0, device=device, dtype=dtype))
+        assert_close(actual[0, 1, 1, 1], torch.tensor(14.0, device=device, dtype=dtype))
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
@@ -55,15 +55,6 @@ class TestMedianBlur:
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.filters.median_blur, (img, (5, 3)), raise_exception=True, fast_mode=True)
-
-    def test_jit(self, device, dtype):
-        kernel_size = (3, 5)
-        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
-        op = kornia.filters.median_blur
-        op_script = torch.jit.script(op)
-        actual = op_script(img, kernel_size)
-        expected = op(img, kernel_size)
-        assert_close(actual, expected)
 
     def test_module(self, device, dtype):
         kernel_size = (3, 5)

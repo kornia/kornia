@@ -44,7 +44,7 @@ def median_blur(input: Tensor, kernel_size: Union[Tuple[int, int], int]) -> Tens
     padding = _compute_zero_padding(kernel_size)
 
     # prepare kernel
-    kernel: Tensor = get_binary_kernel2d(kernel_size).to(input)
+    kernel: Tensor = get_binary_kernel2d(kernel_size, device=input.device, dtype=input.dtype)
     b, c, h, w = input.shape
 
     # map the local window to single vector
