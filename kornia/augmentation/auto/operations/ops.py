@@ -366,9 +366,14 @@ class Rotate(OperationBase):
         self,
         initial_magnitude: Optional[float] = 15.,
         initial_probability: float = 0.5,
-        magnitude_range: Tuple[float, float] = (-30., 30.),
+        magnitude_range: Tuple[float, float] = (0., 30.),
         temperature: float = 0.1,
     ):
+        if magnitude_range[0] < 0:
+            raise ValueError(
+                f"Lower bound of {self.__class__.__name__} is a symetric operation. "
+                f"The lower bound must above 0. Got {magnitude_range[0]}."
+            )
         super(Rotate, self).__init__(
             RandomRotation(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("degrees", initial_magnitude)],
@@ -390,20 +395,25 @@ class ShearX(OperationBase):
     @staticmethod
     def _process_magnitude(magnitude: Tensor) -> Tensor:
         # make it sign-agnostic
-        return magnitude * (torch.randint(0, 1, (1,)) * 2 - 1).item()
+        return magnitude * (torch.randint(0, 1, (1,)) * 2 - 1).item() * 180
 
     def __init__(
         self,
         initial_magnitude: Optional[float] = .0,
         initial_probability: float = 0.5,
-        magnitude_range: Tuple[float, float] = (-.3, .3),
+        magnitude_range: Tuple[float, float] = (0., .3),
         temperature: float = 0.1,
     ):
+        if magnitude_range[0] < 0:
+            raise ValueError(
+                f"Lower bound of {self.__class__.__name__} is a symetric operation. "
+                f"The lower bound must above 0. Got {magnitude_range[0]}."
+            )
         super(ShearX, self).__init__(
             RandomShear(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("shear_x", initial_magnitude)],
             temperature=temperature,
-            magnitude_fn=Rotate._process_magnitude
+            magnitude_fn=ShearX._process_magnitude
         )
 
 
@@ -420,20 +430,25 @@ class ShearY(OperationBase):
     @staticmethod
     def _process_magnitude(magnitude: Tensor) -> Tensor:
         # make it sign-agnostic
-        return magnitude * (torch.randint(0, 1, (1,)) * 2 - 1).item()
+        return magnitude * (torch.randint(0, 1, (1,)) * 2 - 1).item() * 180
 
     def __init__(
         self,
         initial_magnitude: Optional[float] = .0,
         initial_probability: float = 0.5,
-        magnitude_range: Tuple[float, float] = (-.3, .3),
+        magnitude_range: Tuple[float, float] = (0., .3),
         temperature: float = 0.1,
     ):
+        if magnitude_range[0] < 0:
+            raise ValueError(
+                f"Lower bound of {self.__class__.__name__} is a symetric operation. "
+                f"The lower bound must above 0. Got {magnitude_range[0]}."
+            )
         super(ShearY, self).__init__(
             RandomShear((0., 0., *magnitude_range), same_on_batch=False, p=initial_probability),
             initial_magnitude=[("shear_y", initial_magnitude)],
             temperature=temperature,
-            magnitude_fn=Rotate._process_magnitude
+            magnitude_fn=ShearY._process_magnitude
         )
 
 
@@ -447,6 +462,11 @@ class TranslateX(OperationBase):
         temperature: temperature for RelaxedBernoulli distribution used during training.
     """
 
+    @staticmethod
+    def _process_magnitude(magnitude: Tensor) -> Tensor:
+        # make it sign-agnostic
+        return magnitude * (torch.randint(0, 1, (1,)) * 2 - 1).item()
+
     def __init__(
         self,
         initial_magnitude: Optional[float] = 0.,
@@ -454,10 +474,16 @@ class TranslateX(OperationBase):
         magnitude_range: Tuple[float, float] = (0., .5),
         temperature: float = 0.1,
     ):
+        if magnitude_range[0] < 0:
+            raise ValueError(
+                f"Lower bound of {self.__class__.__name__} is a symetric operation. "
+                f"The lower bound must above 0. Got {magnitude_range[0]}."
+            )
         super(TranslateX, self).__init__(
             RandomTranslate(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("translate_x", initial_magnitude)],
             temperature=temperature,
+            magnitude_fn=TranslateX._process_magnitude
         )
 
 
@@ -471,6 +497,11 @@ class TranslateY(OperationBase):
         temperature: temperature for RelaxedBernoulli distribution used during training.
     """
 
+    @staticmethod
+    def _process_magnitude(magnitude: Tensor) -> Tensor:
+        # make it sign-agnostic
+        return magnitude * (torch.randint(0, 1, (1,)) * 2 - 1).item()
+
     def __init__(
         self,
         initial_magnitude: Optional[float] = 0.,
@@ -478,8 +509,14 @@ class TranslateY(OperationBase):
         magnitude_range: Tuple[float, float] = (0., .5),
         temperature: float = 0.1,
     ):
+        if magnitude_range[0] < 0:
+            raise ValueError(
+                f"Lower bound of {self.__class__.__name__} is a symetric operation. "
+                f"The lower bound must above 0. Got {magnitude_range[0]}."
+            )
         super(TranslateY, self).__init__(
             RandomTranslate(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("translate_y", initial_magnitude)],
             temperature=temperature,
+            magnitude_fn=TranslateY._process_magnitude
         )

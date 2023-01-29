@@ -20,11 +20,11 @@ default_policy: List[SUBPLOLICY_CONFIG] = [
     [("contrast", 0.1, 1.9)],
     [("brightness", 0.1, 1.9)],
     [("sharpness", 0.1, 1.9)],
-    [("shear_x", 0., 0.3)],
-    [("shear_y", 0., 0.3)],
+    [("shear_x", -0.3, 0.3)],
+    [("shear_y", -0.3, 0.3)],
     # (CutoutAbs, 0, 40),
-    [("translate_x", 0., 0.1)],
-    [("translate_x", 0., 0.1)],
+    [("translate_x", -0.1, 0.1)],
+    [("translate_x", -0.1, 0.1)],
 ]
 
 

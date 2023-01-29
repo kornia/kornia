@@ -18,23 +18,43 @@ from kornia.augmentation.auto.operations import (
 
 
 def shear_x(min_mag: float, max_mag: float) -> OperationBase:
-    return ShearX(None, 1., magnitude_range=(min_mag, max_mag))
+    if min_mag != -max_mag:
+        raise ValueError(
+            f"{ShearX.__name__} is a symetric operation that `- min_mag == max_mag`. Got [{min_mag}, {max_mag}]"
+        )
+    return ShearX(None, 1., magnitude_range=(0., max_mag))
 
 
 def shear_y(min_mag: float, max_mag: float) -> OperationBase:
-    return ShearY(None, 1., magnitude_range=(min_mag, max_mag))
+    if min_mag != -max_mag:
+        raise ValueError(
+            f"{ShearX.__name__} is a symetric operation that `- min_mag == max_mag`. Got [{min_mag}, {max_mag}]"
+        )
+    return ShearY(None, 1., magnitude_range=(0., max_mag))
 
 
 def translate_x(min_mag: float, max_mag: float) -> OperationBase:
-    return TranslateX(None, 1., magnitude_range=(min_mag, max_mag))
+    if min_mag != -max_mag:
+        raise ValueError(
+            f"{ShearX.__name__} is a symetric operation that `- min_mag == max_mag`. Got [{min_mag}, {max_mag}]"
+        )
+    return TranslateX(None, 1., magnitude_range=(0., max_mag))
 
 
 def translate_y(min_mag: float, max_mag: float) -> OperationBase:
-    return TranslateY(None, 1., magnitude_range=(min_mag, max_mag))
+    if min_mag != -max_mag:
+        raise ValueError(
+            f"{ShearX.__name__} is a symetric operation that `- min_mag == max_mag`. Got [{min_mag}, {max_mag}]"
+        )
+    return TranslateY(None, 1., magnitude_range=(0., max_mag))
 
 
 def rotate(min_mag: float, max_mag: float) -> OperationBase:
-    return Rotate(None, 1., magnitude_range=(min_mag, max_mag))
+    if min_mag != -max_mag:
+        raise ValueError(
+            f"{ShearX.__name__} is a symetric operation that `- min_mag == max_mag`. Got [{min_mag}, {max_mag}]"
+        )
+    return Rotate(None, 1., magnitude_range=(0., max_mag))
 
 
 def auto_contrast(min_mag: float, max_mag: float) -> OperationBase:
