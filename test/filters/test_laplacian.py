@@ -4,21 +4,37 @@ from torch.autograd import gradcheck
 
 import kornia
 import kornia.testing as utils  # test utils
+from kornia.filters.kernels import get_laplacian_kernel1d, get_laplacian_kernel2d
 from kornia.testing import assert_close
 
 
-@pytest.mark.parametrize("window_size", [5])
-def test_get_laplacian_kernel(window_size):
-    kernel = kornia.filters.get_laplacian_kernel1d(window_size)
-    assert kernel.shape == (window_size,)
-    assert kernel.sum().item() == pytest.approx(0.0)
+@pytest.mark.parametrize("window_size", [5, 11])
+def test_get_laplacian_kernel1d(window_size, device, dtype):
+    actual = get_laplacian_kernel1d(window_size, device=device, dtype=dtype)
+    expected = torch.zeros(1, device=device, dtype=dtype)
+
+    assert actual.shape == (window_size,)
+    assert_close(actual.sum(), expected.sum())
 
 
-@pytest.mark.parametrize("window_size", [7])
-def test_get_laplacian_kernel2d(window_size):
-    kernel = kornia.filters.get_laplacian_kernel2d(window_size)
-    assert kernel.shape == (window_size, window_size)
-    assert kernel.sum().item() == pytest.approx(0.0)
+@pytest.mark.parametrize("window_size", [5, 11, (7, 8)])
+def test_get_laplacian_kernel2d(window_size, device, dtype):
+    actual = get_laplacian_kernel2d(window_size, device=device, dtype=dtype)
+    expected = torch.zeros(1, device=device, dtype=dtype)
+    expected_shape = window_size if isinstance(window_size, tuple) else (window_size, window_size)
+
+    assert actual.shape == expected_shape
+    assert_close(actual.sum(), expected.sum())
+
+
+def test_get_laplacian_kernel1d_exact(device, dtype):
+    actual = get_laplacian_kernel1d(5, device=device, dtype=dtype)
+    expected = torch.tensor([1.0, 1.0, -4.0, 1.0, 1.0], device=device, dtype=dtype)
+    assert_close(expected, actual)
+
+
+def test_get_laplacian_kernel2d_exact(device, dtype):
+    actual = get_laplacian_kernel2d(7, device=device, dtype=dtype)
     expected = torch.tensor(
         [
             [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
@@ -29,16 +45,16 @@ def test_get_laplacian_kernel2d(window_size):
             [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
             [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
         ],
-        device=kernel.device,
+        device=device,
+        dtype=dtype,
     )
-    assert_close(expected, kernel)
+    assert_close(expected, actual)
 
 
 class TestLaplacian:
     @pytest.mark.parametrize("batch_shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
-    def test_cardinality(self, batch_shape, device, dtype):
-        kernel_size = 5
-
+    @pytest.mark.parametrize("kernel_size", [5, (11, 7), 3])
+    def test_cardinality(self, batch_shape, kernel_size, device, dtype):
         input = torch.rand(batch_shape, device=device, dtype=dtype)
         actual = kornia.filters.laplacian(input, kernel_size)
         assert actual.shape == batch_shape

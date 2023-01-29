@@ -225,11 +225,12 @@ def gaussian_discrete(
     return out / out.sum(-1, keepdim=True)
 
 
-def laplacian_1d(window_size: int) -> Tensor:
-    r"""One could also use the Laplacian of Gaussian formula to design the filter."""
+def laplacian_1d(window_size: int, *, device: _Device = None, dtype: _Dtype = None) -> Tensor:
+    """One could also use the Laplacian of Gaussian formula to design the filter."""
 
-    filter_1d = torch.ones(window_size)
-    filter_1d[window_size // 2] = 1 - window_size
+    filter_1d = torch.ones(window_size, device=device, dtype=dtype)
+    middle = window_size // 2
+    filter_1d[middle] = 1 - window_size
     return filter_1d
 
 
@@ -685,11 +686,13 @@ def get_gaussian_kernel3d(
     return kernel_3d
 
 
-def get_laplacian_kernel1d(kernel_size: int) -> Tensor:
+def get_laplacian_kernel1d(kernel_size: int, *, device: _Device = None, dtype: _Dtype = None) -> Tensor:
     r"""Function that returns the coefficients of a 1D Laplacian filter.
 
     Args:
         kernel_size: filter size. It should be odd and positive.
+        device: tensor device desired to create the kernel
+        dtype: tensor dtype desired to create the kernel
 
     Returns:
         1D tensor with laplacian filter coefficients.
@@ -705,15 +708,19 @@ def get_laplacian_kernel1d(kernel_size: int) -> Tensor:
     """
     if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or kernel_size <= 0:
         raise TypeError(f"ksize must be an odd positive integer. Got {kernel_size}")
-    window_1d: Tensor = laplacian_1d(kernel_size)
-    return window_1d
+
+    return laplacian_1d(kernel_size, device=device, dtype=dtype)
 
 
-def get_laplacian_kernel2d(kernel_size: Union[Tuple[int, int], int]) -> Tensor:
+def get_laplacian_kernel2d(
+    kernel_size: Union[Tuple[int, int], int], *, device: _Device = None, dtype: _Dtype = None
+) -> Tensor:
     r"""Function that returns Gaussian filter matrix coefficients.
 
     Args:
         kernel_size: filter size should be odd.
+        device: tensor device desired to create the kernel
+        dtype: tensor dtype desired to create the kernel
 
     Returns:
         2D tensor with laplacian filter matrix coefficients.
@@ -738,11 +745,11 @@ def get_laplacian_kernel2d(kernel_size: Union[Tuple[int, int], int]) -> Tensor:
     if (kx % 2 == 0 or kx <= 0) and (ky % 2 == 0 or ky <= 0):
         raise TypeError(f"ksize must be an odd positive integer. Got {kernel_size}")
 
-    kernel = torch.ones((kx, ky), device=get_cuda_device_if_available())
+    kernel = torch.ones((kx, ky), device=device, dtype=dtype)
     mid_x = kx // 2
     mid_y = ky // 2
 
-    kernel[mid_x, mid_y] = 1 - kernel.sum().item()
+    kernel[mid_x, mid_y] = 1 - kernel.sum()
     return kernel
 
 
