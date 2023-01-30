@@ -70,9 +70,11 @@ class Laplacian(Module):
         torch.Size([2, 4, 5, 5])
     """
 
-    def __init__(self, kernel_size: int, border_type: str = 'reflect', normalized: bool = True) -> None:
+    def __init__(
+        self, kernel_size: tuple[int, int] | int, border_type: str = 'reflect', normalized: bool = True
+    ) -> None:
         super().__init__()
-        self.kernel_size: int = kernel_size
+        self.kernel_size = kernel_size
         self.border_type: str = border_type
         self.normalized: bool = normalized
 
