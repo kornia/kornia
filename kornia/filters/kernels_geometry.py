@@ -136,7 +136,7 @@ def get_motion_kernel3d(
                   [0.0000, 0.0000, 0.0000],
                   [0.0000, 0.0000, 0.0000]]]])
     """
-    _check_kernel_size(kernel_size, 3)
+    _check_kernel_size(kernel_size, 2)
 
     device, dtype = _extract_device_dtype(
         [angle if isinstance(angle, Tensor) else None, direction if isinstance(direction, Tensor) else None]

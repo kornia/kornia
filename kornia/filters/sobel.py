@@ -34,7 +34,7 @@ def spatial_gradient(input: Tensor, mode: str = 'sobel', order: int = 1, normali
         torch.Size([1, 3, 2, 4, 4])
     """
     KORNIA_CHECK_IS_TENSOR(input)
-    KORNIA_CHECK_SHAPE(input, ('B', 'C', 'H', 'W'))
+    KORNIA_CHECK_SHAPE(input, ['B', 'C', 'H', 'W'])
 
     # allocate kernel
     kernel = get_spatial_gradient_kernel2d(mode, order, device=input.device, dtype=input.dtype)
@@ -72,7 +72,7 @@ def spatial_gradient3d(input: Tensor, mode: str = 'diff', order: int = 1) -> Ten
         torch.Size([1, 4, 3, 2, 4, 4])
     """
     KORNIA_CHECK_IS_TENSOR(input)
-    KORNIA_CHECK_SHAPE(input, ('B', 'C', 'D', 'H', 'W'))
+    KORNIA_CHECK_SHAPE(input, ['B', 'C', 'D', 'H', 'W'])
 
     b, c, d, h, w = input.shape
     dev = input.device
@@ -138,7 +138,7 @@ def sobel(input: Tensor, normalized: bool = True, eps: float = 1e-6) -> Tensor:
         torch.Size([1, 3, 4, 4])
     """
     KORNIA_CHECK_IS_TENSOR(input)
-    KORNIA_CHECK_SHAPE(input, ('B', 'C', 'H', 'W'))
+    KORNIA_CHECK_SHAPE(input, ['B', 'C', 'H', 'W'])
 
     # comput the x/y gradients
     edges: Tensor = spatial_gradient(input, normalized=normalized)

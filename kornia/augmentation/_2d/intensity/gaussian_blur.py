@@ -54,7 +54,7 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        kernel_size: Tuple[int, int],
+        kernel_size: Union[Tuple[int, int], int],
         sigma: Union[Tuple[float, float], Tensor],
         border_type: str = "reflect",
         separable: bool = True,

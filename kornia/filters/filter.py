@@ -76,9 +76,9 @@ def filter2d(
                   [0., 0., 0., 0., 0.]]]])
     """
     KORNIA_CHECK_IS_TENSOR(input)
-    KORNIA_CHECK_SHAPE(input, ('B', 'C', 'H', 'W'))
+    KORNIA_CHECK_SHAPE(input, ['B', 'C', 'H', 'W'])
     KORNIA_CHECK_IS_TENSOR(kernel)
-    KORNIA_CHECK_SHAPE(kernel, ('B', 'H', 'W'))
+    KORNIA_CHECK_SHAPE(kernel, ['B', 'H', 'W'])
 
     KORNIA_CHECK(
         str(border_type).lower() in _VALID_BORDERS,
@@ -235,9 +235,9 @@ def filter3d(input: Tensor, kernel: Tensor, border_type: str = 'replicate', norm
                    [0., 0., 0., 0., 0.]]]]])
     """
     KORNIA_CHECK_IS_TENSOR(input)
-    KORNIA_CHECK_SHAPE(input, ('B', 'C', 'D', 'H', 'W'))
+    KORNIA_CHECK_SHAPE(input, ['B', 'C', 'D', 'H', 'W'])
     KORNIA_CHECK_IS_TENSOR(kernel)
-    KORNIA_CHECK_SHAPE(kernel, ('1', 'D', 'H', 'W'))
+    KORNIA_CHECK_SHAPE(kernel, ['B', 'D', 'H', 'W'])
 
     KORNIA_CHECK(
         str(border_type).lower() in _VALID_BORDERS,
