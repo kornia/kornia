@@ -13,11 +13,12 @@ class RandomTranslate(GeometricAugmentationBase2D):
     r"""Apply a random 2D affine transformation to a tensor image.
 
     Args:
-        translate: tuple of maximum absolute fraction for horizontal
-            and vertical translations. For example translate=(a, b), then horizontal shift
-            is randomly sampled in the range -img_width * a < dx < img_width * a and vertical shift is
-            randomly sampled in the range -img_height * b < dy < img_height * b. Will not translate by default.
-            will be applied. Will not apply shear by default.
+        translate_x: tuple of maximum absolute fraction for horizontal translations.
+            For example translate_x=(a, b), then horizontal shift
+            is randomly sampled in the range img_width * a < dx < img_width * b
+        translate_y: tuple of maximum absolute fraction for vertical translations.
+            For example translate_y=(a, b), then vertical shift
+            is randomly sampled in the range img_height * a < dy < img_height * b.
         resample: resample mode from "nearest" (0) or "bilinear" (1).
         padding_mode: padding mode from "zeros" (0), "border" (1) or "refection" (2).
         same_on_batch: apply the same transformation across the batch.
@@ -58,7 +59,8 @@ class RandomTranslate(GeometricAugmentationBase2D):
 
     def __init__(
         self,
-        translate: Union[Tensor, Tuple[float, float]],
+        translate_x: Optional[Union[Tensor, Tuple[float, float]]] = None,
+        translate_y: Optional[Union[Tensor, Tuple[float, float]]] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         same_on_batch: bool = False,
         align_corners: bool = False,
@@ -67,13 +69,13 @@ class RandomTranslate(GeometricAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._param_generator: rg.TranslateGenerator = rg.TranslateGenerator(translate)
+        self._param_generator: rg.TranslateGenerator = rg.TranslateGenerator(translate_x, translate_y)
         self.flags = dict(
             resample=Resample.get(resample), padding_mode=SamplePadding.get(padding_mode), align_corners=align_corners
         )
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
-        translations = torch.stack([params["translate_x"], params["translate_x"]], dim=-1)
+        translations = torch.stack([params["translate_x"], params["translate_y"]], dim=-1)
         return get_translation_matrix2d(torch.as_tensor(translations, device=input.device, dtype=input.dtype))
 
     def apply_transform(

@@ -51,6 +51,7 @@ class Brightness(OperationBase):
         initial_magnitude: the initial magnitude.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
+        symmetric_megnitude: if to randomly assign the magnitude as negative or not.
     """
 
     def __init__(
@@ -77,6 +78,7 @@ class Contrast(OperationBase):
         initial_magnitude: the initial magnitude.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
+        symmetric_megnitude: if to randomly assign the magnitude as negative or not.
     """
 
     def __init__(
@@ -103,6 +105,7 @@ class Hue(OperationBase):
         initial_magnitude: the initial magnitude.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
+        symmetric_megnitude: if to randomly assign the magnitude as negative or not.
     """
 
     def __init__(
@@ -129,6 +132,7 @@ class Saturate(OperationBase):
         initial_magnitude: the initial magnitude.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
+        symmetric_megnitude: if to randomly assign the magnitude as negative or not.
     """
 
     def __init__(
@@ -162,12 +166,12 @@ class Equalize(OperationBase):
         STE gradient estimator applied for back propagation.
     """
 
-    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1, symmetric_megnitude: bool = False):
+    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1):
         super().__init__(
             RandomEqualize(same_on_batch=False, p=initial_probability),
             initial_magnitude=None,
             temperature=temperature,
-            symmetric_megnitude=symmetric_megnitude,
+            symmetric_megnitude=False,
             gradient_estimator=STEFunction,
         )
 
@@ -180,12 +184,12 @@ class Gray(OperationBase):
         temperature: temperature for RelaxedBernoulli distribution used during training.
     """
 
-    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1, symmetric_megnitude: bool = False):
+    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1):
         super().__init__(
             RandomGrayscale(same_on_batch=False, p=initial_probability),
             initial_magnitude=None,
             temperature=temperature,
-            symmetric_megnitude=symmetric_megnitude,
+            symmetric_megnitude=False,
         )
 
 
@@ -197,12 +201,12 @@ class Invert(OperationBase):
         temperature: temperature for RelaxedBernoulli distribution used during training.
     """
 
-    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1, symmetric_megnitude: bool = False):
+    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1):
         super().__init__(
             RandomInvert(same_on_batch=False, p=initial_probability),
             initial_magnitude=None,
             temperature=temperature,
-            symmetric_megnitude=symmetric_megnitude,
+            symmetric_megnitude=False,
         )
 
 
@@ -214,6 +218,7 @@ class Posterize(OperationBase):
         initial_probability: the initial probability.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
+        symmetric_megnitude: if to randomly assign the magnitude as negative or not.
 
     Note:
         STE gradient estimator applied for back propagation.
@@ -247,7 +252,8 @@ class Solarize(OperationBase):
     Args:
         initial_magnitude: the initial magnitude.
         initial_probability: the initial probability.
-        magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
+        magnitude_range: the sampling range for random sampling and clamping the optimized 
+        symmetric_megnitude: if to randomly assign the magnitude as negative or not.magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
 
     Note:
@@ -279,6 +285,7 @@ class SolarizeAdd(OperationBase):
         initial_probability: the initial probability.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
+        symmetric_megnitude: if to randomly assign the magnitude as negative or not.
 
     Note:
         STE gradient estimator applied for back propagation.
@@ -309,6 +316,7 @@ class Sharpness(OperationBase):
         initial_probability: the initial probability.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
+        symmetric_megnitude: if to randomly assign the magnitude as negative or not.
     """
 
     def __init__(
@@ -335,12 +343,12 @@ class HorizontalFlip(OperationBase):
         temperature: temperature for RelaxedBernoulli distribution used during training.
     """
 
-    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1, symmetric_megnitude: bool = False):
+    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1):
         super().__init__(
             RandomHorizontalFlip(same_on_batch=False, p=initial_probability),
             initial_magnitude=None,
             temperature=temperature,
-            symmetric_megnitude=symmetric_megnitude,
+            symmetric_megnitude=False,
         )
 
 
@@ -352,12 +360,12 @@ class VerticalFlip(OperationBase):
         temperature: temperature for RelaxedBernoulli distribution used during training.
     """
 
-    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1, symmetric_megnitude: bool = False):
+    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1):
         super().__init__(
             RandomVerticalFlip(same_on_batch=False, p=initial_probability),
             initial_magnitude=None,
             temperature=temperature,
-            symmetric_megnitude=symmetric_megnitude,
+            symmetric_megnitude=False,
         )
 
 
@@ -369,6 +377,7 @@ class Rotate(OperationBase):
         initial_probability: the initial probability.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
+        symmetric_megnitude: if to randomly assign the magnitude as negative or not.
     """
 
     def __init__(
@@ -400,6 +409,7 @@ class ShearX(OperationBase):
         initial_probability: the initial probability.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
+        symmetric_megnitude: if to randomly assign the magnitude as negative or not.
     """
 
     @staticmethod
@@ -409,7 +419,7 @@ class ShearX(OperationBase):
 
     def __init__(
         self,
-        initial_magnitude: Optional[float] = 0.0,
+        initial_magnitude: Optional[float] = 0.1,
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (0.0, 0.3),
         temperature: float = 0.1,
@@ -437,6 +447,7 @@ class ShearY(OperationBase):
         initial_probability: the initial probability.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
+        symmetric_megnitude: if to randomly assign the magnitude as negative or not.
     """
 
     @staticmethod
@@ -446,7 +457,7 @@ class ShearY(OperationBase):
 
     def __init__(
         self,
-        initial_magnitude: Optional[float] = 0.0,
+        initial_magnitude: Optional[float] = 0.1,
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (0.0, 0.3),
         temperature: float = 0.1,
@@ -474,11 +485,12 @@ class TranslateX(OperationBase):
         initial_probability: the initial probability.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
+        symmetric_megnitude: if to randomly assign the magnitude as negative or not.
     """
 
     def __init__(
         self,
-        initial_magnitude: Optional[float] = 0.0,
+        initial_magnitude: Optional[float] = 0.2,
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (0.0, 0.5),
         temperature: float = 0.1,
@@ -505,11 +517,12 @@ class TranslateY(OperationBase):
         initial_probability: the initial probability.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
+        symmetric_megnitude: if to randomly assign the magnitude as negative or not.
     """
 
     def __init__(
         self,
-        initial_magnitude: Optional[float] = 0.0,
+        initial_magnitude: Optional[float] = 0.2,
         initial_probability: float = 0.5,
         magnitude_range: Tuple[float, float] = (0.0, 0.5),
         temperature: float = 0.1,
@@ -521,7 +534,7 @@ class TranslateY(OperationBase):
                 f"The lower bound must above 0. Got {magnitude_range[0]}."
             )
         super().__init__(
-            RandomTranslate(magnitude_range, same_on_batch=False, p=initial_probability),
+            RandomTranslate(None, magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("translate_y", initial_magnitude)],
             temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,

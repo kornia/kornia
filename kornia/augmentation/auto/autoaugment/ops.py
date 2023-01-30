@@ -18,6 +18,18 @@ from kornia.augmentation.auto.operations import (
 )
 
 
+
+def _project_magnitudes_range(minval: float, maxval: float):
+    """Exclude negative values."""
+    if maxval <= 0:
+        return (-maxval, -minval)
+    if minval >= 0:
+        return (minval, maxval)
+    if minval == -maxval:  # If it is symmetric.
+        return (0, abs(minval))
+    raise ValueError(f"Invalid range ({minval}, {maxval}).")
+
+
 def shear_x(probability: float, magnitude: float) -> OperationBase:
     magnitudes = torch.linspace(-0.3, 0.3, 11) * 180.0
     return ShearX(
