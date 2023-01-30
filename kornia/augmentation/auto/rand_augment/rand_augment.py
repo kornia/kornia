@@ -18,7 +18,7 @@ default_policy: List[SUBPLOLICY_CONFIG] = [
     [("posterize", 0.0, 4)],
     [("solarize", 0.0, 1.0)],
     [("solarize_add", 0.0, 0.43)],
-    # (Color, 0.1, 1.9),
+    [("color", 0.1, 1.9)],
     [("contrast", 0.1, 1.9)],
     [("brightness", 0.1, 1.9)],
     [("sharpness", 0.1, 1.9)],

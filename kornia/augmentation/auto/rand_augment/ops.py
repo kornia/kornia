@@ -2,6 +2,7 @@
 from kornia.augmentation.auto.operations import (
     Brightness,
     Contrast,
+    Saturate,
     Equalize,
     Invert,
     OperationBase,
@@ -28,7 +29,7 @@ def shear_x(min_mag: float, max_mag: float) -> OperationBase:
 def shear_y(min_mag: float, max_mag: float) -> OperationBase:
     if min_mag != -max_mag:
         raise ValueError(
-            f"{ShearX.__name__} is a symetric operation that `- min_mag == max_mag`. Got [{min_mag}, {max_mag}]"
+            f"{ShearY.__name__} is a symetric operation that `- min_mag == max_mag`. Got [{min_mag}, {max_mag}]"
         )
     return ShearY(None, 1.0, magnitude_range=(0.0, max_mag), symmetric_megnitude=True)
 
@@ -36,7 +37,7 @@ def shear_y(min_mag: float, max_mag: float) -> OperationBase:
 def translate_x(min_mag: float, max_mag: float) -> OperationBase:
     if min_mag != -max_mag:
         raise ValueError(
-            f"{ShearX.__name__} is a symetric operation that `- min_mag == max_mag`. Got [{min_mag}, {max_mag}]"
+            f"{TranslateX.__name__} is a symetric operation that `- min_mag == max_mag`. Got [{min_mag}, {max_mag}]"
         )
     return TranslateX(None, 1.0, magnitude_range=(0.0, max_mag), symmetric_megnitude=True)
 
@@ -44,7 +45,7 @@ def translate_x(min_mag: float, max_mag: float) -> OperationBase:
 def translate_y(min_mag: float, max_mag: float) -> OperationBase:
     if min_mag != -max_mag:
         raise ValueError(
-            f"{ShearX.__name__} is a symetric operation that `- min_mag == max_mag`. Got [{min_mag}, {max_mag}]"
+            f"{TranslateY.__name__} is a symetric operation that `- min_mag == max_mag`. Got [{min_mag}, {max_mag}]"
         )
     return TranslateY(None, 1.0, magnitude_range=(0.0, max_mag), symmetric_megnitude=True)
 
@@ -52,7 +53,7 @@ def translate_y(min_mag: float, max_mag: float) -> OperationBase:
 def rotate(min_mag: float, max_mag: float) -> OperationBase:
     if min_mag != -max_mag:
         raise ValueError(
-            f"{ShearX.__name__} is a symetric operation that `- min_mag == max_mag`. Got [{min_mag}, {max_mag}]"
+            f"{Rotate.__name__} is a symetric operation that `- min_mag == max_mag`. Got [{min_mag}, {max_mag}]"
         )
     return Rotate(None, 1.0, magnitude_range=(0.0, max_mag), symmetric_megnitude=True)
 
@@ -94,4 +95,4 @@ def sharpness(min_mag: float, max_mag: float) -> OperationBase:
 
 
 def color(min_mag: float, max_mag: float) -> OperationBase:
-    raise NotImplementedError
+    return Saturate(None, 1.0, magnitude_range=(min_mag, max_mag))

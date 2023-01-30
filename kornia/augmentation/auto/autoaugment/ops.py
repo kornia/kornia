@@ -4,6 +4,7 @@ import torch
 from kornia.augmentation.auto.operations import (
     Brightness,
     Contrast,
+    Saturate,
     Equalize,
     Invert,
     OperationBase,
@@ -16,18 +17,6 @@ from kornia.augmentation.auto.operations import (
     TranslateX,
     TranslateY,
 )
-
-
-
-def _project_magnitudes_range(minval: float, maxval: float):
-    """Exclude negative values."""
-    if maxval <= 0:
-        return (-maxval, -minval)
-    if minval >= 0:
-        return (minval, maxval)
-    if minval == -maxval:  # If it is symmetric.
-        return (0, abs(minval))
-    raise ValueError(f"Invalid range ({minval}, {maxval}).")
 
 
 def shear_x(probability: float, magnitude: float) -> OperationBase:
@@ -124,4 +113,7 @@ def sharpness(probability: float, magnitude: float) -> OperationBase:
 
 
 def color(probability: float, magnitude: float) -> OperationBase:
-    raise NotImplementedError
+    magnitudes = torch.linspace(0.1, 1.9, 11)
+    return Saturate(
+        None, probability, magnitude_range=(magnitudes[magnitude].item(), magnitudes[magnitude + 1].item())
+    )

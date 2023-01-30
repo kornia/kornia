@@ -47,7 +47,8 @@ class Brightness(OperationBase):
     """Apply brightness operation.
 
     Args:
-        initial_probability: the initial probability.
+        initial_probability: the initial probability. If None, the augmentation will be randomly
+            applied according to he augmentation sampling range.
         initial_magnitude: the initial magnitude.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
@@ -74,7 +75,8 @@ class Contrast(OperationBase):
     """Apply contrast operation.
 
     Args:
-        initial_probability: the initial probability.
+        initial_probability: the initial probability. If None, the augmentation will be randomly
+            applied according to he augmentation sampling range.
         initial_magnitude: the initial magnitude.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
@@ -101,7 +103,8 @@ class Hue(OperationBase):
     """Apply hue operation.
 
     Args:
-        initial_probability: the initial probability.
+        initial_probability: the initial probability. If None, the augmentation will be randomly
+            applied according to he augmentation sampling range.
         initial_magnitude: the initial magnitude.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
@@ -128,7 +131,8 @@ class Saturate(OperationBase):
     """Apply saturation operation.
 
     Args:
-        initial_probability: the initial probability.
+        initial_probability: the initial probability. If None, the augmentation will be randomly
+            applied according to he augmentation sampling range.
         initial_magnitude: the initial magnitude.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
@@ -156,7 +160,8 @@ class Equalize(OperationBase):
     """Apply equalize operation.
 
     Args:
-        initial_probability: the initial probability.
+        initial_probability: the initial probability. If None, the augmentation will be randomly
+            applied according to he augmentation sampling range.
         temperature: temperature for RelaxedBernoulli distribution used during training.
 
     Note:
@@ -180,7 +185,8 @@ class Gray(OperationBase):
     """Apply grayscale operation.
 
     Args:
-        initial_probability: the initial probability.
+        initial_probability: the initial probability. If None, the augmentation will be randomly
+            applied according to he augmentation sampling range.
         temperature: temperature for RelaxedBernoulli distribution used during training.
     """
 
@@ -197,7 +203,8 @@ class Invert(OperationBase):
     """Apply invert operation.
 
     Args:
-        initial_probability: the initial probability.
+        initial_probability: the initial probability. If None, the augmentation will be randomly
+            applied according to he augmentation sampling range.
         temperature: temperature for RelaxedBernoulli distribution used during training.
     """
 
@@ -215,7 +222,8 @@ class Posterize(OperationBase):
 
     Args:
         initial_magnitude: the initial magnitude.
-        initial_probability: the initial probability.
+        initial_probability: the initial probability. If None, the augmentation will be randomly
+            applied according to he augmentation sampling range.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
@@ -251,7 +259,8 @@ class Solarize(OperationBase):
 
     Args:
         initial_magnitude: the initial magnitude.
-        initial_probability: the initial probability.
+        initial_probability: the initial probability. If None, the augmentation will be randomly
+            applied according to he augmentation sampling range.
         magnitude_range: the sampling range for random sampling and clamping the optimized 
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
@@ -282,7 +291,8 @@ class SolarizeAdd(OperationBase):
 
     Args:
         initial_magnitude: the initial magnitude.
-        initial_probability: the initial probability.
+        initial_probability: the initial probability. If None, the augmentation will be randomly
+            applied according to he augmentation sampling range.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
@@ -313,7 +323,8 @@ class Sharpness(OperationBase):
 
     Args:
         initial_magnitude: the initial magnitude.
-        initial_probability: the initial probability.
+        initial_probability: the initial probability. If None, the augmentation will be randomly
+            applied according to he augmentation sampling range.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
@@ -339,7 +350,8 @@ class HorizontalFlip(OperationBase):
     """Apply horizontal flip operation.
 
     Args:
-        initial_probability: the initial probability.
+        initial_probability: the initial probability. If None, the augmentation will be randomly
+            applied according to he augmentation sampling range.
         temperature: temperature for RelaxedBernoulli distribution used during training.
     """
 
@@ -374,7 +386,8 @@ class Rotate(OperationBase):
 
     Args:
         initial_magnitude: the initial magnitude.
-        initial_probability: the initial probability.
+        initial_probability: the initial probability. If None, the augmentation will be randomly
+            applied according to he augmentation sampling range.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
@@ -406,7 +419,8 @@ class ShearX(OperationBase):
 
     Args:
         initial_magnitude: the initial magnitude.
-        initial_probability: the initial probability.
+        initial_probability: the initial probability. If None, the augmentation will be randomly
+            applied according to he augmentation sampling range.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
@@ -444,7 +458,8 @@ class ShearY(OperationBase):
 
     Args:
         initial_magnitude: the initial magnitude.
-        initial_probability: the initial probability.
+        initial_probability: the initial probability. If None, the augmentation will be randomly
+            applied according to he augmentation sampling range.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
@@ -482,7 +497,8 @@ class TranslateX(OperationBase):
 
     Args:
         initial_magnitude: the initial magnitude.
-        initial_probability: the initial probability.
+        initial_probability: the initial probability. If None, the augmentation will be randomly
+            applied according to he augmentation sampling range.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
@@ -514,7 +530,8 @@ class TranslateY(OperationBase):
 
     Args:
         initial_magnitude: the initial magnitude.
-        initial_probability: the initial probability.
+        initial_probability: the initial probability. If None, the augmentation will be randomly
+            applied according to he augmentation sampling range.
         magnitude_range: the sampling range for random sampling and clamping the optimized magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
