@@ -7,6 +7,7 @@ import torch.nn.functional as F
 
 from kornia.color import rgb_to_grayscale
 from kornia.core import Module, Tensor
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 from .gaussian import gaussian_blur2d
 from .kernels import get_canny_nms_kernel, get_hysteresis_kernel
@@ -52,27 +53,18 @@ def canny(
         >>> edges.shape
         torch.Size([5, 1, 4, 4])
     """
-    if not isinstance(input, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
+    KORNIA_CHECK_IS_TENSOR(input)
+    KORNIA_CHECK_SHAPE(input, ['B', 'C', 'H', 'W'])
+    KORNIA_CHECK(
+        low_threshold <= high_threshold,
+        "Invalid input thresholds. low_threshold should be smaller than the high_threshold. Got: "
+        f"{low_threshold}>{high_threshold}",
+    )
+    KORNIA_CHECK(0 < low_threshold < 1, f'Invalid low threshold. Should be in range (0, 1). Got: {low_threshold}')
+    KORNIA_CHECK(0 < high_threshold < 1, f'Invalid high threshold. Should be in range (0, 1). Got: {high_threshold}')
 
-    if not len(input.shape) == 4:
-        raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
-
-    if low_threshold > high_threshold:
-        raise ValueError(
-            "Invalid input thresholds. low_threshold should be smaller than the high_threshold. Got: {}>{}".format(
-                low_threshold, high_threshold
-            )
-        )
-
-    if low_threshold < 0 and low_threshold > 1:
-        raise ValueError(f"Invalid input threshold. low_threshold should be in range (0,1). Got: {low_threshold}")
-
-    if high_threshold < 0 and high_threshold > 1:
-        raise ValueError(f"Invalid input threshold. high_threshold should be in range (0,1). Got: {high_threshold}")
-
-    device: torch.device = input.device
-    dtype: torch.dtype = input.dtype
+    device = input.device
+    dtype = input.dtype
 
     # To Grayscale
     if input.shape[1] == 3:
@@ -190,19 +182,15 @@ class Canny(Module):
     ) -> None:
         super().__init__()
 
-        if low_threshold > high_threshold:
-            raise ValueError(
-                "Invalid input thresholds. low_threshold should be\
-                             smaller than the high_threshold. Got: {}>{}".format(
-                    low_threshold, high_threshold
-                )
-            )
-
-        if low_threshold < 0 or low_threshold > 1:
-            raise ValueError(f"Invalid input threshold. low_threshold should be in range (0,1). Got: {low_threshold}")
-
-        if high_threshold < 0 or high_threshold > 1:
-            raise ValueError(f"Invalid input threshold. high_threshold should be in range (0,1). Got: {high_threshold}")
+        KORNIA_CHECK(
+            low_threshold <= high_threshold,
+            "Invalid input thresholds. low_threshold should be smaller than the high_threshold. Got: "
+            f"{low_threshold}>{high_threshold}",
+        )
+        KORNIA_CHECK(0 < low_threshold < 1, f'Invalid low threshold. Should be in range (0, 1). Got: {low_threshold}')
+        KORNIA_CHECK(
+            0 < high_threshold < 1, f'Invalid high threshold. Should be in range (0, 1). Got: {high_threshold}'
+        )
 
         # Gaussian blur parameters
         self.kernel_size = kernel_size

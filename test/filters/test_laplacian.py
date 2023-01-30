@@ -17,7 +17,7 @@ def test_get_laplacian_kernel1d(window_size, device, dtype):
     assert_close(actual.sum(), expected.sum())
 
 
-@pytest.mark.parametrize("window_size", [5, 11, (7, 8)])
+@pytest.mark.parametrize("window_size", [5, 11, (3, 3)])
 def test_get_laplacian_kernel2d(window_size, device, dtype):
     actual = get_laplacian_kernel2d(window_size, device=device, dtype=dtype)
     expected = torch.zeros(1, device=device, dtype=dtype)

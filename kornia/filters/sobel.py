@@ -4,6 +4,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core import Module, Tensor, pad
+from kornia.testing import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 from .kernels import get_spatial_gradient_kernel2d, get_spatial_gradient_kernel3d, normalize_kernel2d
 
@@ -32,11 +33,9 @@ def spatial_gradient(input: Tensor, mode: str = 'sobel', order: int = 1, normali
         >>> output.shape
         torch.Size([1, 3, 2, 4, 4])
     """
-    if not isinstance(input, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
+    KORNIA_CHECK_IS_TENSOR(input)
+    KORNIA_CHECK_SHAPE(input, ('B', 'C', 'H', 'W'))
 
-    if not len(input.shape) == 4:
-        raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
     # allocate kernel
     kernel = get_spatial_gradient_kernel2d(mode, order, device=input.device, dtype=input.dtype)
     if normalized:
@@ -72,11 +71,9 @@ def spatial_gradient3d(input: Tensor, mode: str = 'diff', order: int = 1) -> Ten
         >>> output.shape
         torch.Size([1, 4, 3, 2, 4, 4])
     """
-    if not isinstance(input, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
+    KORNIA_CHECK_IS_TENSOR(input)
+    KORNIA_CHECK_SHAPE(input, ('B', 'C', 'D', 'H', 'W'))
 
-    if not len(input.shape) == 5:
-        raise ValueError(f"Invalid input shape, we expect BxCxDxHxW. Got: {input.shape}")
     b, c, d, h, w = input.shape
     dev = input.device
     dtype = input.dtype
@@ -140,11 +137,8 @@ def sobel(input: Tensor, normalized: bool = True, eps: float = 1e-6) -> Tensor:
         >>> output.shape
         torch.Size([1, 3, 4, 4])
     """
-    if not isinstance(input, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
-
-    if not len(input.shape) == 4:
-        raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
+    KORNIA_CHECK_IS_TENSOR(input)
+    KORNIA_CHECK_SHAPE(input, ('B', 'C', 'H', 'W'))
 
     # comput the x/y gradients
     edges: Tensor = spatial_gradient(input, normalized=normalized)

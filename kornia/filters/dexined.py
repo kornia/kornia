@@ -9,6 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from kornia.core import Module, Tensor, concatenate
+from kornia.testing import KORNIA_CHECK
 from kornia.utils import map_location_to_cpu
 
 url: str = "http://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth"
@@ -102,8 +103,7 @@ class UpConvBlock(Module):
         self.constant_features = 16
 
         layers = self.make_deconv_layers(in_features, up_scale)
-        if layers is None:
-            raise Exception("layers cannot be none")
+        KORNIA_CHECK(layers is not None, "layers cannot be none")
         self.features = nn.Sequential(*layers)
 
     def make_deconv_layers(self, in_features: int, up_scale: int) -> list[Module]:

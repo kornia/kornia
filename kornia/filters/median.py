@@ -3,6 +3,7 @@ from __future__ import annotations
 import torch.nn.functional as F
 
 from kornia.core import Module, Tensor
+from kornia.testing import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 from .kernels import _unpack_2d_ks, get_binary_kernel2d
 
@@ -35,11 +36,8 @@ def median_blur(input: Tensor, kernel_size: tuple[int, int] | int) -> Tensor:
         >>> output.shape
         torch.Size([2, 4, 5, 7])
     """
-    if not isinstance(input, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
-
-    if not len(input.shape) == 4:
-        raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
+    KORNIA_CHECK_IS_TENSOR(input)
+    KORNIA_CHECK_SHAPE(input, ['B', 'C', 'H', 'W'])
 
     padding = _compute_zero_padding(kernel_size)
 

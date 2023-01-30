@@ -9,17 +9,47 @@ from kornia.core import Device, Tensor, as_tensor, concatenate, stack, tensor, w
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 
+def _check_kernel_size(kernel_size: tuple[int, ...] | int, min_value: int = 0, allow_even: bool = False):
+    if isinstance(kernel_size, int):
+        kernel_size = (kernel_size,)
+    fmt = 'even or odd' if allow_even else 'odd'
+    for size in kernel_size:
+        KORNIA_CHECK(
+            isinstance(size, int) and (((size % 2 == 1) or allow_even) and size > min_value),
+            f'Kernel size must be an {fmt} integer bigger than {min_value}. Gotcha {size} on {kernel_size}',
+        )
+
+
 def _unpack_2d_ks(kernel_size: tuple[int, int] | int) -> tuple[int, int]:
     if isinstance(kernel_size, int):
-        ks = int(kernel_size)
-        return (ks, ks)
-    return (int(kernel_size[0]), int(kernel_size[1]))
+        kx = ky = kernel_size
+    else:
+        KORNIA_CHECK(len(kernel_size) == 2, '2D Kernel size should have a length of 2.')
+        kx, ky = kernel_size
+
+    kx = int(kx)
+    ky = int(ky)
+
+    return (kx, ky)
+
+
+def _unpack_3d_ks(kernel_size: tuple[int, int, int] | int) -> tuple[int, int, int]:
+    if isinstance(kernel_size, int):
+        kx = ky = kz = kernel_size
+    else:
+        KORNIA_CHECK(len(kernel_size) == 3, '3D Kernel size should have a length of 3.')
+        kx, ky, kz = kernel_size
+
+    kx = int(kx)
+    ky = int(ky)
+    kz = int(kz)
+
+    return (kx, ky, kz)
 
 
 def normalize_kernel2d(input: Tensor) -> Tensor:
     r"""Normalize both derivative and smoothing kernel."""
-    if len(input.size()) < 2:
-        raise TypeError(f"input should be at least 2D tensor. Got {input.size()}")
+    KORNIA_CHECK_SHAPE(input, ['*', 'H', 'W'])
 
     norm = input.abs().sum(dim=-1).sum(dim=-1)
 
@@ -148,8 +178,7 @@ def _modified_bessel_i(n: int, x: Tensor) -> Tensor:
 
     https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
     """
-    if n < 2:
-        raise ValueError("n must be greater than 1.")
+    KORNIA_CHECK(n >= 2, "n must be greater than 1.99")
 
     if (x == 0.0).all():
         return x
@@ -397,20 +426,9 @@ def get_spatial_gradient_kernel2d(
 
     sobel, diff.
     """
-    if mode not in ['sobel', 'diff']:
-        raise TypeError(
-            "mode should be either sobel\
-                         or diff. Got {}".format(
-                mode
-            )
-        )
-    if order not in [1, 2]:
-        raise TypeError(
-            "order should be either 1 or 2\
-                         Got {}".format(
-                order
-            )
-        )
+    KORNIA_CHECK(mode.lower() in {'sobel', 'diff'}, f'Mode should be `sobel` or `diff`. Got {mode}')
+    KORNIA_CHECK(order in {1, 2}, f'Order should be 1 or 2. Got {order}')
+
     if mode == 'sobel' and order == 1:
         kernel: Tensor = get_sobel_kernel2d(device=device, dtype=dtype)
     elif mode == 'sobel' and order == 2:
@@ -420,7 +438,8 @@ def get_spatial_gradient_kernel2d(
     elif mode == 'diff' and order == 2:
         kernel = get_diff_kernel2d_2nd_order(device=device, dtype=dtype)
     else:
-        raise NotImplementedError("")
+        raise NotImplementedError(f"Not implemented for order {order} on mode {mode}")
+
     return kernel
 
 
@@ -429,18 +448,16 @@ def get_spatial_gradient_kernel3d(
 ) -> Tensor:
     r"""Function that returns kernel for 1st or 2nd order scale pyramid gradients, using one of the following
     operators: sobel, diff."""
-    if mode not in ['sobel', 'diff']:
-        raise TypeError(f"mode should be either sobel or diff. Got {mode}")
-    if order not in [1, 2]:
-        raise TypeError(f"order should be either 1 or 2. Got {order}")
-    if mode == 'sobel':
-        raise NotImplementedError("Sobel kernel for 3d gradient is not implemented yet")
+    KORNIA_CHECK(mode.lower() in {'sobel', 'diff'}, f'Mode should be `sobel` or `diff`. Got {mode}')
+    KORNIA_CHECK(order in {1, 2}, f'Order should be 1 or 2. Got {order}')
+
     if mode == 'diff' and order == 1:
         kernel = get_diff_kernel3d(device=device, dtype=dtype)
     elif mode == 'diff' and order == 2:
         kernel = get_diff_kernel3d_2nd_order(device=device, dtype=dtype)
     else:
-        raise NotImplementedError("")
+        raise NotImplementedError(f"Not implemented 3d gradient kernel for order {order} on mode {mode}")
+
     return kernel
 
 
@@ -479,8 +496,7 @@ def get_gaussian_kernel1d(
         tensor([[0.1201, 0.2339, 0.2921, 0.2339, 0.1201],
                 [0.0096, 0.2054, 0.5699, 0.2054, 0.0096]])
     """
-    if not isinstance(kernel_size, int) or ((kernel_size % 2 == 0) and not force_even) or (kernel_size <= 0):
-        raise TypeError(f"kernel_size must be an odd positive integer. Got {kernel_size}")
+    _check_kernel_size(kernel_size, allow_even=force_even)
 
     return gaussian(kernel_size, sigma, device=device, dtype=dtype)
 
@@ -520,8 +536,7 @@ def get_gaussian_discrete_kernel1d(
         tensor([[0.1096, 0.2323, 0.3161, 0.2323, 0.1096],
                 [0.1635, 0.2170, 0.2389, 0.2170, 0.1635]])
     """
-    if not isinstance(kernel_size, int) or ((kernel_size % 2 == 0) and not force_even) or (kernel_size <= 0):
-        raise TypeError(f"kernel_size must be an odd positive integer. Got {kernel_size}")
+    _check_kernel_size(kernel_size, allow_even=force_even)
 
     return gaussian_discrete(kernel_size, sigma, device=device, dtype=dtype)
 
@@ -562,8 +577,7 @@ def get_gaussian_erf_kernel1d(
         tensor([[0.1226, 0.2331, 0.2887, 0.2331, 0.1226],
                 [0.1574, 0.2198, 0.2456, 0.2198, 0.1574]])
     """
-    if not isinstance(kernel_size, int) or ((kernel_size % 2 == 0) and not force_even) or (kernel_size <= 0):
-        raise TypeError(f"kernel_size must be an odd positive integer. Got {kernel_size}")
+    _check_kernel_size(kernel_size, allow_even=force_even)
 
     return gaussian_discrete_erf(kernel_size, sigma, device=device, dtype=dtype)
 
@@ -629,7 +643,7 @@ def get_gaussian_kernel2d(
 
 
 def get_gaussian_kernel3d(
-    kernel_size: tuple[int, int, int],
+    kernel_size: tuple[int, int, int] | int,
     sigma: tuple[float, float, float] | Tensor,
     force_even: bool = False,
     *,
@@ -674,13 +688,9 @@ def get_gaussian_kernel3d(
     if isinstance(sigma, tuple):
         sigma = as_tensor([sigma], device=device, dtype=dtype)
 
-    KORNIA_CHECK(
-        isinstance(kernel_size, tuple) or len(kernel_size) != 3,
-        f"kernel_size must be a tuple of length three. Got {kernel_size}",
-    )
     KORNIA_CHECK_SHAPE(sigma, ["B", "3"])
 
-    ksize_x, ksize_y, ksize_z = kernel_size
+    ksize_x, ksize_y, ksize_z = _unpack_3d_ks(kernel_size)
     sigma_x, sigma_y, sigma_z = sigma[:, 0, None], sigma[:, 1, None], sigma[:, 2, None]
 
     kernel_x = get_gaussian_kernel1d(ksize_x, sigma_x, force_even, device=device, dtype=dtype)
@@ -715,8 +725,7 @@ def get_laplacian_kernel1d(
         >>> get_laplacian_kernel1d(5)
         tensor([ 1.,  1., -4.,  1.,  1.])
     """
-    if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or kernel_size <= 0:
-        raise TypeError(f"ksize must be an odd positive integer. Got {kernel_size}")
+    _check_kernel_size(kernel_size)
 
     return laplacian_1d(kernel_size, device=device, dtype=dtype)
 
@@ -750,9 +759,7 @@ def get_laplacian_kernel2d(
                 [  1.,   1.,   1.,   1.,   1.]])
     """
     kx, ky = _unpack_2d_ks(kernel_size)
-
-    if (kx % 2 == 0 or kx <= 0) and (ky % 2 == 0 or ky <= 0):
-        raise TypeError(f"ksize must be an odd positive integer. Got {kernel_size}")
+    _check_kernel_size((kx, ky))
 
     kernel = torch.ones((kx, ky), device=device, dtype=dtype)
     mid_x = kx // 2
@@ -911,8 +918,7 @@ def get_hanning_kernel1d(kernel_size: int, device: Device | None = None, dtype: 
         >>> get_hanning_kernel1d(4)
         tensor([0.0000, 0.7500, 0.7500, 0.0000])
     """
-    if not isinstance(kernel_size, int) or kernel_size <= 2:
-        raise TypeError(f"ksize must be an positive integer > 2. Got {kernel_size}")
+    _check_kernel_size(kernel_size, 2, allow_even=True)
 
     x = torch.arange(kernel_size, device=device, dtype=dtype)
     x = 0.5 - 0.5 * torch.cos(2.0 * math.pi * x / float(kernel_size - 1))
@@ -937,8 +943,8 @@ def get_hanning_kernel2d(
         - Output: math:`(\text{kernel_size[0], kernel_size[1]})`
     """
     kernel_size = _unpack_2d_ks(kernel_size)
-    if kernel_size[0] <= 2 or kernel_size[1] <= 2:
-        raise TypeError(f"ksize must be an tuple of positive integers > 2. Got {kernel_size}")
+    _check_kernel_size(kernel_size, 2, allow_even=True)
+
     ky = get_hanning_kernel1d(kernel_size[0], device, dtype)[None].T
     kx = get_hanning_kernel1d(kernel_size[1], device, dtype)[None]
     kernel2d = ky @ kx
