@@ -52,7 +52,6 @@ class RandomErasing(IntensityAugmentationBase2D):
         tensor(True)
     """
 
-    # Note: Extra params, inplace=False in Torchvision.
     def __init__(
         self,
         scale: Union[Tensor, Tuple[float, float]] = (0.02, 0.33),

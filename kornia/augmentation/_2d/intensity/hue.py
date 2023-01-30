@@ -17,8 +17,7 @@ class RandomHue(IntensityAugmentationBase2D):
 
     Args:
         p: probability of applying the transformation.
-        hue: the saturation factor to apply
-        silence_instantiation_warning: if True, silence the warning at instantiation.
+        hue: the saturation factor to apply.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).

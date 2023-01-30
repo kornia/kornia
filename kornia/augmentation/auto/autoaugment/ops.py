@@ -2,6 +2,7 @@
 import torch
 
 from kornia.augmentation.auto.operations import (
+    AutoContrast,
     Brightness,
     Contrast,
     Saturate,
@@ -69,8 +70,8 @@ def rotate(probability: float, magnitude: float) -> OperationBase:
     )
 
 
-def auto_contrast(probability: float, magnitude: float) -> OperationBase:
-    raise NotImplementedError
+def auto_contrast(probability: float, _: float) -> OperationBase:
+    return AutoContrast(probability)
 
 
 def invert(probability: float, _: float) -> OperationBase:

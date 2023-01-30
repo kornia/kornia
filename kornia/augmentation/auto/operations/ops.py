@@ -1,6 +1,7 @@
 from typing import Optional, Tuple
 
 from kornia.augmentation import (
+    RandomAutoContrast,
     RandomBrightness,
     RandomContrast,
     RandomEqualize,
@@ -22,6 +23,7 @@ from kornia.core import Tensor
 from kornia.grad_estimator import STEFunction
 
 __all__ = [
+    "AutoContrast",
     "Brightness",
     "Contrast",
     "Hue",
@@ -41,6 +43,30 @@ __all__ = [
     "TranslateX",
     "TranslateY",
 ]
+
+
+class AutoContrast(OperationBase):
+    """Apply auto_contrast operation.
+
+    Args:
+        initial_probability: the initial probability. If None, the augmentation will be randomly
+            applied according to he augmentation sampling range.
+        temperature: temperature for RelaxedBernoulli distribution used during training.
+        symmetric_megnitude: if to randomly assign the magnitude as negative or not.
+    """
+
+    def __init__(
+        self,
+        initial_probability: float = 0.5,
+        temperature: float = 0.1,
+        symmetric_megnitude: bool = False,
+    ):
+        super().__init__(
+            RandomAutoContrast(same_on_batch=False, p=initial_probability),
+            initial_magnitude=None,
+            temperature=temperature,
+            symmetric_megnitude=symmetric_megnitude,
+        )
 
 
 class Brightness(OperationBase):
