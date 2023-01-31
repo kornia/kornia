@@ -77,6 +77,11 @@ class CutmixGenerator(RandomGeneratorBase):
             torch.tensor(1.0, device=device, dtype=dtype),
             validate_args=False,
         )
+        self.pair_sampler = Uniform(
+            torch.tensor(0.0, device=device, dtype=dtype),
+            torch.tensor(1.0, device=device, dtype=dtype),
+            validate_args=False,
+        )
 
     def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
@@ -98,7 +103,10 @@ class CutmixGenerator(RandomGeneratorBase):
             batch_probs: torch.Tensor = _adapted_sampling(
                 (batch_size * self.num_mix,), self.prob_sampler, same_on_batch
             )
-        mix_pairs: torch.Tensor = torch.rand(self.num_mix, batch_size, device=_device, dtype=_dtype).argsort(dim=1)
+            mix_pairs: torch.Tensor = _adapted_sampling(
+                (self.num_mix, batch_size,), self.pair_sampler, same_on_batch
+            ).to(device=_device, dtype=_dtype).argsort(dim=1)
+
         cutmix_betas: torch.Tensor = _adapted_rsampling((batch_size * self.num_mix,), self.beta_sampler, same_on_batch)
 
         # Note: torch.clamp does not accept tensor, cutmix_betas.clamp(cut_size[0], cut_size[1]) throws:
