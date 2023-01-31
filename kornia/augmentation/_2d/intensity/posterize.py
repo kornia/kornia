@@ -32,11 +32,11 @@ class RandomPosterize(IntensityAugmentationBase2D):
         >>> input = torch.rand(1, 1, 5, 5)
         >>> posterize = RandomPosterize(3., p=1.)
         >>> posterize(input)
-        tensor([[[[0.4706, 0.7529, 0.0627, 0.1255, 0.2824],
-                  [0.6275, 0.4706, 0.8784, 0.4392, 0.6275],
-                  [0.3451, 0.3765, 0.0000, 0.1569, 0.2824],
-                  [0.5020, 0.6902, 0.7843, 0.1569, 0.2510],
-                  [0.6588, 0.9098, 0.3765, 0.8471, 0.4078]]]])
+        tensor([[[[0.4863, 0.7529, 0.0784, 0.1255, 0.2980],
+                  [0.6275, 0.4863, 0.8941, 0.4549, 0.6275],
+                  [0.3451, 0.3922, 0.0157, 0.1569, 0.2824],
+                  [0.5176, 0.6902, 0.8000, 0.1569, 0.2667],
+                  [0.6745, 0.9098, 0.3922, 0.8627, 0.4078]]]])
 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
         >>> input = torch.randn(1, 3, 32, 32)

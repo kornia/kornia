@@ -29,7 +29,9 @@ def _range_bound(
 
     if factor.dim() == 0:
         if factor < 0:
-            raise ValueError(f"If {name} is a single number number, it must be non negative. Got {factor}")
+            raise ValueError(f"If {name} is a single number, it must be non negative. Got {factor}.")
+        if center is None or bounds is None:
+            raise ValueError(f"`center` and `bounds` cannot be None for single number. Got {center}, {bounds}.")
         # Should be something other than clamp
         # Currently, single value factor will not out of scope as long as the user provided it.
         # Note: I personally think throw an error will be better than a coarse clamp.
