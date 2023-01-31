@@ -37,22 +37,22 @@ class RandomTranslate(GeometricAugmentationBase2D):
         >>> import torch
         >>> rng = torch.manual_seed(0)
         >>> input = torch.rand(1, 1, 3, 3)
-        >>> aug = RandomTranslate((0.2, 0.1), p=1.)
+        >>> aug = RandomTranslate((-0.2, 0.2), (-0.1, 0.1), p=1.)
         >>> out = aug(input)
         >>> out, aug.transform_matrix
-        (tensor([[[[0.0050, 0.0523, 0.0700],
-                  [0.0460, 0.4861, 0.6642],
-                  [0.0168, 0.1877, 0.3913]]]]), tensor([[[1.0000, 0.0000, 0.6000],
-                 [0.0000, 1.0000, 0.6000],
-                 [0.0000, 0.0000, 1.0000]]]))
+        (tensor([[[[0.3403, 0.6439, 0.2920],
+                  [0.1377, 0.3383, 0.5569],
+                  [0.3226, 0.6909, 0.4844]]]]), tensor([[[ 1.0000,  0.0000,  0.1588],
+                 [ 0.0000,  1.0000, -0.0907],
+                 [ 0.0000,  0.0000,  1.0000]]]))
         >>> aug.inverse(out)
-        tensor([[[[0.4026, 0.5886, 0.0605],
-                  [0.1977, 0.3985, 0.0419],
-                  [0.0171, 0.0371, 0.0039]]]])
+        tensor([[[[0.3565, 0.4839, 0.1922],
+                  [0.2164, 0.4134, 0.3968],
+                  [0.3797, 0.6075, 0.3765]]]])
 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
         >>> input = torch.randn(1, 3, 32, 32)
-        >>> aug = RandomTranslate((0.2, 0.1), p=1.)
+        >>> aug = RandomTranslate((-0.2, 0.2), (-0.1, 0.1), p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
     """

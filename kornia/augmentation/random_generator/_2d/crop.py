@@ -9,7 +9,7 @@ from kornia.core import Device, Tensor, tensor, where, zeros
 from kornia.geometry.bbox import bbox_generator
 from kornia.utils.helpers import _extract_device_dtype
 
-__all__ = ["CropGenerator"]
+__all__ = ["CropGenerator", "ResizedCropGenerator", "center_crop_generator"]
 
 
 class CropGenerator(RandomGeneratorBase):

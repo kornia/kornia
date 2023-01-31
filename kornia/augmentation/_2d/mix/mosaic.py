@@ -92,14 +92,15 @@ class RandomMosaic(MixAugmentationBaseV2):
 
     @torch.no_grad()
     def apply_transform_boxes(self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Boxes:
+        to_apply = params["batch_prob"] > 0.5
         src_box = as_tensor(params["src"], device=input.device, dtype=input.dtype)
         dst_box = as_tensor(params["dst"], device=input.device, dtype=input.dtype)
         # Boxes is BxNx4x2 only.
         batch_shapes = as_tensor(params["batch_shapes"], device=input.device, dtype=input.dtype)
-        offset = zeros((len(params["batch_prob"]), 2), device=input.device, dtype=input.dtype)  # Bx2
+        offset = zeros((len(to_apply), 2), device=input.device, dtype=input.dtype)  # Bx2
         # NOTE: not a pretty good line I think.
         offset_end = dst_box[0, 2].repeat(input.data.shape[0], 1)
-        idx = torch.arange(0, input.data.shape[0], device=input.device, dtype=torch.long)[params["batch_prob"]]
+        idx = torch.arange(0, input.data.shape[0], device=input.device, dtype=torch.long)[to_apply]
 
         maybe_out_boxes: Optional[Boxes] = None
         for i in range(flags['mosaic_grid'][0]):
@@ -112,9 +113,9 @@ class RandomMosaic(MixAugmentationBaseV2):
                 _box._data[params["permutation"][:, 0]] = _box._data[params["permutation"][:, _idx]]
                 _box.translate(_offset, inplace=True)
                 # zero-out unrelated batch elements.
-                _box._data[~params["batch_prob"]] = 0
+                _box._data[~to_apply] = 0
                 if maybe_out_boxes is None:
-                    _box._data[~params["batch_prob"]] = input._data[~params["batch_prob"]]
+                    _box._data[~to_apply] = input._data[~to_apply]
                     maybe_out_boxes = _box
                 else:
                     KORNIA_UNWRAP(maybe_out_boxes, Boxes).merge(_box, inplace=True)
