@@ -7,13 +7,14 @@ from typing import Any
 import torch
 
 from kornia.core import Device, Tensor, as_tensor, concatenate, stack, tensor, where, zeros, zeros_like
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 from kornia.utils import deprecated
 
 
 def _check_kernel_size(kernel_size: tuple[int, ...] | int, min_value: int = 0, allow_even: bool = False):
     if isinstance(kernel_size, int):
         kernel_size = (kernel_size,)
+
     fmt = 'even or odd' if allow_even else 'odd'
     for size in kernel_size:
         KORNIA_CHECK(
@@ -26,7 +27,8 @@ def _unpack_2d_ks(kernel_size: tuple[int, int] | int) -> tuple[int, int]:
     if isinstance(kernel_size, int):
         kx = ky = kernel_size
     else:
-        KORNIA_CHECK(len(kernel_size) == 2, '2D Kernel size should have a length of 2.')
+        KORNIA_CHECK_TYPE(kernel_size, tuple, 'Kernel size should be an integer or a tuple of integer.')
+        KORNIA_CHECK(len(kernel_size) == 2, '2D Kernel size tuple should have a length of 2.')
         kx, ky = kernel_size
 
     kx = int(kx)

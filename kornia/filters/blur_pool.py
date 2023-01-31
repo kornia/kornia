@@ -8,7 +8,14 @@ from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from .kernels import get_pascal_kernel_2d
 from .median import _compute_zero_padding  # TODO: Move to proper place
 
-__all__ = ["BlurPool2D", "MaxBlurPool2D", "blur_pool2d", "max_blur_pool2d", 'edge_aware_blur_pool2d']
+__all__ = [
+    "BlurPool2D",
+    "MaxBlurPool2D",
+    "EdgeAwareBlurPool2D",
+    "blur_pool2d",
+    "max_blur_pool2d",
+    'edge_aware_blur_pool2d',
+]
 
 
 class BlurPool2D(Module):
@@ -49,7 +56,6 @@ class BlurPool2D(Module):
         self.kernel = get_pascal_kernel_2d(kernel_size, norm=True)
 
     def forward(self, input: Tensor) -> Tensor:
-        # To align the logic with the whole lib
         self.kernel = as_tensor(self.kernel, device=input.device, dtype=input.dtype)
         return _blur_pool_by_kernel2d(input, self.kernel.repeat((input.shape[1], 1, 1, 1)), self.stride)
 
@@ -99,10 +105,24 @@ class MaxBlurPool2D(Module):
         self.kernel = get_pascal_kernel_2d(kernel_size, norm=True)
 
     def forward(self, input: Tensor) -> Tensor:
-        # To align the logic with the whole lib
         self.kernel = as_tensor(self.kernel, device=input.device, dtype=input.dtype)
         return _max_blur_pool_by_kernel2d(
             input, self.kernel.repeat((input.size(1), 1, 1, 1)), self.stride, self.max_pool_size, self.ceil_mode
+        )
+
+
+class EdgeAwareBlurPool2D(Module):
+    def __init__(
+        self, kernel_size: tuple[int, int] | int, edge_threshold: float = 1.25, edge_dilation_kernel_size: int = 3
+    ):
+        super().__init__()
+        self.kernel_size = kernel_size
+        self.edge_threshold = edge_threshold
+        self.edge_dilation_kernel_size = edge_dilation_kernel_size
+
+    def forward(self, input: Tensor, epsilon: float = 1e-6) -> Tensor:
+        return edge_aware_blur_pool2d(
+            input, self.kernel_size, self.edge_threshold, self.edge_dilation_kernel_size, epsilon
         )
 
 

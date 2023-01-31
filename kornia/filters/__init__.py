@@ -1,7 +1,14 @@
 from __future__ import annotations
 
 from .blur import BoxBlur, box_blur
-from .blur_pool import BlurPool2D, MaxBlurPool2D, blur_pool2d, edge_aware_blur_pool2d, max_blur_pool2d
+from .blur_pool import (
+    BlurPool2D,
+    EdgeAwareBlurPool2D,
+    MaxBlurPool2D,
+    blur_pool2d,
+    edge_aware_blur_pool2d,
+    max_blur_pool2d,
+)
 from .canny import Canny, canny
 from .dexined import DexiNed
 from .filter import filter2d, filter2d_separable, filter3d
@@ -78,6 +85,7 @@ __all__ = [
     "BoxBlur",
     "BlurPool2D",
     "MaxBlurPool2D",
+    "EdgeAwareBlurPool2D",
     "MedianBlur",
     "MotionBlur",
     "MotionBlur3D",
