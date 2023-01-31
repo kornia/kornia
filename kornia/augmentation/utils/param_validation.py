@@ -16,8 +16,8 @@ def _common_param_check(batch_size: int, same_on_batch: Optional[bool] = None):
 def _range_bound(
     factor: Union[Tensor, float, Tuple[float, float], List[float]],
     name: str,
-    center: float = 0.0,
-    bounds: Tuple[float, float] = (0, float('inf')),
+    center: Optional[float] = 0.0,
+    bounds: Optional[Tuple[float, float]] = (0, float('inf')),
     check: Optional[str] = 'joint',
     device: torch.device = torch.device('cpu'),
     dtype: torch.dtype = torch.get_default_dtype(),
