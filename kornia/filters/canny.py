@@ -175,7 +175,7 @@ class Canny(Module):
         self,
         low_threshold: float = 0.1,
         high_threshold: float = 0.2,
-        kernel_size: tuple[int, int] = (5, 5),
+        kernel_size: tuple[int, int] | int = (5, 5),
         sigma: tuple[float, float] = (1, 1),
         hysteresis: bool = True,
         eps: float = 1e-6,
