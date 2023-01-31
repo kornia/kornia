@@ -42,6 +42,8 @@ def _transform_boxes(boxes: torch.Tensor, M: torch.Tensor) -> torch.Tensor:
 
     # Work with batch as kornia.transform_points only supports a batch of points.
     boxes_per_batch, n_points_per_box, coordinates_dimension = boxes.shape[-3:]
+    if boxes_per_batch == 0:
+        return boxes
     points = boxes.view(-1, n_points_per_box * boxes_per_batch, coordinates_dimension)
     M = M if M.ndim == 3 else M.unsqueeze(0)
 
