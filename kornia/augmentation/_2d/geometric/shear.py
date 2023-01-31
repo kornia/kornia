@@ -61,7 +61,7 @@ class RandomShear(GeometricAugmentationBase2D):
 
     def __init__(
         self,
-        shear: Optional[Union[Tensor, float, Tuple[float, float]]] = None,
+        shear: Union[Tensor, float, Tuple[float, float], Tuple[float, float, float, float]],
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         same_on_batch: bool = False,
         align_corners: bool = False,
@@ -70,7 +70,7 @@ class RandomShear(GeometricAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._param_generator: rg.AffineGenerator = rg.ShearGenerator(shear)
+        self._param_generator: rg.ShearGenerator = rg.ShearGenerator(shear)
         self.flags = dict(
             resample=Resample.get(resample), padding_mode=SamplePadding.get(padding_mode), align_corners=align_corners
         )

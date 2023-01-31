@@ -2,7 +2,7 @@ from enum import Enum
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 import torch
-from torch.distributions import Bernoulli, RelaxedBernoulli
+from torch.distributions import Bernoulli, Distribution, RelaxedBernoulli
 
 from kornia.augmentation.random_generator import RandomGeneratorBase
 from kornia.augmentation.utils import (
@@ -61,6 +61,8 @@ class _BasicAugmentationBase(Module):
         self.same_on_batch = same_on_batch
         self.keepdim = keepdim
         self._params: Dict[str, Tensor] = {}
+        self._p_gen: Distribution
+        self._p_batch_gen: Distribution
         if p != 0.0 or p != 1.0:
             self._p_gen = Bernoulli(self.p)
         if p_batch != 0.0 or p_batch != 1.0:

@@ -15,8 +15,8 @@ class PosterizeGenerator(RandomGeneratorBase):
     r"""Generate random posterize parameters for a batch of images.
 
     Args:
-        bits: Integer that ranged from (0, 8], in which 0 gives black image and 8 gives the original.
-            If int x, bits will be generated from (x, 8).
+        bits: floats that ranged from (0, 8], in which 0 gives black image and 8 gives the original.
+            If float x, bits will be generated from (x, 8).
             If tuple (x, y), bits will be generated from (x, y).
 
     Returns:
@@ -29,7 +29,7 @@ class PosterizeGenerator(RandomGeneratorBase):
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
     """
 
-    def __init__(self, bits: Union[int, Tuple[int, int], Tensor]) -> None:
+    def __init__(self, bits: Union[float, Tuple[float, float], Tensor]) -> None:
         super().__init__()
         self.bits_factor = bits
 
@@ -52,4 +52,4 @@ class PosterizeGenerator(RandomGeneratorBase):
         _common_param_check(batch_size, same_on_batch)
         _device, _ = _extract_device_dtype([self.bits_factor if isinstance(self.bits_factor, Tensor) else None])
         bits_factor = _adapted_rsampling((batch_size,), self.bit_sampler, same_on_batch)
-        return dict(bits_factor=bits_factor.to(device=_device, dtype=torch.int32))
+        return dict(bits_factor=bits_factor.round().to(device=_device, dtype=torch.int32))

@@ -20,7 +20,7 @@ from kornia.augmentation.auto.operations import (
 )
 
 
-def shear_x(probability: float, magnitude: float) -> OperationBase:
+def shear_x(probability: float, magnitude: int) -> OperationBase:
     magnitudes = torch.linspace(-0.3, 0.3, 11) * 180.0
     return ShearX(
         None,
@@ -30,7 +30,7 @@ def shear_x(probability: float, magnitude: float) -> OperationBase:
     )
 
 
-def shear_y(probability: float, magnitude: float) -> OperationBase:
+def shear_y(probability: float, magnitude: int) -> OperationBase:
     magnitudes = torch.linspace(-0.3, 0.3, 11) * 180.0
     return ShearY(
         None,
@@ -40,7 +40,7 @@ def shear_y(probability: float, magnitude: float) -> OperationBase:
     )
 
 
-def translate_x(probability: float, magnitude: float) -> OperationBase:
+def translate_x(probability: float, magnitude: int) -> OperationBase:
     magnitudes = torch.linspace(-0.5, 0.5, 11)
     return TranslateX(
         None,
@@ -50,7 +50,7 @@ def translate_x(probability: float, magnitude: float) -> OperationBase:
     )
 
 
-def translate_y(probability: float, magnitude: float) -> OperationBase:
+def translate_y(probability: float, magnitude: int) -> OperationBase:
     magnitudes = torch.linspace(-0.5, 0.5, 11)
     return TranslateY(
         None,
@@ -60,7 +60,7 @@ def translate_y(probability: float, magnitude: float) -> OperationBase:
     )
 
 
-def rotate(probability: float, magnitude: float) -> OperationBase:
+def rotate(probability: float, magnitude: int) -> OperationBase:
     magnitudes = torch.linspace(-30, 30, 11)
     return Rotate(
         None,
@@ -70,50 +70,50 @@ def rotate(probability: float, magnitude: float) -> OperationBase:
     )
 
 
-def auto_contrast(probability: float, _: float) -> OperationBase:
+def auto_contrast(probability: float, _: int) -> OperationBase:
     return AutoContrast(probability)
 
 
-def invert(probability: float, _: float) -> OperationBase:
+def invert(probability: float, _: int) -> OperationBase:
     return Invert(probability)
 
 
-def equalize(probability: float, _: float) -> OperationBase:
+def equalize(probability: float, _: int) -> OperationBase:
     return Equalize(probability)
 
 
-def solarize(probability: float, magnitude: float) -> OperationBase:
+def solarize(probability: float, magnitude: int) -> OperationBase:
     magnitudes = torch.linspace(0, 255, 11) / 255.0
     return Solarize(None, probability, magnitude_range=(magnitudes[magnitude].item(), magnitudes[magnitude + 1].item()))
 
 
-def posterize(probability: float, magnitude: float) -> OperationBase:
+def posterize(probability: float, magnitude: int) -> OperationBase:
     magnitudes = torch.linspace(4, 8, 11)
     return Posterize(
         None, probability, magnitude_range=(magnitudes[magnitude].item(), magnitudes[magnitude + 1].item())
     )
 
 
-def contrast(probability: float, magnitude: float) -> OperationBase:
+def contrast(probability: float, magnitude: int) -> OperationBase:
     magnitudes = torch.linspace(0.1, 1.9, 11)
     return Contrast(None, probability, magnitude_range=(magnitudes[magnitude].item(), magnitudes[magnitude + 1].item()))
 
 
-def brightness(probability: float, magnitude: float) -> OperationBase:
+def brightness(probability: float, magnitude: int) -> OperationBase:
     magnitudes = torch.linspace(0.1, 1.9, 11)
     return Brightness(
         None, probability, magnitude_range=(magnitudes[magnitude].item(), magnitudes[magnitude + 1].item())
     )
 
 
-def sharpness(probability: float, magnitude: float) -> OperationBase:
+def sharpness(probability: float, magnitude: int) -> OperationBase:
     magnitudes = torch.linspace(0.1, 1.9, 11)
     return Sharpness(
         None, probability, magnitude_range=(magnitudes[magnitude].item(), magnitudes[magnitude + 1].item())
     )
 
 
-def color(probability: float, magnitude: float) -> OperationBase:
+def color(probability: float, magnitude: int) -> OperationBase:
     magnitudes = torch.linspace(0.1, 1.9, 11)
     return Saturate(
         None, probability, magnitude_range=(magnitudes[magnitude].item(), magnitudes[magnitude + 1].item())

@@ -1,4 +1,4 @@
-from typing import Callable, Dict, List, Optional, Tuple, TypeVar, Union, cast
+from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union, cast
 
 import torch
 from torch import nn
@@ -28,12 +28,12 @@ class OperationBase(Module):
 
     def __init__(
         self,
-        operation: Union[_AugmentationBase, ImageSequential],
+        operation: _AugmentationBase,
         initial_magnitude: Optional[List[Tuple[str, Optional[float]]]] = None,
         temperature: float = 0.1,
         is_batch_operation: bool = False,
-        magnitude_fn: Optional[Callable] = None,
-        gradient_estimator: Optional[Function] = None,
+        magnitude_fn: Optional[Callable[[Tensor], Tensor]] = None,
+        gradient_estimator: Optional[Type[Function]] = None,
         symmetric_megnitude: bool = False,
     ) -> None:
         super().__init__()
@@ -57,11 +57,11 @@ class OperationBase(Module):
         self._magnitude_fn = self._init_magnitude_fn(magnitude_fn)
         self._gradient_estimator = gradient_estimator
 
-    def _init_magnitude_fn(self, magnitude_fn: Optional[Callable]) -> Callable:
+    def _init_magnitude_fn(self, magnitude_fn: Optional[Callable[[Tensor], Tensor]]) -> Callable[[Tensor], Tensor]:
         def _identity(x: Tensor) -> Tensor:
             return x
 
-        def _random_flip(fn: Callable) -> Callable:
+        def _random_flip(fn: Callable[[Tensor], Tensor]) -> Callable[[Tensor], Tensor]:
             def f(x: Tensor) -> Tensor:
                 flip = torch.rand((x.shape[0],), device=x.device) > 0.5
                 return fn(x) * flip
@@ -76,7 +76,7 @@ class OperationBase(Module):
 
         return magnitude_fn
 
-    def _init_magnitude(self, initial_magnitude: Optional[Tuple[str, float]]) -> None:
+    def _init_magnitude(self, initial_magnitude: Optional[List[Tuple[str, Optional[float]]]]) -> None:
         if isinstance(initial_magnitude, (list, tuple)):
             if not all([isinstance(ini_mag, (list, tuple)) and len(ini_mag) == 2 for ini_mag in initial_magnitude]):
                 raise ValueError(f"`initial_magnitude` shall be a list of 2-element tuples. Got {initial_magnitude}")
@@ -132,6 +132,8 @@ class OperationBase(Module):
         batch_prob = params["batch_prob"]
 
         if mag is not None:
+            if self._factor_name is None:
+                raise RuntimeError(f"No factor found in the params while `mag` is provided.")
             # For single factor operations, this is equivalent to `same_on_batch=True`
             params[self._factor_name] = params[self._factor_name].zero_() + mag
 
@@ -158,7 +160,7 @@ class OperationBase(Module):
             return None
         mag = self._magnitude
         if self.magnitude_range is not None:
-            mag = mag.clamp(*self.magnitude_range)
+            return mag.clamp(*self.magnitude_range)
         return mag
 
     @property

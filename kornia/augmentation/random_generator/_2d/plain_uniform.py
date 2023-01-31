@@ -55,6 +55,8 @@ class PlainUniformGenerator(RandomGeneratorBase):
             elif isinstance(factor, Tensor):
                 self.register_buffer(name, factor)
             else:
+                if center is None or bound is None:
+                    raise ValueError(f"`center` and `bound` cannot be None. Got {center}, {bound}.")
                 factor = _range_bound(factor, name, center=center, bounds=bound)
                 self.register_buffer(name, factor)
 

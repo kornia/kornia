@@ -1,4 +1,4 @@
-from typing import List, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import torch.nn as nn
 
@@ -6,7 +6,7 @@ from kornia.augmentation.auto.operations import OperationBase
 from kornia.core import Module, Tensor
 
 NUMBER = Union[float, int]
-OP_CONFIG = Tuple[str, NUMBER, NUMBER]
+OP_CONFIG = Tuple[str, NUMBER, Optional[NUMBER]]
 SUBPLOLICY_CONFIG = List[OP_CONFIG]
 
 

@@ -266,7 +266,7 @@ class Posterize(OperationBase):
         self,
         initial_magnitude: Optional[float] = 4.0,
         initial_probability: float = 0.5,
-        magnitude_range: Tuple[float, float] = (1, 8),
+        magnitude_range: Tuple[float, float] = (1., 8.),
         temperature: float = 0.1,
         symmetric_megnitude: bool = False,
     ):
@@ -510,7 +510,7 @@ class ShearY(OperationBase):
                 f"The lower bound must above 0. Got {magnitude_range[0]}."
             )
         super().__init__(
-            RandomShear((0.0, 0.0, *magnitude_range), same_on_batch=False, p=initial_probability),
+            RandomShear((.0, .0, magnitude_range[0], magnitude_range[1]), same_on_batch=False, p=initial_probability),
             initial_magnitude=[("shear_y", initial_magnitude)],
             temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
