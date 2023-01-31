@@ -55,7 +55,7 @@ class CoFusion(Module):
         attn = F.softmax(self.conv3(attn), dim=1)
 
         # return ((fusecat * attn).sum(1)).unsqueeze(1)
-        return ((x * attn).sum(1)).unsqueeze(1)
+        return ((x * attn).sum(1))[:, None, ...]
 
 
 class _DenseLayer(nn.Sequential):

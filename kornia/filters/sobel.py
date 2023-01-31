@@ -43,7 +43,7 @@ def spatial_gradient(input: Tensor, mode: str = 'sobel', order: int = 1, normali
 
     # prepare kernel
     b, c, h, w = input.shape
-    tmp_kernel = kernel.unsqueeze(1)
+    tmp_kernel = kernel[:, None, ...]
 
     # Pad with "replicate for spatial dims, but with zeros for channel
     spatial_pad = [kernel.size(1) // 2, kernel.size(1) // 2, kernel.size(2) // 2, kernel.size(2) // 2]

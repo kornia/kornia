@@ -74,9 +74,9 @@ class MedianBlur(Module):
         torch.Size([2, 4, 5, 7])
     """
 
-    def __init__(self, kernel_size: tuple[int, int]) -> None:
+    def __init__(self, kernel_size: tuple[int, int] | int) -> None:
         super().__init__()
-        self.kernel_size: tuple[int, int] = kernel_size
+        self.kernel_size = kernel_size
 
     def forward(self, input: Tensor) -> Tensor:
         return median_blur(input, self.kernel_size)

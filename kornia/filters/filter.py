@@ -91,7 +91,7 @@ def filter2d(
 
     # prepare kernel
     b, c, h, w = input.shape
-    tmp_kernel = kernel.unsqueeze(1).to(device=input.device, dtype=input.dtype)
+    tmp_kernel = kernel[:, None, ...].to(device=input.device, dtype=input.dtype)
 
     if normalized:
         tmp_kernel = normalize_kernel2d(tmp_kernel)
@@ -169,8 +169,8 @@ def filter2d_separable(
                   [0., 5., 5., 5., 0.],
                   [0., 0., 0., 0., 0.]]]])
     """
-    out_x = filter2d(input, kernel_x.unsqueeze(-2), border_type, normalized, padding)
-    out = filter2d(out_x, kernel_y.unsqueeze(-1), border_type, normalized, padding)
+    out_x = filter2d(input, kernel_x[..., None, :], border_type, normalized, padding)
+    out = filter2d(out_x, kernel_y[..., None], border_type, normalized, padding)
     return out
 
 
@@ -246,7 +246,7 @@ def filter3d(input: Tensor, kernel: Tensor, border_type: str = 'replicate', norm
 
     # prepare kernel
     b, c, d, h, w = input.shape
-    tmp_kernel = kernel.unsqueeze(1).to(device=input.device, dtype=input.dtype)
+    tmp_kernel = kernel[:, None, ...].to(device=input.device, dtype=input.dtype)
 
     if normalized:
         bk, dk, hk, wk = kernel.shape

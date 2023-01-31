@@ -53,7 +53,7 @@ def normalize_kernel2d(input: Tensor) -> Tensor:
 
     norm = input.abs().sum(dim=-1).sum(dim=-1)
 
-    return input / (norm.unsqueeze(-1).unsqueeze(-1))
+    return input / (norm[..., None, None])
 
 
 def gaussian(
@@ -349,7 +349,7 @@ def get_diff_kernel3d(device: Device | None = None, dtype: torch.dtype | None = 
         device=device,
         dtype=dtype,
     )
-    return kernel.unsqueeze(1)
+    return kernel[:, None, ...]
 
 
 def get_diff_kernel3d_2nd_order(device: Device | None = None, dtype: torch.dtype | None = None) -> Tensor:
@@ -390,7 +390,7 @@ def get_diff_kernel3d_2nd_order(device: Device | None = None, dtype: torch.dtype
         device=device,
         dtype=dtype,
     )
-    return kernel.unsqueeze(1)
+    return kernel[:, None, ...]
 
 
 def get_sobel_kernel2d(*, device: Device | None = None, dtype: torch.dtype | None = None) -> Tensor:
@@ -634,12 +634,10 @@ def get_gaussian_kernel2d(
     ksize_x, ksize_y = _unpack_2d_ks(kernel_size)
     sigma_x, sigma_y = sigma[:, 0, None], sigma[:, 1, None]
 
-    kernel_x = get_gaussian_kernel1d(ksize_x, sigma_x, force_even, device=device, dtype=dtype)
-    kernel_y = get_gaussian_kernel1d(ksize_y, sigma_y, force_even, device=device, dtype=dtype)
+    kernel_x = get_gaussian_kernel1d(ksize_x, sigma_x, force_even, device=device, dtype=dtype)[..., None]
+    kernel_y = get_gaussian_kernel1d(ksize_y, sigma_y, force_even, device=device, dtype=dtype)[..., None]
 
-    kernel_2d = torch.matmul(kernel_x.unsqueeze(-1), kernel_y.unsqueeze(-1).transpose(2, 1))
-
-    return kernel_2d
+    return torch.matmul(kernel_x, kernel_y.transpose(2, 1))
 
 
 def get_gaussian_kernel3d(
@@ -853,8 +851,10 @@ def get_pascal_kernel_1d(
         pre = cur
 
     out = as_tensor(cur, device=device, dtype=dtype)
+
     if norm:
-        out = out / torch.sum(out)
+        out = out / out.sum()
+
     return out
 
 
@@ -862,36 +862,36 @@ def get_canny_nms_kernel(device: Device | None = None, dtype: torch.dtype | None
     """Utility function that returns 3x3 kernels for the Canny Non-maximal suppression."""
     return tensor(
         [
-            [[0.0, 0.0, 0.0], [0.0, 1.0, -1.0], [0.0, 0.0, 0.0]],
-            [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, -1.0]],
-            [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, -1.0, 0.0]],
-            [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [-1.0, 0.0, 0.0]],
-            [[0.0, 0.0, 0.0], [-1.0, 1.0, 0.0], [0.0, 0.0, 0.0]],
-            [[-1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.0]],
-            [[0.0, -1.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.0]],
-            [[0.0, 0.0, -1.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.0]],
+            [[[0.0, 0.0, 0.0], [0.0, 1.0, -1.0], [0.0, 0.0, 0.0]]],
+            [[[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, -1.0]]],
+            [[[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, -1.0, 0.0]]],
+            [[[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [-1.0, 0.0, 0.0]]],
+            [[[0.0, 0.0, 0.0], [-1.0, 1.0, 0.0], [0.0, 0.0, 0.0]]],
+            [[[-1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.0]]],
+            [[[0.0, -1.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.0]]],
+            [[[0.0, 0.0, -1.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.0]]],
         ],
         device=device,
         dtype=dtype,
-    ).unsqueeze(1)
+    )
 
 
 def get_hysteresis_kernel(device: Device | None = None, dtype: torch.dtype | None = None) -> Tensor:
     """Utility function that returns the 3x3 kernels for the Canny hysteresis."""
     return tensor(
         [
-            [[0.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, 0.0, 0.0]],
-            [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]],
-            [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
-            [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [1.0, 0.0, 0.0]],
-            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
-            [[1.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
-            [[0.0, 1.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
-            [[0.0, 0.0, 1.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+            [[[0.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, 0.0, 0.0]]],
+            [[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 1.0]]],
+            [[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0]]],
+            [[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]],
+            [[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 0.0]]],
+            [[[1.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]],
+            [[[0.0, 1.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]],
+            [[[0.0, 0.0, 1.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]],
         ],
         device=device,
         dtype=dtype,
-    ).unsqueeze(1)
+    )
 
 
 def get_hanning_kernel1d(kernel_size: int, device: Device | None = None, dtype: torch.dtype | None = None) -> Tensor:

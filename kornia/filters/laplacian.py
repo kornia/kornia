@@ -37,7 +37,7 @@ def laplacian(
         >>> output.shape
         torch.Size([2, 4, 5, 5])
     """
-    kernel = get_laplacian_kernel2d(kernel_size, device=input.device, dtype=input.dtype).unsqueeze(0)
+    kernel = get_laplacian_kernel2d(kernel_size, device=input.device, dtype=input.dtype)[None, ...]
 
     if normalized:
         kernel = normalize_kernel2d(kernel)
