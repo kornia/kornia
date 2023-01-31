@@ -1,9 +1,8 @@
 import pytest
 import torch
 
-import kornia.testing as utils  # test utils
 from kornia.filters import BoxBlur, box_blur
-from kornia.testing import BaseTester
+from kornia.testing import BaseTester, tensor_to_gradcheck_var
 
 
 class TestBoxBlur(BaseTester):
@@ -90,11 +89,19 @@ class TestBoxBlur(BaseTester):
 
         self.assert_close(actual[:, 0, 2, 2], expected)
 
+    @pytest.mark.parametrize('batch_size', [1, 2])
+    def test_noncontiguous(self, batch_size, device, dtype):
+        inp = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
+
+        actual = box_blur(inp, 3)
+
+        assert actual.is_contiguous()
+
     @pytest.mark.parametrize('kernel_size', [(3, 3), 5, (5, 7)])
     def test_gradcheck(self, kernel_size, device, dtype):
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
-        img = utils.tensor_to_gradcheck_var(img)  # to var
+        img = tensor_to_gradcheck_var(img)  # to var
         fast_mode = 'cpu' in str(device)  # Disable fast mode for GPU
         self.gradcheck(box_blur, (img, kernel_size), fast_mode=fast_mode)
 

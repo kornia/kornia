@@ -35,6 +35,14 @@ class TestMaxBlurPool(BaseTester):
             MaxBlurPool2D((3, 5))(inpt)
         assert 'Invalid kernel shape. Expect CxC_outxNxN' in str(errinfo)
 
+    @pytest.mark.parametrize('batch_size', [1, 2])
+    def test_noncontiguous(self, batch_size, device, dtype):
+        inp = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
+
+        actual = max_blur_pool2d(inp, 3)
+
+        assert actual.is_contiguous()
+
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width, device=device)
@@ -86,6 +94,13 @@ class TestBlurPool(BaseTester):
         with pytest.raises(Exception) as errinfo:
             BlurPool2D((3, 5))(inpt)
         assert 'Invalid kernel shape. Expect CxC_(out, None)xNxN' in str(errinfo)
+
+    @pytest.mark.parametrize('batch_size', [1, 2])
+    def test_noncontiguous(self, batch_size, device, dtype):
+        inp = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
+
+        actual = blur_pool2d(inp, 3)
+        assert actual.is_contiguous()
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 2, 5, 4
@@ -142,6 +157,13 @@ class TestEdgeAwareBlurPool(BaseTester):
             inpt = torch.rand(1, 1, 3, 3)
             edge_aware_blur_pool2d(inpt, 3, edge_threshold=-1)
         assert "edge threshold should be positive, but got" in str(errinfo)
+
+    @pytest.mark.parametrize('batch_size', [1, 2])
+    def test_noncontiguous(self, batch_size, device, dtype):
+        inp = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
+
+        actual = edge_aware_blur_pool2d(inp, 3)
+        assert actual.is_contiguous()
 
     @pytest.mark.parametrize('kernel_size', [3, (5, 5)])
     @pytest.mark.parametrize('batch_size', [1, 2])
