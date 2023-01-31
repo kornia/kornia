@@ -79,7 +79,7 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
         # In case the type already matches the input type, the conversions are no-ops
 
         batch_prob = params['batch_prob']
-        to_apply = (batch_prob > 0.5).bool()  # NOTE: in case of Relaxed Distributions.
+        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
 
         in_tensor = self.transform_tensor(input)
         if not to_apply.any():

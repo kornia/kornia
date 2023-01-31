@@ -5,7 +5,7 @@ import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample, SamplePadding
-from kornia.core import Tensor
+from kornia.core import Tensor, stack
 from kornia.geometry.transform import get_translation_matrix2d, warp_affine
 
 
@@ -75,7 +75,7 @@ class RandomTranslate(GeometricAugmentationBase2D):
         )
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
-        translations = torch.stack([params["translate_x"], params["translate_y"]], dim=-1)
+        translations = stack([params["translate_x"], params["translate_y"]], dim=-1)
         return get_translation_matrix2d(torch.as_tensor(translations, device=input.device, dtype=input.dtype))
 
     def apply_transform(

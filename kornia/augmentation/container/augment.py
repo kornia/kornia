@@ -2,6 +2,7 @@ import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 from kornia.augmentation import AugmentationBase3D, RigidAffineAugmentationBase2D, RigidAffineAugmentationBase3D
+from kornia.augmentation.auto.base import PolicyAugmentBase
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.image import ImageSequential, ParamItem
 from kornia.augmentation.container.ops import AugmentationSequentialOps, DataType
@@ -195,6 +196,8 @@ class AugmentationSequential(ImageSequential):
             # NOTE: only for images are supported for 3D.
             if isinstance(arg, AugmentationBase3D):
                 self.contains_3d_augmentation = True
+            if isinstance(arg, PolicyAugmentBase):
+                raise RuntimeError(f"{arg.__class__.__name__} is yet unsupported. Please send a PR if you are interested.")
         self._transform_matrix: Optional[Tensor] = None
         self.extra_args = extra_args
 

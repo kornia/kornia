@@ -7,13 +7,13 @@ from torch.distributions import Bernoulli, RelaxedBernoulli
 
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.image import ImageSequential
-from kornia.core import Tensor
+from kornia.core import Tensor, Module
 
 T = TypeVar('T', bound='OperationBase')
 
 
-class OperationBase(nn.Module):
-    """Base class of differantiable augmentation operations.
+class OperationBase(Module):
+    """Base class of differentiable augmentation operations.
 
     Args:
         operation: Kornia augmentation module.

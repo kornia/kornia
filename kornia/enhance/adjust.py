@@ -600,41 +600,6 @@ def adjust_log(image: Tensor, gain: float = 1, inv: bool = False, clip_output: b
     return img_adjust
 
 
-def auto_contrast(image: Tensor, clip_output: bool = True) -> Tensor:
-    r"""Apply auto-contrast.
-
-    The image is expected to be an RGB image or a gray image in the range of [0, 1].
-
-    Args:
-        image: Image/Tensor to be adjusted in the shape of :math:`(*, 1, H, W)` or :math:`(*, 3, H, W)`.
-        clip_output: Whether to clip the output image with range of [0, 1].
-
-    Return:
-        Adjusted image in the shape of :math:`(*, 1, H, W)` or :math:`(*, 3, H, W)`.
-    
-    ..note:
-        Currently NON-differentiable.
-    """
-    KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
-    KORNIA_CHECK_IS_COLOR_OR_GRAY(image, "Image should be an RGB or gray image")
-
-    # Taken from pytorch transforms/functional_tensor.py
-    with torch.no_grad():
-        minimum = image.amin(dim=(-2, -1), keepdim=True)
-        maximum = image.amax(dim=(-2, -1), keepdim=True)
-        scale = 1. / (maximum - minimum)
-        eq_idxs = torch.isfinite(scale).logical_not()
-        minimum[eq_idxs] = 0
-        scale[eq_idxs] = 1
-
-    out = ((image - minimum) * scale)
-
-    if clip_output:
-        out.clamp(0., 1.)
-
-    return out
-
-
 def _solarize(input: Tensor, thresholds: Union[float, Tensor] = 0.5) -> Tensor:
     r"""For each pixel in the image, select the pixel if the value is less than the threshold. Otherwise, subtract
     1.0 from the pixel.

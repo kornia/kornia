@@ -2,7 +2,7 @@ from typing import Any, Dict, Optional
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.core import Tensor
-from kornia.enhance.adjust import auto_contrast
+from kornia.enhance import normalize_min_max
 
 
 class RandomAutoContrast(IntensityAugmentationBase2D):
@@ -19,7 +19,7 @@ class RandomAutoContrast(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     .. note::
-        This function internally uses :func:`kornia.enhance.auto_contrast`
+        This function internally uses :func:`kornia.enhance.normalize_min_max`
     """
 
     def __init__(
@@ -36,4 +36,9 @@ class RandomAutoContrast(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        return auto_contrast(input, self.clip_output)
+        out = normalize_min_max(input)
+
+        if self.clip_output:
+            return out.clamp(0., 1.)
+
+        return out

@@ -133,7 +133,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         in_tensor = self.transform_tensor(input)
         output = in_tensor.clone()
         batch_prob = params['batch_prob']
-        to_apply = (batch_prob > 0.5).bool()  # NOTE: in case of Relaxed Distributions.
+        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
 
         params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, flags, **kwargs
@@ -187,7 +187,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
     ) -> Boxes:
         output = input.clone()
         batch_prob = params['batch_prob']
-        to_apply = (batch_prob > 0.5).bool()  # NOTE: in case of Relaxed Distributions.
+        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
 
         if transform is None:
             raise RuntimeError("transform matrix shall not be `None`.")
@@ -225,7 +225,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         """
         output = input.clone()
         batch_prob = params['batch_prob']
-        to_apply = (batch_prob > 0.5).bool()  # NOTE: in case of Relaxed Distributions.
+        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
 
         if transform is None:
             raise RuntimeError("transform matrix shall not be `None`.")

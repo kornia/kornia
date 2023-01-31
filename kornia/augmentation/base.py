@@ -168,7 +168,7 @@ class _BasicAugmentationBase(Module):
 
     def forward_parameters(self, batch_shape) -> Dict[str, Tensor]:
         batch_prob = self.__batch_prob_generator__(batch_shape, self.p, self.p_batch, self.same_on_batch)
-        to_apply = (batch_prob > 0.5).bool()
+        to_apply = batch_prob > 0.5
         _params = self.generate_parameters(torch.Size((int(to_apply.sum().item()), *batch_shape[1:])))
         if _params is None:
             _params = {}
@@ -255,7 +255,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         )
 
         batch_prob = params['batch_prob']
-        to_apply = (batch_prob > 0.5).bool()  # NOTE: in case of Relaxed Distributions.
+        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         ori_shape = input.shape
         in_tensor = self.transform_tensor(input)
         if to_apply.all():
@@ -293,7 +293,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         )
 
         batch_prob = params['batch_prob']
-        to_apply = (batch_prob > 0.5).bool()  # NOTE: in case of Relaxed Distributions.
+        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         ori_shape = input.shape
         in_tensor = self.transform_tensor(input)
         if to_apply.all():
@@ -326,7 +326,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         )
 
         batch_prob = params['batch_prob']
-        to_apply = (batch_prob > 0.5).bool()  # NOTE: in case of Relaxed Distributions.
+        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         output: Boxes
         if to_apply.bool().all():
             output = self.apply_transform_box(input, params, flags, transform=transform)
@@ -361,7 +361,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         )
 
         batch_prob = params['batch_prob']
-        to_apply = (batch_prob > 0.5).bool()  # NOTE: in case of Relaxed Distributions.
+        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         if to_apply.all():
             output = self.apply_transform_keypoint(input, params, flags, transform=transform)
         elif not to_apply.any():
@@ -391,7 +391,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         )
 
         batch_prob = params['batch_prob']
-        to_apply = (batch_prob > 0.5).bool()  # NOTE: in case of Relaxed Distributions.
+        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         if to_apply.all():
             output = self.apply_transform_class(input, params, flags, transform=transform)
         elif not to_apply.any():
