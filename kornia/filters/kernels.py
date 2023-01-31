@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import math
 from math import sqrt
+from typing import Any
 
 import torch
 
 from kornia.core import Device, Tensor, as_tensor, concatenate, stack, tensor, where, zeros, zeros_like
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.utils import deprecated
 
 
 def _check_kernel_size(kernel_size: tuple[int, ...] | int, min_value: int = 0, allow_even: bool = False):
@@ -74,6 +76,7 @@ def gaussian(
     if isinstance(sigma, float):
         sigma = as_tensor([[sigma]], device=device, dtype=dtype)
 
+    KORNIA_CHECK_IS_TENSOR(sigma)
     KORNIA_CHECK_SHAPE(sigma, ["B", "1"])
     batch_size = sigma.shape[0]
 
@@ -629,6 +632,7 @@ def get_gaussian_kernel2d(
     if isinstance(sigma, tuple):
         sigma = as_tensor([sigma], device=device, dtype=dtype)
 
+    KORNIA_CHECK_IS_TENSOR(sigma)
     KORNIA_CHECK_SHAPE(sigma, ["B", "2"])
 
     ksize_x, ksize_y = _unpack_2d_ks(kernel_size)
@@ -686,6 +690,7 @@ def get_gaussian_kernel3d(
     if isinstance(sigma, tuple):
         sigma = as_tensor([sigma], device=device, dtype=dtype)
 
+    KORNIA_CHECK_IS_TENSOR(sigma)
     KORNIA_CHECK_SHAPE(sigma, ["B", "3"])
 
     ksize_x, ksize_y, ksize_z = _unpack_3d_ks(kernel_size)
@@ -950,3 +955,18 @@ def get_hanning_kernel2d(
     kernel2d = ky @ kx
 
     return kernel2d
+
+
+@deprecated(replace_with='get_gaussian_kernel1d', version='6.9.10')
+def get_gaussian_kernel1d_t(*args: Any, **kwargs: Any) -> Tensor:
+    return get_gaussian_kernel1d(*args, **kwargs)
+
+
+@deprecated(replace_with='get_gaussian_kernel2d', version='6.9.10')
+def get_gaussian_kernel2d_t(*args: Any, **kwargs: Any) -> Tensor:
+    return get_gaussian_kernel2d(*args, **kwargs)
+
+
+@deprecated(replace_with='get_gaussian_kernel3d', version='6.9.10')
+def get_gaussian_kernel3d_t(*args: Any, **kwargs: Any) -> Tensor:
+    return get_gaussian_kernel3d(*args, **kwargs)

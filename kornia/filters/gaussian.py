@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+from typing import Any
+
 from kornia.core import Module, Tensor, as_tensor
+from kornia.testing import KORNIA_CHECK_IS_TENSOR
+from kornia.utils import deprecated
 
 from .filter import filter2d, filter2d_separable
 from .kernels import _unpack_2d_ks, get_gaussian_kernel1d, get_gaussian_kernel2d
@@ -49,6 +53,7 @@ def gaussian_blur2d(
     if isinstance(sigma, tuple):
         sigma = as_tensor([sigma], device=input.device, dtype=input.dtype)
     else:
+        KORNIA_CHECK_IS_TENSOR(input)
         sigma = sigma.to(device=input.device, dtype=input.dtype)
 
     if separable:
@@ -125,3 +130,8 @@ class GaussianBlur2d(Module):
 
     def forward(self, input: Tensor) -> Tensor:
         return gaussian_blur2d(input, self.kernel_size, self.sigma, self.border_type, self.separable)
+
+
+@deprecated(replace_with='gaussian_blur2d', version='6.9.10')
+def gaussian_blur2d_t(*args: Any, **kwargs: Any) -> Tensor:
+    return gaussian_blur2d(*args, **kwargs)
