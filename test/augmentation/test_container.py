@@ -457,14 +457,10 @@ class TestAugmentationSequential:
             ],
             torch.empty((3, 0, 4)),
             torch.tensor([[[1, 5, 2, 7], [0, 3, 9, 9]], [[1, 5, 2, 7], [0, 3, 9, 9]], [[0, 5, 8, 7], [0, 2, 5, 5]]]),
-        ]
+        ],
     )
     @pytest.mark.parametrize(
-        'augmentation',
-        [
-            K.RandomCrop((30, 30), padding=1, cropping_mode='resample', fill=0),
-            K.Resize((30, 30)),
-        ]
+        'augmentation', [K.RandomCrop((30, 30), padding=1, cropping_mode='resample', fill=0), K.Resize((30, 30))]
     )
     def test_bbox(self, bbox, augmentation, device, dtype):
         img = torch.rand((3, 3, 10, 10), device=device, dtype=dtype)
