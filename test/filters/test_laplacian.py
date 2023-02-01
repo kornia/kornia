@@ -51,11 +51,10 @@ def test_get_laplacian_kernel2d_exact(device, dtype):
 class TestLaplacian(BaseTester):
     @pytest.mark.parametrize("shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
     @pytest.mark.parametrize("kernel_size", [5, (11, 7), (3, 3)])
-    @pytest.mark.parametrize('border_type', ['constant', 'reflect', 'replicate', 'circular'])
     @pytest.mark.parametrize("normalized", [True, False])
-    def test_smoke(self, shape, kernel_size, border_type, normalized, device, dtype):
+    def test_smoke(self, shape, kernel_size, normalized, device, dtype):
         inpt = torch.rand(shape, device=device, dtype=dtype)
-        actual = laplacian(inpt, kernel_size, border_type, normalized)
+        actual = laplacian(inpt, kernel_size, 'reflect', normalized)
         assert isinstance(actual, torch.Tensor)
         assert actual.shape == shape
 

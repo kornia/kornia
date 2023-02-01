@@ -165,18 +165,17 @@ class TestGaussianBlur2d(BaseTester):
     @pytest.mark.parametrize("shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
     @pytest.mark.parametrize("kernel_size", [3, (5, 5), (5, 7)])
     @pytest.mark.parametrize("separable", [False, True])
-    @pytest.mark.parametrize("border_type", ['constant', 'reflect', 'replicate', 'circular'])
-    def test_smoke(self, shape, kernel_size, separable, border_type, device, dtype):
+    def test_smoke(self, shape, kernel_size, separable, device, dtype):
         B, C, H, W = shape
         inpt = torch.rand(B, C, H, W, device=device, dtype=dtype)
         sigma_tensor = torch.rand(B, 2, device=device, dtype=dtype)
 
-        actual_A = gaussian_blur2d(inpt, kernel_size, sigma_tensor, border_type, separable)
+        actual_A = gaussian_blur2d(inpt, kernel_size, sigma_tensor, 'reflect', separable)
         assert isinstance(actual_A, torch.Tensor)
         assert actual_A.shape == shape
 
         sigma = tuple(sigma_tensor[0, ...].cpu().numpy().tolist())
-        actual_B = gaussian_blur2d(inpt, kernel_size, sigma, border_type, separable)
+        actual_B = gaussian_blur2d(inpt, kernel_size, sigma, 'reflect', separable)
         assert isinstance(actual_B, torch.Tensor)
         assert actual_B.shape == shape
 

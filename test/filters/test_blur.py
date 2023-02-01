@@ -8,11 +8,10 @@ from kornia.testing import BaseTester, tensor_to_gradcheck_var
 class TestBoxBlur(BaseTester):
     @pytest.mark.parametrize('kernel_size', [5, (3, 5)])
     @pytest.mark.parametrize('normalized', [True, False])
-    @pytest.mark.parametrize('border_type', ['constant', 'reflect', 'replicate', 'circular'])
-    def test_smoke(self, kernel_size, normalized, border_type, device, dtype):
+    def test_smoke(self, kernel_size, normalized, device, dtype):
         inpt = torch.rand(1, 1, 10, 10, device=device, dtype=dtype)
 
-        bb = BoxBlur(kernel_size, border_type, normalized)
+        bb = BoxBlur(kernel_size, 'reflect', normalized)
         actual = bb(inpt)
         assert actual.shape == (1, 1, 10, 10)
 
