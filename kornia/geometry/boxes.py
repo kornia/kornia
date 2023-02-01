@@ -293,8 +293,8 @@ class Boxes:
         """
         if not (len(padding_size.shape) == 2 and padding_size.size(1) == 4):
             raise RuntimeError(f"Expected padding_size as (B, 4). Got {padding_size.shape}.")
-        self._data[..., 0] += padding_size[..., None, :1]  # left padding
-        self._data[..., 1] += padding_size[..., None, 2:3]  # top padding
+        self._data[..., 0] += padding_size[..., None, :1].to(device=self._data.device)  # left padding
+        self._data[..., 1] += padding_size[..., None, 2:3].to(device=self._data.device)  # top padding
         return self
 
     def unpad(self, padding_size: Tensor) -> "Boxes":
@@ -305,8 +305,8 @@ class Boxes:
         """
         if not (len(padding_size.shape) == 2 and padding_size.size(1) == 4):
             raise RuntimeError(f"Expected padding_size as (B, 4). Got {padding_size.shape}.")
-        self._data[..., 0] -= padding_size[..., None, :1]  # left padding
-        self._data[..., 1] -= padding_size[..., None, 2:3]  # top padding
+        self._data[..., 0] -= padding_size[..., None, :1].to(device=self._data.device)  # left padding
+        self._data[..., 1] -= padding_size[..., None, 2:3].to(device=self._data.device)  # top padding
         return self
 
     def clamp(
