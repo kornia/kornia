@@ -50,10 +50,12 @@ def gaussian_blur2d(
         >>> output.shape
         torch.Size([2, 4, 5, 5])
     """
+    KORNIA_CHECK_IS_TENSOR(input)
+
     if isinstance(sigma, tuple):
         sigma = as_tensor([sigma], device=input.device, dtype=input.dtype)
     else:
-        KORNIA_CHECK_IS_TENSOR(input)
+        KORNIA_CHECK_IS_TENSOR(sigma)
         sigma = sigma.to(device=input.device, dtype=input.dtype)
 
     if separable:
