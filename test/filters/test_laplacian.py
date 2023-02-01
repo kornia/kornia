@@ -1,11 +1,8 @@
 import pytest
 import torch
-from torch.autograd import gradcheck
 
-import kornia
-import kornia.testing as utils  # test utils
-from kornia.filters.kernels import get_laplacian_kernel1d, get_laplacian_kernel2d
-from kornia.testing import assert_close
+from kornia.filters import Laplacian, get_laplacian_kernel1d, get_laplacian_kernel2d, laplacian
+from kornia.testing import BaseTester, assert_close, tensor_to_gradcheck_var
 
 
 @pytest.mark.parametrize("window_size", [5, 11])
@@ -51,36 +48,59 @@ def test_get_laplacian_kernel2d_exact(device, dtype):
     assert_close(expected, actual)
 
 
-class TestLaplacian:
-    @pytest.mark.parametrize("batch_shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
+class TestLaplacian(BaseTester):
+    @pytest.mark.parametrize("shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
+    @pytest.mark.parametrize("kernel_size", [5, (11, 7), (3, 3)])
+    @pytest.mark.parametrize('border_type', ['constant', 'reflect', 'replicate', 'circular'])
+    @pytest.mark.parametrize("normalized", [True, False])
+    def test_smoke(self, shape, kernel_size, border_type, normalized, device, dtype):
+        inpt = torch.rand(shape, device=device, dtype=dtype)
+        actual = laplacian(inpt, kernel_size, border_type, normalized)
+        assert isinstance(actual, torch.Tensor)
+        assert actual.shape == shape
+
+    @pytest.mark.parametrize("shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
     @pytest.mark.parametrize("kernel_size", [5, (11, 7), 3])
-    def test_cardinality(self, batch_shape, kernel_size, device, dtype):
-        input = torch.rand(batch_shape, device=device, dtype=dtype)
-        actual = kornia.filters.laplacian(input, kernel_size)
-        assert actual.shape == batch_shape
+    def test_cardinality(self, shape, kernel_size, device, dtype):
+        input = torch.rand(shape, device=device, dtype=dtype)
+        actual = laplacian(input, kernel_size)
+        assert actual.shape == shape
+
+    @pytest.mark.skip(reason='Nothing to test.')
+    def test_exception(self):
+        ...
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
         input = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
 
         kernel_size = 3
-        actual = kornia.filters.laplacian(input, kernel_size)
-        assert_close(actual, actual)
+        actual = laplacian(input, kernel_size)
+        assert actual.is_contiguous()
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         # test parameters
         batch_shape = (1, 2, 5, 7)
         kernel_size = 3
 
         # evaluate function gradient
-        input = torch.rand(batch_shape, device=device, dtype=dtype)
-        input = utils.tensor_to_gradcheck_var(input)
-        assert gradcheck(kornia.filters.laplacian, (input, kernel_size), raise_exception=True, fast_mode=True)
+        input = torch.rand(batch_shape, device=device)
+        input = tensor_to_gradcheck_var(input)
+        self.gradcheck(laplacian, (input, kernel_size))
 
     def test_module(self, device, dtype):
         params = [3]
-        op = kornia.filters.laplacian
-        op_module = kornia.filters.Laplacian(*params)
+        op = laplacian
+        op_module = Laplacian(*params)
 
         img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
-        assert_close(op(img, *params), op_module(img))
+        self.assert_close(op(img, *params), op_module(img))
+
+    @pytest.mark.parametrize('kernel_size', [5, (5, 7)])
+    @pytest.mark.parametrize('batch_size', [1, 2])
+    def test_dynamo(self, batch_size, kernel_size, device, dtype, torch_optimizer):
+        inpt = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
+        op = Laplacian(kernel_size)
+        op_optimized = torch_optimizer(op)
+
+        self.assert_close(op(inpt), op_optimized(inpt))
