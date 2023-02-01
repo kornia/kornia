@@ -7,7 +7,7 @@ from kornia.geometry.transform import rotate, rotate3d
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.utils import _extract_device_dtype
 
-from .kernels import _check_kernel_size, _unpack_2d_ks
+from .kernels import _check_kernel_size, _unpack_2d_ks, _unpack_3d_ks
 
 
 def get_motion_kernel2d(
@@ -43,6 +43,8 @@ def get_motion_kernel2d(
     device, dtype = _extract_device_dtype(
         [angle if isinstance(angle, Tensor) else None, direction if isinstance(direction, Tensor) else None]
     )
+
+    # TODO: add support to kernel_size as tuple or integer
     kernel_tuple = _unpack_2d_ks(kernel_size)
     _check_kernel_size(kernel_size, 2)
 
@@ -136,11 +138,13 @@ def get_motion_kernel3d(
                   [0.0000, 0.0000, 0.0000],
                   [0.0000, 0.0000, 0.0000]]]])
     """
-    _check_kernel_size(kernel_size, 2)
-
     device, dtype = _extract_device_dtype(
         [angle if isinstance(angle, Tensor) else None, direction if isinstance(direction, Tensor) else None]
     )
+
+    # TODO: add support to kernel_size as tuple or integer
+    kernel_tuple = _unpack_3d_ks(kernel_size)
+    _check_kernel_size(kernel_size, 2)
 
     if not isinstance(angle, Tensor):
         angle = tensor([angle], device=device, dtype=dtype)
@@ -161,8 +165,6 @@ def get_motion_kernel3d(
         direction.size(0) == angle.size(0),
         f'direction and angle must have the same batch size. Got {direction.shape} and {angle.shape}.',
     )
-
-    kernel_tuple: tuple[int, int, int] = (kernel_size, kernel_size, kernel_size)
 
     # direction from [-1, 1] to [0, 1] range
     direction = (torch.clamp(direction, -1.0, 1.0) + 1.0) / 2.0

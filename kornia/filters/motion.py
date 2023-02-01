@@ -20,7 +20,8 @@ class MotionBlur(Module):
             while higher values towards 1.0 will point the motion blur forward. A value of 0.0 leads to a
             uniformly (but still angled) motion blur.
         border_type: the padding mode to be applied before convolving. The expected modes are:
-            ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
+             ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
+        mode: interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.
 
     Returns:
         the blurred input tensor.
@@ -35,12 +36,15 @@ class MotionBlur(Module):
         >>> output = motion_blur(input)  # 2x4x5x7
     """
 
-    def __init__(self, kernel_size: int, angle: float, direction: float, border_type: str = 'constant') -> None:
+    def __init__(
+        self, kernel_size: int, angle: float, direction: float, border_type: str = 'constant', mode: str = 'nearest'
+    ) -> None:
         super().__init__()
         self.kernel_size = kernel_size
-        self.angle: float = angle
-        self.direction: float = direction
-        self.border_type: str = border_type
+        self.angle = angle
+        self.direction = direction
+        self.border_type = border_type
+        self.mode = mode
 
     def __repr__(self) -> str:
         return (
@@ -64,6 +68,7 @@ class MotionBlur3D(Module):
             uniformly (but still angled) motion blur.
         border_type: the padding mode to be applied before convolving. The expected modes are:
             ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
+        mode: interpolation mode for rotating the kernel. ``'bilinear'`` or ``'nearest'``.
 
     Returns:
         the blurred input tensor.
@@ -81,23 +86,25 @@ class MotionBlur3D(Module):
     def __init__(
         self,
         kernel_size: int,
-        angle: float | tuple[float, float, float],
-        direction: float,
+        angle: float | tuple[float, float, float] | Tensor,
+        direction: float | Tensor,
         border_type: str = 'constant',
+        mode: str = 'nearest',
     ) -> None:
         super().__init__()
         self.kernel_size = kernel_size
-        self.angle: tuple[float, float, float]
         KORNIA_CHECK(
-            isinstance(angle, (float, list, tuple)), f'Angle should be a float or a sequence of floats. Got {angle}'
+            isinstance(angle, (Tensor, float, list, tuple)),
+            f'Angle should be a Tensor, float or a sequence of floats. Got {angle}',
         )
         if isinstance(angle, float):
             self.angle = (angle, angle, angle)
         elif isinstance(angle, (tuple, list)) and len(angle) == 3:
-            self.angle = angle
+            self.angle = tuple(angle)
 
         self.direction: float = direction
         self.border_type: str = border_type
+        self.mode = mode
 
     def __repr__(self) -> str:
         return (
@@ -149,11 +156,6 @@ def motion_blur(
         >>> torch.allclose(out_1[0], out_1[1])
         False
     """
-    KORNIA_CHECK(
-        border_type.lower() in _VALID_BORDER,
-        f'Gotcha a invalid border value: {border_type}. Expected to be one from {_VALID_BORDER}',
-    )
-
     kernel = get_motion_kernel2d(kernel_size, angle, direction, mode)
     return filter2d(input, kernel, border_type)
 
@@ -196,10 +198,5 @@ def motion_blur3d(
         >>> torch.allclose(out_1[0], out_1[1])
         False
     """
-    KORNIA_CHECK(
-        border_type.lower() in _VALID_BORDER,
-        f'Gotcha a invalid border value: {border_type}. Expected to be one from {_VALID_BORDER}',
-    )
-
     kernel = get_motion_kernel3d(kernel_size, angle, direction, mode)
     return filter3d(input, kernel, border_type)
