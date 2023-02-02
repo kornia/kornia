@@ -100,10 +100,10 @@ class MotionBlur3D(Module):
         if isinstance(angle, float):
             self.angle = (angle, angle, angle)
         elif isinstance(angle, (tuple, list)) and len(angle) == 3:
-            self.angle = tuple(angle)
+            self.angle = (angle[0], angle[1], angle[2])
 
-        self.direction: float = direction
-        self.border_type: str = border_type
+        self.direction = direction
+        self.border_type = border_type
         self.mode = mode
 
     def __repr__(self) -> str:

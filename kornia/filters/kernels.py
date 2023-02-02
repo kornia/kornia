@@ -6,7 +6,7 @@ from typing import Any
 
 import torch
 
-from kornia.core import Device, Tensor, as_tensor, concatenate, stack, tensor, where, zeros, zeros_like
+from kornia.core import Device, Tensor, concatenate, stack, tensor, where, zeros, zeros_like
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 from kornia.utils import deprecated
 
@@ -76,7 +76,7 @@ def gaussian(
     """
 
     if isinstance(sigma, float):
-        sigma = as_tensor([[sigma]], device=device, dtype=dtype)
+        sigma = tensor([[sigma]], device=device, dtype=dtype)
 
     KORNIA_CHECK_IS_TENSOR(sigma)
     KORNIA_CHECK_SHAPE(sigma, ["B", "1"])
@@ -110,7 +110,7 @@ def gaussian_discrete_erf(
         the error function.
     """
     if isinstance(sigma, float):
-        sigma = as_tensor([[sigma]], device=device, dtype=dtype)
+        sigma = tensor([[sigma]], device=device, dtype=dtype)
 
     KORNIA_CHECK_SHAPE(sigma, ["B", "1"])
     batch_size = sigma.shape[0]
@@ -239,7 +239,7 @@ def gaussian_discrete(
         function.
     """
     if isinstance(sigma, float):
-        sigma = as_tensor([[sigma]], device=device, dtype=dtype)
+        sigma = tensor([[sigma]], device=device, dtype=dtype)
 
     KORNIA_CHECK_SHAPE(sigma, ["B", "1"])
 
@@ -257,9 +257,9 @@ def gaussian_discrete(
     return out / out.sum(-1, keepdim=True)
 
 
-def laplacian_1d(window_size: int, *, device: Device | None = None, dtype: torch.dtype | None = None) -> Tensor:
+def laplacian_1d(window_size: int, *, device: Device | None = None, dtype: torch.dtype = torch.float32) -> Tensor:
     """One could also use the Laplacian of Gaussian formula to design the filter."""
-
+    # TODO: add default dtype as None when kornia relies on torch > 1.12
     filter_1d = torch.ones(window_size, device=device, dtype=dtype)
     middle = window_size // 2
     filter_1d[middle] = 1 - window_size
@@ -276,15 +276,18 @@ def get_box_kernel2d(
 
 
 def get_binary_kernel2d(
-    window_size: tuple[int, int] | int, *, device: Device | None = None, dtype: torch.dtype | None = None
+    window_size: tuple[int, int] | int, *, device: Device | None = None, dtype: torch.dtype = torch.float32
 ) -> Tensor:
-    r"""Create a binary kernel to extract the patches.
+    """Create a binary kernel to extract the patches.
 
     If the window size is HxW will create a (H*W)x1xHxW kernel.
     """
+    # TODO: add default dtype as None when kornia relies on torch > 1.12
+
     kx, ky = _unpack_2d_ks(window_size)
 
     window_range = kx * ky
+
     kernel = zeros((window_range, window_range), device=device, dtype=dtype)
     idx = torch.arange(window_range, device=device)
     kernel[idx, idx] += 1.0
@@ -632,7 +635,7 @@ def get_gaussian_kernel2d(
                  [0.0144, 0.0281, 0.0351, 0.0281, 0.0144]]])
     """
     if isinstance(sigma, tuple):
-        sigma = as_tensor([sigma], device=device, dtype=dtype)
+        sigma = tensor([sigma], device=device, dtype=dtype)
 
     KORNIA_CHECK_IS_TENSOR(sigma)
     KORNIA_CHECK_SHAPE(sigma, ["B", "2"])
@@ -690,7 +693,7 @@ def get_gaussian_kernel3d(
         torch.Size([1, 3, 7, 5])
     """
     if isinstance(sigma, tuple):
-        sigma = as_tensor([sigma], device=device, dtype=dtype)
+        sigma = tensor([sigma], device=device, dtype=dtype)
 
     KORNIA_CHECK_IS_TENSOR(sigma)
     KORNIA_CHECK_SHAPE(sigma, ["B", "3"])
@@ -709,7 +712,7 @@ def get_gaussian_kernel3d(
 
 
 def get_laplacian_kernel1d(
-    kernel_size: int, *, device: Device | None = None, dtype: torch.dtype | None = None
+    kernel_size: int, *, device: Device | None = None, dtype: torch.dtype = torch.float32
 ) -> Tensor:
     r"""Function that returns the coefficients of a 1D Laplacian filter.
 
@@ -730,13 +733,15 @@ def get_laplacian_kernel1d(
         >>> get_laplacian_kernel1d(5)
         tensor([ 1.,  1., -4.,  1.,  1.])
     """
+    # TODO: add default dtype as None when kornia relies on torch > 1.12
+
     _check_kernel_size(kernel_size)
 
     return laplacian_1d(kernel_size, device=device, dtype=dtype)
 
 
 def get_laplacian_kernel2d(
-    kernel_size: tuple[int, int] | int, *, device: Device | None = None, dtype: torch.dtype | None = None
+    kernel_size: tuple[int, int] | int, *, device: Device | None = None, dtype: torch.dtype = torch.float32
 ) -> Tensor:
     r"""Function that returns Gaussian filter matrix coefficients.
 
@@ -763,6 +768,8 @@ def get_laplacian_kernel2d(
                 [  1.,   1.,   1.,   1.,   1.],
                 [  1.,   1.,   1.,   1.,   1.]])
     """
+    # TODO: add default dtype as None when kornia relies on torch > 1.12
+
     kx, ky = _unpack_2d_ks(kernel_size)
     _check_kernel_size((kx, ky))
 
@@ -857,7 +864,7 @@ def get_pascal_kernel_1d(
                 cur[-j - 1] = value
         pre = cur
 
-    out = as_tensor(cur, device=device, dtype=dtype)
+    out = tensor(cur, device=device, dtype=dtype)
 
     if norm:
         out = out / out.sum()
