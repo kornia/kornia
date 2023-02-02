@@ -1,5 +1,6 @@
 """RandAugment operation wrapper."""
 from kornia.augmentation.auto.operations import (
+    AutoContrast,
     Brightness,
     Contrast,
     Saturate,
@@ -59,7 +60,7 @@ def rotate(min_mag: float, max_mag: float) -> OperationBase:
 
 
 def auto_contrast(min_mag: float, max_mag: float) -> OperationBase:
-    raise NotImplementedError
+    return AutoContrast(1.0)
 
 
 def invert(min_mag: float, max_mag: float) -> OperationBase:

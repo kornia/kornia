@@ -125,10 +125,7 @@ class OperationBase(Module):
         # Need to setup the sampler again for each update.
         # Otherwise, an error for updating the same graph twice will be thrown.
         self._update_probability_gen(relaxation=True)
-        if isinstance(self.op, (ImageSequential,)):
-            params = cast(Dict[str, Tensor], self.op.forward_parameters(input.shape)[0].data)
-        else:
-            params = self.op.forward_parameters(input.shape)
+        params = self.op.forward_parameters(input.shape)
         batch_prob = params["batch_prob"]
 
         if mag is not None:

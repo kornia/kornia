@@ -10,7 +10,7 @@ from kornia.core import Tensor
 
 default_policy: List[SUBPLOLICY_CONFIG] = [
     # [("identity", 0, 1)],
-    # ("auto_contrast", 0, 1),
+    [("auto_contrast", 0, 1)],
     [("equalize", 0, 1)],
     [("rotate", -30.0, 30.0)],
     [("posterize", 0.0, 4)],
