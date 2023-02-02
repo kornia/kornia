@@ -128,7 +128,7 @@ class BaseTester(ABC):
 
     # TODO: add @abstractmethod
     def test_dynamo(self, device, dtype, torch_optimizer):
-        pass
+        pass  # TODO: raise NotImplementedError -- now we see a bunch of dynamo tests running by inheritance
 
     @abstractmethod
     def test_gradcheck(self, device):
