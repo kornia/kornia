@@ -109,7 +109,8 @@ _DTYPE_PRECISIONS = {
     torch.bfloat16: (7.8e-3, 7.8e-3),
     torch.float16: (9.7e-4, 9.7e-4),
     torch.float32: (1e-4, 1e-5),  # TODO: Update to ~1.2e-7
-    torch.float64: (1e-5, 1e-5),  # TODO: Update to ~2.3e-16
+    # TODO: Update to ~2.3e-16 for fp64
+    torch.float64: (1e-5, 1e-5),  # TODO: BaseTester used (1.3e-6, 1e-5), but it fails for general cases
 }
 
 
