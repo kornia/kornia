@@ -31,7 +31,13 @@ class TestTensorWrapper(BaseTester):
         self.assert_close(loaded_tensor.unwrap(), tensor.unwrap())
 
     def test_wrap_list(self, device, dtype):
-        data_list = [torch.rand(2, device=device, dtype=dtype), torch.rand(3, device=device, dtype=dtype), TensorWrapper(torch.rand(3, device=device, dtype=dtype)), 1, 0.5]
+        data_list = [
+            torch.rand(2, device=device, dtype=dtype),
+            torch.rand(3, device=device, dtype=dtype),
+            TensorWrapper(torch.rand(3, device=device, dtype=dtype)),
+            1,
+            0.5,
+        ]
         tensor_list = wrap(data_list, TensorWrapper)
         assert isinstance(tensor_list, list)
         assert len(tensor_list) == 5
