@@ -1,5 +1,5 @@
 from collections import OrderedDict
-from typing import Dict, Iterator, List, NamedTuple, Optional, Tuple, Union
+from typing import Dict, Generic, Iterator, List, NamedTuple, Optional, Tuple, TypeVar, Union
 
 import torch
 import torch.nn as nn
@@ -8,7 +8,9 @@ from kornia.augmentation import MixAugmentationBaseV2
 from kornia.augmentation.base import _AugmentationBase
 from kornia.core import Module, Tensor
 
-__all__ = ["SequentialBase", "ParamItem"]
+__all__ = ["BasicSequentialBase", "SequentialBase", "ParamItem"]
+
+T = TypeVar("T")
 
 
 class ParamItem(NamedTuple):
@@ -17,20 +19,14 @@ class ParamItem(NamedTuple):
     data: Optional[Union[Dict[str, Tensor], List]]  # type: ignore [type-arg]
 
 
-class SequentialBase(nn.Sequential):
-    r"""SequentialBase for creating kornia modulized processing pipeline.
+class BasicSequentialBase(Generic[T], nn.Sequential):
+    r"""BasicSequential for creating kornia modulized processing pipeline.
 
     Args:
         *args : a list of kornia augmentation and image operation modules.
-        same_on_batch: apply the same transformation across the batch.
-            If None, it will not overwrite the function-wise settings.
-        return_transform: if ``True`` return the matrix describing the transformation
-            applied to each. If None, it will not overwrite the function-wise settings.
-        keepdim: whether to keep the output shape the same as input (True) or broadcast it
-            to the batch form (False). If None, it will not overwrite the function-wise settings.
     """
 
-    def __init__(self, *args: Module, same_on_batch: Optional[bool] = None, keepdim: Optional[bool] = None) -> None:
+    def __init__(self, *args: T) -> None:
         # To name the modules properly
         _args = OrderedDict()
         for idx, mod in enumerate(args):
@@ -38,28 +34,9 @@ class SequentialBase(nn.Sequential):
                 raise NotImplementedError(f"Only Module are supported at this moment. Got {mod}.")
             _args.update({f"{mod.__class__.__name__}_{idx}": mod})
         super().__init__(_args)
-        self._same_on_batch = same_on_batch
-        self._keepdim = keepdim
         self._params: Optional[List[ParamItem]] = None
-        self.update_attribute(same_on_batch, keepdim)
 
-    def update_attribute(
-        self,
-        same_on_batch: Optional[bool] = None,
-        return_transform: Optional[bool] = None,
-        keepdim: Optional[bool] = None,
-    ) -> None:
-        for mod in self.children():
-            # MixAugmentation does not have return transform
-            if isinstance(mod, (_AugmentationBase, MixAugmentationBaseV2)):
-                if same_on_batch is not None:
-                    mod.same_on_batch = same_on_batch
-                if keepdim is not None:
-                    mod.keepdim = keepdim
-            if isinstance(mod, SequentialBase):
-                mod.update_attribute(same_on_batch, return_transform, keepdim)
-
-    def get_submodule(self, target: str) -> Module:
+    def get_submodule(self, target: str) -> T:
         """Get submodule.
 
         This code is taken from torch 1.9.0 since it is not introduced
@@ -83,7 +60,7 @@ class SequentialBase(nn.Sequential):
             return self
 
         atoms: List[str] = target.split(".")
-        mod: Module = self
+        mod: T = self
 
         for item in atoms:
 
@@ -96,6 +73,67 @@ class SequentialBase(nn.Sequential):
                 raise AttributeError("`" + item + "` is not " "an Module")
 
         return mod
+
+    def clear_state(self) -> None:
+        """Reset self._params state to None."""
+        self._params = None
+
+    # TODO: Implement this for all submodules.
+    def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
+        raise NotImplementedError
+
+    def get_children_by_indices(self, indices: Tensor) -> Iterator[Tuple[str, T]]:
+        modules = list(self.named_children())
+        for idx in indices:
+            yield modules[idx]
+
+    def get_children_by_params(self, params: List[ParamItem]) -> Iterator[Tuple[str, T]]:
+        modules = list(self.named_children())
+        # TODO: Wrong params passed here when nested ImageSequential
+        for param in params:
+            yield modules[list(dict(self.named_children()).keys()).index(param.name)]
+
+    def get_params_by_module(self, named_modules: Iterator[Tuple[str, T]]) -> Iterator[ParamItem]:
+        # This will not take module._params
+        for name, _ in named_modules:
+            yield ParamItem(name, None)
+
+
+class SequentialBase(BasicSequentialBase[Module]):
+    r"""SequentialBase for creating kornia modulized processing pipeline.
+
+    Args:
+        *args : a list of kornia augmentation and image operation modules.
+        same_on_batch: apply the same transformation across the batch.
+            If None, it will not overwrite the function-wise settings.
+        return_transform: if ``True`` return the matrix describing the transformation
+            applied to each. If None, it will not overwrite the function-wise settings.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+            to the batch form (False). If None, it will not overwrite the function-wise settings.
+    """
+
+    def __init__(self, *args: Module, same_on_batch: Optional[bool] = None, keepdim: Optional[bool] = None) -> None:
+        # To name the modules properly
+        super().__init__(*args)
+        self._same_on_batch = same_on_batch
+        self._keepdim = keepdim
+        self.update_attribute(same_on_batch, keepdim)
+
+    def update_attribute(
+        self,
+        same_on_batch: Optional[bool] = None,
+        return_transform: Optional[bool] = None,
+        keepdim: Optional[bool] = None,
+    ) -> None:
+        for mod in self.children():
+            # MixAugmentation does not have return transform
+            if isinstance(mod, (_AugmentationBase, MixAugmentationBaseV2)):
+                if same_on_batch is not None:
+                    mod.same_on_batch = same_on_batch
+                if keepdim is not None:
+                    mod.keepdim = keepdim
+            if isinstance(mod, SequentialBase):
+                mod.update_attribute(same_on_batch, return_transform, keepdim)
 
     @property
     def same_on_batch(self) -> Optional[bool]:
@@ -114,30 +152,6 @@ class SequentialBase(nn.Sequential):
     def keepdim(self, keepdim: Optional[bool]) -> None:
         self._keepdim = keepdim
         self.update_attribute(keepdim=keepdim)
-
-    def clear_state(self) -> None:
-        """Reset self._params state to None."""
-        self._params = None
-
-    # TODO: Implement this for all submodules.
-    def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
-        raise NotImplementedError
-
-    def get_children_by_indices(self, indices: Tensor) -> Iterator[Tuple[str, Module]]:
-        modules = list(self.named_children())
-        for idx in indices:
-            yield modules[idx]
-
-    def get_children_by_params(self, params: List[ParamItem]) -> Iterator[Tuple[str, Module]]:
-        modules = list(self.named_children())
-        # TODO: Wrong params passed here when nested ImageSequential
-        for param in params:
-            yield modules[list(dict(self.named_children()).keys()).index(param.name)]
-
-    def get_params_by_module(self, named_modules: Iterator[Tuple[str, Module]]) -> Iterator[ParamItem]:
-        # This will not take module._params
-        for name, _ in named_modules:
-            yield ParamItem(name, None)
 
     def autofill_dim(self, input: Tensor, dim_range: Tuple[int, int] = (2, 4)) -> Tuple[torch.Size, torch.Size]:
         """Fill tensor dim to the upper bound of dim_range.

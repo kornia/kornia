@@ -5,7 +5,8 @@ import torch.nn as nn
 from torch.distributions import Categorical
 
 import kornia.augmentation.auto.rand_augment.ops as ops
-from kornia.augmentation.auto.base import SUBPLOLICY_CONFIG, PolicyAugmentBase, PolicySequential
+from kornia.augmentation.auto.base import SUBPLOLICY_CONFIG, PolicyAugmentBase
+from kornia.augmentation.auto.operations.policy import PolicySequential
 from kornia.core import Tensor
 
 default_policy: List[SUBPLOLICY_CONFIG] = [
@@ -47,7 +48,7 @@ class TrivialAugment(PolicyAugmentBase):
         if len(subpolicy) != 1:
             raise RuntimeError(f"Each policy must have only one operation for TrivialAugment. Got {len(subpolicy)}.")
         name, low, high = subpolicy[0]
-        return PolicySequential([getattr(ops, name)(low, high)])
+        return PolicySequential(*[getattr(ops, name)(low, high)])
 
     def forward(self, input: Tensor) -> Tensor:
         idx = self.rand_selector.sample()

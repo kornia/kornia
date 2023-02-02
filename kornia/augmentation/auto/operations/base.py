@@ -6,7 +6,6 @@ from torch.autograd import Function
 from torch.distributions import Bernoulli, RelaxedBernoulli
 
 from kornia.augmentation.base import _AugmentationBase
-from kornia.augmentation.container.image import ImageSequential
 from kornia.core import Tensor, Module
 
 T = TypeVar('T', bound='OperationBase')
@@ -37,6 +36,9 @@ class OperationBase(Module):
         symmetric_megnitude: bool = False,
     ) -> None:
         super().__init__()
+        if not isinstance(operation, _AugmentationBase):
+            raise ValueError(f"Only Kornia augmentations supported. Got {operation}.")
+
         self.op = operation
 
         self._init_magnitude(initial_magnitude)
@@ -118,15 +120,13 @@ class OperationBase(Module):
     def eval(self: T) -> T:
         return self.train(False)
 
-    def forward(self, input: Tensor, mag: Optional[Tensor] = None) -> Tensor:
+    def forward_parameters(self, batch_shape: torch.Size, mag: Optional[Tensor] = None) -> Dict[str, Tensor]:
         if mag is None:
             mag = self.magnitude
-
         # Need to setup the sampler again for each update.
         # Otherwise, an error for updating the same graph twice will be thrown.
         self._update_probability_gen(relaxation=True)
-        params = self.op.forward_parameters(input.shape)
-        batch_prob = params["batch_prob"]
+        params = self.op.forward_parameters(batch_shape)
 
         if mag is not None:
             if self._factor_name is None:
@@ -134,21 +134,29 @@ class OperationBase(Module):
             # For single factor operations, this is equivalent to `same_on_batch=True`
             params[self._factor_name] = params[self._factor_name].zero_() + mag
 
+        if self._factor_name is not None:
+            params[self._factor_name] = self._magnitude_fn(params[self._factor_name])
+
+        return params
+
+    def forward(self, input: Tensor, params: Optional[Dict[str, Tensor]] = None) -> Tensor:
+
+        if params is None:
+            params = self.forward_parameters(input.shape)
+
+        batch_prob = params["batch_prob"]
+
         if self._gradient_estimator is not None:
             # skip the gradient computation if gradient estimator is provided.
             with torch.no_grad():
-                if self._factor_name is not None:
-                    params[self._factor_name] = self._magnitude_fn(params[self._factor_name])
                 output = self.op(input, params=params)
             output = batch_prob * output + (1 - batch_prob) * input
-            if mag is None:
+            if self.magnitude is None:
                 # If magnitude is None, make the grad w.r.t the input
                 return self._gradient_estimator.apply(input, output)
             # If magnitude is not None, make the grad w.r.t the magnitude
-            return self._gradient_estimator.apply(mag, output)
+            return self._gradient_estimator.apply(self.magnitude, output)
 
-        if self._factor_name is not None:
-            params[self._factor_name] = self._magnitude_fn(params[self._factor_name])
         return batch_prob * self.op(input, params=params) + (1 - batch_prob) * input
 
     @property

@@ -155,6 +155,10 @@ class InputSequentialOps(SequentialOpsInterface[Tensor]):
             input = module(input, params=cls.get_instance_module_param(param), **extra_args)
         elif isinstance(module, kornia.augmentation.ImageSequential):
             input = module.transform_inputs(input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
+        elif isinstance(module, (kornia.augmentation.auto.base.PolicyAugmentBase,)):
+            raise NotImplementedError
+        elif isinstance(module, (kornia.augmentation.auto.operations.OperationBase,)):
+            input = module(input, params=cls.get_instance_module_param(param))
         else:
             if param.data is not None:
                 raise AssertionError(f"Non-augmentaion operation {param.name} require empty parameters. Got {param}.")
@@ -170,6 +174,10 @@ class InputSequentialOps(SequentialOpsInterface[Tensor]):
                 "The support for 3d inverse operations are not yet supported. "
                 "You are welcome to file a PR in our repo."
             )
+        elif isinstance(module, (kornia.augmentation.auto.base.PolicyAugmentBase,)):
+            raise NotImplementedError
+        elif isinstance(module, (kornia.augmentation.auto.operations.OperationBase,)):
+            return InputSequentialOps.inverse(input, module=module.op, param=param, extra_args=extra_args)
         elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
             input = module.inverse_inputs(input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
         return input
@@ -209,6 +217,11 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
 
         elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
             input = module.transform_masks(input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
+
+        elif isinstance(module, (kornia.augmentation.auto.base.PolicyAugmentBase,)):
+            raise NotImplementedError
+        elif isinstance(module, (kornia.augmentation.auto.operations.OperationBase,)):
+            return MaskSequentialOps.transform(input, module=module.op, param=param, extra_args=extra_args)
         return input
 
     @classmethod
@@ -240,6 +253,11 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
 
         elif isinstance(module, kornia.augmentation.ImageSequential):
             input = module.inverse_masks(input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
+
+        elif isinstance(module, (kornia.augmentation.auto.base.PolicyAugmentBase,)):
+            raise NotImplementedError
+        elif isinstance(module, (kornia.augmentation.auto.operations.OperationBase,)):
+            return MaskSequentialOps.inverse(input, module=module.op, param=param, extra_args=extra_args)
 
         return input
 
@@ -281,6 +299,11 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
                 _input, params=cls.get_sequential_module_param(param), extra_args=extra_args
             )
 
+        elif isinstance(module, (kornia.augmentation.auto.base.PolicyAugmentBase,)):
+            raise NotImplementedError
+        elif isinstance(module, (kornia.augmentation.auto.operations.OperationBase,)):
+            return BoxSequentialOps.transform(input, module=module.op, param=param, extra_args=extra_args)
+
         return _input
 
     @classmethod
@@ -310,6 +333,11 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
 
         elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
             _input = module.inverse_boxes(_input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
+
+        elif isinstance(module, (kornia.augmentation.auto.base.PolicyAugmentBase,)):
+            raise NotImplementedError
+        elif isinstance(module, (kornia.augmentation.auto.operations.OperationBase,)):
+            return BoxSequentialOps.inverse(input, module=module.op, param=param, extra_args=extra_args)
         return _input
 
 
@@ -353,6 +381,11 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
                 _input, params=cls.get_sequential_module_param(param), extra_args=extra_args
             )
 
+        elif isinstance(module, (kornia.augmentation.auto.base.PolicyAugmentBase,)):
+            raise NotImplementedError
+        elif isinstance(module, (kornia.augmentation.auto.operations.OperationBase,)):
+            return KeypointSequentialOps.transform(input, module=module.op, param=param, extra_args=extra_args)
+
         return _input
 
     @classmethod
@@ -385,5 +418,10 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
             _input = module.inverse_keypoints(
                 _input, params=cls.get_sequential_module_param(param), extra_args=extra_args
             )
+
+        elif isinstance(module, (kornia.augmentation.auto.base.PolicyAugmentBase,)):
+            raise NotImplementedError
+        elif isinstance(module, (kornia.augmentation.auto.operations.OperationBase,)):
+            return KeypointSequentialOps.inverse(input, module=module.op, param=param, extra_args=extra_args)
 
         return _input

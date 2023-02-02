@@ -3,7 +3,8 @@ from typing import List, Union
 import torch
 from torch.distributions import Categorical
 
-from kornia.augmentation.auto.base import SUBPLOLICY_CONFIG, PolicyAugmentBase, PolicySequential
+from kornia.augmentation.auto.base import SUBPLOLICY_CONFIG, PolicyAugmentBase
+from kornia.augmentation.auto.operations.policy import PolicySequential
 from kornia.core import Tensor
 
 from . import ops
@@ -119,7 +120,7 @@ class AutoAugment(PolicyAugmentBase):
         self.rand_selector = Categorical(selection_weights)
 
     def compose_subpolicy_sequential(self, subpolicy: SUBPLOLICY_CONFIG) -> PolicySequential:
-        return PolicySequential([getattr(ops, name)(prob, mag) for name, prob, mag in subpolicy])
+        return PolicySequential(*[getattr(ops, name)(prob, mag) for name, prob, mag in subpolicy])
 
     def forward(self, input: Tensor) -> Tensor:
         idx = self.rand_selector.sample()

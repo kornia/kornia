@@ -78,6 +78,7 @@ class RandAugment(PolicyAugmentBase):
             if op.magnitude_range is not None:
                 minval, maxval = op.magnitude_range
                 mag = m * float(maxval - minval) + minval
-            input = op(input, mag=mag)
+            params = op.forward_parameters(input.shape, mag=mag)
+            input = op(input, params=params)
 
         return input
