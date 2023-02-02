@@ -55,12 +55,7 @@ class AutoContrast(OperationBase):
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
     """
 
-    def __init__(
-        self,
-        initial_probability: float = 0.5,
-        temperature: float = 0.1,
-        symmetric_megnitude: bool = False,
-    ):
+    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1, symmetric_megnitude: bool = False):
         super().__init__(
             RandomAutoContrast(same_on_batch=False, p=initial_probability),
             initial_magnitude=None,
@@ -266,7 +261,7 @@ class Posterize(OperationBase):
         self,
         initial_magnitude: Optional[float] = 4.0,
         initial_probability: float = 0.5,
-        magnitude_range: Tuple[float, float] = (1., 8.),
+        magnitude_range: Tuple[float, float] = (1.0, 8.0),
         temperature: float = 0.1,
         symmetric_megnitude: bool = False,
     ):
@@ -287,7 +282,7 @@ class Solarize(OperationBase):
         initial_magnitude: the initial magnitude.
         initial_probability: the initial probability. If None, the augmentation will be randomly
             applied according to he augmentation sampling range.
-        magnitude_range: the sampling range for random sampling and clamping the optimized 
+        magnitude_range: the sampling range for random sampling and clamping the optimized
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.magnitude.
         temperature: temperature for RelaxedBernoulli distribution used during training.
 
@@ -510,7 +505,7 @@ class ShearY(OperationBase):
                 f"The lower bound must above 0. Got {magnitude_range[0]}."
             )
         super().__init__(
-            RandomShear((.0, .0, magnitude_range[0], magnitude_range[1]), same_on_batch=False, p=initial_probability),
+            RandomShear((0.0, 0.0, magnitude_range[0], magnitude_range[1]), same_on_batch=False, p=initial_probability),
             initial_magnitude=[("shear_y", initial_magnitude)],
             temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,

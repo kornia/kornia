@@ -22,7 +22,6 @@ __all__ = ["ImageSequential", "ImageSequentialBase"]
 
 
 class ImageSequentialBase(SequentialBase):
-
     def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
         raise NotImplementedError
 

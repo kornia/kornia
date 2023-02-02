@@ -4,12 +4,7 @@ import torch
 from torch.distributions import Bernoulli, Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
-from kornia.augmentation.utils import (
-    _adapted_rsampling,
-    _adapted_sampling,
-    _common_param_check,
-    _joint_range_check,
-)
+from kornia.augmentation.utils import _adapted_rsampling, _adapted_sampling, _common_param_check, _joint_range_check
 from kornia.utils.helpers import _extract_device_dtype
 
 __all__ = ["MixupGenerator"]

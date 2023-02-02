@@ -1,8 +1,9 @@
 from typing import List, Optional, Tuple, Union
+
 import torch.nn as nn
 
-from kornia.core import Module
 from kornia.augmentation.auto.operations.policy import PolicySequential
+from kornia.core import Module
 
 NUMBER = Union[float, int]
 OP_CONFIG = Tuple[str, NUMBER, Optional[NUMBER]]

@@ -5,12 +5,12 @@ from kornia.augmentation.auto.operations import (
     AutoContrast,
     Brightness,
     Contrast,
-    Saturate,
     Equalize,
     Invert,
     OperationBase,
     Posterize,
     Rotate,
+    Saturate,
     Sharpness,
     ShearX,
     ShearY,
@@ -115,6 +115,4 @@ def sharpness(probability: float, magnitude: int) -> OperationBase:
 
 def color(probability: float, magnitude: int) -> OperationBase:
     magnitudes = torch.linspace(0.1, 1.9, 11)
-    return Saturate(
-        None, probability, magnitude_range=(magnitudes[magnitude].item(), magnitudes[magnitude + 1].item())
-    )
+    return Saturate(None, probability, magnitude_range=(magnitudes[magnitude].item(), magnitudes[magnitude + 1].item()))

@@ -33,7 +33,7 @@ class TranslateGenerator(RandomGeneratorBase):
     def __init__(
         self,
         translate_x: Optional[Union[Tensor, Tuple[float, float]]] = None,
-        translate_y: Optional[Union[Tensor, Tuple[float, float]]] = None
+        translate_y: Optional[Union[Tensor, Tuple[float, float]]] = None,
     ) -> None:
         super().__init__()
         self.translate_x = translate_x
@@ -44,7 +44,6 @@ class TranslateGenerator(RandomGeneratorBase):
         return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-
         self.translate_x_sampler = None
         self.translate_y_sampler = None
 
@@ -74,7 +73,9 @@ class TranslateGenerator(RandomGeneratorBase):
 
         if self.translate_x_sampler is not None:
             translate_x = (
-                _adapted_rsampling((batch_size,), self.translate_x_sampler, same_on_batch).to(device=_device, dtype=_dtype)
+                _adapted_rsampling((batch_size,), self.translate_x_sampler, same_on_batch).to(
+                    device=_device, dtype=_dtype
+                )
                 * width
             )
         else:
@@ -82,7 +83,9 @@ class TranslateGenerator(RandomGeneratorBase):
 
         if self.translate_y_sampler is not None:
             translate_y = (
-                _adapted_rsampling((batch_size,), self.translate_y_sampler, same_on_batch).to(device=_device, dtype=_dtype)
+                _adapted_rsampling((batch_size,), self.translate_y_sampler, same_on_batch).to(
+                    device=_device, dtype=_dtype
+                )
                 * height
             )
         else:

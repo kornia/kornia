@@ -197,7 +197,9 @@ class AugmentationSequential(ImageSequential):
             if isinstance(arg, AugmentationBase3D):
                 self.contains_3d_augmentation = True
             if isinstance(arg, PolicyAugmentBase):
-                raise RuntimeError(f"{arg.__class__.__name__} is yet unsupported. Please send a PR if you are interested.")
+                raise RuntimeError(
+                    f"{arg.__class__.__name__} is yet unsupported. Please send a PR if you are interested."
+                )
         self._transform_matrix: Optional[Tensor] = None
         self.extra_args = extra_args
 

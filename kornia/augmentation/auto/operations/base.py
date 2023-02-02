@@ -6,7 +6,7 @@ from torch.autograd import Function
 from torch.distributions import Bernoulli, RelaxedBernoulli
 
 from kornia.augmentation.base import _AugmentationBase
-from kornia.core import Tensor, Module
+from kornia.core import Module, Tensor
 
 T = TypeVar('T', bound='OperationBase')
 
@@ -140,7 +140,6 @@ class OperationBase(Module):
         return params
 
     def forward(self, input: Tensor, params: Optional[Dict[str, Tensor]] = None) -> Tensor:
-
         if params is None:
             params = self.forward_parameters(input.shape)
 

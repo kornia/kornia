@@ -4,12 +4,7 @@ import torch
 from torch.distributions import Bernoulli, Beta, Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
-from kornia.augmentation.utils import (
-    _adapted_rsampling,
-    _adapted_sampling,
-    _common_param_check,
-    _joint_range_check,
-)
+from kornia.augmentation.utils import _adapted_rsampling, _adapted_sampling, _common_param_check, _joint_range_check
 from kornia.geometry.bbox import bbox_generator
 from kornia.utils.helpers import _extract_device_dtype
 
@@ -103,9 +98,11 @@ class CutmixGenerator(RandomGeneratorBase):
             batch_probs: torch.Tensor = _adapted_sampling(
                 (batch_size * self.num_mix,), self.prob_sampler, same_on_batch
             )
-            mix_pairs: torch.Tensor = _adapted_sampling(
-                (self.num_mix, batch_size,), self.pair_sampler, same_on_batch
-            ).to(device=_device, dtype=_dtype).argsort(dim=1)
+            mix_pairs: torch.Tensor = (
+                _adapted_sampling((self.num_mix, batch_size), self.pair_sampler, same_on_batch)
+                .to(device=_device, dtype=_dtype)
+                .argsort(dim=1)
+            )
 
         cutmix_betas: torch.Tensor = _adapted_rsampling((batch_size * self.num_mix,), self.beta_sampler, same_on_batch)
 

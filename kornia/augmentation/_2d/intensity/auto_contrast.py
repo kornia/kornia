@@ -23,11 +23,7 @@ class RandomAutoContrast(IntensityAugmentationBase2D):
     """
 
     def __init__(
-        self,
-        clip_output: bool = True,
-        same_on_batch: bool = False,
-        p: float = 1.0,
-        keepdim: bool = False,
+        self, clip_output: bool = True, same_on_batch: bool = False, p: float = 1.0, keepdim: bool = False
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
 
@@ -39,6 +35,6 @@ class RandomAutoContrast(IntensityAugmentationBase2D):
         out = normalize_min_max(input)
 
         if self.clip_output:
-            return out.clamp(0., 1.)
+            return out.clamp(0.0, 1.0)
 
         return out

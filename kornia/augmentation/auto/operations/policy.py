@@ -1,4 +1,4 @@
-from typing import cast, Dict, List, Iterator, Tuple, Union
+from typing import Dict, Iterator, List, Tuple, Union, cast
 
 from torch import Size
 
