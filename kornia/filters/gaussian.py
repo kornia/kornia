@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from kornia.core import Module, Tensor, as_tensor
+from kornia.core import Module, Tensor, tensor
 from kornia.testing import KORNIA_CHECK_IS_TENSOR
 from kornia.utils import deprecated
 
@@ -53,7 +53,7 @@ def gaussian_blur2d(
     KORNIA_CHECK_IS_TENSOR(input)
 
     if isinstance(sigma, tuple):
-        sigma = as_tensor([sigma], device=input.device, dtype=input.dtype)
+        sigma = tensor([sigma], device=input.device, dtype=input.dtype)
     else:
         KORNIA_CHECK_IS_TENSOR(sigma)
         sigma = sigma.to(device=input.device, dtype=input.dtype)
