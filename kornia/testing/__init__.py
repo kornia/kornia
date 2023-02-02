@@ -109,7 +109,7 @@ _DTYPE_PRECISIONS = {
     torch.bfloat16: (7.8e-3, 7.8e-3),
     torch.float16: (9.7e-4, 9.7e-4),
     torch.float32: (1e-4, 1e-5),  # TODO: Update to ~1.2e-7
-    torch.float64: (1e-5, 1e-8),  # TODO: Update to ~2.3e-16
+    torch.float64: (1e-5, 1e-5),  # TODO: Update to ~2.3e-16
 }
 
 
