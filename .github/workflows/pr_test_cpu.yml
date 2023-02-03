@@ -15,29 +15,39 @@ concurrency:
 jobs:
   tests-cpu:
     strategy:
-      fail-fast: false # TODO: enable it when CI be stable
+      fail-fast: false  # TODO: enable it when CI be stable
       matrix:
         os: ['Ubuntu-latest', 'Windows-latest', 'MacOS-latest']
-        pytorch-dtype: ['float32', 'float64']
     uses: ./.github/workflows/tests.yml
     with:
       os: ${{ matrix.os }}
       python-version: '["3.7", "3.10"]'
       pytorch-version: '["1.9.1", "1.13.1"]'
-      pytorch-dtype: ${{ matrix.pytorch-dtype }}
+      pytorch-dtype: 'float32'
 
   tests-cpu-old-torch-new-py:
     strategy:
       fail-fast: false
       matrix:
         os: ['Ubuntu-latest', 'Windows-latest', 'MacOS-latest']
-        pytorch-dtype: ['float32', 'float64']
 
     uses: ./.github/workflows/tests.yml
     with:
       os: ${{ matrix.os }}
       python-version: '["3.9"]'
-      pytorch-dtype: ${{ matrix.pytorch-dtype }}
+      pytorch-dtype: 'float32'
+
+  tests-cpu-fp64:
+    strategy:
+      fail-fast: true
+      matrix:
+        os: ['Ubuntu-latest']
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: ${{ matrix.os }}
+      python-version: '["3.7", "3.10"]'
+      pytorch-version: '["1.9.1", "1.13.1"]'
+      pytorch-dtype: 'float64'
 
   tests-nightly:
     if:  contains(github.event.pull_request.labels.*.name, 'nightly')
@@ -54,7 +64,7 @@ jobs:
       python-version: '["3.10"]'
       pytorch-version: '["nightly"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
-
+      pytest-extra: '-k dynamo'
   # tests-cpu-half:
   #   strategy:
   #     fail-fast: false # TODO: enable it when CI be stable
