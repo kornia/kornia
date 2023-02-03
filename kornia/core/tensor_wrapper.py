@@ -26,7 +26,7 @@ def unwrap(v):
     if type(v) in {tuple, list}:
         return type(v)(unwrap(vi) for vi in v)
 
-    return v._data if not isinstance(v, Tensor) else v
+    return v._data if isinstance(v, TensorWrapper) else v
 
 
 class TensorWrapper:
@@ -106,10 +106,19 @@ class TensorWrapper:
     def __add__(self, other):
         return self.__unary_op__(torch.add, other)
 
+    def __radd__(self, other):
+        return self.__unary_op__(torch.add, other)
+
     def __mul__(self, other):
         return self.__unary_op__(torch.mul, other)
 
+    def __rmul__(self, other):
+        return self.__unary_op__(torch.mul, other)
+
     def __sub__(self, other):
+        return self.__unary_op__(torch.sub, other)
+
+    def __rsub__(self, other):
         return self.__unary_op__(torch.sub, other)
 
     def __truediv__(self, other):
