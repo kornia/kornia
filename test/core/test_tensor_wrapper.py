@@ -31,18 +31,27 @@ class TestTensorWrapper(BaseTester):
         self.assert_close(loaded_tensor.unwrap(), tensor.unwrap())
 
     def test_wrap_list(self, device, dtype):
-        data_list = [torch.rand(2, device=device, dtype=dtype), torch.rand(3, device=device, dtype=dtype)]
+        data_list = [
+            torch.rand(2, device=device, dtype=dtype),
+            torch.rand(3, device=device, dtype=dtype),
+            TensorWrapper(torch.rand(3, device=device, dtype=dtype)),
+            1,
+            0.5,
+        ]
         tensor_list = wrap(data_list, TensorWrapper)
         assert isinstance(tensor_list, list)
-        assert len(tensor_list) == 2
+        assert len(tensor_list) == 5
 
         tensor_list_data = unwrap(tensor_list)
-        assert len(tensor_list_data) == 2
+        assert len(tensor_list_data) == 5
 
         self.assert_close(tensor_list_data[0], data_list[0])
         self.assert_close(tensor_list_data[1], data_list[1])
+        self.assert_close(tensor_list_data[2], data_list[2])
+        assert tensor_list_data[3] == data_list[3]
+        assert tensor_list_data[4] == data_list[4]
 
-        for i in range(len(tensor_list_data)):
+        for i in range(len(tensor_list_data[:3])):
             self.assert_close(tensor_list[i].unwrap(), data_list[i])
 
     def test_accessors(self, device, dtype):
@@ -59,8 +68,13 @@ class TestTensorWrapper(BaseTester):
         x = TensorWrapper(data)
 
         self.assert_close(x.add(x), x + x)
+        self.assert_close(x.add(1), 1 + x)
+        self.assert_close(x.add(1), x + 1)
         self.assert_close(x.mul(x), x * x)
+        self.assert_close(x.mul(1), 1 * x)
+        self.assert_close(x.mul(1), x * 1)
         self.assert_close(x.sub(x), x - x)
+        self.assert_close(x.sub(1), x - 1)
         self.assert_close(x.div(x), x / x)
         self.assert_close(x.true_divide(x), x / x)
         self.assert_close(x.floor_divide(x), x // x)
