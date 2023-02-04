@@ -2,7 +2,7 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
 
 from torch import Size
 
-from kornia.augmentation import GeometricAugmentationBase2D
+import kornia.augmentation as K
 from kornia.augmentation.auto.operations import OperationBase
 from kornia.augmentation.container.base import ParamItem
 from kornia.augmentation.container.image import ImageSequentialBase
@@ -57,7 +57,7 @@ class PolicySequential(ImageSequentialBase):
         res_mat: Optional[Tensor] = None
         for (_, module), param in zip(named_modules, params if params is not None else []):
             module = cast(OperationBase, module)
-            if isinstance(module.op, (GeometricAugmentationBase2D,)) and isinstance(param.data, dict):
+            if isinstance(module.op, (K.GeometricAugmentationBase2D,)) and isinstance(param.data, dict):
                 to_apply = param.data['batch_prob']
                 ori_shape = input.shape
                 input = module.op.transform_tensor(input)
