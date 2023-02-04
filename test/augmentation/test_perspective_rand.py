@@ -203,7 +203,7 @@ class TestRandomShear:
 
     def test_smoke_no_transform(self, device):
         x_data = torch.rand(1, 2, 8, 9).to(device)
-        aug = kornia.augmentation.RandomShear((10., 10.))
+        aug = kornia.augmentation.RandomShear((10.0, 10.0))
         out = aug(x_data)
         assert out.shape == x_data.shape
         assert aug.inverse(out).shape == x_data.shape
@@ -214,4 +214,5 @@ class TestRandomShear:
         input = utils.tensor_to_gradcheck_var(input)  # to var
         # TODO: turned off with p=0
         assert gradcheck(
-            kornia.augmentation.RandomShear((10., 10.), p=1.0), (input,), raise_exception=True, fast_mode=True)
+            kornia.augmentation.RandomShear((10.0, 10.0), p=1.0), (input,), raise_exception=True, fast_mode=True
+        )
