@@ -266,7 +266,6 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         """
         input_shape = input.shape
         in_tensor = self.transform_tensor(input)
-        batch_shape = input.shape
 
         params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, self.flags, **kwargs
@@ -275,10 +274,6 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         if params is None:
             params = self._params
         transform = self.get_transformation_matrix(in_tensor, params=params, flags=flags)
-
-        if 'batch_prob' not in params:
-            params['batch_prob'] = as_tensor([1.0] * batch_shape[0])
-            warnings.warn("`batch_prob` is not found in params. Will assume applying on all data.")
 
         transform = self.compute_inverse_transformation(transform)
         output = self.inverse_inputs(in_tensor, params, flags, transform)
