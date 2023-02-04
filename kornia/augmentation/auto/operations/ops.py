@@ -1,23 +1,6 @@
 from typing import Optional, Tuple
 
-from kornia.augmentation import (
-    RandomAutoContrast,
-    RandomBrightness,
-    RandomContrast,
-    RandomEqualize,
-    RandomGrayscale,
-    RandomHorizontalFlip,
-    RandomHue,
-    RandomInvert,
-    RandomPosterize,
-    RandomRotation,
-    RandomSaturation,
-    RandomSharpness,
-    RandomShear,
-    RandomSolarize,
-    RandomTranslate,
-    RandomVerticalFlip,
-)
+import kornia.augmentation as K
 from kornia.augmentation.auto.operations.base import OperationBase
 from kornia.core import Tensor
 from kornia.grad_estimator import STEFunction
@@ -57,7 +40,7 @@ class AutoContrast(OperationBase):
 
     def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1, symmetric_megnitude: bool = False):
         super().__init__(
-            RandomAutoContrast(same_on_batch=False, p=initial_probability),
+            K.RandomAutoContrast(same_on_batch=False, p=initial_probability),
             initial_magnitude=None,
             temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
@@ -85,7 +68,7 @@ class Brightness(OperationBase):
         symmetric_megnitude: bool = False,
     ):
         super().__init__(
-            RandomBrightness(magnitude_range, same_on_batch=False, p=initial_probability),
+            K.RandomBrightness(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("brightness_factor", initial_magnitude)],
             temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
@@ -113,7 +96,7 @@ class Contrast(OperationBase):
         symmetric_megnitude: bool = False,
     ):
         super().__init__(
-            RandomContrast(magnitude_range, same_on_batch=False, p=initial_probability),
+            K.RandomContrast(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("contrast_factor", initial_magnitude)],
             temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
@@ -141,7 +124,7 @@ class Hue(OperationBase):
         symmetric_megnitude: bool = False,
     ):
         super().__init__(
-            RandomHue(magnitude_range, same_on_batch=False, p=initial_probability),
+            K.RandomHue(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("hue_factor", initial_magnitude)],
             temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
@@ -169,7 +152,7 @@ class Saturate(OperationBase):
         symmetric_megnitude: bool = False,
     ):
         super().__init__(
-            RandomSaturation(magnitude_range, same_on_batch=False, p=initial_probability),
+            K.RandomSaturation(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("saturation_factor", initial_magnitude)],
             temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
@@ -194,7 +177,7 @@ class Equalize(OperationBase):
 
     def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1):
         super().__init__(
-            RandomEqualize(same_on_batch=False, p=initial_probability),
+            K.RandomEqualize(same_on_batch=False, p=initial_probability),
             initial_magnitude=None,
             temperature=temperature,
             symmetric_megnitude=False,
@@ -213,7 +196,7 @@ class Gray(OperationBase):
 
     def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1):
         super().__init__(
-            RandomGrayscale(same_on_batch=False, p=initial_probability),
+            K.RandomGrayscale(same_on_batch=False, p=initial_probability),
             initial_magnitude=None,
             temperature=temperature,
             symmetric_megnitude=False,
@@ -231,7 +214,7 @@ class Invert(OperationBase):
 
     def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1):
         super().__init__(
-            RandomInvert(same_on_batch=False, p=initial_probability),
+            K.RandomInvert(same_on_batch=False, p=initial_probability),
             initial_magnitude=None,
             temperature=temperature,
             symmetric_megnitude=False,
@@ -266,7 +249,7 @@ class Posterize(OperationBase):
         symmetric_megnitude: bool = False,
     ):
         super().__init__(
-            RandomPosterize(magnitude_range, same_on_batch=False, p=initial_probability),
+            K.RandomPosterize(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("bits_factor", initial_magnitude)],
             temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
@@ -299,7 +282,7 @@ class Solarize(OperationBase):
         symmetric_megnitude: bool = False,
     ):
         super().__init__(
-            RandomSolarize(magnitude_range, additions=0.0, same_on_batch=False, p=initial_probability),
+            K.RandomSolarize(magnitude_range, additions=0.0, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("thresholds", initial_magnitude)],
             temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
@@ -331,7 +314,7 @@ class SolarizeAdd(OperationBase):
         symmetric_megnitude: bool = False,
     ):
         super().__init__(
-            RandomSolarize(thresholds=0.5, additions=magnitude_range, same_on_batch=False, p=initial_probability),
+            K.RandomSolarize(thresholds=0.5, additions=magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("additions", initial_magnitude)],
             temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
@@ -360,7 +343,7 @@ class Sharpness(OperationBase):
         symmetric_megnitude: bool = False,
     ):
         super().__init__(
-            RandomSharpness(magnitude_range, same_on_batch=False, p=initial_probability),
+            K.RandomSharpness(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("sharpness", initial_magnitude)],
             temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
@@ -378,7 +361,7 @@ class HorizontalFlip(OperationBase):
 
     def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1):
         super().__init__(
-            RandomHorizontalFlip(same_on_batch=False, p=initial_probability),
+            K.RandomHorizontalFlip(same_on_batch=False, p=initial_probability),
             initial_magnitude=None,
             temperature=temperature,
             symmetric_megnitude=False,
@@ -395,7 +378,7 @@ class VerticalFlip(OperationBase):
 
     def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1):
         super().__init__(
-            RandomVerticalFlip(same_on_batch=False, p=initial_probability),
+            K.RandomVerticalFlip(same_on_batch=False, p=initial_probability),
             initial_magnitude=None,
             temperature=temperature,
             symmetric_megnitude=False,
@@ -428,7 +411,7 @@ class Rotate(OperationBase):
                 f"The lower bound must above 0. Got {magnitude_range[0]}."
             )
         super().__init__(
-            RandomRotation(magnitude_range, same_on_batch=False, p=initial_probability),
+            K.RandomRotation(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("degrees", initial_magnitude)],
             temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
@@ -466,7 +449,7 @@ class ShearX(OperationBase):
                 f"The lower bound must above 0. Got {magnitude_range[0]}."
             )
         super().__init__(
-            RandomShear(magnitude_range, same_on_batch=False, p=initial_probability),
+            K.RandomShear(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("shear_x", initial_magnitude)],
             temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
@@ -505,7 +488,8 @@ class ShearY(OperationBase):
                 f"The lower bound must above 0. Got {magnitude_range[0]}."
             )
         super().__init__(
-            RandomShear((0.0, 0.0, magnitude_range[0], magnitude_range[1]), same_on_batch=False, p=initial_probability),
+            K.RandomShear(
+                (0.0, 0.0, magnitude_range[0], magnitude_range[1]), same_on_batch=False, p=initial_probability),
             initial_magnitude=[("shear_y", initial_magnitude)],
             temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
@@ -539,7 +523,7 @@ class TranslateX(OperationBase):
                 f"The lower bound must above 0. Got {magnitude_range[0]}."
             )
         super().__init__(
-            RandomTranslate(magnitude_range, same_on_batch=False, p=initial_probability),
+            K.RandomTranslate(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("translate_x", initial_magnitude)],
             temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
@@ -572,7 +556,7 @@ class TranslateY(OperationBase):
                 f"The lower bound must above 0. Got {magnitude_range[0]}."
             )
         super().__init__(
-            RandomTranslate(None, magnitude_range, same_on_batch=False, p=initial_probability),
+            K.RandomTranslate(None, magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("translate_y", initial_magnitude)],
             temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
