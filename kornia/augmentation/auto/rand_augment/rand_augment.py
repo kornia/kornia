@@ -1,12 +1,13 @@
-from typing import List, Optional
+from typing import cast, Dict, Iterator, List, Optional, Tuple, Union
 
 import torch
-import torch.nn as nn
 from torch.distributions import Categorical
 
 from kornia.augmentation.auto.base import SUBPLOLICY_CONFIG, PolicyAugmentBase
 from kornia.augmentation.auto.operations import OperationBase
-from kornia.core import Tensor
+from kornia.augmentation.auto.operations.policy import PolicySequential
+from kornia.augmentation.container.base import ParamItem
+from kornia.core import Tensor, Module
 
 from . import ops
 
@@ -49,36 +50,42 @@ class RandAugment(PolicyAugmentBase):
             _policy = policy
 
         super().__init__(_policy)
-        selection_weights = torch.tensor([1.0 / len(self.policies)] * len(self.policies))
+        selection_weights = torch.tensor([1.0 / len(self)] * len(self))
         self.rand_selector = Categorical(selection_weights)
         self.n = n
         self.m = m
 
-    def compose_policy(self, policy: List[SUBPLOLICY_CONFIG]) -> nn.ModuleList:
-        """Obtain the policies according to the policy JSON."""
+    def compose_subpolicy_sequential(self, subpolicy: SUBPLOLICY_CONFIG) -> PolicySequential:
+        if len(subpolicy) != 1:
+            raise RuntimeError(f"Each policy must have only one operation for TrivialAugment. Got {len(subpolicy)}.")
+        name, low, high = subpolicy[0]
+        return PolicySequential(*[getattr(ops, name)(low, high)])
 
-        def _get_op(subpolicy: SUBPLOLICY_CONFIG) -> OperationBase:
-            name, low, high = subpolicy[0]
-            return getattr(ops, name)(low, high)
+    def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, Module]]:
+        if params is None:
+            idx = self.rand_selector.sample((self.n,))
+            return self.get_children_by_indices(idx)
 
-        policies = nn.ModuleList([])
-        for subpolicy in policy:
-            policies.append(_get_op(subpolicy))
-        return policies
+        return self.get_children_by_params(params)
 
-    def forward(self, input: Tensor) -> Tensor:
-        indices = self.rand_selector.sample((self.n,))
-        batch_size = input.size(0)
+    def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
+        named_modules: Iterator[Tuple[str, Module]] = self.get_forward_sequence()
 
-        m = torch.tensor([self.m / 30] * batch_size)
+        params: List[ParamItem] = []
+        mod_param: Union[Dict[str, Tensor], List[ParamItem]]
+        m = torch.tensor([self.m / 30] * batch_shape[0])
 
-        for idx in indices:
-            op: OperationBase = self.policies[idx]
+        for name, module in named_modules:
+            # The Input PolicySequential only got one child.
+            # assert False, module.forward_parameters(batch_shape)
+            op = cast(OperationBase, module[0])
             mag = None
             if op.magnitude_range is not None:
                 minval, maxval = op.magnitude_range
                 mag = m * float(maxval - minval) + minval
-            params = op.forward_parameters(input.shape, mag=mag)
-            input = op(input, params=params)
+            mod_param = op.forward_parameters(batch_shape, mag=mag)
+            # Compose it
+            param = ParamItem(name, [ParamItem(list(module.named_children())[0][0], mod_param)])
+            params.append(param)
 
-        return input
+        return params

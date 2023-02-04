@@ -10,6 +10,7 @@ from kornia.augmentation.auto.operations import OperationBase
 from kornia.augmentation.auto.rand_augment.rand_augment import RandAugment
 from kornia.augmentation.auto.rand_augment.rand_augment import default_policy as randaug_config
 from kornia.augmentation.auto.trivial_augment import TrivialAugment
+from kornia.testing import assert_close
 
 
 def _find_all_ops() -> List[OperationBase]:
@@ -50,6 +51,13 @@ class TestAutoAugment:
         aug = AutoAugment(policy)
         in_tensor = torch.rand(10, 3, 10, 10, requires_grad=True)
         aug(in_tensor)
+
+    def test_sequential(self,):
+        aug = AutoAugment()
+        in_tensor = torch.rand(10, 3, 10, 10, requires_grad=True)
+        out_tensor = aug(in_tensor)
+        out_tensor_2 = aug(in_tensor, params=aug._params)
+        assert_close(out_tensor, out_tensor_2)
 
 
 class TestRandAugment:

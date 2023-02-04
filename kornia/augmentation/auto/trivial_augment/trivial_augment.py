@@ -1,13 +1,13 @@
-from typing import List, Optional
+from typing import Iterator, List, Optional, Tuple
 
 import torch
-import torch.nn as nn
 from torch.distributions import Categorical
 
 import kornia.augmentation.auto.rand_augment.ops as ops
 from kornia.augmentation.auto.base import SUBPLOLICY_CONFIG, PolicyAugmentBase
 from kornia.augmentation.auto.operations.policy import PolicySequential
-from kornia.core import Tensor
+from kornia.augmentation.container.base import ParamItem
+from kornia.core import Module
 
 default_policy: List[SUBPLOLICY_CONFIG] = [
     # [("identity", 0, 1)],
@@ -41,7 +41,7 @@ class TrivialAugment(PolicyAugmentBase):
             _policy = policy
 
         super().__init__(_policy)
-        selection_weights = torch.tensor([1.0 / len(self.policies)] * len(self.policies))
+        selection_weights = torch.tensor([1.0 / len(self)] * len(self))
         self.rand_selector = Categorical(selection_weights)
 
     def compose_subpolicy_sequential(self, subpolicy: SUBPLOLICY_CONFIG) -> PolicySequential:
@@ -50,7 +50,9 @@ class TrivialAugment(PolicyAugmentBase):
         name, low, high = subpolicy[0]
         return PolicySequential(*[getattr(ops, name)(low, high)])
 
-    def forward(self, input: Tensor) -> Tensor:
-        idx = self.rand_selector.sample()
-        input = self.policies[idx](input)
-        return input
+    def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, Module]]:
+        if params is None:
+            idx = self.rand_selector.sample((1,))
+            return self.get_children_by_indices(idx)
+
+        return self.get_children_by_params(params)
