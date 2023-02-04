@@ -22,6 +22,28 @@ __all__ = ["ImageSequential", "ImageSequentialBase"]
 
 
 class ImageSequentialBase(SequentialBase):
+
+    def identity_matrix(self, input) -> Tensor:
+        """Return identity matrix."""
+        raise NotImplementedError
+
+    def get_transformation_matrix(
+        self,
+        input: Tensor,
+        params: Optional[List[ParamItem]] = None,
+        recompute: bool = False,
+        extra_args: Dict[str, Any] = {},
+    ) -> Optional[Tensor]:
+        """Compute the transformation matrix according to the provided parameters.
+
+        Args:
+            input: the input tensor.
+            params: params for the sequence.
+            recompute: if to recompute the transformation matrix according to the params.
+                default: False.
+        """
+        raise NotImplementedError
+
     def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
         raise NotImplementedError
 
@@ -141,7 +163,7 @@ class ImageSequential(ImageSequentialBase):
         >>> _ = torch.manual_seed(77)
         >>> import kornia
         >>> input = torch.randn(2, 3, 5, 6)
-        >>> aug_list = ImageSequential(
+        >>> aug_list = ImageSequentialBase(
         ...     kornia.color.BgrToRgb(),
         ...     kornia.augmentation.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
         ...     kornia.filters.MedianBlur((3, 3)),
@@ -160,11 +182,11 @@ class ImageSequential(ImageSequentialBase):
         >>> torch.equal(out, out2)
         True
 
-    Perform ``OneOf`` transformation with ``random_apply=1`` and ``random_apply_weights`` in ``ImageSequential``.
+    Perform ``OneOf`` transformation with ``random_apply=1`` and ``random_apply_weights`` in ``ImageSequentialBase``.
 
         >>> import kornia
         >>> input = torch.randn(2, 3, 5, 6)
-        >>> aug_list = ImageSequential(
+        >>> aug_list = ImageSequentialBase(
         ...     kornia.color.BgrToRgb(),
         ...     kornia.augmentation.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
         ...     kornia.filters.MedianBlur((3, 3)),
@@ -295,7 +317,7 @@ class ImageSequential(ImageSequentialBase):
         params: List[ParamItem] = []
         mod_param: Union[Dict[str, Tensor], List[ParamItem]]
         for name, module in named_modules:
-            if isinstance(module, (_AugmentationBase, MixAugmentationBaseV2, ImageSequential)):
+            if isinstance(module, (_AugmentationBase, MixAugmentationBaseV2, ImageSequentialBase)):
                 mod_param = module.forward_parameters(batch_shape)
                 param = ParamItem(name, mod_param)
             else:
@@ -349,7 +371,7 @@ class ImageSequential(ImageSequentialBase):
                 input = module.transform_output_tensor(input, ori_shape)
                 if module.keepdim and ori_shape != input.shape:
                     res_mat = res_mat.squeeze()
-            elif isinstance(module, (ImageSequential,)):
+            elif isinstance(module, (ImageSequentialBase,)):
                 # If not augmentationSequential
                 if isinstance(module, (kornia.augmentation.AugmentationSequential,)) and not recompute:
                     mat = as_tensor(module._transform_matrix, device=input.device, dtype=input.dtype)

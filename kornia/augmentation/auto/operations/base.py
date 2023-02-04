@@ -1,4 +1,4 @@
-from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union, cast
+from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar
 
 import torch
 from torch import nn
@@ -143,7 +143,7 @@ class OperationBase(Module):
         if params is None:
             params = self.forward_parameters(input.shape)
 
-        batch_prob = params["batch_prob"]
+        batch_prob = params["batch_prob"][(...,) + ((None,) * (len(input.shape) - 1))]
 
         if self._gradient_estimator is not None:
             # skip the gradient computation if gradient estimator is provided.

@@ -67,9 +67,11 @@ from kornia.augmentation._3d import (
 from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmentationBase3D
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 from kornia.augmentation._3d.intensity.base import IntensityAugmentationBase3D
+import kornia.augmentation.auto as auto
 from kornia.augmentation.container import (
     AugmentationSequential,
     ImageSequential,
+    ImageSequentialBase,
     ManyToManyAugmentationDispather,
     ManyToOneAugmentationDispather,
     PatchSequential,
@@ -77,6 +79,7 @@ from kornia.augmentation.container import (
 )
 
 __all__ = [
+    "auto",
     "AugmentationBase2D",
     "RigidAffineAugmentationBase2D",
     "GeometricAugmentationBase2D",
@@ -147,6 +150,7 @@ __all__ = [
     "AugmentationSequential",
     "ManyToOneAugmentationDispather",
     "ManyToManyAugmentationDispather",
+    "ImageSequentialBase",
     "ImageSequential",
     "PatchSequential",
     "VideoSequential",

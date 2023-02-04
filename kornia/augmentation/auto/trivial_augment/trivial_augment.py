@@ -32,6 +32,13 @@ class TrivialAugment(PolicyAugmentBase):
 
     Args:
         policy: candidate transformations. If None, a default candidate list will be used.
+
+    Examples:
+        >>> import kornia.augmentation as K
+        >>> in_tensor = torch.rand(5, 3, 30, 30)
+        >>> aug = K.AugmentationSequential(TrivialAugment())
+        >>> aug(in_tensor).shape
+        torch.Size([5, 3, 30, 30])
     """
 
     def __init__(self, policy: Optional[List[SUBPLOLICY_CONFIG]] = None) -> None:

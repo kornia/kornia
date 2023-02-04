@@ -1,5 +1,5 @@
 from collections import OrderedDict
-from typing import Dict, Generic, Iterator, List, NamedTuple, Optional, Tuple, TypeVar, Union
+from typing import Dict, Iterator, List, NamedTuple, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -10,8 +10,6 @@ from kornia.core import Module, Tensor
 
 __all__ = ["BasicSequentialBase", "SequentialBase", "ParamItem"]
 
-T = TypeVar("T")
-
 
 class ParamItem(NamedTuple):
     name: str
@@ -19,14 +17,14 @@ class ParamItem(NamedTuple):
     data: Optional[Union[Dict[str, Tensor], List]]  # type: ignore [type-arg]
 
 
-class BasicSequentialBase(Generic[T], nn.Sequential):
+class BasicSequentialBase(nn.Sequential):
     r"""BasicSequential for creating kornia modulized processing pipeline.
 
     Args:
         *args : a list of kornia augmentation and image operation modules.
     """
 
-    def __init__(self, *args: T) -> None:
+    def __init__(self, *args: Module) -> None:
         # To name the modules properly
         _args = OrderedDict()
         for idx, mod in enumerate(args):
@@ -36,7 +34,7 @@ class BasicSequentialBase(Generic[T], nn.Sequential):
         super().__init__(_args)
         self._params: Optional[List[ParamItem]] = None
 
-    def get_submodule(self, target: str) -> T:
+    def get_submodule(self, target: str) -> Module:
         """Get submodule.
 
         This code is taken from torch 1.9.0 since it is not introduced
@@ -60,7 +58,7 @@ class BasicSequentialBase(Generic[T], nn.Sequential):
             return self
 
         atoms: List[str] = target.split(".")
-        mod: T = self
+        mod = self
 
         for item in atoms:
 
@@ -82,24 +80,24 @@ class BasicSequentialBase(Generic[T], nn.Sequential):
     def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
         raise NotImplementedError
 
-    def get_children_by_indices(self, indices: Tensor) -> Iterator[Tuple[str, T]]:
+    def get_children_by_indices(self, indices: Tensor) -> Iterator[Tuple[str, Module]]:
         modules = list(self.named_children())
         for idx in indices:
             yield modules[idx]
 
-    def get_children_by_params(self, params: List[ParamItem]) -> Iterator[Tuple[str, T]]:
+    def get_children_by_params(self, params: List[ParamItem]) -> Iterator[Tuple[str, Module]]:
         modules = list(self.named_children())
         # TODO: Wrong params passed here when nested ImageSequential
         for param in params:
             yield modules[list(dict(self.named_children()).keys()).index(param.name)]
 
-    def get_params_by_module(self, named_modules: Iterator[Tuple[str, T]]) -> Iterator[ParamItem]:
+    def get_params_by_module(self, named_modules: Iterator[Tuple[str, Module]]) -> Iterator[ParamItem]:
         # This will not take module._params
         for name, _ in named_modules:
             yield ParamItem(name, None)
 
 
-class SequentialBase(BasicSequentialBase[Module]):
+class SequentialBase(BasicSequentialBase):
     r"""SequentialBase for creating kornia modulized processing pipeline.
 
     Args:

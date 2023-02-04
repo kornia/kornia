@@ -38,6 +38,13 @@ class RandAugment(PolicyAugmentBase):
         n: the number of augmentations to apply sequentially.
         m: magnitude for all the augmentations, ranged from [0, 30].
         policy: candidate transformations. If None, a default candidate list will be used.
+
+    Examples:
+        >>> import kornia.augmentation as K
+        >>> in_tensor = torch.rand(5, 3, 30, 30)
+        >>> aug = K.AugmentationSequential(RandAugment(n=2, m=10))
+        >>> aug(in_tensor).shape
+        torch.Size([5, 3, 30, 30])
     """
 
     def __init__(self, n: int, m: int, policy: Optional[List[SUBPLOLICY_CONFIG]] = None) -> None:
@@ -77,8 +84,8 @@ class RandAugment(PolicyAugmentBase):
 
         for name, module in named_modules:
             # The Input PolicySequential only got one child.
-            # assert False, module.forward_parameters(batch_shape)
-            op = cast(OperationBase, module[0])
+            op = cast(PolicySequential, module)[0]
+            op = cast(OperationBase, op)
             mag = None
             if op.magnitude_range is not None:
                 minval, maxval = op.magnitude_range

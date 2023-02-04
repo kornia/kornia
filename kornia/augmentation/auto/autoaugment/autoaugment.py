@@ -102,6 +102,13 @@ class AutoAugment(PolicyAugmentBase):
 
     Args:
         policy: a customized policy config or presets of "imagenet", "cifar10", and "svhn".
+
+    Examples:
+        >>> import kornia.augmentation as K
+        >>> in_tensor = torch.rand(5, 3, 30, 30)
+        >>> aug = K.AugmentationSequential(AutoAugment())
+        >>> aug(in_tensor).shape
+        torch.Size([5, 3, 30, 30])
     """
 
     def __init__(self, policy: Union[str, List[SUBPLOLICY_CONFIG]] = "imagenet") -> None:
