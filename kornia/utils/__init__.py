@@ -3,6 +3,7 @@ from .draw import draw_convex_polygon, draw_line, draw_rectangle
 from .grid import create_meshgrid, create_meshgrid3d
 from .helpers import (
     _extract_device_dtype,
+    deprecated,
     get_cuda_device_if_available,
     is_autocast_enabled,
     map_location_to_cpu,
@@ -38,4 +39,5 @@ __all__ = [
     "torch_meshgrid",
     "map_location_to_cpu",
     "is_autocast_enabled",
+    "deprecated",
 ]

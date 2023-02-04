@@ -44,23 +44,36 @@ def map_location_to_cpu(storage: Union[str, Tensor], *args: Any, **kwargs: Any) 
     return storage
 
 
-def _deprecated(func: Callable[..., Any], replace_with: Optional[str] = None):
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        name = ""
-        if isclass(func):
-            name = func.__class__.__name__
-        if isfunction(func):
-            name = func.__name__
-        if replace_with is not None:
-            warnings.warn(f"`{name}` is deprecated in favor of `{replace_with}`.", category=DeprecationWarning)
-        else:
-            warnings.warn(
-                f"`{name}` is deprecated and will be removed in the future versions.", category=DeprecationWarning
-            )
-        return func(*args, **kwargs)
+def deprecated(replace_with: Optional[str] = None, version: Optional[str] = None, extra_reason: Optional[str] = None):
+    def _deprecated(func: Callable[..., Any]):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            name = ""
+            beginning = f'Since kornia {version} the ' if version is not None else ''
 
-    return wrapper
+            if isclass(func):
+                name = func.__class__.__name__
+            if isfunction(func):
+                name = func.__name__
+            warnings.simplefilter('always', DeprecationWarning)
+            if replace_with is not None:
+                warnings.warn(
+                    f"{beginning}`{name}` is deprecated in favor of `{replace_with}`.{extra_reason}",
+                    category=DeprecationWarning,
+                    stacklevel=2,
+                )
+            else:
+                warnings.warn(
+                    f"{beginning}`{name}` is deprecated and will be removed in the future versions.{extra_reason}",
+                    category=DeprecationWarning,
+                    stacklevel=2,
+                )
+            warnings.simplefilter('default', DeprecationWarning)
+            return func(*args, **kwargs)
+
+        return wrapper
+
+    return _deprecated
 
 
 def _extract_device_dtype(tensor_list: List[Optional[Any]]) -> Tuple[torch.device, torch.dtype]:
