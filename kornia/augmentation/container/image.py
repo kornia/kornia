@@ -22,7 +22,6 @@ __all__ = ["ImageSequential", "ImageSequentialBase"]
 
 
 class ImageSequentialBase(SequentialBase):
-
     def identity_matrix(self, input) -> Tensor:
         """Return identity matrix."""
         raise NotImplementedError

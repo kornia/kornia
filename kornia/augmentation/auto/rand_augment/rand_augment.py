@@ -1,4 +1,4 @@
-from typing import cast, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Dict, Iterator, List, Optional, Tuple, Union, cast
 
 import torch
 from torch.distributions import Categorical
@@ -7,7 +7,7 @@ from kornia.augmentation.auto.base import SUBPLOLICY_CONFIG, PolicyAugmentBase
 from kornia.augmentation.auto.operations import OperationBase
 from kornia.augmentation.auto.operations.policy import PolicySequential
 from kornia.augmentation.container.base import ParamItem
-from kornia.core import Tensor, Module
+from kornia.core import Module, Tensor
 
 from . import ops
 

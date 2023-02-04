@@ -128,9 +128,7 @@ class AugmentationSequentialOps:
         return outputs
 
 
-def make_input_only_sequential(
-    module: 'kornia.augmentation.ImageSequentialBase'
-) -> Callable[..., Tensor]:
+def make_input_only_sequential(module: 'kornia.augmentation.ImageSequentialBase') -> Callable[..., Tensor]:
     """Disable all other additional inputs (e.g. ) for ImageSequential."""
 
     def f(*args, **kwargs):

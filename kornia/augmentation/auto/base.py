@@ -1,4 +1,4 @@
-from typing import cast, Any, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
 
 import torch
 
@@ -6,7 +6,7 @@ from kornia.augmentation.auto.operations.base import OperationBase
 from kornia.augmentation.auto.operations.policy import PolicySequential
 from kornia.augmentation.container.base import ParamItem
 from kornia.augmentation.container.image import ImageSequentialBase
-from kornia.core import Tensor, Module
+from kornia.core import Module, Tensor
 from kornia.utils import eye_like
 
 NUMBER = Union[float, int]
@@ -15,8 +15,7 @@ SUBPLOLICY_CONFIG = List[OP_CONFIG]
 
 
 class PolicyAugmentBase(ImageSequentialBase):
-    """Policy-based image augmentation.
-    """
+    """Policy-based image augmentation."""
 
     def __init__(self, policy: List[SUBPLOLICY_CONFIG]) -> None:
         policies = self.compose_policy(policy)
@@ -60,7 +59,8 @@ class PolicyAugmentBase(ImageSequentialBase):
         for (_, module), param in zip(named_modules, params if params is not None else []):
             module = cast(PolicySequential, module)
             mat = module.get_transformation_matrix(
-                input, params=cast(Optional[List[ParamItem]], param.data), recompute=recompute, extra_args=extra_args)
+                input, params=cast(Optional[List[ParamItem]], param.data), recompute=recompute, extra_args=extra_args
+            )
             res_mat = mat if res_mat is None else mat @ res_mat
         return res_mat
 

@@ -1,4 +1,4 @@
-from typing import Any, Dict, Iterator, List, Tuple, Optional, Union, cast
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
 
 from torch import Size
 
@@ -74,7 +74,7 @@ class PolicySequential(ImageSequentialBase):
                     res_mat = res_mat.squeeze()
         return res_mat
 
-    def is_intensity_only(self,) -> bool:
+    def is_intensity_only(self) -> bool:
         for module in self.children():
             module = cast(OperationBase, module)
             if isinstance(module.op, (GeometricAugmentationBase2D,)):

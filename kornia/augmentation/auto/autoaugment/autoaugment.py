@@ -1,4 +1,4 @@
-from typing import Iterator, List, Optional, Union, Tuple
+from typing import Iterator, List, Optional, Tuple, Union
 
 import torch
 from torch.distributions import Categorical
