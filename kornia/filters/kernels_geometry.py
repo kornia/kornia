@@ -1,14 +1,17 @@
-from typing import Tuple, Union
+from __future__ import annotations
 
 import torch
 
 from kornia.core import Tensor, pad, stack, tensor, zeros
 from kornia.geometry.transform import rotate, rotate3d
+from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.utils import _extract_device_dtype
+
+from .kernels import _check_kernel_size, _unpack_2d_ks, _unpack_3d_ks
 
 
 def get_motion_kernel2d(
-    kernel_size: int, angle: Union[Tensor, float], direction: Union[Tensor, float] = 0.0, mode: str = 'nearest'
+    kernel_size: int, angle: Tensor | float, direction: Tensor | float = 0.0, mode: str = 'nearest'
 ) -> Tensor:
     r"""Return 2D motion blur filter.
 
@@ -41,31 +44,29 @@ def get_motion_kernel2d(
         [angle if isinstance(angle, Tensor) else None, direction if isinstance(direction, Tensor) else None]
     )
 
-    if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or kernel_size < 3:
-        raise TypeError("ksize must be an odd integer >= than 3")
+    # TODO: add support to kernel_size as tuple or integer
+    kernel_tuple = _unpack_2d_ks(kernel_size)
+    _check_kernel_size(kernel_size, 2)
 
     if not isinstance(angle, Tensor):
         angle = tensor([angle], device=device, dtype=dtype)
 
     if angle.dim() == 0:
-        angle = angle.unsqueeze(0)
+        angle = angle[None]
 
-    if angle.dim() != 1:
-        raise AssertionError(f"angle must be a 1-dim tensor. Got {angle}.")
+    KORNIA_CHECK_SHAPE(angle, ['B'])
 
     if not isinstance(direction, Tensor):
         direction = tensor([direction], device=device, dtype=dtype)
 
     if direction.dim() == 0:
-        direction = direction.unsqueeze(0)
+        direction = direction[None]
 
-    if direction.dim() != 1:
-        raise AssertionError(f"direction must be a 1-dim tensor. Got {direction}.")
-
-    if direction.size(0) != angle.size(0):
-        raise AssertionError(f"direction and angle must have the same length. Got {direction} and {angle}.")
-
-    kernel_tuple: Tuple[int, int] = (kernel_size, kernel_size)
+    KORNIA_CHECK_SHAPE(direction, ['B'])
+    KORNIA_CHECK(
+        direction.size(0) == angle.size(0),
+        f'direction and angle must have the same length. Got {direction} and {angle}.',
+    )
 
     # direction from [-1, 1] to [0, 1] range
     direction = (torch.clamp(direction, -1.0, 1.0) + 1.0) / 2.0
@@ -80,9 +81,9 @@ def get_motion_kernel2d(
     k = stack([(direction + ((1 - 2 * direction) / (kernel_size - 1)) * i) for i in range(kernel_size)], -1)
     kernel = pad(k[:, None], [0, 0, kernel_size // 2, kernel_size // 2, 0, 0])
 
-    if kernel.shape != torch.Size([direction.size(0), *kernel_tuple]):
-        raise AssertionError
-    kernel = kernel.unsqueeze(1)
+    expected_shape = torch.Size([direction.size(0), *kernel_tuple])
+    KORNIA_CHECK(kernel.shape == expected_shape, f'Kernel shape should be {expected_shape}. Gotcha {kernel.shape}')
+    kernel = kernel[:, None, ...]
 
     # rotate (counterclockwise) kernel by given angle
     kernel = rotate(kernel, angle, mode=mode, align_corners=True)
@@ -92,10 +93,7 @@ def get_motion_kernel2d(
 
 
 def get_motion_kernel3d(
-    kernel_size: int,
-    angle: Union[Tensor, Tuple[float, float, float]],
-    direction: Union[Tensor, float] = 0.0,
-    mode: str = 'nearest',
+    kernel_size: int, angle: Tensor | tuple[float, float, float], direction: Tensor | float = 0.0, mode: str = 'nearest'
 ) -> Tensor:
     r"""Return 3D motion blur filter.
 
@@ -140,35 +138,33 @@ def get_motion_kernel3d(
                   [0.0000, 0.0000, 0.0000],
                   [0.0000, 0.0000, 0.0000]]]])
     """
-    if not isinstance(kernel_size, int) or kernel_size % 2 == 0 or kernel_size < 3:
-        raise TypeError(f"ksize must be an odd integer >= than 3. Got {kernel_size}.")
-
     device, dtype = _extract_device_dtype(
         [angle if isinstance(angle, Tensor) else None, direction if isinstance(direction, Tensor) else None]
     )
+
+    # TODO: add support to kernel_size as tuple or integer
+    kernel_tuple = _unpack_3d_ks(kernel_size)
+    _check_kernel_size(kernel_size, 2)
 
     if not isinstance(angle, Tensor):
         angle = tensor([angle], device=device, dtype=dtype)
 
     if angle.dim() == 1:
-        angle = angle.unsqueeze(0)
+        angle = angle[None]
 
-    if not (len(angle.shape) == 2 and angle.size(1) == 3):
-        raise AssertionError(f"angle must be (B, 3). Got {angle}.")
+    KORNIA_CHECK_SHAPE(angle, ['B', '3'])
 
     if not isinstance(direction, Tensor):
         direction = tensor([direction], device=device, dtype=dtype)
 
     if direction.dim() == 0:
-        direction = direction.unsqueeze(0)
+        direction = direction[None]
 
-    if direction.dim() != 1:
-        raise AssertionError(f"direction must be a 1-dim tensor. Got {direction}.")
-
-    if direction.size(0) != angle.size(0):
-        raise AssertionError(f"direction and angle must have the same length. Got {direction} and {angle}.")
-
-    kernel_tuple: Tuple[int, int, int] = (kernel_size, kernel_size, kernel_size)
+    KORNIA_CHECK_SHAPE(direction, ['B'])
+    KORNIA_CHECK(
+        direction.size(0) == angle.size(0),
+        f'direction and angle must have the same batch size. Got {direction.shape} and {angle.shape}.',
+    )
 
     # direction from [-1, 1] to [0, 1] range
     direction = (torch.clamp(direction, -1.0, 1.0) + 1.0) / 2.0
@@ -180,9 +176,9 @@ def get_motion_kernel3d(
     k = stack([(direction + ((1 - 2 * direction) / (kernel_size - 1)) * i) for i in range(kernel_size)], -1)
     kernel = pad(k[:, None, None], [0, 0, kernel_size // 2, kernel_size // 2, kernel_size // 2, kernel_size // 2, 0, 0])
 
-    if kernel.shape != torch.Size([direction.size(0), *kernel_tuple]):
-        raise AssertionError
-    kernel = kernel.unsqueeze(1)
+    expected_shape = torch.Size([direction.size(0), *kernel_tuple])
+    KORNIA_CHECK(kernel.shape == expected_shape, f'Kernel shape should be {expected_shape}. Gotcha {kernel.shape}')
+    kernel = kernel[:, None, ...]
 
     # rotate (counterclockwise) kernel by given angle
     kernel = rotate3d(kernel, angle[:, 0], angle[:, 1], angle[:, 2], mode=mode, align_corners=True)

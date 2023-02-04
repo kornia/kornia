@@ -1,13 +1,14 @@
-import torch
-import torch.nn as nn
+from __future__ import annotations
+
+from kornia.core import Module, Tensor
 
 from .filter import filter2d
 from .kernels import get_laplacian_kernel2d, normalize_kernel2d
 
 
 def laplacian(
-    input: torch.Tensor, kernel_size: int, border_type: str = 'reflect', normalized: bool = True
-) -> torch.Tensor:
+    input: Tensor, kernel_size: tuple[int, int] | int, border_type: str = 'reflect', normalized: bool = True
+) -> Tensor:
     r"""Create an operator that returns a tensor using a Laplacian filter.
 
     .. image:: _static/img/laplacian.png
@@ -36,7 +37,7 @@ def laplacian(
         >>> output.shape
         torch.Size([2, 4, 5, 5])
     """
-    kernel: torch.Tensor = torch.unsqueeze(get_laplacian_kernel2d(kernel_size), dim=0)
+    kernel = get_laplacian_kernel2d(kernel_size, device=input.device, dtype=input.dtype)[None, ...]
 
     if normalized:
         kernel = normalize_kernel2d(kernel)
@@ -44,7 +45,7 @@ def laplacian(
     return filter2d(input, kernel, border_type)
 
 
-class Laplacian(nn.Module):
+class Laplacian(Module):
     r"""Create an operator that returns a tensor using a Laplacian filter.
 
     The operator smooths the given tensor with a laplacian kernel by convolving
@@ -69,9 +70,11 @@ class Laplacian(nn.Module):
         torch.Size([2, 4, 5, 5])
     """
 
-    def __init__(self, kernel_size: int, border_type: str = 'reflect', normalized: bool = True) -> None:
+    def __init__(
+        self, kernel_size: tuple[int, int] | int, border_type: str = 'reflect', normalized: bool = True
+    ) -> None:
         super().__init__()
-        self.kernel_size: int = kernel_size
+        self.kernel_size = kernel_size
         self.border_type: str = border_type
         self.normalized: bool = normalized
 
@@ -89,5 +92,5 @@ class Laplacian(nn.Module):
             + ')'
         )
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: Tensor) -> Tensor:
         return laplacian(input, self.kernel_size, self.border_type, self.normalized)

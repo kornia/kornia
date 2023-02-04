@@ -79,14 +79,6 @@ class TestMKDGradients:
 
         assert gradcheck(grad_describe, (patches), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
 
-    @pytest.mark.jit
-    def test_jit(self, device, dtype):
-        B, C, H, W = 2, 1, 13, 13
-        patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
-        model = MKDGradients().to(patches.device, patches.dtype).eval()
-        model_jit = torch.jit.script(MKDGradients().to(patches.device, patches.dtype).eval())
-        assert_close(model(patches), model_jit(patches))
-
 
 class TestVonMisesKernel:
     @pytest.mark.parametrize("ps", [5, 13, 25])
@@ -451,13 +443,3 @@ class TestSimpleKD:
             return skd(patches.double())
 
         assert gradcheck(skd_describe, (patches, ps), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
-
-    @pytest.mark.jit
-    def test_jit(self, device, dtype):
-        batch_size, channels, ps = 1, 1, 19
-        patches = torch.rand(batch_size, channels, ps, ps).to(device)
-        model = SimpleKD(patch_size=ps, kernel_type='polar', whitening='lw').to(patches.device, patches.dtype).eval()
-        model_jit = torch.jit.script(
-            SimpleKD(patch_size=ps, kernel_type='polar', whitening='lw').to(patches.device, patches.dtype).eval()
-        )
-        assert_close(model(patches), model_jit(patches))

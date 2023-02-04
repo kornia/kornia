@@ -1,15 +1,14 @@
-from typing import Tuple
+from __future__ import annotations
 
-import torch
-import torch.nn as nn
+from kornia.core import Module, Tensor
 
 from .filter import filter2d
 from .kernels import get_box_kernel2d, normalize_kernel2d
 
 
 def box_blur(
-    input: torch.Tensor, kernel_size: Tuple[int, int], border_type: str = 'reflect', normalized: bool = True
-) -> torch.Tensor:
+    input: Tensor, kernel_size: tuple[int, int] | int, border_type: str = 'reflect', normalized: bool = True
+) -> Tensor:
     r"""Blur an image using the box filter.
 
     .. image:: _static/img/box_blur.png
@@ -45,13 +44,13 @@ def box_blur(
         >>> output.shape
         torch.Size([2, 4, 5, 7])
     """
-    kernel: torch.Tensor = get_box_kernel2d(kernel_size)
+    kernel = get_box_kernel2d(kernel_size, device=input.device, dtype=input.dtype)
     if normalized:
         kernel = normalize_kernel2d(kernel)
     return filter2d(input, kernel, border_type)
 
 
-class BoxBlur(nn.Module):
+class BoxBlur(Module):
     r"""Blur an image using the box filter.
 
     The function smooths an image using the kernel:
@@ -87,11 +86,13 @@ class BoxBlur(nn.Module):
         torch.Size([2, 4, 5, 7])
     """
 
-    def __init__(self, kernel_size: Tuple[int, int], border_type: str = 'reflect', normalized: bool = True) -> None:
+    def __init__(
+        self, kernel_size: tuple[int, int] | int, border_type: str = 'reflect', normalized: bool = True
+    ) -> None:
         super().__init__()
-        self.kernel_size: Tuple[int, int] = kernel_size
-        self.border_type: str = border_type
-        self.normalized: bool = normalized
+        self.kernel_size = kernel_size
+        self.border_type = border_type
+        self.normalized = normalized
 
     def __repr__(self) -> str:
         return (
@@ -107,5 +108,5 @@ class BoxBlur(nn.Module):
             + ')'
         )
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: Tensor) -> Tensor:
         return box_blur(input, self.kernel_size, self.border_type, self.normalized)

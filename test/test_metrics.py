@@ -352,12 +352,3 @@ class TestSSIM3d(BaseTester):
         img = tensor_to_gradcheck_var(img)
 
         assert self.gradcheck(op, (img, img, 3), nondet_tol=1e-8)
-
-    @pytest.mark.jit
-    def test_jit(self, device, dtype):
-        img = torch.rand(1, 1, 3, 3, 3, device=device, dtype=dtype)
-
-        op = kornia.metrics.ssim3d
-        op_jit = torch.jit.script(op)
-
-        assert_close(op(img, img, 3), op_jit(img, img, 3))
