@@ -1,5 +1,14 @@
+from __future__ import annotations
+
 from .blur import BoxBlur, box_blur
-from .blur_pool import BlurPool2D, MaxBlurPool2D, blur_pool2d, edge_aware_blur_pool2d, max_blur_pool2d
+from .blur_pool import (
+    BlurPool2D,
+    EdgeAwareBlurPool2D,
+    MaxBlurPool2D,
+    blur_pool2d,
+    edge_aware_blur_pool2d,
+    max_blur_pool2d,
+)
 from .canny import Canny, canny
 from .dexined import DexiNed
 from .filter import filter2d, filter2d_separable, filter3d
@@ -38,13 +47,10 @@ __all__ = [
     "get_binary_kernel2d",
     "get_box_kernel2d",
     "get_gaussian_kernel1d",
-    "get_gaussian_kernel1d_t",
     "get_gaussian_discrete_kernel1d",
     "get_gaussian_erf_kernel1d",
     "get_gaussian_kernel2d",
     "get_gaussian_kernel3d",
-    "get_gaussian_kernel2d_t",
-    "get_gaussian_kernel3d_t",
     "get_hanning_kernel1d",
     "get_hanning_kernel2d",
     "get_laplacian_kernel1d",
@@ -56,7 +62,6 @@ __all__ = [
     "get_sobel_kernel2d",
     "get_diff_kernel2d",
     "gaussian_blur2d",
-    "gaussian_blur2d_t",
     "laplacian",
     "laplacian_1d",
     "unsharp_mask",
@@ -80,6 +85,7 @@ __all__ = [
     "BoxBlur",
     "BlurPool2D",
     "MaxBlurPool2D",
+    "EdgeAwareBlurPool2D",
     "MedianBlur",
     "MotionBlur",
     "MotionBlur3D",
@@ -87,4 +93,8 @@ __all__ = [
     "spatial_gradient3d",
     "UnsharpMask",
     "DexiNed",
+    "gaussian_blur2d_t",
+    "get_gaussian_kernel1d_t",
+    "get_gaussian_kernel2d_t",
+    "get_gaussian_kernel3d_t",
 ]

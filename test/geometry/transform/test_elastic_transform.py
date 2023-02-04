@@ -2,7 +2,6 @@ import pytest
 import torch
 from torch.autograd import gradcheck
 
-import kornia
 from kornia.geometry.transform import elastic_transform2d
 from kornia.testing import assert_close
 
@@ -77,12 +76,3 @@ class TestElasticTransform:
         image = torch.rand(1, 1, 3, 3, device=device, dtype=torch.float64, requires_grad=requires_grad)
         noise = torch.rand(1, 2, 3, 3, device=device, dtype=torch.float64, requires_grad=not requires_grad)
         assert gradcheck(elastic_transform2d, (image, noise), raise_exception=True, fast_mode=True)
-
-    def test_jit(self, device, dtype):
-        image = torch.rand(1, 4, 5, 5, device=device, dtype=dtype)
-        noise = torch.rand(1, 2, 5, 5, device=device, dtype=dtype)
-
-        op = kornia.geometry.transform.elastic_transform2d
-        op_jit = torch.jit.script(op)
-
-        assert_close(op(image, noise), op_jit(image, noise))

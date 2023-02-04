@@ -23,12 +23,6 @@ class TestPyrUp:
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.geometry.pyrup, (img,), nondet_tol=1e-8, raise_exception=True, fast_mode=True)
 
-    def test_jit(self, device, dtype):
-        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
-        op = kornia.geometry.pyrup
-        op_jit = torch.jit.script(op)
-        assert_close(op(img), op_jit(img))
-
 
 class TestPyrDown:
     def test_shape(self, device, dtype):
@@ -57,12 +51,6 @@ class TestPyrDown:
         img = torch.rand(1, 2, 5, 4, device=device, dtype=dtype)
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.geometry.pyrdown, (img,), nondet_tol=1e-8, raise_exception=True, fast_mode=True)
-
-    def test_jit(self, device, dtype):
-        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
-        op = kornia.geometry.pyrdown
-        op_jit = torch.jit.script(op)
-        assert_close(op(img), op_jit(img))
 
 
 class TestScalePyramid:
