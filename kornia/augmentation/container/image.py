@@ -41,7 +41,7 @@ class ImageSequential(ImageSequentialBase):
         >>> _ = torch.manual_seed(77)
         >>> import kornia
         >>> input = torch.randn(2, 3, 5, 6)
-        >>> aug_list = ImageSequentialBase(
+        >>> aug_list = ImageSequential(
         ...     kornia.color.BgrToRgb(),
         ...     kornia.augmentation.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
         ...     kornia.filters.MedianBlur((3, 3)),
@@ -60,11 +60,11 @@ class ImageSequential(ImageSequentialBase):
         >>> torch.equal(out, out2)
         True
 
-    Perform ``OneOf`` transformation with ``random_apply=1`` and ``random_apply_weights`` in ``ImageSequentialBase``.
+    Perform ``OneOf`` transformation with ``random_apply=1`` and ``random_apply_weights`` in ``ImageSequential``.
 
         >>> import kornia
         >>> input = torch.randn(2, 3, 5, 6)
-        >>> aug_list = ImageSequentialBase(
+        >>> aug_list = ImageSequential(
         ...     kornia.color.BgrToRgb(),
         ...     kornia.augmentation.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
         ...     kornia.filters.MedianBlur((3, 3)),
@@ -231,7 +231,6 @@ class ImageSequential(ImageSequentialBase):
         res_mat: Optional[Tensor] = None
         for (_, module), param in zip(named_modules, params if params is not None else []):
             if isinstance(module, (K.GeometricAugmentationBase2D,)) and isinstance(param.data, dict):
-                to_apply = param.data['batch_prob']
                 ori_shape = input.shape
                 try:
                     input = module.transform_tensor(input)
@@ -240,11 +239,12 @@ class ImageSequential(ImageSequentialBase):
                     pass
                 # Standardize shape
                 if recompute:
-                    mat: Tensor = self.identity_matrix(input)
                     flags = override_parameters(module.flags, extra_args, in_place=False)
-                    mat[to_apply] = module.compute_transformation(input[to_apply], param.data, flags)
-                else:
+                    mat= module.generate_transformation_matrix(input, param.data, flags)
+                elif module._transform_matrix is not None:
                     mat = as_tensor(module._transform_matrix, device=input.device, dtype=input.dtype)
+                else:
+                    raise RuntimeError(f"{module}._transform_matrix is None while `recompute=False`.")
                 res_mat = mat if res_mat is None else mat @ res_mat
                 input = module.transform_output_tensor(input, ori_shape)
                 if module.keepdim and ori_shape != input.shape:

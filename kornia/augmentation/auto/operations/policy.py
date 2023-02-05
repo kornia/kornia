@@ -6,7 +6,7 @@ import kornia.augmentation as K
 from kornia.augmentation.auto.operations import OperationBase
 from kornia.augmentation.container.base import ImageSequentialBase
 from kornia.augmentation.container.params import ParamItem
-from kornia.augmentation.utils import override_parameters
+from kornia.augmentation.utils import override_parameters, _transform_input
 from kornia.core import Module, Tensor, as_tensor
 from kornia.utils import eye_like
 
@@ -40,7 +40,7 @@ class PolicySequential(ImageSequentialBase):
         params: Optional[List[ParamItem]] = None,
         recompute: bool = False,
         extra_args: Dict[str, Any] = {},
-    ) -> Optional[Tensor]:
+    ) -> Tensor:
         """Compute the transformation matrix according to the provided parameters.
 
         Args:
@@ -54,21 +54,21 @@ class PolicySequential(ImageSequentialBase):
         named_modules: Iterator[Tuple[str, Module]] = self.get_forward_sequence(params)
 
         # Define as 1 for broadcasting
-        res_mat: Optional[Tensor] = None
+        res_mat: Tensor = self.identity_matrix(_transform_input(input))
         for (_, module), param in zip(named_modules, params if params is not None else []):
             module = cast(OperationBase, module)
             if isinstance(module.op, (K.GeometricAugmentationBase2D,)) and isinstance(param.data, dict):
-                to_apply = param.data['batch_prob']
                 ori_shape = input.shape
                 input = module.op.transform_tensor(input)
                 # Standardize shape
                 if recompute:
-                    mat: Tensor = self.identity_matrix(input)
                     flags = override_parameters(module.op.flags, extra_args, in_place=False)
-                    mat[to_apply] = module.op.compute_transformation(input[to_apply], param.data, flags)
-                else:
+                    mat= module.op.generate_transformation_matrix(input, param.data, flags)
+                elif module.op._transform_matrix is not None:
                     mat = as_tensor(module.op._transform_matrix, device=input.device, dtype=input.dtype)
-                res_mat = mat if res_mat is None else mat @ res_mat
+                else:
+                    raise RuntimeError(f"{module}.op._transform_matrix is None while `recompute=False`.")
+                res_mat = mat @ res_mat
                 input = module.op.transform_output_tensor(input, ori_shape)
                 if module.op.keepdim and ori_shape != input.shape:
                     res_mat = res_mat.squeeze()
