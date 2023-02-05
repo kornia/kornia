@@ -1,6 +1,6 @@
 from collections import OrderedDict
 from itertools import zip_longest
-from typing import Any, Dict, Iterator, List, NamedTuple, Optional, Tuple, Union
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -12,14 +12,9 @@ from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
 from .ops import BoxSequentialOps, InputSequentialOps, KeypointSequentialOps, MaskSequentialOps
+from .params import ParamItem
 
-__all__ = ["BasicSequentialBase", "SequentialBase", "ParamItem"]
-
-
-class ParamItem(NamedTuple):
-    name: str
-    # TODO: add type List['ParamItem'] when mypy > 0.991 be available (see python/mypy#14200)
-    data: Optional[Union[Dict[str, Tensor], List]]  # type: ignore [type-arg]
+__all__ = ["BasicSequentialBase", "ImageSequentialBase", "SequentialBase"]
 
 
 class BasicSequentialBase(nn.Sequential):

@@ -8,7 +8,7 @@ from kornia.core import Module, Tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
-from .base import ParamItem
+from .params import ParamItem
 
 DataType = Union[Tensor, List[Tensor], Boxes, Keypoints]
 

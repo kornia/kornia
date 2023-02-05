@@ -5,6 +5,7 @@ from torch import Size
 import kornia.augmentation as K
 from kornia.augmentation.auto.operations import OperationBase
 from kornia.augmentation.container.base import ImageSequentialBase
+from kornia.augmentation.container.params import ParamItem
 from kornia.augmentation.utils import override_parameters
 from kornia.core import Module, Tensor, as_tensor
 from kornia.utils import eye_like
@@ -36,7 +37,7 @@ class PolicySequential(ImageSequentialBase):
     def get_transformation_matrix(
         self,
         input: Tensor,
-        params: Optional[List[K.container.ParamItem]] = None,
+        params: Optional[List[ParamItem]] = None,
         recompute: bool = False,
         extra_args: Dict[str, Any] = {},
     ) -> Optional[Tensor]:
@@ -81,20 +82,20 @@ class PolicySequential(ImageSequentialBase):
         return True
 
     def get_forward_sequence(
-        self, params: Optional[List[K.container.ParamItem]] = None
+        self, params: Optional[List[ParamItem]] = None
     ) -> Iterator[Tuple[str, Module]]:
         if params is not None:
             return super().get_children_by_params(params)
         return self.named_children()
 
-    def forward_parameters(self, batch_shape: Size) -> List[K.container.ParamItem]:
+    def forward_parameters(self, batch_shape: Size) -> List[ParamItem]:
         named_modules: Iterator[Tuple[str, Module]] = self.get_forward_sequence()
 
-        params: List[K.container.ParamItem] = []
-        mod_param: Union[Dict[str, Tensor], List[K.container.ParamItem]]
+        params: List[ParamItem] = []
+        mod_param: Union[Dict[str, Tensor], List[ParamItem]]
         for name, module in named_modules:
             module = cast(OperationBase, module)
             mod_param = module.op.forward_parameters(batch_shape)
-            param = K.container.ParamItem(name, mod_param)
+            param = ParamItem(name, mod_param)
             params.append(param)
         return params

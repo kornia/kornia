@@ -12,15 +12,11 @@ from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
 from .base import SequentialBase
-from .image import ImageSequential, ParamItem
+from .image import ImageSequential
 from .ops import InputSequentialOps
+from .params import ParamItem, PatchParamItem
 
 __all__ = ["PatchSequential"]
-
-
-class PatchParamItem(NamedTuple):
-    indices: List[int]
-    param: ParamItem
 
 
 class PatchSequential(ImageSequential):

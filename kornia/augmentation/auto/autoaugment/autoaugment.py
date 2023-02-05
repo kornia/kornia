@@ -3,9 +3,9 @@ from typing import Iterator, List, Optional, Tuple, Union
 import torch
 from torch.distributions import Categorical
 
-import kornia.augmentation as K
 from kornia.augmentation.auto.base import SUBPLOLICY_CONFIG, PolicyAugmentBase
 from kornia.augmentation.auto.operations.policy import PolicySequential
+from kornia.augmentation.container.params import ParamItem
 from kornia.core import Module
 
 from . import ops
@@ -131,7 +131,7 @@ class AutoAugment(PolicyAugmentBase):
         return PolicySequential(*[getattr(ops, name)(prob, mag) for name, prob, mag in subpolicy])
 
     def get_forward_sequence(
-        self, params: Optional[List[K.container.ParamItem]] = None
+        self, params: Optional[List[ParamItem]] = None
     ) -> Iterator[Tuple[str, Module]]:
         if params is None:
             idx = self.rand_selector.sample((1,))

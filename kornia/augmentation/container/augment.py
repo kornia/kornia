@@ -9,8 +9,9 @@ from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints, VideoKeypoints
 from kornia.utils import eye_like, is_autocast_enabled
 
-from .image import ImageSequential, ParamItem
+from .image import ImageSequential
 from .ops import AugmentationSequentialOps, DataType
+from .params import ParamItem
 from .patch import PatchSequential
 from .video import VideoSequential
 

@@ -8,7 +8,8 @@ from kornia.augmentation.utils import override_parameters
 from kornia.core import Module, Tensor, as_tensor
 from kornia.utils import eye_like
 
-from .base import ImageSequentialBase, ParamItem
+from .base import ImageSequentialBase
+from .params import ParamItem
 
 __all__ = ["ImageSequential"]
 
