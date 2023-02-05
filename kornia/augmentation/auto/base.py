@@ -2,10 +2,9 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
 
 import torch
 
+import kornia.augmentation as K
 from kornia.augmentation.auto.operations.base import OperationBase
 from kornia.augmentation.auto.operations.policy import PolicySequential
-from kornia.augmentation.container.base import ParamItem
-from kornia.augmentation.container.image import ImageSequentialBase
 from kornia.core import Module, Tensor
 from kornia.utils import eye_like
 
@@ -14,7 +13,7 @@ OP_CONFIG = Tuple[str, NUMBER, Optional[NUMBER]]
 SUBPLOLICY_CONFIG = List[OP_CONFIG]
 
 
-class PolicyAugmentBase(ImageSequentialBase):
+class PolicyAugmentBase(K.ImageSequentialBase):
     """Policy-based image augmentation."""
 
     def __init__(self, policy: List[SUBPLOLICY_CONFIG]) -> None:
@@ -38,7 +37,7 @@ class PolicyAugmentBase(ImageSequentialBase):
     def get_transformation_matrix(
         self,
         input: Tensor,
-        params: Optional[List[ParamItem]] = None,
+        params: Optional[List[K.ParamItem]] = None,
         recompute: bool = False,
         extra_args: Dict[str, Any] = {},
     ) -> Optional[Tensor]:
@@ -59,12 +58,12 @@ class PolicyAugmentBase(ImageSequentialBase):
         for (_, module), param in zip(named_modules, params if params is not None else []):
             module = cast(PolicySequential, module)
             mat = module.get_transformation_matrix(
-                input, params=cast(Optional[List[ParamItem]], param.data), recompute=recompute, extra_args=extra_args
+                input, params=cast(Optional[List[K.ParamItem]], param.data), recompute=recompute, extra_args=extra_args
             )
             res_mat = mat if res_mat is None else mat @ res_mat
         return res_mat
 
-    def is_intensity_only(self, params: Optional[List[ParamItem]] = None) -> bool:
+    def is_intensity_only(self, params: Optional[List[K.ParamItem]] = None) -> bool:
         named_modules: Iterator[Tuple[str, Module]] = self.get_forward_sequence(params)
         for _, module in named_modules:
             module = cast(PolicySequential, module)
@@ -72,14 +71,14 @@ class PolicyAugmentBase(ImageSequentialBase):
                 return False
         return True
 
-    def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
+    def forward_parameters(self, batch_shape: torch.Size) -> List[K.ParamItem]:
         named_modules: Iterator[Tuple[str, Module]] = self.get_forward_sequence()
 
-        params: List[ParamItem] = []
-        mod_param: Union[Dict[str, Tensor], List[ParamItem]]
+        params: List[K.ParamItem] = []
+        mod_param: Union[Dict[str, Tensor], List[K.ParamItem]]
         for name, module in named_modules:
             module = cast(OperationBase, module)
             mod_param = module.forward_parameters(batch_shape)
-            param = ParamItem(name, mod_param)
+            param = K.ParamItem(name, mod_param)
             params.append(param)
         return params

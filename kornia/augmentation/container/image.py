@@ -3,20 +3,21 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
 
 import torch
 
-import kornia
-from kornia.augmentation import GeometricAugmentationBase2D, IntensityAugmentationBase2D, MixAugmentationBaseV2
+import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
-from kornia.augmentation.container.base import ParamItem, SequentialBase
-from kornia.augmentation.container.ops import (
+from kornia.augmentation.utils import override_parameters
+from kornia.core import Module, Tensor, as_tensor
+from kornia.geometry.boxes import Boxes
+from kornia.geometry.keypoints import Keypoints
+from kornia.utils import eye_like
+
+from .base import ParamItem, SequentialBase
+from .ops import (
     BoxSequentialOps,
     InputSequentialOps,
     KeypointSequentialOps,
     MaskSequentialOps,
 )
-from kornia.augmentation.utils import override_parameters
-from kornia.core import Module, Tensor, as_tensor
-from kornia.geometry.boxes import Boxes
-from kornia.geometry.keypoints import Keypoints
 
 __all__ = ["ImageSequential", "ImageSequentialBase"]
 
@@ -290,7 +291,7 @@ class ImageSequential(ImageSequentialBase):
         Special operations needed for label-involved augmentations.
         """
         # NOTE: MixV2 will not be a special op in the future.
-        return [idx for idx, (_, child) in enumerate(named_modules) if isinstance(child, MixAugmentationBaseV2)]
+        return [idx for idx, (_, child) in enumerate(named_modules) if isinstance(child, K.MixAugmentationBaseV2)]
 
     def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, Module]]:
         if params is None:
@@ -316,7 +317,7 @@ class ImageSequential(ImageSequentialBase):
         params: List[ParamItem] = []
         mod_param: Union[Dict[str, Tensor], List[ParamItem]]
         for name, module in named_modules:
-            if isinstance(module, (_AugmentationBase, MixAugmentationBaseV2, ImageSequentialBase)):
+            if isinstance(module, (_AugmentationBase, K.MixAugmentationBaseV2, ImageSequentialBase)):
                 mod_param = module.forward_parameters(batch_shape)
                 param = ParamItem(name, mod_param)
             else:
@@ -351,7 +352,7 @@ class ImageSequential(ImageSequentialBase):
         # Define as 1 for broadcasting
         res_mat: Optional[Tensor] = None
         for (_, module), param in zip(named_modules, params if params is not None else []):
-            if isinstance(module, (GeometricAugmentationBase2D,)) and isinstance(param.data, dict):
+            if isinstance(module, (K.GeometricAugmentationBase2D,)) and isinstance(param.data, dict):
                 to_apply = param.data['batch_prob']
                 ori_shape = input.shape
                 try:
@@ -372,7 +373,7 @@ class ImageSequential(ImageSequentialBase):
                     res_mat = res_mat.squeeze()
             elif isinstance(module, (ImageSequentialBase,)):
                 # If not augmentationSequential
-                if isinstance(module, (kornia.augmentation.AugmentationSequential,)) and not recompute:
+                if isinstance(module, (K.AugmentationSequential,)) and not recompute:
                     mat = as_tensor(module._transform_matrix, device=input.device, dtype=input.dtype)
                 else:
                     maybe_param_data = cast(Optional[List[ParamItem]], param.data)
@@ -399,7 +400,7 @@ class ImageSequential(ImageSequentialBase):
                 return False
             elif isinstance(arg, (ImageSequential,)):
                 pass
-            elif isinstance(arg, IntensityAugmentationBase2D):
+            elif isinstance(arg, K.IntensityAugmentationBase2D):
                 pass
             elif strict:
                 # disallow non-registered ops if in strict mode

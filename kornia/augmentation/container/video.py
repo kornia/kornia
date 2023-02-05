@@ -2,8 +2,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import torch
 
-import kornia
-from kornia.augmentation import MixAugmentationBaseV2, RandomCrop
+import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import SequentialBase
 from kornia.augmentation.container.image import ImageSequential, ParamItem, _get_new_batch_shape
@@ -41,6 +40,7 @@ class VideoSequential(ImageSequential):
         If set `same_on_frame` to True, we would expect the same augmentation has been applied to each
         timeframe.
 
+        >>> import kornia
         >>> input = torch.randn(2, 3, 1, 5, 6).repeat(1, 1, 4, 1, 1)
         >>> aug_list = VideoSequential(
         ...     kornia.augmentation.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
@@ -168,7 +168,7 @@ class VideoSequential(ImageSequential):
 
         params = []
         for name, module in named_modules:
-            if isinstance(module, RandomCrop):
+            if isinstance(module, K.RandomCrop):
                 mod_param = module.forward_parameters(batch_shape)
                 if self.same_on_frame:
                     mod_param["src"] = mod_param["src"].repeat(frame_num, 1, 1)
@@ -179,14 +179,14 @@ class VideoSequential(ImageSequential):
                 if self.same_on_frame:
                     raise ValueError("Sequential is currently unsupported for ``same_on_frame``.")
                 param = ParamItem(name, seq_param)
-            elif isinstance(module, (_AugmentationBase, MixAugmentationBaseV2)):
+            elif isinstance(module, (_AugmentationBase, K.MixAugmentationBaseV2)):
                 mod_param = module.forward_parameters(batch_shape)
                 if self.same_on_frame:
                     for k, v in mod_param.items():
                         # TODO: revise ColorJiggle and ColorJitter order param in the future to align the standard.
                         if k == "order" and (
-                            isinstance(module, kornia.augmentation.ColorJiggle)
-                            or isinstance(module, kornia.augmentation.ColorJitter)
+                            isinstance(module, K.ColorJiggle)
+                            or isinstance(module, K.ColorJitter)
                         ):
                             continue
                         if k == "forward_input_shape":

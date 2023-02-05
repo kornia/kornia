@@ -1,14 +1,14 @@
 from abc import ABCMeta, abstractmethod
 from typing import Any, Callable, Dict, Generic, List, Optional, Type, TypeVar, Union
 
-import kornia
-from kornia.augmentation import GeometricAugmentationBase2D, GeometricAugmentationBase3D, MixAugmentationBaseV2
+import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
-from kornia.augmentation.container.base import ParamItem
 from kornia.constants import DataKey
 from kornia.core import Module, Tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
+
+from .base import ParamItem
 
 DataType = Union[Tensor, List[Tensor], Boxes, Keypoints]
 
@@ -128,7 +128,7 @@ class AugmentationSequentialOps:
         return outputs
 
 
-def make_input_only_sequential(module: 'kornia.augmentation.ImageSequentialBase') -> Callable[..., Tensor]:
+def make_input_only_sequential(module: 'K.ImageSequentialBase') -> Callable[..., Tensor]:
     """Disable all other additional inputs (e.g. ) for ImageSequential."""
 
     def f(*args, **kwargs):
@@ -139,13 +139,13 @@ def make_input_only_sequential(module: 'kornia.augmentation.ImageSequentialBase'
 
 
 def get_geometric_only_param(
-    module: 'kornia.augmentation.ImageSequentialBase', param: List[ParamItem]
+    module: 'K.ImageSequentialBase', param: List[ParamItem]
 ) -> List[ParamItem]:
     named_modules = module.get_forward_sequence(param)
 
     res: List[ParamItem] = []
     for (_, mod), p in zip(named_modules, param):
-        if isinstance(mod, (GeometricAugmentationBase2D, GeometricAugmentationBase3D)):
+        if isinstance(mod, (K.GeometricAugmentationBase2D, K.GeometricAugmentationBase3D)):
             res.append(p)
     return res
 
@@ -153,11 +153,11 @@ def get_geometric_only_param(
 class InputSequentialOps(SequentialOpsInterface[Tensor]):
     @classmethod
     def transform(cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}) -> Tensor:
-        if isinstance(module, (_AugmentationBase, MixAugmentationBaseV2)):
+        if isinstance(module, (_AugmentationBase, K.MixAugmentationBaseV2)):
             input = module(input, params=cls.get_instance_module_param(param), **extra_args)
-        elif isinstance(module, (kornia.augmentation.ImageSequentialBase,)):
+        elif isinstance(module, (K.ImageSequentialBase,)):
             input = module.transform_inputs(input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
-        elif isinstance(module, (kornia.augmentation.auto.operations.OperationBase,)):
+        elif isinstance(module, (K.auto.operations.OperationBase,)):
             input = module(input, params=cls.get_instance_module_param(param))
         else:
             if param.data is not None:
@@ -167,18 +167,18 @@ class InputSequentialOps(SequentialOpsInterface[Tensor]):
 
     @classmethod
     def inverse(cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}) -> Tensor:
-        if isinstance(module, GeometricAugmentationBase2D):
+        if isinstance(module, K.GeometricAugmentationBase2D):
             input = module.inverse(input, params=cls.get_instance_module_param(param), **extra_args)
-        elif isinstance(module, (GeometricAugmentationBase3D,)):
+        elif isinstance(module, (K.GeometricAugmentationBase3D,)):
             raise NotImplementedError(
                 "The support for 3d inverse operations are not yet supported. "
                 "You are welcome to file a PR in our repo."
             )
-        elif isinstance(module, (kornia.augmentation.auto.operations.OperationBase,)):
+        elif isinstance(module, (K.auto.operations.OperationBase,)):
             return InputSequentialOps.inverse(input, module=module.op, param=param, extra_args=extra_args)
-        elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
+        elif isinstance(module, K.ImageSequential) and not module.is_intensity_only():
             input = module.inverse_inputs(input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
-        elif isinstance(module, kornia.augmentation.ImageSequentialBase):
+        elif isinstance(module, K.ImageSequentialBase):
             input = module.inverse_inputs(input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
         return input
 
@@ -196,7 +196,7 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
                 to apply transformations.
             param: the corresponding parameters to the module.
         """
-        if isinstance(module, (GeometricAugmentationBase2D,)):
+        if isinstance(module, (K.GeometricAugmentationBase2D,)):
             input = module.transform_masks(
                 input,
                 params=cls.get_instance_module_param(param),
@@ -205,7 +205,7 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
                 **extra_args,
             )
 
-        elif isinstance(module, (GeometricAugmentationBase3D,)):
+        elif isinstance(module, (K.GeometricAugmentationBase3D,)):
             raise NotImplementedError(
                 "The support for 3d mask operations are not yet supported. You are welcome to file a PR in our repo."
             )
@@ -215,13 +215,13 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
                 input, params=cls.get_instance_module_param(param), flags=module.flags, **extra_args
             )
 
-        elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
+        elif isinstance(module, K.ImageSequential) and not module.is_intensity_only():
             input = module.transform_masks(input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
 
-        elif isinstance(module, kornia.augmentation.ImageSequentialBase):
+        elif isinstance(module, K.ImageSequentialBase):
             input = module.transform_masks(input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
 
-        elif isinstance(module, (kornia.augmentation.auto.operations.OperationBase,)):
+        elif isinstance(module, (K.auto.operations.OperationBase,)):
             return MaskSequentialOps.transform(input, module=module.op, param=param, extra_args=extra_args)
         return input
 
@@ -235,7 +235,7 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
                 to apply transformations.
             param: the corresponding parameters to the module.
         """
-        if isinstance(module, (GeometricAugmentationBase2D,)):
+        if isinstance(module, (K.GeometricAugmentationBase2D,)):
             if module.transform_matrix is None:
                 raise ValueError(f"No valid transformation matrix found in {module.__class__}.")
             transform = module.compute_inverse_transformation(module.transform_matrix)
@@ -247,15 +247,15 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
                 **extra_args,
             )
 
-        elif isinstance(module, (GeometricAugmentationBase3D,)):
+        elif isinstance(module, (K.GeometricAugmentationBase3D,)):
             raise NotImplementedError(
                 "The support for 3d mask operations are not yet supported. You are welcome to file a PR in our repo."
             )
 
-        elif isinstance(module, kornia.augmentation.ImageSequentialBase):
+        elif isinstance(module, K.ImageSequentialBase):
             input = module.inverse_masks(input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
 
-        elif isinstance(module, (kornia.augmentation.auto.operations.OperationBase,)):
+        elif isinstance(module, (K.auto.operations.OperationBase,)):
             return MaskSequentialOps.inverse(input, module=module.op, param=param, extra_args=extra_args)
 
         return input
@@ -279,7 +279,7 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
         """
         _input = input.clone()
 
-        if isinstance(module, (GeometricAugmentationBase2D,)):
+        if isinstance(module, (K.GeometricAugmentationBase2D,)):
             _input = module.transform_boxes(
                 _input,
                 cls.get_instance_module_param(param),
@@ -288,22 +288,22 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
                 **extra_args,
             )
 
-        elif isinstance(module, (GeometricAugmentationBase3D,)):
+        elif isinstance(module, (K.GeometricAugmentationBase3D,)):
             raise NotImplementedError(
                 "The support for 3d box operations are not yet supported. You are welcome to file a PR in our repo."
             )
 
-        elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
+        elif isinstance(module, K.ImageSequential) and not module.is_intensity_only():
             _input = module.transform_boxes(
                 _input, params=cls.get_sequential_module_param(param), extra_args=extra_args
             )
 
-        elif isinstance(module, kornia.augmentation.ImageSequentialBase):
+        elif isinstance(module, K.ImageSequentialBase):
             _input = module.transform_boxes(
                 _input, params=cls.get_sequential_module_param(param), extra_args=extra_args
             )
 
-        elif isinstance(module, (kornia.augmentation.auto.operations.OperationBase,)):
+        elif isinstance(module, (K.auto.operations.OperationBase,)):
             return BoxSequentialOps.transform(input, module=module.op, param=param, extra_args=extra_args)
 
         return _input
@@ -320,7 +320,7 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
         """
         _input = input.clone()
 
-        if isinstance(module, (GeometricAugmentationBase2D,)):
+        if isinstance(module, (K.GeometricAugmentationBase2D,)):
             if module.transform_matrix is None:
                 raise ValueError(f"No valid transformation matrix found in {module.__class__}.")
             transform = module.compute_inverse_transformation(module.transform_matrix)
@@ -328,18 +328,18 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
                 _input, param.data, module.flags, transform=transform, **extra_args  # type: ignore
             )
 
-        elif isinstance(module, (GeometricAugmentationBase3D,)):
+        elif isinstance(module, (K.GeometricAugmentationBase3D,)):
             raise NotImplementedError(
                 "The support for 3d box operations are not yet supported. You are welcome to file a PR in our repo."
             )
 
-        elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
+        elif isinstance(module, K.ImageSequential) and not module.is_intensity_only():
             _input = module.inverse_boxes(_input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
 
-        elif isinstance(module, kornia.augmentation.ImageSequentialBase):
+        elif isinstance(module, K.ImageSequentialBase):
             _input = module.inverse_boxes(_input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
 
-        elif isinstance(module, (kornia.augmentation.auto.operations.OperationBase,)):
+        elif isinstance(module, (K.auto.operations.OperationBase,)):
             return BoxSequentialOps.inverse(input, module=module.op, param=param, extra_args=extra_args)
         return _input
 
@@ -364,7 +364,7 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
         """
         _input = input.clone()
 
-        if isinstance(module, (GeometricAugmentationBase2D,)):
+        if isinstance(module, (K.GeometricAugmentationBase2D,)):
             _input = module.transform_keypoints(
                 _input,
                 cls.get_instance_module_param(param),
@@ -373,23 +373,23 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
                 **extra_args,
             )
 
-        elif isinstance(module, (GeometricAugmentationBase3D,)):
+        elif isinstance(module, (K.GeometricAugmentationBase3D,)):
             raise NotImplementedError(
                 "The support for 3d keypoint operations are not yet supported. "
                 "You are welcome to file a PR in our repo."
             )
 
-        elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
+        elif isinstance(module, K.ImageSequential) and not module.is_intensity_only():
             _input = module.transform_keypoints(
                 _input, params=cls.get_sequential_module_param(param), extra_args=extra_args
             )
 
-        elif isinstance(module, kornia.augmentation.ImageSequentialBase):
+        elif isinstance(module, K.ImageSequentialBase):
             _input = module.transform_keypoints(
                 _input, params=cls.get_sequential_module_param(param), extra_args=extra_args
             )
 
-        elif isinstance(module, (kornia.augmentation.auto.operations.OperationBase,)):
+        elif isinstance(module, (K.auto.operations.OperationBase,)):
             return KeypointSequentialOps.transform(input, module=module.op, param=param, extra_args=extra_args)
 
         return _input
@@ -406,7 +406,7 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
         """
         _input = input.clone()
 
-        if isinstance(module, (GeometricAugmentationBase2D,)):
+        if isinstance(module, (K.GeometricAugmentationBase2D,)):
             if module.transform_matrix is None:
                 raise ValueError(f"No valid transformation matrix found in {module.__class__}.")
             transform = module.compute_inverse_transformation(module.transform_matrix)
@@ -414,23 +414,23 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
                 _input, cls.get_instance_module_param(param), module.flags, transform=transform, **extra_args
             )
 
-        elif isinstance(module, (GeometricAugmentationBase3D,)):
+        elif isinstance(module, (K.GeometricAugmentationBase3D,)):
             raise NotImplementedError(
                 "The support for 3d keypoint operations are not yet supported. "
                 "You are welcome to file a PR in our repo."
             )
 
-        elif isinstance(module, kornia.augmentation.ImageSequential) and not module.is_intensity_only():
+        elif isinstance(module, K.ImageSequential) and not module.is_intensity_only():
             _input = module.inverse_keypoints(
                 _input, params=cls.get_sequential_module_param(param), extra_args=extra_args
             )
 
-        elif isinstance(module, kornia.augmentation.ImageSequentialBase):
+        elif isinstance(module, K.ImageSequentialBase):
             _input = module.inverse_keypoints(
                 _input, params=cls.get_sequential_module_param(param), extra_args=extra_args
             )
 
-        elif isinstance(module, (kornia.augmentation.auto.operations.OperationBase,)):
+        elif isinstance(module, (K.auto.operations.OperationBase,)):
             return KeypointSequentialOps.inverse(input, module=module.op, param=param, extra_args=extra_args)
 
         return _input

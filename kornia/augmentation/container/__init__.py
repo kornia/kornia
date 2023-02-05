@@ -1,4 +1,5 @@
 from kornia.augmentation.container.augment import AugmentationSequential
+from kornia.augmentation.container.base import ParamItem
 from kornia.augmentation.container.dispatcher import ManyToManyAugmentationDispather, ManyToOneAugmentationDispather
 from kornia.augmentation.container.image import ImageSequential, ImageSequentialBase
 from kornia.augmentation.container.patch import PatchSequential

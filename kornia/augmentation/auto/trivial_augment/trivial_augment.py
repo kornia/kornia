@@ -3,10 +3,10 @@ from typing import Iterator, List, Optional, Tuple
 import torch
 from torch.distributions import Categorical
 
+import kornia.augmentation as K
 import kornia.augmentation.auto.rand_augment.ops as ops
 from kornia.augmentation.auto.base import SUBPLOLICY_CONFIG, PolicyAugmentBase
 from kornia.augmentation.auto.operations.policy import PolicySequential
-from kornia.augmentation.container.base import ParamItem
 from kornia.core import Module
 
 default_policy: List[SUBPLOLICY_CONFIG] = [
@@ -57,7 +57,7 @@ class TrivialAugment(PolicyAugmentBase):
         name, low, high = subpolicy[0]
         return PolicySequential(*[getattr(ops, name)(low, high)])
 
-    def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, Module]]:
+    def get_forward_sequence(self, params: Optional[List[K.ParamItem]] = None) -> Iterator[Tuple[str, Module]]:
         if params is None:
             idx = self.rand_selector.sample((1,))
             return self.get_children_by_indices(idx)

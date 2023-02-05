@@ -4,7 +4,7 @@ from typing import Dict, Iterator, List, NamedTuple, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 
-from kornia.augmentation import MixAugmentationBaseV2
+import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
 from kornia.core import Module, Tensor
 
@@ -125,7 +125,7 @@ class SequentialBase(BasicSequentialBase):
     ) -> None:
         for mod in self.children():
             # MixAugmentation does not have return transform
-            if isinstance(mod, (_AugmentationBase, MixAugmentationBaseV2)):
+            if isinstance(mod, (_AugmentationBase, K.MixAugmentationBaseV2)):
                 if same_on_batch is not None:
                     mod.same_on_batch = same_on_batch
                 if keepdim is not None:

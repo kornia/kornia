@@ -75,6 +75,7 @@ from kornia.augmentation.container import (
     ImageSequentialBase,
     ManyToManyAugmentationDispather,
     ManyToOneAugmentationDispather,
+    ParamItem,
     PatchSequential,
     VideoSequential,
 )
@@ -153,6 +154,7 @@ __all__ = [
     "ManyToManyAugmentationDispather",
     "ImageSequentialBase",
     "ImageSequential",
+    "ParamItem",
     "PatchSequential",
     "VideoSequential",
     "RandomRGBShift",
