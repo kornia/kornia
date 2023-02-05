@@ -316,8 +316,8 @@ class VideoSequential(ImageSequential):
         provided parameters.
         """
         if params is None:
-            if self._params is not None:  # type: ignore
-                params = self._params  # type: ignore
+            if self._params is not None:
+                params = self._params
             else:
                 raise RuntimeError("No valid params to inverse the transformation.")
 
@@ -331,7 +331,7 @@ class VideoSequential(ImageSequential):
             raise AssertionError(f"Input must be a 5-dim tensor. Got {input.shape}.")
 
         if params is None:
-            if self._params is None:  # type: ignore
+            if self._params is None:
                 self._params = self.forward_parameters(input.shape)
             params = self._params
 

@@ -128,7 +128,7 @@ class AugmentationSequentialOps:
         return outputs
 
 
-def make_input_only_sequential(module: 'K.ImageSequentialBase') -> Callable[..., Tensor]:
+def make_input_only_sequential(module: 'K.container.ImageSequentialBase') -> Callable[..., Tensor]:
     """Disable all other additional inputs (e.g. ) for ImageSequential."""
 
     def f(*args, **kwargs):
@@ -138,7 +138,7 @@ def make_input_only_sequential(module: 'K.ImageSequentialBase') -> Callable[...,
     return f
 
 
-def get_geometric_only_param(module: 'K.ImageSequentialBase', param: List[ParamItem]) -> List[ParamItem]:
+def get_geometric_only_param(module: 'K.container.ImageSequentialBase', param: List[ParamItem]) -> List[ParamItem]:
     named_modules = module.get_forward_sequence(param)
 
     res: List[ParamItem] = []
@@ -153,7 +153,7 @@ class InputSequentialOps(SequentialOpsInterface[Tensor]):
     def transform(cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}) -> Tensor:
         if isinstance(module, (_AugmentationBase, K.MixAugmentationBaseV2)):
             input = module(input, params=cls.get_instance_module_param(param), **extra_args)
-        elif isinstance(module, (K.ImageSequentialBase,)):
+        elif isinstance(module, (K.container.ImageSequentialBase,)):
             input = module.transform_inputs(input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
         elif isinstance(module, (K.auto.operations.OperationBase,)):
             input = module(input, params=cls.get_instance_module_param(param))
@@ -176,7 +176,7 @@ class InputSequentialOps(SequentialOpsInterface[Tensor]):
             return InputSequentialOps.inverse(input, module=module.op, param=param, extra_args=extra_args)
         elif isinstance(module, K.ImageSequential) and not module.is_intensity_only():
             input = module.inverse_inputs(input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
-        elif isinstance(module, K.ImageSequentialBase):
+        elif isinstance(module, K.container.ImageSequentialBase):
             input = module.inverse_inputs(input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
         return input
 
@@ -216,7 +216,7 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
         elif isinstance(module, K.ImageSequential) and not module.is_intensity_only():
             input = module.transform_masks(input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
 
-        elif isinstance(module, K.ImageSequentialBase):
+        elif isinstance(module, K.container.ImageSequentialBase):
             input = module.transform_masks(input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
 
         elif isinstance(module, (K.auto.operations.OperationBase,)):
@@ -250,7 +250,7 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
                 "The support for 3d mask operations are not yet supported. You are welcome to file a PR in our repo."
             )
 
-        elif isinstance(module, K.ImageSequentialBase):
+        elif isinstance(module, K.container.ImageSequentialBase):
             input = module.inverse_masks(input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
 
         elif isinstance(module, (K.auto.operations.OperationBase,)):
@@ -296,7 +296,7 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
                 _input, params=cls.get_sequential_module_param(param), extra_args=extra_args
             )
 
-        elif isinstance(module, K.ImageSequentialBase):
+        elif isinstance(module, K.container.ImageSequentialBase):
             _input = module.transform_boxes(
                 _input, params=cls.get_sequential_module_param(param), extra_args=extra_args
             )
@@ -334,7 +334,7 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
         elif isinstance(module, K.ImageSequential) and not module.is_intensity_only():
             _input = module.inverse_boxes(_input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
 
-        elif isinstance(module, K.ImageSequentialBase):
+        elif isinstance(module, K.container.ImageSequentialBase):
             _input = module.inverse_boxes(_input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
 
         elif isinstance(module, (K.auto.operations.OperationBase,)):
@@ -382,7 +382,7 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
                 _input, params=cls.get_sequential_module_param(param), extra_args=extra_args
             )
 
-        elif isinstance(module, K.ImageSequentialBase):
+        elif isinstance(module, K.container.ImageSequentialBase):
             _input = module.transform_keypoints(
                 _input, params=cls.get_sequential_module_param(param), extra_args=extra_args
             )
@@ -423,7 +423,7 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
                 _input, params=cls.get_sequential_module_param(param), extra_args=extra_args
             )
 
-        elif isinstance(module, K.ImageSequentialBase):
+        elif isinstance(module, K.container.ImageSequentialBase):
             _input = module.inverse_keypoints(
                 _input, params=cls.get_sequential_module_param(param), extra_args=extra_args
             )
