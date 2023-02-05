@@ -4,12 +4,13 @@ from torch import Size
 
 import kornia.augmentation as K
 from kornia.augmentation.auto.operations import OperationBase
+from kornia.augmentation.container.base import ImageSequentialBase
 from kornia.augmentation.utils import override_parameters
 from kornia.core import Module, Tensor, as_tensor
 from kornia.utils import eye_like
 
 
-class PolicySequential(K.container.ImageSequentialBase):
+class PolicySequential(ImageSequentialBase):
     """Policy tuple for applying multiple operations.
 
     Args:

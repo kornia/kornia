@@ -5,6 +5,7 @@ import torch
 import kornia.augmentation as K
 from kornia.augmentation.auto.operations.base import OperationBase
 from kornia.augmentation.auto.operations.policy import PolicySequential
+from kornia.augmentation.container.base import ImageSequentialBase
 from kornia.core import Module, Tensor
 from kornia.utils import eye_like
 
@@ -13,7 +14,7 @@ OP_CONFIG = Tuple[str, NUMBER, Optional[NUMBER]]
 SUBPLOLICY_CONFIG = List[OP_CONFIG]
 
 
-class PolicyAugmentBase(K.container.ImageSequentialBase):
+class PolicyAugmentBase(ImageSequentialBase):
     """Policy-based image augmentation."""
 
     def __init__(self, policy: List[SUBPLOLICY_CONFIG]) -> None:
