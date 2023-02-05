@@ -1,3 +1,5 @@
+# Lazy loading auto module
+import kornia.augmentation.auto as auto
 from kornia.augmentation._2d import (
     CenterCrop,
     ColorJiggle,
@@ -76,8 +78,6 @@ from kornia.augmentation.container import (
     PatchSequential,
     VideoSequential,
 )
-# Lazy loading auto module
-import kornia.augmentation.auto as auto
 
 __all__ = [
     "auto",
