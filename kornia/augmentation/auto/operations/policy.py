@@ -6,7 +6,7 @@ import kornia.augmentation as K
 from kornia.augmentation.auto.operations import OperationBase
 from kornia.augmentation.container.base import ImageSequentialBase
 from kornia.augmentation.container.params import ParamItem
-from kornia.augmentation.utils import override_parameters, _transform_input
+from kornia.augmentation.utils import _transform_input, override_parameters
 from kornia.core import Module, Tensor, as_tensor
 from kornia.utils import eye_like
 
@@ -63,7 +63,7 @@ class PolicySequential(ImageSequentialBase):
                 # Standardize shape
                 if recompute:
                     flags = override_parameters(module.op.flags, extra_args, in_place=False)
-                    mat= module.op.generate_transformation_matrix(input, param.data, flags)
+                    mat = module.op.generate_transformation_matrix(input, param.data, flags)
                 elif module.op._transform_matrix is not None:
                     mat = as_tensor(module.op._transform_matrix, device=input.device, dtype=input.dtype)
                 else:

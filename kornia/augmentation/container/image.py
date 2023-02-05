@@ -240,7 +240,7 @@ class ImageSequential(ImageSequentialBase):
                 # Standardize shape
                 if recompute:
                     flags = override_parameters(module.flags, extra_args, in_place=False)
-                    mat= module.generate_transformation_matrix(input, param.data, flags)
+                    mat = module.generate_transformation_matrix(input, param.data, flags)
                 elif module._transform_matrix is not None:
                     mat = as_tensor(module._transform_matrix, device=input.device, dtype=input.dtype)
                 else:
