@@ -81,9 +81,7 @@ class PolicySequential(ImageSequentialBase):
                 return False
         return True
 
-    def get_forward_sequence(
-        self, params: Optional[List[ParamItem]] = None
-    ) -> Iterator[Tuple[str, Module]]:
+    def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, Module]]:
         if params is not None:
             return super().get_children_by_params(params)
         return self.named_children()

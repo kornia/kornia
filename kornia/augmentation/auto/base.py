@@ -59,10 +59,7 @@ class PolicyAugmentBase(ImageSequentialBase):
         for (_, module), param in zip(named_modules, params if params is not None else []):
             module = cast(PolicySequential, module)
             mat = module.get_transformation_matrix(
-                input,
-                params=cast(Optional[List[ParamItem]], param.data),
-                recompute=recompute,
-                extra_args=extra_args,
+                input, params=cast(Optional[List[ParamItem]], param.data), recompute=recompute, extra_args=extra_args
             )
             res_mat = mat if res_mat is None else mat @ res_mat
         return res_mat

@@ -130,9 +130,7 @@ class AutoAugment(PolicyAugmentBase):
     def compose_subpolicy_sequential(self, subpolicy: SUBPLOLICY_CONFIG) -> PolicySequential:
         return PolicySequential(*[getattr(ops, name)(prob, mag) for name, prob, mag in subpolicy])
 
-    def get_forward_sequence(
-        self, params: Optional[List[ParamItem]] = None
-    ) -> Iterator[Tuple[str, Module]]:
+    def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, Module]]:
         if params is None:
             idx = self.rand_selector.sample((1,))
             return self.get_children_by_indices(idx)
