@@ -1,7 +1,6 @@
 # Lazy loading auto module
 import kornia.augmentation.auto as auto
 import kornia.augmentation.container as container
-
 from kornia.augmentation._2d import (
     CenterCrop,
     ColorJiggle,

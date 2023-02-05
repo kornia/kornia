@@ -94,8 +94,7 @@ class RandAugment(PolicyAugmentBase):
                 mag = m * float(maxval - minval) + minval
             mod_param = op.forward_parameters(batch_shape, mag=mag)
             # Compose it
-            param = K.container.ParamItem(
-                name, [K.container.ParamItem(list(module.named_children())[0][0], mod_param)])
+            param = K.container.ParamItem(name, [K.container.ParamItem(list(module.named_children())[0][0], mod_param)])
             params.append(param)
 
         return params
