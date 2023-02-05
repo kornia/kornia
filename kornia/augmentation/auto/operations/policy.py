@@ -4,14 +4,12 @@ from torch import Size
 
 import kornia.augmentation as K
 from kornia.augmentation.auto.operations import OperationBase
-from kornia.augmentation.container.base import ParamItem
-from kornia.augmentation.container.image import ImageSequentialBase
 from kornia.augmentation.utils import override_parameters
 from kornia.core import Module, Tensor, as_tensor
 from kornia.utils import eye_like
 
 
-class PolicySequential(ImageSequentialBase):
+class PolicySequential(K.container.ImageSequentialBase):
     """Policy tuple for applying multiple operations.
 
     Args:
@@ -37,7 +35,7 @@ class PolicySequential(ImageSequentialBase):
     def get_transformation_matrix(
         self,
         input: Tensor,
-        params: Optional[List[ParamItem]] = None,
+        params: Optional[List[K.container.ParamItem]] = None,
         recompute: bool = False,
         extra_args: Dict[str, Any] = {},
     ) -> Optional[Tensor]:
@@ -77,23 +75,25 @@ class PolicySequential(ImageSequentialBase):
     def is_intensity_only(self) -> bool:
         for module in self.children():
             module = cast(OperationBase, module)
-            if isinstance(module.op, (GeometricAugmentationBase2D,)):
+            if isinstance(module.op, (K.GeometricAugmentationBase2D,)):
                 return False
         return True
 
-    def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, Module]]:
+    def get_forward_sequence(
+        self, params: Optional[List[K.container.ParamItem]] = None
+    ) -> Iterator[Tuple[str, Module]]:
         if params is not None:
             return super().get_children_by_params(params)
         return self.named_children()
 
-    def forward_parameters(self, batch_shape: Size) -> List[ParamItem]:
+    def forward_parameters(self, batch_shape: Size) -> List[K.container.ParamItem]:
         named_modules: Iterator[Tuple[str, Module]] = self.get_forward_sequence()
 
-        params: List[ParamItem] = []
-        mod_param: Union[Dict[str, Tensor], List[ParamItem]]
+        params: List[K.container.ParamItem] = []
+        mod_param: Union[Dict[str, Tensor], List[K.container.ParamItem]]
         for name, module in named_modules:
             module = cast(OperationBase, module)
             mod_param = module.op.forward_parameters(batch_shape)
-            param = ParamItem(name, mod_param)
+            param = K.container.ParamItem(name, mod_param)
             params.append(param)
         return params

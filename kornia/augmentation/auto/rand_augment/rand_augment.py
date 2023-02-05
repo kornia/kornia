@@ -68,18 +68,20 @@ class RandAugment(PolicyAugmentBase):
         name, low, high = subpolicy[0]
         return PolicySequential(*[getattr(ops, name)(low, high)])
 
-    def get_forward_sequence(self, params: Optional[List[K.ParamItem]] = None) -> Iterator[Tuple[str, Module]]:
+    def get_forward_sequence(
+        self, params: Optional[List[K.container.ParamItem]] = None
+    ) -> Iterator[Tuple[str, Module]]:
         if params is None:
             idx = self.rand_selector.sample((self.n,))
             return self.get_children_by_indices(idx)
 
         return self.get_children_by_params(params)
 
-    def forward_parameters(self, batch_shape: torch.Size) -> List[K.ParamItem]:
+    def forward_parameters(self, batch_shape: torch.Size) -> List[K.container.ParamItem]:
         named_modules: Iterator[Tuple[str, Module]] = self.get_forward_sequence()
 
-        params: List[K.ParamItem] = []
-        mod_param: Union[Dict[str, Tensor], List[K.ParamItem]]
+        params: List[K.container.ParamItem] = []
+        mod_param: Union[Dict[str, Tensor], List[K.container.ParamItem]]
         m = torch.tensor([self.m / 30] * batch_shape[0])
 
         for name, module in named_modules:
@@ -92,7 +94,8 @@ class RandAugment(PolicyAugmentBase):
                 mag = m * float(maxval - minval) + minval
             mod_param = op.forward_parameters(batch_shape, mag=mag)
             # Compose it
-            param = K.ParamItem(name, [K.ParamItem(list(module.named_children())[0][0], mod_param)])
+            param = K.container.ParamItem(
+                name, [K.container.ParamItem(list(module.named_children())[0][0], mod_param)])
             params.append(param)
 
         return params

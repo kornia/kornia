@@ -323,7 +323,7 @@ class ImageSequential(ImageSequentialBase):
 
     def identity_matrix(self, input) -> Tensor:
         """Return identity matrix."""
-        return kornia.eye_like(3, input)
+        return eye_like(3, input)
 
     def get_transformation_matrix(
         self,

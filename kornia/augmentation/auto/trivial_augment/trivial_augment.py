@@ -57,7 +57,9 @@ class TrivialAugment(PolicyAugmentBase):
         name, low, high = subpolicy[0]
         return PolicySequential(*[getattr(ops, name)(low, high)])
 
-    def get_forward_sequence(self, params: Optional[List[K.ParamItem]] = None) -> Iterator[Tuple[str, Module]]:
+    def get_forward_sequence(
+        self, params: Optional[List[K.container.ParamItem]] = None
+    ) -> Iterator[Tuple[str, Module]]:
         if params is None:
             idx = self.rand_selector.sample((1,))
             return self.get_children_by_indices(idx)

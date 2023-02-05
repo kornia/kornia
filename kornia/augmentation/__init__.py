@@ -1,5 +1,7 @@
 # Lazy loading auto module
 import kornia.augmentation.auto as auto
+import kornia.augmentation.container as container
+
 from kornia.augmentation._2d import (
     CenterCrop,
     ColorJiggle,
@@ -72,16 +74,15 @@ from kornia.augmentation._3d.intensity.base import IntensityAugmentationBase3D
 from kornia.augmentation.container import (
     AugmentationSequential,
     ImageSequential,
-    ImageSequentialBase,
     ManyToManyAugmentationDispather,
     ManyToOneAugmentationDispather,
-    ParamItem,
     PatchSequential,
     VideoSequential,
 )
 
 __all__ = [
     "auto",
+    "container",
     "AugmentationBase2D",
     "RigidAffineAugmentationBase2D",
     "GeometricAugmentationBase2D",
@@ -152,9 +153,7 @@ __all__ = [
     "AugmentationSequential",
     "ManyToOneAugmentationDispather",
     "ManyToManyAugmentationDispather",
-    "ImageSequentialBase",
     "ImageSequential",
-    "ParamItem",
     "PatchSequential",
     "VideoSequential",
     "RandomRGBShift",
