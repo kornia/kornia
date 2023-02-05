@@ -1,4 +1,3 @@
-
 from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
 
 import torch
@@ -9,7 +8,7 @@ from kornia.augmentation.utils import override_parameters
 from kornia.core import Module, Tensor, as_tensor
 from kornia.utils import eye_like
 
-from .base import ParamItem, ImageSequentialBase
+from .base import ImageSequentialBase, ParamItem
 
 __all__ = ["ImageSequential"]
 
