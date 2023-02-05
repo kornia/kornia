@@ -11,7 +11,6 @@ from kornia.core import Module, Tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
-from .base import ParamItem, SequentialBase
 from .ops import BoxSequentialOps, InputSequentialOps, KeypointSequentialOps, MaskSequentialOps
 
 __all__ = ["BasicSequentialBase", "SequentialBase", "ParamItem"]

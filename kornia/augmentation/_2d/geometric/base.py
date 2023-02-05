@@ -1,4 +1,3 @@
-import warnings
 from typing import Any, Dict, Optional, Tuple
 
 from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D

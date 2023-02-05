@@ -16,7 +16,7 @@ class OperationBase(Module):
 
     Args:
         operation: Kornia augmentation module.
-        initial_magnitude: targetted magnitude parameter name and its initial magnitude value.
+        initial_magnitude: targeted magnitude parameter name and its initial magnitude value.
             The magnitude parameter name shall align with the attribute inside the random_generator
             in each augmentation. If None, the augmentation will be randomly applied according to
             the augmentation sampling range.
@@ -130,7 +130,7 @@ class OperationBase(Module):
 
         if mag is not None:
             if self._factor_name is None:
-                raise RuntimeError(f"No factor found in the params while `mag` is provided.")
+                raise RuntimeError("No factor found in the params while `mag` is provided.")
             # For single factor operations, this is equivalent to `same_on_batch=True`
             params[self._factor_name] = params[self._factor_name].zero_() + mag
 

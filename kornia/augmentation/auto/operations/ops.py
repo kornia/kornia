@@ -407,7 +407,7 @@ class Rotate(OperationBase):
     ):
         if symmetric_megnitude and magnitude_range[0] < 0:
             raise ValueError(
-                f"Lower bound of {self.__class__.__name__} is a symetric operation. "
+                f"Lower bound of {self.__class__.__name__} is a symmetric operation. "
                 f"The lower bound must above 0. Got {magnitude_range[0]}."
             )
         super().__init__(
@@ -445,7 +445,7 @@ class ShearX(OperationBase):
     ):
         if symmetric_megnitude and magnitude_range[0] < 0:
             raise ValueError(
-                f"Lower bound of {self.__class__.__name__} is a symetric operation. "
+                f"Lower bound of {self.__class__.__name__} is a symmetric operation. "
                 f"The lower bound must above 0. Got {magnitude_range[0]}."
             )
         super().__init__(
@@ -484,7 +484,7 @@ class ShearY(OperationBase):
     ):
         if symmetric_megnitude and magnitude_range[0] < 0:
             raise ValueError(
-                f"Lower bound of {self.__class__.__name__} is a symetric operation. "
+                f"Lower bound of {self.__class__.__name__} is a symmetric operation. "
                 f"The lower bound must above 0. Got {magnitude_range[0]}."
             )
         super().__init__(
@@ -520,7 +520,7 @@ class TranslateX(OperationBase):
     ):
         if symmetric_megnitude and magnitude_range[0] < 0:
             raise ValueError(
-                f"Lower bound of {self.__class__.__name__} is a symetric operation. "
+                f"Lower bound of {self.__class__.__name__} is a symmetric operation. "
                 f"The lower bound must above 0. Got {magnitude_range[0]}."
             )
         super().__init__(
@@ -553,7 +553,7 @@ class TranslateY(OperationBase):
     ):
         if symmetric_megnitude and magnitude_range[0] < 0:
             raise ValueError(
-                f"Lower bound of {self.__class__.__name__} is a symetric operation. "
+                f"Lower bound of {self.__class__.__name__} is a symmetric operation. "
                 f"The lower bound must above 0. Got {magnitude_range[0]}."
             )
         super().__init__(
