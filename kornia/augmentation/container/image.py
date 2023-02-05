@@ -12,12 +12,7 @@ from kornia.geometry.keypoints import Keypoints
 from kornia.utils import eye_like
 
 from .base import ParamItem, SequentialBase
-from .ops import (
-    BoxSequentialOps,
-    InputSequentialOps,
-    KeypointSequentialOps,
-    MaskSequentialOps,
-)
+from .ops import BoxSequentialOps, InputSequentialOps, KeypointSequentialOps, MaskSequentialOps
 
 __all__ = ["ImageSequential", "ImageSequentialBase"]
 

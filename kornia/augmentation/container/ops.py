@@ -138,9 +138,7 @@ def make_input_only_sequential(module: 'K.ImageSequentialBase') -> Callable[...,
     return f
 
 
-def get_geometric_only_param(
-    module: 'K.ImageSequentialBase', param: List[ParamItem]
-) -> List[ParamItem]:
+def get_geometric_only_param(module: 'K.ImageSequentialBase', param: List[ParamItem]) -> List[ParamItem]:
     named_modules = module.get_forward_sequence(param)
 
     res: List[ParamItem] = []
