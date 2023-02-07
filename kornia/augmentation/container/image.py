@@ -364,7 +364,6 @@ class ImageSequential(SequentialBase):
     def forward(
         self, input: Tensor, params: Optional[List[ParamItem]] = None, extra_args: Dict[str, Any] = {}
     ) -> Tensor:
-
         self.clear_state()
 
         if params is None:

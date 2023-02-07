@@ -50,7 +50,6 @@ class FilterResponseNorm2d(Module):
         is_scale: bool = True,
         is_eps_leanable: bool = False,
     ):
-
         super().__init__()
 
         self.num_features = num_features
