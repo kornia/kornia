@@ -43,6 +43,6 @@ setup(
             'sphinxcontrib-youtube',
             'torchvision',
         ],
-        'x': ['accelerate==0.15.0'],
+        'x': ['accelerate==0.16.0'],
     },
 )
