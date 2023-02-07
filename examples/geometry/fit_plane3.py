@@ -8,7 +8,6 @@ from kornia.geometry.vector import Vector3
 from kornia.utils import create_meshgrid
 
 if __name__ == "__main__":
-
     # define the plane
     plane_h = 25
     plane_w = 50

@@ -190,7 +190,6 @@ class Boxes:
         raise_if_not_floating_point: bool = True,
         mode: str = "vertices_plus",
     ) -> None:
-
         self._N: Optional[List[int]] = None
 
         if isinstance(boxes, list):
