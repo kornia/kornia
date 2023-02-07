@@ -184,7 +184,7 @@ class TestQuaternion:
         q1 = Quaternion.random(batch_size, device, dtype)
         m1 = q1.matrix()
         q2 = Quaternion.from_matrix(m1)
-        for (qq1, qq2) in zip(q1.data, q2.data):
+        for qq1, qq2 in zip(q1.data, q2.data):
             try:
                 self.assert_close(qq1, qq2)
             except Exception:

@@ -44,9 +44,7 @@ class HausdorffERLossNumpy(nn.Module):
         eroted = np.zeros_like(bound)
 
         for batch in range(len(bound)):
-
             for k in range(self.erosions):
-
                 # compute convolution with kernel
                 dilation = convolve(bound[batch], kernel, mode="constant", cval=0.0)
 
