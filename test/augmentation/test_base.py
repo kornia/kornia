@@ -67,7 +67,6 @@ class TestBasicAugmentationBase:
         ) as transform_tensor, patch.object(
             augmentation, "transform_output_tensor", autospec=True
         ) as transform_output_tensor:
-
             generate_parameters.side_effect = lambda shape: {
                 'degrees': torch.arange(0, shape[0], device=device, dtype=dtype)
             }
@@ -91,7 +90,6 @@ class TestAugmentationBase2D:
         with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform, patch.object(
             augmentation, "generate_parameters", autospec=True
         ) as generate_parameters:
-
             # Calling the augmentation with a single tensor shall return the expected tensor using the generated params.
             params = {'params': {}, 'flags': {'foo': 0}}
             generate_parameters.return_value = params

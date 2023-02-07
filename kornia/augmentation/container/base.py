@@ -86,7 +86,6 @@ class SequentialBase(nn.Sequential):
         mod: Module = self
 
         for item in atoms:
-
             if not hasattr(mod, item):
                 raise AttributeError(mod._get_name() + " has no " "attribute `" + item + "`")
 

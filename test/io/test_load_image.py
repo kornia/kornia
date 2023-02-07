@@ -31,7 +31,6 @@ class TestLoadImage:
         height, width = 4, 5
         img_np: np.ndarray = create_random_img8(height, width, 3)
         with tempfile.NamedTemporaryFile() as tmp:
-
             file_path: str = tmp.name + ".png"
             cv2.imwrite(file_path, img_np)
             assert os.path.isfile(file_path)
@@ -47,7 +46,6 @@ class TestLoadImage:
         height, width = 4, 5
         img_np: np.ndarray = create_random_img8(height, width, 3)
         with tempfile.NamedTemporaryFile() as tmp:
-
             file_path: str = tmp.name + ".png"
             cv2.imwrite(file_path, img_np)
             assert os.path.isfile(file_path)
@@ -60,7 +58,6 @@ class TestLoadImage:
         height, width = 4, 5
         img_np: np.ndarray = create_random_img8(height, width, 3)
         with tempfile.NamedTemporaryFile() as tmp:
-
             file_path: str = tmp.name + f".{ext}"
             cv2.imwrite(file_path, img_np)
             assert os.path.isfile(file_path)
@@ -85,7 +82,6 @@ class TestLoadImage:
         height, width = 4, 5
         img_np: np.ndarray = create_random_img8(height, width, 1)
         with tempfile.NamedTemporaryFile() as tmp:
-
             file_path: str = tmp.name + f".{ext}"
             cv2.imwrite(file_path, img_np)
             assert os.path.isfile(file_path)
