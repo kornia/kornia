@@ -7,7 +7,7 @@ from typing import Any
 import torch
 
 from kornia.core import Device, Tensor, concatenate, stack, tensor, where, zeros, zeros_like
-from kornia.core.tensor_wrapper import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 from kornia.utils import deprecated
 
 

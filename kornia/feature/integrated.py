@@ -5,7 +5,7 @@ import torch
 
 from kornia.color import rgb_to_grayscale
 from kornia.core import Device, Module, Tensor, concatenate
-from kornia.core.logger import KORNIA_CHECK_LAF
+from kornia.core.check import KORNIA_CHECK_LAF
 from kornia.geometry.subpix import ConvQuadInterp3d
 from kornia.geometry.transform import ScalePyramid
 

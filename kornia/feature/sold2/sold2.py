@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core import Module, Tensor, concatenate, pad, stack
-from kornia.core.logger import KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.conversions import normalize_pixel_coordinates
 from kornia.utils import map_location_to_cpu
 

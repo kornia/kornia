@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from kornia.core import Module, Tensor, concatenate, stack, tensor, where, zeros
-from kornia.core.logger import KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.bbox import nms
 from kornia.utils import map_location_to_cpu, torch_meshgrid
 

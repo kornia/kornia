@@ -4,7 +4,7 @@ import torch
 
 from kornia.color.rgb import bgr_to_rgb
 from kornia.core import Module, Tensor, concatenate
-from kornia.core.logger import KORNIA_CHECK_IS_TENSOR
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR
 
 
 def grayscale_to_rgb(image: Tensor) -> Tensor:

@@ -3,7 +3,7 @@ from typing import Optional, Union
 import torch
 
 from kornia.core import Module, Tensor, tensor
-from kornia.core.logger import KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.filters import gaussian_blur2d, spatial_gradient
 
 

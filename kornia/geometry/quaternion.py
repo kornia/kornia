@@ -6,7 +6,7 @@ from math import pi
 from typing import Optional, Tuple, Union
 
 from kornia.core import Module, Parameter, Tensor, concatenate, rand, stack, tensor, where
-from kornia.core.logger import KORNIA_CHECK_TYPE
+from kornia.core.check import KORNIA_CHECK_TYPE
 from kornia.geometry.conversions import (
     QuaternionCoeffOrder,
     angle_axis_to_quaternion,

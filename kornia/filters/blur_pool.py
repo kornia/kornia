@@ -3,7 +3,7 @@ from __future__ import annotations
 import torch.nn.functional as F
 
 from kornia.core import Module, Tensor, as_tensor, pad, tensor
-from kornia.core.logger import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 from .kernels import get_pascal_kernel_2d
 from .median import _compute_zero_padding  # TODO: Move to proper place

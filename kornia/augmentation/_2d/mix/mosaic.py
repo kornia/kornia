@@ -6,7 +6,7 @@ from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.constants import DataKey, Resample
 from kornia.core import Tensor, as_tensor, concatenate, pad, zeros
-from kornia.core.logger import KORNIA_UNWRAP
+from kornia.core.check import KORNIA_UNWRAP
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
 from kornia.utils import eye_like

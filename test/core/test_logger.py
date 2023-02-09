@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from kornia.core.logger import (
+from kornia.core.check import (
     KORNIA_CHECK,
     KORNIA_CHECK_DM_DESC,
     KORNIA_CHECK_IS_COLOR,

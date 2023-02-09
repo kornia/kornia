@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 
 from kornia.core import Tensor
-from kornia.core.logger import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.utils.one_hot import one_hot
 
 # based on:

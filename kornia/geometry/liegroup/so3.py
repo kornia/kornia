@@ -3,7 +3,7 @@
 from typing import Optional
 
 from kornia.core import Module, Tensor, concatenate, stack, tensor, where, zeros, zeros_like
-from kornia.core.logger import KORNIA_CHECK_TYPE
+from kornia.core.check import KORNIA_CHECK_TYPE
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.quaternion import Quaternion
 

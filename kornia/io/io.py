@@ -13,7 +13,7 @@ from kornia.color import rgb_to_grayscale, rgba_to_rgb
 from kornia.color.gray import grayscale_to_rgb
 from kornia.color.rgb import rgb_to_rgba
 from kornia.core import Tensor
-from kornia.core.logger import KORNIA_CHECK
+from kornia.core.check import KORNIA_CHECK
 
 
 class ImageLoadType(Enum):

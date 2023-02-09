@@ -5,7 +5,7 @@ from typing import Callable, List, Optional, Tuple, Union
 import torch
 
 from kornia.core import Tensor
-from kornia.core.logger import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.enhance import normalize_min_max
 from kornia.filters import filter2d
 

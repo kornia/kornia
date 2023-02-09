@@ -1,7 +1,7 @@
 from typing import Optional, Tuple, Union, cast
 
 from kornia.core import Tensor, as_tensor, normalize, rand, stack
-from kornia.core.logger import KORNIA_CHECK
+from kornia.core.check import KORNIA_CHECK
 from kornia.core.tensor_wrapper import TensorWrapper, wrap
 from kornia.geometry.linalg import batched_dot_product, batched_squared_norm
 

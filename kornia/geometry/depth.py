@@ -5,7 +5,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core import Module, Tensor, concatenate, tensor
-from kornia.core.logger import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.filters.sobel import spatial_gradient
 from kornia.utils import create_meshgrid
 

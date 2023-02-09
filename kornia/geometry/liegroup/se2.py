@@ -3,7 +3,7 @@
 from typing import Optional, Tuple, overload
 
 from kornia.core import Module, Parameter, Tensor, concatenate, pad, rand, stack, tensor, where, zeros_like
-from kornia.core.logger import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_TYPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_TYPE
 from kornia.geometry.liegroup._utils import check_se2_omega_shape, check_se2_r_t_shape, check_v_shape
 from kornia.geometry.liegroup.so2 import So2
 

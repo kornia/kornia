@@ -2,7 +2,7 @@
 
 from torch import Tensor
 
-from kornia.core.logger import KORNIA_CHECK_IS_TENSOR
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR
 from kornia.geometry.conversions import convert_points_to_homogeneous
 from kornia.geometry.linalg import point_line_distance
 

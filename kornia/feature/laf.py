@@ -5,7 +5,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core import Tensor, concatenate, stack, tensor, zeros
-from kornia.core.logger import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 from kornia.geometry.conversions import angle_to_rotation_matrix, convert_points_from_homogeneous, rad2deg
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.transform import pyrdown
