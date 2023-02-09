@@ -25,16 +25,19 @@ class TestIntegralTensor(BaseTester):
         with pytest.raises(Exception):
             dim = (4, 5)
             integral_tensor(tensor, dim)
+        with pytest.raises(Exception) as errinfo:
+            integral_tensor(tensor, ())
+        assert 'dim must be a non-empty tuple.' in str(errinfo)
 
     def test_module(self, device, dtype):
-        module = IntegralTensor()
+        mod = IntegralTensor()
+        op = integral_tensor
         tensor = torch.rand(1, 1, 4, 4, device=device, dtype=dtype)
-        output = module(tensor)
-        assert output.shape == (1, 1, 4, 4)
+        self.assert_close(mod(tensor), op(tensor))
 
     def test_gradcheck(self, device):
         tensor = torch.rand(1, 1, 4, 4, device=device, dtype=torch.float64, requires_grad=True)
-        assert torch.autograd.gradcheck(integral_tensor, (tensor,), raise_exception=True)
+        self.gradcheck(integral_tensor, (tensor,))
 
     def test_value(self, device, dtype):
         tensor = torch.tensor([[[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]]], device=device, dtype=dtype)
@@ -61,14 +64,14 @@ class TestIntegralImage(BaseTester):
             integral_image(tensor)
 
     def test_module(self, device, dtype):
-        module = IntegralImage()
+        mod = IntegralImage()
+        op = integral_image
         tensor = torch.rand(1, 1, 4, 4, device=device, dtype=dtype)
-        output = module(tensor)
-        assert output.shape == (1, 1, 4, 4)
+        self.assert_close(mod(tensor), op(tensor))
 
     def test_gradcheck(self, device):
         tensor = torch.rand(1, 1, 4, 4, device=device, dtype=torch.float64, requires_grad=True)
-        assert torch.autograd.gradcheck(integral_image, (tensor,), raise_exception=True)
+        self.gradcheck(integral_image, (tensor,))
 
     def test_values(self, device, dtype):
         tensor = torch.tensor(

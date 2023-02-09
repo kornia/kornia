@@ -20,10 +20,12 @@ def integral_tensor(input: Tensor, dim: Optional[Tuple[int]] = None) -> Tensor:
         Integral tensor for the input tensor with shape :math:`(*, D)`.
 
     Examples:
-        >>> input = torch.randn(2, 2, 5, 5)
+        >>> input = torch.ones(3, 5)
         >>> output = integral_tensor(input, (-2, -1))
-        >>> output.shape
-        torch.Size([2, 2, 5, 5])
+        >>> output
+        tensor([[ 1.,  2.,  3.,  4.,  5.],
+                [ 2.,  4.,  6.,  8., 10.],
+                [ 3.,  6.,  9., 12., 15.]])
     """
     KORNIA_CHECK_SHAPE(input, ["*", "D"])
 
@@ -51,10 +53,14 @@ def integral_image(image: Tensor) -> Tensor:
         Integral tensor for the input image tensor with shape :math:`(*, H, W)`.
 
     Examples:
-        >>> input = torch.randn(3, 5, 5)
+        >>> input = torch.ones(1, 5, 5)
         >>> output = integral_image(input)
-        >>> output.shape
-        >>> torch.Size([3, 5, 5])
+        >>> output
+        tensor([[[ 1.,  2.,  3.,  4.,  5.],
+                 [ 2.,  4.,  6.,  8., 10.],
+                 [ 3.,  6.,  9., 12., 15.],
+                 [ 4.,  8., 12., 16., 20.],
+                 [ 5., 10., 15., 20., 25.]]])
     """
     KORNIA_CHECK_SHAPE(image, ["*", "H", "W"])
 
@@ -75,11 +81,13 @@ class IntegralTensor(Module):
         - Output: :math:`(B, C, H, W)`
 
     Examples:
-        >>> input = torch.randn(2,2,5,5)
-        >>> integral_calc = Integral()
-        >>> output = integral_calc(input)
-        >>> output.shape
-        torch.Size([2, 2, 5, 5])
+        >>> input = torch.ones(3, 5)
+        >>> dim = (-2, -1)
+        >>> output = IntegralTensor(dim)(input)
+        >>> output
+        tensor([[ 1.,  2.,  3.,  4.,  5.],
+                [ 2.,  4.,  6.,  8., 10.],
+                [ 3.,  6.,  9., 12., 15.]])
     """
 
     def __init__(self, dim: Optional[Tuple[int]] = None) -> None:
@@ -106,15 +114,15 @@ class IntegralImage(Module):
         - Output: :math:`(B, C, H, W)`
 
     Examples:
-        >>> input = torch.randn(2,2,5,5)
-        >>> integral_calc = IntegralImage()
-        >>> output = integral_calc(input)
-        >>> output.shape
-        torch.Size([2, 2, 5, 5])
+        >>> input = torch.ones(1, 5, 5)
+        >>> output = IntegralImage()(input)
+        >>> output
+        tensor([[[ 1.,  2.,  3.,  4.,  5.],
+                 [ 2.,  4.,  6.,  8., 10.],
+                 [ 3.,  6.,  9., 12., 15.],
+                 [ 4.,  8., 12., 16., 20.],
+                 [ 5., 10., 15., 20., 25.]]])
     """
-
-    def __init__(self) -> None:
-        super().__init__()
 
     def forward(self, input: Tensor) -> Tensor:
         return integral_image(input)
