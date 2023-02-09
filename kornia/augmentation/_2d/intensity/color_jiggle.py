@@ -74,7 +74,6 @@ class ColorJiggle(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-
         transforms = [
             lambda img: adjust_brightness(img, params["brightness_factor"] - 1),
             lambda img: adjust_contrast(img, params["contrast_factor"]),

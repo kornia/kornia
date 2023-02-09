@@ -4,6 +4,7 @@ import torch.nn as nn
 from torch.utils.data import Dataset
 
 from kornia.x import Configuration, ObjectDetectionTrainer
+from kornia.x.trainer import Accelerator
 
 
 class DummyDatasetDetection(Dataset):
@@ -57,6 +58,9 @@ def configuration():
 
 
 class TestObjectDetectionTrainer:
+    @pytest.mark.skipif(
+        torch.__version__ == '1.12.1' and Accelerator is None, reason='accelerate lib problem with torch 1.12.1'
+    )
     @pytest.mark.parametrize("loss_computed_by_model", [True, False])
     def test_fit(self, model, dataloader, criterion, optimizer, scheduler, configuration, loss_computed_by_model):
         trainer = ObjectDetectionTrainer(
@@ -72,6 +76,9 @@ class TestObjectDetectionTrainer:
         )
         trainer.fit()
 
+    @pytest.mark.skipif(
+        torch.__version__ == '1.12.1' and Accelerator is None, reason='accelerate lib problem with torch 1.12.1'
+    )
     def test_exception(self, model, dataloader, criterion, optimizer, scheduler, configuration):
         with pytest.raises(ValueError):
             ObjectDetectionTrainer(

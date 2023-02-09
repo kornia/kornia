@@ -1,15 +1,21 @@
-from typing import Tuple
+from __future__ import annotations
 
-import torch
 import torch.nn.functional as F
 
-from kornia.core import Module, Tensor
+from kornia.core import Module, Tensor, as_tensor, pad, tensor
 from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 from .kernels import get_pascal_kernel_2d
 from .median import _compute_zero_padding  # TODO: Move to proper place
 
-__all__ = ["BlurPool2D", "MaxBlurPool2D", "blur_pool2d", "max_blur_pool2d", 'edge_aware_blur_pool2d']
+__all__ = [
+    "BlurPool2D",
+    "MaxBlurPool2D",
+    "EdgeAwareBlurPool2D",
+    "blur_pool2d",
+    "max_blur_pool2d",
+    'edge_aware_blur_pool2d',
+]
 
 
 class BlurPool2D(Module):
@@ -43,16 +49,15 @@ class BlurPool2D(Module):
                   [0.0000, 0.0625, 0.3125]]]])
     """
 
-    def __init__(self, kernel_size: int, stride: int = 2):
+    def __init__(self, kernel_size: tuple[int, int] | int, stride: int = 2):
         super().__init__()
         self.kernel_size = kernel_size
         self.stride = stride
-        self.register_buffer('kernel', get_pascal_kernel_2d(kernel_size, norm=True))
+        self.kernel = get_pascal_kernel_2d(kernel_size, norm=True)
 
     def forward(self, input: Tensor) -> Tensor:
-        # To align the logic with the whole lib
-        kernel = torch.as_tensor(self.kernel, device=input.device, dtype=input.dtype)
-        return _blur_pool_by_kernel2d(input, kernel.repeat((input.shape[1], 1, 1, 1)), self.stride)
+        self.kernel = as_tensor(self.kernel, device=input.device, dtype=input.dtype)
+        return _blur_pool_by_kernel2d(input, self.kernel.repeat((input.shape[1], 1, 1, 1)), self.stride)
 
 
 class MaxBlurPool2D(Module):
@@ -89,23 +94,39 @@ class MaxBlurPool2D(Module):
                   [0.3125, 0.8750]]]])
     """
 
-    def __init__(self, kernel_size: int, stride: int = 2, max_pool_size: int = 2, ceil_mode: bool = False):
+    def __init__(
+        self, kernel_size: tuple[int, int] | int, stride: int = 2, max_pool_size: int = 2, ceil_mode: bool = False
+    ):
         super().__init__()
         self.kernel_size = kernel_size
         self.stride = stride
         self.max_pool_size = max_pool_size
         self.ceil_mode = ceil_mode
-        self.register_buffer('kernel', get_pascal_kernel_2d(kernel_size, norm=True))
+        self.kernel = get_pascal_kernel_2d(kernel_size, norm=True)
 
     def forward(self, input: Tensor) -> Tensor:
-        # To align the logic with the whole lib
-        kernel = torch.as_tensor(self.kernel, device=input.device, dtype=input.dtype)
+        self.kernel = as_tensor(self.kernel, device=input.device, dtype=input.dtype)
         return _max_blur_pool_by_kernel2d(
-            input, kernel.repeat((input.size(1), 1, 1, 1)), self.stride, self.max_pool_size, self.ceil_mode
+            input, self.kernel.repeat((input.size(1), 1, 1, 1)), self.stride, self.max_pool_size, self.ceil_mode
         )
 
 
-def blur_pool2d(input: Tensor, kernel_size: int, stride: int = 2):
+class EdgeAwareBlurPool2D(Module):
+    def __init__(
+        self, kernel_size: tuple[int, int] | int, edge_threshold: float = 1.25, edge_dilation_kernel_size: int = 3
+    ):
+        super().__init__()
+        self.kernel_size = kernel_size
+        self.edge_threshold = edge_threshold
+        self.edge_dilation_kernel_size = edge_dilation_kernel_size
+
+    def forward(self, input: Tensor, epsilon: float = 1e-6) -> Tensor:
+        return edge_aware_blur_pool2d(
+            input, self.kernel_size, self.edge_threshold, self.edge_dilation_kernel_size, epsilon
+        )
+
+
+def blur_pool2d(input: Tensor, kernel_size: tuple[int, int] | int, stride: int = 2):
     r"""Compute blurs and downsample a given feature map.
 
     .. image:: _static/img/blur_pool2d.png
@@ -147,12 +168,14 @@ def blur_pool2d(input: Tensor, kernel_size: int, stride: int = 2):
                   [0.0625, 0.3750, 0.0625],
                   [0.0000, 0.0625, 0.3125]]]])
     """
-    kernel = get_pascal_kernel_2d(kernel_size, norm=True).repeat((input.size(1), 1, 1, 1)).to(input)
+    kernel = get_pascal_kernel_2d(kernel_size, norm=True, device=input.device, dtype=input.dtype).repeat(
+        (input.size(1), 1, 1, 1)
+    )
     return _blur_pool_by_kernel2d(input, kernel, stride)
 
 
 def max_blur_pool2d(
-    input: Tensor, kernel_size: int, stride: int = 2, max_pool_size: int = 2, ceil_mode: bool = False
+    input: Tensor, kernel_size: tuple[int, int] | int, stride: int = 2, max_pool_size: int = 2, ceil_mode: bool = False
 ) -> Tensor:
     r"""Compute pools and blurs and downsample a given feature map.
 
@@ -179,34 +202,42 @@ def max_blur_pool2d(
         tensor([[[[0.5625, 0.3125],
                   [0.3125, 0.8750]]]])
     """
-    if not len(input.shape) == 4:
-        raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
-    kernel = get_pascal_kernel_2d(kernel_size, norm=True).repeat((input.shape[1], 1, 1, 1)).to(input)
+    KORNIA_CHECK_SHAPE(input, ['B', 'C', 'H', 'W'])
+
+    kernel = get_pascal_kernel_2d(kernel_size, norm=True, device=input.device, dtype=input.dtype).repeat(
+        (input.shape[1], 1, 1, 1)
+    )
     return _max_blur_pool_by_kernel2d(input, kernel, stride, max_pool_size, ceil_mode)
 
 
 def _blur_pool_by_kernel2d(input: Tensor, kernel: Tensor, stride: int):
     """Compute blur_pool by a given :math:`CxC_{out}xNxN` kernel."""
-    if not (len(kernel.shape) == 4 and kernel.shape[-1] == kernel.shape[-2]):
-        raise AssertionError(f"Invalid kernel shape. Expect CxC_outxNxN, Got {kernel.shape}")
-    padding: Tuple[int, int] = _compute_zero_padding((kernel.shape[-2], kernel.shape[-1]))
+    KORNIA_CHECK(
+        len(kernel.shape) == 4 and kernel.shape[-2] == kernel.shape[-1],
+        f"Invalid kernel shape. Expect CxC_(out, None)xNxN, Got {kernel.shape}",
+    )
+
+    padding = _compute_zero_padding((kernel.shape[-2], kernel.shape[-1]))
     return F.conv2d(input, kernel, padding=padding, stride=stride, groups=input.shape[1])
 
 
 def _max_blur_pool_by_kernel2d(input: Tensor, kernel: Tensor, stride: int, max_pool_size: int, ceil_mode: bool):
-    """Compute max_blur_pool by a given :math:`CxC_{out}xNxN` kernel."""
-    if not (len(kernel.shape) == 4 and kernel.shape[-1] == kernel.shape[-2]):
-        raise AssertionError(f"Invalid kernel shape. Expect CxC_outxNxN, Got {kernel.shape}")
+    """Compute max_blur_pool by a given :math:`CxC_(out, None)xNxN` kernel."""
+    KORNIA_CHECK(
+        len(kernel.shape) == 4 and kernel.shape[-2] == kernel.shape[-1],
+        f"Invalid kernel shape. Expect CxC_outxNxN, Got {kernel.shape}",
+    )
+
     # compute local maxima
     input = F.max_pool2d(input, kernel_size=max_pool_size, padding=0, stride=1, ceil_mode=ceil_mode)
     # blur and downsample
-    padding: Tuple[int, int] = _compute_zero_padding((kernel.shape[-2], kernel.shape[-1]))
+    padding = _compute_zero_padding((kernel.shape[-2], kernel.shape[-1]))
     return F.conv2d(input, kernel, padding=padding, stride=stride, groups=input.size(1))
 
 
 def edge_aware_blur_pool2d(
     input: Tensor,
-    kernel_size: int,
+    kernel_size: tuple[int, int] | int,
     edge_threshold: float = 1.25,
     edge_dilation_kernel_size: int = 3,
     epsilon: float = 1e-6,
@@ -226,14 +257,14 @@ def edge_aware_blur_pool2d(
     KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     KORNIA_CHECK(edge_threshold > 0.0, f"edge threshold should be positive, but got '{edge_threshold}'")
 
-    input = F.pad(input, (2, 2, 2, 2), mode="reflect")  # pad to avoid artifacts near physical edges
+    input = pad(input, (2, 2, 2, 2), mode="reflect")  # pad to avoid artifacts near physical edges
     blurred_input = blur_pool2d(input, kernel_size=kernel_size, stride=1)  # blurry version of the input
 
     # calculate the edges (add epsilon to avoid taking the log of 0)
-    log_input, log_thresh = torch.log2(input + epsilon), torch.log2(torch.tensor(edge_threshold))
+    log_input, log_thresh = (input + epsilon).log2(), (tensor(edge_threshold)).log2()
     edges_x = log_input[..., :, 4:] - log_input[..., :, :-4]
     edges_y = log_input[..., 4:, :] - log_input[..., :-4, :]
-    edges_x, edges_y = torch.mean(edges_x, dim=-3, keepdim=True), torch.mean(edges_y, dim=-3, keepdim=True)
+    edges_x, edges_y = edges_x.mean(dim=-3, keepdim=True), edges_y.mean(dim=-3, keepdim=True)
     edges_x_mask, edges_y_mask = edges_x.abs() > log_thresh.to(edges_x), edges_y.abs() > log_thresh.to(edges_y)
     edges_xy_mask = (edges_x_mask[..., 2:-2, :] + edges_y_mask[..., :, 2:-2]).type_as(input)
 

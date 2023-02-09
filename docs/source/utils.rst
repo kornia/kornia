@@ -39,3 +39,9 @@ Device
 -------
 
 .. autofunction:: get_cuda_device_if_available
+.. autofunction:: map_location_to_cpu
+
+
+Automatic Mixed Precision
+-------------------------
+.. autofunction:: is_autocast_enabled

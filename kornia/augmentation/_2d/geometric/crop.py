@@ -140,7 +140,8 @@ class RandomCrop(GeometricAugmentationBase2D):
         if padding is None:
             padding = self.compute_padding(input.shape)
 
-        input = pad(input, padding, value=flags["fill"], mode=flags["padding_mode"])
+        if any(padding):
+            input = pad(input, padding, value=flags["fill"], mode=flags["padding_mode"])
 
         return input
 

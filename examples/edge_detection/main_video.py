@@ -29,7 +29,6 @@ def my_app():
     cv2.namedWindow('frame', cv2.WINDOW_NORMAL)
 
     while True:
-
         # Capture the video frame
         # by frame
         _, frame = cap.read()

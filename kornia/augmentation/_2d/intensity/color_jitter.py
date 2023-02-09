@@ -87,7 +87,6 @@ class ColorJitter(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-
         transforms = [
             lambda img: adjust_brightness_accumulative(img, params["brightness_factor"]),
             lambda img: adjust_contrast_with_mean_subtraction(img, params["contrast_factor"]),
