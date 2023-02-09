@@ -96,7 +96,6 @@ class RaySampler:
             cameras: scene cameras: PinholeCamera
             points_2d_camera: a dictionary that groups Point2D objects by total number of casted rays
         """
-
         # Unproject 2d points in image plane to 3d world for two depths
         origins = []
         directions = []
@@ -105,7 +104,6 @@ class RaySampler:
         camera_ids = []
         points_2d = []
         for obj in points_2d_camera.values():
-
             # FIXME: Below both world and camera ray directions are calculated. It could be that world ray directions
             # will not be necessary and can be removed here
             num_cams_group, num_points_per_cam_group = obj._points_2d.shape[:2]

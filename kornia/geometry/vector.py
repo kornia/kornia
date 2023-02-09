@@ -19,6 +19,12 @@ class Vector3(TensorWrapper):
         super().__init__(vector)
         KORNIA_CHECK(vector.shape[-1] == 3)
 
+    def __repr__(self) -> str:
+        return f"x: {self.x}\ny: {self.y}\nz: {self.z}"
+
+    def __getitem__(self, idx) -> "Vector3":
+        return Vector3(self.data[idx, ...])
+
     @property
     def x(self) -> Tensor:
         return self.data[..., 0]
@@ -83,6 +89,12 @@ class Vector2(TensorWrapper):
     def __init__(self, vector: Tensor) -> None:
         super().__init__(vector)
         KORNIA_CHECK(vector.shape[-1] == 2)
+
+    def __repr__(self) -> str:
+        return f"x: {self.x}\ny: {self.y}"
+
+    def __getitem__(self, idx) -> "Vector2":
+        return Vector2(self.data[idx, ...])
 
     @property
     def x(self) -> Tensor:

@@ -7,7 +7,7 @@ from kornia.core import Module, Tensor, concatenate, stack, tensor, where, zeros
 from kornia.filters.sobel import spatial_gradient3d
 from kornia.geometry.conversions import normalize_pixel_coordinates, normalize_pixel_coordinates3d
 from kornia.utils import create_meshgrid, create_meshgrid3d
-from kornia.utils._compat import torch_version_geq
+from kornia.utils._compat import torch_version_ge
 from kornia.utils.helpers import safe_solve_with_mask
 
 from .dsnt import spatial_expectation2d, spatial_softmax2d
@@ -609,7 +609,7 @@ def conv_quad_interp3d(input: Tensor, strict_maxima_bonus: float = 10.0, eps: fl
     dxs = 0.25 * A[..., 5]  # normalization to match OpenCV implementation
 
     Hes = stack([dxx, dxy, dxs, dxy, dyy, dys, dxs, dys, dss], -1).view(-1, 3, 3)
-    if not torch_version_geq(1, 10):
+    if not torch_version_ge(1, 10):
         # The following is needed to avoid singular cases
         Hes += torch.rand(Hes[0].size(), device=Hes.device).abs()[None] * eps
 

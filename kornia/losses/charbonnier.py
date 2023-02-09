@@ -14,8 +14,8 @@ def charbonnier_loss(img1: Tensor, img2: Tensor, reduction: str = "none") -> Ten
         \text{WL}(x, y) = \sqrt{(x - y)^{2} + 1} - 1
 
     Where:
-       - :math:`x` expects to be the prediction.
-       - :math:`z` expects to be the target to be regressed to.
+       - :math:`x` is the prediction.
+       - :math:`y` is the target to be regressed to.
 
     Reference:
         [1] https://arxiv.org/pdf/1701.03077.pdf
@@ -78,8 +78,8 @@ class CharbonnierLoss(Module):
         \text{WL}(x, y) = \sqrt{(x - y)^{2} + 1} - 1
 
     Where:
-       - :math:`x` expects to be the prediction.
-       - :math:`z` expects to be the target to be regressed to.
+       - :math:`x` is the prediction.
+       - :math:`y` is the target to be regressed to.
 
     Reference:
         [1] https://arxiv.org/pdf/1701.03077.pdf

@@ -63,6 +63,18 @@ def dtype(dtype_name) -> torch.dtype:
     return TEST_DTYPES[dtype_name]
 
 
+@pytest.fixture(scope='session')
+def torch_optimizer():
+    try:
+        import torch._dynamo as dynamo
+
+        torch.set_float32_matmul_precision('high')
+        return dynamo.optimize('inductor')
+    except Exception as er:
+        del er
+        pytest.skip(f"skipped because {torch.__version__} may not have dynamo available! Failed to setup dynamo.")
+
+
 def pytest_generate_tests(metafunc):
     device_names = None
     dtype_names = None

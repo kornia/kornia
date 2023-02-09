@@ -7,6 +7,18 @@ from kornia.core.logger import KORNIA_CHECK_SHAPE
 from kornia.filters import gaussian_blur2d, spatial_gradient
 
 
+def _get_kernel_size(sigma: float):
+    ksize = int(2.0 * 4.0 * sigma + 1.0)
+
+    #  matches OpenCV, but may cause padding problem for small images
+    #  PyTorch does not allow to pad more than original size.
+    #  Therefore there is a hack in forward function
+
+    if ksize % 2 == 0:
+        ksize += 1
+    return ksize
+
+
 def harris_response(
     input: Tensor, k: Union[Tensor, float] = 0.04, grads_mode: str = 'sobel', sigmas: Optional[Tensor] = None
 ) -> Tensor:
@@ -251,6 +263,25 @@ def dog_response(input: Tensor) -> Tensor:
     return input[:, :, 1:] - input[:, :, :-1]
 
 
+def dog_response_single(input: Tensor, sigma1: float = 1.0, sigma2: float = 1.6) -> Tensor:
+    r"""Compute the Difference-of-Gaussian response.
+
+    Args:
+        input: a given the gaussian 4d tensor :math:`(B, C, H, W)`.
+        sigma1: lower gaussian sigma
+        sigma2: bigger gaussian sigma
+
+    Return:
+        the response map per channel with shape :math:`(B, C, H, W)`.
+    """
+    KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
+    ks1 = _get_kernel_size(sigma1)
+    ks2 = _get_kernel_size(sigma1)
+    g1 = gaussian_blur2d(input, (ks1, ks1), (sigma1, sigma1))
+    g2 = gaussian_blur2d(input, (ks2, ks2), (sigma2, sigma2))
+    return g2 - g1
+
+
 class BlobDoG(Module):
     r"""Module that calculates Difference-of-Gaussians blobs.
 
@@ -266,6 +297,24 @@ class BlobDoG(Module):
 
     def forward(self, input: Tensor, sigmas: Optional[Tensor] = None) -> Tensor:
         return dog_response(input)
+
+
+class BlobDoGSingle(Module):
+    r"""Module that calculates Difference-of-Gaussians blobs.
+
+    See :func:`~kornia.feature.dog_response_single` for details.
+    """
+
+    def __init__(self, sigma1: float = 1.0, sigma2: float = 1.6) -> None:
+        super().__init__()
+        self.sigma1 = sigma1
+        self.sigma2 = sigma2
+
+    def __repr__(self) -> str:
+        return f'{self.__class__.__name__}, sigma1={self.sigma1}, sigma2={self.sigma2})'
+
+    def forward(self, input: Tensor, sigmas: Optional[Tensor] = None) -> Tensor:
+        return dog_response_single(input, self.sigma1, self.sigma2)
 
 
 class CornerHarris(Module):

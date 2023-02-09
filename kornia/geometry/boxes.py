@@ -42,6 +42,8 @@ def _transform_boxes(boxes: torch.Tensor, M: torch.Tensor) -> torch.Tensor:
 
     # Work with batch as kornia.transform_points only supports a batch of points.
     boxes_per_batch, n_points_per_box, coordinates_dimension = boxes.shape[-3:]
+    if boxes_per_batch == 0:
+        return boxes
     points = boxes.view(-1, n_points_per_box * boxes_per_batch, coordinates_dimension)
     M = M if M.ndim == 3 else M.unsqueeze(0)
 
@@ -162,7 +164,6 @@ def _boxes3d_to_polygons3d(
     return polygons3d
 
 
-# NOTE: Cannot jit with Union types with torch <= 0.10
 # @torch.jit.script
 class Boxes:
     r"""2D boxes containing N or BxN boxes.
@@ -189,7 +190,6 @@ class Boxes:
         raise_if_not_floating_point: bool = True,
         mode: str = "vertices_plus",
     ) -> None:
-
         self._N: Optional[List[int]] = None
 
         if isinstance(boxes, list):
@@ -216,6 +216,19 @@ class Boxes:
 
         self._data = boxes
         self._mode = mode
+
+    def __getitem__(self, key) -> "Boxes":
+        new_box = type(self)(self._data[key], False)
+        new_box._mode = self._mode
+        return new_box
+
+    def __setitem__(self, key, value: "Boxes") -> "Boxes":
+        self._data[key] = value._data
+        return self
+
+    @property
+    def shape(self):
+        return self.data.shape
 
     def get_boxes_shape(self) -> Tuple[torch.Tensor, torch.Tensor]:
         r"""Compute boxes heights and widths.
@@ -248,7 +261,54 @@ class Boxes:
         if inplace:
             self._data = data
             return self
-        return Boxes(data, False)
+
+        obj = self.clone()
+        obj._data = data
+        return obj
+
+    def index_put(
+        self, indices: Union[Tuple[Tensor, ...], List[Tensor]], values: Union[Tensor, "Boxes"], inplace: bool = False
+    ) -> "Boxes":
+        if inplace:
+            _data = self._data
+        else:
+            _data = self._data.clone()
+
+        if isinstance(values, Boxes):
+            _data.index_put_(indices, values.data)
+        else:
+            _data.index_put_(indices, values)
+
+        if inplace:
+            return self
+
+        obj = self.clone()
+        obj._data = _data
+        return obj
+
+    def pad(self, padding_size: Tensor) -> "Boxes":
+        """Pad a bounding box.
+
+        Args:
+            padding_size: (B, 4)
+        """
+        if not (len(padding_size.shape) == 2 and padding_size.size(1) == 4):
+            raise RuntimeError(f"Expected padding_size as (B, 4). Got {padding_size.shape}.")
+        self._data[..., 0] += padding_size[..., None, :1].to(device=self._data.device)  # left padding
+        self._data[..., 1] += padding_size[..., None, 2:3].to(device=self._data.device)  # top padding
+        return self
+
+    def unpad(self, padding_size: Tensor) -> "Boxes":
+        """Pad a bounding box.
+
+        Args:
+            padding_size: (B, 4)
+        """
+        if not (len(padding_size.shape) == 2 and padding_size.size(1) == 4):
+            raise RuntimeError(f"Expected padding_size as (B, 4). Got {padding_size.shape}.")
+        self._data[..., 0] -= padding_size[..., None, :1].to(device=self._data.device)  # left padding
+        self._data[..., 1] -= padding_size[..., None, 2:3].to(device=self._data.device)  # top padding
+        return self
 
     def clamp(
         self,
@@ -276,12 +336,16 @@ class Boxes:
         _data[..., 1][_data[..., 1] > botright_y] = botright_y[_data[..., 1] > botright_y]
         if inplace:
             return self
-        return Boxes(_data, False)
+
+        obj = self.clone()
+        obj._data = _data
+        return obj
 
     def trim(self, correspondence_preserve: bool = False, inplace: bool = False) -> "Boxes":
         """Trim out zero padded boxes.
 
         Given box arrangements of shape :math:`(4, 4, Box)`:
+
             == === == === == === == === ==
             -- Box -- Box -- Box -- Box --
             --  0  --  0  -- Box -- Box --
@@ -321,7 +385,10 @@ class Boxes:
             _data[area > max_area] = 0.0
         if inplace:
             return self
-        return Boxes(_data, False)
+
+        obj = self.clone()
+        obj._data = _data
+        return obj
 
     def compute_area(self) -> torch.Tensor:
         """Returns :math:`(B, N)`."""
@@ -405,7 +472,7 @@ class Boxes:
                 * 'vertices_plus': similar to 'vertices' mode but where box width and length are defined as
                   ``width = xmax - xmin + 1`` and ``height = ymax - ymin + 1``. ymin + 1``.
             as_padded_sequence: whether to keep the pads for a list of boxes. This parameter is only valid
-                if the boxes are from a box list.
+                if the boxes are from a box list whilst `from_tensor`.
 
         Returns:
             Boxes tensor in the ``mode`` format. The shape depends with the ``mode`` value:
@@ -529,7 +596,9 @@ class Boxes:
             self._data = transformed_boxes
             return self
 
-        return Boxes(transformed_boxes, False)
+        obj = self.clone()
+        obj._data = transformed_boxes
+        return obj
 
     def transform_boxes_(self, M: torch.Tensor) -> "Boxes":
         """Inplace version of :func:`Boxes.transform_boxes`"""
@@ -584,7 +653,56 @@ class Boxes:
         return self
 
     def clone(self) -> "Boxes":
-        return Boxes(self._data.clone(), False)
+        obj = type(self)(self._data.clone(), False)
+        obj._mode = self._mode
+        obj._N = self._N
+        obj._is_batched = self._is_batched
+        return obj
+
+    def type(self, dtype: torch.dtype) -> "Boxes":
+        self._data = self._data.type(dtype)
+        return self
+
+
+class VideoBoxes(Boxes):
+    temporal_channel_size: int
+
+    @classmethod
+    def from_tensor(  # type: ignore[override]
+        cls, boxes: Union[torch.Tensor, List[torch.Tensor]], validate_boxes: bool = True
+    ) -> "VideoBoxes":
+        if isinstance(boxes, (list,)) or (boxes.dim() != 5 or boxes.shape[-2:] != torch.Size([4, 2])):
+            raise ValueError("Input box type is not yet supported. Please input an `BxTxNx4x2` tensor directly.")
+
+        temporal_channel_size = boxes.size(1)
+
+        quadrilaterals = _boxes_to_quadrilaterals(
+            boxes.view(boxes.size(0) * boxes.size(1), -1, boxes.size(3), boxes.size(4)),
+            mode="vertices_plus",
+            validate_boxes=validate_boxes,
+        )
+        # Due to some torch.jit.script bug (at least <= 1.9), you need to pass all arguments to __init__ when
+        # constructing the class from inside of a method.
+        out = cls(quadrilaterals, False, "vertices_plus")
+        out.temporal_channel_size = temporal_channel_size
+        return out
+
+    def to_tensor(  # type: ignore[override]
+        self, mode: Optional[str] = None
+    ) -> Union[torch.Tensor, List[torch.Tensor]]:
+        out = super().to_tensor(mode, as_padded_sequence=False)
+        if isinstance(out, Tensor):
+            return out.view(-1, self.temporal_channel_size, *out.shape[1:])
+        # If returns a list of boxes.
+        return [_out.view(-1, self.temporal_channel_size, *_out.shape[1:]) for _out in out]
+
+    def clone(self) -> "VideoBoxes":
+        obj = type(self)(self._data.clone(), False)
+        obj._mode = self._mode
+        obj._N = self._N
+        obj._is_batched = self._is_batched
+        obj.temporal_channel_size = self.temporal_channel_size
+        return obj
 
 
 @torch.jit.script
@@ -628,6 +746,19 @@ class Boxes3D:
 
         self._data = boxes
         self._mode = mode
+
+    def __getitem__(self, key) -> "Boxes3D":
+        new_box = Boxes3D(self._data[key], False, mode="xyzxyz_plus")
+        new_box._mode = self._mode
+        return new_box
+
+    def __setitem__(self, key, value: "Boxes3D") -> "Boxes3D":
+        self._data[key] = value._data
+        return self
+
+    @property
+    def shape(self):
+        return self.data.shape
 
     def get_boxes_shape(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         r"""Compute boxes heights and widths.

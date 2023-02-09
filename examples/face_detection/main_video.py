@@ -50,7 +50,6 @@ def my_app():
     draw_keypoints: bool = False
 
     while True:
-
         # Capture the video frame
         # by frame
         _, frame = cap.read()

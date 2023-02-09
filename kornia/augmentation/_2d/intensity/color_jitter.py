@@ -1,4 +1,3 @@
-import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
@@ -76,17 +75,8 @@ class ColorJitter(IntensityAugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
-        silence_instantiation_warning: bool = False,
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
-
-        if not silence_instantiation_warning:
-            warnings.warn(
-                "`ColorJitter` is now following Torchvision implementation. Old "
-                "behavior can be retrieved by instantiating `ColorJiggle`.",
-                category=DeprecationWarning,
-            )
+        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
 
         self.brightness = brightness
         self.contrast = contrast
@@ -97,7 +87,6 @@ class ColorJitter(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-
         transforms = [
             lambda img: adjust_brightness_accumulative(img, params["brightness_factor"]),
             lambda img: adjust_contrast_with_mean_subtraction(img, params["contrast_factor"]),

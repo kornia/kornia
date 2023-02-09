@@ -1,12 +1,12 @@
 import warnings
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, Union
 
 from torch import Tensor
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.constants import BorderType
-from kornia.filters import gaussian_blur2d_t
+from kornia.filters import gaussian_blur2d
 
 
 class RandomGaussianBlur(IntensityAugmentationBase2D):
@@ -54,19 +54,16 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        kernel_size: Tuple[int, int],
-        sigma: Tuple[float, float],
+        kernel_size: Union[Tuple[int, int], int],
+        sigma: Union[Tuple[float, float], Tensor],
         border_type: str = "reflect",
         separable: bool = True,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
         silence_instantiation_warning: bool = False,
     ) -> None:
-        super().__init__(
-            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
-        )
+        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
 
         if not silence_instantiation_warning:
             warnings.warn(
@@ -82,7 +79,7 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         sigma = params["sigma"].to(device=input.device, dtype=input.dtype).unsqueeze(-1).expand(-1, 2)
-        return gaussian_blur2d_t(
+        return gaussian_blur2d(
             input,
             self.flags["kernel_size"],
             sigma,

@@ -73,7 +73,6 @@ def normalize_transformation(M: Tensor, eps: float = 1e-8) -> Tensor:
 def find_fundamental(
     points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
-
     r"""Compute the fundamental matrix using the DLT formulation.
 
     The linear system is solved by using the Weighted Least Squares Solution for the 8 Points algorithm.

@@ -39,7 +39,11 @@ Has the inputs:
   with format of a json list within strings for each pytorch version desired.
 - `pytorch-dtype`: (string, default: `float32`) the dtype used to generate
   the tests with pytest.
+- `pytest-extra`: (string, default: ``) extra options passed for the pytest
+  e.g: `-k test_smoke` to collect and run just smoke tests.
 - `continue-on-error`: (boolean, default: `false`) to set the
   `continue-on-error` behavior on the test step.
+- `fail-fast`: (boolean, default: `false`) to set the `fail-fast` behavior on
+  the matrix strategy.
 
 A matrix strategy will be adopted from the list of python and pytorch version.

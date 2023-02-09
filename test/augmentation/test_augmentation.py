@@ -1583,11 +1583,11 @@ class TestColorJitter(BaseTester):
 
         f = AugmentationSequential(ColorJiggle(), ColorJiggle())
 
-        input = torch.rand(3, 5, 5, device=device, dtype=dtype).unsqueeze(0)  # 1 x 3 x 5 x 5
+        input = torch.rand(3, 5, 5, device=device, dtype=dtype).unsqueeze(0).repeat(4, 1, 1, 1)  # 4 x 3 x 5 x 5
 
         expected = input
 
-        expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
+        expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0).repeat(4, 1, 1)  # 4 x 3 x 3
 
         self.assert_close(f(input), expected)
         self.assert_close(f.transform_matrix, expected_transform)
@@ -3390,19 +3390,10 @@ class TestRandomGaussianBlur(BaseTester):
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(RandomGaussianBlur(kernel_size, sigma, "replicate", p=1.0), (input,), raise_exception=True)
 
-    def test_jit(self, device, dtype):
-        op = kornia.filters.gaussian_blur2d_t
-        op_script = torch.jit.script(op)
-        func_params = [(3, 3), torch.tensor([1.5, 1.5]).view(1, -1)]
-        params = [(3, 3), torch.tensor([1.5, 1.5]).view(1, -1)]
-
-        img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
-        self.assert_close(op(img, *params), op_script(img, *func_params))
-
     def test_module(self, device, dtype):
         func_params = [(3, 3), torch.tensor([1.5, 1.5]).view(1, -1)]
         params = [(3, 3), (1.5, 1.5)]
-        op = kornia.filters.gaussian_blur2d_t
+        op = kornia.filters.gaussian_blur2d
         op_module = RandomGaussianBlur(*params)
 
         img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
@@ -3727,18 +3718,30 @@ class TestResize:
 
 class TestSmallestMaxSize:
     def test_smoke(self, device, dtype):
-        img = torch.rand(1, 1, 4, 6, device=device, dtype=dtype)
+        img_A = torch.rand(1, 1, 4, 6, device=device, dtype=dtype)
+        img_B = torch.rand(1, 1, 9, 6, device=device, dtype=dtype)
         aug = SmallestMaxSize(max_size=2)
-        out = aug(img)
-        assert out.shape == (1, 1, 2, 3)
+
+        assert aug(img_A).shape == (1, 1, 2, 3)
+        assert aug(img_B).shape == (1, 1, 3, 2)
+
+        aug = SmallestMaxSize(max_size=2)
+        assert aug(img_B).shape == (1, 1, 3, 2)
+        assert aug(img_A).shape == (1, 1, 2, 3)
 
 
 class TestLongestMaxSize:
     def test_smoke(self, device, dtype):
-        img = torch.rand(1, 1, 4, 6, device=device, dtype=dtype)
+        img_A = torch.rand(1, 1, 4, 6, device=device, dtype=dtype)
+        img_B = torch.rand(1, 1, 8, 6, device=device, dtype=dtype)
         aug = LongestMaxSize(max_size=3)
-        out = aug(img)
-        assert out.shape == (1, 1, 2, 3)
+
+        assert aug(img_A).shape == (1, 1, 2, 3)
+        assert aug(img_B).shape == (1, 1, 3, 2)
+
+        aug = LongestMaxSize(max_size=3)
+        assert aug(img_B).shape == (1, 1, 3, 2)
+        assert aug(img_A).shape == (1, 1, 2, 3)
 
 
 class TestRandomPosterize:
@@ -3952,14 +3955,14 @@ class TestPlanckianJitter(BaseTester):
 
     def test_planckian_jitter_blackbody(self, device, dtype):
         torch.manual_seed(0)
-        f = RandomPlanckianJitter(select_from=1).to(device, dtype)
+        f = RandomPlanckianJitter(select_from=1)
         input = self._get_input(device, dtype)
         expected = self._get_expected_output_blackbody(device, dtype)
         self.assert_close(f(input), expected, low_tolerance=True)
 
     def test_planckian_jitter_cied(self, device, dtype):
         torch.manual_seed(0)
-        f = RandomPlanckianJitter(mode='CIED', select_from=1).to(device, dtype)
+        f = RandomPlanckianJitter(mode='CIED', select_from=1)
         input = self._get_input(device, dtype)
         expected = self._get_expected_output_cied(device, dtype)
         self.assert_close(f(input), expected, low_tolerance=True)
@@ -3969,7 +3972,7 @@ class TestPlanckianJitter(BaseTester):
         input = self._get_input(device, dtype).repeat(2, 1, 1, 1)
 
         select_from = [1, 2, 24]
-        f = RandomPlanckianJitter(select_from=select_from).to(device, dtype)
+        f = RandomPlanckianJitter(select_from=select_from)
         expected = self._get_expected_output_batch(device, dtype)
         self.assert_close(f(input), expected, low_tolerance=True)
 
@@ -3978,7 +3981,7 @@ class TestPlanckianJitter(BaseTester):
         input = self._get_input(device, dtype).repeat(2, 1, 1, 1)
 
         select_from = [1, 2, 24, 3, 4, 5]
-        f = RandomPlanckianJitter(select_from=select_from, same_on_batch=True, p=1.0).to(device, dtype)
+        f = RandomPlanckianJitter(select_from=select_from, same_on_batch=True, p=1.0)
         expected = self._get_expected_output_same_on_batch(device, dtype)
         self.assert_close(f(input), expected, low_tolerance=True)
 

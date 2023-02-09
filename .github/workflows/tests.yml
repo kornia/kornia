@@ -17,7 +17,15 @@ on:
         required: false
         type: string
         default: 'float32'
+      pytest-extra:
+        required: false
+        type: string
+        default: ''
       continue-on-error:
+        required: false
+        type: boolean
+        default: false
+      fail-fast:
         required: false
         type: boolean
         default: false
@@ -27,6 +35,7 @@ jobs:
     name: python-${{ matrix.python-version }}, torch-${{ matrix.pytorch-version }}
     runs-on: ${{ inputs.os }}
     strategy:
+      fail-fast: ${{ inputs.fail-fast }}
       matrix:
         python-version: ${{ fromJSON(inputs.python-version) }}
         pytorch-version: ${{ fromJSON(inputs.pytorch-version) }}
@@ -48,7 +57,7 @@ jobs:
     - name: Run CPU tests ${{ inputs.pytorch-dtype }}
       continue-on-error: ${{ inputs.continue-on-error }}
       shell: bash -l {0}
-      run: pytest -v --device cpu --dtype ${{ inputs.pytorch-dtype }} --cov=kornia --cov-report xml ./test
+      run: pytest -v --device cpu --dtype ${{ inputs.pytorch-dtype }} ${{ inputs.pytest-extra }} --cov=kornia --cov-report xml ./test
 
 
     - if: always()
