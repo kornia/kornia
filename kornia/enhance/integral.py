@@ -90,7 +90,7 @@ class IntegralTensor(Module):
                 [ 3.,  6.,  9., 12., 15.]])
     """
 
-    def __init__(self, dim: Optional[Tuple[int]] = None) -> None:
+    def __init__(self, dim: Optional[Tuple[int, ...]] = None) -> None:
         super().__init__()
         self.dim = dim
 
