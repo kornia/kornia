@@ -334,7 +334,7 @@ class CornerHarris(Module):
         return
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ + '(k=' + str(self.k) + ', ' + 'grads_mode=' + self.grads_mode + ')'
+        return f'{self.__class__.__name__}(k={self.k}, grads_mode={self.grads_mode})'
 
     def forward(self, input: Tensor, sigmas: Optional[Tensor] = None) -> Tensor:
         return harris_response(input, self.k, self.grads_mode, sigmas)
@@ -352,7 +352,7 @@ class CornerGFTT(Module):
         return
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ + 'grads_mode=' + self.grads_mode + ')'
+        return f'{self.__class__.__name__}(grads_mode={self.grads_mode})'
 
     def forward(self, input: Tensor, sigmas: Optional[Tensor] = None) -> Tensor:
         return gftt_response(input, self.grads_mode, sigmas)
@@ -370,7 +370,7 @@ class BlobHessian(Module):
         return
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ + 'grads_mode=' + self.grads_mode + ')'
+        f'{self.__class__.__name__}(grads_mode={self.grads_mode})'
 
     def forward(self, input: Tensor, sigmas: Optional[Tensor] = None) -> Tensor:
         return hessian_response(input, self.grads_mode, sigmas)

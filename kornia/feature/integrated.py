@@ -82,17 +82,10 @@ class LAFDescriptor(Module):
 
     def __repr__(self) -> str:
         return (
-            self.__class__.__name__
-            + '('
-            + 'descriptor='
-            + self.descriptor.__repr__()
-            + ', '
-            + 'patch_size='
-            + str(self.patch_size)
-            + ', '
-            + 'grayscale_descriptor='
-            + str(self.grayscale_descriptor)
-            + ')'
+            f"{self.__class__.__name__}"
+            f"(descriptor={self.descriptor.__repr__()}, "
+            f"patch_size={str(self.patch_size)}, "
+            f" grayscale_descriptor='{str(self.grayscale_descriptor)})"
         )
 
     def forward(self, img: Tensor, lafs: Tensor) -> Tensor:

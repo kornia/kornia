@@ -80,16 +80,10 @@ class Laplacian(Module):
 
     def __repr__(self) -> str:
         return (
-            self.__class__.__name__
-            + '(kernel_size='
-            + str(self.kernel_size)
-            + ', '
-            + 'normalized='
-            + str(self.normalized)
-            + ', '
-            + 'border_type='
-            + self.border_type
-            + ')'
+            f"{self.__class__.__name__}"
+            f"(kernel_size={self.kernel_size}, "
+            f"normalized={self.normalized}, "
+            f"border_type={self.border_type})"
         )
 
     def forward(self, input: Tensor) -> Tensor:

@@ -149,29 +149,14 @@ class ConvSoftArgmax2d(Module):
 
     def __repr__(self) -> str:
         return (
-            self.__class__.__name__
-            + '('
-            + 'kernel_size='
-            + str(self.kernel_size)
-            + ', '
-            + 'stride='
-            + str(self.stride)
-            + ', '
-            + 'padding='
-            + str(self.padding)
-            + ', '
-            + 'temperature='
-            + str(self.temperature)
-            + ', '
-            + 'normalized_coordinates='
-            + str(self.normalized_coordinates)
-            + ', '
-            + 'eps='
-            + str(self.eps)
-            + ', '
-            + 'output_value='
-            + str(self.output_value)
-            + ')'
+            f"{self.__class__.__name__}"
+            f"(kernel_size={self.kernel_size}, "
+            f"stride={self.stride}, "
+            f"padding={self.padding}, "
+            f"temperature={self.temperature}, "
+            f"normalized_coordinates={self.normalized_coordinates}, "
+            f"eps={self.eps}, "
+            f"output_value={self.output_value})"
         )
 
     def forward(self, x: Tensor):
@@ -217,32 +202,15 @@ class ConvSoftArgmax3d(Module):
 
     def __repr__(self) -> str:
         return (
-            self.__class__.__name__
-            + '('
-            + 'kernel_size='
-            + str(self.kernel_size)
-            + ', '
-            + 'stride='
-            + str(self.stride)
-            + ', '
-            + 'padding='
-            + str(self.padding)
-            + ', '
-            + 'temperature='
-            + str(self.temperature)
-            + ', '
-            + 'normalized_coordinates='
-            + str(self.normalized_coordinates)
-            + ', '
-            + 'eps='
-            + str(self.eps)
-            + ', '
-            + 'strict_maxima_bonus='
-            + str(self.strict_maxima_bonus)
-            + ', '
-            + 'output_value='
-            + str(self.output_value)
-            + ')'
+            f"{self.__class__.__name__}"
+            f"(kernel_size={self.kernel_size}, "
+            f"stride={self.stride}, "
+            f"padding={self.padding}, "
+            f"temperature={self.temperature}, "
+            f"normalized_coordinates={self.normalized_coordinates}, "
+            f"eps={self.eps}, "
+            f"strict_maxima_bonus={self.strict_maxima_bonus}, "
+            f"output_value={self.output_value})"
         )
 
     def forward(self, x: Tensor):
@@ -541,13 +509,9 @@ class SpatialSoftArgmax2d(Module):
 
     def __repr__(self) -> str:
         return (
-            self.__class__.__name__
-            + '(temperature='
-            + str(self.temperature)
-            + ', '
-            + 'normalized_coordinates='
-            + str(self.normalized_coordinates)
-            + ')'
+            f"{self.__class__.__name__}"
+            f"temperature={self.temperature}, "
+            f"normalized_coordinates={self.normalized_coordinates})"
         )
 
     def forward(self, input: Tensor) -> Tensor:
@@ -654,7 +618,7 @@ class ConvQuadInterp3d(Module):
         return
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ + '(' + 'strict_maxima_bonus=' + str(self.strict_maxima_bonus) + ')'
+        return f"{self.__class__.__name__}" f"strict_maxima_bonus={self.strict_maxima_bonus})"
 
     def forward(self, x: Tensor):
         return conv_quad_interp3d(x, self.strict_maxima_bonus, self.eps)
