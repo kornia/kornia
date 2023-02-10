@@ -43,7 +43,7 @@ class PatchAffineShapeEstimator(nn.Module):
         self.weighting: torch.Tensor = get_gaussian_kernel2d((self.patch_size, self.patch_size), (sigma, sigma), True)
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(patch_size={str(self.patch_size)}, eps={str(self.eps)})"
+        return f"{self.__class__.__name__}(patch_size={self.patch_size}, eps={self.eps})"
 
     def forward(self, patch: torch.Tensor) -> torch.Tensor:
         """Args:
