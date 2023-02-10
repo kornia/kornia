@@ -618,7 +618,7 @@ class ConvQuadInterp3d(Module):
         return
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}" f"strict_maxima_bonus={self.strict_maxima_bonus})"
+        return f"{self.__class__.__name__}(strict_maxima_bonus={self.strict_maxima_bonus})"
 
     def forward(self, x: Tensor):
         return conv_quad_interp3d(x, self.strict_maxima_bonus, self.eps)
