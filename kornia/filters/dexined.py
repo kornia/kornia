@@ -9,7 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from kornia.core import Module, Tensor, concatenate
-from kornia.testing import KORNIA_CHECK
+from kornia.core.check import KORNIA_CHECK
 from kornia.utils import map_location_to_cpu
 
 url: str = "http://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth"

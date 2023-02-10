@@ -1,5 +1,5 @@
 from kornia.core import Module, Tensor
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 
 def total_variation(img: Tensor, reduction: str = "sum") -> Tensor:
