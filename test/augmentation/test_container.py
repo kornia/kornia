@@ -219,7 +219,7 @@ class TestSequential:
 
 class TestAugmentationSequential:
     @pytest.mark.parametrize(
-        'data_keys', ["input", ["mask", "input"], ["input", "bbox_yxyx"], [0, 10], [BorderType.REFLECT]]
+        'data_keys', ["input", "image", ["mask", "input"], ["input", "bbox_yxyx"], [0, 10], [BorderType.REFLECT]]
     )
     @pytest.mark.parametrize("augmentation_list", [K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0)])
     def test_exception(self, augmentation_list, data_keys, device, dtype):
@@ -292,7 +292,7 @@ class TestAugmentationSequential:
         )
 
         aug_hor = K.AugmentationSequential(
-            K.RandomHorizontalFlip(p=1.0), data_keys=["input", "bbox"], same_on_batch=False
+            K.RandomHorizontalFlip(p=1.0), data_keys=["image", "bbox"], same_on_batch=False
         )
 
         out_ver = aug_ver(inp.clone(), bbox.clone())
@@ -371,7 +371,7 @@ class TestAugmentationSequential:
     def test_random_erasing(self, device, dtype):
         fill_value = 0.5
         input = torch.randn(3, 3, 100, 100, device=device, dtype=dtype)
-        aug = K.AugmentationSequential(K.RandomErasing(p=1.0, value=fill_value), data_keys=["input", "mask"])
+        aug = K.AugmentationSequential(K.RandomErasing(p=1.0, value=fill_value), data_keys=["image", "mask"])
 
         reproducibility_test((input, input), aug)
 
