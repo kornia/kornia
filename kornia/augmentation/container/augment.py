@@ -24,8 +24,8 @@ class AugmentationSequential(ImageSequential):
     Args:
         *args: a list of kornia augmentation modules.
 
-        data_keys: the input type sequential for applying augmentations. Accepts "input", "image", "mask", "bbox", "bbox_xyxy",
-                   "bbox_xywh", "keypoints".
+        data_keys: the input type sequential for applying augmentations. Accepts "input", "image", "mask",
+                   "bbox", "bbox_xyxy", "bbox_xywh", "keypoints".
 
         same_on_batch: apply the same transformation across the batch. If None, it will not overwrite the function-wise
                        settings.
