@@ -3,8 +3,8 @@ from __future__ import annotations
 import torch
 
 from kornia.core import Tensor, pad, stack, tensor, zeros
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.geometry.transform import rotate, rotate3d
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.utils import _extract_device_dtype
 
 from .kernels import _check_kernel_size, _unpack_2d_ks, _unpack_3d_ks

@@ -7,8 +7,8 @@ from typing import Optional, Tuple, Union
 import torch
 
 from kornia.core import Tensor
+from kornia.core.check import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 from kornia.feature.laf import get_laf_center, get_laf_orientation, get_laf_scale
-from kornia.testing import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 
 from .core import AdalamConfig, _no_match, adalam_core
 from .utils import dist_matrix

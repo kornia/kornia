@@ -5,9 +5,9 @@ from typing import Callable, List, Optional, Tuple, Union
 import torch
 
 from kornia.core import Tensor
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.enhance import normalize_min_max
 from kornia.filters import filter2d
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 # the default kernels for the diamond square
 default_diamond_kernel: List[List[float]] = [[0.25, 0.0, 0.25], [0.0, 0.0, 0.0], [0.25, 0.0, 0.25]]

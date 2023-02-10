@@ -6,9 +6,9 @@ import torch.nn.functional as F
 from typing_extensions import TypedDict
 
 from kornia.core import Device, Module, Tensor, concatenate, eye, tensor, where, zeros
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.subpix import ConvSoftArgmax3d, NonMaximaSuppression2d
 from kornia.geometry.transform import ScalePyramid, pyrdown, resize
-from kornia.testing import KORNIA_CHECK_SHAPE
 
 from .laf import laf_from_center_scale_ori, laf_is_inside_image
 from .orientation import PassLAF

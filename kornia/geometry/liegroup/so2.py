@@ -3,13 +3,13 @@
 from typing import Optional, overload
 
 from kornia.core import Module, Parameter, Tensor, complex, rand, stack, tensor, zeros_like
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
 from kornia.geometry.liegroup._utils import (
     check_so2_matrix_shape,
     check_so2_t_shape,
     check_so2_theta_shape,
     check_so2_z_shape,
 )
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
 
 
 class So2(Module):

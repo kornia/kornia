@@ -1,7 +1,7 @@
 from typing import Optional, Tuple
 
 from kornia.core import Module, Tensor
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 
 def integral_tensor(input: Tensor, dim: Optional[Tuple[int, ...]] = None) -> Tensor:

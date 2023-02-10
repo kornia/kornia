@@ -6,8 +6,8 @@ from kornia.augmentation.base import _BasicAugmentationBase
 from kornia.augmentation.utils import _transform_input, _transform_output_shape, _validate_input_dtype
 from kornia.constants import DataKey, DType
 from kornia.core import Tensor, tensor
+from kornia.core.check import KORNIA_UNWRAP
 from kornia.geometry.boxes import Boxes
-from kornia.testing import KORNIA_UNWRAP
 
 
 class MixAugmentationBaseV2(_BasicAugmentationBase):
