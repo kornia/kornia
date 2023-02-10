@@ -35,7 +35,7 @@ class RandomMosaic(MixAugmentationBaseV2):
             each output will mix 4 images in a 2x2 grid.
         min_bbox_size: minimum area of bounding boxes. Default to 0.
         data_keys: the input type sequential for applying augmentations.
-            Accepts "input", "mask", "bbox", "bbox_xyxy", "bbox_xywh", "keypoints".
+            Accepts "input", "image", "mask", "bbox", "bbox_xyxy", "bbox_xywh", "keypoints".
         p: probability of applying the transformation for the whole batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
             to the batch form ``False``.
