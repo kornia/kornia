@@ -56,16 +56,10 @@ class PatchDominantGradientOrientation(nn.Module):
 
     def __repr__(self):
         return (
-            self.__class__.__name__ + '('
-            'patch_size='
-            + str(self.patch_size)
-            + ', '
-            + 'num_ang_bins='
-            + str(self.num_ang_bins)
-            + ', '
-            + 'eps='
-            + str(self.eps)
-            + ')'
+            f'{self.__class__.__name__}('
+            f'patch_size={self.patch_size}, '
+            f'num_ang_bins={self.num_ang_bins}, '
+            f'eps={self.eps})'
         )
 
     def forward(self, patch: torch.Tensor) -> torch.Tensor:
@@ -213,10 +207,7 @@ class LAFOrienter(nn.Module):
             self.angle_detector = angle_detector
 
     def __repr__(self):
-        return (
-            self.__class__.__name__ + '('
-            'patch_size=' + str(self.patch_size) + ', ' + 'angle_detector=' + str(self.angle_detector) + ')'
-        )
+        return f"{self.__class__.__name__}(patch_size={self.patch_size}, angle_detector={self.angle_detector})"
 
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
         """
