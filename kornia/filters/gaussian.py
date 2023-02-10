@@ -116,18 +116,11 @@ class GaussianBlur2d(Module):
 
     def __repr__(self) -> str:
         return (
-            self.__class__.__name__
-            + '(kernel_size='
-            + str(self.kernel_size)
-            + ', '
-            + 'sigma='
-            + str(self.sigma)
-            + ', '
-            + 'border_type='
-            + self.border_type
-            + 'separable='
-            + str(self.separable)
-            + ')'
+            f"{self.__class__.__name__}"
+            f"(kernel_size={self.kernel_size}, "
+            f"sigma={self.sigma}, "
+            f"border_type={self.border_type}, "
+            f"separable={self.separable})"
         )
 
     def forward(self, input: Tensor) -> Tensor:
