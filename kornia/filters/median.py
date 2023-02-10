@@ -3,7 +3,7 @@ from __future__ import annotations
 import torch.nn.functional as F
 
 from kornia.core import Module, Tensor
-from kornia.testing import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 from .kernels import _unpack_2d_ks, get_binary_kernel2d
 

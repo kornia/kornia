@@ -5,9 +5,9 @@ import torch
 import torch.nn as nn
 
 from kornia.core import Module, Tensor, concatenate, eye, normalize
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.filters import get_gaussian_kernel2d, spatial_gradient
 from kornia.geometry.conversions import pi
-from kornia.testing import KORNIA_CHECK_SHAPE
 
 
 def _get_reshape_kernel(kd: int, ky: int, kx: int) -> Tensor:

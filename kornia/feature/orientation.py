@@ -6,9 +6,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from kornia.constants import pi
+from kornia.core.check import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 from kornia.filters import SpatialGradient, get_gaussian_kernel2d
 from kornia.geometry import rad2deg
-from kornia.testing import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 from kornia.utils.helpers import map_location_to_cpu
 
 from .laf import extract_patches_from_pyramid, get_laf_orientation, set_laf_orientation

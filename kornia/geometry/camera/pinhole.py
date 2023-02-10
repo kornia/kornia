@@ -3,9 +3,9 @@ from typing import Iterable, List
 import torch
 
 from kornia.core import Device, Tensor
+from kornia.core.check import KORNIA_CHECK_SAME_DEVICE
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.linalg import inverse_transformation, transform_points
-from kornia.testing import KORNIA_CHECK_SAME_DEVICE
 from kornia.utils.helpers import _torch_inverse_cast
 
 

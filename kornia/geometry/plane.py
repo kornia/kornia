@@ -4,10 +4,10 @@
 from typing import Optional
 
 from kornia.core import Module, Tensor, stack, where
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 from kornia.core.tensor_wrapper import unwrap, wrap
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.vector import Scalar, Vector3
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 from kornia.utils.helpers import _torch_svd_cast
 
 __all__ = ["Hyperplane", "fit_plane"]
