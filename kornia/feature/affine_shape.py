@@ -110,9 +110,9 @@ class LAFAffineShapeEstimator(nn.Module):
     def __repr__(self):
         return (
             f'{self.__class__.__name__}'
-            f'(patch_size={str(self.patch_size)}, '
-            f'affine_shape_detector={str(self.affine_shape_detector)}, '
-            f'preserve_orientation={str(self.preserve_orientation)})'
+            f'(patch_size={self.patch_size}, '
+            f'affine_shape_detector={self.affine_shape_detector}, '
+            f'preserve_orientation={self.preserve_orientation})'
         )
 
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
