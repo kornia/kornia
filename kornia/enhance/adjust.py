@@ -716,7 +716,7 @@ def posterize(input: Tensor, bits: Union[int, Tensor]) -> Tensor:
     Example:
         >>> x = torch.rand(1, 6, 3, 3)
         >>> out = posterize(x, bits=8)
-        >>> torch.testing.assert_allclose(x, out)
+        >>> torch.testing.assert_close(x, out)
 
         >>> x = torch.rand(2, 6, 3, 3)
         >>> bits = torch.tensor([4, 2])
