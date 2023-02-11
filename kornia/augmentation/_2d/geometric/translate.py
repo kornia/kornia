@@ -76,7 +76,7 @@ class RandomTranslate(GeometricAugmentationBase2D):
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         translations = stack([params["translate_x"], params["translate_y"]], dim=-1)
-        return get_translation_matrix2d(torch.as_tensor(translations, device=input.device, dtype=input.dtype))
+        return get_translation_matrix2d(as_tensor(translations, device=input.device, dtype=input.dtype))
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
@@ -103,6 +103,6 @@ class RandomTranslate(GeometricAugmentationBase2D):
         return self.apply_transform(
             input,
             params=self._params,
-            transform=torch.as_tensor(transform, device=input.device, dtype=input.dtype),
+            transform=as_tensor(transform, device=input.device, dtype=input.dtype),
             flags=flags,
         )

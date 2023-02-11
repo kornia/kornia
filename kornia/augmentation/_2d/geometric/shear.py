@@ -77,9 +77,9 @@ class RandomShear(GeometricAugmentationBase2D):
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return get_shear_matrix2d(
-            torch.as_tensor(params["center"], device=input.device, dtype=input.dtype),
-            deg2rad(torch.as_tensor(params["shear_x"], device=input.device, dtype=input.dtype)),
-            deg2rad(torch.as_tensor(params["shear_y"], device=input.device, dtype=input.dtype)),
+            as_tensor(params["center"], device=input.device, dtype=input.dtype),
+            deg2rad(as_tensor(params["shear_x"], device=input.device, dtype=input.dtype)),
+            deg2rad(as_tensor(params["shear_y"], device=input.device, dtype=input.dtype)),
         )
 
     def apply_transform(
@@ -107,6 +107,6 @@ class RandomShear(GeometricAugmentationBase2D):
         return self.apply_transform(
             input,
             params=self._params,
-            transform=torch.as_tensor(transform, device=input.device, dtype=input.dtype),
+            transform=as_tensor(transform, device=input.device, dtype=input.dtype),
             flags=flags,
         )

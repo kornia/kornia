@@ -330,7 +330,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         batch_prob = params['batch_prob']
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         output: Boxes
-        if to_apply.bool().all():
+        if to_apply.all():
             output = self.apply_transform_box(input, params, flags, transform=transform)
         elif not to_apply.any():
             output = self.apply_non_transform_box(input, params, flags, transform=transform)
