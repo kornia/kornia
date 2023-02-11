@@ -123,6 +123,7 @@ class DType(Enum, metaclass=_KORNIA_EnumMeta):
 
 # TODO: (low-priority) add INPUT3D, MASK3D, BBOX3D, LAFs etc.
 class DataKey(Enum, metaclass=_KORNIA_EnumMeta):
+    IMAGE = 0
     INPUT = 0
     MASK = 1
     BBOX = 2
