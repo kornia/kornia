@@ -69,14 +69,10 @@ class CutmixGenerator(RandomGeneratorBase):
         self.beta_sampler = Beta(self._beta, self._beta)
         self.prob_sampler = Bernoulli(tensor(float(self.p), device=device, dtype=dtype))
         self.rand_sampler = Uniform(
-            tensor(0.0, device=device, dtype=dtype),
-            tensor(1.0, device=device, dtype=dtype),
-            validate_args=False,
+            tensor(0.0, device=device, dtype=dtype), tensor(1.0, device=device, dtype=dtype), validate_args=False
         )
         self.pair_sampler = Uniform(
-            tensor(0.0, device=device, dtype=dtype),
-            tensor(1.0, device=device, dtype=dtype),
-            validate_args=False,
+            tensor(0.0, device=device, dtype=dtype), tensor(1.0, device=device, dtype=dtype), validate_args=False
         )
 
     def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:

@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional
 import torch
 
 from kornia.augmentation._2d.base import AugmentationBase2D
-from kornia.core import tensor, Tensor
+from kornia.core import Tensor, tensor
 from kornia.geometry.transform import get_tps_transform, warp_image_tps
 
 

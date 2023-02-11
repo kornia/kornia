@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample, SamplePadding
-from kornia.core import as_tensor, Tensor
+from kornia.core import Tensor, as_tensor
 from kornia.geometry.conversions import deg2rad
 from kornia.geometry.transform import get_shear_matrix2d, warp_affine
 

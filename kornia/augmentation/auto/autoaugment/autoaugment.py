@@ -5,7 +5,7 @@ from torch.distributions import Categorical
 from kornia.augmentation.auto.base import SUBPLOLICY_CONFIG, PolicyAugmentBase
 from kornia.augmentation.auto.operations.policy import PolicySequential
 from kornia.augmentation.container.params import ParamItem
-from kornia.core import tensor, Module
+from kornia.core import Module, tensor
 
 from . import ops
 
