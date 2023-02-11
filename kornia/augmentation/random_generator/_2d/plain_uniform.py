@@ -50,9 +50,13 @@ class PlainUniformGenerator(RandomGeneratorBase):
             if name in names:
                 raise RuntimeError(f"factor name `{name}` has already been registered. Please check the duplication.")
             names.append(name)
-            if not isinstance(factor, (torch.nn.Parameter, Tensor)):
+            if isinstance(factor, torch.nn.Parameter):
+                self.register_parameter(name, factor)
+            elif isinstance(factor, Tensor):
+                self.register_buffer(name, factor)
+            else:
                 factor = _range_bound(factor, name, center=center, bounds=bound)
-            self.register_buffer(name, factor)
+                self.register_buffer(name, factor)
 
     def __repr__(self) -> str:
         repr = ", ".join([f"{name}={factor}" for factor, name, _, _ in self.samplers])

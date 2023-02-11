@@ -73,8 +73,8 @@ class CutmixGenerator(RandomGeneratorBase):
             validate_args=False,
         )
         self.pair_sampler = Uniform(
-            tensor(0.0, device=device, dtype=dtype),
-            tensor(1.0, device=device, dtype=dtype),
+            torch.tensor(0.0, device=device, dtype=dtype),
+            torch.tensor(1.0, device=device, dtype=dtype),
             validate_args=False,
         )
 

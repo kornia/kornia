@@ -124,7 +124,7 @@ class AutoAugment(PolicyAugmentBase):
             raise NotImplementedError(f"Invalid policy `{policy}`.")
 
         super().__init__(_policy)
-        selection_weights = tensor([1.0 / len(self)] * len(self))
+        selection_weights = torch.tensor([1.0 / len(self)] * len(self))
         self.rand_selector = Categorical(selection_weights)
 
     def compose_subpolicy_sequential(self, subpolicy: SUBPLOLICY_CONFIG) -> PolicySequential:
