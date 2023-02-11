@@ -42,6 +42,8 @@ def _transform_boxes(boxes: torch.Tensor, M: torch.Tensor) -> torch.Tensor:
 
     # Work with batch as kornia.transform_points only supports a batch of points.
     boxes_per_batch, n_points_per_box, coordinates_dimension = boxes.shape[-3:]
+    if boxes_per_batch == 0:
+        return boxes
     points = boxes.view(-1, n_points_per_box * boxes_per_batch, coordinates_dimension)
     M = M if M.ndim == 3 else M.unsqueeze(0)
 
@@ -188,7 +190,6 @@ class Boxes:
         raise_if_not_floating_point: bool = True,
         mode: str = "vertices_plus",
     ) -> None:
-
         self._N: Optional[List[int]] = None
 
         if isinstance(boxes, list):
@@ -293,8 +294,8 @@ class Boxes:
         """
         if not (len(padding_size.shape) == 2 and padding_size.size(1) == 4):
             raise RuntimeError(f"Expected padding_size as (B, 4). Got {padding_size.shape}.")
-        self._data[..., 0] += padding_size[..., None, :1]  # left padding
-        self._data[..., 1] += padding_size[..., None, 2:3]  # top padding
+        self._data[..., 0] += padding_size[..., None, :1].to(device=self._data.device)  # left padding
+        self._data[..., 1] += padding_size[..., None, 2:3].to(device=self._data.device)  # top padding
         return self
 
     def unpad(self, padding_size: Tensor) -> "Boxes":
@@ -305,8 +306,8 @@ class Boxes:
         """
         if not (len(padding_size.shape) == 2 and padding_size.size(1) == 4):
             raise RuntimeError(f"Expected padding_size as (B, 4). Got {padding_size.shape}.")
-        self._data[..., 0] -= padding_size[..., None, :1]  # left padding
-        self._data[..., 1] -= padding_size[..., None, 2:3]  # top padding
+        self._data[..., 0] -= padding_size[..., None, :1].to(device=self._data.device)  # left padding
+        self._data[..., 1] -= padding_size[..., None, 2:3].to(device=self._data.device)  # top padding
         return self
 
     def clamp(

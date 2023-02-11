@@ -172,7 +172,6 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-
         list_idx = params['idx'].tolist()
 
         self.pl = self.pl.to(device=input.device)

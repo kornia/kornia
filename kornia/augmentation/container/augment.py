@@ -26,8 +26,8 @@ class AugmentationSequential(ImageSequential):
     Args:
         *args: a list of kornia augmentation modules.
 
-        data_keys: the input type sequential for applying augmentations. Accepts "input", "mask", "bbox", "bbox_xyxy",
-                   "bbox_xywh", "keypoints".
+        data_keys: the input type sequential for applying augmentations. Accepts "input", "image", "mask",
+                   "bbox", "bbox_xyxy", "bbox_xywh", "keypoints".
 
         same_on_batch: apply the same transformation across the batch. If None, it will not overwrite the function-wise
                        settings.
@@ -54,7 +54,7 @@ class AugmentationSequential(ImageSequential):
                     strategies.
 
     .. note::
-        Mix augmentations (e.g. RandomMixUp, RandomCutMix) can only be working with "input" data key.
+        Mix augmentations (e.g. RandomMixUp, RandomCutMix) can only be working with "input"/"image" data key.
         It is not clear how to deal with the conversions of masks, bounding boxes and keypoints.
 
     .. note::

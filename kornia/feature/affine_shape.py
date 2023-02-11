@@ -5,9 +5,9 @@ from typing import Dict, Optional
 import torch
 import torch.nn as nn
 
+from kornia.core.check import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 from kornia.filters.kernels import get_gaussian_kernel2d
 from kornia.filters.sobel import SpatialGradient
-from kornia.testing import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 from kornia.utils.helpers import map_location_to_cpu
 
 from .laf import (
@@ -43,7 +43,7 @@ class PatchAffineShapeEstimator(nn.Module):
         self.weighting: torch.Tensor = get_gaussian_kernel2d((self.patch_size, self.patch_size), (sigma, sigma), True)
 
     def __repr__(self):
-        return self.__class__.__name__ + '(' 'patch_size=' + str(self.patch_size) + ', ' + 'eps=' + str(self.eps) + ')'
+        return f"{self.__class__.__name__}(patch_size={self.patch_size}, eps={self.eps})"
 
     def forward(self, patch: torch.Tensor) -> torch.Tensor:
         """Args:
@@ -109,16 +109,10 @@ class LAFAffineShapeEstimator(nn.Module):
 
     def __repr__(self):
         return (
-            self.__class__.__name__ + '('
-            'patch_size='
-            + str(self.patch_size)
-            + ', '
-            + 'affine_shape_detector='
-            + str(self.affine_shape_detector)
-            + ', '
-            + 'preserve_orientation='
-            + str(self.preserve_orientation)
-            + ')'
+            f'{self.__class__.__name__}'
+            f'(patch_size={self.patch_size}, '
+            f'affine_shape_detector={self.affine_shape_detector}, '
+            f'preserve_orientation={self.preserve_orientation})'
         )
 
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:

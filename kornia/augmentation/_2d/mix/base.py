@@ -6,8 +6,8 @@ from kornia.augmentation.base import _BasicAugmentationBase
 from kornia.augmentation.utils import _transform_input, _transform_output_shape, _validate_input_dtype
 from kornia.constants import DataKey, DType
 from kornia.core import Tensor, tensor
+from kornia.core.check import KORNIA_UNWRAP
 from kornia.geometry.boxes import Boxes
-from kornia.testing import KORNIA_UNWRAP
 
 
 class MixAugmentationBaseV2(_BasicAugmentationBase):
@@ -24,7 +24,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
         data_keys: the input type sequential for applying augmentations.
-            Accepts "input", "mask", "bbox", "bbox_xyxy", "bbox_xywh", "keypoints".
+            Accepts "input", "image", "mask", "bbox", "bbox_xyxy", "bbox_xywh", "keypoints".
     """
 
     def __init__(

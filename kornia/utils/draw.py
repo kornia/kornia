@@ -3,7 +3,7 @@ from typing import List, Optional, Tuple, Union
 import torch
 from torch import Tensor
 
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 # TODO: implement width of the line
 

@@ -1,14 +1,13 @@
-from typing import Tuple
+from __future__ import annotations
 
-import torch
-import torch.nn as nn
+from kornia.core import Module, Tensor
 
 from .gaussian import gaussian_blur2d
 
 
 def unsharp_mask(
-    input: torch.Tensor, kernel_size: Tuple[int, int], sigma: Tuple[float, float], border_type: str = 'reflect'
-) -> torch.Tensor:
+    input: Tensor, kernel_size: tuple[int, int] | int, sigma: tuple[float, float] | Tensor, border_type: str = 'reflect'
+) -> Tensor:
     r"""Create an operator that sharpens a tensor by applying operation out = 2 * image - gaussian_blur2d(image).
 
     .. image:: _static/img/unsharp_mask.png
@@ -30,12 +29,12 @@ def unsharp_mask(
         >>> output.shape
         torch.Size([2, 4, 5, 5])
     """
-    data_blur: torch.Tensor = gaussian_blur2d(input, kernel_size, sigma, border_type)
-    data_sharpened: torch.Tensor = input + (input - data_blur)
+    data_blur: Tensor = gaussian_blur2d(input, kernel_size, sigma, border_type)
+    data_sharpened: Tensor = input + (input - data_blur)
     return data_sharpened
 
 
-class UnsharpMask(nn.Module):
+class UnsharpMask(Module):
     r"""Create an operator that sharpens image with: out = 2 * image - gaussian_blur2d(image).
 
     Args:
@@ -64,11 +63,13 @@ class UnsharpMask(nn.Module):
         torch.Size([2, 4, 5, 5])
     """
 
-    def __init__(self, kernel_size: Tuple[int, int], sigma: Tuple[float, float], border_type: str = 'reflect') -> None:
+    def __init__(
+        self, kernel_size: tuple[int, int] | int, sigma: tuple[float, float] | Tensor, border_type: str = 'reflect'
+    ) -> None:
         super().__init__()
-        self.kernel_size: Tuple[int, int] = kernel_size
-        self.sigma: Tuple[float, float] = sigma
+        self.kernel_size = kernel_size
+        self.sigma = sigma
         self.border_type = border_type
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: Tensor) -> Tensor:
         return unsharp_mask(input, self.kernel_size, self.sigma, self.border_type)

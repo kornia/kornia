@@ -6,9 +6,9 @@ from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.constants import DataKey, Resample
 from kornia.core import Tensor, as_tensor, concatenate, pad, zeros
+from kornia.core.check import KORNIA_UNWRAP
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
-from kornia.testing import KORNIA_UNWRAP
 from kornia.utils import eye_like
 
 __all__ = ["RandomMosaic"]
@@ -35,7 +35,7 @@ class RandomMosaic(MixAugmentationBaseV2):
             each output will mix 4 images in a 2x2 grid.
         min_bbox_size: minimum area of bounding boxes. Default to 0.
         data_keys: the input type sequential for applying augmentations.
-            Accepts "input", "mask", "bbox", "bbox_xyxy", "bbox_xywh", "keypoints".
+            Accepts "input", "image", "mask", "bbox", "bbox_xyxy", "bbox_xywh", "keypoints".
         p: probability of applying the transformation for the whole batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
             to the batch form ``False``.

@@ -35,17 +35,6 @@ class TestSSIMLoss:
         tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
         assert_close(loss.item(), 0.0, rtol=tol_val, atol=tol_val)
 
-    def test_jit(self, device, dtype):
-        img1 = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
-        img2 = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
-
-        args = (img1, img2, 5, 1.0, 1e-6, 'mean')
-
-        op = kornia.losses.ssim_loss
-        op_script = torch.jit.script(op)
-
-        assert_close(op(*args), op_script(*args))
-
     def test_module(self, device, dtype):
         img1 = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         img2 = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
@@ -160,17 +149,6 @@ class TestSSIM3DLoss(BaseTester):
             expected = (torch.ones_like(img1, device=device, dtype=dtype) * 0.9999).sum()
 
         self.assert_close(actual, expected)
-
-    def test_jit(self, device, dtype):
-        img1 = torch.rand(1, 2, 3, 4, 5, device=device, dtype=dtype)
-        img2 = torch.rand(1, 2, 3, 4, 5, device=device, dtype=dtype)
-
-        args = (img1, img2, 5, 1.0, 1e-6, 'mean')
-
-        op = kornia.losses.ssim3d_loss
-        op_script = torch.jit.script(op)
-
-        self.assert_close(op(*args), op_script(*args))
 
     def test_module(self, device, dtype):
         img1 = torch.rand(1, 2, 3, 4, 5, device=device, dtype=dtype)

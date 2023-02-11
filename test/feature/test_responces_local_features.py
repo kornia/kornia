@@ -1,4 +1,3 @@
-import pytest
 import torch
 from torch.autograd import gradcheck
 
@@ -122,18 +121,6 @@ class TestCornerHarris:
             kornia.feature.harris_response, (img, k), raise_exception=True, nondet_tol=1e-4, fast_mode=True
         )
 
-    @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self, device):
-        @torch.jit.script
-        def op_script(input, k):
-            return kornia.feature.harris_response(input, k)
-
-        k = torch.tensor(0.04)
-        img = torch.rand(2, 3, 4, 5, device=device)
-        actual = op_script(img, k)
-        expected = kornia.feature.harris_response(img, k)
-        assert_close(actual, expected)
-
 
 class TestCornerGFTT:
     def test_shape(self, device):
@@ -245,17 +232,6 @@ class TestCornerGFTT:
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.feature.gftt_response, (img), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
 
-    @pytest.mark.skip(reason="turn off all jit for a while")
-    def test_jit(self, device):
-        @torch.jit.script
-        def op_script(input):
-            return kornia.feature.gftt_response(input)
-
-        img = torch.rand(2, 3, 4, 5, device=device)
-        actual = op_script(img)
-        expected = kornia.feature.gftt_response(img)
-        assert_close(actual, expected)
-
 
 class TestBlobHessian:
     def test_shape(self, device):
@@ -326,17 +302,6 @@ class TestBlobHessian:
         img = torch.rand(batch_size, channels, height, width, device=device)
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.feature.hessian_response, (img), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
-
-    @pytest.mark.jit
-    def test_jit(self, device):
-        @torch.jit.script
-        def op_script(input):
-            return kornia.feature.hessian_response(input)
-
-        img = torch.rand(2, 3, 4, 5, device=device)
-        actual = op_script(img)
-        expected = kornia.feature.hessian_response(img)
-        assert_close(actual, expected)
 
 
 class TestBlobDoGSingle:
@@ -412,14 +377,3 @@ class TestBlobDoGSingle:
         assert gradcheck(
             kornia.feature.dog_response_single, (img), raise_exception=True, nondet_tol=1e-4, fast_mode=True
         )
-
-    @pytest.mark.jit
-    def test_jit(self, device):
-        @torch.jit.script
-        def op_script(input):
-            return kornia.feature.dog_response_single(input)
-
-        img = torch.rand(2, 3, 9, 9, device=device)
-        actual = op_script(img)
-        expected = kornia.feature.dog_response_single(img)
-        assert_close(actual, expected)

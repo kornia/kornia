@@ -151,7 +151,6 @@ class _BasicAugmentationBase(Module):
     def _process_kwargs_to_params_and_flags(
         self, params: Optional[Dict[str, Tensor]] = None, flags: Optional[Dict[str, Any]] = None, **kwargs
     ) -> Tuple[Dict[str, Tensor], Dict[str, Any]]:
-
         # NOTE: determine how to save self._params
         save_kwargs = kwargs["save_kwargs"] if "save_kwargs" in kwargs else False
 
@@ -319,7 +318,6 @@ class _AugmentationBase(_BasicAugmentationBase):
         transform: Optional[Tensor] = None,
         **kwargs,
     ) -> Boxes:
-
         if not isinstance(input, Boxes):
             raise RuntimeError(f"Only `Boxes` is supported. Got {type(input)}.")
 
@@ -354,7 +352,6 @@ class _AugmentationBase(_BasicAugmentationBase):
         transform: Optional[Tensor] = None,
         **kwargs,
     ) -> Keypoints:
-
         if not isinstance(input, Keypoints):
             raise RuntimeError(f"Only `Keypoints` is supported. Got {type(input)}.")
 
@@ -387,7 +384,6 @@ class _AugmentationBase(_BasicAugmentationBase):
         transform: Optional[Tensor] = None,
         **kwargs,
     ) -> Tensor:
-
         params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, flags, **kwargs
         )

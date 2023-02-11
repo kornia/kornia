@@ -6,7 +6,7 @@ from torch import Tensor
 from torch.nn import Module, Parameter
 
 from kornia.color import hsv_to_rgb, rgb_to_grayscale, rgb_to_hsv
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_COLOR_OR_GRAY, KORNIA_CHECK_IS_TENSOR
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_COLOR_OR_GRAY, KORNIA_CHECK_IS_TENSOR
 from kornia.utils.helpers import _torch_histc_cast
 from kornia.utils.image import perform_keep_shape_image, perform_keep_shape_video
 
@@ -716,7 +716,7 @@ def posterize(input: Tensor, bits: Union[int, Tensor]) -> Tensor:
     Example:
         >>> x = torch.rand(1, 6, 3, 3)
         >>> out = posterize(x, bits=8)
-        >>> torch.testing.assert_allclose(x, out)
+        >>> torch.testing.assert_close(x, out)
 
         >>> x = torch.rand(2, 6, 3, 3)
         >>> bits = torch.tensor([4, 2])

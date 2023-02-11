@@ -2,8 +2,8 @@ name: Run typing tests
 
 on:
   pull_request:
-    branches: [master]
-    types: [opened, reopened, synchronize, review_requested, ready_for_review]
+    branches: [master, test-me-*]
+    types: [opened, reopened, synchronize, ready_for_review]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}

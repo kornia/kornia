@@ -64,7 +64,8 @@ class RandomErasing(IntensityAugmentationBase2D):
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self.scale = scale
         self.ratio = ratio
-        self._param_generator = rg.RectangleEraseGenerator(scale, ratio, float(value))
+        self.value = value
+        self._param_generator = rg.RectangleEraseGenerator(scale, ratio, value)
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None

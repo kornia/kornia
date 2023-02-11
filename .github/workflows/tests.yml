@@ -17,6 +17,10 @@ on:
         required: false
         type: string
         default: 'float32'
+      pytest-extra:
+        required: false
+        type: string
+        default: ''
       continue-on-error:
         required: false
         type: boolean
@@ -53,7 +57,7 @@ jobs:
     - name: Run CPU tests ${{ inputs.pytorch-dtype }}
       continue-on-error: ${{ inputs.continue-on-error }}
       shell: bash -l {0}
-      run: pytest -v --device cpu --dtype ${{ inputs.pytorch-dtype }} --cov=kornia --cov-report xml ./test
+      run: pytest -v --device cpu --dtype ${{ inputs.pytorch-dtype }} ${{ inputs.pytest-extra }} --cov=kornia --cov-report xml ./test
 
 
     - if: always()

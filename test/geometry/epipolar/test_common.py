@@ -8,7 +8,6 @@ import kornia.geometry.epipolar as epi
 def generate_two_view_random_scene(
     device: torch.device = torch.device("cpu"), dtype: torch.dtype = torch.float32
 ) -> Dict[str, torch.Tensor]:
-
     num_views: int = 2
     num_points: int = 30
 

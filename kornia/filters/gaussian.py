@@ -1,19 +1,22 @@
-from typing import Tuple
+from __future__ import annotations
 
-import torch
-import torch.nn as nn
+from typing import Any
+
+from kornia.core import Module, Tensor, tensor
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR
+from kornia.utils import deprecated
 
 from .filter import filter2d, filter2d_separable
-from .kernels import get_gaussian_kernel1d_t, get_gaussian_kernel2d_t
+from .kernels import _unpack_2d_ks, get_gaussian_kernel1d, get_gaussian_kernel2d
 
 
 def gaussian_blur2d(
-    input: torch.Tensor,
-    kernel_size: Tuple[int, int],
-    sigma: Tuple[float, float],
+    input: Tensor,
+    kernel_size: tuple[int, int] | int,
+    sigma: tuple[float, float] | Tensor,
     border_type: str = 'reflect',
     separable: bool = True,
-) -> torch.Tensor:
+) -> Tensor:
     r"""Create an operator that blurs a tensor using a Gaussian filter.
 
     .. image:: _static/img/gaussian_blur2d.png
@@ -42,63 +45,33 @@ def gaussian_blur2d(
         >>> output = gaussian_blur2d(input, (3, 3), (1.5, 1.5))
         >>> output.shape
         torch.Size([2, 4, 5, 5])
-    """
-    device, dtype = input.device, input.dtype
-    sigma_t = torch.tensor(sigma, device=device, dtype=dtype).unsqueeze(0)
 
-    return gaussian_blur2d_t(input, kernel_size, sigma_t, border_type, separable)
-
-
-def gaussian_blur2d_t(
-    input: torch.Tensor,
-    kernel_size: Tuple[int, int],
-    sigma: torch.Tensor,
-    border_type: str = 'reflect',
-    separable: bool = True,
-) -> torch.Tensor:
-    r"""Create an operator that blurs a tensor using a Gaussian filter.
-
-    .. image:: _static/img/gaussian_blur2d.png
-
-    The operator smooths the given tensor with a gaussian kernel by convolving
-    it to each channel. It supports batched operation.
-
-    Arguments:
-        input: the input tensor with shape :math:`(B,C,H,W)`.
-        kernel_size: the size of the kernel.
-        sigma: the standard deviation of the kernel with shape :math:`(B,2)`.
-        border_type: the padding mode to be applied before convolving.
-          The expected modes are: ``'constant'``, ``'reflect'``,
-          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
-        separable: run as composition of two 1d-convolutions.
-
-    Returns:
-        the blurred tensor with shape :math:`(B, C, H, W)`.
-
-    .. note::
-       See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
-       gaussian_blur.html>`__.
-
-    Examples:
-        >>> input = torch.rand(2, 4, 5, 5)
-        >>> output = gaussian_blur2d_t(input, (3, 3), torch.tensor([[1.5, 1.5]]))
+        >>> output = gaussian_blur2d(input, (3, 3), torch.tensor([[1.5, 1.5]]))
         >>> output.shape
         torch.Size([2, 4, 5, 5])
     """
-    device, dtype = input.device, input.dtype
-    sigma = sigma.to(device=device, dtype=dtype)
+    KORNIA_CHECK_IS_TENSOR(input)
+
+    if isinstance(sigma, tuple):
+        sigma = tensor([sigma], device=input.device, dtype=input.dtype)
+    else:
+        KORNIA_CHECK_IS_TENSOR(sigma)
+        sigma = sigma.to(device=input.device, dtype=input.dtype)
 
     if separable:
-        kernel_x: torch.Tensor = get_gaussian_kernel1d_t(kernel_size[1], sigma[:, 1])
-        kernel_y: torch.Tensor = get_gaussian_kernel1d_t(kernel_size[0], sigma[:, 0])
+        ks = _unpack_2d_ks(kernel_size)
+        bs = sigma.shape[0]
+        kernel_x = get_gaussian_kernel1d(ks[1], sigma[:, 1].view(bs, 1))
+        kernel_y = get_gaussian_kernel1d(ks[0], sigma[:, 0].view(bs, 1))
         out = filter2d_separable(input, kernel_x, kernel_y, border_type)
     else:
-        kernel: torch.Tensor = get_gaussian_kernel2d_t(kernel_size, sigma)
+        kernel = get_gaussian_kernel2d(kernel_size, sigma)
         out = filter2d(input, kernel, border_type)
+
     return out
 
 
-class GaussianBlur2d(nn.Module):
+class GaussianBlur2d(Module):
     r"""Create an operator that blurs a tensor using a Gaussian filter.
 
     The operator smooths the given tensor with a gaussian kernel by convolving
@@ -130,32 +103,30 @@ class GaussianBlur2d(nn.Module):
 
     def __init__(
         self,
-        kernel_size: Tuple[int, int],
-        sigma: Tuple[float, float],
+        kernel_size: tuple[int, int] | int,
+        sigma: tuple[float, float] | Tensor,
         border_type: str = 'reflect',
         separable: bool = True,
     ) -> None:
         super().__init__()
-        self.kernel_size: Tuple[int, int] = kernel_size
-        self.sigma: Tuple[float, float] = sigma
+        self.kernel_size = kernel_size
+        self.sigma = sigma
         self.border_type = border_type
         self.separable = separable
 
     def __repr__(self) -> str:
         return (
-            self.__class__.__name__
-            + '(kernel_size='
-            + str(self.kernel_size)
-            + ', '
-            + 'sigma='
-            + str(self.sigma)
-            + ', '
-            + 'border_type='
-            + self.border_type
-            + 'separable='
-            + str(self.separable)
-            + ')'
+            f"{self.__class__.__name__}"
+            f"(kernel_size={self.kernel_size}, "
+            f"sigma={self.sigma}, "
+            f"border_type={self.border_type}, "
+            f"separable={self.separable})"
         )
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: Tensor) -> Tensor:
         return gaussian_blur2d(input, self.kernel_size, self.sigma, self.border_type, self.separable)
+
+
+@deprecated(replace_with='gaussian_blur2d', version='6.9.10')
+def gaussian_blur2d_t(*args: Any, **kwargs: Any) -> Tensor:
+    return gaussian_blur2d(*args, **kwargs)

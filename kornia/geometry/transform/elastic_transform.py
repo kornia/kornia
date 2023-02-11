@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.filters import filter2d
-from kornia.filters.kernels import get_gaussian_kernel2d_t
+from kornia.filters.kernels import get_gaussian_kernel2d
 from kornia.utils import create_meshgrid
 
 __all__ = ["elastic_transform2d"]
@@ -82,8 +82,8 @@ def elastic_transform2d(
         sigma_t = sigma.to(device=device, dtype=dtype)
 
     # Get Gaussian kernel for 'y' and 'x' displacement
-    kernel_x: torch.Tensor = get_gaussian_kernel2d_t(kernel_size, sigma_t[0].expand(2).unsqueeze(0))
-    kernel_y: torch.Tensor = get_gaussian_kernel2d_t(kernel_size, sigma_t[1].expand(2).unsqueeze(0))
+    kernel_x: torch.Tensor = get_gaussian_kernel2d(kernel_size, sigma_t[0].expand(2).unsqueeze(0))
+    kernel_y: torch.Tensor = get_gaussian_kernel2d(kernel_size, sigma_t[1].expand(2).unsqueeze(0))
 
     # Convolve over a random displacement matrix and scale them with 'alpha'
     disp_x: torch.Tensor = noise[:, :1]

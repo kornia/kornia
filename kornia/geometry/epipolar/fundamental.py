@@ -5,9 +5,9 @@ from typing import Optional, Tuple
 import torch
 
 from kornia.core import Tensor
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.linalg import transform_points
-from kornia.testing import KORNIA_CHECK_SHAPE
 from kornia.utils.helpers import _torch_svd_cast
 
 
@@ -73,7 +73,6 @@ def normalize_transformation(M: Tensor, eps: float = 1e-8) -> Tensor:
 def find_fundamental(
     points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
-
     r"""Compute the fundamental matrix using the DLT formulation.
 
     The linear system is solved by using the Weighted Least Squares Solution for the 8 Points algorithm.

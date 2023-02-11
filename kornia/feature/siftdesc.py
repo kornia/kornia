@@ -5,9 +5,9 @@ import torch
 import torch.nn as nn
 
 from kornia.core import Module, Tensor, concatenate, eye, normalize
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.filters import get_gaussian_kernel2d, spatial_gradient
 from kornia.geometry.conversions import pi
-from kornia.testing import KORNIA_CHECK_SHAPE
 
 
 def _get_reshape_kernel(kd: int, ky: int, kx: int) -> Tensor:
@@ -81,23 +81,12 @@ class SIFTDescriptor(Module):
 
     def __repr__(self) -> str:
         return (
-            self.__class__.__name__
-            + '('
-            + 'num_ang_bins='
-            + str(self.num_ang_bins)
-            + ', '
-            + 'num_spatial_bins='
-            + str(self.num_spatial_bins)
-            + ', '
-            + 'patch_size='
-            + str(self.patch_size)
-            + ', '
-            + 'rootsift='
-            + str(self.rootsift)
-            + ', '
-            + 'clipval='
-            + str(self.clipval)
-            + ')'
+            f"{self.__class__.__name__}("
+            f"num_ang_bins={self.num_ang_bins}, "
+            f"num_spatial_bins={self.num_spatial_bins}, "
+            f"patch_size={self.patch_size}, "
+            f"rootsift={self.rootsift}, "
+            f"clipval={self.clipval})"
         )
 
     def __init__(
@@ -221,26 +210,13 @@ class DenseSIFTDescriptor(Module):
 
     def __repr__(self) -> str:
         return (
-            self.__class__.__name__
-            + '('
-            + 'num_ang_bins='
-            + str(self.num_ang_bins)
-            + ', '
-            + 'num_spatial_bins='
-            + str(self.num_spatial_bins)
-            + ', '
-            + 'spatial_bin_size='
-            + str(self.spatial_bin_size)
-            + ', '
-            + 'rootsift='
-            + str(self.rootsift)
-            + ', '
-            + 'stride='
-            + str(self.stride)
-            + ', '
-            + 'clipval='
-            + str(self.clipval)
-            + ')'
+            f'{self.__class__.__name__}('
+            f'num_ang_bins={self.num_ang_bins}, '
+            f'num_spatial_bins={self.num_spatial_bins}, '
+            f'spatial_bin_size={self.spatial_bin_size}, '
+            f'rootsift={self.rootsift}, '
+            f'stride={self.stride}, '
+            f'clipval={self.clipval})'
         )
 
     def __init__(

@@ -70,7 +70,6 @@ class ZCAWhitening(Module):
         detach_transforms: bool = True,
         compute_inv: bool = False,
     ) -> None:
-
         super().__init__()
 
         self.dim = dim

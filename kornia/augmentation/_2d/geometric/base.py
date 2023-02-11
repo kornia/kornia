@@ -167,7 +167,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         transform: Optional[Tensor] = None,
         **kwargs,
     ) -> Tensor:
-        resample_method: Optional[Resample]
+        resample_method: Optional[Resample] = None
         if "resample" in flags:
             resample_method = flags["resample"]
             flags["resample"] = Resample.get("nearest")

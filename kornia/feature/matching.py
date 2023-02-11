@@ -3,8 +3,10 @@ from typing import Dict, Optional, Tuple
 import torch
 import torch.nn as nn
 
+from kornia.core import Tensor
+from kornia.core.check import KORNIA_CHECK_DM_DESC, KORNIA_CHECK_SHAPE
 from kornia.feature.laf import get_laf_center
-from kornia.testing import KORNIA_CHECK_DM_DESC, KORNIA_CHECK_SHAPE, Tensor, is_mps_tensor_safe
+from kornia.testing import is_mps_tensor_safe
 
 from .adalam import get_adalam_default_config, match_adalam
 

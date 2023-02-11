@@ -222,7 +222,7 @@ class TestSequential:
 
 class TestAugmentationSequential:
     @pytest.mark.parametrize(
-        'data_keys', ["input", ["mask", "input"], ["input", "bbox_yxyx"], [0, 10], [BorderType.REFLECT]]
+        'data_keys', ["input", "image", ["mask", "input"], ["input", "bbox_yxyx"], [0, 10], [BorderType.REFLECT]]
     )
     @pytest.mark.parametrize("augmentation_list", [K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0)])
     def test_exception(self, augmentation_list, data_keys, device, dtype):
@@ -295,7 +295,7 @@ class TestAugmentationSequential:
         )
 
         aug_hor = K.AugmentationSequential(
-            K.RandomHorizontalFlip(p=1.0), data_keys=["input", "bbox"], same_on_batch=False
+            K.RandomHorizontalFlip(p=1.0), data_keys=["image", "bbox"], same_on_batch=False
         )
 
         out_ver = aug_ver(inp.clone(), bbox.clone())
@@ -374,7 +374,7 @@ class TestAugmentationSequential:
     def test_random_erasing(self, device, dtype):
         fill_value = 0.5
         input = torch.randn(3, 3, 100, 100, device=device, dtype=dtype)
-        aug = K.AugmentationSequential(K.RandomErasing(p=1.0, value=fill_value), data_keys=["input", "mask"])
+        aug = K.AugmentationSequential(K.RandomErasing(p=1.0, value=fill_value), data_keys=["image", "mask"])
 
         reproducibility_test((input, input), aug)
 
@@ -450,26 +450,40 @@ class TestAugmentationSequential:
         assert out_inv[3].shape == points.shape
         assert_close(out_inv[3], points, atol=1e-4, rtol=1e-4)
 
-    def test_bbox(self, device, dtype):
+    @pytest.mark.parametrize(
+        'bbox',
+        [
+            [
+                torch.tensor([[1, 5, 2, 7], [0, 3, 9, 9]]),
+                torch.tensor([[1, 5, 2, 7], [0, 3, 9, 9], [0, 5, 8, 7]]),
+                torch.empty((0, 4)),
+            ],
+            torch.empty((3, 0, 4)),
+            torch.tensor([[[1, 5, 2, 7], [0, 3, 9, 9]], [[1, 5, 2, 7], [0, 3, 9, 9]], [[0, 5, 8, 7], [0, 2, 5, 5]]]),
+        ],
+    )
+    @pytest.mark.parametrize(
+        'augmentation', [K.RandomCrop((30, 30), padding=1, cropping_mode='resample', fill=0), K.Resize((30, 30))]
+    )
+    def test_bbox(self, bbox, augmentation, device, dtype):
         img = torch.rand((3, 3, 10, 10), device=device, dtype=dtype)
-        bbox = [
-            torch.tensor([[1, 5, 2, 7], [0, 3, 9, 9]], device=device, dtype=dtype),
-            torch.tensor([[1, 5, 2, 7], [0, 3, 9, 9], [0, 5, 8, 7]], device=device, dtype=dtype),
-            torch.empty((0, 4), device=device, dtype=dtype),
-        ]
+        if isinstance(bbox, list):
+            for i, b in enumerate(bbox):
+                bbox[i] = b.to(device=device, dtype=dtype)
+        else:
+            bbox = bbox.to(device=device, dtype=dtype)
 
         inputs = [img, bbox]
 
-        aug = K.AugmentationSequential(K.Resize((30, 30)), data_keys=['input', 'bbox_xyxy'])
+        aug = K.AugmentationSequential(augmentation, data_keys=['input', 'bbox_xyxy'])
 
         transformed = aug(*inputs)
 
         assert len(transformed) == len(inputs)
         bboxes_transformed = transformed[-1]
-        assert len(bboxes_transformed) == len(bbox) and isinstance(bboxes_transformed, (list,))
-        assert len(bboxes_transformed[0]) == 2
-        assert len(bboxes_transformed[1]) == 3, bboxes_transformed[1]
-        assert len(bboxes_transformed[2]) == 0
+        assert len(bboxes_transformed) == len(bbox) and bboxes_transformed.__class__ == bbox.__class__
+        for i in range(len(bbox)):
+            assert len(bboxes_transformed[i]) == len(bbox[i])
 
     @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 10, True, False])
     def test_forward_and_inverse(self, random_apply, device, dtype):
