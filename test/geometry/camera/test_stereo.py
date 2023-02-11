@@ -1,10 +1,8 @@
-from typing import Type
-
 import pytest
 import torch
-from torch.testing import assert_allclose
 
 from kornia.geometry.camera import StereoCamera
+from kornia.testing import assert_close
 
 
 @pytest.fixture(params=[1, 2, 4])
@@ -139,7 +137,7 @@ class _SmokeTestData:
     """Collection of smoke test data."""
 
     @staticmethod
-    def _create_rectified_camera(params: Type[_TestParams], batch_size, device, dtype, tx_fx=None):
+    def _create_rectified_camera(params, batch_size, device, dtype, tx_fx=None):
         intrinsics = torch.zeros((3, 4), device=device, dtype=dtype)
         intrinsics[..., 0, 0] = params.fx
         intrinsics[..., 1, 1] = params.fy
@@ -202,11 +200,11 @@ class TestStereoCamera:
         left_rectified_camera, right_rectified_camera = _RealTestData._get_real_stereo_camera(batch_size, device, dtype)
 
         stereo_camera = StereoCamera(left_rectified_camera, right_rectified_camera)
-        assert_allclose(stereo_camera.fx, left_rectified_camera[..., 0, 0])
-        assert_allclose(stereo_camera.fy, left_rectified_camera[..., 1, 1])
-        assert_allclose(stereo_camera.cx_left, left_rectified_camera[..., 0, 2])
-        assert_allclose(stereo_camera.cy, left_rectified_camera[..., 1, 2])
-        assert_allclose(stereo_camera.tx, -right_rectified_camera[..., 0, 3] / right_rectified_camera[..., 0, 0])
+        assert_close(stereo_camera.fx, left_rectified_camera[..., 0, 0])
+        assert_close(stereo_camera.fy, left_rectified_camera[..., 1, 1])
+        assert_close(stereo_camera.cx_left, left_rectified_camera[..., 0, 2])
+        assert_close(stereo_camera.cy, left_rectified_camera[..., 1, 2])
+        assert_close(stereo_camera.tx, -right_rectified_camera[..., 0, 3] / right_rectified_camera[..., 0, 0])
 
         assert stereo_camera.Q.shape == (batch_size, 4, 4)
         assert stereo_camera.Q.dtype in (torch.float16, torch.float32, torch.float64)
@@ -238,7 +236,7 @@ class TestStereoCamera:
 
         xyz = stereo_camera.reproject_disparity_to_3D(disparity_tensor)
 
-        assert_allclose(xyz, xyz_gt)
+        assert_close(xyz, xyz_gt)
 
     def test_reproject_disparity_to_3D_simple(self, batch_size, device, dtype):
         """Test reprojecting of disparity to 3D for real data."""
