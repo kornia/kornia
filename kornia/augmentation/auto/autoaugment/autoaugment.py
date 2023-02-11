@@ -1,12 +1,11 @@
 from typing import Iterator, List, Optional, Tuple, Union
 
-import torch
 from torch.distributions import Categorical
 
 from kornia.augmentation.auto.base import SUBPLOLICY_CONFIG, PolicyAugmentBase
 from kornia.augmentation.auto.operations.policy import PolicySequential
 from kornia.augmentation.container.params import ParamItem
-from kornia.core import Module
+from kornia.core import tensor, Module
 
 from . import ops
 
@@ -104,6 +103,7 @@ class AutoAugment(PolicyAugmentBase):
         policy: a customized policy config or presets of "imagenet", "cifar10", and "svhn".
 
     Examples:
+        >>> import torch
         >>> import kornia.augmentation as K
         >>> in_tensor = torch.rand(5, 3, 30, 30)
         >>> aug = K.AugmentationSequential(AutoAugment())
@@ -124,7 +124,7 @@ class AutoAugment(PolicyAugmentBase):
             raise NotImplementedError(f"Invalid policy `{policy}`.")
 
         super().__init__(_policy)
-        selection_weights = torch.tensor([1.0 / len(self)] * len(self))
+        selection_weights = tensor([1.0 / len(self)] * len(self))
         self.rand_selector = Categorical(selection_weights)
 
     def compose_subpolicy_sequential(self, subpolicy: SUBPLOLICY_CONFIG) -> PolicySequential:

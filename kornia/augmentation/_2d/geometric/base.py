@@ -189,7 +189,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
 
         if transform is None:
-            raise RuntimeError("transform matrix shall not be `None`.")
+            raise RuntimeError("`transform` has to be a tensor. Got None.")
 
         params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, flags, **kwargs
@@ -227,7 +227,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
 
         if transform is None:
-            raise RuntimeError("transform matrix shall not be `None`.")
+            raise RuntimeError("`transform` has to be a tensor. Got None.")
 
         params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, flags, **kwargs

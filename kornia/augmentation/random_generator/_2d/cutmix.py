@@ -5,6 +5,7 @@ from torch.distributions import Bernoulli, Beta, Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _adapted_sampling, _common_param_check, _joint_range_check
+from kornia.core import as_tensor, tensor, zeros
 from kornia.geometry.bbox import bbox_generator
 from kornia.utils.helpers import _extract_device_dtype
 
@@ -55,26 +56,26 @@ class CutmixGenerator(RandomGeneratorBase):
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         if self.beta is None:
-            self._beta = torch.tensor(1.0, device=device, dtype=dtype)
+            self._beta = tensor(1.0, device=device, dtype=dtype)
         else:
-            self._beta = torch.as_tensor(self.beta, device=device, dtype=dtype)
+            self._beta = as_tensor(self.beta, device=device, dtype=dtype)
         if self.cut_size is None:
-            self._cut_size = torch.tensor([0.0, 1.0], device=device, dtype=dtype)
+            self._cut_size = tensor([0.0, 1.0], device=device, dtype=dtype)
         else:
-            self._cut_size = torch.as_tensor(self.cut_size, device=device, dtype=dtype)
+            self._cut_size = as_tensor(self.cut_size, device=device, dtype=dtype)
 
         _joint_range_check(self._cut_size, 'cut_size', bounds=(0, 1))
 
         self.beta_sampler = Beta(self._beta, self._beta)
-        self.prob_sampler = Bernoulli(torch.tensor(float(self.p), device=device, dtype=dtype))
+        self.prob_sampler = Bernoulli(tensor(float(self.p), device=device, dtype=dtype))
         self.rand_sampler = Uniform(
-            torch.tensor(0.0, device=device, dtype=dtype),
-            torch.tensor(1.0, device=device, dtype=dtype),
+            tensor(0.0, device=device, dtype=dtype),
+            tensor(1.0, device=device, dtype=dtype),
             validate_args=False,
         )
         self.pair_sampler = Uniform(
-            torch.tensor(0.0, device=device, dtype=dtype),
-            torch.tensor(1.0, device=device, dtype=dtype),
+            tensor(0.0, device=device, dtype=dtype),
+            tensor(1.0, device=device, dtype=dtype),
             validate_args=False,
         )
 
@@ -90,8 +91,8 @@ class CutmixGenerator(RandomGeneratorBase):
 
         if batch_size == 0:
             return dict(
-                mix_pairs=torch.zeros([0, 3], device=_device, dtype=torch.long),
-                crop_src=torch.zeros([0, 4, 2], device=_device, dtype=_dtype),
+                mix_pairs=zeros([0, 3], device=_device, dtype=torch.long),
+                crop_src=zeros([0, 4, 2], device=_device, dtype=_dtype),
             )
 
         with torch.no_grad():
@@ -138,5 +139,5 @@ class CutmixGenerator(RandomGeneratorBase):
         return dict(
             mix_pairs=mix_pairs.to(device=_device, dtype=torch.long),
             crop_src=crop_src.floor().to(device=_device, dtype=_dtype),
-            image_shape=torch.as_tensor(batch_shape[-2:], device=_device, dtype=_dtype),
+            image_shape=as_tensor(batch_shape[-2:], device=_device, dtype=_dtype),
         )

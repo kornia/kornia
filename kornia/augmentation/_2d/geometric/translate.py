@@ -1,11 +1,9 @@
-from typing import Any, Dict, Optional, Tuple, Union, cast
-
-import torch
+from typing import Any, Dict, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample, SamplePadding
-from kornia.core import Tensor, stack
+from kornia.core import as_tensor, Tensor, stack
 from kornia.geometry.transform import get_translation_matrix2d, warp_affine
 
 
@@ -76,13 +74,14 @@ class RandomTranslate(GeometricAugmentationBase2D):
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         translations = stack([params["translate_x"], params["translate_y"]], dim=-1)
-        return get_translation_matrix2d(torch.as_tensor(translations, device=input.device, dtype=input.dtype))
+        return get_translation_matrix2d(as_tensor(translations, device=input.device, dtype=input.dtype))
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         _, _, height, width = input.shape
-        transform = cast(Tensor, transform)
+        if not isinstance(transform, Tensor):
+            raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
 
         return warp_affine(
             input,
@@ -100,9 +99,11 @@ class RandomTranslate(GeometricAugmentationBase2D):
         transform: Optional[Tensor] = None,
         size: Optional[Tuple[int, int]] = None,
     ) -> Tensor:
+        if not isinstance(transform, Tensor):
+            raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
         return self.apply_transform(
             input,
             params=self._params,
-            transform=torch.as_tensor(transform, device=input.device, dtype=input.dtype),
+            transform=as_tensor(transform, device=input.device, dtype=input.dtype),
             flags=flags,
         )

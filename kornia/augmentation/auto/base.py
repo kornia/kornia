@@ -23,10 +23,7 @@ class PolicyAugmentBase(ImageSequentialBase):
 
     def compose_policy(self, policy: List[SUBPLOLICY_CONFIG]) -> List[PolicySequential]:
         """Compose policy by the provided policy config."""
-        policies = []
-        for subpolicy in policy:
-            policies.append(self.compose_subpolicy_sequential(subpolicy))
-        return policies
+        return [self.compose_subpolicy_sequential(subpolicy) for subpolicy in policy]
 
     def compose_subpolicy_sequential(self, subpolicy: SUBPLOLICY_CONFIG) -> PolicySequential:
         raise NotImplementedError

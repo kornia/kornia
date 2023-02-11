@@ -11,7 +11,7 @@ from kornia.augmentation.utils import (
     _transform_output_shape,
     override_parameters,
 )
-from kornia.core import Module, Tensor, tensor
+from kornia.core import Module, Tensor, tensor, zeros
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 from kornia.utils import is_autocast_enabled
@@ -120,9 +120,9 @@ class _BasicAugmentationBase(Module):
     ) -> Tensor:
         batch_prob: Tensor
         if p_batch == 1:
-            batch_prob = tensor([1.0])
+            batch_prob = zeros(1) + 1
         elif p_batch == 0:
-            batch_prob = tensor([0.0])
+            batch_prob = zeros(1)
         else:
             # NOTE: there is no simple way to know if the sampler has `rsample` or not
             if isinstance(self._p_batch_gen, (RelaxedBernoulli,)):
@@ -130,12 +130,12 @@ class _BasicAugmentationBase(Module):
             else:
                 batch_prob = _adapted_sampling((1,), self._p_batch_gen, same_on_batch)
 
-        if batch_prob.sum().item() == 1:
+        if batch_prob.sum() == 1:
             elem_prob: Tensor
             if p == 1:
-                elem_prob = tensor([1.0] * batch_shape[0])
+                elem_prob = zeros(batch_shape[0]) + 1
             elif p == 0:
-                elem_prob = tensor([0.0] * batch_shape[0])
+                elem_prob = zeros(batch_shape[0])
             else:
                 if isinstance(self._p_gen, (RelaxedBernoulli,)):
                     elem_prob = _adapted_rsampling((batch_shape[0],), self._p_gen, same_on_batch)

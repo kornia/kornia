@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
@@ -179,7 +179,8 @@ class RandomCrop(GeometricAugmentationBase2D):
 
         flags = self.flags if flags is None else flags
         if flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
-            transform = cast(Tensor, transform)
+            if not isinstance(transform, Tensor):
+                raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
             # Fit the arg to F.pad
             if flags['padding_mode'] == "constant":
                 padding_mode = "zeros"
@@ -213,8 +214,10 @@ class RandomCrop(GeometricAugmentationBase2D):
             raise NotImplementedError(
                 f"`inverse` is only applicable for resample cropping mode. Got {flags['cropping_mode']}."
             )
-        size = cast(Tuple[int, int], size)
-        transform = cast(Tensor, transform)
+        if size is None:
+            raise RuntimeError("`size` has to be a tuple. Got None.")
+        if not isinstance(transform, Tensor):
+            raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
         # Fit the arg to F.pad
         if flags['padding_mode'] == "constant":
             padding_mode = "zeros"

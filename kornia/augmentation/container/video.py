@@ -186,7 +186,7 @@ class VideoSequential(ImageSequential):
                 if self.same_on_frame:
                     for k, v in mod_param.items():
                         # TODO: revise ColorJiggle and ColorJitter order param in the future to align the standard.
-                        if k == "order" and (isinstance(module, K.ColorJiggle) or isinstance(module, K.ColorJitter)):
+                        if k == "order" and (isinstance(module, (K.ColorJiggle, K.ColorJitter,))):
                             continue
                         if k == "forward_input_shape":
                             mod_param.update({k: v})
