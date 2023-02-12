@@ -75,12 +75,13 @@ class Resize(GeometricAugmentationBase2D):
     def inverse_transform(
         self,
         input: Tensor,
+        params: Dict[str, Tensor],
         flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
-        size: Optional[Tuple[int, int]] = None,
     ) -> Tensor:
-        if not isinstance(size, tuple):
-            raise TypeError(f'Expected the size be a tuple. Gotcha {type(size)}')
+
+        forward_input_shape = params['forward_input_shape'].numpy().tolist()
+        size: Tuple[int, int] = (forward_input_shape[-2], forward_input_shape[-1])
 
         if not isinstance(transform, Tensor):
             raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')

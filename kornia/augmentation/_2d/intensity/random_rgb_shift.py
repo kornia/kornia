@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
@@ -90,6 +90,6 @@ class RandomRGBShift(IntensityAugmentationBase2D):
         )
 
     def apply_transform(
-        self, inp: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, inp: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         return shift_rgb(inp, params['r_shift'], params['g_shift'], params['b_shift'])

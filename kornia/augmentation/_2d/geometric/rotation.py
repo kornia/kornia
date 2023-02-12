@@ -98,15 +98,15 @@ class RandomRotation(GeometricAugmentationBase2D):
     def inverse_transform(
         self,
         input: Tensor,
+        params: Dict[str, Tensor],
         flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
-        size: Optional[Tuple[int, int]] = None,
     ) -> Tensor:
         if not isinstance(transform, Tensor):
             raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
         return self.apply_transform(
             input,
-            params=self._params,
+            params=params,
             transform=as_tensor(transform, device=input.device, dtype=input.dtype),
             flags=flags,
         )

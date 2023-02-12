@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
 
 import torch
 from torch import Tensor
@@ -60,6 +60,6 @@ class Normalize(IntensityAugmentationBase2D):
         self.flags = dict(mean=mean, std=std)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         return normalize(input, flags["mean"], flags["std"])

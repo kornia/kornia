@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Tuple
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
@@ -21,7 +21,7 @@ class RandomGamma(IntensityAugmentationBase2D):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
 
     .. note::
@@ -65,7 +65,7 @@ class RandomGamma(IntensityAugmentationBase2D):
         )
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         gamma_factor = params["gamma_factor"].to(input)
         gain_factor = params["gain_factor"].to(input)

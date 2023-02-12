@@ -25,7 +25,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         self,
         input: Tensor,
         flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
+        transform: Tensor,
         size: Optional[Tuple[int, int]] = None,
     ) -> Tensor:
         """By default, the exact transformation as ``apply_transform`` will be used."""
@@ -43,7 +43,9 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         Return the current transformation matrix if existed. Generate a new one, otherwise.
         """
         flags = self.flags if flags is None else flags
-        if params is not None:
+        if params is not None and "transform_matrix" in params:
+            transform = params["transform_matrix"]
+        elif params is not None:
             transform = self.generate_transformation_matrix(input, params, flags)
         elif self.transform_matrix is None:
             params = self.forward_parameters(input.shape)
@@ -53,13 +55,13 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         return as_tensor(transform, device=input.device, dtype=input.dtype)
 
     def apply_non_transform_mask(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         """Process masks corresponding to the inputs that are no transformation applied."""
         return input
 
     def apply_transform_mask(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         """Process masks corresponding to the inputs that are transformed.
 
@@ -70,53 +72,47 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         if "resample" in flags:
             resample_method = flags["resample"]
             flags["resample"] = Resample.get("nearest")
-        output = self.apply_transform(input, params, flags, transform)
+        output = self.apply_transform(input, params, flags)
         if resample_method is not None:
             flags["resample"] = resample_method
         return output
 
     def apply_non_transform_box(
-        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Boxes:
         """Process boxes corresponding to the inputs that are no transformation applied."""
         return input
 
     def apply_transform_box(
-        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Boxes:
         """Process boxes corresponding to the inputs that are transformed."""
-        if transform is None:
-            if self.transform_matrix is None:
-                raise RuntimeError("No valid transformation matrix found. Please either pass one or forward one first.")
-            transform = self.transform_matrix
-        input = self.apply_non_transform_box(input, params, flags, transform)
+        transform = params["transform_matrix"]
+        input = self.apply_non_transform_box(input, params, flags)
         return input.transform_boxes_(transform)
 
     def apply_non_transform_keypoint(
-        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Keypoints:
         """Process keypoints corresponding to the inputs that are no transformation applied."""
         return input
 
     def apply_transform_keypoint(
-        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Keypoints:
         """Process keypoints corresponding to the inputs that are transformed."""
-        if transform is None:
-            if self.transform_matrix is None:
-                raise RuntimeError("No valid transformation matrix found. Please either pass one or forward one first.")
-            transform = self.transform_matrix
-        input = self.apply_non_transform_keypoint(input, params, flags, transform)
+        transform = params["transform_matrix"]
+        input = self.apply_non_transform_keypoint(input, params, flags)
         return input.transform_keypoints_(transform)
 
     def apply_non_transform_class(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         """Process class tags corresponding to the inputs that are no transformation applied."""
         return input
 
     def apply_transform_class(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         """Process class tags corresponding to the inputs that are transformed."""
         return input
@@ -126,13 +122,10 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         input: Tensor,
         params: Dict[str, Tensor],
         flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
         **kwargs,
     ) -> Tensor:
         in_tensor = self.transform_tensor(input)
-        output = in_tensor.clone()
-        batch_prob = params['batch_prob']
-        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
+        batch_prob = params['batch_prob'][:, None, None, None]
 
         params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, flags, **kwargs
@@ -144,34 +137,24 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             size = params['forward_input_shape'].numpy().tolist()
             size = (size[-2], size[-1])
 
-        # if no augmentation needed
-        if not to_apply.any():
-            output = in_tensor
-        # if all data needs to be augmented
-        elif to_apply.all():
-            output = self.inverse_transform(in_tensor, flags=flags, transform=transform, size=size)
-        else:
-            output[to_apply] = self.inverse_transform(
-                in_tensor[to_apply],
-                transform=transform[to_apply] if transform is not None else transform,
-                size=size,
-                flags=flags,
-            )
-        return output
+        transform = params["transform_matrix_inv"]
+
+        inversed = self.inverse_transform(in_tensor, flags=flags, transform=transform, size=size)
+
+        return inversed * batch_prob.round() + input * (1 - batch_prob.round())
 
     def inverse_masks(
         self,
         input: Tensor,
         params: Dict[str, Tensor],
         flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
         **kwargs,
     ) -> Tensor:
         resample_method: Optional[Resample] = None
         if "resample" in flags:
             resample_method = flags["resample"]
             flags["resample"] = Resample.get("nearest")
-        output = self.inverse_inputs(input, params, flags, transform, **kwargs)
+        output = self.inverse_inputs(input, params, flags, **kwargs)
         if resample_method is not None:
             flags["resample"] = resample_method
         return output
@@ -181,37 +164,23 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         input: Boxes,
         params: Dict[str, Tensor],
         flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
         **kwargs,
     ) -> Boxes:
-        output = input.clone()
-        batch_prob = params['batch_prob']
-        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
-
-        if transform is None:
-            raise RuntimeError("`transform` has to be a tensor. Got None.")
+        batch_prob = params['batch_prob'][:, None, None]
 
         params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, flags, **kwargs
         )
 
-        # if no augmentation needed
-        if not to_apply.any():
-            output = input
-        # if all data needs to be augmented
-        elif to_apply.all():
-            output = input.transform_boxes_(transform)
-        else:
-            output[to_apply] = input[to_apply].transform_boxes_(transform[to_apply])
+        transform = params["transform_matrix_inv"]
 
-        return output
+        return input.transform_boxes(transform) * batch_prob.round() + input * (1 - batch_prob.round())
 
     def inverse_keypoints(
         self,
         input: Keypoints,
         params: Dict[str, Tensor],
         flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
         **kwargs,
     ) -> Keypoints:
         """Inverse the transformation on keypoints.
@@ -222,34 +191,21 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             flags: static parameters.
             transform: the inverse tansformation matrix
         """
-        output = input.clone()
-        batch_prob = params['batch_prob']
-        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
-
-        if transform is None:
-            raise RuntimeError("`transform` has to be a tensor. Got None.")
+        batch_prob = params['batch_prob'][:, None, None]
 
         params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, flags, **kwargs
         )
 
-        # if no augmentation needed
-        if not to_apply.any():
-            output = input
-        # if all data needs to be augmented
-        elif to_apply.all():
-            output = input.transform_keypoints_(transform)
-        else:
-            output[to_apply] = input[to_apply].transform_keypoints_(transform[to_apply])
+        transform = params["transform_matrix_inv"]
 
-        return output
+        return input.transform_keypoints(transform) * batch_prob.round() + input * (1 - batch_prob.round())
 
     def inverse_classes(
         self,
         input: Tensor,
         params: Dict[str, Tensor],
         flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
         **kwargs,
     ) -> Tensor:
         return input
@@ -272,10 +228,15 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
 
         if params is None:
             params = self._params
-        transform = self.get_transformation_matrix(in_tensor, params=params, flags=flags)
 
-        transform = self.compute_inverse_transformation(transform)
-        output = self.inverse_inputs(in_tensor, params, flags, transform)
+        if "transform_matrix_inv" in params:
+            transform = params["transform_matrix_inv"]
+        else:
+            transform = self.get_transformation_matrix(in_tensor, params=params, flags=flags)
+            transform = self.compute_inverse_transformation(transform)
+            params.update({"transform_matrix_inv": transform})
+
+        output = self.inverse_inputs(in_tensor, params, flags)
 
         if self.keepdim:
             return self.transform_output_tensor(output, input_shape)

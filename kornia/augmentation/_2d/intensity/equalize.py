@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from torch import Tensor
 
@@ -18,7 +18,7 @@ class RandomEqualize(IntensityAugmentationBase2D):
                  to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
 
     .. note::
@@ -46,6 +46,6 @@ class RandomEqualize(IntensityAugmentationBase2D):
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         return equalize(input)

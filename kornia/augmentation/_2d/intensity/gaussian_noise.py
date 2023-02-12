@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import torch
 from torch import Tensor
@@ -51,7 +51,7 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
         return {}
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         if "gaussian_noise" in params:
             gaussian_noise = params["gaussian_noise"]

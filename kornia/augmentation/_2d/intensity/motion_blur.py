@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Tuple, Union, cast
 
 import torch
 
@@ -34,7 +34,7 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
                  to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
 
     Note:
@@ -86,7 +86,7 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         return params
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         # sample a kernel size
         kernel_size_list: List[int] = params["ksize_factor"].tolist()

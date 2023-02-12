@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import torch
 from torch import Tensor
@@ -43,7 +43,7 @@ class RandomChannelShuffle(IntensityAugmentationBase2D):
         return dict(channels=channels)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         out = torch.empty_like(input)
         for i in range(out.shape[0]):

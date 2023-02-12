@@ -170,7 +170,7 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         self._param_generator = rg.PlanckianJitterGenerator([_param_min, _param_max])
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         list_idx = params['idx'].tolist()
 

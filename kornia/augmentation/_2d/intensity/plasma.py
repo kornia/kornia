@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Tuple
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
@@ -48,7 +48,7 @@ class RandomPlasmaBrightness(IntensityAugmentationBase2D):
         )
 
     def apply_transform(
-        self, image: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, image: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         B, C, H, W = image.shape
         roughness = params["roughness"].to(image)
@@ -96,7 +96,7 @@ class RandomPlasmaContrast(IntensityAugmentationBase2D):
         self._param_generator = rg.PlainUniformGenerator((roughness, "roughness", None, None))
 
     def apply_transform(
-        self, image: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, image: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         B, C, H, W = image.shape
         roughness = params["roughness"].to(image)
@@ -150,7 +150,7 @@ class RandomPlasmaShadow(IntensityAugmentationBase2D):
         )
 
     def apply_transform(
-        self, image: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, image: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         B, _, H, W = image.shape
         roughness = params["roughness"].to(image)

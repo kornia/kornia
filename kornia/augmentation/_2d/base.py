@@ -1,6 +1,6 @@
 from typing import Any, Dict, Optional
 
-from torch import float16, float32, float64
+from torch import float16, float32, float64, Size
 
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils import _transform_input, _validate_input_dtype
@@ -55,11 +55,11 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
           form ``False``.
     """
 
-    _transform_matrix: Optional[Tensor]
-
     @property
     def transform_matrix(self) -> Optional[Tensor]:
-        return self._transform_matrix
+        if self._params is not None and "transform_matrix" in self._params:
+            return self._params["transform_matrix"]
+        return None
 
     def identity_matrix(self, input) -> Tensor:
         """Return 3x3 identity matrix."""
@@ -71,59 +71,77 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
     def generate_transformation_matrix(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         """Generate transformation matrices with the given input and param settings."""
 
-        batch_prob = params['batch_prob']
-        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
+        batch_prob = params['batch_prob'][:, None, None, None]
 
         in_tensor = self.transform_tensor(input)
-        if not to_apply.any():
-            trans_matrix = self.identity_matrix(in_tensor)
-        elif to_apply.all():
-            trans_matrix = self.compute_transformation(in_tensor, params=params, flags=flags)
-        else:
-            trans_matrix_A = self.identity_matrix(in_tensor)
-            trans_matrix_B = self.compute_transformation(in_tensor[to_apply], params=params, flags=flags)
 
-            if is_autocast_enabled():
-                trans_matrix_A = trans_matrix_A.type(input.dtype)
-                trans_matrix_B = trans_matrix_B.type(input.dtype)
+        trans_matrix = self.compute_transformation(in_tensor, params=params, flags=flags)
 
-            trans_matrix = trans_matrix_A.index_put((to_apply,), trans_matrix_B)
-
-        return trans_matrix
+        return trans_matrix * batch_prob.round() + self.identity_matrix(in_tensor) * (1 - batch_prob.round())
 
     def inverse_inputs(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         raise NotImplementedError
 
     def inverse_masks(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         raise NotImplementedError
 
     def inverse_boxes(
-        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Boxes:
         raise NotImplementedError
 
     def inverse_keypoints(
-        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Keypoints:
         raise NotImplementedError
 
     def inverse_classes(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         raise NotImplementedError
 
-    def apply_func(
-        self, in_tensor: Tensor, params: Dict[str, Tensor], flags: Optional[Dict[str, Any]] = None
+    def forward_parameters(self, batch_shape: Size) -> Dict[str, Tensor]:
+        params = super().forward_parameters(batch_shape)
+        transform_matrix = self.generate_transformation_matrix(batch_shape, params, self.flags)
+        params.update({"transform_matrix": transform_matrix})
+        return params
+
+    def forward(
+        self,
+        input: Tensor,
+        params: Optional[Dict[str, Tensor]] = None,
+        flags: Optional[Dict[str, Any]] = None,
+        **kwargs
     ) -> Tensor:
+        """Perform forward operations.
+
+        Args:
+            input: the input tensor.
+            params: the corresponding parameters for an operation.
+                If None, a new parameter suite will be generated.
+            **kwargs: key-value pairs to override the parameters and flags.
+
+        Note:
+            By default, all the overwriting parameters in kwargs will not be recorded
+            as in ``self._params``. If you wish it to be recorded, you may pass
+            ``save_kwargs=True`` additionally.
+        """
+        input_shape = input.shape
+        in_tensor = self.transform_tensor(input)
+
         if flags is None:
             flags = self.flags
 
-        trans_matrix = self.generate_transformation_matrix(in_tensor, params, flags)
-        output = self.transform_inputs(in_tensor, params, flags, trans_matrix)
-        self._transform_matrix = trans_matrix
+        if params is None:
+            params = self.forward_parameters(in_tensor)
+            self._params = params
 
-        return output
+        params, flags = self._process_kwargs_to_params_and_flags(params, flags, **kwargs)
+
+        output = self.transform_inputs(in_tensor, params, flags, transform=params["transform_matrix"])
+
+        return self.transform_output_tensor(output, input_shape) if self.keepdim else output

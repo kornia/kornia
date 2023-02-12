@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple, Union, cast
+from typing import Any, List, Optional, Tuple, Union, cast
 
 import torch
 
@@ -225,6 +225,16 @@ class Boxes:
     def __setitem__(self, key, value: "Boxes") -> "Boxes":
         self._data[key] = value._data
         return self
+
+    def __mul__(self, other: "Boxes") -> "Boxes":
+        obj = self.clone()
+        obj._data = self.data * other.data
+        return obj
+
+    def __rmul__(self, other: Any) -> "Boxes":
+        obj = self.clone()
+        obj._data = self.data * other
+        return obj
 
     @property
     def shape(self):

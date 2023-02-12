@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
@@ -32,7 +32,7 @@ class ColorJitter(IntensityAugmentationBase2D):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
 
     .. note::
@@ -85,7 +85,7 @@ class ColorJitter(IntensityAugmentationBase2D):
         self._param_generator = rg.ColorJitterGenerator(brightness, contrast, saturation, hue)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         transforms = [
             lambda img: adjust_brightness_accumulative(img, params["brightness_factor"]),

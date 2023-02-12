@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Union
 
 import torch
 from torch import Tensor
@@ -51,6 +51,6 @@ class RandomInvert(IntensityAugmentationBase2D):
         self.flags = dict(max_val=max_val)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         return invert(input, torch.as_tensor(flags["max_val"], device=input.device, dtype=input.dtype))

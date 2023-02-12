@@ -24,7 +24,7 @@ class RandomSolarize(IntensityAugmentationBase2D):
                  to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
 
     .. note::
@@ -62,7 +62,7 @@ class RandomSolarize(IntensityAugmentationBase2D):
         )
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         thresholds = params["thresholds"]
         additions: Optional[Tensor]

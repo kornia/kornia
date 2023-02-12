@@ -104,11 +104,10 @@ class RandomAffine(GeometricAugmentationBase2D):
         )
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         _, _, height, width = input.shape
-        if not isinstance(transform, Tensor):
-            raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
+        transform = params["transform_matrix"]
 
         return warp_affine(
             input,
@@ -123,14 +122,7 @@ class RandomAffine(GeometricAugmentationBase2D):
         self,
         input: Tensor,
         flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
+        transform: Tensor,
         size: Optional[Tuple[int, int]] = None,
     ) -> Tensor:
-        if not isinstance(transform, Tensor):
-            raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
-        return self.apply_transform(
-            input,
-            params=self._params,
-            transform=as_tensor(transform, device=input.device, dtype=input.dtype),
-            flags=flags,
-        )
+        return self.apply_transform(input, params=self._params, flags=flags)
