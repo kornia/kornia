@@ -201,7 +201,8 @@ def convert_points_to_homogeneous(points: Tensor) -> Tensor:
     if len(points.shape) < 2:
         raise ValueError(f"Input must be at least a 2D tensor. Got {points.shape}")
 
-    return pad(points, [0, 1], "constant", 1.0)
+    ones = torch.ones_like(points[..., 0].unsqueeze(-1), device=points.device, dtype=points.dtype)
+    return torch.cat([points, ones], dim=-1)
 
 
 def _convert_affinematrix_to_homography_impl(A: Tensor) -> Tensor:
