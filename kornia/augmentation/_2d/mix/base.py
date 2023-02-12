@@ -52,7 +52,8 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         return input
 
     def transform_input(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
-        to_apply = params['batch_prob']
+        batch_prob = params['batch_prob']
+        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         ori_shape = input.shape
         in_tensor = self.transform_tensor(input)
         output = in_tensor
@@ -66,7 +67,8 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         return output
 
     def transform_mask(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
-        to_apply = params['batch_prob']
+        batch_prob = params['batch_prob']
+        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         output = input
         if sum(to_apply) != len(to_apply):
             output = self.apply_non_transform_mask(input, params, flags)
@@ -80,7 +82,8 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
             if not (len(input.shape) == 4 and input.shape[2:] == torch.Size([4, 2])):
                 raise RuntimeError(f"Only BxNx4x2 tensor is supported. Got {input.shape}.")
             input = Boxes(input, False, mode="vertices_plus")
-        to_apply = params['batch_prob']
+        batch_prob = params['batch_prob']
+        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         output = input
         if sum(to_apply) != len(to_apply):
             output = self.apply_non_transform_boxes(input, params, flags)
@@ -89,7 +92,8 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         return output
 
     def transform_keypoint(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
-        to_apply = params['batch_prob']
+        batch_prob = params['batch_prob']
+        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         output = input
         if sum(to_apply) != len(to_apply):
             output = self.apply_non_transform_keypoint(input, params, flags)
@@ -98,7 +102,8 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         return output
 
     def transform_class(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
-        to_apply = params['batch_prob']
+        batch_prob = params['batch_prob']
+        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         output = input
         if sum(to_apply) != len(to_apply):
             output = self.apply_non_transform_class(input, params, flags)

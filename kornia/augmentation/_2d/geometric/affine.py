@@ -1,11 +1,9 @@
-from typing import Any, Dict, Optional, Tuple, Union, cast
-
-import torch
+from typing import Any, Dict, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample, SamplePadding
-from kornia.core import Tensor
+from kornia.core import Tensor, as_tensor
 from kornia.geometry.conversions import deg2rad
 from kornia.geometry.transform import get_affine_matrix2d, warp_affine
 
@@ -97,19 +95,20 @@ class RandomAffine(GeometricAugmentationBase2D):
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return get_affine_matrix2d(
-            torch.as_tensor(params["translations"], device=input.device, dtype=input.dtype),
-            torch.as_tensor(params["center"], device=input.device, dtype=input.dtype),
-            torch.as_tensor(params["scale"], device=input.device, dtype=input.dtype),
-            torch.as_tensor(params["angle"], device=input.device, dtype=input.dtype),
-            deg2rad(torch.as_tensor(params["sx"], device=input.device, dtype=input.dtype)),
-            deg2rad(torch.as_tensor(params["sy"], device=input.device, dtype=input.dtype)),
+            as_tensor(params["translations"], device=input.device, dtype=input.dtype),
+            as_tensor(params["center"], device=input.device, dtype=input.dtype),
+            as_tensor(params["scale"], device=input.device, dtype=input.dtype),
+            as_tensor(params["angle"], device=input.device, dtype=input.dtype),
+            deg2rad(as_tensor(params["shear_x"], device=input.device, dtype=input.dtype)),
+            deg2rad(as_tensor(params["shear_y"], device=input.device, dtype=input.dtype)),
         )
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         _, _, height, width = input.shape
-        transform = cast(Tensor, transform)
+        if not isinstance(transform, Tensor):
+            raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
 
         return warp_affine(
             input,
@@ -127,9 +126,11 @@ class RandomAffine(GeometricAugmentationBase2D):
         transform: Optional[Tensor] = None,
         size: Optional[Tuple[int, int]] = None,
     ) -> Tensor:
+        if not isinstance(transform, Tensor):
+            raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
         return self.apply_transform(
             input,
             params=self._params,
-            transform=torch.as_tensor(transform, device=input.device, dtype=input.dtype),
+            transform=as_tensor(transform, device=input.device, dtype=input.dtype),
             flags=flags,
         )

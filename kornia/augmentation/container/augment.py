@@ -1,17 +1,19 @@
 import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
-from kornia.augmentation import AugmentationBase3D, RigidAffineAugmentationBase2D, RigidAffineAugmentationBase3D
+import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
-from kornia.augmentation.container.image import ImageSequential, ParamItem
-from kornia.augmentation.container.ops import AugmentationSequentialOps, DataType
-from kornia.augmentation.container.patch import PatchSequential
-from kornia.augmentation.container.video import VideoSequential
 from kornia.constants import DataKey, Resample
 from kornia.core import Module, Tensor
 from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints, VideoKeypoints
 from kornia.utils import eye_like, is_autocast_enabled
+
+from .image import ImageSequential
+from .ops import AugmentationSequentialOps, DataType
+from .params import ParamItem
+from .patch import PatchSequential
+from .video import VideoSequential
 
 __all__ = ["AugmentationSequential"]
 
@@ -193,7 +195,7 @@ class AugmentationSequential(ImageSequential):
             if isinstance(arg, VideoSequential):
                 self.contains_video_sequential = True
             # NOTE: only for images are supported for 3D.
-            if isinstance(arg, AugmentationBase3D):
+            if isinstance(arg, K.AugmentationBase3D):
                 self.contains_3d_augmentation = True
         self._transform_matrix: Optional[Tensor] = None
         self.extra_args = extra_args
@@ -216,7 +218,9 @@ class AugmentationSequential(ImageSequential):
     def _update_transform_matrix_by_module(self, module: Module) -> None:
         if self._transformation_matrix_arg == "skip":
             return
-        if isinstance(module, (RigidAffineAugmentationBase2D, RigidAffineAugmentationBase3D, AugmentationSequential)):
+        if isinstance(
+            module, (K.RigidAffineAugmentationBase2D, K.RigidAffineAugmentationBase3D, AugmentationSequential)
+        ):
             # Passed in pointer, allows lazy transformation matrix computation
             self._transform_matrices.append(module.transform_matrix)  # type: ignore
         elif self._transformation_matrix_arg == "rigid":

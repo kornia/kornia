@@ -1,4 +1,3 @@
-import warnings
 from typing import Any, Dict, Optional, Tuple
 
 from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
@@ -132,7 +131,8 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
     ) -> Tensor:
         in_tensor = self.transform_tensor(input)
         output = in_tensor.clone()
-        to_apply = params['batch_prob']
+        batch_prob = params['batch_prob']
+        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
 
         params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, flags, **kwargs
@@ -185,10 +185,11 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         **kwargs,
     ) -> Boxes:
         output = input.clone()
-        to_apply = params['batch_prob']
+        batch_prob = params['batch_prob']
+        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
 
         if transform is None:
-            raise RuntimeError("transform matrix shall not be `None`.")
+            raise RuntimeError("`transform` has to be a tensor. Got None.")
 
         params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, flags, **kwargs
@@ -222,10 +223,11 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             transform: the inverse tansformation matrix
         """
         output = input.clone()
-        to_apply = params['batch_prob']
+        batch_prob = params['batch_prob']
+        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
 
         if transform is None:
-            raise RuntimeError("transform matrix shall not be `None`.")
+            raise RuntimeError("`transform` has to be a tensor. Got None.")
 
         params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, flags, **kwargs
@@ -263,7 +265,6 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         """
         input_shape = input.shape
         in_tensor = self.transform_tensor(input)
-        batch_shape = input.shape
 
         params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, self.flags, **kwargs
@@ -272,10 +273,6 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         if params is None:
             params = self._params
         transform = self.get_transformation_matrix(in_tensor, params=params, flags=flags)
-
-        if 'batch_prob' not in params:
-            params['batch_prob'] = as_tensor([True] * batch_shape[0])
-            warnings.warn("`batch_prob` is not found in params. Will assume applying on all data.")
 
         transform = self.compute_inverse_transformation(transform)
         output = self.inverse_inputs(in_tensor, params, flags, transform)

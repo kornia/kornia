@@ -59,6 +59,7 @@ Benchmark
 
 .. toctree::
 
+   augmentation.auto
    augmentation.base
    augmentation.container
    augmentation.module

@@ -70,7 +70,10 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
 
     def generate_transformation_matrix(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         """Generate transformation matrices with the given input and param settings."""
-        to_apply = params['batch_prob']
+
+        batch_prob = params['batch_prob']
+        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
+
         in_tensor = self.transform_tensor(input)
         if not to_apply.any():
             trans_matrix = self.identity_matrix(in_tensor)

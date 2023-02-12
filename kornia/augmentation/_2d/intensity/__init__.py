@@ -1,3 +1,4 @@
+from kornia.augmentation._2d.intensity.auto_contrast import RandomAutoContrast
 from kornia.augmentation._2d.intensity.box_blur import RandomBoxBlur
 from kornia.augmentation._2d.intensity.brightness import RandomBrightness
 from kornia.augmentation._2d.intensity.channel_shuffle import RandomChannelShuffle
