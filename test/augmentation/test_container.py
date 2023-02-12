@@ -67,6 +67,9 @@ class TestVideoSequential:
             K.RandomMotionBlur(3, 35.0, 0.5, p=1.0),
             K.Normalize(torch.tensor([0.5, 0.5, 0.5]), torch.tensor([0.5, 0.5, 0.5]), p=1.0),
             K.Denormalize(torch.tensor([0.5, 0.5, 0.5]), torch.tensor([0.5, 0.5, 0.5]), p=1.0),
+            K.RandomAutoContrast(p=1.0),
+            K.RandomShear((10.0, 10.0), p=1.0),
+            K.RandomTranslate((0.5, 0.5), p=1.0),
         ],
     )
     @pytest.mark.parametrize('data_format', ["BCTHW", "BTCHW"])

@@ -3,7 +3,7 @@ from typing import List, Tuple, Union
 import torch.nn as nn
 from torch import Tensor
 
-from kornia.augmentation.container.augment import AugmentationSequential
+from .augment import AugmentationSequential
 
 
 class ManyToManyAugmentationDispather(nn.Module):

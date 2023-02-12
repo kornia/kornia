@@ -9,6 +9,8 @@ from kornia.core import Tensor
 from kornia.geometry.bbox import bbox_generator
 from kornia.utils.helpers import _extract_device_dtype
 
+__all__ = ["MosaicGenerator"]
+
 
 class MosaicGenerator(RandomGeneratorBase):
     r"""Generate mixup indexes and lambdas for a batch of inputs.
