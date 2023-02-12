@@ -1,12 +1,13 @@
 from typing import Any, Dict, Optional
 
 import torch
-from torch import Tensor
 
 from kornia.augmentation._2d.base import AugmentationBase2D
+from kornia.core import Tensor, tensor
 from kornia.geometry.transform import get_tps_transform, warp_image_tps
 
 
+# NOTE: This NEEDS to be updated. It is out of the random generator controller.
 class RandomThinPlateSpline(AugmentationBase2D):
     r"""Add random noise to the Thin Plate Spline algorithm.
 
@@ -50,7 +51,7 @@ class RandomThinPlateSpline(AugmentationBase2D):
 
     def generate_parameters(self, shape: torch.Size) -> Dict[str, Tensor]:
         B, _, _, _ = shape
-        src = torch.tensor([[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0], [0.0, 0.0]]]).expand(B, 5, 2)  # Bx5x2
+        src = tensor([[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0], [0.0, 0.0]]]).expand(B, 5, 2)  # Bx5x2
         dst = src + self.dist.rsample(src.shape)
         return dict(src=src, dst=dst)
 

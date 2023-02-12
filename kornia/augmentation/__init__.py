@@ -1,3 +1,6 @@
+# Lazy loading auto module
+import kornia.augmentation.auto as auto
+import kornia.augmentation.container as container
 from kornia.augmentation._2d import (
     CenterCrop,
     ColorJiggle,
@@ -7,6 +10,7 @@ from kornia.augmentation._2d import (
     Normalize,
     PadTo,
     RandomAffine,
+    RandomAutoContrast,
     RandomBoxBlur,
     RandomBrightness,
     RandomChannelShuffle,
@@ -39,8 +43,10 @@ from kornia.augmentation._2d import (
     RandomRotation,
     RandomSaturation,
     RandomSharpness,
+    RandomShear,
     RandomSolarize,
     RandomThinPlateSpline,
+    RandomTranslate,
     RandomVerticalFlip,
     Resize,
     SmallestMaxSize,
@@ -74,6 +80,8 @@ from kornia.augmentation.container import (
 )
 
 __all__ = [
+    "auto",
+    "container",
     "AugmentationBase2D",
     "RigidAffineAugmentationBase2D",
     "GeometricAugmentationBase2D",
@@ -87,6 +95,8 @@ __all__ = [
     "LongestMaxSize",
     "PadTo",
     "RandomAffine",
+    "RandomShear",
+    "RandomTranslate",
     "RandomBoxBlur",
     "RandomBrightness",
     "RandomChannelShuffle",
@@ -95,6 +105,7 @@ __all__ = [
     "RandomErasing",
     "RandomElasticTransform",
     "RandomFisheye",
+    "RandomAutoContrast",
     "RandomGamma",
     "RandomGrayscale",
     "RandomGaussianBlur",
