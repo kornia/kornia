@@ -5,9 +5,9 @@ import torch
 
 from kornia.color import rgb_to_grayscale
 from kornia.core import Device, Module, Tensor, concatenate
+from kornia.core.check import KORNIA_CHECK_LAF
 from kornia.geometry.subpix import ConvQuadInterp3d
 from kornia.geometry.transform import ScalePyramid
-from kornia.testing import KORNIA_CHECK_LAF
 
 from .affine_shape import LAFAffNetShapeEstimator
 from .hardnet import HardNet
@@ -82,17 +82,10 @@ class LAFDescriptor(Module):
 
     def __repr__(self) -> str:
         return (
-            self.__class__.__name__
-            + '('
-            + 'descriptor='
-            + self.descriptor.__repr__()
-            + ', '
-            + 'patch_size='
-            + str(self.patch_size)
-            + ', '
-            + 'grayscale_descriptor='
-            + str(self.grayscale_descriptor)
-            + ')'
+            f"{self.__class__.__name__}"
+            f"(descriptor={self.descriptor.__repr__()}, "
+            f"patch_size={self.patch_size}, "
+            f"grayscale_descriptor='{self.grayscale_descriptor})"
         )
 
     def forward(self, img: Tensor, lafs: Tensor) -> Tensor:

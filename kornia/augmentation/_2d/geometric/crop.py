@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
@@ -156,7 +156,7 @@ class RandomCrop(GeometricAugmentationBase2D):
     ) -> Keypoints:
         """Process keypoints corresponding to the inputs that are no transformation applied."""
         # For pad the keypoints properly.
-        padding_size = params["padding_size"]
+        padding_size = params["padding_size"].to(device=input.device)
         input = input.pad(padding_size)
         return super().apply_transform_keypoint(input=input, params=params, flags=flags, transform=transform)
 
@@ -179,7 +179,8 @@ class RandomCrop(GeometricAugmentationBase2D):
 
         flags = self.flags if flags is None else flags
         if flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
-            transform = cast(Tensor, transform)
+            if not isinstance(transform, Tensor):
+                raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
             # Fit the arg to F.pad
             if flags['padding_mode'] == "constant":
                 padding_mode = "zeros"
@@ -213,8 +214,10 @@ class RandomCrop(GeometricAugmentationBase2D):
             raise NotImplementedError(
                 f"`inverse` is only applicable for resample cropping mode. Got {flags['cropping_mode']}."
             )
-        size = cast(Tuple[int, int], size)
-        transform = cast(Tensor, transform)
+        if size is None:
+            raise RuntimeError("`size` has to be a tuple. Got None.")
+        if not isinstance(transform, Tensor):
+            raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
         # Fit the arg to F.pad
         if flags['padding_mode'] == "constant":
             padding_mode = "zeros"
@@ -286,7 +289,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         if not params["batch_prob"].all():
             return output
 
-        return output.unpad(params["padding_size"])
+        return output.unpad(params["padding_size"].to(device=input.device))
 
     # Override parameters for precrop
     def forward_parameters(self, batch_shape) -> Dict[str, Tensor]:

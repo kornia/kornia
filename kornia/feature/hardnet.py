@@ -4,7 +4,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kornia.testing import KORNIA_CHECK_SHAPE, is_mps_tensor_safe
+from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.testing import is_mps_tensor_safe
 from kornia.utils.helpers import map_location_to_cpu
 
 urls: Dict[str, str] = {}

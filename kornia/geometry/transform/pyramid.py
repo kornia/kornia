@@ -5,8 +5,8 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core import Module, Tensor, pad, stack, tensor
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.filters import filter2d, gaussian_blur2d
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 __all__ = [
     "PyrDown",
@@ -140,28 +140,14 @@ class ScalePyramid(Module):
 
     def __repr__(self) -> str:
         return (
-            self.__class__.__name__
-            + '(n_levels='
-            + str(self.n_levels)
-            + ', '
-            + 'init_sigma='
-            + str(self.init_sigma)
-            + ', '
-            + 'min_size='
-            + str(self.min_size)
-            + ', '
-            + 'extra_levels='
-            + str(self.extra_levels)
-            + ', '
-            + 'border='
-            + str(self.border)
-            + ', '
-            + 'sigma_step='
-            + str(self.sigma_step)
-            + ', '
-            + 'double_image='
-            + str(self.double_image)
-            + ')'
+            f'{self.__class__.__name__}('
+            f'n_levels={self.n_levels}, '
+            f'init_sigma={self.init_sigma}, '
+            f'min_size={self.min_size}, '
+            f'extra_levels={self.extra_levels}, '
+            f'border={self.border}, '
+            f'sigma_step={self.sigma_step}, '
+            f'double_image={self.double_image})'
         )
 
     def get_kernel_size(self, sigma: float):

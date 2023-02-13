@@ -6,9 +6,9 @@ import torch.nn.functional as F
 from typing_extensions import TypedDict
 
 from kornia.core import Device, Module, Tensor, concatenate, eye, tensor, where, zeros
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.subpix import ConvSoftArgmax3d, NonMaximaSuppression2d
 from kornia.geometry.transform import ScalePyramid, pyrdown, resize
-from kornia.testing import KORNIA_CHECK_SHAPE
 
 from .laf import laf_from_center_scale_ori, laf_is_inside_image
 from .orientation import PassLAF
@@ -104,28 +104,14 @@ class ScaleSpaceDetector(Module):
 
     def __repr__(self):
         return (
-            self.__class__.__name__ + '('
-            'num_features='
-            + str(self.num_features)
-            + ', '
-            + 'mr_size='
-            + str(self.mr_size)
-            + ', '
-            + 'scale_pyr='
-            + self.scale_pyr.__repr__()
-            + ', '
-            + 'resp='
-            + self.resp.__repr__()
-            + ', '
-            + 'nms='
-            + self.nms.__repr__()
-            + ', '
-            + 'ori='
-            + self.ori.__repr__()
-            + ', '
-            + 'aff='
-            + self.aff.__repr__()
-            + ')'
+            f"{self.__class__.__name__}("
+            f"num_features={self.num_features}, "
+            f"mr_size={self.mr_size}, "
+            f"scale_pyr={self.scale_pyr.__repr__()}, "
+            f"resp={self.resp.__repr__()}, "
+            f"nms={self.nms.__repr__()}, "
+            f"ori={self.ori.__repr__()}, "
+            f"aff={self.aff.__repr__()})"
         )
 
     def detect(self, img: Tensor, num_feats: int, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:

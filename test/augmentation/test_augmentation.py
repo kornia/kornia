@@ -149,19 +149,18 @@ class CommonTests(BaseTester):
         assert isinstance(generated_params, dict)
 
         # compute_transformation can be called and returns the correct shaped transformation matrix
-        expected_transformation_shape = torch.Size((generated_params['batch_prob'].sum(), 3, 3))
+        to_apply = generated_params['batch_prob'] > 0.5
+        expected_transformation_shape = torch.Size((to_apply.sum(), 3, 3))
         test_input = torch.ones(batch_shape, device=self.device, dtype=self.dtype)
-        transformation = augmentation.compute_transformation(
-            test_input[generated_params['batch_prob']], generated_params, augmentation.flags
-        )
+        transformation = augmentation.compute_transformation(test_input[to_apply], generated_params, augmentation.flags)
         assert transformation.shape == expected_transformation_shape
 
         # apply_transform can be called and returns the correct batch sized output
-        if generated_params['batch_prob'].sum() != 0:
+        if to_apply.sum() != 0:
             output = augmentation.apply_transform(
-                test_input[generated_params['batch_prob']], generated_params, augmentation.flags, transformation
+                test_input[to_apply], generated_params, augmentation.flags, transformation
             )
-            assert output.shape[0] == generated_params['batch_prob'].sum()
+            assert output.shape[0] == to_apply.sum()
         else:
             # Re-generate parameters if 0 batch size
             self._test_smoke_implementation(params)
@@ -4059,3 +4058,39 @@ class TestRandomRGBShift:
             dtype=dtype,
         )
         utils.assert_close(f(input), expected, rtol=1e-4, atol=1e-4)
+
+
+class TestRandomTranslate:
+    torch.manual_seed(0)  # for random reproductibility
+
+    def test_smoke_no_transform(self, device):
+        x_data = torch.rand(1, 2, 8, 9).to(device)
+        aug = kornia.augmentation.RandomTranslate((0.5, 0.5))
+        out = aug(x_data)
+        assert out.shape == x_data.shape
+        assert aug.inverse(out).shape == x_data.shape
+        assert aug.inverse(out, aug._params).shape == x_data.shape
+
+    def test_gradcheck(self, device):
+        input = torch.rand(1, 2, 5, 7).to(device)
+        input = utils.tensor_to_gradcheck_var(input)  # to var
+        # TODO: turned off with p=0
+        assert gradcheck(
+            kornia.augmentation.RandomTranslate((0.5, 0.5), p=1.0), (input,), raise_exception=True, fast_mode=True
+        )
+
+
+class TestRandomAutoContrast:
+    torch.manual_seed(0)  # for random reproductibility
+
+    def test_smoke_no_transform(self, device):
+        x_data = torch.rand(1, 2, 8, 9).to(device)
+        aug = kornia.augmentation.RandomAutoContrast()
+        out = aug(x_data)
+        assert out.shape == x_data.shape
+
+    def test_gradcheck(self, device):
+        input = torch.rand(1, 2, 5, 7).to(device)
+        input = utils.tensor_to_gradcheck_var(input)  # to var
+        # TODO: turned off with p=0
+        assert gradcheck(kornia.augmentation.RandomAutoContrast(p=1.0), (input,), raise_exception=True, fast_mode=True)

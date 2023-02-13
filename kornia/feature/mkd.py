@@ -155,20 +155,11 @@ class VonMisesKernel(nn.Module):
 
     def __repr__(self) -> str:
         return (
-            self.__class__.__name__
-            + '('
-            + 'patch_size='
-            + str(self.patch_size)
-            + ', '
-            + 'n='
-            + str(self.n)
-            + ', '
-            + 'd='
-            + str(self.d)
-            + ', '
-            + 'coeffs='
-            + str(self.coeffs)
-            + ')'
+            f"{self.__class__.__name__}("
+            f"patch_size={self.patch_size}, "
+            f"n={self.n}, "
+            f"d={self.d}, "
+            f"coeffs={self.coeffs})"
         )
 
 
@@ -225,16 +216,7 @@ class EmbedGradients(nn.Module):
         return y
 
     def __repr__(self) -> str:
-        return (
-            self.__class__.__name__
-            + '('
-            + 'patch_size='
-            + str(self.patch_size)
-            + ', '
-            + 'relative='
-            + str(self.relative)
-            + ')'
-        )
+        return f"{self.__class__.__name__}(patch_size={self.patch_size}, relative={self.relative})"
 
 
 def spatial_kernel_embedding(kernel_type, grids: Dict[str, Tensor]) -> Tensor:
@@ -363,26 +345,13 @@ class ExplicitSpacialEncoding(nn.Module):
 
     def __repr__(self) -> str:
         return (
-            self.__class__.__name__
-            + '('
-            + 'kernel_type='
-            + str(self.kernel_type)
-            + ', '
-            + 'fmap_size='
-            + str(self.fmap_size)
-            + ', '
-            + 'in_dims='
-            + str(self.in_dims)
-            + ', '
-            + 'out_dims='
-            + str(self.out_dims)
-            + ', '
-            + 'do_gmask='
-            + str(self.do_gmask)
-            + ', '
-            + 'do_l2='
-            + str(self.do_l2)
-            + ')'
+            f'{self.__class__.__name__}('
+            f'kernel_type={self.kernel_type}, '
+            f'fmap_size={self.fmap_size}, '
+            f'in_dims={self.in_dims}, '
+            f'out_dims={self.out_dims}, '
+            f'do_gmask={self.do_gmask}, '
+            f'do_l2={self.do_l2})'
         )
 
 
@@ -497,17 +466,10 @@ class Whitening(nn.Module):
 
     def __repr__(self) -> str:
         return (
-            self.__class__.__name__
-            + '('
-            + 'xform='
-            + str(self.xform)
-            + ', '
-            + 'in_dims='
-            + str(self.in_dims)
-            + ', '
-            + 'output_dims='
-            + str(self.output_dims)
-            + ')'
+            f'{self.__class__.__name__}('
+            f'xform={self.xform}, '
+            f'in_dims={self.in_dims}, '
+            f'output_dims={self.output_dims})'
         )
 
 
@@ -620,23 +582,12 @@ class MKDDescriptor(nn.Module):
 
     def __repr__(self) -> str:
         return (
-            self.__class__.__name__
-            + '('
-            + 'patch_size='
-            + str(self.patch_size)
-            + ', '
-            + 'kernel_type='
-            + str(self.kernel_type)
-            + ', '
-            + 'whitening='
-            + str(self.whitening)
-            + ', '
-            + 'training_set='
-            + str(self.training_set)
-            + ', '
-            + 'output_dims='
-            + str(self.output_dims)
-            + ')'
+            f'{self.__class__.__name__}('
+            f'patch_size={self.patch_size}, '
+            f'kernel_type={self.kernel_type}, '
+            f'whitening={self.whitening}, '
+            f'training_set={self.training_set}, '
+            f'output_dims={self.output_dims})'
         )
 
 

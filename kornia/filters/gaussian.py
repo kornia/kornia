@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from kornia.core import Module, Tensor, tensor
-from kornia.testing import KORNIA_CHECK_IS_TENSOR
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR
 from kornia.utils import deprecated
 
 from .filter import filter2d, filter2d_separable
@@ -116,18 +116,11 @@ class GaussianBlur2d(Module):
 
     def __repr__(self) -> str:
         return (
-            self.__class__.__name__
-            + '(kernel_size='
-            + str(self.kernel_size)
-            + ', '
-            + 'sigma='
-            + str(self.sigma)
-            + ', '
-            + 'border_type='
-            + self.border_type
-            + 'separable='
-            + str(self.separable)
-            + ')'
+            f"{self.__class__.__name__}"
+            f"(kernel_size={self.kernel_size}, "
+            f"sigma={self.sigma}, "
+            f"border_type={self.border_type}, "
+            f"separable={self.separable})"
         )
 
     def forward(self, input: Tensor) -> Tensor:

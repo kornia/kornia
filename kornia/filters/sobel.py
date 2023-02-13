@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core import Module, Tensor, pad
-from kornia.testing import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 from .kernels import get_spatial_gradient_kernel2d, get_spatial_gradient_kernel3d, normalize_kernel2d
 
@@ -180,10 +180,7 @@ class SpatialGradient(Module):
         self.mode: str = mode
 
     def __repr__(self) -> str:
-        return (
-            self.__class__.__name__ + '('
-            'order=' + str(self.order) + ', ' + 'normalized=' + str(self.normalized) + ', ' + 'mode=' + self.mode + ')'
-        )
+        return f"{self.__class__.__name__}(order={self.order}, normalized={self.normalized}, mode={self.mode})"
 
     def forward(self, input: Tensor) -> Tensor:
         return spatial_gradient(input, self.mode, self.order, self.normalized)
@@ -218,7 +215,7 @@ class SpatialGradient3d(Module):
         return
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ + '(' 'order=' + str(self.order) + ', ' + 'mode=' + self.mode + ')'
+        return f"{self.__class__.__name__}(order={self.order}, mode={self.mode})"
 
     def forward(self, input: Tensor) -> Tensor:
         return spatial_gradient3d(input, self.mode, self.order)
@@ -249,7 +246,7 @@ class Sobel(Module):
         self.eps: float = eps
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ + '(' 'normalized=' + str(self.normalized) + ')'
+        return f"{self.__class__.__name__}(normalized={self.normalized})"
 
     def forward(self, input: Tensor) -> Tensor:
         return sobel(input, self.normalized, self.eps)

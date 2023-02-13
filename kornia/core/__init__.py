@@ -7,6 +7,7 @@ from ._backend import (
     complex,
     concatenate,
     eye,
+    linspace,
     normalize,
     pad,
     rand,
@@ -34,4 +35,5 @@ __all__ = [
     "zeros",
     "complex",
     "zeros_like",
+    "linspace",
 ]

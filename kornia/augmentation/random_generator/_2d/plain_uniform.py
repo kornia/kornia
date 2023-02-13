@@ -8,6 +8,8 @@ from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _
 from kornia.core import Tensor, as_tensor
 from kornia.utils.helpers import _extract_device_dtype
 
+__all__ = ["ParameterBound", "PlainUniformGenerator"]
+
 # factor, name, center, range
 ParameterBound = Tuple[Any, str, Optional[float], Optional[Tuple[float, float]]]
 
@@ -44,13 +46,16 @@ class PlainUniformGenerator(RandomGeneratorBase):
         super().__init__()
         self.samplers = samplers
         names = []
-        for factor, name, _, _ in samplers:
+        for factor, name, center, bound in samplers:
             if name in names:
                 raise RuntimeError(f"factor name `{name}` has already been registered. Please check the duplication.")
             names.append(name)
             if isinstance(factor, torch.nn.Parameter):
                 self.register_parameter(name, factor)
             elif isinstance(factor, Tensor):
+                self.register_buffer(name, factor)
+            else:
+                factor = _range_bound(factor, name, center=center, bounds=bound)
                 self.register_buffer(name, factor)
 
     def __repr__(self) -> str:

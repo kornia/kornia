@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple, Union, cast
+from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 from torch import Tensor
@@ -73,5 +73,6 @@ class PadTo(GeometricAugmentationBase2D):
         transform: Optional[Tensor] = None,
         size: Optional[Tuple[int, int]] = None,
     ) -> Tensor:
-        size = cast(Tuple[int, int], size)
+        if size is None:
+            raise RuntimeError("`size` has to be a tuple. Got None.")
         return input[..., : size[0], : size[1]]

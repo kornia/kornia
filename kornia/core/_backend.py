@@ -14,6 +14,7 @@ Parameter = torch.nn.Parameter
 # NOTE: ideally we expose what we find in numpy
 concatenate = torch.cat
 stack = torch.stack
+linspace = torch.linspace
 normalize = F.normalize
 pad = F.pad
 eye = torch.eye

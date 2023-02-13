@@ -7,6 +7,8 @@ from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_sampling, _common_param_check
 from kornia.core import Tensor, tensor
 
+__all__ = ["ProbabilityGenerator"]
+
 
 class ProbabilityGenerator(RandomGeneratorBase):
     r"""Generate random probabilities for a batch of inputs.
