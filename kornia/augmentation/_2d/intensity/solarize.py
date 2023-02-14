@@ -61,9 +61,7 @@ class RandomSolarize(IntensityAugmentationBase2D):
             (thresholds, "thresholds", 0.5, (0.0, 1.0)), (additions, "additions", 0.0, (-0.5, 0.5))
         )
 
-    def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         thresholds = params["thresholds"]
         additions: Optional[Tensor]
         if "additions" in params:

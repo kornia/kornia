@@ -5,7 +5,6 @@ from kornia.core import Tensor, as_tensor
 
 
 class GeometricAugmentationBase3D(RigidAffineAugmentationBase3D):
-
     def get_transformation_matrix(
         self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, flags: Optional[Dict[str, Any]] = None
     ) -> Tensor:

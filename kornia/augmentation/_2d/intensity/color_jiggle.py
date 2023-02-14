@@ -71,9 +71,7 @@ class ColorJiggle(IntensityAugmentationBase2D):
         self.hue = hue
         self._param_generator = rg.ColorJiggleGenerator(brightness, contrast, saturation, hue)
 
-    def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         transforms = [
             lambda img: adjust_brightness(img, params["brightness_factor"] - 1),
             lambda img: adjust_contrast(img, params["contrast_factor"]),

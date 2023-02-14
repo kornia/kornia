@@ -86,10 +86,7 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
 
         self._param_generator = rg.PlanckianJitterGenerator(mode=mode, select_from=select_from)
 
-    def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
-
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         coeffs = params["coeffs"]
 
         r_w = coeffs[:, 0][..., None, None]

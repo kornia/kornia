@@ -3,11 +3,11 @@ import torch
 
 from kornia.augmentation.random_generator import (
     AffineGenerator3D,
+    CenterCropGenerator3D,
     CropGenerator3D,
     MotionBlurGenerator3D,
     PerspectiveGenerator3D,
     RotationGenerator3D,
-    CenterCropGenerator3D,
 )
 from kornia.testing import assert_close
 

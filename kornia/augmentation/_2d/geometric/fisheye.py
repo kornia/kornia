@@ -76,6 +76,6 @@ class RandomFisheye(AugmentationBase2D):
         gamma = params["gamma"].view(B, 1, 1).to(input)
         # compute and apply the distances respect to the camera optical center
         distance = ((center_x - field_x) ** 2 + (center_y - field_y) ** 2) ** 0.5
-        field_x = field_x + field_x * distance ** gamma  # BxHxw
-        field_y = field_y + field_y * distance ** gamma  # BxHxW
+        field_x = field_x + field_x * distance**gamma  # BxHxw
+        field_y = field_y + field_y * distance**gamma  # BxHxW
         return remap(input, field_x, field_y, normalized_coordinates=True, align_corners=True)

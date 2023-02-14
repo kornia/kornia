@@ -54,9 +54,7 @@ class RandomGrayscale(IntensityAugmentationBase2D):
     def __init__(self, same_on_batch: bool = False, p: float = 0.1, keepdim: bool = False) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
 
-    def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         # Make sure it returns (*, 3, H, W)
         grayscale = torch.ones_like(input)
         grayscale[:] = rgb_to_grayscale(input)

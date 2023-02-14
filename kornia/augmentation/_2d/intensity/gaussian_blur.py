@@ -75,9 +75,7 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         self.flags = dict(kernel_size=kernel_size, separable=separable, border_type=BorderType.get(border_type))
         self._param_generator = rg.RandomGaussianBlurGenerator(sigma)
 
-    def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         sigma = params["sigma"].to(device=input.device, dtype=input.dtype).unsqueeze(-1).expand(-1, 2)
         return gaussian_blur2d(
             input,

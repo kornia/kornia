@@ -50,9 +50,7 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
     def generate_parameters(self, shape: torch.Size) -> Dict[str, Tensor]:
         return {}
 
-    def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         if "gaussian_noise" in params:
             gaussian_noise = params["gaussian_noise"]
         else:

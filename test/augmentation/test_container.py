@@ -649,7 +649,7 @@ class TestAugmentationSequential:
         op_jit = torch.jit.script(op)
         assert_close(op(img), op_jit(img))
 
-    @pytest.mark.parametrize("batch_prob", [[1., 1.], [0., 1.], [0., 0.]])
+    @pytest.mark.parametrize("batch_prob", [[1.0, 1.0], [0.0, 1.0], [0.0, 0.0]])
     @pytest.mark.parametrize("box", ['bbox', 'bbox_xyxy', 'bbox_xywh'])
     def test_autocast(self, batch_prob, box, device, dtype):
         if not hasattr(torch, "autocast"):

@@ -63,8 +63,6 @@ class RandomSaturation(IntensityAugmentationBase2D):
         self.saturation: Tensor = _range_bound(saturation, 'saturation', center=1.0)
         self._param_generator = rg.PlainUniformGenerator((self.saturation, "saturation_factor", None, None))
 
-    def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         saturation_factor = params["saturation_factor"].to(input)
         return adjust_saturation(input, saturation_factor)

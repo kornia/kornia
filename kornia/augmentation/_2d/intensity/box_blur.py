@@ -48,7 +48,5 @@ class RandomBoxBlur(IntensityAugmentationBase2D):
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self.flags = dict(kernel_size=kernel_size, border_type=border_type, normalized=normalized)
 
-    def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return box_blur(input, flags["kernel_size"], flags["border_type"], flags["normalized"])

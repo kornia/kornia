@@ -11,7 +11,6 @@ from kornia.utils.helpers import _extract_device_dtype
 
 
 class _CropGeneratorBase3D(RandomGeneratorBase):
-
     has_fit_batch_prob = True
 
     def fit_batch_prob(
@@ -197,7 +196,8 @@ class CenterCropGenerator3D(_CropGeneratorBase3D):
         depth, height, width = (batch_shape[-3], batch_shape[-2], batch_shape[-1])
         if not (depth >= self.size[0] and height >= self.size[1] and width >= self.size[2]):
             raise AssertionError(
-                f"Crop size must be smaller than input size. Got ({depth}, {height}, {width}) and {self.size}.")
+                f"Crop size must be smaller than input size. Got ({depth}, {height}, {width}) and {self.size}."
+            )
 
         # unpack input sizes
         dst_d, dst_h, dst_w = self.size

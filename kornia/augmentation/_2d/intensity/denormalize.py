@@ -60,7 +60,5 @@ class Denormalize(IntensityAugmentationBase2D):
 
         self.flags = dict(mean=mean, std=std)
 
-    def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return denormalize(input, flags["mean"], flags["std"])

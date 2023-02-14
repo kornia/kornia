@@ -67,8 +67,6 @@ class RandomContrast(IntensityAugmentationBase2D):
 
         self.clip_output = clip_output
 
-    def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         contrast_factor = params["contrast_factor"].to(input)
         return adjust_contrast(input, contrast_factor, self.clip_output)

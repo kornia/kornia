@@ -57,9 +57,7 @@ def _transform_boxes(boxes: Tensor, M: Tensor) -> Tensor:
     return transformed_boxes
 
 
-def _boxes_to_polygons(
-    xmin: Tensor, ymin: Tensor, width: Tensor, height: Tensor
-) -> Tensor:
+def _boxes_to_polygons(xmin: Tensor, ymin: Tensor, width: Tensor, height: Tensor) -> Tensor:
     if not xmin.ndim == ymin.ndim == width.ndim == height.ndim == 2:
         raise ValueError("We expect to create a batch of 2D boxes (quadrilaterals) in vertices format (B, N, 4, 2)")
 
@@ -134,12 +132,7 @@ def _boxes_to_quadrilaterals(boxes: Tensor, mode: str = "xyxy", validate_boxes: 
 
 
 def _boxes3d_to_polygons3d(
-    xmin: Tensor,
-    ymin: Tensor,
-    zmin: Tensor,
-    width: Tensor,
-    height: Tensor,
-    depth: Tensor,
+    xmin: Tensor, ymin: Tensor, zmin: Tensor, width: Tensor, height: Tensor, depth: Tensor
 ) -> Tensor:
     if not xmin.ndim == ymin.ndim == zmin.ndim == width.ndim == height.ndim == depth.ndim == 2:
         raise ValueError("We expect to create a batch of 3D boxes (hexahedrons) in vertices format (B, N, 8, 3)")
@@ -188,10 +181,7 @@ class Boxes:
     """
 
     def __init__(
-        self,
-        boxes: Union[Tensor, List[Tensor]],
-        raise_if_not_floating_point: bool = True,
-        mode: str = "vertices_plus",
+        self, boxes: Union[Tensor, List[Tensor]], raise_if_not_floating_point: bool = True, mode: str = "vertices_plus"
     ) -> None:
         self._N: Optional[List[int]] = None
 
@@ -415,9 +405,7 @@ class Boxes:
         return w * h
 
     @classmethod
-    def from_tensor(
-        cls, boxes: Union[Tensor, List[Tensor]], mode: str = "xyxy", validate_boxes: bool = True
-    ) -> T:
+    def from_tensor(cls, boxes: Union[Tensor, List[Tensor]], mode: str = "xyxy", validate_boxes: bool = True) -> T:
         r"""Helper method to easily create :class:`Boxes` from boxes stored in another format.
 
         Args:
@@ -469,9 +457,7 @@ class Boxes:
         # constructing the class from inside of a method.
         return cls(quadrilaterals, False, mode)
 
-    def to_tensor(
-        self, mode: Optional[str] = None, as_padded_sequence: bool = False
-    ) -> Union[Tensor, List[Tensor]]:
+    def to_tensor(self, mode: Optional[str] = None, as_padded_sequence: bool = False) -> Union[Tensor, List[Tensor]]:
         r"""Cast :class:`Boxes` to a tensor. ``mode`` controls which 2D boxes format should be use to represent
         boxes in the tensor.
 
@@ -705,9 +691,7 @@ class VideoBoxes(Boxes):
         out.temporal_channel_size = temporal_channel_size
         return out
 
-    def to_tensor(  # type: ignore[override]
-        self, mode: Optional[str] = None
-    ) -> Union[Tensor, List[Tensor]]:
+    def to_tensor(self, mode: Optional[str] = None) -> Union[Tensor, List[Tensor]]:  # type: ignore[override]
         out = super().to_tensor(mode, as_padded_sequence=False)
         if isinstance(out, Tensor):
             return out.view(-1, self.temporal_channel_size, *out.shape[1:])
@@ -740,9 +724,7 @@ class Boxes3D:
         `hexahedrons <https://en.wikipedia.org/wiki/Hexahedron>`_ are cubes and rhombohedrons.
     """
 
-    def __init__(
-        self, boxes: Tensor, raise_if_not_floating_point: bool = True, mode: str = "xyzxyz_plus"
-    ) -> None:
+    def __init__(self, boxes: Tensor, raise_if_not_floating_point: bool = True, mode: str = "xyzxyz_plus") -> None:
         if not isinstance(boxes, Tensor):
             raise TypeError(f"Input boxes is not a Tensor. Got: {type(boxes)}.")
 

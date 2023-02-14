@@ -87,6 +87,9 @@ class RandomPerspective(GeometricAugmentationBase2D):
 
         transform = self.get_inverse_transformation_matrix(input, params=params, flags=flags)
         return warp_perspective(
-            input, transform, (size[0], size[1]), mode=flags["resample"].name.lower(),
-            align_corners=flags["align_corners"]
+            input,
+            transform,
+            (size[0], size[1]),
+            mode=flags["resample"].name.lower(),
+            align_corners=flags["align_corners"],
         )

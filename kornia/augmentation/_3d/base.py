@@ -55,6 +55,7 @@ class RigidAffineAugmentationBase3D(AugmentationBase3D):
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it to the batch
           form ``False``.
     """
+
     @property
     def transform_matrix(self) -> Optional[Tensor]:
         if self._params is not None and "transform_matrix" in self._params:

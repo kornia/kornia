@@ -68,15 +68,11 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             transform = params["transform_matrix_inv"]
         return as_tensor(transform, device=input.device, dtype=input.dtype)
 
-    def apply_non_transform_mask(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_non_transform_mask(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         """Process masks corresponding to the inputs that are no transformation applied."""
         return input
 
-    def apply_transform_mask(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform_mask(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         """Process masks corresponding to the inputs that are transformed.
 
         Note:
@@ -91,15 +87,11 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             flags["resample"] = resample_method
         return output
 
-    def apply_non_transform_box(
-        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Boxes:
+    def apply_non_transform_box(self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Boxes:
         """Process boxes corresponding to the inputs that are no transformation applied."""
         return input
 
-    def apply_transform_box(
-        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Boxes:
+    def apply_transform_box(self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Boxes:
         """Process boxes corresponding to the inputs that are transformed."""
         transform = params["transform_matrix"]
         input = self.apply_non_transform_box(input, params, flags)
@@ -111,29 +103,21 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         """Process keypoints corresponding to the inputs that are no transformation applied."""
         return input
 
-    def apply_transform_keypoint(
-        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Keypoints:
+    def apply_transform_keypoint(self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Keypoints:
         """Process keypoints corresponding to the inputs that are transformed."""
         transform = params["transform_matrix"]
         input = self.apply_non_transform_keypoint(input, params, flags)
         return input.transform_keypoints_(transform)
 
-    def apply_non_transform_class(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_non_transform_class(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         """Process class tags corresponding to the inputs that are no transformation applied."""
         return input
 
-    def apply_transform_class(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform_class(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         """Process class tags corresponding to the inputs that are transformed."""
         return input
 
-    def inverse_inputs(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], **kwargs,
-    ) -> Tensor:
+    def inverse_inputs(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], **kwargs) -> Tensor:
         in_tensor = self.transform_tensor(input)
         batch_prob = params['batch_prob'][:, None, None, None]
 
@@ -151,9 +135,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             return inversed
         return inversed * batch_prob.round() + input * (1 - batch_prob.round())
 
-    def inverse_masks(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], **kwargs,
-    ) -> Tensor:
+    def inverse_masks(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], **kwargs) -> Tensor:
         resample_method: Optional[Resample] = None
         if "resample" in flags:
             resample_method = flags["resample"]
@@ -163,9 +145,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             flags["resample"] = resample_method
         return output
 
-    def inverse_boxes(
-        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], **kwargs,
-    ) -> Boxes:
+    def inverse_boxes(self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], **kwargs) -> Boxes:
         batch_prob = params['batch_prob'][:, None, None]
 
         params, flags = self._process_kwargs_to_params_and_flags(
@@ -182,7 +162,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         return input.transform_boxes(transform) * batch_prob.round() + input * (1 - batch_prob.round())
 
     def inverse_keypoints(
-        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any], **kwargs,
+        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any], **kwargs
     ) -> Keypoints:
         """Inverse the transformation on keypoints.
 
@@ -207,9 +187,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             return input.transform_keypoints(transform)
         return input.transform_keypoints(transform) * batch_prob.round() + input * (1 - batch_prob.round())
 
-    def inverse_classes(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], **kwargs,
-    ) -> Tensor:
+    def inverse_classes(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], **kwargs) -> Tensor:
         return input
 
     def inverse(self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs) -> Tensor:

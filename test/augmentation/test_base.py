@@ -137,7 +137,7 @@ class TestAugmentationBase2D:
         output = utils.tensor_to_gradcheck_var(output)  # to var
         other_transform = utils.tensor_to_gradcheck_var(other_transform)  # to var
 
-        input_param = {'batch_prob': torch.tensor([1.]), 'x': input_transform, 'y': {}}
+        input_param = {'batch_prob': torch.tensor([1.0]), 'x': input_transform, 'y': {}}
 
         augmentation = AugmentationBase2D(p=1.0)
 
@@ -147,7 +147,7 @@ class TestAugmentationBase2D:
 
 
 class TestGeometricAugmentationBase2D:
-    @pytest.mark.parametrize("batch_prob", [[1., 1.], [0., 1.], [0., 0.]])
+    @pytest.mark.parametrize("batch_prob", [[1.0, 1.0], [0.0, 1.0], [0.0, 0.0]])
     def test_autocast(self, batch_prob, device, dtype):
         if not hasattr(torch, "autocast"):
             pytest.skip("PyTorch version without autocast support")
@@ -168,7 +168,7 @@ class TestGeometricAugmentationBase2D:
 
 
 class TestIntensityAugmentationBase2D:
-    @pytest.mark.parametrize("batch_prob", [[1., 1.], [0., 1.], [0., 0.]])
+    @pytest.mark.parametrize("batch_prob", [[1.0, 1.0], [0.0, 1.0], [0.0, 0.0]])
     def test_autocast(self, batch_prob, device, dtype):
         if not hasattr(torch, "autocast"):
             pytest.skip("PyTorch version without autocast support")
@@ -189,7 +189,7 @@ class TestIntensityAugmentationBase2D:
 
 
 class TestIntensityAugmentationBase3D:
-    @pytest.mark.parametrize("batch_prob", [[1., 1.], [0., 1.], [0., 0.]])
+    @pytest.mark.parametrize("batch_prob", [[1.0, 1.0], [0.0, 1.0], [0.0, 0.0]])
     def test_autocast(self, batch_prob, device, dtype):
         if not hasattr(torch, "autocast"):
             pytest.skip("PyTorch version without autocast support")
@@ -210,7 +210,7 @@ class TestIntensityAugmentationBase3D:
 
 
 class TestGeometricAugmentationBase3D:
-    @pytest.mark.parametrize("batch_prob", [[1., 1.], [0., 1.], [0., 0.]])
+    @pytest.mark.parametrize("batch_prob", [[1.0, 1.0], [0.0, 1.0], [0.0, 0.0]])
     def test_autocast(self, batch_prob, device, dtype):
         if not hasattr(torch, "autocast"):
             pytest.skip("PyTorch version without autocast support")

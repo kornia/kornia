@@ -89,7 +89,5 @@ class RandomRGBShift(IntensityAugmentationBase2D):
             (b_shift_limit, "b_shift", 0, (-b_shift_limit, b_shift_limit)),
         )
 
-    def apply_transform(
-        self, inp: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform(self, inp: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return shift_rgb(inp, params['r_shift'], params['g_shift'], params['b_shift'])

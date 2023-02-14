@@ -64,9 +64,7 @@ class RandomGamma(IntensityAugmentationBase2D):
             (gamma, "gamma_factor", None, None), (gain, "gain_factor", None, None)
         )
 
-    def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         gamma_factor = params["gamma_factor"].to(input)
         gain_factor = params["gain_factor"].to(input)
         return adjust_gamma(input, gamma_factor, gain_factor)

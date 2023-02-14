@@ -151,9 +151,7 @@ class RandomCrop(GeometricAugmentationBase2D):
             return transform
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
-    def apply_transform_keypoint(
-        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Keypoints:
+    def apply_transform_keypoint(self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Keypoints:
         """Process keypoints corresponding to the inputs that are no transformation applied."""
         # For pad the keypoints properly.
         padding_size = params["padding_size"].to(device=input.device)
@@ -224,9 +222,7 @@ class RandomCrop(GeometricAugmentationBase2D):
             align_corners=flags["align_corners"],
         )
 
-    def inverse_inputs(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], **kwargs,
-    ) -> Tensor:
+    def inverse_inputs(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], **kwargs) -> Tensor:
         if flags["cropping_mode"] != "resample":
             raise NotImplementedError(
                 f"`inverse` is only applicable for resample cropping mode. Got {flags['cropping_mode']}."
@@ -238,9 +234,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         padding_size = [-padding_size[0], -padding_size[1], -padding_size[2], -padding_size[3]]
         return self.precrop_padding(out, padding_size)
 
-    def inverse_boxes(
-        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], **kwargs,
-    ) -> Boxes:
+    def inverse_boxes(self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], **kwargs) -> Boxes:
         if flags["cropping_mode"] != "resample":
             raise NotImplementedError(
                 f"`inverse` is only applicable for resample cropping mode. Got {flags['cropping_mode']}."

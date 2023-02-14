@@ -1,4 +1,5 @@
 from typing import Dict
+
 import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
@@ -7,7 +8,6 @@ from kornia.geometry.bbox import bbox_generator
 
 
 class _BBoxBasedGenerator(RandomGeneratorBase):
-
     has_fit_batch_prob = True
 
     def fit_batch_prob(

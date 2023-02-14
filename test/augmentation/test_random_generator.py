@@ -4,6 +4,7 @@ from torch import Tensor
 
 from kornia.augmentation.random_generator import (
     AffineGenerator,
+    CenterCropGenerator,
     ColorJiggleGenerator,
     ColorJitterGenerator,
     CropGenerator,
@@ -16,7 +17,6 @@ from kornia.augmentation.random_generator import (
     ProbabilityGenerator,
     RectangleEraseGenerator,
     ResizedCropGenerator,
-    CenterCropGenerator,
 )
 from kornia.testing import assert_close
 from kornia.utils._compat import torch_version_ge

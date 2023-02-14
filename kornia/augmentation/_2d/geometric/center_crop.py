@@ -2,10 +2,10 @@ from typing import Any, Dict, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
-from kornia.core import Tensor
 from kornia.constants import Resample
-from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
+from kornia.core import Tensor
 from kornia.geometry.bbox import infer_bbox_shape
+from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
 
 
 class CenterCrop(GeometricAugmentationBase2D):
@@ -110,7 +110,8 @@ class CenterCrop(GeometricAugmentationBase2D):
             if not (len(height) == len(width) == 1):
                 raise RuntimeError(f"Invalid dst boxes with multiple height {height} and width {width}.")
             return crop_by_indices(
-                input, params["src"].to(device=input.device), (height.long().item(), width.long().item()))
+                input, params["src"].to(device=input.device), (height.long().item(), width.long().item())
+            )
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
     def inverse_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:

@@ -1,6 +1,6 @@
 from typing import Any, Dict, Optional
 
-from torch import float16, float32, float64, Size
+from torch import Size, float16, float32, float64
 
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils import _transform_input, _validate_input_dtype
@@ -82,29 +82,19 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
 
         return trans_matrix * batch_prob.round() + self.identity_matrix(in_tensor) * (1 - batch_prob.round())
 
-    def inverse_inputs(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def inverse_inputs(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         raise NotImplementedError
 
-    def inverse_masks(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def inverse_masks(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         raise NotImplementedError
 
-    def inverse_boxes(
-        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Boxes:
+    def inverse_boxes(self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Boxes:
         raise NotImplementedError
 
-    def inverse_keypoints(
-        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Keypoints:
+    def inverse_keypoints(self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Keypoints:
         raise NotImplementedError
 
-    def inverse_classes(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def inverse_classes(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         raise NotImplementedError
 
     def forward_parameters(self, batch_shape: Size) -> Dict[str, Tensor]:
@@ -118,7 +108,7 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
         input: Tensor,
         params: Optional[Dict[str, Tensor]] = None,
         flags: Optional[Dict[str, Any]] = None,
-        **kwargs
+        **kwargs,
     ) -> Tensor:
         """Perform forward operations.
 

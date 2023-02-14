@@ -285,8 +285,7 @@ class CenterCropGenerator(_BBoxBasedGenerator):
         batch_size = batch_shape[0]
         height, width = (batch_shape[-2], batch_shape[-1])
         if not (height >= self.size[0] and width >= self.size[1]):
-            raise RuntimeError(
-                f"Crop size must be smaller than input size. Got ({height}, {width}) and {self.size}.")
+            raise RuntimeError(f"Crop size must be smaller than input size. Got ({height}, {width}) and {self.size}.")
 
         # unpack input sizes
         dst_h, dst_w = self.size
@@ -309,7 +308,7 @@ class CenterCropGenerator(_BBoxBasedGenerator):
         points_src: Tensor = tensor(
             [[[start_x, start_y], [end_x, start_y], [end_x, end_y], [start_x, end_y]]],
             device=self.device,
-            dtype=torch.long
+            dtype=torch.long,
         ).expand(batch_size, -1, -1)
 
         # [y, x] destination

@@ -42,9 +42,7 @@ class RandomChannelShuffle(IntensityAugmentationBase2D):
         channels = torch.rand(B, C).argsort(dim=1)
         return dict(channels=channels)
 
-    def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         out = torch.empty_like(input)
         for i in range(out.shape[0]):
             out[i] = input[i, params["channels"][i]]

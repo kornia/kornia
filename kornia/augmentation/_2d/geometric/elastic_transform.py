@@ -78,9 +78,7 @@ class RandomElasticTransform(AugmentationBase2D):
             noise = torch.rand(B, 2, H, W, device=self.device, dtype=self.dtype)
         return dict(noise=noise * 2 - 1)
 
-    def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return elastic_transform2d(
             input,
             params["noise"].to(input),
@@ -92,21 +90,15 @@ class RandomElasticTransform(AugmentationBase2D):
             flags["padding_mode"],
         )
 
-    def apply_transform_mask(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform_mask(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         """Process masks corresponding to the inputs that are transformed."""
         return self.apply_transform(input, params=params, flags=flags)
 
-    def apply_transform_box(
-        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Boxes:
+    def apply_transform_box(self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Boxes:
         """Process masks corresponding to the inputs that are transformed."""
         # We assume that boxes may not be affected too much by the deformation.
         return input
 
-    def apply_transform_class(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform_class(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         """Process class tags corresponding to the inputs that are transformed."""
         return input

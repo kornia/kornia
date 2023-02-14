@@ -49,9 +49,7 @@ class Resize(GeometricAugmentationBase2D):
         transform = transform.expand(input.shape[0], -1, -1)
         return transform
 
-    def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         B, C, _, _ = input.shape
         out_size = tuple(params["output_size"].long()[0].tolist())
         out = torch.empty(B, C, *out_size, device=input.device, dtype=input.dtype)

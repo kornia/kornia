@@ -217,26 +217,16 @@ class _AugmentationBase(_BasicAugmentationBase):
     def _expand_batch_prob(self, batch_prob: Tensor) -> Tensor:
         raise NotImplementedError
 
-    def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         # apply transform for the input image tensor
         raise NotImplementedError
 
-    def apply_non_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_non_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         # apply additional transform for the images that are skipped from transformation
         # where batch_prob == False.
         return input
 
-    def transform_inputs(
-        self,
-        input: Tensor,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any],
-        **kwargs,
-    ) -> Tensor:
+    def transform_inputs(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], **kwargs) -> Tensor:
         self.validate_tensor(input)
 
         params, flags = self._process_kwargs_to_params_and_flags(
@@ -267,13 +257,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             output = output.type(input.dtype)
         return output
 
-    def transform_masks(
-        self,
-        input: Tensor,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any],
-        **kwargs,
-    ) -> Tensor:
+    def transform_masks(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], **kwargs) -> Tensor:
         self.validate_tensor(input)
 
         params, flags = self._process_kwargs_to_params_and_flags(
@@ -296,13 +280,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         output = _transform_output_shape(output, ori_shape) if self.keepdim else output
         return output
 
-    def transform_boxes(
-        self,
-        input: Boxes,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any],
-        **kwargs,
-    ) -> Boxes:
+    def transform_boxes(self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], **kwargs) -> Boxes:
         if not isinstance(input, Boxes):
             raise RuntimeError(f"Only `Boxes` is supported. Got {type(input)}.")
 
@@ -323,11 +301,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         return output
 
     def transform_keypoints(
-        self,
-        input: Keypoints,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any],
-        **kwargs,
+        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any], **kwargs
     ) -> Keypoints:
         if not isinstance(input, Keypoints):
             raise RuntimeError(f"Only `Keypoints` is supported. Got {type(input)}.")
@@ -349,13 +323,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         output = applied * to_apply[:, None, None] + output * (1 - to_apply[:, None, None])
         return output
 
-    def transform_classes(
-        self,
-        input: Tensor,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any],
-        **kwargs,
-    ) -> Tensor:
+    def transform_classes(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], **kwargs) -> Tensor:
         params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, flags, **kwargs
         )
@@ -369,27 +337,19 @@ class _AugmentationBase(_BasicAugmentationBase):
         output = applied * to_apply + output * (1 - to_apply)
         return output
 
-    def apply_non_transform_mask(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_non_transform_mask(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         """Process masks corresponding to the inputs that are no transformation applied."""
         raise NotImplementedError
 
-    def apply_transform_mask(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform_mask(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         """Process masks corresponding to the inputs that are transformed."""
         raise NotImplementedError
 
-    def apply_non_transform_box(
-        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Boxes:
+    def apply_non_transform_box(self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Boxes:
         """Process boxes corresponding to the inputs that are no transformation applied."""
         return input
 
-    def apply_transform_box(
-        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Boxes:
+    def apply_transform_box(self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Boxes:
         """Process boxes corresponding to the inputs that are transformed."""
         raise NotImplementedError
 
@@ -399,21 +359,15 @@ class _AugmentationBase(_BasicAugmentationBase):
         """Process keypoints corresponding to the inputs that are no transformation applied."""
         return input
 
-    def apply_transform_keypoint(
-        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Keypoints:
+    def apply_transform_keypoint(self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Keypoints:
         """Process keypoints corresponding to the inputs that are transformed."""
         raise NotImplementedError
 
-    def apply_non_transform_class(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_non_transform_class(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         """Process class tags corresponding to the inputs that are no transformation applied."""
         return input
 
-    def apply_transform_class(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform_class(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         """Process class tags corresponding to the inputs that are transformed."""
         raise NotImplementedError
 

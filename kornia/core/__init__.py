@@ -9,6 +9,7 @@ from ._backend import (
     eye,
     linspace,
     normalize,
+    ones,
     pad,
     rand,
     stack,
@@ -16,7 +17,6 @@ from ._backend import (
     where,
     zeros,
     zeros_like,
-    ones,
 )
 
 __all__ = [

@@ -84,9 +84,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
             return transform
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
-    def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         if flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
             transform = self.get_transformation_matrix(input, params=params, flags=flags)
 

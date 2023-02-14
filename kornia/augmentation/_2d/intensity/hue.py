@@ -60,8 +60,6 @@ class RandomHue(IntensityAugmentationBase2D):
         self.hue: Tensor = _range_bound(hue, 'hue', bounds=(-0.5, 0.5))
         self._param_generator = rg.PlainUniformGenerator((self.hue, "hue_factor", None, None))
 
-    def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         hue_factor = params["hue_factor"].to(input)
         return adjust_hue(input, hue_factor * 2 * pi)

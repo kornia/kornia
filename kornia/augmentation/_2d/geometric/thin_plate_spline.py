@@ -55,9 +55,7 @@ class RandomThinPlateSpline(AugmentationBase2D):
         dst = src + self.dist.rsample(src.shape)
         return dict(src=src, dst=dst)
 
-    def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         src = params["src"].to(input)
         dst = params["dst"].to(input)
         # NOTE: warp_image_tps need to use inverse parameters

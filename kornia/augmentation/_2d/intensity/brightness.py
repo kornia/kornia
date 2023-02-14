@@ -68,8 +68,6 @@ class RandomBrightness(IntensityAugmentationBase2D):
 
         self.clip_output = clip_output
 
-    def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         brightness_factor = params["brightness_factor"].to(input)
         return adjust_brightness(input, brightness_factor - 1, self.clip_output)

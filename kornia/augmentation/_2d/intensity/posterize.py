@@ -56,7 +56,5 @@ class RandomPosterize(IntensityAugmentationBase2D):
         # TODO: the generator should receive the device
         self._param_generator = rg.PosterizeGenerator(bits)
 
-    def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return posterize(input, params["bits_factor"].to(input.device))

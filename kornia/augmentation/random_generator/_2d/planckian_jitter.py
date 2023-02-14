@@ -83,7 +83,7 @@ def get_planckian_coeffs(mode: str) -> Tensor:
 class PlanckianJitterGenerator(RandomGeneratorBase):
     r"""Generate random planckian jitter parameters for a batch of images."""
 
-    def __init__(self, mode: str = "blackbody", select_from: Optional[Union[int, List[int]]] = None,) -> None:
+    def __init__(self, mode: str = "blackbody", select_from: Optional[Union[int, List[int]]] = None) -> None:
         super().__init__()
 
         if isinstance(select_from, int):
