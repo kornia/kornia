@@ -2,16 +2,17 @@ from typing import Dict, Tuple, Union
 
 import torch
 
-from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _common_param_check
 from kornia.core import Device, Tensor, tensor
 from kornia.geometry.bbox import bbox_generator
 from kornia.geometry.transform.affwarp import _side_to_image_size
 
+from .util import _BBoxBasedGenerator
+
 __all__ = ["ResizeGenerator"]
 
 
-class ResizeGenerator(RandomGeneratorBase):
+class ResizeGenerator(_BBoxBasedGenerator):
     r"""Get parameters for ```resize``` transformation for resize transform.
 
     Args:

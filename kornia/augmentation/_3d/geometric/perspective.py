@@ -78,7 +78,7 @@ class RandomPerspective3D(GeometricAugmentationBase3D):
         return get_perspective_transform3d(params["start_points"], params["end_points"]).to(input)
 
     def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
-        transform = params["transform_matrix"]
+        transform = self.get_transformation_matrix(input, params=params, flags=flags)
 
         return warp_perspective3d(
             input,

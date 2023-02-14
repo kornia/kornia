@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple, Union, cast
+from typing import Any, List, Optional, Tuple, TypeVar, Union, cast
 
 import torch
 
@@ -8,6 +8,9 @@ from kornia.geometry import transform_points
 
 def _merge_keypoint_list(keypoints: List[Tensor]) -> Tensor:
     raise NotImplementedError
+
+
+T = TypeVar("T", bound="Keypoints")
 
 
 class Keypoints:
@@ -38,13 +41,28 @@ class Keypoints:
 
         self._data = keypoints
 
-    def __getitem__(self, key) -> "Keypoints":
+    def __getitem__(self, key) -> T:
         new_obj = type(self)(self._data[key], False)
         return new_obj
 
-    def __setitem__(self, key, value: "Keypoints") -> "Keypoints":
+    def __setitem__(self, key, value: T) -> T:
         self._data[key] = value._data
         return self
+
+    def __mul__(self, other: T) -> T:
+        obj = self.clone()
+        obj._data = self.data * other.data
+        return obj
+
+    def __rmul__(self, other: Any) -> T:
+        obj = self.clone()
+        obj._data = self.data * other
+        return obj
+
+    def __add__(self, other: T) -> T:
+        obj = self.clone()
+        obj._data = self.data + other.data
+        return obj
 
     @property
     def shape(self):

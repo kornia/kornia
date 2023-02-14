@@ -64,10 +64,10 @@ class PolicySequential(ImageSequentialBase):
                 if recompute:
                     flags = override_parameters(module.op.flags, extra_args, in_place=False)
                     mat = module.op.generate_transformation_matrix(input, param.data, flags)
-                elif module.op._transform_matrix is not None:
-                    mat = as_tensor(module.op._transform_matrix, device=input.device, dtype=input.dtype)
+                elif module.op.transform_matrix is not None:
+                    mat = as_tensor(module.op.transform_matrix, device=input.device, dtype=input.dtype)
                 else:
-                    raise RuntimeError(f"{module}.op._transform_matrix is None while `recompute=False`.")
+                    raise RuntimeError(f"{module}.op.transform_matrix is None while `recompute=False`.")
                 res_mat = mat @ res_mat
                 input = module.op.transform_output_tensor(input, ori_shape)
                 if module.op.keepdim and ori_shape != input.shape:

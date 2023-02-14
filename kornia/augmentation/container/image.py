@@ -303,7 +303,6 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size) -> torch.Siz
             # Augmentations that change the image size must be applied equally to all elements in batch.
             # If the augmentation is not applied, return the same batch shape.
             return batch_shape
-        new_batch_shape = list(batch_shape)
-        new_batch_shape[-2:] = param.data['output_size'][0]
-        batch_shape = torch.Size(new_batch_shape)
+        output_size = param.data['output_size'][0]
+        batch_shape = torch.Size((*batch_shape[:-2], *[i.int().item() for i in output_size]))
     return batch_shape

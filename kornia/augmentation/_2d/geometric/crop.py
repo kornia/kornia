@@ -175,7 +175,7 @@ class RandomCrop(GeometricAugmentationBase2D):
 
         flags = self.flags if flags is None else flags
         if flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
-            transform = params["transform_matrix"]
+            transform = self.get_transformation_matrix(input, params=params, flags=flags)
             # Fit the arg to F.pad
             if flags['padding_mode'] == "constant":
                 padding_mode = "zeros"
@@ -205,7 +205,7 @@ class RandomCrop(GeometricAugmentationBase2D):
             )
         size = params['forward_input_shape'].numpy().tolist()
         size = (size[-2], size[-1])
-        transform = params["transform_matrix_inv"]
+        transform = self.get_inverse_transformation_matrix(input, params=params, flags=flags)
         # Fit the arg to F.pad
         if flags['padding_mode'] == "constant":
             padding_mode = "zeros"

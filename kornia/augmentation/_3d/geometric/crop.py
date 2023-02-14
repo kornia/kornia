@@ -122,7 +122,7 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         return transform
 
     def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
-        transform = params["transform_matrix"]
+        transform = self.get_transformation_matrix(input, params=params, flags=flags)
 
         return crop_by_transform_mat3d(
             input, transform, flags["size"], mode=flags["resample"].name.lower(), align_corners=flags["align_corners"]

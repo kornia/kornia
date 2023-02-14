@@ -88,7 +88,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         if flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
-            transform = params["transform_matrix"]
+            transform = self.get_transformation_matrix(input, params=params, flags=flags)
 
             return crop_by_transform_mat(
                 input,
@@ -116,7 +116,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
 
         size = params['forward_input_shape'].numpy().tolist()
         size = (size[-2], size[-1])
-        transform = params["transform_matrix_inv"]
+        transform = self.get_inverse_transformation_matrix(input, params=params, flags=flags)
 
         return crop_by_transform_mat(
             input,

@@ -143,7 +143,7 @@ class RandomAffine3D(GeometricAugmentationBase3D):
         size = params['forward_input_shape'].numpy().tolist()
         size = (size[-2], size[-1])
 
-        transform = params["transform_matrix"]
+        transform = self.get_transformation_matrix(input, params=params, flags=flags)
 
         return warp_affine3d(
             input,

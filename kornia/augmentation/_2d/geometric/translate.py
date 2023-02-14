@@ -78,7 +78,7 @@ class RandomTranslate(GeometricAugmentationBase2D):
 
     def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         _, _, height, width = input.shape
-        transform = params["transform_matrix"]
+        transform = self.get_transformation_matrix(input, params=params, flags=flags)
 
         return warp_affine(
             input,
@@ -92,7 +92,7 @@ class RandomTranslate(GeometricAugmentationBase2D):
     def inverse_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         size = params['forward_input_shape'].numpy().tolist()
         size = (size[-2], size[-1])
-        transform = params["transform_matrix_inv"]
+        transform = self.get_inverse_transformation_matrix(input, params=params, flags=flags)
 
         return warp_affine(
             input,

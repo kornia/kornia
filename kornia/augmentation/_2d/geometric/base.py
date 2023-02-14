@@ -53,6 +53,21 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             transform = params["transform_matrix"]
         return as_tensor(transform, device=input.device, dtype=input.dtype)
 
+    def get_inverse_transformation_matrix(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Optional[Dict[str, Any]] = None
+    ) -> Tensor:
+        """Obtain inversed transformation matrices.
+
+        Return the current transformation matrix if existed. Generate a new one, otherwise.
+        """
+        flags = self.flags if flags is None else flags
+        if "transform_matrix_inv" in params:
+            transform = params["transform_matrix_inv"]
+        else:
+            params = self.inverse_parameters(params)
+            transform = params["transform_matrix_inv"]
+        return as_tensor(transform, device=input.device, dtype=input.dtype)
+
     def apply_non_transform_mask(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:

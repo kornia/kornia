@@ -119,31 +119,19 @@ class _BasicAugmentationBase(Module):
         self, batch_shape: torch.Size, p: float, p_batch: float, same_on_batch: bool
     ) -> Tensor:
         batch_prob: Tensor
-        if p_batch == 1:
-            batch_prob = zeros(1) + 1
-        elif p_batch == 0:
-            batch_prob = zeros(1)
-        else:
-            # NOTE: there is no simple way to know if the sampler has `rsample` or not
-            if isinstance(self._p_batch_gen, (RelaxedBernoulli,)):
-                batch_prob = _adapted_rsampling((1,), self._p_batch_gen, same_on_batch)
-            else:
-                batch_prob = _adapted_sampling((1,), self._p_batch_gen, same_on_batch)
 
-        if batch_prob.sum() == 1:
-            elem_prob: Tensor
-            if p == 1:
-                elem_prob = zeros(batch_shape[0]) + 1
-            elif p == 0:
-                elem_prob = zeros(batch_shape[0])
-            else:
-                if isinstance(self._p_gen, (RelaxedBernoulli,)):
-                    elem_prob = _adapted_rsampling((batch_shape[0],), self._p_gen, same_on_batch)
-                else:
-                    elem_prob = _adapted_sampling((batch_shape[0],), self._p_gen, same_on_batch)
-            batch_prob = batch_prob * elem_prob
+        if isinstance(self._p_batch_gen, (RelaxedBernoulli,)):
+            batch_prob = _adapted_rsampling((1,), self._p_batch_gen, same_on_batch)
         else:
-            batch_prob = batch_prob.repeat(batch_shape[0])
+            batch_prob = _adapted_sampling((1,), self._p_batch_gen, same_on_batch)
+
+        if isinstance(self._p_gen, (RelaxedBernoulli,)):
+            elem_prob = _adapted_rsampling((batch_shape[0],), self._p_gen, same_on_batch)
+        else:
+            elem_prob = _adapted_sampling((batch_shape[0],), self._p_gen, same_on_batch)
+
+        batch_prob = batch_prob * elem_prob
+
         if len(batch_prob.shape) == 2:
             return batch_prob[..., 0]
         return batch_prob
@@ -204,9 +192,6 @@ class _BasicAugmentationBase(Module):
         batch_shape = in_tensor.shape
         if params is None:
             params = self.forward_parameters(batch_shape)
-
-        if 'batch_prob' not in params:
-            params['batch_prob'] = tensor([True] * batch_shape[0])
 
         params, flags = self._process_kwargs_to_params_and_flags(params, self.flags, **kwargs)
 

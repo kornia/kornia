@@ -103,6 +103,6 @@ class RandomRotation3D(GeometricAugmentationBase3D):
         return trans_mat
 
     def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
-        transform = params["transform_matrix"]
+        transform = self.get_transformation_matrix(input, params=params, flags=flags)
 
         return affine3d(input, transform[..., :3, :4], flags["resample"].name.lower(), "zeros", flags["align_corners"])

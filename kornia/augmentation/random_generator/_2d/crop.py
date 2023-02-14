@@ -3,40 +3,17 @@ from typing import Dict, Optional, Tuple, Union
 import torch
 from torch.distributions import Uniform
 
-from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _joint_range_check
 from kornia.core import Tensor, tensor, where, zeros
 from kornia.geometry.bbox import bbox_generator
 from kornia.utils.helpers import _extract_device_dtype
 
+from .util import _BBoxBasedGenerator
+
 __all__ = ["CropGenerator", "ResizedCropGenerator", "CenterCropGenerator"]
 
 
-class _CropGeneratorBase(RandomGeneratorBase):
-
-    has_fit_batch_prob = True
-
-    def fit_batch_prob(
-        self, batch_shape: torch.Size, batch_prob: Tensor, params: Dict[str, Tensor]
-    ) -> Dict[str, Tensor]:
-        to_apply = batch_prob.round()
-        batch_size = batch_shape[0]
-        size = tensor(
-            (batch_shape[-2], batch_shape[-1]), device=params["dst"].device, dtype=params["dst"].dtype
-        ).repeat(batch_size, 1)
-        crop_src = bbox_generator(
-            tensor([0] * batch_size, device=params["dst"].device, dtype=params["dst"].dtype),
-            tensor([0] * batch_size, device=params["dst"].device, dtype=params["dst"].dtype),
-            size[:, 1],
-            size[:, 0],
-        )
-        crop_src = params["src"] * to_apply[:, None, None] + crop_src * (1 - to_apply[:, None, None])
-        crop_dst = params["dst"] * to_apply[:, None, None] + crop_src * (1 - to_apply[:, None, None])
-        output_size = params["output_size"] * to_apply[:, None] + params["input_size"] * (1 - to_apply[:, None])
-        return dict(src=crop_src, dst=crop_dst, input_size=params["input_size"], output_size=output_size)
-
-
-class CropGenerator(_CropGeneratorBase):
+class CropGenerator(_BBoxBasedGenerator):
     r"""Get parameters for ```crop``` transformation for crop transform.
 
     Args:
@@ -274,7 +251,7 @@ class ResizedCropGenerator(CropGenerator):
         return super().forward(batch_shape, same_on_batch)
 
 
-class CenterCropGenerator(_CropGeneratorBase):
+class CenterCropGenerator(_BBoxBasedGenerator):
     r"""Get parameters for ```center_crop``` transformation for center crop transform.
 
     Args:

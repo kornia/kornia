@@ -53,7 +53,7 @@ class Resize(GeometricAugmentationBase2D):
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         B, C, _, _ = input.shape
-        out_size = tuple(params["output_size"][0].tolist())
+        out_size = tuple(params["output_size"].long()[0].tolist())
         out = torch.empty(B, C, *out_size, device=input.device, dtype=input.dtype)
 
         for i in range(B):
@@ -76,7 +76,7 @@ class Resize(GeometricAugmentationBase2D):
         size = params['forward_input_shape'].numpy().tolist()
         size = (size[-2], size[-1])
 
-        transform = params["transform_matrix_inv"]
+        transform = self.get_inverse_transformation_matrix(input, params=params, flags=flags)
 
         return crop_by_transform_mat(
             input, transform[:, :2, :], size, flags["resample"].name.lower(), "zeros", flags["align_corners"]

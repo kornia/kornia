@@ -98,7 +98,7 @@ class CenterCrop(GeometricAugmentationBase2D):
 
     def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         if flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
-            transform = params["transform_matrix"]
+            transform = self.get_transformation_matrix(input, params=params, flags=flags)
 
             return crop_by_transform_mat(
                 input, transform[:, :2, :], self.size, flags["resample"].name.lower(), "zeros", flags["align_corners"]
@@ -109,7 +109,8 @@ class CenterCrop(GeometricAugmentationBase2D):
             width = width.unique(sorted=False)
             if not (len(height) == len(width) == 1):
                 raise RuntimeError(f"Invalid dst boxes with multiple height {height} and width {width}.")
-            return crop_by_indices(input, params["src"], (height.long().item(), width.long().item()))
+            return crop_by_indices(
+                input, params["src"].to(device=input.device), (height.long().item(), width.long().item()))
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
     def inverse_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
@@ -119,7 +120,7 @@ class CenterCrop(GeometricAugmentationBase2D):
             )
         size = params['forward_input_shape'].numpy().tolist()
         size = (size[-2], size[-1])
-        transform = params["transform_matrix_inv"]
+        transform = self.get_inverse_transformation_matrix(input, params=params, flags=flags)
 
         return crop_by_transform_mat(
             input,
