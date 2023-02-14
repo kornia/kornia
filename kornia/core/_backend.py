@@ -20,6 +20,7 @@ pad = F.pad
 eye = torch.eye
 zeros = torch.zeros
 zeros_like = torch.zeros_like
+ones = torch.ones
 where = torch.where
 complex = torch.complex
 

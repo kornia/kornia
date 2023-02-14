@@ -1,8 +1,7 @@
-from typing import Any, Dict, Optional
-
-from torch import Tensor
+from typing import Any, Dict
 
 from kornia.augmentation._3d.intensity.base import IntensityAugmentationBase3D
+from kornia.core import Tensor
 from kornia.enhance import equalize3d
 
 
@@ -11,18 +10,16 @@ class RandomEqualize3D(IntensityAugmentationBase3D):
 
     Args:
         p: probability of the image being equalized.
-        same_on_batch): apply the same transformation across the batch.
+        same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
           to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
+        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`
         - Output: :math:`(B, C, D, H, W)`
 
     Note:
         Input tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
-        applied transformation will be merged int to the input transformation tensor and returned.
 
     Examples:
         >>> import torch
@@ -55,7 +52,5 @@ class RandomEqualize3D(IntensityAugmentationBase3D):
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return self.identity_matrix(input)
 
-    def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return equalize3d(input)

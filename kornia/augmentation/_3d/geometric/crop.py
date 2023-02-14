@@ -121,11 +121,8 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         transform = transform.expand(input.shape[0], -1, -1)
         return transform
 
-    def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
-        if not isinstance(transform, Tensor):
-            raise TypeError(f'Expected the transform to be a Tensor. Gotcha {type(transform)}')
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+        transform = params["transform_matrix"]
 
         return crop_by_transform_mat3d(
             input, transform, flags["size"], mode=flags["resample"].name.lower(), align_corners=flags["align_corners"]

@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Tuple, Union
 
 import torch
 
@@ -50,7 +50,7 @@ class Resize(GeometricAugmentationBase2D):
         return transform
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         B, C, _, _ = input.shape
         out_size = tuple(params["output_size"][0].tolist())
@@ -72,19 +72,11 @@ class Resize(GeometricAugmentationBase2D):
             )
         return out
 
-    def inverse_transform(
-        self,
-        input: Tensor,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
-    ) -> Tensor:
+    def inverse_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+        size = params['forward_input_shape'].numpy().tolist()
+        size = (size[-2], size[-1])
 
-        forward_input_shape = params['forward_input_shape'].numpy().tolist()
-        size: Tuple[int, int] = (forward_input_shape[-2], forward_input_shape[-1])
-
-        if not isinstance(transform, Tensor):
-            raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
+        transform = params["transform_matrix_inv"]
 
         return crop_by_transform_mat(
             input, transform[:, :2, :], size, flags["resample"].name.lower(), "zeros", flags["align_corners"]

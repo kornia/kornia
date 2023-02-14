@@ -5,12 +5,37 @@ from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check
-from kornia.core import Device, Tensor, tensor, zeros
+from kornia.core import Tensor, tensor, zeros
 from kornia.geometry.bbox import bbox_generator3d
 from kornia.utils.helpers import _extract_device_dtype
 
 
-class CropGenerator3D(RandomGeneratorBase):
+class _CropGeneratorBase3D(RandomGeneratorBase):
+
+    has_fit_batch_prob = True
+
+    def fit_batch_prob(
+        self, batch_shape: torch.Size, batch_prob: Tensor, params: Dict[str, Tensor]
+    ) -> Dict[str, Tensor]:
+        to_apply = batch_prob.round()
+        batch_size = batch_shape[0]
+        size = tensor(
+            (batch_shape[-3], batch_shape[-2], batch_shape[-1]), device=params["dst"].device, dtype=params["dst"].dtype
+        ).repeat(batch_size, 1)
+        crop_src = bbox_generator3d(
+            tensor([0] * batch_size, device=params["dst"].device, dtype=params["dst"].dtype),
+            tensor([0] * batch_size, device=params["dst"].device, dtype=params["dst"].dtype),
+            tensor([0] * batch_size, device=params["dst"].device, dtype=params["dst"].dtype),
+            size[:, 2] - 1,
+            size[:, 1] - 1,
+            size[:, 0] - 1,
+        )
+        crop_src = params["src"] * to_apply[:, None, None] + crop_src * (1 - to_apply[:, None, None])
+        crop_dst = params["dst"] * to_apply[:, None, None] + crop_src * (1 - to_apply[:, None, None])
+        return dict(src=crop_src, dst=crop_dst)
+
+
+class CropGenerator3D(_CropGeneratorBase3D):
     r"""Get parameters for ```crop``` transformation for crop transform.
 
     Args:
@@ -28,6 +53,8 @@ class CropGenerator3D(RandomGeneratorBase):
         the parameters will be generated on CPU in float32. This can be changed by calling
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
     """
+
+    has_fit_batch_prob = True
 
     def __init__(
         self, size: Union[Tuple[int, int, int], Tensor], resize_to: Optional[Tuple[int, int, int]] = None
@@ -135,101 +162,101 @@ class CropGenerator3D(RandomGeneratorBase):
         return dict(src=crop_src.to(device=_device), dst=crop_dst.to(device=_device))
 
 
-def center_crop_generator3d(
-    batch_size: int,
-    depth: int,
-    height: int,
-    width: int,
-    size: Tuple[int, int, int],
-    device: Device = torch.device('cpu'),
-) -> Dict[str, Tensor]:
+class CenterCropGenerator3D(_CropGeneratorBase3D):
     r"""Get parameters for ```center_crop3d``` transformation for center crop transform.
 
     Args:
-        batch_size (int): the tensor batch size.
-        depth (int) : depth of the image.
-        height (int) : height of the image.
-        width (int): width of the image.
-        size (tuple): Desired output size of the crop, like (d, h, w).
-        device (Device): the device on which the random numbers will be generated. Default: cpu.
+        size: Desired size of the crop operation, like (d, h, w).
 
     Returns:
-        params Dict[str, Tensor]: parameters to be passed for transformation.
+        params: parameters to be passed for transformation.
             - src (Tensor): cropping bounding boxes with a shape of (B, 8, 3).
             - dst (Tensor): output bounding boxes with a shape (B, 8, 3).
 
     Note:
-        No random number will be generated.
+        The generated random numbers are not reproducible across different devices and dtypes. By default,
+        the parameters will be generated on CPU in float32. This can be changed by calling
+        ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
     """
-    if not isinstance(size, (tuple, list)) and len(size) == 3:
-        raise ValueError(f"Input size must be a tuple/list of length 3. Got {size}")
-    if not (
-        type(depth) is int and depth > 0 and type(height) is int and height > 0 and type(width) is int and width > 0
-    ):
-        raise AssertionError(f"'depth', 'height' and 'width' must be integers. Got {depth}, {height}, {width}.")
-    if not (depth >= size[0] and height >= size[1] and width >= size[2]):
-        raise AssertionError(f"Crop size must be smaller than input size. Got ({depth}, {height}, {width}) and {size}.")
 
-    if batch_size == 0:
-        return dict(src=zeros([0, 8, 3]), dst=zeros([0, 8, 3]))
-    # unpack input sizes
-    dst_d, dst_h, dst_w = size
-    src_d, src_h, src_w = (depth, height, width)
+    def __init__(self, size: Tuple[int, int]) -> None:
+        super().__init__()
+        if not isinstance(size, (tuple, list)) and len(size) == 3:
+            raise ValueError(f"Input size must be a tuple/list of length 3. Got {size}")
+        self.size = size
 
-    # compute start/end offsets
-    dst_d_half = dst_d / 2
-    dst_h_half = dst_h / 2
-    dst_w_half = dst_w / 2
-    src_d_half = src_d / 2
-    src_h_half = src_h / 2
-    src_w_half = src_w / 2
+    def __repr__(self) -> str:
+        repr = f"size={self.size}"
+        return repr
 
-    start_x = src_w_half - dst_w_half
-    start_y = src_h_half - dst_h_half
-    start_z = src_d_half - dst_d_half
+    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+        pass
 
-    end_x = start_x + dst_w - 1
-    end_y = start_y + dst_h - 1
-    end_z = start_z + dst_d - 1
-    # [x, y, z] origin
-    # top-left-front, top-right-front, bottom-right-front, bottom-left-front
-    # top-left-back, top-right-back, bottom-right-back, bottom-left-back
-    # Note: DeprecationWarning: an integer is required (got type float).
-    # Implicit conversion to integers using __int__ is deprecated, and may be removed in a future version of Python.
-    points_src: Tensor = tensor(
-        [
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
+        batch_size = batch_shape[0]
+        depth, height, width = (batch_shape[-3], batch_shape[-2], batch_shape[-1])
+        if not (depth >= self.size[0] and height >= self.size[1] and width >= self.size[2]):
+            raise AssertionError(
+                f"Crop size must be smaller than input size. Got ({depth}, {height}, {width}) and {self.size}.")
+
+        # unpack input sizes
+        dst_d, dst_h, dst_w = self.size
+        src_d, src_h, src_w = (depth, height, width)
+
+        # compute start/end offsets
+        dst_d_half = dst_d / 2
+        dst_h_half = dst_h / 2
+        dst_w_half = dst_w / 2
+        src_d_half = src_d / 2
+        src_h_half = src_h / 2
+        src_w_half = src_w / 2
+
+        start_x = src_w_half - dst_w_half
+        start_y = src_h_half - dst_h_half
+        start_z = src_d_half - dst_d_half
+
+        end_x = start_x + dst_w - 1
+        end_y = start_y + dst_h - 1
+        end_z = start_z + dst_d - 1
+        # [x, y, z] origin
+        # top-left-front, top-right-front, bottom-right-front, bottom-left-front
+        # top-left-back, top-right-back, bottom-right-back, bottom-left-back
+        # Note: DeprecationWarning: an integer is required (got type float).
+        # Implicit conversion to integers using __int__ is deprecated, and may be removed in a future version of Python.
+        points_src: Tensor = tensor(
             [
-                [int(start_x), int(start_y), int(start_z)],
-                [int(end_x), int(start_y), int(start_z)],
-                [int(end_x), int(end_y), int(start_z)],
-                [int(start_x), int(end_y), int(start_z)],
-                [int(start_x), int(start_y), int(end_z)],
-                [int(end_x), int(start_y), int(end_z)],
-                [int(end_x), int(end_y), int(end_z)],
-                [int(start_x), int(end_y), int(end_z)],
-            ]
-        ],
-        device=device,
-        dtype=torch.long,
-    ).expand(batch_size, -1, -1)
+                [
+                    [int(start_x), int(start_y), int(start_z)],
+                    [int(end_x), int(start_y), int(start_z)],
+                    [int(end_x), int(end_y), int(start_z)],
+                    [int(start_x), int(end_y), int(start_z)],
+                    [int(start_x), int(start_y), int(end_z)],
+                    [int(end_x), int(start_y), int(end_z)],
+                    [int(end_x), int(end_y), int(end_z)],
+                    [int(start_x), int(end_y), int(end_z)],
+                ]
+            ],
+            device=self.device,
+            dtype=torch.long,
+        ).expand(batch_size, -1, -1)
 
-    # [x, y, z] destination
-    # top-left-front, top-right-front, bottom-right-front, bottom-left-front
-    # top-left-back, top-right-back, bottom-right-back, bottom-left-back
-    points_dst: Tensor = tensor(
-        [
+        # [x, y, z] destination
+        # top-left-front, top-right-front, bottom-right-front, bottom-left-front
+        # top-left-back, top-right-back, bottom-right-back, bottom-left-back
+        points_dst: Tensor = tensor(
             [
-                [0, 0, 0],
-                [dst_w - 1, 0, 0],
-                [dst_w - 1, dst_h - 1, 0],
-                [0, dst_h - 1, 0],
-                [0, 0, dst_d - 1],
-                [dst_w - 1, 0, dst_d - 1],
-                [dst_w - 1, dst_h - 1, dst_d - 1],
-                [0, dst_h - 1, dst_d - 1],
-            ]
-        ],
-        device=device,
-        dtype=torch.long,
-    ).expand(batch_size, -1, -1)
-    return dict(src=points_src, dst=points_dst)
+                [
+                    [0, 0, 0],
+                    [dst_w - 1, 0, 0],
+                    [dst_w - 1, dst_h - 1, 0],
+                    [0, dst_h - 1, 0],
+                    [0, 0, dst_d - 1],
+                    [dst_w - 1, 0, dst_d - 1],
+                    [dst_w - 1, dst_h - 1, dst_d - 1],
+                    [0, dst_h - 1, dst_d - 1],
+                ]
+            ],
+            device=self.device,
+            dtype=torch.long,
+        ).expand(batch_size, -1, -1)
+        return dict(src=points_src, dst=points_dst)

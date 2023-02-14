@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
@@ -28,13 +28,8 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
                        differentiability.
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, out_h, out_w)`
-
-    Note:
-        Input tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation tensor (:math:`(B, 3, 3)`), then the
-        applied transformation will be merged int to the input transformation tensor and returned.
 
     Example:
         >>> rng = torch.manual_seed(0)
@@ -90,11 +85,10 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         if flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
-            if not isinstance(transform, Tensor):
-                raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
+            transform = params["transform_matrix"]
 
             return crop_by_transform_mat(
                 input,
@@ -114,23 +108,15 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
             )
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
-    def inverse_transform(
-        self,
-        input: Tensor,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
-    ) -> Tensor:
+    def inverse_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         if flags["cropping_mode"] != "resample":
             raise NotImplementedError(
                 f"`inverse` is only applicable for resample cropping mode. Got {flags['cropping_mode']}."
             )
 
-        if not isinstance(transform, Tensor):
-            raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
-
-        forward_input_shape = params['forward_input_shape'].numpy().tolist()
-        size: Tuple[int, int] = (forward_input_shape[-2], forward_input_shape[-1])
+        size = params['forward_input_shape'].numpy().tolist()
+        size = (size[-2], size[-1])
+        transform = params["transform_matrix_inv"]
 
         return crop_by_transform_mat(
             input,

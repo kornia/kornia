@@ -5,14 +5,38 @@ from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _joint_range_check
-from kornia.core import Device, Tensor, tensor, where, zeros
+from kornia.core import Tensor, tensor, where, zeros
 from kornia.geometry.bbox import bbox_generator
 from kornia.utils.helpers import _extract_device_dtype
 
-__all__ = ["CropGenerator", "ResizedCropGenerator", "center_crop_generator"]
+__all__ = ["CropGenerator", "ResizedCropGenerator", "CenterCropGenerator"]
 
 
-class CropGenerator(RandomGeneratorBase):
+class _CropGeneratorBase(RandomGeneratorBase):
+
+    has_fit_batch_prob = True
+
+    def fit_batch_prob(
+        self, batch_shape: torch.Size, batch_prob: Tensor, params: Dict[str, Tensor]
+    ) -> Dict[str, Tensor]:
+        to_apply = batch_prob.round()
+        batch_size = batch_shape[0]
+        size = tensor(
+            (batch_shape[-2], batch_shape[-1]), device=params["dst"].device, dtype=params["dst"].dtype
+        ).repeat(batch_size, 1)
+        crop_src = bbox_generator(
+            tensor([0] * batch_size, device=params["dst"].device, dtype=params["dst"].dtype),
+            tensor([0] * batch_size, device=params["dst"].device, dtype=params["dst"].dtype),
+            size[:, 1],
+            size[:, 0],
+        )
+        crop_src = params["src"] * to_apply[:, None, None] + crop_src * (1 - to_apply[:, None, None])
+        crop_dst = params["dst"] * to_apply[:, None, None] + crop_src * (1 - to_apply[:, None, None])
+        output_size = params["output_size"] * to_apply[:, None] + params["input_size"] * (1 - to_apply[:, None])
+        return dict(src=crop_src, dst=crop_dst, input_size=params["input_size"], output_size=output_size)
+
+
+class CropGenerator(_CropGeneratorBase):
     r"""Get parameters for ```crop``` transformation for crop transform.
 
     Args:
@@ -250,17 +274,11 @@ class ResizedCropGenerator(CropGenerator):
         return super().forward(batch_shape, same_on_batch)
 
 
-def center_crop_generator(
-    batch_size: int, height: int, width: int, size: Tuple[int, int], device: Device = torch.device('cpu')
-) -> Dict[str, Tensor]:
+class CenterCropGenerator(_CropGeneratorBase):
     r"""Get parameters for ```center_crop``` transformation for center crop transform.
 
     Args:
-        batch_size (int): the tensor batch size.
-        height (int) : height of the image.
-        width (int): width of the image.
-        size (tuple): Desired output size of the crop, like (h, w).
-        device (Device): the device on which the random numbers will be generated. Default: cpu.
+        size (tuple): Desired size of the crop operation, like (h, w).
 
     Returns:
         params Dict[str, Tensor]: parameters to be passed for transformation.
@@ -268,45 +286,62 @@ def center_crop_generator(
             - dst (Tensor): output bounding boxes with a shape (B, 4, 2).
 
     Note:
-        No random number will be generated.
+        The generated random numbers are not reproducible across different devices and dtypes. By default,
+        the parameters will be generated on CPU in float32. This can be changed by calling
+        ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
     """
-    _common_param_check(batch_size)
-    if not isinstance(size, (tuple, list)) and len(size) == 2:
-        raise ValueError(f"Input size must be a tuple/list of length 2. Got {size}")
-    if not (type(height) is int and height > 0 and type(width) is int and width > 0):
-        raise AssertionError(f"'height' and 'width' must be integers. Got {height}, {width}.")
-    if not (height >= size[0] and width >= size[1]):
-        raise AssertionError(f"Crop size must be smaller than input size. Got ({height}, {width}) and {size}.")
 
-    # unpack input sizes
-    dst_h, dst_w = size
-    src_h, src_w = height, width
+    def __init__(self, size: Tuple[int, int]) -> None:
+        super().__init__()
+        if not isinstance(size, (tuple, list)) and len(size) == 2:
+            raise ValueError(f"Input size must be a tuple/list of length 2. Got {size}")
+        self.size = size
 
-    # compute start/end offsets
-    dst_h_half = dst_h / 2
-    dst_w_half = dst_w / 2
-    src_h_half = src_h / 2
-    src_w_half = src_w / 2
+    def __repr__(self) -> str:
+        repr = f"size={self.size}"
+        return repr
 
-    start_x = int(src_w_half - dst_w_half)
-    start_y = int(src_h_half - dst_h_half)
+    def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
+        pass
 
-    end_x = start_x + dst_w - 1
-    end_y = start_y + dst_h - 1
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
+        batch_size = batch_shape[0]
+        height, width = (batch_shape[-2], batch_shape[-1])
+        if not (height >= self.size[0] and width >= self.size[1]):
+            raise RuntimeError(
+                f"Crop size must be smaller than input size. Got ({height}, {width}) and {self.size}.")
 
-    # [y, x] origin
-    # top-left, top-right, bottom-right, bottom-left
-    points_src: Tensor = tensor(
-        [[[start_x, start_y], [end_x, start_y], [end_x, end_y], [start_x, end_y]]], device=device, dtype=torch.long
-    ).expand(batch_size, -1, -1)
+        # unpack input sizes
+        dst_h, dst_w = self.size
+        src_h, src_w = height, width
 
-    # [y, x] destination
-    # top-left, top-right, bottom-right, bottom-left
-    points_dst: Tensor = tensor(
-        [[[0, 0], [dst_w - 1, 0], [dst_w - 1, dst_h - 1], [0, dst_h - 1]]], device=device, dtype=torch.long
-    ).expand(batch_size, -1, -1)
+        # compute start/end offsets
+        dst_h_half = dst_h / 2
+        dst_w_half = dst_w / 2
+        src_h_half = src_h / 2
+        src_w_half = src_w / 2
 
-    _input_size = tensor((height, width), device=device, dtype=torch.long).expand(batch_size, -1)
-    _output_size = tensor(size, device=device, dtype=torch.long).expand(batch_size, -1)
+        start_x = int(src_w_half - dst_w_half)
+        start_y = int(src_h_half - dst_h_half)
 
-    return dict(src=points_src, dst=points_dst, input_size=_input_size, output_size=_output_size)
+        end_x = start_x + dst_w - 1
+        end_y = start_y + dst_h - 1
+
+        # [y, x] origin
+        # top-left, top-right, bottom-right, bottom-left
+        points_src: Tensor = tensor(
+            [[[start_x, start_y], [end_x, start_y], [end_x, end_y], [start_x, end_y]]],
+            device=self.device,
+            dtype=torch.long
+        ).expand(batch_size, -1, -1)
+
+        # [y, x] destination
+        # top-left, top-right, bottom-right, bottom-left
+        points_dst: Tensor = tensor(
+            [[[0, 0], [dst_w - 1, 0], [dst_w - 1, dst_h - 1], [0, dst_h - 1]]], device=self.device, dtype=torch.long
+        ).expand(batch_size, -1, -1)
+
+        _input_size = tensor((height, width), device=self.device, dtype=torch.long).expand(batch_size, -1)
+        _output_size = tensor(self.size, device=self.device, dtype=torch.long).expand(batch_size, -1)
+
+        return dict(src=points_src, dst=points_dst, input_size=_input_size, output_size=_output_size)

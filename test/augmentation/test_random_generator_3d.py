@@ -7,7 +7,7 @@ from kornia.augmentation.random_generator import (
     MotionBlurGenerator3D,
     PerspectiveGenerator3D,
     RotationGenerator3D,
-    center_crop_generator3d,
+    CenterCropGenerator3D,
 )
 from kornia.testing import assert_close
 
@@ -528,7 +528,7 @@ class TestCenterCropGen3D(RandomGeneratorBaseTests):
     @pytest.mark.parametrize('depth,height,width', [(200, 200, 200)])
     @pytest.mark.parametrize('size', [(100, 100, 100)])
     def test_valid_param_combinations(self, batch_size, depth, height, width, size, device, dtype):
-        center_crop_generator3d(batch_size=batch_size, depth=depth, height=height, width=width, size=size)
+        CenterCropGenerator3D(size)((batch_size, 3, depth, height, width))
 
     @pytest.mark.parametrize(
         'depth,height,width,size',
@@ -542,11 +542,11 @@ class TestCenterCropGen3D(RandomGeneratorBaseTests):
     )
     def test_invalid_param_combinations(self, depth, height, width, size, device, dtype):
         with pytest.raises(Exception):
-            center_crop_generator3d(batch_size=2, depth=depth, height=height, width=width, size=size)
+            CenterCropGenerator3D(size)((2, 3, depth, height, width))
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
-        res = center_crop_generator3d(batch_size=2, depth=200, height=200, width=200, size=(120, 150, 100))
+        res = CenterCropGenerator3D((120, 150, 100))((2, 3, 200, 200, 200))
         expected = dict(
             src=torch.tensor(
                 [

@@ -1,7 +1,7 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict
 
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
-from kornia.core import Tensor, as_tensor, tensor
+from kornia.core import Tensor, tensor
 from kornia.geometry.transform import vflip
 
 
@@ -17,7 +17,7 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
                         to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
 
     .. note::
@@ -51,23 +51,8 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
 
         return flip_mat.expand(input.shape[0], 3, 3)
 
-    def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return vflip(input)
 
-    def inverse_transform(
-        self,
-        input: Tensor,
-        flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
-        size: Optional[Tuple[int, int]] = None,
-    ) -> Tensor:
-        if not isinstance(transform, Tensor):
-            raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
-        return self.apply_transform(
-            input,
-            params=self._params,
-            transform=as_tensor(transform, device=input.device, dtype=input.dtype),
-            flags=flags,
-        )
+    def inverse_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+        return vflip(input)

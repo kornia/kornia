@@ -1,9 +1,9 @@
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
-from kornia.core import Tensor, as_tensor
+from kornia.core import Tensor
 from kornia.geometry.transform import get_perspective_transform, warp_perspective
 
 
@@ -73,29 +73,20 @@ class RandomPerspective(GeometricAugmentationBase2D):
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return get_perspective_transform(params["start_points"].to(input), params["end_points"].to(input))
 
-    def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         _, _, height, width = input.shape
-        if not isinstance(transform, Tensor):
-            raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
+        transform = params["transform_matrix"]
 
         return warp_perspective(
             input, transform, (height, width), mode=flags["resample"].name.lower(), align_corners=flags["align_corners"]
         )
 
-    def inverse_transform(
-        self,
-        input: Tensor,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
-    ) -> Tensor:
-        if not isinstance(transform, Tensor):
-            raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
-        return self.apply_transform(
-            input,
-            params=params,
-            transform=as_tensor(transform, device=input.device, dtype=input.dtype),
-            flags=flags,
+    def inverse_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+        size = params['forward_input_shape'].numpy().tolist()
+        size = (size[-2], size[-1])
+
+        transform = params["transform_matrix_inv"]
+        return warp_perspective(
+            input, transform, (size[0], size[1]), mode=flags["resample"].name.lower(),
+            align_corners=flags["align_corners"]
         )

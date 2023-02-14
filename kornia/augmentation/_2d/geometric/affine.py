@@ -103,9 +103,7 @@ class RandomAffine(GeometricAugmentationBase2D):
             deg2rad(as_tensor(params["shear_y"], device=input.device, dtype=input.dtype)),
         )
 
-    def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         _, _, height, width = input.shape
         transform = params["transform_matrix"]
 
@@ -118,13 +116,12 @@ class RandomAffine(GeometricAugmentationBase2D):
             padding_mode=flags["padding_mode"].name.lower(),
         )
 
-    def inverse_transform(
-        self,
-        input: Tensor,
-        flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
-        size: Optional[Tuple[int, int]] = None,
-    ) -> Tensor:
+    def inverse_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+        size = params['forward_input_shape'].numpy().tolist()
+        size = (size[-2], size[-1])
+
+        transform = params["transform_matrix_inv"]
+
         return warp_affine(
             input,
             transform[:, :2, :],

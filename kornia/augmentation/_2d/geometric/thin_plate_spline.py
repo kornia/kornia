@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import torch
 
@@ -56,7 +56,7 @@ class RandomThinPlateSpline(AugmentationBase2D):
         return dict(src=src, dst=dst)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
         src = params["src"].to(input)
         dst = params["dst"].to(input)

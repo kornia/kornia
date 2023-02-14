@@ -196,11 +196,7 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
         """
         if isinstance(module, (K.GeometricAugmentationBase2D,)):
             input = module.transform_masks(
-                input,
-                params=cls.get_instance_module_param(param),
-                flags=module.flags,
-                transform=module.transform_matrix,
-                **extra_args,
+                input, params=cls.get_instance_module_param(param), flags=module.flags, **extra_args,
             )
 
         elif isinstance(module, (K.GeometricAugmentationBase3D,)):
@@ -236,13 +232,8 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
         if isinstance(module, (K.GeometricAugmentationBase2D,)):
             if module.transform_matrix is None:
                 raise ValueError(f"No valid transformation matrix found in {module.__class__}.")
-            transform = module.compute_inverse_transformation(module.transform_matrix)
             input = module.inverse_masks(
-                input,
-                params=cls.get_instance_module_param(param),
-                flags=module.flags,
-                transform=transform,
-                **extra_args,
+                input, params=cls.get_instance_module_param(param), flags=module.flags, **extra_args,
             )
 
         elif isinstance(module, (K.GeometricAugmentationBase3D,)):
@@ -279,11 +270,7 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
 
         if isinstance(module, (K.GeometricAugmentationBase2D,)):
             _input = module.transform_boxes(
-                _input,
-                cls.get_instance_module_param(param),
-                module.flags,
-                transform=module.transform_matrix,
-                **extra_args,
+                _input, cls.get_instance_module_param(param), module.flags, **extra_args,
             )
 
         elif isinstance(module, (K.GeometricAugmentationBase3D,)):
@@ -319,12 +306,7 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
         _input = input.clone()
 
         if isinstance(module, (K.GeometricAugmentationBase2D,)):
-            if module.transform_matrix is None:
-                raise ValueError(f"No valid transformation matrix found in {module.__class__}.")
-            transform = module.compute_inverse_transformation(module.transform_matrix)
-            _input = module.inverse_boxes(
-                _input, param.data, module.flags, transform=transform, **extra_args  # type: ignore
-            )
+            _input = module.inverse_boxes(_input, cls.get_instance_module_param(param), module.flags, **extra_args)
 
         elif isinstance(module, (K.GeometricAugmentationBase3D,)):
             raise NotImplementedError(
@@ -364,11 +346,7 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
 
         if isinstance(module, (K.GeometricAugmentationBase2D,)):
             _input = module.transform_keypoints(
-                _input,
-                cls.get_instance_module_param(param),
-                module.flags,
-                transform=module.transform_matrix,
-                **extra_args,
+                _input, cls.get_instance_module_param(param), module.flags, **extra_args,
             )
 
         elif isinstance(module, (K.GeometricAugmentationBase3D,)):
@@ -405,12 +383,7 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
         _input = input.clone()
 
         if isinstance(module, (K.GeometricAugmentationBase2D,)):
-            if module.transform_matrix is None:
-                raise ValueError(f"No valid transformation matrix found in {module.__class__}.")
-            transform = module.compute_inverse_transformation(module.transform_matrix)
-            _input = module.inverse_keypoints(
-                _input, cls.get_instance_module_param(param), module.flags, transform=transform, **extra_args
-            )
+            _input = module.inverse_keypoints(_input, cls.get_instance_module_param(param), module.flags, **extra_args)
 
         elif isinstance(module, (K.GeometricAugmentationBase3D,)):
             raise NotImplementedError(

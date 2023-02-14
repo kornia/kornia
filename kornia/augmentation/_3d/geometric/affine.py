@@ -139,11 +139,11 @@ class RandomAffine3D(GeometricAugmentationBase3D):
         ).to(input)
         return transform
 
-    def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
-        if not isinstance(transform, Tensor):
-            raise TypeError(f'Expected the transform to be a Tensor. Gotcha {type(transform)}')
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+        size = params['forward_input_shape'].numpy().tolist()
+        size = (size[-2], size[-1])
+
+        transform = params["transform_matrix"]
 
         return warp_affine3d(
             input,

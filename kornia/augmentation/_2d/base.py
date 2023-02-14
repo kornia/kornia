@@ -4,7 +4,7 @@ from torch import float16, float32, float64, Size
 
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils import _transform_input, _validate_input_dtype
-from kornia.core import Tensor
+from kornia.core import Tensor, zeros
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 from kornia.utils import eye_like
@@ -26,6 +26,9 @@ class AugmentationBase2D(_AugmentationBase):
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it to the batch
           form ``False``.
     """
+
+    def _expand_batch_prob(self, batch_prob: Tensor) -> Tensor:
+        return batch_prob[:, None, None, None]
 
     def validate_tensor(self, input: Tensor) -> None:
         """Check if the input tensor is formatted as expected."""
@@ -71,7 +74,7 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
     def generate_transformation_matrix(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         """Generate transformation matrices with the given input and param settings."""
 
-        batch_prob = params['batch_prob'][:, None, None, None]
+        batch_prob = params['batch_prob'][:, None, None]
 
         in_tensor = self.transform_tensor(input)
 
@@ -106,7 +109,7 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
 
     def forward_parameters(self, batch_shape: Size) -> Dict[str, Tensor]:
         params = super().forward_parameters(batch_shape)
-        transform_matrix = self.generate_transformation_matrix(batch_shape, params, self.flags)
+        transform_matrix = self.generate_transformation_matrix(zeros(batch_shape), params, self.flags)
         params.update({"transform_matrix": transform_matrix})
         return params
 
@@ -137,7 +140,7 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
             flags = self.flags
 
         if params is None:
-            params = self.forward_parameters(in_tensor)
+            params = self.forward_parameters(in_tensor.shape)
             self._params = params
 
         params, flags = self._process_kwargs_to_params_and_flags(params, flags, **kwargs)

@@ -169,8 +169,9 @@ class _BasicAugmentationBase(Module):
 
     def forward_parameters(self, batch_shape) -> Dict[str, Tensor]:
         batch_prob = self.__batch_prob_generator__(batch_shape, self.p, self.p_batch, self.same_on_batch)
-        to_apply = batch_prob > 0.5
-        _params = self.generate_parameters(torch.Size((int(to_apply.sum().item()), *batch_shape[1:])))
+        _params = self.generate_parameters(batch_shape)
+        if self._param_generator is not None and self._param_generator.has_fit_batch_prob:
+            _params = self._param_generator.fit_batch_prob(batch_shape, batch_prob, _params)
         if _params is None:
             _params = {}
         _params['batch_prob'] = batch_prob
@@ -228,6 +229,9 @@ class _AugmentationBase(_BasicAugmentationBase):
           to the batch form ``False``.
     """
 
+    def _expand_batch_prob(self, batch_prob: Tensor) -> Tensor:
+        raise NotImplementedError
+
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
     ) -> Tensor:
@@ -255,21 +259,23 @@ class _AugmentationBase(_BasicAugmentationBase):
         )
 
         batch_prob = params['batch_prob']
-        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
+        to_apply = self._expand_batch_prob(batch_prob.round())
         ori_shape = input.shape
         in_tensor = self.transform_tensor(input)
-        if to_apply.all():
-            output = self.apply_transform(in_tensor, params, flags)
-        elif not to_apply.any():
-            output = self.apply_non_transform(in_tensor, params, flags)
-        else:  # If any tensor needs to be transformed.
-            output = self.apply_non_transform(in_tensor, params, flags)
-            applied = self.apply_transform(in_tensor[to_apply], params, flags)
 
-            if is_autocast_enabled():
-                output = output.type(input.dtype)
-                applied = applied.type(input.dtype)
-            output = output.index_put((to_apply,), applied)
+        output = self.apply_non_transform(in_tensor, params, flags)
+        applied = self.apply_transform(in_tensor, params, flags)
+
+        if is_autocast_enabled():
+            output = output.type(input.dtype)
+            applied = applied.type(input.dtype)
+
+        # No need to permute according to batch_prob
+        if self._param_generator is not None and self._param_generator.has_fit_batch_prob:
+            output = applied
+        else:
+            output = applied * to_apply + output * (1 - to_apply)
+
         output = _transform_output_shape(output, ori_shape) if self.keepdim else output
 
         if is_autocast_enabled():
@@ -290,17 +296,18 @@ class _AugmentationBase(_BasicAugmentationBase):
         )
 
         batch_prob = params['batch_prob']
-        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
+        to_apply = self._expand_batch_prob(batch_prob.round())
         ori_shape = input.shape
         in_tensor = self.transform_tensor(input)
-        if to_apply.all():
-            output = self.apply_transform_mask(in_tensor, params, flags)
-        elif not to_apply.any():
+        applied = self.apply_transform_mask(in_tensor, params, flags)
+
+        # No need to permute according to batch_prob
+        if self._param_generator is not None and self._param_generator.has_fit_batch_prob:
+            output = applied
+        else:
             output = self.apply_non_transform_mask(in_tensor, params, flags)
-        else:  # If any tensor needs to be transformed.
-            output = self.apply_non_transform_mask(in_tensor, params, flags)
-            applied = self.apply_transform_mask(in_tensor[to_apply], params, flags)
-            output = output.index_put((to_apply,), applied)
+            output = applied * to_apply + output * (1 - to_apply)
+
         output = _transform_output_shape(output, ori_shape) if self.keepdim else output
         return output
 
@@ -319,20 +326,15 @@ class _AugmentationBase(_BasicAugmentationBase):
         )
 
         batch_prob = params['batch_prob']
-        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
-        output: Boxes
-        if to_apply.bool().all():
-            output = self.apply_transform_box(input, params, flags)
-        elif not to_apply.any():
-            output = self.apply_non_transform_box(input, params, flags)
-        else:  # If any tensor needs to be transformed.
-            output = self.apply_non_transform_box(input, params, flags)
-            applied = self.apply_transform_box(input[to_apply], params, flags)
-            if is_autocast_enabled():
-                output = output.type(input.dtype)
-                applied = applied.type(input.dtype)
+        to_apply = batch_prob.round()  # NOTE: in case of Relaxed Distributions.
+        applied = self.apply_transform_box(input, params, flags)
 
-            output = output.index_put((to_apply,), applied)
+        # No need to permute according to batch_prob
+        if self._param_generator is not None and self._param_generator.has_fit_batch_prob:
+            return applied
+
+        output = self.apply_non_transform_box(input, params, flags)
+        output = applied * to_apply[:, None, None] + output * (1 - to_apply[:, None, None])
         return output
 
     def transform_keypoints(
@@ -350,18 +352,16 @@ class _AugmentationBase(_BasicAugmentationBase):
         )
 
         batch_prob = params['batch_prob']
-        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
-        if to_apply.all():
-            output = self.apply_transform_keypoint(input, params, flags)
-        elif not to_apply.any():
-            output = self.apply_non_transform_keypoint(input, params, flags)
-        else:  # If any tensor needs to be transformed.
-            output = self.apply_non_transform_keypoint(input, params, flags)
-            applied = self.apply_transform_keypoint(input[to_apply], params, flags)
-            if is_autocast_enabled():
-                output = output.type(input.dtype)
-                applied = applied.type(input.dtype)
-            output = output.index_put((to_apply,), applied)
+        to_apply = batch_prob.round()  # NOTE: in case of Relaxed Distributions.
+
+        applied = self.apply_transform_keypoint(input, params, flags)
+
+        # No need to permute according to batch_prob
+        if self._param_generator is not None and self._param_generator.has_fit_batch_prob:
+            return applied
+
+        output = self.apply_non_transform_keypoint(input, params, flags)
+        output = applied * to_apply[:, None, None] + output * (1 - to_apply[:, None, None])
         return output
 
     def transform_classes(
@@ -376,15 +376,12 @@ class _AugmentationBase(_BasicAugmentationBase):
         )
 
         batch_prob = params['batch_prob']
-        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
-        if to_apply.all():
-            output = self.apply_transform_class(input, params, flags)
-        elif not to_apply.any():
-            output = self.apply_non_transform_class(input, params, flags)
-        else:  # If any tensor needs to be transformed.
-            output = self.apply_non_transform_class(input, params, flags)
-            applied = self.apply_transform_class(input[to_apply], params, flags)
-            output = output.index_put((to_apply,), applied)
+        to_apply = batch_prob.round()  # NOTE: in case of Relaxed Distributions.
+
+        output = self.apply_non_transform_class(input, params, flags)
+        applied = self.apply_transform_class(input, params, flags)
+
+        output = applied * to_apply + output * (1 - to_apply)
         return output
 
     def apply_non_transform_mask(

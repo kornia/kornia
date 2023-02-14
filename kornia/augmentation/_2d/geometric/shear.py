@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
@@ -80,12 +80,9 @@ class RandomShear(GeometricAugmentationBase2D):
             deg2rad(as_tensor(params["shear_y"], device=input.device, dtype=input.dtype)),
         )
 
-    def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         _, _, height, width = input.shape
-        if not isinstance(transform, Tensor):
-            raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
+        transform = params["transform_matrix"]
 
         return warp_affine(
             input,
@@ -96,18 +93,16 @@ class RandomShear(GeometricAugmentationBase2D):
             padding_mode=flags["padding_mode"].name.lower(),
         )
 
-    def inverse_transform(
-        self,
-        input: Tensor,
-        flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
-        size: Optional[Tuple[int, int]] = None,
-    ) -> Tensor:
-        if not isinstance(transform, Tensor):
-            raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
-        return self.apply_transform(
+    def inverse_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+        size = params['forward_input_shape'].numpy().tolist()
+        size = (size[-2], size[-1])
+
+        transform = params["transform_matrix_inv"]
+        return warp_affine(
             input,
-            params=self._params,
-            transform=as_tensor(transform, device=input.device, dtype=input.dtype),
-            flags=flags,
+            transform[:, :2, :],
+            (size[0], size[1]),
+            flags["resample"].name.lower(),
+            align_corners=flags["align_corners"],
+            padding_mode=flags["padding_mode"].name.lower(),
         )

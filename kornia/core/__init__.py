@@ -16,6 +16,7 @@ from ._backend import (
     where,
     zeros,
     zeros_like,
+    ones,
 )
 
 __all__ = [
@@ -33,6 +34,7 @@ __all__ = [
     "where",
     "eye",
     "zeros",
+    "ones",
     "complex",
     "zeros_like",
     "linspace",

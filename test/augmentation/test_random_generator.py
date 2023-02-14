@@ -16,7 +16,7 @@ from kornia.augmentation.random_generator import (
     ProbabilityGenerator,
     RectangleEraseGenerator,
     ResizedCropGenerator,
-    center_crop_generator,
+    CenterCropGenerator,
 )
 from kornia.testing import assert_close
 from kornia.utils._compat import torch_version_ge
@@ -842,7 +842,7 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
     @pytest.mark.parametrize('width', [200])
     @pytest.mark.parametrize('size', [(100, 100)])
     def test_valid_param_combinations(self, batch_size, height, width, size, device, dtype):
-        center_crop_generator(batch_size=batch_size, height=height, width=width, size=size)
+        CenterCropGenerator(size).to(device=device, dtype=dtype)(torch.Size(batch_size, 3, height, width))
 
     @pytest.mark.parametrize(
         'height,width,size',
@@ -857,11 +857,11 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
     def test_invalid_param_combinations(self, height, width, size, device, dtype):
         batch_size = 2
         with pytest.raises(Exception):
-            center_crop_generator(batch_size=batch_size, height=height, width=width, size=size)
+            CenterCropGenerator(size).to(device=device, dtype=dtype)(torch.Size(batch_size, 3, height, width))
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
-        res = center_crop_generator(batch_size=2, height=200, width=200, size=(120, 150))
+        res = CenterCropGenerator((120, 150)).to(device=device, dtype=dtype)(torch.Size(2, 3, 200, 200))
         expected = dict(
             src=torch.tensor(
                 [[[25, 40], [174, 40], [174, 159], [25, 159]], [[25, 40], [174, 40], [174, 159], [25, 159]]],

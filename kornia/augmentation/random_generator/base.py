@@ -20,6 +20,8 @@ class RandomGeneratorBase(Module, metaclass=_PostInitInjectionMetaClass):
 
     device: Optional[Device] = None
     dtype: torch.dtype
+    # If can the generator process conditional parameters according to batch_prob
+    has_fit_batch_prob: bool = False
 
     def __init__(self) -> None:
         super().__init__()
@@ -50,6 +52,11 @@ class RandomGeneratorBase(Module, metaclass=_PostInitInjectionMetaClass):
         raise NotImplementedError
 
     def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
+        raise NotImplementedError
+
+    def fit_batch_prob(
+        self, batch_shape: torch.Size, batch_prob: Tensor, params: Dict[str, Tensor]
+    ) -> Dict[str, Tensor]:
         raise NotImplementedError
 
 

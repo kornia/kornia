@@ -1,4 +1,4 @@
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 import torch
 
@@ -309,7 +309,7 @@ def crop_by_indices(
         antialias: if True, then image will be filtered with Gaussian before downscaling.
             No effect for upscaling.
         shape_compensation: if the cropped slice sizes are not exactly align `size`, the image can either be padded
-            or resized.
+            or resized.  ``'resize'`` | ``'pad'`` | ``'none'``
     """
     B, C, _, _ = input_tensor.shape
     src = as_tensor(src_box, device=input_tensor.device, dtype=torch.long)
@@ -348,8 +348,12 @@ def crop_by_indices(
                     side="short",
                     antialias=antialias,
                 )
-            else:
+            elif shape_compensation == "pad":
                 out[i] = pad(_out, [0, size[1] - _out.shape[-1], 0, size[0] - _out.shape[-2]])
+            elif shape_compensation == "none":
+                out[i] = _out
+            else:
+                raise NotImplementedError(f"Method `{shape_compensation}` is not implemented.")
         else:
             out[i] = _out
     return out

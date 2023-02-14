@@ -1,12 +1,11 @@
-from typing import Any, Dict, Optional, Tuple, Union
-
-import torch
+from typing import Any, Dict, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.core import Tensor
 from kornia.constants import Resample
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
+from kornia.geometry.bbox import infer_bbox_shape
 
 
 class CenterCrop(GeometricAugmentationBase2D):
@@ -81,6 +80,7 @@ class CenterCrop(GeometricAugmentationBase2D):
         else:
             raise Exception(f"Invalid size type. Expected (int, tuple(int, int). " f"Got: {type(size)}.")
 
+        self._param_generator = rg.CenterCropGenerator(self.size)
         self.flags = dict(
             resample=Resample.get(resample),
             cropping_mode=cropping_mode,
@@ -89,9 +89,6 @@ class CenterCrop(GeometricAugmentationBase2D):
             padding_mode="zeros",
         )
 
-    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, Tensor]:
-        return rg.center_crop_generator(batch_shape[0], batch_shape[-2], batch_shape[-1], self.size, self.device)
-
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         if flags["cropping_mode"] in ("resample", "slice"):
             transform = get_perspective_transform(params["src"].to(input), params["dst"].to(input))
@@ -99,36 +96,31 @@ class CenterCrop(GeometricAugmentationBase2D):
             return transform
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
-    def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         if flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
             transform = params["transform_matrix"]
-            if not isinstance(transform, Tensor):
-                raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
 
             return crop_by_transform_mat(
                 input, transform[:, :2, :], self.size, flags["resample"].name.lower(), "zeros", flags["align_corners"]
             )
         if flags["cropping_mode"] == "slice":  # uses advanced slicing to crop
-            return crop_by_indices(input, params["src"], flags["size"])
+            height, width = infer_bbox_shape(params["dst"])
+            height = height.unique(sorted=False)
+            width = width.unique(sorted=False)
+            if not (len(height) == len(width) == 1):
+                raise RuntimeError(f"Invalid dst boxes with multiple height {height} and width {width}.")
+            return crop_by_indices(input, params["src"], (height.long().item(), width.long().item()))
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
-    def inverse_transform(
-        self,
-        input: Tensor,
-        flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
-        size: Optional[Tuple[int, int]] = None,
-    ) -> Tensor:
+    def inverse_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         if flags["cropping_mode"] != "resample":
             raise NotImplementedError(
                 f"`inverse` is only applicable for resample cropping mode. Got {flags['cropping_mode']}."
             )
-        if size is None:
-            size = self.size
-        if not isinstance(transform, Tensor):
-            raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
+        size = params['forward_input_shape'].numpy().tolist()
+        size = (size[-2], size[-1])
+        transform = params["transform_matrix_inv"]
+
         return crop_by_transform_mat(
             input,
             transform[:, :2, :],

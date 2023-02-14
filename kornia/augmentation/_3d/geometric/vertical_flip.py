@@ -22,13 +22,11 @@ class RandomVerticalFlip3D(GeometricAugmentationBase3D):
           to the batch form ``False``.
 
     Shape:
-        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
+        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`
         - Output: :math:`(B, C, D, H, W)`
 
     Note:
         Input tensor must be float and normalized into [0, 1] for the best differentiability support.
-        Additionally, this function accepts another transformation tensor (:math:`(B, 4, 4)`), then the
-        applied transformation will be merged int to the input transformation tensor and returned.
 
     Examples:
         >>> import torch
@@ -67,7 +65,5 @@ class RandomVerticalFlip3D(GeometricAugmentationBase3D):
         )
         return flip_mat.expand(input.shape[0], 4, 4)
 
-    def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return torch.flip(input, [-2])

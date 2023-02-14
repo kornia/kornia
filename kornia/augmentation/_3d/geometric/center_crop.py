@@ -1,10 +1,9 @@
-from typing import Any, Dict, Optional, Tuple, Union, cast
-
-from torch import Size, Tensor
+from typing import Any, Dict, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 from kornia.constants import Resample
+from kornia.core import Tensor
 from kornia.geometry import crop_by_transform_mat3d, get_perspective_transform3d
 
 
@@ -22,7 +21,7 @@ class CenterCrop3D(GeometricAugmentationBase3D):
           to the batch form (False).
 
     Shape:
-        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`, Optional: :math:`(B, 4, 4)`
+        - Input: :math:`(C, D, H, W)` or :math:`(B, C, D, H, W)`
         - Output: :math:`(B, C, out_d, out_h, out_w)`
 
     Note:
@@ -77,21 +76,15 @@ class CenterCrop3D(GeometricAugmentationBase3D):
         else:
             raise Exception(f"Invalid size type. Expected (int, tuple(int, int int). Got: {size}.")
         self.flags = dict(align_corners=align_corners, resample=Resample.get(resample))
-
-    def generate_parameters(self, batch_shape: Size) -> Dict[str, Tensor]:
-        return rg.center_crop_generator3d(
-            batch_shape[0], batch_shape[-3], batch_shape[-2], batch_shape[-1], self.size, device=self.device
-        )
+        self._param_generator = rg.CenterCropGenerator3D(self.size)
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         transform: Tensor = get_perspective_transform3d(params["src"].to(input), params["dst"].to(input))
         transform = transform.expand(input.shape[0], -1, -1)
         return transform
 
-    def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Tensor:
-        transform = cast(Tensor, transform)
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+        transform = params["transform_matrix"]
         return crop_by_transform_mat3d(
             input, transform, self.size, mode=flags["resample"].name.lower(), align_corners=flags["align_corners"]
         )

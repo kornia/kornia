@@ -149,18 +149,17 @@ class CommonTests(BaseTester):
         assert isinstance(generated_params, dict)
 
         # compute_transformation can be called and returns the correct shaped transformation matrix
-        to_apply = generated_params['batch_prob'] > 0.5
-        expected_transformation_shape = torch.Size((to_apply.sum(), 3, 3))
+        to_apply = generated_params['batch_prob'].round()[:, None, None]
+        expected_transformation_shape = torch.Size((generated_params['batch_prob'].size(0), 3, 3))
         test_input = torch.ones(batch_shape, device=self.device, dtype=self.dtype)
-        transformation = augmentation.compute_transformation(test_input[to_apply], generated_params, augmentation.flags)
+        transformation = augmentation.compute_transformation(test_input, generated_params, augmentation.flags)
+        transformation = transformation * to_apply + augmentation.identity_matrix(test_input) * (1 - to_apply)
         assert transformation.shape == expected_transformation_shape
 
         # apply_transform can be called and returns the correct batch sized output
         if to_apply.sum() != 0:
-            output = augmentation.apply_transform(
-                test_input[to_apply], generated_params, augmentation.flags, transformation
-            )
-            assert output.shape[0] == to_apply.sum()
+            output = augmentation.apply_transform(test_input, generated_params, augmentation.flags)
+            assert output.shape[0] == test_input.size(0)
         else:
             # Re-generate parameters if 0 batch size
             self._test_smoke_implementation(params)
