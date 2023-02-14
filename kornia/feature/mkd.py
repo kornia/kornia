@@ -442,7 +442,6 @@ class Whitening(nn.Module):
 
     def _modify_lw(self) -> None:
         """No modification required."""
-
     def _modify_pcaws(self) -> None:
         """Shrinkage for eigenvalues."""
         alpha = self.evals[self.keval]

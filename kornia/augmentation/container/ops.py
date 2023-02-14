@@ -130,7 +130,6 @@ class AugmentationSequentialOps:
 
 def make_input_only_sequential(module: 'K.container.ImageSequentialBase') -> Callable[..., Tensor]:
     """Disable all other additional inputs (e.g. ) for ImageSequential."""
-
     def f(*args, **kwargs):
         out = module(*args, **kwargs)
         return out

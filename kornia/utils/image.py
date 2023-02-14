@@ -215,7 +215,6 @@ def perform_keep_shape_image(f: Callable[..., Tensor]) -> Callable[..., Tensor]:
     It works by first viewing the image as `(B, C, H, W)`, applying the function and re-viewing the image as original
     shape.
     """
-
     @wraps(f)
     def _wrapper(input: Tensor, *args, **kwargs) -> Tensor:
         if not isinstance(input, Tensor):
@@ -247,7 +246,6 @@ def perform_keep_shape_video(f: Callable[..., Tensor]) -> Callable[..., Tensor]:
     It works by first viewing the image as `(B, C, D, H, W)`, applying the function and re-viewing the image as original
     shape.
     """
-
     @wraps(f)
     def _wrapper(input: Tensor, *args, **kwargs) -> Tensor:
         if not isinstance(input, Tensor):
