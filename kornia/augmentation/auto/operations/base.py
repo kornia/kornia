@@ -143,7 +143,7 @@ class OperationBase(Module):
         if params is None:
             params = self.forward_parameters(input.shape)
 
-        batch_prob = params["batch_prob"][(...,) + ((None,) * (len(input.shape) - 1))]
+        batch_prob = params["batch_prob"][(...,) + ((None,) * (len(input.shape) - 1))].to(device=input.device)
 
         if self._gradient_estimator is not None:
             # skip the gradient computation if gradient estimator is provided.
@@ -155,7 +155,6 @@ class OperationBase(Module):
                 return self._gradient_estimator.apply(input, output)
             # If magnitude is not None, make the grad w.r.t the magnitude
             return self._gradient_estimator.apply(self.magnitude, output)
-
         return batch_prob * self.op(input, params=params) + (1 - batch_prob) * input
 
     @property
