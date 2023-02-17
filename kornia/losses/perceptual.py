@@ -10,13 +10,7 @@ from kornia.geometry.transform.imgwarp import get_perspective_transform, warp_pe
 
 
 class LossNetwork(nn.Module):
-
-    def __init__(
-        self,
-        model_name: str = 'resnet34',
-        output_layer: int = 1,
-        freeze: bool = True,
-    ) -> None:
+    def __init__(self, model_name: str = 'resnet34', output_layer: int = 1, freeze: bool = True) -> None:
         super().__init__()
         if 'resnet' not in model_name:
             raise ValueError('Only ResNets are supported ATM')
@@ -42,7 +36,6 @@ class LossNetwork(nn.Module):
                 param.requires_grad = False
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-
         if x.shape[1] == 1:
             x = x.repeat(1, 3, 1, 1)
 
@@ -103,8 +96,7 @@ def _four_point_to_homography(corners: torch.Tensor, deltas: torch.Tensor) -> to
     testing.KORNIA_CHECK_SHAPE(corners, ['*', '4', '2'])
     testing.KORNIA_CHECK(
         corners.size(0) == deltas.size(0),
-        f'Expected corners batch_size ({corners.size(0)}) to match deltas batch '
-        f'size ({deltas.size(0)}).'
+        f'Expected corners batch_size ({corners.size(0)}) to match deltas batch ' f'size ({deltas.size(0)}).',
     )
 
     corners_hat = corners + deltas
@@ -192,8 +184,7 @@ def bihome_loss(
         f'({patch_1.size(0)}).',
     )
     testing.KORNIA_CHECK(
-        isinstance(loss_network, nn.Module),
-        f"loss_network type is not a str. Got {type(loss_network)}",
+        isinstance(loss_network, nn.Module), f"loss_network type is not a str. Got {type(loss_network)}"
     )
 
     # Compute features of both patches
@@ -219,35 +210,27 @@ def bihome_loss(
     downsample_factor = patch_1_m.shape[-1] // f_h
     patch_1_m = torch.squeeze(
         torch.nn.functional.avg_pool2d(
-            input=patch_1_m,
-            kernel_size=downsample_factor,
-            stride=downsample_factor,
-            padding=0,
-        ), dim=1
+            input=patch_1_m, kernel_size=downsample_factor, stride=downsample_factor, padding=0
+        ),
+        dim=1,
     )
     patch_2_m = torch.squeeze(
         torch.nn.functional.avg_pool2d(
-            input=patch_2_m,
-            kernel_size=downsample_factor,
-            stride=downsample_factor,
-            padding=0,
-        ), dim=1
+            input=patch_2_m, kernel_size=downsample_factor, stride=downsample_factor, padding=0
+        ),
+        dim=1,
     )
     patch_1_m_prime = torch.squeeze(
         torch.nn.functional.avg_pool2d(
-            input=patch_1_m_prime,
-            kernel_size=downsample_factor,
-            stride=downsample_factor,
-            padding=0,
-        ), dim=1
+            input=patch_1_m_prime, kernel_size=downsample_factor, stride=downsample_factor, padding=0
+        ),
+        dim=1,
     )
     patch_2_m_prime = torch.squeeze(
         torch.nn.functional.avg_pool2d(
-            input=patch_2_m_prime,
-            kernel_size=downsample_factor,
-            stride=downsample_factor,
-            padding=0,
-        ), dim=1
+            input=patch_2_m_prime, kernel_size=downsample_factor, stride=downsample_factor, padding=0
+        ),
+        dim=1,
     )
 
     # Triplet Margin Loss
@@ -284,20 +267,17 @@ class BiHomELoss(nn.Module):
     """
 
     def __init__(
-        self,
-        loss_network_name: str = 'resnet34',
-        loss_network: Callable = None,
-        triplet_mu: float = 0.01,
+        self, loss_network_name: str = 'resnet34', loss_network: Callable = None, triplet_mu: float = 0.01
     ) -> None:
-
         super().__init__()
 
         if loss_network is None and loss_network_name is None:
             raise RuntimeError("At least one should be defined out of: loss_network and loss_network_name")
 
         if loss_network is not None and loss_network_name is not None:
-            raise RuntimeWarning("Both are defined out of: loss_network and loss_network_name - I will use "
-                                 "loss_network_name")
+            raise RuntimeWarning(
+                "Both are defined out of: loss_network and loss_network_name - I will use " "loss_network_name"
+            )
 
         if loss_network_name is not None:
             self.loss_network = LossNetwork(loss_network_name)
@@ -307,18 +287,9 @@ class BiHomELoss(nn.Module):
         self.triplet_mu = triplet_mu
 
     def forward(
-        self,
-        patch_1: torch.Tensor,
-        patch_2: torch.Tensor,
-        delta_hat_12: torch.Tensor,
-        delta_hat_21: torch.Tensor,
+        self, patch_1: torch.Tensor, patch_2: torch.Tensor, delta_hat_12: torch.Tensor, delta_hat_21: torch.Tensor
     ) -> torch.Tensor:
         loss = bihome_loss(
-            patch_1,
-            patch_2,
-            delta_hat_12,
-            delta_hat_21,
-            self.triplet_mu,
-            loss_network=self.loss_network
+            patch_1, patch_2, delta_hat_12, delta_hat_21, self.triplet_mu, loss_network=self.loss_network
         )
         return loss
