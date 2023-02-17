@@ -13,6 +13,10 @@ itself, or to be applied to additional metadata such as the label images for sem
 in bounding boxes or landmark keypoints for object detection tasks. It gives the user the flexibility to
 perform complex data augmentations pipelines.
 
+Try it out :
+
+.. image:: https://img.shields.io/badge/%F0%9F%A4%97%20Spaces-Interactive%20Demo-blue
+   :target: https://huggingface.co/spaces/kornia/kornia-augmentations-tester
 
 Benchmark
 ---------
@@ -55,6 +59,7 @@ Benchmark
 
 .. toctree::
 
+   augmentation.auto
    augmentation.base
    augmentation.container
    augmentation.module

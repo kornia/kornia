@@ -22,6 +22,14 @@ Adjustment
 .. autofunction:: sharpness
 .. autofunction:: solarize
 
+Interactive Demo
+~~~~~~~~~~~~~~~~
+.. raw:: html
+
+    <gradio-app space="kornia/kornia-image-enhancement"></gradio-app>
+
+Visit the demo on `Hugging Face Spaces <https://huggingface.co/spaces/kornia/kornia-image-enhancement>`_.
+
 Equalization
 ------------
 
@@ -62,3 +70,10 @@ Modules
 .. autoclass:: AddWeighted
 
 .. autoclass:: Invert
+
+
+ZCA Whitening Interactive Demo
+------------------------------
+.. raw:: html
+
+  <gradio-app space="kornia/zca-whitening"></gradio-app>

@@ -6,11 +6,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from kornia.constants import pi
+from kornia.core.check import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 from kornia.filters import SpatialGradient, get_gaussian_kernel2d
 from kornia.geometry import rad2deg
-from kornia.testing import KORNIA_CHECK_SHAPE
+from kornia.utils.helpers import map_location_to_cpu
 
-from .laf import extract_patches_from_pyramid, get_laf_orientation, raise_error_if_laf_is_not_valid, set_laf_orientation
+from .laf import extract_patches_from_pyramid, get_laf_orientation, set_laf_orientation
 
 urls: Dict[str, str] = {}
 urls["orinet"] = "https://github.com/ducha-aiki/affnet/raw/master/pretrained/OriNet.pth"
@@ -55,16 +56,10 @@ class PatchDominantGradientOrientation(nn.Module):
 
     def __repr__(self):
         return (
-            self.__class__.__name__ + '('
-            'patch_size='
-            + str(self.patch_size)
-            + ', '
-            + 'num_ang_bins='
-            + str(self.num_ang_bins)
-            + ', '
-            + 'eps='
-            + str(self.eps)
-            + ')'
+            f'{self.__class__.__name__}('
+            f'patch_size={self.patch_size}, '
+            f'num_ang_bins={self.num_ang_bins}, '
+            f'eps={self.eps})'
         )
 
     def forward(self, patch: torch.Tensor) -> torch.Tensor:
@@ -165,9 +160,7 @@ class OriNet(nn.Module):
         self.eps = eps
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(
-                urls['orinet'], map_location=lambda storage, loc: storage
-            )
+            pretrained_dict = torch.hub.load_state_dict_from_url(urls['orinet'], map_location=map_location_to_cpu)
             self.load_state_dict(pretrained_dict['state_dict'], strict=False)
         self.eval()
 
@@ -214,10 +207,7 @@ class LAFOrienter(nn.Module):
             self.angle_detector = angle_detector
 
     def __repr__(self):
-        return (
-            self.__class__.__name__ + '('
-            'patch_size=' + str(self.patch_size) + ', ' + 'angle_detector=' + str(self.angle_detector) + ')'
-        )
+        return f"{self.__class__.__name__}(patch_size={self.patch_size}, angle_detector={self.angle_detector})"
 
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
         """
@@ -228,7 +218,7 @@ class LAFOrienter(nn.Module):
         Returns:
             laf_out, shape [BxNx2x3]
         """
-        raise_error_if_laf_is_not_valid(laf)
+        KORNIA_CHECK_LAF(laf)
         KORNIA_CHECK_SHAPE(img, ["B", "C", "H", "W"])
         if laf.size(0) != img.size(0):
             raise ValueError(f"Batch size of laf and img should be the same. Got {img.size(0)}, {laf.size(0)}")

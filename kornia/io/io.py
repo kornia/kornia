@@ -7,16 +7,17 @@ import os
 from enum import Enum
 
 import torch
+from torch.utils import dlpack  # TODO: remove this  if kornia relies on torch>=1.10
 
 from kornia.color import rgb_to_grayscale, rgba_to_rgb
 from kornia.color.gray import grayscale_to_rgb
 from kornia.color.rgb import rgb_to_rgba
 from kornia.core import Tensor
-from kornia.testing import KORNIA_CHECK
+from kornia.core.check import KORNIA_CHECK
 
 
 class ImageLoadType(Enum):
-    r"""Enum to specify the desired image type"""
+    r"""Enum to specify the desired image type."""
     UNCHANGED = 0
     GRAY8 = 1
     RGB8 = 2
@@ -34,7 +35,7 @@ def load_image_to_tensor(path_file: str, device: str) -> Tensor:
     # for convenience use the torch dlpack parser to get a zero copy torch.Tensor
     # TODO: evaluate other potential API so that we can return in numpy, jax, mxnet since
     # the kornia_rs cv::Tensor has this ability.
-    th_tensor = torch.utils.dlpack.from_dlpack(cv_tensor)  # type: ignore # HxWx3
+    th_tensor = dlpack.from_dlpack(cv_tensor)  # HxWx3
     # move the tensor to the desired device, move the data layout to CHW and clone
     # to return an owned data tensor.
     return th_tensor.to(torch.device(device)).permute(2, 0, 1).clone()  # CxHxW

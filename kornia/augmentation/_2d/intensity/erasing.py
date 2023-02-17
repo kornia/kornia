@@ -1,10 +1,8 @@
-from typing import Any, Dict, Optional, Tuple, Union, cast
-
-import torch
-from torch import Tensor
+from typing import Any, Dict, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core import Tensor, where
 from kornia.geometry.bbox import bbox_generator, bbox_to_mask
 
 
@@ -54,7 +52,6 @@ class RandomErasing(IntensityAugmentationBase2D):
         tensor(True)
     """
 
-    # Note: Extra params, inplace=False in Torchvision.
     def __init__(
         self,
         scale: Union[Tensor, Tuple[float, float]] = (0.02, 0.33),
@@ -63,13 +60,12 @@ class RandomErasing(IntensityAugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self.scale = scale
         self.ratio = ratio
-        self.value: float = float(value)
-        self._param_generator = cast(rg.RectangleEraseGenerator, rg.RectangleEraseGenerator(scale, ratio, float(value)))
+        self.value = value
+        self._param_generator = rg.RectangleEraseGenerator(scale, ratio, value)
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
@@ -80,5 +76,20 @@ class RandomErasing(IntensityAugmentationBase2D):
         bboxes = bbox_generator(params["xs"], params["ys"], params["widths"], params["heights"])
         mask = bbox_to_mask(bboxes, w, h)  # Returns B, H, W
         mask = mask.unsqueeze(1).repeat(1, c, 1, 1).to(input)  # Transform to B, c, H, W
-        transformed = torch.where(mask == 1.0, values, input)
+        transformed = where(mask == 1.0, values, input)
+        return transformed
+
+    def apply_transform_mask(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        _, c, h, w = input.size()
+
+        values = params["values"][..., None, None, None].repeat(1, *input.shape[1:]).to(input)
+        # Erase the corresponding areas on masks.
+        values = values.zero_()
+
+        bboxes = bbox_generator(params["xs"], params["ys"], params["widths"], params["heights"])
+        mask = bbox_to_mask(bboxes, w, h)  # Returns B, H, W
+        mask = mask.unsqueeze(1).repeat(1, c, 1, 1).to(input)  # Transform to B, c, H, W
+        transformed = where(mask == 1.0, values, input)
         return transformed

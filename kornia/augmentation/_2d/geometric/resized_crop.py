@@ -1,10 +1,9 @@
-from typing import Any, Dict, Optional, Tuple, Union, cast
-
-from torch import Tensor
+from typing import Any, Dict, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
+from kornia.core import Tensor
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
 
 
@@ -19,9 +18,6 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         scale: range of size of the origin size cropped.
         ratio: range of aspect ratio of the origin aspect ratio cropped.
         resample: the interpolation mode.
-        return_transform: if ``True`` return the matrix describing the transformation applied to each
-                          input tensor. If ``False`` and the input is a tuple the applied transformation
-                          won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
@@ -74,32 +70,32 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         p: float = 1.0,
         keepdim: bool = False,
         cropping_mode: str = "slice",
-        return_transform: Optional[bool] = None,
     ) -> None:
         # Since PyTorch does not support ragged tensor. So cropping function happens all the time.
-        super().__init__(
-            p=1.0, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim
-        )
-        self._param_generator = cast(rg.ResizedCropGenerator, rg.ResizedCropGenerator(size, scale, ratio))
+        super().__init__(p=1.0, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim)
+        self._param_generator = rg.ResizedCropGenerator(size, scale, ratio)
         self.flags = dict(
-            size=size, resample=Resample.get(resample), align_corners=align_corners, cropping_mode=cropping_mode,
-            padding_mode="zeros"
+            size=size,
+            resample=Resample.get(resample),
+            align_corners=align_corners,
+            cropping_mode=cropping_mode,
+            padding_mode="zeros",
         )
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
-        if flags["cropping_mode"] == "resample":
+        if flags["cropping_mode"] in ("resample", "slice"):
             transform: Tensor = get_perspective_transform(params["src"].to(input), params["dst"].to(input))
             transform = transform.expand(input.shape[0], -1, -1)
             return transform
-        if flags["cropping_mode"] == "slice":  # Skip the computation for slicing.
-            return self.identity_matrix(input)
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         if flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
-            transform = cast(Tensor, transform)
+            if not isinstance(transform, Tensor):
+                raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
+
             return crop_by_transform_mat(
                 input,
                 transform,
@@ -114,7 +110,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
                 params["src"],
                 flags["size"],
                 interpolation=flags["resample"].name.lower(),
-                align_corners=flags["align_corners"]
+                align_corners=flags["align_corners"],
             )
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
@@ -129,9 +125,17 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
             raise NotImplementedError(
                 f"`inverse` is only applicable for resample cropping mode. Got {flags['cropping_mode']}."
             )
-        size = cast(Tuple[int, int], size)
-        transform = cast(Tensor, transform)
+        if not isinstance(size, tuple):
+            raise TypeError(f'Expected the size be a tuple. Gotcha {type(size)}')
+
+        if not isinstance(transform, Tensor):
+            raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
+
         return crop_by_transform_mat(
-            input, transform[:, :2, :], size, flags["resample"].name.lower(),
-            flags["padding_mode"], flags["align_corners"]
+            input,
+            transform[:, :2, :],
+            size,
+            flags["resample"].name.lower(),
+            flags["padding_mode"],
+            flags["align_corners"],
         )

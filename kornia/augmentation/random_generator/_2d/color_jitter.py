@@ -2,16 +2,22 @@ from functools import partial
 from typing import Dict, List, Tuple, Union
 
 import torch
-from torch import Tensor
 from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _joint_range_check, _range_bound
+from kornia.core import Tensor
 from kornia.utils.helpers import _extract_device_dtype
+
+__all__ = ["ColorJitterGenerator"]
 
 
 class ColorJitterGenerator(RandomGeneratorBase):
     r"""Generate random color jiter parameters for a batch of images following Pil.
+
+    This implementation is for maintaining compatibility with torchvision. It does not
+    follow the color theory and is not be actively maintained. Prefer using
+    :func:`kornia.augmentation.ColorJiggleGenerator`
 
     Args:
         brightness: The brightness factor to apply.
@@ -50,15 +56,12 @@ class ColorJitterGenerator(RandomGeneratorBase):
 
     def __repr__(self) -> str:
         repr = (
-            f"brightness={self.brightness}, contrast={self.contrast}, saturation="
-            f"{self.saturation}, hue={self.hue}"
+            f"brightness={self.brightness}, contrast={self.contrast}, saturation=" f"{self.saturation}, hue={self.hue}"
         )
         return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        brightness: Tensor = _range_bound(
-            self.brightness, 'brightness', center=1.0, device=device, dtype=dtype
-        )
+        brightness: Tensor = _range_bound(self.brightness, 'brightness', center=1.0, device=device, dtype=dtype)
         contrast: Tensor = _range_bound(self.contrast, 'contrast', center=1.0, device=device, dtype=dtype)
         saturation: Tensor = _range_bound(self.saturation, 'saturation', center=1.0, device=device, dtype=dtype)
         hue: Tensor = _range_bound(self.hue, 'hue', bounds=(-0.5, 0.5), device=device, dtype=dtype)
@@ -74,7 +77,7 @@ class ColorJitterGenerator(RandomGeneratorBase):
         self.saturation_sampler = Uniform(saturation[0], saturation[1], validate_args=False)
         self.randperm = partial(torch.randperm, device=device, dtype=dtype)
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:  # type:ignore
+    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.brightness, self.contrast, self.hue, self.saturation])

@@ -6,14 +6,16 @@ from torch import Tensor
 from torch.nn import Module, Parameter
 
 from kornia.color import hsv_to_rgb, rgb_to_grayscale, rgb_to_hsv
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_COLOR_OR_GRAY, KORNIA_CHECK_IS_TENSOR
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_COLOR_OR_GRAY, KORNIA_CHECK_IS_TENSOR
 from kornia.utils.helpers import _torch_histc_cast
 from kornia.utils.image import perform_keep_shape_image, perform_keep_shape_video
 
 
 def adjust_saturation_raw(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
-    r"""Adjust color saturation of an image. Expecting image to be in hsv format already."""
+    r"""Adjust color saturation of an image.
 
+    Expecting image to be in hsv format already.
+    """
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
     KORNIA_CHECK(isinstance(factor, (float, Tensor)), "Factor should be float or Tensor.")
 
@@ -67,7 +69,6 @@ def adjust_saturation_with_gray_subtraction(image: Tensor, factor: Union[float, 
         >>> adjust_saturation_with_gray_subtraction(x, y).shape
         torch.Size([2, 3, 3, 3])
     """
-
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
     KORNIA_CHECK(isinstance(factor, (float, Tensor)), "Factor should be float or Tensor.")
     KORNIA_CHECK_IS_COLOR_OR_GRAY(image, "Image should be an RGB or gray image")
@@ -126,7 +127,6 @@ def adjust_saturation(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
         >>> adjust_saturation(x, y).shape
         torch.Size([2, 3, 3, 3])
     """
-
     # convert the rgb image to hsv
     x_hsv: Tensor = rgb_to_hsv(image)
 
@@ -140,12 +140,15 @@ def adjust_saturation(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
 
 
 def adjust_hue_raw(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
-    r"""Adjust hue of an image. Expecting image to be in hsv format already."""
+    r"""Adjust hue of an image.
 
+    Expecting image to be in hsv format already.
+    """
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
-    KORNIA_CHECK(isinstance(factor, (float, Tensor)),
-                 f"The factor should be a float number or Tensor in the range between"
-                 f" [-PI, PI]. Got {type(factor)}")
+    KORNIA_CHECK(
+        isinstance(factor, (float, Tensor)),
+        f"The factor should be a float number or Tensor in the range between" f" [-PI, PI]. Got {type(factor)}",
+    )
 
     if isinstance(factor, float):
         factor = torch.as_tensor(factor)
@@ -200,7 +203,6 @@ def adjust_hue(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
         >>> adjust_hue(x, y).shape
         torch.Size([2, 3, 3, 3])
     """
-
     # convert the rgb image to hsv
     x_hsv: Tensor = rgb_to_hsv(image)
 
@@ -246,7 +248,6 @@ def adjust_gamma(input: Tensor, gamma: Union[float, Tensor], gain: Union[float, 
         >>> adjust_gamma(x, y1, y2).shape
         torch.Size([2, 5, 3, 3])
     """
-
     if not isinstance(input, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
 
@@ -308,7 +309,7 @@ def adjust_contrast(image: Tensor, factor: Union[float, Tensor], clip_output: bo
             in the batch. 0 generates a completely black image, 1 does not modify
             the input image while any other non-negative number modify the
             brightness by this factor.
-            clip_output: whether to clip the output image with range of [0, 1].
+        clip_output: whether to clip the output image with range of [0, 1].
 
     Return:
         Adjusted image in the shape of :math:`(*, H, W)`.
@@ -342,7 +343,7 @@ def adjust_contrast(image: Tensor, factor: Union[float, Tensor], clip_output: bo
     while len(factor.shape) != len(image.shape):
         factor = factor[..., None]
 
-    KORNIA_CHECK((factor >= 0).any(), f"Contrast factor must be positive. Got {factor}")
+    KORNIA_CHECK(any(factor >= 0), f"Contrast factor must be positive. Got {factor}")
 
     # Apply contrast factor to each channel
     img_adjust: Tensor = image * factor
@@ -396,7 +397,7 @@ def adjust_contrast_with_mean_subtraction(image: Tensor, factor: Union[float, Te
     while len(factor.shape) != len(image.shape):
         factor = factor[..., None]
 
-    KORNIA_CHECK((factor >= 0).any(), f"Contrast factor must be positive. Got {factor}")
+    KORNIA_CHECK(any(factor >= 0), f"Contrast factor must be positive. Got {factor}")
 
     if image.shape[-3] == 3:
         img_mean = rgb_to_grayscale(image).mean((-2, -1), True)
@@ -535,8 +536,8 @@ def adjust_sigmoid(image: Tensor, cutoff: float = 0.5, gain: float = 10, inv: bo
     The input image is expected to be in the range of [0, 1].
 
     Reference:
-    [1]: Gustav J. Braun, "Image Lightness Rescaling Using Sigmoidal Contrast Enhancement Functions",
-        http://markfairchild.org/PDFs/PAP07.pdf
+        [1]: Gustav J. Braun, "Image Lightness Rescaling Using Sigmoidal Contrast Enhancement Functions",
+             http://markfairchild.org/PDFs/PAP07.pdf
 
     Args:
         image: Image to be adjusted in the shape of :math:`(*, H, W)`.
@@ -556,9 +557,9 @@ def adjust_sigmoid(image: Tensor, cutoff: float = 0.5, gain: float = 10, inv: bo
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
 
     if inv:
-        img_adjust = (1 - 1 / (1 + (gain * (cutoff - image)).exp()))
+        img_adjust = 1 - 1 / (1 + (gain * (cutoff - image)).exp())
     else:
-        img_adjust = (1 / (1 + (gain * (cutoff - image)).exp()))
+        img_adjust = 1 / (1 + (gain * (cutoff - image)).exp())
     return img_adjust
 
 
@@ -588,7 +589,7 @@ def adjust_log(image: Tensor, gain: float = 1, inv: bool = False, clip_output: b
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
 
     if inv:
-        img_adjust = (2 ** image - 1) * gain
+        img_adjust = (2**image - 1) * gain
     else:
         img_adjust = (1 + image).log2() * gain
 
@@ -600,8 +601,8 @@ def adjust_log(image: Tensor, gain: float = 1, inv: bool = False, clip_output: b
 
 
 def _solarize(input: Tensor, thresholds: Union[float, Tensor] = 0.5) -> Tensor:
-    r"""For each pixel in the image, select the pixel if the value is less than the threshold.
-    Otherwise, subtract 1.0 from the pixel.
+    r"""For each pixel in the image, select the pixel if the value is less than the threshold. Otherwise, subtract
+    1.0 from the pixel.
 
     Args:
         input: image or batched images to solarize.
@@ -715,7 +716,7 @@ def posterize(input: Tensor, bits: Union[int, Tensor]) -> Tensor:
     Example:
         >>> x = torch.rand(1, 6, 3, 3)
         >>> out = posterize(x, bits=8)
-        >>> torch.testing.assert_allclose(x, out)
+        >>> torch.testing.assert_close(x, out)
 
         >>> x = torch.rand(2, 6, 3, 3)
         >>> bits = torch.tensor([4, 2])
@@ -1209,10 +1210,7 @@ class AdjustContrast(Module):
         torch.Size([2, 5, 3, 3])
     """
 
-    def __init__(
-        self,
-        contrast_factor: Union[float, Tensor],
-    ) -> None:
+    def __init__(self, contrast_factor: Union[float, Tensor]) -> None:
         super().__init__()
         self.contrast_factor: Union[float, Tensor] = contrast_factor
 
@@ -1250,10 +1248,7 @@ class AdjustContrastWithMeanSubtraction(Module):
         torch.Size([2, 5, 3, 3])
     """
 
-    def __init__(
-        self,
-        contrast_factor: Union[float, Tensor],
-    ) -> None:
+    def __init__(self, contrast_factor: Union[float, Tensor]) -> None:
         super().__init__()
         self.contrast_factor: Union[float, Tensor] = contrast_factor
 
@@ -1289,10 +1284,7 @@ class AdjustBrightness(Module):
         torch.Size([2, 5, 3, 3])
     """
 
-    def __init__(
-        self,
-        brightness_factor: Union[float, Tensor],
-    ) -> None:
+    def __init__(self, brightness_factor: Union[float, Tensor]) -> None:
         super().__init__()
         self.brightness_factor: Union[float, Tensor] = brightness_factor
 
@@ -1306,8 +1298,8 @@ class AdjustSigmoid(Module):
     The input image is expected to be in the range of [0, 1].
 
     Reference:
-    [1]: Gustav J. Braun, "Image Lightness Rescaling Using Sigmoidal Contrast Enhancement Functions",
-        http://markfairchild.org/PDFs/PAP07.pdf
+        [1]: Gustav J. Braun, "Image Lightness Rescaling Using Sigmoidal Contrast Enhancement Functions",
+             http://markfairchild.org/PDFs/PAP07.pdf
 
     Args:
         image: Image to be adjusted in the shape of :math:`(*, H, W)`.
@@ -1322,12 +1314,7 @@ class AdjustSigmoid(Module):
                   [0.5000, 0.5000]]]])
     """
 
-    def __init__(
-        self,
-        cutoff: float = 0.5,
-        gain: float = 10,
-        inv: bool = False,
-    ) -> None:
+    def __init__(self, cutoff: float = 0.5, gain: float = 10, inv: bool = False) -> None:
         super().__init__()
         self.cutoff: float = cutoff
         self.gain: float = gain
@@ -1358,12 +1345,7 @@ class AdjustLog(Module):
                   [0., 0.]]]])
     """
 
-    def __init__(
-        self,
-        gain: float = 1,
-        inv: bool = False,
-        clip_output: bool = True,
-    ) -> None:
+    def __init__(self, gain: float = 1, inv: bool = False, clip_output: bool = True) -> None:
         super().__init__()
         self.gain: float = gain
         self.inv: bool = inv
@@ -1401,10 +1383,7 @@ class AdjustBrightnessAccumulative(Module):
         torch.Size([2, 5, 3, 3])
     """
 
-    def __init__(
-        self,
-        brightness_factor: Union[float, Tensor],
-    ) -> None:
+    def __init__(self, brightness_factor: Union[float, Tensor]) -> None:
         super().__init__()
         self.brightness_factor: Union[float, Tensor] = brightness_factor
 

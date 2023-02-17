@@ -5,9 +5,10 @@ from typing import Dict, Optional
 import torch
 import torch.nn as nn
 
+from kornia.core.check import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 from kornia.filters.kernels import get_gaussian_kernel2d
 from kornia.filters.sobel import SpatialGradient
-from kornia.testing import KORNIA_CHECK_SHAPE
+from kornia.utils.helpers import map_location_to_cpu
 
 from .laf import (
     ellipse_to_laf,
@@ -15,7 +16,6 @@ from .laf import (
     get_laf_orientation,
     get_laf_scale,
     make_upright,
-    raise_error_if_laf_is_not_valid,
     scale_laf,
     set_laf_orientation,
 )
@@ -43,7 +43,7 @@ class PatchAffineShapeEstimator(nn.Module):
         self.weighting: torch.Tensor = get_gaussian_kernel2d((self.patch_size, self.patch_size), (sigma, sigma), True)
 
     def __repr__(self):
-        return self.__class__.__name__ + '(' 'patch_size=' + str(self.patch_size) + ', ' + 'eps=' + str(self.eps) + ')'
+        return f"{self.__class__.__name__}(patch_size={self.patch_size}, eps={self.eps})"
 
     def forward(self, patch: torch.Tensor) -> torch.Tensor:
         """Args:
@@ -91,33 +91,28 @@ class LAFAffineShapeEstimator(nn.Module):
         preserve_orientation: if True, the original orientation is preserved.
     """  # pylint: disable
 
-    def __init__(self,
-                 patch_size: int = 32,
-                 affine_shape_detector: Optional[nn.Module] = None,
-                 preserve_orientation: bool = True) -> None:
+    def __init__(
+        self, patch_size: int = 32, affine_shape_detector: Optional[nn.Module] = None, preserve_orientation: bool = True
+    ) -> None:
         super().__init__()
         self.patch_size = patch_size
         self.affine_shape_detector = affine_shape_detector or PatchAffineShapeEstimator(self.patch_size)
         self.preserve_orientation = preserve_orientation
         if preserve_orientation:
-            warnings.warn("`LAFAffineShapeEstimator` default behaviour is changed "
-                          "and now it does preserve original LAF orientation. "
-                          "Make sure your code accounts for this.",
-                          DeprecationWarning,
-                          stacklevel=2)
+            warnings.warn(
+                "`LAFAffineShapeEstimator` default behaviour is changed "
+                "and now it does preserve original LAF orientation. "
+                "Make sure your code accounts for this.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
     def __repr__(self):
         return (
-            self.__class__.__name__ + '('
-            'patch_size='
-            + str(self.patch_size)
-            + ', '
-            + 'affine_shape_detector='
-            + str(self.affine_shape_detector)
-            + ', '
-            + 'preserve_orientation='
-            + str(self.preserve_orientation)
-            + ')'
+            f'{self.__class__.__name__}'
+            f'(patch_size={self.patch_size}, '
+            f'affine_shape_detector={self.affine_shape_detector}, '
+            f'preserve_orientation={self.preserve_orientation})'
         )
 
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
@@ -128,7 +123,7 @@ class LAFAffineShapeEstimator(nn.Module):
 
         Returns:
             torch.Tensor: laf_out shape [BxNx2x3]"""
-        raise_error_if_laf_is_not_valid(laf)
+        KORNIA_CHECK_LAF(laf)
         KORNIA_CHECK_SHAPE(img, ["B", "1", "H", "W"])
         B, N = laf.shape[:2]
         PS: int = self.patch_size
@@ -189,17 +184,17 @@ class LAFAffNetShapeEstimator(nn.Module):
         self.patch_size = 32
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(
-                urls['affnet'], map_location=lambda storage, loc: storage
-            )
+            pretrained_dict = torch.hub.load_state_dict_from_url(urls['affnet'], map_location=map_location_to_cpu)
             self.load_state_dict(pretrained_dict['state_dict'], strict=False)
         self.preserve_orientation = preserve_orientation
         if preserve_orientation:
-            warnings.warn("`LAFAffNetShapeEstimator` default behaviour is changed "
-                          "and now it does preserve original LAF orientation. "
-                          "Make sure your code accounts for this.",
-                          DeprecationWarning,
-                          stacklevel=2)
+            warnings.warn(
+                "`LAFAffNetShapeEstimator` default behaviour is changed "
+                "and now it does preserve original LAF orientation. "
+                "Make sure your code accounts for this.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         self.eval()
 
     @staticmethod
@@ -220,7 +215,7 @@ class LAFAffNetShapeEstimator(nn.Module):
         Returns:
             laf_out shape [BxNx2x3]
         """
-        raise_error_if_laf_is_not_valid(laf)
+        KORNIA_CHECK_LAF(laf)
         KORNIA_CHECK_SHAPE(img, ["B", "1", "H", "W"])
         B, N = laf.shape[:2]
         PS: int = self.patch_size

@@ -1,13 +1,17 @@
-from typing import List
+from __future__ import annotations
 
-import torch
 import torch.nn.functional as F
 
-from .__tmp__ import _deprecation_wrapper
+from kornia.core import Tensor, pad
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+
 from .kernels import normalize_kernel2d
 
+_VALID_BORDERS = {'constant', 'reflect', 'replicate', 'circular'}
+_VALID_PADDING = {'valid', 'same'}
 
-def _compute_padding(kernel_size: List[int]) -> List[int]:
+
+def _compute_padding(kernel_size: list[int]) -> list[int]:
     """Compute padding tuple."""
     # 4 or 6 ints:  (padding_left, padding_right,padding_top,padding_bottom)
     # https://pytorch.org/docs/stable/nn.html#torch.nn.functional.pad
@@ -31,9 +35,8 @@ def _compute_padding(kernel_size: List[int]) -> List[int]:
 
 
 def filter2d(
-    input: torch.Tensor, kernel: torch.Tensor, border_type: str = 'reflect', normalized: bool = False,
-    padding: str = 'same'
-) -> torch.Tensor:
+    input: Tensor, kernel: Tensor, border_type: str = 'reflect', normalized: bool = False, padding: str = 'same'
+) -> Tensor:
     r"""Convolve a tensor with a 2d kernel.
 
     The function applies a given kernel to a tensor. The kernel is applied
@@ -54,7 +57,7 @@ def filter2d(
           2 modes available ``'same'`` or ``'valid'``.
 
     Return:
-        torch.Tensor: the convolved tensor of same size and numbers of channels
+        Tensor: the convolved tensor of same size and numbers of channels
         as the input with shape :math:`(B, C, H, W)`.
 
     Example:
@@ -72,34 +75,23 @@ def filter2d(
                   [0., 5., 5., 5., 0.],
                   [0., 0., 0., 0., 0.]]]])
     """
-    if not isinstance(input, torch.Tensor):
-        raise TypeError(f"Input input is not torch.Tensor. Got {type(input)}")
+    KORNIA_CHECK_IS_TENSOR(input)
+    KORNIA_CHECK_SHAPE(input, ['B', 'C', 'H', 'W'])
+    KORNIA_CHECK_IS_TENSOR(kernel)
+    KORNIA_CHECK_SHAPE(kernel, ['B', 'H', 'W'])
 
-    if not isinstance(kernel, torch.Tensor):
-        raise TypeError(f"Input kernel is not torch.Tensor. Got {type(kernel)}")
-
-    if not isinstance(border_type, str):
-        raise TypeError(f"Input border_type is not string. Got {type(border_type)}")
-
-    if border_type not in ['constant', 'reflect', 'replicate', 'circular']:
-        raise ValueError(f"Invalid border type, we expect 'constant', \
-        'reflect', 'replicate', 'circular'. Got:{border_type}")
-
-    if not isinstance(padding, str):
-        raise TypeError(f"Input padding is not string. Got {type(padding)}")
-
-    if padding not in ['valid', 'same']:
-        raise ValueError(f"Invalid padding mode, we expect 'valid' or 'same'. Got: {padding}")
-
-    if not len(input.shape) == 4:
-        raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
-
-    if (not len(kernel.shape) == 3) and not ((kernel.shape[0] == 0) or (kernel.shape[0] == input.shape[0])):
-        raise ValueError(f"Invalid kernel shape, we expect 1xHxW or BxHxW. Got: {kernel.shape}")
+    KORNIA_CHECK(
+        str(border_type).lower() in _VALID_BORDERS,
+        f'Invalid border, gotcha {border_type}. Expected one of {_VALID_BORDERS}',
+    )
+    KORNIA_CHECK(
+        str(padding).lower() in _VALID_PADDING,
+        f'Invalid padding mode, gotcha {padding}. Expected one of {_VALID_PADDING}',
+    )
 
     # prepare kernel
     b, c, h, w = input.shape
-    tmp_kernel: torch.Tensor = kernel.unsqueeze(1).to(input)
+    tmp_kernel = kernel[:, None, ...].to(device=input.device, dtype=input.dtype)
 
     if normalized:
         tmp_kernel = normalize_kernel2d(tmp_kernel)
@@ -110,8 +102,8 @@ def filter2d(
 
     # pad the input tensor
     if padding == 'same':
-        padding_shape: List[int] = _compute_padding([height, width])
-        input = F.pad(input, padding_shape, mode=border_type)
+        padding_shape: list[int] = _compute_padding([height, width])
+        input = pad(input, padding_shape, mode=border_type)
 
     # kernel and input tensor reshape to align element-wise or batch-wise params
     tmp_kernel = tmp_kernel.reshape(-1, 1, height, width)
@@ -128,12 +120,14 @@ def filter2d(
     return out
 
 
-def filter2d_separable(input: torch.Tensor,
-                       kernel_x: torch.Tensor,
-                       kernel_y: torch.Tensor,
-                       border_type: str = 'reflect',
-                       normalized: bool = False,
-                       padding: str = 'same') -> torch.Tensor:
+def filter2d_separable(
+    input: Tensor,
+    kernel_x: Tensor,
+    kernel_y: Tensor,
+    border_type: str = 'reflect',
+    normalized: bool = False,
+    padding: str = 'same',
+) -> Tensor:
     r"""Convolve a tensor with two 1d kernels, in x and y directions.
 
     The function applies a given kernel to a tensor. The kernel is applied
@@ -156,7 +150,7 @@ def filter2d_separable(input: torch.Tensor,
           2 modes available ``'same'`` or ``'valid'``.
 
     Return:
-        torch.Tensor: the convolved tensor of same size and numbers of channels
+        Tensor: the convolved tensor of same size and numbers of channels
         as the input with shape :math:`(B, C, H, W)`.
 
     Example:
@@ -175,14 +169,12 @@ def filter2d_separable(input: torch.Tensor,
                   [0., 5., 5., 5., 0.],
                   [0., 0., 0., 0., 0.]]]])
     """
-    out_x = filter2d(input, kernel_x.unsqueeze(0), border_type, normalized, padding)
-    out = filter2d(out_x, kernel_y.unsqueeze(-1), border_type, normalized, padding)
+    out_x = filter2d(input, kernel_x[..., None, :], border_type, normalized, padding)
+    out = filter2d(out_x, kernel_y[..., None], border_type, normalized, padding)
     return out
 
 
-def filter3d(
-    input: torch.Tensor, kernel: torch.Tensor, border_type: str = 'replicate', normalized: bool = False
-) -> torch.Tensor:
+def filter3d(input: Tensor, kernel: Tensor, border_type: str = 'replicate', normalized: bool = False) -> Tensor:
     r"""Convolve a tensor with a 3d kernel.
 
     The function applies a given kernel to a tensor. The kernel is applied
@@ -242,24 +234,19 @@ def filter3d(
                    [0., 5., 5., 5., 0.],
                    [0., 0., 0., 0., 0.]]]]])
     """
-    if not isinstance(input, torch.Tensor):
-        raise TypeError(f"Input border_type is not torch.Tensor. Got {type(input)}")
+    KORNIA_CHECK_IS_TENSOR(input)
+    KORNIA_CHECK_SHAPE(input, ['B', 'C', 'D', 'H', 'W'])
+    KORNIA_CHECK_IS_TENSOR(kernel)
+    KORNIA_CHECK_SHAPE(kernel, ['B', 'D', 'H', 'W'])
 
-    if not isinstance(kernel, torch.Tensor):
-        raise TypeError(f"Input border_type is not torch.Tensor. Got {type(kernel)}")
-
-    if not isinstance(border_type, str):
-        raise TypeError(f"Input border_type is not string. Got {type(kernel)}")
-
-    if not len(input.shape) == 5:
-        raise ValueError(f"Invalid input shape, we expect BxCxDxHxW. Got: {input.shape}")
-
-    if not len(kernel.shape) == 4 and kernel.shape[0] != 1:
-        raise ValueError(f"Invalid kernel shape, we expect 1xDxHxW. Got: {kernel.shape}")
+    KORNIA_CHECK(
+        str(border_type).lower() in _VALID_BORDERS,
+        f'Invalid border, gotcha {border_type}. Expected one of {_VALID_BORDERS}',
+    )
 
     # prepare kernel
     b, c, d, h, w = input.shape
-    tmp_kernel: torch.Tensor = kernel.unsqueeze(1).to(input)
+    tmp_kernel = kernel[:, None, ...].to(device=input.device, dtype=input.dtype)
 
     if normalized:
         bk, dk, hk, wk = kernel.shape
@@ -269,8 +256,8 @@ def filter3d(
 
     # pad the input tensor
     depth, height, width = tmp_kernel.shape[-3:]
-    padding_shape: List[int] = _compute_padding([depth, height, width])
-    input_pad: torch.Tensor = F.pad(input, padding_shape, mode=border_type)
+    padding_shape: list[int] = _compute_padding([depth, height, width])
+    input_pad = pad(input, padding_shape, mode=border_type)
 
     # kernel and input tensor reshape to align element-wise or batch-wise params
     tmp_kernel = tmp_kernel.reshape(-1, 1, depth, height, width)
@@ -280,8 +267,3 @@ def filter3d(
     output = F.conv3d(input_pad, tmp_kernel, groups=tmp_kernel.size(0), padding=0, stride=1)
 
     return output.view(b, c, d, h, w)
-
-
-# for backward compatibility.
-filter2D = _deprecation_wrapper(filter2d, 'filter2D')
-filter3D = _deprecation_wrapper(filter3d, 'filter3D')

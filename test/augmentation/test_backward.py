@@ -21,9 +21,7 @@ class TestColorJiggleBackward:
     @pytest.mark.parametrize("saturation", [0.8, torch.tensor(0.8), torch.tensor([0.8, 1.2])])
     @pytest.mark.parametrize("hue", [0.1, torch.tensor(0.1), torch.tensor([-0.1, 0.1])])
     @pytest.mark.parametrize("same_on_batch", [True, False])
-    def test_param(self, brightness, contrast, saturation, hue,
-                   same_on_batch, device, dtype):
-
+    def test_param(self, brightness, contrast, saturation, hue, same_on_batch, device, dtype):
         _brightness = (
             brightness
             if isinstance(brightness, (int, float))
@@ -78,9 +76,7 @@ class TestColorJitterBackward:
     @pytest.mark.parametrize("saturation", [0.8, torch.tensor(0.8), torch.tensor([0.8, 1.2])])
     @pytest.mark.parametrize("hue", [0.1, torch.tensor(0.1), torch.tensor([-0.1, 0.1])])
     @pytest.mark.parametrize("same_on_batch", [True, False])
-    def test_param(self, brightness, contrast, saturation, hue,
-                   same_on_batch, device, dtype):
-
+    def test_param(self, brightness, contrast, saturation, hue, same_on_batch, device, dtype):
         _brightness = (
             brightness
             if isinstance(brightness, (int, float))
@@ -141,10 +137,7 @@ class TestRandomAffineBackward:
     @pytest.mark.parametrize("resample", ['bilinear'])  # TODO: Ignore nearest for now.
     @pytest.mark.parametrize("align_corners", [True, False])
     @pytest.mark.parametrize("same_on_batch", [True, False])
-    def test_param(
-        self, degrees, translate, scale, shear, resample, align_corners, same_on_batch, device, dtype
-    ):
-
+    def test_param(self, degrees, translate, scale, shear, resample, align_corners, same_on_batch, device, dtype):
         _degrees = (
             degrees
             if isinstance(degrees, (int, float, list, tuple))
@@ -247,7 +240,6 @@ class TestRandomRotationBackward:
     @pytest.mark.parametrize("align_corners", [True, False])
     @pytest.mark.parametrize("same_on_batch", [True, False])
     def test_param(self, degrees, resample, align_corners, same_on_batch, device, dtype):
-
         _degrees = (
             degrees
             if isinstance(degrees, (int, float, list, tuple))
@@ -256,12 +248,7 @@ class TestRandomRotationBackward:
 
         torch.manual_seed(0)
         input = torch.randint(255, (2, 3, 10, 10), device=device, dtype=dtype) / 255.0
-        aug = RandomRotation(
-            _degrees,
-            resample,
-            align_corners=align_corners,
-            same_on_batch=same_on_batch,
-        )
+        aug = RandomRotation(_degrees, resample, align_corners=align_corners, same_on_batch=same_on_batch)
 
         output = aug(input)
 
@@ -292,7 +279,6 @@ class TestRandomPerspectiveBackward:
     @pytest.mark.parametrize("align_corners", [True, False])
     @pytest.mark.parametrize("same_on_batch", [True, False])
     def test_param(self, distortion_scale, resample, align_corners, same_on_batch, device, dtype):
-
         _distortion_scale = (
             distortion_scale
             if isinstance(distortion_scale, (float, int))
@@ -302,11 +288,7 @@ class TestRandomPerspectiveBackward:
         torch.manual_seed(0)
         input = torch.randint(255, (2, 3, 10, 10), device=device, dtype=dtype) / 255.0
         aug = RandomPerspective(
-            _distortion_scale,
-            resample=resample,
-            same_on_batch=same_on_batch,
-            align_corners=align_corners,
-            p=1.0,
+            _distortion_scale, resample=resample, same_on_batch=same_on_batch, align_corners=align_corners, p=1.0
         )
 
         output = aug(input)
@@ -343,7 +325,6 @@ class TestRandomMotionBlurBackward:
     @pytest.mark.parametrize("resample", ['bilinear'])  # TODO: Ignore nearest for now.
     @pytest.mark.parametrize("same_on_batch", [True, False])
     def test_param(self, angle, direction, border_type, resample, same_on_batch, device, dtype):
-
         _angle = (
             angle
             if isinstance(angle, (float, int, list, tuple))
@@ -357,9 +338,7 @@ class TestRandomMotionBlurBackward:
 
         torch.manual_seed(0)
         input = torch.randint(255, (2, 3, 10, 10), device=device, dtype=dtype) / 255.0
-        aug = RandomMotionBlur(
-            (3, 3), _angle, _direction, border_type, resample, same_on_batch, p=1.0
-        )
+        aug = RandomMotionBlur((3, 3), _angle, _direction, border_type, resample, same_on_batch, p=1.0)
 
         output = aug(input)
 
@@ -397,7 +376,6 @@ class TestRandomSharpnessBackward:
     @pytest.mark.parametrize("sharpness", [0.5, [0, 0.5], torch.tensor([0, 0.5])])
     @pytest.mark.parametrize("same_on_batch", [True, False])
     def test_param(self, sharpness, same_on_batch, device, dtype):
-
         _sharpness = (
             sharpness
             if isinstance(sharpness, (float, int, list, tuple))
@@ -431,7 +409,6 @@ class TestRandomResizedCropBackward:
     @pytest.mark.parametrize("align_corners", [True, False])
     @pytest.mark.parametrize("same_on_batch", [True, False])
     def test_param(self, scale, ratio, resample, align_corners, same_on_batch, device, dtype):
-
         _scale = (
             scale if isinstance(scale, (list, tuple)) else nn.Parameter(scale.clone().to(device=device, dtype=dtype))
         )
@@ -442,12 +419,7 @@ class TestRandomResizedCropBackward:
         torch.manual_seed(0)
         input = torch.randint(255, (2, 3, 10, 10), device=device, dtype=dtype) / 255.0
         aug = RandomResizedCrop(
-            (8, 8),
-            _scale,
-            _ratio,
-            resample=resample,
-            same_on_batch=same_on_batch,
-            align_corners=align_corners,
+            (8, 8), _scale, _ratio, resample=resample, same_on_batch=same_on_batch, align_corners=align_corners
         )
 
         output = aug(input)
@@ -476,7 +448,6 @@ class TestRandomErasingBackward:
     @pytest.mark.parametrize("value", [0.0])
     @pytest.mark.parametrize("same_on_batch", [True, False])
     def test_param(self, scale, ratio, value, same_on_batch, device, dtype):
-
         _scale = (
             scale if isinstance(scale, (list, tuple)) else nn.Parameter(scale.clone().to(device=device, dtype=dtype))
         )

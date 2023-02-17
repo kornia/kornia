@@ -3,7 +3,7 @@ from typing import List, Optional, Tuple, Union
 import torch
 from torch import Tensor
 
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 # TODO: implement width of the line
 
@@ -47,7 +47,6 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
                  [  0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.],
                  [  0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.]]])
     """
-
     if (len(p1) != 2) or (len(p2) != 2):
         raise ValueError("p1 and p2 must have length 2.")
 
@@ -79,7 +78,7 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
     B = x1 - x2
     C = x2 * y1 - x1 * y2
 
-    # make sure A is positive to utilize the functiom properly
+    # make sure A is positive to utilize the function properly
     if A < 0:
         A = -A
         B = -B
@@ -220,7 +219,6 @@ def _get_convex_edges(polygon: Tensor, h: int, w: int) -> Tuple[Tensor, Tensor]:
     Returns:
         The left and right edges of the polygon of shape (B,B).
     """
-
     dtype = polygon.dtype
 
     # Check if polygons are in loop closed format, if not -> make it so
@@ -252,6 +250,7 @@ def _get_convex_edges(polygon: Tensor, h: int, w: int) -> Tuple[Tensor, Tensor]:
 
 def _batch_polygons(polygons: List[Tensor]) -> Tensor:
     r"""Converts a List of variable length polygons into a fixed size tensor.
+
     Works by repeating the last element in the tensor.
     Args:
         polygon: List of variable length polygons of shape [N_1 x 2, N_2 x 2, ..., N_B x 2].

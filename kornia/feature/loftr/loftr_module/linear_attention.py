@@ -18,13 +18,15 @@ class LinearAttention(Module):
         self.feature_map = elu_feature_map
         self.eps = eps
 
-    def forward(self,
-                queries: torch.Tensor,
-                keys: torch.Tensor,
-                values: torch.Tensor,
-                q_mask: Optional[torch.Tensor] = None,
-                kv_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
-        """ Multi-Head linear attention proposed in "Transformers are RNNs"
+    def forward(
+        self,
+        queries: torch.Tensor,
+        keys: torch.Tensor,
+        values: torch.Tensor,
+        q_mask: Optional[torch.Tensor] = None,
+        kv_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Multi-Head linear attention proposed in "Transformers are RNNs"
         Args:
             queries: [N, L, H, D]
             keys: [N, S, H, D]
@@ -71,14 +73,13 @@ class FullAttention(Module):
         Returns:
             queried_values: (N, L, H, D)
         """
-
         # Compute the unnormalized attention and apply the masks
         QK = torch.einsum("nlhd,nshd->nlsh", queries, keys)
         if kv_mask is not None:
             QK.masked_fill_(~(q_mask[:, :, None, None] * kv_mask[:, None, :, None]), float('-inf'))
 
         # Compute the attention and the weighted average
-        softmax_temp = 1. / queries.size(3)**.5  # sqrt(D)
+        softmax_temp = 1.0 / queries.size(3) ** 0.5  # sqrt(D)
         A = torch.softmax(softmax_temp * QK, dim=2)
         if self.use_dropout:
             A = self.dropout(A)

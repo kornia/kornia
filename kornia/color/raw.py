@@ -123,44 +123,47 @@ def raw_to_rgb(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
     # for a 2x2 bayer filter
     gpadded = torch.nn.functional.pad(image, [1, 1, 1, 1], 'reflect')
 
-    ru = torch.nn.functional.interpolate(rpadded, size=(image.shape[-2] + 1, image.shape[-1] + 1),
-                                         mode='bilinear', align_corners=True)
-    bu = torch.nn.functional.interpolate(bpadded, size=(image.shape[-2] + 1, image.shape[-1] + 1),
-                                         mode='bilinear', align_corners=True)
+    r_up = torch.nn.functional.interpolate(
+        rpadded, size=(image.shape[-2] + 1, image.shape[-1] + 1), mode='bilinear', align_corners=True
+    )
+    b_up = torch.nn.functional.interpolate(
+        bpadded, size=(image.shape[-2] + 1, image.shape[-1] + 1), mode='bilinear', align_corners=True
+    )
 
     # remove the extra padding
-    ru = torch.nn.functional.pad(ru, [-x for x in rpad])
-    bu = torch.nn.functional.pad(bu, [-x for x in bpad])
+    r_up = torch.nn.functional.pad(r_up, [-x for x in rpad])
+    b_up = torch.nn.functional.pad(b_up, [-x for x in bpad])
 
     # all unknown pixels are the average of the nearby green samples
-    kernel = torch.tensor([[[[0.0, 0.25, 0.0], [0.25, 0.0, 0.25], [0.0, 0.25, 0.0]]]],
-                          dtype=image.dtype, device=image.device)
+    kernel = torch.tensor(
+        [[[[0.0, 0.25, 0.0], [0.25, 0.0, 0.25], [0.0, 0.25, 0.0]]]], dtype=image.dtype, device=image.device
+    )
 
     # This is done on all samples but result for the known green samples is then overwritten by the input
-    gu = torch.nn.functional.conv2d(gpadded, kernel)
+    g_up = torch.nn.functional.conv2d(gpadded, kernel)
 
     # overwrite the already known samples which otherwise have values from r/b
     # this depends on the CFA configuration
     if cfa == CFA.BG:
-        gu[:, :, ::2, 1::2] = image[:, :, ::2, 1::2]
-        gu[:, :, 1::2, ::2] = image[:, :, 1::2, ::2]
+        g_up[:, :, ::2, 1::2] = image[:, :, ::2, 1::2]
+        g_up[:, :, 1::2, ::2] = image[:, :, 1::2, ::2]
     elif cfa == CFA.GB:
-        gu[:, :, ::2, ::2] = image[:, :, ::2, ::2]
-        gu[:, :, 1::2, 1::2] = image[:, :, 1::2, 1::2]
+        g_up[:, :, ::2, ::2] = image[:, :, ::2, ::2]
+        g_up[:, :, 1::2, 1::2] = image[:, :, 1::2, 1::2]
     elif cfa == CFA.RG:
-        gu[:, :, 1::2, ::2] = image[:, :, 1::2, ::2]
-        gu[:, :, ::2, 1::2] = image[:, :, ::2, 1::2]
+        g_up[:, :, 1::2, ::2] = image[:, :, 1::2, ::2]
+        g_up[:, :, ::2, 1::2] = image[:, :, ::2, 1::2]
     elif cfa == CFA.GR:
-        gu[:, :, 1::2, 1::2] = image[:, :, 1::2, 1::2]
-        gu[:, :, ::2, ::2] = image[:, :, ::2, ::2]
+        g_up[:, :, 1::2, 1::2] = image[:, :, 1::2, 1::2]
+        g_up[:, :, ::2, ::2] = image[:, :, ::2, ::2]
     else:
         raise ValueError(f"Unsupported CFA " f"Got {cfa}.")
 
-    ru = ru.view(imagesize)
-    gu = gu.view(imagesize)
-    bu = bu.view(imagesize)
+    r_up = r_up.view(imagesize)
+    g_up = g_up.view(imagesize)
+    b_up = b_up.view(imagesize)
 
-    rgb: torch.Tensor = torch.cat([ru, gu, bu], dim=-3)
+    rgb: torch.Tensor = torch.cat([r_up, g_up, b_up], dim=-3)
 
     return rgb
 

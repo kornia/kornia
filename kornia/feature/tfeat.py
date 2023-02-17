@@ -3,12 +3,11 @@ from typing import Dict
 import torch
 import torch.nn as nn
 
-from kornia.testing import KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.utils.helpers import map_location_to_cpu
 
 urls: Dict[str, str] = {}
-urls[
-    "liberty"
-] = "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-liberty.params"  # pylint: disable
+urls["liberty"] = "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-liberty.params"  # pylint: disable
 urls[
     "notredame"
 ] = "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-notredame.params"  # pylint: disable
@@ -54,9 +53,7 @@ class TFeat(nn.Module):
         self.descr = nn.Sequential(nn.Linear(64 * 8 * 8, 128), nn.Tanh())
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(
-                urls['liberty'], map_location=lambda storage, loc: storage
-            )
+            pretrained_dict = torch.hub.load_state_dict_from_url(urls['liberty'], map_location=map_location_to_cpu)
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 

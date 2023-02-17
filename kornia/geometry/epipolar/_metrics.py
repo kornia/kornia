@@ -2,29 +2,27 @@
 
 from torch import Tensor
 
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR
 from kornia.geometry.conversions import convert_points_to_homogeneous
 from kornia.geometry.linalg import point_line_distance
-from kornia.testing import KORNIA_CHECK_IS_TENSOR
 
 
 def sampson_epipolar_distance(
     pts1: Tensor, pts2: Tensor, Fm: Tensor, squared: bool = True, eps: float = 1e-8
 ) -> Tensor:
-    r"""Return Sampson distance for correspondences given the fundamental matrix.
+    """Return Sampson distance for correspondences given the fundamental matrix.
 
     Args:
-        pts1: correspondences from the left images with shape
-          (*, N, 2 or 3). If they are not homogeneous, converted automatically.
-        pts2: correspondences from the right images with shape
-          (*, N, 2 or 3). If they are not homogeneous, converted automatically.
-        Fm: Fundamental matrices with shape :math:`(*, 3, 3)`. Called Fm to
-          avoid ambiguity with torch.nn.functional.
+        pts1: correspondences from the left images with shape :math:`(*, N, (2|3))`. If they are not homogeneous,
+              converted automatically.
+        pts2: correspondences from the right images with shape :math:`(*, N, (2|3))`. If they are not homogeneous,
+              converted automatically.
+        Fm: Fundamental matrices with shape :math:`(*, 3, 3)`. Called Fm to avoid ambiguity with torch.nn.functional.
         squared: if True (default), the squared distance is returned.
         eps: Small constant for safe sqrt.
 
     Returns:
         the computed Sampson distance with shape :math:`(*, N)`.
-
     """
     if not isinstance(Fm, Tensor):
         raise TypeError(f"Fm type is not a torch.Tensor. Got {type(Fm)}")
@@ -63,21 +61,19 @@ def sampson_epipolar_distance(
 def symmetrical_epipolar_distance(
     pts1: Tensor, pts2: Tensor, Fm: Tensor, squared: bool = True, eps: float = 1e-8
 ) -> Tensor:
-    r"""Return symmetrical epipolar distance for correspondences given the fundamental matrix.
+    """Return symmetrical epipolar distance for correspondences given the fundamental matrix.
 
     Args:
-       pts1: correspondences from the left images with shape
-         (*, N, 2 or 3). If they are not homogeneous, converted automatically.
-       pts2: correspondences from the right images with shape
-         (*, N, 2 or 3). If they are not homogeneous, converted automatically.
-       Fm: Fundamental matrices with shape :math:`(*, 3, 3)`. Called Fm to
-         avoid ambiguity with torch.nn.functional.
+       pts1: correspondences from the left images with shape :math:`(*, N, (2|3))`. If they are not homogeneous,
+             converted automatically.
+       pts2: correspondences from the right images with shape :math:`(*, N, (2|3))`. If they are not homogeneous,
+             converted automatically.
+       Fm: Fundamental matrices with shape :math:`(*, 3, 3)`. Called Fm to avoid ambiguity with torch.nn.functional.
        squared: if True (default), the squared distance is returned.
        eps: Small constant for safe sqrt.
 
     Returns:
         the computed Symmetrical distance with shape :math:`(*, N)`.
-
     """
     if not isinstance(Fm, Tensor):
         raise TypeError(f"Fm type is not a torch.Tensor. Got {type(Fm)}")
@@ -116,8 +112,7 @@ def symmetrical_epipolar_distance(
 
 
 def left_to_right_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> Tensor:
-    r"""Return one-sided epipolar distance for correspondences given the fundamental
-    matrix.
+    r"""Return one-sided epipolar distance for correspondences given the fundamental matrix.
 
     This method measures the distance from points in the right images to the epilines
     of the corresponding points in the left images as they reflect in the right images.
@@ -150,8 +145,7 @@ def left_to_right_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> T
 
 
 def right_to_left_epipolar_distance(pts1: Tensor, pts2: Tensor, Fm: Tensor) -> Tensor:
-    r"""Return one-sided epipolar distance for correspondences given the fundamental
-    matrix.
+    r"""Return one-sided epipolar distance for correspondences given the fundamental matrix.
 
     This method measures the distance from points in the left images to the epilines
     of the corresponding points in the right images as they reflect in the left images.

@@ -32,6 +32,7 @@ from .adjust import (
 from .core import AddWeighted, add_weighted
 from .equalization import equalize_clahe
 from .histogram import histogram, histogram2d, image_histogram2d
+from .integral import IntegralImage, IntegralTensor, integral_image, integral_tensor
 from .normalize import Denormalize, Normalize, denormalize, normalize, normalize_min_max
 from .shift_rgb import shift_rgb
 from .zca import ZCAWhitening, linear_transform, zca_mean, zca_whiten
@@ -82,4 +83,8 @@ __all__ = [
     "zca_whiten",
     "linear_transform",
     "ZCAWhitening",
+    "integral_tensor",
+    "integral_image",
+    "IntegralImage",
+    "IntegralTensor",
 ]

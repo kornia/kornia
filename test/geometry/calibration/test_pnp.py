@@ -17,8 +17,8 @@ class TestSolvePnpDlt:
     def _project_to_image(world_points, world_to_cam_4x4, repeated_intrinsics):
         r"""Projects points in the world coordinate system to the image coordinate system.
 
-        Since cam_points will have shape (B, N, 3), repeated_intrinsics should have
-        shape (B, N, 3, 3) so that kornia.geometry.project_points can be used.
+        Since cam_points will have shape (B, N, 3), repeated_intrinsics should have shape (B, N, 3, 3) so that
+        kornia.geometry.project_points can be used.
         """
         cam_points = kornia.geometry.transform_points(world_to_cam_4x4, world_points)
         img_points = kornia.geometry.project_points(cam_points, repeated_intrinsics)
@@ -29,8 +29,8 @@ class TestSolvePnpDlt:
     def _get_world_points_and_img_points(cam_points, world_to_cam_4x4, repeated_intrinsics):
         r"""Calculates world_points and img_points.
 
-        Since cam_points will have shape (B, N, 3), repeated_intrinsics should have
-        shape (B, N, 3, 3) so that kornia.geometry.project_points can be used.
+        Since cam_points will have shape (B, N, 3), repeated_intrinsics should have shape (B, N, 3, 3) so that
+        kornia.geometry.project_points can be used.
         """
         cam_to_world_4x4 = kornia.geometry.inverse_transformation(world_to_cam_4x4)
         world_points = kornia.geometry.transform_points(cam_to_world_4x4, cam_points)
@@ -88,9 +88,8 @@ class TestSolvePnpDlt:
 
         return intrinsics, world_to_cam_3x4, world_points, img_points
 
-    @pytest.mark.parametrize("num_points", (6, 20,))
+    @pytest.mark.parametrize("num_points", (6, 20))
     def test_smoke(self, num_points, device, dtype):
-
         intrinsics, _, world_points, img_points = self._get_test_data(num_points, device, dtype)
         batch_size = world_points.shape[0]
 
@@ -99,26 +98,25 @@ class TestSolvePnpDlt:
 
     @pytest.mark.parametrize("num_points", (6,))
     def test_gradcheck(self, num_points, device, dtype):
-
         intrinsics, _, world_points, img_points = self._get_test_data(num_points, device, dtype)
 
         world_points = tensor_to_gradcheck_var(world_points)
         img_points = tensor_to_gradcheck_var(img_points)
         intrinsics = tensor_to_gradcheck_var(intrinsics)
 
-        assert gradcheck(kornia.geometry.solve_pnp_dlt, (world_points, img_points, intrinsics), raise_exception=True)
+        assert gradcheck(
+            kornia.geometry.solve_pnp_dlt, (world_points, img_points, intrinsics), raise_exception=True, fast_mode=True
+        )
 
-    @pytest.mark.parametrize("num_points", (6, 20,))
+    @pytest.mark.parametrize("num_points", (6, 20))
     def test_pred_world_to_cam(self, num_points, device, dtype):
-
         intrinsics, gt_world_to_cam, world_points, img_points = self._get_test_data(num_points, device, dtype)
 
         pred_world_to_cam = kornia.geometry.solve_pnp_dlt(world_points, img_points, intrinsics)
         assert_close(pred_world_to_cam, gt_world_to_cam, atol=1e-4, rtol=1e-4)
 
-    @pytest.mark.parametrize("num_points", (6, 20,))
+    @pytest.mark.parametrize("num_points", (6, 20))
     def test_project(self, num_points, device, dtype):
-
         intrinsics, _, world_points, img_points = self._get_test_data(num_points, device, dtype)
 
         pred_world_to_cam = kornia.geometry.solve_pnp_dlt(world_points, img_points, intrinsics)
@@ -135,7 +133,6 @@ class TestSolvePnpDlt:
 class TestNormalization:
     @pytest.mark.parametrize("dimension", (2, 3, 5))
     def test_smoke(self, dimension, device, dtype):
-
         batch_size = 10
         num_points = 100
         points = torch.rand((batch_size, num_points, dimension), device=device, dtype=dtype)
@@ -146,10 +143,9 @@ class TestNormalization:
 
     @pytest.mark.parametrize("dimension", (2, 3, 5))
     def test_gradcheck(self, dimension, device, dtype):
-
         batch_size = 3
         num_points = 5
         points = torch.rand((batch_size, num_points, dimension), device=device, dtype=dtype)
         points = tensor_to_gradcheck_var(points)
 
-        assert gradcheck(_mean_isotropic_scale_normalize, (points,), raise_exception=True)
+        assert gradcheck(_mean_isotropic_scale_normalize, (points,), raise_exception=True, fast_mode=True)

@@ -3,11 +3,11 @@ import math
 from typing import Callable, List, Optional, Tuple, Union
 
 import torch
-from torch import Tensor
 
+from kornia.core import Tensor
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.enhance import normalize_min_max
-from kornia.filters import filter2D
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.filters import filter2d
 
 # the default kernels for the diamond square
 default_diamond_kernel: List[List[float]] = [[0.25, 0.0, 0.25], [0.0, 0.0, 0.0], [0.25, 0.0, 0.25]]
@@ -18,7 +18,7 @@ def _diamond_square_seed(
     replicates: int,
     width: int,
     height: int,
-    random_fn: Callable,
+    random_fn: Callable[..., Tensor],
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
 ) -> Tensor:
@@ -73,7 +73,7 @@ def _diamond_square_seed(
 def _one_diamond_one_square(
     img: Tensor,
     random_scale: Union[float, Tensor],
-    random_fn: Callable = torch.rand,
+    random_fn: Callable[..., Tensor] = torch.rand,
     diamond_kernel: Optional[Tensor] = None,
     square_kernel: Optional[Tensor] = None,
 ) -> Tensor:
@@ -122,13 +122,13 @@ def _one_diamond_one_square(
 
     # TODO(edgar): use kornia.filter2d
     # diamond
-    diamond_regions = filter2D(new_img, diamond_kernel)
+    diamond_regions = filter2d(new_img, diamond_kernel)
     diamond_centers = (diamond_regions > 0).to(img.dtype)
     # TODO (anguelos) make sure diamond_regions*diamond_centers is needed
     new_img = new_img + (1 - random_scale) * diamond_regions * diamond_centers + diamond_centers * random_img
 
     # square
-    square_regions = filter2D(new_img, square_kernel) * pad_compencate
+    square_regions = filter2d(new_img, square_kernel) * pad_compencate
     square_centers = (square_regions > 0).to(img.dtype)
 
     # TODO (anguelos) make sure square_centers*square_regions is needed
@@ -141,7 +141,7 @@ def diamond_square(
     output_size: Tuple[int, int, int, int],
     roughness: Union[float, Tensor] = 0.5,
     random_scale: Union[float, Tensor] = 1.0,
-    random_fn: Callable = torch.rand,
+    random_fn: Callable[..., Tensor] = torch.rand,
     normalize_range: Optional[Tuple[int, int]] = None,
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,

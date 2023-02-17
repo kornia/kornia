@@ -2,11 +2,11 @@ from typing import Any, Dict, Optional
 
 from torch import Tensor
 
-from kornia.augmentation._3d.base import AugmentationBase3D
+from kornia.augmentation._3d.intensity.base import IntensityAugmentationBase3D
 from kornia.enhance import equalize3d
 
 
-class RandomEqualize3D(AugmentationBase3D):
+class RandomEqualize3D(IntensityAugmentationBase3D):
     r"""Apply random equalization to 3D volumes (5D tensor).
 
     Args:
@@ -49,14 +49,8 @@ class RandomEqualize3D(AugmentationBase3D):
         tensor(True)
     """
 
-    def __init__(
-        self,
-        p: float = 0.5,
-        same_on_batch: bool = False,
-        keepdim: bool = False,
-        return_transform: Optional[bool] = None,
-    ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
+    def __init__(self, p: float = 0.5, same_on_batch: bool = False, keepdim: bool = False) -> None:
+        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return self.identity_matrix(input)

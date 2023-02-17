@@ -28,16 +28,19 @@ def validate_bbox(boxes: torch.Tensor) -> bool:
             of Bx4x2, where each box is defined in the following ``clockwise`` order: top-left, top-right, bottom-right,
             bottom-left. The coordinates must be in the x, y order.
     """
-    if not (len(boxes.shape) == 3 and boxes.shape[1:] == torch.Size([4, 2])):
-        raise AssertionError(f"Box shape must be (B, 4, 2). Got {boxes.shape}.")
+    if not (len(boxes.shape) in [3, 4] and boxes.shape[-2:] == torch.Size([4, 2])):
+        raise AssertionError(f"Box shape must be (B, 4, 2) or (B, N, 4, 2). Got {boxes.shape}.")
 
-    if not torch.allclose((boxes[:, 1, 0] - boxes[:, 0, 0] + 1), (boxes[:, 2, 0] - boxes[:, 3, 0] + 1)):
+    if len(boxes.shape) == 4:
+        boxes = boxes.view(-1, 4, 2)
+
+    if not torch.allclose((boxes[:, 1, 0] - boxes[:, 0, 0] + 1), (boxes[:, 2, 0] - boxes[:, 3, 0] + 1), atol=1e-4):
         raise ValueError(
             "Boxes must have be rectangular, while get widths %s and %s"
             % (str(boxes[:, 1, 0] - boxes[:, 0, 0] + 1), str(boxes[:, 2, 0] - boxes[:, 3, 0] + 1))
         )
 
-    if not torch.allclose((boxes[:, 2, 1] - boxes[:, 0, 1] + 1), (boxes[:, 3, 1] - boxes[:, 1, 1] + 1)):
+    if not torch.allclose((boxes[:, 2, 1] - boxes[:, 0, 1] + 1), (boxes[:, 3, 1] - boxes[:, 1, 1] + 1), atol=1e-4):
         raise ValueError(
             "Boxes must have be rectangular, while get heights %s and %s"
             % (str(boxes[:, 2, 1] - boxes[:, 0, 1] + 1), str(boxes[:, 3, 1] - boxes[:, 1, 1] + 1))
@@ -56,8 +59,11 @@ def validate_bbox3d(boxes: torch.Tensor) -> bool:
             front-bottom-right, front-bottom-left, back-top-left, back-top-right, back-bottom-right, back-bottom-left.
             The coordinates must be in the x, y, z order.
     """
-    if not (len(boxes.shape) == 3 and boxes.shape[1:] == torch.Size([8, 3])):
-        raise AssertionError(f"Box shape must be (B, 8, 3). Got {boxes.shape}.")
+    if not (len(boxes.shape) in [3, 4] and boxes.shape[-2:] == torch.Size([8, 3])):
+        raise AssertionError(f"Box shape must be (B, 8, 3) or (B, N, 8, 3). Got {boxes.shape}.")
+
+    if len(boxes.shape) == 4:
+        boxes = boxes.view(-1, 8, 3)
 
     left = torch.index_select(boxes, 1, torch.tensor([1, 2, 5, 6], device=boxes.device, dtype=torch.long))[:, :, 0]
     right = torch.index_select(boxes, 1, torch.tensor([0, 3, 4, 7], device=boxes.device, dtype=torch.long))[:, :, 0]
@@ -191,13 +197,13 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
     """
     validate_bbox(boxes)
     # zero padding the surroudings
-    mask = torch.zeros((len(boxes), height + 2, width + 2), dtype=torch.float, device=boxes.device)
+    mask = torch.zeros((len(boxes), height + 2, width + 2), dtype=boxes.dtype, device=boxes.device)
     # push all points one pixel off
     # in order to zero-out the fully filled rows or columns
     box_i = (boxes + 1).long()
     # set all pixels within box to 1
     for msk, bx in zip(mask, box_i):
-        msk[bx[0, 1]:bx[2, 1] + 1, bx[0, 0]:bx[1, 0] + 1] = 1.0
+        msk[bx[0, 1] : bx[2, 1] + 1, bx[0, 0] : bx[1, 0] + 1] = 1.0
     return mask[:, 1:-1, 1:-1]
 
 
@@ -537,8 +543,8 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
         xx2 = torch.min(x2[i], x2[order[1:]])
         yy2 = torch.min(y2[i], y2[order[1:]])
 
-        w = torch.clamp(xx2 - xx1, min=0.)
-        h = torch.clamp(yy2 - yy1, min=0.)
+        w = torch.clamp(xx2 - xx1, min=0.0)
+        h = torch.clamp(yy2 - yy1, min=0.0)
         inter = w * h
         ovr = inter / (areas[i] + areas[order[1:]] - inter)
 

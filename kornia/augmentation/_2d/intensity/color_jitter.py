@@ -1,11 +1,9 @@
-import warnings
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
-
-from torch import Tensor
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.constants import pi
+from kornia.core import Tensor
 from kornia.enhance import (
     adjust_brightness_accumulative,
     adjust_contrast_with_mean_subtraction,
@@ -17,7 +15,9 @@ from kornia.enhance import (
 class ColorJitter(IntensityAugmentationBase2D):
     r"""Apply a random transformation to the brightness, contrast, saturation and hue of a tensor image.
 
-    This implementation aligns PIL. Hence, the output is close to TorchVision.
+    This implementation aligns PIL. Hence, the output is close to TorchVision. However, it does not
+    follow the color theory and is not be actively maintained. Prefer using
+    :func:`kornia.augmentation.ColorJiggle`
 
     .. image:: _static/img/ColorJitter.png
 
@@ -59,6 +59,7 @@ class ColorJitter(IntensityAugmentationBase2D):
                   [0.9993, 0.9993, 0.9993]]]])
 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+
         >>> input = torch.randn(1, 3, 32, 32)
         >>> aug = ColorJitter(0.1, 0.1, 0.1, 0.1, p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
@@ -74,31 +75,18 @@ class ColorJitter(IntensityAugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
-        silence_instantiation_warning: bool = False
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
-
-        if not silence_instantiation_warning:
-            warnings.warn(
-                "`ColorJitter` is now following Torchvision implementation. Old "
-                "behavior can be retrieved by instantiating `ColorJiggle`.",
-                category=DeprecationWarning
-            )
+        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
 
         self.brightness = brightness
         self.contrast = contrast
         self.saturation = saturation
         self.hue = hue
-        self._param_generator = cast(
-            rg.ColorJitterGenerator,
-            rg.ColorJitterGenerator(brightness, contrast, saturation, hue)
-        )
+        self._param_generator = rg.ColorJitterGenerator(brightness, contrast, saturation, hue)
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-
         transforms = [
             lambda img: adjust_brightness_accumulative(img, params["brightness_factor"]),
             lambda img: adjust_contrast_with_mean_subtraction(img, params["contrast_factor"]),

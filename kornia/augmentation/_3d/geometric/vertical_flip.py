@@ -3,10 +3,10 @@ from typing import Any, Dict, Optional
 import torch
 from torch import Tensor
 
-from kornia.augmentation._3d.base import AugmentationBase3D
+from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 
 
-class RandomVerticalFlip3D(AugmentationBase3D):
+class RandomVerticalFlip3D(GeometricAugmentationBase3D):
     r"""Apply random vertical flip to 3D volumes (5D tensor).
 
     Input should be a tensor of shape :math:`(C, D, H, W)` or a batch of tensors :math:`(*, C, D, H, W)`.
@@ -57,21 +57,15 @@ class RandomVerticalFlip3D(AugmentationBase3D):
         tensor(True)
     """
 
-    def __init__(
-        self,
-        same_on_batch: bool = False,
-        p: float = 0.5,
-        keepdim: bool = False,
-        return_transform: Optional[bool] = None,
-    ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
+    def __init__(self, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False) -> None:
+        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         h: int = input.shape[-2]
         flip_mat: Tensor = torch.tensor(
             [[1, 0, 0, 0], [0, -1, 0, h - 1], [0, 0, 1, 0], [0, 0, 0, 1]], device=input.device, dtype=input.dtype
         )
-        return flip_mat.repeat(input.size(0), 1, 1)
+        return flip_mat.expand(input.shape[0], 4, 4)
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None

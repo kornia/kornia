@@ -4,16 +4,19 @@ from .hardnet import HardNet, HardNet8
 from .hynet import TLU, FilterResponseNorm2d, HyNet
 from .integrated import (
     GFTTAffNetHardNet,
+    HesAffNetHardNet,
     KeyNetAffNetHardNet,
     KeyNetHardNet,
     LAFDescriptor,
     LocalFeature,
     LocalFeatureMatcher,
     SIFTFeature,
+    SIFTFeatureScaleSpace,
     get_laf_descriptors,
 )
 from .keynet import KeyNet, KeyNetDetector
 from .laf import (
+    KORNIA_CHECK_LAF,
     denormalize_laf,
     ellipse_to_laf,
     extract_patches_from_pyramid,
@@ -29,26 +32,37 @@ from .laf import (
     make_upright,
     normalize_laf,
     perspective_transform_lafs,
-    raise_error_if_laf_is_not_valid,
     scale_laf,
     set_laf_orientation,
 )
 from .loftr import LoFTR
-from .matching import DescriptorMatcher, match_mnn, match_nn, match_smnn, match_snn
+from .matching import (
+    DescriptorMatcher,
+    GeometryAwareDescriptorMatcher,
+    match_adalam,
+    match_fginn,
+    match_mnn,
+    match_nn,
+    match_smnn,
+    match_snn,
+)
 from .mkd import MKDDescriptor
 from .orientation import LAFOrienter, OriNet, PatchDominantGradientOrientation
 from .responses import (
     BlobDoG,
+    BlobDoGSingle,
     BlobHessian,
     CornerGFTT,
     CornerHarris,
     dog_response,
+    dog_response_single,
     gftt_response,
     harris_response,
     hessian_response,
 )
-from .scale_space_detector import PassLAF, ScaleSpaceDetector
+from .scale_space_detector import MultiResolutionDetector, PassLAF, ScaleSpaceDetector
 from .siftdesc import DenseSIFTDescriptor, SIFTDescriptor
+from .sold2 import SOLD2, SOLD2_detector
 from .sosnet import SOSNet
 from .tfeat import TFeat
 
@@ -57,12 +71,18 @@ __all__ = [
     "match_mnn",
     "match_snn",
     "match_smnn",
+    "match_fginn",
+    "match_adalam",
     "DescriptorMatcher",
+    "GeometryAwareDescriptorMatcher",
     "get_laf_descriptors",
     "LAFDescriptor",
     "LocalFeature",
+    "MultiResolutionDetector",
     "SIFTFeature",
+    "SIFTFeatureScaleSpace",
     "GFTTAffNetHardNet",
+    "HesAffNetHardNet",
     "LocalFeatureMatcher",
     "SOSNet",
     "KeyNet",
@@ -70,10 +90,12 @@ __all__ = [
     "gftt_response",
     "hessian_response",
     "dog_response",
+    "dog_response_single",
     "CornerHarris",
     "CornerGFTT",
     "BlobHessian",
     "BlobDoG",
+    "BlobDoGSingle",
     "extract_patches_from_pyramid",
     "extract_patches_simple",
     "normalize_laf",
@@ -105,7 +127,7 @@ __all__ = [
     "PatchAffineShapeEstimator",
     "LAFOrienter",
     "PatchDominantGradientOrientation",
-    "raise_error_if_laf_is_not_valid",
+    "KORNIA_CHECK_LAF",
     "laf_is_inside_image",
     "laf_from_center_scale_ori",
     "laf_to_three_points",
@@ -126,4 +148,6 @@ __all__ = [
     "DescriptorMatcher",
     "LoFTR",
     "perspective_transform_lafs",
+    "SOLD2_detector",
+    "SOLD2",
 ]

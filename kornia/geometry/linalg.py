@@ -1,9 +1,8 @@
 import torch
 from torch import Tensor
 
-from kornia.testing import KORNIA_CHECK_IS_TENSOR, check_is_tensor
-
-from .conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 
 __all__ = [
     "compose_transformations",
@@ -11,6 +10,9 @@ __all__ = [
     "inverse_transformation",
     "transform_points",
     "point_line_distance",
+    "squared_norm",
+    "batched_dot_product",
+    "euclidean_distance",
 ]
 
 
@@ -36,7 +38,6 @@ def compose_transformations(trans_01: torch.Tensor, trans_12: torch.Tensor) -> t
         >>> trans_01 = torch.eye(4)  # 4x4
         >>> trans_12 = torch.eye(4)  # 4x4
         >>> trans_02 = compose_transformations(trans_01, trans_12)  # 4x4
-
     """
     if not torch.is_tensor(trans_01):
         raise TypeError(f"Input trans_01 type is not a torch.Tensor. Got {type(trans_01)}")
@@ -170,8 +171,8 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
         >>> trans_01 = torch.eye(4).view(1, 4, 4)  # Bx4x4
         >>> points_0 = transform_points(trans_01, points_1)  # BxNx3
     """
-    check_is_tensor(trans_01)
-    check_is_tensor(points_1)
+    KORNIA_CHECK_IS_TENSOR(trans_01)
+    KORNIA_CHECK_IS_TENSOR(points_1)
     if not trans_01.shape[0] == points_1.shape[0] and trans_01.shape[0] != 1:
         raise ValueError(
             "Input batch size must be the same for both tensors or 1." f"Got {trans_01.shape} and {points_1.shape}"
@@ -224,6 +225,39 @@ def point_line_distance(point: Tensor, line: Tensor, eps: float = 1e-9) -> Tenso
 
     return numerator / (denominator + eps)
 
+
+def batched_dot_product(x: Tensor, y: Tensor, keepdim: bool = False) -> Tensor:
+    """Return a batched version of .dot()"""
+    KORNIA_CHECK_SHAPE(x, ["*", "N"])
+    KORNIA_CHECK_SHAPE(y, ["*", "N"])
+    return (x * y).sum(-1, keepdim)
+
+
+def batched_squared_norm(x: Tensor, keepdim: bool = False) -> Tensor:
+    """Return the squared norm of a vector."""
+    return batched_dot_product(x, x, keepdim)
+
+
+def euclidean_distance(x: Tensor, y: Tensor, keepdim: bool = False, eps: float = 1e-6) -> Tensor:
+    """Compute the Euclidean distance between two set of n-dimensional points.
+
+    More: https://en.wikipedia.org/wiki/Euclidean_distance
+
+    Args:
+        x: first set of points of shape :math:`(*, N)`.
+        y: second set of points of shape :math:`(*, N)`.
+        keepdim: whether to keep the dimension after reduction.
+        eps: small value to have numerical stability.
+    """
+    KORNIA_CHECK_SHAPE(x, ["*", "N"])
+    KORNIA_CHECK_SHAPE(y, ["*", "N"])
+    KORNIA_CHECK(x.shape == y.shape)
+
+    return (x - y + eps).pow(2).sum(-1, keepdim).sqrt()
+
+
+# aliases
+squared_norm = batched_squared_norm
 
 # TODO:
 # - project_points: from opencv

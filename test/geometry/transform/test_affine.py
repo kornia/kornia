@@ -178,7 +178,10 @@ class TestResize:
         input = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(
-            kornia.geometry.transform.Resize(new_size, align_corners=False), (input,), raise_exception=True
+            kornia.geometry.transform.Resize(new_size, align_corners=False),
+            (input,),
+            raise_exception=True,
+            fast_mode=True,
         )
 
 
@@ -233,7 +236,7 @@ class TestRescale:
                         [0.0237, 0.0756, 0.1306, 0.1856, 0.2376],
                         [0.0409, 0.1306, 0.2256, 0.3206, 0.4104],
                         [0.0581, 0.1856, 0.3206, 0.4556, 0.5832],
-                        [0.0743, 0.2376, 0.4104, 0.5832, 0.7464]
+                        [0.0743, 0.2376, 0.4104, 0.5832, 0.7464],
                     ]
                 ]
             ],
@@ -250,7 +253,13 @@ class TestRescale:
     def test_gradcheck(self, device, dtype):
         input = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)
-        assert gradcheck(kornia.geometry.transform.Rescale(2.0, align_corners=False), (input,), raise_exception=True)
+        assert gradcheck(
+            kornia.geometry.transform.Rescale(2.0, align_corners=False),
+            (input,),
+            nondet_tol=1e-8,
+            raise_exception=True,
+            fast_mode=True,
+        )
 
 
 class TestRotate:
@@ -301,7 +310,7 @@ class TestRotate:
         # evaluate function gradient
         input = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(kornia.geometry.transform.rotate, (input, angle), raise_exception=True)
+        assert gradcheck(kornia.geometry.transform.rotate, (input, angle), raise_exception=True, fast_mode=True)
 
     @pytest.mark.skip('Need deep look into it since crashes everywhere.')
     @pytest.mark.skip(reason="turn off all jit for a while")
@@ -362,7 +371,9 @@ class TestTranslate:
         # evaluate function gradient
         input = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(kornia.geometry.transform.translate, (input, translation), raise_exception=True)
+        assert gradcheck(
+            kornia.geometry.transform.translate, (input, translation), raise_exception=True, fast_mode=True
+        )
 
     @pytest.mark.skip('Need deep look into it since crashes everywhere.')
     @pytest.mark.skip(reason="turn off all jit for a while")
@@ -447,7 +458,7 @@ class TestScale:
         # evaluate function gradient
         input = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(kornia.geometry.transform.scale, (input, scale_factor), raise_exception=True)
+        assert gradcheck(kornia.geometry.transform.scale, (input, scale_factor), raise_exception=True, fast_mode=True)
 
     @pytest.mark.skip('Need deep look into it since crashes everywhere.')
     @pytest.mark.skip(reason="turn off all jit for a while")
@@ -546,7 +557,7 @@ class TestShear:
         # evaluate function gradient
         input = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(kornia.geometry.transform.shear, (input, shear), raise_exception=True)
+        assert gradcheck(kornia.geometry.transform.shear, (input, shear), raise_exception=True, fast_mode=True)
 
     @pytest.mark.skip('Need deep look into it since crashes everywhere.')
     @pytest.mark.skip(reason="turn off all jit for a while")

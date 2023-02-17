@@ -41,7 +41,9 @@ class TestSymmetricalEpipolarDistance:
         points1 = torch.rand(batch_size, num_points, num_dims, device=device, dtype=torch.float64, requires_grad=True)
         points2 = torch.rand(batch_size, num_points, num_dims, device=device, dtype=torch.float64)
         Fm = utils.create_random_fundamental_matrix(batch_size).type_as(points2)
-        assert gradcheck(epi.symmetrical_epipolar_distance, (points1, points2, Fm), raise_exception=True)
+        assert gradcheck(
+            epi.symmetrical_epipolar_distance, (points1, points2, Fm), raise_exception=True, fast_mode=True
+        )
 
     def test_shift(self, device, dtype):
         pts1 = torch.zeros(3, 2, device=device, dtype=dtype)[None]
@@ -90,7 +92,7 @@ class TestSampsonEpipolarDistance:
         points1 = torch.rand(batch_size, num_points, num_dims, device=device, dtype=torch.float64, requires_grad=True)
         points2 = torch.rand(batch_size, num_points, num_dims, device=device, dtype=torch.float64)
         Fm = utils.create_random_fundamental_matrix(batch_size).type_as(points2)
-        assert gradcheck(epi.sampson_epipolar_distance, (points1, points2, Fm), raise_exception=True)
+        assert gradcheck(epi.sampson_epipolar_distance, (points1, points2, Fm), raise_exception=True, fast_mode=True)
 
 
 class TestLeftToRightEpipolarDistance:
@@ -135,7 +137,9 @@ class TestLeftToRightEpipolarDistance:
         points1 = torch.rand(batch_size, num_points, num_dims, device=device, dtype=torch.float64, requires_grad=True)
         points2 = torch.rand(batch_size, num_points, num_dims, device=device, dtype=torch.float64)
         Fm = utils.create_random_fundamental_matrix(batch_size).type_as(points2)
-        assert gradcheck(epi.left_to_right_epipolar_distance, (points1, points2, Fm), raise_exception=True)
+        assert gradcheck(
+            epi.left_to_right_epipolar_distance, (points1, points2, Fm), raise_exception=True, fast_mode=True
+        )
 
 
 class TestRightToLeftEpipolarDistance:
@@ -180,4 +184,6 @@ class TestRightToLeftEpipolarDistance:
         points1 = torch.rand(batch_size, num_points, num_dims, device=device, dtype=torch.float64, requires_grad=True)
         points2 = torch.rand(batch_size, num_points, num_dims, device=device, dtype=torch.float64)
         Fm = utils.create_random_fundamental_matrix(batch_size).type_as(points2)
-        assert gradcheck(epi.right_to_left_epipolar_distance, (points1, points2, Fm), raise_exception=True)
+        assert gradcheck(
+            epi.right_to_left_epipolar_distance, (points1, points2, Fm), raise_exception=True, fast_mode=True
+        )

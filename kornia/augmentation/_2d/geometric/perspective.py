@@ -1,11 +1,9 @@
-from typing import Any, Dict, Optional, Tuple, Union, cast
-
-import torch
-from torch import Tensor
+from typing import Any, Dict, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
+from kornia.core import Tensor, as_tensor
 from kornia.geometry.transform import get_perspective_transform, warp_perspective
 
 
@@ -66,13 +64,10 @@ class RandomPerspective(GeometricAugmentationBase2D):
         p: float = 0.5,
         keepdim: bool = False,
         sampling_method: str = "basic",
-        return_transform: Optional[bool] = None,
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._param_generator = cast(
-            rg.PerspectiveGenerator,
-            rg.PerspectiveGenerator(distortion_scale, sampling_method=sampling_method)
-        )
+        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
+        self._param_generator = rg.PerspectiveGenerator(distortion_scale, sampling_method=sampling_method)
+
         self.flags: Dict[str, Any] = dict(align_corners=align_corners, resample=Resample.get(resample))
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
@@ -82,14 +77,11 @@ class RandomPerspective(GeometricAugmentationBase2D):
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         _, _, height, width = input.shape
-        transform = cast(Tensor, transform)
+        if not isinstance(transform, Tensor):
+            raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
 
         return warp_perspective(
-            input,
-            transform,
-            (height, width),
-            mode=flags["resample"].name.lower(),
-            align_corners=flags["align_corners"],
+            input, transform, (height, width), mode=flags["resample"].name.lower(), align_corners=flags["align_corners"]
         )
 
     def inverse_transform(
@@ -99,7 +91,11 @@ class RandomPerspective(GeometricAugmentationBase2D):
         transform: Optional[Tensor] = None,
         size: Optional[Tuple[int, int]] = None,
     ) -> Tensor:
+        if not isinstance(transform, Tensor):
+            raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
         return self.apply_transform(
-            input, params=self._params, transform=torch.as_tensor(transform, device=input.device, dtype=input.dtype),
-            flags=flags
+            input,
+            params=self._params,
+            transform=as_tensor(transform, device=input.device, dtype=input.dtype),
+            flags=flags,
         )

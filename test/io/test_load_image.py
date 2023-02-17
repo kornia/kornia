@@ -9,7 +9,7 @@ import torch
 
 from kornia.core import Tensor
 from kornia.io import ImageLoadType, load_image
-from kornia.utils._compat import torch_version_geq
+from kornia.utils._compat import torch_version_ge
 
 try:
     import kornia_rs
@@ -18,9 +18,7 @@ except ImportError:
 
 
 def available_package() -> bool:
-    return (
-        sys.version_info >= (3, 7, 0) and sys.platform == "linux" and torch_version_geq(1, 10) and kornia_rs is not None
-    )
+    return sys.version_info >= (3, 7, 0) and torch_version_ge(1, 10, 0) and kornia_rs is not None
 
 
 def create_random_img8(height: int, width: int, channels: int) -> np.ndarray:
@@ -33,7 +31,6 @@ class TestLoadImage:
         height, width = 4, 5
         img_np: np.ndarray = create_random_img8(height, width, 3)
         with tempfile.NamedTemporaryFile() as tmp:
-
             file_path: str = tmp.name + ".png"
             cv2.imwrite(file_path, img_np)
             assert os.path.isfile(file_path)
@@ -49,7 +46,6 @@ class TestLoadImage:
         height, width = 4, 5
         img_np: np.ndarray = create_random_img8(height, width, 3)
         with tempfile.NamedTemporaryFile() as tmp:
-
             file_path: str = tmp.name + ".png"
             cv2.imwrite(file_path, img_np)
             assert os.path.isfile(file_path)
@@ -62,7 +58,6 @@ class TestLoadImage:
         height, width = 4, 5
         img_np: np.ndarray = create_random_img8(height, width, 3)
         with tempfile.NamedTemporaryFile() as tmp:
-
             file_path: str = tmp.name + f".{ext}"
             cv2.imwrite(file_path, img_np)
             assert os.path.isfile(file_path)
@@ -87,7 +82,6 @@ class TestLoadImage:
         height, width = 4, 5
         img_np: np.ndarray = create_random_img8(height, width, 1)
         with tempfile.NamedTemporaryFile() as tmp:
-
             file_path: str = tmp.name + f".{ext}"
             cv2.imwrite(file_path, img_np)
             assert os.path.isfile(file_path)

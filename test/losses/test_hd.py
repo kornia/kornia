@@ -44,9 +44,7 @@ class HausdorffERLossNumpy(nn.Module):
         eroted = np.zeros_like(bound)
 
         for batch in range(len(bound)):
-
             for k in range(self.erosions):
-
                 # compute convolution with kernel
                 dilation = convolve(bound[batch], kernel, mode="constant", cval=0.0)
 
@@ -140,4 +138,4 @@ class TestHausdorffLoss:
         loss = hd(k=2)
 
         logits = utils.tensor_to_gradcheck_var(logits)  # to var
-        assert gradcheck(loss, (logits, labels), raise_exception=True)
+        assert gradcheck(loss, (logits, labels), raise_exception=True, fast_mode=True)

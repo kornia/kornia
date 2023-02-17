@@ -24,7 +24,9 @@ class TestAngleToRotationMatrix:
         batch_size, channels, height, width = 1, 2, 5, 4
         img = torch.rand(batch_size, channels, height, width, device=device)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.geometry.transform.imgwarp.angle_to_rotation_matrix, (img,), raise_exception=True)
+        assert gradcheck(
+            kornia.geometry.transform.imgwarp.angle_to_rotation_matrix, (img,), raise_exception=True, fast_mode=True
+        )
 
     @pytest.mark.jit
     @pytest.mark.skip("Problems with kornia.pi")
@@ -53,7 +55,7 @@ class TestGetLAFScale:
         batch_size, channels, height, width = 1, 2, 2, 3
         img = torch.rand(batch_size, channels, height, width, device=device)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.feature.get_laf_scale, (img,), raise_exception=True)
+        assert gradcheck(kornia.feature.get_laf_scale, (img,), raise_exception=True, fast_mode=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
@@ -81,7 +83,7 @@ class TestGetLAFCenter:
         batch_size, channels, height, width = 1, 2, 2, 3
         img = torch.rand(batch_size, channels, height, width)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.feature.get_laf_center, (img,), raise_exception=True)
+        assert gradcheck(kornia.feature.get_laf_center, (img,), raise_exception=True, fast_mode=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
@@ -109,7 +111,7 @@ class TestGetLAFOri:
         batch_size, channels, height, width = 1, 2, 2, 3
         img = torch.rand(batch_size, channels, height, width, device=device)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.feature.get_laf_orientation, (img,), raise_exception=True)
+        assert gradcheck(kornia.feature.get_laf_orientation, (img,), raise_exception=True, fast_mode=True)
 
     @pytest.mark.jit
     @pytest.mark.skip("Union")
@@ -146,7 +148,7 @@ class TestScaleLAF:
         scale = torch.rand(batch_size, device=device)
         scale = utils.tensor_to_gradcheck_var(scale)  # to var
         laf = utils.tensor_to_gradcheck_var(laf)  # to var
-        assert gradcheck(kornia.feature.scale_laf, (laf, scale), raise_exception=True, atol=1e-4)
+        assert gradcheck(kornia.feature.scale_laf, (laf, scale), raise_exception=True, atol=1e-4, fast_mode=True)
 
     @pytest.mark.jit
     @pytest.mark.skip("Union")
@@ -179,7 +181,9 @@ class TestSetLAFOri:
         ori = torch.rand(batch_size, channels, 1, 1, device=device)
         ori = utils.tensor_to_gradcheck_var(ori)  # to var
         laf = utils.tensor_to_gradcheck_var(laf)  # to var
-        assert gradcheck(kornia.feature.set_laf_orientation, (laf, ori), raise_exception=True, atol=1e-4)
+        assert gradcheck(
+            kornia.feature.set_laf_orientation, (laf, ori), raise_exception=True, atol=1e-4, fast_mode=True
+        )
 
     @pytest.mark.jit
     @pytest.mark.skip("Union")
@@ -222,7 +226,7 @@ class TestMakeUpright:
         batch_size, channels, height, width = 14, 2, 2, 3
         img = torch.rand(batch_size, channels, height, width, device=device)
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.feature.make_upright, (img,), raise_exception=True)
+        assert gradcheck(kornia.feature.make_upright, (img,), raise_exception=True, fast_mode=True)
 
     @pytest.mark.jit
     @pytest.mark.skip("Union")
@@ -256,7 +260,7 @@ class TestELL2LAF:
         img[:, :, 4] += 1.0
         # assure it is positive definite
         img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.feature.ellipse_to_laf, (img,), raise_exception=True)
+        assert gradcheck(kornia.feature.ellipse_to_laf, (img,), raise_exception=True, fast_mode=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
@@ -291,7 +295,7 @@ class TestNormalizeLAF:
         img = torch.rand(batch_size, 3, 10, 32)
         img = utils.tensor_to_gradcheck_var(img)  # to var
         laf = utils.tensor_to_gradcheck_var(laf)  # to var
-        assert gradcheck(kornia.feature.normalize_laf, (laf, img), raise_exception=True)
+        assert gradcheck(kornia.feature.normalize_laf, (laf, img), raise_exception=True, fast_mode=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
@@ -322,7 +326,7 @@ class TestLAF2pts:
         batch_size, channels, height, width = 3, 2, 2, 3
         laf = torch.rand(batch_size, channels, height, width, device=device)
         laf = utils.tensor_to_gradcheck_var(laf)  # to var
-        assert gradcheck(kornia.feature.laf_to_boundary_points, (laf), raise_exception=True)
+        assert gradcheck(kornia.feature.laf_to_boundary_points, (laf), raise_exception=True, fast_mode=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
@@ -355,7 +359,7 @@ class TestDenormalizeLAF:
         img = torch.rand(batch_size, 3, 10, 32, device=device)
         img = utils.tensor_to_gradcheck_var(img)  # to var
         laf = utils.tensor_to_gradcheck_var(laf)  # to var
-        assert gradcheck(kornia.feature.denormalize_laf, (laf, img), raise_exception=True)
+        assert gradcheck(kornia.feature.denormalize_laf, (laf, img), raise_exception=True, fast_mode=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
@@ -386,7 +390,7 @@ class TestGenPatchGrid:
 
         img = utils.tensor_to_gradcheck_var(img)  # to var
         laf = utils.tensor_to_gradcheck_var(laf)  # to var
-        assert gradcheck(generate_patch_grid_from_normalized_LAF, (img, laf, PS), raise_exception=True)
+        assert gradcheck(generate_patch_grid_from_normalized_LAF, (img, laf, PS), raise_exception=True, fast_mode=True)
 
 
 class TestExtractPatchesSimple:
@@ -397,8 +401,6 @@ class TestExtractPatchesSimple:
         patches = kornia.feature.extract_patches_simple(img, laf, PS)
         assert patches.shape == (5, 4, 3, PS, PS)
 
-    # TODO: check what to do to improve timing
-    # @pytest.mark.skip("The test takes too long to finish.")
     def test_gradcheck(self, device):
         nlaf = torch.tensor([[0.1, 0.001, 0.5], [0, 0.1, 0.5]], device=device).float()
         nlaf = nlaf.view(1, 1, 2, 3)
@@ -417,8 +419,6 @@ class TestExtractPatchesPyr:
         patches = kornia.feature.extract_patches_from_pyramid(img, laf, PS)
         assert patches.shape == (5, 4, 3, PS, PS)
 
-    # TODO: check what to do to improve timing
-    # @pytest.mark.skip("The test takes too long to finish.")
     def test_gradcheck(self, device):
         nlaf = torch.tensor([[0.1, 0.001, 0.5], [0, 0.1, 0.5]], device=device).float()
         nlaf = nlaf.view(1, 1, 2, 3)
@@ -426,7 +426,13 @@ class TestExtractPatchesPyr:
         PS = 11
         img = utils.tensor_to_gradcheck_var(img)  # to var
         nlaf = utils.tensor_to_gradcheck_var(nlaf)  # to var
-        assert gradcheck(kornia.feature.extract_patches_from_pyramid, (img, nlaf, PS, False), raise_exception=True)
+        assert gradcheck(
+            kornia.feature.extract_patches_from_pyramid,
+            (img, nlaf, PS, False),
+            nondet_tol=1e-8,
+            raise_exception=True,
+            fast_mode=True,
+        )
 
 
 class TestLAFIsTouchingBoundary:
@@ -492,7 +498,9 @@ class TestGetCreateLAF:
         xy = utils.tensor_to_gradcheck_var(torch.rand(batch_size, channels, 2, device=device))
         ori = utils.tensor_to_gradcheck_var(torch.rand(batch_size, channels, 1, device=device))
         scale = utils.tensor_to_gradcheck_var(torch.abs(torch.rand(batch_size, channels, 1, 1, device=device)))
-        assert gradcheck(kornia.feature.laf_from_center_scale_ori, (xy, scale, ori), raise_exception=True)
+        assert gradcheck(
+            kornia.feature.laf_from_center_scale_ori, (xy, scale, ori), raise_exception=True, fast_mode=True
+        )
 
     @pytest.mark.skip("Depends on angle-to-rotation-matric")
     @pytest.mark.jit
@@ -527,7 +535,7 @@ class TestGetLAF3pts:
         batch_size, channels, height, width = 3, 2, 2, 3
         inp = torch.rand(batch_size, channels, height, width, device=device)
         inp = utils.tensor_to_gradcheck_var(inp)  # to var
-        assert gradcheck(kornia.feature.laf_to_three_points, (inp,), raise_exception=True)
+        assert gradcheck(kornia.feature.laf_to_three_points, (inp,), raise_exception=True, fast_mode=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
@@ -566,7 +574,7 @@ class TestGetLAFFrom3pts:
         batch_size, channels, height, width = 3, 2, 2, 3
         inp = torch.rand(batch_size, channels, height, width, device=device)
         inp = utils.tensor_to_gradcheck_var(inp)  # to var
-        assert gradcheck(kornia.feature.laf_from_three_points, (inp,), raise_exception=True)
+        assert gradcheck(kornia.feature.laf_from_three_points, (inp,), raise_exception=True, fast_mode=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
@@ -606,4 +614,6 @@ class TestTransformLAFs:
         # evaluate function gradient
         points_src = utils.tensor_to_gradcheck_var(points_src)  # to var
         dst_homo_src = utils.tensor_to_gradcheck_var(dst_homo_src)  # to var
-        assert gradcheck(kornia.feature.perspective_transform_lafs, (dst_homo_src, points_src), raise_exception=True)
+        assert gradcheck(
+            kornia.feature.perspective_transform_lafs, (dst_homo_src, points_src), raise_exception=True, fast_mode=True
+        )

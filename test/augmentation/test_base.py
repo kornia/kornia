@@ -6,6 +6,10 @@ from torch.autograd import gradcheck
 
 import kornia.testing as utils  # test utils
 from kornia.augmentation._2d.base import AugmentationBase2D
+from kornia.augmentation._2d.geometric.affine import RandomAffine
+from kornia.augmentation._2d.intensity.gaussian_blur import RandomGaussianBlur
+from kornia.augmentation._3d.geometric.affine import RandomAffine3D
+from kornia.augmentation._3d.intensity.motion_blur import RandomMotionBlur3D
 from kornia.augmentation.base import _BasicAugmentationBase
 from kornia.testing import assert_close
 
@@ -62,60 +66,34 @@ class TestBasicAugmentationBase:
             augmentation, "transform_tensor", autospec=True
         ) as transform_tensor, patch.object(
             augmentation, "transform_output_tensor", autospec=True
-        ) as transform_output_tensor, patch.object(
-            augmentation, "__check_batching__", autospec=True
-        ) as check_batching:
-
+        ) as transform_output_tensor:
             generate_parameters.side_effect = lambda shape: {
                 'degrees': torch.arange(0, shape[0], device=device, dtype=dtype)
             }
             transform_tensor.side_effect = lambda x: x.unsqueeze(dim=0)
             transform_output_tensor.side_effect = lambda x, y: x.squeeze()
             apply_transform.side_effect = lambda input, params, flags: input[..., :2, :2]
-            check_batching.side_effect = lambda input: None
+            # check_batching.side_effect = lambda input: None
             output = augmentation(input)
             assert output.shape == expected_output.shape
             assert_close(output, expected_output)
 
 
 class TestAugmentationBase2D:
-    @pytest.mark.parametrize(
-        'input_shape, in_trans_shape',
-        [
-            ((2, 3, 4, 5), (2, 3, 3)),
-            ((3, 4, 5), (3, 3)),
-            ((4, 5), (3, 3)),
-            pytest.param((1, 2, 3, 4, 5), (2, 3, 3), marks=pytest.mark.xfail),
-            pytest.param((2, 3, 4, 5), (1, 3, 3), marks=pytest.mark.xfail),
-            pytest.param((2, 3, 4, 5), (3, 3), marks=pytest.mark.xfail),
-        ],
-    )
-    def test_check_batching(self, device, dtype, input_shape, in_trans_shape):
-        input = torch.rand(input_shape, device=device, dtype=dtype)
-        in_trans = torch.rand(in_trans_shape, device=device, dtype=dtype)
-        augmentation = AugmentationBase2D(p=1.0, p_batch=1)
-        augmentation.__check_batching__(input)
-        augmentation.__check_batching__((input, in_trans))
-
     def test_forward(self, device, dtype):
         torch.manual_seed(42)
         input = torch.rand((2, 3, 4, 5), device=device, dtype=dtype)
         # input_transform = torch.rand((2, 3, 3), device=device, dtype=dtype)
         expected_output = torch.rand((2, 3, 4, 5), device=device, dtype=dtype)
-        expected_transform = torch.rand((2, 3, 3), device=device, dtype=dtype)
         augmentation = AugmentationBase2D(p=1.0)
 
         with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform, patch.object(
             augmentation, "generate_parameters", autospec=True
-        ) as generate_parameters, patch.object(
-            augmentation, "compute_transformation", autospec=True
-        ) as compute_transformation:
-
+        ) as generate_parameters:
             # Calling the augmentation with a single tensor shall return the expected tensor using the generated params.
             params = {'params': {}, 'flags': {'foo': 0}}
             generate_parameters.return_value = params
             apply_transform.return_value = expected_output
-            compute_transformation.return_value = expected_transform
             output = augmentation(input)
             # RuntimeError: Boolean value of Tensor with more than one value is ambiguous
             # Not an easy fix, happens on verifying torch.tensor([True, True])
@@ -163,10 +141,90 @@ class TestAugmentationBase2D:
 
         augmentation = AugmentationBase2D(p=1.0)
 
-        with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform, patch.object(
-            augmentation, "compute_transformation", autospec=True
-        ) as compute_transformation:
-
+        with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform:
             apply_transform.return_value = output
-            compute_transformation.return_value = other_transform
-            assert gradcheck(augmentation, ((input, input_param)), raise_exception=True)
+            assert gradcheck(augmentation, ((input, input_param)), raise_exception=True, fast_mode=True)
+
+
+class TestGeometricAugmentationBase2D:
+    @pytest.mark.parametrize("batch_prob", [[True, True], [False, True], [False, False]])
+    def test_autocast(self, batch_prob, device, dtype):
+        if not hasattr(torch, "autocast"):
+            pytest.skip("PyTorch version without autocast support")
+
+        # Uses some subclass of `GeometricAugmentationBase2D` which perform some op which can mismatch the dtype
+        # Will cover AugmentationBase2D and RigidAffineAugmentationBase2D too
+        aug = RandomAffine(0.5, (0.1, 0.5), (0.5, 1.5), 1.2, p=1.0)
+        x = torch.rand(len(batch_prob), 5, 10, 7, dtype=dtype, device=device)
+
+        to_apply = torch.tensor(batch_prob, device=device)
+        with patch.object(aug, '__batch_prob_generator__', return_value=to_apply):
+            params = aug.forward_parameters(x.shape)
+
+        with torch.autocast(device.type):
+            res = aug(x, params)
+
+        assert res.dtype == dtype, "The output dtype should match the input dtype"
+
+
+class TestIntensityAugmentationBase2D:
+    @pytest.mark.parametrize("batch_prob", [[True, True], [False, True], [False, False]])
+    def test_autocast(self, batch_prob, device, dtype):
+        if not hasattr(torch, "autocast"):
+            pytest.skip("PyTorch version without autocast support")
+
+        # Uses some subclass of `IntensityAugmentationBase2D` which perform some op which can mismatch the dtype
+        # Will cover AugmentationBase2D and RigidAffineAugmentationBase2D too
+        aug = RandomGaussianBlur((3, 3), (0.1, 3), p=1)
+        x = torch.rand(len(batch_prob), 5, 10, 7, dtype=dtype, device=device)
+
+        to_apply = torch.tensor(batch_prob, device=device)
+        with patch.object(aug, '__batch_prob_generator__', return_value=to_apply):
+            params = aug.forward_parameters(x.shape)
+
+        with torch.autocast(device.type):
+            res = aug(x, params)
+
+        assert res.dtype == dtype, "The output dtype should match the input dtype"
+
+
+class TestIntensityAugmentationBase3D:
+    @pytest.mark.parametrize("batch_prob", [[True, True], [False, True], [False, False]])
+    def test_autocast(self, batch_prob, device, dtype):
+        if not hasattr(torch, "autocast"):
+            pytest.skip("PyTorch version without autocast support")
+
+        # Uses some subclass of `IntensityAugmentationBase3D` which perform some op which can mismatch the dtype
+        # Will cover RigidAffineAugmentationBase3D and AugmentationBase3D too
+        aug = RandomMotionBlur3D(3, 35.0, 0.5, p=1)
+        x = torch.rand(len(batch_prob), 1, 3, 10, 7, dtype=dtype, device=device)
+
+        to_apply = torch.tensor(batch_prob, device=device)
+        with patch.object(aug, '__batch_prob_generator__', return_value=to_apply):
+            params = aug.forward_parameters(x.shape)
+
+        with torch.autocast(device.type):
+            res = aug(x, params)
+
+        assert res.dtype == dtype, "The output dtype should match the input dtype"
+
+
+class TestGeometricAugmentationBase3D:
+    @pytest.mark.parametrize("batch_prob", [[True, True], [False, True], [False, False]])
+    def test_autocast(self, batch_prob, device, dtype):
+        if not hasattr(torch, "autocast"):
+            pytest.skip("PyTorch version without autocast support")
+
+        # Uses some subclass of `GeometricAugmentationBase3D` which perform some op which can mismatch the dtype
+        # Will cover RigidAffineAugmentationBase3D and AugmentationBase3D too
+        aug = RandomAffine3D((15.0, 20.0, 20.0), p=1)
+        x = torch.rand(len(batch_prob), 1, 3, 10, 7, dtype=dtype, device=device)
+
+        to_apply = torch.tensor(batch_prob, device=device)
+        with patch.object(aug, '__batch_prob_generator__', return_value=to_apply):
+            params = aug.forward_parameters(x.shape)
+
+        with torch.autocast(device.type):
+            res = aug(x, params)
+
+        assert res.dtype == dtype, "The output dtype should match the input dtype"

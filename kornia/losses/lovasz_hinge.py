@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
-from kornia.testing import KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK_SHAPE
 
 # based on:
 # https://github.com/bermanmaxim/LovaszSoftmax
@@ -72,16 +72,16 @@ def lovasz_hinge_loss(pred: Tensor, target: Tensor) -> Tensor:
     B, N = pred_flatten.shape
 
     # compute actual loss
-    signs = 2. * target_flatten - 1.
-    errors = 1. - pred_flatten * signs
+    signs = 2.0 * target_flatten - 1.0
+    errors = 1.0 - pred_flatten * signs
     errors_sorted, permutation = errors.sort(dim=1, descending=True)
     batch_index: Tensor = torch.arange(B, device=pred.device).reshape(-1, 1).repeat(1, N).reshape(-1)
     target_sorted: Tensor = target_flatten[batch_index, permutation.view(-1)]
     target_sorted = target_sorted.view(B, N)
     target_sorted_sum: Tensor = target_sorted.sum(1, keepdim=True)
     intersection: Tensor = target_sorted_sum - target_sorted.cumsum(1)
-    union: Tensor = target_sorted_sum + (1. - target_sorted).cumsum(1)
-    gradient: Tensor = 1. - intersection / union
+    union: Tensor = target_sorted_sum + (1.0 - target_sorted).cumsum(1)
+    gradient: Tensor = 1.0 - intersection / union
     if N > 1:
         gradient[..., 1:] = gradient[..., 1:] - gradient[..., :-1]
     loss: Tensor = (errors_sorted.relu() * gradient).sum(1).mean()

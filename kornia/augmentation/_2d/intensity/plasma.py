@@ -1,10 +1,9 @@
-from typing import Any, Dict, Optional, Tuple, cast
-
-from torch import Tensor
+from typing import Any, Dict, Optional, Tuple
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.contrib import diamond_square
+from kornia.core import Tensor
 
 
 class RandomPlasmaBrightness(IntensityAugmentationBase2D):
@@ -42,14 +41,10 @@ class RandomPlasmaBrightness(IntensityAugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
     ) -> None:
-        super().__init__(
-            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
-        )
-        self._param_generator = cast(
-            rg.PlainUniformGenerator,
-            rg.PlainUniformGenerator((roughness, "roughness", None, None), (intensity, "intensity", None, None)),
+        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
+        self._param_generator = rg.PlainUniformGenerator(
+            (roughness, "roughness", None, None), (intensity, "intensity", None, None)
         )
 
     def apply_transform(
@@ -96,14 +91,9 @@ class RandomPlasmaContrast(IntensityAugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
     ) -> None:
-        super().__init__(
-            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
-        )
-        self._param_generator = cast(
-            rg.PlainUniformGenerator, rg.PlainUniformGenerator((roughness, "roughness", None, None))
-        )
+        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
+        self._param_generator = rg.PlainUniformGenerator((roughness, "roughness", None, None))
 
     def apply_transform(
         self, image: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
@@ -151,18 +141,12 @@ class RandomPlasmaShadow(IntensityAugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
     ) -> None:
-        super().__init__(
-            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
-        )
-        self._param_generator = cast(
-            rg.PlainUniformGenerator,
-            rg.PlainUniformGenerator(
-                (roughness, "roughness", None, None),
-                (shade_intensity, "shade_intensity", None, None),
-                (shade_quantity, "shade_quantity", None, None),
-            ),
+        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
+        self._param_generator = rg.PlainUniformGenerator(
+            (roughness, "roughness", None, None),
+            (shade_intensity, "shade_intensity", None, None),
+            (shade_quantity, "shade_quantity", None, None),
         )
 
     def apply_transform(
