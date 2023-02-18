@@ -271,7 +271,7 @@ maintainable.
 -  Using 3rd party libraries:
 
   - Everything from standard library (https://docs.python.org/3/library/) and PyTorch (https://pytorch.org/) is OK.
-    It does`t mean, that one should import urllib  just because, but doing it when needed is fine.
+    It does’t mean, that one should import urllib  just because, but doing it when needed is fine.
 
 # Pull Request
 
