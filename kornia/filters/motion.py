@@ -8,6 +8,7 @@ from .kernels_geometry import get_motion_kernel2d, get_motion_kernel3d
 
 _VALID_BORDER = {"constant", "reflect", "replicate", "circular"}
 
+
 class MotionBlur(Module):
     r"""Blur 2D images (4D tensor) using the motion filter.
 

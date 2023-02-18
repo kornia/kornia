@@ -144,12 +144,12 @@ def blur_pool2d(input: Tensor, kernel_size: tuple[int, int] | int, stride: int =
         - Output: :math:`(N, C, H_{out}, W_{out})`, where
 
           .. math::
-              H_{out} = \left\lfloor\frac{H_{in}  + 2 \times \text{kernel\_size//2}[0] -
-                \text{kernel\_size}[0]}{\text{stride}[0]} + 1\right\rfloor
+              H_{out} = \\left\\lfloor\frac{H_{in}  + 2 \times \text{kernel\\_size//2}[0] -
+                \text{kernel\\_size}[0]}{\text{stride}[0]} + 1\right\rfloor
 
           .. math::
-              W_{out} = \left\lfloor\frac{W_{in}  + 2 \times \text{kernel\_size//2}[1] -
-                \text{kernel\_size}[1]}{\text{stride}[1]} + 1\right\rfloor
+              W_{out} = \\left\\lfloor\frac{W_{in}  + 2 \times \text{kernel\\_size//2}[1] -
+                \text{kernel\\_size}[1]}{\text{stride}[1]} + 1\right\rfloor
 
     Returns:
         the transformed tensor.
