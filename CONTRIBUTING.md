@@ -63,7 +63,7 @@ repository under your GitHub account.
     # or
     $ git checkout upstream/master -b fix/bar_bug
     ```
-    🚨 **Do not** work on the `main` branch!
+    🚨 **Do not** work on the `master` branch!
 
 4. Creating development environment
 
