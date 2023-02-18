@@ -237,13 +237,16 @@ maintainable.
     new features of typing.
   - **Always** type function input and output, e.g.:
     ```python
+    from __future__ import annotations
+    from kornia.core import Tensor
+
     def homography_warp(
-      patch_src: torch.Tensor,
-      dst_homo_src: torch.Tensor,
-      dsize: Tuple[int, int],
+      patch_src: Tensor,
+      dst_homo_src: Tensor,
+      dsize: tuple[int, int],
       mode: str = 'bilinear',
       padding_mode: str = 'zeros'
-    ) -> torch.Tensor:
+    ) -> Tensor:
     ```
 
 - We suggest to use new Python 3's f-Strings improved string formatting syntax:
