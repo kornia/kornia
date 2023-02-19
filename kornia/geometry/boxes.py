@@ -166,7 +166,6 @@ def _boxes3d_to_polygons3d(
     return polygons3d
 
 
-# @torch.jit.script
 class Boxes:
     r"""2D boxes containing N or BxN boxes.
 
@@ -207,8 +206,6 @@ class Boxes:
             boxes = boxes.float()
 
         if len(boxes.shape) == 0:
-            # Use reshape, so we don't end up creating a new tensor that does not depend on
-            # the inputs (and consequently confuses jit)
             boxes = boxes.reshape((-1, 4))
 
         if not (3 <= boxes.ndim <= 4 and boxes.shape[-2:] == (4, 2)):
@@ -449,8 +446,6 @@ class Boxes:
         else:
             quadrilaterals = [_boxes_to_quadrilaterals(box, mode, validate_boxes) for box in boxes]
 
-        # Due to some torch.jit.script bug (at least <= 1.9), you need to pass all arguments to __init__ when
-        # constructing the class from inside of a method.
         return cls(quadrilaterals, False, mode)
 
     def to_tensor(self, mode: str | None = None, as_padded_sequence: bool = False) -> torch.Tensor | list[torch.Tensor]:
@@ -589,8 +584,6 @@ class Boxes:
         if not 2 <= M.ndim <= 3 or M.shape[-2:] != (3, 3):
             raise ValueError(f"The transformation matrix shape must be (3, 3) or (B, 3, 3). Got {M.shape}.")
 
-        # Due to some torch.jit.script bug (at least <= 1.9), you need to pass all arguments to __init__ when
-        # constructing the class from inside of a method.
         transformed_boxes = _transform_boxes(self._data, M)
         if inplace:
             self._data = transformed_boxes
@@ -681,8 +674,6 @@ class VideoBoxes(Boxes):
             mode="vertices_plus",
             validate_boxes=validate_boxes,
         )
-        # Due to some torch.jit.script bug (at least <= 1.9), you need to pass all arguments to __init__ when
-        # constructing the class from inside of a method.
         out = cls(quadrilaterals, False, "vertices_plus")
         out.temporal_channel_size = temporal_channel_size
         return out
@@ -732,8 +723,6 @@ class Boxes3D:
             boxes = boxes.float()
 
         if len(boxes.shape) == 0:
-            # Use reshape, so we don't end up creating a new tensor that does not depend on
-            # the inputs (and consequently confuses jit)
             boxes = boxes.reshape((-1, 6))
 
         if not (3 <= boxes.ndim <= 4 and boxes.shape[-2:] == (8, 3)):
@@ -850,8 +839,6 @@ class Boxes3D:
 
         hexahedrons = _boxes3d_to_polygons3d(xmin, ymin, zmin, width, height, depth)
         hexahedrons = hexahedrons if batched else hexahedrons.squeeze(0)
-        # Due to some torch.jit.script bug (at least <= 1.9), you need to pass all arguments to __init__ when
-        # constructing the class from inside of a method.
         return cls(hexahedrons, raise_if_not_floating_point=False, mode=mode)
 
     def to_tensor(self, mode: str = "xyzxyz") -> torch.Tensor:
@@ -1029,8 +1016,6 @@ class Boxes3D:
         if not 2 <= M.ndim <= 3 or M.shape[-2:] != (4, 4):
             raise ValueError(f"The transformation matrix shape must be (4, 4) or (B, 4, 4). Got {M.shape}.")
 
-        # Due to some torch.jit.script bug (at least <= 1.9), you need to pass all arguments to __init__ when
-        # constructing the class from inside of a method.
         transformed_boxes = _transform_boxes(self._data, M)
         if inplace:
             self._data = transformed_boxes

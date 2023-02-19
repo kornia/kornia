@@ -20,7 +20,6 @@ __all__ = [
 ]
 
 
-@torch.jit.ignore
 def validate_bbox(boxes: torch.Tensor) -> bool:
     """Validate if a 2D bounding box usable or not. This function checks if the boxes are rectangular or not.
 
@@ -50,7 +49,6 @@ def validate_bbox(boxes: torch.Tensor) -> bool:
     return True
 
 
-@torch.jit.ignore
 def validate_bbox3d(boxes: torch.Tensor) -> bool:
     """Validate if a 3D bounding box usable or not. This function checks if the boxes are cube or not.
 
