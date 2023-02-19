@@ -233,7 +233,7 @@ class TestUndistortPoints:
 
         gradcheck(undistort_points, (points, K, distCoeff, new_K))
 
-    def test_jit(self, device, dtype):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         points = torch.rand(1, 1, 2, device=device, dtype=dtype)
         K = torch.rand(1, 3, 3, device=device, dtype=dtype)
         new_K = torch.rand(1, 3, 3, device=device, dtype=dtype)
@@ -241,8 +241,8 @@ class TestUndistortPoints:
         inputs = (points, K, distCoeff, new_K)
 
         op = undistort_points
-        op_jit = torch.jit.script(op)
-        assert_close(op(*inputs), op_jit(*inputs))
+        op_optimized = torch_optimizer(op)
+        assert_close(op(*inputs), op_optimized(*inputs))
 
 
 class TestUndistortImage:

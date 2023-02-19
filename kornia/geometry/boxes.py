@@ -705,7 +705,6 @@ class VideoBoxes(Boxes):
         return obj
 
 
-@torch.jit.script
 class Boxes3D:
     r"""3D boxes containing N or BxN boxes.
 

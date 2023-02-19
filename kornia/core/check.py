@@ -1,5 +1,5 @@
 """The testing package contains testing-specific utilities."""
-from typing import List, Optional, Sequence, cast
+from typing import Any, List, Optional, Sequence, TypeVar, cast
 
 from typing_extensions import TypeGuard
 
@@ -22,10 +22,8 @@ __all__ = [
 
 # Logger api
 
+
 # TODO: add somehow type check, or enforce to do it before
-# TODO: get rid of torchscript test because prevents us to have type safe code
-
-
 def KORNIA_CHECK_SHAPE(x: Tensor, shape: List[str]) -> None:
     """Check whether a tensor has a specified shape.
 
@@ -89,17 +87,21 @@ def KORNIA_CHECK(condition: bool, msg: Optional[str] = None) -> None:
         raise Exception(f"{condition} not true.\n{msg}")
 
 
-def KORNIA_UNWRAP(maybe_obj, typ):
+def KORNIA_UNWRAP(maybe_obj: object, typ: Any) -> Any:
     """Unwraps an optional contained value that may or not be present.
 
     Args:
         maybe_obj: the object to unwrap.
         typ: expected type after unwrap.
     """
-    return cast(typ, maybe_obj)  # type: ignore # TODO: this function will change after kornia/pr#1987
+    # TODO: this function will change after kornia/pr#1987
+    return cast(typ, maybe_obj)
 
 
-def KORNIA_CHECK_TYPE(x, typ, msg: Optional[str] = None):
+T = TypeVar('T', bound=type)
+
+
+def KORNIA_CHECK_TYPE(x: object, typ: T, msg: Optional[str] = None) -> TypeGuard[T]:
     """Check the type of an aribratry variable.
 
     Args:
@@ -116,8 +118,10 @@ def KORNIA_CHECK_TYPE(x, typ, msg: Optional[str] = None):
     if not isinstance(x, typ):
         raise TypeError(f"Invalid type: {type(x)}.\n{msg}")
 
+    return True
 
-def KORNIA_CHECK_IS_TENSOR(x, msg: Optional[str] = None):
+
+def KORNIA_CHECK_IS_TENSOR(x: object, msg: Optional[str] = None) -> TypeGuard[Tensor]:
     """Check the input variable is a Tensor.
 
     Args:
@@ -133,6 +137,8 @@ def KORNIA_CHECK_IS_TENSOR(x, msg: Optional[str] = None):
     """
     if not isinstance(x, Tensor):
         raise TypeError(f"Not a Tensor type. Got: {type(x)}.\n{msg}")
+
+    return True
 
 
 def KORNIA_CHECK_IS_LIST_OF_TENSOR(x: Optional[Sequence[object]]) -> TypeGuard[List[Tensor]]:
@@ -154,7 +160,7 @@ def KORNIA_CHECK_IS_LIST_OF_TENSOR(x: Optional[Sequence[object]]) -> TypeGuard[L
     return isinstance(x, list) and all(isinstance(d, Tensor) for d in x)
 
 
-def KORNIA_CHECK_SAME_DEVICE(x: Tensor, y: Tensor):
+def KORNIA_CHECK_SAME_DEVICE(x: Tensor, y: Tensor) -> None:
     """Check whether two tensor in the same device.
 
     Args:
@@ -174,7 +180,7 @@ def KORNIA_CHECK_SAME_DEVICE(x: Tensor, y: Tensor):
         raise TypeError(f"Not same device for tensors. Got: {x.device} and {y.device}")
 
 
-def KORNIA_CHECK_SAME_DEVICES(tensors: List[Tensor], msg: Optional[str] = None):
+def KORNIA_CHECK_SAME_DEVICES(tensors: List[Tensor], msg: Optional[str] = None) -> None:
     """Check whether a list provided tensors live in the same device.
 
     Args:
@@ -194,7 +200,7 @@ def KORNIA_CHECK_SAME_DEVICES(tensors: List[Tensor], msg: Optional[str] = None):
         raise Exception(f"Not same device for tensors. Got: {[x.device for x in tensors]}.\n{msg}")
 
 
-def KORNIA_CHECK_SAME_SHAPE(x: Tensor, y: Tensor) -> None:
+def KORNIA_CHECK_SAME_SHAPE(x: Tensor, y: Tensor) -> bool:
     """Check whether two tensor have the same shape.
 
     Args:
@@ -213,8 +219,10 @@ def KORNIA_CHECK_SAME_SHAPE(x: Tensor, y: Tensor) -> None:
     if x.shape != y.shape:
         raise TypeError(f"Not same shape for tensors. Got: {x.shape} and {y.shape}")
 
+    return True
 
-def KORNIA_CHECK_IS_COLOR(x: Tensor, msg: Optional[str] = None):
+
+def KORNIA_CHECK_IS_COLOR(x: Tensor, msg: Optional[str] = None) -> bool:
     """Check whether an image tensor is a color images.
 
     Args:
@@ -230,9 +238,10 @@ def KORNIA_CHECK_IS_COLOR(x: Tensor, msg: Optional[str] = None):
     """
     if len(x.shape) < 3 or x.shape[-3] != 3:
         raise TypeError(f"Not a color tensor. Got: {type(x)}.\n{msg}")
+    return True
 
 
-def KORNIA_CHECK_IS_GRAY(x: Tensor, msg: Optional[str] = None):
+def KORNIA_CHECK_IS_GRAY(x: Tensor, msg: Optional[str] = None) -> bool:
     """Check whether an image tensor is grayscale.
 
     Args:
@@ -248,9 +257,10 @@ def KORNIA_CHECK_IS_GRAY(x: Tensor, msg: Optional[str] = None):
     """
     if len(x.shape) < 2 or (len(x.shape) >= 3 and x.shape[-3] != 1):
         raise TypeError(f"Not a gray tensor. Got: {type(x)}.\n{msg}")
+    return True
 
 
-def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: Tensor, msg: Optional[str] = None):
+def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: Tensor, msg: Optional[str] = None) -> bool:
     """Check whether an image tensor is grayscale or color.
 
     Args:
@@ -266,9 +276,10 @@ def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: Tensor, msg: Optional[str] = None):
     """
     if len(x.shape) < 3 or x.shape[-3] not in [1, 3]:
         raise TypeError(f"Not a color or gray tensor. Got: {type(x)}.\n{msg}")
+    return True
 
 
-def KORNIA_CHECK_DM_DESC(desc1: Tensor, desc2: Tensor, dm: Tensor):
+def KORNIA_CHECK_DM_DESC(desc1: Tensor, desc2: Tensor, dm: Tensor) -> bool:
     """Check whether the provided descriptors match with a distance matrix.
 
     Args:
@@ -286,10 +297,11 @@ def KORNIA_CHECK_DM_DESC(desc1: Tensor, desc2: Tensor, dm: Tensor):
         >>> KORNIA_CHECK_DM_DESC(desc1, desc2, dm)
     """
     if not ((dm.size(0) == desc1.size(0)) and (dm.size(1) == desc2.size(0))):
-        message = f"""distance matrix shape {dm.shape} is not
-                      consistent with descriptors shape: desc1 {desc1.shape}
-                      desc2 {desc2.shape}"""
-        raise TypeError(message)
+        raise TypeError(
+            f"distance matrix shape {dm.shape} is not onsistent with descriptors shape: desc1 {desc1.shape} "
+            f"desc2 {desc2.shape}"
+        )
+    return True
 
 
 def KORNIA_CHECK_LAF(laf: Tensor) -> None:

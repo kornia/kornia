@@ -415,13 +415,13 @@ class TestWarpPerspective:
         patch_warped = kornia.geometry.warp_perspective(patch, dst_trans_src, (dst_h, dst_w))
         assert_close(patch_warped, expected)
 
-    def test_jit(self, device, dtype):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         img = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         H_ab = kornia.eye_like(3, img)
         args = (img, H_ab, (4, 5))
         op = kornia.geometry.warp_perspective
-        op_jit = torch.jit.script(op)
-        assert_close(op(*args), op_jit(*args))
+        op_optimized = torch_optimizer(op)
+        assert_close(op(*args), op_optimized(*args))
 
     def test_gradcheck(self, device, dtype):
         batch_size, channels, height, width = 1, 2, 3, 4
