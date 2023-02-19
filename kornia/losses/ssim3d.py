@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import kornia.metrics as metrics
 from kornia.core import Module, Tensor
 

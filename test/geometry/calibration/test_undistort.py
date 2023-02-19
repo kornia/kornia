@@ -342,12 +342,12 @@ class TestUndistortImage:
 
         gradcheck(undistort_image, (im, K, distCoeff))
 
-    def test_jit(self, device, dtype):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         im = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
         K = torch.rand(3, 3, device=device, dtype=dtype)
         distCoeff = torch.rand(4, device=device, dtype=dtype)
         inputs = (im, K, distCoeff)
 
         op = undistort_image
-        op_jit = torch.jit.script(op)
-        assert_close(op(*inputs), op_jit(*inputs))
+        op_optimized = torch_optimizer(op)
+        assert_close(op(*inputs), op_optimized(*inputs))

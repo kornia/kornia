@@ -73,9 +73,9 @@ class TestApplyColorMap(BaseTester):
 
         assert gradcheck(apply_colormap, (input_tensor, cm), raise_exception=True, fast_mode=True)
 
-    def test_jit(self, device, dtype):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         op = apply_colormap
-        op_script = torch.jit.script(op)
+        op_script = torch_optimizer(op)
 
         cm = AUTUMN(device=device, dtype=dtype)
         img = torch.ones(1, 3, 3, device=device, dtype=dtype)

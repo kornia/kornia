@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple
+from __future__ import annotations
 
 import torch
 import torch.nn.functional as F
@@ -47,7 +47,7 @@ __all__ = [
 def warp_perspective(
     src: Tensor,
     M: Tensor,
-    dsize: Tuple[int, int],
+    dsize: tuple[int, int],
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
     align_corners: bool = True,
@@ -133,7 +133,7 @@ def warp_perspective(
 def warp_affine(
     src: Tensor,
     M: Tensor,
-    dsize: Tuple[int, int],
+    dsize: tuple[int, int],
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
     align_corners: bool = True,
@@ -468,7 +468,7 @@ def remap(
     map_y: Tensor,
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
-    align_corners: Optional[bool] = None,
+    align_corners: bool | None = None,
     normalized_coordinates: bool = False,
 ) -> Tensor:
     r"""Apply a generic geometrical transformation to an image tensor.
@@ -572,8 +572,8 @@ def get_affine_matrix2d(
     center: Tensor,
     scale: Tensor,
     angle: Tensor,
-    sx: Optional[Tensor] = None,
-    sy: Optional[Tensor] = None,
+    sx: Tensor | None = None,
+    sy: Tensor | None = None,
 ) -> Tensor:
     r"""Compose affine matrix from the components.
 
@@ -625,7 +625,7 @@ def get_translation_matrix2d(translations: Tensor) -> Tensor:
     return transform_h
 
 
-def get_shear_matrix2d(center: Tensor, sx: Optional[Tensor] = None, sy: Optional[Tensor] = None):
+def get_shear_matrix2d(center: Tensor, sx: Tensor | None = None, sy: Tensor | None = None):
     r"""Compose shear matrix Bx4x4 from the components.
 
     Note: Ordered shearing, shear x-axis then y-axis.
@@ -680,12 +680,12 @@ def get_affine_matrix3d(
     center: Tensor,
     scale: Tensor,
     angles: Tensor,
-    sxy: Optional[Tensor] = None,
-    sxz: Optional[Tensor] = None,
-    syx: Optional[Tensor] = None,
-    syz: Optional[Tensor] = None,
-    szx: Optional[Tensor] = None,
-    szy: Optional[Tensor] = None,
+    sxy: Tensor | None = None,
+    sxz: Tensor | None = None,
+    syx: Tensor | None = None,
+    syz: Tensor | None = None,
+    szx: Tensor | None = None,
+    szy: Tensor | None = None,
 ) -> Tensor:
     r"""Compose 3d affine matrix from the components.
 
@@ -723,12 +723,12 @@ def get_affine_matrix3d(
 
 def get_shear_matrix3d(
     center: Tensor,
-    sxy: Optional[Tensor] = None,
-    sxz: Optional[Tensor] = None,
-    syx: Optional[Tensor] = None,
-    syz: Optional[Tensor] = None,
-    szx: Optional[Tensor] = None,
-    szy: Optional[Tensor] = None,
+    sxy: Tensor | None = None,
+    sxz: Tensor | None = None,
+    syx: Tensor | None = None,
+    syz: Tensor | None = None,
+    szx: Tensor | None = None,
+    szy: Tensor | None = None,
 ):
     r"""Compose shear matrix Bx4x4 from the components.
     Note: Ordered shearing, shear x-axis then y-axis then z-axis.
@@ -829,7 +829,7 @@ def _compute_shear_matrix_3d(sxy_tan, sxz_tan, syx_tan, syz_tan, szx_tan, szy_ta
 def warp_affine3d(
     src: Tensor,
     M: Tensor,
-    dsize: Tuple[int, int, int],
+    dsize: tuple[int, int, int],
     flags: str = 'bilinear',
     padding_mode: str = 'zeros',
     align_corners: bool = True,
@@ -863,8 +863,8 @@ def warp_affine3d(
         raise AssertionError(dsize)
     B, C, D, H, W = src.size()
 
-    size_src: Tuple[int, int, int] = (D, H, W)
-    size_out: Tuple[int, int, int] = dsize
+    size_src: tuple[int, int, int] = (D, H, W)
+    size_out: tuple[int, int, int] = dsize
 
     M_4x4 = convert_affinematrix_to_homography3d(M)  # Bx4x4
 
@@ -875,7 +875,7 @@ def warp_affine3d(
     P_norm: Tensor = src_norm_trans_dst_norm[:, :3]  # Bx3x4
 
     # compute meshgrid and apply to input
-    dsize_out: List[int] = [B, C] + list(size_out)
+    dsize_out: list[int] = [B, C] + list(size_out)
     grid = F.affine_grid(P_norm, dsize_out, align_corners=align_corners)
     return grid_sample(src, grid, align_corners=align_corners, mode=flags, padding_mode=padding_mode)
 
@@ -1174,7 +1174,7 @@ def _build_perspective_param3d(p: Tensor, q: Tensor, axis: str) -> Tensor:
 def warp_perspective3d(
     src: Tensor,
     M: Tensor,
-    dsize: Tuple[int, int, int],
+    dsize: tuple[int, int, int],
     flags: str = 'bilinear',
     border_mode: str = 'zeros',
     align_corners: bool = False,
@@ -1226,7 +1226,7 @@ def warp_perspective3d(
 def homography_warp(
     patch_src: Tensor,
     src_homo_dst: Tensor,
-    dsize: Tuple[int, int],
+    dsize: tuple[int, int],
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
     align_corners: bool = False,
@@ -1287,8 +1287,8 @@ def homography_warp(
 def _transform_warp_impl3d(
     src: Tensor,
     dst_pix_trans_src_pix: Tensor,
-    dsize_src: Tuple[int, int, int],
-    dsize_dst: Tuple[int, int, int],
+    dsize_src: tuple[int, int, int],
+    dsize_dst: tuple[int, int, int],
     grid_mode: str,
     padding_mode: str,
     align_corners: bool,
@@ -1303,7 +1303,7 @@ def _transform_warp_impl3d(
 def homography_warp3d(
     patch_src: Tensor,
     src_homo_dst: Tensor,
-    dsize: Tuple[int, int, int],
+    dsize: tuple[int, int, int],
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
     align_corners: bool = False,

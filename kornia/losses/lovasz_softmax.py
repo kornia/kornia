@@ -1,4 +1,4 @@
-from typing import List
+from __future__ import annotations
 
 import torch
 import torch.nn as nn
@@ -77,7 +77,7 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor) -> Tensor:
     pred_soft: Tensor = pred_flatten.softmax(1)
 
     # compute actual loss
-    losses: List[Tensor] = []
+    losses: list[Tensor] = []
     batch_index: Tensor = torch.arange(B, device=pred.device).reshape(-1, 1).repeat(1, N).reshape(-1)
     for c in range(C):
         foreground: Tensor = 1.0 * (target_flatten == c)

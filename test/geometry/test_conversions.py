@@ -1714,12 +1714,12 @@ class TestEulerFromQuaternion(BaseTester):
     def test_module(self, device, dtype):
         pass
 
-    def test_jit(self, device, dtype):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         q = Quaternion.random(batch_size=1)
         q = q.to(device, dtype)
         op = euler_from_quaternion
-        op_jit = torch.jit.script(op)
-        assert_close(op(q.w, q.x, q.y, q.z), op_jit(q.w, q.x, q.y, q.z))
+        op_optimized = torch_optimizer(op)
+        assert_close(op(q.w, q.x, q.y, q.z), op_optimized(q.w, q.x, q.y, q.z))
 
     def test_forth_and_back(self, device, dtype):
         q = Quaternion.random(batch_size=2)
