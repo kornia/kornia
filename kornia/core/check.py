@@ -118,11 +118,11 @@ def KORNIA_CHECK_TYPE(x: object, typ: T, msg: str | None = None) -> TypeGuard[T]
         >>> KORNIA_CHECK_TYPE("foo", str, "Invalid string")
         True
     """
+    # TODO: Move to use typeguard here dropping support for JIT
     if not isinstance(x, typ):
         raise TypeError(f"Invalid type: {type(x)}.\n{msg}")
 
     return True
-
 
 def KORNIA_CHECK_IS_TENSOR(x: object, msg: str | None = None) -> TypeGuard[Tensor]:
     """Check the input variable is a Tensor.
@@ -139,6 +139,7 @@ def KORNIA_CHECK_IS_TENSOR(x: object, msg: str | None = None) -> TypeGuard[Tenso
         >>> KORNIA_CHECK_IS_TENSOR(x, "Invalid tensor")
         True
     """
+    # TODO: Move to use typeguard here dropping support for JIT
     if not isinstance(x, Tensor):
         raise TypeError(f"Not a Tensor type. Got: {type(x)}.\n{msg}")
 
@@ -225,7 +226,6 @@ def KORNIA_CHECK_SAME_SHAPE(x: Tensor, y: Tensor) -> bool:
         raise TypeError(f"Not same shape for tensors. Got: {x.shape} and {y.shape}")
 
     return True
-
 
 def KORNIA_CHECK_IS_COLOR(x: Tensor, msg: str | None = None) -> bool:
     """Check whether an image tensor is a color images.

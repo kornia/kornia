@@ -126,7 +126,7 @@ class EdgeAwareBlurPool2D(Module):
         )
 
 
-def blur_pool2d(input: Tensor, kernel_size: tuple[int, int] | int, stride: int = 2):
+def blur_pool2d(input: Tensor, kernel_size: tuple[int, int] | int, stride: int = 2) -> Tensor:
     r"""Compute blurs and downsample a given feature map.
 
     .. image:: _static/img/blur_pool2d.png
@@ -221,7 +221,9 @@ def _blur_pool_by_kernel2d(input: Tensor, kernel: Tensor, stride: int) -> Tensor
     return F.conv2d(input, kernel, padding=padding, stride=stride, groups=input.shape[1])
 
 
-def _max_blur_pool_by_kernel2d(input: Tensor, kernel: Tensor, stride: int, max_pool_size: int, ceil_mode: bool):
+def _max_blur_pool_by_kernel2d(
+    input: Tensor, kernel: Tensor, stride: int, max_pool_size: int, ceil_mode: bool
+) -> Tensor:
     """Compute max_blur_pool by a given :math:`CxC_(out, None)xNxN` kernel."""
     KORNIA_CHECK(
         len(kernel.shape) == 4 and kernel.shape[-2] == kernel.shape[-1],

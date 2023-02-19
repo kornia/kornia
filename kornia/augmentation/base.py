@@ -23,7 +23,7 @@ TensorWithTransformMat = Union[Tensor, Tuple[Tensor, Tensor]]
 # forward as a value, rather than a function.  See also
 # https://github.com/python/mypy/issues/8795
 # Based on the trick that torch.nn.Module does for the forward method
-def _apply_transform_unimplemented(self, *input: Any) -> Tensor:
+def _apply_transform_unimplemented(self: Module, *input: Any) -> Tensor:
     r"""Defines the computation performed at every call.
 
     Should be overridden by all subclasses.
@@ -149,7 +149,7 @@ class _BasicAugmentationBase(Module):
         return batch_prob
 
     def _process_kwargs_to_params_and_flags(
-        self, params: Optional[Dict[str, Tensor]] = None, flags: Optional[Dict[str, Any]] = None, **kwargs
+        self, params: Optional[Dict[str, Tensor]] = None, flags: Optional[Dict[str, Any]] = None, **kwargs: Any
     ) -> Tuple[Dict[str, Tensor], Dict[str, Any]]:
         # NOTE: determine how to save self._params
         save_kwargs = kwargs["save_kwargs"] if "save_kwargs" in kwargs else False
@@ -167,7 +167,7 @@ class _BasicAugmentationBase(Module):
         flags = override_parameters(flags, kwargs, in_place=False)
         return params, flags
 
-    def forward_parameters(self, batch_shape) -> Dict[str, Tensor]:
+    def forward_parameters(self, batch_shape: torch.Size) -> Dict[str, Tensor]:
         batch_prob = self.__batch_prob_generator__(batch_shape, self.p, self.p_batch, self.same_on_batch)
         to_apply = batch_prob > 0.5
         _params = self.generate_parameters(torch.Size((int(to_apply.sum().item()), *batch_shape[1:])))
@@ -183,7 +183,7 @@ class _BasicAugmentationBase(Module):
     def apply_func(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return self.apply_transform(input, params, flags)
 
-    def forward(self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs) -> Tensor:
+    def forward(self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs: Any) -> Tensor:
         """Perform forward operations.
 
         Args:
@@ -247,7 +247,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         params: Dict[str, Tensor],
         flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> Tensor:
         self.validate_tensor(input)
 
@@ -285,7 +285,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         params: Dict[str, Tensor],
         flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> Tensor:
         self.validate_tensor(input)
 
@@ -316,7 +316,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         params: Dict[str, Tensor],
         flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> Boxes:
         if not isinstance(input, Boxes):
             raise RuntimeError(f"Only `Boxes` is supported. Got {type(input)}.")
@@ -350,7 +350,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         params: Dict[str, Tensor],
         flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> Keypoints:
         if not isinstance(input, Keypoints):
             raise RuntimeError(f"Only `Keypoints` is supported. Got {type(input)}.")
@@ -382,7 +382,7 @@ class _AugmentationBase(_BasicAugmentationBase):
         params: Dict[str, Tensor],
         flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> Tensor:
         params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, flags, **kwargs

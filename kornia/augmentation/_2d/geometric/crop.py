@@ -242,7 +242,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         params: Dict[str, Tensor],
         flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> Tensor:
         if flags["cropping_mode"] != "resample":
             raise NotImplementedError(
@@ -261,7 +261,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         params: Dict[str, Tensor],
         flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> Boxes:
         if flags["cropping_mode"] != "resample":
             raise NotImplementedError(
@@ -279,7 +279,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         params: Dict[str, Tensor],
         flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> Keypoints:
         if flags["cropping_mode"] != "resample":
             raise NotImplementedError(
@@ -292,12 +292,14 @@ class RandomCrop(GeometricAugmentationBase2D):
         return output.unpad(params["padding_size"].to(device=input.device))
 
     # Override parameters for precrop
-    def forward_parameters(self, batch_shape) -> Dict[str, Tensor]:
+    def forward_parameters(self, batch_shape: torch.Size) -> Dict[str, Tensor]:
         input_pad = self.compute_padding(batch_shape)
-        batch_shape_new = (
-            *batch_shape[:2],
-            batch_shape[2] + input_pad[2] + input_pad[3],  # original height + top + bottom padding
-            batch_shape[3] + input_pad[0] + input_pad[1],  # original width + left + right padding
+        batch_shape_new = torch.Size(
+            (
+                *batch_shape[:2],
+                batch_shape[2] + input_pad[2] + input_pad[3],  # original height + top + bottom padding
+                batch_shape[3] + input_pad[0] + input_pad[1],  # original width + left + right padding
+            )
         )
         padding_size = tensor(tuple(input_pad), dtype=torch.long).expand(batch_shape[0], -1)
         _params = super().forward_parameters(batch_shape_new)

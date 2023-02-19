@@ -216,12 +216,12 @@ class Boxes:
         self._data = boxes
         self._mode = mode
 
-    def __getitem__(self, key) -> Boxes:
+    def __getitem__(self, key: Union[slice, int, Tensor]) -> Boxes:
         new_box = type(self)(self._data[key], False)
         new_box._mode = self._mode
         return new_box
 
-    def __setitem__(self, key, value: Boxes) -> Boxes:
+    def __setitem__(self, key: Union[slice, int, Tensor], value: Boxes) -> Boxes:
         self._data[key] = value._data
         return self
 
@@ -733,12 +733,12 @@ class Boxes3D:
         self._data = boxes
         self._mode = mode
 
-    def __getitem__(self, key) -> Boxes3D:
+    def __getitem__(self, key: Union[slice, int, Tensor]) -> Boxes3D:
         new_box = Boxes3D(self._data[key], False, mode="xyzxyz_plus")
         new_box._mode = self._mode
         return new_box
 
-    def __setitem__(self, key, value: Boxes3D) -> Boxes3D:
+    def __setitem__(self, key: Union[slice, int, Tensor], value: Boxes3D) -> Boxes3D:
         self._data[key] = value._data
         return self
 

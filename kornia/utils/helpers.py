@@ -44,10 +44,12 @@ def map_location_to_cpu(storage: Union[str, Tensor], *args: Any, **kwargs: Any) 
     return storage
 
 
-def deprecated(replace_with: Optional[str] = None, version: Optional[str] = None, extra_reason: Optional[str] = None):
-    def _deprecated(func: Callable[..., Any]):
+def deprecated(
+    replace_with: Optional[str] = None, version: Optional[str] = None, extra_reason: Optional[str] = None
+) -> Any:
+    def _deprecated(func: Callable[..., Any]) -> Any:
         @wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
             name = ""
             beginning = f'Since kornia {version} the ' if version is not None else ''
 

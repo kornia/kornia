@@ -7,7 +7,7 @@ from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.filters import gaussian_blur2d, spatial_gradient
 
 
-def _get_kernel_size(sigma: float):
+def _get_kernel_size(sigma: Union[float, int]) -> int:
     ksize = int(2.0 * 4.0 * sigma + 1.0)
 
     #  matches OpenCV, but may cause padding problem for small images

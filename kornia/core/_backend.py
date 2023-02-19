@@ -30,5 +30,5 @@ as_tensor = torch.as_tensor
 rand = torch.rand
 
 # type alias
-Device = Union[str, device]
+Device = Union[str, device, None]
 Dtype = Union[torch.dtype, None]
