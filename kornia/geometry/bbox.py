@@ -3,6 +3,8 @@ from typing import Optional, Tuple
 
 import torch
 
+from kornia.core import Tensor
+
 from .linalg import transform_points
 
 __all__ = [
@@ -19,8 +21,7 @@ __all__ = [
 ]
 
 
-@torch.jit.ignore
-def validate_bbox(boxes: torch.Tensor) -> bool:
+def validate_bbox(boxes: Tensor) -> bool:
     """Validate if a 2D bounding box usable or not. This function checks if the boxes are rectangular or not.
 
     Args:
@@ -49,8 +50,7 @@ def validate_bbox(boxes: torch.Tensor) -> bool:
     return True
 
 
-@torch.jit.ignore
-def validate_bbox3d(boxes: torch.Tensor) -> bool:
+def validate_bbox3d(boxes: Tensor) -> bool:
     """Validate if a 3D bounding box usable or not. This function checks if the boxes are cube or not.
 
     Args:
@@ -84,7 +84,7 @@ def validate_bbox3d(boxes: torch.Tensor) -> bool:
     return True
 
 
-def infer_bbox_shape(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+def infer_bbox_shape(boxes: Tensor) -> Tuple[Tensor, Tensor]:
     r"""Auto-infer the output sizes for the given 2D bounding boxes.
 
     Args:
@@ -112,12 +112,12 @@ def infer_bbox_shape(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         (tensor([2., 2.]), tensor([2., 3.]))
     """
     validate_bbox(boxes)
-    width: torch.Tensor = boxes[:, 1, 0] - boxes[:, 0, 0] + 1
-    height: torch.Tensor = boxes[:, 2, 1] - boxes[:, 0, 1] + 1
+    width: Tensor = boxes[:, 1, 0] - boxes[:, 0, 0] + 1
+    height: Tensor = boxes[:, 2, 1] - boxes[:, 0, 1] + 1
     return height, width
 
 
-def infer_bbox_shape3d(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def infer_bbox_shape3d(boxes: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
     r"""Auto-infer the output sizes for the given 3D bounding boxes.
 
     Args:
@@ -165,7 +165,7 @@ def infer_bbox_shape3d(boxes: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor,
     return depths, heights, widths
 
 
-def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
+def bbox_to_mask(boxes: Tensor, width: int, height: int) -> Tensor:
     """Convert 2D bounding boxes to masks. Covered area is 1. and the remaining is 0.
 
     Args:
@@ -207,7 +207,7 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
     return mask[:, 1:-1, 1:-1]
 
 
-def bbox_to_mask3d(boxes: torch.Tensor, size: Tuple[int, int, int]) -> torch.Tensor:
+def bbox_to_mask3d(boxes: Tensor, size: Tuple[int, int, int]) -> Tensor:
     """Convert 3D bounding boxes to masks. Covered area is 1. and the remaining is 0.
 
     Args:
@@ -287,9 +287,7 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: Tuple[int, int, int]) -> torch.Ten
     return torch.stack(mask_out, dim=0).float()
 
 
-def bbox_generator(
-    x_start: torch.Tensor, y_start: torch.Tensor, width: torch.Tensor, height: torch.Tensor
-) -> torch.Tensor:
+def bbox_generator(x_start: Tensor, y_start: Tensor, width: Tensor, height: Tensor) -> Tensor:
     """Generate 2D bounding boxes according to the provided start coords, width and height.
 
     Args:
@@ -350,13 +348,8 @@ def bbox_generator(
 
 
 def bbox_generator3d(
-    x_start: torch.Tensor,
-    y_start: torch.Tensor,
-    z_start: torch.Tensor,
-    width: torch.Tensor,
-    height: torch.Tensor,
-    depth: torch.Tensor,
-) -> torch.Tensor:
+    x_start: Tensor, y_start: Tensor, z_start: Tensor, width: Tensor, height: Tensor, depth: Tensor
+) -> Tensor:
     """Generate 3D bounding boxes according to the provided start coords, width, height and depth.
 
     Args:
@@ -440,8 +433,8 @@ def bbox_generator3d(
 
 
 def transform_bbox(
-    trans_mat: torch.Tensor, boxes: torch.Tensor, mode: str = "xyxy", restore_coordinates: Optional[bool] = None
-) -> torch.Tensor:
+    trans_mat: Tensor, boxes: Tensor, mode: str = "xyxy", restore_coordinates: Optional[bool] = None
+) -> Tensor:
     r"""Apply a transformation matrix to a box or batch of boxes.
 
     Args:
@@ -479,7 +472,7 @@ def transform_bbox(
         boxes[..., 2] = boxes[..., 0] + boxes[..., 2]  # x + w
         boxes[..., 3] = boxes[..., 1] + boxes[..., 3]  # y + h
 
-    transformed_boxes: torch.Tensor = transform_points(trans_mat, boxes.view(boxes.shape[0], -1, 2))
+    transformed_boxes: Tensor = transform_points(trans_mat, boxes.view(boxes.shape[0], -1, 2))
     transformed_boxes = transformed_boxes.view_as(boxes)
 
     if (restore_coordinates is None or restore_coordinates) and not (boxes.shape[-2:] == torch.Size([4, 2])):
@@ -498,7 +491,7 @@ def transform_bbox(
     return transformed_boxes
 
 
-def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torch.Tensor:
+def nms(boxes: Tensor, scores: Tensor, iou_threshold: float) -> Tensor:
     """Perform non-maxima suppression (NMS) on a given tensor of bounding boxes according to the intersection-over-
     union (IoU).
 
