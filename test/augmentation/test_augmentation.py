@@ -3398,6 +3398,24 @@ class TestRandomGaussianBlur(BaseTester):
         img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
         self.assert_close(op(img, *func_params), op_module(img))
 
+    def test_module_kernel_int(self, device, dtype):
+        func_params = [3, torch.tensor([1.5, 1.5]).view(1, -1)]
+        params = [3, (1.5, 1.5)]
+        op = kornia.filters.gaussian_blur2d
+        op_module = RandomGaussianBlur(*params)
+
+        img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
+        self.assert_close(op(img, *func_params), op_module(img))
+
+    def test_module_sigma_tensor(self, device, dtype):
+        func_params = [(3, 3), torch.tensor([1.5, 1.5]).view(1, -1)]
+        params = [(3, 3), torch.tensor((1.5, 1.5))]
+        op = kornia.filters.gaussian_blur2d
+        op_module = RandomGaussianBlur(*params)
+
+        img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
+        self.assert_close(op(img, *func_params), op_module(img))
+
     @pytest.mark.skip(reason="not implemented yet")
     def test_exception(self, device, dtype):
         pass
