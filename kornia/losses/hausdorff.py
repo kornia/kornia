@@ -5,10 +5,10 @@ from typing import Callable
 import torch
 import torch.nn as nn
 
-from kornia.core import Tensor, as_tensor, stack, tensor, where, zeros_like
+from kornia.core import Module, Tensor, as_tensor, stack, tensor, where, zeros_like
 
 
-class _HausdorffERLossBase(torch.jit.ScriptModule):
+class _HausdorffERLossBase(Module):
     """Base class for binary Hausdorff loss based on morphological erosion.
 
     This is an Hausdorff Distance (HD) Loss that based on morphological erosion,which provided
