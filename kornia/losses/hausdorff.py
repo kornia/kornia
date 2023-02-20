@@ -49,8 +49,7 @@ class _HausdorffERLossBase(Module):
         mask = torch.ones_like(bound, device=pred.device, dtype=torch.bool)
 
         # Same padding, assuming kernel is odd and square (cube) shaped.
-        # NOTE: int() has to be added for enabling JIT.
-        padding = int((kernel.size(-1) - 1) // 2)
+        padding = (kernel.size(-1) - 1) // 2
         for k in range(self.k):
             # compute convolution with kernel
             dilation = self.conv(bound, weight=kernel, padding=padding, groups=1)
@@ -77,8 +76,7 @@ class _HausdorffERLossBase(Module):
 
         return eroded
 
-    # NOTE: we add type ignore because the forward pass does not work well with subclassing
-    def forward(self, pred: Tensor, target: Tensor) -> Tensor:  # type: ignore[override]
+    def forward(self, pred: Tensor, target: Tensor) -> Tensor:
         """Compute Hausdorff loss.
 
         Args:
@@ -169,8 +167,7 @@ class HausdorffERLoss(_HausdorffERLossBase):
         kernel = cross * 0.2
         return kernel[None]
 
-    # NOTE: we add type ignore because the forward pass does not work well with subclassing
-    def forward(self, pred: Tensor, target: Tensor) -> Tensor:  # type: ignore[override]
+    def forward(self, pred: Tensor, target: Tensor) -> Tensor:
         """Compute Hausdorff loss.
 
         Args:
@@ -240,8 +237,7 @@ class HausdorffERLoss3D(_HausdorffERLossBase):
         kernel = stack([bound, cross, bound], 1) * (1 / 7)
         return kernel[None]
 
-    # NOTE: we add type ignore because the forward pass does not work well with subclassing
-    def forward(self, pred: Tensor, target: Tensor) -> Tensor:  # type: ignore[override]
+    def forward(self, pred: Tensor, target: Tensor) -> Tensor:
         """Compute 3D Hausdorff loss.
 
         Args:
