@@ -116,6 +116,7 @@ def KORNIA_CHECK_TYPE(x: object, typ: T, msg: str | None = None) -> TypeGuard[T]
 
     Example:
         >>> KORNIA_CHECK_TYPE("foo", str, "Invalid string")
+        True
     """
     if not isinstance(x, typ):
         raise TypeError(f"Invalid type: {type(x)}.\n{msg}")
@@ -136,6 +137,7 @@ def KORNIA_CHECK_IS_TENSOR(x: object, msg: str | None = None) -> TypeGuard[Tenso
     Example:
         >>> x = torch.rand(2, 3, 3)
         >>> KORNIA_CHECK_IS_TENSOR(x, "Invalid tensor")
+        True
     """
     if not isinstance(x, Tensor):
         raise TypeError(f"Not a Tensor type. Got: {type(x)}.\n{msg}")
@@ -217,6 +219,7 @@ def KORNIA_CHECK_SAME_SHAPE(x: Tensor, y: Tensor) -> bool:
         >>> x1 = torch.rand(2, 3, 3)
         >>> x2 = torch.rand(2, 3, 3)
         >>> KORNIA_CHECK_SAME_SHAPE(x1, x2)
+        True
     """
     if x.shape != y.shape:
         raise TypeError(f"Not same shape for tensors. Got: {x.shape} and {y.shape}")
@@ -237,6 +240,7 @@ def KORNIA_CHECK_IS_COLOR(x: Tensor, msg: str | None = None) -> bool:
     Example:
         >>> img = torch.rand(2, 3, 4, 4)
         >>> KORNIA_CHECK_IS_COLOR(img, "Image is not color")
+        True
     """
     if len(x.shape) < 3 or x.shape[-3] != 3:
         raise TypeError(f"Not a color tensor. Got: {type(x)}.\n{msg}")
@@ -256,6 +260,7 @@ def KORNIA_CHECK_IS_GRAY(x: Tensor, msg: str | None = None) -> bool:
     Example:
         >>> img = torch.rand(2, 1, 4, 4)
         >>> KORNIA_CHECK_IS_GRAY(img, "Image is not grayscale")
+        True
     """
     if len(x.shape) < 2 or (len(x.shape) >= 3 and x.shape[-3] != 1):
         raise TypeError(f"Not a gray tensor. Got: {type(x)}.\n{msg}")
@@ -274,7 +279,8 @@ def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: Tensor, msg: str | None = None) -> bool:
 
     Example:
         >>> img = torch.rand(2, 3, 4, 4)
-        >>> KORNIA_CHECK_IS_COLOR_OR_GRAY(img, "Image is not color or grayscale")
+        >>> KORNIA_CHECK_IS_COLOR_OR_GRAY(img, "Image is not color orgrayscale")
+        True
     """
     if len(x.shape) < 3 or x.shape[-3] not in [1, 3]:
         raise TypeError(f"Not a color or gray tensor. Got: {type(x)}.\n{msg}")
@@ -297,6 +303,7 @@ def KORNIA_CHECK_DM_DESC(desc1: Tensor, desc2: Tensor, dm: Tensor) -> bool:
         >>> desc2 = torch.rand(8)
         >>> dm = torch.rand(4, 8)
         >>> KORNIA_CHECK_DM_DESC(desc1, desc2, dm)
+        True
     """
     if not ((dm.size(0) == desc1.size(0)) and (dm.size(1) == desc2.size(0))):
         raise TypeError(
