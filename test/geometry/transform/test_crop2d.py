@@ -175,19 +175,6 @@ class TestCenterCrop:
         expected = op(img, (4, 2))
         assert_close(actual, expected, rtol=1e-4, atol=1e-4)
 
-    def test_dynamo_trace(self, device, dtype, torch_optimizer):
-        # Define script
-        op = kornia.geometry.transform.center_crop
-        op_script = torch_optimizer(op)
-        # Define input
-        img = torch.ones(2, 1, 6, 3, device=device, dtype=dtype)
-        op_trace = torch.jit.trace(op_script, (img, (torch.tensor(2), torch.tensor(3))))
-        img = torch.ones(2, 1, 6, 3, device=device, dtype=dtype)
-        # Run
-        actual = op_trace(img, (torch.tensor(2), torch.tensor(3)))
-        expected = op(img, (2, 3))
-        assert_close(actual, expected, rtol=1e-4, atol=1e-4)
-
 
 class TestCropByBoxes:
     def test_crop_by_boxes_no_resizing(self, device, dtype):

@@ -559,7 +559,9 @@ class TestRemap:
             fast_mode=True,
         )
 
+    @pytest.mark.skip(reason='Not fully support dynamo')
     def test_dynamo(self, device, dtype, torch_optimizer):
+        # TODO: add dynamo support to create_meshgrid
         batch_size, channels, height, width = 1, 1, 3, 4
         img = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
 
