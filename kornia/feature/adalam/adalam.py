@@ -2,7 +2,7 @@
 # https://github.com/cavalli1234/AdaLAM
 # Copyright (c) 2020, Luca Cavalli
 
-from typing import TYPE_CHECKING, Any, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import torch
 
@@ -12,9 +12,6 @@ from kornia.feature.laf import get_laf_center, get_laf_orientation, get_laf_scal
 
 from .core import AdalamConfig, _no_match, adalam_core
 from .utils import dist_matrix
-
-if TYPE_CHECKING:
-    import numpy.typing as npt
 
 
 def get_adalam_default_config() -> AdalamConfig:
@@ -180,16 +177,16 @@ class AdalamFilter:
 
     def match_and_filter(
         self,
-        k1: Union[Tensor, 'npt.NDArray[Any]'],
-        k2: Union[Tensor, 'npt.NDArray[Any]'],
-        d1: Union[Tensor, 'npt.NDArray[Any]'],
-        d2: Union[Tensor, 'npt.NDArray[Any]'],
+        k1: Tensor,
+        k2: Tensor,
+        d1: Tensor,
+        d2: Tensor,
         im1shape: Optional[Tuple[int, int]] = None,
         im2shape: Optional[Tuple[int, int]] = None,
-        o1: Optional[Union[Tensor, 'npt.NDArray[Any]']] = None,
-        o2: Optional[Union[Tensor, 'npt.NDArray[Any]']] = None,
-        s1: Optional[Union[Tensor, 'npt.NDArray[Any]']] = None,
-        s2: Optional[Union[Tensor, 'npt.NDArray[Any]']] = None,
+        o1: Optional[Tensor] = None,
+        o2: Optional[Tensor] = None,
+        s1: Optional[Tensor] = None,
+        s2: Optional[Tensor] = None,
         return_dist: bool = False,
     ) -> Union[Tuple[Tensor, Tensor], Tensor]:
         """Standard matching and filtering with AdaLAM. This function:

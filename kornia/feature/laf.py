@@ -1,5 +1,5 @@
 import math
-from typing import TYPE_CHECKING, Any, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
@@ -9,9 +9,6 @@ from kornia.core.check import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 from kornia.geometry.conversions import angle_to_rotation_matrix, convert_points_from_homogeneous, rad2deg
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.transform import pyrdown
-
-if TYPE_CHECKING:
-    import numpy.typing as npt
 
 
 def get_laf_scale(LAF: Tensor) -> Tensor:
@@ -279,7 +276,7 @@ def laf_to_boundary_points(LAF: Tensor, n_pts: int = 50) -> Tensor:
     return convert_points_from_homogeneous(pts_h.view(B, N, n_pts, 3))
 
 
-def get_laf_pts_to_draw(LAF: Tensor, img_idx: int = 0) -> Tuple['npt.NDArray[Any]', 'npt.NDArray[Any]']:
+def get_laf_pts_to_draw(LAF: Tensor, img_idx: int = 0) -> Tuple[List[int], List[int]]:
     """Return numpy array for drawing LAFs (local features).
 
     Args:
@@ -304,7 +301,7 @@ def get_laf_pts_to_draw(LAF: Tensor, img_idx: int = 0) -> Tuple['npt.NDArray[Any
     KORNIA_CHECK_LAF(LAF)
     pts = laf_to_boundary_points(LAF[img_idx : img_idx + 1])[0]
     pts_np = pts.detach().permute(1, 0, 2).cpu().numpy()
-    return (pts_np[..., 0], pts_np[..., 1])
+    return (pts_np[..., 0].tolist(), pts_np[..., 1].tolist())
 
 
 def denormalize_laf(LAF: Tensor, images: Tensor) -> Tensor:
