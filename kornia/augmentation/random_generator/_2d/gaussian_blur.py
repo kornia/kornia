@@ -42,7 +42,7 @@ class RandomGaussianBlurGenerator(RandomGeneratorBase):
         if not isinstance(self.sigma, (torch.Tensor)):
             sigma = torch.tensor(self.sigma, device=device, dtype=dtype)
         else:
-            sigma = sigma.to(device=device, dtype=dtype)
+            sigma = self.sigma.to(device=device, dtype=dtype)
 
         _joint_range_check(sigma, "sigma", (0, float('inf')))
 
