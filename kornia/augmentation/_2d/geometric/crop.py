@@ -100,7 +100,7 @@ class RandomCrop(GeometricAugmentationBase2D):
             cropping_mode=cropping_mode,
         )
 
-    def compute_padding(self, shape: torch.Size, flags: Optional[Dict[str, Any]] = None) -> List[int]:
+    def compute_padding(self, shape: Tuple[int, ...], flags: Optional[Dict[str, Any]] = None) -> List[int]:
         flags = self.flags if flags is None else flags
         if len(shape) != 4:
             raise AssertionError(f"Expected BCHW. Got {shape}.")
@@ -292,7 +292,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         return output.unpad(params["padding_size"].to(device=input.device))
 
     # Override parameters for precrop
-    def forward_parameters(self, batch_shape: torch.Size) -> Dict[str, Tensor]:
+    def forward_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, Tensor]:
         input_pad = self.compute_padding(batch_shape)
         batch_shape_new = torch.Size(
             (

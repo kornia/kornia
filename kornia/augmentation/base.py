@@ -99,7 +99,7 @@ class _BasicAugmentationBase(Module):
         """Standardize output tensors."""
         return _transform_output_shape(output, output_shape) if self.keepdim else output
 
-    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, Tensor]:
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, Tensor]:
         if self._param_generator is not None:
             return self._param_generator(batch_shape, self.same_on_batch)
         return {}
@@ -116,7 +116,7 @@ class _BasicAugmentationBase(Module):
             self._param_generator.set_rng_device_and_dtype(device, dtype)
 
     def __batch_prob_generator__(
-        self, batch_shape: torch.Size, p: float, p_batch: float, same_on_batch: bool
+        self, batch_shape: Tuple[int, ...], p: float, p_batch: float, same_on_batch: bool
     ) -> Tensor:
         batch_prob: Tensor
         if p_batch == 1:
@@ -167,7 +167,7 @@ class _BasicAugmentationBase(Module):
         flags = override_parameters(flags, kwargs, in_place=False)
         return params, flags
 
-    def forward_parameters(self, batch_shape: torch.Size) -> Dict[str, Tensor]:
+    def forward_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, Tensor]:
         batch_prob = self.__batch_prob_generator__(batch_shape, self.p, self.p_batch, self.same_on_batch)
         to_apply = batch_prob > 0.5
         _params = self.generate_parameters(torch.Size((int(to_apply.sum().item()), *batch_shape[1:])))

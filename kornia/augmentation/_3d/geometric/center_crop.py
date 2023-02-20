@@ -1,10 +1,9 @@
 from typing import Any, Dict, Optional, Tuple, Union, cast
 
-from torch import Size, Tensor
-
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 from kornia.constants import Resample
+from kornia.core import Tensor
 from kornia.geometry import crop_by_transform_mat3d, get_perspective_transform3d
 
 
@@ -78,7 +77,7 @@ class CenterCrop3D(GeometricAugmentationBase3D):
             raise Exception(f"Invalid size type. Expected (int, tuple(int, int int). Got: {size}.")
         self.flags = dict(align_corners=align_corners, resample=Resample.get(resample))
 
-    def generate_parameters(self, batch_shape: Size) -> Dict[str, Tensor]:
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, Tensor]:
         return rg.center_crop_generator3d(
             batch_shape[0], batch_shape[-3], batch_shape[-2], batch_shape[-1], self.size, device=self.device
         )
