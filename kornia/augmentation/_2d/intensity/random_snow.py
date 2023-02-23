@@ -8,12 +8,26 @@ from kornia.core import Tensor
 class RandomSnow(IntensityAugmentationBase2D):
     r"""Generates snow effect on given tensor image or a batch tensor images.
 
-    .. image:: _static/ing/RandomSnow.png
-
     Args:
+        snow_coefficient (float): A float between 0 and 1 that controls the amount of snow to add to the
+        image, the larger value corresponds to the more snow.
+        brightness (float): A float greater than 1 that controls the brightness of the snow.
+        same_on_batch (bool): If True, apply the same transformation to each image in a batch. Default: False.
+        p (float): Probability of applying the transformation. Default: 0.5.
+        keepdim (bool): Keep the output tensor with the same shape as input. Default: False.
 
+    Returns:
+        torch.Tensor: The snowed image with shape (C, H, W).
 
     Examples:
+        >>> import torch
+        >>> import kornia
+        >>> rng = torch.manual_seed(0)
+        >>> inputs = torch.rand(2, 3, 4, 4)
+        >>> snow = kornia.augmentation.RandomSnow(p=1.0, snow_coefficient=0.2, brightness=2.0)
+        >>> output = snow(inputs)
+        >>> output.shape
+        torch.Size([2, 3, 4, 4])
     """
 
     def __init__(
