@@ -1119,7 +1119,7 @@ def test_rad2deg(batch_shape, device, dtype):
 
 
 @pytest.mark.parametrize("batch_size", [4])
-def test_rad2deg_gradcheck(self, batch_size, device, dtype):
+def test_rad2deg_gradcheck(batch_size, device, dtype):
     x_rad = torch.rand(batch_shape, device=device, dtype=dtype)
     # evaluate function gradient
     assert gradcheck(
@@ -1140,7 +1140,7 @@ def test_deg2rad(batch_shape, device, dtype, atol, rtol):
 
 
 @pytest.mark.parametrize("batch_size", [4])
-def test_deg2rad_gradcheck(self, batch_size, device, dtype):
+def test_deg2rad_gradcheck(batch_size, device, dtype):
     x_deg = 180.0 * torch.rand(batch_shape, device=device, dtype=dtype)
     assert gradcheck(
         kornia.geometry.conversions.deg2rad, (tensor_to_gradcheck_var(x_deg),), raise_exception=True, fast_mode=True
