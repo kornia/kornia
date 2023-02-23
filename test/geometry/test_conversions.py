@@ -1166,8 +1166,8 @@ class TestPolCartConversions:
         assert_close(rho, rho_pol2cart)
         assert_close(phi, phi_pol2cart)
 
-    @pytest.mark.parametrize("batch_size", [4])
-    def test_gradcheck(self, batch_size, device, dtype):
+    @pytest.mark.parametrize("batch_shape", [(2, 3)])
+    def test_gradcheck(self, batch_shape, device, dtype):
         rho = torch.rand(batch_shape, dtype=dtype, device=device)
         phi = kornia.constants.pi * torch.rand(batch_shape, dtype=dtype, device=device)
         assert gradcheck(
