@@ -1057,6 +1057,13 @@ class TestRotationMatrixToAngleAxis:
         # This didn't pass with atol=0.001, rtol=0.001 for float16 Cuda 11.2 GeForce 1080 Ti
         assert_close(rotation_matrix_eye, eye_batch, atol=atol * 10.0, rtol=rtol * 10.0)
 
+    @pytest.mark.parametrize("batch_size", [4])
+    def test_gradcheck(self, batch_size, device, dtype):
+        quaternion = torch.rand(batch_size, 4, device=device, dtype=dtype)
+        quaternion = kornia.geometry.conversions.normalize_quaternion(quaternion + 1e-6)
+        rotation_matrix = kornia.geometry.conversions.quaternion_to_rotation_matrix(
+            quaternion=quaternion, order=QuaternionCoeffOrder.WXYZ
+        )
         # evaluate function gradient
         rotation_matrix = tensor_to_gradcheck_var(rotation_matrix)  # to var
         assert gradcheck(
@@ -1110,6 +1117,9 @@ def test_rad2deg(batch_shape, device, dtype):
     # compute error
     assert_close(x_rad, x_deg_to_rad)
 
+@pytest.mark.parametrize("batch_size", [4])
+def test_rad2deg_gradcheck(self, batch_size, device, dtype):
+    x_rad = torch.rand(batch_shape, device=device, dtype=dtype)
     # evaluate function gradient
     assert gradcheck(
         kornia.geometry.conversions.rad2deg, (tensor_to_gradcheck_var(x_rad),), raise_exception=True, fast_mode=True
@@ -1127,6 +1137,9 @@ def test_deg2rad(batch_shape, device, dtype, atol, rtol):
 
     assert_close(x_deg, x_rad_to_deg, atol=atol, rtol=rtol)
 
+@pytest.mark.parametrize("batch_size", [4])
+def test_deg2rad_gradcheck(self, batch_size, device, dtype):
+    x_deg = 180.0 * torch.rand(batch_shape, device=device, dtype=dtype)
     assert gradcheck(
         kornia.geometry.conversions.deg2rad, (tensor_to_gradcheck_var(x_deg),), raise_exception=True, fast_mode=True
     )
@@ -1153,8 +1166,18 @@ class TestPolCartConversions:
         assert_close(rho, rho_pol2cart)
         assert_close(phi, phi_pol2cart)
 
+    @pytest.mark.parametrize("batch_size", [4])
+    def test_gradcheck(self, batch_size, device, dtype):
+        rho = torch.rand(batch_shape, dtype=dtype, device=device)
+        phi = kornia.constants.pi * torch.rand(batch_shape, dtype=dtype, device=device)
         assert gradcheck(
             kornia.geometry.conversions.pol2cart,
+            (tensor_to_gradcheck_var(rho), tensor_to_gradcheck_var(phi)),
+            raise_exception=True,
+            fast_mode=True,
+        )
+        assert gradcheck(
+            kornia.geometry.conversions.cart2pol,
             (tensor_to_gradcheck_var(rho), tensor_to_gradcheck_var(phi)),
             raise_exception=True,
             fast_mode=True,
@@ -1175,12 +1198,6 @@ class TestPolCartConversions:
         assert_close(x, x_cart2pol)
         assert_close(y, y_cart2pol)
 
-        assert gradcheck(
-            kornia.geometry.conversions.cart2pol,
-            (tensor_to_gradcheck_var(x), tensor_to_gradcheck_var(y)),
-            raise_exception=True,
-            fast_mode=True,
-        )
 
 
 class TestConvertPointsToHomogeneous:
@@ -1584,6 +1601,11 @@ class TestRt2Extrinsics:
 
         assert_close(R, R2, rtol=1e-4, atol=1e-5)
         assert_close(t, t2, rtol=1e-4, atol=1e-5)
+
+    @pytest.mark.parametrize("batch_size", [5])
+    def test_gradcheck(self, batch_size, device, dtype):
+        R = torch.rand(batch_size, 3, 3, dtype=dtype, device=device)
+        t = torch.rand(batch_size, 3, 1, dtype=dtype, device=device)
         assert gradcheck(
             kornia.geometry.conversions.Rt_to_matrix4x4,
             (tensor_to_gradcheck_var(R), tensor_to_gradcheck_var(t)),
@@ -1622,6 +1644,13 @@ class TestCamtoworldGraphicsToVision:
         R_vis_back, t_vis_back = camtoworld_graphics_to_vision_Rt(R_graf, t_graf)
         assert_close(R_vis_back, R_vis, rtol=1e-4, atol=1e-5)
         assert_close(t_vis_back, t_vis, rtol=1e-4, atol=1e-5)
+
+    @pytest.mark.parametrize("batch_size", [4])
+    def test_gradcheck(self, batch_size, device, dtype):
+        t_vis = torch.tensor([2, 3, 4], device=device, dtype=dtype).view(1, 3, 1).repeat(batch_size, 1, 1)
+        angles = torch.tensor([0, kornia.pi / 2.0, 0.0], device=device, dtype=dtype)[None]
+        R_vis = kornia.geometry.angle_axis_to_rotation_matrix(angles).repeat(batch_size, 1, 1)
+        K_vis = Rt_to_matrix4x4(R_vis, t_vis)
         assert gradcheck(
             camtoworld_graphics_to_vision_4x4, (tensor_to_gradcheck_var(K_vis)), raise_exception=True, fast_mode=True
         )
@@ -1651,6 +1680,12 @@ class TestCamtoworldRtToPoseRt:
         assert_close(Rback, R, rtol=1e-4, atol=1e-5)
         assert_close(tback, t, rtol=1e-4, atol=1e-5)
 
+
+    @pytest.mark.parametrize("batch_size", [4])
+    def test_gradcheck(self, batch_size, device, dtype):
+        t = torch.tensor([2, 3, 4], device=device, dtype=dtype).view(1, 3, 1).repeat(batch_size, 1, 1)
+        angles = torch.tensor([0, kornia.pi / 2.0, 0.0], device=device, dtype=dtype)[None]
+        R = kornia.geometry.angle_axis_to_rotation_matrix(angles).repeat(batch_size, 1, 1)
         assert gradcheck(
             camtoworld_to_worldtocam_Rt,
             (tensor_to_gradcheck_var(R), tensor_to_gradcheck_var(t)),
