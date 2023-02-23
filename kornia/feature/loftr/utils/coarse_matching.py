@@ -230,7 +230,7 @@ class CoarseMatching(nn.Module):
                     [i_ids, data['spv_i_ids']],
                     [j_ids, data['spv_j_ids']],
                     [mconf, mconf_gt],
-                )
+                ),
             )
 
         # These matches select patches that feed into fine-level network
