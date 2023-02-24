@@ -13,6 +13,11 @@ repos:
       - id: pretty-format-json
         exclude: ^$|.devcontainer
 
+  - repo: https://github.com/tox-dev/pyproject-fmt
+    rev: "0.9.1"
+    hooks:
+      - id: pyproject-fmt
+
   - repo: https://github.com/abravalheri/validate-pyproject
     rev: v0.12.1
     hooks:
