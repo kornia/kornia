@@ -1,7 +1,6 @@
 [build-system]
 build-backend = "setuptools.build_meta"
 requires = [
-  "pytest-runner",
   "setuptools>=61.2",
 ]
 
