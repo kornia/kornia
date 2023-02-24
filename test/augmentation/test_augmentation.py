@@ -44,8 +44,7 @@ from kornia.augmentation import (
     RandomVerticalFlip,
     Resize,
     SmallestMaxSize,
-    RandomSnow,
-    )
+)
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.constants import Resample, pi
 from kornia.geometry import transform_points
@@ -4113,29 +4112,3 @@ class TestRandomAutoContrast:
         input = utils.tensor_to_gradcheck_var(input)  # to var
         # TODO: turned off with p=0
         assert gradcheck(kornia.augmentation.RandomAutoContrast(p=1.0), (input,), raise_exception=True, fast_mode=True)
-
-
-class TestRandomSnow:
-    torch.manual_seed(0)  # for random reproductibility
-
-    def test_smoke_no_transform(self, device, dtype):
-        input_data = torch.rand(1, 3, 8, 9, device=device, dtype=dtype)
-        aug = kornia.augmentation.RandomSnow(p=1.0, snow_coefficient=0.4, brightness=2.0)
-        output_data = aug(input_data)
-        assert output_data.shape == input_data.shape
-   
-    def test_gradcheck(self, device, dtype):
-        input_data = torch.rand(1, 3, 6, 8,device=device, dtype=dtype)
-        grad_input = utils.tensor_to_gradcheck_var(input_data) 
-        assert gradcheck(
-            kornia.augmentation.RandomSnow(p=1.0, snow_coefficient=0.3, brightness=2.1), (grad_input,), raise_exception=True, fast_mode=True
-        )
-
-    def test_exception(self, device, dtype):
-        input_data = torch.rand(1, 3, 5, 7, device=device, dtype=dtype)
-        err_msg = "Snow coefficient must be between 0 and 1."
-        try:
-            aug = kornia.augmentation.RandomSnow(p=1.0, snow_coefficient=-1, brightness=1.5)
-            _ = aug(input_data)
-        except ValueError as e: 
-            assert err_msg == str(e)
