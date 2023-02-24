@@ -32,8 +32,8 @@ class RandomSnow(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        snow_coefficient: int = 0.5,
-        brightness: int = 2.5,
+        snow_coefficient: float = 0.5,
+        brightness: float = 2.5,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
