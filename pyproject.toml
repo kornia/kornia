@@ -73,7 +73,6 @@ docs = [
     "torchvision",
 ]
 x = ["accelerate==0.16.0"]
-testing = ["pytest"]
 
 [tool.setuptools]
 zip-safe = true
