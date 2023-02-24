@@ -164,7 +164,7 @@ def _boxes3d_to_polygons3d(
     return polygons3d
 
 
-# @torch.jit.script
+# @torch.jit.script_if_tracing
 class Boxes:
     r"""2D boxes containing N or BxN boxes.
 
@@ -705,7 +705,7 @@ class VideoBoxes(Boxes):
         return obj
 
 
-@torch.jit.script
+@torch.jit.script_if_tracing
 class Boxes3D:
     r"""3D boxes containing N or BxN boxes.
 
