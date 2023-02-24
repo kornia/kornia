@@ -44,6 +44,7 @@ from kornia.augmentation._2d import (
     RandomSaturation,
     RandomSharpness,
     RandomShear,
+    RandomSnow,
     RandomSolarize,
     RandomThinPlateSpline,
     RandomTranslate,
