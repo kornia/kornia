@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from .cauchy import CauchyLoss, cauchy_loss
 from .charbonnier import CharbonnierLoss, charbonnier_loss
 from .depth_smooth import InverseDepthSmoothnessLoss, inverse_depth_smoothness_loss

@@ -1,12 +1,14 @@
+from __future__ import annotations
+
 from typing import Callable
 
 import torch
 import torch.nn as nn
 
-from kornia.core import Tensor, as_tensor, stack, tensor, where, zeros_like
+from kornia.core import Module, Tensor, as_tensor, stack, tensor, where, zeros_like
 
 
-class _HausdorffERLossBase(torch.jit.ScriptModule):
+class _HausdorffERLossBase(Module):
     """Base class for binary Hausdorff loss based on morphological erosion.
 
     This is an Hausdorff Distance (HD) Loss that based on morphological erosion,which provided
@@ -47,8 +49,7 @@ class _HausdorffERLossBase(torch.jit.ScriptModule):
         mask = torch.ones_like(bound, device=pred.device, dtype=torch.bool)
 
         # Same padding, assuming kernel is odd and square (cube) shaped.
-        # NOTE: int() has to be added for enabling JIT.
-        padding = int((kernel.size(-1) - 1) // 2)
+        padding = (kernel.size(-1) - 1) // 2
         for k in range(self.k):
             # compute convolution with kernel
             dilation = self.conv(bound, weight=kernel, padding=padding, groups=1)
@@ -75,8 +76,7 @@ class _HausdorffERLossBase(torch.jit.ScriptModule):
 
         return eroded
 
-    # NOTE: we add type ignore because the forward pass does not work well with subclassing
-    def forward(self, pred: Tensor, target: Tensor) -> Tensor:  # type: ignore[override]
+    def forward(self, pred: Tensor, target: Tensor) -> Tensor:
         """Compute Hausdorff loss.
 
         Args:
@@ -167,8 +167,7 @@ class HausdorffERLoss(_HausdorffERLossBase):
         kernel = cross * 0.2
         return kernel[None]
 
-    # NOTE: we add type ignore because the forward pass does not work well with subclassing
-    def forward(self, pred: Tensor, target: Tensor) -> Tensor:  # type: ignore[override]
+    def forward(self, pred: Tensor, target: Tensor) -> Tensor:
         """Compute Hausdorff loss.
 
         Args:
@@ -238,8 +237,7 @@ class HausdorffERLoss3D(_HausdorffERLossBase):
         kernel = stack([bound, cross, bound], 1) * (1 / 7)
         return kernel[None]
 
-    # NOTE: we add type ignore because the forward pass does not work well with subclassing
-    def forward(self, pred: Tensor, target: Tensor) -> Tensor:  # type: ignore[override]
+    def forward(self, pred: Tensor, target: Tensor) -> Tensor:
         """Compute 3D Hausdorff loss.
 
         Args:
