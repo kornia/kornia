@@ -13,11 +13,18 @@ repos:
       - id: pretty-format-json
         exclude: ^$|.devcontainer
 
-  - repo: https://github.com/asottile/setup-cfg-fmt
-    rev: v2.2.0
+  - repo: https://github.com/tox-dev/pyproject-fmt
+    rev: "0.9.1"
     hooks:
-      - id: setup-cfg-fmt
+      - id: pyproject-fmt
+        args:
+          - --indent
+          - "4"
 
+  - repo: https://github.com/abravalheri/validate-pyproject
+    rev: v0.12.1
+    hooks:
+      - id: validate-pyproject
 
   - repo: https://github.com/psf/black
     rev: 23.1.0
