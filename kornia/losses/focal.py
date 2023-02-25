@@ -1,5 +1,6 @@
+from __future__ import annotations
+
 import warnings
-from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -13,12 +14,7 @@ from kornia.utils.one_hot import one_hot
 
 
 def focal_loss(
-    input: Tensor,
-    target: Tensor,
-    alpha: float,
-    gamma: float = 2.0,
-    reduction: str = 'none',
-    eps: Optional[float] = None,
+    input: Tensor, target: Tensor, alpha: float, gamma: float = 2.0, reduction: str = 'none', eps: float | None = None
 ) -> Tensor:
     r"""Criterion that computes Focal loss.
 
@@ -134,12 +130,12 @@ class FocalLoss(nn.Module):
         >>> output.backward()
     """
 
-    def __init__(self, alpha: float, gamma: float = 2.0, reduction: str = 'none', eps: Optional[float] = None) -> None:
+    def __init__(self, alpha: float, gamma: float = 2.0, reduction: str = 'none', eps: float | None = None) -> None:
         super().__init__()
         self.alpha: float = alpha
         self.gamma: float = gamma
         self.reduction: str = reduction
-        self.eps: Optional[float] = eps
+        self.eps: float | None = eps
 
     def forward(self, input: Tensor, target: Tensor) -> Tensor:
         return focal_loss(input, target, self.alpha, self.gamma, self.reduction, self.eps)
@@ -151,8 +147,8 @@ def binary_focal_loss_with_logits(
     alpha: float = 0.25,
     gamma: float = 2.0,
     reduction: str = 'none',
-    eps: Optional[float] = None,
-    pos_weight: Optional[Tensor] = None,
+    eps: float | None = None,
+    pos_weight: Tensor | None = None,
 ) -> Tensor:
     r"""Function that computes Binary Focal loss.
 
@@ -269,13 +265,13 @@ class BinaryFocalLossWithLogits(nn.Module):
     """
 
     def __init__(
-        self, alpha: float, gamma: float = 2.0, reduction: str = 'none', pos_weight: Optional[Tensor] = None
+        self, alpha: float, gamma: float = 2.0, reduction: str = 'none', pos_weight: Tensor | None = None
     ) -> None:
         super().__init__()
         self.alpha: float = alpha
         self.gamma: float = gamma
         self.reduction: str = reduction
-        self.pos_weight: Optional[Tensor] = pos_weight
+        self.pos_weight: Tensor | None = pos_weight
 
     def forward(self, input: Tensor, target: Tensor) -> Tensor:
         return binary_focal_loss_with_logits(

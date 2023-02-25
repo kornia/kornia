@@ -1,4 +1,4 @@
-from typing import Optional
+from __future__ import annotations
 
 import torch
 import torch.nn as nn
@@ -27,7 +27,7 @@ class HomographyWarper(nn.Module):
         normalized_coordinates: whether to use a grid with normalized coordinates.
         align_corners: interpolation flag.
     """
-    _warped_grid: Optional[torch.Tensor]
+    _warped_grid: torch.Tensor | None
 
     def __init__(
         self,
@@ -65,7 +65,7 @@ class HomographyWarper(nn.Module):
         """
         self._warped_grid = warp_grid(self.grid, src_homo_dst)
 
-    def forward(self, patch_src: torch.Tensor, src_homo_dst: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, patch_src: torch.Tensor, src_homo_dst: torch.Tensor | None = None) -> torch.Tensor:
         r"""Warp a tensor from source into reference frame.
 
         Args:

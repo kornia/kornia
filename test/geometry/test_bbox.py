@@ -48,15 +48,15 @@ class TestBbox2D:
         boxes = tensor_to_gradcheck_var(boxes)
         gradcheck(infer_bbox_shape, (boxes,))
 
-    def test_jit(self, device, dtype):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         # Define script
         op = infer_bbox_shape
-        op_script = torch.jit.script(op)
+        op_optimized = torch_optimizer(op)
         # Define input
         boxes = torch.tensor([[[1.0, 1.0], [3.0, 1.0], [3.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)
         # Run
         expected = op(boxes)
-        actual = op_script(boxes)
+        actual = op_optimized(boxes)
         # Compare
         assert_close(actual, expected)
 
@@ -163,13 +163,13 @@ class TestTransformBoxes2D:
 
         gradcheck(transform_bbox, (trans_mat, boxes, "xyxy", True))
 
-    def test_jit(self, device, dtype):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         boxes = torch.tensor([[139.2640, 103.0150, 258.0480, 307.5075]], device=device, dtype=dtype)
         trans_mat = torch.tensor([[[-1.0, 0.0, 512.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype)
         args = (boxes, trans_mat)
         op = kornia.geometry.transform_points
-        op_jit = torch.jit.script(op)
-        assert_close(op(*args), op_jit(*args))
+        op_optimized = torch_optimizer(op)
+        assert_close(op(*args), op_optimized(*args))
 
 
 class TestBbox3D:
@@ -237,10 +237,10 @@ class TestBbox3D:
         boxes = tensor_to_gradcheck_var(boxes)
         gradcheck(infer_bbox_shape3d, (boxes,))
 
-    def test_jit(self, device, dtype):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         # Define script
         op = infer_bbox_shape3d
-        op_script = torch.jit.script(op)
+        op_script = torch_optimizer(op)
 
         boxes = torch.tensor(
             [[[0, 0, 1], [3, 0, 1], [3, 2, 1], [0, 2, 1], [0, 0, 3], [3, 0, 3], [3, 2, 3], [0, 2, 3]]],
