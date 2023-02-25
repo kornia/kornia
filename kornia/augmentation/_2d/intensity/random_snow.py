@@ -1,7 +1,5 @@
 from typing import Any, Dict, Optional
 
-from torch import clamp, mean
-
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.color import hls_to_rgb, rgb_to_hls
@@ -51,8 +49,8 @@ class RandomSnow(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        snow_coefficient = mean(params["snow_coefficient"].to(input))
-        brightness = mean(params["brightness"].to(input))
+        snow_coefficient = (params["snow_coefficient"].to(input)).mean()
+        brightness = (params["brightness"].to(input)).mean()
         input_HLS = rgb_to_hls(input)
 
         # Increase Light channel of the image by given brightness for areas based on snow coefficient.
@@ -60,7 +58,7 @@ class RandomSnow(IntensityAugmentationBase2D):
         new_light = new_light * brightness
 
         # Setting value 255 for white pixels
-        new_light = clamp(new_light, min=0, max=1)
+        new_light = new_light.clamp(min=0, max=1)
         input_HLS[:, :, 1][input_HLS[:, :, 1] < snow_coefficient] = new_light
 
         output = hls_to_rgb(input_HLS)
