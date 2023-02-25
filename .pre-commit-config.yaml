@@ -19,7 +19,7 @@ repos:
       - id: pyproject-fmt
         args:
           - --indent
-          - 4
+          - "4"
 
   - repo: https://github.com/abravalheri/validate-pyproject
     rev: v0.12.1
