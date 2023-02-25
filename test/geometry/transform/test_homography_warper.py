@@ -256,7 +256,7 @@ class TestHomographyWarper:
     @pytest.mark.parametrize("batch_size", [1, 2, 3])
     @pytest.mark.parametrize("align_corners", [True, False])
     @pytest.mark.parametrize("normalized_coordinates", [True, False])
-    def test_jit_warp_homography(self, batch_size, align_corners, normalized_coordinates, device, dtype):
+    def test_dynamo(self, batch_size, align_corners, normalized_coordinates, device, dtype, torch_optimizer):
         # generate input data
         height, width = 128, 64
         eye_size = 3  # identity 3x3
@@ -280,7 +280,7 @@ class TestHomographyWarper:
                 align_corners=align_corners,
                 normalized_coordinates=normalized_coordinates,
             )
-            patch_dst_jit = torch.jit.script(kornia.geometry.transform.homography_warp)(
+            patch_dst_optimized = torch_optimizer(kornia.geometry.transform.homography_warp)(
                 patch_src,
                 dst_homo_src_i,
                 (height, width),
@@ -288,7 +288,7 @@ class TestHomographyWarper:
                 normalized_coordinates=normalized_coordinates,
             )
 
-            assert_close(patch_dst, patch_dst_jit, atol=1e-4, rtol=1e-4)
+            assert_close(patch_dst, patch_dst_optimized, atol=1e-4, rtol=1e-4)
 
 
 class TestHomographyNormalTransform:
