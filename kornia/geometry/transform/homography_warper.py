@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import abstractmethod
+from typing import Any
 
 import torch.nn.functional as F
 
@@ -19,7 +20,7 @@ class BaseWarper(Module):
         self.width = width
 
     @abstractmethod
-    def forward(self, patch_src: Tensor, src_homo_dst: Optional[Tensor] = None) -> Tensor:
+    def forward(self, patch_src: Tensor, src_homo_dst: Tensor | None = None) -> Tensor:
         ...
 
     @abstractmethod
@@ -43,7 +44,7 @@ class HomographyWarper(BaseWarper):
         normalized_coordinates: whether to use a grid with normalized coordinates.
         align_corners: interpolation flag.
     """
-    _warped_grid: torch.Tensor | None
+    _warped_grid: Tensor | None
 
     def __init__(
         self,
@@ -79,7 +80,7 @@ class HomographyWarper(BaseWarper):
         """
         self._warped_grid = warp_grid(self.grid, src_homo_dst)
 
-    def forward(self, patch_src: Tensor, src_homo_dst: Optional[Tensor] = None) -> Tensor:
+    def forward(self, patch_src: Tensor, src_homo_dst: Tensor | None = None) -> Tensor:
         r"""Warp a tensor from source into reference frame.
 
         Args:
