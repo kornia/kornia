@@ -13,9 +13,9 @@ file = "README.md"
 content-type = "text/markdown"
 
 keywords = [
-  "computer vision",
-  "deep learning",
-  "pytorch",
+    "computer vision",
+    "deep learning",
+    "pytorch",
 ]
 license = {text = "Apache-2.0"}
 authors = [{name = "Edgar Riba", email = "edgar@kornia.org"}]
@@ -38,8 +38,8 @@ classifiers = [
     "Topic :: Software Development :: Libraries",
 ]
 dependencies = [
-  "packaging",
-  "torch>=1.9.1",
+    "packaging",
+    "torch>=1.9.1",
 ]
 [project.optional-dependencies]
 dev = [
