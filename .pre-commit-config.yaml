@@ -17,6 +17,9 @@ repos:
     rev: "0.9.1"
     hooks:
       - id: pyproject-fmt
+        args:
+          - --indent
+          - 4
 
   - repo: https://github.com/abravalheri/validate-pyproject
     rev: v0.12.1
