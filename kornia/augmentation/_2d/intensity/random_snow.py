@@ -53,8 +53,8 @@ class RandomSnow(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        snow_coefficient = params["snow_coefficient"].to(input)
-        brightness = params["brightness"].to(input)
+        snow_coefficient = params["snow_coefficient"].to(input)[0]
+        brightness = params["brightness"].to(input)[0]
         input_HLS = rgb_to_hls(input)
 
         # Increase Light channel of the image by given brightness for areas based on snow coefficient.
