@@ -1,7 +1,7 @@
 [build-system]
 build-backend = "setuptools.build_meta"
 requires = [
-  "setuptools>=61.2",
+    "setuptools>=61.2",
 ]
 
 [project]
@@ -43,35 +43,35 @@ dependencies = [
 ]
 [project.optional-dependencies]
 dev = [
-  "isort",
-  "kornia-rs==0.0.8",
-  "mypy[reports]",
-  "numpy",
-  "opencv-python",
-  "pre-commit>=2",
-  "pydocstyle",
-  "pytest==7.2.1",
-  "pytest-cov==4",
-  "scipy",
+    "isort",
+    "kornia-rs==0.0.8",
+    "mypy[reports]",
+    "numpy",
+    "opencv-python",
+    "pre-commit>=2",
+    "pydocstyle",
+    "pytest==7.2.1",
+    "pytest-cov==4",
+    "scipy",
 ]
 docs = [
-  "furo",
-  "matplotlib",
-  "opencv-python",
-  "PyYAML<6.1.0,>=5.1",
-  "sphinx>=4",
-  "sphinx-autodoc-defaultargs",
-  "sphinx-autodoc-typehints",
-  "sphinx-copybutton>=0.3",
-  "sphinx-design",
-  "sphinx-rtd-theme>0.5",
-  "sphinxcontrib-bibtex",
-  "sphinxcontrib-gtagjs",
-  "sphinxcontrib-youtube",
-  "torchvision",
+    "furo",
+    "matplotlib",
+    "opencv-python",
+    "PyYAML<6.1.0,>=5.1",
+    "sphinx>=4",
+    "sphinx-autodoc-defaultargs",
+    "sphinx-autodoc-typehints",
+    "sphinx-copybutton>=0.3",
+    "sphinx-design",
+    "sphinx-rtd-theme>0.5",
+    "sphinxcontrib-bibtex",
+    "sphinxcontrib-gtagjs",
+    "sphinxcontrib-youtube",
+    "torchvision",
 ]
 x = [
-  "accelerate==0.16",
+    "accelerate==0.16",
 ]
 [project.urls]
 "Bug Tracker" = "https://github.com/kornia/kornia/issues"
