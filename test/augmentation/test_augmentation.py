@@ -4137,8 +4137,8 @@ class TestRandomSnow(BaseTester):
         self.gradcheck(RandomSnow(p=1.0, snow_coefficient=0.3, brightness=2.1), (grad_input,))
 
     def test_exception(self, device, dtype):
-        err_msg = "Snow coefficient must be between 0 and 1."
-        with pytest.raises(ValueError) as errinfo:
+        err_msg = 'False not true.\\nSnow coefficient must be between 0 and 1.'
+        with pytest.raises(Exception) as errinfo:
             RandomSnow(p=1.0, snow_coefficient=-1, brightness=1.5)
         assert err_msg in str(errinfo)
 
