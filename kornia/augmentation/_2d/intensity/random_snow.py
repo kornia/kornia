@@ -58,12 +58,12 @@ class RandomSnow(IntensityAugmentationBase2D):
         input_HLS = rgb_to_hls(input)
 
         # Increase Light channel of the image by given brightness for areas based on snow coefficient.
-        mask = input_HLS[:, :, 1] < snow_coefficient
-        new_light = input_HLS * (~mask) + mask * input_HLS * brightness
+        new_light = input_HLS[:, :, 1][input_HLS[:, :, 1] < snow_coefficient]
+        new_light = new_light * brightness
 
         # Setting value 255 for white pixels
         new_light = clamp(new_light, min=0, max=255)
-        input_HLS = new_light
+        input_HLS[:, :, 1][input_HLS[:, :, 1] < snow_coefficient] = new_light
 
         output = hls_to_rgb(input_HLS)
         return output
