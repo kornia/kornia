@@ -41,7 +41,7 @@ class RandomSnow(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        KORNIA_CHECK(0 < snow_coefficient < 1, "Snow coefficient must be between 0 and 1.")
+        KORNIA_CHECK(0 <= snow_coefficient <= 1, "Snow coefficient must be between 0 and 1.")
 
         snow_coefficient = snow_coefficient * 255 / 2 + 255 / 3
 
