@@ -62,7 +62,7 @@ requires = [
 
 [tool.setuptools.packages.find]
 exclude = [
-    "docs/*",
+    "docs*",
     "test*",
     "examples*",
 ]
