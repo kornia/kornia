@@ -16,6 +16,7 @@ from kornia.augmentation import (
     Normalize,
     PadTo,
     RandomBoxBlur,
+    RandomMedianBlur,
     RandomBrightness,
     RandomChannelShuffle,
     RandomContrast,
@@ -4112,3 +4113,53 @@ class TestRandomAutoContrast:
         input = utils.tensor_to_gradcheck_var(input)  # to var
         # TODO: turned off with p=0
         assert gradcheck(kornia.augmentation.RandomAutoContrast(p=1.0), (input,), raise_exception=True, fast_mode=True)
+
+
+class TestRandomMedianBlur(BaseTester):
+    def test_smoke(self, device, dtype):
+        torch.manual_seed(0)
+        image = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
+        aug = RandomMedianBlur(p=0.8)
+        assert image.shape == aug(image).shape
+    
+        # img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
+        # aug = RandomBoxBlur(p=1.0)
+        # assert img.shape == aug(img).shape
+
+    def test_exception(self, device, dtype):
+        # tests the exceptions which can occur on your function
+
+        # example of how to properly test your exceptions
+        # with pytest.raises(<raised Error>) as errinfo:
+        #     your_function(<set of parameters that raise the error>)
+        # assert '<msg of error>' in str(errinfo)
+
+        pass
+
+    def test_cardinality(self, device, dtype):
+        # test if with different parameters the shape of the output is the expected
+        pass
+
+    def test_feature_foo(self, device, dtype):
+        # test basic functionality
+        pass
+
+    def test_feature_bar(self, device, dtype):
+        # test another functionality
+        pass
+
+    def test_gradcheck(self, device):
+        # test the functionality gradients
+        # Uses `self.gradcheck(...)`
+        pass
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        #  test the functionality using dynamo optimizer
+
+        # Example of how to properly test your function for dynamo
+        # inputs = (...)
+        # op = your_function
+        # op_optimized = torch_optimizer(op)
+        # self.assert_close(op(inputs), op_optimized(inputs))
+
+        pass
