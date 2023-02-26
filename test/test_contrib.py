@@ -283,7 +283,7 @@ class TestCombineTensorPatches:
         m = kornia.contrib.CombineTensorPatches((4, 4), (2, 2))
         patches = kornia.contrib.extract_tensor_patches(img, window_size=(2, 2), stride=(2, 2))
         assert m(patches).shape == (1, 1, 4, 4)
-        assert (img == m(patches)).all()
+        assert_close(img, m(patches))
 
     def test_error(self, device, dtype):
         patches = kornia.contrib.extract_tensor_patches(
@@ -299,7 +299,7 @@ class TestCombineTensorPatches:
             patches, original_size=(4, 3), window_size=(2, 2), stride=(2, 2), unpadding=(0, 0, 0, 1)
         )
         assert m.shape == (1, 1, 4, 3)
-        assert (img == m).all()
+        assert_close(img, m)
 
     def test_pad_error(self, device, dtype):
         patches = kornia.contrib.extract_tensor_patches(
@@ -333,21 +333,21 @@ class TestCombineTensorPatches:
         patches = kornia.contrib.extract_tensor_patches(img, window_size=(2, 2), stride=(2, 2), padding=1)
         m = kornia.contrib.CombineTensorPatches((4, 6), (2, 2), unpadding=1)
         assert m(patches).shape == (1, 1, 4, 6)
-        assert (img == m(patches)).all()
+        assert_close(img, m(patches))
 
     def test_padding1(self, device, dtype):
         img = torch.arange(16, device=device, dtype=dtype).view(1, 1, 4, 4)
         patches = kornia.contrib.extract_tensor_patches(img, window_size=(2, 2), stride=(2, 2), padding=1)
         m = kornia.contrib.CombineTensorPatches((4, 4), (2, 2), unpadding=1)
         assert m(patches).shape == (1, 1, 4, 4)
-        assert (img == m(patches)).all()
+        assert_close(img, m(patches))
 
     def test_padding2(self, device, dtype):
         img = torch.arange(64, device=device, dtype=dtype).view(1, 1, 8, 8)
         patches = kornia.contrib.extract_tensor_patches(img, window_size=(2, 2), stride=(2, 2), padding=1)
         m = kornia.contrib.CombineTensorPatches((8, 8), (2, 2), unpadding=1)
         assert m(patches).shape == (1, 1, 8, 8)
-        assert (img == m(patches)).all()
+        assert_close(img, m(patches))
 
     def test_autopadding(self, device, dtype):
         img = torch.arange(104, device=device, dtype=dtype).view(1, 1, 8, 13)
@@ -358,7 +358,7 @@ class TestCombineTensorPatches:
         )
         m = kornia.contrib.CombineTensorPatches((8, 13), (3, 3), unpadding=padding)
         assert m(patches).shape == (1, 1, 8, 13)
-        assert (img == m(patches)).all()
+        assert_close(img, m(patches))
 
     def test_gradcheck(self, device, dtype):
         patches = kornia.contrib.extract_tensor_patches(
@@ -624,7 +624,7 @@ class TestHistMatch:
         x = torch.tensor([4, 5, 6], device=device, dtype=dtype)
         x_hat_expected = torch.tensor([-2.0, -4.0, -6.0], device=device, dtype=dtype)
         x_hat = kornia.contrib.interp(x, xp, fp)
-        assert (x_hat_expected == x_hat).all()
+        assert_close(x_hat_expected, x_hat)
 
     def test_histmatch(self, device, dtype):
         torch.manual_seed(44)

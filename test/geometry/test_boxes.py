@@ -52,17 +52,15 @@ class TestBoxes2D:
         h, w = boxes.get_boxes_shape()
         assert h.ndim == 1 and w.ndim == 1
         assert len(h) == 2 and len(w) == 2
-        assert (h == torch.as_tensor([2.0, 3.0], device=device)).all() and (
-            w == torch.as_tensor([3.0, 4.0], device=device)
-        ).all()
+        assert_close(h, torch.as_tensor([2.0, 3.0], device=device, dtype=dtype))
+        assert_close(w, torch.as_tensor([3.0, 4.0], device=device, dtype=dtype))
 
         # Box batch
         h, w = boxes_batch.get_boxes_shape()
         assert h.ndim == 2 and w.ndim == 2
         assert h.shape == (1, 2) and w.shape == (1, 2)
-        assert (h == torch.as_tensor([[2.0, 3.0]], device=device)).all() and (
-            w == torch.as_tensor([[3.0, 4.0]], device=device)
-        ).all()
+        assert_close(h, torch.as_tensor([[2.0, 3.0]], device=device, dtype=dtype))
+        assert_close(w, torch.as_tensor([[3.0, 4.0]], device=device, dtype=dtype))
 
     def test_get_boxes_shape_batch(self, device, dtype):
         t_box1 = torch.tensor([[[1.0, 1.0], [3.0, 2.0], [3.0, 1.0], [1.0, 2.0]]], device=device, dtype=dtype)
@@ -72,9 +70,8 @@ class TestBoxes2D:
         h, w = batched_boxes.get_boxes_shape()
         assert h.ndim == 2 and w.ndim == 2
         assert h.shape == (2, 1) and w.shape == (2, 1)
-        assert (h == torch.as_tensor([[2], [3]], device=device)).all() and (
-            w == torch.as_tensor([[3], [4]], device=device)
-        ).all()
+        assert_close(h, torch.as_tensor([[2], [3]], device=device, dtype=dtype))
+        assert_close(w, torch.as_tensor([[3], [4]], device=device, dtype=dtype))
 
     @pytest.mark.parametrize('shape', [(1, 4), (1, 1, 4)])
     def test_from_tensor(self, shape, device, dtype):
@@ -450,21 +447,17 @@ class TestBbox3D:
         d, h, w = boxes.get_boxes_shape()
         assert h.ndim == 1 and w.ndim == 1
         assert len(d) == 2 and len(h) == 2 and len(w) == 2
-        assert (
-            (d == torch.as_tensor([31.0, 61.0], device=device)).all()
-            and (h == torch.as_tensor([21.0, 51.0], device=device)).all()
-            and (w == torch.as_tensor([11.0, 41.0], device=device)).all()
-        )
+        assert_close(d, torch.as_tensor([31.0, 61.0], device=device, dtype=dtype))
+        assert_close(h, torch.as_tensor([21.0, 51.0], device=device, dtype=dtype))
+        assert_close(w, torch.as_tensor([11.0, 41.0], device=device, dtype=dtype))
 
         # Box batch
         d, h, w = boxes_batch.get_boxes_shape()
         assert h.ndim == 2 and w.ndim == 2
         assert h.shape == (1, 2) and w.shape == (1, 2)
-        assert (
-            (d == torch.as_tensor([[31.0, 61.0]], device=device)).all()
-            and (h == torch.as_tensor([[21.0, 51.0]], device=device)).all()
-            and (w == torch.as_tensor([[11.0, 41.0]], device=device)).all()
-        )
+        assert_close(d, torch.as_tensor([[31.0, 61.0]], device=device, dtype=dtype))
+        assert_close(h, torch.as_tensor([[21.0, 51.0]], device=device, dtype=dtype))
+        assert_close(w, torch.as_tensor([[11.0, 41.0]], device=device, dtype=dtype))
 
     def test_get_boxes_shape_batch(self, device, dtype):
         t_box1 = torch.tensor(
@@ -482,11 +475,9 @@ class TestBbox3D:
         d, h, w = batched_boxes.get_boxes_shape()
         assert d.ndim == 2 and h.ndim == 2 and w.ndim == 2
         assert d.shape == (2, 1) and h.shape == (2, 1) and w.shape == (2, 1)
-        assert (
-            (d == torch.as_tensor([[31.0], [61.0]], device=device)).all()
-            and (h == torch.as_tensor([[21.0], [51.0]], device=device)).all()
-            and (w == torch.as_tensor([[11.0], [41.0]], device=device)).all()
-        )
+        assert_close(d, torch.as_tensor([[31.0], [61.0]], device=device, dtype=dtype))
+        assert_close(h, torch.as_tensor([[21.0], [51.0]], device=device, dtype=dtype))
+        assert_close(w, torch.as_tensor([[11.0], [41.0]], device=device, dtype=dtype))
 
     @pytest.mark.parametrize('shape', [(1, 6), (1, 1, 6)])
     def test_from_tensor(self, shape, device, dtype):
