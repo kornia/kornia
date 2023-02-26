@@ -4115,51 +4115,27 @@ class TestRandomAutoContrast:
         assert gradcheck(kornia.augmentation.RandomAutoContrast(p=1.0), (input,), raise_exception=True, fast_mode=True)
 
 
-class TestRandomMedianBlur(BaseTester):
+class TestRandomMedianBlur:
+
     def test_smoke(self, device, dtype):
-        torch.manual_seed(0)
         image = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
         aug = RandomMedianBlur(p=0.8)
         assert image.shape == aug(image).shape
     
-        # img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
-        # aug = RandomBoxBlur(p=1.0)
-        # assert img.shape == aug(img).shape
 
-    def test_exception(self, device, dtype):
-        # tests the exceptions which can occur on your function
+    def test_feature_median_blur(self, device, dtype):
+        torch.manual_seed(0)
 
-        # example of how to properly test your exceptions
-        # with pytest.raises(<raised Error>) as errinfo:
-        #     your_function(<set of parameters that raise the error>)
-        # assert '<msg of error>' in str(errinfo)
+        img = torch.ones(1, 1, 4, 4, device=device, dtype=dtype)
+        out = RandomMedianBlur((3, 3), p = 0.5)(img)
 
-        pass
+        expected = torch.tensor([[[[0., 1., 1., 0.],
+                                      [1., 1., 1., 1.],
+                                      [1., 1., 1., 1.],
+                                      [0., 1., 1., 0.]]]],
+                                      device=device, dtype=dtype)
 
-    def test_cardinality(self, device, dtype):
-        # test if with different parameters the shape of the output is the expected
-        pass
+        utils.assert_close(out, expected)
 
-    def test_feature_foo(self, device, dtype):
-        # test basic functionality
-        pass
 
-    def test_feature_bar(self, device, dtype):
-        # test another functionality
-        pass
-
-    def test_gradcheck(self, device):
-        # test the functionality gradients
-        # Uses `self.gradcheck(...)`
-        pass
-
-    def test_dynamo(self, device, dtype, torch_optimizer):
-        #  test the functionality using dynamo optimizer
-
-        # Example of how to properly test your function for dynamo
-        # inputs = (...)
-        # op = your_function
-        # op_optimized = torch_optimizer(op)
-        # self.assert_close(op(inputs), op_optimized(inputs))
-
-        pass
+    
