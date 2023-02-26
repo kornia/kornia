@@ -5,7 +5,7 @@ import torch
 from kornia.core import Tensor
 
 
-def arange_sequence(ranges):
+def arange_sequence(ranges: Tensor) -> Tensor:
     """
     returns a sequence of the ranges specified by the argument.
     Example:
@@ -18,7 +18,7 @@ def arange_sequence(ranges):
     return complete_ranges[complete_ranges < ranges.unsqueeze(-1)]
 
 
-def dist_matrix(d1, d2, is_normalized=False):
+def dist_matrix(d1: Tensor, d2: Tensor, is_normalized: bool = False) -> Tensor:
     if is_normalized:
         return 2 - 2.0 * d1 @ d2.t()
     x_norm = (d1**2).sum(1).view(-1, 1)
@@ -29,14 +29,14 @@ def dist_matrix(d1, d2, is_normalized=False):
     return distmat
 
 
-def orientation_diff(o1, o2):
+def orientation_diff(o1: Tensor, o2: Tensor) -> Tensor:
     diff = o2 - o1
     diff[diff < -180] += 360
     diff[diff >= 180] -= 360
     return diff
 
 
-def piecewise_arange(piecewise_idxer: Tensor):
+def piecewise_arange(piecewise_idxer: Tensor) -> Tensor:
     """
     count repeated indices
     Example:
@@ -111,7 +111,7 @@ def batch_2x2_ellipse(m):
     return eigenvals, eigenvecs
 
 
-def draw_first_k_couples(k: int, rdims: Tensor, dv: torch.device):
+def draw_first_k_couples(k: int, rdims: Tensor, dv: torch.device) -> Tensor:
     # exhaustive search over the first n samples:
     # n(n+1)/2 = n2/2 + n/2 couples
     # max n for which we can exhaustively sample with k couples:

@@ -21,7 +21,7 @@ def _validate_input(f: Callable[..., Any]) -> Callable[..., Any]:
     """
 
     @wraps(f)
-    def wrapper(input: Tensor, *args, **kwargs):
+    def wrapper(input: Tensor, *args: Any, **kwargs: Any) -> Any:
         if not torch.is_tensor(input):
             raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
 
@@ -44,7 +44,7 @@ def _validate_input3d(f: Callable[..., Any]) -> Callable[..., Any]:
     """
 
     @wraps(f)
-    def wrapper(input: Tensor, *args, **kwargs):
+    def wrapper(input: Tensor, *args: Any, **kwargs: Any) -> Any:
         if not torch.is_tensor(input):
             raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
 
@@ -191,7 +191,9 @@ def _validate_input_shape(input: Tensor, channel_index: int, number: int) -> boo
 
 
 def _adapted_rsampling(
-    shape: Union[Tuple[int, ...], torch.Size], dist: torch.distributions.Distribution, same_on_batch=False
+    shape: Union[Tuple[int, ...], torch.Size],
+    dist: torch.distributions.Distribution,
+    same_on_batch: Optional[bool] = False,
 ) -> Tensor:
     r"""The uniform reparameterized sampling function that accepts 'same_on_batch'.
 
@@ -207,7 +209,9 @@ def _adapted_rsampling(
 
 
 def _adapted_sampling(
-    shape: Union[Tuple[int, ...], torch.Size], dist: torch.distributions.Distribution, same_on_batch=False
+    shape: Union[Tuple[int, ...], torch.Size],
+    dist: torch.distributions.Distribution,
+    same_on_batch: Optional[bool] = False,
 ) -> Tensor:
     r"""The uniform sampling function that accepts 'same_on_batch'.
 
@@ -320,7 +324,7 @@ def override_parameters(
     return out
 
 
-def preprocess_boxes(input: Union[Tensor, Boxes], mode="vertices_plus") -> Boxes:
+def preprocess_boxes(input: Union[Tensor, Boxes], mode: str = "vertices_plus") -> Boxes:
     r"""Preprocess input boxes.
 
     Args:

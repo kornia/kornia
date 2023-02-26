@@ -31,7 +31,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         """By default, the exact transformation as ``apply_transform`` will be used."""
         raise NotImplementedError
 
-    def compute_inverse_transformation(self, transform: Tensor):
+    def compute_inverse_transformation(self, transform: Tensor) -> Tensor:
         """Compute the inverse transform of given transformation matrices."""
         return _torch_inverse_cast(transform)
 
@@ -127,7 +127,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         params: Dict[str, Tensor],
         flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> Tensor:
         in_tensor = self.transform_tensor(input)
         output = in_tensor.clone()
@@ -165,7 +165,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         params: Dict[str, Tensor],
         flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> Tensor:
         resample_method: Optional[Resample] = None
         if "resample" in flags:
@@ -182,7 +182,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         params: Dict[str, Tensor],
         flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> Boxes:
         output = input.clone()
         batch_prob = params['batch_prob']
@@ -212,7 +212,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         params: Dict[str, Tensor],
         flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> Keypoints:
         """Inverse the transformation on keypoints.
 
@@ -250,11 +250,11 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         params: Dict[str, Tensor],
         flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> Tensor:
         return input
 
-    def inverse(self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs) -> Tensor:
+    def inverse(self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs: Any) -> Tensor:
         """Perform inverse operations.
 
         Args:

@@ -1,4 +1,4 @@
-from typing import Iterable, List
+from typing import Iterable, List, Union
 
 import torch
 
@@ -153,7 +153,7 @@ class PinholeCamera:
         return self.extrinsics[..., 0, -1]
 
     @tx.setter
-    def tx(self, value) -> 'PinholeCamera':
+    def tx(self, value: Union[Tensor, float, int]) -> 'PinholeCamera':
         r"""Set the x-coordinate of the translation vector with the given value."""
         self.extrinsics[..., 0, -1] = value
         return self
@@ -168,7 +168,7 @@ class PinholeCamera:
         return self.extrinsics[..., 1, -1]
 
     @ty.setter
-    def ty(self, value) -> 'PinholeCamera':
+    def ty(self, value: Union[Tensor, float, int]) -> 'PinholeCamera':
         r"""Set the y-coordinate of the translation vector with the given value."""
         self.extrinsics[..., 1, -1] = value
         return self
@@ -183,7 +183,7 @@ class PinholeCamera:
         return self.extrinsics[..., 2, -1]
 
     @tz.setter
-    def tz(self, value) -> 'PinholeCamera':
+    def tz(self, value: Union[Tensor, float, int]) -> 'PinholeCamera':
         r"""Set the y-coordinate of the translation vector with the given value."""
         self.extrinsics[..., 2, -1] = value
         return self
@@ -240,7 +240,7 @@ class PinholeCamera:
         """
         return self.intrinsics.inverse()
 
-    def scale(self, scale_factor) -> 'PinholeCamera':
+    def scale(self, scale_factor: Tensor) -> 'PinholeCamera':
         r"""Scale the pinhole model.
 
         Args:
@@ -262,7 +262,7 @@ class PinholeCamera:
         width: Tensor = scale_factor * self.width.clone()
         return PinholeCamera(intrinsics, self.extrinsics, height, width)
 
-    def scale_(self, scale_factor) -> 'PinholeCamera':
+    def scale_(self, scale_factor: Union[float, int, Tensor]) -> 'PinholeCamera':
         r"""Scale the pinhole model in-place.
 
         Args:
@@ -307,7 +307,7 @@ class PinholeCamera:
         P = self.intrinsics @ self.extrinsics
         return convert_points_from_homogeneous(transform_points(P, point_3d))
 
-    def unproject(self, point_2d: Tensor, depth: Tensor):
+    def unproject(self, point_2d: Tensor, depth: Tensor) -> Tensor:
         r"""Unproject a 2d point in 3d.
 
         Transform coordinates in the pixel frame to the world frame.
@@ -343,8 +343,20 @@ class PinholeCamera:
     # NOTE: just for test. Decide if we keep it.
     @classmethod
     def from_parameters(
-        self, fx, fy, cx, cy, height, width, tx, ty, tz, batch_size, device: Device, dtype: torch.dtype
-    ):
+        self,
+        fx: Tensor,
+        fy: Tensor,
+        cx: Tensor,
+        cy: Tensor,
+        height: int,
+        width: int,
+        tx: Tensor,
+        ty: Tensor,
+        tz: Tensor,
+        batch_size: int,
+        device: Device,
+        dtype: torch.dtype,
+    ) -> 'PinholeCamera':
         # create the camera matrix
         intrinsics = torch.zeros(batch_size, 4, 4, device=device, dtype=dtype)
         intrinsics[..., 0, 0] += fx

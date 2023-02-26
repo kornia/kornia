@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Any, Dict, Tuple
 
 import torch
 
@@ -97,7 +97,9 @@ def sample_padded_inliers(
     return padded_inlier_x, padded_inlier_y
 
 
-def ransac(xsamples, ysamples, rdims: Tensor, config, iters=128, refit=True):
+def ransac(
+    xsamples: Tensor, ysamples: Tensor, rdims: Tensor, config: Dict[str, Any], iters: int = 128, refit: bool = True
+) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
     DET_THR = config['detected_scale_rate_threshold']
     MIN_CONFIDENCE = config['min_confidence']
     dv: torch.device = config['device']

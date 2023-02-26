@@ -1,20 +1,35 @@
-from typing import Callable, List, Tuple, Union
+from abc import abstractmethod
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-from kornia.core import Tensor
+from kornia.core import Module, Tensor
 from kornia.geometry.conversions import angle_to_rotation_matrix, convert_affinematrix_to_homography
 
-from .homography_warper import HomographyWarper
+from .homography_warper import BaseWarper, HomographyWarper
 from .pyramid import build_pyramid
 
-__all__ = ["ImageRegistrator", "Homography", "Similarity"]
+__all__ = ["ImageRegistrator", "Homography", "Similarity", "BaseModel"]
 
 
-class Homography(nn.Module):
+class BaseModel(Module):
+    @abstractmethod
+    def reset_model(self) -> None:
+        ...
+
+    @abstractmethod
+    def forward(self) -> Tensor:
+        ...
+
+    @abstractmethod
+    def forward_inverse(self) -> Tensor:
+        ...
+
+
+class Homography(BaseModel):
     r"""Homography geometric model to be used together with ImageRegistrator module for the optimization-based
     image registration."""
 
@@ -47,7 +62,7 @@ class Homography(nn.Module):
         return torch.unsqueeze(torch.inverse(self.model), dim=0)
 
 
-class Similarity(nn.Module):
+class Similarity(BaseModel):
     """Similarity geometric model to be used together with ImageRegistrator module for the optimization-based image
     registration.
 
@@ -102,7 +117,7 @@ class Similarity(nn.Module):
         return torch.inverse(self.forward())
 
 
-class ImageRegistrator(nn.Module):
+class ImageRegistrator(Module):
     r"""Module, which performs optimization-based image registration.
 
     Args:
@@ -127,14 +142,14 @@ class ImageRegistrator(nn.Module):
     # TODO: resolve better type, potentially using factory.
     def __init__(
         self,
-        model_type='homography',
-        optimizer=optim.Adam,
+        model_type: Union[str, BaseModel] = 'homography',
+        optimizer: Type[optim.Optimizer] = optim.Adam,
         loss_fn: Callable[..., Tensor] = F.l1_loss,
         pyramid_levels: int = 5,
         lr: float = 1e-3,
         num_iterations: int = 100,
         tolerance: float = 1e-4,
-        warper=None,
+        warper: Optional[Type[BaseWarper]] = None,
     ) -> None:
         super().__init__()
         # We provide pre-defined combinations or allow user to supply model
@@ -208,7 +223,9 @@ class ImageRegistrator(nn.Module):
         """
         self.reset_model()
         # ToDo: better parameter passing to optimizer
-        opt: optim.Optimizer = self.optimizer(self.model.parameters(), lr=self.lr)
+        _opt_args: Dict[str, Any] = {}
+        _opt_args['lr'] = self.lr
+        opt = self.optimizer(self.model.parameters(), **_opt_args)
 
         # compute the gaussian pyramids
         # [::-1] because we have to register from coarse to fine

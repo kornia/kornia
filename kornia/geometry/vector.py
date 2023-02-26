@@ -1,6 +1,6 @@
 from typing import Optional, Tuple, Union, cast
 
-from kornia.core import Tensor, as_tensor, normalize, rand, stack
+from kornia.core import Device, Dtype, Tensor, as_tensor, normalize, rand, stack
 from kornia.core.check import KORNIA_CHECK
 from kornia.core.tensor_wrapper import TensorWrapper, wrap
 from kornia.geometry.linalg import batched_dot_product, batched_squared_norm
@@ -22,7 +22,7 @@ class Vector3(TensorWrapper):
     def __repr__(self) -> str:
         return f"x: {self.x}\ny: {self.y}\nz: {self.z}"
 
-    def __getitem__(self, idx) -> "Vector3":
+    def __getitem__(self, idx: Union[slice, int, Tensor]) -> "Vector3":
         return Vector3(self.data[idx, ...])
 
     @property
@@ -47,7 +47,9 @@ class Vector3(TensorWrapper):
         return Scalar(batched_squared_norm(self.data))
 
     @classmethod
-    def random(cls, shape: Optional[Tuple[int, ...]] = None, device=None, dtype=None) -> "Vector3":
+    def random(
+        cls, shape: Optional[Tuple[int, ...]] = None, device: Optional[Device] = None, dtype: Dtype = None
+    ) -> "Vector3":
         if shape is None:
             shape = ()
         return cls(rand(shape + (3,), device=device, dtype=dtype))
@@ -74,7 +76,12 @@ class Vector3(TensorWrapper):
 
     @classmethod
     def from_coords(
-        cls, x: Union[float, Tensor], y: Union[float, Tensor], z: Union[float, Tensor], device=None, dtype=None
+        cls,
+        x: Union[float, Tensor],
+        y: Union[float, Tensor],
+        z: Union[float, Tensor],
+        device: Optional[Device] = None,
+        dtype: Dtype = None,
     ) -> "Vector3":
         KORNIA_CHECK(type(x) == type(y) == type(z))
         KORNIA_CHECK(isinstance(x, (Tensor, float)))
@@ -93,7 +100,7 @@ class Vector2(TensorWrapper):
     def __repr__(self) -> str:
         return f"x: {self.x}\ny: {self.y}"
 
-    def __getitem__(self, idx) -> "Vector2":
+    def __getitem__(self, idx: Union[slice, int, Tensor]) -> "Vector2":
         return Vector2(self.data[idx, ...])
 
     @property
@@ -114,13 +121,15 @@ class Vector2(TensorWrapper):
         return Scalar(batched_squared_norm(self.data))
 
     @classmethod
-    def random(cls, shape: Optional[Tuple[int, ...]] = None, device=None, dtype=None) -> "Vector2":
+    def random(cls, shape: Optional[Tuple[int, ...]] = None, device: Device = None, dtype: Dtype = None) -> "Vector2":
         if shape is None:
             shape = ()
         return cls(rand(shape + (2,), device=device, dtype=dtype))
 
     @classmethod
-    def from_coords(cls, x: Union[float, Tensor], y: Union[float, Tensor], device=None, dtype=None) -> "Vector2":
+    def from_coords(
+        cls, x: Union[float, Tensor], y: Union[float, Tensor], device: Device = None, dtype: Dtype = None
+    ) -> "Vector2":
         KORNIA_CHECK(type(x) == type(y))
         KORNIA_CHECK(isinstance(x, (Tensor, float)))
         if isinstance(x, float):

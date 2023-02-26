@@ -52,7 +52,7 @@ class MotionBlur(Module):
             f'angle={self.angle}, direction={self.direction}, border_type={self.border_type})'
         )
 
-    def forward(self, x: Tensor):
+    def forward(self, x: Tensor) -> Tensor:
         return motion_blur(x, self.kernel_size, self.angle, self.direction, self.border_type)
 
 
@@ -112,7 +112,7 @@ class MotionBlur3D(Module):
             f'angle={self.angle}, direction={self.direction}, border_type={self.border_type})'
         )
 
-    def forward(self, x: Tensor):
+    def forward(self, x: Tensor) -> Tensor:
         return motion_blur3d(x, self.kernel_size, self.angle, self.direction, self.border_type)
 
 

@@ -284,7 +284,7 @@ class AugmentationSequential(ImageSequential):
 
         return outputs
 
-    def _validate_args_datakeys(self, *args: DataType, data_keys: List[DataKey]):
+    def _validate_args_datakeys(self, *args: DataType, data_keys: List[DataKey]) -> None:
         if len(args) != len(data_keys):
             raise AssertionError(
                 f"The number of inputs must align with the number of data_keys. Got {len(args)} and {len(data_keys)}."
