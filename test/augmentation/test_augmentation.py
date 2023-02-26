@@ -4121,25 +4121,25 @@ class TestRandomSnow(BaseTester):
     @pytest.mark.parametrize("batch_shape", [(1, 3, 4, 7), (1, 3, 6, 9)])
     def test_cardinality(self, batch_shape, device, dtype):
         input_data = torch.rand(batch_shape, device=device, dtype=dtype)
-        aug = RandomSnow(p=1.0, snow_coefficient=0.4, brightness=2.0)
+        aug = RandomSnow(p=1.0, snow_coefficient=(0.0, 0.5), brightness=(1.0, 3.0))
         output_data = aug(input_data)
         assert output_data.shape == batch_shape
 
     def test_smoke(self, device, dtype):
         input_data = torch.rand(1, 3, 8, 9, device=device, dtype=dtype)
-        aug = RandomSnow(p=1.0, snow_coefficient=0.4, brightness=2.0)
+        aug = RandomSnow(p=1.0, snow_coefficient=(0.0, 0.5), brightness=(1.0, 2.0))
         output_data = aug(input_data)
         assert output_data.shape == input_data.shape
 
     def test_gradcheck(self, device):
         input_data = torch.rand(1, 3, 6, 8, device=device)
         grad_input = utils.tensor_to_gradcheck_var(input_data)
-        self.gradcheck(RandomSnow(p=1.0, snow_coefficient=0.3, brightness=2.1), (grad_input,))
+        self.gradcheck(RandomSnow(p=1.0, snow_coefficient=(0.1, 0.8), brightness=(1.0, 4.1)), (grad_input,))
 
     def test_exception(self, device, dtype):
-        err_msg = 'False not true.\\nSnow coefficient must be between 0 and 1.'
+        err_msg = 'False not true.\\nSnow coefficient values must be between 0 and 1.'
         with pytest.raises(Exception) as errinfo:
-            RandomSnow(p=1.0, snow_coefficient=-1, brightness=1.5)
+            RandomSnow(p=1.0, snow_coefficient=(-0.1, 0.8), brightness=(1.5, 3.5))
         assert err_msg in str(errinfo)
 
     @pytest.mark.skip(reason="not implemented yet")
