@@ -46,7 +46,6 @@ requires = [
 ]
 
 [tool.setuptools]
-  packages = ['kornia']
   zip-safe = true
   license-files = ["LICENSE"]
   include-package-data = false
@@ -60,6 +59,14 @@ requires = [
     dev = {file = "requirements/requirements-dev.txt"}
     docs = {file = ["requirements/requirements-docs.txt"]}
     x = {file = ["requirements/requirements-x.txt"]}
+
+[tool.setuptools.packages.find]
+exclude = [
+    "docs/*",
+    "test*",
+    "examples*",
+]
+namespaces = false
 
 [tool.setuptools.package-data]
   kornia = ["py.typed"]
