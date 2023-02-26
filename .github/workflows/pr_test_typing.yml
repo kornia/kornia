@@ -19,7 +19,7 @@ jobs:
       matrix:
         os: ['Ubuntu']
         python-version: ['3.7']
-        pytorch-version: ['1.9.1', '1.13.1']
+        pytorch-version: ['1.13.1']
 
     steps:
       - name: Checkout kornia

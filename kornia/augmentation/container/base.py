@@ -164,7 +164,7 @@ class SequentialBase(BasicSequentialBase):
 
 
 class ImageSequentialBase(SequentialBase):
-    def identity_matrix(self, input) -> Tensor:
+    def identity_matrix(self, input: Tensor) -> Tensor:
         """Return identity matrix."""
         raise NotImplementedError
 

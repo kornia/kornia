@@ -217,7 +217,7 @@ def perform_keep_shape_image(f: Callable[..., Tensor]) -> Callable[..., Tensor]:
     """
 
     @wraps(f)
-    def _wrapper(input: Tensor, *args, **kwargs) -> Tensor:
+    def _wrapper(input: Tensor, *args: Any, **kwargs: Any) -> Tensor:
         if not isinstance(input, Tensor):
             raise TypeError(f"Input input type is not a Tensor. Got {type(input)}")
 
@@ -249,7 +249,7 @@ def perform_keep_shape_video(f: Callable[..., Tensor]) -> Callable[..., Tensor]:
     """
 
     @wraps(f)
-    def _wrapper(input: Tensor, *args, **kwargs) -> Tensor:
+    def _wrapper(input: Tensor, *args: Any, **kwargs: Any) -> Tensor:
         if not isinstance(input, Tensor):
             raise TypeError(f"Input input type is not a Tensor. Got {type(input)}")
 

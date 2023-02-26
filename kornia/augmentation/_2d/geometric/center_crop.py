@@ -1,11 +1,9 @@
 from typing import Any, Dict, Optional, Tuple, Union
 
-import torch
-from torch import Tensor
-
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
+from kornia.core import Tensor
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
 
 
@@ -89,7 +87,7 @@ class CenterCrop(GeometricAugmentationBase2D):
             padding_mode="zeros",
         )
 
-    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, Tensor]:
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, Tensor]:
         return rg.center_crop_generator(batch_shape[0], batch_shape[-2], batch_shape[-1], self.size, self.device)
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:

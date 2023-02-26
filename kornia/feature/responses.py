@@ -7,7 +7,7 @@ from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.filters import gaussian_blur2d, spatial_gradient
 
 
-def _get_kernel_size(sigma: float):
+def _get_kernel_size(sigma: Union[float, int]) -> int:
     ksize = int(2.0 * 4.0 * sigma + 1.0)
 
     #  matches OpenCV, but may cause padding problem for small images
@@ -324,7 +324,7 @@ class CornerHarris(Module):
     """
     k: Tensor
 
-    def __init__(self, k: Union[float, Tensor], grads_mode='sobel') -> None:
+    def __init__(self, k: Union[float, Tensor], grads_mode: str = 'sobel') -> None:
         super().__init__()
         if isinstance(k, float):
             self.register_buffer('k', tensor(k))
@@ -346,7 +346,7 @@ class CornerGFTT(Module):
     See :func:`~kornia.feature.gfft_response` for details.
     """
 
-    def __init__(self, grads_mode='sobel') -> None:
+    def __init__(self, grads_mode: str = 'sobel') -> None:
         super().__init__()
         self.grads_mode: str = grads_mode
         return
@@ -364,7 +364,7 @@ class BlobHessian(Module):
     See :func:`~kornia.feature.hessian_response` for details.
     """
 
-    def __init__(self, grads_mode='sobel') -> None:
+    def __init__(self, grads_mode: str = 'sobel') -> None:
         super().__init__()
         self.grads_mode: str = grads_mode
         return

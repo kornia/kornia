@@ -61,7 +61,7 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
     def transform_matrix(self) -> Optional[Tensor]:
         return self._transform_matrix
 
-    def identity_matrix(self, input) -> Tensor:
+    def identity_matrix(self, input: Tensor) -> Tensor:
         """Return 3x3 identity matrix."""
         return eye_like(3, input)
 

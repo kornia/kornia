@@ -97,7 +97,7 @@ def _KeyNetConvBlock(
     stride: int = 1,
     padding: int = 2,
     dilation: int = 1,
-):
+) -> nn.Sequential:
     """Helper function for KeyNet.
 
     Default learnable convolutional block for KeyNet.

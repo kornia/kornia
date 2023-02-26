@@ -118,6 +118,7 @@ def KORNIA_CHECK_TYPE(x: object, typ: T, msg: str | None = None) -> TypeGuard[T]
         >>> KORNIA_CHECK_TYPE("foo", str, "Invalid string")
         True
     """
+    # TODO: Move to use typeguard here dropping support for JIT
     if not isinstance(x, typ):
         raise TypeError(f"Invalid type: {type(x)}.\n{msg}")
 
@@ -139,6 +140,7 @@ def KORNIA_CHECK_IS_TENSOR(x: object, msg: str | None = None) -> TypeGuard[Tenso
         >>> KORNIA_CHECK_IS_TENSOR(x, "Invalid tensor")
         True
     """
+    # TODO: Move to use typeguard here dropping support for JIT
     if not isinstance(x, Tensor):
         raise TypeError(f"Not a Tensor type. Got: {type(x)}.\n{msg}")
 

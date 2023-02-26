@@ -1,9 +1,9 @@
-from typing import List
+from typing import List, Tuple
 
-import torch
+from kornia.core import Tensor
 
 
-def accuracy(input: torch.Tensor, target: torch.Tensor, topk=(1,)) -> List[torch.Tensor]:
+def accuracy(input: Tensor, target: Tensor, topk: Tuple[int, ...] = (1,)) -> List[Tensor]:
     """Computes the accuracy over the k top predictions for the specified values of k.
 
     Args:

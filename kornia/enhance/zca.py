@@ -84,7 +84,7 @@ class ZCAWhitening(Module):
         self.transform_matrix: Tensor
         self.transform_inv: Optional[Tensor]
 
-    def fit(self, x: Tensor):
+    def fit(self, x: Tensor) -> 'ZCAWhitening':
         r"""Fit ZCA whitening matrices to the data.
 
         Args:

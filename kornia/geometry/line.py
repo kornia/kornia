@@ -46,7 +46,7 @@ class ParametrizedLine(Module):
     def __repr__(self) -> str:
         return str(self)
 
-    def __getitem__(self, idx) -> Tensor:
+    def __getitem__(self, idx: int) -> Tensor:
         return self.origin if idx == 0 else self.direction
 
     def __iter__(self):
@@ -67,7 +67,7 @@ class ParametrizedLine(Module):
         return self.direction.shape[-1]
 
     @classmethod
-    def through(cls, p0, p1) -> "ParametrizedLine":
+    def through(cls, p0: Tensor, p1: Tensor) -> "ParametrizedLine":
         """Constructs a parametrized line going from a point :math:`p0` to :math:`p1`.
 
         Args:

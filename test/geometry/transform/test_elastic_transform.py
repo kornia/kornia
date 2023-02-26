@@ -20,21 +20,32 @@ class TestElasticTransform:
         assert elastic_transform2d(img, noise).shape == shape
 
     def test_exception(self, device, dtype):
-        with pytest.raises(TypeError):
-            assert elastic_transform2d([0.0])
+        ex = torch.ones(1, device=device, dtype=dtype)
+        with pytest.raises(TypeError) as errinfo:
+            elastic_transform2d([0.0], ex)
+        assert "Not a Tensor type" in str(errinfo.value)
 
-        with pytest.raises(TypeError):
-            assert elastic_transform2d(torch.tensor(), 1)
+        with pytest.raises(TypeError) as errinfo:
+            elastic_transform2d(ex, 1)
+        assert "Not a Tensor type" in str(errinfo.value)
 
-        with pytest.raises(ValueError):
+        with pytest.raises(TypeError) as errinfo:
             img = torch.ones(1, 1, 1, device=device, dtype=dtype)
             noise = torch.ones(1, 2, 1, 1, device=device, dtype=dtype)
-            assert elastic_transform2d(img, noise)
+            elastic_transform2d(img, noise)
+        assert "shape must be [['B', 'C', 'H', 'W']]" in str(errinfo.value)
 
-        with pytest.raises(ValueError):
+        with pytest.raises(TypeError) as errinfo:
+            img = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)
+            noise = torch.ones(2, 1, 1, device=device, dtype=dtype)
+            elastic_transform2d(img, noise)
+        assert "shape must be [['B', 'C', 'H', 'W']]" in str(errinfo.value)
+
+        with pytest.raises(RuntimeError) as errinfo:
             img = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)
             noise = torch.ones(1, 3, 1, 1, device=device, dtype=dtype)
-            assert elastic_transform2d(img, noise)
+            elastic_transform2d(img, noise)
+        assert "The size of tensor a (2) must match the size of tensor b (3)" in str(errinfo.value)
 
     @pytest.mark.parametrize(
         "kernel_size, sigma, alpha",

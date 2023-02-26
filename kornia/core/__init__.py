@@ -1,5 +1,6 @@
 from ._backend import (
     Device,
+    Dtype,
     Module,
     Parameter,
     Tensor,
@@ -21,6 +22,7 @@ from ._backend import (
 __all__ = [
     "concatenate",
     "Device",
+    "Dtype",
     "Module",
     "Tensor",
     "tensor",

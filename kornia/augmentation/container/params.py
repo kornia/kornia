@@ -7,8 +7,7 @@ __all__ = ["ParamItem", "PatchParamItem"]
 
 class ParamItem(NamedTuple):
     name: str
-    # TODO: add type List['ParamItem'] when mypy > 0.991 be available (see python/mypy#14200)
-    data: Optional[Union[Dict[str, Tensor], List]]  # type: ignore [type-arg]
+    data: Optional[Union[Dict[str, Tensor], List['ParamItem']]]
 
 
 class PatchParamItem(NamedTuple):

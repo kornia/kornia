@@ -32,7 +32,7 @@ class AugmentationBase3D(_AugmentationBase):
         _validate_input_dtype(input, accepted_dtypes=[float16, float32, float64])
         return _transform_input3d(input)
 
-    def identity_matrix(self, input) -> Tensor:
+    def identity_matrix(self, input: Tensor) -> Tensor:
         """Return 4x4 identity matrix."""
         return kornia.eye_like(4, input)
 

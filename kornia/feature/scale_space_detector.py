@@ -87,8 +87,8 @@ class ScaleSpaceDetector(Module):
         ori_module: Module = PassLAF(),
         aff_module: Module = PassLAF(),
         minima_are_also_good: bool = False,
-        scale_space_response=False,
-    ):
+        scale_space_response: bool = False,
+    ) -> None:
         super().__init__()
         self.mr_size = mr_size
         self.num_features = num_features

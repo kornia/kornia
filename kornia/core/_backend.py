@@ -29,5 +29,6 @@ as_tensor = torch.as_tensor
 # random
 rand = torch.rand
 
-# device
-Device = Union[str, device]
+# type alias
+Device = Union[str, device, None]
+Dtype = Union[torch.dtype, None]

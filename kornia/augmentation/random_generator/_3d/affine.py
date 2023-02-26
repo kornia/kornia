@@ -143,7 +143,7 @@ class AffineGenerator3D(RandomGeneratorBase):
             validate_args=False,
         )
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         depth = batch_shape[-3]
         height = batch_shape[-2]

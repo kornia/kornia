@@ -1,5 +1,5 @@
 import math
-from typing import Optional, Union
+from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
@@ -276,7 +276,7 @@ def laf_to_boundary_points(LAF: Tensor, n_pts: int = 50) -> Tensor:
     return convert_points_from_homogeneous(pts_h.view(B, N, n_pts, 3))
 
 
-def get_laf_pts_to_draw(LAF: Tensor, img_idx: int = 0):
+def get_laf_pts_to_draw(LAF: Tensor, img_idx: int = 0) -> Tuple[List[int], List[int]]:
     """Return numpy array for drawing LAFs (local features).
 
     Args:
@@ -301,7 +301,7 @@ def get_laf_pts_to_draw(LAF: Tensor, img_idx: int = 0):
     KORNIA_CHECK_LAF(LAF)
     pts = laf_to_boundary_points(LAF[img_idx : img_idx + 1])[0]
     pts_np = pts.detach().permute(1, 0, 2).cpu().numpy()
-    return (pts_np[..., 0], pts_np[..., 1])
+    return (pts_np[..., 0].tolist(), pts_np[..., 1].tolist())
 
 
 def denormalize_laf(LAF: Tensor, images: Tensor) -> Tensor:
@@ -498,7 +498,7 @@ def laf_is_inside_image(laf: Tensor, images: Tensor, border: int = 0) -> Tensor:
     return good_lafs_mask
 
 
-def laf_to_three_points(laf: Tensor):
+def laf_to_three_points(laf: Tensor) -> Tensor:
     """Convert local affine frame(LAF) to alternative representation: coordinates of LAF center, LAF-x unit vector,
     LAF-y unit vector.
 
@@ -513,7 +513,7 @@ def laf_to_three_points(laf: Tensor):
     return three_pts
 
 
-def laf_from_three_points(threepts: Tensor):
+def laf_from_three_points(threepts: Tensor) -> Tensor:
     """Convert three points to local affine frame.
 
     Order is (0,0), (0, 1), (1, 0).

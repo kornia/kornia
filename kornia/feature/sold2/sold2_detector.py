@@ -154,10 +154,10 @@ class LineSegmentDetectionModule:
         use_candidate_suppression: bool = False,
         nms_dist_tolerance: float = 3.0,
         use_heatmap_refinement: bool = False,
-        heatmap_refine_cfg=None,
+        heatmap_refine_cfg: Optional[Dict[str, Any]] = None,
         use_junction_refinement: bool = False,
-        junction_refine_cfg=None,
-    ):
+        junction_refine_cfg: Optional[Dict[str, Any]] = None,
+    ) -> None:
         # Line detection parameters
         self.detect_thresh = detect_thresh
 
@@ -197,7 +197,7 @@ class LineSegmentDetectionModule:
         device = junctions.device
 
         # Perform the heatmap refinement
-        if self.use_heatmap_refinement:
+        if self.use_heatmap_refinement and isinstance(self.heatmap_refine_cfg, dict):
             if self.heatmap_refine_cfg["mode"] == "global":
                 heatmap = self.refine_heatmap(
                     heatmap, self.heatmap_refine_cfg["ratio"], self.heatmap_refine_cfg["valid_thresh"]
@@ -393,6 +393,8 @@ class LineSegmentDetectionModule:
     ) -> Tuple[Tensor, Tensor]:
         """Refine the line endpoints in a similar way as in LSD."""
         # Fetch refinement parameters
+        if not isinstance(self.junction_refine_cfg, dict):
+            raise TypeError(f'Expected to have a dict of config for junction. Gotcha {type(self.junction_refine_cfg)}')
         num_perturbs = self.junction_refine_cfg["num_perturbs"]
         perturb_interval = self.junction_refine_cfg["perturb_interval"]
         side_perturbs = (num_perturbs - 1) // 2
