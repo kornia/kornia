@@ -36,7 +36,7 @@ class RandomSnow(IntensityAugmentationBase2D):
     def __init__(
         self,
         snow_coefficient: Tuple[float, float] = (0.5, 0.5),
-        brightness: Tuple[float, float] = (1.0, 1.0),
+        brightness: Tuple[float, float] = (1.1, 1.1),
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
@@ -59,9 +59,8 @@ class RandomSnow(IntensityAugmentationBase2D):
         if len(input_HLS.shape) == 4:
             for batch in range(input_HLS.shape[0]):
                 # Retrieve generated parameters
-                params = self._param_generator(torch.Size([1]))
-                snow_coefficient = params["snow_coefficient"]
-                brightness = params["brightness"]
+                snow_coefficient = params["snow_coefficient"].to(input_HLS)[0]
+                brightness = params["brightness"].to(input_HLS)[0]
 
                 mask[batch, 1, :, :] = torch.where(input_HLS[batch, 1, :, :] < snow_coefficient, 1, 0)
 
@@ -69,14 +68,10 @@ class RandomSnow(IntensityAugmentationBase2D):
                 new_light = (input_HLS * mask * brightness).clamp(min=0.0, max=1.0)
                 input_HLS = input_HLS * (1 - mask) + new_light
 
-                # Normalize
-                input_HLS[batch, 1, :, :] = input_HLS[batch, 1, :, :] / input_HLS[batch, 1, :, :].sum()
-
         elif len(input_HLS.shape) == 3:
             # Retrieve generated parameters
-            params = self._param_generator(torch.Size([1]))
-            snow_coefficient = params["snow_coefficient"]
-            brightness = params["brightness"]
+            snow_coefficient = params["snow_coefficient"].to(input_HLS)[0]
+            brightness = params["brightness"].to(input_HLS)[0]
 
             mask[1, :, :] = torch.where(input_HLS[1, :, :] < snow_coefficient, 1, 0)
 
@@ -84,8 +79,6 @@ class RandomSnow(IntensityAugmentationBase2D):
             new_light = (input_HLS * mask * brightness).clamp(min=0.0, max=1.0)
             input_HLS = input_HLS * (1 - mask) + new_light
 
-            # Normalize
-            input_HLS[1, :, :] = input_HLS[1, :, :] / input_HLS[1, :, :].sum()
         else:
             KORNIA_CHECK(len(input_HLS.shape) not in (3, 4), "Wrong input shape.")
 
