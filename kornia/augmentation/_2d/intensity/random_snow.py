@@ -27,7 +27,7 @@ class RandomSnow(IntensityAugmentationBase2D):
 
     Examples:
         >>> inputs = torch.rand(2, 3, 4, 4)
-        >>> snow = kornia.augmentation.RandomSnow(p=1.0, snow_coefficient=(0.1, 0.6), brightness=(1, 5))
+        >>> snow = kornia.augmentation.RandomSnow(p=1.0, snow_coefficient=(0.1, 0.6), brightness=(1,0, 5.0))
         >>> output = snow(inputs)
         >>> output.shape
         torch.Size([2, 3, 4, 4])
@@ -52,16 +52,42 @@ class RandomSnow(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        snow_coefficient = (params["snow_coefficient"].to(input)).mean()
-        brightness = (params["brightness"].to(input)).mean()
         input_HLS = rgb_to_hls(input)
 
         mask = torch.zeros_like(input_HLS)
-        mask[:, :, 1] = torch.where(input_HLS[:, :, 1] < snow_coefficient, 1, 0)
 
-        # Increase Light channel of the image by given brightness for areas based on snow coefficient.
-        new_light = (input_HLS * mask * brightness).clamp(min=0.0, max=1.0)
-        input_HLS = input_HLS * (1 - mask) + new_light
+        if len(input_HLS.shape) == 4:
+            for batch in range(input_HLS.shape[0]):
+                # Retrieve generated parameters
+                params = self._param_generator(torch.Size([1]))
+                snow_coefficient = params["snow_coefficient"]
+                brightness = params["brightness"]
+
+                mask[batch, 1, :, :] = torch.where(input_HLS[batch, 1, :, :] < snow_coefficient, 1, 0)
+
+                # Increase Light channel of the image by given brightness for areas based on snow coefficient.
+                new_light = (input_HLS * mask * brightness).clamp(min=0.0, max=1.0)
+                input_HLS = input_HLS * (1 - mask) + new_light
+
+                # Normalize
+                input_HLS[batch, 1, :, :] = input_HLS[batch, 1, :, :] / input_HLS[batch, 1, :, :].sum()
+
+        elif len(input_HLS.shape) == 3:
+            # Retrieve generated parameters
+            params = self._param_generator(torch.Size([1]))
+            snow_coefficient = params["snow_coefficient"]
+            brightness = params["brightness"]
+
+            mask[1, :, :] = torch.where(input_HLS[1, :, :] < snow_coefficient, 1, 0)
+
+            # Increase Light channel of the image by given brightness for areas based on snow coefficient.
+            new_light = (input_HLS * mask * brightness).clamp(min=0.0, max=1.0)
+            input_HLS = input_HLS * (1 - mask) + new_light
+
+            # Normalize
+            input_HLS[1, :, :] = input_HLS[1, :, :] / input_HLS[1, :, :].sum()
+        else:
+            KORNIA_CHECK(len(input_HLS.shape) not in (3, 4), "Wrong input shape.")
 
         output = hls_to_rgb(input_HLS)
         return output
