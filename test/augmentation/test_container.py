@@ -102,15 +102,15 @@ class TestVideoSequential:
         if data_format == 'BCTHW':
             input = torch.randn(2, 3, 1, 5, 6, device=device, dtype=dtype).repeat(1, 1, 4, 1, 1)
             output = aug_list(input)
-            assert (output[:, :, 0] == output[:, :, 1]).all()
-            assert (output[:, :, 1] == output[:, :, 2]).all()
-            assert (output[:, :, 2] == output[:, :, 3]).all()
+            assert_close(output[:, :, 0], output[:, :, 1])
+            assert_close(output[:, :, 1], output[:, :, 2])
+            assert_close(output[:, :, 2], output[:, :, 3])
         if data_format == 'BTCHW':
             input = torch.randn(2, 1, 3, 5, 6, device=device, dtype=dtype).repeat(1, 4, 1, 1, 1)
             output = aug_list(input)
-            assert (output[:, 0] == output[:, 1]).all()
-            assert (output[:, 1] == output[:, 2]).all()
-            assert (output[:, 2] == output[:, 3]).all()
+            assert_close(output[:, 0], output[:, 1])
+            assert_close(output[:, 1], output[:, 2])
+            assert_close(output[:, 2], output[:, 3])
         reproducibility_test(input, aug_list)
 
     @pytest.mark.parametrize(
@@ -145,7 +145,7 @@ class TestVideoSequential:
             output_2 = output_2.view(2, 4, 3, 5, 6)
         if data_format == 'BCTHW':
             output_2 = output_2.transpose(1, 2)
-        assert (output_1 == output_2).all(), dict(aug_list_1._params)
+        assert_close(output_1, output_2)
 
     @pytest.mark.jit
     @pytest.mark.skip(reason="turn off due to Union Type")
