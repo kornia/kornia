@@ -16,7 +16,6 @@ from kornia.augmentation import (
     Normalize,
     PadTo,
     RandomBoxBlur,
-    RandomMedianBlur,
     RandomBrightness,
     RandomChannelShuffle,
     RandomContrast,
@@ -32,6 +31,7 @@ from kornia.augmentation import (
     RandomHorizontalFlip,
     RandomHue,
     RandomInvert,
+    RandomMedianBlur,
     RandomPlanckianJitter,
     RandomPlasmaBrightness,
     RandomPlasmaContrast,
@@ -4116,26 +4116,21 @@ class TestRandomAutoContrast:
 
 
 class TestRandomMedianBlur:
-
     def test_smoke(self, device, dtype):
         image = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
         aug = RandomMedianBlur(p=0.8)
         assert image.shape == aug(image).shape
-    
 
     def test_feature_median_blur(self, device, dtype):
         torch.manual_seed(0)
 
         img = torch.ones(1, 1, 4, 4, device=device, dtype=dtype)
-        out = RandomMedianBlur((3, 3), p = 0.5)(img)
+        out = RandomMedianBlur((3, 3), p=0.5)(img)
 
-        expected = torch.tensor([[[[0., 1., 1., 0.],
-                                      [1., 1., 1., 1.],
-                                      [1., 1., 1., 1.],
-                                      [0., 1., 1., 0.]]]],
-                                      device=device, dtype=dtype)
+        expected = torch.tensor(
+            [[[[0.0, 1.0, 1.0, 0.0], [1.0, 1.0, 1.0, 1.0], [1.0, 1.0, 1.0, 1.0], [0.0, 1.0, 1.0, 0.0]]]],
+            device=device,
+            dtype=dtype,
+        )
 
         utils.assert_close(out, expected)
-
-
-    
