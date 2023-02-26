@@ -4,7 +4,7 @@ from torch.autograd import gradcheck
 
 from kornia.geometry.line import ParametrizedLine, fit_line
 from kornia.geometry.plane import Hyperplane
-from kornia.testing import BaseTester
+from kornia.testing import BaseTester, assert_close
 
 
 class TestParametrizedLine(BaseTester):
@@ -124,12 +124,12 @@ class TestFitLine(BaseTester):
         assert line.origin.shape == (B, D)
         assert line.direction.shape == (B, D)
 
-        assert (line.origin == line[0]).all()
-        assert (line.direction == line[1]).all()
+        assert_close(line.origin, line[0])
+        assert_close(line.direction, line[1])
 
         origin, direction = fit_line(points)
-        assert (line.origin == origin).all()
-        assert (line.direction == direction).all()
+        assert_close(line.origin, origin)
+        assert_close(line.direction, direction)
 
     def test_fit_line2(self, device, dtype):
         p0 = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
