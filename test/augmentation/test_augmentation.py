@@ -4143,9 +4143,5 @@ class TestRandomSnow(BaseTester):
         assert err_msg in str(errinfo)
 
     @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
     def test_module(self, device, dtype):
         pass
