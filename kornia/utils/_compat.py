@@ -1,9 +1,8 @@
 from typing import TYPE_CHECKING, Callable, ContextManager, List, Optional, Tuple, TypeVar
 
 import torch
-from torch import Tensor
-
 from packaging import version
+from torch import Tensor
 
 
 def torch_version() -> str:
