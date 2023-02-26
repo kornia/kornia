@@ -27,7 +27,7 @@ class RandomSnow(IntensityAugmentationBase2D):
 
     Examples:
         >>> inputs = torch.rand(2, 3, 4, 4)
-        >>> snow = kornia.augmentation.RandomSnow(p=1.0, snow_coefficient=(0.1, 0.6), brightness=(1,0, 5.0))
+        >>> snow = kornia.augmentation.RandomSnow(p=1.0, snow_coefficient=(0.1, 0.6), brightness=(1.0, 5.0))
         >>> output = snow(inputs)
         >>> output.shape
         torch.Size([2, 3, 4, 4])
@@ -35,8 +35,8 @@ class RandomSnow(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        snow_coefficient: Tuple[float, float] = (0.1, 0.1),
-        brightness: Tuple[float, float] = (1.1, 1.1),
+        snow_coefficient: Tuple[float, float] = (0.5, 0.5),
+        brightness: Tuple[float, float] = (2, 2),
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
