@@ -125,6 +125,7 @@ __all__ = [
     "RandomSaturation",
     "RandomSolarize",
     "RandomSharpness",
+    "RandomSnow",
     "RandomPosterize",
     "RandomEqualize",
     "RandomMotionBlur",
