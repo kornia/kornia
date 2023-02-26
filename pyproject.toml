@@ -81,7 +81,7 @@ namespaces = false
   include_trailing_comma = true
   line_length = 120
   profile = "black"
-  known_first_party = ["examples", "kornia","tests"]
+  known_first_party = ["examples", "kornia","test"]
   skip_glob = []
   skip = ["kornia/__init__.py"]
 
