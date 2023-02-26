@@ -1,11 +1,10 @@
-from test.nerf.test_rays import create_four_cameras
-
 import torch
 
 from kornia.core import Device
 from kornia.geometry.camera import PinholeCamera
 from kornia.nerf.data_utils import ImageTensors, RayDataset, instantiate_ray_dataloader
 from kornia.testing import assert_close
+from test.nerf.test_rays import create_four_cameras
 
 
 def create_random_images_for_cameras(cameras: PinholeCamera) -> ImageTensors:

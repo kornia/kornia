@@ -1,5 +1,4 @@
 import inspect
-from test.augmentation.test_container import reproducibility_test
 from typing import List
 
 import pytest
@@ -14,6 +13,7 @@ from kornia.augmentation.auto.trivial_augment import TrivialAugment
 from kornia.augmentation.container import AugmentationSequential
 from kornia.geometry.bbox import bbox_to_mask
 from kornia.testing import assert_close
+from test.augmentation.test_container import reproducibility_test
 
 
 def _find_all_ops() -> List[OperationBase]:
