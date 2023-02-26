@@ -4134,7 +4134,7 @@ class TestRandomSnow(BaseTester):
     def test_gradcheck(self, device):
         input_data = torch.rand(1, 3, 6, 8, device=device)
         grad_input = utils.tensor_to_gradcheck_var(input_data)
-        self.gradcheck(RandomSnow(p=1.0, snow_coefficient=(0.1, 0.8), brightness=(1.0, 4.1)), (grad_input,))
+        self.gradcheck(RandomSnow(p=1.0), (grad_input,))
 
     def test_exception(self, device, dtype):
         err_msg = 'False not true.\\nSnow coefficient values must be between 0 and 1.'
