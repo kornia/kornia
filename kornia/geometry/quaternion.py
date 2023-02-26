@@ -5,7 +5,7 @@
 from math import pi
 from typing import Optional, Tuple, Union
 
-from kornia.core import Module, Parameter, Tensor, concatenate, rand, stack, tensor, where
+from kornia.core import Device, Dtype, Module, Parameter, Tensor, concatenate, rand, stack, tensor, where
 from kornia.core.check import KORNIA_CHECK_TYPE
 from kornia.geometry.conversions import (
     QuaternionCoeffOrder,
@@ -72,7 +72,7 @@ class Quaternion(Module):
     def __repr__(self) -> str:
         return f"{self.data}"
 
-    def __getitem__(self, idx) -> 'Quaternion':
+    def __getitem__(self, idx: Union[int, slice]) -> 'Quaternion':
         return Quaternion(self.data[idx])
 
     def __neg__(self) -> 'Quaternion':
@@ -274,7 +274,9 @@ class Quaternion(Module):
         return cls(angle_axis_to_quaternion(axis_angle, order=QuaternionCoeffOrder.WXYZ))
 
     @classmethod
-    def identity(cls, batch_size: Optional[int] = None, device=None, dtype=None) -> 'Quaternion':
+    def identity(
+        cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None
+    ) -> 'Quaternion':
         """Create a quaternion representing an identity rotation.
 
         Args:
@@ -286,7 +288,7 @@ class Quaternion(Module):
             Parameter containing:
             tensor([1., 0., 0., 0.], requires_grad=True)
         """
-        data: Tensor = tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype)
+        data = tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype)
         if batch_size is not None:
             data = data.repeat(batch_size, 1)
         return cls(data)
@@ -312,7 +314,9 @@ class Quaternion(Module):
     # TODO: update signature
     # def random(cls, shape: Optional[List] = None, device = None, dtype = None) -> 'Quaternion':
     @classmethod
-    def random(cls, batch_size: Optional[int] = None, device=None, dtype=None) -> 'Quaternion':
+    def random(
+        cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None
+    ) -> 'Quaternion':
         """Create a random unit quaternion of shape :math:`(B, 4)`.
 
         Uniformly distributed across the rotation space as per: http://planning.cs.uiuc.edu/node198.html

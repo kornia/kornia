@@ -625,7 +625,7 @@ def get_translation_matrix2d(translations: Tensor) -> Tensor:
     return transform_h
 
 
-def get_shear_matrix2d(center: Tensor, sx: Tensor | None = None, sy: Tensor | None = None):
+def get_shear_matrix2d(center: Tensor, sx: Tensor | None = None, sy: Tensor | None = None) -> Tensor:
     r"""Compose shear matrix Bx4x4 from the components.
 
     Note: Ordered shearing, shear x-axis then y-axis.
@@ -729,7 +729,7 @@ def get_shear_matrix3d(
     syz: Tensor | None = None,
     szx: Tensor | None = None,
     szy: Tensor | None = None,
-):
+) -> Tensor:
     r"""Compose shear matrix Bx4x4 from the components.
     Note: Ordered shearing, shear x-axis then y-axis then z-axis.
 

@@ -1,14 +1,16 @@
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Dict, Optional, Union
 
 import torch
-import torch.nn as nn
+
+from kornia.core import Module
+from kornia.metrics import AverageMeter
 
 from .utils import TrainerState
 
 
 # default function to generate the filename in the model checkpoint
-def default_filename_fcn(x) -> str:
+def default_filename_fcn(x: Union[str, int]) -> str:
     return f"model_{x}.pt"
 
 
@@ -44,7 +46,7 @@ class EarlyStopping:
         self.best_score: Optional[float] = None
         self.early_stop: bool = False
 
-    def __call__(self, model: nn.Module, epoch: int, valid_metric) -> TrainerState:
+    def __call__(self, model: Module, epoch: int, valid_metric: Dict[str, AverageMeter]) -> TrainerState:
         score: float = valid_metric[self.monitor].avg
 
         if self.best_score is None:
@@ -95,7 +97,7 @@ class ModelCheckpoint:
         # create directory
         Path(self.filepath).mkdir(parents=True, exist_ok=True)
 
-    def __call__(self, model: nn.Module, epoch: int, valid_metric) -> None:
+    def __call__(self, model: Module, epoch: int, valid_metric: Dict[str, AverageMeter]) -> None:
         valid_metric_value: float = valid_metric[self.monitor].avg
         if valid_metric_value > self.best_metric:
             self.best_metric = valid_metric_value

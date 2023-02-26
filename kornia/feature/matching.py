@@ -1,9 +1,8 @@
 from typing import Dict, Optional, Tuple
 
 import torch
-import torch.nn as nn
 
-from kornia.core import Tensor
+from kornia.core import Module, Tensor, concatenate
 from kornia.core.check import KORNIA_CHECK_DM_DESC, KORNIA_CHECK_SHAPE
 from kornia.feature.laf import get_laf_center
 from kornia.testing import is_mps_tensor_safe
@@ -11,7 +10,7 @@ from kornia.testing import is_mps_tensor_safe
 from .adalam import get_adalam_default_config, match_adalam
 
 
-def _cdist(d1: torch.Tensor, d2: torch.Tensor) -> torch.Tensor:
+def _cdist(d1: Tensor, d2: Tensor) -> Tensor:
     r"""Manual `torch.cdist` for M1."""
     if (not is_mps_tensor_safe(d1)) and (not is_mps_tensor_safe(d2)):
         return torch.cdist(d1, d2)
@@ -27,7 +26,7 @@ def _get_default_fginn_params():
     return config
 
 
-def _get_lazy_distance_matrix(desc1: Tensor, desc2: Tensor, dm_: Optional[Tensor] = None):
+def _get_lazy_distance_matrix(desc1: Tensor, desc2: Tensor, dm_: Optional[Tensor] = None) -> Tensor:
     """Helper function, which checks validity of provided distance matrix, or calculates L2-distance matrix dm is
     not provided.
 
@@ -45,7 +44,7 @@ def _get_lazy_distance_matrix(desc1: Tensor, desc2: Tensor, dm_: Optional[Tensor
     return dm
 
 
-def _no_match(dm: Tensor):
+def _no_match(dm: Tensor) -> Tuple[Tensor, Tensor]:
     """Helper function, which output empty tensors.
 
     Returns:
@@ -76,10 +75,10 @@ def match_nn(desc1: Tensor, desc2: Tensor, dm: Optional[Tensor] = None) -> Tuple
     KORNIA_CHECK_SHAPE(desc2, ["B", "DIM"])
     if (len(desc1) == 0) or (len(desc2) == 0):
         return _no_match(desc1)
-    distance_matrix: Tensor = _get_lazy_distance_matrix(desc1, desc2, dm)
+    distance_matrix = _get_lazy_distance_matrix(desc1, desc2, dm)
     match_dists, idxs_in_2 = torch.min(distance_matrix, dim=1)
-    idxs_in1: Tensor = torch.arange(0, idxs_in_2.size(0), device=idxs_in_2.device)
-    matches_idxs: Tensor = torch.cat([idxs_in1.view(-1, 1), idxs_in_2.view(-1, 1)], dim=1)
+    idxs_in1 = torch.arange(0, idxs_in_2.size(0), device=idxs_in_2.device)
+    matches_idxs = concatenate([idxs_in1.view(-1, 1), idxs_in_2.view(-1, 1)], 1)
     return match_dists.view(-1, 1), matches_idxs.view(-1, 2)
 
 
@@ -111,11 +110,11 @@ def match_mnn(desc1: Tensor, desc2: Tensor, dm: Optional[Tensor] = None) -> Tupl
 
     if distance_matrix.size(0) <= distance_matrix.size(1):
         mutual_nns = minsize_idxs == idxs_in_1[idxs_in_2][:ms]
-        matches_idxs = torch.cat([minsize_idxs.view(-1, 1), idxs_in_2.view(-1, 1)], dim=1)[mutual_nns]
+        matches_idxs = concatenate([minsize_idxs.view(-1, 1), idxs_in_2.view(-1, 1)], 1)[mutual_nns]
         match_dists = match_dists[mutual_nns]
     else:
         mutual_nns = minsize_idxs == idxs_in_2[idxs_in_1][:ms]
-        matches_idxs = torch.cat([idxs_in_1.view(-1, 1), minsize_idxs.view(-1, 1)], dim=1)[mutual_nns]
+        matches_idxs = concatenate([idxs_in_1.view(-1, 1), minsize_idxs.view(-1, 1)], 1)[mutual_nns]
         match_dists = match_dists2[mutual_nns]
     return match_dists.view(-1, 1), matches_idxs.view(-1, 2)
 
@@ -153,7 +152,7 @@ def match_snn(desc1: Tensor, desc2: Tensor, th: float = 0.8, dm: Optional[Tensor
         return _no_match(distance_matrix)
     idxs_in1 = torch.arange(0, idxs_in_2.size(0), device=distance_matrix.device)[mask]
     idxs_in_2 = idxs_in_2[:, 0][mask]
-    matches_idxs = torch.cat([idxs_in1.view(-1, 1), idxs_in_2.view(-1, 1)], dim=1)
+    matches_idxs = concatenate([idxs_in1.view(-1, 1), idxs_in_2.view(-1, 1)], 1)
     return match_dists.view(-1, 1), matches_idxs.view(-1, 2)
 
 
@@ -278,7 +277,7 @@ def match_fginn(
         return _no_match(distance_matrix)
     idxs_in1 = torch.arange(0, idxs_in_2.size(0), device=distance_matrix.device)[mask]
     idxs_in_2 = idxs_in_2[mask]
-    matches_idxs = torch.cat([idxs_in1.view(-1, 1), idxs_in_2.view(-1, 1)], dim=1)
+    matches_idxs = concatenate([idxs_in1.view(-1, 1), idxs_in_2.view(-1, 1)], 1)
     match_dists, matches_idxs = match_dists.view(-1, 1), matches_idxs.view(-1, 2)
 
     if not mutual:  # returning 1-way matches
@@ -288,7 +287,7 @@ def match_fginn(
     return match_dists[good_mask], matches_idxs[good_mask]
 
 
-class DescriptorMatcher(nn.Module):
+class DescriptorMatcher(Module):
     """Module version of matching functions.
 
     See :func:`~kornia.feature.match_nn`, :func:`~kornia.feature.match_snn`,
@@ -335,7 +334,7 @@ class DescriptorMatcher(nn.Module):
         return out
 
 
-class GeometryAwareDescriptorMatcher(nn.Module):
+class GeometryAwareDescriptorMatcher(Module):
     """Module version of matching functions.
 
     See :func:`~kornia.feature.match_nn`, :func:`~kornia.feature.match_snn`,

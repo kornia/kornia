@@ -1,8 +1,8 @@
 # kornia.geometry.so2 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so2.py
-from typing import Optional, overload
+from typing import Optional, Union, overload
 
-from kornia.core import Module, Parameter, Tensor, complex, rand, stack, tensor, zeros_like
+from kornia.core import Device, Dtype, Module, Parameter, Tensor, complex, rand, stack, tensor, zeros_like
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
 from kornia.geometry.liegroup._utils import (
     check_so2_matrix_shape,
@@ -53,7 +53,7 @@ class So2(Module):
     def __repr__(self) -> str:
         return f"{self.z}"
 
-    def __getitem__(self, idx: int) -> 'So2':
+    def __getitem__(self, idx: Union[int, slice]) -> 'So2':
         return So2(self._z[idx])
 
     @overload
@@ -192,7 +192,7 @@ class So2(Module):
         return cls(z)
 
     @classmethod
-    def identity(cls, batch_size: Optional[int] = None, device=None, dtype=None) -> 'So2':
+    def identity(cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None) -> 'So2':
         """Create a So2 group representing an identity rotation.
 
         Args:
@@ -224,7 +224,7 @@ class So2(Module):
         return So2(1 / self.z)
 
     @classmethod
-    def random(cls, batch_size: Optional[int] = None, device=None, dtype=None) -> 'So2':
+    def random(cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None) -> 'So2':
         """Create a So2 group representing a random rotation.
 
         Args:

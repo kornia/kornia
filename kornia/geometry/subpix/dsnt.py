@@ -6,6 +6,7 @@ from typing import Tuple
 import torch
 import torch.nn.functional as F
 
+from kornia.core import Tensor, concatenate
 from kornia.testing import check_is_tensor
 from kornia.utils.grid import create_meshgrid
 
@@ -16,7 +17,7 @@ def _validate_batched_image_tensor_input(tensor):
         raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {tensor.shape}")
 
 
-def spatial_softmax2d(input: torch.Tensor, temperature: torch.Tensor = torch.tensor(1.0)) -> torch.Tensor:
+def spatial_softmax2d(input: Tensor, temperature: Tensor = torch.tensor(1.0)) -> Tensor:
     r"""Apply the Softmax function over features in each image channel.
 
     Note that this function behaves differently to :py:class:`torch.nn.Softmax2d`, which
@@ -43,14 +44,14 @@ def spatial_softmax2d(input: torch.Tensor, temperature: torch.Tensor = torch.ten
 
     batch_size, channels, height, width = input.shape
     temperature = temperature.to(device=input.device, dtype=input.dtype)
-    x: torch.Tensor = input.view(batch_size, channels, -1)
+    x = input.view(batch_size, channels, -1)
 
-    x_soft: torch.Tensor = F.softmax(x * temperature, dim=-1)
+    x_soft = F.softmax(x * temperature, dim=-1)
 
     return x_soft.view(batch_size, channels, height, width)
 
 
-def spatial_expectation2d(input: torch.Tensor, normalized_coordinates: bool = True) -> torch.Tensor:
+def spatial_expectation2d(input: Tensor, normalized_coordinates: bool = True) -> Tensor:
     r"""Compute the expectation of coordinate values using spatial probabilities.
 
     The input heatmap is assumed to represent a valid spatial probability distribution,
@@ -77,30 +78,28 @@ def spatial_expectation2d(input: torch.Tensor, normalized_coordinates: bool = Tr
     batch_size, channels, height, width = input.shape
 
     # Create coordinates grid.
-    grid: torch.Tensor = create_meshgrid(height, width, normalized_coordinates, input.device)
+    grid = create_meshgrid(height, width, normalized_coordinates, input.device)
     grid = grid.to(input.dtype)
 
-    pos_x: torch.Tensor = grid[..., 0].reshape(-1)
-    pos_y: torch.Tensor = grid[..., 1].reshape(-1)
+    pos_x = grid[..., 0].reshape(-1)
+    pos_y = grid[..., 1].reshape(-1)
 
-    input_flat: torch.Tensor = input.view(batch_size, channels, -1)
+    input_flat = input.view(batch_size, channels, -1)
 
     # Compute the expectation of the coordinates.
-    expected_y: torch.Tensor = torch.sum(pos_y * input_flat, -1, keepdim=True)
-    expected_x: torch.Tensor = torch.sum(pos_x * input_flat, -1, keepdim=True)
+    expected_y = torch.sum(pos_y * input_flat, -1, keepdim=True)
+    expected_x = torch.sum(pos_x * input_flat, -1, keepdim=True)
 
-    output: torch.Tensor = torch.cat([expected_x, expected_y], -1)
+    output = concatenate([expected_x, expected_y], -1)
 
     return output.view(batch_size, channels, 2)  # BxNx2
 
 
-def _safe_zero_division(numerator: torch.Tensor, denominator: torch.Tensor, eps: float = 1e-32) -> torch.Tensor:
+def _safe_zero_division(numerator: Tensor, denominator: Tensor, eps: float = 1e-32) -> Tensor:
     return numerator / torch.clamp(denominator, min=eps)
 
 
-def render_gaussian2d(
-    mean: torch.Tensor, std: torch.Tensor, size: Tuple[int, int], normalized_coordinates: bool = True
-):
+def render_gaussian2d(mean: Tensor, std: Tensor, size: Tuple[int, int], normalized_coordinates: bool = True) -> Tensor:
     r"""Render the PDF of a 2D Gaussian distribution.
 
     Args:
@@ -120,10 +119,10 @@ def render_gaussian2d(
     height, width = size
 
     # Create coordinates grid.
-    grid: torch.Tensor = create_meshgrid(height, width, normalized_coordinates, mean.device)
+    grid = create_meshgrid(height, width, normalized_coordinates, mean.device)
     grid = grid.to(mean.dtype)
-    pos_x: torch.Tensor = grid[..., 0].view(height, width)
-    pos_y: torch.Tensor = grid[..., 1].view(height, width)
+    pos_x = grid[..., 0].view(height, width)
+    pos_y = grid[..., 1].view(height, width)
 
     # Gaussian PDF = exp(-(x - \mu)^2 / (2 \sigma^2))
     #              = exp(dists * ks),

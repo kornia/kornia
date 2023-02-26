@@ -1,8 +1,8 @@
 # kornia.geometry.so3 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py
-from typing import Optional
+from typing import Optional, Union
 
-from kornia.core import Module, Tensor, concatenate, stack, tensor, where, zeros, zeros_like
+from kornia.core import Device, Dtype, Module, Tensor, concatenate, stack, tensor, where, zeros, zeros_like
 from kornia.core.check import KORNIA_CHECK_TYPE
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.quaternion import Quaternion
@@ -48,7 +48,7 @@ class So3(Module):
     def __repr__(self) -> str:
         return f"{self.q}"
 
-    def __getitem__(self, idx) -> 'So3':
+    def __getitem__(self, idx: Union[int, slice]) -> 'So3':
         return So3(self._q[idx])
 
     def __mul__(self, right):
@@ -77,7 +77,7 @@ class So3(Module):
         return self._q
 
     @staticmethod
-    def exp(v) -> 'So3':
+    def exp(v: Tensor) -> 'So3':
         """Converts elements of lie algebra to elements of lie group.
 
         See more: https://vision.in.tum.de/_media/members/demmeln/nurlanov2021so3log.pdf
@@ -125,7 +125,7 @@ class So3(Module):
         return omega
 
     @staticmethod
-    def hat(v) -> Tensor:
+    def hat(v: Tensor) -> Tensor:
         """Converts elements from vector space to lie algebra. Returns matrix of shape :math:`(B,3,3)`.
 
         Args:
@@ -148,7 +148,7 @@ class So3(Module):
         return stack((row0, row1, row2), -2)
 
     @staticmethod
-    def vee(omega) -> Tensor:
+    def vee(omega: Tensor) -> Tensor:
         r"""Converts elements from lie algebra to vector space. Returns vector of shape :math:`(B,3)`.
 
         .. math::
@@ -220,7 +220,7 @@ class So3(Module):
         return cls(Quaternion.from_matrix(matrix))
 
     @classmethod
-    def identity(cls, batch_size: Optional[int] = None, device=None, dtype=None) -> 'So3':
+    def identity(cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None) -> 'So3':
         """Create a So3 group representing an identity rotation.
 
         Args:
@@ -252,7 +252,7 @@ class So3(Module):
         return So3(self.q.conj())
 
     @classmethod
-    def random(cls, batch_size: Optional[int] = None, device=None, dtype=None) -> 'So3':
+    def random(cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None) -> 'So3':
         """Create a So3 group representing a random rotation.
 
         Args:

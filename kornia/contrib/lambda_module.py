@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Any, Callable
 
 from kornia.core import Module, Tensor
 
@@ -27,5 +27,5 @@ class Lambda(Module):
 
         self.func = func
 
-    def forward(self, img: Tensor, *args, **kwargs) -> Tensor:
+    def forward(self, img: Tensor, *args: Any, **kwargs: Any) -> Tensor:
         return self.func(img, *args, **kwargs)

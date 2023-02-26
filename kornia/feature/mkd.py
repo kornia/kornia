@@ -219,7 +219,7 @@ class EmbedGradients(nn.Module):
         return f"{self.__class__.__name__}(patch_size={self.patch_size}, relative={self.relative})"
 
 
-def spatial_kernel_embedding(kernel_type, grids: Dict[str, Tensor]) -> Tensor:
+def spatial_kernel_embedding(kernel_type: str, grids: Dict[str, Tensor]) -> Tensor:
     r"""Compute embeddings for cartesian and polar parametrizations."""
     factors = {"phi": 1.0, "rho": pi / sqrt2, "x": pi / 2, "y": pi / 2}
     if kernel_type == 'cart':
