@@ -38,7 +38,7 @@ class RandomSnow(IntensityAugmentationBase2D):
         snow_coefficient: Tuple[float, float] = (0.5, 0.5),
         brightness: Tuple[float, float] = (2, 2),
         same_on_batch: bool = False,
-        p: float = 0.5,
+        p: float = 1.0,
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
@@ -52,23 +52,22 @@ class RandomSnow(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        KORNIA_CHECK(input.shape[1] == 3, "Number of color channels should be 3.")
-        KORNIA_CHECK(len(input.shape) in (3, 4), "Wrong input dimension.")
         if len(input.shape) == 3:
             input = input[None, :, :, :]
         input_HLS = rgb_to_hls(input)
 
         mask = torch.zeros_like(input_HLS)
-        for batch in range(input_HLS.shape[0]):
-            # Retrieve generated parameters
-            snow_coefficient = params["snow_coefficient"].to(input_HLS)[0]
-            brightness = params["brightness"].to(input_HLS)[0]
+        # Retrieve generated parameters
+        snow_coefficient = params["snow_coefficient"].to(input)
+        brightness = params["brightness"].to(input)
+        snow_coefficient = snow_coefficient[:, None, None, None]
+        brightness = brightness[:, None, None, None]
 
-            mask[batch, 1, :, :] = torch.where(input_HLS[batch, 1, :, :] < snow_coefficient, 1, 0)
+        mask[:, 1, :, :] = torch.where(input_HLS[:, 1, :, :] < snow_coefficient[:, 0, :, :], 1, 0)
 
-            # Increase Light channel of the image by given brightness for areas based on snow coefficient.
-            new_light = (input_HLS * mask * brightness).clamp(min=0.0, max=1.0)
-            input_HLS = input_HLS * (1 - mask) + new_light
+        # Increase Light channel of the image by given brightness for areas based on snow coefficient.
+        new_light = (input_HLS * mask * brightness).clamp(min=0.0, max=1.0)
+        input_HLS = input_HLS * (1 - mask) + new_light
 
         output = hls_to_rgb(input_HLS)
         return output
