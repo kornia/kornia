@@ -3,11 +3,11 @@ import warnings
 
 import pytest
 import torch
+from packaging import version
 from torch.autograd import gradcheck
 
 import kornia
 from kornia.testing import BaseTester
-from packaging import version
 
 
 class TestRgbToHls(BaseTester):

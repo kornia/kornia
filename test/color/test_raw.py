@@ -2,12 +2,12 @@ import warnings
 
 import pytest
 import torch
+from packaging import version
 from torch.autograd import gradcheck
 
 import kornia
 from kornia.testing import BaseTester  # test utils
 from kornia.testing import assert_close
-from packaging import version
 
 
 class TestRawToRgb(BaseTester):

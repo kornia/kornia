@@ -10,6 +10,7 @@ repos:
       - id: end-of-file-fixer
       - id: trailing-whitespace
       - id: check-yaml
+      - id: requirements-txt-fixer
       - id: pretty-format-json
         exclude: ^$|.devcontainer
 
@@ -17,14 +18,6 @@ repos:
     rev: "0.9.1"
     hooks:
       - id: pyproject-fmt
-        args:
-          - --indent
-          - "4"
-
-  - repo: https://github.com/abravalheri/validate-pyproject
-    rev: v0.12.1
-    hooks:
-      - id: validate-pyproject
 
   - repo: https://github.com/psf/black
     rev: 23.1.0
