@@ -4187,4 +4187,3 @@ class TestRandomMedianBlur:
         )
 
         utils.assert_close(out, expected)
-
