@@ -67,7 +67,7 @@ def rgb_to_hls(image: Tensor, eps: float = 1e-8) -> Tensor:
     # h[imax == 0] = (((g - b) / (max - min)) % 6)[imax == 0]
     # h[imax == 1] = (((b - r) / (max - min)) + 2)[imax == 1]
     # h[imax == 2] = (((r - g) / (max - min)) + 4)[imax == 2]
-    cond = imax.unsqueeze(-3) == _RGB2HSL_IDX
+    cond = imax[..., None, :, :] == _RGB2HSL_IDX
     if image.requires_grad:
         h = torch.mul((g - b) % 6, cond[..., 0, :, :])
     else:
