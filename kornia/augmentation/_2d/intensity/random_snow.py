@@ -52,6 +52,9 @@ class RandomSnow(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
+        KORNIA_CHECK(input.shape[1] == 3, "Number of color channels should be 3.")
+        KORNIA_CHECK(len(input.shape) in (3, 4), "Wrong input dimension.")
+
         if len(input.shape) == 3:
             input = input[None, :, :, :]
         input_HLS = rgb_to_hls(input)
