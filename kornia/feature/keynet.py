@@ -68,16 +68,21 @@ class _HandcraftedBlock(Module):
         dyy = sobel_dy[:, :, 1, :, :]
 
         # type_as for enabling use of autocast 16 bit
-        hc_feats = torch.cat([dx,
-                              dy,
-                              (dx ** 2.).type_as(x),
-                              (dy ** 2.).type_as(x),
-                              dx * dy,
-                              dxy,
-                              (dxy ** 2.).type_as(x),
-                              dxx,
-                              dyy,
-                              dxx * dyy], dim=1)
+        hc_feats = torch.cat(
+            [
+                dx,
+                dy,
+                (dx**2.0).type_as(x),
+                (dy**2.0).type_as(x),
+                dx * dy,
+                dxy,
+                (dxy**2.0).type_as(x),
+                dxx,
+                dyy,
+                dxx * dyy,
+            ],
+            dim=1,
+        )
         return hc_feats
 
 
