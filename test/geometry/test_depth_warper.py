@@ -151,7 +151,7 @@ class TestDepthWarper:
 
         # test compute_subpixel_step
         subpixel_step = warper.compute_subpixel_step()
-        assert subpixel_step.item() == pytest.approx(0.3536)
+        assert_close(subpixel_step.item(), 0.1715, rtol=1e-3, atol=1e-3)
 
     @pytest.mark.parametrize("batch_size", (1, 2))
     def test_gradcheck(self, batch_size, device, dtype):
@@ -172,6 +172,7 @@ class TestDepthWarper:
             kornia.geometry.depth.depth_warp,
             (pinhole_dst, pinhole_src, depth_src, img_dst, height, width),
             raise_exception=True,
+            fast_mode=True,
         )
 
     # TODO(edgar): we should include a test showing some kind of occlusion

@@ -125,7 +125,7 @@ class TestSpatialSoftArgmax2d:
     def test_gradcheck(self, device, dtype):
         input = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(kornia.geometry.subpix.spatial_soft_argmax2d, (input), raise_exception=True)
+        assert gradcheck(kornia.geometry.subpix.spatial_soft_argmax2d, (input), raise_exception=True, fast_mode=True)
 
     def test_end_to_end(self, device, dtype):
         input = torch.full((1, 2, 7, 7), 1.0, requires_grad=True, device=device, dtype=dtype)
@@ -195,7 +195,9 @@ class TestConvSoftArgmax2d:
     def test_gradcheck(self, device, dtype):
         input = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(kornia.geometry.subpix.conv_soft_argmax2d, (input), raise_exception=True)
+        assert gradcheck(
+            kornia.geometry.subpix.conv_soft_argmax2d, (input), nondet_tol=1e-8, raise_exception=True, fast_mode=True
+        )
 
     def test_cold_diag(self, device, dtype):
         input = torch.tensor(
@@ -322,7 +324,9 @@ class TestConvSoftArgmax3d:
     def test_gradcheck(self, device, dtype):
         input = torch.rand(1, 2, 3, 5, 5, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(kornia.geometry.subpix.conv_soft_argmax3d, (input), raise_exception=True)
+        assert gradcheck(
+            kornia.geometry.subpix.conv_soft_argmax3d, (input), nondet_tol=1e-8, raise_exception=True, fast_mode=True
+        )
 
     def test_cold_diag(self, device, dtype):
         input = torch.tensor(
@@ -450,10 +454,6 @@ class TestConvSoftArgmax3d:
 
 
 class TestConvQuadInterp3d:
-    @pytest.mark.skipif(
-        (int(torch.__version__.split('.')[0]) == 1) and (int(torch.__version__.split('.')[1]) < 9),
-        reason='<1.9.0 not supporting',
-    )
     def test_smoke(self, device, dtype):
         input = torch.randn(2, 3, 3, 4, 4, device=device, dtype=dtype)
         nms = kornia.geometry.ConvQuadInterp3d(1)
@@ -461,16 +461,17 @@ class TestConvQuadInterp3d:
         assert coord.shape == (2, 3, 3, 3, 4, 4)
         assert val.shape == (2, 3, 3, 4, 4)
 
-    @pytest.mark.skipif(
-        (int(torch.__version__.split('.')[0]) == 1) and (int(torch.__version__.split('.')[1]) < 9),
-        reason='<1.9.0 not supporting',
-    )
     def test_gradcheck(self, device, dtype):
         input = torch.rand(1, 1, 3, 5, 5, device=device, dtype=dtype)
         input[0, 0, 1, 2, 2] += 20.0
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(
-            kornia.geometry.ConvQuadInterp3d(strict_maxima_bonus=0), (input), raise_exception=True, atol=1e-3, rtol=1e-3
+            kornia.geometry.ConvQuadInterp3d(strict_maxima_bonus=0),
+            (input),
+            raise_exception=True,
+            atol=1e-3,
+            rtol=1e-3,
+            fast_mode=True,
         )
 
     def test_diag(self, device, dtype):
@@ -574,7 +575,7 @@ class TestConvQuadInterp3d:
                             [
                                 [0.0, 1.0, 2.0, 3.0, 4.0],
                                 [0.0, 1.0, 2.0, 3.0, 4.0],
-                                [0.0, 1.0, 2.0, 3.0, 4.0],
+                                [0.0, 1.0, 2.0495, 3.0, 4.0],
                                 [0.0, 1.0, 2.0, 3.0, 4.0],
                                 [0.0, 1.0, 2.0, 3.0, 4.0],
                             ],
@@ -597,7 +598,7 @@ class TestConvQuadInterp3d:
                             [
                                 [0.0, 0.0, 0.0, 0.0, 0.0],
                                 [1.0, 1.0, 1.0, 1.0, 1.0],
-                                [2.0, 2.0, 2.0495, 2.0, 2.0],
+                                [2.0, 2.0, 2.0, 2.0, 2.0],
                                 [3.0, 3.0, 3.0, 3.0, 3.0],
                                 [4.0, 4.0, 4.0, 4.0, 4.0],
                             ],

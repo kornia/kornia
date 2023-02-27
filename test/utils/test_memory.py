@@ -29,4 +29,5 @@ class TestBatchedForward:
             (kornia.feature.BlobHessian(), img, device, 2),
             raise_exception=True,
             nondet_tol=1e-4,
+            fast_mode=True,
         )

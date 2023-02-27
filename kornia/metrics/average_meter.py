@@ -1,6 +1,6 @@
 from typing import Union
 
-import torch
+from kornia.core import Tensor
 
 
 class AverageMeter:
@@ -10,20 +10,32 @@ class AverageMeter:
         >>> stats = AverageMeter()
         >>> acc1 = torch.tensor(0.99) # coming from K.metrics.accuracy
         >>> stats.update(acc1, n=1)  # where n is batch size usually
-        >>> stats.avg
-        tensor(0.9900)
+        >>> round(stats.avg, 2)
+        0.99
     """
+
+    val: Union[int, float, bool, Tensor]
+    _avg: Union[float, Tensor]
+    sum: Union[int, float, Tensor]
+    count: int
+
     def __init__(self) -> None:
         self.reset()
 
     def reset(self):
         self.val = 0
-        self.avg = 0
+        self._avg = 0
         self.sum = 0
         self.count = 0
 
-    def update(self, val: Union[int, float, bool, torch.Tensor], n: int = 1) -> None:
+    def update(self, val: Union[int, float, bool, Tensor], n: int = 1) -> None:
         self.val = val
         self.sum += val * n
         self.count += n
-        self.avg = self.sum / self.count
+        self._avg = self.sum / self.count
+
+    @property
+    def avg(self) -> float:
+        if isinstance(self._avg, Tensor):
+            return float(self._avg.item())
+        return self._avg

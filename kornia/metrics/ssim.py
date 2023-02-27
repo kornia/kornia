@@ -75,7 +75,7 @@ def ssim(
         raise ValueError(f"img1 and img2 shapes must be the same. Got: {img1.shape} and {img2.shape}")
 
     # prepare kernel
-    kernel: torch.Tensor = get_gaussian_kernel2d((window_size, window_size), (1.5, 1.5)).unsqueeze(0)
+    kernel: torch.Tensor = get_gaussian_kernel2d((window_size, window_size), (1.5, 1.5))
 
     # compute coefficients
     C1: float = (0.01 * max_val) ** 2
@@ -94,12 +94,12 @@ def ssim(
     elif padding == 'same':
         pass
 
-    mu1_sq = mu1 ** 2
-    mu2_sq = mu2 ** 2
+    mu1_sq = mu1**2
+    mu2_sq = mu2**2
     mu1_mu2 = mu1 * mu2
 
-    mu_img1_sq = filter2d(img1 ** 2, kernel)
-    mu_img2_sq = filter2d(img2 ** 2, kernel)
+    mu_img1_sq = filter2d(img1**2, kernel)
+    mu_img2_sq = filter2d(img2**2, kernel)
     mu_img1_img2 = filter2d(img1 * img2, kernel)
 
     if padding == 'valid':

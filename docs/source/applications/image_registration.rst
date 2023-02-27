@@ -22,3 +22,12 @@ Then, if you want to perform a more sophisticated process:
 .. literalinclude:: ../_static/image_registration.py
 
 To reproduce the same results as in the showed video you can go through or full tutorial using Colab found `here <https://kornia-tutorials.readthedocs.io/en/latest/image_registration.html>`_ .
+
+Interactive Demo
+----------------
+.. raw:: html
+
+   <gradio-app space="kornia/image-registration-with-kornia"></gradio-app>
+
+
+Visit the `image registration demo on the Hugging Face Spaces <https://huggingface.co/spaces/kornia/image-registration-with-kornia>`_.

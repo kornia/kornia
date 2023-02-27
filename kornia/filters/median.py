@@ -1,19 +1,20 @@
-from typing import List, Tuple
+from __future__ import annotations
 
-import torch
-import torch.nn as nn
 import torch.nn.functional as F
 
-from .kernels import get_binary_kernel2d
+from kornia.core import Module, Tensor
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+
+from .kernels import _unpack_2d_ks, get_binary_kernel2d
 
 
-def _compute_zero_padding(kernel_size: Tuple[int, int]) -> Tuple[int, int]:
+def _compute_zero_padding(kernel_size: tuple[int, int] | int) -> tuple[int, int]:
     r"""Utility function that computes zero padding tuple."""
-    computed: List[int] = [(k - 1) // 2 for k in kernel_size]
-    return computed[0], computed[1]
+    kx, ky = _unpack_2d_ks(kernel_size)
+    return (kx - 1) // 2, (ky - 1) // 2
 
 
-def median_blur(input: torch.Tensor, kernel_size: Tuple[int, int]) -> torch.Tensor:
+def median_blur(input: Tensor, kernel_size: tuple[int, int] | int) -> Tensor:
     r"""Blur an image using the median filter.
 
     .. image:: _static/img/median_blur.png
@@ -35,29 +36,24 @@ def median_blur(input: torch.Tensor, kernel_size: Tuple[int, int]) -> torch.Tens
         >>> output.shape
         torch.Size([2, 4, 5, 7])
     """
-    if not isinstance(input, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+    KORNIA_CHECK_IS_TENSOR(input)
+    KORNIA_CHECK_SHAPE(input, ['B', 'C', 'H', 'W'])
 
-    if not len(input.shape) == 4:
-        raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
-
-    padding: Tuple[int, int] = _compute_zero_padding(kernel_size)
+    padding = _compute_zero_padding(kernel_size)
 
     # prepare kernel
-    kernel: torch.Tensor = get_binary_kernel2d(kernel_size).to(input)
+    kernel: Tensor = get_binary_kernel2d(kernel_size, device=input.device, dtype=input.dtype)
     b, c, h, w = input.shape
 
     # map the local window to single vector
-    features: torch.Tensor = F.conv2d(input.reshape(b * c, 1, h, w), kernel, padding=padding, stride=1)
+    features: Tensor = F.conv2d(input.reshape(b * c, 1, h, w), kernel, padding=padding, stride=1)
     features = features.view(b, c, -1, h, w)  # BxCx(K_h * K_w)xHxW
 
     # compute the median along the feature axis
-    median: torch.Tensor = torch.median(features, dim=2)[0]
-
-    return median
+    return features.median(dim=2)[0]
 
 
-class MedianBlur(nn.Module):
+class MedianBlur(Module):
     r"""Blur an image using the median filter.
 
     Args:
@@ -78,9 +74,9 @@ class MedianBlur(nn.Module):
         torch.Size([2, 4, 5, 7])
     """
 
-    def __init__(self, kernel_size: Tuple[int, int]) -> None:
+    def __init__(self, kernel_size: tuple[int, int] | int) -> None:
         super().__init__()
-        self.kernel_size: Tuple[int, int] = kernel_size
+        self.kernel_size = kernel_size
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: Tensor) -> Tensor:
         return median_blur(input, self.kernel_size)

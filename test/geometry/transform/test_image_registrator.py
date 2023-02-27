@@ -54,10 +54,10 @@ class TestHomography:
 
 
 class TestImageRegistrator:
-    def test_smoke(self, device, dtype):
-        for model_type in ['homography', 'similarity', 'translation', 'scale', 'rotation']:
-            ir = kornia.geometry.transform.ImageRegistrator(model_type).to(device, dtype)
-            assert ir is not None
+    @pytest.mark.parametrize("model_type", ['homography', 'similarity', 'translation', 'scale', 'rotation'])
+    def test_smoke(self, device, dtype, model_type):
+        ir = kornia.geometry.transform.ImageRegistrator(model_type).to(device, dtype)
+        assert ir is not None
 
     def test_registration_toy(self, device, dtype):
         ch, height, width = 3, 16, 18

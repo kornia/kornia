@@ -3,6 +3,11 @@ kornia.contrib
 
 .. currentmodule:: kornia.contrib
 
+Edge Detection
+--------------
+
+.. autoclass:: EdgeDetector
+
 Face Detection
 --------------
 
@@ -16,6 +21,15 @@ Face Detection
     :members:
     :undoc-members:
 
+Interactive Demo
+~~~~~~~~~~~~~~~~
+.. raw:: html
+
+    <gradio-app space="kornia/Face-Detection"></gradio-app>
+
+Visit the `Kornia face detection demo on the Hugging Face Spaces
+<https://huggingface.co/spaces/kornia/Face-Detection>`_.
+
 Image Segmentation
 ------------------
 
@@ -24,6 +38,7 @@ Image Segmentation
 Image Patches
 -------------
 
+.. autofunction:: compute_padding
 .. autofunction:: extract_tensor_patches
 .. autofunction:: combine_tensor_patches
 
@@ -51,5 +66,6 @@ Distance Transform
 ------------------
 
 .. autofunction:: distance_transform
+.. autofunction:: diamond_square
 
 .. autoclass:: DistanceTransform

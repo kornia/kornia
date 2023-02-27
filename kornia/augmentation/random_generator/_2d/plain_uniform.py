@@ -5,7 +5,10 @@ from torch.distributions import Distribution, Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
+from kornia.core import Tensor, as_tensor
 from kornia.utils.helpers import _extract_device_dtype
+
+__all__ = ["ParameterBound", "PlainUniformGenerator"]
 
 # factor, name, center, range
 ParameterBound = Tuple[Any, str, Optional[float], Optional[Tuple[float, float]]]
@@ -43,13 +46,16 @@ class PlainUniformGenerator(RandomGeneratorBase):
         super().__init__()
         self.samplers = samplers
         names = []
-        for factor, name, _, _ in samplers:
+        for factor, name, center, bound in samplers:
             if name in names:
                 raise RuntimeError(f"factor name `{name}` has already been registered. Please check the duplication.")
             names.append(name)
             if isinstance(factor, torch.nn.Parameter):
                 self.register_parameter(name, factor)
-            elif isinstance(factor, torch.Tensor):
+            elif isinstance(factor, Tensor):
+                self.register_buffer(name, factor)
+            else:
+                factor = _range_bound(factor, name, center=center, bounds=bound)
                 self.register_buffer(name, factor)
 
     def __repr__(self) -> str:
@@ -60,14 +66,14 @@ class PlainUniformGenerator(RandomGeneratorBase):
         self.sampler_dict: Dict[str, Distribution] = {}
         for factor, name, center, bound in self.samplers:
             if center is None and bound is None:
-                factor = torch.as_tensor(factor, device=device, dtype=dtype)
+                factor = as_tensor(factor, device=device, dtype=dtype)
             elif center is None or bound is None:
                 raise ValueError(f"`center` and `bound` should be both None or provided. Got {center} and {bound}.")
             else:
                 factor = _range_bound(factor, name, center=center, bounds=bound, device=device, dtype=dtype)
             self.sampler_dict.update({name: Uniform(factor[0], factor[1], validate_args=False)})
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:  # type:ignore
+    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([t for t, _, _, _ in self.samplers])

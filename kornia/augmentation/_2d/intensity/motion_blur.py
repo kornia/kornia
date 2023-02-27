@@ -1,11 +1,11 @@
-from typing import Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import torch
-from torch import Tensor
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.constants import BorderType, Resample
+from kornia.core import Tensor, tensor
 from kornia.filters import motion_blur
 
 
@@ -75,23 +75,33 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator = rg.MotionBlurGenerator(kernel_size, angle, direction)
         self.flags = dict(border_type=BorderType.get(border_type), resample=Resample.get(resample))
 
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, Tensor]:
+        params = super().generate_parameters(batch_shape)
+        params["idx"] = tensor([0]) if batch_shape[0] == 0 else torch.randint(batch_shape[0], (1,))
+        return params
+
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         # sample a kernel size
         kernel_size_list: List[int] = params["ksize_factor"].tolist()
-        idx: int = cast(int, torch.randint(len(kernel_size_list), (1,)).item())
+
+        # 1. We have to apply the same kernel size to all samples in the batch, thus we take the previously
+        # selected random index --- `params["idx"][0]` --- to determine the applied kernel size.
+        # 2. The `VideoSequential` flattens the first two dimensions, effectively creating a larger batch.
+        # Its method `VideoSequential.__repeat_param_across_channels__` repeats the previously selected index,
+        # creating a tensor with equal values. Hence, taking the first one (`params["idx"][0]`) is legit.
+        idx: int = cast(int, params["idx"][0])
         return motion_blur(
             input,
             kernel_size=kernel_size_list[idx],
             angle=params["angle_factor"],
             direction=params["direction_factor"],
-            border_type=self.flags["border_type"].name.lower(),
-            mode=self.flags["resample"].name.lower(),
+            border_type=flags["border_type"].name.lower(),
+            mode=flags["resample"].name.lower(),
         )

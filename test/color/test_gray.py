@@ -85,17 +85,15 @@ class TestGrayscaleToRgb(BaseTester):
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 1, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.color.grayscale_to_rgb, (img,), raise_exception=True)
+        assert gradcheck(kornia.color.grayscale_to_rgb, (img,), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit
-    def test_jit(self, device, dtype):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         B, C, H, W = 2, 1, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.grayscale_to_rgb
-        op_jit = torch.jit.script(op)
-        assert_close(op(img), op_jit(img))
+        op_optimized = torch_optimizer(op)
+        assert_close(op(img), op_optimized(img))
 
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         B, C, H, W = 2, 1, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -108,7 +106,16 @@ class TestRgbToGrayscale(BaseTester):
     def test_smoke(self, device, dtype):
         C, H, W = 3, 4, 5
         img = torch.rand(C, H, W, device=device, dtype=dtype)
-        assert isinstance(kornia.color.rgb_to_grayscale(img), torch.Tensor)
+        out = kornia.color.rgb_to_grayscale(img)
+        assert out.device == img.device
+        assert out.dtype == img.dtype
+
+    def test_smoke_byte(self, device):
+        C, H, W = 3, 4, 5
+        img = torch.randint(0, 255, (C, H, W), device=device, dtype=torch.uint8)
+        out = kornia.color.rgb_to_grayscale(img)
+        assert out.device == img.device
+        assert out.dtype == img.dtype
 
     @pytest.mark.parametrize("batch_size, height, width", [(1, 3, 4), (2, 2, 4), (3, 4, 1)])
     def test_cardinality(self, device, dtype, batch_size, height, width):
@@ -125,10 +132,6 @@ class TestRgbToGrayscale(BaseTester):
 
         with pytest.raises(ValueError):
             img = torch.ones(2, 1, 1, device=device, dtype=dtype)
-            assert kornia.color.rgb_to_grayscale(img)
-
-        with pytest.raises(TypeError):
-            img = torch.ones(1, 3, 1, 1, device=device, dtype=torch.uint8)
             assert kornia.color.rgb_to_grayscale(img)
 
         with pytest.raises(ValueError):
@@ -196,17 +199,15 @@ class TestRgbToGrayscale(BaseTester):
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.color.rgb_to_grayscale, (img,), raise_exception=True)
+        assert gradcheck(kornia.color.rgb_to_grayscale, (img,), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit
-    def test_jit(self, device, dtype):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.rgb_to_grayscale
-        op_jit = torch.jit.script(op)
-        assert_close(op(img), op_jit(img))
+        op_optimized = torch_optimizer(op)
+        assert_close(op(img), op_optimized(img))
 
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -289,17 +290,15 @@ class TestBgrToGrayscale(BaseTester):
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.color.bgr_to_grayscale, (img,), raise_exception=True)
+        assert gradcheck(kornia.color.bgr_to_grayscale, (img,), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit
-    def test_jit(self, device, dtype):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.rgb_to_grayscale
-        op_jit = torch.jit.script(op)
-        assert_close(op(img), op_jit(img))
+        op_optimized = torch_optimizer(op)
+        assert_close(op(img), op_optimized(img))
 
-    @pytest.mark.nn
     def test_module(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)

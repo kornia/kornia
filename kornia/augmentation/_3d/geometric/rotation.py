@@ -1,16 +1,15 @@
-from typing import Dict, Optional, Tuple, Union, cast
-
-from torch import Tensor
+from typing import Any, Dict, Optional, Tuple, Union
 
 import kornia
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._3d.base import AugmentationBase3D
+from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 from kornia.constants import Resample
+from kornia.core import Tensor
 from kornia.geometry import affine3d
 from kornia.geometry.transform.affwarp import _compute_rotation_matrix3d, _compute_tensor_center3d
 
 
-class RandomRotation3D(AugmentationBase3D):
+class RandomRotation3D(GeometricAugmentationBase3D):
     r"""Apply random rotations to 3D volumes (5D tensor).
 
     Input should be a tensor of shape (C, D, H, W) or a batch of tensors :math:`(B, C, D, H, W)`.
@@ -84,13 +83,12 @@ class RandomRotation3D(AugmentationBase3D):
         align_corners: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self.flags = dict(resample=Resample.get(resample), align_corners=align_corners)
-        self._param_generator = cast(rg.RotationGenerator3D, rg.RotationGenerator3D(degrees))
+        self._param_generator = rg.RotationGenerator3D(degrees)
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         yaw: Tensor = params["yaw"].to(input)
         pitch: Tensor = params["pitch"].to(input)
         roll: Tensor = params["roll"].to(input)
@@ -107,9 +105,9 @@ class RandomRotation3D(AugmentationBase3D):
         return trans_mat
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        transform = cast(Tensor, transform)
-        return affine3d(
-            input, transform[..., :3, :4], self.flags["resample"].name.lower(), "zeros", self.flags["align_corners"]
-        )
+        if not isinstance(transform, Tensor):
+            raise TypeError(f'Expected the transform to be a Tensor. Gotcha {type(transform)}')
+
+        return affine3d(input, transform[..., :3, :4], flags["resample"].name.lower(), "zeros", flags["align_corners"])

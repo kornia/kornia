@@ -5,6 +5,7 @@ from torch.utils.data import Dataset
 
 from kornia.contrib import ClassificationHead, VisionTransformer
 from kornia.x import Configuration, ImageClassifierTrainer
+from kornia.x.trainer import Accelerator
 
 
 class DummyDatasetClassification(Dataset):
@@ -49,10 +50,16 @@ def configuration():
 
 
 class TestImageClassifierTrainer:
+    @pytest.mark.skipif(
+        torch.__version__ == '1.12.1' and Accelerator is None, reason='accelerate lib problem with torch 1.12.1'
+    )
     def test_fit(self, model, dataloader, criterion, optimizer, scheduler, configuration):
         trainer = ImageClassifierTrainer(model, dataloader, dataloader, criterion, optimizer, scheduler, configuration)
         trainer.fit()
 
+    @pytest.mark.skipif(
+        torch.__version__ == '1.12.1' and Accelerator is None, reason='accelerate lib problem with torch 1.12.1'
+    )
     def test_exception(self, model, dataloader, criterion, optimizer, scheduler, configuration):
         with pytest.raises(ValueError):
             ImageClassifierTrainer(

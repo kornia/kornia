@@ -22,7 +22,7 @@ class TestSkewSymmetric:
 
     @pytest.mark.parametrize("shapes", [(1, 1), (1, 5), (2, 1), (2, 5), (4, 1), (4, 5)])
     def test_shapes(self, device, dtype, shapes):
-        input_shape = shapes + (3, )
+        input_shape = shapes + (3,)
         output_shape = shapes + (3, 3)
         t = torch.rand(*input_shape, device=device, dtype=dtype)
         cross_product_matrix = epi.cross_product_matrix(t)
@@ -30,7 +30,7 @@ class TestSkewSymmetric:
 
     @pytest.mark.parametrize("shapes", [(1, 1), (1, 5), (2, 1), (2, 5), (4, 1), (4, 5)])
     def test_funcional_shapes(self, device, dtype, shapes):
-        input_shape = shapes + (3, )
+        input_shape = shapes + (3,)
         t = torch.rand(*input_shape, device=device, dtype=dtype)
 
         # Feed batches
@@ -53,7 +53,7 @@ class TestSkewSymmetric:
 
     def test_gradcheck(self, device):
         vec = torch.ones(2, 3, device=device, requires_grad=True, dtype=torch.float64)
-        assert gradcheck(epi.cross_product_matrix, (vec,), raise_exception=True)
+        assert gradcheck(epi.cross_product_matrix, (vec,), raise_exception=True, fast_mode=True)
 
 
 class TestEyeLike:

@@ -1,3 +1,102 @@
+[build-system]
+build-backend = "setuptools.build_meta"
+requires = [
+    "setuptools>=61.2",
+]
+
+[project]
+name = "kornia"
+version = "0.6.11.dev"
+description = "Open Source Differentiable Computer Vision Library for PyTorch"
+[project.readme]
+file = "README.md"
+content-type = "text/markdown"
+
+keywords = [
+    "computer vision",
+    "deep learning",
+    "pytorch",
+]
+license = {text = "Apache-2.0"}
+authors = [{name = "Edgar Riba", email = "edgar@kornia.org"}]
+requires-python = ">=3.7"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Environment :: GPU",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Education",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Image Processing",
+    "Topic :: Software Development :: Libraries",
+]
+dependencies = [
+    "packaging",
+    "torch>=1.9.1",
+]
+[project.optional-dependencies]
+dev = [
+    "isort",
+    "kornia-rs==0.0.8",
+    "mypy[reports]",
+    "numpy",
+    "opencv-python",
+    "pre-commit>=2",
+    "pydocstyle",
+    "pytest==7.2.1",
+    "pytest-cov==4",
+    "scipy",
+]
+docs = [
+    "furo",
+    "matplotlib",
+    "opencv-python",
+    "PyYAML<6.1.0,>=5.1",
+    "sphinx>=4",
+    "sphinx-autodoc-defaultargs",
+    "sphinx-autodoc-typehints",
+    "sphinx-copybutton>=0.3",
+    "sphinx-design",
+    "sphinx-rtd-theme>0.5",
+    "sphinxcontrib-bibtex",
+    "sphinxcontrib-gtagjs",
+    "sphinxcontrib-youtube",
+    "torchvision",
+]
+x = [
+    "accelerate==0.16",
+]
+[project.urls]
+"Bug Tracker" = "https://github.com/kornia/kornia/issues"
+Documentation = "https://kornia.readthedocs.io/en/latest"
+Download = "https://github.com/kornia/kornia"
+Homepage = "https://www.kornia.org"
+"Source Code" = "https://github.com/kornia/kornia"
+
+[tool.setuptools]
+zip-safe = true
+license-files = ["LICENSE"]
+include-package-data = false
+
+[tool.setuptools.packages.find]
+exclude = [
+    "docs*",
+    "test",
+    "test.*",
+    "examples*",
+]
+namespaces = false
+
+[tool.setuptools.package-data]
+kornia = ["py.typed"]
+
 [tool.black]
 line-length = 120
 skip-string-normalization = true
@@ -17,3 +116,57 @@ skip_glob = []
 skip = [
     "kornia/__init__.py"
 ]
+
+[tool.pytest.ini_options]
+norecursedirs = [
+    ".git",
+    ".github",
+    "dist",
+    "build",
+]
+addopts = "--color=yes"
+markers = [
+    "jit: mark a test as torchscript test",
+    "grad: mark a test as gradcheck test",
+    "nn: mark a test as module test",
+]
+testpaths = ["test"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "raise",
+    "if 0:",
+    "if __name__ == .__main__.:",
+]
+
+[tool.mypy]
+files = ["kornia/"]
+pretty = true
+check_untyped_defs = true
+disallow_any_generics = true
+disallow_incomplete_defs = true
+show_error_codes = true
+ignore_missing_imports = true
+no_implicit_optional = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+
+[tool.distutils.bdist_wheel]
+universal = true
+
+[tool.aliases]
+test = "pytest"
+
+[tool.pydocstyle]
+match = '.*\.py'
+ignore = """
+D105
+D107
+D203
+D204
+D213
+D406
+D407"""

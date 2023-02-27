@@ -1,9 +1,18 @@
-from typing import Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import torch
-from torch import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core import Tensor
+
+
+def _randn_like(input: Tensor, mean: float, std: float) -> Tensor:
+    x = torch.randn_like(input)  # Generating on GPU is fastest with `torch.randn_like(...)`
+    if std != 1.0:  # `if` is cheaper than multiplication
+        x *= std
+    if mean != 0.0:  # `if` is cheaper than addition
+        x += mean
+    return x
 
 
 class RandomGaussianNoise(IntensityAugmentationBase2D):
@@ -33,24 +42,20 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
     """
 
     def __init__(
-        self,
-        mean: float = 0.0,
-        std: float = 1.0,
-        same_on_batch: bool = False,
-        p: float = 0.5,
-        keepdim: bool = False,
-        return_transform: Optional[bool] = None,
+        self, mean: float = 0.0, std: float = 1.0, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
-        super().__init__(
-            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
-        )
+        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self.flags = dict(mean=mean, std=std)
 
-    def generate_parameters(self, shape: torch.Size) -> Dict[str, Tensor]:
-        noise = torch.randn(shape)
-        return dict(noise=noise)
+    def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, Tensor]:
+        return {}
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        return input + params["noise"].to(input.device) * self.flags["std"] + self.flags["mean"]
+        if "gaussian_noise" in params:
+            gaussian_noise = params["gaussian_noise"]
+        else:
+            gaussian_noise = _randn_like(input, mean=flags["mean"], std=flags["std"])
+            self._params["gaussian_noise"] = gaussian_noise
+        return input + gaussian_noise

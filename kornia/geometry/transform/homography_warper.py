@@ -1,19 +1,34 @@
-from typing import Optional
+from __future__ import annotations
 
-import torch
-import torch.nn as nn
+from abc import abstractmethod
+from typing import Any
+
 import torch.nn.functional as F
 
+from kornia.core import Module, Tensor
 from kornia.utils import create_meshgrid
 
 from .imgwarp import homography_warp, warp_grid
 
-__all__ = [
-    "HomographyWarper",
-]
+__all__ = ["HomographyWarper", "BaseWarper"]
 
 
-class HomographyWarper(nn.Module):
+class BaseWarper(Module):
+    def __init__(self, height: int, width: int, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.height = height
+        self.width = width
+
+    @abstractmethod
+    def forward(self, patch_src: Tensor, src_homo_dst: Tensor | None = None) -> Tensor:
+        ...
+
+    @abstractmethod
+    def precompute_warp_grid(self, src_homo_dst: Tensor) -> None:
+        ...
+
+
+class HomographyWarper(BaseWarper):
     r"""Warp tensors by homographies.
 
     .. math::
@@ -29,7 +44,7 @@ class HomographyWarper(nn.Module):
         normalized_coordinates: whether to use a grid with normalized coordinates.
         align_corners: interpolation flag.
     """
-    _warped_grid: Optional[torch.Tensor]
+    _warped_grid: Tensor | None
 
     def __init__(
         self,
@@ -40,20 +55,18 @@ class HomographyWarper(nn.Module):
         normalized_coordinates: bool = True,
         align_corners: bool = False,
     ) -> None:
-        super().__init__()
-        self.width: int = width
-        self.height: int = height
-        self.mode: str = mode
-        self.padding_mode: str = padding_mode
-        self.normalized_coordinates: bool = normalized_coordinates
-        self.align_corners: bool = align_corners
+        super().__init__(height, width)
+        self.mode = mode
+        self.padding_mode = padding_mode
+        self.normalized_coordinates = normalized_coordinates
+        self.align_corners = align_corners
         # create base grid to compute the flow
-        self.grid: torch.Tensor = create_meshgrid(height, width, normalized_coordinates=normalized_coordinates)
+        self.grid = create_meshgrid(height, width, normalized_coordinates=normalized_coordinates)
 
         # initialice the warped destination grid
         self._warped_grid = None
 
-    def precompute_warp_grid(self, src_homo_dst: torch.Tensor) -> None:
+    def precompute_warp_grid(self, src_homo_dst: Tensor) -> None:
         r"""Compute and store internally the transformations of the points.
 
         Useful when the same homography/homographies are reused.
@@ -67,7 +80,7 @@ class HomographyWarper(nn.Module):
         """
         self._warped_grid = warp_grid(self.grid, src_homo_dst)
 
-    def forward(self, patch_src: torch.Tensor, src_homo_dst: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(self, patch_src: Tensor, src_homo_dst: Tensor | None = None) -> Tensor:
         r"""Warp a tensor from source into reference frame.
 
         Args:

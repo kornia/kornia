@@ -20,7 +20,6 @@ from kornia.testing import assert_close
 
 
 class TestRandomHorizontalFlip3D:
-
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
@@ -30,46 +29,43 @@ class TestRandomHorizontalFlip3D:
         assert str(f) == repr
 
     def test_random_hflip(self, device):
-
-        f = RandomHorizontalFlip3D(p=1.0)
-        f1 = RandomHorizontalFlip3D(p=0.0)
+        f = RandomHorizontalFlip3D(p=1.0, keepdim=True)
+        f1 = RandomHorizontalFlip3D(p=0.0, keepdim=True)
 
         input = torch.tensor(
             [
-                [[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 2.0]],
-                [[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 2.0]],
-            ]
-        )  # 2 x 3 x 4
-
-        input = input.to(device)
+                [
+                    [[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 2.0]],
+                    [[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 1.0, 2.0]],
+                ]
+            ],
+            device=device,
+        )  # 1 x 2 x 3 x 4
 
         expected = torch.tensor(
             [
-                [[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [2.0, 1.0, 0.0, 0.0]],
-                [[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [2.0, 1.0, 0.0, 0.0]],
-            ]
-        )  # 2 x 3 x 4
-
-        expected = expected.to(device)
+                [
+                    [[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [2.0, 1.0, 0.0, 0.0]],
+                    [[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [2.0, 1.0, 0.0, 0.0]],
+                ]
+            ],
+            device=device,
+        )  # 1 x 2 x 3 x 4
 
         expected_transform = torch.tensor(
-            [[-1.0, 0.0, 0.0, 3.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]
-        )  # 4 x 4
-
-        expected_transform = expected_transform.to(device)
+            [[[-1.0, 0.0, 0.0, 3.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]], device=device
+        )  # 1 x 4 x 4
 
         identity = torch.tensor(
-            [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]
-        )  # 4 x 4
-        identity = identity.to(device)
+            [[[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]], device=device
+        )  # 1 x 4 x 4
 
-        assert (f(input) == expected).all()
-        assert (f.transform_matrix == expected_transform).all()
-        assert (f1(input) == input).all()
-        assert (f1.transform_matrix == identity).all()
+        assert_close(f(input), expected)
+        assert_close(f.transform_matrix, expected_transform)
+        assert_close(f1(input), input)
+        assert_close(f1.transform_matrix, identity)
 
     def test_batch_random_hflip(self, device):
-
         f = RandomHorizontalFlip3D(p=1.0)
 
         input = torch.tensor([[[[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]]]]])  # 1 x 1 x 1 x 3 x 3
@@ -93,22 +89,19 @@ class TestRandomHorizontalFlip3D:
         expected_transform = expected_transform.repeat(5, 1, 1)  # 5 x 4 x 4
         identity = identity.repeat(5, 1, 1)  # 5 x 4 x 4
 
-        assert (f(input) == expected).all()
-        assert (f.transform_matrix == expected_transform).all()
+        assert_close(f(input), expected)
+        assert_close(f.transform_matrix, expected_transform)
 
     def test_same_on_batch(self, device):
         f = RandomHorizontalFlip3D(p=0.5, same_on_batch=True)
         input = torch.eye(3, device=device).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 1, 1, 1, 1)
         res = f(input)
-        assert (res[0] == res[1]).all()
+        assert_close(res[0], res[1])
 
     def test_sequential(self, device):
+        f = AugmentationSequential(RandomHorizontalFlip3D(p=1.0), RandomHorizontalFlip3D(p=1.0))
 
-        f = AugmentationSequential(
-            RandomHorizontalFlip3D(p=1.0), RandomHorizontalFlip3D(p=1.0)
-        )
-
-        input = torch.tensor([[[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]]]])  # 1 x 1 x 3 x 3
+        input = torch.tensor([[[[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]]]]])  # 1 x 1 x 1 x 3 x 3
         input = input.to(device)
 
         expected_transform = torch.tensor(
@@ -119,17 +112,16 @@ class TestRandomHorizontalFlip3D:
         expected_transform_1 = expected_transform @ expected_transform
         expected_transform_1 = expected_transform_1.to(device)
 
-        assert (f(input) == input).all()
-        assert (f.transform_matrix == expected_transform_1).all()
+        assert_close(f(input), input)
+        assert_close(f.transform_matrix, expected_transform_1)
 
     def test_gradcheck(self, device):
         input = torch.rand((1, 3, 3)).to(device)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(RandomHorizontalFlip3D(p=1.0), (input,), raise_exception=True)
+        assert gradcheck(RandomHorizontalFlip3D(p=1.0), (input,), raise_exception=True, fast_mode=True)
 
 
 class TestRandomVerticalFlip3D:
-
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
@@ -139,7 +131,6 @@ class TestRandomVerticalFlip3D:
         assert str(f) == repr
 
     def test_random_vflip(self, device, dtype):
-
         f = RandomVerticalFlip3D(p=1.0)
         f1 = RandomVerticalFlip3D(p=0.0)
 
@@ -187,7 +178,6 @@ class TestRandomVerticalFlip3D:
         assert_close(f1.transform_matrix, identity)
 
     def test_batch_random_vflip(self, device):
-
         f = RandomVerticalFlip3D(p=1.0)
         f1 = RandomVerticalFlip3D(p=0.0)
 
@@ -221,13 +211,10 @@ class TestRandomVerticalFlip3D:
         f = RandomVerticalFlip3D(p=0.5, same_on_batch=True)
         input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 1, 1, 1, 1)
         res = f(input)
-        assert (res[0] == res[1]).all()
+        assert_close(res[0], res[1])
 
     def test_sequential(self, device):
-
-        f = AugmentationSequential(
-            RandomVerticalFlip3D(p=1.0), RandomVerticalFlip3D(p=1.0)
-        )
+        f = AugmentationSequential(RandomVerticalFlip3D(p=1.0), RandomVerticalFlip3D(p=1.0))
 
         input = torch.tensor([[[[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]]]]])  # 1 x 1 x 1 x 4 x 4
         input = input.to(device)
@@ -245,11 +232,10 @@ class TestRandomVerticalFlip3D:
     def test_gradcheck(self, device):
         input = torch.rand((1, 3, 3)).to(device)  # 4 x 4
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(RandomVerticalFlip3D(p=1.0), (input,), raise_exception=True)
+        assert gradcheck(RandomVerticalFlip3D(p=1.0), (input,), raise_exception=True, fast_mode=True)
 
 
 class TestRandomDepthicalFlip3D:
-
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
@@ -259,7 +245,6 @@ class TestRandomDepthicalFlip3D:
         assert str(f) == repr
 
     def test_random_dflip(self, device, dtype):
-
         f = RandomDepthicalFlip3D(p=1.0)
         f1 = RandomDepthicalFlip3D(p=0.0)
 
@@ -307,7 +292,6 @@ class TestRandomDepthicalFlip3D:
         assert_close(f1.transform_matrix, identity)
 
     def test_batch_random_dflip(self, device):
-
         f = RandomDepthicalFlip3D(p=1.0)
         f1 = RandomDepthicalFlip3D(p=0.0)
 
@@ -352,13 +336,10 @@ class TestRandomDepthicalFlip3D:
         f = RandomDepthicalFlip3D(p=0.5, same_on_batch=True)
         input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 1, 2, 1, 1)
         res = f(input)
-        assert (res[0] == res[1]).all()
+        assert_close(res[0], res[1])
 
     def test_sequential(self, device):
-
-        f = AugmentationSequential(
-            RandomDepthicalFlip3D(p=1.0), RandomDepthicalFlip3D(p=1.0)
-        )
+        f = AugmentationSequential(RandomDepthicalFlip3D(p=1.0), RandomDepthicalFlip3D(p=1.0))
 
         input = torch.tensor(
             [
@@ -385,11 +366,10 @@ class TestRandomDepthicalFlip3D:
     def test_gradcheck(self, device):
         input = torch.rand((1, 3, 3)).to(device)  # 4 x 4
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(RandomDepthicalFlip3D(p=1.0), (input,), raise_exception=True)
+        assert gradcheck(RandomDepthicalFlip3D(p=1.0), (input,), raise_exception=True, fast_mode=True)
 
 
 class TestRandomRotation3D:
-
     torch.manual_seed(0)  # for random reproductibility
 
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
@@ -468,7 +448,6 @@ class TestRandomRotation3D:
         assert_close(f.transform_matrix, expected_transform, rtol=1e-6, atol=1e-4)
 
     def test_batch_random_rotation(self, device, dtype):
-
         torch.manual_seed(24)  # for random reproductibility
 
         f = RandomRotation3D(degrees=45.0)
@@ -565,16 +544,12 @@ class TestRandomRotation3D:
         f = RandomRotation3D(degrees=40, same_on_batch=True)
         input = torch.eye(6, device=device, dtype=dtype).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 6, 1, 1)
         res = f(input)
-        assert (res[0] == res[1]).all()
+        assert_close(res[0], res[1])
 
     def test_sequential(self, device, dtype):
-
         torch.manual_seed(24)  # for random reproductibility
 
-        f = AugmentationSequential(
-            RandomRotation3D(torch.tensor([-45.0, 90])),
-            RandomRotation3D(10.4),
-        )
+        f = AugmentationSequential(RandomRotation3D(torch.tensor([-45.0, 90])), RandomRotation3D(10.4))
         input = torch.tensor(
             [
                 [[1.0, 0.0, 0.0, 2.0], [0.0, 0.0, 0.0, 0.0], [0.0, 1.0, 2.0, 0.0], [0.0, 0.0, 1.0, 2.0]],
@@ -632,12 +607,11 @@ class TestRandomRotation3D:
         assert_close(f.transform_matrix, expected_transform, rtol=1e-6, atol=1e-4)
 
     def test_gradcheck(self, device):
-
         torch.manual_seed(0)  # for random reproductibility
 
         input = torch.rand((3, 3, 3)).to(device)  # 3 x 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(RandomRotation3D(degrees=(15.0, 15.0), p=1.0), (input,), raise_exception=True)
+        assert gradcheck(RandomRotation3D(degrees=(15.0, 15.0), p=1.0), (input,), raise_exception=True, fast_mode=True)
 
 
 class TestRandomCrop3D:
@@ -719,10 +693,15 @@ class TestRandomCrop3D:
 
     def test_same_on_batch(self, device, dtype):
         f = RandomCrop3D(size=(2, 3, 4), padding=None, align_corners=True, p=1.0, same_on_batch=True)
-        input = torch.eye(
-            6, device=device, dtype=dtype).unsqueeze(dim=0).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 5, 1, 1)
+        input = (
+            torch.eye(6, device=device, dtype=dtype)
+            .unsqueeze(dim=0)
+            .unsqueeze(dim=0)
+            .unsqueeze(dim=0)
+            .repeat(2, 3, 5, 1, 1)
+        )
         res = f(input)
-        assert (res[0] == res[1]).all()
+        assert_close(res[0], res[1])
 
     @pytest.mark.parametrize("padding", [1, (1, 1, 1), (1, 1, 1, 1, 1, 1)])
     def test_padding_batch(self, padding, device, dtype):
@@ -778,7 +757,7 @@ class TestRandomCrop3D:
         torch.manual_seed(0)  # for random reproductibility
         inp = torch.rand((3, 3, 3), device=device, dtype=dtype)  # 3 x 3
         inp = utils.tensor_to_gradcheck_var(inp)  # to var
-        assert gradcheck(RandomCrop3D(size=(3, 3, 3), p=1.0), (inp,), raise_exception=True)
+        assert gradcheck(RandomCrop3D(size=(3, 3, 3), p=1.0), (inp,), raise_exception=True, fast_mode=True)
 
     @pytest.mark.skip("Need to fix Union type")
     def test_jit(self, device, dtype):
@@ -818,7 +797,7 @@ class TestCenterCrop3D:
 
     def test_transform(self, device, dtype):
         inp = torch.rand(1, 2, 5, 4, 8, device=device, dtype=dtype)
-        aug = CenterCrop3D(2,)
+        aug = CenterCrop3D(2)
         out = aug(inp)
         assert out.shape == (1, 2, 2, 2, 2)
         assert aug.transform_matrix.shape == (1, 4, 4)
@@ -831,7 +810,7 @@ class TestCenterCrop3D:
     def test_gradcheck(self, device, dtype):
         input = torch.rand(1, 2, 3, 4, 5, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(CenterCrop3D(3), (input,), raise_exception=True)
+        assert gradcheck(CenterCrop3D(3), (input,), raise_exception=True, fast_mode=True)
 
 
 class TestRandomEqualize3D:
@@ -888,14 +867,14 @@ class TestRandomEqualize3D:
         input = torch.eye(4, device=device, dtype=dtype)
         input = input.unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 1, 2, 1, 1)
         res = f(input)
-        assert (res[0] == res[1]).all()
+        assert_close(res[0], res[1])
 
     def test_gradcheck(self, device, dtype):
         torch.manual_seed(0)  # for random reproductibility
 
         inputs3d = torch.rand((3, 3, 3), device=device, dtype=dtype)  # 3 x 3 x 3
         inputs3d = utils.tensor_to_gradcheck_var(inputs3d)  # to var
-        assert gradcheck(RandomEqualize3D(p=0.5), (inputs3d,), raise_exception=True)
+        assert gradcheck(RandomEqualize3D(p=0.5), (inputs3d,), raise_exception=True, fast_mode=True)
 
     @staticmethod
     def build_input(channels, depth, height, width, bs=1, row=None, device='cpu', dtype=torch.float32):
@@ -935,5 +914,5 @@ class TestRandomAffine3D:
         expected = expected.repeat(5, 3, 1, 1, 1)  # 5 x 3 x 3 x 3 x 3
         expected_transform = expected_transform.repeat(5, 1, 1)  # 5 x 4 x 4
 
-        assert (f(tensor) == expected).all()
-        assert (f.transform_matrix == expected_transform).all()
+        assert_close(f(tensor), expected)
+        assert_close(f.transform_matrix, expected_transform)

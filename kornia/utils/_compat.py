@@ -1,4 +1,7 @@
+from typing import TYPE_CHECKING, Callable, ContextManager, List, Optional, Tuple, TypeVar
+
 import torch
+from torch import Tensor
 
 from packaging import version
 
@@ -8,28 +11,48 @@ def torch_version() -> str:
     return torch.__version__.split('+')[0]
 
 
-def torch_version_geq(major, minor) -> bool:
+def torch_version_lt(major: int, minor: int, patch: int) -> bool:
     _version = version.parse(torch_version())
-    return _version >= version.parse(f"{major}.{minor}")
+    return _version < version.parse(f"{major}.{minor}.{patch}")
 
 
-if version.parse(torch_version()) > version.parse("1.7.1"):
-    # TODO: remove the type: ignore once Python 3.6 is deprecated.
-    # It turns out that Pytorch has no attribute `torch.linalg` for
-    # Python 3.6 / PyTorch 1.7.0, 1.7.1
-    from torch.linalg import solve  # type: ignore
+def torch_version_le(major: int, minor: int, patch: int) -> bool:
+    _version = version.parse(torch_version())
+    return _version <= version.parse(f"{major}.{minor}.{patch}")
+
+
+def torch_version_ge(major: int, minor: int, patch: Optional[int] = None) -> bool:
+    _version = version.parse(torch_version())
+    if patch is None:
+        return _version >= version.parse(f"{major}.{minor}")
+    else:
+        return _version >= version.parse(f"{major}.{minor}.{patch}")
+
+
+if TYPE_CHECKING:
+    # TODO: remove this branch when kornia relies on torch >= 1.10.0
+    def torch_meshgrid(tensors: List[Tensor], indexing: Optional[str] = None) -> Tuple[Tensor, ...]:
+        ...
+
 else:
-    from torch import solve as _solve
+    if torch_version_ge(1, 10, 0):
 
-    # NOTE: in previous versions `torch.solve` accepted arguments in another order.
-    def solve(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
-        return _solve(B, A).solution
+        def torch_meshgrid(tensors: List[Tensor], indexing: str):
+            return torch.meshgrid(tensors, indexing=indexing)
+
+    else:
+        # TODO: remove this branch when kornia relies on torch >= 1.10.0
+        def torch_meshgrid(tensors: List[Tensor], indexing: str):
+            return torch.meshgrid(tensors)
 
 
-if version.parse(torch_version()) > version.parse("1.7.1"):
-    # TODO: remove the type: ignore once Python 3.6 is deprecated.
-    # It turns out that Pytorch has no attribute `torch.linalg` for
-    # Python 3.6 / PyTorch 1.7.0, 1.7.1
-    from torch.linalg import qr as linalg_qr  # type: ignore
+if TYPE_CHECKING:
+    # TODO: remove this branch when kornia relies on torch >= 1.10.0
+    _T = TypeVar('_T')
+    torch_inference_mode: Callable[..., ContextManager[_T]]
 else:
-    from torch import qr as linalg_qr  # type: ignore # noqa: F401
+    if torch_version_ge(1, 10, 0):
+        torch_inference_mode = torch.inference_mode
+    else:
+        # TODO: remove this branch when kornia relies on torch >= 1.10.0
+        torch_inference_mode = torch.no_grad

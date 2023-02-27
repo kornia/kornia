@@ -68,7 +68,7 @@ def rgb_to_yuv420(image: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
 
     yuvimage = rgb_to_yuv(image)
 
-    return (yuvimage[..., :1, :, :], torch.nn.functional.avg_pool2d(yuvimage[..., 1:3, :, :], (2, 2)))
+    return (yuvimage[..., :1, :, :], yuvimage[..., 1:3, :, :].unfold(-2, 2, 2).unfold(-2, 2, 2).mean((-1, -2)))
 
 
 def rgb_to_yuv422(image: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -99,7 +99,7 @@ def rgb_to_yuv422(image: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
 
     yuvimage = rgb_to_yuv(image)
 
-    return (yuvimage[..., :1, :, :], torch.nn.functional.avg_pool2d(yuvimage[..., 1:3, :, :], (1, 2)))
+    return (yuvimage[..., :1, :, :], yuvimage[..., 1:3, :, :].unfold(-1, 2, 2).mean(-1))
 
 
 def yuv_to_rgb(image: torch.Tensor) -> torch.Tensor:
@@ -155,7 +155,6 @@ def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
         >>> inputuv = torch.rand(2, 2, 2, 3)
         >>> output = yuv420_to_rgb(inputy, inputuv)  # 2x3x4x6
     """
-
     if not isinstance(imagey, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(imagey)}")
 
@@ -171,10 +170,15 @@ def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
     if len(imagey.shape) < 2 or imagey.shape[-2] % 2 == 1 or imagey.shape[-1] % 2 == 1:
         raise ValueError(f"Input H&W must be evenly disible by 2. Got {imagey.shape}")
 
-    if (len(imageuv.shape) < 2 or len(imagey.shape) < 2 or imagey.shape[-2] / imageuv.shape[-2] != 2
-            or imagey.shape[-1] / imageuv.shape[-1] != 2):
-        raise ValueError(f"Input imageuv H&W must be half the size of the luma plane. "
-                         f"Got {imagey.shape} and {imageuv.shape}")
+    if (
+        len(imageuv.shape) < 2
+        or len(imagey.shape) < 2
+        or imagey.shape[-2] / imageuv.shape[-2] != 2
+        or imagey.shape[-1] / imageuv.shape[-1] != 2
+    ):
+        raise ValueError(
+            f"Input imageuv H&W must be half the size of the luma plane. " f"Got {imagey.shape} and {imageuv.shape}"
+        )
 
     # first upsample
     yuv444image = torch.cat([imagey, imageuv.repeat_interleave(2, dim=-1).repeat_interleave(2, dim=-2)], dim=-3)
@@ -201,7 +205,6 @@ def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
         >>> inputuv = torch.rand(2, 2, 2, 3)
         >>> output = yuv420_to_rgb(inputy, inputuv)  # 2x3x4x5
     """
-
     if not isinstance(imagey, torch.Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(imagey)}")
 
@@ -218,8 +221,9 @@ def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
         raise ValueError(f"Input H&W must be evenly disible by 2. Got {imagey.shape}")
 
     if len(imageuv.shape) < 2 or len(imagey.shape) < 2 or imagey.shape[-1] / imageuv.shape[-1] != 2:
-        raise ValueError(f"Input imageuv W must be half the size of the luma plane. "
-                         f"Got {imagey.shape} and {imageuv.shape}")
+        raise ValueError(
+            f"Input imageuv W must be half the size of the luma plane. " f"Got {imagey.shape} and {imageuv.shape}"
+        )
 
     # first upsample
     yuv444image = torch.cat([imagey, imageuv.repeat_interleave(2, dim=-1)], dim=-3)

@@ -1,14 +1,13 @@
-from typing import Dict, Optional, cast
-
-from torch import Tensor
+from typing import Any, Dict, Optional
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
+from kornia.augmentation._2d.base import AugmentationBase2D
+from kornia.core import Tensor
 from kornia.geometry.transform import remap
 from kornia.utils import create_meshgrid
 
 
-class RandomFisheye(GeometricAugmentationBase2D):
+class RandomFisheye(AugmentationBase2D):
     r"""Add random camera radial distortion.
 
     .. image:: _static/img/RandomFisheye.png
@@ -21,6 +20,7 @@ class RandomFisheye(GeometricAugmentationBase2D):
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
+
     Examples:
         >>> import torch
         >>> img = torch.ones(1, 1, 2, 2)
@@ -46,21 +46,15 @@ class RandomFisheye(GeometricAugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
     ) -> None:
-        super().__init__(
-            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
-        )
+        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self._check_tensor(center_x)
         self._check_tensor(center_y)
         self._check_tensor(gamma)
-        self._param_generator = cast(
-            rg.PlainUniformGenerator,
-            rg.PlainUniformGenerator(
-                (center_x[:, None], "center_x", None, None),
-                (center_y[:, None], "center_y", None, None),
-                (gamma[:, None], "gamma", None, None),
-            ),
+        self._param_generator = rg.PlainUniformGenerator(
+            (center_x[:, None], "center_x", None, None),
+            (center_y[:, None], "center_y", None, None),
+            (gamma[:, None], "gamma", None, None),
         )
 
     def _check_tensor(self, data: Tensor) -> None:
@@ -70,12 +64,8 @@ class RandomFisheye(GeometricAugmentationBase2D):
         if len(data.shape) != 1 and data.shape[0] != 2:
             raise ValueError(f"Tensor must be of shape (2,). Got: {data.shape}.")
 
-    # TODO: It is incorrect to return identity
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor]) -> Tensor:
-        return self.identity_matrix(input)
-
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         # create the initial sampling fields
         B, _, H, W = input.shape
@@ -88,6 +78,6 @@ class RandomFisheye(GeometricAugmentationBase2D):
         gamma = params["gamma"].view(B, 1, 1).to(input)
         # compute and apply the distances respect to the camera optical center
         distance = ((center_x - field_x) ** 2 + (center_y - field_y) ** 2) ** 0.5
-        field_x = field_x + field_x * distance ** gamma  # BxHxw
-        field_y = field_y + field_y * distance ** gamma  # BxHxW
+        field_x = field_x + field_x * distance**gamma  # BxHxw
+        field_y = field_y + field_y * distance**gamma  # BxHxW
         return remap(input, field_x, field_y, normalized_coordinates=True, align_corners=True)

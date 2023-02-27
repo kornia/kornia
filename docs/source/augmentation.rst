@@ -13,6 +13,10 @@ itself, or to be applied to additional metadata such as the label images for sem
 in bounding boxes or landmark keypoints for object detection tasks. It gives the user the flexibility to
 perform complex data augmentations pipelines.
 
+Try it out :
+
+.. image:: https://img.shields.io/badge/%F0%9F%A4%97%20Spaces-Interactive%20Demo-blue
+   :target: https://huggingface.co/spaces/kornia/kornia-augmentations-tester
 
 Benchmark
 ---------
@@ -29,7 +33,7 @@ Benchmark
    +================================+=================+=================+=================+=================+=================+
    |      RandomPerspective         |     4.88±1.82   |    4.68±3.60    |   4.74±2.84     |   0.37±2.67     |   0.20±27.00    |
    +--------------------------------+-----------------+-----------------+-----------------+-----------------+-----------------+
-   |          ColorJitter           |     4.40±2.88   |    3.58±3.66    |   4.14±3.85     |   0.90±24.68    |   0.83±12.96    |
+   |          ColorJiggle           |     4.40±2.88   |    3.58±3.66    |   4.14±3.85     |   0.90±24.68    |   0.83±12.96    |
    +--------------------------------+-----------------+-----------------+-----------------+-----------------+-----------------+
    |        RandomAffine            |     3.12±5.80   |    2.43±7.11    |   3.01±7.80     |   0.30±4.39     |   0.18±6.30     |
    +--------------------------------+-----------------+-----------------+-----------------+-----------------+-----------------+
@@ -55,6 +59,7 @@ Benchmark
 
 .. toctree::
 
+   augmentation.auto
    augmentation.base
-   augmentation.module
    augmentation.container
+   augmentation.module

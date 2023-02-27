@@ -4,14 +4,11 @@ import torch
 from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
-from kornia.augmentation.utils import (
-    _adapted_rsampling,
-    _adapted_uniform,
-    _common_param_check,
-    _joint_range_check,
-    _range_bound,
-)
-from kornia.utils.helpers import _deprecated, _extract_device_dtype
+from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
+from kornia.core import Tensor
+from kornia.utils.helpers import _extract_device_dtype
+
+__all__ = ["MotionBlurGenerator"]
 
 
 class MotionBlurGenerator(RandomGeneratorBase):
@@ -32,9 +29,9 @@ class MotionBlurGenerator(RandomGeneratorBase):
 
     Returns:
         A dict of parameters to be passed for transformation.
-            - ksize_factor (torch.Tensor): element-wise kernel size factors with a shape of (B,).
-            - angle_factor (torch.Tensor): element-wise angle factors with a shape of (B,).
-            - direction_factor (torch.Tensor): element-wise direction factors with a shape of (B,).
+            - ksize_factor (Tensor): element-wise kernel size factors with a shape of (B,).
+            - angle_factor (Tensor): element-wise angle factors with a shape of (B,).
+            - direction_factor (Tensor): element-wise direction factors with a shape of (B,).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes. By default,
@@ -45,8 +42,8 @@ class MotionBlurGenerator(RandomGeneratorBase):
     def __init__(
         self,
         kernel_size: Union[int, Tuple[int, int]],
-        angle: Union[torch.Tensor, float, Tuple[float, float]],
-        direction: Union[torch.Tensor, float, Tuple[float, float]],
+        angle: Union[Tensor, float, Tuple[float, float]],
+        direction: Union[Tensor, float, Tuple[float, float]],
     ) -> None:
         super().__init__()
         self.kernel_size = kernel_size
@@ -75,7 +72,7 @@ class MotionBlurGenerator(RandomGeneratorBase):
         self.angle_sampler = Uniform(angle[0], angle[1], validate_args=False)
         self.direction_sampler = Uniform(direction[0], direction[1], validate_args=False)
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:  # type:ignore
+    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         # self.ksize_factor.expand((batch_size, -1))
@@ -89,74 +86,3 @@ class MotionBlurGenerator(RandomGeneratorBase):
             angle_factor=angle_factor.to(device=_device, dtype=_dtype),
             direction_factor=direction_factor.to(device=_device, dtype=_dtype),
         )
-
-
-@_deprecated(replace_with=MotionBlurGenerator.__name__)
-def random_motion_blur_generator(
-    batch_size: int,
-    kernel_size: Union[int, Tuple[int, int]],
-    angle: torch.Tensor,
-    direction: torch.Tensor,
-    same_on_batch: bool = False,
-    device: torch.device = torch.device('cpu'),
-    dtype: torch.dtype = torch.float32,
-) -> Dict[str, torch.Tensor]:
-    r"""Get parameters for motion blur.
-
-    Args:
-        batch_size (int): the tensor batch size.
-        kernel_size (int or (int, int)): motion kernel size (odd and positive) or range.
-        angle (torch.Tensor): angle of the motion blur in degrees (anti-clockwise rotation).
-        direction (torch.Tensor): forward/backward direction of the motion blur.
-            Lower values towards -1.0 will point the motion blur towards the back (with
-            angle provided via angle), while higher values towards 1.0 will point the motion
-            blur forward. A value of 0.0 leads to a uniformly (but still angled) motion blur.
-        same_on_batch (bool): apply the same transformation across the batch. Default: False.
-        device (torch.device): the device on which the random numbers will be generated. Default: cpu.
-        dtype (torch.dtype): the data type of the generated random numbers. Default: float32.
-
-    Returns:
-        params Dict[str, torch.Tensor]: parameters to be passed for transformation.
-            - ksize_factor (torch.Tensor): element-wise kernel size factors with a shape of (B,).
-            - angle_factor (torch.Tensor): element-wise angle factors with a shape of (B,).
-            - direction_factor (torch.Tensor): element-wise direction factors with a shape of (B,).
-
-    Note:
-        The generated random numbers are not reproducible across different devices and dtypes.
-    """
-    _common_param_check(batch_size, same_on_batch)
-    _joint_range_check(angle, 'angle')
-    _joint_range_check(direction, 'direction', (-1, 1))
-
-    _device, _dtype = _extract_device_dtype([angle, direction])
-
-    if isinstance(kernel_size, int):
-        if not (kernel_size >= 3 and kernel_size % 2 == 1):
-            raise AssertionError(f"`kernel_size` must be odd and greater than 3. Got {kernel_size}.")
-        ksize_factor = torch.tensor([kernel_size] * batch_size, device=device, dtype=dtype)
-    elif isinstance(kernel_size, tuple):
-        # kernel_size is fixed across the batch
-        if len(kernel_size) != 2:
-            raise AssertionError(f"`kernel_size` must be (2,) if it is a tuple. Got {kernel_size}.")
-        ksize_factor = (
-            _adapted_uniform((batch_size,), kernel_size[0] // 2, kernel_size[1] // 2, same_on_batch=True).int() * 2 + 1
-        )
-    else:
-        raise TypeError(f"Unsupported type: {type(kernel_size)}")
-
-    angle_factor = _adapted_uniform(
-        (batch_size,), angle[0].to(device=device, dtype=dtype), angle[1].to(device=device, dtype=dtype), same_on_batch
-    )
-
-    direction_factor = _adapted_uniform(
-        (batch_size,),
-        direction[0].to(device=device, dtype=dtype),
-        direction[1].to(device=device, dtype=dtype),
-        same_on_batch,
-    )
-
-    return dict(
-        ksize_factor=ksize_factor.to(device=_device, dtype=torch.int32),
-        angle_factor=angle_factor.to(device=_device, dtype=_dtype),
-        direction_factor=direction_factor.to(device=_device, dtype=_dtype),
-    )

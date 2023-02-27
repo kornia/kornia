@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import torch
 import torch.nn as nn
 
@@ -28,7 +30,6 @@ def psnr_loss(input: torch.Tensor, target: torch.Tensor, max_val: float) -> torc
         >>> psnr_loss(ones, 1.2 * ones, 2.) # 10 * log(4/((1.2-1)**2)) / log(10)
         tensor(-20.0000)
     """
-
     return -1.0 * metrics.psnr(input, target, max_val)
 
 
