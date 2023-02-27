@@ -104,6 +104,7 @@ def main():
         "RandomHue": (((-0.5, 0.5),), 2, 2022),
         "RandomHorizontalFlip": ((), 1, 2020),
         "RandomInvert": ((), 1, 2020),
+        "RandomMedianBlur": (((3, 3),), 1, 2023),
         "RandomMotionBlur": ((7, 35.0, 0.5), 2, 2020),
         "RandomPerspective": ((0.2,), 2, 2020),
         "RandomPlanckianJitter": ((), 2, 2022),
