@@ -69,11 +69,12 @@ def rgb_to_hls(image: Tensor, eps: float = 1e-8) -> Tensor:
     # h[imax == 2] = (((r - g) / (max - min)) + 4)[imax == 2]
     cond = imax[..., None, :, :] == _RGB2HSL_IDX
     if image.requires_grad:
-        h = torch.mul((g - b) % 6, cond[..., 0, :, :])
+        h = ((g - b) % 6) * cond[..., 0, :, :]
     else:
-        torch.mul((g - b).remainder(6), cond[..., 0, :, :], out=h)
-    h += torch.add(b - r, 2) * cond[..., 1, :, :]
-    h += torch.add(r - g, 4) * cond[..., 2, :, :]
+        # replacing `torch.mul` with `out=h` with python * operator gives wrong results
+        torch.mul((g - b) % 6, cond[..., 0, :, :], out=h)
+    h += (b - r + 2) * cond[..., 1, :, :]
+    h += (r - g + 4) * cond[..., 2, :, :]
     # h = 2.0 * math.pi * (60.0 * h) / 360.0
     h *= math.pi / 3.0  # hue [0, 2*pi]
 
@@ -105,7 +106,7 @@ def hls_to_rgb(image: Tensor) -> Tensor:
 
     _HLS2RGB = tensor([[[0.0]], [[8.0]], [[4.0]]], device=image.device, dtype=image.dtype)  # 3x1x1
 
-    im: Tensor = image.unsqueeze(-4)
+    im: Tensor = image[None, :, :, :]
     h: Tensor = im[..., 0, :, :]
     l: Tensor = im[..., 1, :, :]
     s: Tensor = im[..., 2, :, :]
