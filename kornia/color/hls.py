@@ -106,7 +106,7 @@ def hls_to_rgb(image: Tensor) -> Tensor:
 
     _HLS2RGB = tensor([[[0.0]], [[8.0]], [[4.0]]], device=image.device, dtype=image.dtype)  # 3x1x1
 
-    im: Tensor = image[None, :, :, :]
+    im: Tensor = image.unsqueeze(-4)
     h: Tensor = im[..., 0, :, :]
     l: Tensor = im[..., 1, :, :]
     s: Tensor = im[..., 2, :, :]
