@@ -1,8 +1,21 @@
 # kornia.geometry.se2 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se2.py
-from typing import Optional, Tuple, overload
+from typing import Optional, Tuple, Union, overload
 
-from kornia.core import Module, Parameter, Tensor, concatenate, pad, rand, stack, tensor, where, zeros_like
+from kornia.core import (
+    Device,
+    Dtype,
+    Module,
+    Parameter,
+    Tensor,
+    concatenate,
+    pad,
+    rand,
+    stack,
+    tensor,
+    where,
+    zeros_like,
+)
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_TYPE
 from kornia.geometry.liegroup._utils import check_se2_omega_shape, check_se2_r_t_shape, check_v_shape
 from kornia.geometry.liegroup.so2 import So2
@@ -55,7 +68,7 @@ class Se2(Module):
     def __repr__(self) -> str:
         return f"rotation: {self.r}\ntranslation: {self.t}"
 
-    def __getitem__(self, idx) -> 'Se2':
+    def __getitem__(self, idx: Union[int, slice]) -> 'Se2':
         return Se2(self._rotation[idx], self._translation[idx])
 
     @overload
@@ -116,7 +129,7 @@ class Se2(Module):
         return self._translation
 
     @staticmethod
-    def exp(v) -> 'Se2':
+    def exp(v: Tensor) -> 'Se2':
         """Converts elements of lie algebra to elements of lie group.
 
         Args:
@@ -186,7 +199,7 @@ class Se2(Module):
         return pad(col0, (0, 1))
 
     @staticmethod
-    def vee(omega) -> Tensor:
+    def vee(omega: Tensor) -> Tensor:
         """Converts elements from lie algebra to vector space.
 
         Args:
@@ -208,7 +221,7 @@ class Se2(Module):
         return concatenate((upsilon, theta[..., None]), -1)
 
     @classmethod
-    def identity(cls, batch_size: Optional[int] = None, device=None, dtype=None) -> 'Se2':
+    def identity(cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None) -> 'Se2':
         """Create a Se2 group representing an identity rotation and zero translation.
 
         Args:
@@ -262,7 +275,7 @@ class Se2(Module):
         return Se2(r_inv, t_inv)
 
     @classmethod
-    def random(cls, batch_size: Optional[int] = None, device=None, dtype=None) -> 'Se2':
+    def random(cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None) -> 'Se2':
         """Create a Se2 group representing a random transformation.
 
         Args:

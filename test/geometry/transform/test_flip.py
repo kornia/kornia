@@ -21,7 +21,7 @@ class TestVflip:
             [[0.0, 1.0, 1.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]], device=device, dtype=dtype
         )  # 3 x 3
 
-        assert (f(input) == expected).all()
+        assert_close(f(input), expected)
 
     def test_batch_vflip(self, device, dtype):
         input = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]], device=device, dtype=dtype)  # 3 x 3
@@ -35,7 +35,7 @@ class TestVflip:
 
         expected = expected.repeat(2, 1, 1)  # 2 x 3 x 3
 
-        assert (f(input) == expected).all()
+        assert_close(f(input), expected)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
@@ -85,7 +85,7 @@ class TestHflip:
             [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [1.0, 1.0, 0.0]], device=device, dtype=dtype
         )  # 3 x 3
 
-        assert (f(input) == expected).all()
+        assert_close(f(input), expected)
 
     def test_batch_hflip(self, device, dtype):
         input = torch.tensor(
@@ -101,7 +101,7 @@ class TestHflip:
 
         expected = expected.repeat(2, 1, 1)  # 2 x 3 x 3
 
-        assert (f(input) == expected).all()
+        assert_close(f(input), expected)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
@@ -151,7 +151,7 @@ class TestRot180:
             [[1.0, 1.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]], device=device, dtype=dtype
         )  # 3 x 3
 
-        assert (f(input) == expected).all()
+        assert_close(f(input), expected)
 
     def test_batch_rot180(self, device, dtype):
         input = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]], device=device, dtype=dtype)  # 3 x 3
@@ -165,7 +165,7 @@ class TestRot180:
 
         expected = expected.repeat(2, 1, 1)  # 2 x 3 x 3
 
-        assert (f(input) == expected).all()
+        assert_close(f(input), expected)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):

@@ -202,12 +202,11 @@ class TestUpscaleDouble(BaseTester):
 
         assert tuple(actual.shape) == expected
 
-    @pytest.mark.jit
-    def test_jit(self, device, dtype):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         img = self.prepare_data((1, 2, 5, 5), device, dtype)
         op = kornia.geometry.transform.upscale_double
-        op_jit = torch.jit.script(op)
-        self.assert_close(op(img), op_jit(img))
+        op_optimized = torch_optimizer(op)
+        self.assert_close(op(img), op_optimized(img))
 
     @pytest.mark.grad
     def test_gradcheck(self, device):

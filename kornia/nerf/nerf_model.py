@@ -2,13 +2,13 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from kornia.core import Tensor
+from kornia.core import Module, Tensor
 from kornia.nerf.positional_encoder import PositionalEncoder
 from kornia.nerf.rays import sample_lengths, sample_ray_points
 from kornia.nerf.renderer import IrregularRenderer, RegularRenderer
 
 
-class MLP(nn.Module):
+class MLP(Module):
     r"""Class to represent a multi-layer perceptron. The MLP represents a deep NN of fully connected layers. The
     network is build of user defined sub-units, each with a user defined number of layers.  Skip connections span
     between the sub-units. The model follows: Ben Mildenhall et el. (2020) at https://arxiv.org/abs/2003.08934.
@@ -20,7 +20,7 @@ class MLP(nn.Module):
         num_hidden: Layer hidden dimensions: int
     """
 
-    def __init__(self, num_dims, num_units: int = 2, num_unit_layers: int = 4, num_hidden: int = 128):
+    def __init__(self, num_dims: int, num_units: int = 2, num_unit_layers: int = 4, num_hidden: int = 128) -> None:
         super().__init__()
         self._num_unit_layers = num_unit_layers
         layers = []
@@ -42,7 +42,7 @@ class MLP(nn.Module):
         return out
 
 
-class NerfModel(nn.Module):
+class NerfModel(Module):
     r"""Class to represent NeRF model.
 
     Args:
@@ -65,8 +65,8 @@ class NerfModel(nn.Module):
         num_units: int = 2,
         num_unit_layers: int = 4,
         num_hidden: int = 128,  # FIXME: add as call argument
-        log_space_encoding=True,
-    ):
+        log_space_encoding: bool = True,
+    ) -> None:
         super().__init__()
         self._num_ray_points = num_ray_points
         self._irregular_ray_sampling = irregular_ray_sampling

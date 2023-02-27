@@ -1,11 +1,11 @@
 import pytest
 import torch
+from packaging import version
 from torch.autograd import gradcheck
 
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.testing import assert_close
-from packaging import version
 
 
 class TestImageHistogram2d:

@@ -412,7 +412,7 @@ def adjust_contrast_with_mean_subtraction(image: Tensor, factor: Union[float, Te
     return img_adjust
 
 
-def adjust_brightness(image: Tensor, factor: Union[float, Tensor], clip_output=True) -> Tensor:
+def adjust_brightness(image: Tensor, factor: Union[float, Tensor], clip_output: bool = True) -> Tensor:
     r"""Adjust the brightness of an image tensor.
 
     .. image:: _static/img/adjust_brightness.png
@@ -479,7 +479,7 @@ def adjust_brightness(image: Tensor, factor: Union[float, Tensor], clip_output=T
     return img_adjust
 
 
-def adjust_brightness_accumulative(image: Tensor, factor: Union[float, Tensor], clip_output=True) -> Tensor:
+def adjust_brightness_accumulative(image: Tensor, factor: Union[float, Tensor], clip_output: bool = True) -> Tensor:
     r"""Adjust the brightness accumulatively of an image tensor.
 
     This implementation follows PIL convention.
@@ -742,13 +742,13 @@ def posterize(input: Tensor, bits: Union[int, Tensor]) -> Tensor:
     # Ref: https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L222
     # Potential approach: implementing kornia.LUT with floating points
     # https://github.com/albumentations-team/albumentations/blob/master/albumentations/augmentations/functional.py#L472
-    def _left_shift(input: Tensor, shift: Tensor):
+    def _left_shift(input: Tensor, shift: Tensor) -> Tensor:
         return ((input * 255).to(torch.uint8) * (2**shift)).to(input.dtype) / 255.0
 
-    def _right_shift(input: Tensor, shift: Tensor):
+    def _right_shift(input: Tensor, shift: Tensor) -> Tensor:
         return (input * 255).to(torch.uint8) / (2**shift).to(input.dtype) / 255.0
 
-    def _posterize_one(input: Tensor, bits: Tensor):
+    def _posterize_one(input: Tensor, bits: Tensor) -> Tensor:
         # Single bits value condition
         if bits == 0:
             return torch.zeros_like(input)

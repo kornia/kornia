@@ -119,7 +119,7 @@ class UpConvBlock(Module):
             in_features = out_features
         return layers
 
-    def compute_out_features(self, idx: int, up_scale: int):
+    def compute_out_features(self, idx: int, up_scale: int) -> int:
         return 1 if idx == up_scale - 1 else self.constant_features
 
     def forward(self, x: Tensor, out_shape: list[int]) -> Tensor:
@@ -211,7 +211,7 @@ class DexiNed(Module):
         else:
             self.apply(weight_init)
 
-    def load_from_file(self, path_file: str):
+    def load_from_file(self, path_file: str) -> None:
         # use torch.hub to load pretrained model
         pretrained_dict = torch.hub.load_state_dict_from_url(path_file, map_location=map_location_to_cpu)
         self.load_state_dict(pretrained_dict, strict=True)

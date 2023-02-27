@@ -38,11 +38,11 @@ class Keypoints:
 
         self._data = keypoints
 
-    def __getitem__(self, key) -> "Keypoints":
+    def __getitem__(self, key: Union[slice, int, Tensor]) -> "Keypoints":
         new_obj = type(self)(self._data[key], False)
         return new_obj
 
-    def __setitem__(self, key, value: "Keypoints") -> "Keypoints":
+    def __setitem__(self, key: Union[slice, int, Tensor], value: "Keypoints") -> "Keypoints":
         self._data[key] = value._data
         return self
 
@@ -225,20 +225,20 @@ class Keypoints3D:
 
         self._data = keypoints
 
-    def __getitem__(self, key) -> "Keypoints3D":
+    def __getitem__(self, key: Union[slice, int, Tensor]) -> "Keypoints3D":
         new_obj = type(self)(self._data[key], False)
         return new_obj
 
-    def __setitem__(self, key, value: "Keypoints3D") -> "Keypoints3D":
+    def __setitem__(self, key: Union[slice, int, Tensor], value: "Keypoints3D") -> "Keypoints3D":
         self._data[key] = value._data
         return self
 
     @property
-    def shape(self):
+    def shape(self) -> torch.Size:
         return self.data.shape
 
     @property
-    def data(self):
+    def data(self) -> Tensor:
         return self._data
 
     def pad(self, padding_size: Tensor) -> "Keypoints3D":

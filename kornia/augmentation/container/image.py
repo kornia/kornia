@@ -204,7 +204,7 @@ class ImageSequential(ImageSequentialBase):
             params.append(param)
         return params
 
-    def identity_matrix(self, input) -> Tensor:
+    def identity_matrix(self, input: Tensor) -> Tensor:
         """Return identity matrix."""
         return eye_like(3, input)
 

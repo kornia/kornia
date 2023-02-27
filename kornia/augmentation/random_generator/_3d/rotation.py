@@ -56,7 +56,7 @@ class RotationGenerator3D(RandomGeneratorBase):
         self.pitch_sampler = Uniform(degrees[1][0], degrees[1][1], validate_args=False)
         self.roll_sampler = Uniform(degrees[2][0], degrees[2][1], validate_args=False)
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.degrees])

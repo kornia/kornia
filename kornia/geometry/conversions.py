@@ -1242,7 +1242,7 @@ def normalize_homography3d(
     return dst_norm_trans_src_norm
 
 
-def normalize_points_with_intrinsics(point_2d: Tensor, camera_matrix: Tensor):
+def normalize_points_with_intrinsics(point_2d: Tensor, camera_matrix: Tensor) -> Tensor:
     """Normalizes points with intrinsics. Useful for conversion of keypoints to be used with essential matrix.
 
     Args:
@@ -1284,7 +1284,7 @@ def normalize_points_with_intrinsics(point_2d: Tensor, camera_matrix: Tensor):
     return xy
 
 
-def denormalize_points_with_intrinsics(point_2d_norm: Tensor, camera_matrix: Tensor):
+def denormalize_points_with_intrinsics(point_2d_norm: Tensor, camera_matrix: Tensor) -> Tensor:
     """Normalizes points with intrinsics. Useful for conversion of keypoints to be used with essential matrix.
 
     Args:

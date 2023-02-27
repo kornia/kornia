@@ -1,5 +1,6 @@
+from __future__ import annotations
+
 import math
-from typing import List, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -150,7 +151,7 @@ class ScalePyramid(Module):
             f'double_image={self.double_image})'
         )
 
-    def get_kernel_size(self, sigma: float):
+    def get_kernel_size(self, sigma: float) -> int:
         ksize = int(2.0 * 4.0 * sigma + 1.0)
 
         #  matches OpenCV, but may cause padding problem for small images
@@ -161,7 +162,7 @@ class ScalePyramid(Module):
             ksize += 1
         return ksize
 
-    def get_first_level(self, input: Tensor) -> Tuple[Tensor, float, float]:
+    def get_first_level(self, input: Tensor) -> tuple[Tensor, float, float]:
         pixel_distance = 1.0
         cur_sigma = 0.5
         # Same as in OpenCV up to interpolation difference
@@ -181,7 +182,7 @@ class ScalePyramid(Module):
             cur_level = x
         return cur_level, cur_sigma, pixel_distance
 
-    def forward(self, x: Tensor) -> Tuple[List[Tensor], List[Tensor], List[Tensor]]:
+    def forward(self, x: Tensor) -> tuple[list[Tensor], list[Tensor], list[Tensor]]:
         bs, _, _, _ = x.size()
         cur_level, cur_sigma, pixel_distance = self.get_first_level(x)
 
@@ -301,7 +302,7 @@ def pyrup(input: Tensor, border_type: str = 'reflect', align_corners: bool = Fal
 
 def build_pyramid(
     input: Tensor, max_level: int, border_type: str = 'reflect', align_corners: bool = False
-) -> List[Tensor]:
+) -> list[Tensor]:
     r"""Construct the Gaussian pyramid for a tensor image.
 
     .. image:: _static/img/build_pyramid.png
@@ -329,7 +330,7 @@ def build_pyramid(
     )
 
     # create empty list and append the original image
-    pyramid: List[Tensor] = []
+    pyramid: list[Tensor] = []
     pyramid.append(input)
 
     # iterate and downsample
@@ -354,7 +355,7 @@ def find_next_powerof_two(x):
 
 def build_laplacian_pyramid(
     input: Tensor, max_level: int, border_type: str = 'reflect', align_corners: bool = False
-) -> List[Tensor]:
+) -> list[Tensor]:
     r"""Construct the Laplacian pyramid for a tensor image.
 
     The function constructs a vector of images and builds the Laplacian pyramid
@@ -393,9 +394,9 @@ def build_laplacian_pyramid(
         input = pad(input, padding, "reflect")
 
     # create gaussian pyramid
-    gaussian_pyramid: List[Tensor] = build_pyramid(input, max_level, border_type, align_corners)
+    gaussian_pyramid: list[Tensor] = build_pyramid(input, max_level, border_type, align_corners)
     # create empty list
-    laplacian_pyramid: List[Tensor] = []
+    laplacian_pyramid: list[Tensor] = []
 
     # iterate and compute difference of adjacent layers in a gaussian pyramid
     for i in range(max_level - 1):
