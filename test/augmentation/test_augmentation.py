@@ -4118,6 +4118,23 @@ class TestRandomAutoContrast:
 class TestRandomSnow(BaseTester):
     torch.manual_seed(0)  # for random reproductibility
 
+    def _get_exception_test_data(self, device, dtype):
+        err_msg_sw_coef = 'Snow coefficient values must be between 0 and 1.'
+        err_msg_brght_coef = 'Brightness values must be greater than 1.'
+        err_msg_wrong_ch = 'Number of color channels should be 3.'
+        err_msg_wrong_sh = 'Input size must have a shape of either (H, W), (C, H, W) or (*, C, H, W).'
+
+        return [
+            (err_msg_sw_coef, (-0.3, 0.6), (1.2, 3.4), torch.rand(1, 3, 3, device=device, dtype=dtype)),
+            (err_msg_sw_coef, (0.3, -0.9), (1.3, 2.5), torch.rand(1, 3, 4, device=device, dtype=dtype)),
+            (err_msg_sw_coef, (-0.6, -0.9), (1.1, 3.1), torch.rand(2, 3, 4, device=device, dtype=dtype)),
+            (err_msg_brght_coef, (0.1, 0.7), (0.3, 1.5), torch.rand(1, 3, 5, device=device, dtype=dtype)),
+            (err_msg_brght_coef, (0.4, 0.6), (1.3, 0.8), torch.rand(1, 3, 6, device=device, dtype=dtype)),
+            (err_msg_brght_coef, (0.3, 0.9), (0.5, 0.7), torch.rand(1, 3, 7, device=device, dtype=dtype)),
+            (err_msg_wrong_ch, (0.2, 0.8), (1.6, 3.7), torch.rand(1, 4, 7, device=device, dtype=dtype)),
+            (err_msg_wrong_sh, (0.1, 0.5), (1.1, 2.5), torch.rand(1, 2, 3, 4, 5, device=device, dtype=dtype)),
+        ]
+
     @pytest.mark.parametrize("batch_shape", [(1, 3, 4, 7), (1, 3, 6, 9)])
     def test_cardinality(self, batch_shape, device, dtype):
         input_data = torch.rand(batch_shape, device=device, dtype=dtype)
@@ -4137,10 +4154,13 @@ class TestRandomSnow(BaseTester):
         self.gradcheck(RandomSnow(p=1.0), (grad_input,))
 
     def test_exception(self, device, dtype):
-        err_msg = 'False not true.\\nSnow coefficient values must be between 0 and 1.'
-        with pytest.raises(Exception) as errinfo:
-            RandomSnow(p=1.0, snow_coefficient=(-0.1, 0.8), brightness=(1.5, 3.5))
-        assert err_msg in str(errinfo)
+        exception_test_data = self._get_exception_test_data(device, dtype)
+        for err_msg, snow_coef, brght_coef, input_data in exception_test_data:
+            with pytest.raises(Exception) as errinfo:
+                aug = RandomSnow(p=1.0, snow_coefficient=snow_coef, brightness=brght_coef)
+                aug(input_data)
+
+            assert err_msg in str(errinfo)
 
     @pytest.mark.skip(reason="not implemented yet")
     def test_module(self, device, dtype):
