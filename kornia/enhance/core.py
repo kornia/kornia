@@ -87,7 +87,7 @@ class AddWeighted(Module):
         Tensor alpha/beta/gamma have to be with shape broadcastable to src1 and src2 shapes.
     """
 
-    def __init__(self, alpha, beta, gamma) -> None:
+    def __init__(self, alpha: Union[float, Tensor], beta: Union[float, Tensor], gamma: Union[float, Tensor]) -> None:
         super().__init__()
         self.alpha = alpha
         self.beta = beta

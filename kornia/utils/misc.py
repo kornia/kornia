@@ -1,7 +1,7 @@
-import torch
+from kornia.core import Tensor, eye, zeros
 
 
-def eye_like(n: int, input: torch.Tensor, shared_memory: bool = False) -> torch.Tensor:
+def eye_like(n: int, input: Tensor, shared_memory: bool = False) -> Tensor:
     r"""Return a 2-D tensor with ones on the diagonal and zeros elsewhere with the same batch size as the input.
 
     Args:
@@ -23,11 +23,12 @@ def eye_like(n: int, input: torch.Tensor, shared_memory: bool = False) -> torch.
     if len(input.shape) < 1:
         raise AssertionError(input.shape)
 
-    identity = torch.eye(n, device=input.device).type(input.dtype)
+    identity = eye(n, device=input.device).type(input.dtype)
+
     return identity[None].expand(input.shape[0], n, n) if shared_memory else identity[None].repeat(input.shape[0], 1, 1)
 
 
-def vec_like(n: int, tensor: torch.Tensor, shared_memory: bool = False):
+def vec_like(n: int, tensor: Tensor, shared_memory: bool = False) -> Tensor:
     r"""Return a 2-D tensor with a vector containing zeros with the same batch size as the input.
 
     Args:
@@ -49,5 +50,5 @@ def vec_like(n: int, tensor: torch.Tensor, shared_memory: bool = False):
     if len(tensor.shape) < 1:
         raise AssertionError(tensor.shape)
 
-    vec = torch.zeros(n, 1, device=tensor.device, dtype=tensor.dtype)
+    vec = zeros(n, 1, device=tensor.device, dtype=tensor.dtype)
     return vec[None].expand(tensor.shape[0], n, 1) if shared_memory else vec[None].repeat(tensor.shape[0], 1, 1)

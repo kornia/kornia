@@ -12,7 +12,7 @@ test-cuda: FORCE
 	pytest -v --device cuda --dtype all --cov=kornia test/
 
 test-mps: FORCE
-	pytest -v --device mps --dtype float32 -k "not (grad or exception or jit)"  test/
+	pytest -v --device mps --dtype float32 -k "not (grad or exception or jit or dynamo)"  test/
 
 test-module: FORCE
 	pytest -v --device all --dtype all  test/$(module)

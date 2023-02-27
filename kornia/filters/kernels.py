@@ -6,12 +6,12 @@ from typing import Any
 
 import torch
 
-from kornia.core import Device, Tensor, concatenate, stack, tensor, where, zeros, zeros_like
+from kornia.core import Device, Dtype, Tensor, concatenate, stack, tensor, where, zeros, zeros_like
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 from kornia.utils import deprecated
 
 
-def _check_kernel_size(kernel_size: tuple[int, ...] | int, min_value: int = 0, allow_even: bool = False):
+def _check_kernel_size(kernel_size: tuple[int, ...] | int, min_value: int = 0, allow_even: bool = False) -> None:
     if isinstance(kernel_size, int):
         kernel_size = (kernel_size,)
 
@@ -61,7 +61,7 @@ def normalize_kernel2d(input: Tensor) -> Tensor:
 
 
 def gaussian(
-    window_size: int, sigma: Tensor | float, *, device: Device | None = None, dtype: torch.dtype | None = None
+    window_size: int, sigma: Tensor | float, *, device: Device | None = None, dtype: Dtype | None = None
 ) -> Tensor:
     """Compute the gaussian values based on the window and sigma values.
 
@@ -92,7 +92,7 @@ def gaussian(
 
 
 def gaussian_discrete_erf(
-    window_size: int, sigma: Tensor | float, *, device: Device | None = None, dtype: torch.dtype | None = None
+    window_size: int, sigma: Tensor | float, *, device: Device | None = None, dtype: Dtype | None = None
 ) -> Tensor:
     r"""Discrete Gaussian by interpolating the error function.
 
@@ -219,7 +219,7 @@ def _modified_bessel_i(n: int, x: Tensor) -> Tensor:
 
 
 def gaussian_discrete(
-    window_size: int, sigma: Tensor | float, *, device: Device | None = None, dtype: torch.dtype | None = None
+    window_size: int, sigma: Tensor | float, *, device: Device | None = None, dtype: Dtype | None = None
 ) -> Tensor:
     r"""Discrete Gaussian kernel based on the modified Bessel functions.
 
@@ -252,7 +252,7 @@ def gaussian_discrete(
     return out / out.sum(-1, keepdim=True)
 
 
-def laplacian_1d(window_size: int, *, device: Device | None = None, dtype: torch.dtype = torch.float32) -> Tensor:
+def laplacian_1d(window_size: int, *, device: Device | None = None, dtype: Dtype = torch.float32) -> Tensor:
     """One could also use the Laplacian of Gaussian formula to design the filter."""
     # TODO: add default dtype as None when kornia relies on torch > 1.12
     filter_1d = torch.ones(window_size, device=device, dtype=dtype)
@@ -262,7 +262,7 @@ def laplacian_1d(window_size: int, *, device: Device | None = None, dtype: torch
 
 
 def get_box_kernel2d(
-    kernel_size: tuple[int, int] | int, *, device: Device | None = None, dtype: torch.dtype | None = None
+    kernel_size: tuple[int, int] | int, *, device: Device | None = None, dtype: Dtype | None = None
 ) -> Tensor:
     r"""Utility function that returns a box filter."""
     kx, ky = _unpack_2d_ks(kernel_size)
@@ -271,7 +271,7 @@ def get_box_kernel2d(
 
 
 def get_binary_kernel2d(
-    window_size: tuple[int, int] | int, *, device: Device | None = None, dtype: torch.dtype = torch.float32
+    window_size: tuple[int, int] | int, *, device: Device | None = None, dtype: Dtype = torch.float32
 ) -> Tensor:
     """Create a binary kernel to extract the patches.
 
@@ -289,12 +289,12 @@ def get_binary_kernel2d(
     return kernel.view(window_range, 1, kx, ky)
 
 
-def get_sobel_kernel_3x3(*, device: Device | None = None, dtype: torch.dtype | None = None) -> Tensor:
+def get_sobel_kernel_3x3(*, device: Device | None = None, dtype: Dtype | None = None) -> Tensor:
     """Utility function that returns a sobel kernel of 3x3."""
     return tensor([[-1.0, 0.0, 1.0], [-2.0, 0.0, 2.0], [-1.0, 0.0, 1.0]], device=device, dtype=dtype)
 
 
-def get_sobel_kernel_5x5_2nd_order(*, device: Device | None = None, dtype: torch.dtype | None = None) -> Tensor:
+def get_sobel_kernel_5x5_2nd_order(*, device: Device | None = None, dtype: Dtype | None = None) -> Tensor:
     """Utility function that returns a 2nd order sobel kernel of 5x5."""
     return tensor(
         [
@@ -309,7 +309,7 @@ def get_sobel_kernel_5x5_2nd_order(*, device: Device | None = None, dtype: torch
     )
 
 
-def _get_sobel_kernel_5x5_2nd_order_xy(*, device: Device | None = None, dtype: torch.dtype | None = None) -> Tensor:
+def _get_sobel_kernel_5x5_2nd_order_xy(*, device: Device | None = None, dtype: Dtype | None = None) -> Tensor:
     """Utility function that returns a 2nd order sobel kernel of 5x5."""
     return tensor(
         [
@@ -324,12 +324,12 @@ def _get_sobel_kernel_5x5_2nd_order_xy(*, device: Device | None = None, dtype: t
     )
 
 
-def get_diff_kernel_3x3(*, device: Device | None = None, dtype: torch.dtype | None = None) -> Tensor:
+def get_diff_kernel_3x3(*, device: Device | None = None, dtype: Dtype | None = None) -> Tensor:
     """Utility function that returns a first order derivative kernel of 3x3."""
     return tensor([[-0.0, 0.0, 0.0], [-1.0, 0.0, 1.0], [-0.0, 0.0, 0.0]], device=device, dtype=dtype)
 
 
-def get_diff_kernel3d(device: Device | None = None, dtype: torch.dtype | None = None) -> Tensor:
+def get_diff_kernel3d(device: Device | None = None, dtype: Dtype | None = None) -> Tensor:
     """Utility function that returns a first order derivative kernel of 3x3x3."""
     kernel = tensor(
         [
@@ -355,7 +355,7 @@ def get_diff_kernel3d(device: Device | None = None, dtype: torch.dtype | None = 
     return kernel[:, None, ...]
 
 
-def get_diff_kernel3d_2nd_order(device: Device | None = None, dtype: torch.dtype | None = None) -> Tensor:
+def get_diff_kernel3d_2nd_order(device: Device | None = None, dtype: Dtype | None = None) -> Tensor:
     """Utility function that returns a first order derivative kernel of 3x3x3."""
     kernel = tensor(
         [
@@ -396,26 +396,26 @@ def get_diff_kernel3d_2nd_order(device: Device | None = None, dtype: torch.dtype
     return kernel[:, None, ...]
 
 
-def get_sobel_kernel2d(*, device: Device | None = None, dtype: torch.dtype | None = None) -> Tensor:
+def get_sobel_kernel2d(*, device: Device | None = None, dtype: Dtype | None = None) -> Tensor:
     kernel_x = get_sobel_kernel_3x3(device=device, dtype=dtype)
     kernel_y = kernel_x.transpose(0, 1)
     return stack([kernel_x, kernel_y])
 
 
-def get_diff_kernel2d(*, device: Device | None = None, dtype: torch.dtype | None = None) -> Tensor:
+def get_diff_kernel2d(*, device: Device | None = None, dtype: Dtype | None = None) -> Tensor:
     kernel_x = get_diff_kernel_3x3(device=device, dtype=dtype)
     kernel_y = kernel_x.transpose(0, 1)
     return stack([kernel_x, kernel_y])
 
 
-def get_sobel_kernel2d_2nd_order(*, device: Device | None = None, dtype: torch.dtype | None = None) -> Tensor:
+def get_sobel_kernel2d_2nd_order(*, device: Device | None = None, dtype: Dtype | None = None) -> Tensor:
     gxx = get_sobel_kernel_5x5_2nd_order(device=device, dtype=dtype)
     gyy = gxx.transpose(0, 1)
     gxy = _get_sobel_kernel_5x5_2nd_order_xy(device=device, dtype=dtype)
     return stack([gxx, gxy, gyy])
 
 
-def get_diff_kernel2d_2nd_order(*, device: Device | None = None, dtype: torch.dtype | None = None) -> Tensor:
+def get_diff_kernel2d_2nd_order(*, device: Device | None = None, dtype: Dtype | None = None) -> Tensor:
     gxx = tensor([[0.0, 0.0, 0.0], [1.0, -2.0, 1.0], [0.0, 0.0, 0.0]], device=device, dtype=dtype)
     gyy = gxx.transpose(0, 1)
     gxy = tensor([[-1.0, 0.0, 1.0], [0.0, 0.0, 0.0], [1.0, 0.0, -1.0]], device=device, dtype=dtype)
@@ -423,7 +423,7 @@ def get_diff_kernel2d_2nd_order(*, device: Device | None = None, dtype: torch.dt
 
 
 def get_spatial_gradient_kernel2d(
-    mode: str, order: int, *, device: Device | None = None, dtype: torch.dtype | None = None
+    mode: str, order: int, *, device: Device | None = None, dtype: Dtype | None = None
 ) -> Tensor:
     r"""Function that returns kernel for 1st or 2nd order image gradients, using one of the following operators:
 
@@ -447,7 +447,7 @@ def get_spatial_gradient_kernel2d(
 
 
 def get_spatial_gradient_kernel3d(
-    mode: str, order: int, device: Device | None = None, dtype: torch.dtype | None = None
+    mode: str, order: int, device: Device | None = None, dtype: Dtype | None = None
 ) -> Tensor:
     r"""Function that returns kernel for 1st or 2nd order scale pyramid gradients, using one of the following
     operators: sobel, diff."""
@@ -470,7 +470,7 @@ def get_gaussian_kernel1d(
     force_even: bool = False,
     *,
     device: Device | None = None,
-    dtype: torch.dtype | None = None,
+    dtype: Dtype | None = None,
 ) -> Tensor:
     r"""Function that returns Gaussian filter coefficients.
     Args:
@@ -503,7 +503,7 @@ def get_gaussian_discrete_kernel1d(
     force_even: bool = False,
     *,
     device: Device | None = None,
-    dtype: torch.dtype | None = None,
+    dtype: Dtype | None = None,
 ) -> Tensor:
     r"""Function that returns Gaussian filter coefficients based on the modified Bessel functions. Adapted from:
     https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
@@ -537,7 +537,7 @@ def get_gaussian_erf_kernel1d(
     force_even: bool = False,
     *,
     device: Device | None = None,
-    dtype: torch.dtype | None = None,
+    dtype: Dtype | None = None,
 ) -> Tensor:
     r"""Function that returns Gaussian filter coefficients by interpolating the error function, adapted from:
     https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
@@ -571,7 +571,7 @@ def get_gaussian_kernel2d(
     force_even: bool = False,
     *,
     device: Device | None = None,
-    dtype: torch.dtype | None = None,
+    dtype: Dtype | None = None,
 ) -> Tensor:
     r"""Function that returns Gaussian filter matrix coefficients.
     Args:
@@ -623,7 +623,7 @@ def get_gaussian_kernel3d(
     force_even: bool = False,
     *,
     device: Device | None = None,
-    dtype: torch.dtype | None = None,
+    dtype: Dtype | None = None,
 ) -> Tensor:
     r"""Function that returns Gaussian filter matrix coefficients.
     Args:
@@ -675,9 +675,7 @@ def get_gaussian_kernel3d(
     return kernel_3d
 
 
-def get_laplacian_kernel1d(
-    kernel_size: int, *, device: Device | None = None, dtype: torch.dtype = torch.float32
-) -> Tensor:
+def get_laplacian_kernel1d(kernel_size: int, *, device: Device | None = None, dtype: Dtype = torch.float32) -> Tensor:
     r"""Function that returns the coefficients of a 1D Laplacian filter.
     Args:
         kernel_size: filter size. It should be odd and positive.
@@ -701,7 +699,7 @@ def get_laplacian_kernel1d(
 
 
 def get_laplacian_kernel2d(
-    kernel_size: tuple[int, int] | int, *, device: Device | None = None, dtype: torch.dtype = torch.float32
+    kernel_size: tuple[int, int] | int, *, device: Device | None = None, dtype: Dtype = torch.float32
 ) -> Tensor:
     r"""Function that returns Gaussian filter matrix coefficients.
     Args:
@@ -738,11 +736,7 @@ def get_laplacian_kernel2d(
 
 
 def get_pascal_kernel_2d(
-    kernel_size: tuple[int, int] | int,
-    norm: bool = True,
-    *,
-    device: Device | None = None,
-    dtype: torch.dtype | None = None,
+    kernel_size: tuple[int, int] | int, norm: bool = True, *, device: Device | None = None, dtype: Dtype | None = None
 ) -> Tensor:
     """Generate pascal filter kernel by kernel size.
     Args:
@@ -778,7 +772,7 @@ def get_pascal_kernel_2d(
 
 
 def get_pascal_kernel_1d(
-    kernel_size: int, norm: bool = False, *, device: Device | None = None, dtype: torch.dtype | None = None
+    kernel_size: int, norm: bool = False, *, device: Device | None = None, dtype: Dtype | None = None
 ) -> Tensor:
     """Generate Yang Hui triangle (Pascal's triangle) by a given number.
     Args:
@@ -822,7 +816,7 @@ def get_pascal_kernel_1d(
     return out
 
 
-def get_canny_nms_kernel(device: Device | None = None, dtype: torch.dtype | None = None) -> Tensor:
+def get_canny_nms_kernel(device: Device | None = None, dtype: Dtype | None = None) -> Tensor:
     """Utility function that returns 3x3 kernels for the Canny Non-maximal suppression."""
     return tensor(
         [
@@ -840,7 +834,7 @@ def get_canny_nms_kernel(device: Device | None = None, dtype: torch.dtype | None
     )
 
 
-def get_hysteresis_kernel(device: Device | None = None, dtype: torch.dtype | None = None) -> Tensor:
+def get_hysteresis_kernel(device: Device | None = None, dtype: Dtype | None = None) -> Tensor:
     """Utility function that returns the 3x3 kernels for the Canny hysteresis."""
     return tensor(
         [
@@ -858,7 +852,7 @@ def get_hysteresis_kernel(device: Device | None = None, dtype: torch.dtype | Non
     )
 
 
-def get_hanning_kernel1d(kernel_size: int, device: Device | None = None, dtype: torch.dtype | None = None) -> Tensor:
+def get_hanning_kernel1d(kernel_size: int, device: Device | None = None, dtype: Dtype | None = None) -> Tensor:
     r"""Returns Hanning (also known as Hann) kernel, used in signal processing and KCF tracker.
 
     .. math::  w(n) = 0.5 - 0.5cos\\left(\\frac{2\\pi{n}}{M-1}\\right)
@@ -885,7 +879,7 @@ def get_hanning_kernel1d(kernel_size: int, device: Device | None = None, dtype: 
 
 
 def get_hanning_kernel2d(
-    kernel_size: tuple[int, int] | int, device: Device | None = None, dtype: torch.dtype | None = None
+    kernel_size: tuple[int, int] | int, device: Device | None = None, dtype: Dtype | None = None
 ) -> Tensor:
     """Returns 2d Hanning kernel, used in signal processing and KCF tracker.
     Args:

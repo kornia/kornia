@@ -1,4 +1,4 @@
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, Optional, Tuple, Union
 
 import torch
 from torch.distributions import Distribution
@@ -49,7 +49,7 @@ class RandomGeneratorBase(Module, metaclass=_PostInitInjectionMetaClass):
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         raise NotImplementedError
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
         raise NotImplementedError
 
 
@@ -82,19 +82,19 @@ class DistributionWithMapper(Distribution):
         self.dist = dist
         self.map_fn = map_fn
 
-    def rsample(self, sample_shape: torch.Size) -> Tensor:  # type: ignore[override]
+    def rsample(self, sample_shape: Tuple[int, ...]) -> Tensor:  # type: ignore[override]
         out = self.dist.rsample(sample_shape)
         if self.map_fn is not None:
             out = self.map_fn(out)
         return out
 
-    def sample(self, sample_shape: torch.Size) -> Tensor:  # type: ignore[override]
+    def sample(self, sample_shape: Tuple[int, ...]) -> Tensor:  # type: ignore[override]
         out = self.dist.sample(sample_shape)
         if self.map_fn is not None:
             out = self.map_fn(out)
         return out
 
-    def sample_n(self, n) -> Tensor:
+    def sample_n(self, n: Union[int, float, Tensor]) -> Tensor:
         out = self.dist.sample_n(n)
         if self.map_fn is not None:
             out = self.map_fn(out)

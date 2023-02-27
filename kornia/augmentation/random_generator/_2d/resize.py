@@ -45,7 +45,7 @@ class ResizeGenerator(RandomGeneratorBase):
         self.dtype = dtype
         pass
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device = self.device

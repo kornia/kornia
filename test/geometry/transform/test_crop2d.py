@@ -92,10 +92,10 @@ class TestCropAndResize:
             kornia.geometry.transform.crop_and_resize, (img, boxes, (4, 2)), raise_exception=True, fast_mode=True
         )
 
-    def test_jit(self, device, dtype):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         # Define script
         op = kornia.geometry.transform.crop_and_resize
-        op_script = torch.jit.script(op)
+        op_optimized = torch_optimizer(op)
         # Define input
         img = torch.tensor(
             [[[[1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0], [9.0, 10.0, 11.0, 12.0], [13.0, 14.0, 15.0, 16.0]]]],
@@ -105,7 +105,7 @@ class TestCropAndResize:
         boxes = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]], device=device, dtype=dtype)  # 1x4x2
 
         crop_height, crop_width = 4, 2
-        actual = op_script(img, boxes, (crop_height, crop_width))
+        actual = op_optimized(img, boxes, (crop_height, crop_width))
         expected = op(img, boxes, (crop_height, crop_width))
         assert_close(actual, expected, rtol=1e-4, atol=1e-4)
 
@@ -164,28 +164,15 @@ class TestCenterCrop:
 
         assert gradcheck(kornia.geometry.transform.center_crop, (img, (4, 2)), raise_exception=True, fast_mode=True)
 
-    def test_jit(self, device, dtype):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         # Define script
         op = kornia.geometry.transform.center_crop
-        op_script = torch.jit.script(op)
+        op_script = torch_optimizer(op)
         # Define input
         img = torch.ones(1, 2, 5, 4, device=device, dtype=dtype)
 
         actual = op_script(img, (4, 2))
         expected = op(img, (4, 2))
-        assert_close(actual, expected, rtol=1e-4, atol=1e-4)
-
-    def test_jit_trace(self, device, dtype):
-        # Define script
-        op = kornia.geometry.transform.center_crop
-        op_script = torch.jit.script(op)
-        # Define input
-        img = torch.ones(2, 1, 6, 3, device=device, dtype=dtype)
-        op_trace = torch.jit.trace(op_script, (img, (torch.tensor(2), torch.tensor(3))))
-        img = torch.ones(2, 1, 6, 3, device=device, dtype=dtype)
-        # Run
-        actual = op_trace(img, (torch.tensor(2), torch.tensor(3)))
-        expected = op(img, (2, 3))
         assert_close(actual, expected, rtol=1e-4, atol=1e-4)
 
 

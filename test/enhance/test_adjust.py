@@ -774,13 +774,12 @@ class TestAdjustSigmoid(BaseTester):
         f = kornia.enhance.AdjustSigmoid()
         self.assert_close(f(data), expected)
 
-    @pytest.mark.jit
-    def test_jit(self, device, dtype):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.enhance.adjust_sigmoid
-        op_jit = torch.jit.script(op)
-        self.assert_close(op(img), op_jit(img))
+        op_optimized = torch_optimizer(op)
+        self.assert_close(op(img), op_optimized(img))
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
@@ -844,13 +843,12 @@ class TestAdjustLog(BaseTester):
         f = kornia.enhance.AdjustLog()
         self.assert_close(f(data), expected)
 
-    @pytest.mark.jit
-    def test_jit(self, device, dtype):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.enhance.adjust_log
-        op_jit = torch.jit.script(op)
-        self.assert_close(op(img), op_jit(img))
+        op_optimized = torch_optimizer(op)
+        self.assert_close(op(img), op_optimized(img))
 
     @pytest.mark.grad
     def test_gradcheck(self, device, dtype):

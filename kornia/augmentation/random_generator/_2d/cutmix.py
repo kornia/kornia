@@ -75,7 +75,7 @@ class CutmixGenerator(RandomGeneratorBase):
             tensor(0.0, device=device, dtype=dtype), tensor(1.0, device=device, dtype=dtype), validate_args=False
         )
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         height = batch_shape[-2]
         width = batch_shape[-1]

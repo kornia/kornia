@@ -159,7 +159,7 @@ class ConvSoftArgmax2d(Module):
             f"output_value={self.output_value})"
         )
 
-    def forward(self, x: Tensor):
+    def forward(self, x: Tensor) -> Union[Tensor, Tuple[Tensor, Tensor]]:
         return conv_soft_argmax2d(
             x,
             self.kernel_size,
@@ -213,7 +213,7 @@ class ConvSoftArgmax3d(Module):
             f"output_value={self.output_value})"
         )
 
-    def forward(self, x: Tensor):
+    def forward(self, x: Tensor) -> Union[Tensor, Tuple[Tensor, Tensor]]:
         return conv_soft_argmax3d(
             x,
             self.kernel_size,
@@ -620,5 +620,5 @@ class ConvQuadInterp3d(Module):
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(strict_maxima_bonus={self.strict_maxima_bonus})"
 
-    def forward(self, x: Tensor):
+    def forward(self, x: Tensor) -> Tuple[Tensor, Tensor]:
         return conv_quad_interp3d(x, self.strict_maxima_bonus, self.eps)

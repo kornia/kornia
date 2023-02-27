@@ -61,7 +61,7 @@ class TranslateGenerator(RandomGeneratorBase):
 
             self.translate_y_sampler = Uniform(_translate_y[..., 0], _translate_y[..., 1], validate_args=False)
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         height = batch_shape[-2]
         width = batch_shape[-1]

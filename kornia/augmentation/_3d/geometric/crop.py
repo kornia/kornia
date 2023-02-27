@@ -131,7 +131,7 @@ class RandomCrop3D(GeometricAugmentationBase3D):
             input, transform, flags["size"], mode=flags["resample"].name.lower(), align_corners=flags["align_corners"]
         )
 
-    def forward(self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs) -> Tensor:
+    def forward(self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs: Any) -> Tensor:
         # TODO: need to align 2D implementations
         input = self.precrop_padding(input)
         return super().forward(input, params)

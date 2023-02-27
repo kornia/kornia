@@ -347,7 +347,7 @@ def depth_warp(
     height: int,
     width: int,
     align_corners: bool = True,
-):
+) -> Tensor:
     r"""Function that warps a tensor from destination frame to reference given the depth in the reference frame.
 
     See :class:`~kornia.geometry.warp.DepthWarper` for details.

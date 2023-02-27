@@ -5,20 +5,22 @@ Paper: https://paperswithcode.com/paper/an-image-is-worth-16x16-words-transforme
 Based on: https://towardsdatascience.com/implementing-visualttransformer-in-pytorch-184f9f16f632
 Added some tricks from https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py
 """
-from typing import List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import torch
 from torch import nn
 
+from kornia.core import Module, Tensor
+
 __all__ = ["VisionTransformer"]
 
 
-class ResidualAdd(nn.Module):
-    def __init__(self, fn) -> None:
+class ResidualAdd(Module):
+    def __init__(self, fn: Callable[..., Tensor]) -> None:
         super().__init__()
         self.fn = fn
 
-    def forward(self, x, **kwargs) -> None:
+    def forward(self, x: Tensor, **kwargs: Dict[str, Any]) -> Tensor:
         res = x
         x = self.fn(x, **kwargs)
         x += res
@@ -36,7 +38,7 @@ class FeedForward(nn.Sequential):
         )
 
 
-class MultiHeadAttention(nn.Module):
+class MultiHeadAttention(Module):
     def __init__(self, emb_size: int, num_heads: int, att_drop: float, proj_drop: float) -> None:
         super().__init__()
         self.emb_size = emb_size
@@ -91,7 +93,7 @@ class TransformerEncoderBlock(nn.Sequential):
         )
 
 
-class TransformerEncoder(nn.Module):
+class TransformerEncoder(Module):
     def __init__(
         self,
         embed_dim: int = 768,
@@ -115,7 +117,7 @@ class TransformerEncoder(nn.Module):
         return out
 
 
-class PatchEmbedding(nn.Module):
+class PatchEmbedding(Module):
     """Compute the 2d image patch embedding ready to pass to transformer encoder."""
 
     def __init__(
@@ -124,7 +126,7 @@ class PatchEmbedding(nn.Module):
         out_channels: int = 768,
         patch_size: int = 16,
         image_size: int = 224,
-        backbone: Optional[nn.Module] = None,
+        backbone: Optional[Module] = None,
     ) -> None:
         super().__init__()
         self.in_channels = in_channels
@@ -158,7 +160,7 @@ class PatchEmbedding(nn.Module):
         return x
 
 
-class VisionTransformer(nn.Module):
+class VisionTransformer(Module):
     """Vision transformer (ViT) module.
 
     The module is expected to be used as operator for different vision tasks.
@@ -196,7 +198,7 @@ class VisionTransformer(nn.Module):
         num_heads: int = 12,
         dropout_rate: float = 0.0,
         dropout_attn: float = 0.0,
-        backbone: Optional[nn.Module] = None,
+        backbone: Optional[Module] = None,
     ) -> None:
         super().__init__()
         self.image_size = image_size
