@@ -93,7 +93,7 @@ def main():
         "RandomContrast": (((0.0, 1.0),), 2, 2022),
         "RandomCrop": ((img1.shape[-2:], (50, 50)), 2, 2020),
         "RandomChannelShuffle": ((), 1, 2020),
-        "RandomChannelDropout": ((), 1, 2020), 
+        "RandomChannelDropout": ((), 1, 2020),
         "RandomElasticTransform": (((63, 63), (32, 32), (2.0, 2.0)), 2, 2018),
         "RandomEqualize": ((), 1, 2020),
         "RandomErasing": (((0.2, 0.4), (0.3, 1 / 0.3)), 2, 2017),
