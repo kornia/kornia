@@ -17,8 +17,8 @@ from kornia.augmentation import (
     PadTo,
     RandomBoxBlur,
     RandomBrightness,
-    RandomChannelShuffle,
     RandomChannelDropout,
+    RandomChannelShuffle,
     RandomContrast,
     RandomCrop,
     RandomElasticTransform,
@@ -3458,12 +3458,8 @@ class TestRandomChannelShuffle(BaseTester):
             dtype=dtype,
         )
 
-        img2 = torch.arange(1*2*2*2.).view(1,2,2,2)
-        out_expected2 = torch.tensor(
-            [[[[0.0, 1.0], [2.0, 3.0]], [[0.0, 0.0], [0.0, 0.0]]]],
-            device=device,
-            dtype=dtype,
-        )
+        img2 = torch.arange(1 * 2 * 2 * 2.0).view(1, 2, 2, 2)
+        out_expected2 = torch.tensor([[[[0.0, 1.0], [2.0, 3.0]], [[0.0, 0.0], [0.0, 0.0]]]], device=device, dtype=dtype)
 
         aug = RandomChannelShuffle(p=1.0)
 
@@ -3495,13 +3491,12 @@ class TestRandomChannelShuffle(BaseTester):
 
 
 class TestRandomChannelDropout(BaseTester):
-
     def test_smoke(self, device, dtype):
         torch.manual_seed(0)
         img = torch.arange(1 * 3 * 2 * 2, device=device, dtype=dtype).view(1, 3, 2, 2)
 
         out_expected = torch.tensor(
-          [[[[ 0.,  1.], [ 2.,  3.]], [[ 0.,  0.], [ 0.,  0.]], [[ 8.,  9.], [10., 11.]]]],
+            [[[[0.0, 1.0], [2.0, 3.0]], [[0.0, 0.0], [0.0, 0.0]], [[8.0, 9.0], [10.0, 11.0]]]],
             device=device,
             dtype=dtype,
         )
@@ -3529,6 +3524,7 @@ class TestRandomChannelDropout(BaseTester):
     @pytest.mark.skip(reason="not implemented yet")
     def test_module(self, device, dtype):
         pass
+
 
 class TestRandomGaussianNoise:
     def test_smoke(self, device, dtype):
