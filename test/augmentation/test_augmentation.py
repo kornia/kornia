@@ -17,8 +17,8 @@ from kornia.augmentation import (
     PadTo,
     RandomBoxBlur,
     RandomBrightness,
-    RandomChannelShuffle,
     RandomChannelDropout,
+    RandomChannelShuffle,
     RandomContrast,
     RandomCrop,
     RandomElasticTransform,
@@ -4152,17 +4152,13 @@ class TestRandomChannelDropout:
         out = aug(x_data)
 
         expected = torch.tensor(
-            [[[[0.0000, 0.0000, 0.0000],
-          [0.0000, 0.0000, 0.0000],
-          [0.0000, 0.0000, 0.0000]],
-
-         [[0.6323, 0.3489, 0.4017],
-          [0.0223, 0.1689, 0.2939],
-          [0.5185, 0.6977, 0.8000]],
-
-         [[0.1610, 0.2823, 0.6816],
-          [0.9152, 0.3971, 0.8742],
-          [0.4194, 0.5529, 0.9527]]]],
+            [
+                [
+                    [[0.0000, 0.0000, 0.0000], [0.0000, 0.0000, 0.0000], [0.0000, 0.0000, 0.0000]],
+                    [[0.6323, 0.3489, 0.4017], [0.0223, 0.1689, 0.2939], [0.5185, 0.6977, 0.8000]],
+                    [[0.1610, 0.2823, 0.6816], [0.9152, 0.3971, 0.8742], [0.4194, 0.5529, 0.9527]],
+                ]
+            ],
             device=device,
             dtype=dtype,
         )

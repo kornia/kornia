@@ -1,18 +1,15 @@
+from random import randint, sample
 from typing import Any, Dict, Optional, Tuple, Union
 
+import numpy as np
 from torch import Tensor, clone
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.core.check import KORNIA_CHECK
-from random import randint, sample
-import numpy as np
-
-
 
 
 class RandomChannelDropout(IntensityAugmentationBase2D):
     """Randomly Drop Channels in the input Image.
-
 
     Args:
         channel_drop_range (int, int): range from which we choose the number of channels to drop.
@@ -52,30 +49,35 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
           [ True,  True,  True,  True,  True],
           [ True,  True,  True,  True,  True]]]])
     """
+
     def __init__(
         self,
         channel_drop_range: Tuple[int, int] = (1, 1),
         fill_value: Union[int, float] = 0,
         same_on_batch: bool = False,
         p: float = 0.5,
-        keepdim: bool = False
+        keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self.channel_drop_range = channel_drop_range
         self.fill_value = fill_value
         self.min_channels = channel_drop_range[0]
         self.max_channels = channel_drop_range[1]
-        KORNIA_CHECK(1 <= self.min_channels <= self.max_channels,
-                     f"Invalid channel_drop_range. Got: {channel_drop_range}")
-
+        KORNIA_CHECK(
+            1 <= self.min_channels <= self.max_channels, f"Invalid channel_drop_range. Got: {channel_drop_range}"
+        )
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        KORNIA_CHECK( not ((len(input.shape) == 3 and input.shape[0] == 1) 
-                           or (len(input.shape) == 4 and input.shape[1] == 1) 
-                           or(len(input.shape) == 2)), 
-                     "Only one channel. ChannelDropout is not defined.")
+        KORNIA_CHECK(
+            not (
+                (len(input.shape) == 3 and input.shape[0] == 1)
+                or (len(input.shape) == 4 and input.shape[1] == 1)
+                or (len(input.shape) == 2)
+            ),
+            "Only one channel. ChannelDropout is not defined.",
+        )
         if len(input.shape) == 3:
             num_channels = input.shape[0]
         else:
@@ -84,7 +86,7 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
         num_drop_channels = randint(self.min_channels, self.max_channels)
 
         channels_to_drop = sample(range(num_channels), k=num_drop_channels)
-        
+
         input_cp = clone(input)
         if len(input.shape) == 3:
             input_cp[channels_to_drop, ...] = self.fill_value
