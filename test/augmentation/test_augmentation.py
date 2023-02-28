@@ -18,6 +18,7 @@ from kornia.augmentation import (
     RandomBoxBlur,
     RandomBrightness,
     RandomChannelShuffle,
+    RandomChannelDropout,
     RandomContrast,
     RandomCrop,
     RandomElasticTransform,
@@ -3450,15 +3451,62 @@ class TestRandomInvert(BaseTester):
 class TestRandomChannelShuffle(BaseTester):
     def test_smoke(self, device, dtype):
         torch.manual_seed(0)
-        img = torch.arange(1 * 3 * 2 * 2, device=device, dtype=dtype).view(1, 3, 2, 2)
-
-        out_expected = torch.tensor(
+        img1 = torch.arange(1 * 3 * 2 * 2, device=device, dtype=dtype).view(1, 3, 2, 2)
+        out_expected1 = torch.tensor(
             [[[[8.0, 9.0], [10.0, 11.0]], [[0.0, 1.0], [2.0, 3.0]], [[4.0, 5.0], [6.0, 7.0]]]],
             device=device,
             dtype=dtype,
         )
 
+        img2 = torch.arange(1*2*2*2.).view(1,2,2,2)
+        out_expected2 = torch.tensor(
+            [[[[0.0, 1.0], [2.0, 3.0]], [[0.0, 0.0], [0.0, 0.0]]]],
+            device=device,
+            dtype=dtype,
+        )
+
         aug = RandomChannelShuffle(p=1.0)
+
+        out1 = aug(img1)
+        out2 = aug(img2)
+
+        self.assert_close(out1, out_expected1)
+        self.assert_close(out2, out_expected2)
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_cardinality(self, device, dtype):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_exception(self, device, dtype):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_gradcheck(self, device, dtype):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_jit(self, device, dtype):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_module(self, device, dtype):
+        pass
+
+
+class TestRandomChannelDropout(BaseTester):
+
+    def test_smoke(self, device, dtype):
+        torch.manual_seed(0)
+        img = torch.arange(1 * 3 * 2 * 2, device=device, dtype=dtype).view(1, 3, 2, 2)
+
+        out_expected = torch.tensor(
+          [[[[ 0.,  1.], [ 2.,  3.]], [[ 0.,  0.], [ 0.,  0.]], [[ 8.,  9.], [10., 11.]]]],
+            device=device,
+            dtype=dtype,
+        )
+
+        aug = RandomChannelDropout(channel_drop_range=(1, 2), p=1.0)
         out = aug(img)
         self.assert_close(out, out_expected)
 
@@ -3481,7 +3529,6 @@ class TestRandomChannelShuffle(BaseTester):
     @pytest.mark.skip(reason="not implemented yet")
     def test_module(self, device, dtype):
         pass
-
 
 class TestRandomGaussianNoise:
     def test_smoke(self, device, dtype):
