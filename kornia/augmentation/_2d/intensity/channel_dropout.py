@@ -9,6 +9,8 @@ from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 class RandomChannelDropout(IntensityAugmentationBase2D):
     r"""Drops channels in the input image.
 
+    In case batch of images is passed, for each image random channels will be dropped.  
+
     .. image:: _static/img/RandomChannelDropout.png
 
     Args:
