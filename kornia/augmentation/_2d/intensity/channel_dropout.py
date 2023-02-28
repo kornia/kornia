@@ -4,6 +4,7 @@ import torch
 from torch import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 
 class RandomChannelDropout(IntensityAugmentationBase2D):
@@ -70,6 +71,9 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
+        KORNIA_CHECK_IS_TENSOR(input)
+        KORNIA_CHECK_SHAPE(input, ['B', 'C', 'H', 'W'])
+        
         _, C, _, _ = input.shape
         if C <= 1:
             raise ValueError("Channel dropout can be applied only to multichannel images")
