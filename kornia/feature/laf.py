@@ -186,12 +186,7 @@ def ellipse_to_laf(ells: Tensor) -> Tensor:
         >>> input = torch.ones(1, 10, 5)  # BxNx5
         >>> output = ellipse_to_laf(input)  #  BxNx2x3
     """
-    n_dims = len(ells.size())
-    if n_dims != 3:
-        raise TypeError("ellipse shape should be must be [BxNx5]. " "Got {}".format(ells.size()))
-    B, N, dim = ells.size()
-    if dim != 5:
-        raise TypeError("ellipse shape should be must be [BxNx5]. " "Got {}".format(ells.size()))
+    KORNIA_CHECK_SHAPE(ells, ["B", "N", "5"])
     # Previous implementation was incorrectly using Cholesky decomp as matrix sqrt
     # ell_shape = concatenate([concatenate([ells[..., 2:3], ells[..., 3:4]], dim=2).unsqueeze(2),
     #                       concatenate([ells[..., 3:4], ells[..., 4:5]], dim=2).unsqueeze(2)], dim=2).view(-1, 2, 2)
@@ -322,7 +317,7 @@ def normalize_laf(LAF: Tensor, images: Tensor) -> Tensor:
     wf = float(w)
     hf = float(h)
     min_size = min(hf, wf)
-    coef = torch.ones(1, 1, 2, 3).to(LAF.dtype).to(LAF.device) / min_size
+    coef = torch.ones(1, 1, 2, 3, dtype=LAF.dtype, device=LAF.device) / min_size
     coef[0, 0, 0, 2] = 1.0 / wf
     coef[0, 0, 1, 2] = 1.0 / hf
     return coef.expand_as(LAF) * LAF
@@ -415,7 +410,7 @@ def extract_patches_from_pyramid(
     pyr_idx = scale.log2().relu().long()
     cur_img = img
     cur_pyr_level = 0
-    out = zeros(B, N, ch, PS, PS).to(nlaf.dtype).to(nlaf.device)
+    out = zeros(B, N, ch, PS, PS, dtype=nlaf.dtype, device=nlaf.device)
     while min(cur_img.size(2), cur_img.size(3)) >= PS:
         _, ch, h, w = cur_img.size()
         # for loop temporarily, to be refactored
