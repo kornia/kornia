@@ -23,11 +23,12 @@ class PassLAF(nn.Module):
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            laf: 4d tensor.
-            img: the input image tensor.
+            laf: :math:`(B, N, 2, 3)`
+            img: :math:`(B, 1, H, W)`
 
-        Return:
-            torch.Tensor: unchanged laf from the input."""
+        Returns:
+            LAF, unchanged :math:`(B, N, 2, 3)`
+        """
         return laf
 
 
@@ -63,14 +64,14 @@ class PatchDominantGradientOrientation(nn.Module):
         )
 
     def forward(self, patch: torch.Tensor) -> torch.Tensor:
-        """Args:
-            patch: shape [Bx1xHxW]
+        """
+        Args:
+            patch: :math:`(B, 1, H, W)`
+
         Returns:
-            torch.Tensor: angle shape [B]"""
-        if not isinstance(patch, torch.Tensor):
-            raise TypeError(f"Input type is not a torch.Tensor. Got {type(patch)}")
-        if not len(patch.shape) == 4:
-            raise ValueError(f"Invalid input shape, we expect Bx1xHxW. Got: {patch.shape}")
+            angle in radians: :math:`(B)`
+        """
+        KORNIA_CHECK_SHAPE(patch, ["B", "1", "H", "W"])
         _, CH, W, H = patch.size()
         if (W != self.patch_size) or (H != self.patch_size) or (CH != 1):
             raise TypeError(
@@ -174,10 +175,13 @@ class OriNet(nn.Module):
         return (x - mp.detach()) / (sp.detach() + eps)
 
     def forward(self, patch: torch.Tensor) -> torch.Tensor:
-        """Args:
-            patch: (torch.Tensor) shape [Bx1xHxW]
+        """
+        Args:
+            patch: :math:`(B, 1, H, W)`
+
         Returns:
-            patch: (torch.Tensor) shape [B]"""
+            angle in radians: :math:`(B)`
+        """
         xy = self.features(self._normalize_input(patch)).view(-1, 2)
         angle = torch.atan2(xy[:, 0] + 1e-8, xy[:, 1] + self.eps)
         return angle
@@ -212,11 +216,11 @@ class LAFOrienter(nn.Module):
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            laf: shape [BxNx2x3]
-            img: shape [Bx1xHxW]
+            laf: :math:`(B, N, 2, 3)`
+            img: :math:`(B, 1, H, W)`
 
         Returns:
-            laf_out, shape [BxNx2x3]
+            LAF_out: :math:`(B, N, 2, 3)`
         """
         KORNIA_CHECK_LAF(laf)
         KORNIA_CHECK_SHAPE(img, ["B", "C", "H", "W"])
