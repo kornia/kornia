@@ -13,9 +13,22 @@ class TestBilateralBlur(BaseTester):
     @pytest.mark.parametrize("color_distance_type", ["l1", "l2"])
     def test_smoke(self, shape, kernel_size, sigma_color, sigma_space, color_distance_type, device, dtype):
         inp = torch.zeros(shape, device=device, dtype=dtype)
-        actual = bilateral_blur(inp, kernel_size, sigma_color, sigma_space, color_distance_type=color_distance_type)
-        assert isinstance(actual, torch.Tensor)
-        assert actual.shape == shape
+
+        # tensor sigmas -> with batch dim
+        sigma_color = torch.rand(shape[0], device=device, dtype=dtype)
+        sigma_space = torch.rand(shape[0], 2, device=device, dtype=dtype)
+        actual_A = bilateral_blur(inp, kernel_size, sigma_color, sigma_space, "reflect", color_distance_type)
+        assert isinstance(actual_A, torch.Tensor)
+        assert actual_A.shape == shape
+
+        # float and tuple sigmas -> same sigmas across batch
+        sigma_color_ = sigma_color[0].item()
+        sigma_space_ = tuple(sigma_space[0].cpu().numpy())
+        actual_B = bilateral_blur(inp, kernel_size, sigma_color_, sigma_space_, "reflect", color_distance_type)
+        assert isinstance(actual_B, torch.Tensor)
+        assert actual_B.shape == shape
+
+        self.assert_close(actual_A[0], actual_B[0])
 
     @pytest.mark.parametrize("shape", [(1, 1, 8, 15), (2, 3, 11, 7)])
     @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
@@ -58,12 +71,18 @@ class TestBilateralBlur(BaseTester):
         op_module = BilateralBlur(*params)
         self.assert_close(op_module(img), op(img, *params))
 
-    @pytest.mark.parametrize("shape", [(1, 3, 8, 15), (2, 1, 11, 7)])
     @pytest.mark.parametrize('kernel_size', [5, (5, 7)])
     @pytest.mark.parametrize('color_distance_type', ["l1", "l2"])
-    def test_dynamo(self, shape, kernel_size, color_distance_type, device, dtype, torch_optimizer):
-        inpt = torch.ones(shape, device=device, dtype=dtype)
+    def test_dynamo(self, kernel_size, color_distance_type, device, dtype, torch_optimizer):
+        inpt = torch.ones(2, 3, 8, 8, device=device, dtype=dtype)
         op = BilateralBlur(kernel_size, 1, (1, 1), color_distance_type=color_distance_type)
+        op_optimized = torch_optimizer(op)
+
+        self.assert_close(op(inpt), op_optimized(inpt))
+
+        sigma_color = torch.rand(inpt.shape[0], device=device, dtype=dtype)
+        sigma_space = torch.rand(inpt.shape[0], 2, device=device, dtype=dtype)
+        op = BilateralBlur(kernel_size, sigma_color, sigma_space, color_distance_type=color_distance_type)
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(inpt), op_optimized(inpt))

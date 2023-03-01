@@ -11,8 +11,8 @@ from .median import _compute_zero_padding
 def bilateral_blur(
     input: Tensor,
     kernel_size: tuple[int, int] | int,
-    sigma_color: float,
-    sigma_space: tuple[float, float],
+    sigma_color: float | Tensor,
+    sigma_space: tuple[float, float] | Tensor,
     border_type: str = 'reflect',
     color_distance_type: str = "l1",
 ) -> Tensor:
@@ -50,6 +50,9 @@ def bilateral_blur(
     """
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ['B', 'C', 'H', 'W'])
+    if isinstance(sigma_color, Tensor):
+        KORNIA_CHECK_SHAPE(sigma_color, ['B'])
+        sigma_color = sigma_color.to(device=input.device, dtype=input.dtype).view(-1, 1, 1, 1, 1)
 
     kx, ky = _unpack_2d_ks(kernel_size)
     pad_x, pad_y = _compute_zero_padding(kernel_size)
@@ -66,9 +69,8 @@ def bilateral_blur(
         raise ValueError("color_distance_type only acceps l1 or l2")
     color_kernel = (-0.5 / sigma_color**2 * color_distance_sq).exp()  # (B, 1, H, W, K x K)
 
-    space_kernel = get_gaussian_kernel2d(kernel_size, sigma_space, device=input.device, dtype=input.dtype).view(
-        1, 1, 1, 1, -1
-    )
+    space_kernel = get_gaussian_kernel2d(kernel_size, sigma_space, device=input.device, dtype=input.dtype)
+    space_kernel = space_kernel.view(-1, 1, 1, 1, kx * ky)
 
     kernel = space_kernel * color_kernel
     out = (unfolded * kernel).sum(-1) / kernel.sum(-1)
