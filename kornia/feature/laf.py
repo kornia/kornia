@@ -75,7 +75,6 @@ def set_laf_orientation(LAF: Tensor, angles_degrees: Tensor) -> Tensor:
 
     Returns:
         LAF oriented with angles :math:`(B, N, 2, 3)`
-
     """
     KORNIA_CHECK_LAF(LAF)
     B, N = LAF.shape[:2]
@@ -87,7 +86,8 @@ def set_laf_orientation(LAF: Tensor, angles_degrees: Tensor) -> Tensor:
 
 
 def laf_from_center_scale_ori(xy: Tensor, scale: Optional[Tensor] = None, ori: Optional[Tensor] = None) -> Tensor:
-    """Creates a LAF from keypoint center, scale and orientation. Useful to create kornia LAFs from OpenCV keypoints.
+    """Creates a LAF from keypoint center, scale and orientation. Useful to create kornia LAFs from OpenCV
+    keypoints.
 
     Args:
         xy: :math:`(B, N, 2)`.
@@ -219,7 +219,6 @@ def laf_to_boundary_points(LAF: Tensor, n_pts: int = 50) -> Tensor:
 
     Returns:
         tensor of boundary points LAF: :math:`(B, N, n_pts, 2)`
-
     """
     KORNIA_CHECK_LAF(LAF)
     B, N, _, _ = LAF.size()
@@ -281,7 +280,6 @@ def denormalize_laf(LAF: Tensor, images: Tensor) -> Tensor:
 
     Returns:
         the denormalized LAF: :math:`(B, N, 2, 3)`, scale in pixels
-
     """
     KORNIA_CHECK_LAF(LAF)
     _, _, h, w = images.size()
