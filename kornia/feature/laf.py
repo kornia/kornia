@@ -87,7 +87,7 @@ def set_laf_orientation(LAF: Tensor, angles_degrees: Tensor) -> Tensor:
 
 def laf_from_center_scale_ori(xy: Tensor, scale: Optional[Tensor] = None, ori: Optional[Tensor] = None) -> Tensor:
     """Creates a LAF from keypoint center, scale and orientation.
-    
+
     Useful to create kornia LAFs from OpenCV keypoints.
 
     Args:
