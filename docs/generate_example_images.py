@@ -362,6 +362,7 @@ def main():
     mod = importlib.import_module("kornia.filters")
     kernel = torch.tensor([[0, 1, 0], [1, 1, 1], [0, 1, 0]])
     transforms: dict = {
+        "bilateral_blur": (((11, 11), 0.1, (3, 3)), 1),
         "box_blur": (((5, 5),), 1),
         "median_blur": (((5, 5),), 1),
         "gaussian_blur2d": (((5, 5), (1.5, 1.5)), 1),

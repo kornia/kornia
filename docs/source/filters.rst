@@ -8,6 +8,7 @@ The functions in this sections perform various image filtering operations.
 Blurring
 --------
 
+.. autofunction:: bilateral_blur
 .. autofunction:: blur_pool2d
 .. autofunction:: box_blur
 .. autofunction:: gaussian_blur2d
@@ -76,6 +77,7 @@ Kernels
 Module
 ------
 
+.. autoclass:: BilateralBlur
 .. autoclass:: BlurPool2D
 .. autoclass:: BoxBlur
 .. autoclass:: MaxBlurPool2D
