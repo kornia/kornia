@@ -187,6 +187,7 @@ def ellipse_to_laf(ells: Tensor) -> Tensor:
         >>> output = ellipse_to_laf(input)  #  BxNx2x3
     """
     KORNIA_CHECK_SHAPE(ells, ["B", "N", "5"])
+    B, N, _ = ells.shape
     # Previous implementation was incorrectly using Cholesky decomp as matrix sqrt
     # ell_shape = concatenate([concatenate([ells[..., 2:3], ells[..., 3:4]], dim=2).unsqueeze(2),
     #                       concatenate([ells[..., 3:4], ells[..., 4:5]], dim=2).unsqueeze(2)], dim=2).view(-1, 2, 2)
