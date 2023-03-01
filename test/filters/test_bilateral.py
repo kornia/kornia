@@ -97,7 +97,7 @@ class TestBilateralBlur(BaseTester):
 
         # Expected output generated with OpenCV:
         # import cv2
-        # expected = cv2.bilateralFilter(img[0].permute(1, 2, 0).numpy(), 5, 0.1, 0.5)
+        # expected = cv2.bilateralFilter(img[0, 0].numpy(), 5, 0.1, 0.5)
         expected = [
             [0.38708255, 0.5060622, 0.43372786, 0.8876763],
             [0.39813757, 0.55695623, 0.72320986, 0.6593296],
