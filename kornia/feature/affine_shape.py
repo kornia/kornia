@@ -46,10 +46,14 @@ class PatchAffineShapeEstimator(nn.Module):
         return f"{self.__class__.__name__}(patch_size={self.patch_size}, eps={self.eps})"
 
     def forward(self, patch: torch.Tensor) -> torch.Tensor:
-        """Args:
-            patch: (torch.Tensor) shape [Bx1xHxW]
+        """
+        Args:
+            patch: :math:`(B, 1, H, W)`
+
         Returns:
-            torch.Tensor: ellipse_shape shape [Bx1x3]"""
+            torch.Tensor: ellipse_shape :math:`(B, 1, 3)`
+
+        """
         KORNIA_CHECK_SHAPE(patch, ["B", "1", "H", "W"])
         self.weighting = self.weighting.to(patch.dtype).to(patch.device)
         grads: torch.Tensor = self.gradient(patch) * self.weighting
@@ -118,11 +122,12 @@ class LAFAffineShapeEstimator(nn.Module):
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            laf: (torch.Tensor) shape [BxNx2x3]
-            img: (torch.Tensor) shape [Bx1xHxW]
+            LAF: :math:`(B, N, 2, 3)`
+            img: :math:`(B, 1, H, W)`
 
         Returns:
-            torch.Tensor: laf_out shape [BxNx2x3]"""
+            LAF_out: :math:`(B, N, 2, 3)`
+        """
         KORNIA_CHECK_LAF(laf)
         KORNIA_CHECK_SHAPE(img, ["B", "1", "H", "W"])
         B, N = laf.shape[:2]
@@ -209,11 +214,11 @@ class LAFAffNetShapeEstimator(nn.Module):
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            laf: shape [BxNx2x3]
-            img: shape [Bx1xHxW]
+            LAF: :math:`(B, N, 2, 3)`
+            img: :math:`(B, 1, H, W)`
 
         Returns:
-            laf_out shape [BxNx2x3]
+            LAF_out: :math:`(B, N, 2, 3)`
         """
         KORNIA_CHECK_LAF(laf)
         KORNIA_CHECK_SHAPE(img, ["B", "1", "H", "W"])
