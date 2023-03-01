@@ -32,6 +32,7 @@ from kornia.augmentation import (
     RandomHue,
     RandomInvert,
     RandomMedianBlur,
+    RandomDownScale
     RandomPlanckianJitter,
     RandomPlasmaBrightness,
     RandomPlasmaContrast,
@@ -4187,3 +4188,33 @@ class TestRandomMedianBlur:
         )
 
         utils.assert_close(out, expected)
+
+class TestRandomDownScale:
+    def test_smoke(self):
+        downscale = RandomDownScale(size=128)
+        assert downscale is not None
+
+    def test_ratio(self):
+        downscale = RandomDownScale(size=128)
+        input = torch.rand(1, 3, 256, 256)
+        output = downscale(input)
+        assert output.size() == (1, 3, 128, 128)
+
+    def test_ratio_tuple(self):
+        downscale = RandomDownScale(size=(128, 64))
+        input = torch.rand(1, 3, 256, 256)
+        output = downscale(input)
+        assert output.size() == (1, 3, 128, 64)
+
+    def test_ratio_batch(self):
+        downscale = RandomDownScale(size=128)
+        input = torch.rand(4, 3, 256, 256)
+        output = downscale(input)
+        assert output.size() == (4, 3, 128, 128)
+
+    def test_ratio_probability(self):
+        downscale = RandomDownScale(size=128, p=0.5)
+        input = torch.rand(1, 3, 256, 256)
+        output1 = downscale(input)
+        output2 = downscale(input)
+        assert (output1 != output2).all()

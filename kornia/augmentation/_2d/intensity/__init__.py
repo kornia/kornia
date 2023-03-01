@@ -16,6 +16,7 @@ from kornia.augmentation._2d.intensity.hue import RandomHue
 from kornia.augmentation._2d.intensity.invert import RandomInvert
 from kornia.augmentation._2d.intensity.median_blur import RandomMedianBlur
 from kornia.augmentation._2d.intensity.motion_blur import RandomMotionBlur
+from kornia.augmentation._2d.intensity.random_downscale import RandomDownScale
 from kornia.augmentation._2d.intensity.normalize import Normalize
 from kornia.augmentation._2d.intensity.planckian_jitter import RandomPlanckianJitter
 from kornia.augmentation._2d.intensity.plasma import RandomPlasmaBrightness, RandomPlasmaContrast, RandomPlasmaShadow

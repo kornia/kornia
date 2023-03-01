@@ -1,0 +1,58 @@
+from typing import Tuple, Union
+
+from torch import Tensor
+from torch.nn.functional import interpolate
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+
+
+
+class RandomDownScale(IntensityAugmentationBase2D):
+    r"""Randomly downscale an image or a batch of images.
+
+    Args:
+        size (Union[int, Tuple[int, int]]): output spatial size of the downscaled image.
+            If `int`, the output image will have the same size on both sides.
+            If `Tuple[int, int]`, specifies the output size as `(height, width)`.
+        p (float): probability of applying the transformation.
+
+    Returns:
+        A downsampled tensor with the specified output size.
+
+    Shape:
+        - Input: `(B, C, H, W)`
+        - Output: `(B, C, H', W')`
+
+    Example:
+        >>> input = torch.rand(1, 3, 256, 256)
+        >>> downscale = RandomDownScale(size=128, p=0.5)
+        >>> output = downscale(input)
+        >>> assert output.size() == (1, 3, 128, 128)
+    """
+    def __init__(
+        self,
+        size: Union[int, Tuple[int, int]],
+        p: float = 0.5
+    ) -> None:
+        super().__init__(p)
+        self.size = size
+        if isinstance(size, int):
+            self.size = (size, size)
+        else:
+            self.size = size
+    
+     def apply_transform(
+        self,
+        input: torch.Tensor
+    ) -> torch.Tensor:
+        if not self._is_intensity_stochastic:
+            return input
+
+        random_scale_factor = torch.rand(1).item() * 0.5 + 0.5
+        scaled_size = (int(size[0] * random_scale_factor), int(size[1] * random_scale_factor))
+
+        return interpolate(
+            input,
+            size=scaled_size,
+            mode='bilinear',
+            align_corners=False
+        )
