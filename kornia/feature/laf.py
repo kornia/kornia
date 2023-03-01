@@ -15,14 +15,10 @@ def get_laf_scale(LAF: Tensor) -> Tensor:
     """Return a scale of the LAFs.
 
     Args:
-        LAF: tensor [BxNx2x3] or [BxNx2x2].
+        LAF: :math:`(B, N, 2, 3)`
 
     Returns:
-        tensor  BxNx1x1.
-
-    Shape:
-        - Input: :math: `(B, N, 2, 3)`
-        - Output: :math: `(B, N, 1, 1)`
+        scale :math:`(B, N, 1, 1)`
 
     Example:
         >>> input = torch.ones(1, 5, 2, 3)  # BxNx2x3
@@ -38,14 +34,10 @@ def get_laf_center(LAF: Tensor) -> Tensor:
     """Return a center (keypoint) of the LAFs.
 
     Args:
-        LAF: tensor [BxNx2x3].
+        LAF: :math:`(B, N, 2, 3)`
 
     Returns:
-        tensor  BxNx2.
-
-    Shape:
-        - Input: :math: `(B, N, 2, 3)`
-        - Output: :math: `(B, N, 2)`
+        xy :math:`(B, N, 2)`
 
     Example:
         >>> input = torch.ones(1, 5, 2, 3)  # BxNx2x3
@@ -60,14 +52,10 @@ def get_laf_orientation(LAF: Tensor) -> Tensor:
     """Return orientation of the LAFs, in degrees.
 
     Args:
-        LAF: (Tensor): tensor [BxNx2x3].
+        LAF: :math:`(B, N, 2, 3)`
 
     Returns:
-        Tensor: tensor  BxNx1 .
-
-    Shape:
-        - Input: :math: `(B, N, 2, 3)`
-        - Output: :math: `(B, N, 1)`
+        angle in degrees :math:`(B, N, 1)`
 
     Example:
         >>> input = torch.ones(1, 5, 2, 3)  # BxNx2x3
@@ -82,15 +70,12 @@ def set_laf_orientation(LAF: Tensor, angles_degrees: Tensor) -> Tensor:
     """Change the orientation of the LAFs.
 
     Args:
-        LAF: tensor [BxNx2x3].
-        angles: tensor BxNx1, in degrees.
+        LAF: :math:`(B, N, 2, 3)`
+        angles: :math:`(B, N, 1)` in degrees.
 
     Returns:
-        tensor [BxNx2x3].
+        LAF oriented with angles :math:`(B, N, 2, 3)`
 
-    Shape:
-        - Input: :math: `(B, N, 2, 3)`, `(B, N, 1)`
-        - Output: :math: `(B, N, 2, 3)`
     """
     KORNIA_CHECK_LAF(LAF)
     B, N = LAF.shape[:2]
@@ -102,15 +87,15 @@ def set_laf_orientation(LAF: Tensor, angles_degrees: Tensor) -> Tensor:
 
 
 def laf_from_center_scale_ori(xy: Tensor, scale: Optional[Tensor] = None, ori: Optional[Tensor] = None) -> Tensor:
-    """Return orientation of the LAFs, in radians. Useful to create kornia LAFs from OpenCV keypoints.
+    """Creates a LAF from keypoint center, scale and orientation. Useful to create kornia LAFs from OpenCV keypoints.
 
     Args:
-        xy: tensor [BxNx2].
-        scale: tensor [BxNx1x1]. If not provided, scale = 1 is assumed
-        ori: tensor [BxNx1]. If not provided orientation = 0 is assumed
+        xy: :math:`(B, N, 2)`.
+        scale: :math:`(B, N, 1, 1)`. If not provided, scale = 1.0 is assumed
+        angle in degrees: :math:`(B, N, 1)`. If not provided orientation = 0 is assumed
 
     Returns:
-        tensor BxNx2x3.
+        LAF :math:`(B, N, 2, 3)`
     """
     KORNIA_CHECK_SHAPE(xy, ["B", "N", "2"])
     device = xy.device
@@ -133,16 +118,11 @@ def scale_laf(laf: Tensor, scale_coef: Union[float, Tensor]) -> Tensor:
     So the center, shape and orientation of the local feature stays the same, but the region area changes.
 
     Args:
-        laf: tensor [BxNx2x3] or [BxNx2x2].
+        LAF :math:`(B, N, 2, 3)`
         scale_coef: broadcastable tensor or float.
 
     Returns:
-        tensor BxNx2x3.
-
-    Shape:
-        - Input: :math:`(B, N, 2, 3)`
-        - Input: :math:`(B, N,)` or ()
-        - Output: :math:`(B, N, 1, 1)`
+        LAF :math:`(B, N, 2, 3)`
 
     Example:
         >>> input = torch.ones(1, 5, 2, 3)  # BxNx2x3
@@ -160,15 +140,11 @@ def make_upright(laf: Tensor, eps: float = 1e-9) -> Tensor:
     """Rectify the affine matrix, so that it becomes upright.
 
     Args:
-        laf: tensor of LAFs.
-        eps : for safe division.
+        LAF :math:`(B, N, 2, 3)`
+        eps: for safe division.
 
     Returns:
-        tensor of same shape.
-
-    Shape:
-        - Input: :math:`(B, N, 2, 3)`
-        - Output:  :math:`(B, N, 2, 3)`
+        LAF :math:`(B, N, 2, 3)`
 
     Example:
         >>> input = torch.ones(1, 5, 2, 3)  # BxNx2x3
@@ -201,14 +177,10 @@ def ellipse_to_laf(ells: Tensor) -> Tensor:
     See also https://github.com/vlfeat/vlfeat/blob/master/toolbox/sift/vl_frame2oell.m
 
     Args:
-        ells: tensor of ellipses in Oxford format [x y a b c].
+        ells: tensor :math:`(B, N, 5)` of ellipses in Oxford format [x y a b c].
 
     Returns:
-        tensor of ellipses in LAF format.
-
-    Shape:
-        - Input: :math:`(B, N, 5)`
-        - Output:  :math:`(B, N, 2, 3)`
+        LAF :math:`(B, N, 2, 3)`
 
     Example:
         >>> input = torch.ones(1, 10, 5)  # BxNx5
@@ -247,15 +219,12 @@ def laf_to_boundary_points(LAF: Tensor, n_pts: int = 50) -> Tensor:
     Used for local features visualization, see visualize_laf function.
 
     Args:
-        LAF:
+        LAF: :math:`(B, N, 2, 3)`
         n_pts: number of points to output.
 
     Returns:
-        tensor of boundary points.
+        tensor of boundary points LAF: :math:`(B, N, n_pts, 2)`
 
-    Shape:
-        - Input: :math:`(B, N, 2, 3)`
-        - Output:  :math:`(B, N, n_pts, 2)`
     """
     KORNIA_CHECK_LAF(LAF)
     B, N, _, _ = LAF.size()
@@ -277,18 +246,14 @@ def laf_to_boundary_points(LAF: Tensor, n_pts: int = 50) -> Tensor:
 
 
 def get_laf_pts_to_draw(LAF: Tensor, img_idx: int = 0) -> Tuple[List[int], List[int]]:
-    """Return numpy array for drawing LAFs (local features).
+    """Returns list for drawing LAFs (local features).
 
     Args:
-        LAF:
-        n_pts: number of boundary points to output.
+        LAF: :math:`(B, N, 2, 3)`
+        n_pts: number of points to output.
 
     Returns:
-        tensor of boundary points.
-
-    Shape:
-        - Input: :math:`(B, N, 2, 3)`
-        - Output:  :math:`(B, N, n_pts, 2)`
+        List of boundary points x, y`
 
     Examples:
         x, y = get_laf_pts_to_draw(LAF, img_idx)
@@ -316,22 +281,19 @@ def denormalize_laf(LAF: Tensor, images: Tensor) -> Tensor:
         [a21*MIN_SIZE a22*MIN_SIZE y*H]
 
     Args:
-        LAF:
-        images: images, LAFs are detected in.
+        LAF: :math:`(B, N, 2, 3)`
+        images: :math:`(B, CH, H, W)`
 
     Returns:
-        the denormalized lafs.
+        the denormalized LAF: :math:`(B, N, 2, 3)`, scale in pixels
 
-    Shape:
-        - Input: :math:`(B, N, 2, 3)`
-        - Output:  :math:`(B, N, 2, 3)`
     """
     KORNIA_CHECK_LAF(LAF)
     _, _, h, w = images.size()
     wf = float(w)
     hf = float(h)
     min_size = min(hf, wf)
-    coef = torch.ones(1, 1, 2, 3).to(LAF.dtype).to(LAF.device) * min_size
+    coef = torch.ones(1, 1, 2, 3, dtype=LAF.dtype, device=LAF.device) * min_size
     coef[0, 0, 0, 2] = wf
     coef[0, 0, 1, 2] = hf
     return coef.expand_as(LAF) * LAF
@@ -348,15 +310,12 @@ def normalize_laf(LAF: Tensor, images: Tensor) -> Tensor:
         [a21/MIN_SIZE a22/MIN_SIZE y/H]
 
     Args:
-        LAF: (Tensor).
-        images: (Tensor) images, LAFs are detected in
+        LAF: :math:`(B, N, 2, 3)`
+        images: :math:`(B, CH, H, W)`
 
     Returns:
-        LAF: (Tensor).
+        the denormalized LAF: :math:`(B, N, 2, 3)`, scale in image percentage (0, 1)
 
-    Shape:
-        - Input: :math:`(B, N, 2, 3)`
-        - Output:  :math:`(B, N, 2, 3)`
     """
     KORNIA_CHECK_LAF(LAF)
     _, _, h, w = images.size()
@@ -378,7 +337,7 @@ def generate_patch_grid_from_normalized_LAF(img: Tensor, LAF: Tensor, PS: int = 
         PS: patch size to be extracted.
 
     Returns:
-        grid
+        grid :math:`(B*N, PS, PS, 2)`
     """
     KORNIA_CHECK_LAF(LAF)
     B, N, _, _ = LAF.size()
@@ -402,8 +361,8 @@ def extract_patches_simple(
     No smoothing applied, huge aliasing (better use extract_patches_from_pyramid).
 
     Args:
-        img: images, LAFs are detected in.
-        laf:
+        img: images, LAFs are detected in  :math:`(B, CH, H, W)`.
+        laf: :math:`(B, N, 2, 3)`.
         PS: patch size.
         normalize_lafs_before_extraction: if True, lafs are normalized to image size.
 
@@ -437,8 +396,8 @@ def extract_patches_from_pyramid(
     Patches are extracted from appropriate pyramid level.
 
     Args:
-        laf:
-        images: images, LAFs are detected in.
+        img: images, LAFs are detected in  :math:`(B, CH, H, W)`.
+        laf: :math:`(B, N, 2, 3)`.
         PS: patch size.
         normalize_lafs_before_extraction: if True, lafs are normalized to image size.
 
