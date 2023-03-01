@@ -3,8 +3,9 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 from torch import Tensor
 
+from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 
 class RandomChannelDropout(IntensityAugmentationBase2D):
@@ -36,31 +37,39 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
     def __init__(
         self,
         channel_drop_range: Tuple[int, int] = (1, 1),
+        num_drop_channels: int = 1,
         fill_value: Union[int, float] = 0,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
-        self.min_channels = channel_drop_range[0]
-        self.max_channels = channel_drop_range[1]
-        if not 1 <= self.min_channels <= self.max_channels:
-            raise ValueError(f"Invalid channel_drop_range. Got: {channel_drop_range}")
 
         self.fill_value = fill_value
+        self.min_channels = channel_drop_range[0]
+        self.max_channels = channel_drop_range[1]
+        KORNIA_CHECK(
+            1 <= self.min_channels <= self.max_channels, f"Invalid channel_drop_range. Got: {channel_drop_range}"
+        )
 
-    def generate_parameters(self, shape: torch.Size) -> Dict[str, Tensor]:
-        B, C, _, _ = shape
-        if C <= 1:
-            raise ValueError("Channel dropout can be applied only to multichannel images")
+        self._param_generator = rg.PlainUniformGenerator(
+            (
+                num_drop_channels,
+                "num_drop_channels",
+                (self.max_channels - self.min_channels + 1) // 2,
+                (self.min_channels, self.max_channels + 1),
+            )
+        )
 
-        if self.max_channels >= C:
-            raise ValueError("Cannot drop all channels in ChannelDropout.")
+    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, Tensor]:
+        B, C, _, _ = batch_shape
 
-        # [B] - for each batch drop random amount of channels
-        num_drop_channels = torch.randint(low=self.min_channels, high=self.max_channels + 1, size=(B,))
+        KORNIA_CHECK(C > 1, "Channel dropout can be applied only to multichannel images")
+        KORNIA_CHECK(self.max_channels < C, "Cannot drop all channels in ChannelDropout.")
 
-        # B, C
+        params = super().generate_parameters(batch_shape)
+        num_drop_channels = params["num_drop_channels"]
+
         channels_to_drop = torch.argsort(torch.rand(B, C))
         channels_to_drop_one_hot = torch.zeros((B, C), dtype=torch.uint8)
 
@@ -71,17 +80,19 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
 
         channels_to_drop_one_hot = channels_to_drop_one_hot.gather(dim=1, index=channels_to_drop)
 
-        return dict(channels_to_drop=channels_to_drop_one_hot)
+        params["channels_to_drop"] = channels_to_drop_one_hot
+
+        return params
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        KORNIA_CHECK_IS_TENSOR(input)
         KORNIA_CHECK_SHAPE(input, ['B', 'C', 'H', 'W'])
-
         _, C, _, _ = input.shape
-        if C <= 1:
-            raise ValueError("Channel dropout can be applied only to multichannel images")
+
+        KORNIA_CHECK(C > 1, "Channel dropout can be applied only to multichannel images")
+        KORNIA_CHECK(self.max_channels < C, "Cannot drop all channels in ChannelDropout.")
+
         input[params["channels_to_drop"] == 1, ...] = torch.tensor(
             self.fill_value, dtype=input.dtype, device=input.device
         )
