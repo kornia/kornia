@@ -67,3 +67,65 @@ class TestBilateralBlur(BaseTester):
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(inpt), op_optimized(inpt))
+
+    def test_opencv_grayscale(self, device, dtype):
+        img = [[95, 130, 108, 228], [98, 142, 187, 166], [114, 166, 190, 141], [150, 83, 174, 216]]
+        img = torch.tensor(img, device=device, dtype=dtype).view(1, 1, 4, 4) / 255
+
+        kernel_size = 5
+        sigma_color = 0.1
+        sigma_distance = (0.5, 0.5)
+
+        # Expected output generated with OpenCV:
+        # import cv2
+        # expected = cv2.bilateralFilter(img[0].permute(1, 2, 0).numpy(), 5, 0.1, 0.5)
+        expected = [
+            [0.38708255, 0.5060622, 0.43372786, 0.8876763],
+            [0.39813757, 0.55695623, 0.72320986, 0.6593296],
+            [0.4527661, 0.6484203, 0.7295754, 0.5705908],
+            [0.5774919, 0.32919288, 0.6949335, 0.83184093],
+        ]
+        expected = torch.tensor(expected, device=device, dtype=dtype).view(1, 1, 4, 4)
+
+        out = bilateral_blur(img, kernel_size, sigma_color, sigma_distance)
+        self.assert_close(out, expected, rtol=1e-2, atol=1e-2)
+
+    def test_opencv_rgb(self, device, dtype):
+        img = [
+            [[170, 189, 182, 255], [169, 209, 216, 215], [196, 213, 228, 191], [207, 126, 224, 249]],
+            [[61, 104, 74, 225], [65, 112, 176, 148], [78, 147, 176, 120], [124, 61, 155, 211]],
+            [[73, 111, 90, 175], [77, 117, 163, 130], [83, 139, 163, 120], [132, 84, 137, 155]],
+        ]
+        img = torch.tensor(img, device=device, dtype=dtype).view(1, 3, 4, 4) / 255
+
+        kernel_size = 5
+        sigma_color = 0.1
+        sigma_distance = (0.5, 0.5)
+
+        # Expected output generated with OpenCV:
+        # import cv2
+        # expected = cv2.bilateralFilter(img[0].permute(1, 2, 0).numpy(), 5, 0.1, 0.5)
+        expected = [
+            [
+                [0.6658919, 0.7486991, 0.7140039, 0.9999949],
+                [0.6656203, 0.815614, 0.852062, 0.84256846],
+                [0.7658699, 0.83580506, 0.88873357, 0.7496973],
+                [0.8123873, 0.49414372, 0.87789816, 0.97619873],
+            ],
+            [
+                [0.24242306, 0.40987095, 0.29138556, 0.8823465],
+                [0.2543548, 0.43856043, 0.68934506, 0.58119816],
+                [0.3045888, 0.5758538, 0.6885629, 0.47137713],
+                [0.48865014, 0.23922202, 0.6099074, 0.82698977],
+            ],
+            [
+                [0.28948042, 0.43686634, 0.35377124, 0.686273],
+                [0.30078027, 0.4582056, 0.63826954, 0.5113827],
+                [0.32491508, 0.5446742, 0.63721484, 0.47087318],
+                [0.51836246, 0.32941142, 0.5409612, 0.60793126],
+            ],
+        ]
+        expected = torch.tensor(expected, device=device, dtype=dtype).view(1, 3, 4, 4)
+
+        out = bilateral_blur(img, kernel_size, sigma_color, sigma_distance)
+        self.assert_close(out, expected, rtol=1e-2, atol=1e-2)
