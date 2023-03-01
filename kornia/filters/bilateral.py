@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import torch.nn.functional as F
-
-from kornia.core import Module, Tensor
+from kornia.core import Module, Tensor, pad
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 from .gaussian import get_gaussian_kernel2d
@@ -18,13 +16,45 @@ def bilateral_blur(
     border_type: str = 'reflect',
     color_distance_type: str = "l1",
 ) -> Tensor:
+    r"""Blur a tensor using a Bilateral filter.
+
+    .. image:: _static/img/bilateral_blur.png
+
+    The operator is an edge-preserving image smoothing filter. The weight
+    for each pixel in a neighborhood is determined not only by its distance
+    to the center pixel, but also the difference in intensity or color.
+
+    Arguments:
+        input: the input tensor with shape :math:`(B,C,H,W)`.
+        kernel_size: the size of the kernel.
+        sigma_color: the standard deviation for intensity/color Gaussian kernel.
+          Smaller values preserve more edges.
+        sigma_space: the standard deviation for spatial Gaussian kernel.
+          This is similar to ``sigma`` in gaussian_blur2d.
+        border_type: the padding mode to be applied before convolving.
+          The expected modes are: ``'constant'``, ``'reflect'``,
+          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+        color_distance_type: the type of distance to calculate intensity/color
+          difference. Only ``'l1'`` or ``'l2'`` is allowed. Use ``'l1'`` to
+          match OpenCV implementation. Use ``'l2'`` to match Matlab implementation.
+          Default: ``'l1'``.
+
+    Returns:
+        the blurred tensor with shape :math:`(B, C, H, W)`.
+
+    Examples:
+        >>> input = torch.rand(2, 4, 5, 5)
+        >>> output = bilateral_blur(input, (3, 3), 0.1, (1.5, 1.5))
+        >>> output.shape
+        torch.Size([2, 4, 5, 5])
+    """
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ['B', 'C', 'H', 'W'])
 
     kx, ky = _unpack_2d_ks(kernel_size)
     pad_x, pad_y = _compute_zero_padding(kernel_size)
 
-    padded = F.pad(input, (pad_x, pad_x, pad_y, pad_y), mode=border_type)
+    padded = pad(input, (pad_x, pad_x, pad_y, pad_y), mode=border_type)
     unfolded = padded.unfold(2, ky, 1).unfold(3, kx, 1).flatten(-2)  # (B, C, H, W, K x K)
 
     diff = unfolded - input.unsqueeze(-1)
@@ -46,6 +76,41 @@ def bilateral_blur(
 
 
 class BilateralBlur(Module):
+    r"""Blur a tensor using a Bilateral filter.
+
+    The operator is an edge-preserving image smoothing filter. The weight
+    for each pixel in a neighborhood is determined not only by its distance
+    to the center pixel, but also the difference in intensity or color.
+
+    Arguments:
+        kernel_size: the size of the kernel.
+        sigma_color: the standard deviation for intensity/color Gaussian kernel.
+          Smaller values preserve more edges.
+        sigma_space: the standard deviation for spatial Gaussian kernel.
+          This is similar to ``sigma`` in gaussian_blur2d.
+        border_type: the padding mode to be applied before convolving.
+          The expected modes are: ``'constant'``, ``'reflect'``,
+          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+        color_distance_type: the type of distance to calculate intensity/color
+          difference. Only ``'l1'`` or ``'l2'`` is allowed. Use ``'l1'`` to
+          match OpenCV implementation. Use ``'l2'`` to match Matlab implementation.
+          Default: ``'l1'``.
+
+    Returns:
+        the blurred input tensor.
+
+    Shape:
+        - Input: :math:`(B, C, H, W)`
+        - Output: :math:`(B, C, H, W)`
+
+    Examples:
+        >>> input = torch.rand(2, 4, 5, 5)
+        >>> blur = BilateralBlur((3, 3), 0.1, (1.5, 1.5))
+        >>> output = blur(input)
+        >>> output.shape
+        torch.Size([2, 4, 5, 5])
+    """
+
     def __init__(
         self,
         kernel_size: tuple[int, int] | int,
