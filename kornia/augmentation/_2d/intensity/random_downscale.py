@@ -1,6 +1,6 @@
 from typing import Tuple, Union
 
-from torch import Tensor
+import torch
 from torch.nn.functional import interpolate
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 
@@ -40,7 +40,7 @@ class RandomDownScale(IntensityAugmentationBase2D):
         else:
             self.size = size
     
-     def apply_transform(
+    def apply_transform(
         self,
         input: torch.Tensor
     ) -> torch.Tensor:

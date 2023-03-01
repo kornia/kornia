@@ -32,7 +32,7 @@ from kornia.augmentation import (
     RandomHue,
     RandomInvert,
     RandomMedianBlur,
-    RandomDownScale
+    RandomDownScale,
     RandomPlanckianJitter,
     RandomPlasmaBrightness,
     RandomPlasmaContrast,
