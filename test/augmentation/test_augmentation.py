@@ -1,5 +1,6 @@
 from typing import Any, Dict, Optional, Tuple, Type
 
+import numpy as np
 import pytest
 import torch
 from torch.autograd import gradcheck
@@ -4189,7 +4190,6 @@ class TestRandomMedianBlur:
 
         utils.assert_close(out, expected)
 
-import numpy as np
 
 class TestRandomDownScale:
     @staticmethod

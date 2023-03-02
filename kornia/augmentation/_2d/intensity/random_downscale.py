@@ -3,9 +3,9 @@ from typing import Tuple, Union, Optional, Dict, Any
 import torch
 from torch import Tensor
 from torch.nn.functional import interpolate
+
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
-
 
 
 class RandomDownScale(IntensityAugmentationBase2D):
