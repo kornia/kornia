@@ -1,12 +1,11 @@
-
-from typing import Any, Dict, Optional,  Union
+from typing import Any, Dict, Optional, Union
 
 import torch
-from kornia.core import Tensor
 
-from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.core.check import KORNIA_CHECK
 from kornia.augmentation import random_generator as rg
+from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core import Tensor
+from kornia.core.check import KORNIA_CHECK
 
 
 class RandomChannelDropout(IntensityAugmentationBase2D):
@@ -80,11 +79,13 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
         else:
             num_channels = input.shape[-3]
         KORNIA_CHECK(self.max_channels < num_channels, "Can not drop all channels in ChannelDropout.")
-        num_drop_channels =  rg.PlainUniformGenerator(
-            ((self.min_channels, self.max_channels), "factor_1", None, None))(torch.Size([1]))["factor_1"]
+        num_drop_channels = rg.PlainUniformGenerator(((self.min_channels, self.max_channels), "factor_1", None, None))(
+            torch.Size([1])
+        )["factor_1"]
 
-        channels_to_drop = rg.PlainUniformGenerator(
-            ((0, num_channels), "factor_1", None, None))(torch.Size([int(torch.round(num_drop_channels).item())]))["factor_1"]
+        channels_to_drop = rg.PlainUniformGenerator(((0, num_channels), "factor_1", None, None))(
+            torch.Size([int(torch.round(num_drop_channels).item())])
+        )["factor_1"]
         channels_to_drop = list(map(lambda t: t.to(torch.int), channels_to_drop))
         input_cp = input.clone()
         if len(input.shape) == 3:
@@ -92,6 +93,3 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
         else:
             input_cp[:, channels_to_drop, ...] = self.fill_value
         return input_cp
-
-
-
