@@ -74,9 +74,9 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
         num_channels = input.shape[-3]
         KORNIA_CHECK(self.max_channel < num_channels, "Can not drop all channels in ChannelDropout.")
 
-        num_channels_to_drop = torch.randint(low=self.min_channel, high=(self.max_channel + 1), size=(1,))[
-            0
-        ]  # +1 because highest integer to be drawn is not included
+        num_channels_to_drop = torch.randint(low=self.min_channel, 
+                                                high=(self.max_channel + 1), 
+                                                    size=(1,))[0]  # +1 because highest integer to be drawn is not included
 
         channels_to_drop = torch.randint(low=0, high=num_channels, size=(num_channels_to_drop,))
         input[..., channels_to_drop, :, :] = self.fill_value
