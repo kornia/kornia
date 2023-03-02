@@ -33,6 +33,8 @@ Intensity
 .. autoclass:: RandomSaturation
 .. autoclass:: RandomSharpness
 .. autoclass:: RandomSolarize
+.. autoclass:: RandomMedianBlur
+.. autoclass:: RandomSnow
 
 Geometric
 ~~~~~~~~~

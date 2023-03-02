@@ -18,7 +18,7 @@ This module contains common data augmentation policies that can improve the accu
 
    .. automethod:: inverse
 
-.. autoclass:: RandomAugment
+.. autoclass:: RandAugment
 
    .. automethod:: get_transformation_matrix
 
