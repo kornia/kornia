@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Union, Tuple
 
 import torch
 
@@ -48,7 +48,7 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        channel_drop_range: tuple[int, int] = (1, 1),
+        channel_drop_range: Tuple[int, int] = (1, 1),
         fill_value: Union[int, float] = 0,
         same_on_batch: bool = False,
         p: float = 0.5,
