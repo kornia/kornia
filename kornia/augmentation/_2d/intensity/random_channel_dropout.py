@@ -74,10 +74,7 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
             ),
             "Only one channel. ChannelDropout is not defined.",
         )
-        if len(input.shape) == 3:
-            num_channels = input.shape[0]
-        else:
-            num_channels = input.shape[-3]
+        num_channels = input.shape[-3]
         KORNIA_CHECK(self.max_channels < num_channels, "Can not drop all channels in ChannelDropout.")
         num_drop_channels = rg.PlainUniformGenerator(((self.min_channels, self.max_channels), "factor_1", None, None))(
             torch.Size([1])
@@ -88,8 +85,5 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
         )["factor_1"]
         channels_to_drop = list(map(lambda t: t.to(torch.int), channels_to_drop))
         input_cp = input.clone()
-        if len(input.shape) == 3:
-            input_cp[..., channels_to_drop, :, :] = self.fill_value
-        else:
-            input_cp[:, channels_to_drop, ...] = self.fill_value
+        input_cp[..., channels_to_drop, :, :] = self.fill_value
         return input_cp
