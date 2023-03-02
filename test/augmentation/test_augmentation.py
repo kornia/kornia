@@ -4200,28 +4200,28 @@ class TestRandomChannelDropout:
     def test_random_channel_dropout(self, device, dtype):
         torch.manual_seed(0)
 
-        x_data = torch.tensor([[[[0.4963, 0.7682],
-          [0.0885, 0.1320]],
-
-         [[0.3074, 0.6341],
-          [0.4901, 0.8964]],
-
-         [[0.4556, 0.6323],
-          [0.3489, 0.4017]]]],
-          dtype=dtype,
-          device=device)
+        x_data = torch.tensor(
+            [
+                [
+                    [[0.4963, 0.7682], [0.0885, 0.1320]],
+                    [[0.3074, 0.6341], [0.4901, 0.8964]],
+                    [[0.4556, 0.6323], [0.3489, 0.4017]],
+                ]
+            ],
+            dtype=dtype,
+            device=device,
+        )
         aug = RandomChannelDropout(fill_value=0, p=1)
         out = aug(x_data)
 
         expected = torch.tensor(
-            [[[[0.4963, 0.7682],
-          [0.0885, 0.1320]],
-
-         [[0.3074, 0.6341],
-          [0.4901, 0.8964]],
-
-         [[0.0000, 0.0000],
-          [0.0000, 0.0000]]]],
+            [
+                [
+                    [[0.4963, 0.7682], [0.0885, 0.1320]],
+                    [[0.3074, 0.6341], [0.4901, 0.8964]],
+                    [[0.0000, 0.0000], [0.0000, 0.0000]],
+                ]
+            ],
             device=device,
             dtype=dtype,
         )
