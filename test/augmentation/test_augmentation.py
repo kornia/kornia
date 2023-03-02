@@ -4223,8 +4223,6 @@ class TestRandomChannelDropout(BaseTester):
     def test_gradcheck(self, device, dtype):
         pass
 
-    def test_random_channel_dropout(self, device, dtype):
-        torch.manual_seed(0)  # for random reproductibility
         x_data = torch.tensor([[[[0.4963, 0.7682],
           [0.0885, 0.1320]],
 
