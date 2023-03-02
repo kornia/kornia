@@ -4192,7 +4192,7 @@ class TestRandomMedianBlur:
 
 class TestRandomChannelDropout:
     def test_smoke(self, device, dtype):
-        x_data = torch.rand(1, 3, 5, 5).to(device)
+        x_data = torch.rand(1, 3, 5, 5, dtype=dtype).to(device)
         aug = RandomChannelDropout(p=0.8)
         out = aug(x_data)
         assert out.shape == x_data.shape
@@ -4200,18 +4200,28 @@ class TestRandomChannelDropout:
     def test_random_channel_dropout(self, device, dtype):
         torch.manual_seed(0)
 
-        x_data = torch.rand(1, 3, 3, 3)
+        x_data = torch.tensor([[[[0.4963, 0.7682],
+          [0.0885, 0.1320]],
+
+         [[0.3074, 0.6341],
+          [0.4901, 0.8964]],
+
+         [[0.4556, 0.6323],
+          [0.3489, 0.4017]]]],
+          dtype=dtype,
+          device=device)
         aug = RandomChannelDropout(fill_value=0, p=1)
         out = aug(x_data)
 
         expected = torch.tensor(
-            [
-                [
-                    [[0.0000, 0.0000, 0.0000], [0.0000, 0.0000, 0.0000], [0.0000, 0.0000, 0.0000]],
-                    [[0.6323, 0.3489, 0.4017], [0.0223, 0.1689, 0.2939], [0.5185, 0.6977, 0.8000]],
-                    [[0.1610, 0.2823, 0.6816], [0.9152, 0.3971, 0.8742], [0.4194, 0.5529, 0.9527]],
-                ]
-            ],
+            [[[[0.4963, 0.7682],
+          [0.0885, 0.1320]],
+
+         [[0.3074, 0.6341],
+          [0.4901, 0.8964]],
+
+         [[0.0000, 0.0000],
+          [0.0000, 0.0000]]]],
             device=device,
             dtype=dtype,
         )
