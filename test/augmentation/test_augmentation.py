@@ -4191,7 +4191,6 @@ class TestRandomMedianBlur:
 
 
 class TestRandomChannelDropout(BaseTester):
-
     def _get_exception_test_data(self, device, dtype):
         err_msg_ch_range_not_tuple = 'Invalid channel_drop_range. Should be tuple of length 2.'
         err_msg_ch_range_wrong = 'Invalid channel_drop_range. Max channel should be greater than lower.'
@@ -4218,39 +4217,39 @@ class TestRandomChannelDropout(BaseTester):
         aug = RandomChannelDropout(p=0.8)
         out = aug(x_data)
         assert out.shape == x_data.shape
-    
+
     @pytest.mark.skip(reason="not implemented yet")
     def test_gradcheck(self, device, dtype):
         pass
 
-        x_data = torch.tensor([[[[0.4963, 0.7682],
-          [0.0885, 0.1320]],
-
-         [[0.3074, 0.6341],
-          [0.4901, 0.8964]],
-
-         [[0.4556, 0.6323],
-          [0.3489, 0.4017]]]],
-          dtype=dtype,
-          device=device)
+        x_data = torch.tensor(
+            [
+                [
+                    [[0.4963, 0.7682], [0.0885, 0.1320]],
+                    [[0.3074, 0.6341], [0.4901, 0.8964]],
+                    [[0.4556, 0.6323], [0.3489, 0.4017]],
+                ]
+            ],
+            dtype=dtype,
+            device=device,
+        )
         aug = RandomChannelDropout(fill_value=0, p=1)
         out = aug(x_data)
 
         expected = torch.tensor(
-            [[[[0.0000, 0.0000],
-          [0.0000, 0.0000]],
-
-         [[0.3074, 0.6341],
-          [0.4901, 0.8964]],
-
-         [[0.4556, 0.6323],
-          [0.3489, 0.4017]]]],
+            [
+                [
+                    [[0.0000, 0.0000], [0.0000, 0.0000]],
+                    [[0.3074, 0.6341], [0.4901, 0.8964]],
+                    [[0.4556, 0.6323], [0.3489, 0.4017]],
+                ]
+            ],
             device=device,
             dtype=dtype,
         )
 
         self.assert_close(out, expected)
-    
+
     def test_exception(self, device, dtype):
         exception_test_data = self._get_exception_test_data(device, dtype)
         for err_msg, channel_drop_range, input_data in exception_test_data:
@@ -4259,7 +4258,7 @@ class TestRandomChannelDropout(BaseTester):
                 aug(input_data)
 
             assert err_msg in str(errinfo)
-    
+
     @pytest.mark.skip(reason="not implemented yet")
     def test_module(self, device, dtype):
         pass

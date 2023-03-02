@@ -55,10 +55,12 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self.fill_value = fill_value
         KORNIA_CHECK(
-            isinstance(channel_drop_range, tuple) and len(channel_drop_range) == 2 , "Invalid channel_drop_range. Should be tuple of length 2."
+            isinstance(channel_drop_range, tuple) and len(channel_drop_range) == 2,
+            "Invalid channel_drop_range. Should be tuple of length 2.",
         )
         KORNIA_CHECK(
-            1 <= channel_drop_range[0] <= channel_drop_range[1], "Invalid channel_drop_range. Max channel should be greater than lower."
+            1 <= channel_drop_range[0] <= channel_drop_range[1],
+            "Invalid channel_drop_range. Max channel should be greater than lower.",
         )
         self.min_channel = channel_drop_range[0]
         self.max_channel = channel_drop_range[1]
@@ -67,13 +69,15 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         KORNIA_CHECK(
-                (input.shape[-3] != 1 and len(input.shape) != 2), "Only one channel. ChannelDropout is not defined.",
+            (input.shape[-3] != 1 and len(input.shape) != 2), "Only one channel. ChannelDropout is not defined."
         )
         num_channels = input.shape[-3]
         KORNIA_CHECK(self.max_channel < num_channels, "Can not drop all channels in ChannelDropout.")
-        
-        num_channels_to_drop = torch.randint(low=self.min_channel, high=(self.max_channel + 1), size=(1, ))[0] # +1 because highest integer to be drawn is not included
 
-        channels_to_drop = torch.randint(low=0, high=num_channels, size=(num_channels_to_drop, ))
+        num_channels_to_drop = torch.randint(low=self.min_channel, high=(self.max_channel + 1), size=(1,))[
+            0
+        ]  # +1 because highest integer to be drawn is not included
+
+        channels_to_drop = torch.randint(low=0, high=num_channels, size=(num_channels_to_drop,))
         input[..., channels_to_drop, :, :] = self.fill_value
         return input
