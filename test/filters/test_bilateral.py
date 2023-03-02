@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from kornia.filters import BilateralBlur, bilateral_blur
+from kornia.filters import BilateralBlur, JointBilateralBlur, bilateral_blur, joint_bilateral_blur
 from kornia.testing import BaseTester, tensor_to_gradcheck_var
 
 
@@ -148,3 +148,94 @@ class TestBilateralBlur(BaseTester):
 
         out = bilateral_blur(img, kernel_size, sigma_color, sigma_distance)
         self.assert_close(out, expected, rtol=1e-2, atol=1e-2)
+
+
+class TestJointBilateralBlur(BaseTester):
+    def test_smoke(self, device, dtype):
+        shape = (2, 3, 11, 7)
+        kernel_size = 5
+        sigma_color = 0.1
+        sigma_space = (2, 2)
+        inp = torch.rand(shape, device=device, dtype=dtype)
+        guide = torch.rand(shape, device=device, dtype=dtype)
+
+        out = joint_bilateral_blur(inp, guide, kernel_size, sigma_color, sigma_space)
+        assert isinstance(out, torch.Tensor)
+        assert out.shape == shape
+
+        out1 = joint_bilateral_blur(inp, inp, kernel_size, sigma_color, sigma_space)
+        out2 = bilateral_blur(inp, kernel_size, sigma_color, sigma_space)
+        self.assert_close(out1, out2)
+
+    @pytest.mark.parametrize("shape", [(1, 1, 8, 15), (2, 3, 11, 7)])
+    @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
+    def test_cardinality(self, shape, kernel_size, device, dtype):
+        inp = torch.zeros(shape, device=device, dtype=dtype)
+        guide = torch.zeros(shape, device=device, dtype=dtype)
+        actual = joint_bilateral_blur(inp, guide, kernel_size, 0.1, (1, 1))
+        assert actual.shape == shape
+
+    def test_exception(self):
+        inp = torch.rand(1, 1, 5, 5)
+        guide = torch.rand(1, 1, 5, 5)
+
+        with pytest.raises(Exception) as errinfo:
+            joint_bilateral_blur(inp, guide, 3, 1, 1)
+        assert 'Not a Tensor type. Go' in str(errinfo)
+
+        with pytest.raises(ValueError) as errinfo:
+            joint_bilateral_blur(inp, guide, 3, 0.1, (1, 1), color_distance_type="l3")
+        assert 'color_distance_type only acceps l1 or l2' in str(errinfo)
+
+    def test_noncontiguous(self, device, dtype):
+        batch_size = 3
+        inp = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
+        guide = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
+
+        actual = joint_bilateral_blur(inp, guide, 3, 1, (1, 1))
+        assert actual.is_contiguous()
+
+    def test_gradcheck(self, device):
+        img = torch.rand(1, 2, 5, 4, device=device)
+        guide = torch.rand(1, 2, 5, 4, device=device)
+        img = tensor_to_gradcheck_var(img)  # to var
+        guide = tensor_to_gradcheck_var(guide)
+        self.gradcheck(joint_bilateral_blur, (img, guide, 3, 1, (1, 1)))
+
+    def test_module(self, device, dtype):
+        shape = (2, 3, 11, 7)
+        kernel_size = 5
+        sigma_color = 0.1
+        sigma_space = (2, 2)
+        img = torch.rand(shape, device=device, dtype=dtype)
+        guide = torch.rand(shape, device=device, dtype=dtype)
+        params = (kernel_size, sigma_color, sigma_space)
+
+        op = joint_bilateral_blur
+        op_module = JointBilateralBlur(*params)
+        self.assert_close(op_module(img, guide), op(img, guide, *params))
+
+    @pytest.mark.parametrize('kernel_size', [5, (5, 7)])
+    @pytest.mark.parametrize('color_distance_type', ["l1", "l2"])
+    def test_dynamo(self, kernel_size, color_distance_type, device, dtype, torch_optimizer):
+        inpt = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        guide = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        op = JointBilateralBlur(kernel_size, 1, (1, 1), color_distance_type=color_distance_type)
+        op_optimized = torch_optimizer(op)
+
+        self.assert_close(op(inpt, guide), op_optimized(inpt, guide))
+
+        sigma_color = torch.rand(inpt.shape[0], device=device, dtype=dtype)
+        sigma_space = torch.rand(inpt.shape[0], 2, device=device, dtype=dtype)
+        op = JointBilateralBlur(kernel_size, sigma_color, sigma_space, color_distance_type=color_distance_type)
+        op_optimized = torch_optimizer(op)
+
+        self.assert_close(op(inpt, guide), op_optimized(inpt, guide))
+
+    @pytest.mark.skip()
+    def test_opencv_grayscale(self, device, dtype):
+        pass
+
+    @pytest.mark.skip()
+    def test_opencv_rgb(self, device, dtype):
+        pass
