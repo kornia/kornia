@@ -4190,16 +4190,41 @@ class TestRandomMedianBlur:
         utils.assert_close(out, expected)
 
 
-class TestRandomChannelDropout:
+class TestRandomChannelDropout(BaseTester):
+
+    def _get_exception_test_data(self, device, dtype):
+        err_msg_ch_range_not_tuple = 'Invalid channel_drop_range. Should be tuple of length 2.'
+        err_msg_ch_range_wrong = 'Invalid channel_drop_range. Max channel should be greater than lower.'
+        err_msg_one_dim_inp = 'Only one channel. ChannelDropout is not defined.'
+        err_msg_low_dim_inp = 'Can not drop all channels in ChannelDropout.'
+
+        return [
+            (err_msg_ch_range_not_tuple, 1, torch.rand(1, 3, 5, 5, device=device, dtype=dtype)),
+            (err_msg_ch_range_not_tuple, (1), torch.rand(1, 3, 5, 5, device=device, dtype=dtype)),
+            (err_msg_ch_range_wrong, (2, 1), torch.rand(1, 3, 5, 5, device=device, dtype=dtype)),
+            (err_msg_one_dim_inp, (1, 2), torch.rand(1, 1, 5, 5, device=device, dtype=dtype)),
+            (err_msg_low_dim_inp, (1, 3), torch.rand(1, 2, 5, 5, device=device, dtype=dtype)),
+        ]
+
+    @pytest.mark.parametrize("batch_shape", [(1, 3, 5, 5), (1, 3, 5, 5)])
+    def test_cardinality(self, batch_shape, device, dtype):
+        input_data = torch.rand(batch_shape, device=device, dtype=dtype)
+        aug = RandomChannelDropout(p=1.0)
+        output_data = aug(input_data)
+        assert output_data.shape == batch_shape
+
     def test_smoke(self, device, dtype):
-        x_data = torch.rand(1, 3, 5, 5, dtype=dtype).to(device)
+        x_data = torch.rand(1, 3, 5, 5, dtype=dtype, device=device)
         aug = RandomChannelDropout(p=0.8)
         out = aug(x_data)
         assert out.shape == x_data.shape
+    
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_gradcheck(self, device, dtype):
+        pass
 
     def test_random_channel_dropout(self, device, dtype):
-        torch.manual_seed(0)
-
+        torch.manual_seed(0)  # for random reproductibility
         x_data = torch.tensor([[[[0.4963, 0.7682],
           [0.0885, 0.1320]],
 
@@ -4214,16 +4239,29 @@ class TestRandomChannelDropout:
         out = aug(x_data)
 
         expected = torch.tensor(
-            [[[[0.4963, 0.7682],
-          [0.0885, 0.1320]],
+            [[[[0.0000, 0.0000],
+          [0.0000, 0.0000]],
 
          [[0.3074, 0.6341],
           [0.4901, 0.8964]],
 
-         [[0.0000, 0.0000],
-          [0.0000, 0.0000]]]],
+         [[0.4556, 0.6323],
+          [0.3489, 0.4017]]]],
             device=device,
             dtype=dtype,
         )
 
-        utils.assert_close(out, expected)
+        self.assert_close(out, expected)
+    
+    def test_exception(self, device, dtype):
+        exception_test_data = self._get_exception_test_data(device, dtype)
+        for err_msg, channel_drop_range, input_data in exception_test_data:
+            with pytest.raises(Exception) as errinfo:
+                aug = RandomChannelDropout(p=1.0, channel_drop_range=channel_drop_range)
+                aug(input_data)
+
+            assert err_msg in str(errinfo)
+    
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_module(self, device, dtype):
+        pass

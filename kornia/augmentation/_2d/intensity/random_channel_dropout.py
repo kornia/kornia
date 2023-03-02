@@ -55,35 +55,27 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
-        self.channel_drop_range = channel_drop_range
         self.fill_value = fill_value
-        self.min_channels = channel_drop_range[0]
-        self.max_channels = channel_drop_range[1]
         KORNIA_CHECK(
-            1 <= self.min_channels <= self.max_channels, f"Invalid channel_drop_range. Got: {channel_drop_range}"
+            isinstance(channel_drop_range, tuple) and len(channel_drop_range) == 2 , "Invalid channel_drop_range. Should be tuple of length 2."
         )
+        KORNIA_CHECK(
+            1 <= channel_drop_range[0] <= channel_drop_range[1], "Invalid channel_drop_range. Max channel should be greater than lower."
+        )
+        self.min_channel = channel_drop_range[0]
+        self.max_channel = channel_drop_range[1]
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         KORNIA_CHECK(
-            not (
-                (len(input.shape) == 3 and input.shape[0] == 1)
-                or (len(input.shape) == 4 and input.shape[1] == 1)
-                or (len(input.shape) == 2)
-            ),
-            "Only one channel. ChannelDropout is not defined.",
+                (input.shape[-3] != 1 and len(input.shape) != 2), "Only one channel. ChannelDropout is not defined.",
         )
         num_channels = input.shape[-3]
-        KORNIA_CHECK(self.max_channels < num_channels, "Can not drop all channels in ChannelDropout.")
-        num_drop_channels = rg.PlainUniformGenerator(((self.min_channels, self.max_channels), "factor_1", None, None))(
-            torch.Size([1])
-        )["factor_1"]
+        KORNIA_CHECK(self.max_channel < num_channels, "Can not drop all channels in ChannelDropout.")
+        
+        num_channels_to_drop = torch.randint(low=self.min_channel, high=(self.max_channel + 1), size=(1, ))[0] # +1 because highest integer to be drawn is not included
 
-        channels_to_drop = rg.PlainUniformGenerator(((0, num_channels), "factor_1", None, None))(
-            torch.Size([int(torch.round(num_drop_channels).item())])
-        )["factor_1"]
-        channels_to_drop = list(map(lambda t: t.to(torch.int), channels_to_drop))
-        input_cp = input.clone()
-        input_cp[..., channels_to_drop, :, :] = self.fill_value
-        return input_cp
+        channels_to_drop = torch.randint(low=0, high=num_channels, size=(num_channels_to_drop, ))
+        input[..., channels_to_drop, :, :] = self.fill_value
+        return input
