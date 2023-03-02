@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from kornia.core import Module, Tensor, pad
-from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 from .gaussian import get_gaussian_kernel2d
 from .kernels import _unpack_2d_ks
@@ -24,6 +24,7 @@ def _bilateral_blur(
     if guidance is not None:
         KORNIA_CHECK_IS_TENSOR(guidance)
         KORNIA_CHECK_SHAPE(guidance, ['B', 'C', 'H', 'W'])
+        KORNIA_CHECK(guidance.shape[-2:] == input.shape[-2:], "guidance and input should have the same size")
 
     if isinstance(sigma_color, Tensor):
         KORNIA_CHECK_SHAPE(sigma_color, ['B'])

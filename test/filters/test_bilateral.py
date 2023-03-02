@@ -183,6 +183,10 @@ class TestJointBilateralBlur(BaseTester):
             joint_bilateral_blur(inp, guide, 3, 1, 1)
         assert 'Not a Tensor type. Go' in str(errinfo)
 
+        with pytest.raises(Exception) as errinfo:
+            joint_bilateral_blur(inp, torch.randn(1, 1, 2, 4), 3, 1, (1, 1))
+        assert 'guidance and input should have the same size' in str(errinfo)
+
         with pytest.raises(ValueError) as errinfo:
             joint_bilateral_blur(inp, guide, 3, 0.1, (1, 1), color_distance_type="l3")
         assert 'color_distance_type only acceps l1 or l2' in str(errinfo)
