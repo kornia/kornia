@@ -4144,7 +4144,7 @@ class TestRandomChannelDropout:
         out = aug(x_data)
         assert out.shape == x_data.shape
 
-    def test_feature_median_blur(self, device, dtype):
+    def test_random_channel_dropout(self, device, dtype):
         torch.manual_seed(0)
 
         x_data = torch.rand(1, 3, 3, 3)
