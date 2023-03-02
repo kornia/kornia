@@ -111,6 +111,37 @@ def joint_bilateral_blur(
     border_type: str = 'reflect',
     color_distance_type: str = "l1",
 ) -> Tensor:
+    r"""Blur a tensor using a Joint Bilateral filter.
+
+    This operator is almost identical to a Bilateral filter. The only difference
+    is that the color Gaussian kernel is computed based on another image called
+    a guidance image. See :func:`bilateral_blur()` for more information.
+
+    Arguments:
+        input: the input tensor with shape :math:`(B,C,H,W)`.
+        guidance: the guidance tensor with shape :math:`(B,C,H,W)`.
+        kernel_size: the size of the kernel.
+        sigma_color: the standard deviation for intensity/color Gaussian kernel.
+          Smaller values preserve more edges.
+        sigma_space: the standard deviation for spatial Gaussian kernel.
+          This is similar to ``sigma`` in :func:`gaussian_blur2d()`.
+        border_type: the padding mode to be applied before convolving.
+          The expected modes are: ``'constant'``, ``'reflect'``,
+          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+        color_distance_type: the type of distance to calculate intensity/color
+          difference. Only ``'l1'`` or ``'l2'`` is allowed. Use ``'l1'`` to
+          match OpenCV implementation.
+
+    Returns:
+        the blurred tensor with shape :math:`(B, C, H, W)`.
+
+    Examples:
+        >>> input = torch.rand(2, 4, 5, 5)
+        >>> guidance = torch.rand(2, 4, 5, 5)
+        >>> output = joint_bilateral_blur(input, guidance, (3, 3), 0.1, (1.5, 1.5))
+        >>> output.shape
+        torch.Size([2, 4, 5, 5])
+    """
     return _bilateral_blur(input, guidance, kernel_size, sigma_color, sigma_space, border_type, color_distance_type)
 
 
@@ -185,6 +216,41 @@ class BilateralBlur(_BilateralBlur):
 
 
 class JointBilateralBlur(_BilateralBlur):
+    r"""Blur a tensor using a Joint Bilateral filter.
+
+    This operator is almost identical to a Bilateral filter. The only difference
+    is that the color Gaussian kernel is computed based on another image called
+    a guidance image. See :class:`BilateralBlur` for more information.
+
+    Arguments:
+        kernel_size: the size of the kernel.
+        sigma_color: the standard deviation for intensity/color Gaussian kernel.
+          Smaller values preserve more edges.
+        sigma_space: the standard deviation for spatial Gaussian kernel.
+          This is similar to ``sigma`` in :func:`gaussian_blur2d()`.
+        border_type: the padding mode to be applied before convolving.
+          The expected modes are: ``'constant'``, ``'reflect'``,
+          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+        color_distance_type: the type of distance to calculate intensity/color
+          difference. Only ``'l1'`` or ``'l2'`` is allowed. Use ``'l1'`` to
+          match OpenCV implementation.
+
+    Returns:
+        the blurred input tensor.
+
+    Shape:
+        - Input: :math:`(B, C, H, W)`, :math:`(B, C, H, W)`
+        - Output: :math:`(B, C, H, W)`
+
+    Examples:
+        >>> input = torch.rand(2, 4, 5, 5)
+        >>> guidance = torch.rand(2, 4, 5, 5)
+        >>> blur = JointBilateralBlur((3, 3), 0.1, (1.5, 1.5))
+        >>> output = blur(input, guidance)
+        >>> output.shape
+        torch.Size([2, 4, 5, 5])
+    """
+
     def forward(self, input: Tensor, guidance: Tensor) -> Tensor:
         return joint_bilateral_blur(
             input,
