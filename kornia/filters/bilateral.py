@@ -8,6 +8,57 @@ from .kernels import _unpack_2d_ks
 from .median import _compute_zero_padding
 
 
+def _bilateral_blur(
+    input: Tensor,
+    guidance: Tensor | None,
+    kernel_size: tuple[int, int] | int,
+    sigma_color: float | Tensor,
+    sigma_space: tuple[float, float] | Tensor,
+    border_type: str = 'reflect',
+    color_distance_type: str = "l1",
+) -> Tensor:
+    "Single implementation for both Bilateral Filter and Joint Bilateral Filter"
+
+    KORNIA_CHECK_IS_TENSOR(input)
+    KORNIA_CHECK_SHAPE(input, ['B', 'C', 'H', 'W'])
+    if guidance is not None:
+        KORNIA_CHECK_IS_TENSOR(guidance)
+        KORNIA_CHECK_SHAPE(guidance, ['B', 'C', 'H', 'W'])
+
+    if isinstance(sigma_color, Tensor):
+        KORNIA_CHECK_SHAPE(sigma_color, ['B'])
+        sigma_color = sigma_color.to(device=input.device, dtype=input.dtype).view(-1, 1, 1, 1, 1)
+
+    kx, ky = _unpack_2d_ks(kernel_size)
+    pad_x, pad_y = _compute_zero_padding(kernel_size)
+
+    padded_input = pad(input, (pad_x, pad_x, pad_y, pad_y), mode=border_type)
+    unfolded_input = padded_input.unfold(2, ky, 1).unfold(3, kx, 1).flatten(-2)  # (B, C, H, W, K x K)
+
+    if guidance is None:
+        guidance = input
+        unfolded_guidance = unfolded_input
+    else:
+        padded_guidance = pad(guidance, (pad_x, pad_x, pad_y, pad_y), mode=border_type)
+        unfolded_guidance = padded_guidance.unfold(2, ky, 1).unfold(3, kx, 1).flatten(-2)  # (B, C, H, W, K x K)
+
+    diff = unfolded_guidance - guidance.unsqueeze(-1)
+    if color_distance_type == "l1":
+        color_distance_sq = diff.abs().sum(1, keepdim=True).square()
+    elif color_distance_type == "l2":
+        color_distance_sq = diff.square().sum(1, keepdim=True)
+    else:
+        raise ValueError("color_distance_type only acceps l1 or l2")
+    color_kernel = (-0.5 / sigma_color**2 * color_distance_sq).exp()  # (B, 1, H, W, K x K)
+
+    space_kernel = get_gaussian_kernel2d(kernel_size, sigma_space, device=input.device, dtype=input.dtype)
+    space_kernel = space_kernel.view(-1, 1, 1, 1, kx * ky)
+
+    kernel = space_kernel * color_kernel
+    out = (unfolded_input * kernel).sum(-1) / kernel.sum(-1)
+    return out
+
+
 def bilateral_blur(
     input: Tensor,
     kernel_size: tuple[int, int] | int,
@@ -48,33 +99,19 @@ def bilateral_blur(
         >>> output.shape
         torch.Size([2, 4, 5, 5])
     """
-    KORNIA_CHECK_IS_TENSOR(input)
-    KORNIA_CHECK_SHAPE(input, ['B', 'C', 'H', 'W'])
-    if isinstance(sigma_color, Tensor):
-        KORNIA_CHECK_SHAPE(sigma_color, ['B'])
-        sigma_color = sigma_color.to(device=input.device, dtype=input.dtype).view(-1, 1, 1, 1, 1)
+    return _bilateral_blur(input, None, kernel_size, sigma_color, sigma_space, border_type, color_distance_type)
 
-    kx, ky = _unpack_2d_ks(kernel_size)
-    pad_x, pad_y = _compute_zero_padding(kernel_size)
 
-    padded = pad(input, (pad_x, pad_x, pad_y, pad_y), mode=border_type)
-    unfolded = padded.unfold(2, ky, 1).unfold(3, kx, 1).flatten(-2)  # (B, C, H, W, K x K)
-
-    diff = unfolded - input.unsqueeze(-1)
-    if color_distance_type == "l1":
-        color_distance_sq = diff.abs().sum(1, keepdim=True).square()
-    elif color_distance_type == "l2":
-        color_distance_sq = diff.square().sum(1, keepdim=True)
-    else:
-        raise ValueError("color_distance_type only acceps l1 or l2")
-    color_kernel = (-0.5 / sigma_color**2 * color_distance_sq).exp()  # (B, 1, H, W, K x K)
-
-    space_kernel = get_gaussian_kernel2d(kernel_size, sigma_space, device=input.device, dtype=input.dtype)
-    space_kernel = space_kernel.view(-1, 1, 1, 1, kx * ky)
-
-    kernel = space_kernel * color_kernel
-    out = (unfolded * kernel).sum(-1) / kernel.sum(-1)
-    return out
+def joint_bilateral_blur(
+    input: Tensor,
+    guidance: Tensor,
+    kernel_size: tuple[int, int] | int,
+    sigma_color: float | Tensor,
+    sigma_space: tuple[float, float] | Tensor,
+    border_type: str = 'reflect',
+    color_distance_type: str = "l1",
+):
+    return _bilateral_blur(input, guidance, kernel_size, sigma_color, sigma_space, border_type, color_distance_type)
 
 
 class BilateralBlur(Module):
@@ -141,4 +178,17 @@ class BilateralBlur(Module):
     def forward(self, input: Tensor) -> Tensor:
         return bilateral_blur(
             input, self.kernel_size, self.sigma_color, self.sigma_space, self.border_type, self.color_distance_type
+        )
+
+
+class JointBilateralBlur(BilateralBlur):
+    def forward(self, input: Tensor, guidance: Tensor) -> Tensor:
+        return joint_bilateral_blur(
+            input,
+            guidance,
+            self.kernel_size,
+            self.sigma_color,
+            self.sigma_space,
+            self.border_type,
+            self.color_distance_type,
         )
