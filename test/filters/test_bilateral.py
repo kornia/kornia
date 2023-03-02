@@ -151,17 +151,26 @@ class TestBilateralBlur(BaseTester):
 
 
 class TestJointBilateralBlur(BaseTester):
-    def test_smoke(self, device, dtype):
-        shape = (2, 3, 11, 7)
+    @pytest.mark.parametrize("input_depth", [1, 3])
+    @pytest.mark.parametrize("guidance_depth", [1, 3])
+    def test_smoke(self, input_depth, guidance_depth, device, dtype):
+        b, h, w = 2, 8, 15
+        kernel_size = 5
+        sigma_color = 0.1
+        sigma_space = (2, 2)
+        inp = torch.rand(b, input_depth, h, w, device=device, dtype=dtype)
+        guide = torch.rand(b, guidance_depth, h, w, device=device, dtype=dtype)
+
+        out = joint_bilateral_blur(inp, guide, kernel_size, sigma_color, sigma_space)
+        assert isinstance(out, torch.Tensor)
+        assert out.shape == (b, input_depth, h, w)
+
+    def test_same_input(self, device, dtype):
+        shape = (2, 3, 8, 15)
         kernel_size = 5
         sigma_color = 0.1
         sigma_space = (2, 2)
         inp = torch.rand(shape, device=device, dtype=dtype)
-        guide = torch.rand(shape, device=device, dtype=dtype)
-
-        out = joint_bilateral_blur(inp, guide, kernel_size, sigma_color, sigma_space)
-        assert isinstance(out, torch.Tensor)
-        assert out.shape == shape
 
         out1 = joint_bilateral_blur(inp, inp, kernel_size, sigma_color, sigma_space)
         out2 = bilateral_blur(inp, kernel_size, sigma_color, sigma_space)
@@ -238,8 +247,14 @@ class TestJointBilateralBlur(BaseTester):
 
     @pytest.mark.skip()
     def test_opencv_grayscale(self, device, dtype):
-        pass
+        img = [[95, 130, 108, 228], [98, 142, 187, 166], [114, 166, 190, 141], [150, 83, 174, 216]]
+        img = torch.tensor(img, device=device, dtype=dtype).view(1, 1, 4, 4) / 255
 
     @pytest.mark.skip()
     def test_opencv_rgb(self, device, dtype):
-        pass
+        img = [
+            [[170, 189, 182, 255], [169, 209, 216, 215], [196, 213, 228, 191], [207, 126, 224, 249]],
+            [[61, 104, 74, 225], [65, 112, 176, 148], [78, 147, 176, 120], [124, 61, 155, 211]],
+            [[73, 111, 90, 175], [77, 117, 163, 130], [83, 139, 163, 120], [132, 84, 137, 155]],
+        ]
+        img = torch.tensor(img, device=device, dtype=dtype).view(1, 3, 4, 4) / 255
