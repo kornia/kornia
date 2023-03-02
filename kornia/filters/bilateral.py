@@ -3,8 +3,7 @@ from __future__ import annotations
 from kornia.core import Module, Tensor, pad
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
-from .gaussian import get_gaussian_kernel2d
-from .kernels import _unpack_2d_ks
+from .kernels import _unpack_2d_ks, get_gaussian_kernel2d
 from .median import _compute_zero_padding
 
 
@@ -111,11 +110,39 @@ def joint_bilateral_blur(
     sigma_space: tuple[float, float] | Tensor,
     border_type: str = 'reflect',
     color_distance_type: str = "l1",
-):
+) -> Tensor:
     return _bilateral_blur(input, guidance, kernel_size, sigma_color, sigma_space, border_type, color_distance_type)
 
 
-class BilateralBlur(Module):
+# trick to make mypy not throw errors about difference in .forward() signatures of subclass and superclass
+class _BilateralBlur(Module):
+    def __init__(
+        self,
+        kernel_size: tuple[int, int] | int,
+        sigma_color: float,
+        sigma_space: tuple[float, float],
+        border_type: str = 'reflect',
+        color_distance_type: str = "l1",
+    ) -> None:
+        super().__init__()
+        self.kernel_size = kernel_size
+        self.sigma_color = sigma_color
+        self.sigma_space = sigma_space
+        self.border_type = border_type
+        self.color_distance_type = color_distance_type
+
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}"
+            f"(kernel_size={self.kernel_size}, "
+            f"sigma_color={self.sigma_color}, "
+            f"sigma_space={self.sigma_space}, "
+            f"border_type={self.border_type}, "
+            f"color_distance_type={self.color_distance_type})"
+        )
+
+
+class BilateralBlur(_BilateralBlur):
     r"""Blur a tensor using a Bilateral filter.
 
     The operator is an edge-preserving image smoothing filter. The weight
@@ -151,38 +178,13 @@ class BilateralBlur(Module):
         torch.Size([2, 4, 5, 5])
     """
 
-    def __init__(
-        self,
-        kernel_size: tuple[int, int] | int,
-        sigma_color: float,
-        sigma_space: tuple[float, float],
-        border_type: str = 'reflect',
-        color_distance_type: str = "l1",
-    ) -> None:
-        super().__init__()
-        self.kernel_size = kernel_size
-        self.sigma_color = sigma_color
-        self.sigma_space = sigma_space
-        self.border_type = border_type
-        self.color_distance_type = color_distance_type
-
-    def __repr__(self) -> str:
-        return (
-            f"{self.__class__.__name__}"
-            f"(kernel_size={self.kernel_size}, "
-            f"sigma_color={self.sigma_color}, "
-            f"sigma_space={self.sigma_space}, "
-            f"border_type={self.border_type}, "
-            f"color_distance_type={self.color_distance_type})"
-        )
-
     def forward(self, input: Tensor) -> Tensor:
         return bilateral_blur(
             input, self.kernel_size, self.sigma_color, self.sigma_space, self.border_type, self.color_distance_type
         )
 
 
-class JointBilateralBlur(BilateralBlur):
+class JointBilateralBlur(_BilateralBlur):
     def forward(self, input: Tensor, guidance: Tensor) -> Tensor:
         return joint_bilateral_blur(
             input,
