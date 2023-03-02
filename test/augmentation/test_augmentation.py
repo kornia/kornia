@@ -4189,32 +4189,56 @@ class TestRandomMedianBlur:
 
         utils.assert_close(out, expected)
 
+import numpy as np
+
 class TestRandomDownScale:
+    @staticmethod
+    def __check_equal_with_accuracy(in_arr, out_arr, acc):
+        in_arr = np.array(in_arr)
+        out_arr = np.array(out_arr)
+        return all(np.abs(in_arr[-2:] - out_arr[-2:]) <= acc*out_arr[-2:]) and \
+                all(in_arr[:-2] == out_arr[:-2])
+
     def test_smoke(self):
         downscale = RandomDownScale(size=128)
         assert downscale is not None
 
     def test_ratio(self):
-        downscale = RandomDownScale(size=128)
+        torch.manual_seed(0)
+        ransom_var = 0.5
+        size = 128
+        downscale = RandomDownScale(size=size, p=1, random_var=ransom_var)
         input = torch.rand(1, 3, 256, 256)
         output = downscale(input)
-        assert output.size() == (1, 3, 128, 128)
+        assert TestRandomDownScale.__check_equal_with_accuracy(output.shape, (1, 3, size, size), acc = ransom_var)
 
     def test_ratio_tuple(self):
-        downscale = RandomDownScale(size=(128, 64))
+        torch.manual_seed(0)
+        ransom_var = 0.5
+        size = (128, 64)
+        downscale = RandomDownScale(size=size, p=1, random_var=ransom_var)
         input = torch.rand(1, 3, 256, 256)
         output = downscale(input)
-        assert output.size() == (1, 3, 128, 64)
+        assert TestRandomDownScale.__check_equal_with_accuracy(output.shape, (1, 3, *size), acc = ransom_var)
 
     def test_ratio_batch(self):
-        downscale = RandomDownScale(size=128)
-        input = torch.rand(4, 3, 256, 256)
+        torch.manual_seed(0)
+        ransom_var = 0.5
+        size = (128, 256)
+        downscale = RandomDownScale(size=size, p=1, random_var=ransom_var)
+        input = torch.rand(4, 3, 256, 400)
         output = downscale(input)
-        assert output.size() == (4, 3, 128, 128)
+        print(output.shape)
+        print((4, 3, *size))
+        assert TestRandomDownScale.__check_equal_with_accuracy(output.shape, (4, 3, *size), acc = ransom_var)
 
     def test_ratio_probability(self):
-        downscale = RandomDownScale(size=128, p=0.5)
-        input = torch.rand(1, 3, 256, 256)
+        torch.manual_seed(0)
+        ransom_var = 0.5
+        size = (128, 256)
+        downscale = RandomDownScale(size=size, p=1, random_var=ransom_var)
+        input = torch.rand(4, 3, 256, 400)
         output1 = downscale(input)
         output2 = downscale(input)
-        assert (output1 != output2).all()
+        
+        assert output1.shape != output2.shape

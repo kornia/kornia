@@ -1,8 +1,10 @@
-from typing import Tuple, Union
+from typing import Tuple, Union, Optional, Dict, Any
 
 import torch
+from torch import Tensor
 from torch.nn.functional import interpolate
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 
 
@@ -13,7 +15,11 @@ class RandomDownScale(IntensityAugmentationBase2D):
         size (Union[int, Tuple[int, int]]): output spatial size of the downscaled image.
             If `int`, the output image will have the same size on both sides.
             If `Tuple[int, int]`, specifies the output size as `(height, width)`.
+        random_var (float): percantage possible possible deviation from actuiual size value
         p (float): probability of applying the transformation.
+        p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
+            probabilities batch-wise.
+        same_on_batch: apply the same transformation across the batch.
 
     Returns:
         A downsampled tensor with the specified output size.
@@ -31,9 +37,16 @@ class RandomDownScale(IntensityAugmentationBase2D):
     def __init__(
         self,
         size: Union[int, Tuple[int, int]],
-        p: float = 0.5
+        random_var: float = 0.5,
+        same_on_batch: bool = False,
+        p: float = 0.5,
+        p_batch: float = 1.0, 
+        keepdim: bool = False,
     ) -> None:
-        super().__init__(p)
+        super().__init__(same_on_batch=same_on_batch, p=p, p_batch=p_batch, keepdim=keepdim)
+
+        KORNIA_CHECK(0. <= random_var < 1., "Random variance should be in range [0;1)")
+        self.random_var = random_var
         self.size = size
         if isinstance(size, int):
             self.size = (size, size)
@@ -42,13 +55,13 @@ class RandomDownScale(IntensityAugmentationBase2D):
     
     def apply_transform(
         self,
-        input: torch.Tensor
-    ) -> torch.Tensor:
-        if not self._is_intensity_stochastic:
-            return input
-
-        random_scale_factor = torch.rand(1).item() * 0.5 + 0.5
-        scaled_size = (int(size[0] * random_scale_factor), int(size[1] * random_scale_factor))
+        input: Tensor,
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[Tensor] = None
+    ) -> Tensor:
+        random_scale_factor = 1 + torch.rand(1).item() * self.random_var
+        scaled_size = (int(self.size[0] * random_scale_factor), int(self.size[1] * random_scale_factor))
 
         return interpolate(
             input,
