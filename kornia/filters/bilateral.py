@@ -154,7 +154,7 @@ class BilateralBlur(_BilateralBlur):
         sigma_color: the standard deviation for intensity/color Gaussian kernel.
           Smaller values preserve more edges.
         sigma_space: the standard deviation for spatial Gaussian kernel.
-          This is similar to ``sigma`` in gaussian_blur2d.
+          This is similar to ``sigma`` in :func:`gaussian_blur2d()`.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
