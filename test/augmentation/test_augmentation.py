@@ -21,6 +21,7 @@ from kornia.augmentation import (
     RandomChannelShuffle,
     RandomContrast,
     RandomCrop,
+    RandomDownScale,
     RandomElasticTransform,
     RandomEqualize,
     RandomErasing,
@@ -33,7 +34,6 @@ from kornia.augmentation import (
     RandomHue,
     RandomInvert,
     RandomMedianBlur,
-    RandomDownScale,
     RandomPlanckianJitter,
     RandomPlasmaBrightness,
     RandomPlasmaContrast,
@@ -4196,8 +4196,7 @@ class TestRandomDownScale:
     def __check_equal_with_accuracy(in_arr, out_arr, acc):
         in_arr = np.array(in_arr)
         out_arr = np.array(out_arr)
-        return all(np.abs(in_arr[-2:] - out_arr[-2:]) <= acc*out_arr[-2:]) and \
-                all(in_arr[:-2] == out_arr[:-2])
+        return all(np.abs(in_arr[-2:] - out_arr[-2:]) <= acc * out_arr[-2:]) and all(in_arr[:-2] == out_arr[:-2])
 
     def test_smoke(self):
         downscale = RandomDownScale(size=128)
@@ -4210,7 +4209,7 @@ class TestRandomDownScale:
         downscale = RandomDownScale(size=size, p=1, random_var=ransom_var)
         input = torch.rand(1, 3, 256, 256)
         output = downscale(input)
-        assert TestRandomDownScale.__check_equal_with_accuracy(output.shape, (1, 3, size, size), acc = ransom_var)
+        assert TestRandomDownScale.__check_equal_with_accuracy(output.shape, (1, 3, size, size), acc=ransom_var)
 
     def test_ratio_tuple(self):
         torch.manual_seed(0)
@@ -4219,7 +4218,7 @@ class TestRandomDownScale:
         downscale = RandomDownScale(size=size, p=1, random_var=ransom_var)
         input = torch.rand(1, 3, 256, 256)
         output = downscale(input)
-        assert TestRandomDownScale.__check_equal_with_accuracy(output.shape, (1, 3, *size), acc = ransom_var)
+        assert TestRandomDownScale.__check_equal_with_accuracy(output.shape, (1, 3, *size), acc=ransom_var)
 
     def test_ratio_batch(self):
         torch.manual_seed(0)
@@ -4230,7 +4229,7 @@ class TestRandomDownScale:
         output = downscale(input)
         print(output.shape)
         print((4, 3, *size))
-        assert TestRandomDownScale.__check_equal_with_accuracy(output.shape, (4, 3, *size), acc = ransom_var)
+        assert TestRandomDownScale.__check_equal_with_accuracy(output.shape, (4, 3, *size), acc=ransom_var)
 
     def test_ratio_probability(self):
         torch.manual_seed(0)
@@ -4240,5 +4239,5 @@ class TestRandomDownScale:
         input = torch.rand(4, 3, 256, 400)
         output1 = downscale(input)
         output2 = downscale(input)
-        
+
         assert output1.shape != output2.shape

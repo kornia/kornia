@@ -1,4 +1,4 @@
-from typing import Tuple, Union, Optional, Dict, Any
+from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 from torch import Tensor
@@ -34,38 +34,30 @@ class RandomDownScale(IntensityAugmentationBase2D):
         >>> output = downscale(input)
         >>> assert output.size() == (1, 3, 128, 128)
     """
+
     def __init__(
         self,
         size: Union[int, Tuple[int, int]],
         random_var: float = 0.5,
         same_on_batch: bool = False,
         p: float = 0.5,
-        p_batch: float = 1.0, 
+        p_batch: float = 1.0,
         keepdim: bool = False,
     ) -> None:
         super().__init__(same_on_batch=same_on_batch, p=p, p_batch=p_batch, keepdim=keepdim)
 
-        KORNIA_CHECK(0. <= random_var < 1., "Random variance should be in range [0;1)")
+        KORNIA_CHECK(0.0 <= random_var < 1.0, "Random variance should be in range [0;1)")
         self.random_var = random_var
         self.size = size
         if isinstance(size, int):
             self.size = (size, size)
         else:
             self.size = size
-    
+
     def apply_transform(
-        self,
-        input: Tensor,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any],
-        transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         random_scale_factor = 1 + torch.rand(1).item() * self.random_var
         scaled_size = (int(self.size[0] * random_scale_factor), int(self.size[1] * random_scale_factor))
 
-        return interpolate(
-            input,
-            size=scaled_size,
-            mode='bilinear',
-            align_corners=False
-        )
+        return interpolate(input, size=scaled_size, mode='bilinear', align_corners=False)
