@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from typing import List, Optional
 
 import torch
@@ -20,14 +21,50 @@ class KeyNet_conf(TypedDict):
     Detector_conf: Detector_config
 
 
-keynet_default_config: KeyNet_conf = {
-    # Key.Net Model
-    'num_filters': 8,
-    'num_levels': 3,
-    'kernel_size': 5,
-    # Extraction Parameters
-    'Detector_conf': get_default_detector_config(),
-}
+@dataclass
+class KeyNetConf:
+    num_filters: int = 8
+    num_levels: int = 3
+    kernel_size: int = 5
+    Detector_conf: Detector_config = None
+
+    def __post_init__(self):
+        if self.Detector_conf is None:
+            self.Detector_conf = get_default_detector_config()
+
+
+def from_keynet_conf_dict(conf_dict: dict) -> KeyNetConf:
+    if type(conf_dict) != dict:
+        raise TypeError("Input conf must be dict")
+    return KeyNetConf(
+        num_filters=conf_dict['num_filters'],
+        num_levels=conf_dict['num_levels'],
+        kernel_size=conf_dict['kernel_size'],
+        Detector_conf=conf_dict['Detector_conf'],
+    )
+
+
+def to_keynet_conf_dict(conf: KeyNetConf) -> KeyNet_conf:
+    if type(conf) != KeyNetConf:
+        raise TypeError("Input conf must be KeyNetConf")
+    return {
+        'num_filters': conf.num_filters,
+        'num_levels': conf.num_levels,
+        'kernel_size': conf.kernel_size,
+        'Detector_conf': conf.Detector_conf,
+    }
+
+
+keynet_default_config: KeyNet_conf = from_keynet_conf_dict(
+    {
+        # Key.Net Model
+        'num_filters': 8,
+        'num_levels': 3,
+        'kernel_size': 5,
+        # Extraction Parameters
+        'Detector_conf': get_default_detector_config(),
+    }
+)
 
 KeyNet_URL = "https://github.com/axelBarroso/Key.Net-Pytorch/raw/main/model/weights/keynet_pytorch.pth"
 
@@ -129,9 +166,9 @@ class KeyNet(Module):
     def __init__(self, pretrained: bool = False, keynet_conf: KeyNet_conf = keynet_default_config):
         super().__init__()
 
-        num_filters = keynet_conf['num_filters']
-        self.num_levels = keynet_conf['num_levels']
-        kernel_size = keynet_conf['kernel_size']
+        num_filters = keynet_conf.num_filters
+        self.num_levels = keynet_conf.num_levels
+        kernel_size = keynet_conf.kernel_size
         padding = kernel_size // 2
 
         self.feature_extractor = _FeatureExtractor()
@@ -187,5 +224,5 @@ class KeyNetDetector(MultiResolutionDetector):
         ori_module: Optional[Module] = None,
         aff_module: Optional[Module] = None,
     ):
-        model = KeyNet(pretrained, keynet_conf)
-        super().__init__(model, num_features, keynet_conf['Detector_conf'], ori_module, aff_module)
+        model = KeyNet(pretrained, to_keynet_conf_dict(keynet_conf))
+        super().__init__(model, num_features, keynet_conf.Detector_conf, ori_module, aff_module)
