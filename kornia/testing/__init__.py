@@ -4,13 +4,13 @@ import math
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from itertools import product
-from typing import Any, Callable, Dict, Optional, Sequence, Tuple, TypeVar, Union
+from typing import Any, Callable, Dict, Iterator, Optional, Sequence, Tuple, TypeVar, Union
 
 import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_close as _assert_close
 
-from kornia.core import Tensor, eye, tensor
+from kornia.core import Device, Dtype, Tensor, eye, tensor
 
 __all__ = ["tensor_to_gradcheck_var", "create_eye_batch", "xla_is_available", "assert_close"]
 
@@ -28,19 +28,21 @@ def is_mps_tensor_safe(x: Tensor) -> bool:
 
 
 # TODO: Isn't this function duplicated with eye_like?
-def create_eye_batch(batch_size, eye_size, device=None, dtype=None):
+def create_eye_batch(batch_size: int, eye_size: int, device: Device = None, dtype: Dtype = None) -> Tensor:
     """Create a batch of identity matrices of shape Bx3x3."""
     return eye(eye_size, device=device, dtype=dtype).view(1, eye_size, eye_size).expand(batch_size, -1, -1)
 
 
-def create_random_homography(batch_size, eye_size, std_val=1e-3):
+def create_random_homography(batch_size: int, eye_size: int, std_val: float = 1e-3) -> Tensor:
     """Create a batch of random homographies of shape Bx3x3."""
     std = torch.FloatTensor(batch_size, eye_size, eye_size)
     eye = create_eye_batch(batch_size, eye_size)
     return eye + std.uniform_(-std_val, std_val)
 
 
-def tensor_to_gradcheck_var(tensor, dtype=torch.float64, requires_grad=True):
+def tensor_to_gradcheck_var(
+    tensor: Tensor, dtype: Dtype = torch.float64, requires_grad: bool = True
+) -> Union[Tensor, str]:
     """Convert the input tensor to a valid variable to check the gradient.
 
     `gradcheck` needs 64-bit floating point and requires gradient.
@@ -53,26 +55,27 @@ def tensor_to_gradcheck_var(tensor, dtype=torch.float64, requires_grad=True):
 T = TypeVar('T')
 
 
-def dict_to(data: Dict[T, Any], device: torch.device, dtype: torch.dtype) -> Dict[T, Any]:
+def dict_to(data: Dict[T, Any], device: Device, dtype: Dtype) -> Dict[T, Any]:
     out: Dict[T, Any] = {}
     for key, val in data.items():
         out[key] = val.to(device, dtype) if isinstance(val, Tensor) else val
     return out
 
 
-def compute_patch_error(x, y, h, w):
+def compute_patch_error(x: Tensor, y: Tensor, h: int, w: int) -> Tensor:
     """Compute the absolute error between patches."""
     return torch.abs(x - y)[..., h // 4 : -h // 4, w // 4 : -w // 4].mean()
 
 
-def create_rectified_fundamental_matrix(batch_size):
+
+def create_rectified_fundamental_matrix(batch_size: int) -> Tensor:
     """Create a batch of rectified fundamental matrices of shape Bx3x3."""
     F_rect = tensor([[0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]]).view(1, 3, 3)
     F_repeat = F_rect.expand(batch_size, 3, 3)
     return F_repeat
 
 
-def create_random_fundamental_matrix(batch_size, std_val=1e-3):
+def create_random_fundamental_matrix(batch_size: int, std_val: float = 1e-3) -> Tensor:
     """Create a batch of random fundamental matrices of shape Bx3x3."""
     F_rect = create_rectified_fundamental_matrix(batch_size)
     H_left = create_random_homography(batch_size, 3, std_val)
@@ -92,27 +95,27 @@ _DTYPE_PRECISIONS = {
 
 class BaseTester(ABC):
     @abstractmethod
-    def test_smoke(self, device, dtype):
+    def test_smoke(self, device: Device, dtype: Dtype) -> None:
         raise NotImplementedError("Implement a stupid routine.")
 
     @abstractmethod
-    def test_exception(self, device, dtype):
+    def test_exception(self, device: Device, dtype: Dtype) -> None:
         raise NotImplementedError("Implement a stupid routine.")
 
     @abstractmethod
-    def test_cardinality(self, device, dtype):
+    def test_cardinality(self, device: Device, dtype: Dtype) -> None:
         raise NotImplementedError("Implement a stupid routine.")
 
     # TODO: add @abstractmethod
-    def test_dynamo(self, device, dtype, torch_optimizer):
+    def test_dynamo(self, device: Device, dtype: Dtype, torch_optimizer: Callable[..., Any]) -> None:
         pass  # TODO: raise NotImplementedError -- now we see a bunch of dynamo tests running by inheritance
 
     @abstractmethod
-    def test_gradcheck(self, device):
+    def test_gradcheck(self, device: Device) -> None:
         raise NotImplementedError("Implement a stupid routine.")
 
     @abstractmethod
-    def test_module(self, device, dtype):
+    def test_module(self, device: Device, dtype: Dtype) -> None:
         raise NotImplementedError("Implement a stupid routine.")
 
     def assert_close(
@@ -166,7 +169,7 @@ class BaseTester(ABC):
 
 
 def generate_two_view_random_scene(
-    device: torch.device = torch.device("cpu"), dtype: torch.dtype = torch.float32
+    device: Device = torch.device("cpu"), dtype: Dtype = torch.float32
 ) -> Dict[str, Tensor]:
     from kornia.geometry import epipolar as epi
 
@@ -206,7 +209,7 @@ def generate_two_view_random_scene(
     return dict(K1=K1, K2=K2, R1=R1, R2=R2, t1=t1, t2=t2, P1=P1, P2=P2, F=F_mat, X=X, x1=x1, x2=x2)
 
 
-def cartesian_product_of_parameters(**possible_parameters):
+def cartesian_product_of_parameters(**possible_parameters: Sequence[Any]) -> Iterator[Dict[str, Any]]:
     """Create cartesian product of given parameters."""
     parameter_names = possible_parameters.keys()
     possible_values = [possible_parameters[parameter_name] for parameter_name in parameter_names]
@@ -215,7 +218,7 @@ def cartesian_product_of_parameters(**possible_parameters):
         yield dict(zip(parameter_names, param_combination))
 
 
-def default_with_one_parameter_changed(*, default={}, **possible_parameters):
+def default_with_one_parameter_changed(*, default: Dict[str, Any] = {}, **possible_parameters: Any) -> Any:
     if not isinstance(default, dict):
         raise AssertionError(f"default should be a dict not a {type(default)}")
 
@@ -226,7 +229,7 @@ def default_with_one_parameter_changed(*, default={}, **possible_parameters):
             yield param_set
 
 
-def _get_precision(device: torch.device, dtype: torch.dtype) -> float:
+def _get_precision(device: torch.device, dtype: Dtype) -> float:
     if 'xla' in device.type:
         return 1e-2
     if dtype == torch.float16:
