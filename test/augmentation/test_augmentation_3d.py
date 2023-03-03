@@ -611,7 +611,9 @@ class TestRandomRotation3D:
 
         input_tensor = torch.rand((3, 3, 3)).to(device)  # 3 x 3 x 3
         input_tensor = utils.tensor_to_gradcheck_var(input_tensor)  # to var
-        assert gradcheck(RandomRotation3D(degrees=(15.0, 15.0), p=1.0), (input_tensor,), raise_exception=True, fast_mode=True)
+        assert gradcheck(
+            RandomRotation3D(degrees=(15.0, 15.0), p=1.0), (input_tensor,), raise_exception=True, fast_mode=True
+        )
 
 
 class TestRandomCrop3D:
@@ -707,9 +709,9 @@ class TestRandomCrop3D:
     def test_padding_batch(self, padding, device, dtype):
         torch.manual_seed(42)
         batch_size = 2
-        input_tensor = torch.tensor([[[[0.0, 1.0, 2.0], [3.0, 4.0, 5.0], [6.0, 7.0, 8.0]]]], device=device, dtype=dtype).repeat(
-            batch_size, 1, 3, 1, 1
-        )
+        input_tensor = torch.tensor(
+            [[[[0.0, 1.0, 2.0], [3.0, 4.0, 5.0], [6.0, 7.0, 8.0]]]], device=device, dtype=dtype
+        ).repeat(batch_size, 1, 3, 1, 1)
         expected = torch.tensor(
             [
                 [
