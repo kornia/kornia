@@ -363,6 +363,7 @@ def main():
     kernel = torch.tensor([[0, 1, 0], [1, 1, 1], [0, 1, 0]])
     transforms: dict = {
         "bilateral_blur": (((11, 11), 0.1, (3, 3)), 1),
+        "joint_bilateral_blur": (((11, 11), 0.1, (3, 3)), 1),
         "box_blur": (((5, 5),), 1),
         "median_blur": (((5, 5),), 1),
         "gaussian_blur2d": (((5, 5), (1.5, 1.5)), 1),
@@ -378,7 +379,11 @@ def main():
     # ITERATE OVER THE TRANSFORMS
     for fn_name, (args, num_samples) in transforms.items():
         img_in = img5.repeat(num_samples, 1, 1, 1)
-        args_in = (img_in, *args)
+        if fn_name == "joint_bilateral_blur":
+            guide = K.geometry.resize(img2.repeat(num_samples, 1, 1, 1), img_in.shape[-2:])
+            args_in = (img_in, guide, *args)
+        else:
+            args_in = (img_in, *args)
         # import function and apply
         fn = getattr(mod, fn_name)
         out = fn(*args_in)
@@ -392,6 +397,8 @@ def main():
             out = K.enhance.normalize_min_max(out)
         if fn_name == "spatial_gradient":
             out = out.permute(2, 1, 0, 3, 4).squeeze()
+        if fn_name == "joint_bilateral_blur":
+            out = torch.cat([args_in[1], out], dim=-1)
         # save the output image
         out = torch.cat([img_in[0], *(out[i] for i in range(out.size(0)))], dim=-1)
         out_np = K.utils.tensor_to_image((out * 255.0).byte())

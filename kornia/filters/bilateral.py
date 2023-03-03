@@ -14,16 +14,20 @@ def _bilateral_blur(
     sigma_color: float | Tensor,
     sigma_space: tuple[float, float] | Tensor,
     border_type: str = 'reflect',
-    color_distance_type: str = "l1",
+    color_distance_type: str = 'l1',
 ) -> Tensor:
     "Single implementation for both Bilateral Filter and Joint Bilateral Filter"
 
     KORNIA_CHECK_IS_TENSOR(input)
     KORNIA_CHECK_SHAPE(input, ['B', 'C', 'H', 'W'])
     if guidance is not None:
+        # NOTE: allow guidance and input having different number of channels
         KORNIA_CHECK_IS_TENSOR(guidance)
         KORNIA_CHECK_SHAPE(guidance, ['B', 'C', 'H', 'W'])
-        KORNIA_CHECK(guidance.shape[-2:] == input.shape[-2:], "guidance and input should have the same size")
+        KORNIA_CHECK(
+            (guidance.shape[0] == input.shape[0]) and (guidance.shape[-2:] == input.shape[-2:]),
+            "guidance and input should have the same batch size and spatial dimensions",
+        )
 
     if isinstance(sigma_color, Tensor):
         KORNIA_CHECK_SHAPE(sigma_color, ['B'])
@@ -65,7 +69,7 @@ def bilateral_blur(
     sigma_color: float | Tensor,
     sigma_space: tuple[float, float] | Tensor,
     border_type: str = 'reflect',
-    color_distance_type: str = "l1",
+    color_distance_type: str = 'l1',
 ) -> Tensor:
     r"""Blur a tensor using a Bilateral filter.
 
@@ -109,9 +113,11 @@ def joint_bilateral_blur(
     sigma_color: float | Tensor,
     sigma_space: tuple[float, float] | Tensor,
     border_type: str = 'reflect',
-    color_distance_type: str = "l1",
+    color_distance_type: str = 'l1',
 ) -> Tensor:
     r"""Blur a tensor using a Joint Bilateral filter.
+
+    .. image:: _static/img/joint_bilateral_blur.png
 
     This operator is almost identical to a Bilateral filter. The only difference
     is that the color Gaussian kernel is computed based on another image called
