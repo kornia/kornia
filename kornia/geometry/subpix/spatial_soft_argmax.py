@@ -1,4 +1,4 @@
-from typing import Tuple, Union
+from __future__ import annotations
 
 import torch
 import torch.nn.functional as F
@@ -130,10 +130,10 @@ class ConvSoftArgmax2d(Module):
 
     def __init__(
         self,
-        kernel_size: Tuple[int, int] = (3, 3),
-        stride: Tuple[int, int] = (1, 1),
-        padding: Tuple[int, int] = (1, 1),
-        temperature: Union[Tensor, float] = tensor(1.0),
+        kernel_size: tuple[int, int] = (3, 3),
+        stride: tuple[int, int] = (1, 1),
+        padding: tuple[int, int] = (1, 1),
+        temperature: Tensor | float = tensor(1.0),
         normalized_coordinates: bool = True,
         eps: float = 1e-8,
         output_value: bool = False,
@@ -159,7 +159,7 @@ class ConvSoftArgmax2d(Module):
             f"output_value={self.output_value})"
         )
 
-    def forward(self, x: Tensor) -> Union[Tensor, Tuple[Tensor, Tensor]]:
+    def forward(self, x: Tensor) -> Tensor | tuple[Tensor, Tensor]:
         return conv_soft_argmax2d(
             x,
             self.kernel_size,
@@ -180,10 +180,10 @@ class ConvSoftArgmax3d(Module):
 
     def __init__(
         self,
-        kernel_size: Tuple[int, int, int] = (3, 3, 3),
-        stride: Tuple[int, int, int] = (1, 1, 1),
-        padding: Tuple[int, int, int] = (1, 1, 1),
-        temperature: Union[Tensor, float] = tensor(1.0),
+        kernel_size: tuple[int, int, int] = (3, 3, 3),
+        stride: tuple[int, int, int] = (1, 1, 1),
+        padding: tuple[int, int, int] = (1, 1, 1),
+        temperature: Tensor | float = tensor(1.0),
         normalized_coordinates: bool = False,
         eps: float = 1e-8,
         output_value: bool = True,
@@ -213,7 +213,7 @@ class ConvSoftArgmax3d(Module):
             f"output_value={self.output_value})"
         )
 
-    def forward(self, x: Tensor) -> Union[Tensor, Tuple[Tensor, Tensor]]:
+    def forward(self, x: Tensor) -> Tensor | tuple[Tensor, Tensor]:
         return conv_soft_argmax3d(
             x,
             self.kernel_size,
@@ -229,14 +229,14 @@ class ConvSoftArgmax3d(Module):
 
 def conv_soft_argmax2d(
     input: Tensor,
-    kernel_size: Tuple[int, int] = (3, 3),
-    stride: Tuple[int, int] = (1, 1),
-    padding: Tuple[int, int] = (1, 1),
-    temperature: Union[Tensor, float] = tensor(1.0),
+    kernel_size: tuple[int, int] = (3, 3),
+    stride: tuple[int, int] = (1, 1),
+    padding: tuple[int, int] = (1, 1),
+    temperature: Tensor | float = tensor(1.0),
     normalized_coordinates: bool = True,
     eps: float = 1e-8,
     output_value: bool = False,
-) -> Union[Tensor, Tuple[Tensor, Tensor]]:
+) -> Tensor | tuple[Tensor, Tensor]:
     r"""Compute the convolutional spatial Soft-Argmax 2D over the windows of a given heatmap.
 
     .. math::
@@ -342,15 +342,15 @@ def conv_soft_argmax2d(
 
 def conv_soft_argmax3d(
     input: Tensor,
-    kernel_size: Tuple[int, int, int] = (3, 3, 3),
-    stride: Tuple[int, int, int] = (1, 1, 1),
-    padding: Tuple[int, int, int] = (1, 1, 1),
-    temperature: Union[Tensor, float] = tensor(1.0),
+    kernel_size: tuple[int, int, int] = (3, 3, 3),
+    stride: tuple[int, int, int] = (1, 1, 1),
+    padding: tuple[int, int, int] = (1, 1, 1),
+    temperature: Tensor | float = tensor(1.0),
     normalized_coordinates: bool = False,
     eps: float = 1e-8,
     output_value: bool = True,
     strict_maxima_bonus: float = 0.0,
-) -> Union[Tensor, Tuple[Tensor, Tensor]]:
+) -> Tensor | tuple[Tensor, Tensor]:
     r"""Compute the convolutional spatial Soft-Argmax 3D over the windows of a given heatmap.
 
     .. math::
@@ -518,7 +518,7 @@ class SpatialSoftArgmax2d(Module):
         return spatial_soft_argmax2d(input, self.temperature, self.normalized_coordinates)
 
 
-def conv_quad_interp3d(input: Tensor, strict_maxima_bonus: float = 10.0, eps: float = 1e-7) -> Tuple[Tensor, Tensor]:
+def conv_quad_interp3d(input: Tensor, strict_maxima_bonus: float = 10.0, eps: float = 1e-7) -> tuple[Tensor, Tensor]:
     r"""Compute the single iteration of quadratic interpolation of the extremum (max or min).
 
     Args:
@@ -620,5 +620,5 @@ class ConvQuadInterp3d(Module):
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(strict_maxima_bonus={self.strict_maxima_bonus})"
 
-    def forward(self, x: Tensor) -> Tuple[Tensor, Tensor]:
+    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
         return conv_quad_interp3d(x, self.strict_maxima_bonus, self.eps)

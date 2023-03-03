@@ -1,4 +1,4 @@
-from typing import Tuple
+from __future__ import annotations
 
 import torch
 import torch.nn.functional as F
@@ -31,14 +31,14 @@ class NonMaximaSuppression2d(Module):
     """
     kernel: Tensor
 
-    def __init__(self, kernel_size: Tuple[int, int]):
+    def __init__(self, kernel_size: tuple[int, int]):
         super().__init__()
-        self.kernel_size: Tuple[int, int] = kernel_size
-        self.padding: Tuple[int, int, int, int] = self._compute_zero_padding2d(kernel_size)
+        self.kernel_size: tuple[int, int] = kernel_size
+        self.padding: tuple[int, int, int, int] = self._compute_zero_padding2d(kernel_size)
         self.register_buffer('kernel', _get_nms_kernel2d(*kernel_size))
 
     @staticmethod
-    def _compute_zero_padding2d(kernel_size: Tuple[int, int]) -> Tuple[int, int, int, int]:
+    def _compute_zero_padding2d(kernel_size: tuple[int, int]) -> tuple[int, int, int, int]:
         if not isinstance(kernel_size, tuple):
             raise AssertionError(type(kernel_size))
         if len(kernel_size) != 2:
@@ -71,14 +71,14 @@ class NonMaximaSuppression2d(Module):
 class NonMaximaSuppression3d(Module):
     r"""Apply non maxima suppression to filter."""
 
-    def __init__(self, kernel_size: Tuple[int, int, int]):
+    def __init__(self, kernel_size: tuple[int, int, int]):
         super().__init__()
-        self.kernel_size: Tuple[int, int, int] = kernel_size
-        self.padding: Tuple[int, int, int, int, int, int] = self._compute_zero_padding3d(kernel_size)
+        self.kernel_size: tuple[int, int, int] = kernel_size
+        self.padding: tuple[int, int, int, int, int, int] = self._compute_zero_padding3d(kernel_size)
         self.kernel = _get_nms_kernel3d(*kernel_size)
 
     @staticmethod
-    def _compute_zero_padding3d(kernel_size: Tuple[int, int, int]) -> Tuple[int, int, int, int, int, int]:
+    def _compute_zero_padding3d(kernel_size: tuple[int, int, int]) -> tuple[int, int, int, int, int, int]:
         if not isinstance(kernel_size, tuple):
             raise AssertionError(type(kernel_size))
         if len(kernel_size) != 3:
@@ -149,7 +149,7 @@ class NonMaximaSuppression3d(Module):
 # functional api
 
 
-def nms2d(input: Tensor, kernel_size: Tuple[int, int], mask_only: bool = False) -> Tensor:
+def nms2d(input: Tensor, kernel_size: tuple[int, int], mask_only: bool = False) -> Tensor:
     r"""Apply non maxima suppression to filter.
 
     See :class:`~kornia.geometry.subpix.NonMaximaSuppression2d` for details.
@@ -157,7 +157,7 @@ def nms2d(input: Tensor, kernel_size: Tuple[int, int], mask_only: bool = False) 
     return NonMaximaSuppression2d(kernel_size)(input, mask_only)
 
 
-def nms3d(input: Tensor, kernel_size: Tuple[int, int, int], mask_only: bool = False) -> Tensor:
+def nms3d(input: Tensor, kernel_size: tuple[int, int, int], mask_only: bool = False) -> Tensor:
     r"""Apply non maxima suppression to filter.
 
     See :class:`~kornia.feature.NonMaximaSuppression3d` for details.

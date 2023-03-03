@@ -1,20 +1,19 @@
+from __future__ import annotations
+
 r"""Implementation of "differentiable spatial to numerical" (soft-argmax) operations, as described in the paper
 "Numerical Coordinate Regression with Convolutional Neural Networks" by Nibali et al."""
-
-from typing import Tuple
 
 import torch
 import torch.nn.functional as F
 
 from kornia.core import Tensor, concatenate
-from kornia.testing import check_is_tensor
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.utils.grid import create_meshgrid
 
 
-def _validate_batched_image_tensor_input(tensor):
-    check_is_tensor(tensor)
-    if not len(tensor.shape) == 4:
-        raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {tensor.shape}")
+def _validate_batched_image_tensor_input(tensor: Tensor) -> None:
+    KORNIA_CHECK_IS_TENSOR(tensor)
+    KORNIA_CHECK_SHAPE(tensor, ['B', 'C', 'H', 'W'])
 
 
 def spatial_softmax2d(input: Tensor, temperature: Tensor = torch.tensor(1.0)) -> Tensor:
@@ -99,7 +98,7 @@ def _safe_zero_division(numerator: Tensor, denominator: Tensor, eps: float = 1e-
     return numerator / torch.clamp(denominator, min=eps)
 
 
-def render_gaussian2d(mean: Tensor, std: Tensor, size: Tuple[int, int], normalized_coordinates: bool = True) -> Tensor:
+def render_gaussian2d(mean: Tensor, std: Tensor, size: tuple[int, int], normalized_coordinates: bool = True) -> Tensor:
     r"""Render the PDF of a 2D Gaussian distribution.
 
     Args:
