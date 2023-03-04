@@ -12,6 +12,7 @@ Blurring
 .. autofunction:: blur_pool2d
 .. autofunction:: box_blur
 .. autofunction:: gaussian_blur2d
+.. autofunction:: joint_bilateral_blur
 .. autofunction:: max_blur_pool2d
 .. autofunction:: median_blur
 .. autofunction:: motion_blur
@@ -83,5 +84,6 @@ Module
 .. autoclass:: MaxBlurPool2D
 .. autoclass:: MedianBlur
 .. autoclass:: GaussianBlur2d
+.. autoclass:: JointBilateralBlur
 .. autoclass:: MotionBlur
 .. autoclass:: UnsharpMask

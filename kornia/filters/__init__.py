@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .bilateral import BilateralBlur, bilateral_blur
+from .bilateral import BilateralBlur, JointBilateralBlur, bilateral_blur, joint_bilateral_blur
 from .blur import BoxBlur, box_blur
 from .blur_pool import (
     BlurPool2D,
@@ -99,5 +99,7 @@ __all__ = [
     "get_gaussian_kernel2d_t",
     "get_gaussian_kernel3d_t",
     "bilateral_blur",
+    "joint_bilateral_blur",
     "BilateralBlur",
+    "JointBilateralBlur",
 ]
