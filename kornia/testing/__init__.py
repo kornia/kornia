@@ -67,7 +67,6 @@ def compute_patch_error(x: Tensor, y: Tensor, h: int, w: int) -> Tensor:
     return torch.abs(x - y)[..., h // 4 : -h // 4, w // 4 : -w // 4].mean()
 
 
-
 def create_rectified_fundamental_matrix(batch_size: int) -> Tensor:
     """Create a batch of rectified fundamental matrices of shape Bx3x3."""
     F_rect = tensor([[0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]]).view(1, 3, 3)
