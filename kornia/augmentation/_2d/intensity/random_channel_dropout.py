@@ -1,6 +1,7 @@
 from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
+
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK
@@ -82,9 +83,9 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
         num_channels = input.shape[-3]
         KORNIA_CHECK(self.max_channel < num_channels, "Can not drop all channels in ChannelDropout.")
 
-        print(num_channels)
-        param = self.generate_parameters(batch_shape=(self.min_channel, self.max_channel, 1))
-        num_channels_to_drop = param["channel_params"][0]
+        num_channels_to_drop = torch.randint(low=self.min_channel, 
+                                                high=(self.max_channel + 1), 
+                                                    size=(1,))[0]  # +1 because highest integer to be drawn is not included
 
         # -1 so that the high threshold of randint in generate_parameters is = to num_channels so the range is from 0 to num_channels - 1
         channels_to_drop = self.generate_parameters(batch_shape=(0, num_channels - 1, num_channels_to_drop))["channel_params"].tolist() #tolist to fix typing tests
