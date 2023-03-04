@@ -65,12 +65,6 @@ def compute_patch_error(x, y, h, w):
     return torch.abs(x - y)[..., h // 4 : -h // 4, w // 4 : -w // 4].mean()
 
 
-def check_is_tensor(obj):
-    """Check whether the supplied object is a tensor."""
-    if not isinstance(obj, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(obj)}")
-
-
 def create_rectified_fundamental_matrix(batch_size):
     """Create a batch of rectified fundamental matrices of shape Bx3x3."""
     F_rect = tensor([[0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]]).view(1, 3, 3)

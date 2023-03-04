@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from .dsnt import render_gaussian2d, spatial_expectation2d, spatial_softmax2d
 from .nms import NonMaximaSuppression2d, NonMaximaSuppression3d, nms2d, nms3d
 from .spatial_soft_argmax import (
