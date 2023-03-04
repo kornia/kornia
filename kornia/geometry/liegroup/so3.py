@@ -51,7 +51,7 @@ class So3(Module):
     def __getitem__(self, idx: Union[int, slice]) -> 'So3':
         return So3(self._q[idx])
 
-    def __mul__(self, right):
+    def __mul__(self, right: 'So3') -> 'So3':
         """Compose two So3 transformations.
 
         Args:

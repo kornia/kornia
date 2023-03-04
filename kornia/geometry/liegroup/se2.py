@@ -79,7 +79,7 @@ class Se2(Module):
     def __mul__(self, right: Tensor) -> Tensor:
         ...
 
-    def __mul__(self, right):
+    def __mul__(self, right: Union['Se2', Tensor]) -> Union['Se2', Tensor]:
         """Compose two Se2 transformations.
 
         Args:
@@ -179,7 +179,7 @@ class Se2(Module):
         return stack((upsilon[..., 0, 0], upsilon[..., 1, 0], theta), -1)
 
     @staticmethod
-    def hat(v):
+    def hat(v: Tensor) -> Tensor:
         """Converts elements from vector space to lie algebra. Returns matrix of shape :math:`(B, 3, 3)`.
 
         Args:

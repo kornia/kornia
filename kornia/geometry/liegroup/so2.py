@@ -64,7 +64,7 @@ class So2(Module):
     def __mul__(self, right: Tensor) -> Tensor:
         ...
 
-    def __mul__(self, right):
+    def __mul__(self, right: Union['So2', Tensor]) -> Union['So2', Tensor]:
         """Performs a left-multiplication either rotation concatenation or point-transform.
 
         Args:
