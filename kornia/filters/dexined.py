@@ -15,7 +15,7 @@ from kornia.utils import map_location_to_cpu
 url: str = "http://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth"
 
 
-def weight_init(m):
+def weight_init(m: Module) -> None:
     if isinstance(m, (nn.Conv2d,)):
         # torch.nn.init.xavier_uniform_(m.weight, gain=1.0)
         torch.nn.init.xavier_normal_(m.weight, gain=1.0)
@@ -39,7 +39,7 @@ def weight_init(m):
 
 
 class CoFusion(Module):
-    def __init__(self, in_ch, out_ch):
+    def __init__(self, in_ch: int, out_ch: int) -> None:
         super().__init__()
         self.conv1 = nn.Conv2d(in_ch, 64, kernel_size=3, stride=1, padding=1)
         self.conv2 = nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1)
@@ -59,7 +59,7 @@ class CoFusion(Module):
 
 
 class _DenseLayer(nn.Sequential):
-    def __init__(self, input_features, out_features):
+    def __init__(self, input_features: int, out_features: int) -> None:
         super().__init__(
             OrderedDict(
                 [
@@ -82,7 +82,7 @@ class _DenseLayer(nn.Sequential):
 
 
 class _DenseBlock(nn.Sequential):
-    def __init__(self, num_layers, input_features, out_features):
+    def __init__(self, num_layers: int, input_features: int, out_features: int) -> None:
         super().__init__()
         for i in range(num_layers):
             layer = _DenseLayer(input_features, out_features)
@@ -97,7 +97,7 @@ class _DenseBlock(nn.Sequential):
 
 
 class UpConvBlock(Module):
-    def __init__(self, in_features, up_scale):
+    def __init__(self, in_features: int, up_scale: int) -> None:
         super().__init__()
         self.up_factor = 2
         self.constant_features = 16
@@ -130,7 +130,7 @@ class UpConvBlock(Module):
 
 
 class SingleConvBlock(Module):
-    def __init__(self, in_features, out_features, stride, use_bs=True):
+    def __init__(self, in_features: int, out_features: int, stride: int, use_bs: bool = True) -> None:
         super().__init__()
         self.use_bn = use_bs
         self.conv = nn.Conv2d(in_features, out_features, 1, stride=stride, bias=True)
@@ -144,7 +144,14 @@ class SingleConvBlock(Module):
 
 
 class DoubleConvBlock(nn.Sequential):
-    def __init__(self, in_features, mid_features, out_features=None, stride=1, use_act=True):
+    def __init__(
+        self,
+        in_features: int,
+        mid_features: int,
+        out_features: int | None = None,
+        stride: int = 1,
+        use_act: bool = True,
+    ) -> None:
         super().__init__()
         if out_features is None:
             out_features = mid_features
