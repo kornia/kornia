@@ -1,4 +1,3 @@
-import pytest
 import torch
 from torch.autograd import gradcheck
 from torch.nn.functional import mse_loss
@@ -153,18 +152,12 @@ class TestSpatialSoftArgmax2d:
         loss = (loss1 + loss2).mean()
         loss.backward()
 
-    def test_jit(self, device, dtype):
-        sample = torch.rand((2, 3, 7, 7), dtype=dtype, device=device)
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        inpt = torch.rand((2, 3, 7, 7), dtype=dtype, device=device)
         op = kornia.geometry.subpix.spatial_soft_argmax2d
-        op_jit = torch.jit.script(op)
-        assert_close(op(sample), op_jit(sample), rtol=0, atol=1e-5)
+        op_optimized = torch_optimizer(op)
 
-    @pytest.mark.skip(reason="it works but raises some warnings.")
-    def test_jit_trace(self, device, dtype):
-        sample = torch.rand((2, 3, 7, 7), dtype=dtype, device=device)
-        op = kornia.geometry.subpix.spatial_soft_argmax2d
-        op_jit = torch.jit.trace(op, (sample,))
-        assert_close(op(sample), op_jit(sample), rtol=0, atol=1e-5)
+        assert_close(op(inpt), op_optimized(inpt))
 
 
 class TestConvSoftArgmax2d:
