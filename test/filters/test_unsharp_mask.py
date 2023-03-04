@@ -34,11 +34,11 @@ class Testunsharp(BaseTester):
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
-        input = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
+        inpt = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
 
         kernel_size = (3, 3)
         sigma = (1.5, 2.1)
-        actual = unsharp_mask(input, kernel_size, sigma, "replicate")
+        actual = unsharp_mask(inpt, kernel_size, sigma, "replicate")
         assert actual.is_contiguous()
 
     def test_gradcheck(self, device):

@@ -37,9 +37,9 @@ class TestMotionBlur(BaseTester):
         angle = 200.0
         direction = 0.3
 
-        input = torch.rand(shape, device=device, dtype=dtype)
+        sample = torch.rand(shape, device=device, dtype=dtype)
         motion = MotionBlur(ksize, angle, direction)
-        assert motion(input).shape == shape
+        assert motion(sample).shape == shape
 
     @pytest.mark.skip(reason='nothing to test')
     def test_exception(self):
@@ -80,9 +80,9 @@ class TestMotionBlur(BaseTester):
         angle = 34.0
         direction = -0.2
 
-        input = torch.rand(batch_shape, device=device)
-        input = tensor_to_gradcheck_var(input)
-        self.gradcheck(motion_blur, (input, ksize, angle, direction, "replicate"), nondet_tol=1e-8)
+        sample = torch.rand(batch_shape, device=device)
+        sample = tensor_to_gradcheck_var(sample)
+        self.gradcheck(motion_blur, (sample, ksize, angle, direction, "replicate"), nondet_tol=1e-8)
 
     def test_module(self, device, dtype):
         params = [3, 20.0, 0.5]
@@ -128,9 +128,9 @@ class TestMotionBlur3D(BaseTester):
         angle = (200.0, 15.0, 120.0)
         direction = 0.3
 
-        input = torch.rand(shape, device=device, dtype=dtype)
+        sample = torch.rand(shape, device=device, dtype=dtype)
         motion = MotionBlur3D(ksize, angle, direction)
-        assert motion(input).shape == shape
+        assert motion(sample).shape == shape
 
     @pytest.mark.skip(reason='nothing to test')
     def test_exception(self):
@@ -171,9 +171,9 @@ class TestMotionBlur3D(BaseTester):
         angle = (0.0, 360.0, 150.0)
         direction = -0.2
 
-        input = torch.rand(batch_shape, device=device)
-        input = tensor_to_gradcheck_var(input)
-        self.gradcheck(motion_blur3d, (input, ksize, angle, direction, "replicate"), nondet_tol=1e-8)
+        sample = torch.rand(batch_shape, device=device)
+        sample = tensor_to_gradcheck_var(sample)
+        self.gradcheck(motion_blur3d, (sample, ksize, angle, direction, "replicate"), nondet_tol=1e-8)
 
     def test_module(self, device, dtype):
         params = [3, (0.0, 360.0, 150.0), 0.5]
