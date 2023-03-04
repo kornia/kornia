@@ -140,10 +140,10 @@ def test_get_gaussian_discrete_kernel1d_tensor(window_size, sigma, device, dtype
 @pytest.mark.parametrize("ksize_y", [3, 7])
 @pytest.mark.parametrize("sigma", [(1.5, 1.5), (2.1, 2.1)])
 def test_gaussian_blur2d_float(ksize_x, ksize_y, sigma, device, dtype):
-    input = torch.rand(1, 3, 16, 16, device=device, dtype=dtype)
+    sample = torch.rand(1, 3, 16, 16, device=device, dtype=dtype)
 
-    actual = gaussian_blur2d(input, (ksize_x, ksize_y), sigma, "replicate", separable=False)
-    actual_sep = gaussian_blur2d(input, (ksize_x, ksize_y), sigma, "replicate", separable=True)
+    actual = gaussian_blur2d(sample, (ksize_x, ksize_y), sigma, "replicate", separable=False)
+    actual_sep = gaussian_blur2d(sample, (ksize_x, ksize_y), sigma, "replicate", separable=True)
 
     assert_close(actual, actual_sep)
 
@@ -154,9 +154,9 @@ def test_gaussian_blur2d_float(ksize_x, ksize_y, sigma, device, dtype):
 def test_gaussian_blur2d_tensor(ksize_x, ksize_y, sigma, device, dtype):
     sigma = torch.tensor(sigma, device=device, dtype=dtype)
     bs = sigma.shape[0]
-    input = torch.rand(bs, 3, 16, 16, device=device, dtype=dtype)
-    actual = gaussian_blur2d(input, (ksize_x, ksize_y), sigma, "replicate", separable=False)
-    actual_sep = gaussian_blur2d(input, (ksize_x, ksize_y), sigma, "replicate", separable=True)
+    sample = torch.rand(bs, 3, 16, 16, device=device, dtype=dtype)
+    actual = gaussian_blur2d(sample, (ksize_x, ksize_y), sigma, "replicate", separable=False)
+    actual_sep = gaussian_blur2d(sample, (ksize_x, ksize_y), sigma, "replicate", separable=True)
 
     assert_close(actual, actual_sep)
 
@@ -186,8 +186,8 @@ class TestGaussianBlur2d(BaseTester):
     @pytest.mark.parametrize("kernel_size", [3, (5, 5), (5, 7)])
     def test_cardinality(self, shape, kernel_size, device, dtype):
         sigma = (1.5, 2.1)
-        input = torch.rand(shape, device=device, dtype=dtype)
-        actual = gaussian_blur2d(input, kernel_size, sigma, "replicate")
+        sample = torch.rand(shape, device=device, dtype=dtype)
+        actual = gaussian_blur2d(sample, kernel_size, sigma, "replicate")
         assert actual.shape == shape
 
     def test_exception(self):
@@ -203,11 +203,11 @@ class TestGaussianBlur2d(BaseTester):
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
-        input = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
+        sample = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
 
         kernel_size = (3, 3)
         sigma = (1.5, 2.1)
-        actual = gaussian_blur2d(input, kernel_size, sigma, "replicate")
+        actual = gaussian_blur2d(sample, kernel_size, sigma, "replicate")
         assert actual.is_contiguous()
 
     def test_gradcheck(self, device):
@@ -217,9 +217,9 @@ class TestGaussianBlur2d(BaseTester):
         sigma = (1.5, 2.1)
 
         # evaluate function gradient
-        input = torch.rand(batch_shape, device=device)
-        input = tensor_to_gradcheck_var(input)  # to var
-        self.gradcheck(gaussian_blur2d, (input, kernel_size, sigma, "replicate"))
+        sample = torch.rand(batch_shape, device=device)
+        sample = tensor_to_gradcheck_var(sample)  # to var
+        self.gradcheck(gaussian_blur2d, (sample, kernel_size, sigma, "replicate"))
 
     @pytest.mark.parametrize("kernel_size", [3, (5, 5), (5, 7)])
     @pytest.mark.parametrize("sigma", [(1.5, 2.1), (0.5, 0.5)])

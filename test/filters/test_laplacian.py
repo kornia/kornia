@@ -61,8 +61,8 @@ class TestLaplacian(BaseTester):
     @pytest.mark.parametrize("shape", [(1, 4, 8, 15), (2, 3, 11, 7)])
     @pytest.mark.parametrize("kernel_size", [5, (11, 7), 3])
     def test_cardinality(self, shape, kernel_size, device, dtype):
-        input = torch.rand(shape, device=device, dtype=dtype)
-        actual = laplacian(input, kernel_size)
+        sample = torch.rand(shape, device=device, dtype=dtype)
+        actual = laplacian(sample, kernel_size)
         assert actual.shape == shape
 
     @pytest.mark.skip(reason='Nothing to test.')
@@ -71,10 +71,10 @@ class TestLaplacian(BaseTester):
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
-        input = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
+        sample = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
 
         kernel_size = 3
-        actual = laplacian(input, kernel_size)
+        actual = laplacian(sample, kernel_size)
         assert actual.is_contiguous()
 
     def test_gradcheck(self, device):
@@ -83,9 +83,9 @@ class TestLaplacian(BaseTester):
         kernel_size = 3
 
         # evaluate function gradient
-        input = torch.rand(batch_shape, device=device)
-        input = tensor_to_gradcheck_var(input)
-        self.gradcheck(laplacian, (input, kernel_size))
+        sample = torch.rand(batch_shape, device=device)
+        sample = tensor_to_gradcheck_var(sample)
+        self.gradcheck(laplacian, (sample, kernel_size))
 
     def test_module(self, device, dtype):
         params = [3]
