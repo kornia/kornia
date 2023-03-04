@@ -181,7 +181,7 @@ def make_upright(laf: Tensor, eps: float = 1e-9) -> Tensor:
     # matrix to an identity: U, S, V = svd(LAF); LAF_upright = U * S.
     b2a2 = (torch.sqrt(laf[..., 0:1, 1:2] ** 2 + laf[..., 0:1, 0:1] ** 2) + eps).type_as(laf)
     laf1_ell = concatenate([(b2a2 / det).contiguous(), torch.zeros_like(det)], dim=3)
-    laf2_ell = concatenate(  # type: ignore
+    laf2_ell = concatenate(
         [
             ((laf[..., 1:2, 1:2] * laf[..., 0:1, 1:2] + laf[..., 1:2, 0:1] * laf[..., 0:1, 0:1]) / (b2a2 * det)),
             (det / b2a2).contiguous(),
