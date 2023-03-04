@@ -65,14 +65,13 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
         )
         self.min_channel = channel_drop_range[0]
         self.max_channel = channel_drop_range[1]
-    
+
     def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, Tensor]:
-        params =  super().generate_parameters(batch_shape)
+        params = super().generate_parameters(batch_shape)
         # +1 to avoid possible error, when low = high
-        params["channel_params"] =  torch.randint(low = batch_shape[0], high=batch_shape[1] + 1, size= (batch_shape[2],))
+        params["channel_params"] = torch.randint(low=batch_shape[0], high=batch_shape[1] + 1, size=(batch_shape[2],))
 
         return params
-    
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
@@ -83,11 +82,13 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
         num_channels = input.shape[-3]
         KORNIA_CHECK(self.max_channel < num_channels, "Can not drop all channels in ChannelDropout.")
 
-        num_channels_to_drop = int(torch.randint(low=self.min_channel, 
+        num_channels_to_drop = torch.randint(low=self.min_channel, 
                                                 high=(self.max_channel + 1), 
-                                                    size=(1,))[0])  # +1 because highest integer to be drawn is not included
+                                                    size=(1,))[0]  # +1 because highest integer to be drawn is not included
 
         # -1 so that the high threshold of randint in generate_parameters is = to num_channels so the range is from 0 to num_channels - 1
-        channels_to_drop = self.generate_parameters(batch_shape=(0, num_channels - 1, num_channels_to_drop))["channel_params"].tolist() #tolist to fix typing tests
+        channels_to_drop = self.generate_parameters(batch_shape=(0, num_channels - 1, num_channels_to_drop))[
+            "channel_params"
+        ].tolist()  # tolist to fix typing tests
         input[..., channels_to_drop, :, :] = self.fill_value
         return input
