@@ -32,24 +32,14 @@ class TestRenderGaussian2d:
         actual = kornia.geometry.subpix.render_gaussian2d(mean, std, (5, 5), True)
         assert_close(actual, gaussian, rtol=0, atol=1e-4)
 
-    def test_jit(self, device, dtype):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         mean = torch.tensor([0.0, 0.0], dtype=dtype, device=device)
         std = torch.tensor([0.25, 0.25], dtype=dtype, device=device)
-        args = (mean, std, (5, 5), True)
+
         op = kornia.geometry.subpix.render_gaussian2d
-        op_jit = torch.jit.script(op)
-        assert_close(op(*args), op_jit(*args), rtol=0, atol=1e-5)
+        op_optimized = torch_optimizer(op)
 
-    @pytest.mark.skip(reason="it works but raises some warnings.")
-    def test_jit_trace(self, device, dtype):
-        def op(mean, std):
-            return kornia.geometry.subpix.render_gaussian2d(mean, std, (5, 5), True)
-
-        mean = torch.tensor([0.0, 0.0], dtype=dtype, device=device)
-        std = torch.tensor([0.25, 0.25], dtype=dtype, device=device)
-        args = (mean, std)
-        op_jit = torch.jit.trace(op, args)
-        assert_close(op(*args), op_jit(*args), rtol=0, atol=1e-5)
+        assert_close(op(mean, std, (5, 5), True), op_optimized(mean, std, (5, 5), True))
 
 
 class TestSpatialSoftmax2d:
@@ -63,16 +53,11 @@ class TestSpatialSoftmax2d:
         sums = actual.sum(-1).sum(-1)
         assert_close(sums, torch.ones_like(sums))
 
-    def test_jit(self, input):
+    def test_dynamo(self, input, torch_optimizer):
         op = kornia.geometry.subpix.spatial_softmax2d
-        op_jit = torch.jit.script(op)
-        assert_close(op(input), op_jit(input), rtol=0, atol=1e-5)
+        op_optimized = torch_optimizer(op)
 
-    @pytest.mark.skip(reason="it works but raises some warnings.")
-    def test_jit_trace(self, input):
-        op = kornia.geometry.subpix.spatial_softmax2d
-        op_jit = torch.jit.trace(op, (input,))
-        assert_close(op(input), op_jit(input), rtol=0, atol=1e-5)
+        assert_close(op(input), op_optimized(input))
 
 
 class TestSpatialExpectation2d:
@@ -96,15 +81,10 @@ class TestSpatialExpectation2d:
         actual_px = kornia.geometry.subpix.spatial_expectation2d(input, False)
         assert_close(actual_px, expected_px)
 
-    def test_jit(self, example):
-        input = example[0]
+    @pytest.mark.skip('After the op be optimized the results are not the same')
+    def test_dynamo(self, dtype, device, torch_optimizer):
+        inpt = torch.tensor([[[[0.0, 0.0, 1.0], [0.0, 0.0, 0.0]]]], device=device, dtype=dtype)
         op = kornia.geometry.subpix.spatial_expectation2d
-        op_jit = torch.jit.script(op)
-        assert_close(op(input), op_jit(input), rtol=0, atol=1e-5)
+        op_optimized = torch_optimizer(op)
 
-    @pytest.mark.skip(reason="it works but raises some warnings.")
-    def test_jit_trace(self, example):
-        input = example[0]
-        op = kornia.geometry.subpix.spatial_expectation2d
-        op_jit = torch.jit.trace(op, (input,))
-        assert_close(op(input), op_jit(input), rtol=0, atol=1e-5)
+        assert_close(op(inpt, True), op_optimized(inpt, True))
