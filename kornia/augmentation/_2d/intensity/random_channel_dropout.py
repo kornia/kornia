@@ -8,8 +8,7 @@ from kornia.core.check import KORNIA_CHECK
 
 
 class RandomChannelDropout(IntensityAugmentationBase2D):
-    """
-    Randomly Drop Channels in the input Image.
+    """Randomly Drop Channels in the input Image.
 
     Args:
         channel_drop_range: range from which we choose the number of channels to drop.
@@ -70,13 +69,11 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
         self.min_channel = channel_drop_range[0]
         self.max_channel = channel_drop_range[1]
 
-        num_channels_to_drop = torch.randint(low=self.min_channel, 
-                                                high=(self.max_channel + 1), 
-                                                    size=(1,))[0]
+        num_channels_to_drop = torch.randint(low=self.min_channel, high=(self.max_channel + 1), size=(1,))[0]
         self.channels_to_drop = self.generate_parameters(batch_shape=(0, self.max_channel - 1, num_channels_to_drop))[
             "channel_params"
         ].tolist()  # tolist to fix typing tests
-        
+
     def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, Tensor]:
         params = super().generate_parameters(batch_shape)
         # +1 to avoid possible error, when low = high
