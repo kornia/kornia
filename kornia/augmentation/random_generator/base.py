@@ -1,15 +1,17 @@
-from typing import Callable, Dict, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Optional, Tuple, Type, TypeVar, Union
 
 import torch
 from torch.distributions import Distribution
 
 from kornia.core import Device, Module, Tensor
 
+T = TypeVar('T')
+
 
 class _PostInitInjectionMetaClass(type):
     """To inject the ``__post_init__`` function after the creation of each instance."""
 
-    def __call__(cls, *args, **kwargs):
+    def __call__(cls: Type[T], *args: Any, **kwargs: Any) -> T:
         obj = type.__call__(cls, *args, **kwargs)
         obj.__post_init__()
         return obj
@@ -41,7 +43,7 @@ class RandomGeneratorBase(Module, metaclass=_PostInitInjectionMetaClass):
             self.dtype = dtype
 
     # TODO: refine the logic with module.to()
-    def to(self, *args, **kwargs):
+    def to(self, *args: Any, **kwargs: Any) -> 'RandomGeneratorBase':
         device, dtype, non_blocking, convert_to_format = torch._C._nn._parse_to(*args, **kwargs)
         self.set_rng_device_and_dtype(device=device, dtype=dtype)
         return self
@@ -100,7 +102,7 @@ class DistributionWithMapper(Distribution):
             out = self.map_fn(out)
         return out
 
-    def __getattr__(self, attr):
+    def __getattr__(self, attr: str) -> Any:
         try:
             return getattr(self, attr)
         except AttributeError:
