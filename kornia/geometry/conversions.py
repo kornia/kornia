@@ -292,7 +292,7 @@ def angle_axis_to_rotation_matrix(angle_axis: Tensor) -> Tensor:
     if not angle_axis.shape[-1] == 3:
         raise ValueError(f"Input size must be a (*, 3) tensor. Got {angle_axis.shape}")
 
-    def _compute_rotation_matrix(angle_axis, theta2, eps=1e-6):
+    def _compute_rotation_matrix(angle_axis: Tensor, theta2: Tensor, eps: float = 1e-6) -> Tensor:
         # We want to be careful to only evaluate the square root if the
         # norm of the angle_axis vector is greater than zero. Otherwise
         # we get a division by zero.
@@ -315,7 +315,7 @@ def angle_axis_to_rotation_matrix(angle_axis: Tensor) -> Tensor:
         rotation_matrix = concatenate([r00, r01, r02, r10, r11, r12, r20, r21, r22], dim=1)
         return rotation_matrix.view(-1, 3, 3)
 
-    def _compute_rotation_matrix_taylor(angle_axis):
+    def _compute_rotation_matrix_taylor(angle_axis: Tensor) -> Tensor:
         rx, ry, rz = torch.chunk(angle_axis, 3, dim=1)
         k_one = torch.ones_like(rx)
         rotation_matrix = concatenate([k_one, -rz, ry, rz, k_one, -rx, -ry, rx, k_one], dim=1)
@@ -428,7 +428,7 @@ def rotation_matrix_to_quaternion(
 
     trace: Tensor = m00 + m11 + m22
 
-    def trace_positive_cond():
+    def trace_positive_cond() -> Tensor:
         sq = torch.sqrt(trace + 1.0 + eps) * 2.0  # sq = 4 * qw.
         qw = 0.25 * sq
         qx = safe_zero_division(m21 - m12, sq)
@@ -438,7 +438,7 @@ def rotation_matrix_to_quaternion(
             return concatenate((qx, qy, qz, qw), dim=-1)
         return concatenate((qw, qx, qy, qz), dim=-1)
 
-    def cond_1():
+    def cond_1() -> Tensor:
         sq = torch.sqrt(1.0 + m00 - m11 - m22 + eps) * 2.0  # sq = 4 * qx.
         qw = safe_zero_division(m21 - m12, sq)
         qx = 0.25 * sq
@@ -448,7 +448,7 @@ def rotation_matrix_to_quaternion(
             return concatenate((qx, qy, qz, qw), dim=-1)
         return concatenate((qw, qx, qy, qz), dim=-1)
 
-    def cond_2():
+    def cond_2() -> Tensor:
         sq = torch.sqrt(1.0 + m11 - m00 - m22 + eps) * 2.0  # sq = 4 * qy.
         qw = safe_zero_division(m02 - m20, sq)
         qx = safe_zero_division(m01 + m10, sq)
@@ -458,7 +458,7 @@ def rotation_matrix_to_quaternion(
             return concatenate((qx, qy, qz, qw), dim=-1)
         return concatenate((qw, qx, qy, qz), dim=-1)
 
-    def cond_3():
+    def cond_3() -> Tensor:
         sq = torch.sqrt(1.0 + m22 - m00 - m11 + eps) * 2.0  # sq = 4 * qz.
         qw = safe_zero_division(m10 - m01, sq)
         qx = safe_zero_division(m02 + m20, sq)

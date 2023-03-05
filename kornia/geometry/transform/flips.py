@@ -32,7 +32,7 @@ class Vflip(Module):
     def forward(self, input: Tensor) -> Tensor:
         return vflip(input)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return self.__class__.__name__
 
 
@@ -63,7 +63,7 @@ class Hflip(Module):
     def forward(self, input: Tensor) -> Tensor:
         return hflip(input)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return self.__class__.__name__
 
 
@@ -91,7 +91,7 @@ class Rot180(Module):
     def forward(self, input: Tensor) -> Tensor:
         return rot180(input)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return self.__class__.__name__
 
 

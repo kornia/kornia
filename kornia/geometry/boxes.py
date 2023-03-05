@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import cast
 
 import torch
+from torch import Size
 
 from kornia.core import Tensor
 from kornia.geometry.bbox import validate_bbox
@@ -226,7 +227,7 @@ class Boxes:
         return self
 
     @property
-    def shape(self):
+    def shape(self) -> tuple[int, ...] | Size:
         return self.data.shape
 
     def get_boxes_shape(self) -> tuple[torch.Tensor, torch.Tensor]:
@@ -743,7 +744,7 @@ class Boxes3D:
         return self
 
     @property
-    def shape(self):
+    def shape(self) -> tuple[int, ...] | Size:
         return self.data.shape
 
     def get_boxes_shape(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:

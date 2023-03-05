@@ -4,7 +4,7 @@ from typing import Optional, Tuple
 
 import torch
 
-from kornia.core import Tensor
+from kornia.core import Tensor, concatenate
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.linalg import transform_points
@@ -259,8 +259,8 @@ def fundamental_from_projections(P1: Tensor, P2: Tensor) -> Tensor:
     if P1.shape[:-2] != P2.shape[:-2]:
         raise AssertionError
 
-    def vstack(x, y):
-        return torch.cat([x, y], dim=-2)
+    def vstack(x: Tensor, y: Tensor) -> Tensor:
+        return concatenate([x, y], dim=-2)
 
     X1 = P1[..., 1:, :]
     X2 = vstack(P1[..., 2:3, :], P1[..., 0:1, :])

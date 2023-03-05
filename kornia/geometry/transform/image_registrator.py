@@ -41,7 +41,7 @@ class Homography(BaseModel):
     def __repr__(self) -> str:
         return f'{self.__class__.__name__}({self.model})'
 
-    def reset_model(self):
+    def reset_model(self) -> None:
         """Initializes the model with identity transform."""
         torch.nn.init.eye_(self.model)
 

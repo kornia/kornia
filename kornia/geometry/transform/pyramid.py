@@ -342,12 +342,12 @@ def build_pyramid(
     return pyramid
 
 
-def is_powerof_two(x):
+def is_powerof_two(x: int) -> bool:
     # check if number x is a power of two
-    return x and (not (x & (x - 1)))
+    return bool(x) and (not (x & (x - 1)))
 
 
-def find_next_powerof_two(x):
+def find_next_powerof_two(x: int) -> int:
     # return the nearest power of 2
     n = math.ceil(math.log(x) / math.log(2))
     return 2**n

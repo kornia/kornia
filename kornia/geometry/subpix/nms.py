@@ -39,12 +39,13 @@ class NonMaximaSuppression2d(Module):
 
     @staticmethod
     def _compute_zero_padding2d(kernel_size: tuple[int, int]) -> tuple[int, int, int, int]:
+        # TODO: This method is duplicated with some utility function on kornia.filters
         if not isinstance(kernel_size, tuple):
             raise AssertionError(type(kernel_size))
         if len(kernel_size) != 2:
             raise AssertionError(kernel_size)
 
-        def pad(x):
+        def pad(x: int) -> int:
             return (x - 1) // 2  # zero padding function
 
         ky, kx = kernel_size  # we assume a cubic kernel
@@ -79,12 +80,13 @@ class NonMaximaSuppression3d(Module):
 
     @staticmethod
     def _compute_zero_padding3d(kernel_size: tuple[int, int, int]) -> tuple[int, int, int, int, int, int]:
+        # TODO: This method is duplicated with some utility function on kornia.filters
         if not isinstance(kernel_size, tuple):
             raise AssertionError(type(kernel_size))
         if len(kernel_size) != 3:
             raise AssertionError(kernel_size)
 
-        def pad(x):
+        def pad(x: int) -> int:
             return (x - 1) // 2  # zero padding function
 
         kd, ky, kx = kernel_size  # we assume a cubic kernel
