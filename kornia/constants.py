@@ -27,7 +27,7 @@ class _KORNIA_EnumMeta(EnumMeta):
 
         return any(val == other for val in self)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return ' | '.join(f"{self.__name__}.{val.name}" for val in self)
 
 
