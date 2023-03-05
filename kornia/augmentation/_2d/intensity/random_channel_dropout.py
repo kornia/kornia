@@ -69,7 +69,6 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
         )
         self.min_channel = channel_drop_range[0]
         self.max_channel = channel_drop_range[1]
-        print(channel_drop_range)
 
         num_channels_to_drop = torch.randint(low=self.min_channel, 
                                                 high=(self.max_channel + 1), 
