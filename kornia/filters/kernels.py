@@ -7,7 +7,7 @@ from typing import Any
 import torch
 
 from kornia.core import Device, Dtype, Tensor, concatenate, stack, tensor, where, zeros, zeros_like
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.utils import deprecated
 
 
@@ -27,8 +27,7 @@ def _unpack_2d_ks(kernel_size: tuple[int, int] | int) -> tuple[int, int]:
     if isinstance(kernel_size, int):
         kx = ky = kernel_size
     else:
-        KORNIA_CHECK_TYPE(kernel_size, tuple, 'Kernel size should be an integer or a tuple of integer.')
-        KORNIA_CHECK(len(kernel_size) == 2, '2D Kernel size tuple should have a length of 2.')
+        KORNIA_CHECK(len(kernel_size) == 2, '2D Kernel size should have a length of 2.')
         kx, ky = kernel_size
 
     kx = int(kx)
