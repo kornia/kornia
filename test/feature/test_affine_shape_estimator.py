@@ -66,7 +66,7 @@ class TestLAFAffineShapeEstimator:
         inp[:, :, 15:-15, 9:-9] = 1
         laf = torch.tensor([[[[20.0, 0.0, 16.0], [0.0, 20.0, 16.0]]]], device=device, dtype=dtype)
         new_laf = aff(laf, inp)
-        expected = torch.tensor([[[[36.643, 0.0, 16.0], [0.0, 10.916, 16.0]]]], device=device, dtype=dtype)
+        expected = torch.tensor([[[[35.078, 0.0, 16.0], [0.0, 11.403, 16.0]]]], device=device, dtype=dtype)
         assert_close(new_laf, expected, atol=1e-4, rtol=1e-4)
 
     def test_toy_preserve(self, device, dtype):
@@ -75,7 +75,7 @@ class TestLAFAffineShapeEstimator:
         inp[:, :, 15:-15, 9:-9] = 1
         laf = torch.tensor([[[[0.0, 20.0, 16.0], [-20.0, 0.0, 16.0]]]], device=device, dtype=dtype)
         new_laf = aff(laf, inp)
-        expected = torch.tensor([[[[0.0, 36.643, 16.0], [-10.916, 0, 16.0]]]], device=device, dtype=dtype)
+        expected = torch.tensor([[[[0.0, 35.078, 16.0], [-11.403, 0, 16.0]]]], device=device, dtype=dtype)
         assert_close(new_laf, expected, atol=1e-4, rtol=1e-4)
 
     def test_toy_not_preserve(self, device):
@@ -84,7 +84,7 @@ class TestLAFAffineShapeEstimator:
         inp[:, :, 15:-15, 9:-9] = 1
         laf = torch.tensor([[[[0.0, 20.0, 16.0], [-20.0, 0.0, 16.0]]]], device=device)
         new_laf = aff(laf, inp)
-        expected = torch.tensor([[[[36.643, 0, 16.0], [0, 10.916, 16.0]]]], device=device)
+        expected = torch.tensor([[[[35.078, 0, 16.0], [0, 11.403, 16.0]]]], device=device)
         assert_close(new_laf, expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
@@ -137,7 +137,7 @@ class TestLAFAffNetShapeEstimator:
         inp[:, :, 15:-15, 9:-9] = 1
         laf = torch.tensor([[[[20.0, 0.0, 16.0], [0.0, 20.0, 16.0]]]], device=device, dtype=dtype)
         new_laf = aff(laf, inp)
-        expected = torch.tensor([[[[40.8758, 0.0, 16.0], [-0.3824, 9.7857, 16.0]]]], device=device, dtype=dtype)
+        expected = torch.tensor([[[[33.2073, 0.0, 16.0], [-1.3766, 12.0456, 16.0]]]], device=device, dtype=dtype)
         assert_close(new_laf, expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):

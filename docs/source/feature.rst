@@ -92,7 +92,9 @@ Local Affine Frames (LAF)
 .. autofunction:: scale_laf
 .. autofunction:: get_laf_scale
 .. autofunction:: get_laf_center
+.. autofunction:: rotate_laf
 .. autofunction:: get_laf_orientation
+.. autofunction:: set_laf_orientation
 .. autofunction:: laf_from_center_scale_ori
 .. autofunction:: laf_is_inside_image
 .. autofunction:: laf_to_three_points

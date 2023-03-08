@@ -154,10 +154,10 @@ class TestLAFOrienter:
     def test_toy(self, device):
         ori = LAFOrienter(32).to(device)
         inp = torch.zeros(1, 1, 19, 19, device=device)
-        inp[:, :, :, :10] = 1
-        laf = torch.tensor([[[[0, 5.0, 8.0], [5.0, 0.0, 8.0]]]], device=device)
+        inp[:, :, 5:, :10] = 1
+        laf = torch.tensor([[[[5.0, 0.0, 8.0], [0.0, 5.0, 8.0]]]], device=device)
         new_laf = ori(laf, inp)
-        expected = torch.tensor([[[[0.0, 5.0, 8.0], [-5.0, 0, 8.0]]]], device=device)
+        expected = torch.tensor([[[[-5.0, 0.0, 8.0], [0.0, -5.0, 8.0]]]], device=device)
         assert_close(new_laf, expected)
 
     def test_gradcheck(self, device):
