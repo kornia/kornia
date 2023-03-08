@@ -413,16 +413,14 @@ class TestExtractPatchesSimple:
 
     def test_same_odd(self, device, dtype):
         img = torch.arange(5)[None].repeat(5, 1)[None, None].to(device, dtype)
-        laf = torch.tensor([[2.0, 0, 2.0],
-                            [0, 2.0, 2.0]]).reshape(1,1,2,3).to(device, dtype)
-        
+        laf = torch.tensor([[2.0, 0, 2.0], [0, 2.0, 2.0]]).reshape(1, 1, 2, 3).to(device, dtype)
+
         patch = kornia.feature.extract_patches_simple(img, laf, 5, 1.0)
         assert_close(img, patch[0])
 
     def test_same_even(self, device, dtype):
         img = torch.arange(4)[None].repeat(4, 1)[None, None].to(device, dtype)
-        laf = torch.tensor([[1.5, 0, 1.5],
-                            [0, 1.5, 1.5]]).reshape(1,1,2,3).to(device, dtype)
+        laf = torch.tensor([[1.5, 0, 1.5], [0, 1.5, 1.5]]).reshape(1, 1, 2, 3).to(device, dtype)
 
         patch = kornia.feature.extract_patches_simple(img, laf, 4, 1.0)
         assert_close(img, patch[0])
@@ -457,16 +455,14 @@ class TestExtractPatchesPyr:
 
     def test_same_odd(self, device, dtype):
         img = torch.arange(5)[None].repeat(5, 1)[None, None].to(device, dtype)
-        laf = torch.tensor([[2.0, 0, 2.0],
-                            [0, 2.0, 2.0]]).reshape(1,1,2,3).to(device, dtype)
+        laf = torch.tensor([[2.0, 0, 2.0], [0, 2.0, 2.0]]).reshape(1, 1, 2, 3).to(device, dtype)
 
         patch = kornia.feature.extract_patches_from_pyramid(img, laf, 5, 1.0)
         assert_close(img, patch[0])
 
     def test_same_even(self, device, dtype):
         img = torch.arange(4)[None].repeat(4, 1)[None, None].to(device, dtype)
-        laf = torch.tensor([[1.5, 0, 1.5],
-                            [0, 1.5, 1.5]]).reshape(1,1,2,3).to(device, dtype)
+        laf = torch.tensor([[1.5, 0, 1.5], [0, 1.5, 1.5]]).reshape(1, 1, 2, 3).to(device, dtype)
 
         patch = kornia.feature.extract_patches_from_pyramid(img, laf, 4, 1.0)
         assert_close(img, patch[0])

@@ -441,10 +441,7 @@ def extract_patches_from_pyramid(
             scale_mask = (scale_mask > 0).view(-1)
             grid = generate_patch_grid_from_normalized_LAF(cur_img[i : i + 1], nlaf[i : i + 1, scale_mask, :, :], PS)
             patches = F.grid_sample(
-                cur_img[i: i + 1].expand(grid.shape[0], ch, h, w),
-                grid,
-                padding_mode="border",
-                align_corners=False,
+                cur_img[i : i + 1].expand(grid.shape[0], ch, h, w), grid, padding_mode="border", align_corners=False
             )
             out[i].masked_scatter_(scale_mask.view(-1, 1, 1, 1), patches)
         we_are_in_business = min(cur_img.size(2), cur_img.size(3)) >= PS
