@@ -402,28 +402,25 @@ class TestExtractPatchesSimple:
         assert patches.shape == (5, 4, 3, PS, PS)
 
     def test_non_zero(self, device):
-        img = torch.zeros(1,1,24,24, device=device)
-        img[:,:,10:,20:] =1.0
-        laf = torch.tensor([[8., 0, 14.],
-                            [0, 8., 8.]], device=device).reshape(1,1,2,3)
-    
+        img = torch.zeros(1, 1, 24, 24, device=device)
+        img[:, :, 10:, 20:] = 1.0
+        laf = torch.tensor([[8.0, 0, 14.0], [0, 8.0, 8.0]], device=device).reshape(1, 1, 2, 3)
+
         PS = 32
         patches = kornia.feature.extract_patches_simple(img, laf, PS)
         assert patches.mean().item() > 0.01
         assert patches.shape == (1, 1, 1, PS, PS)
-        
+
     def test_same_odd(self, device, dtype):
         img = torch.arange(5)[None].repeat(5, 1)[None, None].to(device, dtype)
-        laf = torch.tensor([[2.0, 0, 2.0],
-                            [0, 2.0, 2.0]]).reshape(1,1,2,3)
-        
+        laf = torch.tensor([[2.0, 0, 2.0], [0, 2.0, 2.0]]).reshape(1, 1, 2, 3)
+
         patch = kornia.feature.extract_patches_simple(img, laf, 5, 1.0)
         assert_close(img, patch[0])
 
     def test_same_even(self, device, dtype):
         img = torch.arange(4)[None].repeat(4, 1)[None, None].float()
-        laf = torch.tensor([[1.5, 0, 1.5],
-                            [0, 1.5, 1.5]]).reshape(1,1,2,3)
+        laf = torch.tensor([[1.5, 0, 1.5], [0, 1.5, 1.5]]).reshape(1, 1, 2, 3)
 
         patch = kornia.feature.extract_patches_simple(img, laf, 4, 1.0)
         assert_close(img, patch[0])
@@ -447,10 +444,9 @@ class TestExtractPatchesPyr:
         assert patches.shape == (5, 4, 3, PS, PS)
 
     def test_non_zero(self, device):
-        img = torch.zeros(1,1,24,24, device=device)
-        img[:,:,10:,20:] =1.0
-        laf = torch.tensor([[8., 0, 14.],
-                            [0, 8., 8.]], device=device).reshape(1,1,2,3)
+        img = torch.zeros(1, 1, 24, 24, device=device)
+        img[:, :, 10:, 20:] = 1.0
+        laf = torch.tensor([[8.0, 0, 14.0], [0, 8.0, 8.0]], device=device).reshape(1, 1, 2, 3)
 
         PS = 32
         patches = kornia.feature.extract_patches_from_pyramid(img, laf, PS)
@@ -459,16 +455,14 @@ class TestExtractPatchesPyr:
 
     def test_same_odd(self, device, dtype):
         img = torch.arange(5)[None].repeat(5, 1)[None, None].to(device, dtype)
-        laf = torch.tensor([[2.0, 0, 2.0],
-                            [0, 2.0, 2.0]]).reshape(1,1,2,3)
+        laf = torch.tensor([[2.0, 0, 2.0], [0, 2.0, 2.0]]).reshape(1, 1, 2, 3)
 
         patch = kornia.feature.extract_patches_from_pyramid(img, laf, 5, 1.0)
         assert_close(img, patch[0])
 
     def test_same_even(self, device, dtype):
         img = torch.arange(4)[None].repeat(4, 1)[None, None].float()
-        laf = torch.tensor([[1.5, 0, 1.5],
-                            [0, 1.5, 1.5]]).reshape(1,1,2,3)
+        laf = torch.tensor([[1.5, 0, 1.5], [0, 1.5, 1.5]]).reshape(1, 1, 2, 3)
 
         patch = kornia.feature.extract_patches_from_pyramid(img, laf, 4, 1.0)
         assert_close(img, patch[0])

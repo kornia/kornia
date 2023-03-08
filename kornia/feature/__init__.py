@@ -32,9 +32,9 @@ from .laf import (
     make_upright,
     normalize_laf,
     perspective_transform_lafs,
+    rotate_laf,
     scale_laf,
     set_laf_orientation,
-    rotate_laf,
 )
 from .loftr import LoFTR
 from .matching import (
@@ -110,8 +110,7 @@ __all__ = [
     "set_laf_orientation",
     "get_laf_descriptors",
     "scale_laf",
-    "rotate_laf"
-    "SIFTDescriptor",
+    "rotate_laf" "SIFTDescriptor",
     "DenseSIFTDescriptor",
     "MKDDescriptor",
     "HardNet",

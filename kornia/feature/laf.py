@@ -31,8 +31,8 @@ def get_laf_scale(LAF: Tensor) -> Tensor:
 
 
 def get_laf_center(LAF: Tensor) -> Tensor:
-    """Return a center (keypoint) of the LAFs.
-    The convention is that center of 5-pixel image (coordinates from 0 to 4) is 2, and not 2.5
+    """Return a center (keypoint) of the LAFs. The convention is that center of 5-pixel image (coordinates from 0
+    to 4) is 2, and not 2.5.
 
     Args:
         LAF: :math:`(B, N, 2, 3)`
@@ -68,8 +68,8 @@ def get_laf_orientation(LAF: Tensor) -> Tensor:
 
 
 def rotate_laf(LAF: Tensor, angles_degrees: Tensor) -> Tensor:
-    """Apply additional rotation to the the LAFs. Compared to `set_laf_orientation`,
-    the resulting rotation is original LAF orientation plus angles_degrees
+    """Apply additional rotation to the the LAFs. Compared to `set_laf_orientation`, the resulting rotation is
+    original LAF orientation plus angles_degrees.
 
     Args:
         LAF: :math:`(B, N, 2, 3)`
@@ -283,9 +283,8 @@ def get_laf_pts_to_draw(LAF: Tensor, img_idx: int = 0) -> Tuple[List[int], List[
 
 
 def denormalize_laf(LAF: Tensor, images: Tensor) -> Tensor:
-    """De-normalize LAFs from scale to image scale.
-    The convention is that center of 5-pixel image (coordinates from 0 to 4) is 2, and not 2.5
-
+    """De-normalize LAFs from scale to image scale. The convention is that center of 5-pixel image (coordinates
+    from 0 to 4) is 2, and not 2.5.
 
         B,N,H,W = images.size()
         MIN_SIZE = min(H - 1, W -1)
@@ -426,7 +425,7 @@ def extract_patches_from_pyramid(
     B, N, _, _ = laf.size()
     _, ch, h, w = img.size()
     scale = 2.0 * get_laf_scale(denormalize_laf(nlaf, img)) / float(PS)
-    max_level = min(img.size(2), img.size(3))  // PS
+    max_level = min(img.size(2), img.size(3)) // PS
     pyr_idx = scale.log2().clamp(min=0.0, max=max(0, max_level - 1)).long()
     cur_img = img
     cur_pyr_level = 0
@@ -440,9 +439,9 @@ def extract_patches_from_pyramid(
             if (scale_mask.float().sum().item()) == 0:
                 continue
             scale_mask = (scale_mask > 0).view(-1)
-            grid = generate_patch_grid_from_normalized_LAF(cur_img[i: i + 1], nlaf[i: i + 1, scale_mask, :, :], PS)
+            grid = generate_patch_grid_from_normalized_LAF(cur_img[i : i + 1], nlaf[i : i + 1, scale_mask, :, :], PS)
             patches = F.grid_sample(
-                cur_img[i: i + 1].expand(grid.size(0), ch, h, w),
+                cur_img[i : i + 1].expand(grid.size(0), ch, h, w),
                 grid,  # type: ignore
                 padding_mode="border",
                 align_corners=False,
