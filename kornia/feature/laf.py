@@ -441,8 +441,8 @@ def extract_patches_from_pyramid(
             scale_mask = (scale_mask > 0).view(-1)
             grid = generate_patch_grid_from_normalized_LAF(cur_img[i : i + 1], nlaf[i : i + 1, scale_mask, :, :], PS)
             patches = F.grid_sample(
-                cur_img[i : i + 1].expand(grid.size(0), ch, h, w),
-                grid,  # type: ignore
+                cur_img[i: i + 1].expand(grid.shape[0], ch, h, w),
+                grid,
                 padding_mode="border",
                 align_corners=False,
             )
