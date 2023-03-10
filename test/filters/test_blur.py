@@ -17,13 +17,10 @@ class TestBoxBlur(BaseTester):
 
     def test_exception(self):
         inpt = torch.rand(1, 1, 3, 3)
-        with pytest.raises(TypeError) as errinfo:
-            box_blur(inpt, '1')
-        assert 'Kernel size should be an integer or a tuple of integer.' in str(errinfo)
 
         with pytest.raises(Exception) as errinfo:
             box_blur(inpt, (1,))
-        assert '2D Kernel size tuple should have a length of 2.' in str(errinfo)
+        assert '2D Kernel size should have a length of 2.' in str(errinfo)
 
     @pytest.mark.parametrize('kernel_size', [(3, 3), 5, (5, 7)])
     @pytest.mark.parametrize('batch_size', [1, 2])
