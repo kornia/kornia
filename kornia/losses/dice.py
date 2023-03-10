@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 from kornia.core import Tensor
-from kornia.core.check import KORNIA_CHECK
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
 from kornia.utils.one_hot import one_hot
 
 # based on:
@@ -55,8 +54,7 @@ def dice_loss(input: Tensor, target: Tensor, average: str = "micro", eps: float 
         >>> output = dice_loss(input, target)
         >>> output.backward()
     """
-    if not isinstance(input, Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+    KORNIA_CHECK_IS_TENSOR(input, f"Input type is not a torch.Tensor. Got {type(input)}")
 
     if not len(input.shape) == 4:
         raise ValueError(f"Invalid input shape, we expect BxNxHxW. Got: {input.shape}")
@@ -71,7 +69,7 @@ def dice_loss(input: Tensor, target: Tensor, average: str = "micro", eps: float 
     KORNIA_CHECK(average in possible_average, f"The `average` has to be one of {possible_average}. Got: {average}")
 
     # compute softmax over the classes axis
-    input_soft: Tensor = F.softmax(input, dim=1)
+    input_soft: Tensor = input.softmax(dim=1)
 
     # create the labels one hot tensor
     target_one_hot: Tensor = one_hot(target, num_classes=input.shape[1], device=input.device, dtype=input.dtype)
