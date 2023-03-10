@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from kornia.core import Tensor
+from kornia.core.check import KORNIA_CHECK
 from kornia.utils.one_hot import one_hot
 
 # based on:
@@ -11,9 +13,7 @@ from kornia.utils.one_hot import one_hot
 # https://github.com/Lightning-AI/metrics/blob/v0.11.3/src/torchmetrics/functional/classification/dice.py#L66-L207
 
 
-def dice_loss(
-    input: torch.Tensor, target: torch.Tensor, average: str | None = "micro", eps: float | None = 1e-8
-) -> torch.Tensor:
+def dice_loss(input: Tensor, target: Tensor, average: str = "micro", eps: float = 1e-8) -> Tensor:
     r"""Criterion that computes Sørensen-Dice Coefficient loss.
 
     According to [1], we compute the Sørensen-Dice Coefficient as follows:
@@ -55,7 +55,7 @@ def dice_loss(
         >>> output = dice_loss(input, target)
         >>> output.backward()
     """
-    if not isinstance(input, torch.Tensor):
+    if not isinstance(input, Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
 
     if not len(input.shape) == 4:
@@ -67,18 +67,17 @@ def dice_loss(
     if not input.device == target.device:
         raise ValueError(f"input and target must be in the same device. Got: {input.device} and {target.device}")
 
-    possible_average = ("micro", "macro")
-    if average not in possible_average:
-        raise ValueError(f"The `average` has to be one of {possible_average}. Got: {average}")
+    possible_average = {"micro", "macro"}
+    KORNIA_CHECK(average in possible_average, f"The `average` has to be one of {possible_average}. Got: {average}")
 
     # compute softmax over the classes axis
-    input_soft: torch.Tensor = F.softmax(input, dim=1)
+    input_soft: Tensor = F.softmax(input, dim=1)
 
     # create the labels one hot tensor
-    target_one_hot: torch.Tensor = one_hot(target, num_classes=input.shape[1], device=input.device, dtype=input.dtype)
+    target_one_hot: Tensor = one_hot(target, num_classes=input.shape[1], device=input.device, dtype=input.dtype)
 
     # set dimensions for the appropriate averaging
-    dims = (2, 3)
+    dims: tuple[int, ...] = (2, 3)
     if average == "micro":
         dims = (1,) + dims
 
@@ -138,10 +137,10 @@ class DiceLoss(nn.Module):
         >>> output.backward()
     """
 
-    def __init__(self, average: str | None = "micro", eps: float | None = 1e-8) -> None:
+    def __init__(self, average: str = "micro", eps: float = 1e-8) -> None:
         super().__init__()
-        self.average: str = average
-        self.eps: float = eps
+        self.average = average
+        self.eps = eps
 
-    def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: Tensor, target: Tensor) -> Tensor:
         return dice_loss(input, target, self.average, self.eps)
