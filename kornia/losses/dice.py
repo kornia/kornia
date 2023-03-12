@@ -54,7 +54,7 @@ def dice_loss(input: Tensor, target: Tensor, average: str = "micro", eps: float 
         >>> output = dice_loss(input, target)
         >>> output.backward()
     """
-    KORNIA_CHECK_IS_TENSOR(input, f"Input type is not a torch.Tensor. Got {type(input)}")
+    KORNIA_CHECK_IS_TENSOR(input)
 
     if not len(input.shape) == 4:
         raise ValueError(f"Invalid input shape, we expect BxNxHxW. Got: {input.shape}")
