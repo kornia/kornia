@@ -37,12 +37,12 @@ from kornia.augmentation import (
     RandomPlasmaContrast,
     RandomPlasmaShadow,
     RandomPosterize,
+    RandomRain,
     RandomResizedCrop,
     RandomRGBShift,
     RandomRotation,
     RandomSaturation,
     RandomSnow,
-    RandomRain,
     RandomThinPlateSpline,
     RandomVerticalFlip,
     Resize,
@@ -54,7 +54,6 @@ from kornia.geometry import transform_points
 from kornia.testing import BaseTester, assert_close, default_with_one_parameter_changed
 from kornia.utils import create_meshgrid
 from kornia.utils.helpers import _torch_inverse_cast
-
 
 # TODO same_on_batch tests?
 
@@ -3379,7 +3378,7 @@ class TestRandomGaussianBlur(BaseTester):
 
     @pytest.mark.xfail(
         reason="might fail due to the sampling distribution gradcheck errors. "
-               "See: https://github.com/pytorch/pytorch/issues/78346."
+        "See: https://github.com/pytorch/pytorch/issues/78346."
     )
     def test_gradcheck_class_non_deterministic(self, device, dtype):
         torch.manual_seed(0)
@@ -4208,7 +4207,7 @@ class TestRandomRain(BaseTester):
         exception_test_data = self._get_exception_test_data(device, dtype)
         for err_msg, drop_height, drop_width, input_data in exception_test_data:
             with pytest.raises(Exception) as errinfo:
-                print(drop_height,drop_width)
+                print(drop_height, drop_width)
                 aug = RandomRain(p=1.0, drop_height=drop_height, drop_width=drop_width)
                 aug(input_data)
 
