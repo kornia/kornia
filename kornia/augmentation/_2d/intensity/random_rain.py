@@ -9,7 +9,7 @@ from kornia.core.check import KORNIA_CHECK
 
 
 class RandomRain(IntensityAugmentationBase2D):
-    r"""Add Random Rain to the image
+    r"""Add Random Rain to the image.
 
      Args:
          p: probability of applying the transformation.
@@ -30,19 +30,22 @@ class RandomRain(IntensityAugmentationBase2D):
           [0.7116, 0.5010, 0.3791, 0.1553, 0.8987],
           [0.4833, 0.6489, 0.5527, 0.4286, 0.5395],
           [0.6714, 0.5087, 0.6090, 0.4868, 0.3147]]]])
-     """
+    """
 
-    def __init__(self, same_on_batch: bool = False,
-                 p: float = 0.5,
-                 keepdim: bool = False,
-                 number_of_drops: Tuple[int, int] = (1000, 2000), drop_height: Tuple[int, int] = (5, 20),
-                 drop_width: Tuple[int, int] = (-5, 5)):
-
+    def __init__(
+        self,
+        same_on_batch: bool = False,
+        p: float = 0.5,
+        keepdim: bool = False,
+        number_of_drops: Tuple[int, int] = (1000, 2000),
+        drop_height: Tuple[int, int] = (5, 20),
+        drop_width: Tuple[int, int] = (-5, 5),
+    ):
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self._param_generator = RainGenerator(number_of_drops, drop_height, drop_width)
 
     def apply_transform(
-            self, image: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, image: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         KORNIA_CHECK(image.shape[1] == 3 or image.shape[1] == 1, "Number of color channels should be 1 or 3.")
         KORNIA_CHECK(len(image.shape) in (3, 4), "Wrong input dimension.")
@@ -53,33 +56,27 @@ class RandomRain(IntensityAugmentationBase2D):
             number_of_drops = int(params['number_of_drops_factor'][i])
             height_of_drop = params['drop_height_factor'][i]
             width_of_drop = params['drop_width_factor'][i]
-            KORNIA_CHECK(height_of_drop <= image[i].shape[1],
-                         "Height of drop should be less than image height")
+            KORNIA_CHECK(height_of_drop <= image[i].shape[1], "Height of drop should be less than image height")
 
-            KORNIA_CHECK(width_of_drop <= image[i].shape[2],
-                         "Width of drop should be less than image width")
-            KORNIA_CHECK(height_of_drop > 0,
-                         "Height should be bigger than 0")
+            KORNIA_CHECK(width_of_drop <= image[i].shape[2], "Width of drop should be less than image width")
+            KORNIA_CHECK(height_of_drop > 0, "Height should be bigger than 0")
             # Generate start coordinates for each drop
 
-            random_y_coords = torch.randint(low=0, high=image[i].shape[1] - height_of_drop,
-                                            size=[1, number_of_drops])
+            random_y_coords = torch.randint(low=0, high=image[i].shape[1] - height_of_drop, size=[1, number_of_drops])
             if width_of_drop < 0:
-                random_x_coords = torch.randint(low=-width_of_drop - 1, high=image[i].shape[2],
-                                                size=[1, number_of_drops])
+                random_x_coords = torch.randint(
+                    low=-width_of_drop - 1, high=image[i].shape[2], size=[1, number_of_drops]
+                )
             else:
-                random_x_coords = torch.randint(low=0, high=image[i].shape[2] - width_of_drop,
-                                                size=[1, number_of_drops])
-            coords = torch.concat(
-                [random_y_coords, random_x_coords], dim=0).to(
-                image.device)
+                random_x_coords = torch.randint(
+                    low=0, high=image[i].shape[2] - width_of_drop, size=[1, number_of_drops]
+                )
+            coords = torch.concat([random_y_coords, random_x_coords], dim=0).to(image.device)
 
             # Generate how our drop will look like into the image
             size_of_line = max(height_of_drop, abs(width_of_drop))
-            x = torch.linspace(start=0, end=height_of_drop, steps=size_of_line, dtype=torch.int32).to(
-                image.device)
-            y = torch.linspace(start=0, end=width_of_drop, steps=size_of_line, dtype=torch.int32).to(
-                image.device)
+            x = torch.linspace(start=0, end=height_of_drop, steps=size_of_line, dtype=torch.int32).to(image.device)
+            y = torch.linspace(start=0, end=width_of_drop, steps=size_of_line, dtype=torch.int32).to(image.device)
 
             # Draw lines
             for k in range(x.shape[0]):

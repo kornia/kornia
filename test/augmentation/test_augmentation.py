@@ -37,12 +37,12 @@ from kornia.augmentation import (
     RandomPlasmaContrast,
     RandomPlasmaShadow,
     RandomPosterize,
+    RandomRain,
     RandomResizedCrop,
     RandomRGBShift,
     RandomRotation,
     RandomSaturation,
     RandomSnow,
-    RandomRain,
     RandomThinPlateSpline,
     RandomVerticalFlip,
     Resize,
@@ -4100,6 +4100,7 @@ class TestRandomTranslate:
             kornia.augmentation.RandomTranslate((0.5, 0.5), p=1.0), (input,), raise_exception=True, fast_mode=True
         )
 
+
 class TestRandomRain(BaseTester):
     torch.manual_seed(0)  # for random reproductibility
 
@@ -4133,6 +4134,7 @@ class TestRandomRain(BaseTester):
     @pytest.mark.skip(reason="not implemented yet")
     def test_gradcheck(self, device):
         pass
+
     def test_exception(self, device, dtype):
         exception_test_data = self._get_exception_test_data(device, dtype)
         for err_msg, drop_height, drop_width, input_data in exception_test_data:
