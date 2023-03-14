@@ -51,9 +51,9 @@ class RandomRain(IntensityAugmentationBase2D):
         KORNIA_CHECK(len(image.shape) in (3, 4), "Wrong input dimension.")
 
         for i in range(image.shape[0]):
-            number_of_drops = int(params['number_of_drops_factor'][i])
-            height_of_drop = params['drop_height_factor'][i]
-            width_of_drop = params['drop_width_factor'][i]
+            number_of_drops: int = int(params['number_of_drops_factor'][i])
+            height_of_drop: int = int(params['drop_height_factor'][i])
+            width_of_drop: int = int(params['drop_width_factor'][i])
             KORNIA_CHECK(height_of_drop <= image[i].shape[1], "Height of drop should be less than image height")
 
             KORNIA_CHECK(width_of_drop <= image[i].shape[2], "Width of drop should be less than image width")

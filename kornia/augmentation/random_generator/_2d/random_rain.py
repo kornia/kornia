@@ -11,9 +11,9 @@ from kornia.core import Tensor
 class RainGenerator(RandomGeneratorBase):
     def __init__(
         self,
-        number_of_drops: Union[int, Tuple[int, int]],
-        drop_height: Union[Tensor, Tuple[float, float]],
-        drop_width: Union[Tensor, Tuple[float, float]],
+        number_of_drops: Tuple[int, int],
+        drop_height: Tuple[int, int],
+        drop_width: Tuple[int, int],
     ) -> None:
         super().__init__()
         self.number_of_drops = number_of_drops
@@ -48,7 +48,7 @@ class RainGenerator(RandomGeneratorBase):
         self.drop_height_sampler = Uniform(drop_height[0], drop_height[1], validate_args=False)
         self.drop_width_sampler = Uniform(drop_width[0], drop_width[1], validate_args=False)
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         # self.ksize_factor.expand((batch_size, -1))
