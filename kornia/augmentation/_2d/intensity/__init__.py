@@ -25,3 +25,4 @@ from kornia.augmentation._2d.intensity.random_snow import RandomSnow
 from kornia.augmentation._2d.intensity.saturation import RandomSaturation
 from kornia.augmentation._2d.intensity.sharpness import RandomSharpness
 from kornia.augmentation._2d.intensity.solarize import RandomSolarize
+from kornia.augmentation._2d.intensity.random_rain import RandomRain
