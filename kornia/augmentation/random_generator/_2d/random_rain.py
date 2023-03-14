@@ -26,17 +26,17 @@ class RainGenerator(RandomGeneratorBase):
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         number_of_drops = _range_bound(self.number_of_drops, 'number_of_drops',
-                                       center=self.number_of_drops[0] / 2 + self.number_of_drops[1] / 2,
-                                       bounds=(self.number_of_drops[0], self.number_of_drops[1] + 1)).to(device=device,
+                                       center = self.number_of_drops[0] / 2 + self.number_of_drops[1] / 2,
+                                       bounds = (self.number_of_drops[0], self.number_of_drops[1] + 1)).to(device=device,
                                                                                                          dtype=dtype)
         drop_height = _range_bound(self.drop_height, 'drop_height',
-                                   center=self.drop_height[0] / 2 + self.drop_height[1] / 2,
-                                   bounds=(self.drop_height[0], self.drop_height[1] + 1)).to(
-            device=device, dtype=dtype)
+                                   center = self.drop_height[0] / 2 + self.drop_height[1] / 2,
+                                   bounds = (self.drop_height[0], self.drop_height[1] + 1)).to(
+            device = device, dtype = dtype)
         drop_width = _range_bound(self.drop_width, 'drop_width',
-                                  center=self.drop_width[0] / 2 + self.drop_width[1] / 2,
-                                  bounds=(self.drop_width[0], self.drop_width[1] + 1)).to(
-            device=device, dtype=dtype)
+                                  center = self.drop_width[0] / 2 + self.drop_width[1] / 2,
+                                  bounds = (self.drop_width[0], self.drop_width[1] + 1)).to(
+            device = device, dtype = dtype)
 
         self.number_of_drops_sampler = Uniform(number_of_drops[0], number_of_drops[1], validate_args=False)
         self.drop_height_sampler = Uniform(drop_height[0], drop_height[1], validate_args=False)

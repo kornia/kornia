@@ -55,6 +55,7 @@ from kornia.testing import BaseTester, assert_close, default_with_one_parameter_
 from kornia.utils import create_meshgrid
 from kornia.utils.helpers import _torch_inverse_cast
 
+
 # TODO same_on_batch tests?
 
 
@@ -67,6 +68,7 @@ class CommonTests(BaseTester):
     ############################################################################################################
     _augmentation_cls: Optional[Type[AugmentationBase2D]] = None
     _default_param_set: Dict["str", Any] = {}
+
     ############################################################################################################
     # Fixtures
     ############################################################################################################
@@ -3377,7 +3379,7 @@ class TestRandomGaussianBlur(BaseTester):
 
     @pytest.mark.xfail(
         reason="might fail due to the sampling distribution gradcheck errors. "
-        "See: https://github.com/pytorch/pytorch/issues/78346."
+               "See: https://github.com/pytorch/pytorch/issues/78346."
     )
     def test_gradcheck_class_non_deterministic(self, device, dtype):
         torch.manual_seed(0)
@@ -4100,6 +4102,7 @@ class TestRandomTranslate:
             kornia.augmentation.RandomTranslate((0.5, 0.5), p=1.0), (input,), raise_exception=True, fast_mode=True
         )
 
+
 class TestRandomRain(BaseTester):
     torch.manual_seed(0)  # for random reproductibility
 
@@ -4129,10 +4132,15 @@ class TestRandomRain(BaseTester):
         aug = RandomRain(p=1.0, drop_height=(2, 3), drop_width=(2, 3), number_of_drops=(1, 3))
         output_data = aug(input_data)
         assert output_data.shape == input_data.shape
+        input_data = torch.rand(1, 3, 8, 9, device=device, dtype=dtype)
+        aug = RandomRain(p=1.0, drop_height=(2, 3), drop_width=(-3, -2), number_of_drops=(1, 3))
+        output_data = aug(input_data)
+        assert output_data.shape == input_data.shape
 
     @pytest.mark.skip(reason="not implemented yet")
     def test_gradcheck(self, device):
         pass
+
     def test_exception(self, device, dtype):
         exception_test_data = self._get_exception_test_data(device, dtype)
         for err_msg, drop_height, drop_width, input_data in exception_test_data:

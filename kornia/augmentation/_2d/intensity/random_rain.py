@@ -11,25 +11,25 @@ from kornia.core.check import KORNIA_CHECK
 class RandomRain(IntensityAugmentationBase2D):
     r"""Add Random Rain to the image
 
-     Args:
-         p: probability of applying the transformation.
-         number_of_drops: number of drops per image
-         drop_height: height of the drop in image(same for each drops in one image)
-         drop_width: width of the drop in image(same for each drops in one image)
-     Shape:
-         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
-         - Output: :math:`(B, C, H, W)`
+    Args:
+        p: probability of applying the transformation.
+        number_of_drops: number of drops per image
+        drop_height: height of the drop in image(same for each drops in one image)
+        drop_width: width of the drop in image(same for each drops in one image)
+    Shape:
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
+        - Output: :math:`(B, C, H, W)`
 
-     Examples:
-     >>> rng = torch.manual_seed(0)
-     >>> input = torch.rand(1, 1, 5, 5)
-     >>> rain = RandomRain(p=1,drop_height=(1,2),drop_width=(1,2),number_of_drops=(1,1))
-     >>> rain(input)
-    tensor([[[[0.7843, 0.4164, 0.6583, 0.7164, 0.8444],
-          [0.2766, 0.3985, 0.8437, 0.4464, 0.0751],
-          [0.7116, 0.5010, 0.3791, 0.1553, 0.8987],
-          [0.4833, 0.6489, 0.5527, 0.4286, 0.5395],
-          [0.6714, 0.5087, 0.6090, 0.4868, 0.3147]]]])
+    Examples:
+        >>> rng = torch.manual_seed(0)
+        >>> input = torch.rand(1, 1, 5, 5)
+        >>> rain = RandomRain(p=1,drop_height=(1,2),drop_width=(1,2),number_of_drops=(1,1))
+        >>> rain(input)
+        tensor([[[[0.4963, 0.7682, 0.0885, 0.1320, 0.3074],
+                  [0.7843, 0.4901, 0.8964, 0.4556, 0.6323],
+                  [0.3489, 0.4017, 0.0223, 0.1689, 0.2939],
+                  [0.5185, 0.6977, 0.8000, 0.1610, 0.2823],
+                  [0.6816, 0.9152, 0.3971, 0.8742, 0.4194]]]])
      """
 
     def __init__(self, same_on_batch: bool = False,
@@ -47,8 +47,6 @@ class RandomRain(IntensityAugmentationBase2D):
         KORNIA_CHECK(image.shape[1] == 3 or image.shape[1] == 1, "Number of color channels should be 1 or 3.")
         KORNIA_CHECK(len(image.shape) in (3, 4), "Wrong input dimension.")
 
-        if len(image.shape) == 3:
-            image = image[None]
         for i in range(image.shape[0]):
             number_of_drops = int(params['number_of_drops_factor'][i])
             height_of_drop = params['drop_height_factor'][i]
@@ -70,7 +68,7 @@ class RandomRain(IntensityAugmentationBase2D):
             else:
                 random_x_coords = torch.randint(low=0, high=image[i].shape[2] - width_of_drop,
                                                 size=[1, number_of_drops])
-            coords = torch.concat(
+            coords = torch.cat(
                 [random_y_coords, random_x_coords], dim=0).to(
                 image.device)
 
