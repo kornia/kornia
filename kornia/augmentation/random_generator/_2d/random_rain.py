@@ -1,4 +1,4 @@
-from typing import Dict, Tuple, Union
+from typing import Dict, Tuple
 
 import torch
 from torch.distributions import Uniform
@@ -10,10 +10,7 @@ from kornia.core import Tensor
 
 class RainGenerator(RandomGeneratorBase):
     def __init__(
-        self,
-        number_of_drops: Tuple[int, int],
-        drop_height: Tuple[int, int],
-        drop_width: Tuple[int, int],
+        self, number_of_drops: Tuple[int, int], drop_height: Tuple[int, int], drop_width: Tuple[int, int]
     ) -> None:
         super().__init__()
         self.number_of_drops = number_of_drops

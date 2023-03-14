@@ -4102,58 +4102,6 @@ class TestRandomTranslate:
         )
 
 
-class TestRandomRain(BaseTester):
-    torch.manual_seed(0)  # for random reproductibility
-
-    def _get_exception_test_data(self, device, dtype):
-        err_msg_height_less = 'Height should be bigger than 0'
-        err_msg_height_bigger = 'Height of drop should be less than image height'
-        err_msg_width_bigger = 'Width of drop should be less than image width'
-        err_msg_wrong_sh = 'Input size must have a shape of either (H, W), (C, H, W) or (*, C, H, W).'
-        err_msg_wrong_ch = 'Number of color channels should be 1 or 3.'
-
-        return [
-            (err_msg_height_less, (-2, 0), (2, 3), torch.rand(1, 5, 5, device=device, dtype=dtype)),
-            (err_msg_height_bigger, (6, 6), (2, 3), torch.rand(1, 5, 5, device=device, dtype=dtype)),
-            (err_msg_width_bigger, (2, 2), (6, 6), torch.rand(1, 5, 5, device=device, dtype=dtype)),
-            (err_msg_wrong_sh, (1, 2), (1, 2), torch.rand(1, 2, 3, 4, 5, device=device, dtype=dtype)),
-            (err_msg_wrong_ch, (1, 2), (1, 2), torch.rand(2, 4, 5, device=device, dtype=dtype)),
-        ]
-
-    @pytest.mark.parametrize("batch_shape", [(1, 3, 5, 7), (1, 3, 6, 9)])
-    def test_cardinality(self, batch_shape, device, dtype):
-        input_data = torch.rand(batch_shape, device=device, dtype=dtype)
-        output_data = RandomRain(p=1.0, drop_height=(3, 4), drop_width=(2, 3), number_of_drops=(1, 3))(input_data)
-        assert output_data.shape == batch_shape
-
-    def test_smoke(self, device, dtype):
-        input_data = torch.rand(1, 3, 8, 9, device=device, dtype=dtype)
-        aug = RandomRain(p=1.0, drop_height=(2, 3), drop_width=(2, 3), number_of_drops=(1, 3))
-        output_data = aug(input_data)
-        assert output_data.shape == input_data.shape
-        input_data = torch.rand(1, 3, 8, 9, device=device, dtype=dtype)
-        aug = RandomRain(p=1.0, drop_height=(2, 3), drop_width=(-3, -2), number_of_drops=(1, 3))
-        output_data = aug(input_data)
-        assert output_data.shape == input_data.shape
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_gradcheck(self, device):
-        pass
-
-    def test_exception(self, device, dtype):
-        exception_test_data = self._get_exception_test_data(device, dtype)
-        for err_msg, drop_height, drop_width, input_data in exception_test_data:
-            with pytest.raises(Exception) as errinfo:
-                aug = RandomRain(p=1.0, drop_height=drop_height, drop_width=drop_width)
-                aug(input_data)
-
-            assert err_msg in str(errinfo)
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
-
-
 class TestRandomAutoContrast:
     torch.manual_seed(0)  # for random reproductibility
 
@@ -4241,3 +4189,55 @@ class TestRandomMedianBlur:
         )
 
         utils.assert_close(out, expected)
+
+
+class TestRandomRain(BaseTester):
+    torch.manual_seed(0)  # for random reproductibility
+
+    def _get_exception_test_data(self, device, dtype):
+        err_msg_height_less = 'Height should be bigger than 0'
+        err_msg_height_bigger = 'Height of drop should be less than image height'
+        err_msg_width_bigger = 'Width of drop should be less than image width'
+        err_msg_wrong_sh = 'Input size must have a shape of either (H, W), (C, H, W) or (*, C, H, W).'
+        err_msg_wrong_ch = 'Number of color channels should be 1 or 3.'
+
+        return [
+            (err_msg_height_less, (-2, 0), (2, 3), torch.rand(1, 5, 5, device=device, dtype=dtype)),
+            (err_msg_height_bigger, (6, 6), (2, 3), torch.rand(1, 5, 5, device=device, dtype=dtype)),
+            (err_msg_width_bigger, (2, 2), (6, 6), torch.rand(1, 5, 5, device=device, dtype=dtype)),
+            (err_msg_wrong_sh, (1, 2), (1, 2), torch.rand(1, 2, 3, 4, 5, device=device, dtype=dtype)),
+            (err_msg_wrong_ch, (1, 2), (1, 2), torch.rand(2, 4, 5, device=device, dtype=dtype)),
+        ]
+
+    @pytest.mark.parametrize("batch_shape", [(1, 3, 5, 7), (1, 3, 6, 9)])
+    def test_cardinality(self, batch_shape, device, dtype):
+        input_data = torch.rand(batch_shape, device=device, dtype=dtype)
+        output_data = RandomRain(p=1.0, drop_height=(3, 4), drop_width=(2, 3), number_of_drops=(1, 3))(input_data)
+        assert output_data.shape == batch_shape
+
+    def test_smoke(self, device, dtype):
+        input_data = torch.rand(1, 3, 8, 9, device=device, dtype=dtype)
+        aug = RandomRain(p=1.0, drop_height=(2, 3), drop_width=(2, 3), number_of_drops=(1, 3))
+        output_data = aug(input_data)
+        assert output_data.shape == input_data.shape
+        input_data = torch.rand(1, 3, 8, 9, device=device, dtype=dtype)
+        aug = RandomRain(p=1.0, drop_height=(2, 3), drop_width=(-3, -2), number_of_drops=(1, 3))
+        output_data = aug(input_data)
+        assert output_data.shape == input_data.shape
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_gradcheck(self, device):
+        pass
+
+    def test_exception(self, device, dtype):
+        exception_test_data = self._get_exception_test_data(device, dtype)
+        for err_msg, drop_height, drop_width, input_data in exception_test_data:
+            with pytest.raises(Exception) as errinfo:
+                aug = RandomRain(p=1.0, drop_height=drop_height, drop_width=drop_width)
+                aug(input_data)
+
+            assert err_msg in str(errinfo)
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_module(self, device, dtype):
+        pass
