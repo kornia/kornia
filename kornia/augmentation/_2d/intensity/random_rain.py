@@ -54,16 +54,19 @@ class RandomRain(IntensityAugmentationBase2D):
             number_of_drops = int(params['number_of_drops_factor'][i])
             height_of_drop = params['drop_height_factor'][i]
             width_of_drop = params['drop_width_factor'][i]
+
             KORNIA_CHECK(height_of_drop >= image[i].shape[1],
                          "Height of drop should be less than image height")
 
-            random_y_coords = torch.randint(low=0, high=image[i].shape[1] - height_of_drop,
-                                            size=[1, number_of_drops])
+
             KORNIA_CHECK(width_of_drop >= image[i].shape[2],
                          "Width of drop should be less than image width")
             KORNIA_CHECK(height_of_drop < 0,
                          "Height should be bigger than 0")
+            # Generate start coordinates for each drop
 
+            random_y_coords = torch.randint(low=0, high=image[i].shape[1] - height_of_drop,
+                                            size=[1, number_of_drops])
             if width_of_drop < 0:
                 random_x_coords = torch.randint(low=-width_of_drop - 1, high=image[i].shape[2],
                                                 size=[1, number_of_drops])
@@ -73,12 +76,15 @@ class RandomRain(IntensityAugmentationBase2D):
             coords = torch.concat(
                 [random_y_coords, random_x_coords], dim=0).to(
                 image.device)
+
+            # Generate how our drop will look like into the image
             size_of_line = max(height_of_drop, abs(width_of_drop))
             x = torch.linspace(start=0, end=height_of_drop, steps=size_of_line, dtype=torch.int32).to(
                 image.device)
-
             y = torch.linspace(start=0, end=width_of_drop, steps=size_of_line, dtype=torch.int32).to(
                 image.device)
+
+            # Draw lines
             for k in range(x.shape[0]):
                 print(coords[0] + x[k], coords[1] + y[k], image[i].shape)
                 image[i, :, coords[0] + x[k], coords[1] + y[k]] = 200 / 255

@@ -42,6 +42,7 @@ from kornia.augmentation import (
     RandomRotation,
     RandomSaturation,
     RandomSnow,
+    RandomRain,
     RandomThinPlateSpline,
     RandomVerticalFlip,
     Resize,
@@ -53,6 +54,7 @@ from kornia.geometry import transform_points
 from kornia.testing import BaseTester, assert_close, default_with_one_parameter_changed
 from kornia.utils import create_meshgrid
 from kornia.utils.helpers import _torch_inverse_cast
+
 
 # TODO same_on_batch tests?
 
@@ -66,6 +68,7 @@ class CommonTests(BaseTester):
     ############################################################################################################
     _augmentation_cls: Optional[Type[AugmentationBase2D]] = None
     _default_param_set: Dict["str", Any] = {}
+
     ############################################################################################################
     # Fixtures
     ############################################################################################################
@@ -3376,7 +3379,7 @@ class TestRandomGaussianBlur(BaseTester):
 
     @pytest.mark.xfail(
         reason="might fail due to the sampling distribution gradcheck errors. "
-        "See: https://github.com/pytorch/pytorch/issues/78346."
+               "See: https://github.com/pytorch/pytorch/issues/78346."
     )
     def test_gradcheck_class_non_deterministic(self, device, dtype):
         torch.manual_seed(0)
@@ -4159,6 +4162,54 @@ class TestRandomSnow(BaseTester):
         for err_msg, snow_coef, brght_coef, input_data in exception_test_data:
             with pytest.raises(Exception) as errinfo:
                 aug = RandomSnow(p=1.0, snow_coefficient=snow_coef, brightness=brght_coef)
+                aug(input_data)
+
+            assert err_msg in str(errinfo)
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_module(self, device, dtype):
+        pass
+
+
+class TestRandomRain(BaseTester):
+    torch.manual_seed(0)  # for random reproductibility
+
+    def _get_exception_test_data(self, device, dtype):
+        err_msg_height_less = 'Height should be bigger than 0'
+        err_msg_height_bigger = 'Height of drop should be less than image height'
+        err_msg_width_bigger = 'Width of drop should be less than image width'
+        err_msg_wrong_sh = 'Input size must have a shape of either (H, W), (C, H, W) or (*, C, H, W).'
+
+        return [
+            (err_msg_height_less, (-2, 0), (2, 3), torch.rand(1, 5, 5, device=device, dtype=dtype)),
+            (err_msg_height_bigger, (6, 6), (2, 3), torch.rand(1, 5, 5, device=device, dtype=dtype)),
+            (err_msg_width_bigger, (2, 2), (6, 6), torch.rand(1, 5, 5, device=device, dtype=dtype)),
+            (err_msg_wrong_sh, (0.1, 0.5), (1.1, 2.5), torch.rand(1, 2, 3, 4, 5, device=device, dtype=dtype)),
+        ]
+
+    @pytest.mark.parametrize("batch_shape", [(1, 3, 4, 7), (1, 3, 6, 9)])
+    def test_cardinality(self, batch_shape, device, dtype):
+        input_data = torch.rand(batch_shape, device=device, dtype=dtype)
+        aug = RandomRain(p=1.0)
+        output_data = RandomRain(p=1.0, drop_height=(3, 4), drop_width=(2, 3), number_of_drops=(1, 3))(input_data)
+        assert output_data.shape == batch_shape
+
+    def test_smoke(self, device, dtype):
+        input_data = torch.rand(1, 3, 8, 9, device=device, dtype=dtype)
+        aug = RandomRain(p=1.0, drop_height=(2, 3), drop_width=(2, 3), number_of_drops=(1, 3))
+        output_data = aug(input_data)
+        assert output_data.shape == input_data.shape
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_gradcheck(self, device):
+        pass
+
+    def test_exception(self, device, dtype):
+        exception_test_data = self._get_exception_test_data(device, dtype)
+        for err_msg, drop_height, drop_width, input_data in exception_test_data:
+            with pytest.raises(Exception) as errinfo:
+                print(drop_height,drop_width)
+                aug = RandomRain(p=1.0, drop_height=drop_height, drop_width=drop_width)
                 aug(input_data)
 
             assert err_msg in str(errinfo)
