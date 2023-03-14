@@ -10,10 +10,10 @@ from kornia.core import Tensor
 
 class RainGenerator(RandomGeneratorBase):
     def __init__(
-            self,
-            number_of_drops: Union[int, Tuple[int, int]],
-            drop_height: Union[Tensor, Tuple[float, float]],
-            drop_width: Union[Tensor, Tuple[float, float]],
+        self,
+        number_of_drops: Union[int, Tuple[int, int]],
+        drop_height: Union[Tensor, Tuple[float, float]],
+        drop_width: Union[Tensor, Tuple[float, float]],
     ) -> None:
         super().__init__()
         self.number_of_drops = number_of_drops
