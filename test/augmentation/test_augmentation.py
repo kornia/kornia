@@ -55,7 +55,6 @@ from kornia.testing import BaseTester, assert_close, default_with_one_parameter_
 from kornia.utils import create_meshgrid
 from kornia.utils.helpers import _torch_inverse_cast
 
-
 # TODO same_on_batch tests?
 
 
@@ -3379,7 +3378,7 @@ class TestRandomGaussianBlur(BaseTester):
 
     @pytest.mark.xfail(
         reason="might fail due to the sampling distribution gradcheck errors. "
-               "See: https://github.com/pytorch/pytorch/issues/78346."
+        "See: https://github.com/pytorch/pytorch/issues/78346."
     )
     def test_gradcheck_class_non_deterministic(self, device, dtype):
         torch.manual_seed(0)
