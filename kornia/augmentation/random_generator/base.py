@@ -83,19 +83,19 @@ class DistributionWithMapper(Distribution):
         self.map_fn = map_fn
 
     def rsample(self, sample_shape: Tuple[int, ...]) -> Tensor:  # type: ignore[override]
-        out = self.dist.rsample(sample_shape)
+        out = self.dist.rsample(torch.Size(sample_shape))
         if self.map_fn is not None:
             out = self.map_fn(out)
         return out
 
     def sample(self, sample_shape: Tuple[int, ...]) -> Tensor:  # type: ignore[override]
-        out = self.dist.sample(sample_shape)
+        out = self.dist.sample(torch.Size(sample_shape))
         if self.map_fn is not None:
             out = self.map_fn(out)
         return out
 
     def sample_n(self, n: Union[int, float, Tensor]) -> Tensor:
-        out = self.dist.sample_n(n)
+        out = self.dist.sample_n(int(n.item()) if isinstance(n, Tensor) else int(n))
         if self.map_fn is not None:
             out = self.map_fn(out)
         return out
