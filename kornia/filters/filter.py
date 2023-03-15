@@ -36,7 +36,13 @@ def _compute_padding(kernel_size: list[int]) -> list[int]:
 
 
 def filter2d(
-    input: Tensor, kernel: Tensor, border_type: str = 'reflect', normalized: bool = False, padding: str = 'same', behaviour: str = 'corr') -> Tensor:
+    input: Tensor,
+    kernel: Tensor,
+    border_type: str = 'reflect',
+    normalized: bool = False,
+    padding: str = 'same',
+    behaviour: str = 'corr',
+) -> Tensor:
     r"""Convolve a tensor with a 2d kernel.
 
     The function applies a given kernel to a tensor. The kernel is applied

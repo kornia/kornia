@@ -36,18 +36,38 @@ class TestFilter2D(BaseTester):
 
     def test_conv(self, device, dtype):
         inp = torch.zeros(1, 1, 5, 5, device=device, dtype=dtype)
-        inp[..., 2, 2] = 1.
-        kernel = torch.arange(1,10).reshape(3,3).to(device, dtype)[None]
-        corr_expected = torch.tensor([[[[0., 0., 0., 0., 0.],
-                                         [0., 9., 8., 7., 0.],
-                                         [0., 6., 5., 4., 0.],
-                                         [0., 3., 2., 1., 0.],
-                                         [0., 0., 0., 0., 0.]]]], device=device, dtype=dtype)
-        conv_expected = torch.tensor([[[[0., 0., 0., 0., 0.],
-                                         [0., 1., 2., 3., 0.],
-                                         [0., 4., 5., 6., 0.],
-                                         [0., 7., 8., 9., 0.],
-                                         [0., 0., 0., 0., 0.]]]], device=device, dtype=dtype)
+        inp[..., 2, 2] = 1.0
+        kernel = torch.arange(1, 10).reshape(3, 3).to(device, dtype)[None]
+        corr_expected = torch.tensor(
+            [
+                [
+                    [
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 9.0, 8.0, 7.0, 0.0],
+                        [0.0, 6.0, 5.0, 4.0, 0.0],
+                        [0.0, 3.0, 2.0, 1.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        conv_expected = torch.tensor(
+            [
+                [
+                    [
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 1.0, 2.0, 3.0, 0.0],
+                        [0.0, 4.0, 5.0, 6.0, 0.0],
+                        [0.0, 7.0, 8.0, 9.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
         out_corr = filter2d(inp, kernel, behaviour='corr')
         assert_close(out_corr, corr_expected)
         out_conv = filter2d(inp, kernel, behaviour='conv')
