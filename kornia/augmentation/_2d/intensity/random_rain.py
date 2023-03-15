@@ -27,8 +27,8 @@ class RandomRain(IntensityAugmentationBase2D):
         >>> input = torch.rand(1, 1, 5, 5)
         >>> rain = RandomRain(p=1,drop_height=(1,2),drop_width=(1,2),number_of_drops=(1,1))
         >>> rain(input)
-        tensor([[[[0.4963, 0.7682, 0.0885, 0.1320, 0.3074],
-                  [0.7843, 0.4901, 0.8964, 0.4556, 0.6323],
+        tensor([[[[0.4963, 0.7843, 0.0885, 0.1320, 0.3074],
+                  [0.6341, 0.4901, 0.8964, 0.4556, 0.6323],
                   [0.3489, 0.4017, 0.0223, 0.1689, 0.2939],
                   [0.5185, 0.6977, 0.8000, 0.1610, 0.2823],
                   [0.6816, 0.9152, 0.3971, 0.8742, 0.4194]]]])
@@ -49,24 +49,24 @@ class RandomRain(IntensityAugmentationBase2D):
     def apply_transform(
         self, image: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
     ) -> Tensor:
-        height_of_drop = params['drop_height_factor']
-        width_of_drop = params['drop_width_factor']
-
         # Check array
         KORNIA_CHECK(image.shape[1] == 3 or image.shape[1] == 1, "Number of color channels should be 1 or 3.")
         KORNIA_CHECK(len(image.shape) in (3, 4), "Wrong input dimension.")
-        for i in range(image.shape[0]):
-            KORNIA_CHECK(int(height_of_drop[i]) <= image[i].shape[1], "Height of drop should be less than image height")
 
-            KORNIA_CHECK(int(width_of_drop[i]) <= image[i].shape[2], "Width of drop should be less than image width")
-            KORNIA_CHECK(int(height_of_drop[i]) > 0, "Height should be bigger than 0")
+        for i in range(image.shape[0]):
+            number_of_drops: int = int(params['number_of_drops_factor'][i])
+            # We generate tensor with maximum number of drops, and then remove unnecessary drops.
+
+            coordinates_of_drops: Tensor = params['coordinates_factor'][i][:number_of_drops]
+            height_of_drop: int = int(params['drop_height_factor'][i])
+            width_of_drop: int = int(params['drop_width_factor'][i])
+
+            # Check size of drop
+            KORNIA_CHECK(height_of_drop <= image[i].shape[1], "Height of drop should be less than image height")
+            KORNIA_CHECK(width_of_drop <= image[i].shape[2], "Width of drop should be less than image width")
+            KORNIA_CHECK(height_of_drop > 0, "Height should be bigger than 0")
+
             # Generate start coordinates for each drop
-
-        for i in range(image.shape[0]):
-            coordinates_of_drops = params['coordinates_factor'][i]
-            height_of_drop = params['drop_height_factor'][i]
-            width_of_drop = params['drop_width_factor'][i]
-
             random_y_coords = coordinates_of_drops[:, 0] * (image.shape[2] - height_of_drop - 1)
             if width_of_drop > 0:
                 random_x_coords = coordinates_of_drops[:, 1] * (image.shape[3] - width_of_drop - 1)
@@ -76,7 +76,7 @@ class RandomRain(IntensityAugmentationBase2D):
             coords = torch.cat([random_y_coords[None], random_x_coords[None]], dim=0).to(image.device, dtype=torch.long)
 
             # Generate how our drop will look like into the image
-            size_of_line = max(height_of_drop, abs(width_of_drop))
+            size_of_line: int = max(height_of_drop, abs(width_of_drop))
             x = torch.linspace(start=0, end=height_of_drop, steps=size_of_line, dtype=torch.int32).to(image.device)
             y = torch.linspace(start=0, end=width_of_drop, steps=size_of_line, dtype=torch.int32).to(image.device)
             # Draw lines

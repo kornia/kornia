@@ -52,9 +52,7 @@ class RainGenerator(RandomGeneratorBase):
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         # self.ksize_factor.expand((batch_size, -1))
-        number_of_drops_factor = _adapted_rsampling((batch_size,), self.number_of_drops_sampler, same_on_batch).to(
-            dtype=torch.int32
-        )
+        number_of_drops_factor = _adapted_rsampling((batch_size,), self.number_of_drops_sampler).to(dtype=torch.int32)
         drop_height_factor = _adapted_rsampling((batch_size,), self.drop_height_sampler, same_on_batch).to(
             dtype=torch.int32
         )
@@ -62,15 +60,15 @@ class RainGenerator(RandomGeneratorBase):
             dtype=torch.int32
         )
         if not same_on_batch:
-            coordinates_factor = [
-                _adapted_rsampling((number_of_drops, 2), self.coordinates_sampler, False)
-                for number_of_drops in number_of_drops_factor
-            ]
+            coordinates_factor = _adapted_rsampling(
+                (batch_size, int(number_of_drops_factor.max().item()), 2), self.coordinates_sampler, False
+            )
         else:
-            coordinates_factor = _adapted_rsampling((number_of_drops_factor[0], 2), self.coordinates_sampler, False)
-            coordinates_factor = [coordinates_factor] * batch_size
-
+            coordinates_factor = _adapted_rsampling(
+                (batch_size, int(number_of_drops_factor[0]), 2), self.coordinates_sampler, True
+            )
         return dict(
+            number_of_drops_factor=number_of_drops_factor,
             coordinates_factor=coordinates_factor,
             drop_height_factor=drop_height_factor,
             drop_width_factor=drop_width_factor,
