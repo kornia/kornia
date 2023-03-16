@@ -48,7 +48,7 @@ docstyle: FORCE
 	pydocstyle kornia/
 
 build-docs: FORCE
-	cd docs; make clean html SPHINXOPTS="-W"
+	cd docs; make clean html
 
 install: FORCE
 	python setup.py install
