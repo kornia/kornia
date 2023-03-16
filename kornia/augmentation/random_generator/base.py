@@ -1,4 +1,4 @@
-from typing import Callable, Dict, Optional, Tuple, Union
+from typing import Callable, Dict, Optional, Tuple
 
 import torch
 from torch.distributions import Distribution
@@ -94,8 +94,8 @@ class DistributionWithMapper(Distribution):
             out = self.map_fn(out)
         return out
 
-    def sample_n(self, n: Union[int, float, Tensor]) -> Tensor:
-        out = self.dist.sample_n(int(n.item()) if isinstance(n, Tensor) else int(n))
+    def sample_n(self, n: int) -> Tensor:
+        out = self.dist.sample_n(n)
         if self.map_fn is not None:
             out = self.map_fn(out)
         return out
