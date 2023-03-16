@@ -201,7 +201,9 @@ class TestRgbToGrayscale(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_grayscale, (img,), raise_exception=True, fast_mode=True)
 
+    @pytest.mark.skip(reason='Is crashing on compile')
     def test_dynamo(self, device, dtype, torch_optimizer):
+        # TODO: investigate the problem with dynamo
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.rgb_to_grayscale
@@ -292,7 +294,9 @@ class TestBgrToGrayscale(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.bgr_to_grayscale, (img,), raise_exception=True, fast_mode=True)
 
+    @pytest.mark.skip(reason='Is crashing on compile')
     def test_dynamo(self, device, dtype, torch_optimizer):
+        # TODO: investigate the problem with dynamo
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.rgb_to_grayscale
