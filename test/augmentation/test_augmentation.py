@@ -4195,17 +4195,14 @@ class TestRandomRain(BaseTester):
     torch.manual_seed(0)  # for random reproductibility
 
     def _get_exception_test_data(self, device, dtype):
-        err_msg_height_less = 'Height should be bigger than 0'
-        err_msg_height_bigger = 'Height of drop should be less than image height'
+        err_msg_height_bigger = "Height of drop should be greater than zero and less than image height."
         err_msg_width_bigger = 'Width of drop should be less than image width'
-        err_msg_wrong_sh = 'Input size must have a shape of either (H, W), (C, H, W) or (*, C, H, W).'
         err_msg_wrong_ch = 'Number of color channels should be 1 or 3.'
 
         return [
-            (err_msg_height_less, (-2, 0), (2, 3), torch.rand(1, 5, 5, device=device, dtype=dtype)),
+            (err_msg_height_bigger, (-2, 0), (2, 3), torch.rand(1, 5, 5, device=device, dtype=dtype)),
             (err_msg_height_bigger, (6, 6), (2, 3), torch.rand(1, 5, 5, device=device, dtype=dtype)),
             (err_msg_width_bigger, (2, 2), (6, 6), torch.rand(1, 5, 5, device=device, dtype=dtype)),
-            (err_msg_wrong_sh, (1, 2), (1, 2), torch.rand(1, 2, 3, 4, 5, device=device, dtype=dtype)),
             (err_msg_wrong_ch, (1, 2), (1, 2), torch.rand(2, 4, 5, device=device, dtype=dtype)),
         ]
 
