@@ -40,6 +40,19 @@ class TestNormalize(BaseTester):
         f = kornia.enhance.Normalize(mean, std)
         self.assert_close(f(data), expected)
 
+    def test_int_input(self, device, dtype):
+        data = torch.ones(2, 3, 1, 1, device=device, dtype=dtype)
+        data += 2
+
+        mean: int = 2
+        std: int = 1
+
+        # expected output
+        expected = torch.ones_like(data)
+
+        f = kornia.enhance.Normalize(mean, std)
+        self.assert_close(f(data), expected)
+
     def test_float_input(self, device, dtype):
         data = torch.ones(2, 3, 1, 1, device=device, dtype=dtype)
         data += 2
