@@ -83,8 +83,8 @@ class RandomRain(IntensityAugmentationBase2D):
 
             # Generate how our drop will look like into the image
             size_of_line: int = max(height_of_drop, abs(width_of_drop))
-            x = torch.linspace(start=0, end=height_of_drop, steps=size_of_line, dtype=torch.int32).to(image.device)
-            y = torch.linspace(start=0, end=width_of_drop, steps=size_of_line, dtype=torch.int32).to(image.device)
+            x = torch.linspace(start=0, end=height_of_drop, steps=size_of_line, dtype=torch.long).to(image.device)
+            y = torch.linspace(start=0, end=width_of_drop, steps=size_of_line, dtype=torch.long).to(image.device)
             # Draw lines
             for k in range(x.shape[0]):
                 image[i, :, coords[0] + x[k], coords[1] + y[k]] = 200 / 255

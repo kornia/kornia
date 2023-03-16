@@ -6,6 +6,7 @@ from torch.distributions import Uniform
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
 from kornia.core import Tensor
+from kornia.utils import _extract_device_dtype
 
 
 class RainGenerator(RandomGeneratorBase):
@@ -27,22 +28,23 @@ class RainGenerator(RandomGeneratorBase):
             'number_of_drops',
             center=self.number_of_drops[0] / 2 + self.number_of_drops[1] / 2,
             bounds=(self.number_of_drops[0], self.number_of_drops[1] + 1),
-        ).to(device=device, dtype=dtype)
+        ).to(device)
         drop_height = _range_bound(
             self.drop_height,
             'drop_height',
             center=self.drop_height[0] / 2 + self.drop_height[1] / 2,
             bounds=(self.drop_height[0], self.drop_height[1] + 1),
-        ).to(device=device, dtype=dtype)
+        ).to(device)
         drop_width = _range_bound(
             self.drop_width,
             'drop_width',
             center=self.drop_width[0] / 2 + self.drop_width[1] / 2,
             bounds=(self.drop_width[0], self.drop_width[1] + 1),
-        ).to(device=device, dtype=dtype)
+        ).to(device)
 
-        drop_coordinates = _range_bound((0, 1), 'drops_coordinate', center=0.5, bounds=(0, 1)).to(device=device)
-
+        drop_coordinates = _range_bound((0, 1), 'drops_coordinate', center=0.5, bounds=(0, 1)).to(
+            device=device, dtype=dtype
+        )
         self.number_of_drops_sampler = Uniform(number_of_drops[0], number_of_drops[1], validate_args=False)
         self.drop_height_sampler = Uniform(drop_height[0], drop_height[1], validate_args=False)
         self.drop_width_sampler = Uniform(drop_width[0], drop_width[1], validate_args=False)
@@ -51,22 +53,22 @@ class RainGenerator(RandomGeneratorBase):
     def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
+        _device, _dtype = _extract_device_dtype([self.drop_width, self.drop_height, self.number_of_drops])
         # self.ksize_factor.expand((batch_size, -1))
-        number_of_drops_factor = _adapted_rsampling((batch_size,), self.number_of_drops_sampler).to(dtype=torch.int32)
+        number_of_drops_factor = _adapted_rsampling((batch_size,), self.number_of_drops_sampler).to(
+            device=_device, dtype=torch.long
+        )
         drop_height_factor = _adapted_rsampling((batch_size,), self.drop_height_sampler, same_on_batch).to(
-            dtype=torch.int32
+            device=_device, dtype=torch.long
         )
         drop_width_factor = _adapted_rsampling((batch_size,), self.drop_width_sampler, same_on_batch).to(
-            dtype=torch.int32
+            device=_device, dtype=torch.long
         )
-        if not same_on_batch:
-            coordinates_factor = _adapted_rsampling(
-                (batch_size, int(number_of_drops_factor.max().item()), 2), self.coordinates_sampler, False
-            )
-        else:
-            coordinates_factor = _adapted_rsampling(
-                (batch_size, int(number_of_drops_factor[0]), 2), self.coordinates_sampler, True
-            )
+        coordinates_factor = _adapted_rsampling(
+            (batch_size, int(number_of_drops_factor.max().item()), 2),
+            self.coordinates_sampler,
+            same_on_batch=same_on_batch,
+        ).to(device=_device)
         return dict(
             number_of_drops_factor=number_of_drops_factor,
             coordinates_factor=coordinates_factor,
