@@ -158,11 +158,11 @@ def make_upright(laf: Tensor, eps: float = 1e-9) -> Tensor:
     """Rectify the affine matrix, so that it becomes upright.
 
     Args:
-        LAF :math:`(B, N, 2, 3)`
+        laf: :math:`(B, N, 2, 3)`
         eps: for safe division.
 
     Returns:
-        LAF :math:`(B, N, 2, 3)`
+        laf: :math:`(B, N, 2, 3)`
 
     Example:
         >>> input = torch.ones(1, 5, 2, 3)  # BxNx2x3
