@@ -472,16 +472,17 @@ def get_gaussian_kernel1d(
     dtype: Dtype | None = None,
 ) -> Tensor:
     r"""Function that returns Gaussian filter coefficients.
+
     Args:
         kernel_size: filter size. It should be odd and positive.
         sigma: gaussian standard deviation.
         force_even: overrides requirement for odd kernel size.
         device: This value will be used if sigma is a float. Device desired to compute.
         dtype: This value will be used if sigma is a float. Dtype desired for compute.
+
     Returns:
-        gaussian filter coefficients
-    Shape:
-        - Output: :math:`(B, \text{kernel_size})`.
+        gaussian filter coefficients with shape :math:`(B, \text{kernel_size})`.
+
     Examples:
         >>> get_gaussian_kernel1d(3, 2.5)
         tensor([[0.3243, 0.3513, 0.3243]])
@@ -504,18 +505,20 @@ def get_gaussian_discrete_kernel1d(
     device: Device | None = None,
     dtype: Dtype | None = None,
 ) -> Tensor:
-    r"""Function that returns Gaussian filter coefficients based on the modified Bessel functions. Adapted from:
-    https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
+    """Function that returns Gaussian filter coefficients based on the modified Bessel functions.
+
+    Adapted from: https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
+
     Args:
         kernel_size: filter size. It should be odd and positive.
         sigma: gaussian standard deviation. If a tensor, should be in a shape :math:`(B, 1)`
         force_even: overrides requirement for odd kernel size.
         device: This value will be used if sigma is a float. Device desired to compute.
         dtype: This value will be used if sigma is a float. Dtype desired for compute.
+
     Returns:
-        1D tensor with gaussian filter coefficients.
-    Shape:
-        - Output: :math:`(B, \text{kernel_size})`
+        1D tensor with gaussian filter coefficients. With shape :math:`(B, \text{kernel_size})`
+
     Examples:
         >>> get_gaussian_discrete_kernel1d(3, 2.5)
         tensor([[0.3235, 0.3531, 0.3235]])
@@ -538,18 +541,20 @@ def get_gaussian_erf_kernel1d(
     device: Device | None = None,
     dtype: Dtype | None = None,
 ) -> Tensor:
-    r"""Function that returns Gaussian filter coefficients by interpolating the error function, adapted from:
-    https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
+    """Function that returns Gaussian filter coefficients by interpolating the error function.
+
+    Adapted from: https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py.
+
     Args:
         kernel_size: filter size. It should be odd and positive.
         sigma: gaussian standard deviation. If a tensor, should be in a shape :math:`(B, 1)`
         force_even: overrides requirement for odd kernel size.
         device: This value will be used if sigma is a float. Device desired to compute.
         dtype: This value will be used if sigma is a float. Dtype desired for compute.
+
     Returns:
-        1D tensor with gaussian filter coefficients.
-    Shape:
-        - Output: :math:`(B, \text{kernel_size})`
+        1D tensor with gaussian filter coefficients. Shape :math:`(B, \text{kernel_size})`
+
     Examples:
         >>> get_gaussian_erf_kernel1d(3, 2.5)
         tensor([[0.3245, 0.3511, 0.3245]])
@@ -573,16 +578,20 @@ def get_gaussian_kernel2d(
     dtype: Dtype | None = None,
 ) -> Tensor:
     r"""Function that returns Gaussian filter matrix coefficients.
+
     Args:
         kernel_size: filter sizes in the x and y direction. Sizes should be odd and positive.
         sigma: gaussian standard deviation in the x and y.
         force_even: overrides requirement for odd kernel size.
         device: This value will be used if sigma is a float. Device desired to compute.
         dtype: This value will be used if sigma is a float. Dtype desired for compute.
+
     Returns:
         2D tensor with gaussian filter matrix coefficients.
+
     Shape:
         - Output: :math:`(B, \text{kernel_size}_x, \text{kernel_size}_y)`
+
     Examples:
         >>> get_gaussian_kernel2d((5, 5), (1.5, 1.5))
         tensor([[[0.0144, 0.0281, 0.0351, 0.0281, 0.0144],
@@ -625,16 +634,20 @@ def get_gaussian_kernel3d(
     dtype: Dtype | None = None,
 ) -> Tensor:
     r"""Function that returns Gaussian filter matrix coefficients.
+
     Args:
         kernel_size: filter sizes in the x, y and z direction. Sizes should be odd and positive.
         sigma: gaussian standard deviation in the x, y and z direction.
         force_even: overrides requirement for odd kernel size.
         device: This value will be used if sigma is a float. Device desired to compute.
         dtype: This value will be used if sigma is a float. Dtype desired for compute.
+
     Returns:
         3D tensor with gaussian filter matrix coefficients.
+
     Shape:
         - Output: :math:`(B, \text{kernel_size}_x, \text{kernel_size}_y,  \text{kernel_size}_z)`
+
     Examples:
         >>> get_gaussian_kernel3d((3, 3, 3), (1.5, 1.5, 1.5))
         tensor([[[[0.0292, 0.0364, 0.0292],
@@ -676,14 +689,18 @@ def get_gaussian_kernel3d(
 
 def get_laplacian_kernel1d(kernel_size: int, *, device: Device | None = None, dtype: Dtype = torch.float32) -> Tensor:
     r"""Function that returns the coefficients of a 1D Laplacian filter.
+
     Args:
         kernel_size: filter size. It should be odd and positive.
         device: tensor device desired to create the kernel
         dtype: tensor dtype desired to create the kernel
+
     Returns:
         1D tensor with laplacian filter coefficients.
+
     Shape:
         - Output: math:`(\text{kernel_size})`
+
     Examples:
         >>> get_laplacian_kernel1d(3)
         tensor([ 1., -2.,  1.])
@@ -701,14 +718,18 @@ def get_laplacian_kernel2d(
     kernel_size: tuple[int, int] | int, *, device: Device | None = None, dtype: Dtype = torch.float32
 ) -> Tensor:
     r"""Function that returns Gaussian filter matrix coefficients.
+
     Args:
         kernel_size: filter size should be odd.
         device: tensor device desired to create the kernel
         dtype: tensor dtype desired to create the kernel
+
     Returns:
         2D tensor with laplacian filter matrix coefficients.
+
     Shape:
         - Output: :math:`(\text{kernel_size}_x, \text{kernel_size}_y)`
+
     Examples:
         >>> get_laplacian_kernel2d(3)
         tensor([[ 1.,  1.,  1.],
@@ -738,14 +759,17 @@ def get_pascal_kernel_2d(
     kernel_size: tuple[int, int] | int, norm: bool = True, *, device: Device | None = None, dtype: Dtype | None = None
 ) -> Tensor:
     """Generate pascal filter kernel by kernel size.
+
     Args:
         kernel_size: height and width of the kernel.
         norm: if to normalize the kernel or not. Default: True.
         device: tensor device desired to create the kernel
         dtype: tensor dtype desired to create the kernel
+
     Returns:
         if kernel_size is an integer the kernel will be shaped as :math:`(kernel_size, kernel_size)`
         otherwise the kernel will be shaped as :math: `kernel_size`
+
     Examples:
     >>> get_pascal_kernel_2d(1)
     tensor([[1.]])
@@ -774,13 +798,16 @@ def get_pascal_kernel_1d(
     kernel_size: int, norm: bool = False, *, device: Device | None = None, dtype: Dtype | None = None
 ) -> Tensor:
     """Generate Yang Hui triangle (Pascal's triangle) by a given number.
+
     Args:
         kernel_size: height and width of the kernel.
         norm: if to normalize the kernel or not. Default: False.
         device: tensor device desired to create the kernel
         dtype: tensor dtype desired to create the kernel
+
     Returns:
         kernel shaped as :math:`(kernel_size,)`
+
     Examples:
     >>> get_pascal_kernel_1d(1)
     tensor([1.])
@@ -852,20 +879,22 @@ def get_hysteresis_kernel(device: Device | None = None, dtype: Dtype | None = No
 
 
 def get_hanning_kernel1d(kernel_size: int, device: Device | None = None, dtype: Dtype | None = None) -> Tensor:
-    r"""Returns Hanning (also known as Hann) kernel, used in signal processing and KCF tracker.
+    """Returns Hanning (also known as Hann) kernel, used in signal processing and KCF tracker.
 
     .. math::  w(n) = 0.5 - 0.5cos\\left(\\frac{2\\pi{n}}{M-1}\\right)
                \\qquad 0 \\leq n \\leq M-1
+
     See further in numpy docs https://numpy.org/doc/stable/reference/generated/numpy.hanning.html
+
     Args:
         kernel_size: The size the of the kernel. It should be positive.
         device: tensor device desired to create the kernel
         dtype: tensor dtype desired to create the kernel
+
     Returns:
-        1D tensor with Hanning filter coefficients.
-            .. math::  w(n) = 0.5 - 0.5cos\\left(\\frac{2\\pi{n}}{M-1}\\right)
-    Shape:
-        - Output: math:`(\text{kernel_size})`
+        1D tensor with Hanning filter coefficients. Shape math:`(\text{kernel_size})`
+        .. math::  w(n) = 0.5 - 0.5cos\\left(\\frac{2\\pi{n}}{M-1}\\right)
+
     Examples:
         >>> get_hanning_kernel1d(4)
         tensor([0.0000, 0.7500, 0.7500, 0.0000])
@@ -881,15 +910,15 @@ def get_hanning_kernel2d(
     kernel_size: tuple[int, int] | int, device: Device | None = None, dtype: Dtype | None = None
 ) -> Tensor:
     """Returns 2d Hanning kernel, used in signal processing and KCF tracker.
+
     Args:
         kernel_size: The size of the kernel for the filter. It should be positive.
         device: tensor device desired to create the kernel
         dtype: tensor dtype desired to create the kernel
+
     Returns:
-        2D tensor with Hanning filter coefficients.
-            .. math::  w(n) = 0.5 - 0.5cos\\left(\\frac{2\\pi{n}}{M-1}\\right)
-    Shape:
-        - Output: math:`(\text{kernel_size[0], kernel_size[1]})`
+        2D tensor with Hanning filter coefficients. Shape: math:`(\text{kernel_size[0], kernel_size[1]})`
+        .. math::  w(n) = 0.5 - 0.5cos\\left(\\frac{2\\pi{n}}{M-1}\\right)
     """
     kernel_size = _unpack_2d_ks(kernel_size)
     _check_kernel_size(kernel_size, 2, allow_even=True)

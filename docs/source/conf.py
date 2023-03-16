@@ -116,7 +116,7 @@ html_baseurl = 'https://kornia.readthedocs.io'
 html_title = "Kornia"
 
 html_theme_options = {
-    'analytics_id': 'G-RKS4WFXVHJ',
+    # 'analytics_id': 'G-RKS4WFXVHJ', # Unsupported by furo theme
     'light_logo': 'img/kornia_logo_only_light.svg',
     'dark_logo': 'img/kornia_logo_only_dark.svg',
     "sidebar_hide_name": True,
