@@ -142,7 +142,7 @@ def diamond_square(
     roughness: Union[float, Tensor] = 0.5,
     random_scale: Union[float, Tensor] = 1.0,
     random_fn: Callable[..., Tensor] = torch.rand,
-    normalize_range: Optional[Tuple[int, int]] = None,
+    normalize_range: Optional[Tuple[float, float]] = None,
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
 ) -> Tensor:
