@@ -174,7 +174,7 @@ class RandomCrop(GeometricAugmentationBase2D):
     ) -> Tensor:
         padding_size: Optional[List[int]] = None
         if "padding_size" in params and isinstance(params["padding_size"], Tensor):
-            padding_size = params["padding_size"].unique(dim=0).cpu().squeeze().numpy().tolist()
+            padding_size = params["padding_size"].unique(dim=0).cpu().squeeze().tolist()
         input = self.precrop_padding(input, padding_size, flags)
 
         flags = self.flags if flags is None else flags
@@ -251,7 +251,7 @@ class RandomCrop(GeometricAugmentationBase2D):
         out = super().inverse_inputs(input, params, flags, transform, **kwargs)
         if not params["batch_prob"].all():
             return out
-        padding_size = params["padding_size"].unique(dim=0).cpu().squeeze().numpy().tolist()
+        padding_size = params["padding_size"].unique(dim=0).cpu().squeeze().tolist()
         padding_size = [-padding_size[0], -padding_size[1], -padding_size[2], -padding_size[3]]
         return self.precrop_padding(out, padding_size)
 
