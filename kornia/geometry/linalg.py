@@ -13,6 +13,7 @@ __all__ = [
     "transform_points",
     "point_line_distance",
     "squared_norm",
+    "batched_squared_norm",
     "batched_dot_product",
     "euclidean_distance",
 ]
