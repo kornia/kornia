@@ -1,1 +1,1 @@
-accelerate==0.17.0
+accelerate==0.17.1
