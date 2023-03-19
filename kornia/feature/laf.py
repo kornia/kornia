@@ -278,7 +278,7 @@ def get_laf_pts_to_draw(LAF: Tensor, img_idx: int = 0) -> Tuple[List[int], List[
     # TODO: Refactor doctest
     KORNIA_CHECK_LAF(LAF)
     pts = laf_to_boundary_points(LAF[img_idx : img_idx + 1])[0]
-    pts_np = pts.detach().permute(1, 0, 2).cpu().numpy()
+    pts_np = pts.detach().permute(1, 0, 2).cpu()
     return (pts_np[..., 0].tolist(), pts_np[..., 1].tolist())
 
 
