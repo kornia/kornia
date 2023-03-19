@@ -20,6 +20,16 @@ class TestDiamondSquare:
         assert out.shape == output_size
         assert out.device == device
         assert out.dtype == dtype
+    
+    def test_normalize(self, device, dtype):
+        torch.manual_seed(0)
+        output_size = (1, 1, 3, 4)
+        roughness = 0.5
+        random_scale = 1.0
+        normalize_range = (0., 1.)
+        out = kornia.contrib.diamond_square(output_size, roughness, random_scale, normalize_range=normalize_range, device=device, dtype=dtype)
+        assert_close(out.min(), torch.tensor(0.))
+        assert_close(out.max(), torch.tensor(1.))
 
 
 class TestVisionTransformer:
