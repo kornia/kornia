@@ -207,5 +207,5 @@ def diamond_square(
     # normalize the output in the range using min-max
     if normalize_range is not None:
         min_val, max_val = normalize_range
-        img = normalize_min_max(img, min_val, max_val)
+        img = normalize_min_max(img.contiguous(), min_val, max_val)
     return img
