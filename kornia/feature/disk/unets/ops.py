@@ -1,4 +1,6 @@
-import torch, functools
+import functools
+
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -7,13 +9,10 @@ from .utils import size_is_pow2
 
 class AttentionGate(nn.Module):
     def __init__(self, n_features):
-        super(AttentionGate, self).__init__()
+        super().__init__()
         self.n_features = n_features
 
-        self.seq = nn.Sequential(
-            nn.Conv2d(self.n_features, self.n_features, 1),
-            nn.Sigmoid()
-        )
+        self.seq = nn.Sequential(nn.Conv2d(self.n_features, self.n_features, 1), nn.Sigmoid())
 
     def forward(self, inp):
         g = self.seq(inp)
@@ -23,18 +22,16 @@ class AttentionGate(nn.Module):
 
 class TrivialUpsample(nn.Module):
     def __init__(self, *args, **kwargs):
-        super(TrivialUpsample, self).__init__()
+        super().__init__()
 
     def forward(self, x):
-        r = F.interpolate(
-            x, scale_factor=2, mode='bilinear', align_corners=False
-        )
+        r = F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=False)
         return r
 
 
 class TrivialDownsample(nn.Module):
     def __init__(self, *args, **kwargs):
-        super(TrivialDownsample, self).__init__()
+        super().__init__()
 
     def forward(self, x):
         if not size_is_pow2(x):
@@ -46,7 +43,7 @@ class TrivialDownsample(nn.Module):
 
 class NoOp(nn.Module):
     def __init__(self, *args, **kwargs):
-        super(NoOp, self).__init__()
+        super().__init__()
 
     def forward(self, x):
         return x
@@ -57,11 +54,11 @@ class UGroupNorm(nn.GroupNorm):
         group_size = max(1, min(group_size, in_channels))
 
         if in_channels % group_size != 0:
-            for upper in range(group_size+1, in_channels + 1):
+            for upper in range(group_size + 1, in_channels + 1):
                 if in_channels % upper == 0:
                     break
 
-            for lower in range(group_size-1, 0, -1):
+            for lower in range(group_size - 1, 0, -1):
                 if in_channels % lower == 0:
                     break
 
@@ -73,7 +70,7 @@ class UGroupNorm(nn.GroupNorm):
         assert in_channels % group_size == 0
         num_groups = in_channels // group_size
 
-        super(UGroupNorm, self).__init__(num_groups, in_channels)
+        super().__init__(num_groups, in_channels)
 
 
 def u_group_norm(group_size):

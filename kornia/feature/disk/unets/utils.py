@@ -1,8 +1,8 @@
 def cut_to_match(reference, t, n_pref=2):
-    '''
-    Slice tensor `t` along spatial dimensions to match `reference`, by
-    picking the central region. Ignores first `n_pref` axes
-    '''
+    """Slice tensor `t` along spatial dimensions to match `reference`, by picking the central region.
+
+    Ignores first `n_pref` axes
+    """
 
     if reference.shape[n_pref:] == t.shape[n_pref:]:
         # sizes match, no slicing necessary
@@ -34,5 +34,5 @@ def cut_to_match(reference, t, n_pref=2):
 
 
 def size_is_pow2(t):
-    ''' Check if the trailing spatial dimensions are powers of 2 '''
+    """Check if the trailing spatial dimensions are powers of 2."""
     return all(s % 2 == 0 for s in t.size()[-2:])

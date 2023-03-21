@@ -2,6 +2,7 @@ import torch
 
 from kornia.feature.disk import DISK
 
+
 class TestDisk:
     def test_smoke_depth(self, device):
         disk: DISK = DISK.from_pretrained(checkpoint='depth', device=device)
