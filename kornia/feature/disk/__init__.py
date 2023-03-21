@@ -1,1 +1,1 @@
-from .disk import Disk
+from .disk import DISK 

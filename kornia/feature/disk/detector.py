@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from torch import Tensor
 from torch.distributions import Categorical, Bernoulli
 
-from .structs import Features
+from .structs import Keypoints
 
 def select_on_last(values: Tensor, indices: Tensor) -> Tensor:
     '''
@@ -78,29 +78,6 @@ def nms(signal: Tensor, window_size=5, cutoff=0.) -> Tensor:
     else:
         return nms & (signal > cutoff)
 
-
-@dataclass
-class Keypoints:
-    '''
-    A simple, temporary struct used to store keypoint detections and their
-    log-probabilities. After construction, merge_with_descriptors is used to
-    select corresponding descriptors from unet output.
-    '''
-    xys: Tensor
-    logp: Tensor
-
-    def merge_with_descriptors(self, descriptors: Tensor) -> Features:
-        '''
-        Select descriptors from a dense `descriptors` tensor, at locations
-        given by `self.xys`
-        '''
-        x, y = self.xys.T
-
-        desc = descriptors[:, y, x].T
-        desc = F.normalize(desc, dim=-1)
-
-        return Features(self.xys.to(torch.float32), desc, self.logp)
-
 class Detector:
     def __init__(self, window=8):
         self.window = window
@@ -141,8 +118,8 @@ class Detector:
         cgrid = torch.stack(torch.meshgrid(
             torch.arange(H, device=dev),
             torch.arange(W, device=dev),
+            indexing='ij',
         )[::-1], dim=0).unsqueeze(0)
-        cgrid_tiled = self._tile(cgrid)
 
         # extract xy coordinates from cgrid according to indices sampled
         # before

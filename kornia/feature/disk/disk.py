@@ -1,10 +1,11 @@
-from typing import Literal, Tuple
+from typing import Literal, Sequence, Tuple
 import torch
 import numpy as np
 from torch import Tensor
 
 from kornia.utils.helpers import map_location_to_cpu
 
+from .structs import Keypoints
 from .unets import Unet, thin_setup
 from .detector import Detector
 
@@ -29,31 +30,11 @@ class DISK(torch.nn.Module):
         )
         self.detector = Detector(window=window)
 
-    def _split(self, unet_output: Tensor) -> Tuple[Tensor, Tensor]:
-        '''
-        Splits the raw Unet output into descriptors and detection heatmap.
-        '''
-        assert unet_output.shape[1] == self.desc_dim + 1
+    def heatmap_and_dense_descriptors(self, images: Tensor) -> Tuple[Tensor, Tensor]:
+        ''' Returns the heatmap and the dense descriptors. '''
 
-        descriptors = unet_output[:, :self.desc_dim]
-        heatmap     = unet_output[:, self.desc_dim:]
-
-        return descriptors, heatmap
-
-    def detect(
-        self,
-        images: Tensor,
-        kind: Literal['rng', 'nms'] = 'rng',
-        **kwargs
-    ) -> np.ndarray:
-        ''' allowed values for `kind`:
-            * rng
-            * nms
-        '''
-
-        B = images.shape[0]
         try:
-            descriptors, heatmaps = self._split(self.unet(images))
+            unet_output = self.unet(images)
         except RuntimeError as e:
             if 'Trying to downsample' in str(e):
                 msg = ('U-Net failed because the input is of wrong shape. With '
@@ -64,10 +45,31 @@ class DISK(torch.nn.Module):
             else:
                 raise
 
-        keypoints = {
+        assert unet_output.shape[1] == self.desc_dim + 1
+
+        descriptors = unet_output[:, :self.desc_dim]
+        heatmaps    = unet_output[:, self.desc_dim:]
+
+        return heatmaps, descriptors
+
+    def detect(
+        self,
+        images: Tensor,
+        algorithm: Literal['rng', 'nms'] = 'nms',
+        **kwargs
+    ) -> np.ndarray:
+        ''' allowed values for `algorithm`:
+            * rng
+            * nms
+        '''
+
+        B = images.shape[0]
+        heatmaps, descriptors = self.heatmap_and_dense_descriptors(images)
+
+        keypoints: Sequence[Keypoints] = {
             'rng': self.detector.sample,
             'nms': self.detector.nms,
-        }[kind](heatmaps, **kwargs)
+        }[algorithm](heatmaps, **kwargs)
 
         features = []
         for i in range(B):
@@ -75,22 +77,27 @@ class DISK(torch.nn.Module):
 
         return np.array(features, dtype=object)
 
-class Disk(DISK):
-    def __init__(
-        self,
-        pretrained: Literal['none', 'depth', 'epipolar'] = 'none',
+    @classmethod
+    def from_pretrained(
+        cls,
+        checkpoint: Literal['depth', 'epipolar'] = 'depth',
         device: torch.device = torch.device('cpu'),
-    ):
-        super(Disk, self).__init__()
-
-        if pretrained == 'depth':
+    ) -> 'DISK':
+        if checkpoint == 'depth':
             pretrained_dict = torch.hub.load_state_dict_from_url(
                 'https://raw.githubusercontent.com/cvlab-epfl/disk/master/depth-save.pth',
                 map_location=map_location_to_cpu,
             )
-
-            self.load_state_dict(pretrained_dict['extractor'])
+        elif checkpoint == 'epipolar':
+            pretrained_dict = torch.hub.load_state_dict_from_url(
+                'https://raw.githubusercontent.com/cvlab-epfl/disk/master/epipolar-save.pth',
+                map_location=map_location_to_cpu,
+            )
         else:
-            raise ValueError()
-        
-        self.to(device)
+            raise ValueError(f'Unknown pretrained model: {checkpoint}')
+
+        model: DISK = cls()
+        model.load_state_dict(pretrained_dict['extractor'])
+        model.eval()
+        model.to(device)
+        return model
