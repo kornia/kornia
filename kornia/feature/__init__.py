@@ -66,6 +66,7 @@ from .siftdesc import DenseSIFTDescriptor, SIFTDescriptor
 from .sold2 import SOLD2, SOLD2_detector
 from .sosnet import SOSNet
 from .tfeat import TFeat
+from .disk import DISK
 
 __all__ = [
     "match_nn",
@@ -152,4 +153,5 @@ __all__ = [
     "perspective_transform_lafs",
     "SOLD2_detector",
     "SOLD2",
+    "DISK",
 ]

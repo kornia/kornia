@@ -4,42 +4,50 @@ import torch.nn.functional as F
 from torch import Tensor
 
 @dataclass
-class Features:
-    kp: Tensor
-    desc: Tensor
-    kp_logp: Tensor
+class DISKFeatures:
+    keypoints: Tensor
+    descriptors: Tensor
+    keypoint_logp: Tensor
 
     def __post_init__(self):
-        assert self.kp.device == self.desc.device
-        assert self.kp.device == self.kp_logp.device
+        assert self.keypoints.device == self.descriptors.device
+        assert self.keypoints.device == self.keypoint_logp.device
 
     @property
     def n(self):
-        return self.kp.shape[0]
+        return self.keypoints.shape[0]
 
     @property
     def device(self):
-        return self.kp.device
+        return self.keypoints.device
+
+    @property
+    def x(self):
+        return self.keypoints[:, 0]
+    
+    @property
+    def y(self):
+        return self.keypoints[:, 1]
 
     def detached_and_grad_(self):
-        return Features(
-            self.kp,
-            self.desc.detach().requires_grad_(),
-            self.kp_logp.detach().requires_grad_(),
+        return DISKFeatures(
+            self.keypoints,
+            self.descriptors.detach().requires_grad_(),
+            self.keypoint_logp.detach().requires_grad_(),
         )
 
     def requires_grad_(self, is_on):
-        self.desc.requires_grad_(is_on)
-        self.kp_logp.requires_grad_(is_on)
+        self.descriptors.requires_grad_(is_on)
+        self.keypoint_logp.requires_grad_(is_on)
 
     def grad_tensors(self):
-        return [self.desc, self.kp_logp]
+        return [self.descriptors, self.keypoint_logp]
 
     def to(self, *args, **kwargs):
-        return Features(
-            self.kp.to(*args, **kwargs),
-            self.desc.to(*args, **kwargs),
-            self.kp_logp.to(*args, **kwargs) if self.kp_logp is not None else None,
+        return DISKFeatures(
+            self.keypoints.to(*args, **kwargs),
+            self.descriptors.to(*args, **kwargs),
+            self.keypoint_logp.to(*args, **kwargs) if self.keypoint_logp is not None else None,
         )
 
 @dataclass
@@ -52,7 +60,7 @@ class Keypoints:
     xys: Tensor
     logp: Tensor
 
-    def merge_with_descriptors(self, descriptors: Tensor) -> Features:
+    def merge_with_descriptors(self, descriptors: Tensor) -> DISKFeatures:
         '''
         Select descriptors from a dense `descriptors` tensor, at locations
         given by `self.xys`
@@ -62,4 +70,4 @@ class Keypoints:
         desc = descriptors[:, y, x].T
         desc = F.normalize(desc, dim=-1)
 
-        return Features(self.xys.to(torch.float32), desc, self.logp)
+        return DISKFeatures(self.xys.to(torch.float32), desc, self.logp)

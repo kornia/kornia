@@ -1,1 +1,2 @@
-from .disk import DISK 
+from .disk import DISK
+from .structs import DISKFeatures

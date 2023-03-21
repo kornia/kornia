@@ -5,7 +5,7 @@ from torch import Tensor
 
 from kornia.utils.helpers import map_location_to_cpu
 
-from .structs import Keypoints
+from .structs import DISKFeatures, Keypoints
 from .unets import Unet, thin_setup
 from .detector import Detector
 
@@ -57,7 +57,7 @@ class DISK(torch.nn.Module):
         images: Tensor,
         algorithm: Literal['rng', 'nms'] = 'nms',
         **kwargs
-    ) -> np.ndarray:
+    ) -> Sequence[DISKFeatures]:
         ''' allowed values for `algorithm`:
             * rng
             * nms
