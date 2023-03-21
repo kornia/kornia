@@ -21,6 +21,20 @@ class TestDiamondSquare:
         assert out.device == device
         assert out.dtype == dtype
 
+    def test_normalize(self, device, dtype):
+        torch.manual_seed(0)
+        output_size = (1, 1, 3, 4)
+        roughness = 0.5
+        random_scale = 1.0
+        normalize_range = (0.0, 1.0)
+        expected_min = torch.tensor(normalize_range[0], device=device, dtype=dtype)
+        expected_max = torch.tensor(normalize_range[1], device=device, dtype=dtype)
+        out = kornia.contrib.diamond_square(
+            output_size, roughness, random_scale, normalize_range=normalize_range, device=device, dtype=dtype
+        )
+        assert_close(out.min(), expected_min)
+        assert_close(out.max(), expected_max)
+
 
 class TestVisionTransformer:
     @pytest.mark.parametrize("B", [1, 2])
