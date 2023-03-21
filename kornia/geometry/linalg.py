@@ -75,7 +75,7 @@ def compose_transformations(trans_01: torch.Tensor, trans_12: torch.Tensor) -> t
     return trans_02
 
 
-def inverse_transformation(trans_12):
+def inverse_transformation(trans_12: torch.Tensor) -> torch.Tensor:
     r"""Function that inverts a 4x4 homogeneous transformation
     :math:`T_1^{2} = \begin{bmatrix} R_1 & t_1 \\ \mathbf{0} & 1 \end{bmatrix}`
 
