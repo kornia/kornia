@@ -1,6 +1,5 @@
 from typing import Literal, Sequence, Tuple
 
-import numpy as np
 import torch
 from torch import Tensor
 
@@ -65,7 +64,7 @@ class DISK(torch.nn.Module):
         for i in range(B):
             features.append(keypoints[i].merge_with_descriptors(descriptors[i]))
 
-        return np.array(features, dtype=object)
+        return features
 
     @classmethod
     def from_pretrained(

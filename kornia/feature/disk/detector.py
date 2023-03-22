@@ -1,7 +1,5 @@
-from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
-import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import Tensor
@@ -86,7 +84,7 @@ class Detector:
 
         return heatmap.unfold(2, v, v).unfold(3, v, v).reshape(b, c, h // v, w // v, v * v)
 
-    def sample(self, heatmap: Tensor) -> np.ndarray:
+    def sample(self, heatmap: Tensor) -> List[Keypoints]:
         """Implements the training-time grid-based sampling protocol."""
         v = self.window
         dev = heatmap.device
@@ -121,9 +119,9 @@ class Detector:
             mask = accept_mask[i]
             keypoints.append(Keypoints(xys[i][mask], logp[i][mask]))
 
-        return np.array(keypoints, dtype=object)
+        return keypoints
 
-    def nms(self, heatmap: Tensor, n: Optional[int] = None, **kwargs) -> np.ndarray:
+    def nms(self, heatmap: Tensor, n: Optional[int] = None, **kwargs) -> List[Keypoints]:
         """Inference-time nms-based detection protocol."""
         heatmap = heatmap.squeeze(1)
         nmsed = nms(heatmap, **kwargs)
@@ -147,4 +145,4 @@ class Detector:
 
             keypoints.append(Keypoints(xy, logp))
 
-        return np.array(keypoints, dtype=object)
+        return keypoints
