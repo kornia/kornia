@@ -1,4 +1,4 @@
-from typing import List, Literal, Tuple
+from typing import List, Tuple
 
 import torch
 
@@ -74,9 +74,7 @@ class DISK(torch.nn.Module):
         return features
 
     @classmethod
-    def from_pretrained(
-        cls, checkpoint: Literal['depth', 'epipolar'] = 'depth', device: torch.device = torch.device('cpu')
-    ) -> 'DISK':
+    def from_pretrained(cls, checkpoint: str = 'depth', device: torch.device = torch.device('cpu')) -> 'DISK':
         if checkpoint == 'depth':
             pretrained_dict = torch.hub.load_state_dict_from_url(
                 'https://raw.githubusercontent.com/cvlab-epfl/disk/master/depth-save.pth',
