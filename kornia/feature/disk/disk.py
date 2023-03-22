@@ -39,7 +39,9 @@ class DISK(torch.nn.Module):
                 raise
 
         if unet_output.shape[1] != self.desc_dim + 1:
-            raise RuntimeError(f'U-Net output has {unet_output.shape[1]} channels, but expected {self.desc_dim=} + 1 .')
+            raise RuntimeError(
+                f'U-Net output has {unet_output.shape[1]} channels, but expected self.desc_dim={self.desc_dim} + 1.'
+            )
 
         descriptors = unet_output[:, : self.desc_dim]
         heatmaps = unet_output[:, self.desc_dim :]
