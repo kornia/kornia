@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from torch.distributions import Bernoulli, Categorical
 
 from kornia.core import Tensor
+from kornia.utils import create_meshgrid
 
 from .structs import Keypoints
 
@@ -89,14 +90,13 @@ class Detector:
         proposals, accept_mask, logp = point_distribution(heatmap_tiled)
 
         # create a grid of xy coordinates and tile it as well
-        cgrid = torch.stack(
-            torch.meshgrid(torch.arange(H, device=dev), torch.arange(W, device=dev), indexing='ij')[::-1], dim=0
-        ).unsqueeze(0)
+        cgrid = create_meshgrid(H, W, normalized_coordinates=False, device=dev).unsqueeze(0)
+        cgrid_tiled = self._tile(cgrid)
 
         # extract xy coordinates from cgrid according to indices sampled
         # before
         xys = select_on_last(
-            self._tile(cgrid).repeat(B, 1, 1, 1, 1),
+            cgrid_tiled.repeat(B, 1, 1, 1, 1),
             # unsqueeze and repeat on the (xy) dimension to grab
             # both components from the grid
             proposals.unsqueeze(1).repeat(1, 2, 1, 1),
