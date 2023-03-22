@@ -49,13 +49,6 @@ def nms(signal: Tensor, window_size=5, cutoff=0.0) -> Tensor:
 
     _, ixs = F.max_pool2d(signal, kernel_size=window_size, stride=1, padding=window_size // 2, return_indices=True)
 
-    # FIXME UPSTREAM: a workaround wrong shape of `ixs` until
-    # https://github.com/pytorch/pytorch/issues/38986
-    # is fixed
-    if len(ixs.shape) == 4:
-        assert ixs.shape[0] == 1
-        ixs = ixs.squeeze(0)
-
     h, w = signal.shape[1:]
     coords = torch.arange(h * w, device=signal.device).reshape(1, h, w)
     nms = ixs == coords
@@ -79,19 +72,15 @@ class Detector:
         v = self.window
         b, c, h, w = heatmap.shape
 
-        assert heatmap.shape[2] % v == 0
-        assert heatmap.shape[3] % v == 0
+        if not ((h % v == 0) and (w % v == 0)):
+            raise AssertionError(f'Heatmap shape {heatmap.shape} cannot be tiled into ({v}, {v}) windows!')
 
         return heatmap.unfold(2, v, v).unfold(3, v, v).reshape(b, c, h // v, w // v, v * v)
 
     def sample(self, heatmap: Tensor) -> List[Keypoints]:
         """Implements the training-time grid-based sampling protocol."""
-        v = self.window
         dev = heatmap.device
         B, _, H, W = heatmap.shape
-
-        assert H % v == 0
-        assert W % v == 0
 
         # tile the heatmap into [window x window] tiles and pass it to
         # the categorical distribution.
@@ -130,7 +119,7 @@ class Detector:
         for b in range(heatmap.shape[0]):
             yx = nmsed[b].nonzero(as_tuple=False)
             logp = heatmap[b][nmsed[b]]
-            xy = torch.flip(yx, (1,))
+            xy = yx.flip((1,))
 
             if n is not None:
                 n_ = min(n + 1, logp.numel())
