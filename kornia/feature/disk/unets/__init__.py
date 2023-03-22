@@ -1,1 +1,1 @@
-from .unet import Unet, fat_setup, thin_setup
+from .unet import Unet

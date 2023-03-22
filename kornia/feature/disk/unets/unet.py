@@ -2,20 +2,8 @@ import torch.nn as nn
 
 from kornia.core import Tensor
 
-from .blocks import ThinUnetDownBlock, ThinUnetUpBlock, UnetDownBlock, UnetUpBlock
+from .blocks import ThinUnetDownBlock, ThinUnetUpBlock
 from .ops import NoOp, TrivialDownsample, TrivialUpsample
-
-fat_setup = {
-    'gate': nn.PReLU,
-    'norm': nn.InstanceNorm2d,
-    'upsample': TrivialUpsample,
-    'downsample': TrivialDownsample,
-    'down_block': UnetDownBlock,
-    'up_block': UnetUpBlock,
-    'dropout': NoOp,
-    'padding': False,
-    'bias': True,
-}
 
 thin_setup = {
     'gate': nn.PReLU,
@@ -25,13 +13,13 @@ thin_setup = {
     'down_block': ThinUnetDownBlock,
     'up_block': ThinUnetUpBlock,
     'dropout': NoOp,
-    'padding': False,
+    'padding': True,
     'bias': True,
 }
 
 
 class Unet(nn.Module):
-    def __init__(self, in_features=1, up=None, down=None, size=5, setup=fat_setup):
+    def __init__(self, in_features=1, up=None, down=None, size=5):
         super().__init__()
 
         if not len(down) == len(up) + 1:
@@ -41,20 +29,20 @@ class Unet(nn.Module):
         self.down = down
         self.in_features = in_features
 
-        DownBlock = setup['down_block']
-        UpBlock = setup['up_block']
+        DownBlock = thin_setup['down_block']
+        UpBlock = thin_setup['up_block']
 
         down_dims = [in_features] + down
         self.path_down = nn.ModuleList()
         for i, (d_in, d_out) in enumerate(zip(down_dims[:-1], down_dims[1:])):
-            block = DownBlock(d_in, d_out, size=size, name=f'down_{i}', setup=setup, is_first=i == 0)
+            block = DownBlock(d_in, d_out, size=size, name=f'down_{i}', setup=thin_setup, is_first=i == 0)
             self.path_down.append(block)
 
         bot_dims = [down[-1]] + up
         hor_dims = down_dims[-2::-1]
         self.path_up = nn.ModuleList()
         for i, (d_bot, d_hor, d_out) in enumerate(zip(bot_dims, hor_dims, up)):
-            block = UpBlock(d_bot, d_hor, d_out, size=size, name=f'up_{i}', setup=setup)
+            block = UpBlock(d_bot, d_hor, d_out, size=size, name=f'up_{i}', setup=thin_setup)
             self.path_up.append(block)
 
         self.n_params = 0

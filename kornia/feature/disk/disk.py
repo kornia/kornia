@@ -7,19 +7,18 @@ from kornia.utils.helpers import map_location_to_cpu
 
 from .detector import Detector
 from .structs import DISKFeatures, Keypoints
-from .unets import Unet, thin_setup
-
-DEFAULT_SETUP = {**thin_setup, 'bias': True, 'padding': True}
+from .unets import Unet
 
 
 class DISK(torch.nn.Module):
-    def __init__(self, desc_dim=128, window=8, setup=DEFAULT_SETUP, kernel_size=5):
+    def __init__(self, desc_dim=128, window=8, unet=None):
         super().__init__()
 
         self.desc_dim = desc_dim
-        self.unet = Unet(
-            in_features=3, size=kernel_size, down=[16, 32, 64, 64, 64], up=[64, 64, 64, desc_dim + 1], setup=setup
-        )
+
+        if unet is None:
+            unet = Unet(in_features=3, size=5, down=[16, 32, 64, 64, 64], up=[64, 64, 64, desc_dim + 1])
+        self.unet = unet
         self.detector = Detector(window=window)
 
     def heatmap_and_dense_descriptors(self, images: Tensor) -> Tuple[Tensor, Tensor]:
@@ -40,10 +39,7 @@ class DISK(torch.nn.Module):
                 raise
 
         if unet_output.shape[1] != self.desc_dim + 1:
-            raise RuntimeError(
-                f'U-Net output has {unet_output.shape[1]} channels, but '
-                f'expected {self.desc_dim=} + 1 for detection heatmap.'
-            )
+            raise RuntimeError(f'U-Net output has {unet_output.shape[1]} channels, but expected {self.desc_dim=} + 1 .')
 
         descriptors = unet_output[:, : self.desc_dim]
         heatmaps = unet_output[:, self.desc_dim :]
