@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
-from torch import Tensor
+
+from kornia.core import Tensor
 
 from .ops import NoOp
 from .utils import cut_to_match

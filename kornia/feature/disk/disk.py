@@ -1,8 +1,8 @@
-from typing import List, Literal, Sequence, Tuple
+from typing import List, Literal, Tuple
 
 import torch
-from torch import Tensor
 
+from kornia.core import Tensor
 from kornia.utils.helpers import map_location_to_cpu
 
 from .detector import Detector
@@ -39,7 +39,11 @@ class DISK(torch.nn.Module):
             else:
                 raise
 
-        assert unet_output.shape[1] == self.desc_dim + 1
+        if unet_output.shape[1] != self.desc_dim + 1:
+            raise RuntimeError(
+                f'U-Net output has {unet_output.shape[1]} channels, but '
+                f'expected {self.desc_dim=} + 1 for detection heatmap.'
+            )
 
         descriptors = unet_output[:, : self.desc_dim]
         heatmaps = unet_output[:, self.desc_dim :]

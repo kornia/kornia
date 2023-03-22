@@ -1,7 +1,6 @@
-import torch
 import torch.nn as nn
-from torch import Tensor
-from torch.utils.checkpoint import checkpoint
+
+from kornia.core import Tensor
 
 from .blocks import ThinUnetDownBlock, ThinUnetUpBlock, UnetDownBlock, UnetUpBlock
 from .ops import NoOp, TrivialDownsample, TrivialUpsample
@@ -31,21 +30,6 @@ thin_setup = {
 }
 
 
-def checkpointed(cls):
-    assert issubclass(cls, torch.nn.Module)
-
-    # @functools.wraps(cls)
-    class Checkpointed(cls):
-        def forward(self, *args, **kwargs):
-            super_fwd = super().forward
-            if any((torch.is_tensor(arg) and arg.requires_grad) for arg in args):
-                return checkpoint(super_fwd, *args, **kwargs)
-            else:
-                return super_fwd(*args, **kwargs)
-
-    return Checkpointed
-
-
 class Unet(nn.Module):
     def __init__(self, in_features=1, up=None, down=None, size=5, setup=fat_setup):
         super().__init__()
@@ -59,10 +43,6 @@ class Unet(nn.Module):
 
         DownBlock = setup['down_block']
         UpBlock = setup['up_block']
-
-        if 'checkpointed' in setup and setup['checkpointed']:
-            UpBlock = checkpointed(UpBlock)
-            DownBlock = checkpointed(DownBlock)
 
         down_dims = [in_features] + down
         self.path_down = nn.ModuleList()

@@ -1,6 +1,5 @@
 import functools
 
-import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -67,7 +66,9 @@ class UGroupNorm(nn.GroupNorm):
             else:
                 group_size = lower
 
-        assert in_channels % group_size == 0
+        if in_channels % group_size != 0:
+            raise AssertionError(f'{in_channels=} is not divisible by {group_size=}')
+
         num_groups = in_channels // group_size
 
         super().__init__(num_groups, in_channels)

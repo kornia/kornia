@@ -2,7 +2,8 @@ from dataclasses import dataclass
 
 import torch
 import torch.nn.functional as F
-from torch import Tensor
+
+from kornia.core import Tensor
 
 
 @dataclass
@@ -10,10 +11,6 @@ class DISKFeatures:
     keypoints: Tensor
     descriptors: Tensor
     keypoint_logp: Tensor
-
-    def __post_init__(self):
-        assert self.keypoints.device == self.descriptors.device
-        assert self.keypoints.device == self.keypoint_logp.device
 
     @property
     def n(self):
@@ -30,18 +27,6 @@ class DISKFeatures:
     @property
     def y(self):
         return self.keypoints[:, 1]
-
-    def detached_and_grad_(self):
-        return DISKFeatures(
-            self.keypoints, self.descriptors.detach().requires_grad_(), self.keypoint_logp.detach().requires_grad_()
-        )
-
-    def requires_grad_(self, is_on):
-        self.descriptors.requires_grad_(is_on)
-        self.keypoint_logp.requires_grad_(is_on)
-
-    def grad_tensors(self):
-        return [self.descriptors, self.keypoint_logp]
 
     def to(self, *args, **kwargs):
         return DISKFeatures(

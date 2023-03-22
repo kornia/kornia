@@ -2,8 +2,9 @@ from typing import List, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
-from torch import Tensor
 from torch.distributions import Bernoulli, Categorical
+
+from kornia.core import Tensor
 
 from .structs import Keypoints
 
