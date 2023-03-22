@@ -1,4 +1,4 @@
-from typing import Literal, Sequence, Tuple
+from typing import List, Literal, Sequence, Tuple
 
 import torch
 from torch import Tensor
@@ -46,19 +46,24 @@ class DISK(torch.nn.Module):
 
         return heatmaps, descriptors
 
-    def detect(self, images: Tensor, algorithm: Literal['rng', 'nms'] = 'nms', **kwargs) -> Sequence[DISKFeatures]:
-        """allowed values for `algorithm`:
+    def compute_keypoints(self, heatmaps: Tensor, algorithm: str = 'nms', **kwargs) -> List[Keypoints]:
+        """allowed values for `algorithm` are `rng` and `nms`."""
 
-        * rng
-        * nms
-        """
+        if algorithm == 'nms':
+            keypoints = self.detector.nms(heatmaps, **kwargs)
+        elif algorithm == 'rng':
+            keypoints = self.detector.sample(heatmaps, **kwargs)
+        else:
+            raise ValueError(f'Unknown algorithm: {algorithm}')
+
+        return keypoints
+
+    def detect(self, images: Tensor, algorithm: str = 'nms', **kwargs) -> List[DISKFeatures]:
+        """allowed values for `algorithm` are `rng` and `nms`."""
 
         B = images.shape[0]
         heatmaps, descriptors = self.heatmap_and_dense_descriptors(images)
-
-        keypoints: Sequence[Keypoints] = {'rng': self.detector.sample, 'nms': self.detector.nms}[algorithm](
-            heatmaps, **kwargs
-        )
+        keypoints = self.compute_keypoints(heatmaps, algorithm=algorithm, **kwargs)
 
         features = []
         for i in range(B):
