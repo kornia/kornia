@@ -35,6 +35,7 @@ Intensity
 .. autoclass:: RandomSolarize
 .. autoclass:: RandomMedianBlur
 .. autoclass:: RandomSnow
+.. autoclass:: RandomRain
 
 Geometric
 ~~~~~~~~~
