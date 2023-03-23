@@ -8,6 +8,16 @@ from kornia.core import Tensor
 
 @dataclass
 class DISKFeatures:
+    r"""A data structure holding DISK keypoints, descriptors and detection scores for an image. Since DISK detects a
+    varying number of keypoints per image, `DISKFeatures` is not batched.
+
+    Args:
+        keypoints: Tensor of shape :math:`(N, 2)`, where :math:`N` is the number of keypoints.
+        descriptors: Tensor of shape :math:`(N, 128)`.
+        detection_scores: Tensor of shape :math:`(N,)` where the detection score can be interpreted as
+        the log-probability of keeping a keypoint after it has been proposed (see the paper,
+        section Method->Feature distribution for details).
+    """
     keypoints: Tensor
     descriptors: Tensor
     detection_scores: Tensor

@@ -1,6 +1,6 @@
 from .affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, PatchAffineShapeEstimator
 from .defmo import DeFMO
-from .disk import DISK
+from .disk import DISK, DISKFeatures
 from .hardnet import HardNet, HardNet8
 from .hynet import TLU, FilterResponseNorm2d, HyNet
 from .integrated import (
@@ -154,4 +154,5 @@ __all__ = [
     "SOLD2_detector",
     "SOLD2",
     "DISK",
+    "DISKFeatures",
 ]
