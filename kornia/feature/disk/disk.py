@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import torch
 
@@ -48,10 +48,12 @@ class DISK(torch.nn.Module):
 
         return heatmaps, descriptors
 
-    def detect(self, images: Tensor, **kwargs) -> List[DISKFeatures]:
+    def detect(
+        self, images: Tensor, n: Optional[int] = None, window_size: int = 5, cutoff: float = 0.5
+    ) -> List[DISKFeatures]:
         B = images.shape[0]
         heatmaps, descriptors = self.heatmap_and_dense_descriptors(images)
-        keypoints = self.detector.nms(heatmaps, **kwargs)
+        keypoints = self.detector.nms(heatmaps, n=n, window_size=window_size, cutoff=cutoff)
 
         features = []
         for i in range(B):

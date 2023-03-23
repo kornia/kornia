@@ -8,19 +8,7 @@ from kornia.core import Tensor
 from .structs import Keypoints
 
 
-def select_on_last(values: Tensor, indices: Tensor) -> Tensor:
-    '''
-    WARNING: this may be reinventing the wheel, but I don't know how to do
-    it otherwise with PyTorch.
-
-    This function uses an array of linear indices `indices` between [0, T] to
-    index into `values` which has equal shape as `indices` and then one extra
-    dimension of size T.
-    '''
-    return torch.gather(values, -1, indices[..., None]).squeeze(-1)
-
-
-def nms(signal: Tensor, window_size=5, cutoff=0.0) -> Tensor:
+def nms(signal: Tensor, window_size: int = 5, cutoff: float = 0.0) -> Tensor:
     if window_size % 2 != 1:
         raise ValueError(f'window_size has to be odd, got {window_size}')
 
@@ -40,28 +28,35 @@ class Detector:
     def __init__(self, window=8):
         self.window = window
 
-    def nms(self, heatmap: Tensor, n: Optional[int] = None, **kwargs) -> List[Keypoints]:
+    def nms(
+        self, heatmap: Tensor, n: Optional[int] = None, window_size: int = 5, cutoff: float = 0.0
+    ) -> List[Keypoints]:
         """Inference-time nms-based detection protocol."""
         heatmap = heatmap.squeeze(1)
-        nmsed = nms(heatmap, **kwargs)
+        nmsed = nms(heatmap, window_size=window_size, cutoff=cutoff)
 
         keypoints = []
         for b in range(heatmap.shape[0]):
             yx = nmsed[b].nonzero(as_tuple=False)
-            logp = heatmap[b][nmsed[b]]
+            detection_logp = heatmap[b][nmsed[b]]
             xy = yx.flip((1,))
 
             if n is not None:
-                n_ = min(n + 1, logp.numel())
+                n_ = min(n + 1, detection_logp.numel())
                 # torch.kthvalue picks in ascending order and we want to pick in
                 # descending order, so we pick n-th smallest among -logp to get
                 # -threshold
-                minus_threshold, _indices = torch.kthvalue(-logp, n_)
-                mask = logp > -minus_threshold
+                minus_threshold, _indices = torch.kthvalue(-detection_logp, n_)
+                mask = detection_logp > -minus_threshold
 
                 xy = xy[mask]
-                logp = logp[mask]
+                detection_logp = detection_logp[mask]
 
-            keypoints.append(Keypoints(xy, logp))
+                # it may be that due to numerical saturation on the threshold we have
+                # more than n keypoints, so we need to clip them
+                xy = xy[:n]
+                detection_logp = detection_logp[:n]
+
+            keypoints.append(Keypoints(xy, detection_logp))
 
         return keypoints

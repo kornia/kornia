@@ -10,7 +10,7 @@ from kornia.core import Tensor
 class DISKFeatures:
     keypoints: Tensor
     descriptors: Tensor
-    keypoint_logp: Tensor
+    detection_scores: Tensor
 
     @property
     def n(self):
@@ -32,7 +32,7 @@ class DISKFeatures:
         return DISKFeatures(
             self.keypoints.to(*args, **kwargs),
             self.descriptors.to(*args, **kwargs),
-            self.keypoint_logp.to(*args, **kwargs) if self.keypoint_logp is not None else None,
+            self.detection_scores.to(*args, **kwargs),
         )
 
 
@@ -44,7 +44,7 @@ class Keypoints:
     """
 
     xys: Tensor
-    logp: Tensor
+    detection_logp: Tensor
 
     def merge_with_descriptors(self, descriptors: Tensor) -> DISKFeatures:
         """Select descriptors from a dense `descriptors` tensor, at locations given by `self.xys`"""
@@ -53,4 +53,4 @@ class Keypoints:
         desc = descriptors[:, y, x].T
         desc = F.normalize(desc, dim=-1)
 
-        return DISKFeatures(self.xys.to(torch.float32), desc, self.logp)
+        return DISKFeatures(self.xys.to(torch.float32), desc, self.detection_logp)

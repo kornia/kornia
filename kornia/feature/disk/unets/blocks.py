@@ -24,6 +24,9 @@ class TrivialDownsample(nn.Module):
 
 class Conv(nn.Sequential):
     def __init__(self, in_, out_, size, skip_norm_and_gate=False):
+        norm: nn.Module
+        nonl: nn.Module
+
         if skip_norm_and_gate:
             norm = nn.Sequential()
             nonl = nn.Sequential()
@@ -42,6 +45,7 @@ class ThinUnetDownBlock(nn.Sequential):
         self.in_ = in_
         self.out_ = out_
 
+        downsample: nn.Module
         if is_first:
             downsample = nn.Sequential()
             conv = Conv(in_, out_, size, skip_norm_and_gate=True)

@@ -19,15 +19,15 @@ class Unet(nn.Module):
         down_dims = [in_features] + down
         self.path_down = nn.ModuleList()
         for i, (d_in, d_out) in enumerate(zip(down_dims[:-1], down_dims[1:])):
-            block = ThinUnetDownBlock(d_in, d_out, size=size, is_first=i == 0)
-            self.path_down.append(block)
+            down_block = ThinUnetDownBlock(d_in, d_out, size=size, is_first=i == 0)
+            self.path_down.append(down_block)
 
         bot_dims = [down[-1]] + up
         hor_dims = down_dims[-2::-1]
         self.path_up = nn.ModuleList()
         for i, (d_bot, d_hor, d_out) in enumerate(zip(bot_dims, hor_dims, up)):
-            block = ThinUnetUpBlock(d_bot, d_hor, d_out, size=size)
-            self.path_up.append(block)
+            up_block = ThinUnetUpBlock(d_bot, d_hor, d_out, size=size)
+            self.path_up.append(up_block)
 
         self.n_params = 0
         for param in self.parameters():
@@ -40,7 +40,7 @@ class Unet(nn.Module):
             raise ValueError(msg)
 
         features = [inp]
-        for i, layer in enumerate(self.path_down):
+        for layer in self.path_down:
             features.append(layer(features[-1]))
 
         f_bot = features[-1]
