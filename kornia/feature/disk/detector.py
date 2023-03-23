@@ -1,11 +1,9 @@
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 import torch
 import torch.nn.functional as F
-from torch.distributions import Bernoulli, Categorical
 
 from kornia.core import Tensor
-from kornia.utils import create_meshgrid
 
 from .structs import Keypoints
 
@@ -20,29 +18,6 @@ def select_on_last(values: Tensor, indices: Tensor) -> Tensor:
     dimension of size T.
     '''
     return torch.gather(values, -1, indices[..., None]).squeeze(-1)
-
-
-def point_distribution(logits: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
-    """Implements the categorical proposal -> Bernoulli acceptance sampling scheme.
-
-    Given a tensor of logits, performs samples on the last dimension, returning     a) the proposals     b) a binary
-    mask indicating which ones were accepted     c) the logp-probability of (proposal and acceptance decision)
-    """
-
-    proposal_dist = Categorical(logits=logits)
-    proposals = proposal_dist.sample()
-    proposal_logp = proposal_dist.log_prob(proposals)
-
-    accept_logits = select_on_last(logits, proposals).squeeze(-1)
-
-    accept_dist = Bernoulli(logits=accept_logits)
-    accept_samples = accept_dist.sample()
-    accept_logp = accept_dist.log_prob(accept_samples)
-    accept_mask = accept_samples == 1.0
-
-    logp = proposal_logp + accept_logp
-
-    return proposals, accept_mask, logp
 
 
 def nms(signal: Tensor, window_size=5, cutoff=0.0) -> Tensor:
@@ -64,52 +39,6 @@ def nms(signal: Tensor, window_size=5, cutoff=0.0) -> Tensor:
 class Detector:
     def __init__(self, window=8):
         self.window = window
-
-    def _tile(self, heatmap: Tensor) -> Tensor:
-        """Divides the heatmap `heatmap` into tiles of size (v, v) where v==self.window. The tiles are flattened,
-        resulting in the last.
-
-        dimension of the output T == v * v.
-        """
-        v = self.window
-        b, c, h, w = heatmap.shape
-
-        if not ((h % v == 0) and (w % v == 0)):
-            raise AssertionError(f'Heatmap shape {heatmap.shape} cannot be tiled into ({v}, {v}) windows!')
-
-        return heatmap.unfold(2, v, v).unfold(3, v, v).reshape(b, c, h // v, w // v, v * v)
-
-    def sample(self, heatmap: Tensor) -> List[Keypoints]:
-        """Implements the training-time grid-based sampling protocol."""
-        dev = heatmap.device
-        B, _, H, W = heatmap.shape
-
-        # tile the heatmap into [window x window] tiles and pass it to
-        # the categorical distribution.
-        heatmap_tiled = self._tile(heatmap).squeeze(1)
-        proposals, accept_mask, logp = point_distribution(heatmap_tiled)
-
-        # create a grid of xy coordinates and tile it as well
-        cgrid = create_meshgrid(H, W, normalized_coordinates=False, device=dev).unsqueeze(0)
-        cgrid_tiled = self._tile(cgrid)
-
-        # extract xy coordinates from cgrid according to indices sampled
-        # before
-        xys = select_on_last(
-            cgrid_tiled.repeat(B, 1, 1, 1, 1),
-            # unsqueeze and repeat on the (xy) dimension to grab
-            # both components from the grid
-            proposals.unsqueeze(1).repeat(1, 2, 1, 1),
-        ).permute(
-            0, 2, 3, 1
-        )  # -> bhw2
-
-        keypoints = []
-        for i in range(B):
-            mask = accept_mask[i]
-            keypoints.append(Keypoints(xys[i][mask], logp[i][mask]))
-
-        return keypoints
 
     def nms(self, heatmap: Tensor, n: Optional[int] = None, **kwargs) -> List[Keypoints]:
         """Inference-time nms-based detection protocol."""

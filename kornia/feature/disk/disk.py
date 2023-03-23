@@ -6,7 +6,7 @@ from kornia.core import Tensor
 from kornia.utils.helpers import map_location_to_cpu
 
 from .detector import Detector
-from .structs import DISKFeatures, Keypoints
+from .structs import DISKFeatures
 from .unets import Unet
 
 
@@ -48,24 +48,10 @@ class DISK(torch.nn.Module):
 
         return heatmaps, descriptors
 
-    def compute_keypoints(self, heatmaps: Tensor, algorithm: str = 'nms', **kwargs) -> List[Keypoints]:
-        """allowed values for `algorithm` are `rng` and `nms`."""
-
-        if algorithm == 'nms':
-            keypoints = self.detector.nms(heatmaps, **kwargs)
-        elif algorithm == 'rng':
-            keypoints = self.detector.sample(heatmaps, **kwargs)
-        else:
-            raise ValueError(f'Unknown algorithm: {algorithm}')
-
-        return keypoints
-
-    def detect(self, images: Tensor, algorithm: str = 'nms', **kwargs) -> List[DISKFeatures]:
-        """allowed values for `algorithm` are `rng` and `nms`."""
-
+    def detect(self, images: Tensor, **kwargs) -> List[DISKFeatures]:
         B = images.shape[0]
         heatmaps, descriptors = self.heatmap_and_dense_descriptors(images)
-        keypoints = self.compute_keypoints(heatmaps, algorithm=algorithm, **kwargs)
+        keypoints = self.detector.nms(heatmaps, **kwargs)
 
         features = []
         for i in range(B):
