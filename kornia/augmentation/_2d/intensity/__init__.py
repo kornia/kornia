@@ -20,6 +20,7 @@ from kornia.augmentation._2d.intensity.normalize import Normalize
 from kornia.augmentation._2d.intensity.planckian_jitter import RandomPlanckianJitter
 from kornia.augmentation._2d.intensity.plasma import RandomPlasmaBrightness, RandomPlasmaContrast, RandomPlasmaShadow
 from kornia.augmentation._2d.intensity.posterize import RandomPosterize
+from kornia.augmentation._2d.intensity.random_rain import RandomRain
 from kornia.augmentation._2d.intensity.random_rgb_shift import RandomRGBShift
 from kornia.augmentation._2d.intensity.random_snow import RandomSnow
 from kornia.augmentation._2d.intensity.saturation import RandomSaturation
