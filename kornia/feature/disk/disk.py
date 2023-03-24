@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple
+from __future__ import annotations
 
 import torch
 
@@ -35,7 +35,7 @@ class DISK(torch.nn.Module):
             unet = Unet(in_features=3, size=5, down=[16, 32, 64, 64, 64], up=[64, 64, 64, desc_dim + 1])
         self.unet = unet
 
-    def heatmap_and_dense_descriptors(self, images: Tensor) -> Tuple[Tensor, Tensor]:
+    def heatmap_and_dense_descriptors(self, images: Tensor) -> tuple[Tensor, Tensor]:
         """Returns the heatmap and the dense descriptors."""
         unet_output = self.unet(images)
 
@@ -50,8 +50,8 @@ class DISK(torch.nn.Module):
         return heatmaps, descriptors
 
     def forward(
-        self, images: Tensor, n: Optional[int] = None, window_size: int = 5, score_threshold: float = 0.0
-    ) -> List[DISKFeatures]:
+        self, images: Tensor, n: int | None = None, window_size: int = 5, score_threshold: float = 0.0
+    ) -> list[DISKFeatures]:
         """Detects features in an image, returning keypoint locations, descriptors and detection scores.
 
         Args:
@@ -75,7 +75,7 @@ class DISK(torch.nn.Module):
         return features
 
     @classmethod
-    def from_pretrained(cls, checkpoint: str = 'depth', device: torch.device = torch.device('cpu')) -> 'DISK':
+    def from_pretrained(cls, checkpoint: str = 'depth', device: torch.device = torch.device('cpu')) -> DISK:
         r"""Loads a pretrained model.
 
         Depth model was trained using depth map supervision and is slightly more precise but biased to detect keypoints
