@@ -13,6 +13,15 @@ class TestDisk:
         for element in output:
             assert isinstance(element, DISKFeatures)
 
+    def test_smoke_pretrained(self, device):
+        disk = DISK.from_pretrained(checkpoint='depth', device=device)
+        inp = torch.ones(1, 3, 256, 256, device=device)
+        output = disk(inp)
+        assert isinstance(output, list)
+        assert len(output) == 1
+        for element in output:
+            assert isinstance(element, DISKFeatures)
+
     def test_heatmap_and_dense_descriptors(self, device):
         disk = DISK().to(device)
         inp = torch.ones(1, 3, 256, 256, device=device)

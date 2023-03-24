@@ -3,7 +3,6 @@ from typing import List, Optional, Tuple
 import torch
 
 from kornia.core import Tensor
-from kornia.utils.helpers import map_location_to_cpu
 
 from .detector import heatmap_to_keypoints
 from .structs import DISKFeatures
@@ -101,21 +100,17 @@ class DISK(torch.nn.Module):
         Returns:
             The pretrained model.
         """
-        if checkpoint == 'depth':
-            pretrained_dict = torch.hub.load_state_dict_from_url(
-                'https://raw.githubusercontent.com/cvlab-epfl/disk/master/depth-save.pth',
-                map_location=map_location_to_cpu,
-            )
-        elif checkpoint == 'epipolar':
-            pretrained_dict = torch.hub.load_state_dict_from_url(
-                'https://raw.githubusercontent.com/cvlab-epfl/disk/master/epipolar-save.pth',
-                map_location=map_location_to_cpu,
-            )
-        else:
+        urls = {
+            'depth': 'https://raw.githubusercontent.com/cvlab-epfl/disk/master/depth-save.pth',
+            'epipolar': 'https://raw.githubusercontent.com/cvlab-epfl/disk/master/epipolar-save.pth',
+        }
+
+        if checkpoint not in urls:
             raise ValueError(f'Unknown pretrained model: {checkpoint}')
 
-        model: DISK = cls()
+        pretrained_dict = torch.hub.load_state_dict_from_url(urls[checkpoint], map_location=device)
+
+        model: DISK = cls().to(device)
         model.load_state_dict(pretrained_dict['extractor'])
         model.eval()
-        model.to(device)
         return model
