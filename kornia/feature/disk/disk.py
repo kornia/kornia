@@ -4,9 +4,9 @@ import torch
 
 from kornia.core import Module, Tensor
 
+from ._unets import Unet
 from .detector import heatmap_to_keypoints
 from .structs import DISKFeatures
-from .unets import Unet
 
 
 class DISK(Module):
