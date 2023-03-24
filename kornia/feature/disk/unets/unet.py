@@ -1,11 +1,11 @@
 import torch.nn as nn
 
-from kornia.core import Tensor
+from kornia.core import Module, Tensor
 
 from .blocks import ThinUnetDownBlock, ThinUnetUpBlock
 
 
-class Unet(nn.Module):
+class Unet(Module):
     def __init__(self, in_features=1, up=None, down=None, size=5):
         super().__init__()
 

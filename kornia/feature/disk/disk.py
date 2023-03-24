@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import torch
 
-from kornia.core import Tensor
+from kornia.core import Module, Tensor
 
 from .detector import heatmap_to_keypoints
 from .structs import DISKFeatures
 from .unets import Unet
 
 
-class DISK(torch.nn.Module):
+class DISK(Module):
     r"""Module which detects and described local features in an image using the DISK method. See
     :cite:`tyszkiewicz2020disk` for details.
 

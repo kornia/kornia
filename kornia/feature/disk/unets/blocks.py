@@ -2,18 +2,18 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kornia.core import Tensor
+from kornia.core import Module, Tensor
 
 from .utils import cut_to_match, size_is_pow2
 
 
-class TrivialUpsample(nn.Module):
+class TrivialUpsample(Module):
     def forward(self, x):
         r = F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=False)
         return r
 
 
-class TrivialDownsample(nn.Module):
+class TrivialDownsample(Module):
     def forward(self, x):
         if not size_is_pow2(x):
             msg = f"Trying to downsample feature map of size {x.size()}"
@@ -24,8 +24,8 @@ class TrivialDownsample(nn.Module):
 
 class Conv(nn.Sequential):
     def __init__(self, in_, out_, size, skip_norm_and_gate=False):
-        norm: nn.Module
-        nonl: nn.Module
+        norm: Module
+        nonl: Module
 
         if skip_norm_and_gate:
             norm = nn.Sequential()
@@ -45,7 +45,7 @@ class ThinUnetDownBlock(nn.Sequential):
         self.in_ = in_
         self.out_ = out_
 
-        downsample: nn.Module
+        downsample: Module
         if is_first:
             downsample = nn.Sequential()
             conv = Conv(in_, out_, size, skip_norm_and_gate=True)
@@ -56,7 +56,7 @@ class ThinUnetDownBlock(nn.Sequential):
         super().__init__(downsample, conv)
 
 
-class ThinUnetUpBlock(nn.Module):
+class ThinUnetUpBlock(Module):
     def __init__(self, bottom_, horizontal_, out_, size=5, setup=None):
         super().__init__()
 
