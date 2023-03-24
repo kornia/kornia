@@ -11,8 +11,7 @@ class TestDisk:
         output = disk(inp)
         assert isinstance(output, list)
         assert len(output) == 1
-        for element in output:
-            assert isinstance(element, DISKFeatures)
+        assert all(isinstance(e, DISKFeatures) for e in output)
 
     def test_smoke_n_detections(self, dtype, device):
         """Unless we give it an actual image and use pretrained weights, we can't expect the number of detections
@@ -22,8 +21,7 @@ class TestDisk:
         output = disk(inp, n=100)
         assert isinstance(output, list)
         assert len(output) == 1
-        for element in output:
-            assert isinstance(element, DISKFeatures)
+        assert all(isinstance(e, DISKFeatures) for e in output)
 
     def test_smoke_pretrained(self, device):
         disk = DISK.from_pretrained(checkpoint='depth', device=device)
@@ -31,8 +29,7 @@ class TestDisk:
         output = disk(inp)
         assert isinstance(output, list)
         assert len(output) == 1
-        for element in output:
-            assert isinstance(element, DISKFeatures)
+        assert all(isinstance(e, DISKFeatures) for e in output)
 
     def test_heatmap_and_dense_descriptors(self, dtype, device):
         disk = DISK().to(device, dtype)
