@@ -38,6 +38,14 @@ class TestDisk:
         with pytest.raises(ValueError):
             _ = disk(inp)
 
+        inp = torch.ones(1, 3, 64, 72, device=device)
+        with pytest.raises(ValueError):
+            _ = disk(inp)
+
+        inp = torch.ones(1, 3, 72, 72, device=device)
+        with pytest.raises(ValueError):
+            _ = disk(inp)
+
     def test_wrong_n_channels(self, device):
         """This is to be removed when we add automatic padding."""
         disk = DISK().to(device)
