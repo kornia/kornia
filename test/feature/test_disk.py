@@ -14,6 +14,17 @@ class TestDisk:
         for element in output:
             assert isinstance(element, DISKFeatures)
 
+    def test_smoke_n_detections(self, device):
+        """Unless we give it an actual image and use pretrained weights, we can't expect the number of detections
+        to really match the limit."""
+        disk = DISK().to(device)
+        inp = torch.ones(1, 3, 64, 64, device=device)
+        output = disk(inp, n=100)
+        assert isinstance(output, list)
+        assert len(output) == 1
+        for element in output:
+            assert isinstance(element, DISKFeatures)
+
     def test_smoke_pretrained(self, device):
         disk = DISK.from_pretrained(checkpoint='depth', device=device)
         inp = torch.ones(1, 3, 64, 64, device=device)
