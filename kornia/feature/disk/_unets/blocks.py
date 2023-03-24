@@ -4,8 +4,6 @@ import torch.nn.functional as F
 
 from kornia.core import Module, Tensor
 
-from .utils import cut_to_match, size_is_pow2
-
 
 class TrivialUpsample(Module):
     def forward(self, x):
@@ -15,10 +13,6 @@ class TrivialUpsample(Module):
 
 class TrivialDownsample(Module):
     def forward(self, x):
-        if not size_is_pow2(x):
-            msg = f"Trying to downsample feature map of size {x.size()}"
-            raise RuntimeError(msg)
-
         return F.avg_pool2d(x, 2)
 
 
@@ -70,7 +64,6 @@ class ThinUnetUpBlock(Module):
 
     def forward(self, bot: Tensor, hor: Tensor) -> Tensor:
         bot_big = self.upsample(bot)
-        hor = cut_to_match(bot_big, hor, n_pref=2)
         combined = torch.cat([bot_big, hor], dim=1)
 
         return self.conv(combined)
