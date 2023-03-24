@@ -37,17 +37,7 @@ class DISK(torch.nn.Module):
 
     def heatmap_and_dense_descriptors(self, images: Tensor) -> Tuple[Tensor, Tensor]:
         """Returns the heatmap and the dense descriptors."""
-
-        try:
-            unet_output = self.unet(images)
-        except RuntimeError as e:
-            if 'Trying to downsample' in str(e):
-                raise ValueError(
-                    f'The current implementation of U-Net requires image size to '
-                    f'be divisible by 16 (got {images.shape[2:]}).'
-                )
-            else:
-                raise
+        unet_output = self.unet(images)
 
         if unet_output.shape[1] != self.desc_dim + 1:
             raise ValueError(

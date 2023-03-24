@@ -39,6 +39,14 @@ class Unet(nn.Module):
             msg = fmt.format(self.in_features, inp.size(1))
             raise ValueError(msg)
 
+        input_size_divisor = 2 ** len(self.down)
+        if not inp.size(2) % input_size_divisor == 0 and inp.size(3) % input_size_divisor == 0:
+            raise ValueError(
+                f"Input image shape must be divisible by {input_size_divisor} (got {inp.size()}). "
+                "This is not inherent to DISK, but to the U-Net architecture used in pretrained models. "
+                "Please pad if necessary."
+            )
+
         features = [inp]
         for layer in self.path_down:
             features.append(layer(features[-1]))
