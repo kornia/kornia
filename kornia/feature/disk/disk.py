@@ -39,15 +39,15 @@ class DISK(Module):
 
     def heatmap_and_dense_descriptors(self, images: Tensor) -> tuple[Tensor, Tensor]:
         """Returns the heatmap and the dense descriptors.
-        
+
         .. image:: _static/img/disk.png
 
         Args:
             images: The image to detect features in. Shape :math:`(B, 3, H, W)`.
 
         Returns:
-            response: Heatmap. Shape :math:`(B, 1, H, W)`.  
-            descriptors: Heatmap. Shape :math:`(B, descdim, H, W)`.  
+            response: Heatmap. Shape :math:`(B, 1, H, W)`.
+            descriptors: Heatmap. Shape :math:`(B, descdim, H, W)`.
         """
         unet_output = self.unet(images)
 
@@ -62,7 +62,13 @@ class DISK(Module):
         return heatmaps, descriptors
 
     def forward(
-        self, images: Tensor, n: int | None = None, window_size: int = 5, score_threshold: float = 0.0, pad_if_not_divisible: bool = False) -> list[DISKFeatures]:
+        self,
+        images: Tensor,
+        n: int | None = None,
+        window_size: int = 5,
+        score_threshold: float = 0.0,
+        pad_if_not_divisible: bool = False,
+    ) -> list[DISKFeatures]:
         """Detects features in an image, returning keypoint locations, descriptors and detection scores.
 
         Args:
@@ -81,7 +87,7 @@ class DISK(Module):
             h, w = images.shape[2:]
             pd_h = 32 - h % 32 if h % 32 > 0 else 0
             pd_w = 32 - w % 32 if w % 32 > 0 else 0
-            images = torch.nn.functional.pad(images, (0, pd_w, 0, pd_h), value = 0.0)
+            images = torch.nn.functional.pad(images, (0, pd_w, 0, pd_h), value=0.0)
 
         heatmaps, descriptors = self.heatmap_and_dense_descriptors(images)
         if pad_if_not_divisible:

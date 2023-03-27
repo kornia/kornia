@@ -62,19 +62,19 @@ class TestDisk:
         inp = torch.ones(1, 3, 72, 64, device=device)
         with pytest.raises(ValueError):
             _ = disk(inp)
-        
+
         _ = disk(inp, pad_if_not_divisible=True)
 
         inp = torch.ones(1, 3, 64, 72, device=device)
         with pytest.raises(ValueError):
             _ = disk(inp)
-        
+
         _ = disk(inp, pad_if_not_divisible=True)
 
         inp = torch.ones(1, 3, 72, 72, device=device)
         with pytest.raises(ValueError):
             _ = disk(inp)
-        
+
         _ = disk(inp, pad_if_not_divisible=True)
 
     def test_wrong_n_channels(self, device):

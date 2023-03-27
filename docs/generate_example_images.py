@@ -1,6 +1,6 @@
 import matplotlib
+
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import importlib
 import math
 import os
@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 import cv2
+import matplotlib.pyplot as plt
 import numpy as np
 import requests
 import torch
@@ -72,7 +73,9 @@ def main():
     BASE_IMAGE_URL6: str = "https://raw.githubusercontent.com/kornia/data/main/delorean.png"  # geometry
     hash1 = '8b98f44abbe92b7a84631ed06613b08fee7dae14'
     BASE_IMAGEOUTDOOR_URL7: str = f"https://github.com/kornia/data_test/raw/{hash1}/knchurch_disk.pt"  # image matching
-    BASE_IMAGEOUTDOOR_URL8: str = "https://github.com/kornia/data/raw/main/kornia_banner_pixie.png"  # Response functions
+    BASE_IMAGEOUTDOOR_URL8: str = (
+        "https://github.com/kornia/data/raw/main/kornia_banner_pixie.png"  # Response functions
+    )
 
     OUTPUT_PATH = Path(__file__).absolute().parent / "source/_static/img"
 
@@ -85,7 +88,7 @@ def main():
     img5 = read_img_from_url(BASE_IMAGE_URL5, (234, 320))
     img6 = read_img_from_url(BASE_IMAGE_URL6)
     img_kornia = read_img_from_url(BASE_IMAGEOUTDOOR_URL8)
-    
+
     # TODO: make this more generic for modules out of kornia.augmentation
     # Dictionary containing the transforms to generate the sample images:
     # Key: Name of the transform class.
@@ -539,17 +542,10 @@ def main():
         plt.title('KeyNet 512 keypoints')
         plt.savefig(cur_fname)
         plt.close()
-    
+
     # korna.feature module
     mod = importlib.import_module("kornia.feature")
-    responses: list = [
-        "harris_response",
-        "gftt_response",
-        "hessian_response",
-        "dog_response_single",
-        "KeyNet",
-        "DISK"
-    ]
+    responses: list = ["harris_response", "gftt_response", "hessian_response", "dog_response_single", "KeyNet", "DISK"]
     # ITERATE OVER THE TRANSFORMS
     for fn_name in responses:
         # import function and apply
@@ -563,17 +559,17 @@ def main():
             h, w = img_outdoor.shape[2:]
             pd_h = 32 - h % 32 if h % 32 > 0 else 0
             pd_w = 32 - w % 32 if w % 32 > 0 else 0
-            img_in = torch.nn.functional.pad(img_outdoor, (0, pd_w, 0, pd_h), value = 0.0)
+            img_in = torch.nn.functional.pad(img_outdoor, (0, pd_w, 0, pd_h), value=0.0)
             out, _ = fn.heatmap_and_dense_descriptors(img_in)
             out = K.color.grayscale_to_rgb(out)
             img_in = K.color.rgb_to_bgr(img_in)
         else:
             fn = getattr(mod, fn_name)
             out = fn(img_in)
-        
+
         out = out - out.min()
         out = out / (1e-8 + out.max())
-        
+
         # save the output image
         out = torch.cat([img_in[0], *(out[i] for i in range(out.size(0)))], dim=-1)
         out_np = K.utils.tensor_to_image((out * 255.0).byte())
