@@ -1,3 +1,6 @@
+import matplotlib
+
+matplotlib.use("Agg")
 import importlib
 import math
 import os
@@ -5,9 +8,11 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 import cv2
+import matplotlib.pyplot as plt
 import numpy as np
 import requests
 import torch
+from kornia_moons.feature import visualize_LAF
 
 import kornia as K
 from kornia.core import Tensor
@@ -66,6 +71,12 @@ def main():
     BASE_IMAGE_URL4: str = "https://raw.githubusercontent.com/kornia/data/main/baby_giraffe.png"  # morphology
     BASE_IMAGE_URL5: str = "https://raw.githubusercontent.com/kornia/data/main/persistencia_memoria.jpg"  # filters
     BASE_IMAGE_URL6: str = "https://raw.githubusercontent.com/kornia/data/main/delorean.png"  # geometry
+    hash1 = '8b98f44abbe92b7a84631ed06613b08fee7dae14'
+    BASE_IMAGEOUTDOOR_URL7: str = f"https://github.com/kornia/data_test/raw/{hash1}/knchurch_disk.pt"  # image matching
+    BASE_IMAGEOUTDOOR_URL8: str = (
+        "https://github.com/kornia/data/raw/main/kornia_banner_pixie.png"  # Response functions
+    )
+
     OUTPUT_PATH = Path(__file__).absolute().parent / "source/_static/img"
 
     os.makedirs(OUTPUT_PATH, exist_ok=True)
@@ -76,6 +87,7 @@ def main():
     img4 = read_img_from_url(BASE_IMAGE_URL4)
     img5 = read_img_from_url(BASE_IMAGE_URL5, (234, 320))
     img6 = read_img_from_url(BASE_IMAGE_URL6)
+    img_kornia = read_img_from_url(BASE_IMAGEOUTDOOR_URL8)
 
     # TODO: make this more generic for modules out of kornia.augmentation
     # Dictionary containing the transforms to generate the sample images:
@@ -492,6 +504,79 @@ def main():
         cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for {fn_name}. {sig}")
+
+    # Image Matching and local features
+    img_matching_data = torch.hub.load_state_dict_from_url(BASE_IMAGEOUTDOOR_URL7, map_location=torch.device('cpu'))
+    img_outdoor = img_matching_data['img2']
+    print("Generating local feature detections ")
+    disk = K.feature.DISK.from_pretrained('depth')
+    with torch.no_grad():
+        disk_feat = disk(img_outdoor)[0]
+        xy = disk_feat.keypoints.detach().cpu().numpy()
+        cur_fname = str(OUTPUT_PATH / "disk_outdoor_depth.jpg")
+        plt.figure()
+        plt.imshow(K.tensor_to_image(img_outdoor))
+        plt.scatter(xy[:, 0], xy[:, 1], 3, color='lime')
+        plt.title('DISK("depth") keypoints')
+        plt.savefig(cur_fname)
+        plt.close()
+
+    kah = K.feature.KeyNetAffNetHardNet(512).eval()
+    with torch.no_grad():
+        lafs, resps, descs = kah(K.color.rgb_to_grayscale(img_outdoor))
+        fig1 = visualize_LAF(img_outdoor, lafs, color='lime', draw_ori=False)
+        ax = fig1.gca()
+        ax.set_title('KeyNetAffNet 512 LAFs')
+        cur_fname = str(OUTPUT_PATH / "keynet_affnet.jpg")
+        fig1.savefig(cur_fname)
+        plt.close()
+
+    keynet = K.feature.KeyNetDetector(True, 512).eval()
+    with torch.no_grad():
+        lafs, resps = keynet(K.color.rgb_to_grayscale(img_outdoor))
+        xy = K.feature.get_laf_center(lafs).detach().cpu().numpy().reshape(-1, 2)
+        cur_fname = str(OUTPUT_PATH / "keynet.jpg")
+        plt.figure()
+        plt.imshow(K.tensor_to_image(img_outdoor))
+        plt.scatter(xy[:, 0], xy[:, 1], 3, color='lime')
+        plt.title('KeyNet 512 keypoints')
+        plt.savefig(cur_fname)
+        plt.close()
+
+    # korna.feature module
+    mod = importlib.import_module("kornia.feature")
+    responses: list = ["harris_response", "gftt_response", "hessian_response", "dog_response_single", "KeyNet", "DISK"]
+    # ITERATE OVER THE TRANSFORMS
+    for fn_name in responses:
+        # import function and apply
+        # import pdb;pdb.set_trace()
+        img_in = K.color.rgb_to_grayscale(img_kornia)
+        if fn_name == 'KeyNet':
+            fn = K.feature.KeyNet(True)
+            out = fn(img_in)
+        elif fn_name == 'DISK':
+            fn = K.feature.DISK.from_pretrained('depth')
+            h, w = img_outdoor.shape[2:]
+            pd_h = 32 - h % 32 if h % 32 > 0 else 0
+            pd_w = 32 - w % 32 if w % 32 > 0 else 0
+            img_in = torch.nn.functional.pad(img_outdoor, (0, pd_w, 0, pd_h), value=0.0)
+            out, _ = fn.heatmap_and_dense_descriptors(img_in)
+            out = K.color.grayscale_to_rgb(out)
+            img_in = K.color.rgb_to_bgr(img_in)
+        else:
+            fn = getattr(mod, fn_name)
+            out = fn(img_in)
+
+        out = out - out.min()
+        out = out / (1e-8 + out.max())
+
+        # save the output image
+        out = torch.cat([img_in[0], *(out[i] for i in range(out.size(0)))], dim=-1)
+        out_np = K.utils.tensor_to_image((out * 255.0).byte())
+        cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
+        sig = f"{fn_name}({', '.join([str(a) for a in args])})"
+        print(f"Generated image example for response function {fn_name}")
+    img_kornia
 
 
 if __name__ == "__main__":
