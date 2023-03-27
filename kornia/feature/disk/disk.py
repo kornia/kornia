@@ -13,6 +13,8 @@ class DISK(Module):
     r"""Module which detects and described local features in an image using the DISK method. See
     :cite:`tyszkiewicz2020disk` for details.
 
+    .. image:: _static/img/disk_outdoor_depth.jpg
+
     Args:
         desc_dim: The dimension of the descriptor.
         unet: The U-Net to use. If None, a default U-Net is used. Kornia doesn't provide the training code for DISK

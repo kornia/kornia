@@ -115,6 +115,7 @@ def add_doctest_deps(doctest_namespace):
 # the commit hash for the data version
 sha: str = 'cb8f42bf28b9f347df6afba5558738f62a11f28a'
 sha2: str = '824ff1518870864644df6842a4ec964040f64504'
+sha3: str = '8b98f44abbe92b7a84631ed06613b08fee7dae14'
 
 
 @pytest.fixture(scope='session')
@@ -123,6 +124,7 @@ def data(request):
         'loftr_homo': f'https://github.com/kornia/data_test/blob/{sha}/loftr_outdoor_and_homography_data.pt?raw=true',
         'loftr_fund': f'https://github.com/kornia/data_test/blob/{sha}/loftr_indoor_and_fundamental_data.pt?raw=true',
         'adalam_idxs': f'https://github.com/kornia/data_test/blob/{sha2}/adalam_test.pt?raw=true',
+        'disk_outdoor': f'https://github.com/kornia/data_test/blob/{sha3}/knchurch_disk.pt?raw=true',
         'dexined': 'https://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth',
     }
     return torch.hub.load_state_dict_from_url(url[request.param], map_location=torch.device('cpu'))

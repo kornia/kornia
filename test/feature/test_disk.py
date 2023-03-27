@@ -1,7 +1,9 @@
+import sys
 import pytest
 import torch
 
 from kornia.feature.disk import DISK, DISKFeatures
+from kornia.utils._compat import torch_version_ge
 
 
 class TestDisk:
@@ -30,6 +32,17 @@ class TestDisk:
         assert isinstance(output, list)
         assert len(output) == 1
         assert all(isinstance(e, DISKFeatures) for e in output)
+
+    @pytest.mark.skipif(torch_version_ge(1, 10), reason="RuntimeError: CUDA out of memory with pytorch>=1.10")
+    @pytest.mark.skipif(sys.platform == "win32", reason="this test takes so much memory in the CI with Windows")
+    @pytest.mark.parametrize("data", ["disk_outdoor"], indirect=True)
+    def test_pretrained_outdoor(self, device, dtype, data):
+        disk = DISK.from_pretrained(checkpoint='depth', device=device).to(dtype)
+        data_dev = utils.dict_to(data, device, dtype)
+        with torch.no_grad():
+            out = disk(data_dev['img1'])
+        assert_close(out[0].keypoints, data_dev["disk1"][0].keypoints)
+        assert_close(out[0].descriptors, data_dev["disk1"][0].descriptors)
 
     def test_heatmap_and_dense_descriptors(self, dtype, device):
         disk = DISK().to(device, dtype)

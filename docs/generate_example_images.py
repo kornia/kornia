@@ -3,6 +3,7 @@ import math
 import os
 from pathlib import Path
 from typing import Optional, Tuple
+import matplotlib.pyplot as plt
 
 import cv2
 import numpy as np
@@ -11,6 +12,7 @@ import torch
 
 import kornia as K
 from kornia.core import Tensor
+from kornia_moons.feature import visualize_LAF
 
 
 def read_img_from_url(url: str, resize_to: Optional[Tuple[int, int]] = None) -> torch.Tensor:
@@ -66,6 +68,8 @@ def main():
     BASE_IMAGE_URL4: str = "https://raw.githubusercontent.com/kornia/data/main/baby_giraffe.png"  # morphology
     BASE_IMAGE_URL5: str = "https://raw.githubusercontent.com/kornia/data/main/persistencia_memoria.jpg"  # filters
     BASE_IMAGE_URL6: str = "https://raw.githubusercontent.com/kornia/data/main/delorean.png"  # geometry
+    BASE_IMAGEOUTDOOR_URL7: str = "https://github.com/kornia/data_test/raw/8b98f44abbe92b7a84631ed06613b08fee7dae14/knchurch_disk.pt"  # image matching
+    
     OUTPUT_PATH = Path(__file__).absolute().parent / "source/_static/img"
 
     os.makedirs(OUTPUT_PATH, exist_ok=True)
@@ -492,6 +496,45 @@ def main():
         cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for {fn_name}. {sig}")
+    
+    # Image Matching and local features
+    img_matching_data = torch.hub.load_state_dict_from_url(BASE_IMAGEOUTDOOR_URL7, map_location=torch.device('cpu'))
+    img_outdoor = img_matching_data['img2']
+
+    disk = K.feature.DISK.from_pretrained('depth')
+    with torch.no_grad():
+        disk_feat = disk(img_outdoor)[0]
+        xy = disk_feat.keypoints.detach().cpu().numpy()
+        cur_fname = str(OUTPUT_PATH / f"disk_outdoor_depth.jpg")
+        plt.figure()
+        plt.imshow(K.tensor_to_image(img_outdoor))
+        plt.scatter(xy[:, 0], xy[:, 1], 3, color='lime')
+        plt.title('DISK("depth") keypoints')
+        plt.savefig(cur_fname)
+        plt.close()
+    
+    kah = K.feature.KeyNetAffNetHardNet(512).eval()
+    with torch.no_grad():
+        lafs, resps, descs = kah(K.color.rgb_to_grayscale(img_outdoor))
+        fig1 = visualize_LAF(img_outdoor, lafs, color='lime', draw_ori=False)
+        ax = fig1.gca()
+        ax.set_title('KeyNetAffNet 512 LAFs')
+        cur_fname = str(OUTPUT_PATH / f"keynet_affnet.jpg")
+        plt.show()
+        fig1.savefig(cur_fname)
+        plt.close()
+
+    keynet = K.feature.KeyNetDetector(True, 512).eval()
+    with torch.no_grad():
+        lafs, resps = keynet(K.color.rgb_to_grayscale(img_outdoor))
+        xy = K.feature.get_laf_center(lafs).detach().cpu().numpy().reshape(-1, 2)
+        cur_fname = str(OUTPUT_PATH / f"keynet.jpg")
+        plt.figure()
+        plt.imshow(K.tensor_to_image(img_outdoor))
+        plt.scatter(xy[:, 0], xy[:, 1], 3, color='lime')
+        plt.title('KeyNet 512 keypoints')
+        plt.savefig(cur_fname)
+        plt.close()
 
 
 if __name__ == "__main__":

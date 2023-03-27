@@ -258,7 +258,11 @@ class KeyNetHardNet(LocalFeature):
 
 
 class KeyNetAffNetHardNet(LocalFeature):
-    """Convenience module, which implements KeyNet detector + AffNet + HardNet descriptor."""
+    """Convenience module, which implements KeyNet detector + AffNet + HardNet descriptor.
+    
+    .. image:: _static/img/keynet_affnet.jpg
+
+    """
 
     def __init__(
         self,

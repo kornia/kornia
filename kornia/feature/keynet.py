@@ -169,6 +169,8 @@ class KeyNetDetector(MultiResolutionDetector):
     "Key.Net: Keypoint Detection by Handcrafted and Learned CNN Filters".
     See :cite:`KeyNet2019` for more details.
 
+    .. image:: _static/img/keynet.jpg
+
     Args:
         pretrained: Download and set pretrained weights to the model.
         num_features: Number of features to detect.
