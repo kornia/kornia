@@ -1,4 +1,6 @@
-import matplotlib; matplotlib.use("Agg")
+import matplotlib
+
+matplotlib.use("Agg")
 import importlib
 import math
 import os
