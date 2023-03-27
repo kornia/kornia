@@ -3,8 +3,10 @@ import sys
 import pytest
 import torch
 
+import kornia.testing as utils  # test utils
 from kornia.feature.disk import DISK, DISKFeatures
 from kornia.utils._compat import torch_version_ge
+from kornia.testing import assert_close
 
 
 class TestDisk:

@@ -68,7 +68,8 @@ def main():
     BASE_IMAGE_URL4: str = "https://raw.githubusercontent.com/kornia/data/main/baby_giraffe.png"  # morphology
     BASE_IMAGE_URL5: str = "https://raw.githubusercontent.com/kornia/data/main/persistencia_memoria.jpg"  # filters
     BASE_IMAGE_URL6: str = "https://raw.githubusercontent.com/kornia/data/main/delorean.png"  # geometry
-    BASE_IMAGEOUTDOOR_URL7: str = "https://github.com/kornia/data_test/raw/8b98f44abbe92b7a84631ed06613b08fee7dae14/knchurch_disk.pt"  # image matching
+    hash1 = '8b98f44abbe92b7a84631ed06613b08fee7dae14'
+    BASE_IMAGEOUTDOOR_URL7: str = f"https://github.com/kornia/data_test/raw/{hash1}/knchurch_disk.pt"  # image matching
 
     OUTPUT_PATH = Path(__file__).absolute().parent / "source/_static/img"
 
@@ -505,7 +506,7 @@ def main():
     with torch.no_grad():
         disk_feat = disk(img_outdoor)[0]
         xy = disk_feat.keypoints.detach().cpu().numpy()
-        cur_fname = str(OUTPUT_PATH / f"disk_outdoor_depth.jpg")
+        cur_fname = str(OUTPUT_PATH / "disk_outdoor_depth.jpg")
         plt.figure()
         plt.imshow(K.tensor_to_image(img_outdoor))
         plt.scatter(xy[:, 0], xy[:, 1], 3, color='lime')
@@ -519,7 +520,7 @@ def main():
         fig1 = visualize_LAF(img_outdoor, lafs, color='lime', draw_ori=False)
         ax = fig1.gca()
         ax.set_title('KeyNetAffNet 512 LAFs')
-        cur_fname = str(OUTPUT_PATH / f"keynet_affnet.jpg")
+        cur_fname = str(OUTPUT_PATH / "keynet_affnet.jpg")
         plt.show()
         fig1.savefig(cur_fname)
         plt.close()
@@ -528,7 +529,7 @@ def main():
     with torch.no_grad():
         lafs, resps = keynet(K.color.rgb_to_grayscale(img_outdoor))
         xy = K.feature.get_laf_center(lafs).detach().cpu().numpy().reshape(-1, 2)
-        cur_fname = str(OUTPUT_PATH / f"keynet.jpg")
+        cur_fname = str(OUTPUT_PATH / "keynet.jpg")
         plt.figure()
         plt.imshow(K.tensor_to_image(img_outdoor))
         plt.scatter(xy[:, 0], xy[:, 1], 3, color='lime')
