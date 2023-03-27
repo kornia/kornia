@@ -1,4 +1,5 @@
 furo
+kornia_moons
 matplotlib
 opencv-python
 PyYAML>=5.1
