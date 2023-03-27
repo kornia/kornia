@@ -48,6 +48,9 @@ Matching
 .. autoclass:: DescriptorMatcher
    :members: forward
 
+.. autoclass:: DISK
+   :members: forward, from_pretrained, heatmap_and_dense_descriptors
+
 .. autoclass:: GeometryAwareDescriptorMatcher
    :members: forward
 
