@@ -1,6 +1,7 @@
 furo
 matplotlib
 opencv-python
+kornia_moons
 PyYAML>=5.1
 sphinx>=4
 sphinx-autodoc-defaultargs
