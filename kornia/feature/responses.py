@@ -24,6 +24,8 @@ def harris_response(
 ) -> Tensor:
     r"""Compute the Harris cornerness function.
 
+    .. image:: _static/img/harris_response.png
+
     Function does not do any normalization or nms. The response map is computed according the following formulation:
 
     .. math::
@@ -106,6 +108,8 @@ def harris_response(
 def gftt_response(input: Tensor, grads_mode: str = 'sobel', sigmas: Optional[Tensor] = None) -> Tensor:
     r"""Compute the Shi-Tomasi cornerness function.
 
+    .. image:: _static/img/gftt_response.png
+
     Function does not do any normalization or nms. The response map is computed according the following formulation:
 
     .. math::
@@ -177,6 +181,8 @@ def gftt_response(input: Tensor, grads_mode: str = 'sobel', sigmas: Optional[Ten
 
 def hessian_response(input: Tensor, grads_mode: str = 'sobel', sigmas: Optional[Tensor] = None) -> Tensor:
     r"""Compute the absolute of determinant of the Hessian matrix.
+
+    .. image:: _static/img/hessian_response.png
 
     Function does not do any normalization or nms. The response map is computed according the following formulation:
 
@@ -266,6 +272,8 @@ def dog_response(input: Tensor) -> Tensor:
 def dog_response_single(input: Tensor, sigma1: float = 1.0, sigma2: float = 1.6) -> Tensor:
     r"""Compute the Difference-of-Gaussian response.
 
+    .. image:: _static/img/dog_response_single.png
+
     Args:
         input: a given the gaussian 4d tensor :math:`(B, C, H, W)`.
         sigma1: lower gaussian sigma
@@ -302,6 +310,8 @@ class BlobDoG(Module):
 class BlobDoGSingle(Module):
     r"""Module that calculates Difference-of-Gaussians blobs.
 
+    .. image:: _static/img/dog_response_single.png
+
     See :func:`~kornia.feature.dog_response_single` for details.
     """
 
@@ -319,6 +329,8 @@ class BlobDoGSingle(Module):
 
 class CornerHarris(Module):
     r"""Module that calculates Harris corners.
+
+    .. image:: _static/img/harris_response.png
 
     See :func:`~kornia.feature.harris_response` for details.
     """
@@ -343,6 +355,8 @@ class CornerHarris(Module):
 class CornerGFTT(Module):
     r"""Module that calculates Shi-Tomasi corners.
 
+    .. image:: _static/img/gfft_response.png
+
     See :func:`~kornia.feature.gfft_response` for details.
     """
 
@@ -360,6 +374,8 @@ class CornerGFTT(Module):
 
 class BlobHessian(Module):
     r"""Module that calculates Hessian blobs.
+
+    .. image:: _static/img/hessian_response.png
 
     See :func:`~kornia.feature.hessian_response` for details.
     """

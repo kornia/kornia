@@ -38,7 +38,17 @@ class DISK(Module):
         self.unet = unet
 
     def heatmap_and_dense_descriptors(self, images: Tensor) -> tuple[Tensor, Tensor]:
-        """Returns the heatmap and the dense descriptors."""
+        """Returns the heatmap and the dense descriptors.
+        
+        .. image:: _static/img/disk.png
+
+        Args:
+            images: The image to detect features in. Shape :math:`(B, 3, H, W)`.
+
+        Returns:
+            response: Heatmap. Shape :math:`(B, 1, H, W)`.  
+            descriptors: Heatmap. Shape :math:`(B, descdim, H, W)`.  
+        """
         unet_output = self.unet(images)
 
         if unet_output.shape[1] != self.desc_dim + 1:
@@ -52,22 +62,32 @@ class DISK(Module):
         return heatmaps, descriptors
 
     def forward(
-        self, images: Tensor, n: int | None = None, window_size: int = 5, score_threshold: float = 0.0
-    ) -> list[DISKFeatures]:
+        self, images: Tensor, n: int | None = None, window_size: int = 5, score_threshold: float = 0.0, pad_if_not_divisible: bool = False) -> list[DISKFeatures]:
         """Detects features in an image, returning keypoint locations, descriptors and detection scores.
 
         Args:
-            images: The image to detect features in. Shape :math:`(B, C, H, W)`.
+            images: The image to detect features in. Shape :math:`(B, 3, H, W)`.
             n: The maximum number of keypoints to detect. If None, all keypoints are returned.
             window_size: The size of the non-maxima suppression window used to filter detections.
             score_threshold: The minimum score a detection must have to be returned.
                              See :py:class:`DISKFeatures` for details.
+            pad_if_not_divisible: if True, the non-32 divisible input is zero-padded to the closes 32-multiply
 
         Returns:
             A list of length :math:`B` containing the detected features.
         """
         B = images.shape[0]
+        if pad_if_not_divisible:
+            h, w = images.shape[2:]
+            pd_h = 32 - h % 32 if h % 32 > 0 else 0
+            pd_w = 32 - w % 32 if w % 32 > 0 else 0
+            images = torch.nn.functional.pad(images, (0, pd_w, 0, pd_h), value = 0.0)
+
         heatmaps, descriptors = self.heatmap_and_dense_descriptors(images)
+        if pad_if_not_divisible:
+            heatmaps = heatmaps[..., :h, :w]
+            descriptors = descriptors[..., :h, :w]
+
         keypoints = heatmap_to_keypoints(heatmaps, n=n, window_size=window_size, score_threshold=score_threshold)
 
         features = []
