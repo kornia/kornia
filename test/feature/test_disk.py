@@ -43,8 +43,8 @@ class TestDisk:
         num_feat = 256
         with torch.no_grad():
             out = disk(data_dev['img1'], num_feat)
-        assert_close(out[0].keypoints, data_dev["disk1"][0].keypoints)
-        assert_close(out[0].descriptors, data_dev["disk1"][0].descriptors)
+        assert_close(out[0].keypoints, data_dev["disk1"][0].keypoints.to(dtype))
+        assert_close(out[0].descriptors, data_dev["disk1"][0].descriptors.to(dtype))
 
     def test_heatmap_and_dense_descriptors(self, dtype, device):
         disk = DISK().to(device, dtype)
