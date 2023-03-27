@@ -71,13 +71,19 @@ namespaces = false
 [tool.setuptools.package-data]
   kornia = ["py.typed"]
 
-[tool.distutils.bdist_wheel]
-  universal = true
-
 [tool.black]
   line-length = 120
   skip-string-normalization = true
   skip-magic-trailing-comma = true
+
+[tool.pytest.ini_options]
+  addopts = "--color=yes"
+  testpaths = ["test"]
+  markers =[
+    "jit: mark a test as torchscript test",
+    "grad: mark a test as gradcheck test",
+    "nn: mark a test as module test"
+]
 
 [tool.coverage.report]
 exclude_lines = [
@@ -101,6 +107,9 @@ exclude_lines = [
   warn_unused_ignores = true
   warn_redundant_casts = true
 
+[tool.distutils.bdist_wheel]
+  universal = true
+
 [tool.pydocstyle]
 match = '.*\.py'
 ignore = """
@@ -111,15 +120,6 @@ D204
 D213
 D406
 D407"""
-
-[tool.pytest.ini_options]
-  addopts = "--color=yes"
-  testpaths = ["test"]
-  markers =[
-    "jit: mark a test as torchscript test",
-    "grad: mark a test as gradcheck test",
-    "nn: mark a test as module test"
-]
 
 [tool.ruff]
 select = [
