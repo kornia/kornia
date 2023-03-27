@@ -58,9 +58,10 @@ class Keypoints:
 
     def merge_with_descriptors(self, descriptors: Tensor) -> DISKFeatures:
         """Select descriptors from a dense `descriptors` tensor, at locations given by `self.xys`"""
+        dtype = descriptors.dtype
         x, y = self.xys.T
 
         desc = descriptors[:, y, x].T
         desc = F.normalize(desc, dim=-1)
 
-        return DISKFeatures(self.xys.to(torch.float32), desc, self.detection_logp)
+        return DISKFeatures(self.xys.to(dtype), desc, self.detection_logp)
