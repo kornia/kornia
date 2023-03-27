@@ -43,7 +43,6 @@ repos:
     rev: 6.0.0
     hooks:
       - id: flake8
-        args: [--ignore=E402 docs/generate_example_images.py]
 
   - repo: https://github.com/asottile/pyupgrade
     rev: v3.3.1
