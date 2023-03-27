@@ -6,7 +6,6 @@ import torch
 import kornia.testing as utils  # test utils
 from kornia.feature.disk import DISK, DISKFeatures
 from kornia.testing import assert_close
-from kornia.utils._compat import torch_version_ge
 
 
 class TestDisk:
