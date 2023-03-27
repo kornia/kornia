@@ -575,7 +575,7 @@ def main():
         out_np = K.utils.tensor_to_image((out * 255.0).byte())
         cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
-        print(f"Generated image example for responce function {fn_name}")
+        print(f"Generated image example for response function {fn_name}")
     img_kornia
 
 

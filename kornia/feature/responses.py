@@ -355,9 +355,9 @@ class CornerHarris(Module):
 class CornerGFTT(Module):
     r"""Module that calculates Shi-Tomasi corners.
 
-    .. image:: _static/img/gfft_response.png
+    .. image:: _static/img/gftt_response.png
 
-    See :func:`~kornia.feature.gfft_response` for details.
+    See :func:`~kornia.feature.gftt_response` for details.
     """
 
     def __init__(self, grads_mode: str = 'sobel') -> None:
