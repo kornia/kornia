@@ -1,6 +1,4 @@
-import matplotlib
-
-matplotlib.use("Agg")
+import matplotlib; matplotlib.use("Agg")
 import importlib
 import math
 import os
@@ -508,7 +506,7 @@ def main():
     # Image Matching and local features
     img_matching_data = torch.hub.load_state_dict_from_url(BASE_IMAGEOUTDOOR_URL7, map_location=torch.device('cpu'))
     img_outdoor = img_matching_data['img2']
-
+    print("Generating local feature detections ")
     disk = K.feature.DISK.from_pretrained('depth')
     with torch.no_grad():
         disk_feat = disk(img_outdoor)[0]
@@ -573,9 +571,9 @@ def main():
         # save the output image
         out = torch.cat([img_in[0], *(out[i] for i in range(out.size(0)))], dim=-1)
         out_np = K.utils.tensor_to_image((out * 255.0).byte())
-        cv2.imwrite(str(OUTPUT_PATH / f"{fn_name.replace('(True)','')}.png"), out_np)
+        cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
-        print(f"Generated image example for {fn_name}. {sig}")
+        print(f"Generated image example for responce function {fn_name}")
     img_kornia
 
 

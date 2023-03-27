@@ -40,7 +40,7 @@ class DISK(Module):
     def heatmap_and_dense_descriptors(self, images: Tensor) -> tuple[Tensor, Tensor]:
         """Returns the heatmap and the dense descriptors.
 
-        .. image:: _static/img/disk.png
+        .. image:: _static/img/DISK.png
 
         Args:
             images: The image to detect features in. Shape :math:`(B, 3, H, W)`.
