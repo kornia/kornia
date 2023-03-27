@@ -67,7 +67,7 @@ def parse_colmap_output(
 
         # Read line with camera quaternion
         line = line.strip()
-        if line.endswith('png') or line.endswith('jpg\n'):
+        if line.endswith(('png', 'jpg\n')):
             split_line = line.split(' ')
             qw = float(split_line[1])
             qx = float(split_line[2])

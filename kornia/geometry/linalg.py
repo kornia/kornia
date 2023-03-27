@@ -217,7 +217,7 @@ def point_line_distance(point: Tensor, line: Tensor, eps: float = 1e-9) -> Tenso
     KORNIA_CHECK_IS_TENSOR(point)
     KORNIA_CHECK_IS_TENSOR(line)
 
-    if not point.shape[-1] in (2, 3):
+    if point.shape[-1] not in (2, 3):
         raise ValueError(f"pts must be a (*, 2 or 3) tensor. Got {point.shape}")
 
     if not line.shape[-1] == 3:
