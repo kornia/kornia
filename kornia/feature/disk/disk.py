@@ -48,7 +48,7 @@ class DISK(Module):
         Returns:
             A tuple of dense detection scores and descriptors.
             Shapes are :math:`(B, 1, H, W)` and :math:`(B, D, H, W)`, where
-             :math:`D` is the descriptor dimension.
+            :math:`D` is the descriptor dimension.
         """
         unet_output = self.unet(images)
 

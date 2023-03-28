@@ -53,6 +53,7 @@ Matching
 
 .. autoclass:: DISKFeatures
    :undoc-members:
+   :members: x, y, to
 
 .. autoclass:: GeometryAwareDescriptorMatcher
    :members: forward
