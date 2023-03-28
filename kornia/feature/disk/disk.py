@@ -78,7 +78,7 @@ class DISK(Module):
             window_size: The size of the non-maxima suppression window used to filter detections.
             score_threshold: The minimum score a detection must have to be returned.
                              See :py:class:`DISKFeatures` for details.
-            pad_if_not_divisible: if True, the non-32 divisible input is zero-padded to the closes 32-multiply
+            pad_if_not_divisible: if True, the non-16 divisible input is zero-padded to the closes 16-multiply
 
         Returns:
             A list of length :math:`B` containing the detected features.
