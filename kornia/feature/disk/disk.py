@@ -46,8 +46,9 @@ class DISK(Module):
             images: The image to detect features in. Shape :math:`(B, 3, H, W)`.
 
         Returns:
-            response: Heatmap. Shape :math:`(B, 1, H, W)`.
-            descriptors: Heatmap. Shape :math:`(B, descdim, H, W)`.
+            A tuple of dense detection scores and descriptors. 
+            Shapes are :math:`(B, 1, H, W)` and :math:`(B, D, H, W)`, where
+             :math:`D` is the descriptor dimension.
         """
         unet_output = self.unet(images)
 
@@ -77,7 +78,7 @@ class DISK(Module):
             window_size: The size of the non-maxima suppression window used to filter detections.
             score_threshold: The minimum score a detection must have to be returned.
                              See :py:class:`DISKFeatures` for details.
-            pad_if_not_divisible: if True, the non-32 divisible input is zero-padded to the closes 32-multiply
+            pad_if_not_divisible: if True, the non-16 divisible input is zero-padded to the closest 16-multiply
 
         Returns:
             A list of length :math:`B` containing the detected features.
@@ -85,8 +86,8 @@ class DISK(Module):
         B = images.shape[0]
         if pad_if_not_divisible:
             h, w = images.shape[2:]
-            pd_h = 32 - h % 32 if h % 32 > 0 else 0
-            pd_w = 32 - w % 32 if w % 32 > 0 else 0
+            pd_h = 16 - h % 16 if h % 16 > 0 else 0
+            pd_w = 16 - w % 16 if w % 16 > 0 else 0
             images = torch.nn.functional.pad(images, (0, pd_w, 0, pd_h), value=0.0)
 
         heatmaps, descriptors = self.heatmap_and_dense_descriptors(images)
