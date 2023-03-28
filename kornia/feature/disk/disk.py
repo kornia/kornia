@@ -85,8 +85,8 @@ class DISK(Module):
         B = images.shape[0]
         if pad_if_not_divisible:
             h, w = images.shape[2:]
-            pd_h = 32 - h % 32 if h % 32 > 0 else 0
-            pd_w = 32 - w % 32 if w % 32 > 0 else 0
+            pd_h = 16 - h % 16 if h % 16 > 0 else 0
+            pd_w = 16 - w % 16 if w % 16 > 0 else 0
             images = torch.nn.functional.pad(images, (0, pd_w, 0, pd_h), value=0.0)
 
         heatmaps, descriptors = self.heatmap_and_dense_descriptors(images)
