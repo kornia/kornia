@@ -46,6 +46,14 @@ class TestDisk:
         assert_close(out[0].keypoints, data_dev["disk1"][0].keypoints.to(dtype))
         assert_close(out[0].descriptors, data_dev["disk1"][0].descriptors.to(dtype))
 
+        with torch.no_grad():
+            # Tests that the detection filtering with pad_if_not_divisible doesn't break things.
+            # This doesn't truly test if the padding works, because it's not necessary
+            # for the test image.
+            out = disk(data_dev['img1'], num_feat, pad_if_not_divisible=True)
+        assert_close(out[0].keypoints, data_dev["disk1"][0].keypoints.to(dtype))
+        assert_close(out[0].descriptors, data_dev["disk1"][0].descriptors.to(dtype))
+
     def test_heatmap_and_dense_descriptors(self, dtype, device):
         disk = DISK().to(device, dtype)
         inp = torch.ones(1, 3, 64, 64, device=device, dtype=dtype)

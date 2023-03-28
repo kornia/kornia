@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 import torch.nn.functional as F
@@ -43,6 +45,9 @@ class DISKFeatures:
             self.descriptors.to(*args, **kwargs),
             self.detection_scores.to(*args, **kwargs),
         )
+
+    def mask(self, mask) -> DISKFeatures:
+        return DISKFeatures(self.keypoints[mask], self.descriptors[mask], self.detection_scores[mask])
 
 
 @dataclass

@@ -100,6 +100,14 @@ class DISK(Module):
         for i in range(B):
             features.append(keypoints[i].merge_with_descriptors(descriptors[i]))
 
+        if pad_if_not_divisible:
+            # some keypoints may be outside the image, remove them
+            masked_features = []
+            for feature in features:
+                mask = (feature.x < w) & (feature.y < h)
+                masked_features.append(feature.mask(mask))
+            features = masked_features
+
         return features
 
     @classmethod
