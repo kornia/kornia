@@ -51,6 +51,9 @@ Matching
 .. autoclass:: DISK
    :members: forward, from_pretrained, heatmap_and_dense_descriptors
 
+.. autoclass:: DISKFeatures
+   :undoc-members:
+
 .. autoclass:: GeometryAwareDescriptorMatcher
    :members: forward
 
