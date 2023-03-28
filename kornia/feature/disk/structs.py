@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 
 import torch.nn.functional as F
@@ -12,10 +14,10 @@ class DISKFeatures:
 
     Args:
         keypoints: Tensor of shape :math:`(N, 2)`, where :math:`N` is the number of keypoints.
-        descriptors: Tensor of shape :math:`(N, 128)`.
+        descriptors: Tensor of shape :math:`(N, D)`, where :math:`D` is the descriptor dimension.
         detection_scores: Tensor of shape :math:`(N,)` where the detection score can be interpreted as
-        the log-probability of keeping a keypoint after it has been proposed (see the paper,
-        section Method->Feature distribution for details).
+                          the log-probability of keeping a keypoint after it has been proposed (see the paper
+                          section *Method → Feature distribution* for details).
     """
     keypoints: Tensor
     descriptors: Tensor
@@ -30,14 +32,26 @@ class DISKFeatures:
         return self.keypoints.device
 
     @property
-    def x(self):
+    def x(self) -> Tensor:
+        """Accesses the x coordinates of keypoints (along image width)."""
         return self.keypoints[:, 0]
 
     @property
-    def y(self):
+    def y(self) -> Tensor:
+        """Accesses the y coordinates of keypoints (along image height)."""
         return self.keypoints[:, 1]
 
-    def to(self, *args, **kwargs):
+    def to(self, *args, **kwargs) -> DISKFeatures:
+        """Calls :func:`torch.Tensor.to` on each tensor to move the keypoints, descriptors and detection scores to
+        the specified device and/or data type.
+
+        Args:
+            *args: Arguments passed to :func:`torch.Tensor.to`.
+            **kwargs: Keyword arguments passed to :func:`torch.Tensor.to`.
+
+        Returns:
+            A new DISKFeatures object with tensors of appropriate type and location.
+        """
         return DISKFeatures(
             self.keypoints.to(*args, **kwargs),
             self.descriptors.to(*args, **kwargs),
