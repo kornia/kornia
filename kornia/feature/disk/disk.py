@@ -46,7 +46,7 @@ class DISK(Module):
             images: The image to detect features in. Shape :math:`(B, 3, H, W)`.
 
         Returns:
-            A tuple of dense detection scores and descriptors. 
+            A tuple of dense detection scores and descriptors.
             Shapes are :math:`(B, 1, H, W)` and :math:`(B, D, H, W)`, where
              :math:`D` is the descriptor dimension.
         """
