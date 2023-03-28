@@ -9,6 +9,7 @@ from .kernels import normalize_kernel2d
 
 _VALID_BORDERS = {'constant', 'reflect', 'replicate', 'circular'}
 _VALID_PADDING = {'valid', 'same'}
+_VALID_BEHAVIOUR = {'conv', 'corr'}
 
 
 def _compute_padding(kernel_size: list[int]) -> list[int]:
@@ -35,7 +36,12 @@ def _compute_padding(kernel_size: list[int]) -> list[int]:
 
 
 def filter2d(
-    input: Tensor, kernel: Tensor, border_type: str = 'reflect', normalized: bool = False, padding: str = 'same'
+    input: Tensor,
+    kernel: Tensor,
+    border_type: str = 'reflect',
+    normalized: bool = False,
+    padding: str = 'same',
+    behaviour: str = 'corr',
 ) -> Tensor:
     r"""Convolve a tensor with a 2d kernel.
 
@@ -55,6 +61,9 @@ def filter2d(
         normalized: If True, kernel will be L1 normalized.
         padding: This defines the type of padding.
           2 modes available ``'same'`` or ``'valid'``.
+        behaviour: defines the convolution mode -- correlation (default), using pytorch conv2d,
+        or true convolution (kernel is flipped). 2 modes available ``'corr'`` or ``'conv'``.
+
 
     Return:
         Tensor: the convolved tensor of same size and numbers of channels
@@ -88,10 +97,17 @@ def filter2d(
         str(padding).lower() in _VALID_PADDING,
         f'Invalid padding mode, gotcha {padding}. Expected one of {_VALID_PADDING}',
     )
-
+    KORNIA_CHECK(
+        str(behaviour).lower() in _VALID_BEHAVIOUR,
+        f'Invalid padding mode, gotcha {behaviour}. Expected one of {_VALID_BEHAVIOUR}',
+    )
     # prepare kernel
     b, c, h, w = input.shape
-    tmp_kernel = kernel[:, None, ...].to(device=input.device, dtype=input.dtype)
+    if str(behaviour).lower() == 'conv':
+        tmp_kernel = kernel.flip((-2, -1))[:, None, ...].to(device=input.device, dtype=input.dtype)
+    else:
+        tmp_kernel = kernel[:, None, ...].to(device=input.device, dtype=input.dtype)
+        #  str(behaviour).lower() == 'conv':
 
     if normalized:
         tmp_kernel = normalize_kernel2d(tmp_kernel)
