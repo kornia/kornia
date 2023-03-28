@@ -12,10 +12,10 @@ class DISKFeatures:
 
     Args:
         keypoints: Tensor of shape :math:`(N, 2)`, where :math:`N` is the number of keypoints.
-        descriptors: Tensor of shape :math:`(N, 128)`.
+        descriptors: Tensor of shape :math:`(N, D)`, where :math:`D` is the descriptor dimension.
         detection_scores: Tensor of shape :math:`(N,)` where the detection score can be interpreted as
-        the log-probability of keeping a keypoint after it has been proposed (see the paper,
-        section Method->Feature distribution for details).
+                          the log-probability of keeping a keypoint after it has been proposed (see the paper,
+                          section Method->Feature distribution for details).
     """
     keypoints: Tensor
     descriptors: Tensor
