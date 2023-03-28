@@ -240,10 +240,16 @@ class AdalamFilter:
         _k2 = as_tensor(k2, device=self.config['device'], dtype=torch.float32)
         _d1 = as_tensor(d1, device=self.config['device'], dtype=torch.float32)
         _d2 = as_tensor(d2, device=self.config['device'], dtype=torch.float32)
-        _o1 = as_tensor(o1, device=self.config['device'], dtype=torch.float32)
-        _o2 = as_tensor(o2, device=self.config['device'], dtype=torch.float32)
-        _s1 = as_tensor(s1, device=self.config['device'], dtype=torch.float32)
-        _s2 = as_tensor(s2, device=self.config['device'], dtype=torch.float32)
+        if o1 is not None:
+            _o1 = as_tensor(o1, device=self.config['device'], dtype=torch.float32)
+            _o2 = as_tensor(o2, device=self.config['device'], dtype=torch.float32)
+        else:
+            _o1, _o2 = o1, o2
+        if s1 is not None:
+            _s1 = as_tensor(s1, device=self.config['device'], dtype=torch.float32)
+            _s2 = as_tensor(s2, device=self.config['device'], dtype=torch.float32)
+        else:
+            _s1, _s2 = s1, s2
 
         if (len(_d2) <= 1) or (len(_d1) <= 1):
             idxs, dists = _no_match(_d1)
