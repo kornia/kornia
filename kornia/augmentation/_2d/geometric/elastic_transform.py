@@ -22,8 +22,6 @@ class RandomElasticTransform(AugmentationBase2D):
           in the y and x directions, respectively.
         align_corners: Interpolation flag used by `grid_sample`.
         resample: Interpolation mode used by `grid_sample`. Either 'nearest' (0) or 'bilinear' (1).
-        mode: Deprecated: Interpolation mode used by `grid_sample`. Either 'bilinear' or 'nearest'.
-          Please use the `resample` argument instead.
         padding_mode: The padding used by ```grid_sample```. Either 'zeros', 'border' or 'refection'.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
