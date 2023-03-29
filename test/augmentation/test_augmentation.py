@@ -1,4 +1,5 @@
 from typing import Any, Dict, Optional, Tuple, Type
+from unittest.mock import patch
 
 import pytest
 import torch
@@ -3703,6 +3704,28 @@ class TestRandomElasticTransform:
         # The transformed values are fine if we use mask input type
         labels_transformed = compose(features, labels, data_keys=["input", "mask"])[1]
         assert_close(labels_transformed.unique(), torch.tensor([0, 10], dtype=dtype, device=device))
+
+    @pytest.mark.parametrize("batch_prob", [[True, True], [False, True], [False, False]])
+    def test_apply(self, batch_prob, device, dtype):
+        torch.manual_seed(0)
+
+        aug_list = AugmentationSequential(RandomElasticTransform())
+        features = torch.rand(2, 3, 10, 10, dtype=dtype, device=device)
+        labels = torch.randint(0, 10, (2, 1, 10, 10), dtype=dtype, device=device)
+
+        # Make sure the transformation works correctly even if only applied to some images in the batch
+        to_apply = torch.tensor(batch_prob, device=device)
+        with patch.object(aug_list[0], '__batch_prob_generator__', return_value=to_apply):
+            features_transformed, labels_transformed = aug_list(features, labels, data_keys=["input", "mask"])
+            assert torch.all(aug_list._params[0].data["batch_prob"] == to_apply)
+
+            for b, applied in enumerate(batch_prob):
+                if applied:
+                    assert features_transformed[b].ne(features).any()
+                    assert labels_transformed[b].ne(labels).any()
+                else:
+                    assert features_transformed[b].eq(features[b]).all()
+                    assert labels_transformed[b].eq(labels[b]).all()
 
 
 class TestRandomThinPlateSpline:
