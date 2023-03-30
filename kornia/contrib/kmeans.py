@@ -153,25 +153,3 @@ class KMeans:
         distance = self._pairwise_euclidean_distance(x, self.final_cluster_centers)
         cluster_assignment = torch.argmin(distance, axis=1)
         return cluster_assignment.cpu()
-
-
-# create example dataset
-# torch.manual_seed(2023)
-# x = 5 * torch.randn((500, 2)) + torch.tensor((-13, 17))
-# x = torch.vstack([x, torch.randn((500, 2)) + torch.tensor((15, -12))])
-# x = torch.vstack([x, 13 * torch.randn((500, 2)) + torch.tensor((35, 15))])
-
-# kmeans = KMeans(3, None, 10e-4, 10000, torch.device('cuda'), 2023)
-# kmeans.fit(x)
-
-# # assignments = kmeans.get_cluster_assignments()
-# centers = kmeans.get_cluster_centers()
-# prediciton = kmeans.predict(torch.tensor([[2, 3], [5, 6]]))
-
-# import matplotlib.pyplot as plt
-
-# plt.scatter(x[:,0], x[:,1], c='red')
-# plt.scatter(centers[:,0], centers[:,1], c='blue')
-# plt.show()
-
-# print(centers, prediciton)
