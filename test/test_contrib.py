@@ -36,6 +36,66 @@ class TestDiamondSquare:
         assert_close(out.max(), expected_max)
 
 
+class TestKMeans:
+    @pytest.mark.parametrize("num_clusters", [3, 10, 1])
+    @pytest.mark.parametrize("tolerance", [10e-4, 10e-5, 10e-1])
+    @pytest.mark.parametrize("max_iterations", [100, 10000])
+    def test_smoke(self, device, dtype, num_clusters, tolerance, max_iterations):
+        N = 1000
+        D = 2
+
+        kmeans = kornia.contrib.KMeans(num_clusters, None, tolerance, max_iterations, device, 0)
+        kmeans.fit(torch.rand((N, D), dtype=dtype))
+
+        out1 = kmeans.get_cluster_assignments()
+        out2 = kmeans.get_cluster_centers()
+
+        # output is of type tensor
+        assert isinstance(out1, torch.Tensor)
+        assert isinstance(out2, torch.Tensor)
+
+        # output is of correct shape
+        assert out1.shape == (N,)
+        assert out2.shape == (num_clusters, D)
+
+        # output is of same dtype
+        assert out1.dtype == torch.int64
+        assert out2.dtype == dtype
+
+    def test_zero_cluster_center_exception(self, device, dtype):
+        with pytest.raises(ValueError):
+            assert kornia.contrib.KMeans(0, None, 10e-4, 100, device, 0)
+
+    def test_given_cluster_centers_shape_exception(self, device, dtype):
+        with pytest.raises(ValueError):
+            kmeans = kornia.contrib.KMeans(3, None, 10e-4, 100, device, 0)
+            assert kmeans.fit(torch.rand((1000, 5, 60), dtype=dtype))
+
+    def test_input_shape_exception(self, device, dtype):
+        with pytest.raises(ValueError):
+            kmeans = kornia.contrib.KMeans(3, None, 10e-4, 100, device, 0)
+            assert kmeans.fit(torch.rand((1, 2, 3), dtype=dtype))
+
+    def test_value(self, device, dtype):
+        # create example dataset
+        torch.manual_seed(2023)
+        x = 5 * torch.randn((500, 2), dtype=dtype) + torch.tensor((-13, 17))
+        x = torch.vstack([x, torch.randn((500, 2), dtype=dtype) + torch.tensor((15, -12))])
+        x = torch.vstack([x, 13 * torch.randn((500, 2), dtype=dtype) + torch.tensor((35, 15))])
+
+        kmeans = kornia.contrib.KMeans(3, None, 10e-4, 10000, device, 2023)
+        kmeans.fit(x)
+
+        centers = kmeans.get_cluster_centers()
+        prediciton = kmeans.predict(torch.tensor([[2, 3], [5, 6]]))
+
+        expected_centers = torch.tensor([[37.0849, 16.0393], [-12.3770, 17.2630], [16.0148, -10.9370]], dtype=dtype)
+        expected_prediciton = torch.tensor([2, 2], dtype=torch.int64)
+
+        assert_close(centers, expected_centers)
+        assert_close(prediciton, expected_prediciton)
+
+
 class TestVisionTransformer:
     @pytest.mark.parametrize("B", [1, 2])
     @pytest.mark.parametrize("H", [1, 3, 8])
