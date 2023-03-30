@@ -13,6 +13,9 @@ class KMeans:
         device: torch.device = torch.device('cpu'),
         seed: int = None,
     ) -> None:
+        if num_clusters == 0:
+            raise ValueError("num_clusters can't be 0")
+
         self.num_clusters = num_clusters
         self.cluster_centers = cluster_centers
         self.tolerance = tolerance
@@ -65,7 +68,6 @@ class KMeans:
         B = data2.unsqueeze(dim=0)
         distance = (A - B) ** 2.0
         # return N*C matrix for pairwise distance
-        print(distance.sum(dim=-1).shape)
         distance = distance.sum(dim=-1)
         return distance
 
@@ -104,7 +106,7 @@ class KMeans:
             # find distance between X and current_centers
             distance = self._pairwise_euclidean_distance(X, current_centers)
 
-            cluster_assignment = torch.argmin(distance, axis=1)
+            cluster_assignment = torch.argmin(distance, dim=1)
 
             previous_centers = current_centers.clone()
 
@@ -128,8 +130,8 @@ class KMeans:
             if self.max_iterations != 0 and iteration >= self.max_iterations:
                 break
 
-            self.final_cluster_assignments = cluster_assignment
-            self.final_cluster_centers = current_centers
+        self.final_cluster_assignments = cluster_assignment
+        self.final_cluster_centers = current_centers
 
     def predict(self, x: torch.Tensor) -> torch.Tensor:
         """Find the cluster center closest to each point in x
@@ -149,6 +151,27 @@ class KMeans:
         x = x.float()
         x = x.to(self.device)
         distance = self._pairwise_euclidean_distance(x, self.final_cluster_centers)
-        print(distance.shape)
         cluster_assignment = torch.argmin(distance, axis=1)
         return cluster_assignment.cpu()
+
+
+# create example dataset
+# torch.manual_seed(2023)
+# x = 5 * torch.randn((500, 2)) + torch.tensor((-13, 17))
+# x = torch.vstack([x, torch.randn((500, 2)) + torch.tensor((15, -12))])
+# x = torch.vstack([x, 13 * torch.randn((500, 2)) + torch.tensor((35, 15))])
+
+# kmeans = KMeans(3, None, 10e-4, 10000, torch.device('cuda'), 2023)
+# kmeans.fit(x)
+
+# # assignments = kmeans.get_cluster_assignments()
+# centers = kmeans.get_cluster_centers()
+# prediciton = kmeans.predict(torch.tensor([[2, 3], [5, 6]]))
+
+# import matplotlib.pyplot as plt
+
+# plt.scatter(x[:,0], x[:,1], c='red')
+# plt.scatter(centers[:,0], centers[:,1], c='blue')
+# plt.show()
+
+# print(centers, prediciton)
