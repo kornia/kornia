@@ -154,4 +154,4 @@ class KMeans:
         x = x.to(self.device)
         distance = self._pairwise_euclidean_distance(x, self.final_cluster_centers)
         cluster_assignment = torch.argmin(distance, axis=1)
-        return cluster_assignment.cpu()
+        return cluster_assignment
