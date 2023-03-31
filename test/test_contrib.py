@@ -39,7 +39,7 @@ class TestDiamondSquare:
 class TestKMeans:
     @pytest.mark.parametrize("num_clusters", [3, 10, 1])
     @pytest.mark.parametrize("tolerance", [10e-4, 10e-5, 10e-1])
-    @pytest.mark.parametrize("max_iterations", [100, 10000])
+    @pytest.mark.parametrize("max_iterations", [10, 1000])
     def test_smoke(self, device, dtype, num_clusters, tolerance, max_iterations):
         N = 1000
         D = 2
@@ -62,19 +62,30 @@ class TestKMeans:
         assert out1.dtype == torch.int64
         assert out2.dtype == dtype
 
-    def test_zero_cluster_center_exception(self, device, dtype):
-        with pytest.raises(ValueError):
-            assert kornia.contrib.KMeans(0, None, 10e-4, 100, device, 0)
+    def test_exception(self, device, dtype):
+        # case: cluster_center = 0:
+        with pytest.raises(Exception) as errinfo:
+            kornia.contrib.KMeans(0, None, 10e-4, 10, device, 0)
+        assert "num_clusters can't be 0" in str(errinfo)
 
-    def test_given_cluster_centers_shape_exception(self, device, dtype):
-        with pytest.raises(ValueError):
-            kmeans = kornia.contrib.KMeans(3, None, 10e-4, 100, device, 0)
-            assert kmeans.fit(torch.rand((1000, 5, 60), dtype=dtype))
+        # case: cluster centers is not a 2D tensor
+        with pytest.raises(TypeError) as errinfo:
+            starting_centers = torch.rand((2, 3, 5), device=device, dtype=dtype)
+            kmeans = kornia.contrib.KMeans(None, starting_centers, 10e-4, 100, device, 0)
+        assert "shape must be [[\'C\', \'D\']]. Got torch.Size([2, 3, 5])" in str(errinfo)
 
-    def test_input_shape_exception(self, device, dtype):
-        with pytest.raises(ValueError):
+        # case: input data is not a 2D tensor
+        with pytest.raises(TypeError) as errinfo:
             kmeans = kornia.contrib.KMeans(3, None, 10e-4, 100, device, 0)
-            assert kmeans.fit(torch.rand((1, 2, 3), dtype=dtype))
+            kmeans.fit(torch.rand((1000, 5, 60), dtype=dtype))
+        assert "shape must be [[\'N\', \'D\']]. Got torch.Size([1000, 5, 60])" in str(errinfo)
+
+        # case: column dimensions of cluster centers and data to be predicted do not match
+        with pytest.raises(Exception) as errinfo:
+            kmeans = kornia.contrib.KMeans(3, None, 10e-4, 100, device, 0)
+            kmeans.fit(torch.rand((1000, 5), dtype=dtype))
+            kmeans.predict(torch.rand((10, 7), dtype=dtype))
+        assert "7 != 5" in str(errinfo)
 
     def test_value(self, device, dtype):
         # create example dataset

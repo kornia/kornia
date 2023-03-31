@@ -18,6 +18,10 @@ class KMeans:
     ) -> None:
         KORNIA_CHECK(num_clusters != 0, "num_clusters can't be 0")
 
+        # cluster_centers should have only 2 dimensions
+        if cluster_centers is not None:
+            KORNIA_CHECK_SHAPE(cluster_centers, ["C", "D"])
+
         self.num_clusters = num_clusters
         self.cluster_centers = cluster_centers
         self.tolerance = tolerance
@@ -83,9 +87,6 @@ class KMeans:
         if self.cluster_centers is None:
             self.cluster_centers = self._initialise_cluster_centers(X, self.num_clusters)
         else:
-            # cluster_centers should have only 2 dimensions
-            KORNIA_CHECK_SHAPE(self.cluster_centers, ["C", "D"])
-
             # X and cluster_centers should have same number of columns
             KORNIA_CHECK(
                 X.shape[1] == self.cluster_centers.shape[1],
