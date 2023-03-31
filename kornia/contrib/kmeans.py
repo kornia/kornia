@@ -102,11 +102,11 @@ class KMeans:
         current_centers = self.cluster_centers.to(self.device)
 
         previous_centers = None
-        iteration = 0
+        iteration: int = 0
 
         while True:
             # find distance between X and current_centers
-            distance = self._pairwise_euclidean_distance(X, current_centers)
+            distance: Tensor = self._pairwise_euclidean_distance(X, current_centers)
 
             cluster_assignment = torch.argmin(distance, dim=1)
 
