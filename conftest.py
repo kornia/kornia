@@ -65,14 +65,11 @@ def dtype(dtype_name) -> torch.dtype:
 
 @pytest.fixture(scope='session')
 def torch_optimizer():
-    try:
-        import torch._dynamo as dynamo
-
+    if hasattr(torch, 'compile'):
         torch.set_float32_matmul_precision('high')
-        return dynamo.optimize('inductor')
-    except Exception as er:
-        del er
-        pytest.skip(f"skipped because {torch.__version__} may not have dynamo available! Failed to setup dynamo.")
+        return torch.compile
+
+    pytest.skip(f"skipped because {torch.__version__} not have `compile` available! Failed to setup dynamo.")
 
 
 def pytest_generate_tests(metafunc):
