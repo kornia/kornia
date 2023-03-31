@@ -1,5 +1,7 @@
 # based on https://github.com/subhadarship/kmeans_pytorch
 
+from __future__ import annotations
+
 import torch
 
 from kornia.core import Tensor
@@ -13,8 +15,8 @@ class KMeans:
         cluster_centers: Tensor,
         tolerance: float = 10e-4,
         max_iterations: int = 0,
-        device: torch.device = torch.device('cpu'),
-        seed: int = None,
+        device: torch.device | None = None,
+        seed: int | None = None,
     ) -> None:
         KORNIA_CHECK(num_clusters != 0, "num_clusters can't be 0")
 
