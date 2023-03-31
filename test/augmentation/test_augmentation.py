@@ -3709,7 +3709,7 @@ class TestRandomElasticTransform:
     def test_apply(self, batch_prob, device, dtype):
         torch.manual_seed(0)
 
-        aug_list = AugmentationSequential(RandomElasticTransform())
+        aug_list = AugmentationSequential(RandomElasticTransform(sigma=(2, 2), alpha=(2, 2)))
         features = torch.rand(2, 3, 10, 10, dtype=dtype, device=device)
         labels = torch.randint(0, 10, (2, 1, 10, 10), dtype=dtype, device=device)
 
@@ -3719,13 +3719,14 @@ class TestRandomElasticTransform:
             features_transformed, labels_transformed = aug_list(features, labels, data_keys=["input", "mask"])
             assert_close(aug_list._params[0].data["batch_prob"], to_apply)
 
-            for b, applied in enumerate(batch_prob):
-                if applied:
-                    assert features_transformed[b].ne(features).any()
-                    assert labels_transformed[b].ne(labels).any()
-                else:
-                    assert_close(features_transformed[b], features[b])
-                    assert_close(labels_transformed[b], labels[b])
+            # Images should remain unchanged if the transformation is not applied
+            assert_close(features_transformed[~to_apply], features[~to_apply])
+            assert_close(labels_transformed[~to_apply], labels[~to_apply])
+
+            # At least one value in the images should change if the transformation is applied
+            if to_apply.any():
+                assert features_transformed[to_apply].ne(features[to_apply]).any()
+                assert labels_transformed[to_apply].ne(labels[to_apply]).any()
 
 
 class TestRandomThinPlateSpline:
