@@ -67,9 +67,9 @@ class KMeans:
             2D tensor of shape N, C
         """
         # N*1*D
-        A = data1.unsqueeze(dim=1)
+        A = data1[:, None, ...]
         # 1*C*D
-        B = data2.unsqueeze(dim=0)
+        B = data2[None, ...]
         distance = (A - B) ** 2.0
         # return N*C matrix for pairwise distance
         distance = distance.sum(dim=-1)
