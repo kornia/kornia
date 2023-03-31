@@ -33,12 +33,12 @@ class KMeans:
     def get_cluster_centers(self) -> Tensor:
         if self.final_cluster_centers is None:
             raise ValueError("Model has not been fit to a dataset")
-        return self.final_cluster_centers.cpu()
+        return self.final_cluster_centers
 
     def get_cluster_assignments(self) -> Tensor:
         if self.final_cluster_assignments is None:
             raise ValueError("Model has not been fit to a dataset")
-        return self.final_cluster_assignments.cpu()
+        return self.final_cluster_assignments
 
     def _initialise_cluster_centers(self, X: Tensor, num_clusters: int) -> Tensor:
         """Chooses num_cluster points from X as the initial cluster centers.
