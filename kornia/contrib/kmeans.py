@@ -97,7 +97,6 @@ class KMeans:
                         {X.shape[1]} != {self.cluster_centers.shape[1]}"
                 )
 
-        X = X.float()
         X = X.to(self.device)
         current_centers = self.cluster_centers.to(self.device)
 
@@ -150,7 +149,6 @@ class KMeans:
                     {x.shape[1]} != {self.final_cluster_centers.shape[1]}"
             )
 
-        x = x.float()
         x = x.to(self.device)
         distance = self._pairwise_euclidean_distance(x, self.final_cluster_centers)
         cluster_assignment = torch.argmin(distance, axis=1)
