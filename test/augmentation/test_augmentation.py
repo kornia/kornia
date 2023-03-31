@@ -52,6 +52,7 @@ from kornia.constants import Resample, pi
 from kornia.geometry import transform_points
 from kornia.testing import BaseTester, assert_close, default_with_one_parameter_changed
 from kornia.utils import create_meshgrid
+from kornia.utils._compat import torch_version
 from kornia.utils.helpers import _torch_inverse_cast
 
 # TODO same_on_batch tests?
@@ -4036,6 +4037,7 @@ class TestRandomRGBShift:
         out = aug(img)
         assert out.shape == (2, 3, 4, 5)
 
+    @pytest.mark.skipif(torch_version() == '2.0.0', reason='Not working on 2.0')
     def test_onnx_export(self, device, dtype):
         img = torch.rand(1, 3, 4, 5, device=device, dtype=dtype)
         aug = RandomRGBShift(p=1.0).to(device)
