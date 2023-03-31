@@ -2,12 +2,14 @@
 
 import torch
 
+from kornia.core import Tensor
+
 
 class KMeans:
     def __init__(
         self,
         num_clusters: int,
-        cluster_centers: torch.Tensor,
+        cluster_centers: Tensor,
         tolerance: float = 10e-4,
         max_iterations: int = 0,
         device: torch.device = torch.device('cpu'),
@@ -28,17 +30,17 @@ class KMeans:
         if seed is not None:
             torch.manual_seed(seed)
 
-    def get_cluster_centers(self) -> torch.Tensor:
+    def get_cluster_centers(self) -> Tensor:
         if self.final_cluster_centers is None:
             raise ValueError("Model has not been fit to a dataset")
         return self.final_cluster_centers.cpu()
 
-    def get_cluster_assignments(self) -> torch.Tensor:
+    def get_cluster_assignments(self) -> Tensor:
         if self.final_cluster_assignments is None:
             raise ValueError("Model has not been fit to a dataset")
         return self.final_cluster_assignments.cpu()
 
-    def _initialise_cluster_centers(self, X: torch.Tensor, num_clusters: int) -> torch.Tensor:
+    def _initialise_cluster_centers(self, X: Tensor, num_clusters: int) -> Tensor:
         """Chooses num_cluster points from X as the initial cluster centers.
 
         Args:
@@ -53,7 +55,7 @@ class KMeans:
         initial_state = X[idx]
         return initial_state
 
-    def _pairwise_euclidean_distance(self, data1: torch.Tensor, data2: torch.Tensor) -> torch.Tensor:
+    def _pairwise_euclidean_distance(self, data1: Tensor, data2: Tensor) -> Tensor:
         """Computes pairwise distance between 2 sets of vectors.
 
         Args:
@@ -71,7 +73,7 @@ class KMeans:
         distance = distance.sum(dim=-1)
         return distance
 
-    def fit(self, X: torch.Tensor) -> None:
+    def fit(self, X: Tensor) -> None:
         """Iterative KMeans clustering till a threshold for shift in cluster centers
         or a maximum no of iterations have reached
         Args:
@@ -133,7 +135,7 @@ class KMeans:
         self.final_cluster_assignments = cluster_assignment
         self.final_cluster_centers = current_centers
 
-    def predict(self, x: torch.Tensor) -> torch.Tensor:
+    def predict(self, x: Tensor) -> Tensor:
         """Find the cluster center closest to each point in x
         Args:
             x: 2D tensor
