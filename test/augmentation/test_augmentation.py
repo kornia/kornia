@@ -3717,15 +3717,15 @@ class TestRandomElasticTransform:
         to_apply = torch.tensor(batch_prob, device=device)
         with patch.object(aug_list[0], '__batch_prob_generator__', return_value=to_apply):
             features_transformed, labels_transformed = aug_list(features, labels, data_keys=["input", "mask"])
-            assert torch.all(aug_list._params[0].data["batch_prob"] == to_apply)
+            assert_close(aug_list._params[0].data["batch_prob"], to_apply)
 
             for b, applied in enumerate(batch_prob):
                 if applied:
                     assert features_transformed[b].ne(features).any()
                     assert labels_transformed[b].ne(labels).any()
                 else:
-                    assert features_transformed[b].eq(features[b]).all()
-                    assert labels_transformed[b].eq(labels[b]).all()
+                    assert_close(features_transformed[b], features[b])
+                    assert_close(labels_transformed[b], labels[b])
 
 
 class TestRandomThinPlateSpline:
