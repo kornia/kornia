@@ -9,6 +9,22 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 
 class KMeans:
+    """Implements the kmeans clustering algorithm with euclidean distance as similarity measure.
+
+    Args:
+        num_clusters: number of clusters the data has to be assigned to
+        cluster_centers: tensor of starting cluster centres can be passed instead of num_clusters
+        tolerance: float value. the algorithm terminates if the shift in centers is less than tolerance
+        max_iterations: number of iterations to run the algorithm for
+        device: the device to which all tensors are moved to and computed
+        seed: number to set torch manual seed for reproducibility
+
+    .. code-block:: python
+        kmeans = kornia.contrib.KMeans(3, None, 10e-4, 100, device, 0)
+        kmeans.fit(torch.rand((1000, 5))
+        predictions = kmeans.predict(torch.rand((10, 5)))
+    """
+
     def __init__(
         self,
         num_clusters: int,
@@ -50,7 +66,8 @@ class KMeans:
         Args:
             X: 2D input tensor to be clustered
             num_clusters: number of desired cluster centers
-        Return:
+
+        Returns:
             2D Tensor with num_cluster rows
         """
         num_samples = len(X)
@@ -65,7 +82,8 @@ class KMeans:
         Args:
             data1: 2D tensor of shape N, D
             data2: 2D tensor of shape C, D
-        Return:
+
+        Returns:
             2D tensor of shape N, C
         """
         # N*1*D
@@ -78,8 +96,9 @@ class KMeans:
         return distance
 
     def fit(self, X: Tensor) -> None:
-        """Iterative KMeans clustering till a threshold for shift in cluster centers
-        or a maximum no of iterations have reached
+        """Iterative KMeans clustering till a threshold for shift in cluster centers or a maximum no of iterations
+        have reached.
+
         Args:
             X: 2D input tensor to be clustered
         """
@@ -134,10 +153,12 @@ class KMeans:
         self.final_cluster_centers = current_centers
 
     def predict(self, x: Tensor) -> Tensor:
-        """Find the cluster center closest to each point in x
+        """Find the cluster center closest to each point in x.
+
         Args:
             x: 2D tensor
-        Return:
+
+        Returns:
             1D tensor containing cluster id assigned to each data point in x
         """
 
