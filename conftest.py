@@ -1,3 +1,4 @@
+import sys
 from itertools import product
 from typing import Dict
 
@@ -65,7 +66,7 @@ def dtype(dtype_name) -> torch.dtype:
 
 @pytest.fixture(scope='session')
 def torch_optimizer():
-    if hasattr(torch, 'compile'):
+    if hasattr(torch, 'compile') and sys.platform == "linux":
         torch.set_float32_matmul_precision('high')
         return torch.compile
 
