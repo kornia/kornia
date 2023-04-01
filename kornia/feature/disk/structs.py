@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import torch.nn.functional as F
 
@@ -41,7 +42,7 @@ class DISKFeatures:
         """Accesses the y coordinates of keypoints (along image height)."""
         return self.keypoints[:, 1]
 
-    def to(self, *args, **kwargs) -> DISKFeatures:
+    def to(self, *args: Any, **kwargs: Any) -> DISKFeatures:
         """Calls :func:`torch.Tensor.to` on each tensor to move the keypoints, descriptors and detection scores to
         the specified device and/or data type.
 
