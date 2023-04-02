@@ -7,7 +7,7 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.contrib.face_detection import FaceKeypoint
-from kornia.testing import assert_close
+from kornia.testing import BaseTester, assert_close
 
 
 class TestDiamondSquare:
@@ -36,7 +36,7 @@ class TestDiamondSquare:
         assert_close(out.max(), expected_max)
 
 
-class TestKMeans:
+class TestKMeans(BaseTester):
     @pytest.mark.parametrize("num_clusters", [3, 10, 1])
     @pytest.mark.parametrize("tolerance", [10e-4, 10e-5, 10e-1])
     @pytest.mark.parametrize("max_iterations", [10, 1000])
@@ -54,13 +54,26 @@ class TestKMeans:
         assert isinstance(out1, torch.Tensor)
         assert isinstance(out2, torch.Tensor)
 
-        # output is of correct shape
-        assert out1.shape == (N,)
-        assert out2.shape == (num_clusters, D)
-
         # output is of same dtype
         assert out1.dtype == torch.int64
         assert out2.dtype == dtype
+
+    @pytest.mark.parametrize("num_clusters", [3, 10, 1])
+    @pytest.mark.parametrize("tolerance", [10e-4, 10e-5, 10e-1])
+    @pytest.mark.parametrize("max_iterations", [10, 1000])
+    def test_cardinality(self, device, dtype, num_clusters, tolerance, max_iterations):
+        N = 1000
+        D = 2
+
+        kmeans = kornia.contrib.KMeans(num_clusters, None, tolerance, max_iterations, device, 0)
+        kmeans.fit(torch.rand((N, D), dtype=dtype))
+
+        out1 = kmeans.get_cluster_assignments()
+        out2 = kmeans.get_cluster_centers()
+
+        # output is of correct shape
+        assert out1.shape == (N,)
+        assert out2.shape == (num_clusters, D)
 
     def test_exception(self, device, dtype):
         # case: cluster_center = 0:
@@ -87,7 +100,7 @@ class TestKMeans:
             kmeans.predict(torch.rand((10, 7), dtype=dtype))
         assert "7 != 5" in str(errinfo)
 
-    def test_value(self, device, dtype):
+    def test_module(self, device, dtype):
         # create example dataset
         torch.manual_seed(2023)
         x = 5 * torch.randn((500, 2), dtype=dtype) + torch.tensor((-13, 17))
@@ -103,8 +116,8 @@ class TestKMeans:
         expected_centers = torch.tensor([[37.0849, 16.0393], [-12.3770, 17.2630], [16.0148, -10.9370]], dtype=dtype)
         expected_prediciton = torch.tensor([2, 2], dtype=torch.int64)
 
-        assert_close(centers, expected_centers)
-        assert_close(prediciton, expected_prediciton)
+        self.assert_close(centers, expected_centers)
+        self.assert_close(prediciton, expected_prediciton)
 
 
 class TestVisionTransformer:
