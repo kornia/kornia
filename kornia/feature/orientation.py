@@ -50,7 +50,7 @@ class PatchDominantGradientOrientation(nn.Module):
         self.eps = eps
         self.angular_smooth = nn.Conv1d(1, 1, kernel_size=5, padding=2, bias=False, padding_mode="circular")
         with torch.no_grad():
-            self.angular_smooth.weight[:] = get_gaussian_discrete_kernel1d(5, 2.0)
+            self.angular_smooth.weight[:] = get_gaussian_discrete_kernel1d(5, 1.6)
         sigma: float = float(self.patch_size) / 6.0
         self.weighting = get_gaussian_kernel2d((self.patch_size, self.patch_size), (sigma, sigma), True)
 
