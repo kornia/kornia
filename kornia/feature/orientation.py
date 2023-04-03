@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 from kornia.constants import pi
 from kornia.core.check import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
-from kornia.filters import SpatialGradient, get_gaussian_kernel2d
+from kornia.filters import SpatialGradient, get_gaussian_discrete_kernel1d, get_gaussian_kernel2d
 from kornia.geometry import rad2deg
 from kornia.utils.helpers import map_location_to_cpu
 
@@ -49,10 +49,10 @@ class PatchDominantGradientOrientation(nn.Module):
         self.num_ang_bins = num_angular_bins
         self.gradient = SpatialGradient('sobel', 1)
         self.eps = eps
-        self.angular_smooth = nn.Conv1d(1, 1, kernel_size=3, padding=1, bias=False, padding_mode="circular")
+        self.angular_smooth = nn.Conv1d(1, 1, kernel_size=5, padding=2, bias=False, padding_mode="circular")
         with torch.no_grad():
-            self.angular_smooth.weight[:] = torch.tensor([[[0.33, 0.34, 0.33]]])
-        sigma: float = float(self.patch_size) / math.sqrt(2.0)
+            self.angular_smooth.weight[:] = get_gaussian_discrete_kernel1d(5, 2.0)
+        sigma: float = float(self.patch_size) / 6.0
         self.weighting = get_gaussian_kernel2d((self.patch_size, self.patch_size), (sigma, sigma), True)
 
     def __repr__(self):
@@ -85,7 +85,7 @@ class PatchDominantGradientOrientation(nn.Module):
         gx: torch.Tensor = grads[:, :, 0]
         gy: torch.Tensor = grads[:, :, 1]
 
-        mag: torch.Tensor = torch.sqrt(gx * gx + gy * gy + self.eps)
+        mag: torch.Tensor = torch.sqrt(gx * gx + gy * gy + self.eps) * self.weighting
         ori: torch.Tensor = torch.atan2(gy, gx + self.eps) + 2.0 * pi
 
         o_big = float(self.num_ang_bins) * (ori + 1.0 * pi) / (2.0 * pi)
