@@ -108,7 +108,7 @@ class PatchDominantGradientOrientation(nn.Module):
         left = torch.gather(ang_bins, 1, indices_left.reshape(-1, 1)).reshape(-1)
         center = values
         right = torch.gather(ang_bins, 1, indices_right.reshape(-1, 1)).reshape(-1)
-        c_subpix = 0.5 * (left - right)  / (left + right - 2.0 * center)
+        c_subpix = 0.5 * (left - right) / (left + right - 2.0 * center)
         angle = -((2.0 * pi * (indices.to(patch.dtype) + c_subpix) / float(self.num_ang_bins)) - pi)
         return angle
 
