@@ -101,9 +101,15 @@ class PatchDominantGradientOrientation(nn.Module):
             )
             ang_bins_list.append(ang_bins_i)
         ang_bins = torch.cat(ang_bins_list, 1).view(-1, 1, self.num_ang_bins)
-        ang_bins = self.angular_smooth(ang_bins)
-        values, indices = ang_bins.view(-1, self.num_ang_bins).max(1)
-        angle = -((2.0 * pi * indices.to(patch.dtype) / float(self.num_ang_bins)) - pi)
+        ang_bins = self.angular_smooth(ang_bins).view(-1, self.num_ang_bins)
+        values, indices = ang_bins.max(1)
+        indices_left = (self.num_ang_bins + indices - 1) % self.num_ang_bins
+        indices_right = (indices + 1) % self.num_ang_bins
+        l = torch.gather(ang_bins, 1, indices_left.reshape(-1, 1)).reshape(-1)
+        c = values
+        r = torch.gather(ang_bins, 1, indices_right.reshape(-1, 1)).reshape(-1)
+        c_subpix = 0.5 * (l - r)  / (l + r - 2*c)
+        angle = -((2.0 * pi * (indices.to(patch.dtype) + c_subpix) / float(self.num_ang_bins)) - pi)
         return angle
 
 
