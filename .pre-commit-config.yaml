@@ -30,7 +30,7 @@ repos:
       - id: codespell
         args:
           - --ignore-words-list
-          - "ans,hist"
+          - "ans,hist,laf"
           - --skip
           - "*.bib,*.ipynb"
 
