@@ -275,7 +275,7 @@ def is_autocast_enabled(both: bool = True) -> bool:
     Returns:
         Return a Bool,
         will always return False for a torch without support, otherwise will be: if both is True
-        `torch.is_autocast_enabled() or torch.is_autocast_cpu_enabled()`. If both is Flase will return just
+        `torch.is_autocast_enabled() or torch.is_autocast_cpu_enabled()`. If both is False will return just
         `torch.is_autocast_enabled()`.
     """
     if TYPE_CHECKING:
