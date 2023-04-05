@@ -20,7 +20,7 @@ from kornia.core import Tensor
 
 def read_img_from_url(url: str, resize_to: Optional[Tuple[int, int]] = None) -> torch.Tensor:
     # perform request
-    response = requests.get(url).content
+    response = requests.get(url, timeout=60).content
     # convert to array of ints
     nparr = np.frombuffer(response, np.uint8)
     # convert to image array and resize
