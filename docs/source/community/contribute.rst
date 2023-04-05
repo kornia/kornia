@@ -23,6 +23,6 @@ Everyone is welcomed to get involved with the project. There are different ways 
 
 5. Donate resources to the project through `GitHub Sponsor <https://github.com/sponsors/edgarriba>`_ or `Open Collective <https://opencollective.com/kornia>`_ !
 
-For more information about our development process, see our `Developers corner <https://github.com/kornia/kornia/blob/master/CONTRIBUTING.rst#developing-kornia>`_.
+For more information about our development process, see our `Developers corner <https://github.com/kornia/kornia/blob/master/CONTRIBUTING.md#developing-kornia>`_.
 
 **Happy coding !**

@@ -130,7 +130,7 @@ If you are using kornia in your research-related documents, it is recommended th
   ```
 
 ## Contributing
-We appreciate all contributions. If you are planning to contribute back bug-fixes, please do so without any further discussion. If you plan to contribute new features, utility functions or extensions, please first open an issue and discuss the feature with us. Please, consider reading the [CONTRIBUTING](https://github.com/kornia/kornia/blob/master/CONTRIBUTING.rst) notes. The participation in this open source project is subject to [Code of Conduct](https://github.com/kornia/kornia/blob/master/CODE_OF_CONDUCT.md).
+We appreciate all contributions. If you are planning to contribute back bug-fixes, please do so without any further discussion. If you plan to contribute new features, utility functions or extensions, please first open an issue and discuss the feature with us. Please, consider reading the [CONTRIBUTING](https://github.com/kornia/kornia/blob/master/CONTRIBUTING.md) notes. The participation in this open source project is subject to [Code of Conduct](https://github.com/kornia/kornia/blob/master/CODE_OF_CONDUCT.md).
 
 
 ## Community
