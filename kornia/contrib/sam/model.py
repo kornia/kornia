@@ -1,14 +1,44 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import Enum
 from functools import partial
 
 import torch
 from torch import nn
 
+from kornia.core import Tensor
+
 from .architecture import ImageEncoderViT, MaskDecoder, PromptEncoder, Sam, TwoWayTransformer
 
 __all__ = ['load_sam']
+
+
+@dataclass
+class SamPrediction:
+    """To map the results of the `SamPredictor`
+
+    Args:
+        masks: Shape must be :math:`(B, K, H, W)` or :math:`(K, H, W)` where K is the number masks predicted.
+        scores: Intersection Over Union for each prediction. Shape :math:`(B, K)` or :math:`(K)`.
+        logits: These low resolution logits can be passed to a subsequent iteration as mask input. Shape of
+                :math:`(B, K, H, W)` or :math:`(K, H, W)`, normally H=W=256.
+    """
+
+    masks: Tensor
+    scores: Tensor
+    logits: Tensor
+
+    def drop(self, idx: int | slice | Tensor) -> SamPrediction:
+        """Drop the passed index for all data.
+
+        Performs `self.prop = self.prop[idx]` for each property
+        """
+        self.masks = self.masks[idx]
+        self.preds_iou = self.low_res_masks[idx]
+        self.low_res_masks = self.low_res_masks[idx]
+
+        return self
 
 
 def load_sam_vit_h(checkpoint: str | None = None, device: torch.device | None = None) -> Sam:
