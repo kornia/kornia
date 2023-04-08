@@ -27,16 +27,16 @@ class SamPredictor:
         self.model = sam_model
         self._longside_size = self.model.image_encoder.img_size
         self.transforms = (LongestMaxSize(self._longside_size),)
-        self.reset_image()
+        # self.reset_image()
 
-    def reset_image(self) -> None:
-        """Resets the currently set image."""
-        self.is_image_set = False
-        self.features = None
-        self.orig_h = None
-        self.orig_w = None
-        self.input_h = None
-        self.input_w = None
+    # def reset_image(self) -> None:
+    #     """Resets the currently set image."""
+    #     self.is_image_set = False
+    #     self.features = None
+    #     self.orig_h = None
+    #     self.orig_w = None
+    #     self.input_h = None
+    #     self.input_w = None
 
     def device(self) -> Device:
         return self.model.device
@@ -83,6 +83,8 @@ class SamPredictor:
         """Predict masks for the given input prompts, using the currently set image.
 
         Input prompts are batched tensors and are expected to already be resized
+
+        # TODO: docstring
         """
         KORNIA_CHECK_SHAPE(image, ['B', '3', 'H', 'W'])
 
