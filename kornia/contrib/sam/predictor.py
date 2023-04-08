@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import torch
 
 from kornia.augmentation import AugmentationSequential, LongestMaxSize
@@ -24,7 +26,8 @@ class SamPredictor:
         super().__init__()
         self.model = sam_model
         self._longside_size = self.model.image_encoder.img_size
-        self.transforms = (LongestMaxSize(self._longside_size),)
+        transforms = (LongestMaxSize(self._longside_size),)
+        self.tfs = AugmentationSequential(*transforms, same_on_batch=True)
 
     def device(self) -> Device:
         return self.model.device
@@ -67,11 +70,11 @@ class SamPredictor:
         )  # FIXME: should be [('B', None), '3', 'H', 'W'], same for the others
 
         dk = ['input']
-        _args = (image.type(torch.float32),)
+        _args: tuple[Any, ...] = (image.type(torch.float32),)
 
         if isinstance(point_coords, (Keypoints, Tensor)) and isinstance(point_labels, Tensor):
-            KORNIA_CHECK_SHAPE(point_coords, ['*', 'N', '2'])
-            KORNIA_CHECK_SHAPE(point_labels, ['*', 'N'])
+            KORNIA_CHECK_SHAPE(point_coords.data, ['*', 'N', '2'])
+            KORNIA_CHECK_SHAPE(point_labels.data, ['*', 'N'])
             dk += ['keypoints']
             _args += (point_coords,)
 
@@ -87,10 +90,8 @@ class SamPredictor:
         if isinstance(mask_input, Tensor):
             KORNIA_CHECK_SHAPE(mask_input, ['*', '1', '256', '256'])
 
-        # TODO: figure out a better way to transform when we can have missing datakeys
-        tfs = AugmentationSequential(*self.transforms, data_keys=dk, same_on_batch=True)
         # FIXME: the augmentation sequential isn't accepting the k.geometry.Keypoints
-        _tf_data = tfs(*_args)
+        _tf_data = self.tfs(*_args, data_keys=dk)
         data = {k: _tf_data[idx] for idx, k in enumerate(dk)}
 
         points = (data['keypoints'], point_labels) if 'keypoints' in data else None
