@@ -111,7 +111,9 @@ class SamPredictor:
         )
 
         # Upscale the masks to the original image resolution
-        masks = self.model.postprocess_masks(low_res_masks, tuple(data['input'].shape[-2:]), tuple(image.shape[-2:]))
+        input_shape = (data['input'].shape[-2], data['input'].shape[-1])
+        original_shape = (image.shape[-2], image.shape[-1])
+        masks = self.model.postprocess_masks(low_res_masks, input_shape, original_shape)
 
         if not return_logits:
             masks = masks > self.model.mask_threshold

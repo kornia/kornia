@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from functools import partial
 
 import torch
 from torch import nn
@@ -35,8 +34,8 @@ class SamPrediction:
         Performs `self.prop = self.prop[idx]` for each property
         """
         self.masks = self.masks[idx]
-        self.preds_iou = self.low_res_masks[idx]
-        self.low_res_masks = self.low_res_masks[idx]
+        self.scores = self.scores[idx]
+        self.logits = self.logits[idx]
 
         return self
 
@@ -74,6 +73,12 @@ def load_sam_vit_b(checkpoint: str | None = None, device: torch.device | None = 
     )
 
 
+class LayerNorm(nn.LayerNorm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.eps = 1e-6
+
+
 def _build_sam(
     encoder_embed_dim: int,
     encoder_depth: int,
@@ -93,7 +98,7 @@ def _build_sam(
             embed_dim=encoder_embed_dim,
             img_size=image_size,
             mlp_ratio=4,
-            norm_layer=partial(nn.LayerNorm, eps=1e-6),
+            norm_layer=LayerNorm,
             num_heads=encoder_num_heads,
             patch_size=vit_patch_size,
             qkv_bias=True,

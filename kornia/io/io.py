@@ -38,7 +38,7 @@ def load_image_to_tensor(path_file: str, device: Device) -> Tensor:
     th_tensor = dlpack.from_dlpack(cv_tensor)  # HxWx3
     # move the tensor to the desired device, move the data layout to CHW and clone
     # to return an owned data tensor.
-    dev = device if isinstance(device, torch.device) else torch.device(device)
+    dev = device if isinstance(device, torch.device) or device is None else torch.device(device)
     return th_tensor.to(device=dev).permute(2, 0, 1).clone()  # CxHxW
 
 

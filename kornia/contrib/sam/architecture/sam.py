@@ -41,10 +41,11 @@ class Sam(Module):
         self.mask_decoder = mask_decoder
         self.register_buffer("pixel_mean", tensor(pixel_mean, device=device).view(-1, 1, 1), False)
         self.register_buffer("pixel_std", tensor(pixel_std, device=device).view(-1, 1, 1), False)
+        self._device = device
 
     @property
     def device(self) -> Device:
-        return self.pixel_mean.device
+        return self._device
 
     @no_grad()
     def forward(self, batched_input: list[dict[str, Any]], multimask_output: bool) -> list[dict[str, Tensor]]:

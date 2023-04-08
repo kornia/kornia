@@ -3,7 +3,7 @@ from __future__ import annotations
 from math import pi
 
 import torch
-from torch import nn, ones
+from torch import nn
 
 from kornia.core import Device, Module, Tensor, concatenate, stack, zeros
 
@@ -65,7 +65,7 @@ class PromptEncoder(Module):
         points = points + 0.5  # Shift to center of pixel
         if pad:
             padding_point = zeros((points.shape[0], 1, 2), device=points.device)
-            padding_label = -ones((labels.shape[0], 1), device=labels.device)
+            padding_label = -torch.ones((labels.shape[0], 1), device=labels.device)
             points = concatenate([points, padding_point], dim=1)
             labels = concatenate([labels, padding_label], dim=1)
         point_embedding = self.pe_layer.forward_with_coords(points, self.input_image_size)
@@ -159,8 +159,9 @@ class PositionEmbeddingRandom(Module):
     def forward(self, size: tuple[int, int]) -> Tensor:
         """Generate positional encoding for a grid of the specified size."""
         h, w = size
-        device = self.positional_encoding_gaussian_matrix.device
-        grid = ones((h, w), device=device, dtype=torch.float32)
+        _dev = self.positional_encoding_gaussian_matrix.device
+        device = _dev if isinstance(_dev, torch.device) else None
+        grid = torch.ones((h, w), device=device, dtype=torch.float32)
         y_embed = grid.cumsum(dim=0) - 0.5
         x_embed = grid.cumsum(dim=1) - 0.5
         y_embed = y_embed / h
