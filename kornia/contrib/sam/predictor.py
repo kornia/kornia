@@ -77,10 +77,12 @@ class SamPredictor:
 
         if isinstance(boxes, Boxes):
             if boxes.mode == 'xyxy':
-                dk += ['bbox_xyxy']
-                _args += (boxes,)
+                boxes_xyxy = boxes
             else:
-                raise NotImplementedError('We expects the boxes to be into xyxy mode.')
+                boxes_xyxy = Boxes(boxes.to_tensor(mode='xyxy'), mode='xyxy')
+
+            dk += ['bbox_xyxy']
+            _args += (boxes_xyxy,)
 
         if isinstance(mask_input, Tensor):
             KORNIA_CHECK_SHAPE(mask_input, ['*', '1', '256', '256'])
