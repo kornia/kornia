@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from enum import Enum
 from functools import partial
 
 import torch
@@ -7,43 +8,49 @@ from torch import nn
 
 from .architecture import ImageEncoderViT, MaskDecoder, PromptEncoder, Sam, TwoWayTransformer
 
+__all__ = ['load_sam']
 
-def load_sam_vit_h(checkpoint: str | None = None) -> Sam:
-    return _load_sam(
+
+def load_sam_vit_h(checkpoint: str | None = None, device: torch.device | None = None) -> Sam:
+    return _build_sam(
         encoder_embed_dim=1280,
         encoder_depth=32,
         encoder_num_heads=16,
         encoder_global_attn_indexes=(7, 15, 23, 31),
         checkpoint=checkpoint,
+        device=device,
     )
 
 
-def load_sam_vit_l(checkpoint: str | None = None) -> Sam:
-    return _load_sam(
+def load_sam_vit_l(checkpoint: str | None = None, device: torch.device | None = None) -> Sam:
+    return _build_sam(
         encoder_embed_dim=1024,
         encoder_depth=24,
         encoder_num_heads=16,
         encoder_global_attn_indexes=(5, 11, 17, 23),
         checkpoint=checkpoint,
+        device=device,
     )
 
 
-def load_sam_vit_b(checkpoint: str | None = None) -> Sam:
-    return _load_sam(
+def load_sam_vit_b(checkpoint: str | None = None, device: torch.device | None = None) -> Sam:
+    return _build_sam(
         encoder_embed_dim=768,
         encoder_depth=12,
         encoder_num_heads=12,
         encoder_global_attn_indexes=(2, 5, 8, 11),
         checkpoint=checkpoint,
+        device=device,
     )
 
 
-def _load_sam(
+def _build_sam(
     encoder_embed_dim: int,
     encoder_depth: int,
     encoder_num_heads: int,
     encoder_global_attn_indexes: tuple[int, ...],
     checkpoint: str | None = None,
+    device: torch.device | None = None,
 ) -> Sam:
     prompt_embed_dim = 256
     image_size = 1024
@@ -80,13 +87,46 @@ def _load_sam(
         ),
         pixel_mean=[123.675, 116.28, 103.53],
         pixel_std=[58.395, 57.12, 57.375],
+        device=device,
     )
 
     sam.eval()
 
     if checkpoint is not None:
         with open(checkpoint, "rb") as f:
-            state_dict = torch.load(f)
+            state_dict = torch.load(f, map_location=device)
         sam.load_state_dict(state_dict)
 
+    sam = sam.to(device=device)
     return sam
+
+
+class SamType(Enum):
+    vit_h = 0
+    vit_l = 1
+    vit_n = 2
+
+
+map_load_sam = {SamType.vit_h: load_sam_vit_h, SamType.vit_l: load_sam_vit_l, SamType.vit_n: load_sam_vit_b}
+_map_sam_type = {'vit_h': SamType.vit_h, 'vit_l': SamType.vit_l, 'vit_n': SamType.vit_n}
+
+
+def load_sam(model_type: str | int | SamType, checkpoint: str | None = None, device: torch.device | None = None) -> Sam:
+    """Load a SAM model based on the model type.
+
+    Args:
+        model_type: the available models are:
+                - 0, 'vit_h' or `SamType.vit_h`
+                - 1, 'vit_l' or `SamType.vit_l`
+                - 2, 'vit_b' or `SamType.vit_b`
+        checkpoint: The filepath for the respective checkpoint
+
+    Returns:
+        The respective SAM model
+    """
+    if isinstance(model_type, int):
+        model_type = SamType(model_type)
+    elif isinstance(model_type, str):
+        model_type = _map_sam_type[model_type]
+
+    return map_load_sam[model_type](checkpoint, device)

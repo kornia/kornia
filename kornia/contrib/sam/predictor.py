@@ -91,7 +91,7 @@ class SamPredictor:
         dk = ['input']
         _args = (image.type(torch.float32),)
 
-        if isinstance(point_coords, Keypoints) and isinstance(point_labels, Tensor):
+        if isinstance(point_coords, (Keypoints, Tensor)) and isinstance(point_labels, Tensor):
             KORNIA_CHECK_SHAPE(point_coords, ['B', 'N', '2'])
             KORNIA_CHECK_SHAPE(point_labels, ['B', 'N'])
             dk += ['keypoints']
@@ -107,9 +107,10 @@ class SamPredictor:
 
         # TODO: figure out a better way to transform when we can have missing datakeys
         tfs = AugmentationSequential(*self.transforms, data_keys=dk, same_on_batch=True)
+        # FIXME: the augmentation sequential isn't accepting the k.geometry.Keypoints
         _tf_data = tfs(*_args)
         data = {k: _tf_data[idx] for idx, k in enumerate(dk)}
-        points = (data['keypoints'].to_tensor(), point_labels) if 'keypoints' in data else None
+        points = (data['keypoints'], point_labels) if 'keypoints' in data else None
 
         # Embed prompts
         sparse_embeddings, dense_embeddings = self.model.prompt_encoder(
@@ -117,7 +118,7 @@ class SamPredictor:
         )
 
         # Predict masks
-        input_image = self.model.preprocess(data['input'])[None, ...]  # FIXME: Why need to add batch dim here?
+        input_image = self.model.preprocess(data['input'])
         low_res_masks, iou_predictions = self.model.mask_decoder(
             image_embeddings=self.model.image_encoder(input_image),
             image_pe=self.model.prompt_encoder.get_dense_pe(),
@@ -127,7 +128,7 @@ class SamPredictor:
         )
 
         # Upscale the masks to the original image resolution
-        masks = self.model.postprocess_masks(low_res_masks, tuple(input_image.shape[-2:]), tuple(image.shape[-2:]))
+        masks = self.model.postprocess_masks(low_res_masks, tuple(data['input'].shape[-2:]), tuple(image.shape[-2:]))
 
         if not return_logits:
             masks = masks > self.model.mask_threshold

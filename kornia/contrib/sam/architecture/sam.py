@@ -23,6 +23,7 @@ class Sam(Module):
         mask_decoder: MaskDecoder,
         pixel_mean: list[float] = [123.675, 116.28, 103.53],
         pixel_std: list[float] = [58.395, 57.12, 57.375],
+        device: Device = None,
     ) -> None:
         """SAM predicts object masks from an image and input prompts.
 
@@ -38,8 +39,8 @@ class Sam(Module):
         self.image_encoder = image_encoder
         self.prompt_encoder = prompt_encoder
         self.mask_decoder = mask_decoder
-        self.register_buffer("pixel_mean", tensor(pixel_mean).view(-1, 1, 1), False)
-        self.register_buffer("pixel_std", tensor(pixel_std).view(-1, 1, 1), False)
+        self.register_buffer("pixel_mean", tensor(pixel_mean, device=device).view(-1, 1, 1), False)
+        self.register_buffer("pixel_std", tensor(pixel_std, device=device).view(-1, 1, 1), False)
 
     @property
     def device(self) -> Device:
