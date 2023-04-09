@@ -15,14 +15,14 @@ from .model import SamPrediction
 
 
 class SamPredictor:
+    """Uses SAM to calculate the image embedding for an image, and then allow repeated, efficient mask prediction
+    given prompts.
+
+    Args:
+        sam_model: The model to use for mask prediction.
+    """
+
     def __init__(self, sam_model: Sam) -> None:
-        """Uses SAM to calculate the image embedding for an image, and then allow repeated, efficient mask
-        prediction given prompts.
-
-        Args:
-            sam_model: The model to use for mask prediction.
-        """
-
         super().__init__()
         self.model = sam_model
         self._longside_size = self.model.image_encoder.img_size
@@ -47,19 +47,20 @@ class SamPredictor:
 
         Args:
             image: Batch of RGB image. Normally 8bits images (range of [0-255]), the model preprocess normalize the
-            pixel values with the mean and std defined in its initialization. Expected to be into a float dtype. Shape
-            :math:`(B, 3, H, W)` or :math:`(3, H, W)`.
+                   pixel values with the mean and std defined in its initialization. Expected to be into a float dtype.
+                   Shape :math:`(B, 3, H, W)` or :math:`(3, H, W)`.
             point_coords: Point prompts to the model. Each point is in (X,Y) in pixels. Shape :math:`(B, N, 2)` or
-            :math:`(N, 2)`. Where `N` is the number of points.
+                          :math:`(N, 2)`. Where `N` is the number of points.
             point_labels: Labels for the point prompts. 1 indicates a foreground point and 0 indicates a background
-            point. Shape :math:`(B, N)` or :math:`(N)`. Where `N` is the number of points.
+                          point. Shape :math:`(B, N)` or :math:`(N)`. Where `N` is the number of points.
             boxes: A box prompt to the model.
             mask_input:  A low resolution mask input to the model, typically coming from a previous prediction
-            iteration. Has shape :math:`(B, 1, H, W)` or :math:`(1, H, W)`, where for SAM, H=W=256.
+                         iteration. Has shape :math:`(B, 1, H, W)` or :math:`(1, H, W)`, where for SAM, H=W=256.
             multimask_output: If true, the model will return three masks. For ambiguous input prompts (such as a
-            single click), this will often produce better masks than a single prediction. If only a single mask is
-            needed, the model's predicted quality score can be used to select the best mask. For non-ambiguous prompts,
-            such as multiple input prompts, multimask_output=False can give better results.
+                              single click), this will often produce better masks than a single prediction. If only
+                              a single mask is needed, the model's predicted quality score can be used to select the
+                              best mask. For non-ambiguous prompts, such as multiple input prompts,
+                              multimask_output=False can give better results.
             return_logits: If true, returns un-thresholded masks logits instead of a binary mask.
 
         Returns:

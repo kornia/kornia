@@ -137,13 +137,15 @@ def _build_sam(
 
 
 class SamType(Enum):
+    """Map the SAM model types."""
+
     vit_h = 0
     vit_l = 1
-    vit_n = 2
+    vit_b = 2
 
 
-map_load_sam = {SamType.vit_h: load_sam_vit_h, SamType.vit_l: load_sam_vit_l, SamType.vit_n: load_sam_vit_b}
-_map_sam_type = {'vit_h': SamType.vit_h, 'vit_l': SamType.vit_l, 'vit_n': SamType.vit_n}
+map_load_sam = {SamType.vit_h: load_sam_vit_h, SamType.vit_l: load_sam_vit_l, SamType.vit_b: load_sam_vit_b}
+_map_sam_type = {'vit_h': SamType.vit_h, 'vit_l': SamType.vit_l, 'vit_b': SamType.vit_b}
 
 
 def load_sam(model_type: str | int | SamType, checkpoint: str | None = None, device: torch.device | None = None) -> Sam:
@@ -151,13 +153,40 @@ def load_sam(model_type: str | int | SamType, checkpoint: str | None = None, dev
 
     Args:
         model_type: the available models are:
-                - 0, 'vit_h' or `SamType.vit_h`
-                - 1, 'vit_l' or `SamType.vit_l`
-                - 2, 'vit_b' or `SamType.vit_b`
+
+            - 0, 'vit_h' or :func:`kornia.contrib.sam.SamType.vit_h`
+            - 1, 'vit_l' or :func:`kornia.contrib.sam.SamType.vit_l`
+            - 2, 'vit_b' or :func:`kornia.contrib.sam.SamType.vit_b`
+
         checkpoint: The filepath for the respective checkpoint
+        device: The desired device to load the weights and move the model
 
     Returns:
         The respective SAM model
+
+    Example:
+        >>> # Input should be a RGB batched image
+        >>> inpt = torch.randint(0, 255, (1, 3, 384, 384)).float()
+        >>> inpt_after_resize = kornia.geometry.resize(inpt, (256, 256))
+        >>> sam_model = load_sam('vit_b')
+        >>> # Embed prompts
+        >>> sparse_embeddings, dense_embeddings = sam_model.prompt_encoder(points=None, boxes=None, masks=None)
+        >>> # Preprocess input (expected max size to be 1024)
+        >>> input_image = sam_model.preprocess(inpt_after_resize)
+        >>> # Predict masks
+        >>> low_res_masks, iou_predictions = sam_model.mask_decoder(
+        ...    image_embeddings=sam_model.image_encoder(input_image),
+        ...    image_pe=sam_model.prompt_encoder.get_dense_pe(),
+        ...    sparse_prompt_embeddings=sparse_embeddings,
+        ...    dense_prompt_embeddings=dense_embeddings,
+        ...    multimask_output=True,
+        ... )
+        >>> # Upscale the masks to the original image resolution
+        >>> input_shape = (inpt_after_resize.shape[-2], inpt_after_resize.shape[-1])
+        >>> original_shape = (inpt.shape[-2], inpt.shape[-1])
+        >>> masks = sam_model.postprocess_masks(low_res_masks, input_shape, original_shape)
+        >>> # If wants to have a binary mask
+        >>> masks = masks > sam_model.mask_threshold
     """
     if isinstance(model_type, int):
         model_type = SamType(model_type)

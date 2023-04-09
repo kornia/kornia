@@ -22,7 +22,7 @@ Face Detection
     :undoc-members:
 
 Interactive Demo
-~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^
 .. raw:: html
 
     <gradio-app space="kornia/Face-Detection"></gradio-app>
@@ -32,8 +32,27 @@ Visit the `Kornia face detection demo on the Hugging Face Spaces
 
 Image Segmentation
 ------------------
-
 .. autofunction:: connected_components
+
+
+Segment Anything (SAM)
+^^^^^^^^^^^^^^^^^^^^^^
+
+.. autofunction:: kornia.contrib.sam.load
+
+.. autoclass:: kornia.contrib.sam.SamType
+
+.. autoclass:: kornia.contrib.sam.SamPredictor
+    :members:
+    :special-members: __call__,
+
+.. autoclass:: kornia.contrib.sam.model.SamPrediction
+    :members:
+
+.. autoclass:: kornia.contrib.sam.architecture.Sam
+    :members:
+    :undoc-members:
+
 
 Image Patches
 -------------
