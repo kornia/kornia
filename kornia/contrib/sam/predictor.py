@@ -73,17 +73,14 @@ class SamPredictor:
         dk = ['input']
         _args: tuple[Any, ...] = (image.type(torch.float32),)
 
-        if isinstance(point_coords, (Keypoints, Tensor)) and isinstance(point_labels, Tensor):
+        if isinstance(point_coords, Keypoints) and isinstance(point_labels, Tensor):
             KORNIA_CHECK_SHAPE(point_coords.data, ['*', 'N', '2'])
             KORNIA_CHECK_SHAPE(point_labels.data, ['*', 'N'])
             dk += ['keypoints']
             _args += (point_coords,)
 
         if isinstance(boxes, Boxes):
-            if boxes.mode == 'xyxy':
-                boxes_xyxy = boxes
-            else:
-                boxes_xyxy = Boxes(boxes.to_tensor(mode='xyxy'), mode='xyxy')
+            boxes_xyxy = boxes if boxes.mode == 'xyxy' else Boxes(boxes.to_tensor(mode='xyxy'), mode='xyxy')
 
             dk += ['bbox_xyxy']
             _args += (boxes_xyxy,)
@@ -91,11 +88,10 @@ class SamPredictor:
         if isinstance(mask_input, Tensor):
             KORNIA_CHECK_SHAPE(mask_input, ['*', '1', '256', '256'])
 
-        # FIXME: the augmentation sequential isn't accepting the k.geometry.Keypoints
         _tf_data = self.tfs(*_args, data_keys=dk)
         data = {k: _tf_data[idx] for idx, k in enumerate(dk)}
 
-        points = (data['keypoints'], point_labels) if 'keypoints' in data else None
+        points = (data['keypoints'].to_tensor(), point_labels) if 'keypoints' in data else None
         bb = data['bbox_xyxy'].to_tensor(mode='xyxy') if 'bbox_xyxy' in data else None
 
         # Embed prompts

@@ -431,6 +431,8 @@ class AugmentationSequential(ImageSequential):
             return VideoKeypoints.from_tensor(arg)
         elif self.contains_3d_augmentation:
             raise NotImplementedError("3D keypoint handlers are not yet supported.")
+        elif isinstance(arg, (Keypoints,)):
+            return arg
         else:
             arg = cast(Tensor, arg)
             # TODO: Add List[Tensor] in the future.
