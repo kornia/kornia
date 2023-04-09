@@ -4,6 +4,32 @@ Segment Anything (SAM)
 The Segment Anything Model (SAM) produces high quality object masks from input prompts such as points or boxes, and it
 can be used to generate masks for all objects in an image.
 
+.. card::
+    :link: https://segment-anything.com/
+
+    **Segment Anything**
+    ^^^
+    **Abstract:** We introduce the Segment Anything (SA) project: a new task, model, and dataset for image
+    segmentation. Using our efficient model in a data collection loop, we built the largest segmentation
+    dataset to date (by far), with over 1 billion masks on 11M licensed and privacy respecting images. The
+    model is designed and trained to be promptable, so it can transfer zero-shot to new image distributions
+    and tasks. We evaluate its capabilities on numerous tasks and find that its zero-shot performance is impressive
+    -- often competitive with or even superior to prior fully supervised results. We are releasing the Segment Anything
+    Model (SAM) and corresponding dataset (SA-1B) of 1B masks and 11M images at https://segment-anything.com to foster
+    research into foundation models for computer vision.
+
+    **Tasks:** Segmentation
+
+    **Datasets:** SA-1B
+
+    **Licence:** Apache
+
+    +++
+    **Authors:** Alexander Kirillov and Eric Mintun and Nikhila Ravi and Hanzi Mao and Chloe Rolland and Laura
+    Gustafson and Alex Berg and Wan-Yen Lo and Piotr Dollar and Ross Girshick
+
+
+
 How to use SAM from Kornia
 --------------------------
 
@@ -175,21 +201,3 @@ This is a simple example, of how to directly use the SAM model loaded. We recomm
 
     # To transform it into a SamPrediction
     sam_preds = sam.model.SamPrediction(masks, iou_predictions, low_res_masks)
-
-
-
-
-Reference
----------
-.. code-block:: latex
-
-    @article{kirillov2023segany,
-        title={Segment Anything},
-        author={Kirillov, Alexander and Mintun, Eric and Ravi, Nikhila and Mao, Hanzi and Rolland, Chloe and Gustafson,
-        Laura and Xiao, Tete and Whitehead, Spencer and Berg, Alexander C. and Lo, Wan-Yen and Doll{\'a}r, Piotr and
-        Girshick, Ross},
-        journal={arXiv:2304.02643},
-        year={2023}
-    }
-
-Original implementation: <https://github.com/facebookresearch/segment-anything>

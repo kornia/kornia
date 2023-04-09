@@ -62,7 +62,6 @@ Join the community
    applications/image_registration
    applications/image_denoising
    applications/semantic_segmentation
-   applications/segment_anything
 
 .. toctree::
    :caption: KORNIA MODELS
@@ -77,6 +76,7 @@ Join the community
    models/affnet
    models/sold2
    models/dexined
+   models/segment_anything
 
 
 .. toctree::
