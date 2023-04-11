@@ -7,7 +7,7 @@ import torch
 from kornia.augmentation import AugmentationSequential, LongestMaxSize
 from kornia.contrib.sam.architecture import Sam
 from kornia.contrib.sam.model import SamPrediction
-from kornia.core import Device, Tensor
+from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
@@ -27,9 +27,6 @@ class SamPredictor:
         self._longside_size = self.model.image_encoder.img_size
         transforms = (LongestMaxSize(self._longside_size),)
         self.tfs = AugmentationSequential(*transforms, same_on_batch=True)
-
-    def device(self) -> Device:
-        return self.model.device
 
     @torch.no_grad()
     def __call__(

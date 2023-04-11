@@ -8,7 +8,7 @@ from torch.nn import functional as F
 from kornia.contrib.sam.architecture.image_encoder import ImageEncoderViT
 from kornia.contrib.sam.architecture.mask_decoder import MaskDecoder
 from kornia.contrib.sam.architecture.prompt_encoder import PromptEncoder
-from kornia.core import Device, Module, Tensor, pad, stack, tensor
+from kornia.core import Module, Tensor, pad, stack, tensor
 
 
 class Sam(Module):
@@ -22,7 +22,6 @@ class Sam(Module):
         mask_decoder: MaskDecoder,
         pixel_mean: list[float] = [123.675, 116.28, 103.53],
         pixel_std: list[float] = [58.395, 57.12, 57.375],
-        device: Device = None,
     ) -> None:
         """SAM predicts object masks from an image and input prompts.
 
@@ -39,13 +38,8 @@ class Sam(Module):
         self.image_encoder = image_encoder
         self.prompt_encoder = prompt_encoder
         self.mask_decoder = mask_decoder
-        self.register_buffer("pixel_mean", tensor(pixel_mean, device=device).view(-1, 1, 1), False)
-        self.register_buffer("pixel_std", tensor(pixel_std, device=device).view(-1, 1, 1), False)
-        self._device = device
-
-    @property
-    def device(self) -> Device:
-        return self._device
+        self.register_buffer("pixel_mean", tensor(pixel_mean).view(-1, 1, 1), False)
+        self.register_buffer("pixel_std", tensor(pixel_std).view(-1, 1, 1), False)
 
     @no_grad()
     def forward(self, batched_input: list[dict[str, Any]], multimask_output: bool) -> list[dict[str, Tensor]]:
