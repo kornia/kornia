@@ -41,6 +41,18 @@ class Sam(Module):
         self.register_buffer("pixel_mean", tensor(pixel_mean).view(-1, 1, 1), False)
         self.register_buffer("pixel_std", tensor(pixel_std).view(-1, 1, 1), False)
 
+    def preprocess(self, x: Tensor) -> Tensor:
+        """Normalize pixel values and pad to a square input."""
+        # Normalize colors
+        x = (x - self.pixel_mean) / self.pixel_std
+
+        # Pad
+        h, w = x.shape[-2:]
+        padh = self.image_encoder.img_size - h
+        padw = self.image_encoder.img_size - w
+        x = pad(x, (0, padw, 0, padh))
+        return x
+
     @no_grad()
     def forward(self, batched_input: list[dict[str, Any]], multimask_output: bool) -> list[dict[str, Tensor]]:
         """Predicts masks end-to-end from provided images and prompts.
@@ -113,15 +125,3 @@ class Sam(Module):
         masks = masks[..., : input_size[0], : input_size[1]]
         masks = F.interpolate(masks, original_size, mode="bilinear", align_corners=False)
         return masks
-
-    def preprocess(self, x: Tensor) -> Tensor:
-        """Normalize pixel values and pad to a square input."""
-        # Normalize colors
-        x = (x - self.pixel_mean) / self.pixel_std
-
-        # Pad
-        h, w = x.shape[-2:]
-        padh = self.image_encoder.img_size - h
-        padw = self.image_encoder.img_size - w
-        x = pad(x, (0, padw, 0, padh))
-        return x
