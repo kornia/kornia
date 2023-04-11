@@ -251,8 +251,7 @@ class Sam(Module):
         if checkpoint:
             model.load_checkpoint(checkpoint, device)
 
-        if device:
-            model = model.to(device=device)
+        model = model.to(device=device)
 
         return model
 
