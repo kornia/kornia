@@ -6,9 +6,8 @@ from enum import Enum
 import torch
 from torch import nn
 
+from kornia.contrib.sam.architecture import ImageEncoderViT, MaskDecoder, PromptEncoder, Sam, TwoWayTransformer
 from kornia.core import Tensor
-
-from .architecture import ImageEncoderViT, MaskDecoder, PromptEncoder, Sam, TwoWayTransformer
 
 __all__ = ['load_sam']
 

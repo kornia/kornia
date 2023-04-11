@@ -5,11 +5,10 @@ from typing import Any
 from torch import no_grad
 from torch.nn import functional as F
 
+from kornia.contrib.sam.architecture.image_encoder import ImageEncoderViT
+from kornia.contrib.sam.architecture.mask_decoder import MaskDecoder
+from kornia.contrib.sam.architecture.prompt_encoder import PromptEncoder
 from kornia.core import Device, Module, Tensor, pad, stack, tensor
-
-from .image_encoder import ImageEncoderViT
-from .mask_decoder import MaskDecoder
-from .prompt_encoder import PromptEncoder
 
 
 class Sam(Module):

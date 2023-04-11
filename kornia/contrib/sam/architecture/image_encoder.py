@@ -4,9 +4,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from kornia.contrib.sam.architecture.common import LayerNorm2d, MLPBlock
 from kornia.core import Module, Tensor, pad, zeros
-
-from .common import LayerNorm2d, MLPBlock
 
 
 # This class and its supporting functions below lightly adapted from the ViTDet backbone available at: https://github.com/facebookresearch/detectron2/blob/main/detectron2/modeling/backbone/vit.py # noqa

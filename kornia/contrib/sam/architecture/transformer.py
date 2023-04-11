@@ -4,10 +4,9 @@ import math
 
 from torch import nn
 
+from kornia.contrib.sam.architecture.common import MLPBlock
 from kornia.core import Module, Tensor
 from kornia.core.check import KORNIA_CHECK
-
-from .common import MLPBlock
 
 
 class TwoWayTransformer(Module):

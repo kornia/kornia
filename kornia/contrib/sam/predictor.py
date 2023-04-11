@@ -5,13 +5,12 @@ from typing import Any
 import torch
 
 from kornia.augmentation import AugmentationSequential, LongestMaxSize
+from kornia.contrib.sam.architecture import Sam
+from kornia.contrib.sam.model import SamPrediction
 from kornia.core import Device, Tensor
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
-
-from .architecture import Sam
-from .model import SamPrediction
 
 
 class SamPredictor:
