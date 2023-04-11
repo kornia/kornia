@@ -25,7 +25,7 @@ class SamPredictor:
         super().__init__()
         self.model = sam_model
         self._longside_size = self.model.image_encoder.img_size
-        transforms = (LongestMaxSize(self._longside_size),)
+        transforms = (LongestMaxSize(self._longside_size, p=1.0),)
         self.tfs = AugmentationSequential(*transforms, same_on_batch=True)
 
     @torch.no_grad()
