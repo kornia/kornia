@@ -35,9 +35,9 @@ class SamPredictor:
     def __call__(
         self,
         image: Tensor,
-        point_coords: Keypoints | None = None,
+        point_coords: Keypoints | Tensor | None = None,
         point_labels: Tensor | None = None,
-        boxes: Boxes | None = None,
+        boxes: Boxes | Tensor | None = None,
         mask_input: Tensor | None = None,
         multimask_output: bool = True,
         return_logits: bool = False,
@@ -52,7 +52,7 @@ class SamPredictor:
                           :math:`(N, 2)`. Where `N` is the number of points.
             point_labels: Labels for the point prompts. 1 indicates a foreground point and 0 indicates a background
                           point. Shape :math:`(B, N)` or :math:`(N)`. Where `N` is the number of points.
-            boxes: A box prompt to the model.
+            boxes: A box prompt to the model. If a tensor, should be in a xyxy mode.
             mask_input:  A low resolution mask input to the model, typically coming from a previous prediction
                          iteration. Has shape :math:`(B, 1, H, W)` or :math:`(1, H, W)`, where for SAM, H=W=256.
             multimask_output: If true, the model will return three masks. For ambiguous input prompts (such as a
@@ -72,13 +72,19 @@ class SamPredictor:
         dk = ['input']
         _args: tuple[Any, ...] = (image.type(torch.float32),)
 
-        if isinstance(point_coords, Keypoints) and isinstance(point_labels, Tensor):
+        if isinstance(point_coords, (Keypoints, Tensor)) and isinstance(point_labels, Tensor):
             KORNIA_CHECK_SHAPE(point_coords.data, ['*', 'N', '2'])
             KORNIA_CHECK_SHAPE(point_labels.data, ['*', 'N'])
+            if isinstance(point_coords, Tensor):
+                point_coords = Keypoints.from_tensor(point_coords)
+
             dk += ['keypoints']
             _args += (point_coords,)
 
-        if isinstance(boxes, Boxes):
+        if isinstance(boxes, (Boxes, Tensor)):
+            if isinstance(boxes, Tensor):
+                boxes = Boxes(boxes, mode='xyxy')
+
             boxes_xyxy = boxes if boxes.mode == 'xyxy' else Boxes(boxes.to_tensor(mode='xyxy'), mode='xyxy')
 
             dk += ['bbox_xyxy']
