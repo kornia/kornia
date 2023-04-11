@@ -161,7 +161,6 @@ def instantiate_ray_dataloader(dataset: RayDataset, batch_size: int = 1, shuffle
         batch_size: Number of rays to sample in a batch: int
         shuffle: Whether to shuffle rays or sample then sequentially: bool
     """
-
     def collate_rays(items: List[RayGroup]) -> RayGroup:
         return items[0]
 
