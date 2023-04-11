@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from torch import nn, ones
 
 from kornia.core import Module, Tensor, zeros
@@ -31,3 +33,9 @@ class LayerNorm2d(Module):
         x = (x - u) / (s + self.eps).sqrt()
         x = self.weight[:, None, None] * x + self.bias[:, None, None]
         return x
+
+
+class LayerNorm(nn.LayerNorm):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.eps = 1e-6

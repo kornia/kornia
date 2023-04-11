@@ -38,9 +38,9 @@ Image Segmentation
 Segment Anything (SAM)
 ^^^^^^^^^^^^^^^^^^^^^^
 
-.. autofunction:: kornia.contrib.sam.load
-
-.. autoclass:: kornia.contrib.sam.SamType
+.. autoclass:: kornia.contrib.sam.architecture.Sam
+    :members:
+    :undoc-members:
 
 .. autoclass:: kornia.contrib.sam.SamPredictor
     :members:
@@ -49,9 +49,6 @@ Segment Anything (SAM)
 .. autoclass:: kornia.contrib.sam.model.SamPrediction
     :members:
 
-.. autoclass:: kornia.contrib.sam.architecture.Sam
-    :members:
-    :undoc-members:
 
 
 Image Patches

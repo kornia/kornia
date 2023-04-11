@@ -39,20 +39,60 @@ This is an example how you can load the model.
 
 .. code-block:: python
 
-    from kornia.contrib import sam
-    from kornia.utils import get_cuda_device_if_available
+    from kornia.contrib import Sam
 
     # model_type can be:
-    #   0, 'vit_h' or `kornia.contrib.sam.SamType.vit_h`
-    #   1, 'vit_l' or `kornia.contrib.sam.SamType.vit_l`
-    #   2, 'vit_b' or `kornia.contrib.sam.SamType.vit_b`
-    model_type = 'vit_b' # or can be a number `2` or the enum sam.SamType.vit_b
+    #   0, 'vit_h' or `kornia.contrib.SamModelType.vit_h`
+    #   1, 'vit_l' or `kornia.contrib.SamModelType.vit_l`
+    #   2, 'vit_b' or `kornia.contrib.SamModelType.vit_b`
+    model_type = 'vit_b' # or can be a number `2` or the enum kornia.contrib.SamModelType.vit_b
 
-    checkpoint_path = './path_for_the_model_checkpoint.pth'
+    # Load/build the model
+    sam_model = Sam.build(model_type)
+
+Load checkpoint
+^^^^^^^^^^^^^^^
+With the load checkpoint method you can load from a file or directly from a URL. The official (by meta) model weights are:
+
+#. `vit_h`: `ViT-H SAM model - https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth <https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth>`_.
+#. `vit_l`: `ViT-L SAM model - https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth <https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth>`_.
+#. `vit_b`: `ViT-B SAM model - https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth <https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth>`_.
+
+
+.. code-block:: python
+
+    from kornia.contrib import Sam
+    from kornia.utils import get_cuda_device_if_available
+
+    model_type = 'vit_b'
+
+    checkpoint = './path_for_the_model_checkpoint.pth' # Can be a filepath or a url
     device = get_cuda_device_if_available()
 
-    # Load the model
-    sam_model = sam.load(model_type, checkpoint_path, device)
+    # Load/build the model
+    sam_model = Sam.build(model_type)
+
+    # Load the checkpoint
+    sam_model.load_checkpoint(checkpoint, device)
+
+Load from pretrained
+^^^^^^^^^^^^^^^^^^^^
+This method internally uses `build` and `load_checkpoint`, also move the model for the desired device.
+
+.. code-block:: python
+
+    from kornia.contrib import Sam
+    from kornia.utils import get_cuda_device_if_available
+
+    model_type = 'vit_b'
+
+    checkpoint = './path_for_the_model_checkpoint.pth' # Can be a filepath or a url
+    device = get_cuda_device_if_available()
+
+    # Load the model with checkpoint on the desired device
+    sam_model = Sam.from_pretrained(model_type, checkpoint, device)
+
+
 
 Predictor
 ^^^^^^^^^
@@ -65,18 +105,19 @@ a given SAM model.
 
     import torch
 
-    from kornia.contrib import sam
+    from kornia.contrib import Sam
+    from kornia.contrib.sam.predictor import SamPredictor
     from kornia.io import load_image, ImageLoadType
     from kornia.geometry.keypoints import Keypoints
     from kornia.geometry.boxes import Boxes
     from kornia.utils import get_cuda_device_if_available
 
-    model_type = 'vit_h' # or can be a number `0` or the enum sam.SamType.vit_h
+    model_type = 'vit_h' # or can be a number `0` or the enum kornia.contrib.sam.SamModelType.vit_h
     checkpoint_path = './path_for_the_vit_h_checkpoint.pth'
     device = get_cuda_device_if_available()
 
     # Load the model
-    sam_model = sam.load(model_type, checkpoint_path, device)
+    sam_model = Sam.build(model_type, checkpoint_path, device)
 
     # Load image
     image = load_image('./example.jpg', ImageLoadType.RGB8, device).float()
@@ -85,7 +126,7 @@ a given SAM model.
     image = image[None, ...]
 
     # Load the predictor
-    predictor = sam.SamPredictor(sam_model)
+    predictor = SamPredictor(sam_model)
 
     # Generate the prompts
     input_point = Keypoints(torch.tensor([[[500, 375]]], device=device, dtype=torch.float32)) # BxNx2
@@ -151,21 +192,17 @@ This is a simple example, of how to directly use the SAM model loaded. We recomm
 
 .. code-block:: python
 
-    from kornia.contrib import sam
+    from kornia.contrib import Sam
     from kornia.io import load_image, ImageLoadType
     from kornia.utils import get_cuda_device_if_available
     from kornia.geometry import resize
 
-    # model_type can be:
-    #   0, 'vit_h' or `kornia.contrib.sam.SamType.vit_h`
-    #   1, 'vit_l' or `kornia.contrib.sam.SamType.vit_l`
-    #   2, 'vit_b' or `kornia.contrib.sam.SamType.vit_b`
-    model_type = 'vit_b' # or can be a number `2` or the enum sam.SamType.vit_b
+    model_type = 'vit_b' # or can be a number `2` or the enum sam.SamModelType.vit_b
     checkpoint_path = './path_for_the_model_checkpoint.pth'
     device = get_cuda_device_if_available()
 
     # Load the model
-    sam_model = sam.load(model_type, checkpoint_path, device)
+    sam_model = Sam.from_pretrained(model_type, checkpoint_path, device)
 
     # Load image
     image = load_image('./example.jpg', ImageLoadType.RGB8, device).float()
