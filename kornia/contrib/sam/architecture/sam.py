@@ -168,7 +168,7 @@ class Sam(Module):
             The respective SAM model
 
         Example:
-            >>> sam_model = SAM.build('vit_b')
+            >>> sam_model = Sam.build('vit_b')
         """
 
         if isinstance(model_type, int):
@@ -225,7 +225,7 @@ class Sam(Module):
             >>> # Input should be a RGB batched image
             >>> inpt = torch.randint(0, 255, (1, 3, 384, 384)).float()
             >>> inpt_after_resize = kornia.geometry.resize(inpt, (256, 256))
-            >>> sam_model = SAM.from_pretrained('vit_b', 'cpu', checkpoint=None)
+            >>> sam_model = Sam.from_pretrained('vit_b', 'cpu', checkpoint=None)
             >>> # Embed prompts
             >>> sparse_embeddings, dense_embeddings = sam_model.prompt_encoder(points=None, boxes=None, masks=None)
             >>> # Preprocess input (expected max size to be 1024)
