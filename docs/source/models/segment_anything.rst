@@ -122,9 +122,6 @@ a given SAM model.
     # Load image
     image = load_image('./example.jpg', ImageLoadType.RGB8, device).float()
 
-    # Transform the image (CxHxW) into a batched input (BxCxHxW)
-    image = image[None, ...]
-
     # Load the predictor
     predictor = SamPredictor(sam_model)
 
@@ -193,6 +190,7 @@ This is a simple example, of how to directly use the SAM model loaded. We recomm
 .. code-block:: python
 
     from kornia.contrib import Sam
+    from kornia.contrib.sam.base import SegmentationResults
     from kornia.io import load_image, ImageLoadType
     from kornia.utils import get_cuda_device_if_available
     from kornia.geometry import resize
@@ -217,24 +215,37 @@ This is a simple example, of how to directly use the SAM model loaded. We recomm
     sparse_embeddings, dense_embeddings = sam_model.prompt_encoder(points=None, boxes=None, masks=None)
 
     # Preprocess input
-    input_image = sam_model.preprocess(inpt)
+    inpt = (inpt - sam_model.pixel_mean) / sam_model.pixel_std
+    padh = model_sam.image_encoder.img_size - h
+    padw = model_sam.image_encoder.img_size - w
+    inpt = pad(inpt, (0, padw, 0, padh))
 
-    # Predict masks
-    low_res_masks, iou_predictions = sam_model.mask_decoder(
-        image_embeddings=sam_model.image_encoder(input_image),
+    #--------------------------------------------------------------------
+    # Option A: Manually calling each API
+    #--------------------------------------------------------------------
+    low_res_logits, iou_predictions = sam_model.mask_decoder(
+        image_embeddings=sam_model.image_encoder(inpt),
         image_pe=sam_model.prompt_encoder.get_dense_pe(),
         sparse_prompt_embeddings=sparse_embeddings,
         dense_prompt_embeddings=dense_embeddings,
         multimask_output=True,
     )
 
+    prediction = SegmentationResults(low_res_logits, iou_predictions)
+
+    #--------------------------------------------------------------------
+    # Option B: Calling the model itself
+    #--------------------------------------------------------------------
+    prediction = sam_model(inpt[None, ...], [{}], multimask_output=True)
+
+    #--------------------------------------------------------------------
+    # Post processing
+    #--------------------------------------------------------------------
     # Upscale the masks to the original image resolution
-    input_shape = (inpt.shape[-2], inpt.shape[-1])
-    original_shape = (image.shape[-2], image.shape[-1])
-    masks = sam_model.postprocess_masks(low_res_masks, input_shape, original_shape)
+    input_size = (inpt.shape[-2], inpt.shape[-1])
+    original_size = (image.shape[-2], image.shape[-1])
+    image_size_encoder = (model_sam.image_encoder.img_size, model_sam.image_encoder.img_size)
+    prediction.original_res_logits(input_size, original_size, image_size_encoder)
 
-    # If wants to have a binary mask
-    masks = masks > sam_model.mask_threshold
-
-    # To transform it into a SamPrediction
-    sam_preds = sam.model.SamPrediction(masks, iou_predictions, low_res_masks)
+    # If wants to check the binary masks
+    masks = prediction.binary_masks

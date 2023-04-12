@@ -38,15 +38,20 @@ Image Segmentation
 Segment Anything (SAM)
 ^^^^^^^^^^^^^^^^^^^^^^
 
-.. autoclass:: kornia.contrib.sam.architecture.Sam
+.. autoclass:: Sam
+    :members: build, from_pretrained, forward, load_checkpoint
+    :undoc-members:
+    :special-members: __init__,
+
+.. autoclass:: SamModelType
     :members:
     :undoc-members:
 
-.. autoclass:: kornia.contrib.sam.SamPredictor
+.. autoclass:: kornia.contrib.sam.predictor.SamPredictor
     :members:
     :special-members: __call__,
 
-.. autoclass:: kornia.contrib.sam.model.SamPrediction
+.. autoclass:: kornia.contrib.sam.base.SegmentationResults
     :members:
 
 
