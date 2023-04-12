@@ -167,3 +167,4 @@ max-statements = 258
 "kornia/enhance/equalization.py" = ["E741"]
 "test/*" = ["PLR0402", "S101"]
 "test/enhance/test_core.py" = ["S311"]
+"test/nerf/test_camera_utils.py" = ["S310"]
