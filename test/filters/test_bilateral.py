@@ -8,10 +8,8 @@ from kornia.testing import BaseTester, tensor_to_gradcheck_var
 class TestBilateralBlur(BaseTester):
     @pytest.mark.parametrize("shape", [(1, 1, 8, 15), (2, 3, 11, 7)])
     @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
-    @pytest.mark.parametrize("sigma_color", [1, 0.1])
-    @pytest.mark.parametrize("sigma_space", [(1, 1), (1.5, 1)])
     @pytest.mark.parametrize("color_distance_type", ["l1", "l2"])
-    def test_smoke(self, shape, kernel_size, sigma_color, sigma_space, color_distance_type, device, dtype):
+    def test_smoke(self, shape, kernel_size, color_distance_type, device, dtype):
         inp = torch.zeros(shape, device=device, dtype=dtype)
 
         # tensor sigmas -> with batch dim
