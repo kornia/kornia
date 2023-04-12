@@ -78,8 +78,8 @@ class TestBilateralBlur(BaseTester):
 
         self.assert_close(op(inpt), op_optimized(inpt))
 
-        sigma_color = torch.rand(inpt.shape[0], device=device, dtype=dtype)
-        sigma_space = torch.rand(inpt.shape[0], 2, device=device, dtype=dtype)
+        sigma_color = torch.rand(1, device=device, dtype=dtype)
+        sigma_space = torch.rand(1, 2, device=device, dtype=dtype)
         op = BilateralBlur(kernel_size, sigma_color, sigma_space, color_distance_type=color_distance_type)
         op_optimized = torch_optimizer(op)
 
@@ -240,8 +240,8 @@ class TestJointBilateralBlur(BaseTester):
 
         self.assert_close(op(inpt, guide), op_optimized(inpt, guide))
 
-        sigma_color = torch.rand(inpt.shape[0], device=device, dtype=dtype)
-        sigma_space = torch.rand(inpt.shape[0], 2, device=device, dtype=dtype)
+        sigma_color = torch.rand(1, device=device, dtype=dtype)
+        sigma_space = torch.rand(1, 2, device=device, dtype=dtype)
         op = JointBilateralBlur(kernel_size, sigma_color, sigma_space, color_distance_type=color_distance_type)
         op_optimized = torch_optimizer(op)
 
