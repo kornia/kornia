@@ -138,11 +138,11 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             self._params if params is None else params, flags, **kwargs
         )
 
-        size = None
+        size: Optional[Tuple[int, int]] = None
         if "forward_input_shape" in params:
             # Majorly for cropping functions
-            size = params['forward_input_shape'].tolist()
-            size = (size[-2], size[-1])
+            _size = params['forward_input_shape'].tolist()
+            size = (_size[-2], _size[-1])
 
         # if no augmentation needed
         if not to_apply.any():

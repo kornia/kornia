@@ -4,7 +4,7 @@ numpy
 opencv-python
 pre-commit>=2
 pydocstyle
-pytest==7.2.2
+pytest==7.3.0
 pytest-cov==4
 ruff==0.0.259
 scipy

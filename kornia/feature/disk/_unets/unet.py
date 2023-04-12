@@ -39,7 +39,7 @@ class Unet(Module):
             msg = fmt.format(self.in_features, inp.size(1))
             raise ValueError(msg)
 
-        input_size_divisor = 2 ** len(self.down)
+        input_size_divisor = 2 ** len(self.up)
         if (inp.size(2) % input_size_divisor != 0) or (inp.size(3) % input_size_divisor != 0):
             raise ValueError(
                 f"Input image shape must be divisible by {input_size_divisor} (got {inp.size()}). "

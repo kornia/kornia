@@ -1,16 +1,13 @@
 from functools import wraps
-from typing import TYPE_CHECKING, Any, Callable, List
+from typing import Any, Callable, List
 
 import torch
 import torch.nn as nn
 
 from kornia.core import Tensor
 
-if TYPE_CHECKING:
-    import numpy.typing as npt
 
-
-def image_to_tensor(image: "npt.NDArray[Any]", keepdim: bool = True) -> Tensor:
+def image_to_tensor(image: Any, keepdim: bool = True) -> Tensor:
     """Convert a numpy image to a PyTorch 4d tensor image.
 
     Args:
@@ -58,7 +55,7 @@ def image_to_tensor(image: "npt.NDArray[Any]", keepdim: bool = True) -> Tensor:
     return tensor.unsqueeze(0) if not keepdim else tensor
 
 
-def image_list_to_tensor(images: List["npt.NDArray[Any]"]) -> Tensor:
+def image_list_to_tensor(images: List[Any]) -> Tensor:
     """Converts a list of numpy images to a PyTorch 4d tensor image.
 
     Args:
@@ -139,7 +136,7 @@ def _to_bcdhw(tensor: Tensor) -> Tensor:
     return tensor
 
 
-def tensor_to_image(tensor: Tensor, keepdim: bool = False) -> "npt.NDArray[Any]":
+def tensor_to_image(tensor: Tensor, keepdim: bool = False) -> Any:
     """Converts a PyTorch tensor image to a numpy image.
 
     In case the tensor is in the GPU, it will be copied back to CPU.
@@ -169,7 +166,7 @@ def tensor_to_image(tensor: Tensor, keepdim: bool = False) -> "npt.NDArray[Any]"
         raise ValueError("Input size must be a two, three or four dimensional tensor")
 
     input_shape = tensor.shape
-    image: "npt.NDArray[Any]" = tensor.cpu().detach().numpy()
+    image = tensor.cpu().detach().numpy()
 
     if len(input_shape) == 2:
         # (H, W) -> (H, W)
@@ -205,7 +202,7 @@ class ImageToTensor(nn.Module):
         super().__init__()
         self.keepdim = keepdim
 
-    def forward(self, x: "npt.NDArray[Any]") -> Tensor:
+    def forward(self, x: Any) -> Tensor:
         return image_to_tensor(x, keepdim=self.keepdim)
 
 
