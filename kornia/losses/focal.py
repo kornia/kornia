@@ -200,10 +200,10 @@ def binary_focal_loss_with_logits(
     )
 
     if pos_weight is None:
-        pos_weight = torch.ones(input.shape[-1], device=input.device, dtype=input.dtype)
+        pos_weight = torch.ones([input.shape[1], *([1] * len(input.shape[2:]))], device=input.device, dtype=input.dtype)
 
     KORNIA_CHECK_IS_TENSOR(pos_weight)
-    KORNIA_CHECK(input.shape[-1] == pos_weight.shape[0], "Expected pos_weight equals number of classes.")
+    KORNIA_CHECK(input.shape[1] == pos_weight.shape[0], "Expected pos_weight equals number of classes.")
 
     probs_pos = input.sigmoid()
     probs_neg = (-input).sigmoid()
