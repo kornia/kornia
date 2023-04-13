@@ -260,7 +260,13 @@ class TestJointBilateralBlur(BaseTester):
 
         # Expected output generated with OpenCV:
         # import cv2
-        # expected = cv2.ximgproc.jointBilateralFilter(img[0, 0].numpy(), guide[0, 0].numpy(), 5, 0.1, 0.5)
+        # expected = cv2.ximgproc.jointBilateralFilter(
+        #   guide.squeeze().numpy(),
+        #   img.squeeze().numpy(),
+        #   kernel_size,
+        #   sigma_color,
+        #   sigma_distance[0],
+        # )
         expected = [
             [0.38221005, 0.5027215, 0.49131155, 0.8937083],
             [0.3976327, 0.55548316, 0.69680846, 0.65291953],
@@ -270,7 +276,7 @@ class TestJointBilateralBlur(BaseTester):
         expected = torch.tensor(expected, device=device, dtype=dtype).view(1, 1, 4, 4)
 
         out = joint_bilateral_blur(img, guide, kernel_size, sigma_color, sigma_distance)
-        self.assert_close(out, expected, rtol=1e-2, atol=1e-2)
+        self.assert_close(out, expected)
 
     def test_opencv_rgb(self, device, dtype):
         img = [
@@ -294,10 +300,12 @@ class TestJointBilateralBlur(BaseTester):
         # Expected output generated with OpenCV:
         # import cv2
         # expected = cv2.ximgproc.jointBilateralFilter(
-        #     img[0].permute(1, 2, 0).numpy(),
-        #     guide[0].permute(1, 2, 0).numpy(),
-        #     5, 0.1, 0.5
-        # )
+        #   guide.squeeze().permute(1, 2, 0).numpy(),
+        #   img.squeeze().permute(1, 2, 0).numpy(),
+        #   kernel_size,
+        #   sigma_color,
+        #   sigma_distance[0],
+        # ).transpose(2, 0, 1)
         expected = [
             [
                 [0.6671455, 0.74172455, 0.7328562, 1.0],
@@ -321,4 +329,4 @@ class TestJointBilateralBlur(BaseTester):
         expected = torch.tensor(expected, device=device, dtype=dtype).view(1, 3, 4, 4)
 
         out = joint_bilateral_blur(img, guide, kernel_size, sigma_color, sigma_distance)
-        self.assert_close(out, expected, rtol=1e-2, atol=1e-2)
+        self.assert_close(out, expected)
