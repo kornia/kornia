@@ -10,18 +10,18 @@ class TestGuidedBlur(BaseTester):
     @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
     @pytest.mark.parametrize("eps", [0.1, 0.01])
     def test_smoke(self, shape, kernel_size, eps, device, dtype):
-        inp = torch.zeros(shape, device=device, dtype=dtype)
         guide = torch.zeros(shape, device=device, dtype=dtype)
+        inp = torch.zeros(shape, device=device, dtype=dtype)
 
         # tensor eps -> with batch dim
         eps = torch.rand(shape[0], device=device, dtype=dtype)
-        actual_A = guided_blur(inp, guide, kernel_size, eps)
+        actual_A = guided_blur(guide, inp, kernel_size, eps)
         assert isinstance(actual_A, torch.Tensor)
         assert actual_A.shape == shape
 
         # float and tuple sigmas -> same sigmas across batch
         eps_ = eps[0].item()
-        actual_B = guided_blur(inp, guide, kernel_size, eps_)
+        actual_B = guided_blur(guide, inp, kernel_size, eps_)
         assert isinstance(actual_B, torch.Tensor)
         assert actual_B.shape == shape
 
@@ -30,9 +30,9 @@ class TestGuidedBlur(BaseTester):
     @pytest.mark.parametrize("shape", [(1, 1, 8, 15), (2, 3, 11, 7)])
     @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
     def test_cardinality(self, shape, kernel_size, device, dtype):
-        inp = torch.zeros(shape, device=device, dtype=dtype)
         guide = torch.zeros(shape, device=device, dtype=dtype)
-        actual = guided_blur(inp, guide, kernel_size, 0.1)
+        inp = torch.zeros(shape, device=device, dtype=dtype)
+        actual = guided_blur(guide, inp, kernel_size, 0.1)
         assert actual.shape == shape
 
     def test_exception(self):
@@ -48,67 +48,72 @@ class TestGuidedBlur(BaseTester):
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
-        inp = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
         guide = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
+        inp = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
 
-        actual = guided_blur(inp, guide, 3, 0.1)
+        actual = guided_blur(guide, inp, 3, 0.1)
         assert actual.is_contiguous()
 
     def test_gradcheck(self, device):
-        img = torch.rand(1, 2, 5, 4, device=device)
         guide = torch.rand(1, 2, 5, 4, device=device)
-        img = tensor_to_gradcheck_var(img)  # to var
-        guide = tensor_to_gradcheck_var(guide)
-        self.gradcheck(guided_blur, (img, guide, 3, 0.1))
+        img = torch.rand(1, 2, 5, 4, device=device)
+        guide = tensor_to_gradcheck_var(guide)  # to var
+        img = tensor_to_gradcheck_var(img)
+        self.gradcheck(guided_blur, (guide, img, 3, 0.1))
 
     @pytest.mark.parametrize("shape", [(1, 1, 8, 15), (2, 3, 11, 7)])
     @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
     @pytest.mark.parametrize("eps", [0.1, 0.01])
     def test_module(self, shape, kernel_size, eps, device, dtype):
-        img = torch.rand(shape, device=device, dtype=dtype)
         guide = torch.rand(shape, device=device, dtype=dtype)
+        img = torch.rand(shape, device=device, dtype=dtype)
 
         op = guided_blur
         op_module = GuidedBlur(kernel_size, eps)
-        self.assert_close(op_module(img, guide), op(img, guide, kernel_size, eps))
+        self.assert_close(op_module(guide, img), op(guide, img, kernel_size, eps))
 
     @pytest.mark.parametrize('kernel_size', [5, (5, 7)])
     def test_dynamo(self, kernel_size, device, dtype, torch_optimizer):
-        inpt = torch.ones(2, 3, 8, 8, device=device, dtype=dtype)
         guide = torch.ones(2, 3, 8, 8, device=device, dtype=dtype)
+        inpt = torch.ones(2, 3, 8, 8, device=device, dtype=dtype)
         op = GuidedBlur(kernel_size, 0.1)
         op_optimized = torch_optimizer(op)
 
-        self.assert_close(op(inpt, guide), op_optimized(inpt, guide))
+        self.assert_close(op(guide, inpt), op_optimized(guide, inpt))
 
         op = GuidedBlur(kernel_size, torch.tensor(0.1, device=device, dtype=dtype))
         op_optimized = torch_optimizer(op)
 
-        self.assert_close(op(inpt, guide), op_optimized(inpt, guide))
+        self.assert_close(op(guide, inpt), op_optimized(guide, inpt))
 
     def test_opencv_grayscale(self, device, dtype):
+        guide = [[100, 130, 58, 36], [215, 142, 173, 166], [114, 150, 190, 60], [23, 83, 84, 216]]
+        guide = torch.tensor(guide, device=device, dtype=dtype).view(1, 1, 4, 4) / 255
+
         img = [[95, 130, 108, 228], [98, 142, 187, 166], [114, 166, 190, 141], [150, 83, 174, 216]]
         img = torch.tensor(img, device=device, dtype=dtype).view(1, 1, 4, 4) / 255
 
-        guide = [[95, 130, 108, 228], [98, 142, 187, 166], [114, 166, 190, 141], [150, 83, 174, 216]]
-        guide = torch.tensor(guide, device=device, dtype=dtype).view(1, 1, 4, 4) / 255
-
-        kernel_size = 5
-        eps = 0.1
+        kernel_size = 3
+        eps = 0.01
 
         # Expected output generated with OpenCV:
         # import cv2
-        # expected = cv2.bilateralFilter(img[0, 0].numpy(), 5, 0.1, 0.5)
+        # expected = cv2.ximgproc.guidedFilter(
+        #   guide.squeeze().numpy(),
+        #   img.squeeze().numpy(),
+        #   (kernel_size - 1) // 2,
+        #   eps
+        # )
         expected = [
-            [0.38708255, 0.5060622, 0.43372786, 0.8876763],
-            [0.39813757, 0.55695623, 0.72320986, 0.6593296],
-            [0.4527661, 0.6484203, 0.7295754, 0.5705908],
-            [0.5774919, 0.32919288, 0.6949335, 0.83184093],
+            [0.4487294, 0.5163902, 0.5981981, 0.70094436],
+            [0.4850059, 0.53724647, 0.62616897, 0.6686147],
+            [0.5010369, 0.5631456, 0.6808387, 0.5960593],
+            [0.5304646, 0.53203756, 0.57674146, 0.80308396],
         ]
         expected = torch.tensor(expected, device=device, dtype=dtype).view(1, 1, 4, 4)
 
-        out = guided_blur(img, guide, kernel_size, eps)
-        self.assert_close(out, expected, rtol=1e-2, atol=1e-2)
+        out = guided_blur(guide, img, kernel_size, eps)
+        self.assert_close(out, expected)
 
     def test_opencv_rgb(self, device, dtype):
         img = [
