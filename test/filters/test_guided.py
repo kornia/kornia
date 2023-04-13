@@ -112,7 +112,11 @@ class TestGuidedBlur(BaseTester):
         ]
         expected = torch.tensor(expected, device=device, dtype=dtype).view(1, 1, 4, 4)
 
-        out = guided_blur(guide, img, kernel_size, eps)
+        # OpenCV uses hard-coded BORDER_REFLECT mode, which also reflects the outermost pixels
+        # https://github.com/opencv/opencv_contrib/blob/853144ef93c4ffa55661619b861539090943c5b6/modules/ximgproc/src/guided_filter.cpp#L162
+        # PyTorch's `reflect` border type corresponds to OpenCV's BORDER_REFLECT_101
+        # To match the border's behavior, we use kernel_size = 3 and border_type="replicate" for testing
+        out = guided_blur(guide, img, kernel_size, eps, border_type="replicate")
         self.assert_close(out, expected)
 
     def test_opencv_rgb(self, device, dtype):
