@@ -6,24 +6,27 @@ from kornia.testing import BaseTester, tensor_to_gradcheck_var
 
 
 class TestGuidedBlur(BaseTester):
-    @pytest.mark.parametrize("shape", [(1, 1, 8, 15), (2, 3, 11, 7)])
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    @pytest.mark.parametrize("guide_dim", [1, 3])
+    @pytest.mark.parametrize("input_dim", [1, 3])
     @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
     @pytest.mark.parametrize("eps", [0.1, 0.01])
-    def test_smoke(self, shape, kernel_size, eps, device, dtype):
-        guide = torch.zeros(shape, device=device, dtype=dtype)
-        inp = torch.zeros(shape, device=device, dtype=dtype)
+    def test_smoke(self, batch_size, guide_dim, input_dim, kernel_size, eps, device, dtype):
+        H, W = 8, 15
+        guide = torch.zeros(batch_size, guide_dim, H, W, device=device, dtype=dtype)
+        inp = torch.zeros(batch_size, input_dim, H, W, device=device, dtype=dtype)
 
         # tensor eps -> with batch dim
-        eps = torch.rand(shape[0], device=device, dtype=dtype)
+        eps = torch.rand(batch_size, device=device, dtype=dtype)
         actual_A = guided_blur(guide, inp, kernel_size, eps)
         assert isinstance(actual_A, torch.Tensor)
-        assert actual_A.shape == shape
+        assert actual_A.shape == (batch_size, input_dim, H, W)
 
         # float and tuple sigmas -> same sigmas across batch
         eps_ = eps[0].item()
         actual_B = guided_blur(guide, inp, kernel_size, eps_)
         assert isinstance(actual_B, torch.Tensor)
-        assert actual_B.shape == shape
+        assert actual_B.shape == (batch_size, input_dim, H, W)
 
         self.assert_close(actual_A[0], actual_B[0])
 
