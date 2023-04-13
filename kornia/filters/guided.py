@@ -16,12 +16,18 @@ def guided_blur(
         eps = eps.view(-1, 1, 1, 1)  # N -> NCHW
 
     mean_i = box_blur(input, kernel_size, border_type)
-    mean_g = box_blur(input, kernel_size, border_type)
     corr_i = box_blur(input.square(), kernel_size, border_type)
-    corr_ip = box_blur(input * guidance, kernel_size, border_type)
-
     var_i = corr_i - mean_i.square()
-    cov_ig = corr_ip - mean_i * mean_g
+
+    if guidance is input:
+        mean_g = mean_i
+        corr_ig = corr_i
+        cov_ig = var_i
+
+    else:
+        mean_g = box_blur(guidance, kernel_size, border_type)
+        corr_ig = box_blur(input * guidance, kernel_size, border_type)
+        cov_ig = corr_ig - mean_i * mean_g
 
     a = cov_ig / (var_i + eps)
     b = mean_g - a * mean_i
