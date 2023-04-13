@@ -102,7 +102,7 @@ class TestGuidedBlur(BaseTester):
         #   guide.squeeze().numpy(),
         #   img.squeeze().numpy(),
         #   (kernel_size - 1) // 2,
-        #   eps
+        #   eps,
         # )
         expected = [
             [0.4487294, 0.5163902, 0.5981981, 0.70094436],
@@ -116,13 +116,6 @@ class TestGuidedBlur(BaseTester):
         self.assert_close(out, expected)
 
     def test_opencv_rgb(self, device, dtype):
-        img = [
-            [[170, 189, 182, 255], [169, 209, 216, 215], [196, 213, 228, 191], [207, 126, 224, 249]],
-            [[61, 104, 74, 225], [65, 112, 176, 148], [78, 147, 176, 120], [124, 61, 155, 211]],
-            [[73, 111, 90, 175], [77, 117, 163, 130], [83, 139, 163, 120], [132, 84, 137, 155]],
-        ]
-        img = torch.tensor(img, device=device, dtype=dtype).view(1, 3, 4, 4) / 255
-
         guide = [
             [[170, 189, 182, 255], [169, 209, 216, 215], [196, 213, 228, 191], [207, 126, 224, 249]],
             [[61, 104, 74, 225], [65, 112, 176, 148], [78, 147, 176, 120], [124, 61, 155, 211]],
@@ -130,12 +123,24 @@ class TestGuidedBlur(BaseTester):
         ]
         guide = torch.tensor(guide, device=device, dtype=dtype).view(1, 3, 4, 4) / 255
 
-        kernel_size = 5
-        eps = 0.1
+        img = [
+            [[170, 189, 182, 255], [169, 209, 216, 215], [196, 213, 228, 191], [207, 126, 224, 249]],
+            [[61, 104, 74, 225], [65, 112, 176, 148], [78, 147, 176, 120], [124, 61, 155, 211]],
+            [[73, 111, 90, 175], [77, 117, 163, 130], [83, 139, 163, 120], [132, 84, 137, 155]],
+        ]
+        img = torch.tensor(img, device=device, dtype=dtype).view(1, 3, 4, 4) / 255
+
+        kernel_size = 3
+        eps = 0.01
 
         # Expected output generated with OpenCV:
         # import cv2
-        # expected = cv2.bilateralFilter(img[0].permute(1, 2, 0).numpy(), 5, 0.1, 0.5)
+        # expected = cv2.ximgproc.guidedFilter(
+        #   guide.squeeze().numpy(),
+        #   img.squeeze().numpy(),
+        #   (kernel_size - 1) // 2,
+        #   eps,
+        # )
         expected = [
             [
                 [0.6658919, 0.7486991, 0.7140039, 0.9999949],

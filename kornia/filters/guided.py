@@ -10,7 +10,7 @@ def guided_blur(
     input: Tensor,
     kernel_size: tuple[int, int] | int,
     eps: float | Tensor,
-    border_type: str = 'replicate',
+    border_type: str = 'reflect',
 ) -> Tensor:
     if isinstance(eps, Tensor):
         eps = eps.view(-1, 1, 1, 1)  # N -> NCHW
@@ -36,8 +36,18 @@ def guided_blur(
     return mean_a * guidance + mean_b
 
 
+def fast_guided_blur(
+    guidance: Tensor,
+    input: Tensor,
+    kernel_size: tuple[int, int] | int,
+    eps: float | Tensor,
+    border_type: str = 'reflect',
+) -> Tensor:
+    raise NotImplementedError
+
+
 class GuidedBlur(Module):
-    def __init__(self, kernel_size: tuple[int, int] | int, eps: float | Tensor, border_type: str = 'replicate'):
+    def __init__(self, kernel_size: tuple[int, int] | int, eps: float | Tensor, border_type: str = 'reflect'):
         super().__init__()
         self.kernel_size = kernel_size
         if isinstance(eps, Tensor):
@@ -56,3 +66,8 @@ class GuidedBlur(Module):
 
     def forward(self, guidance: Tensor, input: Tensor) -> Tensor:
         return guided_blur(guidance, input, self.kernel_size, self.eps, self.border_type)
+
+
+class FastGuidedBlur(GuidedBlur):
+    def forward(self, guidance: Tensor, input: Tensor) -> Tensor:
+        return fast_guided_blur(guidance, input, self.kernel_size, self.eps, self.border_type)
