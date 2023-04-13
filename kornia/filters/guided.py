@@ -44,7 +44,7 @@ def _guided_blur_multichannel_guidance(
     kernel_size: tuple[int, int] | int,
     eps: float | Tensor,
     border_type: str = 'reflect',
-):
+) -> Tensor:
     B, C, H, W = guidance.shape
 
     mean_I = box_blur(guidance, kernel_size, border_type).permute(0, 2, 3, 1)
