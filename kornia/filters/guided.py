@@ -3,6 +3,7 @@ from __future__ import annotations
 import torch
 
 from kornia.core import Module, Tensor
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 from .blur import box_blur
 
@@ -83,23 +84,78 @@ def guided_blur(
     eps: float | Tensor,
     border_type: str = 'reflect',
 ) -> Tensor:
+    r"""Blur a tensor using a Guided filter.
+
+    .. image:: _static/img/guided_blur.png
+
+    The operator is an edge-preserving image smoothing filter. See :cite:`he2010guided` for details.
+    Guidance and input can have different number of channels.
+
+    Arguments:
+        guidance: the guidance tensor with shape :math:`(B,C,H,W)`.
+        input: the input tensor with shape :math:`(B,C,H,W)`.
+        kernel_size: the size of the kernel.
+        eps: regularization parameter. Smaller values preserve more edges.
+        border_type: the padding mode to be applied before convolving.
+          The expected modes are: ``'constant'``, ``'reflect'``,
+          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+
+    Returns:
+        the blurred tensor with same shape as `input` :math:`(B, C, H, W)`.
+
+    Examples:
+        >>> guidance = torch.rand(2, 3, 5, 5)
+        >>> input = torch.rand(2, 4, 5, 5)
+        >>> output = guided_blur(guidance, input, 3, 0.1)
+        >>> output.shape
+        torch.Size([2, 4, 5, 5])
+    """
+
+    KORNIA_CHECK_IS_TENSOR(guidance)
+    KORNIA_CHECK_SHAPE(guidance, ['B', 'C', 'H', 'W'])
+    if input is not guidance:
+        KORNIA_CHECK_IS_TENSOR(input)
+        KORNIA_CHECK_SHAPE(input, ['B', 'C', 'H', 'W'])
+        KORNIA_CHECK(
+            (guidance.shape[0] == input.shape[0]) and (guidance.shape[-2:] == input.shape[-2:]),
+            "guidance and input should have the same batch size and spatial dimensions",
+        )
+
     if guidance.shape[1] == 1:
         return _guided_blur_grayscale_guidance(guidance, input, kernel_size, eps, border_type)
     else:
         return _guided_blur_multichannel_guidance(guidance, input, kernel_size, eps, border_type)
 
 
-def fast_guided_blur(
-    guidance: Tensor,
-    input: Tensor,
-    kernel_size: tuple[int, int] | int,
-    eps: float | Tensor,
-    border_type: str = 'reflect',
-) -> Tensor:
-    raise NotImplementedError
-
-
 class GuidedBlur(Module):
+    r"""Blur a tensor using a Guided filter.
+
+    The operator is an edge-preserving image smoothing filter. See :cite:`he2010guided` for details.
+    Guidance and input can have different number of channels.
+
+    Arguments:
+        kernel_size: the size of the kernel.
+        eps: regularization parameter. Smaller values preserve more edges.
+        border_type: the padding mode to be applied before convolving.
+          The expected modes are: ``'constant'``, ``'reflect'``,
+          ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+
+    Returns:
+        the blurred input tensor.
+
+    Shape:
+        - Input: :math:`(B, C, H, W)`, :math:`(B, C, H, W)`
+        - Output: :math:`(B, C, H, W)`
+
+    Examples:
+        >>> guidance = torch.rand(2, 3, 5, 5)
+        >>> input = torch.rand(2, 4, 5, 5)
+        >>> blur = GuidedBlur(3, 0.1)
+        >>> output = blur(guidance, input)
+        >>> output.shape
+        torch.Size([2, 4, 5, 5])
+    """
+
     def __init__(self, kernel_size: tuple[int, int] | int, eps: float | Tensor, border_type: str = 'reflect'):
         super().__init__()
         self.kernel_size = kernel_size
@@ -119,8 +175,3 @@ class GuidedBlur(Module):
 
     def forward(self, guidance: Tensor, input: Tensor) -> Tensor:
         return guided_blur(guidance, input, self.kernel_size, self.eps, self.border_type)
-
-
-class FastGuidedBlur(GuidedBlur):
-    def forward(self, guidance: Tensor, input: Tensor) -> Tensor:
-        return fast_guided_blur(guidance, input, self.kernel_size, self.eps, self.border_type)
