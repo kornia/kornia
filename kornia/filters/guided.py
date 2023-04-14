@@ -66,7 +66,7 @@ def _guided_blur_grayscale_guidance(
 def _guided_blur_multichannel_guidance(
     guidance: Tensor,
     input: Tensor,
-    kernel_size: tuple[int, int] | int,
+    kernel_size: tuple[int, int],
     eps: float | Tensor,
     border_type: str = 'reflect',
     subsample: int = 1,
