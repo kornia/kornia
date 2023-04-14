@@ -121,8 +121,8 @@ def guided_blur(
 
     .. image:: _static/img/guided_blur.png
 
-    The operator is an edge-preserving image smoothing filter. See :cite:`he2010guided` for details.
-    Guidance and input can have different number of channels.
+    The operator is an edge-preserving image smoothing filter. See :cite:`he2010guided`
+    and :cite:`he2015fast` for details. Guidance and input can have different number of channels.
 
     Arguments:
         guidance: the guidance tensor with shape :math:`(B,C,H,W)`.
@@ -132,6 +132,7 @@ def guided_blur(
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+        subsample: subsampling factor for Fast Guided filtering. Default: 1 (no subsampling)
 
     Returns:
         the blurred tensor with same shape as `input` :math:`(B, C, H, W)`.
@@ -164,8 +165,8 @@ def guided_blur(
 class GuidedBlur(Module):
     r"""Blur a tensor using a Guided filter.
 
-    The operator is an edge-preserving image smoothing filter. See :cite:`he2010guided` for details.
-    Guidance and input can have different number of channels.
+    The operator is an edge-preserving image smoothing filter. See :cite:`he2010guided`
+    and :cite:`he2015fast` for details. Guidance and input can have different number of channels.
 
     Arguments:
         kernel_size: the size of the kernel.
@@ -173,6 +174,7 @@ class GuidedBlur(Module):
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
+        subsample: subsampling factor for Fast Guided filtering. Default: 1 (no subsampling)
 
     Returns:
         the blurred input tensor.
