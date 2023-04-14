@@ -17,7 +17,8 @@ def _preprocess_fast_guided_blur(
         s = 1 / subsample
         guidance_sub = interpolate(guidance, scale_factor=s, mode="nearest")
         input_sub = guidance_sub if input is guidance else interpolate(input, scale_factor=s, mode="nearest")
-        kernel_size = tuple((k - 1) // subsample + 1 for k in kernel_size)
+        kx, ky = kernel_size
+        kernel_size = ((kx - 1) // subsample + 1, (ky - 1) // subsample + 1)
     else:
         guidance_sub = guidance
         input_sub = input
