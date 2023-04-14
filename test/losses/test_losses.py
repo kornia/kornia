@@ -59,7 +59,7 @@ class TestBinaryFocalLossWithLogits:
                 reduction="mean",
                 pos_weight=None
                 if pos_weight is None
-                else torch.full([logits.size(-1)], pos_weight, dtype=dtype, device=device),
+                else torch.full([logits.size(1), 1], pos_weight, dtype=dtype, device=device),
             ).shape
             == ()
         )
