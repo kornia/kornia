@@ -4,10 +4,11 @@ import os
 from abc import ABC
 from dataclasses import dataclass
 from enum import Enum
+from typing import Generic, TypeVar
 
 import torch
 
-from kornia.core import Tensor
+from kornia.core import Module, Tensor
 from kornia.geometry.transform import resize
 
 
@@ -75,7 +76,10 @@ class SegmentationResults:
         return self
 
 
-class ModelBase(ABC):
+ModelType = TypeVar('ModelType', bound=Enum)
+
+
+class ModelBase(ABC, Module, Generic[ModelType]):
     """Abstract model class with some utilities function."""
 
     def load_checkpoint(self, checkpoint: str, device: torch.device | None = None) -> None:
@@ -95,13 +99,13 @@ class ModelBase(ABC):
         self.load_state_dict(state_dict)
 
     @staticmethod
-    def build(model_type: str | int | Enum) -> ModelBase:
+    def build(model_type: str | int | ModelType) -> ModelBase[ModelType]:
         """This function should build the desired model type."""
         raise NotImplementedError
 
     @staticmethod
     def from_pretrained(
-        model_type: str | int | Enum, checkpoint: str | None = None, device: torch.device | None = None
-    ) -> ModelBase:
+        model_type: str | int | ModelType, checkpoint: str | None = None, device: torch.device | None = None
+    ) -> ModelBase[ModelType]:
         """This function should build the desired model type, load the checkpoint and move to device."""
         raise NotImplementedError

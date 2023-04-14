@@ -1,3 +1,8 @@
+"""Based from the original code from Meta Platforms, Inc. and affiliates.
+
+https://github.com/facebookresearch/segment-
+anything/blob/3518c86b78b3bc9cf4fbe3d18e682fad1c79dc51/segment_anything/build_sam.py
+"""
 from __future__ import annotations
 
 from enum import Enum
@@ -21,7 +26,7 @@ class SamModelType(Enum):
     vit_b = 2
 
 
-class Sam(ModelBase, SAM_ARCH):
+class Sam(ModelBase[SamModelType], SAM_ARCH):
     @staticmethod
     def build(model_type: str | int | SamModelType) -> Sam:
         """Build the SAM model based on it's type.
@@ -92,26 +97,23 @@ class Sam(ModelBase, SAM_ARCH):
         Example:
             >>> # Input should be a RGB batched image
             >>> inpt = torch.randint(0, 255, (1, 3, 384, 384)).float()
-            >>> inpt_after_resize = kornia.geometry.resize(inpt, (256, 256))
-            >>> sam_model = Sam.from_pretrained('vit_b', 'cpu', checkpoint=None)
+            >>> # Sam model expects a image RGB with resolution 1024x1024
+            >>> inpt = kornia.geometry.resize(inpt, (1024, 1024))
+            >>> sam_model = Sam.from_pretrained('vit_b', None, 'cpu')
             >>> # Embed prompts
             >>> sparse_embeddings, dense_embeddings = sam_model.prompt_encoder(points=None, boxes=None, masks=None)
-            >>> # Preprocess input (expected max size to be 1024)
-            >>> input_image = sam_model.preprocess(inpt_after_resize)
             >>> # Predict masks
-            >>> low_res_masks, iou_predictions = sam_model.mask_decoder(
-            ...    image_embeddings=sam_model.image_encoder(input_image),
+            >>> logits, scores = sam_model.mask_decoder(
+            ...    image_embeddings=sam_model.image_encoder(inpt),
             ...    image_pe=sam_model.prompt_encoder.get_dense_pe(),
             ...    sparse_prompt_embeddings=sparse_embeddings,
             ...    dense_prompt_embeddings=dense_embeddings,
-            ...    multimask_output=True,
+            ...    multimask_output=False,
             ... )
-            >>> # Upscale the masks to the original image resolution
-            >>> input_shape = (inpt_after_resize.shape[-2], inpt_after_resize.shape[-1])
-            >>> original_shape = (inpt.shape[-2], inpt.shape[-1])
-            >>> masks = sam_model.postprocess_masks(low_res_masks, input_shape, original_shape)
-            >>> # If wants to have a binary mask
-            >>> masks = masks > sam_model.mask_threshold
+            >>> logits.shape
+            torch.Size([1, 1, 256, 256])
+            >>> scores.shape
+            torch.Size([1, 1])
         """
 
         model = Sam.build(model_type)
@@ -160,6 +162,6 @@ def _build_sam(
             iou_head_depth=3,
             iou_head_hidden_dim=256,
         ),
-        pixel_mean=[123.675, 116.28, 103.53],
-        pixel_std=[58.395, 57.12, 57.375],
+        #     pixel_mean=[123.675, 116.28, 103.53],
+        #     pixel_std=[58.395, 57.12, 57.375],
     )

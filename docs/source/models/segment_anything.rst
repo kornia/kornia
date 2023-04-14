@@ -32,6 +32,24 @@ can be used to generate masks for all objects in an image.
 
 How to use SAM from Kornia
 --------------------------
+Load from pretrained
+^^^^^^^^^^^^^^^^^^^^
+This method internally uses `build` and `load_checkpoint`, also move the model for the desired device. Is possible to
+pass a URL or a path for the method.
+
+.. code-block:: python
+
+    from kornia.contrib import Sam
+    from kornia.utils import get_cuda_device_if_available
+
+    model_type = 'vit_b'
+
+    checkpoint = './path_for_the_model_checkpoint.pth' # Can be a filepath or a url
+    device = get_cuda_device_if_available()
+
+    # Load the model with checkpoint on the desired device
+    sam_model = Sam.from_pretrained(model_type, checkpoint, device)
+
 
 Load/build the model
 ^^^^^^^^^^^^^^^^^^^^
@@ -74,25 +92,6 @@ With the load checkpoint method you can load from a file or directly from a URL.
 
     # Load the checkpoint
     sam_model.load_checkpoint(checkpoint, device)
-
-Load from pretrained
-^^^^^^^^^^^^^^^^^^^^
-This method internally uses `build` and `load_checkpoint`, also move the model for the desired device.
-
-.. code-block:: python
-
-    from kornia.contrib import Sam
-    from kornia.utils import get_cuda_device_if_available
-
-    model_type = 'vit_b'
-
-    checkpoint = './path_for_the_model_checkpoint.pth' # Can be a filepath or a url
-    device = get_cuda_device_if_available()
-
-    # Load the model with checkpoint on the desired device
-    sam_model = Sam.from_pretrained(model_type, checkpoint, device)
-
-
 
 Predictor
 ^^^^^^^^^

@@ -1,3 +1,8 @@
+"""Based from the original code from Meta Platforms, Inc. and affiliates.
+
+https://github.com/facebookresearch/segment-
+anything/blob/3518c86b78b3bc9cf4fbe3d18e682fad1c79dc51/segment_anything/modeling/sam.py
+"""
 from __future__ import annotations
 
 from typing import Any
@@ -8,7 +13,7 @@ from kornia.contrib.sam.architecture.image_encoder import ImageEncoderViT
 from kornia.contrib.sam.architecture.mask_decoder import MaskDecoder
 from kornia.contrib.sam.architecture.prompt_encoder import PromptEncoder
 from kornia.contrib.sam.base import SegmentationResults
-from kornia.core import Module, Tensor, tensor
+from kornia.core import Module, Tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 
@@ -17,12 +22,7 @@ class Sam(Module):
     image_format: str = "RGB"
 
     def __init__(
-        self,
-        image_encoder: ImageEncoderViT,
-        prompt_encoder: PromptEncoder,
-        mask_decoder: MaskDecoder,
-        pixel_mean: list[float] = [123.675, 116.28, 103.53],
-        pixel_std: list[float] = [58.395, 57.12, 57.375],
+        self, image_encoder: ImageEncoderViT, prompt_encoder: PromptEncoder, mask_decoder: MaskDecoder
     ) -> None:
         """SAM predicts object masks from an image and input prompts.
 
@@ -40,8 +40,6 @@ class Sam(Module):
         self.image_encoder = image_encoder
         self.prompt_encoder = prompt_encoder
         self.mask_decoder = mask_decoder
-        self.register_buffer("pixel_mean", tensor(pixel_mean).view(-1, 1, 1), False)
-        self.register_buffer("pixel_std", tensor(pixel_std).view(-1, 1, 1), False)
 
     @torch.no_grad()
     def forward(
