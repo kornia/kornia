@@ -49,15 +49,13 @@ class TestGuidedBlur(BaseTester):
         assert actual.shape == shape
 
     def test_exception(self):
-        pass
+        with pytest.raises(Exception) as errinfo:
+            guided_blur(torch.rand(1, 1, 5, 5), 3, 3, 0.1)
+        assert 'Not a Tensor type. Go' in str(errinfo)
 
-    #     with pytest.raises(Exception) as errinfo:
-    #         bilateral_blur(torch.rand(1, 1, 5, 5), 3, 1, 1)
-    #     assert 'Not a Tensor type. Go' in str(errinfo)
-
-    #     with pytest.raises(ValueError) as errinfo:
-    #         bilateral_blur(torch.rand(1, 1, 5, 5), 3, 0.1, (1, 1), color_distance_type="l3")
-    #     assert 'color_distance_type only acceps l1 or l2' in str(errinfo)
+        with pytest.raises(Exception) as errinfo:
+            guided_blur(torch.rand(1, 1, 5, 5), torch.rand(2, 1, 5, 5), 3, 0.1)
+        assert 'same batch size and spatial dimensions' in str(errinfo)
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
@@ -74,27 +72,29 @@ class TestGuidedBlur(BaseTester):
         img = tensor_to_gradcheck_var(img)
         self.gradcheck(guided_blur, (guide, img, 3, 0.1))
 
-    @pytest.mark.parametrize("shape", [(1, 1, 8, 15), (2, 3, 11, 7)])
+    @pytest.mark.parametrize("shape", [(1, 1, 8, 16), (2, 3, 12, 8)])
     @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
     @pytest.mark.parametrize("eps", [0.1, 0.01])
-    def test_module(self, shape, kernel_size, eps, device, dtype):
+    @pytest.mark.parametrize("subsample", [1, 2])
+    def test_module(self, shape, kernel_size, eps, subsample, device, dtype):
         guide = torch.rand(shape, device=device, dtype=dtype)
         img = torch.rand(shape, device=device, dtype=dtype)
 
         op = guided_blur
-        op_module = GuidedBlur(kernel_size, eps)
-        self.assert_close(op_module(guide, img), op(guide, img, kernel_size, eps))
+        op_module = GuidedBlur(kernel_size, eps, subsample=subsample)
+        self.assert_close(op_module(guide, img), op(guide, img, kernel_size, eps, subsample=subsample))
 
     @pytest.mark.parametrize('kernel_size', [5, (5, 7)])
-    def test_dynamo(self, kernel_size, device, dtype, torch_optimizer):
+    @pytest.mark.parametrize("subsample", [1, 2])
+    def test_dynamo(self, kernel_size, subsample, device, dtype, torch_optimizer):
         guide = torch.ones(2, 3, 8, 8, device=device, dtype=dtype)
         inpt = torch.ones(2, 3, 8, 8, device=device, dtype=dtype)
-        op = GuidedBlur(kernel_size, 0.1)
+        op = GuidedBlur(kernel_size, 0.1, subsample=subsample)
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(guide, inpt), op_optimized(guide, inpt))
 
-        op = GuidedBlur(kernel_size, torch.tensor(0.1, device=device, dtype=dtype))
+        op = GuidedBlur(kernel_size, torch.tensor(0.1, device=device, dtype=dtype), subsample=subsample)
         op_optimized = torch_optimizer(op)
 
         self.assert_close(op(guide, inpt), op_optimized(guide, inpt))
