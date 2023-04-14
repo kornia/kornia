@@ -1,34 +1,49 @@
 from __future__ import annotations
 
 import torch
+from torch.nn.functional import interpolate
 
 from kornia.core import Module, Tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 from .blur import box_blur
+from .kernels import _unpack_2d_ks
 
 
 def _guided_blur_grayscale_guidance(
     guidance: Tensor,
     input: Tensor,
-    kernel_size: tuple[int, int] | int,
+    kernel_size: tuple[int, int],
     eps: float | Tensor,
     border_type: str = 'reflect',
+    subsample: int = 1,
 ) -> Tensor:
     if isinstance(eps, Tensor):
         eps = eps.view(-1, 1, 1, 1)  # N -> NCHW
 
-    mean_I = box_blur(guidance, kernel_size, border_type)
-    corr_I = box_blur(guidance.square(), kernel_size, border_type)
+    if subsample > 1:
+        guidance_sub = interpolate(guidance, scale_factor=1 / subsample, mode="nearest")
+        if input is guidance:
+            input_sub = guidance_sub
+        else:
+            input_sub = interpolate(input, scale_factor=1 / subsample, mode="nearest")
+        kx, ky = kernel_size
+        kernel_size = ((kx - 1) // subsample + 1, (ky - 1) // subsample + 1)
+    else:
+        guidance_sub = guidance
+        input_sub = input
+
+    mean_I = box_blur(guidance_sub, kernel_size, border_type)
+    corr_I = box_blur(guidance_sub.square(), kernel_size, border_type)
     var_I = corr_I - mean_I.square()
 
-    if guidance is input:
+    if input is guidance:
         mean_p = mean_I
         cov_Ip = var_I
 
     else:
-        mean_p = box_blur(input, kernel_size, border_type)
-        corr_Ip = box_blur(guidance * input, kernel_size, border_type)
+        mean_p = box_blur(input_sub, kernel_size, border_type)
+        corr_Ip = box_blur(guidance_sub * input_sub, kernel_size, border_type)
         cov_Ip = corr_Ip - mean_I * mean_p
 
     a = cov_Ip / (var_I + eps)
@@ -36,6 +51,11 @@ def _guided_blur_grayscale_guidance(
 
     mean_a = box_blur(a, kernel_size, border_type)
     mean_b = box_blur(b, kernel_size, border_type)
+
+    if subsample > 1:
+        mean_a = interpolate(mean_a, scale_factor=subsample, mode="bilinear")
+        mean_b = interpolate(mean_b, scale_factor=subsample, mode="bilinear")
+
     return mean_a * guidance + mean_b
 
 
@@ -45,11 +65,24 @@ def _guided_blur_multichannel_guidance(
     kernel_size: tuple[int, int] | int,
     eps: float | Tensor,
     border_type: str = 'reflect',
+    subsample: int = 1,
 ) -> Tensor:
-    B, C, H, W = guidance.shape
+    if subsample > 1:
+        guidance_sub = interpolate(guidance, scale_factor=1 / subsample, mode="nearest")
+        if input is guidance:
+            input_sub = guidance_sub
+        else:
+            input_sub = interpolate(input, scale_factor=1 / subsample, mode="nearest")
+        kx, ky = kernel_size
+        kernel_size = ((kx - 1) // subsample + 1, (ky - 1) // subsample + 1)
+    else:
+        guidance_sub = guidance
+        input_sub = input
 
-    mean_I = box_blur(guidance, kernel_size, border_type).permute(0, 2, 3, 1)
-    II = (guidance.unsqueeze(1) * guidance.unsqueeze(2)).flatten(1, 2)
+    B, C, H, W = guidance_sub.shape
+
+    mean_I = box_blur(guidance_sub, kernel_size, border_type).permute(0, 2, 3, 1)
+    II = (guidance_sub.unsqueeze(1) * guidance_sub.unsqueeze(2)).flatten(1, 2)
     corr_I = box_blur(II, kernel_size, border_type).permute(0, 2, 3, 1)
     var_I = corr_I.reshape(B, H, W, C, C) - mean_I.unsqueeze(-2) * mean_I.unsqueeze(-1)
 
@@ -58,8 +91,8 @@ def _guided_blur_multichannel_guidance(
         cov_Ip = var_I
 
     else:
-        mean_p = box_blur(input, kernel_size, border_type).permute(0, 2, 3, 1)
-        Ip = (input.unsqueeze(1) * guidance.unsqueeze(2)).flatten(1, 2)
+        mean_p = box_blur(input_sub, kernel_size, border_type).permute(0, 2, 3, 1)
+        Ip = (input_sub.unsqueeze(1) * guidance_sub.unsqueeze(2)).flatten(1, 2)
         corr_Ip = box_blur(Ip, kernel_size, border_type).permute(0, 2, 3, 1)
         cov_Ip = corr_Ip.reshape(B, H, W, C, -1) - mean_p.unsqueeze(-2) * mean_I.unsqueeze(-1)
 
@@ -70,8 +103,13 @@ def _guided_blur_multichannel_guidance(
     a = torch.linalg.solve(var_I + _eps, cov_Ip)  # B, H, W, C_guidance, C_input
     b = mean_p - (mean_I.unsqueeze(-2) @ a).squeeze(-2)  # B, H, W, C_input
 
-    mean_a = box_blur(a.flatten(-2).permute(0, 3, 1, 2), kernel_size, border_type).view(B, C, -1, H, W)
+    mean_a = box_blur(a.flatten(-2).permute(0, 3, 1, 2), kernel_size, border_type)
     mean_b = box_blur(b.permute(0, 3, 1, 2), kernel_size, border_type)
+
+    if subsample > 1:
+        mean_a = interpolate(mean_a, scale_factor=subsample, mode="bilinear")
+        mean_b = interpolate(mean_b, scale_factor=subsample, mode="bilinear")
+    mean_a = mean_a.view(B, C, -1, H * subsample, W * subsample)
 
     # einsum might not be contiguous, thus mean_b is the first argument
     return mean_b + torch.einsum("BCHW,BCcHW->BcHW", guidance, mean_a)
@@ -83,6 +121,7 @@ def guided_blur(
     kernel_size: tuple[int, int] | int,
     eps: float | Tensor,
     border_type: str = 'reflect',
+    subsample: int = 1,
 ) -> Tensor:
     r"""Blur a tensor using a Guided filter.
 
@@ -121,10 +160,11 @@ def guided_blur(
             "guidance and input should have the same batch size and spatial dimensions",
         )
 
+    kernel_size = _unpack_2d_ks(kernel_size)
     if guidance.shape[1] == 1:
-        return _guided_blur_grayscale_guidance(guidance, input, kernel_size, eps, border_type)
+        return _guided_blur_grayscale_guidance(guidance, input, kernel_size, eps, border_type, subsample)
     else:
-        return _guided_blur_multichannel_guidance(guidance, input, kernel_size, eps, border_type)
+        return _guided_blur_multichannel_guidance(guidance, input, kernel_size, eps, border_type, subsample)
 
 
 class GuidedBlur(Module):
@@ -156,7 +196,9 @@ class GuidedBlur(Module):
         torch.Size([2, 4, 5, 5])
     """
 
-    def __init__(self, kernel_size: tuple[int, int] | int, eps: float | Tensor, border_type: str = 'reflect'):
+    def __init__(
+        self, kernel_size: tuple[int, int] | int, eps: float | Tensor, border_type: str = 'reflect', subsample: int = 1
+    ):
         super().__init__()
         self.kernel_size = kernel_size
         if isinstance(eps, Tensor):
@@ -164,14 +206,16 @@ class GuidedBlur(Module):
         else:
             self.eps = eps
         self.border_type = border_type
+        self.subsample = subsample
 
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}"
             f"(kernel_size={self.kernel_size}, "
             f"eps={self.eps}, "
-            f"border_type={self.border_type})"
+            f"border_type={self.border_type}, "
+            f"subsample={self.subsample})"
         )
 
     def forward(self, guidance: Tensor, input: Tensor) -> Tensor:
-        return guided_blur(guidance, input, self.kernel_size, self.eps, self.border_type)
+        return guided_blur(guidance, input, self.kernel_size, self.eps, self.border_type, self.subsample)

@@ -12,9 +12,9 @@ class TestGuidedBlur(BaseTester):
     @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
     @pytest.mark.parametrize("eps", [0.1, 0.01])
     def test_smoke(self, batch_size, guide_dim, input_dim, kernel_size, eps, device, dtype):
-        H, W = 8, 15
-        guide = torch.zeros(batch_size, guide_dim, H, W, device=device, dtype=dtype)
-        inp = torch.zeros(batch_size, input_dim, H, W, device=device, dtype=dtype)
+        H, W = 8, 16
+        guide = torch.randn(batch_size, guide_dim, H, W, device=device, dtype=dtype)
+        inp = torch.randn(batch_size, input_dim, H, W, device=device, dtype=dtype)
 
         # tensor eps -> with batch dim
         eps = torch.rand(batch_size, device=device, dtype=dtype)
@@ -29,6 +29,16 @@ class TestGuidedBlur(BaseTester):
         assert actual_B.shape == (batch_size, input_dim, H, W)
 
         self.assert_close(actual_A[0], actual_B[0])
+
+        # fast guided filter
+        actual_C = guided_blur(guide, inp, kernel_size, eps_, subsample=4)
+        assert isinstance(actual_C, torch.Tensor)
+        assert actual_C.shape == (batch_size, input_dim, H, W)
+
+        # self-guidance
+        actual_D = guided_blur(inp, inp, kernel_size, eps_)
+        assert isinstance(actual_D, torch.Tensor)
+        assert actual_D.shape == (batch_size, input_dim, H, W)
 
     @pytest.mark.parametrize("shape", [(1, 1, 8, 15), (2, 3, 11, 7)])
     @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
