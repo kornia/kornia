@@ -10,6 +10,20 @@ from .blur import box_blur
 from .kernels import _unpack_2d_ks
 
 
+def _preprocess_fast_guided_blur(
+    guidance: Tensor, input: Tensor, kernel_size: tuple[int, int], subsample: int = 1
+) -> tuple[Tensor, Tensor, tuple[int, int]]:
+    if subsample > 1:
+        s = 1 / subsample
+        guidance_sub = interpolate(guidance, scale_factor=s, mode="nearest")
+        input_sub = guidance_sub if input is guidance else interpolate(input, scale_factor=s, mode="nearest")
+        kernel_size = tuple((k - 1) // subsample + 1 for k in kernel_size)
+    else:
+        guidance_sub = guidance
+        input_sub = input
+    return guidance_sub, input_sub, kernel_size
+
+
 def _guided_blur_grayscale_guidance(
     guidance: Tensor,
     input: Tensor,
@@ -18,20 +32,7 @@ def _guided_blur_grayscale_guidance(
     border_type: str = 'reflect',
     subsample: int = 1,
 ) -> Tensor:
-    if isinstance(eps, Tensor):
-        eps = eps.view(-1, 1, 1, 1)  # N -> NCHW
-
-    if subsample > 1:
-        guidance_sub = interpolate(guidance, scale_factor=1 / subsample, mode="nearest")
-        if input is guidance:
-            input_sub = guidance_sub
-        else:
-            input_sub = interpolate(input, scale_factor=1 / subsample, mode="nearest")
-        kx, ky = kernel_size
-        kernel_size = ((kx - 1) // subsample + 1, (ky - 1) // subsample + 1)
-    else:
-        guidance_sub = guidance
-        input_sub = input
+    guidance_sub, input_sub, kernel_size = _preprocess_fast_guided_blur(guidance, input, kernel_size, subsample)
 
     mean_I = box_blur(guidance_sub, kernel_size, border_type)
     corr_I = box_blur(guidance_sub.square(), kernel_size, border_type)
@@ -45,6 +46,9 @@ def _guided_blur_grayscale_guidance(
         mean_p = box_blur(input_sub, kernel_size, border_type)
         corr_Ip = box_blur(guidance_sub * input_sub, kernel_size, border_type)
         cov_Ip = corr_Ip - mean_I * mean_p
+
+    if isinstance(eps, Tensor):
+        eps = eps.view(-1, 1, 1, 1)  # N -> NCHW
 
     a = cov_Ip / (var_I + eps)
     b = mean_p - a * mean_I
@@ -67,18 +71,7 @@ def _guided_blur_multichannel_guidance(
     border_type: str = 'reflect',
     subsample: int = 1,
 ) -> Tensor:
-    if subsample > 1:
-        guidance_sub = interpolate(guidance, scale_factor=1 / subsample, mode="nearest")
-        if input is guidance:
-            input_sub = guidance_sub
-        else:
-            input_sub = interpolate(input, scale_factor=1 / subsample, mode="nearest")
-        kx, ky = kernel_size
-        kernel_size = ((kx - 1) // subsample + 1, (ky - 1) // subsample + 1)
-    else:
-        guidance_sub = guidance
-        input_sub = input
-
+    guidance_sub, input_sub, kernel_size = _preprocess_fast_guided_blur(guidance, input, kernel_size, subsample)
     B, C, H, W = guidance_sub.shape
 
     mean_I = box_blur(guidance_sub, kernel_size, border_type).permute(0, 2, 3, 1)
