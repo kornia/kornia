@@ -156,8 +156,8 @@ class _BilateralBlur(Module):
     def __init__(
         self,
         kernel_size: tuple[int, int] | int,
-        sigma_color: float,
-        sigma_space: tuple[float, float],
+        sigma_color: float | Tensor,
+        sigma_space: tuple[float, float] | Tensor,
         border_type: str = 'reflect',
         color_distance_type: str = "l1",
     ) -> None:
