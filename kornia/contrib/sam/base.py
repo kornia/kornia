@@ -18,6 +18,14 @@ from kornia.geometry.transform import resize
 # --------------------------------------------------------------------------------------------------------------------
 @dataclass
 class SegmentationResults:
+    """Encapsulate the results obtained by a Segmentation model.
+
+    Args:
+        logits: Results logits with shape :math:`(B, C, H, W)`, where :math:`C` refers to the number of predicted masks
+        scores: The scores from the logits. Shape :math:`(B,)`
+        mask_threshold: The threshold value to generate the `binary_masks` from the `logits`
+    """
+
     logits: Tensor
     scores: Tensor
     mask_threshold: float = 0.0
@@ -54,7 +62,7 @@ class SegmentationResults:
                                 logits back to encoder resolution before remove the padding.
 
         Returns:
-            Batched logits in :math:`KxCxHxW` format, where (H, W) is given by original_size.
+            Batched logits in :math:`(K, C, H, W)` format, where (H, W) is given by original_size.
         """
         x = self.logits
 
@@ -68,6 +76,7 @@ class SegmentationResults:
         return self._original_res_logits
 
     def squeeze(self, dim: int = 0) -> SegmentationResults:
+        """Realize a squeeze for the dim given for all properties."""
         self.logits = self.logits.squeeze(dim)
         self.scores = self.scores.squeeze(dim)
         if isinstance(self._original_res_logits, Tensor):
@@ -100,12 +109,22 @@ class ModelBase(ABC, Module, Generic[ModelType]):
 
     @staticmethod
     def build(model_type: str | int | ModelType) -> ModelBase[ModelType]:
-        """This function should build the desired model type."""
+        """This function should build the desired model type.
+
+        Args:
+            model_type: The mapping for the desired model type/size
+        """
         raise NotImplementedError
 
     @staticmethod
     def from_pretrained(
         model_type: str | int | ModelType, checkpoint: str | None = None, device: torch.device | None = None
     ) -> ModelBase[ModelType]:
-        """This function should build the desired model type, load the checkpoint and move to device."""
+        """This function should build the desired model type, load the checkpoint and move to device.
+
+        Args:
+            model_type: The mapping for the desired model type/size
+            checkpoint: A URL or a path for the weights/states to be loaded
+            device: The target device to allocate the model.
+        """
         raise NotImplementedError

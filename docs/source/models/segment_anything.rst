@@ -32,6 +32,7 @@ can be used to generate masks for all objects in an image.
 
 How to use SAM from Kornia
 --------------------------
+
 Load from pretrained
 ^^^^^^^^^^^^^^^^^^^^
 This method internally uses `build` and `load_checkpoint`, also move the model for the desired device. Is possible to
@@ -68,6 +69,7 @@ This is an example how you can load the model.
     # Load/build the model
     sam_model = Sam.build(model_type)
 
+
 Load checkpoint
 ^^^^^^^^^^^^^^^
 With the load checkpoint method you can load from a file or directly from a URL. The official (by meta) model weights are:
@@ -93,11 +95,12 @@ With the load checkpoint method you can load from a file or directly from a URL.
     # Load the checkpoint
     sam_model.load_checkpoint(checkpoint, device)
 
-Predictor
-^^^^^^^^^
-.. _anchor Predictor:
 
-The High level API `SamPrediction` handle with the image and prompt transformation, preprocessing and prediction for
+Prompter
+^^^^^^^^
+.. _anchor Prompter:
+
+The High level API `SamPrompter` handle with the image and prompt transformation, preprocessing and prediction for
 a given SAM model.
 
 .. code-block:: python
@@ -105,7 +108,7 @@ a given SAM model.
     import torch
 
     from kornia.contrib import Sam
-    from kornia.contrib.sam.predictor import SamPredictor
+    from kornia.contrib.sam.prompter import SamPrompter
     from kornia.io import load_image, ImageLoadType
     from kornia.geometry.keypoints import Keypoints
     from kornia.geometry.boxes import Boxes
@@ -121,8 +124,11 @@ a given SAM model.
     # Load image
     image = load_image('./example.jpg', ImageLoadType.RGB8, device).float()
 
-    # Load the predictor
-    predictor = SamPredictor(sam_model)
+    # Load the prompter
+    prompter = SamPrompter(sam_model)
+
+    # set the image: This will preprocess the image and already generate the embeddings of it
+    prompter.set_image(image)
 
     # Generate the prompts
     input_point = Keypoints(torch.tensor([[[500, 375]]], device=device, dtype=torch.float32)) # BxNx2
@@ -132,8 +138,7 @@ a given SAM model.
     )
 
     # Runs the prediction with all prompts
-    prediction = predictor(
-        image=image,
+    prediction = prompter.predict(
         point_coords=input_point,
         point_labels=input_label,
         boxes=input_box,
@@ -142,8 +147,7 @@ a given SAM model.
 
     #----------------------------------------------
     # or run the prediction with just the keypoints
-    prediction = predictor(
-        image=image,
+    prediction = prompter.predict(
         point_coords=input_point,
         point_labels=input_label,
         multimask_output=True,
@@ -151,31 +155,32 @@ a given SAM model.
 
     #----------------------------------------------
     # or run the prediction with just the box
-    prediction = predictor(
-        image=image,
+    prediction = prompter.predict(
         boxes=input_box,
         multimask_output=True,
     )
 
     #----------------------------------------------
     # or run the prediction without prompts
-    prediction = predictor(
-        image=image,
+    prediction = prompter.predict(
         multimask_output=True,
     )
 
     #------------------------------------------------
     # or run the prediction using the previous logits
-    prediction = predictor(
-        image=image,
-        mask_input=prediction.logits
+    prediction = prompter.predict(
+        masks=prediction.logits
         multimask_output=True,
     )
 
-    # The `prediction` is a dataclass with the masks, scores and logits
+    # The `prediction` is a SegmentationResults dataclass with the masks, scores and logits
     print(prediction.masks.shape)
     print(prediction.scores)
     print(prediction.logits.shape)
+
+
+Read more about the `SegmentationResults` on :ref:`the official docs<anchor SegmentationResults>`
+
 
 .. Mask Generator
 .. ^^^^^^^^^^^^^^
@@ -184,7 +189,7 @@ a given SAM model.
 Example of how to use the SAM model without API
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 This is a simple example, of how to directly use the SAM model loaded. We recommend the use of
-:ref:`Predictor API<anchor Predictor>` to handle/prepare the inputs.
+:ref:`Prompter API<anchor Prompter>` to handle/prepare the inputs.
 
 .. code-block:: python
 

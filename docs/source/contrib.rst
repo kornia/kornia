@@ -47,10 +47,18 @@ Segment Anything (SAM)
     :members:
     :undoc-members:
 
-.. autoclass:: kornia.contrib.sam.predictor.SamPredictor
+.. autoclass:: kornia.contrib.sam.prompter.Prompts
     :members:
-    :special-members: __call__,
 
+.. autoclass:: kornia.contrib.sam.prompter.ImagePrompter
+    :members:
+    :special-members: __init__,
+
+.. autoclass:: kornia.contrib.sam.prompter.SamPrompter
+    :members: set_image, preprocess_image, preprocess_prompts, predict
+    :special-members: __init__,
+
+.. _anchor SegmentationResults:
 .. autoclass:: kornia.contrib.sam.base.SegmentationResults
     :members:
 

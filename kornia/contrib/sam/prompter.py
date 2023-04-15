@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
-import torch
+from torch import no_grad
 
 from kornia.augmentation import AugmentationSequential, LongestMaxSize
 from kornia.augmentation.base import _AugmentationBase
@@ -23,6 +24,15 @@ from kornia.geometry.keypoints import Keypoints
 
 @dataclass
 class Prompts:
+    """Encapsulate the prompts inputs for a Model.
+
+    Args:
+        points: A tuple with the keypoints (coordinates x, y) and their respective labels. Shape :math:`(K, N, 2)` for
+                the keypoints, and :math:`(K, N)`
+        boxes: Batched box inputs, with shape :math:`(K, 4)`. Expected to be into xyxy format.
+        masks: Batched mask prompts to the model with shape :math:`(K, 1, H, W)`
+    """
+
     points: tuple[Tensor, Tensor] | None = None
     boxes: Tensor | None = None
     masks: Tensor | None = None
@@ -33,15 +43,22 @@ class Prompts:
 
     @property
     def keypoints(self) -> Tensor | None:
+        """The keypoints from the `points`"""
         return self.points[0] if isinstance(self.points, tuple) else None
 
     @property
     def keypoints_labels(self) -> Tensor | None:
+        """The keypoints labels from the `points`"""
         return self.points[1] if isinstance(self.points, tuple) else None
 
 
 class ImagePrompter:
-    """This class uses a given model to generate Segmentations results from a batch of prompts."""
+    """This class uses a given model to generate Segmentations results from a batch of prompts.
+
+    Args:
+        model: The desired model to be used to generate results from prompts
+        *transforms: The augmentation transforms desired to be performed on the input before prediction
+    """
 
     def __init__(self, model: Sam, *transforms: _AugmentationBase):
         self.model = model
@@ -52,23 +69,10 @@ class ImagePrompter:
         self._original_image_size: None | tuple[int, int] = None
         self._input_image_size: None | tuple[int, int] = None
         self._input_encoder_size: None | tuple[int, int] = None
+        self.reset_image()
 
-    def preprocess(self, x: Tensor, mean: Tensor | None = None, std: Tensor | None = None) -> Tensor:
-        if isinstance(mean, Tensor) and isinstance(std, Tensor):
-            x = normalize(x, mean, std)
-        elif isinstance(self.pixel_mean, Tensor) and isinstance(self.pixel_std, Tensor):
-            x = normalize(x, self.pixel_mean, self.pixel_std)
-
-        if hasattr(self.model.image_encoder, 'img_size'):
-            encoder_im_size = self.model.image_encoder.img_size
-            pad_h = encoder_im_size - x.shape[-2]
-            pad_w = encoder_im_size - x.shape[-1]
-            x = pad(x, (0, pad_w, 0, pad_h))
-
-        return x
-
-    @torch.no_grad()
-    def set_image(self, image: Tensor, mean: Tensor | None = None, std: Tensor | None = None) -> None:
+    @no_grad()
+    def set_image(self, image: Tensor, *args: Any, **kwargs: Any) -> None:
         """Set the embeddings from the given image with `image_decoder` of the model.
 
         Prepare the given image with the selected transforms and the preprocess method.
@@ -88,7 +92,9 @@ class ImagePrompter:
         self._tfs_params = self.transforms._params
         self._input_image_size = (image.shape[-2], image.shape[-1])
 
-        image = self.preprocess(image, mean, std)
+        if hasattr(self, 'preprocess_image'):
+            image = self.preprocess_image(image, *args, **kwargs)
+
         self._input_encoder_size = (image.shape[-2], image.shape[-1])
 
         self.image_embeddings = self.model.image_encoder(image)
@@ -171,7 +177,7 @@ class ImagePrompter:
 
         return Prompts(points=points, boxes=bbox, masks=masks)
 
-    @torch.no_grad()
+    @no_grad()
     def predict(
         self,
         keypoints: Keypoints | Tensor | None = None,
@@ -187,7 +193,7 @@ class ImagePrompter:
             keypoints: Point prompts to the model. Each point is in (X,Y) in pixels. Shape :math:`(K, N, 2)`. Where
                        `N` is the number of points and `K` the number of prompts.
             keypoint_labels: Labels for the point prompts. 1 indicates a foreground point and 0 indicates a background
-                             point. Shape :math:`(K, N, 2)`. Where `N` is the number of points, and `K` the number of
+                             point. Shape :math:`(K, N)`. Where `N` is the number of points, and `K` the number of
                              prompts.
             boxes: A box prompt to the model. If a tensor, should be in a xyxy mode. Shape :math:`(K, 4)`
             masks: A low resolution mask input to the model, typically coming from a previous prediction
@@ -252,4 +258,35 @@ class SamPrompter(ImagePrompter):
 
         _dev = next(model.parameters()).device
         self.pixel_mean: Tensor | None = tensor([123.675, 116.28, 103.53], device=_dev)
+
         self.pixel_std: Tensor | None = tensor([58.395, 57.12, 57.375], device=_dev)
+
+    def preprocess_image(self, x: Tensor, mean: Tensor | None = None, std: Tensor | None = None) -> Tensor:
+        """Normalize and pad a tensor.
+
+        For normalize the tensor: will priorize the `mean` and `std` passed as argument, if None will use the default
+        Sam Dataset values.
+
+        For pad the tensor: Will pad the tensor into the right and bottom to match with the size of
+        `self.model.image_encoder.img_size`
+
+        Args:
+            x: The image to be preprocessed
+            mean: Mean for each channel.
+            std: Standard deviations for each channel.
+
+        Returns:
+            The image preprocessed (normalized if has mean and str available and padded to encoder size)
+        """
+
+        if isinstance(mean, Tensor) and isinstance(std, Tensor):
+            x = normalize(x, mean, std)
+        elif isinstance(self.pixel_mean, Tensor) and isinstance(self.pixel_std, Tensor):
+            x = normalize(x, self.pixel_mean, self.pixel_std)
+
+        encoder_im_size = self.model.image_encoder.img_size
+        pad_h = encoder_im_size - x.shape[-2]
+        pad_w = encoder_im_size - x.shape[-1]
+        x = pad(x, (0, pad_w, 0, pad_h))
+
+        return x
