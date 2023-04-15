@@ -72,6 +72,10 @@ class TestGuidedBlur(BaseTester):
         img = tensor_to_gradcheck_var(img)
         self.gradcheck(guided_blur, (guide, img, 3, 0.1))
 
+        eps = torch.rand(1, device=device)
+        eps = tensor_to_gradcheck_var(eps)
+        self.gradcheck(guided_blur, (guide, img, 3, eps))
+
     @pytest.mark.parametrize("shape", [(1, 1, 8, 16), (2, 3, 12, 8)])
     @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
     @pytest.mark.parametrize("eps", [0.1, 0.01])
