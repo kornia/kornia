@@ -1,20 +1,14 @@
 import pytest
 import torch
 
-from kornia.contrib import Sam
 from kornia.contrib.sam.prompter import SamPrompter
 from kornia.testing import BaseTester
 
 
-@pytest.fixture
-def sam_b(device):
-    return Sam.from_pretrained('vit_b', 'https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth', device)
-
-
 class TestSamPrompter(BaseTester):
-    def test_smoke(self, sam_b, device, dtype):
+    def test_smoke(self, device, dtype):
         inpt = torch.rand(3, 77, 128, device=device, dtype=dtype)
-        prompter = SamPrompter(sam_b)
+        prompter = SamPrompter('vit_b', 'https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth', device)
 
         prompter.set_image(inpt)
         assert prompter.is_image_set
@@ -25,9 +19,9 @@ class TestSamPrompter(BaseTester):
     @pytest.mark.parametrize('batch_size', [1, 3])
     @pytest.mark.parametrize('N', [2, 5])
     @pytest.mark.parametrize('multimask_output', [True, False])
-    def test_cardinality(self, dtype, device, batch_size, N, multimask_output, sam_b):
+    def test_cardinality(self, dtype, device, batch_size, N, multimask_output):
         inpt = torch.rand(3, 77, 128, device=device, dtype=dtype)
-        prompter = SamPrompter(sam_b)
+        prompter = SamPrompter('vit_b', 'https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth', device)
 
         keypoints = torch.randint(0, min(inpt.shape[-2:]), (batch_size, N, 2), device=device).to(dtype=dtype)
         labels = torch.randint(0, 1, (batch_size, N), device=device).to(dtype=dtype)
@@ -39,8 +33,8 @@ class TestSamPrompter(BaseTester):
         C = 3 if multimask_output else 1
         assert out.logits.shape == (C, 256, 256)
 
-    def test_exception(self, sam_b):
-        prompter = SamPrompter(sam_b)
+    def test_exception(self):
+        prompter = SamPrompter('vit_b', 'https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth')
 
         inpt = torch.rand(1, 3, 1, 2)
 
@@ -86,10 +80,10 @@ class TestSamPrompter(BaseTester):
         ...
 
     @pytest.mark.skip(reason='Needs to be reviewed')
-    def test_dynamo(self, device, dtype, sam_b, torch_optimizer):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         img = torch.rand(3, 128, 75, device=device, dtype=dtype)
 
-        prompter = SamPrompter(sam_b)
+        prompter = SamPrompter('vit_b', 'https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth', device)
         prompter.set_image(img)
 
         op = prompter.predict

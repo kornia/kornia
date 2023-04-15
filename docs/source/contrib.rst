@@ -3,6 +3,37 @@ kornia.contrib
 
 .. currentmodule:: kornia.contrib
 
+Models
+------
+
+Base
+^^^^
+.. autoclass:: kornia.contrib.models.base.ModelBase
+    :members:
+    :undoc-members:
+
+Prompters
+^^^^^^^^^
+.. autoclass:: kornia.contrib.models.prompters.base.PrompterModelBase
+    :members:
+    :undoc-members:
+
+.. autoclass:: kornia.contrib.models.prompters.image.ImagePrompter
+    :members:
+    :undoc-members:
+
+
+Structures
+^^^^^^^^^^
+.. _anchor SegmentationResults:
+.. autoclass:: kornia.contrib.models.SegmentationResults
+    :members:
+    :undoc-members:
+
+.. autoclass:: kornia.contrib.models.Prompts
+    :members:
+    :undoc-members:
+
 Edge Detection
 --------------
 
@@ -38,31 +69,18 @@ Image Segmentation
 Segment Anything (SAM)
 ^^^^^^^^^^^^^^^^^^^^^^
 
+.. autoclass:: SamModelType
+    :members:
+    :undoc-members:
+
 .. autoclass:: Sam
     :members: build, from_pretrained, forward, load_checkpoint
     :undoc-members:
     :special-members: __init__,
 
-.. autoclass:: SamModelType
-    :members:
-    :undoc-members:
-
-.. autoclass:: kornia.contrib.sam.prompter.Prompts
-    :members:
-
-.. autoclass:: kornia.contrib.sam.prompter.ImagePrompter
-    :members:
-    :special-members: __init__,
-
 .. autoclass:: kornia.contrib.sam.prompter.SamPrompter
     :members: set_image, preprocess_image, preprocess_prompts, predict
     :special-members: __init__,
-
-.. _anchor SegmentationResults:
-.. autoclass:: kornia.contrib.sam.base.SegmentationResults
-    :members:
-
-
 
 Image Patches
 -------------
