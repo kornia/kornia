@@ -53,8 +53,16 @@ class TestBilateralBlur(BaseTester):
 
     def test_gradcheck(self, device):
         img = torch.rand(1, 2, 5, 4, device=device)
+        sigma_color = torch.rand(1, device=device)
+        sigma_space = torch.rand(1, 2, device=device)
         img = tensor_to_gradcheck_var(img)  # to var
+        sigma_color = tensor_to_gradcheck_var(sigma_color)
+        sigma_space = tensor_to_gradcheck_var(sigma_space)
+
         self.gradcheck(bilateral_blur, (img, 3, 1, (1, 1)))
+        self.gradcheck(bilateral_blur, (img, 3, sigma_color, (1, 1)))
+        self.gradcheck(bilateral_blur, (img, 3, 1, sigma_space))
+        self.gradcheck(bilateral_blur, (img, 3, sigma_color, sigma_space))
 
     @pytest.mark.parametrize("shape", [(1, 1, 8, 15), (2, 3, 11, 7)])
     @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
