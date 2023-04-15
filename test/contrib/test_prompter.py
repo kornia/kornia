@@ -22,7 +22,9 @@ class TestImagePrompter(BaseTester):
     @pytest.mark.parametrize('batch_size', [1, 3])
     @pytest.mark.parametrize('N', [2, 5])
     @pytest.mark.parametrize('multimask_output', [True, False])
-    def test_cardinality(self, dtype, device, batch_size, N, multimask_output):
+    def test_cardinality(self, device, batch_size, N, multimask_output):
+        # SAM: don't supports float64
+        dtype = torch.float32
         inpt = torch.rand(3, 77, 128, device=device, dtype=dtype)
         prompter = ImagePrompter(SamConfig('vit_b'), device, dtype)
 
@@ -82,9 +84,11 @@ class TestImagePrompter(BaseTester):
     def test_module(self):
         ...
 
-    def test_dynamo(self, device, dtype):
+    def test_dynamo(self, device):
         if not (hasattr(torch, 'compile') and sys.platform == "linux"):
             pytest.skip(f"skipped because {torch.__version__} not have `compile` available! Failed to setup dynamo.")
+
+        dtype = torch.float32
         img = torch.rand(3, 128, 75, device=device, dtype=dtype)
 
         prompter = ImagePrompter(SamConfig('vit_b'), device, dtype)

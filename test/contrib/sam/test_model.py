@@ -20,7 +20,9 @@ class TestSam(BaseTester):
     @pytest.mark.parametrize('batch_size', [1, 3])
     @pytest.mark.parametrize('N', [2, 5])
     @pytest.mark.parametrize('multimask_output', [True, False])
-    def test_cardinality(self, dtype, device, batch_size, N, multimask_output):
+    def test_cardinality(self, device, batch_size, N, multimask_output):
+        # SAM: don't supports float64
+        dtype = torch.float32
         inpt = torch.rand(1, 3, 77, 128, device=device, dtype=dtype)
         model = Sam.from_config(SamConfig('vit_b'))
         model = model.to(device=device, dtype=dtype)
@@ -64,7 +66,8 @@ class TestSam(BaseTester):
         ...
 
     @pytest.mark.skip(reason='Needs to be reviewed.')
-    def test_dynamo(self, device, dtype, torch_optimizer):
+    def test_dynamo(self, device, torch_optimizer):
+        dtype = torch.float32
         img = torch.rand(1, 3, 128, 75, device=device, dtype=dtype)
 
         op = Sam.from_config(SamConfig('vit_b'))
