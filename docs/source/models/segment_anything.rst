@@ -33,82 +33,19 @@ can be used to generate masks for all objects in an image.
 How to use SAM from Kornia
 --------------------------
 
-Load from pretrained
-^^^^^^^^^^^^^^^^^^^^
-This method internally uses `build` and `load_checkpoint`, also move the model for the desired device. Is possible to
-pass a URL or a path for the method.
-
-.. code-block:: python
-
-    from kornia.contrib import Sam
-    from kornia.utils import get_cuda_device_if_available
-
-    model_type = 'vit_b'
-
-    checkpoint = './path_for_the_model_checkpoint.pth' # Can be a filepath or a url
-    device = get_cuda_device_if_available()
-
-    # Load the model with checkpoint on the desired device
-    sam_model = Sam.from_pretrained(model_type, checkpoint, device)
-
-
-Load/build the model
-^^^^^^^^^^^^^^^^^^^^
-This is an example how you can load the model.
-
-.. code-block:: python
-
-    from kornia.contrib import Sam
-
-    # model_type can be:
-    #   0, 'vit_h' or `kornia.contrib.SamModelType.vit_h`
-    #   1, 'vit_l' or `kornia.contrib.SamModelType.vit_l`
-    #   2, 'vit_b' or `kornia.contrib.SamModelType.vit_b`
-    model_type = 'vit_b' # or can be a number `2` or the enum kornia.contrib.SamModelType.vit_b
-
-    # Load/build the model
-    sam_model = Sam.build(model_type)
-
-
-Load checkpoint
-^^^^^^^^^^^^^^^
-With the load checkpoint method you can load from a file or directly from a URL. The official (by meta) model weights are:
-
-#. `vit_h`: `ViT-H SAM model - https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth <https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth>`_.
-#. `vit_l`: `ViT-L SAM model - https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth <https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth>`_.
-#. `vit_b`: `ViT-B SAM model - https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth <https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth>`_.
-
-
-.. code-block:: python
-
-    from kornia.contrib import Sam
-    from kornia.utils import get_cuda_device_if_available
-
-    model_type = 'vit_b'
-
-    checkpoint = './path_for_the_model_checkpoint.pth' # Can be a filepath or a url
-    device = get_cuda_device_if_available()
-
-    # Load/build the model
-    sam_model = Sam.build(model_type)
-
-    # Load the checkpoint
-    sam_model.load_checkpoint(checkpoint, device)
-
-
 Prompter
 ^^^^^^^^
 .. _anchor Prompter:
 
-The High level API `SamPrompter` handle with the image and prompt transformation, preprocessing and prediction for
+The High level API `ImagePrompter` handle with the image and prompt transformation, preprocessing and prediction for
 a given SAM model.
 
 .. code-block:: python
 
     import torch
 
-    from kornia.contrib import Sam
-    from kornia.contrib.sam.prompter import SamPrompter
+    from kornia.contrib import SamConfig
+    from kornia.contrib.prompter import ImagePrompter
     from kornia.io import load_image, ImageLoadType
     from kornia.geometry.keypoints import Keypoints
     from kornia.geometry.boxes import Boxes
@@ -118,14 +55,17 @@ a given SAM model.
     checkpoint_path = './path_for_the_vit_h_checkpoint.pth'
     device = get_cuda_device_if_available()
 
-    # Load the model
-    sam_model = Sam.build(model_type, checkpoint_path, device)
-
     # Load image
     image = load_image('./example.jpg', ImageLoadType.RGB8, device).float()
 
+    # Define the model config
+    config = SamConfig(model_type, checkpoint)
+
     # Load the prompter
-    prompter = SamPrompter(sam_model)
+    prompter = ImagePrompter(config, device=device)
+
+    # You can use torch dynamo/compile API with:
+    # prompter.compile()
 
     # set the image: This will preprocess the image and already generate the embeddings of it
     prompter.set_image(image)
@@ -182,6 +122,61 @@ a given SAM model.
 Read more about the `SegmentationResults` on :ref:`the official docs<anchor SegmentationResults>`
 
 
+
+Load from config
+^^^^^^^^^^^^^^^^
+.. code-block:: python
+
+    from kornia.contrib import Sam, SamConfig
+    from kornia.utils import get_cuda_device_if_available
+
+    # model_type can be:
+    #   0, 'vit_h' or `kornia.contrib.SamModelType.vit_h`
+    #   1, 'vit_l' or `kornia.contrib.SamModelType.vit_l`
+    #   2, 'vit_b' or `kornia.contrib.SamModelType.vit_b`
+    model_type = 'vit_b'
+
+    # The checkpoint can be a filepath or a url
+    checkpoint = './path_for_the_model_checkpoint.pth'
+    device = get_cuda_device_if_available()
+
+    # Load config
+    config = SamConfig(model_type, checkpoint)
+
+    # Load the model with checkpoint
+    sam_model = Sam.from_config(config)
+
+    # Move to desired device
+    sam_model = sam_model.to(device)
+
+
+Load checkpoint
+^^^^^^^^^^^^^^^
+With the load checkpoint method you can load from a file or directly from a URL. The official (by meta) model weights are:
+
+#. `vit_h`: `ViT-H SAM model - https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth <https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth>`_.
+#. `vit_l`: `ViT-L SAM model - https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth <https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth>`_.
+#. `vit_b`: `ViT-B SAM model - https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth <https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth>`_.
+
+
+.. code-block:: python
+
+    from kornia.contrib import Sam, SamConfig
+    from kornia.utils import get_cuda_device_if_available
+
+    model_type = 'vit_b'
+
+    # The checkpoint can be a filepath or a url
+    checkpoint = './path_for_the_model_checkpoint.pth'
+    device = get_cuda_device_if_available()
+
+    # Load/build the model
+    sam_model = Sam.from_config(SamConfig(model_type))
+
+    # Load the checkpoint
+    sam_model.load_checkpoint(checkpoint, device)
+
+
 .. Mask Generator
 .. ^^^^^^^^^^^^^^
 
@@ -194,10 +189,11 @@ This is a simple example, of how to directly use the SAM model loaded. We recomm
 .. code-block:: python
 
     from kornia.contrib import Sam
-    from kornia.contrib.sam.base import SegmentationResults
+    from kornia.contrib.models import SegmentationResults
     from kornia.io import load_image, ImageLoadType
     from kornia.utils import get_cuda_device_if_available
     from kornia.geometry import resize
+    from kornia.enhance import normalize
 
     model_type = 'vit_b' # or can be a number `2` or the enum sam.SamModelType.vit_b
     checkpoint_path = './path_for_the_model_checkpoint.pth'
@@ -218,8 +214,12 @@ This is a simple example, of how to directly use the SAM model loaded. We recomm
     # Embed prompts -- ATTENTION: should match the coordinates after the resize of the image
     sparse_embeddings, dense_embeddings = sam_model.prompt_encoder(points=None, boxes=None, masks=None)
 
+    # define the info for normalize the input
+    pixel_mean = torch.tensor(...)
+    pixel_std = torch.tensor(...)
+
     # Preprocess input
-    inpt = (inpt - sam_model.pixel_mean) / sam_model.pixel_std
+    inpt = normalize(inpt, pixel_mean, pixel_std)
     padh = model_sam.image_encoder.img_size - h
     padw = model_sam.image_encoder.img_size - w
     inpt = pad(inpt, (0, padw, 0, padh))

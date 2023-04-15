@@ -8,13 +8,14 @@ anything/blob/3518c86b78b3bc9cf4fbe3d18e682fad1c79dc51/segment_anything/modeling
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
 import torch
 
 from kornia.contrib.models import SegmentationResults
-from kornia.contrib.models.prompters.base import PrompterModelBase
+from kornia.contrib.models.base import ModelBase
 from kornia.contrib.sam.architecture.common import LayerNorm
 from kornia.contrib.sam.architecture.image_encoder import ImageEncoderViT
 from kornia.contrib.sam.architecture.mask_decoder import MaskDecoder
@@ -32,7 +33,34 @@ class SamModelType(Enum):
     vit_b = 2
 
 
-class Sam(PrompterModelBase[SamModelType]):
+@dataclass
+class SamConfig:
+    """Encapsulate the Config to build a SAM model.
+
+    Args:
+        model_type: the available models are:
+
+            - 0, 'vit_h' or :func:`kornia.contrib.sam.SamModelType.vit_h`
+            - 1, 'vit_l' or :func:`kornia.contrib.sam.SamModelType.vit_l`
+            - 2, 'vit_b' or :func:`kornia.contrib.sam.SamModelType.vit_b`
+
+        checkpoint: URL or a path for a file with the weights of the model
+        encoder_embed_dim: Patch embedding dimension.
+        encoder_depth: Depth of ViT.
+        encoder_num_heads: Number of attention heads in each ViT block.
+        encoder_global_attn_indexes: Encoder indexes for blocks using global attention.
+    """
+
+    model_type: str | int | SamModelType | None = None
+    checkpoint: str | None = None
+
+    encoder_embed_dim: int | None = None
+    encoder_depth: int | None = None
+    encoder_num_heads: int | None = None
+    encoder_global_attn_indexes: tuple[int, ...] | None = None
+
+
+class Sam(ModelBase[SamConfig]):
     mask_threshold: float = 0.0
 
     def __init__(
@@ -53,21 +81,20 @@ class Sam(PrompterModelBase[SamModelType]):
         self.mask_decoder = mask_decoder
 
     @staticmethod
-    def build(model_type: str | int | SamModelType) -> Sam:
-        """Build the SAM model based on it's type.
+    def from_config(config: SamConfig) -> Sam:
+        """Build/load the SAM model based on it's config.
 
         Args:
-           model_type: the available models are:
-
-               - 0, 'vit_h' or :func:`kornia.contrib.sam.SamModelType.vit_h`
-               - 1, 'vit_l' or :func:`kornia.contrib.sam.SamModelType.vit_l`
-               - 2, 'vit_b' or :func:`kornia.contrib.sam.SamModelType.vit_b`
+            config: The SamConfig data structure. If the model_type is available, build from it, otherwise will use
+                    the parameters set.
         Returns:
             The respective SAM model
 
         Example:
-            >>> sam_model = Sam.build('vit_b')
+            >>> from kornia.contrib import SamConfig
+            >>> sam_model = Sam.from_config(SamConfig('vit_b'))
         """
+        model_type = config.model_type
 
         if isinstance(model_type, int):
             model_type = SamModelType(model_type)
@@ -95,58 +122,23 @@ class Sam(PrompterModelBase[SamModelType]):
                 encoder_num_heads=16,
                 encoder_global_attn_indexes=(7, 15, 23, 31),
             )
+        elif (
+            isinstance(config.encoder_embed_dim, int)
+            and isinstance(config.encoder_depth, int)
+            and isinstance(config.encoder_num_heads, int)
+            and isinstance(config.encoder_global_attn_indexes, int)
+        ):
+            model = _build_sam(
+                encoder_embed_dim=config.encoder_embed_dim,
+                encoder_depth=config.encoder_depth,
+                encoder_num_heads=config.num_heads,
+                encoder_global_attn_indexes=config.encoder_global_attn_indexes,
+            )
         else:
-            raise NotImplementedError('Unexpected model type. Should be vit_b, vit_l or vit_h.')
+            raise NotImplementedError('Unexpected config. The model_type should be provide or the encoder configs.')
 
-        return model
-
-    @staticmethod
-    def from_pretrained(
-        model_type: str | int | SamModelType, checkpoint: str | None = None, device: torch.device | None = None
-    ) -> Sam:
-        """This builds the desired SAM model, load the checkpoint and move the model into the desired device.
-
-        Args:
-            model_type: the available models are:
-
-                - 0, 'vit_h' or :func:`kornia.contrib.sam.SamModelType.vit_h`
-                - 1, 'vit_l' or :func:`kornia.contrib.sam.SamModelType.vit_l`
-                - 2, 'vit_b' or :func:`kornia.contrib.sam.SamModelType.vit_b`
-
-            checkpoint: The url or filepath for the respective checkpoint
-            device: The desired device to load the weights and move the model
-
-        Returns:
-            The respective SAM model
-
-        Example:
-            >>> # Input should be a RGB batched image
-            >>> inpt = torch.randint(0, 255, (1, 3, 384, 384)).float()
-            >>> # Sam model expects a image RGB with resolution 1024x1024
-            >>> inpt = kornia.geometry.resize(inpt, (1024, 1024))
-            >>> sam_model = Sam.from_pretrained('vit_b', None, 'cpu')
-            >>> # Embed prompts
-            >>> sparse_embeddings, dense_embeddings = sam_model.prompt_encoder(points=None, boxes=None, masks=None)
-            >>> # Predict masks
-            >>> logits, scores = sam_model.mask_decoder(
-            ...    image_embeddings=sam_model.image_encoder(inpt),
-            ...    image_pe=sam_model.prompt_encoder.get_dense_pe(),
-            ...    sparse_prompt_embeddings=sparse_embeddings,
-            ...    dense_prompt_embeddings=dense_embeddings,
-            ...    multimask_output=False,
-            ... )
-            >>> logits.shape
-            torch.Size([1, 1, 256, 256])
-            >>> scores.shape
-            torch.Size([1, 1])
-        """
-
-        model = Sam.build(model_type)
-
-        if checkpoint:
-            model.load_checkpoint(checkpoint, device)
-
-        model = model.to(device=device)
+        if config.checkpoint:
+            model.load_checkpoint(config.checkpoint)
 
         return model
 

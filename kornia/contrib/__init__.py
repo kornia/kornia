@@ -1,4 +1,4 @@
-from kornia.contrib.sam import Sam, SamModelType
+from kornia.contrib.sam import Sam, SamConfig, SamModelType
 
 from .classification import ClassificationHead
 from .connected_components import connected_components
@@ -38,5 +38,6 @@ __all__ = [
     "DistanceTransform",
     "diamond_square",
     "Sam",
+    "SamConfig",
     "SamModelType",
 ]

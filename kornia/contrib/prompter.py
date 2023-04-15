@@ -2,40 +2,111 @@ from __future__ import annotations
 
 from typing import Any
 
-from torch import no_grad
+import torch
 
-from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation import LongestMaxSize
 from kornia.augmentation.container.augment import AugmentationSequential
 from kornia.contrib.models import Prompts, SegmentationResults
-from kornia.contrib.models.base import ModelType
-from kornia.contrib.models.prompters.base import PrompterModelBase
-from kornia.core import Tensor
+from kornia.contrib.sam import Sam, SamConfig
+from kornia.core import Tensor, pad, tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.enhance import normalize
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
 
 class ImagePrompter:
-    """This class uses a given model to generate Segmentations results from a batch of prompts.
+    """This class allow the user to run multiple query with multiple prompts for a model.
+
+    At the moment, we just support the SAM model. The model is loaded based on the given config.
+
+    For default the images are transformed to have their long side with size of the `image_encoder.img_size`. This
+    Prompter class ensure to transform the images and the prompts before prediction. Also, the image is passed
+    automatically for the method `preprocess_image`, which is responsible for normalize the image and pad it to have
+    the right size for the SAM model :math:`(\text{image_encoder.img_size}, \text{image_encoder.img_size})`. For
+    default the image is normalized by the mean and standard deviation of the SAM dataset values.
 
     Args:
-        model: The desired model to be used to generate results from prompts
-        *transforms: The augmentation transforms desired to be performed on the input before prediction
+        config: A model config to generate the model. Now just the SAM model is supported.
+        device: The desired device to use the model.
+        dtype: The desired dtype to use the model.
+
+    Example:
+        >>> # prompter = ImagePrompter() # Will load the vit h for default
+        >>> # You can load a custom SAM type for modifying the config
+        >>> prompter = ImagePrompter(SamConfig('vit_b'))
+        >>> image = torch.rand(3, 25, 30)
+        >>> prompter.set_image(image)
+        >>> boxes = Boxes(
+        ...    torch.tensor(
+        ...         [[[[0, 0], [0, 10], [10, 0], [10, 10]]]],
+        ...         device=prompter.device,
+        ...         dtype=torch.float32
+        ...    ),
+        ...    mode='xyxy'
+        ... )
+        >>> prediction = prompter.predict(boxes=boxes)
+        >>> prediction.logits.shape
+        torch.Size([3, 256, 256])
     """
 
-    def __init__(self, model: PrompterModelBase[ModelType], *transforms: _AugmentationBase):
-        self.model = model
-        self.transforms = AugmentationSequential(*transforms, same_on_batch=True)
-        self.pixel_mean: Tensor | None = None
-        self.pixel_std: Tensor | None = None
+    def __init__(
+        self,
+        config: SamConfig = SamConfig(model_type='vit_h'),
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
+    ) -> None:
+        super().__init__()
+        if isinstance(config, SamConfig):
+            self.model = Sam.from_config(config)
+            transforms = (LongestMaxSize(self.model.image_encoder.img_size, p=1.0),)
+            self.pixel_mean: Tensor | None = tensor([123.675, 116.28, 103.53], device=device, dtype=dtype)
+            self.pixel_std: Tensor | None = tensor([58.395, 57.12, 57.375], device=device, dtype=dtype)
+        else:
+            raise NotImplementedError
 
+        self.model = self.model.to(device=device, dtype=dtype)
+        self.transforms = AugmentationSequential(*transforms, same_on_batch=True)
+
+        self.device = device
+        self.dtype = dtype
         self._original_image_size: None | tuple[int, int] = None
         self._input_image_size: None | tuple[int, int] = None
         self._input_encoder_size: None | tuple[int, int] = None
         self.reset_image()
 
-    @no_grad()
-    def set_image(self, image: Tensor, *args: Any, **kwargs: Any) -> None:
+    def preprocess_image(self, x: Tensor, mean: Tensor | None = None, std: Tensor | None = None) -> Tensor:
+        """Normalize and pad a tensor.
+
+        For normalize the tensor: will priorize the `mean` and `std` passed as argument, if None will use the default
+        Sam Dataset values.
+
+        For pad the tensor: Will pad the tensor into the right and bottom to match with the size of
+        `self.model.image_encoder.img_size`
+
+        Args:
+            x: The image to be preprocessed
+            mean: Mean for each channel.
+            std: Standard deviations for each channel.
+
+        Returns:
+            The image preprocessed (normalized if has mean and str available and padded to encoder size)
+        """
+
+        if isinstance(mean, Tensor) and isinstance(std, Tensor):
+            x = normalize(x, mean, std)
+        elif isinstance(self.pixel_mean, Tensor) and isinstance(self.pixel_std, Tensor):
+            x = normalize(x, self.pixel_mean, self.pixel_std)
+
+        encoder_im_size = self.model.image_encoder.img_size
+        pad_h = encoder_im_size - x.shape[-2]
+        pad_w = encoder_im_size - x.shape[-1]
+        x = pad(x, (0, pad_w, 0, pad_h))
+
+        return x
+
+    @torch.no_grad()
+    def set_image(self, image: Tensor, mean: Tensor | None = None, std: Tensor | None = None) -> None:
         """Set the embeddings from the given image with `image_decoder` of the model.
 
         Prepare the given image with the selected transforms and the preprocess method.
@@ -55,8 +126,7 @@ class ImagePrompter:
         self._tfs_params = self.transforms._params
         self._input_image_size = (image.shape[-2], image.shape[-1])
 
-        if hasattr(self, 'preprocess_image'):
-            image = self.preprocess_image(image, *args, **kwargs)
+        image = self.preprocess_image(image, mean, std)
 
         self._input_encoder_size = (image.shape[-2], image.shape[-1])
 
@@ -140,7 +210,7 @@ class ImagePrompter:
 
         return Prompts(points=points, boxes=bbox, masks=masks)
 
-    @no_grad()
+    @torch.no_grad()
     def predict(
         self,
         keypoints: Keypoints | Tensor | None = None,
@@ -171,6 +241,7 @@ class ImagePrompter:
         Returns:
             A prediction with the logits and scores (IoU of each predicted mask)
         """
+
         KORNIA_CHECK(self.is_image_set, 'An image must be set with `self.set_image(...)` before `predict` be called!')
 
         prompts = self.preprocess_prompts(keypoints, keypoints_labels, boxes, masks)
@@ -212,3 +283,92 @@ class ImagePrompter:
 
         self.image_embeddings = None
         self.is_image_set = False
+
+    def compile(
+        self,
+        *,
+        fullgraph: bool = False,
+        dynamic: bool = False,
+        backend: str = 'inductor',
+        mode: str | None = None,
+        options: dict[Any, Any] = {},
+        disable: bool = False,
+    ) -> None:
+        """Applies `torch.compile(...)`/dynamo API into the ImagePrompter API.
+
+        .. note:: For more information about the dynamo API check the official docs
+                  https://pytorch.org/docs/stable/generated/torch.compile.html
+
+        Args:
+            fullgraph: Whether it is ok to break model into several subgraphs
+            dynamic: Use dynamic shape tracing
+            backend: backend to be used
+            mode: Can be either “default”, “reduce-overhead” or “max-autotune”
+            options: A dictionary of options to pass to the backend.
+            disable: Turn torch.compile() into a no-op for testing
+
+        Example:
+            >>> # prompter = ImagePrompter()
+            >>> # prompter.compile() # You should have torch >= 2.0.0 installed
+            >>> # Use the prompter methods ...
+        """
+
+        # self.set_image = torch.compile(  # type: ignore[method-assign]
+        #     self.set_image,
+        #     fullgraph=fullgraph,
+        #     dynamic=dynamic,
+        #     backend=backend,
+        #     mode=mode,
+        #     options=options,
+        #     disable=disable,
+        # )
+        # FIXME: compile set image will try to compile AugmentationSequential which fails
+        self.model.image_encoder = torch.compile(  # type: ignore
+            self.model.image_encoder,
+            fullgraph=fullgraph,
+            dynamic=dynamic,
+            backend=backend,
+            mode=mode,
+            options=options,
+            disable=disable,
+        )
+
+        # self.preprocess_image = torch.compile(  # type: ignore[method-assign]
+        #     self.preprocess_image,
+        #     fullgraph=fullgraph,
+        #     dynamic=dynamic,
+        #     backend=backend,
+        #     mode=mode,
+        #     options=options,
+        #     disable=disable,
+        # )
+
+        # FIXME: compile predict will try to compile Preproc prompts, which need to compileAugmentationSequential
+        # which fails
+        # self.predict = torch.compile(  # type: ignore[method-assign]
+        #     self.predict,
+        #     fullgraph=fullgraph,
+        #     dynamic=dynamic,
+        #     backend=backend,
+        #     mode=mode,
+        #     options=options,
+        #     disable=disable,
+        # )
+        self.model.mask_decoder = torch.compile(  # type: ignore
+            self.model.mask_decoder,
+            fullgraph=fullgraph,
+            dynamic=dynamic,
+            backend=backend,
+            mode=mode,
+            options=options,
+            disable=disable,
+        )
+        self.model.prompt_encoder = torch.compile(  # type: ignore
+            self.model.prompt_encoder,
+            fullgraph=fullgraph,
+            dynamic=dynamic,
+            backend=backend,
+            mode=mode,
+            options=options,
+            disable=disable,
+        )

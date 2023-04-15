@@ -2,17 +2,16 @@ from __future__ import annotations
 
 import os
 from abc import ABC, abstractmethod
-from enum import Enum
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar, cast
 
 import torch
 
 from kornia.core import Module
 
-ModelType = TypeVar('ModelType', bound=Enum)
+ModelConfig = TypeVar('ModelConfig')
 
 
-class ModelBase(ABC, Module, Generic[ModelType]):
+class ModelBase(ABC, Module, Generic[ModelConfig]):
     """Abstract model class with some utilities function."""
 
     def load_checkpoint(self, checkpoint: str, device: torch.device | None = None) -> None:
@@ -33,24 +32,26 @@ class ModelBase(ABC, Module, Generic[ModelType]):
 
     @staticmethod
     @abstractmethod
-    def build(model_type: str | int | ModelType) -> ModelBase[ModelType]:
-        """This function should build the desired model type.
+    def from_config(config: ModelConfig) -> ModelBase[ModelConfig]:
+        """This function should build/load the model.
 
         Args:
-            model_type: The mapping for the desired model type/size
+            config: The specifications for the model be build/loaded
         """
         raise NotImplementedError
 
-    @staticmethod
-    @abstractmethod
-    def from_pretrained(
-        model_type: str | int | ModelType, checkpoint: str | None = None, device: torch.device | None = None
-    ) -> ModelBase[ModelType]:
-        """This function should build the desired model type, load the checkpoint and move to device.
-
-        Args:
-            model_type: The mapping for the desired model type/size
-            checkpoint: A URL or a path for the weights/states to be loaded
-            device: The target device to allocate the model.
-        """
-        raise NotImplementedError
+    def compile(
+        self,
+        *,
+        fullgraph: bool = False,
+        dynamic: bool = False,
+        backend: str = 'inductor',
+        mode: str | None = None,
+        options: dict[Any, Any] = {},
+        disable: bool = False,
+    ) -> ModelBase[ModelConfig]:
+        compiled = torch.compile(
+            self, fullgraph=fullgraph, dynamic=dynamic, backend=backend, mode=mode, options=options, disable=disable
+        )
+        compiled = cast(ModelBase[ModelConfig], compiled)
+        return compiled

@@ -1,14 +1,17 @@
+import sys
+
 import pytest
 import torch
 
-from kornia.contrib.sam.prompter import SamPrompter
+from kornia.contrib import SamConfig
+from kornia.contrib.prompter import ImagePrompter
 from kornia.testing import BaseTester
 
 
-class TestSamPrompter(BaseTester):
+class TestImagePrompter(BaseTester):
     def test_smoke(self, device, dtype):
         inpt = torch.rand(3, 77, 128, device=device, dtype=dtype)
-        prompter = SamPrompter('vit_b', 'https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth', device)
+        prompter = ImagePrompter(SamConfig('vit_b'), device, dtype)
 
         prompter.set_image(inpt)
         assert prompter.is_image_set
@@ -21,7 +24,7 @@ class TestSamPrompter(BaseTester):
     @pytest.mark.parametrize('multimask_output', [True, False])
     def test_cardinality(self, dtype, device, batch_size, N, multimask_output):
         inpt = torch.rand(3, 77, 128, device=device, dtype=dtype)
-        prompter = SamPrompter('vit_b', 'https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth', device)
+        prompter = ImagePrompter(SamConfig('vit_b'), device, dtype)
 
         keypoints = torch.randint(0, min(inpt.shape[-2:]), (batch_size, N, 2), device=device).to(dtype=dtype)
         labels = torch.randint(0, 1, (batch_size, N), device=device).to(dtype=dtype)
@@ -34,7 +37,7 @@ class TestSamPrompter(BaseTester):
         assert out.logits.shape == (C, 256, 256)
 
     def test_exception(self):
-        prompter = SamPrompter('vit_b', 'https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth')
+        prompter = ImagePrompter(SamConfig('vit_b'))
 
         inpt = torch.rand(1, 3, 1, 2)
 
@@ -79,18 +82,20 @@ class TestSamPrompter(BaseTester):
     def test_module(self):
         ...
 
-    @pytest.mark.skip(reason='Needs to be reviewed')
-    def test_dynamo(self, device, dtype, torch_optimizer):
+    def test_dynamo(self, device, dtype):
+        if not (hasattr(torch, 'compile') and sys.platform == "linux"):
+            pytest.skip(f"skipped because {torch.__version__} not have `compile` available! Failed to setup dynamo.")
         img = torch.rand(3, 128, 75, device=device, dtype=dtype)
 
-        prompter = SamPrompter('vit_b', 'https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth', device)
+        prompter = ImagePrompter(SamConfig('vit_b'), device, dtype)
         prompter.set_image(img)
 
-        op = prompter.predict
-        op_optimized = torch_optimizer(op)
+        expected = prompter.predict(img)
+        prompter.reset_image()
 
-        expected = op(img)
-        actual = op_optimized(img)
+        prompter.compile()
+        prompter.set_image(img)
+        actual = prompter.predict(img)
 
         self.assert_close(expected.logits, actual.logits)
         self.assert_close(expected.scores, actual.scores)
