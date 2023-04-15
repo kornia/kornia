@@ -260,12 +260,18 @@ def laplacian_1d(window_size: int, *, device: Device | None = None, dtype: Dtype
     return filter_1d
 
 
+def get_box_kernel1d(kernel_size: int, *, device: Device | None = None, dtype: Dtype | None = None) -> Tensor:
+    r"""Utility function that returns a box filter."""
+    scale = tensor(1.0 / kernel_size, device=device, dtype=dtype)
+    return scale.expand(1, kernel_size)
+
+
 def get_box_kernel2d(
     kernel_size: tuple[int, int] | int, *, device: Device | None = None, dtype: Dtype | None = None
 ) -> Tensor:
     r"""Utility function that returns a box filter."""
     kx, ky = _unpack_2d_ks(kernel_size)
-    scale = tensor(1.0, device=device, dtype=dtype) / tensor([kx * ky], device=device, dtype=dtype)
+    scale = tensor(1.0 / (kx * ky), device=device, dtype=dtype)
     return scale.expand(1, kx, ky)
 
 
