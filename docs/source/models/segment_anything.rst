@@ -32,27 +32,74 @@ can be used to generate masks for all objects in an image.
 
 How to use SAM from Kornia
 --------------------------
+The Kornia API for SAM try to provide a simple API to access initialize the model and load/download the weights. Also,
+providing it to a high-level API called :code:`ImagePrompter`, which allow the users to set an image and run multiple
+queries multiple times.
+
+The :code:`ImagePrompter` works querying on a single image, if you want to explore and query into a batch of images,
+you can use the :code:`Sam` directly. But, for it you will need to write the boilerplate to preprocess and postprocess to
+use it. This boilerplate, is already handle on the high-level API :code:`ImagePrompter`.
 
 Prompter
 ^^^^^^^^
 .. _anchor Prompter:
 
-The High level API `ImagePrompter` handle with the image and prompt transformation, preprocessing and prediction for
+The High level API :code:`ImagePrompter` handle with the image and prompt transformation, preprocessing and prediction for
 a given SAM model.
+
+About the :code:`ImagePrompter`:
+
+#. From a `ModelConfig` loads the desired model with the desired checkpoint to be used as the model to receive the query
+   prompts. For know we just support Segment Anything model, where the *SAM-h* is the default option.
+
+#. Based on the model, the :code:`ImagePrompter` will handle with the necessary transformations to be done into the image
+   and prompts before apply it to the model. These transformations are done using PyTorch backed, by our API of
+   augmentations. Where we use the :class:`kornia.geometry.augmentation.AugmentationSequential` to handle with the different
+   data formats (keypoints, boxes, masks, image).
+
+#. When you use :code:`prompter.set_image(...)`, the prompter will preprocess this image, and then pass it to the encoder,
+   and cache the embeddings to query it after.
+
+    * The preprocess steps are: 1) Resize the image to have its longer side the same size as :code:`image_encoder` image size
+      input. 2) Cache the information of this transformation to apply into the prompts. 3) normalize the image based on the
+      passed mean and standard deviation, or with the values of the SAM dataset. 4) pad on the bottom and right for the image
+      have the encoder expected resolution: :math:`(\text{image_encoder.img_size}, \text{image_encoder.img_size})`.
+
+    * The best image to be used will always have the shape equals to
+      :math:`(\text{image_encoder.img_size}, \text{image_encoder.img_size})`.
+
+#. When you use :code:`prompter.predict(...)`, the prompter will apply the cached transformations on the coordinates of the
+   prompts, and then query this prompts into the cached embeddings.
+
+    * If :code:`output_original_size=True`, the results structure will upsample the logits from it's resolution into the
+      image input original resolution. The output logits has the height and width equals to 256.
+
+#. You can benefit from using the :code:`torch.compile(...)` API (dynamo) for torch >= 2.0.0 version. To compile with dynamo
+   we provide the method :code:`prompter.compile(...)` which will optimize the right parts of the backend model and the
+   prompter itself.
+
+--------------
+
+Example of using the :code:`ImagePrompter`:
+
+Exploring how to simple initialize the :code:`ImagePrompter`, automatically load the weights from a URL,
+read the image and set it to be query, how to write the prompts, and the multiple ways we can use these prompts
+to query the image masks from the SAM model.
+
 
 .. code-block:: python
 
     import torch
 
-    from kornia.contrib import SamConfig
+    from kornia.contrib.sam import SamConfig
     from kornia.contrib.prompter import ImagePrompter
     from kornia.io import load_image, ImageLoadType
     from kornia.geometry.keypoints import Keypoints
     from kornia.geometry.boxes import Boxes
     from kornia.utils import get_cuda_device_if_available
 
-    model_type = 'vit_h' # or can be a number `0` or the enum kornia.contrib.sam.SamModelType.vit_h
-    checkpoint_path = './path_for_the_vit_h_checkpoint.pth'
+    model_type = 'vit_h'
+    checkpoint = './https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth'
     device = get_cuda_device_if_available()
 
     # Load image
@@ -71,32 +118,33 @@ a given SAM model.
     prompter.set_image(image)
 
     # Generate the prompts
-    input_point = Keypoints(torch.tensor([[[500, 375]]], device=device, dtype=torch.float32)) # BxNx2
-    input_label = torch.tensor([[1]], device=device) # BxN -- 1 indicates a foreground point; 0 indicates a background point
-    input_box = Boxes(
+    keypoints = Keypoints(torch.tensor([[[500, 375]]], device=device, dtype=torch.float32)) # BxNx2
+    # For the keypoints label: 1 indicates a foreground point; 0 indicates a background point
+    keypoints_labels = torch.tensor([[1]], device=device) # BxN
+    boxes = Boxes(
         torch.tensor([[[[425, 600], [425, 875], [700, 600], [700, 875]]]], device=device, dtype=torch.float32), mode='xyxy'
     )
 
     # Runs the prediction with all prompts
     prediction = prompter.predict(
-        point_coords=input_point,
-        point_labels=input_label,
-        boxes=input_box,
+        point_coords=keypoints,
+        point_labels=keypoints_labels,
+        boxes=boxes,
         multimask_output=True,
     )
 
     #----------------------------------------------
     # or run the prediction with just the keypoints
     prediction = prompter.predict(
-        point_coords=input_point,
-        point_labels=input_label,
+        point_coords=keypoints,
+        point_labels=keypoints_labels,
         multimask_output=True,
     )
 
     #----------------------------------------------
     # or run the prediction with just the box
     prediction = prompter.predict(
-        boxes=input_box,
+        boxes=boxes,
         multimask_output=True,
     )
 
@@ -119,21 +167,25 @@ a given SAM model.
     print(prediction.logits.shape)
 
 
-Read more about the `SegmentationResults` on :ref:`the official docs<anchor SegmentationResults>`
+Read more about the :code:`SegmentationResults` on :ref:`the official docs<anchor SegmentationResults>`
 
 
 
 Load from config
 ^^^^^^^^^^^^^^^^
+You can build a SAM model by specifying the encoder parameters on the the :code:`SamConfig`, or from the model type. The
+:code:`from_config` method will first try to build the model based on the model type, otherwise will try from the specified
+parameters. If a checkpoint URL or path for a file is seted, the method will automatically load it.
+
 .. code-block:: python
 
-    from kornia.contrib import Sam, SamConfig
+    from kornia.contrib.sam import Sam, SamConfig
     from kornia.utils import get_cuda_device_if_available
 
     # model_type can be:
-    #   0, 'vit_h' or `kornia.contrib.SamModelType.vit_h`
-    #   1, 'vit_l' or `kornia.contrib.SamModelType.vit_l`
-    #   2, 'vit_b' or `kornia.contrib.SamModelType.vit_b`
+    #   0, 'vit_h' or `kornia.contrib.sam.SamModelType.vit_h`
+    #   1, 'vit_l' or `kornia.contrib.sam.SamModelType.vit_l`
+    #   2, 'vit_b' or `kornia.contrib.sam.SamModelType.vit_b`
     model_type = 'vit_b'
 
     # The checkpoint can be a filepath or a url
@@ -158,10 +210,12 @@ With the load checkpoint method you can load from a file or directly from a URL.
 #. `vit_l`: `ViT-L SAM model - https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth <https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth>`_.
 #. `vit_b`: `ViT-B SAM model - https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth <https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth>`_.
 
+If a URL is passed the model will automatically download and cache the weights using
+:code:`torch.hub.load_state_dict_from_url`
 
 .. code-block:: python
 
-    from kornia.contrib import Sam, SamConfig
+    from kornia.contrib.sam import Sam, SamConfig
     from kornia.utils import get_cuda_device_if_available
 
     model_type = 'vit_b'
@@ -188,7 +242,7 @@ This is a simple example, of how to directly use the SAM model loaded. We recomm
 
 .. code-block:: python
 
-    from kornia.contrib import Sam
+    from kornia.contrib.sam import Sam
     from kornia.contrib.models import SegmentationResults
     from kornia.io import load_image, ImageLoadType
     from kornia.utils import get_cuda_device_if_available

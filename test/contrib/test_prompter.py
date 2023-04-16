@@ -3,8 +3,8 @@ import sys
 import pytest
 import torch
 
-from kornia.contrib import SamConfig
 from kornia.contrib.prompter import ImagePrompter
+from kornia.contrib.sam import SamConfig
 from kornia.testing import BaseTester
 
 
