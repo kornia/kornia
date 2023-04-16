@@ -26,7 +26,7 @@ Structures
 ImagePrompter
 -------------
 
-.. autoclass:: kornia.contrib.prompter.ImagePrompter
+.. autoclass:: kornia.contrib.image_prompter.ImagePrompter
     :members: set_image, reset_image, compile, predict, preprocess_image, preprocess_prompts
 
 Edge Detection
