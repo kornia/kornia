@@ -85,6 +85,15 @@ class TestBoxBlur(BaseTester):
 
         self.assert_close(actual[:, 0, 2, 2], expected)
 
+    def test_kernel_3x1(self, device, dtype):
+        inp = torch.arange(16, device=device, dtype=dtype).view(1, 1, 4, 4)
+
+        ky, kx = 3, 1
+        actual = box_blur(inp, (ky, kx))
+
+        self.assert_close(actual[0, 0, 0, 0], torch.tensor((4 + 0 + 4) / 3, device=device, dtype=dtype))
+        self.assert_close(actual[0, 0, 1, 0], torch.tensor((0 + 4 + 8) / 3, device=device, dtype=dtype))
+
     @pytest.mark.parametrize('batch_size', [1, 2])
     def test_noncontiguous(self, batch_size, device, dtype):
         inp = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
