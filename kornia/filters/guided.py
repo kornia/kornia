@@ -3,7 +3,7 @@ from __future__ import annotations
 import torch
 from torch.nn.functional import interpolate
 
-from kornia.core import Module, Tensor, as_tensor
+from kornia.core import Module, Tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 from .blur import box_blur
@@ -13,16 +13,16 @@ from .kernels import _unpack_2d_ks
 def _preprocess_fast_guided_blur(
     guidance: Tensor, input: Tensor, kernel_size: tuple[int, int] | int, subsample: int = 1
 ) -> tuple[Tensor, Tensor, tuple[int, int]]:
-    kx, ky = _unpack_2d_ks(kernel_size)
+    ky, kx = _unpack_2d_ks(kernel_size)
     if subsample > 1:
         s = 1 / subsample
         guidance_sub = interpolate(guidance, scale_factor=s, mode="nearest")
         input_sub = guidance_sub if input is guidance else interpolate(input, scale_factor=s, mode="nearest")
-        kx, ky = ((k - 1) // subsample + 1 for k in (kx, ky))
+        ky, kx = ((k - 1) // subsample + 1 for k in (ky, kx))
     else:
         guidance_sub = guidance
         input_sub = input
-    return guidance_sub, input_sub, (kx, ky)
+    return guidance_sub, input_sub, (ky, kx)
 
 
 def _guided_blur_grayscale_guidance(
@@ -192,12 +192,11 @@ class GuidedBlur(Module):
     """
 
     def __init__(
-        self, kernel_size: tuple[int, int] | int, eps: float | Tensor, border_type: str = 'reflect', subsample: int = 1
+        self, kernel_size: tuple[int, int] | int, eps: float, border_type: str = 'reflect', subsample: int = 1
     ):
         super().__init__()
         self.kernel_size = kernel_size
-        self.register_buffer("eps", as_tensor(eps).view(1))
-        self.eps: Tensor
+        self.eps = eps
         self.border_type = border_type
         self.subsample = subsample
 
