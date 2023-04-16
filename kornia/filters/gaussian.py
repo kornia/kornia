@@ -59,10 +59,10 @@ def gaussian_blur2d(
         sigma = sigma.to(device=input.device, dtype=input.dtype)
 
     if separable:
-        ks = _unpack_2d_ks(kernel_size)
+        ky, kx = _unpack_2d_ks(kernel_size)
         bs = sigma.shape[0]
-        kernel_x = get_gaussian_kernel1d(ks[1], sigma[:, 1].view(bs, 1))
-        kernel_y = get_gaussian_kernel1d(ks[0], sigma[:, 0].view(bs, 1))
+        kernel_x = get_gaussian_kernel1d(kx, sigma[:, 1].view(bs, 1))
+        kernel_y = get_gaussian_kernel1d(ky, sigma[:, 0].view(bs, 1))
         out = filter2d_separable(input, kernel_x, kernel_y, border_type)
     else:
         kernel = get_gaussian_kernel2d(kernel_size, sigma)
