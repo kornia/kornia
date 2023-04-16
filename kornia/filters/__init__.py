@@ -14,6 +14,7 @@ from .canny import Canny, canny
 from .dexined import DexiNed
 from .filter import filter2d, filter2d_separable, filter3d
 from .gaussian import GaussianBlur2d, gaussian_blur2d, gaussian_blur2d_t
+from .guided import GuidedBlur, guided_blur
 from .kernels import (
     gaussian,
     get_binary_kernel2d,
@@ -63,6 +64,7 @@ __all__ = [
     "get_sobel_kernel2d",
     "get_diff_kernel2d",
     "gaussian_blur2d",
+    "guided_blur",
     "laplacian",
     "laplacian_1d",
     "unsharp_mask",
@@ -102,4 +104,5 @@ __all__ = [
     "joint_bilateral_blur",
     "BilateralBlur",
     "JointBilateralBlur",
+    "GuidedBlur",
 ]
