@@ -91,7 +91,7 @@ class Sam(ModelBase[SamConfig]):
             The respective SAM model
 
         Example:
-            >>> from kornia.contrib import SamConfig
+            >>> from kornia.contrib.sam import SamConfig
             >>> sam_model = Sam.from_config(SamConfig('vit_b'))
         """
         model_type = config.model_type
