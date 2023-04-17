@@ -29,6 +29,7 @@ def box_blur(
         kernel_size: the blurring kernel size.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
+        separable: run as composition of two 1d-convolutions.
 
     Returns:
         the blurred tensor with shape :math:`(B,C,H,W)`.
@@ -73,7 +74,7 @@ class BoxBlur(Module):
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
-        normalized: if True, L1 norm of the kernel is set to 1.
+        separable: run as composition of two 1d-convolutions.
 
     Returns:
         the blurred input tensor.
