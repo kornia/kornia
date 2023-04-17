@@ -47,7 +47,7 @@ class ImagePrompter:
         ... )
         >>> prediction = prompter.predict(boxes=boxes)
         >>> prediction.logits.shape
-        torch.Size([3, 256, 256])
+        torch.Size([1, 3, 256, 256])
     """
 
     def __init__(
