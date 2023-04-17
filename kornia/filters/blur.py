@@ -7,11 +7,7 @@ from .kernels import _unpack_2d_ks, get_box_kernel1d, get_box_kernel2d
 
 
 def box_blur(
-    input: Tensor,
-    kernel_size: tuple[int, int] | int,
-    border_type: str = 'reflect',
-    normalized: bool = True,
-    separable: bool = True,
+    input: Tensor, kernel_size: tuple[int, int] | int, border_type: str = 'reflect', separable: bool = False
 ) -> Tensor:
     r"""Blur an image using the box filter.
 
@@ -33,7 +29,6 @@ def box_blur(
         kernel_size: the blurring kernel size.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
-        normalized: if True, L1 norm of the kernel is set to 1.
 
     Returns:
         the blurred tensor with shape :math:`(B,C,H,W)`.
@@ -96,16 +91,11 @@ class BoxBlur(Module):
     """
 
     def __init__(
-        self,
-        kernel_size: tuple[int, int] | int,
-        border_type: str = 'reflect',
-        normalized: bool = True,
-        separable: bool = True,
+        self, kernel_size: tuple[int, int] | int, border_type: str = 'reflect', separable: bool = False
     ) -> None:
         super().__init__()
         self.kernel_size = kernel_size
         self.border_type = border_type
-        self.normalized = normalized
         self.separable = separable
 
         if separable:
@@ -122,7 +112,6 @@ class BoxBlur(Module):
         return (
             f"{self.__class__.__name__}"
             f"(kernel_size={self.kernel_size}, "
-            f"normalized={self.normalized}, "
             f"border_type={self.border_type}, "
             f"separable={self.separable})"
         )
