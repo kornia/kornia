@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from kornia.core import Module, Tensor
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR
 
 from .filter import filter2d, filter2d_separable
 from .kernels import _unpack_2d_ks, get_box_kernel1d, get_box_kernel2d
@@ -44,6 +45,8 @@ def box_blur(
         >>> output.shape
         torch.Size([2, 4, 5, 7])
     """
+    KORNIA_CHECK_IS_TENSOR(input)
+
     if separable:
         ky, kx = _unpack_2d_ks(kernel_size)
         kernel_y = get_box_kernel1d(ky, device=input.device, dtype=input.dtype)
@@ -52,6 +55,7 @@ def box_blur(
     else:
         kernel = get_box_kernel2d(kernel_size, device=input.device, dtype=input.dtype)
         out = filter2d(input, kernel, border_type)
+
     return out
 
 
@@ -118,7 +122,7 @@ class BoxBlur(Module):
         )
 
     def forward(self, input: Tensor) -> Tensor:
+        KORNIA_CHECK_IS_TENSOR(input)
         if self.separable:
             return filter2d_separable(input, self.kernel_x, self.kernel_y, self.border_type)
-        else:
-            return filter2d(input, self.kernel, self.border_type)
+        return filter2d(input, self.kernel, self.border_type)
