@@ -268,7 +268,7 @@ class ImagePrompter:
         ):
             results.original_res_logits(self._input_image_size, self._original_image_size, self._input_encoder_size)
 
-        results = results.squeeze(0)
+        # results = results.squeeze(0)
 
         return results
 

@@ -19,7 +19,7 @@ class TestImagePrompter(BaseTester):
         prompter.reset_image()
         assert not prompter.is_image_set
 
-    @pytest.mark.parametrize('batch_size', [1, 3])
+    @pytest.mark.parametrize('batch_size', [1, 4])
     @pytest.mark.parametrize('N', [2, 5])
     @pytest.mark.parametrize('multimask_output', [True, False])
     def test_cardinality(self, device, batch_size, N, multimask_output):
@@ -36,7 +36,8 @@ class TestImagePrompter(BaseTester):
         out = prompter.predict((keypoints, labels), multimask_output=multimask_output)
 
         C = 3 if multimask_output else 1
-        assert out.logits.shape == (C, 256, 256)
+        assert out.logits.shape == (1, C, 256, 256)
+        assert out.scores.shape == (1, C)
 
     def test_exception(self):
         prompter = ImagePrompter(SamConfig('vit_b'))
