@@ -64,15 +64,15 @@ Image Segmentation
 Segment Anything (SAM)
 ^^^^^^^^^^^^^^^^^^^^^^
 
-.. autoclass:: kornia.contrib.sam.SamModelType
+.. autoclass:: kornia.contrib.models.sam.SamModelType
     :members:
     :undoc-members:
 
-.. autoclass:: kornia.contrib.sam.SamConfig
+.. autoclass:: kornia.contrib.models.sam.SamConfig
     :members:
     :undoc-members:
 
-.. autoclass:: kornia.contrib.sam.Sam
+.. autoclass:: kornia.contrib.models.sam.Sam
     :members: from_config, forward, load_checkpoint
     :undoc-members:
     :special-members: __init__,
