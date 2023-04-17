@@ -60,8 +60,8 @@ class ImagePrompter:
         if isinstance(config, SamConfig):
             self.model = Sam.from_config(config)
             transforms = (LongestMaxSize(self.model.image_encoder.img_size, p=1.0),)
-            self.pixel_mean: Tensor | None = tensor([123.675, 116.28, 103.53], device=device, dtype=dtype)
-            self.pixel_std: Tensor | None = tensor([58.395, 57.12, 57.375], device=device, dtype=dtype)
+            self.pixel_mean: Tensor | None = tensor([123.675, 116.28, 103.53], device=device, dtype=dtype) / 255
+            self.pixel_std: Tensor | None = tensor([58.395, 57.12, 57.375], device=device, dtype=dtype) / 255
         else:
             raise NotImplementedError
 
@@ -112,9 +112,9 @@ class ImagePrompter:
         Prepare the given image with the selected transforms and the preprocess method.
 
         Args:
-            image: RGB image. Normally 8bits images (range of [0-255]), the model preprocess normalize the
-                   pixel values with the mean and std defined in its initialization. Expected to be into a float dtype.
-                   Shape :math:`(3, H, W)`.
+            image: RGB image. Normally images with range of [0-1], the model preprocess normalize the
+                   pixel values with the mean and std defined in its initialization. Expected to be into a float32
+                   dtype. Shape :math:`(3, H, W)`.
         """
         KORNIA_CHECK_SHAPE(image, ['3', 'H', 'W'])
 

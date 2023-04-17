@@ -103,7 +103,7 @@ to query the image masks from the SAM model.
     device = get_cuda_device_if_available()
 
     # Load image
-    image = load_image('./example.jpg', ImageLoadType.RGB8, device).float()
+    image = load_image('./example.jpg', ImageLoadType.RGB32, device)
 
     # Define the model config
     config = SamConfig(model_type, checkpoint)
@@ -257,7 +257,7 @@ This is a simple example, of how to directly use the SAM model loaded. We recomm
     sam_model = Sam.from_pretrained(model_type, checkpoint_path, device)
 
     # Load image
-    image = load_image('./example.jpg', ImageLoadType.RGB8, device).float()
+    image = load_image('./example.jpg', ImageLoadType.RGB32, device)
 
     # Transform the image (CxHxW) into a batched input (BxCxHxW)
     image = image[None, ...]
