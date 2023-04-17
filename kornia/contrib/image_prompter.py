@@ -7,7 +7,7 @@ import torch
 from kornia.augmentation import LongestMaxSize
 from kornia.augmentation.container.augment import AugmentationSequential
 from kornia.contrib.models import Prompts, SegmentationResults
-from kornia.contrib.sam import Sam, SamConfig
+from kornia.contrib.models.sam import Sam, SamConfig
 from kornia.core import Tensor, pad, tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.enhance import normalize

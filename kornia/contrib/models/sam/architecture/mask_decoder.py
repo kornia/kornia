@@ -9,7 +9,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from kornia.contrib.sam.architecture.common import LayerNorm2d
+from kornia.contrib.models.sam.architecture.common import LayerNorm2d
 from kornia.core import Module, Tensor, concatenate, stack
 
 

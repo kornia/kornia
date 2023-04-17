@@ -4,7 +4,7 @@ import pytest
 import torch
 
 from kornia.contrib.image_prompter import ImagePrompter
-from kornia.contrib.sam import SamConfig
+from kornia.contrib.models.sam import SamConfig
 from kornia.testing import BaseTester
 
 

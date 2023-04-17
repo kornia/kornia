@@ -10,7 +10,7 @@ from math import pi
 import torch
 from torch import nn
 
-from kornia.contrib.sam.architecture.common import LayerNorm2d
+from kornia.contrib.models.sam.architecture.common import LayerNorm2d
 from kornia.core import Device, Module, Tensor, concatenate, stack, zeros
 
 

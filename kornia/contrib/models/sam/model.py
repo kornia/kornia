@@ -16,11 +16,11 @@ import torch
 
 from kornia.contrib.models import SegmentationResults
 from kornia.contrib.models.base import ModelBase
-from kornia.contrib.sam.architecture.common import LayerNorm
-from kornia.contrib.sam.architecture.image_encoder import ImageEncoderViT
-from kornia.contrib.sam.architecture.mask_decoder import MaskDecoder
-from kornia.contrib.sam.architecture.prompt_encoder import PromptEncoder
-from kornia.contrib.sam.architecture.transformer import TwoWayTransformer
+from kornia.contrib.models.sam.architecture.common import LayerNorm
+from kornia.contrib.models.sam.architecture.image_encoder import ImageEncoderViT
+from kornia.contrib.models.sam.architecture.mask_decoder import MaskDecoder
+from kornia.contrib.models.sam.architecture.prompt_encoder import PromptEncoder
+from kornia.contrib.models.sam.architecture.transformer import TwoWayTransformer
 from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
@@ -91,7 +91,7 @@ class Sam(ModelBase[SamConfig]):
             The respective SAM model
 
         Example:
-            >>> from kornia.contrib.sam import SamConfig
+            >>> from kornia.contrib.models.sam import SamConfig
             >>> sam_model = Sam.from_config(SamConfig('vit_b'))
         """
         model_type = config.model_type

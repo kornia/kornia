@@ -9,7 +9,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.contrib.sam.architecture.common import LayerNorm2d, MLPBlock
+from kornia.contrib.models.sam.architecture.common import LayerNorm2d, MLPBlock
 from kornia.core import Module, Tensor, pad, zeros
 
 
