@@ -54,6 +54,25 @@ class TestMedianBlur(BaseTester):
         self.assert_close(actual[0, 0, 2, 2], torch.tensor(3.0, device=device, dtype=dtype))
         self.assert_close(actual[0, 1, 1, 1], torch.tensor(14.0, device=device, dtype=dtype))
 
+    def test_kernel_3x1(self, device, dtype):
+        inp = torch.tensor(
+            [
+                [0.0, 0.0, 0.0, 0.0, 0.0],
+                [0.0, 3.0, 7.0, 5.0, 0.0],
+                [0.0, 3.0, 1.0, 1.0, 0.0],
+                [0.0, 6.0, 9.0, 2.0, 0.0],
+                [0.0, 0.0, 0.0, 0.0, 0.0],
+            ],
+            device=device,
+            dtype=dtype,
+        ).view(1, 1, 5, 5)
+
+        ky, kx = 3, 1
+        actual = median_blur(inp, (ky, kx))
+
+        self.assert_close(actual[0, 0, 2, 2], torch.tensor(7.0, device=device, dtype=dtype))
+        self.assert_close(actual[0, 0, 1, 1], torch.tensor(3.0, device=device, dtype=dtype))
+
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
         inp = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)

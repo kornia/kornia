@@ -5,6 +5,6 @@ numpy
 opencv-python
 pre-commit>=2
 pydocstyle
-pytest==7.3.0
+pytest==7.3.1
 pytest-cov==4
 scipy
