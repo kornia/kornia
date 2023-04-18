@@ -5,12 +5,21 @@ import torch
 from kornia.core import Tensor
 from kornia.geometry import transform_points
 
+__all__ = ['Keypoints', 'Keypoints3D']
+
 
 def _merge_keypoint_list(keypoints: List[Tensor]) -> Tensor:
     raise NotImplementedError
 
 
 class Keypoints:
+    """2D Keypoints containing Nx2 or BxNx2 points.
+
+    Args:
+        keypoints: Raw tensor or a list of Tensors with the Nx2 coordinates
+        raise_if_not_floating_point: will raise if the Tensor isn't float
+    """
+
     def __init__(self, keypoints: Union[Tensor, List[Tensor]], raise_if_not_floating_point: bool = True) -> None:
         self._N: Optional[List[int]] = None
 
@@ -198,6 +207,13 @@ class VideoKeypoints(Keypoints):
 
 
 class Keypoints3D:
+    """3D Keypoints containing Nx3 or BxNx3 points.
+
+    Args:
+        keypoints: Raw tensor or a list of Tensors with the Nx3 coordinates
+        raise_if_not_floating_point: will raise if the Tensor isn't float
+    """
+
     def __init__(self, keypoints: Union[Tensor, List[Tensor]], raise_if_not_floating_point: bool = True) -> None:
         self._N: Optional[List[int]] = None
 
