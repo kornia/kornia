@@ -1,7 +1,8 @@
-from __future__ import annotations
-
 r"""Implementation of "differentiable spatial to numerical" (soft-argmax) operations, as described in the paper
 "Numerical Coordinate Regression with Convolutional Neural Networks" by Nibali et al."""
+
+
+from __future__ import annotations
 
 import torch
 import torch.nn.functional as F
