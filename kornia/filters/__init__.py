@@ -18,6 +18,7 @@ from .guided import GuidedBlur, guided_blur
 from .kernels import (
     gaussian,
     get_binary_kernel2d,
+    get_box_kernel1d,
     get_box_kernel2d,
     get_diff_kernel2d,
     get_gaussian_discrete_kernel1d,
@@ -47,6 +48,7 @@ from .unsharp import UnsharpMask, unsharp_mask
 __all__ = [
     "gaussian",
     "get_binary_kernel2d",
+    "get_box_kernel1d",
     "get_box_kernel2d",
     "get_gaussian_kernel1d",
     "get_gaussian_discrete_kernel1d",
