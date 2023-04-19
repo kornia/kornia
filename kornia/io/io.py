@@ -12,7 +12,7 @@ from torch.utils import dlpack  # TODO: remove this  if kornia relies on torch>=
 from kornia.color import rgb_to_grayscale, rgba_to_rgb
 from kornia.color.gray import grayscale_to_rgb
 from kornia.color.rgb import rgb_to_rgba
-from kornia.core import Tensor
+from kornia.core import Device, Tensor
 from kornia.core.check import KORNIA_CHECK
 
 
@@ -26,7 +26,7 @@ class ImageLoadType(Enum):
     RGB32 = 5
 
 
-def load_image_to_tensor(path_file: str, device: str) -> Tensor:
+def load_image_to_tensor(path_file: str, device: Device) -> Tensor:
     # load the file and decodes using kornia_rs. Internally it uses a package that
     # combines image-rs a self maintained version of the dlpack-rs. After the decoding,
     # the obtained stream bits are encapusalted to a cv::Tensor data structure without
@@ -38,7 +38,8 @@ def load_image_to_tensor(path_file: str, device: str) -> Tensor:
     th_tensor = dlpack.from_dlpack(cv_tensor)  # HxWx3
     # move the tensor to the desired device, move the data layout to CHW and clone
     # to return an owned data tensor.
-    return th_tensor.to(torch.device(device)).permute(2, 0, 1).clone()  # CxHxW
+    dev = device if isinstance(device, torch.device) or device is None else torch.device(device)
+    return th_tensor.to(device=dev).permute(2, 0, 1).clone()  # CxHxW
 
 
 def to_float32(image: Tensor) -> Tensor:
@@ -51,7 +52,7 @@ def to_uint8(image: Tensor) -> Tensor:
     return image.mul(255.0).byte()
 
 
-def load_image(path_file: str, desired_type: ImageLoadType, device: str = "cpu") -> Tensor:
+def load_image(path_file: str, desired_type: ImageLoadType, device: Device = "cpu") -> Tensor:
     """Read an image file and decode using the Kornia Rust backend.
 
     Args:
