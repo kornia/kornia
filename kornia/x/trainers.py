@@ -67,7 +67,7 @@ class ObjectDetectionTrainer(Trainer):
         valid_dataloader: DataLoader[Any],
         criterion: Optional[Module],
         optimizer: Optimizer,
-        scheduler: lr_scheduler.CosineAnnealingLR,
+        scheduler: lr_scheduler._LRScheduler,
         config: Configuration,
         num_classes: int,
         callbacks: Optional[Dict[str, Callable[..., None]]] = None,

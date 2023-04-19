@@ -21,8 +21,8 @@ jobs:
     uses: ./.github/workflows/tests.yml
     with:
       os: ${{ matrix.os }}
-      python-version: '["3.7", "3.10"]'
-      pytorch-version: '["1.9.1", "1.13.1"]'
+      python-version: '["3.8", "3.10"]'
+      pytorch-version: '["1.9.1", "2.0.0"]'
       pytorch-dtype: 'float32'
 
   tests-cpu-old-torch-new-py:
@@ -45,8 +45,8 @@ jobs:
     uses: ./.github/workflows/tests.yml
     with:
       os: ${{ matrix.os }}
-      python-version: '["3.7", "3.10"]'
-      pytorch-version: '["1.9.1", "1.13.1"]'
+      python-version: '["3.8", "3.10"]'
+      pytorch-version: '["1.9.1", "2.0.0"]'
       pytorch-dtype: 'float64'
 
   tests-nightly:
@@ -64,7 +64,7 @@ jobs:
       python-version: '["3.10"]'
       pytorch-version: '["nightly"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
-      pytest-extra: '-k dynamo'
+
   # tests-cpu-half:
   #   strategy:
   #     fail-fast: false # TODO: enable it when CI be stable
@@ -72,6 +72,6 @@ jobs:
   #   with:
   #     os: 'Ubuntu-latest'
   #     python-version: '["3.10"]'
-  #     pytorch-version: '["1.13.1"]'
+  #     pytorch-version: '["2.0.0"]'
   #     pytorch-dtype: 'float16'
   #     continue-on-error: true
