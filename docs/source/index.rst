@@ -50,6 +50,27 @@ Join the community
    OpenCV AI Kit <https://docs.luxonis.com/en/latest/pages/tutorials/creating-custom-nn-models/#kornia>
 
 .. toctree::
+   :caption: API REFERENCE
+   :maxdepth: 2
+   :hidden:
+
+   augmentation
+   color
+   contrib
+   enhance
+   feature
+   filters
+   geometry
+   io
+   losses
+   metrics
+   morphology
+   tracking
+   testing
+   utils
+   x
+
+.. toctree::
    :caption: KORNIA APPLICATIONS
    :hidden:
 
@@ -76,28 +97,6 @@ Join the community
    models/affnet
    models/sold2
    models/dexined
-
-
-.. toctree::
-   :caption: API REFERENCE
-   :maxdepth: 2
-   :hidden:
-
-   augmentation
-   color
-   contrib
-   enhance
-   feature
-   filters
-   geometry
-   io
-   losses
-   metrics
-   morphology
-   tracking
-   testing
-   utils
-   x
 
 .. toctree::
    :caption: SUPPORT
