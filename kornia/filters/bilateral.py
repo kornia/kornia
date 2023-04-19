@@ -33,18 +33,18 @@ def _bilateral_blur(
         KORNIA_CHECK_SHAPE(sigma_color, ['B'])
         sigma_color = sigma_color.to(device=input.device, dtype=input.dtype).view(-1, 1, 1, 1, 1)
 
-    kx, ky = _unpack_2d_ks(kernel_size)
-    pad_x, pad_y = _compute_zero_padding(kernel_size)
+    ky, kx = _unpack_2d_ks(kernel_size)
+    pad_y, pad_x = _compute_zero_padding(kernel_size)
 
     padded_input = pad(input, (pad_x, pad_x, pad_y, pad_y), mode=border_type)
-    unfolded_input = padded_input.unfold(2, ky, 1).unfold(3, kx, 1).flatten(-2)  # (B, C, H, W, K x K)
+    unfolded_input = padded_input.unfold(2, ky, 1).unfold(3, kx, 1).flatten(-2)  # (B, C, H, W, Ky x Kx)
 
     if guidance is None:
         guidance = input
         unfolded_guidance = unfolded_input
     else:
         padded_guidance = pad(guidance, (pad_x, pad_x, pad_y, pad_y), mode=border_type)
-        unfolded_guidance = padded_guidance.unfold(2, ky, 1).unfold(3, kx, 1).flatten(-2)  # (B, C, H, W, K x K)
+        unfolded_guidance = padded_guidance.unfold(2, ky, 1).unfold(3, kx, 1).flatten(-2)  # (B, C, H, W, Ky x Kx)
 
     diff = unfolded_guidance - guidance.unsqueeze(-1)
     if color_distance_type == "l1":
@@ -53,7 +53,7 @@ def _bilateral_blur(
         color_distance_sq = diff.square().sum(1, keepdim=True)
     else:
         raise ValueError("color_distance_type only acceps l1 or l2")
-    color_kernel = (-0.5 / sigma_color**2 * color_distance_sq).exp()  # (B, 1, H, W, K x K)
+    color_kernel = (-0.5 / sigma_color**2 * color_distance_sq).exp()  # (B, 1, H, W, Ky x Kx)
 
     space_kernel = get_gaussian_kernel2d(kernel_size, sigma_space, device=input.device, dtype=input.dtype)
     space_kernel = space_kernel.view(-1, 1, 1, 1, kx * ky)
@@ -156,8 +156,8 @@ class _BilateralBlur(Module):
     def __init__(
         self,
         kernel_size: tuple[int, int] | int,
-        sigma_color: float,
-        sigma_space: tuple[float, float],
+        sigma_color: float | Tensor,
+        sigma_space: tuple[float, float] | Tensor,
         border_type: str = 'reflect',
         color_distance_type: str = "l1",
     ) -> None:

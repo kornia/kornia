@@ -379,6 +379,7 @@ def main():
         "box_blur": (((5, 5),), 1),
         "median_blur": (((5, 5),), 1),
         "gaussian_blur2d": (((5, 5), (1.5, 1.5)), 1),
+        "guided_blur": (((5, 5), 0.01), 1),
         "motion_blur": ((5, 90.0, 1.0), 1),
         "max_blur_pool2d": ((5,), 1),
         "blur_pool2d": ((5,), 1),
@@ -394,6 +395,8 @@ def main():
         if fn_name == "joint_bilateral_blur":
             guide = K.geometry.resize(img2.repeat(num_samples, 1, 1, 1), img_in.shape[-2:])
             args_in = (img_in, guide, *args)
+        elif fn_name == "guided_blur":
+            args_in = (img_in, img_in, *args)
         else:
             args_in = (img_in, *args)
         # import function and apply
@@ -524,8 +527,7 @@ def main():
     kah = K.feature.KeyNetAffNetHardNet(512).eval()
     with torch.no_grad():
         lafs, resps, descs = kah(K.color.rgb_to_grayscale(img_outdoor))
-        fig1 = visualize_LAF(img_outdoor, lafs, color='lime', draw_ori=False)
-        ax = fig1.gca()
+        fig1, ax = visualize_LAF(img_outdoor, lafs, color='lime', return_fig_ax=True, draw_ori=False)
         ax.set_title('KeyNetAffNet 512 LAFs')
         cur_fname = str(OUTPUT_PATH / "keynet_affnet.jpg")
         fig1.savefig(cur_fname)

@@ -8,10 +8,8 @@ from kornia.testing import BaseTester, tensor_to_gradcheck_var
 class TestBilateralBlur(BaseTester):
     @pytest.mark.parametrize("shape", [(1, 1, 8, 15), (2, 3, 11, 7)])
     @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
-    @pytest.mark.parametrize("sigma_color", [1, 0.1])
-    @pytest.mark.parametrize("sigma_space", [(1, 1), (1.5, 1)])
     @pytest.mark.parametrize("color_distance_type", ["l1", "l2"])
-    def test_smoke(self, shape, kernel_size, sigma_color, sigma_space, color_distance_type, device, dtype):
+    def test_smoke(self, shape, kernel_size, color_distance_type, device, dtype):
         inp = torch.zeros(shape, device=device, dtype=dtype)
 
         # tensor sigmas -> with batch dim
@@ -55,8 +53,16 @@ class TestBilateralBlur(BaseTester):
 
     def test_gradcheck(self, device):
         img = torch.rand(1, 2, 5, 4, device=device)
+        sigma_color = torch.rand(1, device=device)
+        sigma_space = torch.rand(1, 2, device=device)
         img = tensor_to_gradcheck_var(img)  # to var
+        sigma_color = tensor_to_gradcheck_var(sigma_color)
+        sigma_space = tensor_to_gradcheck_var(sigma_space)
+
         self.gradcheck(bilateral_blur, (img, 3, 1, (1, 1)))
+        self.gradcheck(bilateral_blur, (img, 3, sigma_color, (1, 1)))
+        self.gradcheck(bilateral_blur, (img, 3, 1, sigma_space))
+        self.gradcheck(bilateral_blur, (img, 3, sigma_color, sigma_space))
 
     @pytest.mark.parametrize("shape", [(1, 1, 8, 15), (2, 3, 11, 7)])
     @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
@@ -80,8 +86,8 @@ class TestBilateralBlur(BaseTester):
 
         self.assert_close(op(inpt), op_optimized(inpt))
 
-        sigma_color = torch.rand(inpt.shape[0], device=device, dtype=dtype)
-        sigma_space = torch.rand(inpt.shape[0], 2, device=device, dtype=dtype)
+        sigma_color = torch.rand(1, device=device, dtype=dtype)
+        sigma_space = torch.rand(1, 2, device=device, dtype=dtype)
         op = BilateralBlur(kernel_size, sigma_color, sigma_space, color_distance_type=color_distance_type)
         op_optimized = torch_optimizer(op)
 
@@ -242,8 +248,8 @@ class TestJointBilateralBlur(BaseTester):
 
         self.assert_close(op(inpt, guide), op_optimized(inpt, guide))
 
-        sigma_color = torch.rand(inpt.shape[0], device=device, dtype=dtype)
-        sigma_space = torch.rand(inpt.shape[0], 2, device=device, dtype=dtype)
+        sigma_color = torch.rand(1, device=device, dtype=dtype)
+        sigma_space = torch.rand(1, 2, device=device, dtype=dtype)
         op = JointBilateralBlur(kernel_size, sigma_color, sigma_space, color_distance_type=color_distance_type)
         op_optimized = torch_optimizer(op)
 
@@ -262,7 +268,13 @@ class TestJointBilateralBlur(BaseTester):
 
         # Expected output generated with OpenCV:
         # import cv2
-        # expected = cv2.ximgproc.jointBilateralFilter(img[0, 0].numpy(), guide[0, 0].numpy(), 5, 0.1, 0.5)
+        # expected = cv2.ximgproc.jointBilateralFilter(
+        #   guide.squeeze().numpy(),
+        #   img.squeeze().numpy(),
+        #   kernel_size,
+        #   sigma_color,
+        #   sigma_distance[0],
+        # )
         expected = [
             [0.38221005, 0.5027215, 0.49131155, 0.8937083],
             [0.3976327, 0.55548316, 0.69680846, 0.65291953],
@@ -272,7 +284,7 @@ class TestJointBilateralBlur(BaseTester):
         expected = torch.tensor(expected, device=device, dtype=dtype).view(1, 1, 4, 4)
 
         out = joint_bilateral_blur(img, guide, kernel_size, sigma_color, sigma_distance)
-        self.assert_close(out, expected, rtol=1e-2, atol=1e-2)
+        self.assert_close(out, expected)
 
     def test_opencv_rgb(self, device, dtype):
         img = [
@@ -296,10 +308,12 @@ class TestJointBilateralBlur(BaseTester):
         # Expected output generated with OpenCV:
         # import cv2
         # expected = cv2.ximgproc.jointBilateralFilter(
-        #     img[0].permute(1, 2, 0).numpy(),
-        #     guide[0].permute(1, 2, 0).numpy(),
-        #     5, 0.1, 0.5
-        # )
+        #   guide.squeeze().permute(1, 2, 0).numpy(),
+        #   img.squeeze().permute(1, 2, 0).numpy(),
+        #   kernel_size,
+        #   sigma_color,
+        #   sigma_distance[0],
+        # ).transpose(2, 0, 1)
         expected = [
             [
                 [0.6671455, 0.74172455, 0.7328562, 1.0],
@@ -323,4 +337,4 @@ class TestJointBilateralBlur(BaseTester):
         expected = torch.tensor(expected, device=device, dtype=dtype).view(1, 3, 4, 4)
 
         out = joint_bilateral_blur(img, guide, kernel_size, sigma_color, sigma_distance)
-        self.assert_close(out, expected, rtol=1e-2, atol=1e-2)
+        self.assert_close(out, expected)

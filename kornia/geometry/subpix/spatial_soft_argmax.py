@@ -287,13 +287,13 @@ def conv_soft_argmax2d(
         raise ValueError(f"Temperature should be positive float or tensor. Got: {temperature}")
 
     b, c, h, w = input.shape
-    kx, ky = kernel_size
+    ky, kx = kernel_size
     device: torch.device = input.device
     dtype: torch.dtype = input.dtype
     input = input.view(b * c, 1, h, w)
 
-    center_kernel: Tensor = _get_center_kernel2d(kx, ky, device).to(dtype)
-    window_kernel: Tensor = _get_window_grid_kernel2d(kx, ky, device).to(dtype)
+    center_kernel: Tensor = _get_center_kernel2d(ky, kx, device).to(dtype)
+    window_kernel: Tensor = _get_window_grid_kernel2d(ky, kx, device).to(dtype)
 
     # applies exponential normalization trick
     # https://timvieira.github.io/blog/post/2014/02/11/exp-normalize-trick/
@@ -407,13 +407,13 @@ def conv_soft_argmax3d(
         raise ValueError(f"Temperature should be positive float or tensor. Got: {temperature}")
 
     b, c, d, h, w = input.shape
-    kx, ky, kz = kernel_size
+    kz, ky, kx = kernel_size
     device: torch.device = input.device
     dtype: torch.dtype = input.dtype
     input = input.view(b * c, 1, d, h, w)
 
-    center_kernel: Tensor = _get_center_kernel3d(kx, ky, kz, device).to(dtype)
-    window_kernel: Tensor = _get_window_grid_kernel3d(kx, ky, kz, device).to(dtype)
+    center_kernel: Tensor = _get_center_kernel3d(kz, ky, kx, device).to(dtype)
+    window_kernel: Tensor = _get_window_grid_kernel3d(kz, ky, kx, device).to(dtype)
 
     # applies exponential normalization trick
     # https://timvieira.github.io/blog/post/2014/02/11/exp-normalize-trick/

@@ -40,10 +40,10 @@ def test_get_gaussian_kernel1d_tensor(window_size, sigma, device, dtype):
 @pytest.mark.parametrize("ksize_y", [3, 7])
 @pytest.mark.parametrize("sigma", [(1.5, 1.5), (2.1, 2.1)])
 def test_get_gaussian_kernel2d_float(ksize_x, ksize_y, sigma, device, dtype):
-    actual = get_gaussian_kernel2d((ksize_x, ksize_y), sigma, device=device, dtype=dtype)
+    actual = get_gaussian_kernel2d((ksize_y, ksize_x), sigma, device=device, dtype=dtype)
     expected = torch.ones(1, device=device, dtype=dtype)
 
-    assert actual.shape == (1, ksize_x, ksize_y)
+    assert actual.shape == (1, ksize_y, ksize_x)
     assert_close(actual.sum(), expected.sum())
 
 
@@ -54,10 +54,10 @@ def test_get_gaussian_kernel2d_tensor(ksize_x, ksize_y, sigma, device, dtype):
     sigma = torch.tensor(sigma, device=device, dtype=dtype)
     bs = sigma.shape[0]
 
-    actual = get_gaussian_kernel2d((ksize_x, ksize_y), sigma)
+    actual = get_gaussian_kernel2d((ksize_y, ksize_x), sigma)
     expected = torch.ones(bs, device=device, dtype=dtype)
 
-    assert actual.shape == (bs, ksize_x, ksize_y)
+    assert actual.shape == (bs, ksize_y, ksize_x)
     assert_close(actual.sum(), expected.sum())
 
 
@@ -66,10 +66,10 @@ def test_get_gaussian_kernel2d_tensor(ksize_x, ksize_y, sigma, device, dtype):
 @pytest.mark.parametrize("ksize_z", [9, 3])
 @pytest.mark.parametrize("sigma", [(1.5, 1.5, 3.5), (2.1, 1.5, 2.1)])
 def test_get_gaussian_kernel3d_float(ksize_x, ksize_y, ksize_z, sigma, device, dtype):
-    actual = get_gaussian_kernel3d((ksize_x, ksize_y, ksize_z), sigma, device=device, dtype=dtype)
+    actual = get_gaussian_kernel3d((ksize_z, ksize_y, ksize_x), sigma, device=device, dtype=dtype)
     expected = torch.ones(1, device=device, dtype=dtype)
 
-    assert actual.shape == (1, ksize_x, ksize_y, ksize_z)
+    assert actual.shape == (1, ksize_z, ksize_y, ksize_x)
     assert_close(actual.sum(), expected.sum())
 
 
@@ -83,10 +83,10 @@ def test_get_gaussian_kernel3d_tensor(ksize_x, ksize_y, ksize_z, sigma, device, 
     sigma = torch.tensor(sigma, device=device, dtype=dtype)
     bs = sigma.shape[0]
 
-    actual = get_gaussian_kernel3d((ksize_x, ksize_y, ksize_z), sigma)
+    actual = get_gaussian_kernel3d((ksize_z, ksize_y, ksize_x), sigma)
     expected = torch.ones(bs, device=device, dtype=dtype)
 
-    assert actual.shape == (bs, ksize_x, ksize_y, ksize_z)
+    assert actual.shape == (bs, ksize_z, ksize_y, ksize_x)
     assert_close(actual.sum(), expected.sum())
 
 
@@ -142,8 +142,8 @@ def test_get_gaussian_discrete_kernel1d_tensor(window_size, sigma, device, dtype
 def test_gaussian_blur2d_float(ksize_x, ksize_y, sigma, device, dtype):
     sample = torch.rand(1, 3, 16, 16, device=device, dtype=dtype)
 
-    actual = gaussian_blur2d(sample, (ksize_x, ksize_y), sigma, "replicate", separable=False)
-    actual_sep = gaussian_blur2d(sample, (ksize_x, ksize_y), sigma, "replicate", separable=True)
+    actual = gaussian_blur2d(sample, (ksize_y, ksize_x), sigma, "replicate", separable=False)
+    actual_sep = gaussian_blur2d(sample, (ksize_y, ksize_x), sigma, "replicate", separable=True)
 
     assert_close(actual, actual_sep)
 
@@ -155,8 +155,8 @@ def test_gaussian_blur2d_tensor(ksize_x, ksize_y, sigma, device, dtype):
     sigma = torch.tensor(sigma, device=device, dtype=dtype)
     bs = sigma.shape[0]
     sample = torch.rand(bs, 3, 16, 16, device=device, dtype=dtype)
-    actual = gaussian_blur2d(sample, (ksize_x, ksize_y), sigma, "replicate", separable=False)
-    actual_sep = gaussian_blur2d(sample, (ksize_x, ksize_y), sigma, "replicate", separable=True)
+    actual = gaussian_blur2d(sample, (ksize_y, ksize_x), sigma, "replicate", separable=False)
+    actual_sep = gaussian_blur2d(sample, (ksize_y, ksize_x), sigma, "replicate", separable=True)
 
     assert_close(actual, actual_sep)
 
