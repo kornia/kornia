@@ -260,10 +260,34 @@ def laplacian_1d(window_size: int, *, device: Device | None = None, dtype: Dtype
     return filter_1d
 
 
+def get_box_kernel1d(kernel_size: int, *, device: Device | None = None, dtype: Dtype | None = None) -> Tensor:
+    r"""Utility function that returns a 1-D box filter.
+
+    Args:
+        kernel_size: the size of the kernel.
+        device: the desired device of returned tensor.
+        dtype: the desired data type of returned tensor.
+    Returns:
+        A tensor with shape :math:`(1, \text{kernel\_size})`, filled with the value
+        :math:`\frac{1}{\text{kernel\_size}}`.
+    """
+    scale = tensor(1.0 / kernel_size, device=device, dtype=dtype)
+    return scale.expand(1, kernel_size)
+
+
 def get_box_kernel2d(
     kernel_size: tuple[int, int] | int, *, device: Device | None = None, dtype: Dtype | None = None
 ) -> Tensor:
-    r"""Utility function that returns a box filter."""
+    r"""Utility function that returns a 2-D box filter.
+
+    Args:
+        kernel_size: the size of the kernel.
+        device: the desired device of returned tensor.
+        dtype: the desired data type of returned tensor.
+    Returns:
+        A tensor with shape :math:`(1, \text{kernel\_size}[0], \text{kernel\_size}[1])`,
+        filled with the value :math:`\frac{1}{\text{kernel\_size}[0] \times \text{kernel\_size}[1]}`.
+    """
     ky, kx = _unpack_2d_ks(kernel_size)
     scale = tensor(1.0 / (kx * ky), device=device, dtype=dtype)
     return scale.expand(1, ky, kx)
