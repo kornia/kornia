@@ -527,8 +527,7 @@ def main():
     kah = K.feature.KeyNetAffNetHardNet(512).eval()
     with torch.no_grad():
         lafs, resps, descs = kah(K.color.rgb_to_grayscale(img_outdoor))
-        fig1 = visualize_LAF(img_outdoor, lafs, color='lime', draw_ori=False)
-        ax = fig1.gca()
+        fig1, ax = visualize_LAF(img_outdoor, lafs, color='lime', return_fig_ax=True, draw_ori=False)
         ax.set_title('KeyNetAffNet 512 LAFs')
         cur_fname = str(OUTPUT_PATH / "keynet_affnet.jpg")
         fig1.savefig(cur_fname)
