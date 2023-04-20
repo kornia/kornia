@@ -127,8 +127,8 @@ to query the image masks from the SAM model.
 
     # Runs the prediction with all prompts
     prediction = prompter.predict(
-        point_coords=keypoints,
-        point_labels=keypoints_labels,
+        keypoints=keypoints,
+        keypoints_labels=keypoints_labels,
         boxes=boxes,
         multimask_output=True,
     )
@@ -136,8 +136,8 @@ to query the image masks from the SAM model.
     #----------------------------------------------
     # or run the prediction with just the keypoints
     prediction = prompter.predict(
-        point_coords=keypoints,
-        point_labels=keypoints_labels,
+        keypoints=keypoints,
+        keypoints_labels=keypoints_labels,
         multimask_output=True,
     )
 
