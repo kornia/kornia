@@ -234,11 +234,11 @@ def _adapted_uniform(
 ) -> Tensor:
     r"""The uniform sampling function that accepts 'same_on_batch'.
 
-    If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]).
-    By default, same_on_batch is set to False.
+    If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]). By default,
+    same_on_batch is set to False.
 
-    By default, sampling happens on the default device and dtype. If low/high is a tensor, sampling will happen
-    in the same device/dtype as low/high tensor.
+    By default, sampling happens on the default device and dtype. If low/high is a tensor, sampling will happen in the
+    same device/dtype as low/high tensor.
     """
     device, dtype = _extract_device_dtype(
         [low if isinstance(low, Tensor) else None, high if isinstance(high, Tensor) else None]
@@ -259,11 +259,11 @@ def _adapted_beta(
 ) -> Tensor:
     r"""The beta sampling function that accepts 'same_on_batch'.
 
-    If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]).
-    By default, same_on_batch is set to False.
+    If same_on_batch is True, all values generated will be exactly same given a batch_size (shape[0]). By default,
+    same_on_batch is set to False.
 
-    By default, sampling happens on the default device and dtype. If a/b is a tensor, sampling will happen
-    in the same device/dtype as a/b tensor.
+    By default, sampling happens on the default device and dtype. If a/b is a tensor, sampling will happen in the same
+    device/dtype as a/b tensor.
     """
     device, dtype = _extract_device_dtype([a if isinstance(a, Tensor) else None, b if isinstance(b, Tensor) else None])
     a = as_tensor(a, device=device, dtype=dtype)

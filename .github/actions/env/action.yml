@@ -47,5 +47,5 @@ runs:
     - name: Environment
       shell: bash -l {0}
       run: |
-        curl -O https://raw.githubusercontent.com/pytorch/pytorch/master/torch/utils/collect_env.py
+        curl -O https://raw.githubusercontent.com/pytorch/pytorch/main/torch/utils/collect_env.py
         python collect_env.py

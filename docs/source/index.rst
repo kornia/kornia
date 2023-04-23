@@ -50,35 +50,6 @@ Join the community
    OpenCV AI Kit <https://docs.luxonis.com/en/latest/pages/tutorials/creating-custom-nn-models/#kornia>
 
 .. toctree::
-   :caption: KORNIA APPLICATIONS
-   :hidden:
-
-   applications/intro
-   applications/face_detection
-   applications/image_augmentations
-   applications/image_classification
-   applications/image_matching
-   applications/image_stitching
-   applications/image_registration
-   applications/semantic_segmentation
-   applications/image_denoising
-
-.. toctree::
-   :caption: KORNIA MODELS
-   :hidden:
-
-   models/yunet
-   models/vit
-   models/vit_mobile
-   models/loftr
-   models/defmo
-   models/hardnet
-   models/affnet
-   models/sold2
-   models/dexined
-
-
-.. toctree::
    :caption: API REFERENCE
    :maxdepth: 2
    :hidden:
@@ -98,6 +69,35 @@ Join the community
    testing
    utils
    x
+
+.. toctree::
+   :caption: KORNIA APPLICATIONS
+   :hidden:
+
+   applications/intro
+   applications/face_detection
+   applications/image_augmentations
+   applications/image_classification
+   applications/image_matching
+   applications/image_stitching
+   applications/image_registration
+   applications/image_denoising
+   applications/semantic_segmentation
+
+.. toctree::
+   :caption: KORNIA MODELS
+   :hidden:
+
+   models/yunet
+   models/vit
+   models/vit_mobile
+   models/loftr
+   models/defmo
+   models/hardnet
+   models/affnet
+   models/sold2
+   models/dexined
+   models/segment_anything
 
 .. toctree::
    :caption: SUPPORT
