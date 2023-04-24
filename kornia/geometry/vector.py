@@ -26,6 +26,10 @@ class Vector3(TensorWrapper):
         return Vector3(self.data[idx, ...])
 
     @property
+    def data(self) -> Tensor:
+        return self._data
+
+    @property
     def x(self) -> Tensor:
         return self.data[..., 0]
 
@@ -102,6 +106,10 @@ class Vector2(TensorWrapper):
 
     def __getitem__(self, idx: Union[slice, int, Tensor]) -> "Vector2":
         return Vector2(self.data[idx, ...])
+
+    @property
+    def data(self) -> Tensor:
+        return self._data
 
     @property
     def x(self) -> Tensor:

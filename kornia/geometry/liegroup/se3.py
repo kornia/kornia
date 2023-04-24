@@ -2,24 +2,11 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py
 from typing import Optional, Tuple, Union
 
-from kornia.core import (
-    Device,
-    Dtype,
-    Module,
-    Parameter,
-    Tensor,
-    concatenate,
-    eye,
-    pad,
-    rand,
-    stack,
-    tensor,
-    where,
-    zeros_like,
-)
+from kornia.core import Device, Dtype, Module, Tensor, concatenate, eye, pad, stack, tensor, where, zeros_like
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_TYPE
 from kornia.geometry.liegroup.so3 import So3
 from kornia.geometry.linalg import batched_dot_product
+from kornia.geometry.vector import Vector3
 
 
 class Se3(Module):
@@ -37,18 +24,19 @@ class Se3(Module):
         Parameter containing:
         tensor([1., 0., 0., 0.], requires_grad=True)
         >>> s.t
-        Parameter containing:
-        tensor([1., 1., 1.], requires_grad=True)
+        x: 1.0
+        y: 1.0
+        z: 1.0
     """
 
-    def __init__(self, rotation: So3, translation: Tensor) -> None:
+    def __init__(self, rotation: So3, translation: Union[Vector3, Tensor]) -> None:
         """Constructor for the base class.
 
         Internally represented by a unit quaternion `q` and a translation 3-vector.
 
         Args:
             rotation: So3 group encompassing a rotation.
-            translation: translation vector with the shape of :math:`(B, 3)`.
+            translation: Vector3 or translation tensor with the shape of :math:`(B, 3)`.
 
         Example:
             >>> from kornia.geometry.quaternion import Quaternion
@@ -58,14 +46,15 @@ class Se3(Module):
             Parameter containing:
             tensor([[1., 0., 0., 0.]], requires_grad=True)
             >>> s.t
-            Parameter containing:
-            tensor([[1., 1., 1.]], requires_grad=True)
+            x: tensor([1.])
+            y: tensor([1.])
+            z: tensor([1.])
         """
         super().__init__()
         KORNIA_CHECK_TYPE(rotation, So3)
         # KORNIA_CHECK_SHAPE(t, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
         self._rotation = rotation
-        self._translation = Parameter(translation)
+        self._translation = Vector3(translation) if isinstance(translation, Tensor) else translation
 
     def __repr__(self) -> str:
         return f"rotation: {self.r}\ntranslation: {self.t}"
@@ -85,13 +74,13 @@ class Se3(Module):
         so3 = self.so3
         t = self.t
         if isinstance(right, Se3):
-            KORNIA_CHECK_TYPE(right, Se3)
             # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py#L97
             _r = so3 * right.so3
             _t = t + so3 * right.t
             return Se3(_r, _t)
-        elif isinstance(right, Tensor):
-            KORNIA_CHECK_TYPE(right, Tensor)
+        elif isinstance(right, (Vector3, Tensor)):
+            if isinstance(right, Vector3):
+                right = right.data
             # KORNIA_CHECK_SHAPE(right, ["B", "N"])  # FIXME: resolve shape bugs. @edgarriba
             return so3 * right + t
         else:
@@ -108,7 +97,7 @@ class Se3(Module):
         return self._rotation
 
     @property
-    def t(self) -> Tensor:
+    def t(self) -> Vector3:
         """Return the underlying translation vector of shape :math:`(B,3)`."""
         return self._translation
 
@@ -118,7 +107,7 @@ class Se3(Module):
         return self._rotation
 
     @property
-    def translation(self) -> Tensor:
+    def translation(self) -> Vector3:
         """Return the underlying translation vector of shape :math:`(B,3)`."""
         return self._translation
 
@@ -136,8 +125,9 @@ class Se3(Module):
             Parameter containing:
             tensor([[1., 0., 0., 0.]], requires_grad=True)
             >>> s.t
-            Parameter containing:
-            tensor([[0., 0., 0.]], requires_grad=True)
+            x: tensor([0.])
+            y: tensor([0.])
+            z: tensor([0.])
         """
         # KORNIA_CHECK_SHAPE(v, ["B", "6"])  # FIXME: resolve shape bugs. @edgarriba
         upsilon = v[..., :3]
@@ -165,6 +155,7 @@ class Se3(Module):
         """
         omega = self.r.log()
         theta = batched_dot_product(omega, omega).sqrt()
+        t = self.t.data
         omega_hat = So3.hat(omega)
         omega_hat_sq = omega_hat @ omega_hat
         V_inv = (
@@ -172,7 +163,7 @@ class Se3(Module):
             - 0.5 * omega_hat
             + ((1 - theta * (theta / 2).cos() / (2 * (theta / 2).sin())) / theta.pow(2))[..., None, None] * omega_hat_sq
         )
-        t = where(theta[..., None] != 0.0, (self.t[..., None, :] * V_inv).sum(-1), self.t)
+        t = where(theta[..., None] != 0.0, (t[..., None, :] * V_inv).sum(-1), t)
         return concatenate((t, omega), -1)
 
     @staticmethod
@@ -233,14 +224,15 @@ class Se3(Module):
             Parameter containing:
             tensor([1., 0., 0., 0.], requires_grad=True)
             >>> s.t
-            Parameter containing:
-            tensor([0., 0., 0.], requires_grad=True)
+            x: 0.0
+            y: 0.0
+            z: 0.0
         """
         t = tensor([0.0, 0.0, 0.0], device=device, dtype=dtype)
         if batch_size is not None:
             t = t.repeat(batch_size, 1)
 
-        return cls(So3.identity(batch_size, device, dtype), t)
+        return cls(So3.identity(batch_size, device, dtype), Vector3(t))
 
     def matrix(self) -> Tensor:
         """Returns the matrix representation of shape :math:`(B, 4, 4)`.
@@ -253,7 +245,7 @@ class Se3(Module):
                     [0., 0., 1., 1.],
                     [0., 0., 0., 1.]], grad_fn=<CopySlices>)
         """
-        rt = concatenate((self.r.matrix(), self.t[..., None]), -1)
+        rt = concatenate((self.r.matrix(), self.t.data[..., None]), -1)
         rt_4x4 = pad(rt, (0, 0, 0, 1))  # add last row zeros
         rt_4x4[..., -1, -1] = 1.0
         return rt_4x4
@@ -268,8 +260,9 @@ class Se3(Module):
             Parameter containing:
             tensor([1., -0., -0., -0.], requires_grad=True)
             >>> s_inv.t
-            Parameter containing:
-            tensor([-1., -1., -1.], requires_grad=True)
+            x: -1.0
+            y: -1.0
+            z: -1.0
         """
         r_inv = self.r.inverse()
         return Se3(r_inv, r_inv * (-1 * self.t))
@@ -285,14 +278,15 @@ class Se3(Module):
             >>> s = Se3.random()
             >>> s = Se3.random(batch_size=3)
         """
-        r = So3.random(batch_size, device, dtype)
         shape: Tuple[int, ...]
         if batch_size is None:
-            shape = (3,)
+            shape = ()
         else:
             KORNIA_CHECK(batch_size >= 1, msg="batch_size must be positive")
-            shape = (batch_size, 3)
-        return cls(r, rand(shape, device=device, dtype=dtype))
+            shape = (batch_size,)
+        r = So3.random(batch_size, device, dtype)
+        t = Vector3.random(shape, device, dtype)
+        return cls(r, t)
 
     @classmethod
     def rot_x(cls, x: Tensor) -> "Se3":

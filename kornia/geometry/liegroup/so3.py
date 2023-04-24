@@ -6,6 +6,7 @@ from kornia.core import Device, Dtype, Module, Tensor, concatenate, stack, tenso
 from kornia.core.check import KORNIA_CHECK_TYPE
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.quaternion import Quaternion
+from kornia.geometry.vector import Vector3
 
 
 class So3(Module):
@@ -63,7 +64,9 @@ class So3(Module):
         # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py#L98
         if isinstance(right, So3):
             return So3(self.q * right.q)
-        elif isinstance(right, Tensor):
+        elif isinstance(right, (Tensor, Vector3)):
+            if isinstance(right, Vector3):
+                right = right.data
             # KORNIA_CHECK_SHAPE(right, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
             w = zeros(*right.shape[:-1], 1, device=right.device, dtype=right.dtype)
             quat = Quaternion(concatenate((w, right), -1))
@@ -125,11 +128,11 @@ class So3(Module):
         return omega
 
     @staticmethod
-    def hat(v: Tensor) -> Tensor:
+    def hat(v: Union[Vector3, Tensor]) -> Tensor:
         """Converts elements from vector space to lie algebra. Returns matrix of shape :math:`(B,3,3)`.
 
         Args:
-            v: vector of shape :math:`(B,3)`.
+            v: Vector3 or tensor of shape :math:`(B,3)`.
 
         Example:
             >>> v = torch.ones((1,3))
@@ -140,7 +143,10 @@ class So3(Module):
                      [-1.,  1.,  0.]]])
         """
         # KORNIA_CHECK_SHAPE(v, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
-        a, b, c = v[..., 0], v[..., 1], v[..., 2]
+        if isinstance(v, Tensor):
+            a, b, c = v[..., 0], v[..., 1], v[..., 2]
+        else:
+            a, b, c = v.x, v.y, v.z
         z = zeros_like(a)
         row0 = stack((z, -c, b), -1)
         row1 = stack((c, z, -a), -1)
