@@ -130,9 +130,6 @@ class TestColorJiggleGen(RandomGeneratorBaseTests):
             )(torch.Size([8]))
 
     def test_random_gen(self, device, dtype):
-        # TODO(jian): crashes with pytorch 1.10, cuda and fp64
-        if torch_version_ge(1, 10) and "cuda" in str(device):
-            pytest.skip("AssertionError: Tensor-likes are not close!")
         torch.manual_seed(42)
         batch_size = 8
         jitter_params = ColorJiggleGenerator(
@@ -178,9 +175,6 @@ class TestColorJiggleGen(RandomGeneratorBaseTests):
         assert_close(jitter_params['order'].to(dtype), expected_jitter_params['order'], rtol=1e-4, atol=1e-4)
 
     def test_random_gen_accumulative_additive_additive(self, device, dtype):
-        # TODO(jian): crashes with pytorch 1.10, cuda and fp64
-        if torch_version_ge(1, 10) and "cuda" in str(device):
-            pytest.skip("AssertionError: Tensor-likes are not close!")
         torch.manual_seed(42)
         batch_size = 8
         jitter_params = ColorJiggleGenerator(
