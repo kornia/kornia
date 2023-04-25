@@ -340,7 +340,7 @@ def angle_axis_to_rotation_matrix(angle_axis: Tensor) -> Tensor:
     # create output pose matrix
     rotation_matrix = eye_like(3, angle_axis, shared_memory=False)
     # fill output matrix with masked values
-    rotation_matrix[..., :3, :3] = mask_pos * rotation_matrix_normal + mask_neg * rotation_matrix_taylor
+    rotation_matrix = mask_pos * rotation_matrix_normal + mask_neg * rotation_matrix_taylor
     return rotation_matrix  # Nx3x3
 
 
