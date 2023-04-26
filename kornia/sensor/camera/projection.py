@@ -1,8 +1,9 @@
 from enum import Enum
 
-from kornia.core import Module, Tensor
-from kornia.geometry.vector import Vector3, Vector2
 import torch  # todo remove
+
+from kornia.core import Module, Tensor
+from kornia.geometry.vector import Vector2, Vector3
 
 
 class CameraProjectionType(Enum):
