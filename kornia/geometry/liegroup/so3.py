@@ -65,12 +65,14 @@ class So3(Module):
         if isinstance(right, So3):
             return So3(self.q * right.q)
         elif isinstance(right, (Tensor, Vector3)):
-            if isinstance(right, Vector3):
-                right = right.data
             # KORNIA_CHECK_SHAPE(right, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
             w = zeros(*right.shape[:-1], 1, device=right.device, dtype=right.dtype)
-            quat = Quaternion(concatenate((w, right), -1))
-            return (self.q * quat * self.q.conj()).vec
+            quat = Quaternion(concatenate((w, right.data), -1))
+            out = (self.q * quat * self.q.conj()).vec
+            if isinstance(right, Tensor):
+                return out
+            elif isinstance(right, Vector3):
+                return Vector3(out)
         else:
             raise TypeError(f"Not So3 or Tensor type. Got: {type(right)}")
 

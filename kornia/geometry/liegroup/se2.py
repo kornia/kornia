@@ -19,6 +19,7 @@ from kornia.core import (
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_TYPE
 from kornia.geometry.liegroup._utils import check_se2_omega_shape, check_se2_r_t_shape, check_v_shape
 from kornia.geometry.liegroup.so2 import So2
+from kornia.geometry.vector import Vector2
 
 
 class Se2(Module):
@@ -39,7 +40,7 @@ class Se2(Module):
         tensor([[1., 1.]], requires_grad=True)
     """
 
-    def __init__(self, rotation: So2, translation: Tensor) -> None:
+    def __init__(self, rotation: So2, translation: Union[Vector2, Tensor]) -> None:
         """Constructor for the base class.
 
         Internally represented by a complex number `z` and a translation 2-vector.
@@ -61,9 +62,14 @@ class Se2(Module):
         super().__init__()
         KORNIA_CHECK_TYPE(rotation, So2)
         # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
-        check_se2_r_t_shape(rotation, translation)
+        # KORNIA_CHECK_TYPE(translation, (Vector3, Tensor))
+        assert isinstance(translation, (Vector2, Tensor)), f"translation type is {type(translation)}"
         self._rotation = rotation
-        self._translation = Parameter(translation)
+        if isinstance(translation, Tensor):
+            check_se2_r_t_shape(rotation, translation)  # TODO remove
+            self._translation = Parameter(translation)
+        else:
+            self._translation = translation
 
     def __repr__(self) -> str:
         return f"rotation: {self.r}\ntranslation: {self.t}"
@@ -95,10 +101,9 @@ class Se2(Module):
             _r = so2 * right.so2
             _t = t + so2 * right.t
             return Se2(_r, _t)
-        elif isinstance(right, Tensor):
-            KORNIA_CHECK_TYPE(right, Tensor)
+        elif isinstance(right, (Vector2, Tensor)):
             # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
-            check_se2_r_t_shape(so2, right)
+            # check_se2_r_t_shape(so2, risght)
             return so2 * right + t
         else:
             raise TypeError(f"Unsupported type: {type(right)}")
@@ -175,7 +180,7 @@ class Se2(Module):
         row0 = stack((a, half_theta), -1)
         row1 = stack((-half_theta, a), -1)
         V_inv = stack((row0, row1), -2)
-        upsilon = V_inv @ self.t[..., None]
+        upsilon = V_inv @ self.t.data[..., None]
         return stack((upsilon[..., 0, 0], upsilon[..., 1, 0], theta), -1)
 
     @staticmethod
@@ -240,7 +245,7 @@ class Se2(Module):
         if batch_size is not None:
             KORNIA_CHECK(batch_size >= 1, msg="batch_size must be positive")
             t = t.repeat(batch_size, 1)
-        return cls(So2.identity(batch_size, device, dtype), t)
+        return cls(So2.identity(batch_size, device, dtype), Vector2(t))
 
     def matrix(self) -> Tensor:
         """Returns the matrix representation of shape :math:`(B, 3, 3)`.
@@ -252,7 +257,7 @@ class Se2(Module):
                      [0., 1., 1.],
                      [0., 0., 1.]]], grad_fn=<CopySlices>)
         """
-        rt = concatenate((self.r.matrix(), self.t[..., None]), -1)
+        rt = concatenate((self.r.matrix(), self.t.data[..., None]), -1)
         rt_3x3 = pad(rt, (0, 0, 0, 1))  # add last row zeros
         rt_3x3[..., -1, -1] = 1.0
         return rt_3x3
@@ -292,7 +297,7 @@ class Se2(Module):
         else:
             KORNIA_CHECK(batch_size >= 1, msg="batch_size must be positive")
             shape = (batch_size, 2)
-        return cls(r, rand(shape, device=device, dtype=dtype))
+        return cls(r, Vector2(rand(shape, device=device, dtype=dtype)))
 
     @classmethod
     def trans(cls, x: Tensor, y: Tensor) -> "Se2":
@@ -339,5 +344,5 @@ class Se2(Module):
                     [0., 0., 1.]], grad_fn=<CopySlices>)
         """
         rt = self.matrix()
-        rt[..., 0:2, 2] = stack((self.t[..., 1], -self.t[..., 0]), -1)
+        rt[..., 0:2, 2] = stack((self.t.data[..., 1], -self.t.data[..., 0]), -1)
         return rt

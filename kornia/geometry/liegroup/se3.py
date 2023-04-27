@@ -2,7 +2,20 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py
 from typing import Optional, Tuple, Union
 
-from kornia.core import Device, Dtype, Module, Tensor, concatenate, eye, pad, stack, tensor, where, zeros_like
+from kornia.core import (
+    Device,
+    Dtype,
+    Module,
+    Parameter,
+    Tensor,
+    concatenate,
+    eye,
+    pad,
+    stack,
+    tensor,
+    where,
+    zeros_like,
+)
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_TYPE
 from kornia.geometry.liegroup.so3 import So3
 from kornia.geometry.linalg import batched_dot_product
@@ -52,9 +65,14 @@ class Se3(Module):
         """
         super().__init__()
         KORNIA_CHECK_TYPE(rotation, So3)
+        # KORNIA_CHECK_TYPE(translation, (Vector3, Tensor))
+        assert isinstance(translation, (Vector3, Tensor)), f"translation type is {type(translation)}"
         # KORNIA_CHECK_SHAPE(t, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
         self._rotation = rotation
-        self._translation = Vector3(translation) if isinstance(translation, Tensor) else translation
+        if isinstance(translation, Tensor):
+            self._translation = Parameter(translation)
+        else:
+            self._translation = translation
 
     def __repr__(self) -> str:
         return f"rotation: {self.r}\ntranslation: {self.t}"
@@ -62,7 +80,7 @@ class Se3(Module):
     def __getitem__(self, idx: Union[int, slice]) -> 'Se3':
         return Se3(self._rotation[idx], self._translation[idx])
 
-    def __mul__(self, right: "Se3") -> "Se3":
+    def __mul__(self, right: "Se3") -> Union['Se3', Vector3, Tensor]:
         """Compose two Se3 transformations.
 
         Args:
@@ -79,10 +97,8 @@ class Se3(Module):
             _t = t + so3 * right.t
             return Se3(_r, _t)
         elif isinstance(right, (Vector3, Tensor)):
-            if isinstance(right, Vector3):
-                right = right.data
             # KORNIA_CHECK_SHAPE(right, ["B", "N"])  # FIXME: resolve shape bugs. @edgarriba
-            return so3 * right + t
+            return so3 * right + t.data
         else:
             raise TypeError(f"Unsupported type: {type(right)}")
 
@@ -97,7 +113,7 @@ class Se3(Module):
         return self._rotation
 
     @property
-    def t(self) -> Vector3:
+    def t(self) -> Tensor:
         """Return the underlying translation vector of shape :math:`(B,3)`."""
         return self._translation
 
@@ -107,7 +123,7 @@ class Se3(Module):
         return self._rotation
 
     @property
-    def translation(self) -> Vector3:
+    def translation(self) -> Tensor:
         """Return the underlying translation vector of shape :math:`(B,3)`."""
         return self._translation
 
@@ -289,7 +305,7 @@ class Se3(Module):
         return cls(r, t)
 
     @classmethod
-    def rot_x(cls, x: Tensor) -> "Se3":
+    def rot_x(cls, x: Tensor) -> 'Se3':
         """Construct a x-axis rotation.
 
         Args:
@@ -299,7 +315,7 @@ class Se3(Module):
         return cls(So3.rot_x(x), stack((zs, zs, zs), -1))
 
     @classmethod
-    def rot_y(cls, y: Tensor) -> "Se3":
+    def rot_y(cls, y: Tensor) -> 'Se3':
         """Construct a y-axis rotation.
 
         Args:
@@ -309,7 +325,7 @@ class Se3(Module):
         return cls(So3.rot_y(y), stack((zs, zs, zs), -1))
 
     @classmethod
-    def rot_z(cls, z: Tensor) -> "Se3":
+    def rot_z(cls, z: Tensor) -> 'Se3':
         """Construct a z-axis rotation.
 
         Args:
@@ -319,7 +335,7 @@ class Se3(Module):
         return cls(So3.rot_z(z), stack((zs, zs, zs), -1))
 
     @classmethod
-    def trans(cls, x: Tensor, y: Tensor, z: Tensor) -> "Se3":
+    def trans(cls, x: Tensor, y: Tensor, z: Tensor) -> 'Se3':
         """Construct a translation only Se3 instance.
 
         Args:
@@ -335,7 +351,7 @@ class Se3(Module):
         return cls(rotation, stack((x, y, z), -1))
 
     @classmethod
-    def trans_x(cls, x: Tensor) -> "Se3":
+    def trans_x(cls, x: Tensor) -> 'Se3':
         """Construct a x-axis translation.
 
         Args:
@@ -345,7 +361,7 @@ class Se3(Module):
         return cls.trans(x, zs, zs)
 
     @classmethod
-    def trans_y(cls, y: Tensor) -> "Se3":
+    def trans_y(cls, y: Tensor) -> 'Se3':
         """Construct a y-axis translation.
 
         Args:
@@ -355,7 +371,7 @@ class Se3(Module):
         return cls.trans(zs, y, zs)
 
     @classmethod
-    def trans_z(cls, z: Tensor) -> "Se3":
+    def trans_z(cls, z: Tensor) -> 'Se3':
         """Construct a z-axis translation.
 
         Args:

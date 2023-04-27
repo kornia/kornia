@@ -10,6 +10,7 @@ from kornia.geometry.liegroup._utils import (
     check_so2_theta_shape,
     check_so2_z_shape,
 )
+from kornia.geometry.vector import Vector2
 
 
 class So2(Module):
@@ -76,14 +77,19 @@ class So2(Module):
         z = self.z
         if isinstance(right, So2):
             return So2(z * right.z)
-        elif isinstance(right, Tensor):
+        elif isinstance(right, (Vector2, Tensor)):
             # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
-            check_so2_t_shape(right)
-            x = right[..., 0]
-            y = right[..., 1]
+            if isinstance(right, Tensor):
+                check_so2_t_shape(right)
+            x = right.data[..., 0]
+            y = right.data[..., 1]
             real = z.real
             imag = z.imag
-            return stack((real * x - imag * y, imag * x + real * y), -1)
+            out = stack((real * x - imag * y, imag * x + real * y), -1)
+            if isinstance(right, Tensor):
+                return out
+            else:
+                return Vector2(out)
         else:
             raise TypeError(f"Not So2 or Tensor type. Got: {type(right)}")
 
