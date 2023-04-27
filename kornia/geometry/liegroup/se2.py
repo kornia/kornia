@@ -64,7 +64,8 @@ class Se2(Module):
         # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
         # KORNIA_CHECK_TYPE(translation, (Vector3, Tensor))
         assert isinstance(translation, (Vector2, Tensor)), f"translation type is {type(translation)}"
-        self._rotation = rotation
+        self._translation: Union[Vector2, Parameter]
+        self._rotation: So2 = rotation
         if isinstance(translation, Tensor):
             check_se2_r_t_shape(rotation, translation)  # TODO remove
             self._translation = Parameter(translation)
@@ -119,7 +120,7 @@ class Se2(Module):
         return self._rotation
 
     @property
-    def t(self) -> Tensor:
+    def t(self) -> Union[Vector2, Parameter]:
         """Return the underlying translation vector of shape :math:`(B,2)`."""
         return self._translation
 
@@ -129,7 +130,7 @@ class Se2(Module):
         return self._rotation
 
     @property
-    def translation(self) -> Tensor:
+    def translation(self) -> Union[Vector2, Parameter]:
         """Return the underlying translation vector of shape :math:`(B,2)`."""
         return self._translation
 
@@ -238,8 +239,8 @@ class Se2(Module):
             Parameter containing:
             tensor([1.+0.j], requires_grad=True)
             >>> s.t
-            Parameter containing:
-            tensor([[0., 0.]], requires_grad=True)
+            x: tensor([0.])
+            y: tensor([0.])
         """
         t: Tensor = tensor([0.0, 0.0], device=device, dtype=dtype)
         if batch_size is not None:

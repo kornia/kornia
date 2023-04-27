@@ -37,9 +37,8 @@ class Se3(Module):
         Parameter containing:
         tensor([1., 0., 0., 0.], requires_grad=True)
         >>> s.t
-        x: 1.0
-        y: 1.0
-        z: 1.0
+        Parameter containing:
+        tensor([1., 1., 1.], requires_grad=True)
     """
 
     def __init__(self, rotation: So3, translation: Union[Vector3, Tensor]) -> None:
@@ -59,16 +58,16 @@ class Se3(Module):
             Parameter containing:
             tensor([[1., 0., 0., 0.]], requires_grad=True)
             >>> s.t
-            x: tensor([1.])
-            y: tensor([1.])
-            z: tensor([1.])
+            Parameter containing:
+            tensor([[1., 1., 1.]], requires_grad=True)
         """
         super().__init__()
         KORNIA_CHECK_TYPE(rotation, So3)
         # KORNIA_CHECK_TYPE(translation, (Vector3, Tensor))
         assert isinstance(translation, (Vector3, Tensor)), f"translation type is {type(translation)}"
         # KORNIA_CHECK_SHAPE(t, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
-        self._rotation = rotation
+        self._translation: Union[Vector3, Parameter]
+        self._rotation : So3 = rotation
         if isinstance(translation, Tensor):
             self._translation = Parameter(translation)
         else:
@@ -113,7 +112,7 @@ class Se3(Module):
         return self._rotation
 
     @property
-    def t(self) -> Tensor:
+    def t(self) -> Union[Vector3, Parameter]:
         """Return the underlying translation vector of shape :math:`(B,3)`."""
         return self._translation
 
@@ -123,7 +122,7 @@ class Se3(Module):
         return self._rotation
 
     @property
-    def translation(self) -> Tensor:
+    def translation(self) -> Union[Vector3, Parameter]:
         """Return the underlying translation vector of shape :math:`(B,3)`."""
         return self._translation
 
@@ -141,9 +140,8 @@ class Se3(Module):
             Parameter containing:
             tensor([[1., 0., 0., 0.]], requires_grad=True)
             >>> s.t
-            x: tensor([0.])
-            y: tensor([0.])
-            z: tensor([0.])
+            Parameter containing:
+            tensor([[0., 0., 0.]], requires_grad=True)
         """
         # KORNIA_CHECK_SHAPE(v, ["B", "6"])  # FIXME: resolve shape bugs. @edgarriba
         upsilon = v[..., :3]
@@ -276,9 +274,8 @@ class Se3(Module):
             Parameter containing:
             tensor([1., -0., -0., -0.], requires_grad=True)
             >>> s_inv.t
-            x: -1.0
-            y: -1.0
-            z: -1.0
+            Parameter containing:
+            tensor([-1., -1., -1.], requires_grad=True)
         """
         r_inv = self.r.inverse()
         return Se3(r_inv, r_inv * (-1 * self.t))
