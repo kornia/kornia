@@ -67,7 +67,7 @@ class Se3(Module):
         assert isinstance(translation, (Vector3, Tensor)), f"translation type is {type(translation)}"
         # KORNIA_CHECK_SHAPE(t, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
         self._translation: Union[Vector3, Parameter]
-        self._rotation : So3 = rotation
+        self._rotation: So3 = rotation
         if isinstance(translation, Tensor):
             self._translation = Parameter(translation)
         else:
