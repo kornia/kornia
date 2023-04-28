@@ -40,7 +40,7 @@ class Se2(Module):
         tensor([[1., 1.]], requires_grad=True)
     """
 
-    def __init__(self, rotation: So2, translation: Union[Vector2, Tensor]) -> None:
+    def __init__(self, rotation: So2, translation: Vector2 | Tensor) -> None:
         """Constructor for the base class.
 
         Internally represented by a complex number `z` and a translation 2-vector.
