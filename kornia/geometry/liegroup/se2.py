@@ -1,5 +1,6 @@
 # kornia.geometry.se2 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se2.py
+from __future__ import annotations
 from typing import Optional, Tuple, Union, overload
 
 from kornia.core import (
