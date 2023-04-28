@@ -1,6 +1,7 @@
 # kornia.geometry.se2 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se2.py
 from __future__ import annotations
+
 from typing import Optional, Tuple, Union, overload
 
 from kornia.core import (
@@ -65,7 +66,7 @@ class Se2(Module):
         # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
         # KORNIA_CHECK_TYPE(translation, (Vector3, Tensor))
         assert isinstance(translation, (Vector2, Tensor)), f"translation type is {type(translation)}"
-        self._translation: Union[Vector2, Parameter]
+        self._translation: Vector2 | Parameter
         self._rotation: So2 = rotation
         if isinstance(translation, Tensor):
             check_se2_r_t_shape(rotation, translation)  # TODO remove
@@ -76,11 +77,11 @@ class Se2(Module):
     def __repr__(self) -> str:
         return f"rotation: {self.r}\ntranslation: {self.t}"
 
-    def __getitem__(self, idx: Union[int, slice]) -> 'Se2':
+    def __getitem__(self, idx: int | slice) -> Se2:
         return Se2(self._rotation[idx], self._translation[idx])
 
     @overload
-    def __mul__(self, right: 'Se2') -> 'Se2':
+    def __mul__(self, right: Se2) -> Se2:
         ...
 
     @overload
@@ -121,7 +122,7 @@ class Se2(Module):
         return self._rotation
 
     @property
-    def t(self) -> Union[Vector2, Parameter]:
+    def t(self) -> Vector2 | Parameter:
         """Return the underlying translation vector of shape :math:`(B,2)`."""
         return self._translation
 
@@ -131,12 +132,12 @@ class Se2(Module):
         return self._rotation
 
     @property
-    def translation(self) -> Union[Vector2, Parameter]:
+    def translation(self) -> Vector2 | Parameter:
         """Return the underlying translation vector of shape :math:`(B,2)`."""
         return self._translation
 
     @staticmethod
-    def exp(v: Tensor) -> 'Se2':
+    def exp(v: Tensor) -> Se2:
         """Converts elements of lie algebra to elements of lie group.
 
         Args:
@@ -228,7 +229,7 @@ class Se2(Module):
         return concatenate((upsilon, theta[..., None]), -1)
 
     @classmethod
-    def identity(cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None) -> 'Se2':
+    def identity(cls, batch_size: int | None = None, device: Device | None = None, dtype: Dtype = None) -> Se2:
         """Create a Se2 group representing an identity rotation and zero translation.
 
         Args:
@@ -264,7 +265,7 @@ class Se2(Module):
         rt_3x3[..., -1, -1] = 1.0
         return rt_3x3
 
-    def inverse(self) -> 'Se2':
+    def inverse(self) -> Se2:
         """Returns the inverse transformation.
 
         Example:
@@ -282,7 +283,7 @@ class Se2(Module):
         return Se2(r_inv, t_inv)
 
     @classmethod
-    def random(cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None) -> 'Se2':
+    def random(cls, batch_size: int | None = None, device: Device | None = None, dtype: Dtype = None) -> Se2:
         """Create a Se2 group representing a random transformation.
 
         Args:
@@ -293,7 +294,7 @@ class Se2(Module):
             >>> s = Se2.random(batch_size=3)
         """
         r = So2.random(batch_size, device, dtype)
-        shape: Tuple[int, ...]
+        shape: tuple[int, ...]
         if batch_size is None:
             shape = (2,)
         else:
@@ -302,7 +303,7 @@ class Se2(Module):
         return cls(r, Vector2(rand(shape, device=device, dtype=dtype)))
 
     @classmethod
-    def trans(cls, x: Tensor, y: Tensor) -> "Se2":
+    def trans(cls, x: Tensor, y: Tensor) -> Se2:
         """Construct a translation only Se2 instance.
 
         Args:
@@ -316,7 +317,7 @@ class Se2(Module):
         return cls(rotation, stack((x, y), -1))
 
     @classmethod
-    def trans_x(cls, x: Tensor) -> "Se2":
+    def trans_x(cls, x: Tensor) -> Se2:
         """Construct a x-axis translation.
 
         Args:
@@ -326,7 +327,7 @@ class Se2(Module):
         return cls.trans(x, zs)
 
     @classmethod
-    def trans_y(cls, y: Tensor) -> "Se2":
+    def trans_y(cls, y: Tensor) -> Se2:
         """Construct a y-axis translation.
 
         Args:
