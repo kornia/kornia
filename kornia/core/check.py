@@ -1,7 +1,7 @@
 """The testing package contains testing-specific utilities."""
 from __future__ import annotations
 
-from typing import Any, Sequence, TypeVar, cast
+from typing import Any, Sequence, Tuple, TypeVar, cast
 
 from typing_extensions import TypeGuard
 
@@ -102,7 +102,7 @@ def KORNIA_UNWRAP(maybe_obj: object, typ: Any) -> Any:
 T = TypeVar('T', bound=type)
 
 
-def KORNIA_CHECK_TYPE(x: object, typ: T, msg: str | None = None) -> TypeGuard[T]:
+def KORNIA_CHECK_TYPE(x: object, typ: T | Tuple[T, ...], msg: str | None = None) -> TypeGuard[T]:
     """Check the type of an aribratry variable.
 
     Args:
