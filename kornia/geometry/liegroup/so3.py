@@ -1,6 +1,6 @@
 # kornia.geometry.so3 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py
-from typing import Optional, Union
+from __future__ import annotations
 
 from kornia.core import Device, Dtype, Module, Tensor, concatenate, stack, tensor, where, zeros, zeros_like
 from kornia.core.check import KORNIA_CHECK_TYPE
@@ -49,7 +49,7 @@ class So3(Module):
     def __repr__(self) -> str:
         return f"{self.q}"
 
-    def __getitem__(self, idx: Union[int, slice]) -> 'So3':
+    def __getitem__(self, idx: int | slice) -> So3:
         return So3(self._q[idx])
 
     def __mul__(self, right):
@@ -82,7 +82,7 @@ class So3(Module):
         return self._q
 
     @staticmethod
-    def exp(v: Tensor) -> 'So3':
+    def exp(v: Tensor) -> So3:
         """Converts elements of lie algebra to elements of lie group.
 
         See more: https://vision.in.tum.de/_media/members/demmeln/nurlanov2021so3log.pdf
@@ -130,7 +130,7 @@ class So3(Module):
         return omega
 
     @staticmethod
-    def hat(v: Union[Vector3, Tensor]) -> Tensor:
+    def hat(v: Vector3 | Tensor) -> Tensor:
         """Converts elements from vector space to lie algebra. Returns matrix of shape :math:`(B,3,3)`.
 
         Args:
@@ -212,7 +212,7 @@ class So3(Module):
         return stack((row0, row1, row2), -2)
 
     @classmethod
-    def from_matrix(cls, matrix: Tensor) -> 'So3':
+    def from_matrix(cls, matrix: Tensor) -> So3:
         """Create So3 from a rotation matrix.
 
         Args:
@@ -228,7 +228,7 @@ class So3(Module):
         return cls(Quaternion.from_matrix(matrix))
 
     @classmethod
-    def identity(cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None) -> 'So3':
+    def identity(cls, batch_size: int | None = None, device: Device | None = None, dtype: Dtype = None) -> So3:
         """Create a So3 group representing an identity rotation.
 
         Args:
@@ -248,7 +248,7 @@ class So3(Module):
         """
         return cls(Quaternion.identity(batch_size, device, dtype))
 
-    def inverse(self) -> 'So3':
+    def inverse(self) -> So3:
         """Returns the inverse transformation.
 
         Example:
@@ -260,7 +260,7 @@ class So3(Module):
         return So3(self.q.conj())
 
     @classmethod
-    def random(cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None) -> 'So3':
+    def random(cls, batch_size: int | None = None, device: Device | None = None, dtype: Dtype = None) -> So3:
         """Create a So3 group representing a random rotation.
 
         Args:
@@ -273,7 +273,7 @@ class So3(Module):
         return cls(Quaternion.random(batch_size, device, dtype))
 
     @classmethod
-    def rot_x(cls, x: Tensor) -> "So3":
+    def rot_x(cls, x: Tensor) -> So3:
         """Construct a x-axis rotation.
 
         Args:
@@ -283,7 +283,7 @@ class So3(Module):
         return cls.exp(stack((x, zs, zs), -1))
 
     @classmethod
-    def rot_y(cls, y: Tensor) -> "So3":
+    def rot_y(cls, y: Tensor) -> So3:
         """Construct a z-axis rotation.
 
         Args:
@@ -293,7 +293,7 @@ class So3(Module):
         return cls.exp(stack((zs, y, zs), -1))
 
     @classmethod
-    def rot_z(cls, z: Tensor) -> "So3":
+    def rot_z(cls, z: Tensor) -> So3:
         """Construct a z-axis rotation.
 
         Args:

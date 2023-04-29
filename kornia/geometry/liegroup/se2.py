@@ -2,7 +2,7 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se2.py
 from __future__ import annotations
 
-from typing import Optional, Tuple, Union, overload
+from typing import overload
 
 from kornia.core import (
     Device,

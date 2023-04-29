@@ -1,6 +1,8 @@
 # kornia.geometry.so2 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so2.py
-from typing import Optional, Union, overload
+from __future__ import annotations
+
+from typing import overload
 
 from kornia.core import Device, Dtype, Module, Parameter, Tensor, complex, rand, stack, tensor, zeros_like
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
@@ -54,11 +56,11 @@ class So2(Module):
     def __repr__(self) -> str:
         return f"{self.z}"
 
-    def __getitem__(self, idx: Union[int, slice]) -> 'So2':
+    def __getitem__(self, idx: int | slice) -> So2:
         return So2(self._z[idx])
 
     @overload
-    def __mul__(self, right: 'So2') -> 'So2':
+    def __mul__(self, right: So2) -> So2:
         ...
 
     @overload
@@ -99,7 +101,7 @@ class So2(Module):
         return self._z
 
     @staticmethod
-    def exp(theta: Tensor) -> 'So2':
+    def exp(theta: Tensor) -> So2:
         """Converts elements of lie algebra to elements of lie group.
 
         Args:
@@ -179,7 +181,7 @@ class So2(Module):
         return stack((row0, row1), -2)
 
     @classmethod
-    def from_matrix(cls, matrix: Tensor) -> 'So2':
+    def from_matrix(cls, matrix: Tensor) -> So2:
         """Create So2 from a rotation matrix.
 
         Args:
@@ -198,7 +200,7 @@ class So2(Module):
         return cls(z)
 
     @classmethod
-    def identity(cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None) -> 'So2':
+    def identity(cls, batch_size: int | None = None, device: Device | None = None, dtype: Dtype = None) -> So2:
         """Create a So2 group representing an identity rotation.
 
         Args:
@@ -218,7 +220,7 @@ class So2(Module):
             imag_data = imag_data.repeat(batch_size)
         return cls(complex(real_data, imag_data))
 
-    def inverse(self) -> 'So2':
+    def inverse(self) -> So2:
         """Returns the inverse transformation.
 
         Example:
@@ -230,7 +232,7 @@ class So2(Module):
         return So2(1 / self.z)
 
     @classmethod
-    def random(cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None) -> 'So2':
+    def random(cls, batch_size: int | None = None, device: Device | None = None, dtype: Dtype = None) -> So2:
         """Create a So2 group representing a random rotation.
 
         Args:
