@@ -19,14 +19,10 @@ def get_cuda_device_if_available(index: int = 0) -> torch.device:
     Returns:
         torch.device
     """
-    try:
-        if torch.cuda.is_available():
-            dev = torch.device(f'cuda:{index}')
-        else:
-            dev = torch.device('cpu')
-    except BaseException as e:  # noqa: F841
-        dev = torch.device('cpu')
-    return dev
+    if torch.cuda.is_available():
+        return torch.device(f'cuda:{index}')
+
+    return torch.device('cpu')
 
 
 @overload

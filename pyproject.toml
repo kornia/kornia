@@ -113,7 +113,7 @@ exclude_lines = [
 [tool.ruff]
   line-length = 120
   target-version = "py37"
-  select = ["C9", "E", "F", "I", "PL", "S", "UP", "W", "YTT"]
+  select = ["C9", "E", "F", "I", "PL", "S", "UP", "W", "YTT", "BLE"]
   ignore = [
     "PLR2004", # Allow to use inplace values in comparisons instead of constants
     "PLW2901", # Allow overwritten values on loops
@@ -134,5 +134,5 @@ exclude_lines = [
   [tool.ruff.per-file-ignores]
     "*/__init__.py" = ["F401", "F403"] # Allow unused imports and star imports
     "kornia/__init__.py" = ["I001"] # Allow unsorted imports
-    "test/*" = ["S101", "S311"] # allow assert, random
+    "test/*" = ["S101", "S311", "BLE"] # allow assert, random, ignore BLE
     "docs/*" = ["S101", "PLR0912", "PLR0915"] # allow assert, ignore max branches and statements
