@@ -6,5 +6,4 @@ pre-commit>=2
 pydocstyle
 pytest==7.3.1
 pytest-cov==4
-ruff==0.0.259
 scipy
