@@ -112,9 +112,7 @@ class AutoAugment(PolicyAugmentBase):
     """
 
     def __init__(
-        self,
-        policy: Union[str, List[SUBPLOLICY_CONFIG]] = "imagenet",
-        transformation_matrix: str = "silence"
+        self, policy: Union[str, List[SUBPLOLICY_CONFIG]] = "imagenet", transformation_matrix: str = "silence"
     ) -> None:
         if policy == "imagenet":
             _policy = imagenet_policy

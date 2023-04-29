@@ -42,9 +42,7 @@ class TrivialAugment(PolicyAugmentBase):
     """
 
     def __init__(
-        self,
-        policy: Optional[List[SUBPLOLICY_CONFIG]] = None,
-        transformation_matrix: str = "silence"
+        self, policy: Optional[List[SUBPLOLICY_CONFIG]] = None, transformation_matrix: str = "silence"
     ) -> None:
         if policy is None:
             _policy = default_policy

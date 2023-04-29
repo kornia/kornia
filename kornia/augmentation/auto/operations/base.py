@@ -157,7 +157,7 @@ class OperationBase(Module):
         return batch_prob * self.op(input, params=params) + (1 - batch_prob) * input
 
     @property
-    def transform_matrix(self,) -> Optional[Tensor]:
+    def transform_matrix(self) -> Optional[Tensor]:
         if hasattr(self.op, "transform_matrix"):
             return self.op.transform_matrix
         return None

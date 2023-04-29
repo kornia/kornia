@@ -56,9 +56,7 @@ class PolicyAugmentBase(ImageSequentialBase):
     def _update_transform_matrix_by_module(self, module: Module) -> None:
         if self._transformation_matrix_arg == "skip":
             return
-        if isinstance(
-            module, (K.RigidAffineAugmentationBase2D, K.RigidAffineAugmentationBase3D)
-        ):
+        if isinstance(module, (K.RigidAffineAugmentationBase2D, K.RigidAffineAugmentationBase3D)):
             # Passed in pointer, allows lazy transformation matrix computation
             self._transform_matrices.append(module.transform_matrix)  # type: ignore
         elif self._transformation_matrix_arg == "rigid":
