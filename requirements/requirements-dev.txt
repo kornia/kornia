@@ -1,4 +1,3 @@
-isort
 kornia-rs==0.0.8
 mypy[reports]
 numpy

@@ -83,7 +83,7 @@ class ImageStitcher(Module):
     def preprocess(self, image_1: Tensor, image_2: Tensor) -> Dict[str, Tensor]:
         """Preprocess input to the required format."""
         # TODO: probably perform histogram matching here.
-        if isinstance(self.matcher, LoFTR) or isinstance(self.matcher, LocalFeatureMatcher):
+        if isinstance(self.matcher, (LoFTR, LocalFeatureMatcher)):
             input_dict = {  # LofTR works on grayscale images only
                 "image0": rgb_to_grayscale(image_1),
                 "image1": rgb_to_grayscale(image_2),
