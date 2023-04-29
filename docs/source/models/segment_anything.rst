@@ -92,7 +92,7 @@ to query the image masks from the SAM model.
     import torch
 
     from kornia.contrib.models.sam import SamConfig
-    from kornia.contrib.image_prompter import VisualPrompter
+    from kornia.contrib.visual_prompter import VisualPrompter
     from kornia.io import load_image, ImageLoadType
     from kornia.geometry.keypoints import Keypoints
     from kornia.geometry.boxes import Boxes
