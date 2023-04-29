@@ -6,8 +6,7 @@ from packaging import version
 from torch.autograd import gradcheck
 
 import kornia
-from kornia.testing import BaseTester  # test utils
-from kornia.testing import assert_close
+from kornia.testing import BaseTester, assert_close  # test utils
 
 
 class TestRawToRgb(BaseTester):
