@@ -115,7 +115,7 @@ exclude_lines = [
   target-version = "py37"
   select = ["C9", "E", "F", "I", "PL", "S", "UP", "W", "YTT"]
   ignore = [
-    "PLR2004", # Allow to use inplace values in statements instead of constant
+    "PLR2004", # Allow to use inplace values in comparisons instead of constants
     "PLW2901", # Allow overwritten values on loops
   ]
 
