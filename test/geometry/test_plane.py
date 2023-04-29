@@ -47,7 +47,7 @@ class TestHyperplane(BaseTester):
         n0 = Vector3.random(shape, device, dtype).normalized()
         pl0 = Hyperplane.from_vector(n0, p0)
         assert pl0.normal.shape == shape or () + (3,)
-        assert pl0.offset.shape == (shape + () if shape is not None else ())
+        assert pl0.offset.shape == ((*shape,) if shape is not None else ())
 
     def test_serialization(self, device, dtype, tmp_path):
         p = Vector3.random((), device, dtype)
@@ -79,7 +79,7 @@ class TestHyperplane(BaseTester):
         # TODO: improve api so that we can accept Vector too
         p0 = Hyperplane.through(v0, v1, v2)
         assert p0.normal.shape == shape or () + (3,)
-        assert p0.offset.shape == (shape + () if shape is not None else ())
+        assert p0.offset.shape == ((*shape,) if shape is not None else ())
 
     @pytest.mark.parametrize("shape", (None, (1,), (2, 1)))
     def test_abs_signed_distance(self, device, dtype, shape):

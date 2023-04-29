@@ -330,7 +330,7 @@ class Quaternion(Module):
         """
         rand_shape = (batch_size,) if batch_size is not None else ()
 
-        r1, r2, r3 = rand((3,) + rand_shape, device=device, dtype=dtype)
+        r1, r2, r3 = rand((3, *rand_shape), device=device, dtype=dtype)
         q1 = (1.0 - r1).sqrt() * ((2 * pi * r2).sin())
         q2 = (1.0 - r1).sqrt() * ((2 * pi * r2).cos())
         q3 = r1.sqrt() * (2 * pi * r3).sin()

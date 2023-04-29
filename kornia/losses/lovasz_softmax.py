@@ -40,7 +40,7 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor) -> Tensor:
     Args:
         pred: logits tensor with shape :math:`(N, C, H, W)` where C = number of classes > 1.
         labels: labels tensor with shape :math:`(N, H, W)` where each value
-          is :math:`0 ≤ targets[i] ≤ C−1`.
+          is :math:`0 ≤ targets[i] ≤ C-1`.
 
     Return:
         a scalar with the computed loss.
@@ -128,7 +128,7 @@ class LovaszSoftmaxLoss(nn.Module):
     Args:
         pred: logits tensor with shape :math:`(N, C, H, W)` where C = number of classes > 1.
         labels: labels tensor with shape :math:`(N, H, W)` where each value
-          is :math:`0 ≤ targets[i] ≤ C−1`.
+          is :math:`0 ≤ targets[i] ≤ C-1`.
 
     Return:
         a scalar with the computed loss.

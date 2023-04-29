@@ -10,7 +10,7 @@ from kornia.testing import BaseTester
 class TestSo3(BaseTester):
     def _make_rand_data(self, device, dtype, batch_size, dims):
         shape = [] if batch_size is None else [batch_size]
-        return torch.rand(shape + [dims], device=device, dtype=dtype)
+        return torch.rand([*shape, dims], device=device, dtype=dtype)
 
     def test_smoke(self, device, dtype):
         q = Quaternion.from_coeffs(1.0, 0.0, 0.0, 0.0)

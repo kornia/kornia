@@ -37,7 +37,7 @@ def dice_loss(input: Tensor, target: Tensor, average: str = "micro", eps: float 
     Args:
         input: logits tensor with shape :math:`(N, C, H, W)` where C = number of classes.
         labels: labels tensor with shape :math:`(N, H, W)` where each value
-          is :math:`0 ≤ targets[i] ≤ C−1`.
+          is :math:`0 ≤ targets[i] ≤ C-1`.
         average:
             Reduction applied in multi-class scenario:
             - ``'micro'`` [default]: Calculate the loss across all classes.
@@ -77,7 +77,7 @@ def dice_loss(input: Tensor, target: Tensor, average: str = "micro", eps: float 
     # set dimensions for the appropriate averaging
     dims: tuple[int, ...] = (2, 3)
     if average == "micro":
-        dims = (1,) + dims
+        dims = (1, *dims)
 
     # compute the actual dice score
     intersection = torch.sum(input_soft * target_one_hot, dims)
@@ -124,7 +124,7 @@ class DiceLoss(nn.Module):
     Shape:
         - Input: :math:`(N, C, H, W)` where C = number of classes.
         - Target: :math:`(N, H, W)` where each value is
-          :math:`0 ≤ targets[i] ≤ C−1`.
+          :math:`0 ≤ targets[i] ≤ C-1`.
 
     Example:
         >>> N = 5  # num_classes

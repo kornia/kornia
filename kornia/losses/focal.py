@@ -29,7 +29,7 @@ def focal_loss(
 
     Args:
         input: logits tensor with shape :math:`(N, C, *)` where C = number of classes.
-        target: labels tensor with shape :math:`(N, *)` where each value is :math:`0 ≤ targets[i] ≤ C−1`.
+        target: labels tensor with shape :math:`(N, *)` where each value is :math:`0 ≤ targets[i] ≤ C-1`.
         alpha: Weighting factor :math:`\alpha \in [0, 1]`.
         gamma: Focusing parameter :math:`\gamma >= 0`.
         reduction: Specifies the reduction to apply to the
@@ -118,7 +118,7 @@ class FocalLoss(nn.Module):
     Shape:
         - Input: :math:`(N, C, *)` where C = number of classes.
         - Target: :math:`(N, *)` where each value is
-          :math:`0 ≤ targets[i] ≤ C−1`.
+          :math:`0 ≤ targets[i] ≤ C-1`.
 
     Example:
         >>> N = 5  # num_classes
@@ -171,7 +171,7 @@ def binary_focal_loss_with_logits(
           summed.
         eps: Deprecated: scalar for numerically stability when dividing. This is no longer used.
         pos_weight: a weight of positive examples.
-          It’s possible to trade off recall and precision by adding weights to positive examples.
+          It`s possible to trade off recall and precision by adding weights to positive examples.
           Must be a vector with length equal to the number of classes.
 
     Returns:
@@ -248,7 +248,7 @@ class BinaryFocalLossWithLogits(nn.Module):
           the number of elements in the output, ``'sum'``: the output will be
           summed.
         pos_weight: a weight of positive examples.
-          It’s possible to trade off recall and precision by adding weights to positive examples.
+          It`s possible to trade off recall and precision by adding weights to positive examples.
           Must be a vector with length equal to the number of classes.
 
     Shape:
