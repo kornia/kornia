@@ -79,9 +79,10 @@ class CropGenerator3D(RandomGeneratorBase):
             )
 
         if batch_size == 0:
-            return dict(
-                src=zeros([0, 8, 3], device=_device, dtype=_dtype), dst=zeros([0, 8, 3], device=_device, dtype=_dtype)
-            )
+            return {
+                "src": zeros([0, 8, 3], device=_device, dtype=_dtype),
+                "dst": zeros([0, 8, 3], device=_device, dtype=_dtype),
+            }
 
         x_start = _adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch).to(device=_device, dtype=_dtype)
         y_start = _adapted_rsampling((batch_size,), self.rand_sampler, same_on_batch).to(device=_device, dtype=_dtype)
@@ -132,7 +133,7 @@ class CropGenerator3D(RandomGeneratorBase):
                 dtype=_dtype,
             ).repeat(batch_size, 1, 1)
 
-        return dict(src=crop_src.to(device=_device), dst=crop_dst.to(device=_device))
+        return {"src": crop_src.to(device=_device), "dst": crop_dst.to(device=_device)}
 
 
 def center_crop_generator3d(
@@ -171,7 +172,7 @@ def center_crop_generator3d(
         raise AssertionError(f"Crop size must be smaller than input size. Got ({depth}, {height}, {width}) and {size}.")
 
     if batch_size == 0:
-        return dict(src=zeros([0, 8, 3]), dst=zeros([0, 8, 3]))
+        return {"src": zeros([0, 8, 3]), "dst": zeros([0, 8, 3])}
     # unpack input sizes
     dst_d, dst_h, dst_w = size
     src_d, src_h, src_w = (depth, height, width)
@@ -232,4 +233,4 @@ def center_crop_generator3d(
         device=device,
         dtype=torch.long,
     ).expand(batch_size, -1, -1)
-    return dict(src=points_src, dst=points_dst)
+    return {"src": points_src, "dst": points_dst}

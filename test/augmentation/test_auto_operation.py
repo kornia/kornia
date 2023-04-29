@@ -17,7 +17,7 @@ from test.augmentation.test_container import reproducibility_test
 
 def _find_all_ops() -> List[OperationBase]:
     _ops = [op for _, op in inspect.getmembers(ops, inspect.isclass)]
-    return list([op() for op in _ops if issubclass(op, OperationBase) and op != OperationBase])
+    return [op() for op in _ops if issubclass(op, OperationBase) and op != OperationBase]
 
 
 def _test_sequential(augment_method, device, dtype):

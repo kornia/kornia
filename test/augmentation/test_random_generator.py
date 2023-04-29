@@ -155,7 +155,7 @@ class TestColorJiggleGen(RandomGeneratorBaseTests):
             'order': torch.tensor([3, 2, 0, 1], device=device, dtype=dtype),
         }
 
-        assert set(list(jitter_params.keys())) == {
+        assert set(jitter_params.keys()) == {
             'brightness_factor',
             'contrast_factor',
             'hue_factor',
@@ -200,7 +200,7 @@ class TestColorJiggleGen(RandomGeneratorBaseTests):
             'order': torch.tensor([3, 2, 0, 1], device=device, dtype=dtype),
         }
 
-        assert set(list(jitter_params.keys())) == {
+        assert set(jitter_params.keys()) == {
             'brightness_factor',
             'contrast_factor',
             'hue_factor',
@@ -328,7 +328,7 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
             'order': torch.tensor([3, 2, 0, 1], device=device, dtype=dtype),
         }
 
-        assert set(list(jitter_params.keys())) == {
+        assert set(jitter_params.keys()) == {
             'brightness_factor',
             'contrast_factor',
             'hue_factor',
@@ -402,8 +402,8 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
         batch_size = 2
         res = PerspectiveGenerator(torch.tensor(0.5, device=device, dtype=dtype))(torch.Size([batch_size, 1, 200, 200]))
 
-        expected = dict(
-            start_points=torch.tensor(
+        expected = {
+            'start_points': torch.tensor(
                 [
                     [[0.0, 0.0], [199.0, 0.0], [199.0, 199.0], [0.0, 199.0]],
                     [[0.0, 0.0], [199.0, 0.0], [199.0, 199.0], [0.0, 199.0]],
@@ -411,7 +411,7 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
                 device=device,
                 dtype=dtype,
             ),
-            end_points=torch.tensor(
+            'end_points': torch.tensor(
                 [
                     [[44.1135, 45.7502], [179.8568, 47.9653], [179.4776, 168.9552], [12.8286, 159.3179]],
                     [[47.0386, 6.6593], [152.2701, 29.6790], [155.5298, 170.6142], [37.0547, 177.5298]],
@@ -419,7 +419,7 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
                 device=device,
                 dtype=dtype,
             ),
-        )
+        }
         assert res.keys() == expected.keys()
         assert_close(res['start_points'], expected['start_points'])
         assert_close(res['end_points'], expected['end_points'])
@@ -430,16 +430,16 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
         res = PerspectiveGenerator(torch.tensor(0.5, device=device, dtype=dtype))(
             torch.Size([batch_size, 1, 200, 200]), same_on_batch=True
         )
-        expected = dict(
-            start_points=torch.tensor(
+        expected = {
+            'start_points': torch.tensor(
                 [[[0.0, 0.0], [199.0, 0.0], [199.0, 199.0], [0.0, 199.0]]], device=device, dtype=dtype
             ).repeat(2, 1, 1),
-            end_points=torch.tensor(
+            'end_points': torch.tensor(
                 [[[44.1135, 45.7502], [179.8568, 47.9653], [179.4776, 168.9552], [12.8286, 159.3179]]],
                 device=device,
                 dtype=dtype,
             ).repeat(2, 1, 1),
-        )
+        }
         assert res.keys() == expected.keys()
         assert_close(res['start_points'], expected['start_points'])
         assert_close(res['end_points'], expected['end_points'])
@@ -451,8 +451,8 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
             torch.Size([batch_size, 1, 200, 200])
         )
 
-        expected = dict(
-            start_points=torch.tensor(
+        expected = {
+            'start_points': torch.tensor(
                 [
                     [[0.0, 0.0], [199.0, 0.0], [199.0, 199.0], [0.0, 199.0]],
                     [[0.0, 0.0], [199.0, 0.0], [199.0, 199.0], [0.0, 199.0]],
@@ -460,7 +460,7 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
                 device=device,
                 dtype=dtype,
             ),
-            end_points=torch.tensor(
+            'end_points': torch.tensor(
                 [
                     [[38.2269, 41.5004], [187.2864, 45.9306], [188.0448, 209.0895], [-24.3428, 228.3641]],
                     [[44.0771, -36.6814], [242.4598, 9.3580], [235.9404, 205.7715], [24.1094, 191.9404]],
@@ -468,7 +468,7 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
                 device=device,
                 dtype=dtype,
             ),
-        )
+        }
         assert res.keys() == expected.keys()
         assert_close(res['start_points'], expected['start_points'])
         assert_close(res['end_points'], expected['end_points'])
@@ -537,14 +537,14 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
             scale=scale.to(device=device, dtype=dtype) if scale is not None else None,
             shear=shear.to(device=device, dtype=dtype) if shear is not None else None,
         )(torch.Size([2, 1, 200, 200]))
-        expected = dict(
-            translations=torch.tensor([[-4.3821, -9.7371], [4.0358, 11.7457]], device=device, dtype=dtype),
-            center=torch.tensor([[99.5000, 99.5000], [99.5000, 99.5000]], device=device, dtype=dtype),
-            scale=torch.tensor([[0.8914, 0.8914], [1.1797, 1.1797]], device=device, dtype=dtype),
-            angle=torch.tensor([18.8227, 19.1500], device=device, dtype=dtype),
-            shear_x=torch.tensor([19.4077, 11.3319], device=device, dtype=dtype),
-            shear_y=torch.tensor([19.3460, 15.9358], device=device, dtype=dtype),
-        )
+        expected = {
+            'translations': torch.tensor([[-4.3821, -9.7371], [4.0358, 11.7457]], device=device, dtype=dtype),
+            'center': torch.tensor([[99.5000, 99.5000], [99.5000, 99.5000]], device=device, dtype=dtype),
+            'scale': torch.tensor([[0.8914, 0.8914], [1.1797, 1.1797]], device=device, dtype=dtype),
+            'angle': torch.tensor([18.8227, 19.1500], device=device, dtype=dtype),
+            'shear_x': torch.tensor([19.4077, 11.3319], device=device, dtype=dtype),
+            'shear_y': torch.tensor([19.3460, 15.9358], device=device, dtype=dtype),
+        }
         assert res.keys() == expected.keys()
         assert_close(res['translations'], expected['translations'], rtol=1e-4, atol=1e-4)
         assert_close(res['center'], expected['center'], rtol=1e-4, atol=1e-4)
@@ -565,14 +565,14 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
             scale=scale.to(device=device, dtype=dtype) if scale is not None else None,
             shear=shear.to(device=device, dtype=dtype) if shear is not None else None,
         )(torch.Size([2, 1, 200, 200]), True)
-        expected = dict(
-            translations=torch.tensor([[-4.6854, 18.3722], [-4.6854, 18.3722]], device=device, dtype=dtype),
-            center=torch.tensor([[99.5000, 99.5000], [99.5000, 99.5000]], device=device, dtype=dtype),
-            scale=torch.tensor([[1.1575, 1.1575], [1.1575, 1.1575]], device=device, dtype=dtype),
-            angle=torch.tensor([18.8227, 18.8227], device=device, dtype=dtype),
-            shear_x=torch.tensor([13.9045, 13.9045], device=device, dtype=dtype),
-            shear_y=torch.tensor([16.0090, 16.0090], device=device, dtype=dtype),
-        )
+        expected = {
+            'translations': torch.tensor([[-4.6854, 18.3722], [-4.6854, 18.3722]], device=device, dtype=dtype),
+            'center': torch.tensor([[99.5000, 99.5000], [99.5000, 99.5000]], device=device, dtype=dtype),
+            'scale': torch.tensor([[1.1575, 1.1575], [1.1575, 1.1575]], device=device, dtype=dtype),
+            'angle': torch.tensor([18.8227, 18.8227], device=device, dtype=dtype),
+            'shear_x': torch.tensor([13.9045, 13.9045], device=device, dtype=dtype),
+            'shear_y': torch.tensor([16.0090, 16.0090], device=device, dtype=dtype),
+        }
         assert res.keys() == expected.keys()
         assert_close(res['translations'], expected['translations'], rtol=1e-4, atol=1e-4)
         assert_close(res['center'], expected['center'], rtol=1e-4, atol=1e-4)
@@ -609,20 +609,20 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
         res = CropGenerator(torch.tensor([[50, 60], [70, 80]], device=device, dtype=dtype), (200, 200))(
             torch.Size([2, 1, 100, 100])
         )
-        expected = dict(
-            src=torch.tensor(
+        expected = {
+            'src': torch.tensor(
                 [[[36, 19], [95, 19], [95, 68], [36, 68]], [[19, 29], [98, 29], [98, 98], [19, 98]]],
                 device=device,
                 dtype=dtype,
             ),
-            dst=torch.tensor(
+            'dst': torch.tensor(
                 [[[0, 0], [199, 0], [199, 199], [0, 199]], [[0, 0], [199, 0], [199, 199], [0, 199]]],
                 device=device,
                 dtype=dtype,
             ),
-            input_size=torch.tensor([[100, 100], [100, 100]], device=device, dtype=torch.long),
-            output_size=torch.tensor([[200, 200], [200, 200]], device=device, dtype=torch.long),
-        )
+            'input_size': torch.tensor([[100, 100], [100, 100]], device=device, dtype=torch.long),
+            'output_size': torch.tensor([[200, 200], [200, 200]], device=device, dtype=torch.long),
+        }
         assert res.keys() == expected.keys()
         assert_close(res['src'], expected['src'])
         assert_close(res['dst'], expected['dst'])
@@ -632,20 +632,20 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
         res = CropGenerator(torch.tensor([[50, 60], [70, 80]], device=device, dtype=dtype), (200, 200))(
             torch.Size([2, 1, 100, 100]), True
         )
-        expected = dict(
-            src=torch.tensor(
+        expected = {
+            'src': torch.tensor(
                 [[[36, 46], [95, 46], [95, 95], [36, 95]], [[36, 46], [115, 46], [115, 115], [36, 115]]],
                 device=device,
                 dtype=dtype,
             ),
-            dst=torch.tensor(
+            'dst': torch.tensor(
                 [[[0, 0], [199, 0], [199, 199], [0, 199]], [[0, 0], [199, 0], [199, 199], [0, 199]]],
                 device=device,
                 dtype=dtype,
             ),
-            input_size=torch.tensor([[100, 100], [100, 100]], device=device, dtype=torch.long),
-            output_size=torch.tensor([[200, 200], [200, 200]], device=device, dtype=torch.long),
-        )
+            'input_size': torch.tensor([[100, 100], [100, 100]], device=device, dtype=torch.long),
+            'output_size': torch.tensor([[200, 200], [200, 200]], device=device, dtype=torch.long),
+        }
         assert res.keys() == expected.keys()
         assert_close(res['src'], expected['src'])
         assert_close(res['dst'], expected['dst'])
@@ -689,8 +689,8 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
             torch.tensor([0.7, 1.3], device=device, dtype=dtype),
             torch.tensor([0.9, 1.1], device=device, dtype=dtype),
         )(torch.Size([2, 1, 300, 300]))
-        expected = dict(
-            src=torch.tensor(
+        expected = {
+            'src': torch.tensor(
                 [
                     [[3.0, 12.0], [298.0, 12.0], [298.0, 294.0], [3.0, 294.0]],
                     [[8.0, 20.0], [284.0, 20.0], [284.0, 298.0], [8.0, 298.0]],
@@ -698,7 +698,7 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
                 device=device,
                 dtype=dtype,
             ),
-            dst=torch.tensor(
+            'dst': torch.tensor(
                 [
                     [[0.0, 0.0], [99.0, 0.0], [99.0, 99.0], [0.0, 99.0]],
                     [[0.0, 0.0], [99.0, 0.0], [99.0, 99.0], [0.0, 99.0]],
@@ -706,9 +706,9 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
                 device=device,
                 dtype=dtype,
             ),
-            input_size=torch.tensor([[300, 300], [300, 300]], device=device, dtype=torch.int64),
-            output_size=torch.tensor([[100, 100], [100, 100]], device=device, dtype=torch.long),
-        )
+            'input_size': torch.tensor([[300, 300], [300, 300]], device=device, dtype=torch.int64),
+            'output_size': torch.tensor([[100, 100], [100, 100]], device=device, dtype=torch.long),
+        }
         assert res.keys() == expected.keys()
         assert_close(res['src'], expected['src'])
         assert_close(res['dst'], expected['dst'])
@@ -721,8 +721,8 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
             torch.tensor([0.7, 1.3], device=device, dtype=dtype),
             torch.tensor([0.9, 1.1], device=device, dtype=dtype),
         )(torch.Size([2, 1, 300, 300]), same_on_batch=True)
-        expected = dict(
-            src=torch.tensor(
+        expected = {
+            'src': torch.tensor(
                 [
                     [[5.0, 0.0], [283.0, 0.0], [283.0, 298.0], [5.0, 298.0]],
                     [[5.0, 0.0], [283.0, 0.0], [283.0, 298.0], [5.0, 298.0]],
@@ -730,7 +730,7 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
                 device=device,
                 dtype=dtype,
             ),
-            dst=torch.tensor(
+            'dst': torch.tensor(
                 [
                     [[0.0, 0.0], [99.0, 0.0], [99.0, 99.0], [0.0, 99.0]],
                     [[0.0, 0.0], [99.0, 0.0], [99.0, 99.0], [0.0, 99.0]],
@@ -738,9 +738,9 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
                 device=device,
                 dtype=dtype,
             ),
-            input_size=torch.tensor([[300, 300], [300, 300]], device=device, dtype=torch.int64),
-            output_size=torch.tensor([[100, 100], [100, 100]], device=device, dtype=torch.long),
-        )
+            'input_size': torch.tensor([[300, 300], [300, 300]], device=device, dtype=torch.int64),
+            'output_size': torch.tensor([[100, 100], [100, 100]], device=device, dtype=torch.long),
+        }
         assert res.keys() == expected.keys()
         assert_close(res['src'], expected['src'])
         assert_close(res['dst'], expected['dst'])
@@ -792,13 +792,13 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
         res = RectangleEraseGenerator(
             scale=scale.to(device=device, dtype=dtype), ratio=ratio.to(device=device, dtype=dtype), value=value
         )(torch.Size([2, 1, height, width]))
-        expected = dict(
-            widths=torch.tensor([100, 100], device=device, dtype=dtype),
-            heights=torch.tensor([0, 0], device=device, dtype=dtype),
-            xs=torch.tensor([0, 0], device=device, dtype=dtype),
-            ys=torch.tensor([6, 8], device=device, dtype=dtype),
-            values=torch.tensor([0.5000, 0.5000], device=device, dtype=dtype),
-        )
+        expected = {
+            'widths': torch.tensor([100, 100], device=device, dtype=dtype),
+            'heights': torch.tensor([0, 0], device=device, dtype=dtype),
+            'xs': torch.tensor([0, 0], device=device, dtype=dtype),
+            'ys': torch.tensor([6, 8], device=device, dtype=dtype),
+            'values': torch.tensor([0.5000, 0.5000], device=device, dtype=dtype),
+        }
         assert res.keys() == expected.keys()
         assert_close(res['widths'], expected['widths'])
         assert_close(res['widths'], expected['widths'])
@@ -815,13 +815,13 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
         res = RectangleEraseGenerator(
             scale=scale.to(device=device, dtype=dtype), ratio=ratio.to(device=device, dtype=dtype), value=value
         )(torch.Size([2, 1, height, width]), True)
-        expected = dict(
-            widths=torch.tensor([100, 100], device=device, dtype=dtype),
-            heights=torch.tensor([0, 0], device=device, dtype=dtype),
-            xs=torch.tensor([0, 0], device=device, dtype=dtype),
-            ys=torch.tensor([10, 10], device=device, dtype=dtype),
-            values=torch.tensor([0.5000, 0.5000], device=device, dtype=dtype),
-        )
+        expected = {
+            'widths': torch.tensor([100, 100], device=device, dtype=dtype),
+            'heights': torch.tensor([0, 0], device=device, dtype=dtype),
+            'xs': torch.tensor([0, 0], device=device, dtype=dtype),
+            'ys': torch.tensor([10, 10], device=device, dtype=dtype),
+            'values': torch.tensor([0.5000, 0.5000], device=device, dtype=dtype),
+        }
         assert res.keys() == expected.keys()
         assert_close(res['widths'], expected['widths'])
         assert_close(res['widths'], expected['widths'])
@@ -856,20 +856,20 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
         res = center_crop_generator(batch_size=2, height=200, width=200, size=(120, 150))
-        expected = dict(
-            src=torch.tensor(
+        expected = {
+            'src': torch.tensor(
                 [[[25, 40], [174, 40], [174, 159], [25, 159]], [[25, 40], [174, 40], [174, 159], [25, 159]]],
                 device=device,
                 dtype=torch.long,
             ),
-            dst=torch.tensor(
+            'dst': torch.tensor(
                 [[[0, 0], [149, 0], [149, 119], [0, 119]], [[0, 0], [149, 0], [149, 119], [0, 119]]],
                 device=device,
                 dtype=torch.long,
             ),
-            input_size=torch.tensor([[200, 200], [200, 200]], device=device, dtype=torch.long),
-            output_size=torch.tensor([[120, 150], [120, 150]], device=device, dtype=torch.long),
-        )
+            'input_size': torch.tensor([[200, 200], [200, 200]], device=device, dtype=torch.long),
+            'output_size': torch.tensor([[120, 150], [120, 150]], device=device, dtype=torch.long),
+        }
         assert res.keys() == expected.keys()
         assert_close(res['src'].to(device=device), expected['src'])
         assert_close(res['dst'].to(device=device), expected['dst'])
@@ -918,11 +918,11 @@ class TestRandomMotionBlur(RandomGeneratorBaseTests):
             angle=angle.to(device=device, dtype=dtype),
             direction=direction.to(device=device, dtype=dtype),
         )(torch.Size([2]))
-        expected = dict(
-            ksize_factor=torch.tensor([3, 3], device=device, dtype=torch.int32),
-            angle_factor=torch.tensor([82.9362, 84.9002], device=device, dtype=dtype),
-            direction_factor=torch.tensor([-0.2343, 0.9186], device=device, dtype=dtype),
-        )
+        expected = {
+            'ksize_factor': torch.tensor([3, 3], device=device, dtype=torch.int32),
+            'angle_factor': torch.tensor([82.9362, 84.9002], device=device, dtype=dtype),
+            'direction_factor': torch.tensor([-0.2343, 0.9186], device=device, dtype=dtype),
+        }
         assert res.keys() == expected.keys()
         assert_close(res['ksize_factor'], expected['ksize_factor'], rtol=1e-4, atol=1e-4)
         assert_close(res['angle_factor'], expected['angle_factor'], rtol=1e-4, atol=1e-4)
@@ -937,11 +937,11 @@ class TestRandomMotionBlur(RandomGeneratorBaseTests):
             angle=angle.to(device=device, dtype=dtype),
             direction=direction.to(device=device, dtype=dtype),
         )(torch.Size([2]), True)
-        expected = dict(
-            ksize_factor=torch.tensor([3, 3], device=device, dtype=torch.int32),
-            angle_factor=torch.tensor([82.9362, 82.9362], device=device, dtype=dtype),
-            direction_factor=torch.tensor([0.8300, 0.8300], device=device, dtype=dtype),
-        )
+        expected = {
+            'ksize_factor': torch.tensor([3, 3], device=device, dtype=torch.int32),
+            'angle_factor': torch.tensor([82.9362, 82.9362], device=device, dtype=dtype),
+            'direction_factor': torch.tensor([0.8300, 0.8300], device=device, dtype=dtype),
+        }
         assert res.keys() == expected.keys()
         assert_close(res['ksize_factor'], expected['ksize_factor'], rtol=1e-4, atol=1e-4)
         assert_close(res['angle_factor'], expected['angle_factor'], rtol=1e-4, atol=1e-4)
@@ -967,7 +967,7 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
         torch.manual_seed(9)
         batch_size = 8
         res = PosterizeGenerator(bits=torch.tensor([0, 8], device=device, dtype=dtype))(torch.Size([batch_size]))
-        expected = dict(bits_factor=torch.tensor([5, 2, 4, 6, 7, 7, 2, 8], device=device, dtype=torch.int32))
+        expected = {'bits_factor': torch.tensor([5, 2, 4, 6, 7, 7, 2, 8], device=device, dtype=torch.int32)}
         assert res.keys() == expected.keys()
         assert_close(res['bits_factor'], expected['bits_factor'], rtol=1e-4, atol=1e-4)
 
@@ -977,7 +977,7 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
         res = PosterizeGenerator(bits=torch.tensor([0, 8], device=device, dtype=dtype))(
             torch.Size([batch_size]), same_on_batch=True
         )
-        expected = dict(bits_factor=torch.tensor([5, 5, 5, 5, 5, 5, 5, 5], device=device, dtype=torch.int32))
+        expected = {'bits_factor': torch.tensor([5, 5, 5, 5, 5, 5, 5, 5], device=device, dtype=torch.int32)}
         assert res.keys() == expected.keys()
         assert_close(res['bits_factor'], expected['bits_factor'], rtol=1e-4, atol=1e-4)
 
@@ -1006,11 +1006,11 @@ class TestPlainUniformGenerator(RandomGeneratorBaseTests):
         res = PlainUniformGenerator(
             (torch.tensor([0.0, 1.0], device=device, dtype=dtype), "sharpness_factor", None, None)
         )(torch.Size([batch_size, 1]))
-        expected = dict(
-            sharpness_factor=torch.tensor(
+        expected = {
+            'sharpness_factor': torch.tensor(
                 [0.8823, 0.9150, 0.3829, 0.9593, 0.3904, 0.6009, 0.2566, 0.7936], device=device, dtype=dtype
             )
-        )
+        }
         assert res.keys() == expected.keys()
         assert_close(res['sharpness_factor'], expected['sharpness_factor'], rtol=1e-4, atol=1e-4)
 
@@ -1020,11 +1020,11 @@ class TestPlainUniformGenerator(RandomGeneratorBaseTests):
         res = PlainUniformGenerator(
             (torch.tensor([0.0, 1.0], device=device, dtype=dtype), "sharpness_factor", None, None)
         )(torch.Size([batch_size, 1]), True)
-        expected = dict(
-            sharpness_factor=torch.tensor(
+        expected = {
+            'sharpness_factor': torch.tensor(
                 [0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823], device=device, dtype=dtype
             )
-        )
+        }
         assert res.keys() == expected.keys()
         assert_close(res['sharpness_factor'], expected['sharpness_factor'], rtol=1e-4, atol=1e-4)
 
@@ -1055,12 +1055,12 @@ class TestRandomMixUpGen(RandomGeneratorBaseTests):
         res = MixupGenerator(p=0.5, lambda_val=torch.tensor([0.0, 1.0], device=device, dtype=dtype))(
             torch.Size([batch_size, 3, 200, 200]), same_on_batch=False
         )
-        expected = dict(
-            mixup_pairs=torch.tensor([6, 1, 0, 7, 2, 5, 3, 4], device=device, dtype=torch.long),
-            mixup_lambdas=torch.tensor(
+        expected = {
+            'mixup_pairs': torch.tensor([6, 1, 0, 7, 2, 5, 3, 4], device=device, dtype=torch.long),
+            'mixup_lambdas': torch.tensor(
                 [0.0000, 0.0000, 0.5739, 0.0000, 0.6274, 0.0000, 0.4414, 0.0000], device=device, dtype=dtype
             ),
-        )
+        }
         assert res.keys() == expected.keys()
         assert_close(res['mixup_pairs'], expected['mixup_pairs'], rtol=1e-4, atol=1e-4)
         assert_close(res['mixup_lambdas'], expected['mixup_lambdas'], rtol=1e-4, atol=1e-4)
@@ -1071,12 +1071,12 @@ class TestRandomMixUpGen(RandomGeneratorBaseTests):
         res = MixupGenerator(p=0.999999, lambda_val=torch.tensor([0.0, 1.0], device=device, dtype=dtype))(
             torch.Size([batch_size, 3, 200, 200]), same_on_batch=True
         )
-        expected = dict(
-            mixup_pairs=torch.tensor([4, 6, 7, 5, 0, 1, 3, 2], device=device, dtype=torch.long),
-            mixup_lambdas=torch.tensor(
+        expected = {
+            'mixup_pairs': torch.tensor([4, 6, 7, 5, 0, 1, 3, 2], device=device, dtype=torch.long),
+            'mixup_lambdas': torch.tensor(
                 [0.3804, 0.3804, 0.3804, 0.3804, 0.3804, 0.3804, 0.3804, 0.3804], device=device, dtype=dtype
             ),
-        )
+        }
         assert res.keys() == expected.keys()
         assert_close(res['mixup_pairs'], expected['mixup_pairs'], rtol=1e-4, atol=1e-4)
         assert_close(res['mixup_lambdas'], expected['mixup_lambdas'], rtol=1e-4, atol=1e-4)
@@ -1132,9 +1132,9 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
             cut_size=torch.tensor([0.0, 1.0], device=device, dtype=dtype),
         )(image_shape, same_on_batch=False)
 
-        expected = dict(
-            mix_pairs=torch.tensor([[1, 7, 5, 3, 6, 4, 2, 0]], device=device, dtype=torch.long),
-            crop_src=torch.tensor(
+        expected = {
+            'mix_pairs': torch.tensor([[1, 7, 5, 3, 6, 4, 2, 0]], device=device, dtype=torch.long),
+            'crop_src': torch.tensor(
                 [
                     [
                         [[48.0, 31.0], [47.0, 31.0], [47.0, 30.0], [48.0, 30.0]],
@@ -1150,8 +1150,8 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
                 device=device,
                 dtype=dtype,
             ),
-            image_shape=image_shape,
-        )
+            'image_shape': image_shape,
+        }
         assert res.keys() == expected.keys(), res.keys()
         assert_close(res['mix_pairs'], expected['mix_pairs'], rtol=1e-4, atol=1e-4)
         assert_close(res['crop_src'], expected['crop_src'], rtol=1e-4, atol=1e-4)
@@ -1165,15 +1165,15 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
             beta=torch.tensor(1.0, device=device, dtype=dtype),
             cut_size=torch.tensor([0.0, 1.0], device=device, dtype=dtype),
         )(image_shape, same_on_batch=True)
-        expected = dict(
-            mix_pairs=torch.tensor([[1, 0]], device=device, dtype=torch.long),
-            crop_src=torch.tensor(
+        expected = {
+            'mix_pairs': torch.tensor([[1, 0]], device=device, dtype=torch.long),
+            'crop_src': torch.tensor(
                 [[[[114, 53], [113, 53], [113, 52], [114, 52]], [[114, 53], [113, 53], [113, 52], [114, 52]]]],
                 device=device,
                 dtype=dtype,
             ),
-            image_shape=image_shape,
-        )
+            'image_shape': image_shape,
+        }
         assert res.keys() == expected.keys(), res.keys()
         assert_close(res['mix_pairs'], expected['mix_pairs'], rtol=1e-4, atol=1e-4)
         assert_close(res['crop_src'], expected['crop_src'], rtol=1e-4, atol=1e-4)

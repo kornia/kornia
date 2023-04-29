@@ -91,7 +91,7 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
-        self.flags = dict(border_type=BorderType.get(border_type), resample=Resample.get(resample))
+        self.flags = {"border_type": BorderType.get(border_type), "resample": Resample.get(resample)}
         self._param_generator = rg.MotionBlurGenerator3D(kernel_size, angle, direction)
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:

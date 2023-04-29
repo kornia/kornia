@@ -113,7 +113,7 @@ exclude_lines = [
 [tool.ruff]
   line-length = 120
   target-version = "py37"
-  select = ["C9", "E", "F", "I", "PL", "S", "UP", "W", "YTT", "BLE"]
+  select = ["C9", "E", "F", "I", "PL", "S", "UP", "W", "YTT", "BLE", "C4"]
   ignore = [
     "PLR2004", # Allow to use inplace values in comparisons instead of constants
     "PLW2901", # Allow overwritten values on loops

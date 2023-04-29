@@ -117,7 +117,7 @@ class CoarseMatching(Module):
         _, L, S, _ = feat_c0.size(0), feat_c0.size(1), feat_c1.size(1), feat_c0.size(2)
 
         # normalize
-        feat_c0, feat_c1 = map(lambda feat: feat / feat.shape[-1] ** 0.5, [feat_c0, feat_c1])
+        feat_c0, feat_c1 = (feat / feat.shape[-1] ** 0.5 for feat in [feat_c0, feat_c1])
 
         if self.match_type == 'dual_softmax':
             sim_matrix = torch.einsum("nlc,nsc->nls", feat_c0, feat_c1) / self.temperature
@@ -236,14 +236,14 @@ class CoarseMatching(Module):
             )
             mconf_gt = torch.zeros(len(data['spv_b_ids']), device=_device)  # set conf of gt paddings to all zero
 
-            b_ids, i_ids, j_ids, mconf = map(
-                lambda x, y: torch.cat([x[pred_indices], y[gt_pad_indices]], dim=0),
-                *zip(
+            b_ids, i_ids, j_ids, mconf = (
+                torch.cat([x[pred_indices], y[gt_pad_indices]], dim=0)
+                for x, y in zip(
                     [b_ids, data['spv_b_ids']],
                     [i_ids, data['spv_i_ids']],
                     [j_ids, data['spv_j_ids']],
                     [mconf, mconf_gt],
-                ),
+                )
             )
 
         # These matches select patches that feed into fine-level network

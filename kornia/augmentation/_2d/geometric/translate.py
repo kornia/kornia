@@ -68,9 +68,11 @@ class RandomTranslate(GeometricAugmentationBase2D):
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator: rg.TranslateGenerator = rg.TranslateGenerator(translate_x, translate_y)
-        self.flags = dict(
-            resample=Resample.get(resample), padding_mode=SamplePadding.get(padding_mode), align_corners=align_corners
-        )
+        self.flags = {
+            "resample": Resample.get(resample),
+            "padding_mode": SamplePadding.get(padding_mode),
+            "align_corners": align_corners,
+        }
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         translations = stack([params["translate_x"], params["translate_y"]], dim=-1)

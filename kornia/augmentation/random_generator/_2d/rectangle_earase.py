@@ -126,10 +126,10 @@ class RectangleEraseGenerator(RandomGeneratorBase):
         xs = xs_ratio * (width - widths + 1)
         ys = ys_ratio * (height - heights + 1)
 
-        return dict(
-            widths=widths.floor(),
-            heights=heights.floor(),
-            xs=xs.floor(),
-            ys=ys.floor(),
-            values=tensor([self.value] * batch_size, device=_device, dtype=_dtype),
-        )
+        return {
+            "widths": widths.floor(),
+            "heights": heights.floor(),
+            "xs": xs.floor(),
+            "ys": ys.floor(),
+            "values": tensor([self.value] * batch_size, device=_device, dtype=_dtype),
+        }

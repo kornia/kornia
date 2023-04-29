@@ -248,7 +248,7 @@ class RenderingDeFMO(Module):
             t_tensor = (
                 # TODO: replace by after deprecate pytorch 1.6
                 # times[list(range(times.shape[0])), ki]
-                times[[x for x in range(times.shape[0])], ki]  # skipcq: PYL-R1721
+                times[list(range(times.shape[0])), ki]  # skipcq: PYL-R1721
                 .unsqueeze(-1)
                 .unsqueeze(-1)
                 .unsqueeze(-1)

@@ -71,7 +71,7 @@ class RandomRotation(GeometricAugmentationBase2D):
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator = rg.PlainUniformGenerator((degrees, "degrees", 0.0, (-360.0, 360.0)))
 
-        self.flags = dict(resample=Resample.get(resample), align_corners=align_corners)
+        self.flags = {"resample": Resample.get(resample), "align_corners": align_corners}
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         # TODO: Update to use `get_rotation_matrix2d`

@@ -86,4 +86,4 @@ class PerspectiveGenerator3D(RandomGeneratorBase):
         )
         end_points = start_points + factor * rand_val * pts_norm
 
-        return dict(start_points=start_points, end_points=end_points)
+        return {"start_points": start_points, "end_points": end_points}
