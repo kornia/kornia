@@ -81,10 +81,11 @@ class TestAutoAugment:
         aug.is_intensity_only()
 
     def test_transform_mat(self):
-        aug = AutoAugment([[("shear_x", 0.9, 4), ("invert", 0.2, None)]])
+        aug = AutoAugment([[("shear_x", 0.9, 4), ("invert", 0.2, None)]], transformation_matrix="silence")
         in_tensor = torch.rand(10, 3, 50, 50, requires_grad=True)
         aug(in_tensor)
-        aug.get_transformation_matrix(in_tensor, params=aug._params)
+        trans = aug.get_transformation_matrix(in_tensor, params=aug._params)
+        assert_close(trans, aug.transform_matrix)
 
     def test_reproduce(self):
         aug = AutoAugment()

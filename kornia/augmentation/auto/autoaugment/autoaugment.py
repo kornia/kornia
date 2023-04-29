@@ -111,7 +111,11 @@ class AutoAugment(PolicyAugmentBase):
         torch.Size([5, 3, 30, 30])
     """
 
-    def __init__(self, policy: Union[str, List[SUBPLOLICY_CONFIG]] = "imagenet") -> None:
+    def __init__(
+        self,
+        policy: Union[str, List[SUBPLOLICY_CONFIG]] = "imagenet",
+        transformation_matrix: str = "silence"
+    ) -> None:
         if policy == "imagenet":
             _policy = imagenet_policy
         elif policy == "cifar10":
@@ -123,7 +127,7 @@ class AutoAugment(PolicyAugmentBase):
         else:
             raise NotImplementedError(f"Invalid policy `{policy}`.")
 
-        super().__init__(_policy)
+        super().__init__(_policy, transformation_matrix=transformation_matrix)
         selection_weights = tensor([1.0 / len(self)] * len(self))
         self.rand_selector = Categorical(selection_weights)
 

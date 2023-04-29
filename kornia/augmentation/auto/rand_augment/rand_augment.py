@@ -47,7 +47,10 @@ class RandAugment(PolicyAugmentBase):
         torch.Size([5, 3, 30, 30])
     """
 
-    def __init__(self, n: int, m: int, policy: Optional[List[SUBPLOLICY_CONFIG]] = None) -> None:
+    def __init__(
+        self, n: int, m: int, policy: Optional[List[SUBPLOLICY_CONFIG]] = None,
+        transformation_matrix: str = "silence"
+    ) -> None:
         if m <= 0 or m >= 30:
             raise ValueError(f"Expect `m` in [0, 30]. Got {m}.")
 
@@ -56,7 +59,7 @@ class RandAugment(PolicyAugmentBase):
         else:
             _policy = policy
 
-        super().__init__(_policy)
+        super().__init__(_policy, transformation_matrix=transformation_matrix)
         selection_weights = torch.tensor([1.0 / len(self)] * len(self))
         self.rand_selector = Categorical(selection_weights)
         self.n = n
@@ -64,7 +67,7 @@ class RandAugment(PolicyAugmentBase):
 
     def compose_subpolicy_sequential(self, subpolicy: SUBPLOLICY_CONFIG) -> PolicySequential:
         if len(subpolicy) != 1:
-            raise RuntimeError(f"Each policy must have only one operation for TrivialAugment. Got {len(subpolicy)}.")
+            raise RuntimeError(f"Each policy must have only one operation for RandAugment. Got {len(subpolicy)}.")
         name, low, high = subpolicy[0]
         return PolicySequential(*[getattr(ops, name)(low, high)])
 
@@ -91,6 +94,7 @@ class RandAugment(PolicyAugmentBase):
                 minval, maxval = op.magnitude_range
                 mag = m * float(maxval - minval) + minval
             mod_param = op.forward_parameters(batch_shape, mag=mag)
+            op.transform_matrix
             # Compose it
             param = ParamItem(name, [ParamItem(list(module.named_children())[0][0], mod_param)])
             params.append(param)
