@@ -1,6 +1,3 @@
-import matplotlib
-
-matplotlib.use("Agg")
 import importlib
 import math
 import os
@@ -8,6 +5,7 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 import cv2
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import requests
@@ -16,6 +14,8 @@ from kornia_moons.feature import visualize_LAF
 
 import kornia as K
 from kornia.core import Tensor
+
+matplotlib.use("Agg")
 
 
 def read_img_from_url(url: str, resize_to: Optional[Tuple[int, int]] = None) -> torch.Tensor:
@@ -578,7 +578,6 @@ def main():
         cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for response function {fn_name}")
-    img_kornia
 
 
 if __name__ == "__main__":

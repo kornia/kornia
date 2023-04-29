@@ -54,7 +54,7 @@ class BasicSequentialBase(nn.Sequential):
                 path or resolves to something that is not an
                 ``Module``
         """
-        if target == "":
+        if len(target) == 0:
             return self
 
         atoms: List[str] = target.split(".")

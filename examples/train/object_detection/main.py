@@ -83,7 +83,7 @@ def my_app(config: Configuration) -> None:
         return {
             "input": sample["input"],
             "target": [
-                {"boxes": v, "labels": l} for v, l in zip(sample["target"]["boxes"], sample["target"]["labels"])
+                {"boxes": v, "labels": lb} for v, lb in zip(sample["target"]["boxes"], sample["target"]["labels"])
             ],
         }
 

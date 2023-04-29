@@ -158,24 +158,23 @@ class ImageRegistrator(Module):
                 raise ValueError("You must supply warper together with custom model")
             self.warper = warper
             self.model = model_type
+        elif model_type.lower() == "homography":
+            self.warper = HomographyWarper
+            self.model = Homography()
+        elif model_type.lower() == "similarity":
+            self.warper = HomographyWarper
+            self.model = Similarity(True, True, True)
+        elif model_type.lower() == "translation":
+            self.warper = HomographyWarper
+            self.model = Similarity(False, False, True)
+        elif model_type.lower() == "rotation":
+            self.warper = HomographyWarper
+            self.model = Similarity(True, False, False)
+        elif model_type.lower() == "scale":
+            self.warper = HomographyWarper
+            self.model = Similarity(False, True, False)
         else:
-            if model_type.lower() == "homography":
-                self.warper = HomographyWarper
-                self.model = Homography()
-            elif model_type.lower() == "similarity":
-                self.warper = HomographyWarper
-                self.model = Similarity(True, True, True)
-            elif model_type.lower() == "translation":
-                self.warper = HomographyWarper
-                self.model = Similarity(False, False, True)
-            elif model_type.lower() == "rotation":
-                self.warper = HomographyWarper
-                self.model = Similarity(True, False, False)
-            elif model_type.lower() == "scale":
-                self.warper = HomographyWarper
-                self.model = Similarity(False, True, False)
-            else:
-                raise ValueError(f"{model_type} is not supported. Try {self.known_models}")
+            raise ValueError(f"{model_type} is not supported. Try {self.known_models}")
         self.pyramid_levels = pyramid_levels
         self.optimizer = optimizer
         self.lr = lr

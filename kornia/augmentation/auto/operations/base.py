@@ -106,11 +106,10 @@ class OperationBase(Module):
                 self.op._p_batch_gen = RelaxedBernoulli(self.temperature, self.probability)
             else:
                 self.op._p_gen = RelaxedBernoulli(self.temperature, self.probability)
+        elif self._is_batch_operation:
+            self.op._p_batch_gen = Bernoulli(self.probability)
         else:
-            if self._is_batch_operation:
-                self.op._p_batch_gen = Bernoulli(self.probability)
-            else:
-                self.op._p_gen = Bernoulli(self.probability)
+            self.op._p_gen = Bernoulli(self.probability)
 
     def train(self: T, mode: bool = True) -> T:
         self._update_probability_gen(relaxation=mode)

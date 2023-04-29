@@ -18,6 +18,7 @@ class ImageEncoderViT(Module):
     def __init__(
         self,
         img_size: int = 1024,
+        *,
         patch_size: int = 16,
         in_chans: int = 3,
         embed_dim: int = 768,

@@ -113,8 +113,11 @@ exclude_lines = [
 [tool.ruff]
   line-length = 120
   target-version = "py37"
-  select = ["C90", "E", "F", "I", "PL", "S", "UP", "W", "YTT"]
-  ignore = ["PLR2004"]
+  select = ["C9", "E", "F", "I", "PL", "S", "UP", "W", "YTT"]
+  ignore = [
+    "PLR2004", # Allow to use inplace values in statements instead of constant
+    "PLW2901", # Allow overwritten values on loops
+  ]
 
   [tool.ruff.isort]
     known-first-party = ["examples", "kornia", "test"]
@@ -124,14 +127,12 @@ exclude_lines = [
 
   [tool.ruff.pylint]
     max-args = 16
-    max-branches = 45
+    max-branches = 32
     max-returns = 16
-    max-statements = 258
+    max-statements = 124
 
   [tool.ruff.per-file-ignores]
     "*/__init__.py" = ["F401", "F403"] # Allow unused imports and star imports
     "kornia/__init__.py" = ["I001"] # Allow unsorted imports
-    "test/*" = ["S101"] # allow assert
-    "test/enhance/test_core.py" = ["S311"]
-    "test/nerf/test_camera_utils.py" = ["S310"]
-    "docs/generate_example_images.py" = ["C901", "PLR0912", "PLR0915", "E402"]
+    "test/*" = ["S101", "S311"] # allow assert, random
+    "docs/*" = ["S101", "PLR0912", "PLR0915"] # allow assert, ignore max branches and statements
