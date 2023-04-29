@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import warnings
 from typing import Any
 
 import torch
@@ -16,7 +15,7 @@ from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
 
-class ImagePrompter:
+class VisualPrompter:
     """This class allow the user to run multiple query with multiple prompts for a model.
 
     At the moment, we just support the SAM model. The model is loaded based on the given config.
@@ -33,9 +32,9 @@ class ImagePrompter:
         dtype: The desired dtype to use the model.
 
     Example:
-        >>> # prompter = ImagePrompter() # Will load the vit h for default
+        >>> # prompter = VisualPrompter() # Will load the vit h for default
         >>> # You can load a custom SAM type for modifying the config
-        >>> prompter = ImagePrompter(SamConfig('vit_b'))
+        >>> prompter = VisualPrompter(SamConfig('vit_b'))
         >>> image = torch.rand(3, 25, 30)
         >>> prompter.set_image(image)
         >>> boxes = Boxes(
@@ -60,10 +59,6 @@ class ImagePrompter:
         dtype: torch.dtype | None = None,
     ) -> None:
         super().__init__()
-        warnings.warn(
-            "ImagePrompter is deprecated in favour of VisualPrompter and will be removed after v0.6.12.",
-            category=DeprecationWarning,
-        )
         if isinstance(config, SamConfig):
             self.model = Sam.from_config(config)
             transforms = (LongestMaxSize(self.model.image_encoder.img_size, p=1.0),)
@@ -301,7 +296,7 @@ class ImagePrompter:
         options: dict[Any, Any] = {},
         disable: bool = False,
     ) -> None:
-        """Applies `torch.compile(...)`/dynamo API into the ImagePrompter API.
+        """Applies `torch.compile(...)`/dynamo API into the VisualPrompter API.
 
         .. note:: For more information about the dynamo API check the official docs
                   https://pytorch.org/docs/stable/generated/torch.compile.html
@@ -315,7 +310,7 @@ class ImagePrompter:
             disable: Turn torch.compile() into a no-op for testing
 
         Example:
-            >>> # prompter = ImagePrompter()
+            >>> # prompter = VisualPrompter()
             >>> # prompter.compile() # You should have torch >= 2.0.0 installed
             >>> # Use the prompter methods ...
         """
