@@ -1,7 +1,7 @@
 from typing import Dict
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.utils.helpers import map_location_to_cpu
@@ -63,7 +63,6 @@ class SOSNet(nn.Module):
             pretrained_dict = torch.hub.load_state_dict_from_url(urls['lib'], map_location=map_location_to_cpu)
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
-        return
 
     def forward(self, input: torch.Tensor, eps: float = 1e-10) -> torch.Tensor:
         KORNIA_CHECK_SHAPE(input, ["B", "1", "32", "32"])

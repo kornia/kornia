@@ -1,10 +1,10 @@
 import hydra
 import numpy as np
 import torch
-import torch.nn as nn
 import torchvision
 from hydra.core.config_store import ConfigStore
 from hydra.utils import to_absolute_path
+from torch import nn
 
 import kornia as K
 from kornia.x import Configuration, Lambda, SemanticSegmentationTrainer

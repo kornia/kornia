@@ -1,8 +1,8 @@
 from typing import Any, Dict, Optional, Union
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 
 from kornia.core import Module, Tensor
 

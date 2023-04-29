@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Callable
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 from kornia.core import Module, Tensor, as_tensor, stack, tensor, where, zeros_like
 

@@ -2,9 +2,8 @@ from abc import abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
+from torch import nn, optim
 
 from kornia.core import Module, Tensor
 from kornia.geometry.conversions import angle_to_rotation_matrix, convert_affinematrix_to_homography

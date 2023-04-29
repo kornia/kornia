@@ -1,7 +1,7 @@
 from typing import List
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 from kornia.filters import filter2d, get_gaussian_kernel2d
 from kornia.filters.filter import _compute_padding

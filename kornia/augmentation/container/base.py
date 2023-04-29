@@ -3,7 +3,7 @@ from itertools import zip_longest
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase

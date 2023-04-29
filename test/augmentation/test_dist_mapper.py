@@ -1,5 +1,5 @@
 import torch
-import torch.nn as nn
+from torch import nn
 from torch.distributions import Normal
 
 from kornia.augmentation.random_generator import DistributionWithMapper

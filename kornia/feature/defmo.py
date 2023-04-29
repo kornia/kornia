@@ -1,7 +1,7 @@
 from typing import Callable, Dict, List, Optional, Type
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 from kornia.core import Module, Tensor, concatenate, stack
 from kornia.utils.helpers import map_location_to_cpu

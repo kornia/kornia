@@ -298,7 +298,6 @@ class BlobDoG(Module):
 
     def __init__(self) -> None:
         super().__init__()
-        return
 
     def __repr__(self) -> str:
         return self.__class__.__name__
@@ -343,7 +342,6 @@ class CornerHarris(Module):
         else:
             self.register_buffer('k', k)
         self.grads_mode: str = grads_mode
-        return
 
     def __repr__(self) -> str:
         return f'{self.__class__.__name__}(k={self.k}, grads_mode={self.grads_mode})'
@@ -363,7 +361,6 @@ class CornerGFTT(Module):
     def __init__(self, grads_mode: str = 'sobel') -> None:
         super().__init__()
         self.grads_mode: str = grads_mode
-        return
 
     def __repr__(self) -> str:
         return f'{self.__class__.__name__}(grads_mode={self.grads_mode})'
@@ -383,7 +380,6 @@ class BlobHessian(Module):
     def __init__(self, grads_mode: str = 'sobel') -> None:
         super().__init__()
         self.grads_mode: str = grads_mode
-        return
 
     def __repr__(self) -> str:
         return f'{self.__class__.__name__}(grads_mode={self.grads_mode})'

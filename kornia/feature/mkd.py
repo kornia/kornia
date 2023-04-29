@@ -1,8 +1,8 @@
 from typing import Any, Dict, List, Tuple, Union
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 
 from kornia.constants import pi
 from kornia.core import Tensor, tensor, zeros
