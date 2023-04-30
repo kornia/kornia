@@ -4,6 +4,7 @@ import torch
 from kornia.geometry.conversions import QuaternionCoeffOrder, euler_from_quaternion, rotation_matrix_to_quaternion
 from kornia.geometry.liegroup import Se3, So3
 from kornia.geometry.quaternion import Quaternion
+from kornia.geometry.vector import Vector3
 from kornia.testing import BaseTester
 
 
@@ -11,6 +12,15 @@ class TestSe3(BaseTester):
     def _make_rand_se3d(self, device, dtype, batch_size) -> Se3:
         q = Quaternion.random(batch_size, device, dtype)
         t = self._make_rand_data(device, dtype, batch_size, dims=3)
+        return Se3(So3(q), t)
+
+    def _make_rand_se3d_vec(self, device, dtype, batch_size) -> Se3:
+        q = Quaternion.random(batch_size, device, dtype)
+        if batch_size is None:
+            shape = ()
+        else:
+            shape = (batch_size,)
+        t = Vector3.random(shape, device, dtype)
         return Se3(So3(q), t)
 
     def _make_rand_data(self, device, dtype, batch_size, dims):
@@ -93,6 +103,35 @@ class TestSe3(BaseTester):
         pt_in_s2_in_s1 = s1_pose_s2 * pt_in_s2
         self.assert_close(pt_in_s1, pt_in_s2_in_s1)
         self.assert_close(pt_in_s2, pt_in_s1_in_s2)
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_mul_vector(self, device, dtype, batch_size):
+        world_pose_s1: Se3 = self._make_rand_se3d(device, dtype, batch_size)
+        world_pose_s2: Se3 = self._make_rand_se3d_vec(device, dtype, batch_size)
+        if batch_size is None:
+            shape = ()
+        else:
+            shape = (batch_size,)
+        pt_in_world = Vector3.random(shape, device, dtype)
+        s1_pose_s2: Se3 = world_pose_s1.inverse() * world_pose_s2
+        pt_in_s1 = world_pose_s1.inverse() * pt_in_world
+        pt_in_s2 = world_pose_s2.inverse() * pt_in_world
+        pt_in_s1_in_s2 = s1_pose_s2.inverse() * pt_in_s1
+        pt_in_s2_in_s1 = s1_pose_s2 * pt_in_s2
+        s3 = Se3.identity(batch_size, device, dtype)
+        s4: Se3 = self._make_rand_se3d_vec(device, dtype, batch_size)
+        s3s4 = s3 * s4
+        s4s4inv = s4 * s4.inverse()
+        zeros_vec = torch.zeros(3, device=device, dtype=dtype)
+        if batch_size is not None:
+            zeros_vec = zeros_vec.repeat(batch_size, 1)
+        so3_expected = So3.identity(batch_size, device, dtype)
+        self.assert_close(pt_in_s1, pt_in_s2_in_s1)
+        self.assert_close(pt_in_s2, pt_in_s1_in_s2)
+        self.assert_close(s3s4.r.q.data, s4.r.q.data)
+        self.assert_close(s3s4.t, s4.t)
+        self.assert_close(s4s4inv.r.q.data, so3_expected.q.data)
+        self.assert_close(s4s4inv.t, zeros_vec)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_exp(self, device, dtype, batch_size):
