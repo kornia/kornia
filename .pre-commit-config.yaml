@@ -15,7 +15,7 @@ repos:
         exclude: ^$|.devcontainer
 
   - repo: https://github.com/tox-dev/pyproject-fmt
-    rev: "0.9.2"
+    rev: "0.10.0"
     hooks:
       - id: pyproject-fmt
 
@@ -41,7 +41,7 @@ repos:
           - "*.bib,*.ipynb"
 
   - repo: https://github.com/PyCQA/docformatter
-    rev: v1.6.1-rc1
+    rev: v1.6.3
     hooks:
       - id: docformatter
         args: [--in-place, --wrap-summaries=115, --wrap-descriptions=120]
