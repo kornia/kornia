@@ -64,7 +64,8 @@ class Se3(Module):
         super().__init__()
         KORNIA_CHECK_TYPE(rotation, So3)
         # KORNIA_CHECK_TYPE(translation, (Vector3, Tensor))
-        assert isinstance(translation, (Vector3, Tensor)), f"translation type is {type(translation)}"
+        if not isinstance(translation, (Vector3, Tensor)):
+            raise TypeError(f"translation type is {type(translation)}")
         # KORNIA_CHECK_SHAPE(t, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
         self._translation: Vector3 | Parameter
         self._rotation: So3 = rotation

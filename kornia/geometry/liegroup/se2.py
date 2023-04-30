@@ -65,7 +65,8 @@ class Se2(Module):
         KORNIA_CHECK_TYPE(rotation, So2)
         # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
         # KORNIA_CHECK_TYPE(translation, (Vector3, Tensor))
-        assert isinstance(translation, (Vector2, Tensor)), f"translation type is {type(translation)}"
+        if not isinstance(translation, (Vector2, Tensor)):
+            raise TypeError(f"translation type is {type(translation)}")
         self._translation: Vector2 | Parameter
         self._rotation: So2 = rotation
         if isinstance(translation, Tensor):
