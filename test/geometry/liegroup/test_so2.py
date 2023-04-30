@@ -2,6 +2,7 @@ import pytest
 import torch
 
 from kornia.geometry.liegroup import So2
+from kornia.geometry.vector import Vector2
 from kornia.testing import BaseTester
 
 
@@ -117,6 +118,18 @@ class TestSo2(BaseTester):
         self.assert_close(s1_pose_s2.z.imag, s2.z.imag)
         self.assert_close(s2_pose_s2.z.real, s1.z.real)
         self.assert_close(s2_pose_s2.z.imag, s1.z.imag)
+        self.assert_close((s1 * t1), t1)
+        self.assert_close((So2.identity(device=device, dtype=dtype) * t2), t2)
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_mul_vector(self, device, dtype, batch_size):
+        s1 = So2.identity(batch_size, device, dtype)
+        if batch_size is None:
+            shape = ()
+        else:
+            shape = (batch_size,)
+        t1 = Vector2.random(shape, device, dtype)
+        t2 = Vector2.random(shape, device, dtype)
         self.assert_close((s1 * t1), t1)
         self.assert_close((So2.identity(device=device, dtype=dtype) * t2), t2)
 
