@@ -1,5 +1,5 @@
 Visual Prompting
-===============
+================
 
 .. image:: https://kornia-tutorials.readthedocs.io/en/latest/_images/c5ec618b63c6118f00e6f29377cc2b50a1e1df2d247657eec531dfc5454272c7.png
    :width: 20%
