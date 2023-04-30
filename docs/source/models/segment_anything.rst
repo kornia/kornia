@@ -9,7 +9,7 @@ can be used to generate masks for all objects in an image.
 
     **Segment Anything**
     ^^^
-    **Abstract:** We introduce the Segment Anything (SA) project: a new task, model, and dataset for image
+    **Abstract:** We introduce the Segment Anything (SAM) project: a new task, model, and dataset for image
     segmentation. Using our efficient model in a data collection loop, we built the largest segmentation
     dataset to date (by far), with over 1 billion masks on 11M licensed and privacy respecting images. The
     model is designed and trained to be promptable, so it can transfer zero-shot to new image distributions
@@ -33,26 +33,26 @@ can be used to generate masks for all objects in an image.
 How to use SAM from Kornia
 --------------------------
 The Kornia API for SAM try to provide a simple API to access initialize the model and load/download the weights. Also,
-providing it to a high-level API called :code:`ImagePrompter`, which allow the users to set an image and run multiple
+providing it to a high-level API called :code:`VisualPrompter`, which allow the users to set an image and run multiple
 queries multiple times.
 
-The :code:`ImagePrompter` works querying on a single image, if you want to explore and query into a batch of images,
+The :code:`VisualPrompter` works querying on a single image, if you want to explore and query into a batch of images,
 you can use the :code:`Sam` directly. But, for it you will need to write the boilerplate to preprocess and postprocess to
-use it. This boilerplate, is already handle on the high-level API :code:`ImagePrompter`.
+use it. This boilerplate, is already handle on the high-level API :code:`VisualPrompter`.
 
 Image Prompter
 ^^^^^^^^^^^^^^
 .. _anchor Prompter:
 
-The High level API :code:`ImagePrompter` handle with the image and prompt transformation, preprocessing and prediction for
+The High level API :code:`VisualPrompter` handle with the image and prompt transformation, preprocessing and prediction for
 a given SAM model.
 
-About the :code:`ImagePrompter`:
+About the :code:`VisualPrompter`:
 
 #. From a `ModelConfig` loads the desired model with the desired checkpoint to be used as the model to receive the query
    prompts. For know we just support Segment Anything model, where the *SAM-h* is the default option.
 
-#. Based on the model, the :code:`ImagePrompter` will handle with the necessary transformations to be done into the image
+#. Based on the model, the :code:`VisualPrompter` will handle with the necessary transformations to be done into the image
    and prompts before apply it to the model. These transformations are done using PyTorch backed, by our API of
    augmentations. Where we use the :class:`kornia.geometry.augmentation.AugmentationSequential` to handle with the different
    data formats (keypoints, boxes, masks, image).
@@ -80,9 +80,9 @@ About the :code:`ImagePrompter`:
 
 --------------
 
-Example of using the :code:`ImagePrompter`:
+Example of using the :code:`VisualPrompter`:
 
-Exploring how to simple initialize the :code:`ImagePrompter`, automatically load the weights from a URL,
+Exploring how to simple initialize the :code:`VisualPrompter`, automatically load the weights from a URL,
 read the image and set it to be query, how to write the prompts, and the multiple ways we can use these prompts
 to query the image masks from the SAM model.
 
@@ -92,7 +92,7 @@ to query the image masks from the SAM model.
     import torch
 
     from kornia.contrib.models.sam import SamConfig
-    from kornia.contrib.image_prompter import ImagePrompter
+    from kornia.contrib.visual_prompter import VisualPrompter
     from kornia.io import load_image, ImageLoadType
     from kornia.geometry.keypoints import Keypoints
     from kornia.geometry.boxes import Boxes
@@ -109,7 +109,7 @@ to query the image masks from the SAM model.
     config = SamConfig(model_type, checkpoint)
 
     # Load the prompter
-    prompter = ImagePrompter(config, device=device)
+    prompter = VisualPrompter(config, device=device)
 
     # You can use torch dynamo/compile API with:
     # prompter.compile()
