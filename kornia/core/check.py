@@ -1,7 +1,7 @@
 """The testing package contains testing-specific utilities."""
 from __future__ import annotations
 
-from typing import Any, Sequence, Tuple, TypeVar, cast
+from typing import Any, Sequence, TypeVar, cast
 
 from typing_extensions import TypeGuard
 
