@@ -265,6 +265,28 @@ class Se3(Module):
         rt_4x4[..., -1, -1] = 1.0
         return rt_4x4
 
+    @classmethod
+    def from_qxyz(cls, qxyz: Tensor) -> Se3:
+        """Create a Se3 group a quaternion and translation vector.
+
+        Args:
+            qxyz: tensor of shape :math:`(B, 7)`.
+
+        Example:
+            >>> qxyz = torch.tensor([1., 2., 3., 0., 0., 0., 1.])
+            >>> s = Se3.from_qxyz(qxyz)
+            >>> s.r
+            Parameter containing:
+            tensor([1., 2., 3., 0.], requires_grad=True)
+            >>> s.t
+            x: 0.0
+            y: 0.0
+            z: 1.0
+        """
+        # KORNIA_CHECK_SHAPE(qxyz, ["B", "7"])  # FIXME: resolve shape bugs. @edgarriba
+        q, xyz = qxyz[..., :4], qxyz[..., 4:]
+        return cls(So3.from_wxyz(q), Vector3(xyz))
+
     def inverse(self) -> Se3:
         """Returns the inverse transformation.
 
