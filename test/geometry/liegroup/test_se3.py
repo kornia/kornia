@@ -182,6 +182,13 @@ class TestSe3(BaseTester):
         self.assert_close(rot_mat[..., 0:3, 3], t)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_from_qxyz(self, device, dtype, batch_size):
+        qxyz = self._make_rand_data(device, dtype, batch_size, dims=7)
+        s = Se3.from_qxyz(qxyz)
+        self.assert_close(s.r.q.data, qxyz[..., :4].data)
+        self.assert_close(s.t, qxyz[..., 4:])
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_inverse(self, device, dtype, batch_size):
         q = Quaternion.random(batch_size, device, dtype)
         rot = So3(q)
