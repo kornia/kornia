@@ -173,6 +173,12 @@ class TestSo3(BaseTester):
             self.assert_close(rp_.norm(), pvec.norm())
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_from_wxyz(self, device, dtype, batch_size):
+        wxyz = self._make_rand_data(device, dtype, batch_size, dims=4)
+        s = So3.from_wxyz(wxyz)
+        self.assert_close(s.q.data, wxyz)
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_ortho(self, device, dtype, batch_size):
         q = Quaternion.random(batch_size, device, dtype)
         b_R_a = So3(q).matrix()

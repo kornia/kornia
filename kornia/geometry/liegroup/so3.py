@@ -228,6 +228,23 @@ class So3(Module):
         return cls(Quaternion.from_matrix(matrix))
 
     @classmethod
+    def from_wxyz(cls, wxyz: Tensor) -> So3:
+        """Create So3 from a tensor representing a quaternion.
+
+        Args:
+            wxyz: the quaternion to convert of shape :math:`(B,4)`.
+
+        Example:
+            >>> q = torch.tensor([1., 0., 0., 0.])
+            >>> s = So3.from_wxyz(q)
+            >>> s
+            Parameter containing:
+            tensor([1., 0., 0., 0.], requires_grad=True)
+        """
+        # KORNIA_CHECK_SHAPE(wxyz, ["B", "4"])  # FIXME: resolve shape bugs. @edgarriba
+        return cls(Quaternion(wxyz))
+
+    @classmethod
     def identity(cls, batch_size: int | None = None, device: Device | None = None, dtype: Dtype = None) -> So3:
         """Create a So3 group representing an identity rotation.
 
