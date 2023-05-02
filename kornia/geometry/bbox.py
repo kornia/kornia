@@ -36,14 +36,12 @@ def validate_bbox(boxes: torch.Tensor) -> bool:
 
     if not torch.allclose((boxes[:, 1, 0] - boxes[:, 0, 0] + 1), (boxes[:, 2, 0] - boxes[:, 3, 0] + 1), atol=1e-4):
         raise ValueError(
-            "Boxes must have be rectangular, while get widths %s and %s"
-            % (str(boxes[:, 1, 0] - boxes[:, 0, 0] + 1), str(boxes[:, 2, 0] - boxes[:, 3, 0] + 1))
+            f"Boxes must have be rectangular, while get widths {str(boxes[:, 1, 0] - boxes[:, 0, 0] + 1)} and {str(boxes[:, 2, 0] - boxes[:, 3, 0] + 1)}"
         )
 
     if not torch.allclose((boxes[:, 2, 1] - boxes[:, 0, 1] + 1), (boxes[:, 3, 1] - boxes[:, 1, 1] + 1), atol=1e-4):
         raise ValueError(
-            "Boxes must have be rectangular, while get heights %s and %s"
-            % (str(boxes[:, 2, 1] - boxes[:, 0, 1] + 1), str(boxes[:, 3, 1] - boxes[:, 1, 1] + 1))
+            f"Boxes must have be rectangular, while get heights {str(boxes[:, 2, 1] - boxes[:, 0, 1] + 1)} and {str(boxes[:, 3, 1] - boxes[:, 1, 1] + 1)}"
         )
 
     return True
