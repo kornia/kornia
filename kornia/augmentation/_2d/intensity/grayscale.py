@@ -51,13 +51,14 @@ class RandomGrayscale(IntensityAugmentationBase2D):
         tensor(True)
     """
 
-    def __init__(self, same_on_batch: bool = False, p: float = 0.1, keepdim: bool = False) -> None:
+    def __init__(self, rgb_weights: Optional[Tensor], same_on_batch: bool = False, p: float = 0.1, keepdim: bool = False) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
+        self.rgb_weights = rgb_weights
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         # Make sure it returns (*, 3, H, W)
         grayscale = torch.ones_like(input)
-        grayscale[:] = rgb_to_grayscale(input)
+        grayscale[:] = rgb_to_grayscale(input, rgb_weights=self.rgb_weights)
         return grayscale
