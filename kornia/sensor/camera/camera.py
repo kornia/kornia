@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Tuple
-
+from typing import Optional, Tuple, List
 from kornia.core import Module, Tensor, stack, zeros_like
 from kornia.core.check import KORNIA_CHECK_TYPE
 from kornia.geometry.vector import Vector2, Vector3
+from kornia.geometry.liegroup.se3 import Se3
 from kornia.sensor.camera.distortion import AffineTransform, CameraDistortionType
 from kornia.sensor.camera.projection import CameraProjectionType, Z1Projection
 
@@ -101,10 +103,28 @@ class PinholeCameraModel(CameraModel):
         super().__init__(image_size, CameraDistortionType.AFFINE, CameraProjectionType.Z1, params)
 
     def matrix(self) -> Tensor:
-        z = zeros_like(self._fx)
-        row1 = stack((self._fx, z, self._cx), -1)
-        row2 = stack((z, self._fy, self._cy), -1)
+        z = zeros_like(self.fx)
+        row1 = stack((self.fx, z, self.cx), -1)
+        row2 = stack((z, self.fy, self.cy), -1)
         row3 = stack((z, z, z), -1)
         K = stack((row1, row2, row3), -2)
         K[..., -1, -1] = 1.0
         return K
+
+
+class NamedPose(Module):
+    def __init__(self, pose: Se3, source: str | List[str], destination: str | List[str]):
+        self.dst_pose_src = pose
+        self.source = source
+        self.destination = destination
+
+    def __mul__(self, right: NamedPose):
+        pass
+
+
+class PosedCameraModel:
+    def __init__(self, camera: CameraModel, pose: NamedPose):
+        pass
+
+    def transform_to_camera_view(self):
+        pass
