@@ -10,13 +10,7 @@ from torch import nn
 from kornia.core import Module, Tensor
 from kornia.core.check import KORNIA_CHECK
 
-
-def conv_norm_act(in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, act: bool = True) -> Module:
-    return nn.Sequential(
-        nn.Conv2d(in_channels, out_channels, kernel_size, stride, (kernel_size - 1) // 2, bias=False),
-        nn.BatchNorm2d(out_channels),
-        nn.ReLU(inplace=True) if act else nn.Identity(),
-    )
+from .common import conv_norm_act
 
 
 class BottleNeckD(Module):
@@ -31,15 +25,15 @@ class BottleNeckD(Module):
         self.convs = nn.Sequential(
             conv_norm_act(in_channels, width, 1),
             conv_norm_act(width, width, 3, stride=stride),
-            conv_norm_act(width, expanded_out_channels, 1, act=False),
+            conv_norm_act(width, expanded_out_channels, 1, act="none"),
         )
 
         if stride == 2:
             self.shortcut = nn.Sequential(
-                nn.AvgPool2d(2, 2), conv_norm_act(in_channels, expanded_out_channels, 1, act=False)
+                nn.AvgPool2d(2, 2), conv_norm_act(in_channels, expanded_out_channels, 1, act="none")
             )
         elif in_channels != out_channels * self.expansion:
-            self.shortcut = conv_norm_act(in_channels, expanded_out_channels, 1, act=False)
+            self.shortcut = conv_norm_act(in_channels, expanded_out_channels, 1, act="none")
         else:
             self.shortcut = nn.Identity()
 
