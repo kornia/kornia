@@ -15,14 +15,13 @@ from .common import conv_norm_act
 class CSPRepLayer(Module):
     def __init__(self, in_channels: int, out_channels: int, num_blocks: int):
         super().__init__()
-        self.conv1 = nn.Sequential(conv_norm_act(in_channels, out_channels, 1, act="silu"))
-        for _ in range(num_blocks):
-            self.conv1.append(conv_norm_act(out_channels, out_channels, 3, act="silu"))
-
+        self.conv1 = conv_norm_act(in_channels, out_channels, 1, act="silu")
         self.conv2 = conv_norm_act(in_channels, out_channels, 1, act="silu")
+        blocks = [conv_norm_act(out_channels, out_channels, 3, act="silu") for _ in range(num_blocks)]
+        self.blocks = nn.Sequential(*blocks)
 
     def forward(self, x: Tensor) -> Tensor:
-        return self.conv1(x) + self.conv2(x)
+        return self.blocks(self.conv1(x)) + self.conv2(x)
 
 
 class AIFI(Module):
@@ -70,7 +69,7 @@ class CCFM(Module):
             self.downsample_convs.append(conv_norm_act(hidden_dim, hidden_dim, 3, 2, "silu"))
             self.pan_blocks.append(CSPRepLayer(hidden_dim * 2, hidden_dim, 3))
 
-    def forward(self, fmaps: list[Tensor]):
+    def forward(self, fmaps: list[Tensor]) -> list[Tensor]:
         # fmaps is ordered from hi-res to low-res
         fmaps = list(fmaps)  # shallow clone
 
@@ -105,7 +104,7 @@ class HybridEncoder(Module):
         self.aifi = AIFI(hidden_dim)
         self.ccfm = CCFM(len(in_channels), hidden_dim)
 
-    def forward(self, fmaps: list[Tensor]):
+    def forward(self, fmaps: list[Tensor]) -> list[Tensor]:
         fmaps = [proj(fmap) for proj, fmap in zip(self.projs, fmaps)]
         fmaps[-1] = self.aifi(fmaps[-1])
         fmaps = self.ccfm(fmaps)
