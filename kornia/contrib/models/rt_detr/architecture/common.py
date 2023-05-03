@@ -7,7 +7,7 @@ from kornia.core import Module
 
 def conv_norm_act(in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, act: str = "relu") -> Module:
     if act == "relu":
-        act_module = nn.ReLU(partial=True)
+        act_module = nn.ReLU(inplace=True)
     elif act == "silu":
         act_module = nn.SiLU(inplace=True)
     elif act == "none":

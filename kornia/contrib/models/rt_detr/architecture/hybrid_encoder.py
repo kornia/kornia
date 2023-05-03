@@ -48,8 +48,8 @@ class AIFI(Module):
         omega = torch.arange(pos_dim) / pos_dim
         omega = 1.0 / (temp**omega)
 
-        out_x = grid_x.view(-1, 1) * omega.view(1, -1)
-        out_y = grid_y.view(-1, 1) * omega.view(1, -1)
+        out_x = grid_x.reshape(-1, 1) * omega.view(1, -1)
+        out_y = grid_y.reshape(-1, 1) * omega.view(1, -1)
 
         pos_emb = concatenate([out_x.sin(), out_x.cos(), out_y.sin(), out_y.cos()], 1)
         return pos_emb.unsqueeze(1)  # (H * W, N, C)
@@ -89,18 +89,15 @@ class CCFM(Module):
             down_hires_fmap = self.downsample_convs[len(fmaps) - 1](fmaps[-1])
             lowres_fmap = new_fmaps.pop()
 
-            concat_fmap = concat_fmap([down_hires_fmap, lowres_fmap], 1)
+            concat_fmap = concatenate([down_hires_fmap, lowres_fmap], 1)
             fmaps.append(self.pan_blocks[len(fmaps) - 1](concat_fmap))
 
         return fmaps
 
 
 class HybridEncoder(Module):
-    def __init__(self, in_channels, strides, hidden_dim=256):
+    def __init__(self, in_channels: list[int], hidden_dim: int = 256):
         super().__init__()
-        in_channels = in_channels or [512, 1024, 2048]
-        strides = strides or [8, 16, 32]
-
         self.projs = nn.ModuleList()
         for in_ch in in_channels:
             self.projs.append(nn.Sequential(nn.Conv2d(in_ch, hidden_dim, 1, bias=False), nn.BatchNorm2d(hidden_dim)))
