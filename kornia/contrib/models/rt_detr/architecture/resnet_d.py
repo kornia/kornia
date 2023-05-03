@@ -27,17 +27,23 @@ class BottleNeckD(nn.Module):
         KORNIA_CHECK(stride in (1, 2))
         super().__init__()
         width = out_channels * base_width // 64
+        expanded_out_channels = out_channels * self.expansion
+
         self.convs = nn.Sequential(
             conv_norm_act(in_channels, width, 1),
             conv_norm_act(width, width, 3, stride=stride),
-            conv_norm_act(width, out_channels * self.expansion, 1, act=False),
+            conv_norm_act(width, expanded_out_channels, 1, act=False),
         )
-        if stride == 1 and in_channels == out_channels * self.expansion:
-            self.shortcut = nn.Identity()
-        else:
+
+        if stride == 2:
             self.shortcut = nn.Sequential(
-                nn.AvgPool2d(2, 2), conv_norm_act(in_channels, out_channels * self.expansion, 1, act=False)
+                nn.AvgPool2d(2, 2), conv_norm_act(in_channels, expanded_out_channels, 1, act=False)
             )
+        elif in_channels != out_channels * self.expansion:
+            self.shortcut = conv_norm_act(in_channels, expanded_out_channels, 1, act=False)
+        else:
+            self.shortcut = nn.Identity()
+
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self, x: Tensor) -> Tensor:
@@ -65,10 +71,10 @@ class ResNetD(nn.Module):
 
     def make_stage(self, in_channels: int, out_channels: int, stride: int, n_blocks: int) -> tuple[nn.Sequential, int]:
         stage = nn.Sequential()
-        for _ in range(n_blocks):
-            stage.append(BottleNeckD(in_channels, out_channels, stride, self.base_width))
-            in_channels = out_channels * BottleNeckD.expansion
-        return stage, in_channels
+        stage.append(BottleNeckD(in_channels, out_channels, stride, self.base_width))
+        for _ in range(n_blocks - 1):
+            stage.append(BottleNeckD(out_channels * BottleNeckD.expansion, out_channels, 1, self.base_width))
+        return stage, out_channels * BottleNeckD.expansion
 
     def forward(self, x: Tensor) -> list[Tensor]:
         out = self.stem(x)
