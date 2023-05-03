@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
-from typing import Optional, Tuple, List
+
 from kornia.core import Module, Tensor, stack, zeros_like
 from kornia.core.check import KORNIA_CHECK_TYPE
-from kornia.geometry.vector import Vector2, Vector3
 from kornia.geometry.liegroup.se3 import Se3
+from kornia.geometry.vector import Vector2, Vector3
 from kornia.sensor.camera.distortion import AffineTransform, CameraDistortionType
 from kornia.sensor.camera.projection import CameraProjectionType, Z1Projection
 
@@ -48,7 +47,7 @@ class CameraModel(Module):
         #     self.projection_model = OrthographicProjection()
 
     @property
-    def params(self) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+    def params(self) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         return self._fx, self._fy, self._cx, self._cy
 
     @property
@@ -90,7 +89,7 @@ class CameraModel(Module):
 
 
 class PinholeCameraModel(CameraModel):
-    def __init__(self, image_size: ImageSize, params: Optional[Tensor] = None):
+    def __init__(self, image_size: ImageSize, params: Tensor | None = None):
         if params is None:
             params = Tensor(
                 [
@@ -113,7 +112,7 @@ class PinholeCameraModel(CameraModel):
 
 
 class NamedPose(Module):
-    def __init__(self, pose: Se3, source: str | List[str], destination: str | List[str]):
+    def __init__(self, pose: Se3, source: str | list[str], destination: str | list[str]):
         self.dst_pose_src = pose
         self.source = source
         self.destination = destination
