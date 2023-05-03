@@ -5,14 +5,13 @@ https://github.com/PaddlePaddle/PaddleDetection/blob/release/2.6/ppdet/modeling/
 """
 from __future__ import annotations
 
-from torch import Tensor, nn
+from torch import nn
 
+from kornia.core import Module, Tensor
 from kornia.core.check import KORNIA_CHECK
 
 
-def conv_norm_act(
-    in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, act: bool = True
-) -> nn.Sequential:
+def conv_norm_act(in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, act: bool = True) -> Module:
     return nn.Sequential(
         nn.Conv2d(in_channels, out_channels, kernel_size, stride, (kernel_size - 1) // 2, bias=False),
         nn.BatchNorm2d(out_channels),
@@ -20,7 +19,7 @@ def conv_norm_act(
     )
 
 
-class BottleNeckD(nn.Module):
+class BottleNeckD(Module):
     expansion = 4
 
     def __init__(self, in_channels: int, out_channels: int, stride: int, base_width: int):
@@ -50,7 +49,7 @@ class BottleNeckD(nn.Module):
         return self.relu(self.convs(x) + self.shortcut(x))
 
 
-class ResNetD(nn.Module):
+class ResNetD(Module):
     base_width = 64
 
     def __init__(self, n_blocks: list[int]):
@@ -69,7 +68,7 @@ class ResNetD(nn.Module):
         self.res4, in_channels = self.make_stage(in_channels, 256, 2, n_blocks[2])
         self.res5, in_channels = self.make_stage(in_channels, 512, 2, n_blocks[3])
 
-    def make_stage(self, in_channels: int, out_channels: int, stride: int, n_blocks: int) -> tuple[nn.Sequential, int]:
+    def make_stage(self, in_channels: int, out_channels: int, stride: int, n_blocks: int) -> tuple[Module, int]:
         stage = nn.Sequential()
         stage.append(BottleNeckD(in_channels, out_channels, stride, self.base_width))
         for _ in range(n_blocks - 1):
