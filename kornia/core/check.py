@@ -102,6 +102,7 @@ def KORNIA_UNWRAP(maybe_obj: object, typ: Any) -> Any:
 T = TypeVar('T', bound=type)
 
 
+# TODO: fix mypy typeguard issue
 def KORNIA_CHECK_TYPE(x: object, typ: T | tuple[T, ...], msg: str | None = None) -> TypeGuard[T]:
     """Check the type of an aribratry variable.
 
