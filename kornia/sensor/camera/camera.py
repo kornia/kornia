@@ -111,26 +111,26 @@ class PinholeCameraModel(CameraModel):
         return K
 
 
-class NamedPose():
+class NamedPose:
     def __init__(self, pose: Se3, source: str | list[str], destination: str | list[str]):
         KORNIA_CHECK_TYPE(pose, Se3)
         KORNIA_CHECK_TYPE(source, (str, list))
         KORNIA_CHECK_TYPE(destination, (str, list))
-        self.dst_pose_src = pose #change name dst_pose_src to pose?
+        self.dst_pose_src = pose  # change name dst_pose_src to pose?
         self.source = source
         self.destination = destination
 
     def __repr__(self):
-        return f"NamedPose({self.dst_pose_src}, {self.source}, {self.destination})"
+        return f"NamedPose({self.dst_pose_src},\nsource:{self.source},\ndestination:{self.destination}\n)"
 
-    def __mul__(self, right: NamedPose):
+    def __mul__(self, right: NamedPose) -> NamedPose:
         KORNIA_CHECK_TYPE(right, NamedPose)
         # this assumes self.destination = right.destination
         return NamedPose(self.dst_pose_src.inverse() * right.dst_pose_src, right.source, self.destination)
 
-    def inverse(self):
+    def inverse(self) -> NamedPose:
         return NamedPose(self.dst_pose_src.inverse(), self.destination, self.source)
-    
+
 
 class PosedCameraModel:
     def __init__(self, camera: CameraModel, pose: NamedPose):
@@ -140,7 +140,9 @@ class PosedCameraModel:
         self.pose = pose
 
     def transform_to_camera_view(self, points: Vector3) -> Vector3:
+        KORNIA_CHECK_TYPE(points, Vector3)
         return self.pose.dst_pose_src * points
-    
+
     def project(self, points: Vector3) -> Vector2:
+        KORNIA_CHECK_TYPE(points, Vector3)
         return self.camera.project(self.transform_to_camera_view(points))
