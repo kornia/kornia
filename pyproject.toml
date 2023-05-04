@@ -20,8 +20,12 @@ classifiers = [
   "License :: OSI Approved :: Apache Software License",
   "Natural Language :: English",
   "Operating System :: OS Independent",
-  "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.7",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
   "Topic :: Scientific/Engineering :: Image Processing",
   "Topic :: Software Development :: Libraries",
@@ -76,15 +80,6 @@ namespaces = false
   skip-string-normalization = true
   skip-magic-trailing-comma = true
 
-[tool.isort]
-  multi_line_output=3
-  include_trailing_comma = true
-  line_length = 120
-  profile = "black"
-  known_first_party = ["examples", "kornia","test"]
-  skip_glob = []
-  skip = ["kornia/__init__.py"]
-
 [tool.pytest.ini_options]
   addopts = "--color=yes"
   testpaths = ["test"]
@@ -129,3 +124,53 @@ D204
 D213
 D406
 D407"""
+
+[tool.ruff]
+select = [
+  "C9",
+  "E",
+  "F",
+  "I",
+  "PL",
+  "S",
+  "UP",
+  "W",
+  "YTT",
+]
+ignore = [
+  "E402",
+	"F403",
+	"PLR0402",
+	"PLR1711",
+	"PLR5501",
+  "PLR2004",
+  "PLW2901"
+]
+line-length = 120
+target-version = "py37"
+
+[tool.ruff.isort]
+  known-first-party = ["examples", "kornia", "test"]
+
+[tool.ruff.mccabe]
+max-complexity = 39
+
+[tool.ruff.pylint]
+max-args = 16
+max-branches = 45
+max-returns = 13
+max-statements = 258
+
+[tool.ruff.per-file-ignores]
+"*/__init__.py" = ["F401"]
+"docs/*" = ["S101", "S113"]
+"docs/generate_example_images.py" = ["C901", "PLR0912", "PLR0915"]
+"examples/train/object_detection/main.py" = ["E741"]
+"kornia/__init__.py" = ["I001"]
+"kornia/augmentation/container/base.py" = ["PLC1901"]
+"kornia/color/hls.py" = ["E741"]
+"kornia/contrib/models/sam/architecture/image_encoder.py" = ["PLR0913"]
+"kornia/enhance/equalization.py" = ["E741"]
+"test/*" = ["PLR0402", "S101"]
+"test/enhance/test_core.py" = ["S311"]
+"test/nerf/test_camera_utils.py" = ["S310"]

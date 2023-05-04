@@ -23,10 +23,10 @@ Structures
     :members:
     :undoc-members:
 
-ImagePrompter
--------------
+VisualPrompter
+--------------
 
-.. autoclass:: kornia.contrib.image_prompter.ImagePrompter
+.. autoclass:: kornia.contrib.visual_prompter.VisualPrompter
     :members: set_image, reset_image, compile, predict, preprocess_image, preprocess_prompts
 
 Edge Detection

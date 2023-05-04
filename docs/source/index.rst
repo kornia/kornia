@@ -75,6 +75,7 @@ Join the community
    :hidden:
 
    applications/intro
+   applications/visual_prompting
    applications/face_detection
    applications/image_augmentations
    applications/image_classification
@@ -88,6 +89,7 @@ Join the community
    :caption: KORNIA MODELS
    :hidden:
 
+   models/segment_anything
    models/yunet
    models/vit
    models/vit_mobile
@@ -97,7 +99,6 @@ Join the community
    models/affnet
    models/sold2
    models/dexined
-   models/segment_anything
 
 .. toctree::
    :caption: SUPPORT
