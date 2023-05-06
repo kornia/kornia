@@ -51,4 +51,4 @@ and execute your training pipeline.
    :lines: 90-111
 
 .. seealso::
-   Play with the full example `here <https://github.com/kornia/kornia/tree/master/examples/train/object_detection>`_
+   Play with the full example `here <https://github.com/kornia/tutorials/tree/master/scripts/training/object_detection>`_

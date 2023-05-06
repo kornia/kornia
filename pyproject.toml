@@ -165,7 +165,6 @@ max-statements = 258
 "*/__init__.py" = ["F401"]
 "docs/*" = ["S101", "S113"]
 "docs/generate_examples.py" = ["C901", "PLR0912", "PLR0915"]
-"examples/train/object_detection/main.py" = ["E741"]
 "kornia/__init__.py" = ["I001"]
 "kornia/augmentation/container/base.py" = ["PLC1901"]
 "kornia/color/hls.py" = ["E741"]
