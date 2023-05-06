@@ -1,13 +1,12 @@
-import matplotlib
+from __future__ import annotations
 
-matplotlib.use("Agg")
 import importlib
 import math
 import os
 from pathlib import Path
-from typing import Optional, Tuple
 
 import cv2
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import requests
@@ -17,8 +16,22 @@ from kornia_moons.feature import visualize_LAF
 import kornia as K
 from kornia.core import Tensor
 
+matplotlib.use("Agg")
 
-def read_img_from_url(url: str, resize_to: Optional[Tuple[int, int]] = None) -> torch.Tensor:
+
+def download_tutorials_examples(download_infos: dict[str, str], directory: Path):
+    URL_BASE = 'https://raw.githubusercontent.com/kornia/tutorials/master/'
+    for filename, path in download_infos.items():
+        url = URL_BASE + path
+        # perform request
+        response = requests.get(url, timeout=60).content
+
+        path = directory / filename
+        with open(path, 'wb') as fp:
+            fp.write(response)
+
+
+def read_img_from_url(url: str, resize_to: tuple[int, int] | None = None) -> torch.Tensor:
     # perform request
     response = requests.get(url, timeout=60).content
     # convert to array of ints
@@ -35,7 +48,7 @@ def read_img_from_url(url: str, resize_to: Optional[Tuple[int, int]] = None) -> 
     return img_t
 
 
-def transparent_pad(src: Tensor, shape: Tuple[int, int]) -> Tensor:
+def transparent_pad(src: Tensor, shape: tuple[int, int]) -> Tensor:
     """Apply a transparent pad to src (centerized) to match with shape (h, w)"""
     w_pad = abs(int(src.shape[-1] - shape[-1]) // 2)
     h_pad = abs(int(src.shape[-2] - shape[-2]) // 2)
@@ -64,6 +77,19 @@ def draw_bbox_kpts(imgs, bboxes, keypoints):
 
 
 def main():
+    # Download the tutorial examples for the main docs
+    URLS_TUTORIALS_EXAMPLES = {
+        'image_classifier.py': 'scripts/training/image_classifier/main.py',
+        'object_detection.py': 'scripts/training/object_detection/main.py',
+        'semantic_segmentation.py': 'scripts/training/semantic_segmentation/main.py',
+    }
+
+    OUTPUT_PATH_SCRIPTS = Path(__file__).absolute().parent / "source/_static/scripts/"
+
+    os.makedirs(OUTPUT_PATH_SCRIPTS, exist_ok=True)
+    print(f"Downloading script examples from kornia/tutorials. Saving into the path {OUTPUT_PATH_SCRIPTS}.")
+    download_tutorials_examples(URLS_TUTORIALS_EXAMPLES, OUTPUT_PATH_SCRIPTS)
+
     # load the images
     BASE_IMAGE_URL1: str = "https://raw.githubusercontent.com/kornia/data/main/panda.jpg"  # augmentation
     BASE_IMAGE_URL2: str = "https://raw.githubusercontent.com/kornia/data/main/simba.png"  # color
