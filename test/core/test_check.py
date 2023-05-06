@@ -63,7 +63,9 @@ class TestCheckSameShape:
     def test_invalid(self):
         with pytest.raises(Exception):
             KORNIA_CHECK_SAME_SHAPE(torch.rand(2, 3), torch.rand(2, 2, 3))
+        with pytest.raises(Exception):
             KORNIA_CHECK_SAME_SHAPE(torch.rand(2, 3), torch.rand(1, 2, 3))
+        with pytest.raises(Exception):
             KORNIA_CHECK_SAME_SHAPE(torch.rand(2, 3), torch.rand(2, 3, 3))
 
 
@@ -72,11 +74,15 @@ class TestCheckType:
         KORNIA_CHECK_TYPE("hello", str)
         KORNIA_CHECK_TYPE(23, int)
         KORNIA_CHECK_TYPE(torch.rand(1), torch.Tensor)
+        KORNIA_CHECK_TYPE(torch.rand(1), (int, torch.Tensor))
 
     def test_invalid(self):
         with pytest.raises(Exception):
             KORNIA_CHECK_TYPE("world", int)
+        with pytest.raises(Exception):
             KORNIA_CHECK_TYPE(23, float)
+        with pytest.raises(Exception):
+            KORNIA_CHECK_TYPE(23, (float, str))
 
 
 class TestCheckIsTensor:
@@ -95,6 +101,7 @@ class TestCheckIsListOfTensor:
     def test_invalid(self):
         with pytest.raises(Exception):
             assert KORNIA_CHECK_IS_LIST_OF_TENSOR([torch.rand(1), [2, 3], torch.rand(1)])
+        with pytest.raises(Exception):
             assert KORNIA_CHECK_IS_LIST_OF_TENSOR([1, 2, 3])
 
 
@@ -127,8 +134,11 @@ class TestCheckIsColor:
     def test_invalid(self):
         with pytest.raises(Exception):
             KORNIA_CHECK_IS_COLOR(torch.rand(1, 4, 4))
+        with pytest.raises(Exception):
             KORNIA_CHECK_IS_COLOR(torch.rand(2, 4, 4))
+        with pytest.raises(Exception):
             KORNIA_CHECK_IS_COLOR(torch.rand(3, 4, 4, 4))
+        with pytest.raises(Exception):
             KORNIA_CHECK_IS_COLOR(torch.rand(1, 3, 4, 4, 4))
 
 
@@ -141,8 +151,11 @@ class TestCheckIsGray:
     def test_invalid(self):
         with pytest.raises(Exception):
             KORNIA_CHECK_IS_GRAY(torch.rand(3, 4, 4))
+        with pytest.raises(Exception):
             KORNIA_CHECK_IS_GRAY(torch.rand(1, 4, 4, 4))
+        with pytest.raises(Exception):
             KORNIA_CHECK_IS_GRAY(torch.rand(1, 3, 4, 4))
+        with pytest.raises(Exception):
             KORNIA_CHECK_IS_GRAY(torch.rand(1, 3, 4, 4, 4))
 
 
@@ -158,6 +171,7 @@ class TestCheckIsColorOrGray:
     def test_invalid(self):
         with pytest.raises(Exception):
             KORNIA_CHECK_IS_COLOR_OR_GRAY(torch.rand(1, 4, 4, 4))
+        with pytest.raises(Exception):
             KORNIA_CHECK_IS_COLOR_OR_GRAY(torch.rand(1, 3, 4, 4, 4))
 
 
@@ -168,9 +182,12 @@ class TestCheckDmDesc:
     def test_invalid(self):
         with pytest.raises(Exception):
             KORNIA_CHECK_DM_DESC(torch.rand(4), torch.rand(8), torch.rand(4, 7))
+        with pytest.raises(Exception):
             KORNIA_CHECK_DM_DESC(torch.rand(4), torch.rand(8), torch.rand(3, 8))
+        with pytest.raises(Exception):
             KORNIA_CHECK_DM_DESC(torch.rand(4), torch.rand(8), torch.rand(3, 7))
-            KORNIA_CHECK_DM_DESC(torch.rand(4), torch.rand(8), torch.rand(4, 8, 3))
+        with pytest.raises(Exception):
+            KORNIA_CHECK_DM_DESC(torch.rand(4), torch.rand(8), torch.rand(4, 3, 8))
 
 
 class TestCheckLaf:
@@ -180,6 +197,9 @@ class TestCheckLaf:
     def test_invalid(self):
         with pytest.raises(Exception):
             KORNIA_CHECK_LAF(torch.rand(4, 2, 2))
+        with pytest.raises(Exception):
             KORNIA_CHECK_LAF(torch.rand(4, 2, 3, 2))
+        with pytest.raises(Exception):
             KORNIA_CHECK_LAF(torch.rand(4, 2, 2, 2))
+        with pytest.raises(Exception):
             KORNIA_CHECK_LAF(torch.rand(4, 2, 3, 3, 3))
