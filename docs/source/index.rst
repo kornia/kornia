@@ -84,6 +84,7 @@ Join the community
    applications/image_registration
    applications/image_denoising
    applications/semantic_segmentation
+   applications/object_detection
 
 .. toctree::
    :caption: KORNIA MODELS

@@ -225,7 +225,7 @@ Use `hydra <https://hydra.cc>`_ to implement an easy search strategy for your hy
 
 .. note::
 
-  Checkout the toy example in `here <https://github.com/kornia/kornia/tree/master/examples/train/image_classifier>`__
+  Checkout the toy example in `here <https://github.com/kornia/tutorials/tree/master/scripts/training/image_classifier>`__
 
 .. code:: python
 
