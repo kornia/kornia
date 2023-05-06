@@ -15,20 +15,27 @@ Learn more: `https://paperswithcode.com/task/face-detection <https://paperswithc
 
 Using our API you easily detect faces in images as shown below:
 
-.. literalinclude:: ../../../examples/face_detection/main.py
-   :language: python
-   :lines: 36-54
+.. code-block:: python
 
-Check the full example `here <https://github.com/kornia/kornia/tree/master/examples/face_detection/main.py>`_
-or run a real-time application using the camera with this `example <https://github.com/kornia/kornia/tree/master/examples/face_detection/main_video.py>`_.
+    # select the device
+    device = torch.device('cpu')
+    if args.cuda and torch.cuda.is_available():
+        device = torch.device('cuda:0')
 
-The Kornia AI Game
-------------------
+    # load the image and scale
+    img_raw = cv2.imread(args.image_file, cv2.IMREAD_COLOR)
+    img_raw = scale_image(img_raw, args.image_size)
 
-    .. image:: https://kornia-tutorials.readthedocs.io/en/latest/_images/face_detection_7_1.png
-        :width: 49 %
-    .. image:: https://kornia-tutorials.readthedocs.io/en/latest/_images/face_detection_13_1.png
-        :width: 49 %
+    # preprocess
+    img = K.image_to_tensor(img_raw, keepdim=False).to(device)
+    img = K.color.bgr_to_rgb(img.float())
 
-.. tip::
-   Play yourself with the detector and generate new images with this `tutorial <https://kornia-tutorials.readthedocs.io/en/latest/face_detection.html>`_.
+    # create the detector and find the faces !
+    face_detection = FaceDetector().to(device)
+
+    with torch.no_grad():
+        dets = face_detection(img)
+    dets = [FaceDetectorResult(o) for o in dets[0]]
+
+
+Play yourself with the detector and generate new images with this `tutorial <https://kornia-tutorials.readthedocs.io/en/latest/_nbs/face_detection.html>`_.

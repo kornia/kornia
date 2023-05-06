@@ -24,4 +24,4 @@ clean:
 	@rm -rf $(BUILDDIR)/html/ $(BUILDDIR)/doctrees
 
 images:
-	python3 generate_example_images.py
+	python3 generate_examples.py
