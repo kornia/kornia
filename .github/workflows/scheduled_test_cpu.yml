@@ -50,3 +50,14 @@ jobs:
       python-version: '["3.10"]'
       pytorch-version: '["2.0.0"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
+
+  tests-tutorials:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ['Ubuntu-latest']
+    uses: ./.github/workflows/tests_tutorials.yml
+    with:
+      os: ${{ matrix.os }}
+      python-version: '["3.10"]'
+      pytorch-version: '["2.0.0"]'
