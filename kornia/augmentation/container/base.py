@@ -277,13 +277,16 @@ class ImageSequentialBase(SequentialBase):
         return input
 
 
-class TransformMatrixMinIn(Protocol):
+class TransformMatrixMinIn:
     """Enables computation matrix compuatation."""
 
-    _transform_matrix: Optional[Tensor] = None
-    _transform_matrices: List[Tensor] = []
     _valid_ops_for_transform_computation = ()
     _transformation_matrix_arg: str = "silence"
+
+    def __init__(self, *args, **kwargs) -> None:
+        super(TransformMatrixMinIn, self).__init__(*args, **kwargs)
+        self._transform_matrix: Optional[Tensor] = None
+        self._transform_matrices: List[Tensor] = []
 
     def _parse_transformation_matrix_mode(self, transformation_matrix_mode: str) -> None:
         _valid_transformation_matrix_args = ["silence", "rigid", "skip"]

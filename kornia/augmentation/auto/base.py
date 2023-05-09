@@ -15,12 +15,12 @@ OP_CONFIG = Tuple[str, NUMBER, Optional[NUMBER]]
 SUBPLOLICY_CONFIG = List[OP_CONFIG]
 
 
-class PolicyAugmentBase(ImageSequentialBase, TransformMatrixMinIn):
+class PolicyAugmentBase(TransformMatrixMinIn, ImageSequentialBase):
     """Policy-based image augmentation."""
 
     def __init__(self, policy: List[SUBPLOLICY_CONFIG], transformation_matrix_mode: str = "silence") -> None:
         policies = self.compose_policy(policy)
-        super().__init__(*policies)
+        super(PolicyAugmentBase, self).__init__(*policies)
         self._parse_transformation_matrix_mode(transformation_matrix_mode)
         self._valid_ops_for_transform_computation = (PolicySequential,)
 

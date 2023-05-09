@@ -23,7 +23,7 @@ _KEYPOINTS_OPTIONS = {DataKey.KEYPOINTS}
 _IMG_MSK_OPTIONS = {DataKey.INPUT, DataKey.MASK}
 
 
-class AugmentationSequential(ImageSequential, TransformMatrixMinIn):
+class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
     r"""AugmentationSequential for handling multiple input types like inputs, masks, keypoints at once.
 
     .. image:: _static/img/AugmentationSequential.png

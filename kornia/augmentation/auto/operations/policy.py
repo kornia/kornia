@@ -12,7 +12,7 @@ from kornia.core import Module, Tensor, as_tensor
 from kornia.utils import eye_like
 
 
-class PolicySequential(ImageSequentialBase, TransformMatrixMinIn):
+class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
     """Policy tuple for applying multiple operations.
 
     Args:
@@ -21,7 +21,7 @@ class PolicySequential(ImageSequentialBase, TransformMatrixMinIn):
 
     def __init__(self, *operations: OperationBase) -> None:
         self.validate_operations(*operations)
-        super().__init__(*operations)
+        super(PolicySequential, self).__init__(*operations)
         self._valid_ops_for_transform_computation = (OperationBase,)
 
     def _update_transform_matrix_for_valid_op(self, module: Module) -> None:
