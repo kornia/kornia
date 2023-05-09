@@ -1,10 +1,10 @@
 from collections import OrderedDict
 from itertools import zip_longest
 from typing import Any, Dict, Iterator, List, Optional, Tuple
-from typing_extensions import Protocol
 
 import torch
-from torch import nn
+import torch.nn as nn
+from typing_extensions import Protocol
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase

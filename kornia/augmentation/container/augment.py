@@ -175,7 +175,10 @@ class AugmentationSequential(ImageSequential, TransformMatrixMinIn):
         self._parse_transformation_matrix_mode(transformation_matrix)
 
         self._valid_ops_for_transform_computation = (
-            K.RigidAffineAugmentationBase2D, K.RigidAffineAugmentationBase3D, AugmentationSequential)
+            K.RigidAffineAugmentationBase2D,
+            K.RigidAffineAugmentationBase3D,
+            AugmentationSequential,
+        )
 
         self.data_keys = [DataKey.get(inp) for inp in data_keys]
 

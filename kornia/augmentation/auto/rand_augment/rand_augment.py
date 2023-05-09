@@ -48,8 +48,11 @@ class RandAugment(PolicyAugmentBase):
     """
 
     def __init__(
-        self, n: int, m: int, policy: Optional[List[SUBPLOLICY_CONFIG]] = None,
-        transformation_matrix_mode: str = "silence"
+        self,
+        n: int,
+        m: int,
+        policy: Optional[List[SUBPLOLICY_CONFIG]] = None,
+        transformation_matrix_mode: str = "silence",
     ) -> None:
         if m <= 0 or m >= 30:
             raise ValueError(f"Expect `m` in [0, 30]. Got {m}.")
