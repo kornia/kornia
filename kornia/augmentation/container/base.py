@@ -4,7 +4,6 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
-from typing_extensions import Protocol
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
