@@ -42,14 +42,14 @@ class TrivialAugment(PolicyAugmentBase):
     """
 
     def __init__(
-        self, policy: Optional[List[SUBPLOLICY_CONFIG]] = None, transformation_matrix: str = "silence"
+        self, policy: Optional[List[SUBPLOLICY_CONFIG]] = None, transformation_matrix_mode: str = "silence"
     ) -> None:
         if policy is None:
             _policy = default_policy
         else:
             _policy = policy
 
-        super().__init__(_policy, transformation_matrix=transformation_matrix)
+        super().__init__(_policy, transformation_matrix_mode=transformation_matrix_mode)
         selection_weights = torch.tensor([1.0 / len(self)] * len(self))
         self.rand_selector = Categorical(selection_weights)
 

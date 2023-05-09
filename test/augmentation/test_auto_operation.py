@@ -81,7 +81,7 @@ class TestAutoAugment:
         aug.is_intensity_only()
 
     def test_transform_mat(self):
-        aug = AutoAugment([[("shear_x", 0.9, 4), ("invert", 0.2, None)]], transformation_matrix="silence")
+        aug = AutoAugment([[("shear_x", 0.9, 4), ("invert", 0.2, None)]], transformation_matrix_mode="silence")
         in_tensor = torch.rand(10, 3, 50, 50, requires_grad=True)
         aug(in_tensor)
         trans = aug.get_transformation_matrix(in_tensor, params=aug._params)
@@ -109,6 +109,13 @@ class TestRandAugment:
         in_tensor = torch.rand(10, 3, 50, 50, requires_grad=True)
         aug(in_tensor)
 
+    def test_transform_mat(self):
+        aug = RandAugment(n=3, m=15)
+        in_tensor = torch.rand(10, 3, 50, 50, requires_grad=True)
+        aug(in_tensor)
+        trans = aug.get_transformation_matrix(in_tensor, params=aug._params)
+        assert_close(trans, aug.transform_matrix)
+
     def test_reproduce(self):
         aug = RandAugment(n=3, m=15)
         in_tensor = torch.rand(10, 3, 50, 50, requires_grad=True)
@@ -126,6 +133,14 @@ class TestTrivialAugment:
         aug = TrivialAugment(policy=policy)
         in_tensor = torch.rand(10, 3, 50, 50, requires_grad=True)
         aug(in_tensor)
+
+    def test_transform_mat(self):
+        aug = TrivialAugment()
+        in_tensor = torch.rand(10, 3, 50, 50, requires_grad=True)
+        aug(in_tensor)
+        aug(in_tensor)
+        trans = aug.get_transformation_matrix(in_tensor, params=aug._params)
+        assert_close(trans, aug.transform_matrix)
 
     def test_reproduce(self):
         aug = TrivialAugment()

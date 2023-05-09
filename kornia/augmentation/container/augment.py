@@ -9,6 +9,7 @@ from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints, VideoKeypoints
 from kornia.utils import eye_like, is_autocast_enabled
 
+from .base import TransformMatrixMinIn
 from .image import ImageSequential
 from .ops import AugmentationSequentialOps, DataType
 from .params import ParamItem
@@ -22,7 +23,7 @@ _KEYPOINTS_OPTIONS = {DataKey.KEYPOINTS}
 _IMG_MSK_OPTIONS = {DataKey.INPUT, DataKey.MASK}
 
 
-class AugmentationSequential(ImageSequential):
+class AugmentationSequential(ImageSequential, TransformMatrixMinIn):
     r"""AugmentationSequential for handling multiple input types like inputs, masks, keypoints at once.
 
     .. image:: _static/img/AugmentationSequential.png
@@ -46,13 +47,13 @@ class AugmentationSequential(ImageSequential):
                       If True, the whole list of args will be processed as a sequence in a random order.
                       If False, the whole list of args will be processed as a sequence in original order.
 
-        transformation_matrix: computation mode for the chained transformation matrix, via `.transform_matrix`
-                               attribute.
-                               If `silence`, transformation matrix will be computed silently and the non-rigid modules
-                               will be ignored as identity transformations.
-                               If `rigid`, transformation matrix will be computed silently and the non-rigid modules
-                               will trigger errors.
-                               If `skip`, transformation matrix will be totally ignored.
+        transformation_matrix_mode: computation mode for the chained transformation matrix, via `.transform_matrix`
+                                    attribute.
+                                    If `silence`, transformation matrix will be computed silently and the non-rigid
+                                    modules will be ignored as identity transformations.
+                                    If `rigid`, transformation matrix will be computed silently and the non-rigid
+                                    modules will trigger errors.
+                                    If `skip`, transformation matrix will be totally ignored.
 
         extra_args: to control the behaviour for each datakeys. By default, masks are handled by nearest interpolation
                     strategies.
@@ -171,6 +172,11 @@ class AugmentationSequential(ImageSequential):
             random_apply_weights=random_apply_weights,
         )
 
+        self._parse_transformation_matrix_mode(transformation_matrix)
+
+        self._valid_ops_for_transform_computation = (
+            K.RigidAffineAugmentationBase2D, K.RigidAffineAugmentationBase3D, AugmentationSequential)
+
         self.data_keys = [DataKey.get(inp) for inp in data_keys]
 
         if not all(in_type in DataKey for in_type in self.data_keys):
@@ -180,14 +186,6 @@ class AugmentationSequential(ImageSequential):
             raise NotImplementedError(f"The first input must be {DataKey.INPUT}.")
 
         self.transform_op = AugmentationSequentialOps(self.data_keys)
-
-        _valid_transformation_matrix_args = ["silence", "rigid", "skip"]
-        if transformation_matrix not in _valid_transformation_matrix_args:
-            raise ValueError(
-                f"`transformation_matrix` has to be one of {_valid_transformation_matrix_args}. "
-                f"Got {transformation_matrix}."
-            )
-        self._transformation_matrix_arg = transformation_matrix
 
         self.contains_video_sequential: bool = False
         self.contains_3d_augmentation: bool = False
@@ -203,39 +201,11 @@ class AugmentationSequential(ImageSequential):
         self.extra_args = extra_args
 
     def clear_state(self) -> None:
-        self._transform_matrix = None
-        self._transform_matrices = []
+        self._reset_transform_matrix_state()
         return super().clear_state()
 
-    @property
-    def transform_matrix(self) -> Optional[Tensor]:
-        # In AugmentationSequential, the parent class is accessed first.
-        # So that it was None in the beginning. We hereby use lazy computation here.
-        if self._transform_matrix is None and len(self._transform_matrices) != 0:
-            self._transform_matrix = self._transform_matrices[0]
-            for mat in self._transform_matrices[1:]:
-                self._update_transform_matrix(mat)
-        return self._transform_matrix
-
-    def _update_transform_matrix_by_module(self, module: Module) -> None:
-        if self._transformation_matrix_arg == "skip":
-            return
-        if isinstance(
-            module, (K.RigidAffineAugmentationBase2D, K.RigidAffineAugmentationBase3D, AugmentationSequential)
-        ):
-            # Passed in pointer, allows lazy transformation matrix computation
-            self._transform_matrices.append(module.transform_matrix)  # type: ignore
-        elif self._transformation_matrix_arg == "rigid":
-            raise RuntimeError(
-                f"Non-rigid module `{module}` is not supported under `rigid` computation mode. "
-                "Please either update the module or change the `transformation_matrix` argument."
-            )
-
-    def _update_transform_matrix(self, transform_matrix: Tensor) -> None:
-        if self._transform_matrix is None:
-            self._transform_matrix = transform_matrix
-        else:
-            self._transform_matrix = transform_matrix @ self._transform_matrix
+    def _update_transform_matrix_for_valid_op(self, module: Module) -> None:
+        self._transform_matrices.append(module.transform_matrix)  # type: ignore
 
     def identity_matrix(self, input: Tensor) -> Tensor:
         """Return identity matrix."""
