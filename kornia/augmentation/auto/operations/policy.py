@@ -21,7 +21,7 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
 
     def __init__(self, *operations: OperationBase) -> None:
         self.validate_operations(*operations)
-        super(PolicySequential, self).__init__(*operations)
+        super().__init__(*operations)
         self._valid_ops_for_transform_computation = (OperationBase,)
 
     def _update_transform_matrix_for_valid_op(self, module: Module) -> None:
