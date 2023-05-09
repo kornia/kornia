@@ -1,5 +1,6 @@
 """Module including useful metrics for Structure from Motion."""
 
+import torch
 from torch import Tensor
 
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR
@@ -99,12 +100,13 @@ def symmetrical_epipolar_distance(
     line2_in_1: Tensor = pts2 @ Fm
 
     # numerator = (x'^T F x) ** 2
-    numerator: Tensor = (pts2 * line1_in_2).sum(dim=-1).pow(2)
+    numerator: Tensor = torch.einsum('...i,...i->...', pts2, line1_in_2).pow(2)
 
     # denominator_inv =  1/ (((Fx)_1**2) + (Fx)_2**2)) +  1/ (((F^Tx')_1**2) + (F^Tx')_2**2))
-    denominator_inv: Tensor = 1.0 / (line1_in_2[..., :2].norm(2, dim=-1).pow(2)) + 1.0 / (
-        line2_in_1[..., :2].norm(2, dim=-1).pow(2)
-    )
+    line1_in_2_norm_sq: Tensor = torch.einsum('...i, ...i -> ...', (line1_in_2[..., :2], line1_in_2[..., :2]))
+    line2_in_1_norm_sq: Tensor = torch.einsum('...i, ...i -> ...', (line2_in_1[..., :2], line2_in_1[..., :2]))
+    denominator_inv: Tensor = 1.0 / line1_in_2_norm_sq + 1.0 / line2_in_1_norm_sq
+
     out: Tensor = numerator * denominator_inv
     if squared:
         return out
