@@ -40,7 +40,7 @@ class TestCheckShape:
         ],
     )
     def test_valid(self, data, shape):
-        KORNIA_CHECK_SHAPE(data, shape) is True
+        assert KORNIA_CHECK_SHAPE(data, shape) is True
 
     @pytest.mark.parametrize(
         "data,shape",
@@ -60,9 +60,9 @@ class TestCheckShape:
 
 class TestCheckSameShape:
     def test_valid(self):
-        KORNIA_CHECK_SAME_SHAPE(torch.rand(2, 3), torch.rand(2, 3))
-        KORNIA_CHECK_SAME_SHAPE(torch.rand(1, 2, 3), torch.rand(1, 2, 3))
-        KORNIA_CHECK_SAME_SHAPE(torch.rand(2, 3, 3), torch.rand(2, 3, 3))
+        assert KORNIA_CHECK_SAME_SHAPE(torch.rand(2, 3), torch.rand(2, 3)) is True
+        assert KORNIA_CHECK_SAME_SHAPE(torch.rand(1, 2, 3), torch.rand(1, 2, 3)) is True
+        assert KORNIA_CHECK_SAME_SHAPE(torch.rand(2, 3, 3), torch.rand(2, 3, 3)) is True
 
     def test_invalid(self):
         with pytest.raises(Exception):
@@ -113,7 +113,7 @@ class TestCheckIsListOfTensor:
 
 class TestCheckSameDevice:
     def test_valid(self, device):
-        KORNIA_CHECK_SAME_DEVICE(torch.rand(1, device=device), torch.rand(1, device=device)) is True
+        assert KORNIA_CHECK_SAME_DEVICE(torch.rand(1, device=device), torch.rand(1, device=device)) is True
 
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="Skip if no GPU.")
     def test_invalid(self):
@@ -126,7 +126,7 @@ class TestCheckSameDevice:
 
 class TestCheckSameDevices:
     def test_valid(self, device):
-        KORNIA_CHECK_SAME_DEVICES([torch.rand(1, device=device), torch.rand(1, device=device)]) is True
+        assert KORNIA_CHECK_SAME_DEVICES([torch.rand(1, device=device), torch.rand(1, device=device)]) is True
 
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="Skip if no GPU.")
     def test_invalid(self):
@@ -135,7 +135,7 @@ class TestCheckSameDevices:
 
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="Skip if no GPU.")
     def test_invalid(self):
-        KORNIA_CHECK_SAME_DEVICES([torch.rand(1, device="cpu"), torch.rand(1, device="cuda")], raises=False) is False
+        assert KORNIA_CHECK_SAME_DEVICES([torch.rand(1, device="cpu"), torch.rand(1, device="cuda")], raises=False) is False
 
 class TestCheckIsColor:
     def test_valid(self):
@@ -158,9 +158,9 @@ class TestCheckIsColor:
 
 class TestCheckIsGray:
     def test_valid(self):
-        KORNIA_CHECK_IS_GRAY(torch.rand(1, 4, 4)) is True
-        KORNIA_CHECK_IS_GRAY(torch.rand(2, 1, 4, 4)) is True
-        KORNIA_CHECK_IS_GRAY(torch.rand(3, 1, 4, 4)) is True
+        assert KORNIA_CHECK_IS_GRAY(torch.rand(1, 4, 4)) is True
+        assert KORNIA_CHECK_IS_GRAY(torch.rand(2, 1, 4, 4)) is True
+        assert KORNIA_CHECK_IS_GRAY(torch.rand(3, 1, 4, 4)) is True
 
     def test_invalid(self):
         with pytest.raises(Exception):
