@@ -70,22 +70,26 @@ def KORNIA_CHECK_SHAPE(x: Tensor, shape: list[str]) -> None:
             raise TypeError(f"{x} shape must be [{shape}]. Got {x.shape}")
 
 
-def KORNIA_CHECK(condition: bool, msg: str | None = None) -> None:
+def KORNIA_CHECK(condition: bool, msg: str | None = None, raises: bool = True) -> bool:
     """Check any arbitrary boolean condition.
 
     Args:
         condition: the condition to evaluate.
         msg: message to show in the exception.
+        raises: bool indicates whether an exception should be raised upon failure.
 
     Raises:
-        Exception: if the confition is met.
+        Exception: if the confition is met & raises=false.
 
     Example:
         >>> x = torch.rand(2, 3, 3)
         >>> KORNIA_CHECK(x.shape[-2:] == (3, 3), "Invalid homography")
     """
     if not condition:
-        raise Exception(f"{condition} not true.\n{msg}")
+        if raises:
+            raise Exception(f"{condition} not true.\n{msg}")
+        return False
+    return True
 
 
 def KORNIA_UNWRAP(maybe_obj: object, typ: Any) -> Any:

@@ -20,12 +20,14 @@ from kornia.core.check import (
 
 class TestCheck:
     def test_valid(self):
-        KORNIA_CHECK(True, "This is a test")
+        assert KORNIA_CHECK(True, "This is a test") is True
 
     def test_invalid(self):
         with pytest.raises(Exception):
             KORNIA_CHECK(False, "This is a test")
 
+    def test_invalid_raises_false(self):
+        assert KORNIA_CHECK(False, "This should not raise", raises=False) is False
 
 class TestCheckShape:
     @pytest.mark.parametrize(
