@@ -38,7 +38,7 @@ def KORNIA_CHECK_SHAPE(x: Tensor, shape: list[str], raises: bool = True) -> bool
         raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
-        Exception: if the input tensor is has not the expected shape and raises if False.
+        Exception: if the input tensor is has not the expected shape and raises is True.
 
     Example:
         >>> x = torch.rand(2, 3, 4, 4)
@@ -86,7 +86,7 @@ def KORNIA_CHECK(condition: bool, msg: str | None = None, raises: bool = True) -
         raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
-        Exception: if the condition is met & raises is False.
+        Exception: if the condition is met and raises is True.
 
     Example:
         >>> x = torch.rand(2, 3, 3)
@@ -124,7 +124,7 @@ def KORNIA_CHECK_TYPE(x: object, typ: T | tuple[T, ...], msg: str | None = None,
         raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
-        TypeException: if the input variable does not match with the expected.
+        TypeException: if the input variable does not match with the expected and raises is True.
 
     Example:
         >>> KORNIA_CHECK_TYPE("foo", str, "Invalid string")
@@ -135,7 +135,6 @@ def KORNIA_CHECK_TYPE(x: object, typ: T | tuple[T, ...], msg: str | None = None,
         if raises:
             raise TypeError(f"Invalid type: {type(x)}.\n{msg}")
         return False
-
     return True
 
 
@@ -148,7 +147,7 @@ def KORNIA_CHECK_IS_TENSOR(x: object, msg: str | None = None, raises: bool = Tru
         raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
-        TypeException: if the input variable does not match with the expected and raises is False.
+        TypeException: if the input variable does not match with the expected and raises is True.
 
     Example:
         >>> x = torch.rand(2, 3, 3)
@@ -171,7 +170,7 @@ def KORNIA_CHECK_IS_LIST_OF_TENSOR(x: Sequence[object] | None, raises: bool = Tr
         raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
-        TypeException: if the input variable does not match with the expected and raises is False.
+        TypeException: if the input variable does not match with the expected and raises is True.
 
     Return:
         True if the input is a list of Tensors, otherwise return False.
@@ -201,7 +200,7 @@ def KORNIA_CHECK_SAME_DEVICE(x: Tensor, y: Tensor, raises: bool = True) -> bool:
         raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
-        TypeException: if the two tensors are not in the same device.
+        TypeException: if the two tensors are not in the same device and raises is True.
 
     Example:
         >>> x1 = torch.rand(2, 3, 3)
@@ -224,7 +223,7 @@ def KORNIA_CHECK_SAME_DEVICES(tensors: list[Tensor], msg: str | None = None, rai
         raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
-        Exception: if all the tensors are not in the same device.
+        Exception: if all the tensors are not in the same device and raises is True.
 
     Example:
         >>> x1 = torch.rand(2, 3, 3)
@@ -248,7 +247,7 @@ def KORNIA_CHECK_SAME_SHAPE(x: Tensor, y: Tensor, raises: bool = True) -> bool:
         raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
-        TypeException: if the two tensors have not the same shape.
+        TypeException: if the two tensors have not the same shape and raises is True.
 
     Example:
         >>> x1 = torch.rand(2, 3, 3)
@@ -260,7 +259,6 @@ def KORNIA_CHECK_SAME_SHAPE(x: Tensor, y: Tensor, raises: bool = True) -> bool:
         if raises:
             raise TypeError(f"Not same shape for tensors. Got: {x.shape} and {y.shape}")
         return False
-
     return True
 
 
@@ -273,7 +271,7 @@ def KORNIA_CHECK_IS_COLOR(x: Tensor, msg: str | None = None, raises: bool = True
         raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
-        TypeException: if all the input tensor has not a shape :math:`(3,H,W)` and raises is False.
+        TypeException: if all the input tensor has not a shape :math:`(3,H,W)` and raises is True.
 
     Example:
         >>> img = torch.rand(2, 3, 4, 4)
@@ -296,7 +294,7 @@ def KORNIA_CHECK_IS_GRAY(x: Tensor, msg: str | None = None, raises: bool = True)
         raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
-        TypeException: if the tensor has not a shape :math:`(1,H,W)` or :math:`(H,W)` and raises is False.
+        TypeException: if the tensor has not a shape :math:`(1,H,W)` or :math:`(H,W)` and raises is True.
 
     Example:
         >>> img = torch.rand(2, 1, 4, 4)
@@ -362,7 +360,7 @@ def KORNIA_CHECK_DM_DESC(desc1: Tensor, desc2: Tensor, dm: Tensor, raises: bool 
     return True
 
 
-def KORNIA_CHECK_LAF(laf: Tensor, raises: bool = True) -> None:
+def KORNIA_CHECK_LAF(laf: Tensor, raises: bool = True) -> bool:
     """Check whether a Local Affine Frame (laf) has a valid shape.
 
     Args:
