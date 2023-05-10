@@ -113,7 +113,7 @@ class TestCheckIsListOfTensor:
 
 class TestCheckSameDevice:
     def test_valid(self, device):
-        KORNIA_CHECK_SAME_DEVICE(torch.rand(1, device=device), torch.rand(1, device=device))
+        KORNIA_CHECK_SAME_DEVICE(torch.rand(1, device=device), torch.rand(1, device=device)) is True
 
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="Skip if no GPU.")
     def test_invalid(self):
@@ -126,13 +126,16 @@ class TestCheckSameDevice:
 
 class TestCheckSameDevices:
     def test_valid(self, device):
-        KORNIA_CHECK_SAME_DEVICES([torch.rand(1, device=device), torch.rand(1, device=device)])
+        KORNIA_CHECK_SAME_DEVICES([torch.rand(1, device=device), torch.rand(1, device=device)]) is True
 
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="Skip if no GPU.")
     def test_invalid(self):
         with pytest.raises(Exception):
             KORNIA_CHECK_SAME_DEVICES([torch.rand(1, device="cpu"), torch.rand(1, device="cuda")])
 
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="Skip if no GPU.")
+    def test_invalid(self):
+        KORNIA_CHECK_SAME_DEVICES([torch.rand(1, device="cpu"), torch.rand(1, device="cuda")], raises=False) is False
 
 class TestCheckIsColor:
     def test_valid(self):

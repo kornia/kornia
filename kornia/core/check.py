@@ -204,12 +204,13 @@ def KORNIA_CHECK_SAME_DEVICE(x: Tensor, y: Tensor, raises: bool = True) -> bool:
     return True
 
 
-def KORNIA_CHECK_SAME_DEVICES(tensors: list[Tensor], msg: str | None = None) -> None:
+def KORNIA_CHECK_SAME_DEVICES(tensors: list[Tensor], msg: str | None = None, raises: bool = True) -> bool:
     """Check whether a list provided tensors live in the same device.
 
     Args:
         x: a list of tensors.
         msg: message to show in the exception.
+        raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
         Exception: if all the tensors are not in the same device.
@@ -219,10 +220,12 @@ def KORNIA_CHECK_SAME_DEVICES(tensors: list[Tensor], msg: str | None = None) -> 
         >>> x2 = torch.rand(1, 3, 1)
         >>> KORNIA_CHECK_SAME_DEVICES([x1, x2], "Tensors not in the same device")
     """
-    KORNIA_CHECK(isinstance(tensors, list) and len(tensors) >= 1, "Expected a list with at least one element")
+    KORNIA_CHECK(isinstance(tensors, list) and len(tensors) >= 1, "Expected a list with at least one element", raises)
     if not all(tensors[0].device == x.device for x in tensors):
-        raise Exception(f"Not same device for tensors. Got: {[x.device for x in tensors]}.\n{msg}")
-
+        if raises:
+            raise Exception(f"Not same device for tensors. Got: {[x.device for x in tensors]}.\n{msg}")
+        return False
+    return True
 
 def KORNIA_CHECK_SAME_SHAPE(x: Tensor, y: Tensor) -> bool:
     """Check whether two tensor have the same shape.
