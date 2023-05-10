@@ -40,7 +40,7 @@ class TestCheckShape:
         ],
     )
     def test_valid(self, data, shape):
-        KORNIA_CHECK_SHAPE(data, shape)
+        KORNIA_CHECK_SHAPE(data, shape) is True
 
     @pytest.mark.parametrize(
         "data,shape",
@@ -55,6 +55,8 @@ class TestCheckShape:
         with pytest.raises(Exception):
             KORNIA_CHECK_SHAPE(data, shape)
 
+    def test_invalid_raises_false(self):
+        assert KORNIA_CHECK_SHAPE(torch.rand(2, 3), ["1", "H", "W"], raises=False) is False
 
 class TestCheckSameShape:
     def test_valid(self):

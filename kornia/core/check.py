@@ -26,7 +26,7 @@ __all__ = [
 
 
 # TODO: add somehow type check, or enforce to do it before
-def KORNIA_CHECK_SHAPE(x: Tensor, shape: list[str]) -> None:
+def KORNIA_CHECK_SHAPE(x: Tensor, shape: list[str], raises: bool = True) -> bool:
     """Check whether a tensor has a specified shape.
 
     The shape can be specified with a implicit or explicit list of strings.
@@ -35,9 +35,10 @@ def KORNIA_CHECK_SHAPE(x: Tensor, shape: list[str]) -> None:
     Args:
         x: the tensor to evaluate.
         shape: a list with strings with the expected shape.
+        raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
-        Exception: if the input tensor is has not the expected shape.
+        Exception: if the input tensor is has not the expected shape and raises if False.
 
     Example:
         >>> x = torch.rand(2, 3, 4, 4)
@@ -57,7 +58,10 @@ def KORNIA_CHECK_SHAPE(x: Tensor, shape: list[str]) -> None:
         x_shape_to_check = x.shape
 
     if len(x_shape_to_check) != len(shape_to_check):
-        raise TypeError(f"{x} shape must be [{shape}]. Got {x.shape}")
+        if raises:
+            raise TypeError(f"{x} shape must be [{shape}]. Got {x.shape}")
+        else:
+            return False
 
     for i in range(len(x_shape_to_check)):
         # The voodoo below is because torchscript does not like
@@ -67,8 +71,11 @@ def KORNIA_CHECK_SHAPE(x: Tensor, shape: list[str]) -> None:
             continue
         dim = int(dim_)
         if x_shape_to_check[i] != dim:
-            raise TypeError(f"{x} shape must be [{shape}]. Got {x.shape}")
-
+            if raises:
+                raise TypeError(f"{x} shape must be [{shape}]. Got {x.shape}")
+            else:
+                return False
+    return True
 
 def KORNIA_CHECK(condition: bool, msg: str | None = None, raises: bool = True) -> bool:
     """Check any arbitrary boolean condition.
