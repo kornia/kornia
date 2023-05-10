@@ -129,9 +129,9 @@ class TestCheckSameDevices:
 
 class TestCheckIsColor:
     def test_valid(self):
-        KORNIA_CHECK_IS_COLOR(torch.rand(3, 4, 4))
-        KORNIA_CHECK_IS_COLOR(torch.rand(1, 3, 4, 4))
-        KORNIA_CHECK_IS_COLOR(torch.rand(2, 3, 4, 4))
+        assert KORNIA_CHECK_IS_COLOR(torch.rand(3, 4, 4)) is True
+        assert KORNIA_CHECK_IS_COLOR(torch.rand(1, 3, 4, 4)) is True
+        assert KORNIA_CHECK_IS_COLOR(torch.rand(2, 3, 4, 4)) is True
 
     def test_invalid(self):
         with pytest.raises(Exception):
@@ -143,6 +143,8 @@ class TestCheckIsColor:
         with pytest.raises(Exception):
             KORNIA_CHECK_IS_COLOR(torch.rand(1, 3, 4, 4, 4))
 
+    def test_invalid_raises_false(self):
+        assert KORNIA_CHECK_IS_COLOR(torch.rand(1, 4, 4), raises=False) is False
 
 class TestCheckIsGray:
     def test_valid(self):

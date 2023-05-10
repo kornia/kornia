@@ -233,15 +233,16 @@ def KORNIA_CHECK_SAME_SHAPE(x: Tensor, y: Tensor) -> bool:
     return True
 
 
-def KORNIA_CHECK_IS_COLOR(x: Tensor, msg: str | None = None) -> bool:
+def KORNIA_CHECK_IS_COLOR(x: Tensor, msg: str | None = None, raises: bool = True) -> bool:
     """Check whether an image tensor is a color images.
 
     Args:
         x: image tensor to evaluate.
         msg: message to show in the exception.
+        raises: bool indicates whether an exception should be raised upon failure.
 
     Raises:
-        TypeException: if all the input tensor has not a shape :math:`(3,H,W)`.
+        TypeException: if all the input tensor has not a shape :math:`(3,H,W)` and raises=False.
 
     Example:
         >>> img = torch.rand(2, 3, 4, 4)
@@ -249,7 +250,9 @@ def KORNIA_CHECK_IS_COLOR(x: Tensor, msg: str | None = None) -> bool:
         True
     """
     if len(x.shape) < 3 or x.shape[-3] != 3:
-        raise TypeError(f"Not a color tensor. Got: {type(x)}.\n{msg}")
+        if raises:
+            raise TypeError(f"Not a color tensor. Got: {type(x)}.\n{msg}")
+        return False
     return True
 
 
