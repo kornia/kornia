@@ -1,20 +1,20 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from torch import float16, float32, float64
 
 from kornia.augmentation.base import _AugmentationBase
-from kornia.augmentation.utils import _transform_input, _validate_input_dtype
+from kornia.augmentation.utils import _validate_input_dtype
 from kornia.core import Tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 from kornia.utils import eye_like, is_autocast_enabled
 
 
-class AugmentationBase2D(_AugmentationBase):
-    r"""AugmentationBase2D base class for customized augmentation implementations.
+class AugmentationBasePC(_AugmentationBase):
+    r"""AugmentationBasePC base class for customized point cloud augmentation implementations.
 
-    AugmentationBase2D aims at offering a generic base class for a greater level of customization.
-    If the subclass contains routined matrix-based transformations, `RigidAffineAugmentationBase2D`
+    AugmentationBasePC aims at offering a generic base class for a greater level of customization.
+    If the subclass contains routined matrix-based transformations, `RigidAffineAugmentationBasePC`
     might be a better fit.
 
     Args:
@@ -23,26 +23,49 @@ class AugmentationBase2D(_AugmentationBase):
         p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
           probabilities batch-wise.
         same_on_batch: apply the same transformation across the batch.
-        keepdim: whether to keep the output shape the same as input ``True`` or broadcast it to the batch
-          form ``False``.
+
+    Note:
+        By default, :math:`(B, N, 3)` represent xyz only, :math:`(B, N, 6)` represents xyz and normal,
+        :math:`(B, N, 9)` represents xyz, normal, and rgb. Complex point cloud data may use our point cloud
+        data type.
     """
+    def __init__(
+        self, p: float = 0.5, p_batch: float = 1.0, same_on_batch: bool = False
+    ) -> None:
+        super().__init__(p=p, p_batch=p_batch, same_on_batch=same_on_batch, keepdim=True)
 
     def validate_tensor(self, input: Tensor) -> None:
         """Check if the input tensor is formatted as expected."""
         _validate_input_dtype(input, accepted_dtypes=[float16, float32, float64])
-        if len(input.shape) != 4:
-            raise RuntimeError(f"Expect (B, C, H, W). Got {input.shape}.")
+        if len(input.shape) != 3 or input.size(-1) < 3:
+            raise RuntimeError(f"Expect (B, N, C) and C >= 3. Got {input.shape}.")
 
-    def transform_tensor(self, input: Tensor) -> Tensor:
-        """Convert any incoming (H, W), (C, H, W) and (B, C, H, W) into (B, C, H, W)."""
-        _validate_input_dtype(input, accepted_dtypes=[float16, float32, float64])
-        return _transform_input(input)
+    def transform_tensor(self, input: Tensor) -> Tuple[Tensor, Optional[Tensor], Optional[Tensor], Optional[Tensor]]:
+        """Split a given tensor to [xyz, normal, rgb, others].
+
+        Of which xyz is required, while the rest are optional.
+        """
+        C = input.size(-1)
+        if C < 3:
+            raise RuntimeError(
+                f"Insufficient input channels. We expect at least (B, N, C) and C >= 3. Got {input.shape}.")
+        if C == 3:
+            return input, None, None, None
+        if C < 6:
+            return input[..., :3], None, None, input[..., 3:]
+        if C == 6:
+            return input[..., :3], input[..., 3:], None, None
+        if C < 9:
+            return input[..., :3], input[..., 3:6], None, input[..., 6:]
+        if C == 9:
+            return input[..., :3], input[..., 3:6], input[..., 6:], None
+        return input[..., :3], input[..., 3:6], input[..., 6:9], input[9:]
 
 
-class RigidAffineAugmentationBase2D(AugmentationBase2D):
-    r"""AugmentationBase2D base class for rigid/affine augmentation implementations.
+class RigidAffineAugmentationBasePC(AugmentationBasePC):
+    r"""AugmentationBasePC base class for rigid/affine augmentation implementations.
 
-    RigidAffineAugmentationBase2D enables routined transformation with given transformation matrices
+    RigidAffineAugmentationBasePC enables routined transformation with given transformation matrices
     for different data types like masks, boxes, and keypoints.
 
     Args:
@@ -51,14 +74,12 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
         p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
           probabilities batch-wise.
         same_on_batch: apply the same transformation across the batch.
-        keepdim: whether to keep the output shape the same as input ``True`` or broadcast it to the batch
-          form ``False``.
     """
 
     def __init__(
-        self, p: float = 0.5, p_batch: float = 1.0, same_on_batch: bool = False, keepdim: bool = False
+        self, p: float = 0.5, p_batch: float = 1.0, same_on_batch: bool = False
     ) -> None:
-        super().__init__(p=p, p_batch=p_batch, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(p=p, p_batch=p_batch, same_on_batch=same_on_batch)
         self._transform_matrix: Optional[Tensor] = None
 
     @property
@@ -80,12 +101,12 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
 
         in_tensor = self.transform_tensor(input)
         if not to_apply.any():
-            trans_matrix = self.identity_matrix(in_tensor)
+            trans_matrix = self.identity_matrix(in_tensor[0])
         elif to_apply.all():
-            trans_matrix = self.compute_transformation(in_tensor, params=params, flags=flags)
+            trans_matrix = self.compute_transformation(in_tensor[0], params=params, flags=flags)
         else:
-            trans_matrix_A = self.identity_matrix(in_tensor)
-            trans_matrix_B = self.compute_transformation(in_tensor[to_apply], params=params, flags=flags)
+            trans_matrix_A = self.identity_matrix(in_tensor[0])
+            trans_matrix_B = self.compute_transformation(in_tensor[to_apply][0], params=params, flags=flags)
 
             if is_autocast_enabled():
                 trans_matrix_A = trans_matrix_A.type(input.dtype)
