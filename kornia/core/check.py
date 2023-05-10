@@ -163,11 +163,15 @@ def KORNIA_CHECK_IS_TENSOR(x: object, msg: str | None = None, raises: bool = Tru
     return True
 
 
-def KORNIA_CHECK_IS_LIST_OF_TENSOR(x: Sequence[object] | None) -> TypeGuard[list[Tensor]]:
+def KORNIA_CHECK_IS_LIST_OF_TENSOR(x: Sequence[object] | None, raises: bool = True) -> TypeGuard[list[Tensor]]:
     """Check the input variable is a List of Tensors.
 
     Args:
         x: Any sequence of objects
+        raises: bool indicating whether an exception should be raised upon failure.
+
+    Raises:
+        TypeException: if the input variable does not match with the expected and raises is False.
 
     Return:
         True if the input is a list of Tensors, otherwise return False.
@@ -179,7 +183,12 @@ def KORNIA_CHECK_IS_LIST_OF_TENSOR(x: Sequence[object] | None) -> TypeGuard[list
         >>> KORNIA_CHECK_IS_LIST_OF_TENSOR([x])
         True
     """
-    return isinstance(x, list) and all(isinstance(d, Tensor) for d in x)
+    are_tensors = isinstance(x, list) and all(isinstance(d, Tensor) for d in x)
+    if not are_tensors:
+        if raises:
+            raise TypeError(f"Provided container of type {type(x)} is not a list of tensors")
+        return False
+    return True
 
 
 def KORNIA_CHECK_SAME_DEVICE(x: Tensor, y: Tensor, raises: bool = True) -> bool:

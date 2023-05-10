@@ -107,14 +107,16 @@ class TestCheckIsTensor:
 
 class TestCheckIsListOfTensor:
     def test_valid(self):
-        assert KORNIA_CHECK_IS_LIST_OF_TENSOR([torch.rand(1), torch.rand(1), torch.rand(1)])
+        assert KORNIA_CHECK_IS_LIST_OF_TENSOR([torch.rand(1), torch.rand(1), torch.rand(1)]) is True
 
     def test_invalid(self):
         with pytest.raises(Exception):
-            assert KORNIA_CHECK_IS_LIST_OF_TENSOR([torch.rand(1), [2, 3], torch.rand(1)])
+            KORNIA_CHECK_IS_LIST_OF_TENSOR([torch.rand(1), [2, 3], torch.rand(1)])
         with pytest.raises(Exception):
-            assert KORNIA_CHECK_IS_LIST_OF_TENSOR([1, 2, 3])
+            KORNIA_CHECK_IS_LIST_OF_TENSOR([1, 2, 3])
 
+    def test_invalid_raises_false(self):
+        assert KORNIA_CHECK_IS_LIST_OF_TENSOR([torch.rand(1), [2, 3], torch.rand(1)], raises=False) is False
 
 class TestCheckSameDevice:
     def test_valid(self, device):
