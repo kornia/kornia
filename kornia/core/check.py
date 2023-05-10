@@ -76,10 +76,10 @@ def KORNIA_CHECK(condition: bool, msg: str | None = None, raises: bool = True) -
     Args:
         condition: the condition to evaluate.
         msg: message to show in the exception.
-        raises: bool indicates whether an exception should be raised upon failure.
+        raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
-        Exception: if the confition is met & raises=false.
+        Exception: if the condition is met & raises is False.
 
     Example:
         >>> x = torch.rand(2, 3, 3)
@@ -239,10 +239,10 @@ def KORNIA_CHECK_IS_COLOR(x: Tensor, msg: str | None = None, raises: bool = True
     Args:
         x: image tensor to evaluate.
         msg: message to show in the exception.
-        raises: bool indicates whether an exception should be raised upon failure.
+        raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
-        TypeException: if all the input tensor has not a shape :math:`(3,H,W)` and raises=False.
+        TypeException: if all the input tensor has not a shape :math:`(3,H,W)` and raises is False.
 
     Example:
         >>> img = torch.rand(2, 3, 4, 4)
@@ -256,15 +256,16 @@ def KORNIA_CHECK_IS_COLOR(x: Tensor, msg: str | None = None, raises: bool = True
     return True
 
 
-def KORNIA_CHECK_IS_GRAY(x: Tensor, msg: str | None = None) -> bool:
+def KORNIA_CHECK_IS_GRAY(x: Tensor, msg: str | None = None, raises: bool = True) -> bool:
     """Check whether an image tensor is grayscale.
 
     Args:
         x: image tensor to evaluate.
         msg: message to show in the exception.
+        raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
-        TypeException: if the tensor has not a shape :math:`(1,H,W)` or :math:`(H,W)`.
+        TypeException: if the tensor has not a shape :math:`(1,H,W)` or :math:`(H,W)` and raises is False.
 
     Example:
         >>> img = torch.rand(2, 1, 4, 4)
@@ -272,7 +273,9 @@ def KORNIA_CHECK_IS_GRAY(x: Tensor, msg: str | None = None) -> bool:
         True
     """
     if len(x.shape) < 2 or (len(x.shape) >= 3 and x.shape[-3] != 1):
-        raise TypeError(f"Not a gray tensor. Got: {type(x)}.\n{msg}")
+        if raises:
+            raise TypeError(f"Not a gray tensor. Got: {type(x)}.\n{msg}")
+        return False
     return True
 
 
