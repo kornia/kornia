@@ -200,7 +200,7 @@ class TestCheckIsColorOrGray:
 
 class TestCheckDmDesc:
     def test_valid(self):
-        KORNIA_CHECK_DM_DESC(torch.rand(4), torch.rand(8), torch.rand(4, 8))
+        assert KORNIA_CHECK_DM_DESC(torch.rand(4), torch.rand(8), torch.rand(4, 8)) is True
 
     def test_invalid(self):
         with pytest.raises(Exception):
@@ -212,6 +212,8 @@ class TestCheckDmDesc:
         with pytest.raises(Exception):
             KORNIA_CHECK_DM_DESC(torch.rand(4), torch.rand(8), torch.rand(4, 3, 8))
 
+    def test_invalid_raises_false(self):
+        assert KORNIA_CHECK_DM_DESC(torch.rand(4), torch.rand(8), torch.rand(4, 7), raises=False) is False
 
 class TestCheckLaf:
     def test_valid(self):

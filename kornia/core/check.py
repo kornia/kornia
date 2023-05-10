@@ -330,16 +330,17 @@ def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: Tensor, msg: str | None = None) -> bool:
     return True
 
 
-def KORNIA_CHECK_DM_DESC(desc1: Tensor, desc2: Tensor, dm: Tensor) -> bool:
+def KORNIA_CHECK_DM_DESC(desc1: Tensor, desc2: Tensor, dm: Tensor, raises: bool = True) -> bool:
     """Check whether the provided descriptors match with a distance matrix.
 
     Args:
         desc1: first descriptor tensor to evaluate.
         desc2: second descriptor tensor to evaluate.
         dm: distance matrix tensor to evaluate.
+        raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
-        TypeException: if the descriptors shape do not match with the distance matrix.
+        TypeException: if the descriptors shape do not match with the distance matrix and raises is True.
 
     Example:
         >>> desc1 = torch.rand(4)
@@ -349,10 +350,12 @@ def KORNIA_CHECK_DM_DESC(desc1: Tensor, desc2: Tensor, dm: Tensor) -> bool:
         True
     """
     if not ((dm.size(0) == desc1.size(0)) and (dm.size(1) == desc2.size(0))):
-        raise TypeError(
-            f"distance matrix shape {dm.shape} is not onsistent with descriptors shape: desc1 {desc1.shape} "
-            f"desc2 {desc2.shape}"
-        )
+        if raises:
+            raise TypeError(
+                f"distance matrix shape {dm.shape} is not onsistent with descriptors shape: desc1 {desc1.shape} "
+                f"desc2 {desc2.shape}"
+            )
+        return False
     return True
 
 
