@@ -180,13 +180,14 @@ def KORNIA_CHECK_IS_LIST_OF_TENSOR(x: Sequence[object] | None) -> TypeGuard[list
     return isinstance(x, list) and all(isinstance(d, Tensor) for d in x)
 
 
-def KORNIA_CHECK_SAME_DEVICE(x: Tensor, y: Tensor) -> None:
+def KORNIA_CHECK_SAME_DEVICE(x: Tensor, y: Tensor, raises: bool = True) -> bool:
     """Check whether two tensor in the same device.
 
     Args:
         x: first tensor to evaluate.
         y: sencod tensor to evaluate.
         msg: message to show in the exception.
+        raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
         TypeException: if the two tensors are not in the same device.
@@ -197,7 +198,10 @@ def KORNIA_CHECK_SAME_DEVICE(x: Tensor, y: Tensor) -> None:
         >>> KORNIA_CHECK_SAME_DEVICE(x1, x2)
     """
     if x.device != y.device:
-        raise TypeError(f"Not same device for tensors. Got: {x.device} and {y.device}")
+        if raises:
+            raise TypeError(f"Not same device for tensors. Got: {x.device} and {y.device}")
+        return False
+    return True
 
 
 def KORNIA_CHECK_SAME_DEVICES(tensors: list[Tensor], msg: str | None = None) -> None:
