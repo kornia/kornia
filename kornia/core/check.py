@@ -114,13 +114,14 @@ T = TypeVar('T', bound=type)
 
 
 # TODO: fix mypy typeguard issue
-def KORNIA_CHECK_TYPE(x: object, typ: T | tuple[T, ...], msg: str | None = None) -> TypeGuard[T]:
+def KORNIA_CHECK_TYPE(x: object, typ: T | tuple[T, ...], msg: str | None = None, raises: bool = True) -> TypeGuard[T]:
     """Check the type of an aribratry variable.
 
     Args:
         x: any input variable.
         typ: the expected type of the variable.
         msg: message to show in the exception.
+        raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
         TypeException: if the input variable does not match with the expected.
@@ -131,7 +132,9 @@ def KORNIA_CHECK_TYPE(x: object, typ: T | tuple[T, ...], msg: str | None = None)
     """
     # TODO: Move to use typeguard here dropping support for JIT
     if not isinstance(x, typ):
-        raise TypeError(f"Invalid type: {type(x)}.\n{msg}")
+        if raises:
+            raise TypeError(f"Invalid type: {type(x)}.\n{msg}")
+        return False
 
     return True
 

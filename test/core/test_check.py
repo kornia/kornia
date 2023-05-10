@@ -75,10 +75,10 @@ class TestCheckSameShape:
 
 class TestCheckType:
     def test_valid(self):
-        KORNIA_CHECK_TYPE("hello", str)
-        KORNIA_CHECK_TYPE(23, int)
-        KORNIA_CHECK_TYPE(torch.rand(1), torch.Tensor)
-        KORNIA_CHECK_TYPE(torch.rand(1), (int, torch.Tensor))
+        assert KORNIA_CHECK_TYPE("hello", str) is True
+        assert KORNIA_CHECK_TYPE(23, int) is True
+        assert KORNIA_CHECK_TYPE(torch.rand(1), torch.Tensor) is True
+        assert KORNIA_CHECK_TYPE(torch.rand(1), (int, torch.Tensor)) is True
 
     def test_invalid(self):
         with pytest.raises(Exception):
@@ -88,6 +88,8 @@ class TestCheckType:
         with pytest.raises(Exception):
             KORNIA_CHECK_TYPE(23, (float, str))
 
+    def test_invalid_raises_false(self):
+        assert KORNIA_CHECK_TYPE("world", int, raises=False) is False
 
 class TestCheckIsTensor:
     def test_valid(self):
