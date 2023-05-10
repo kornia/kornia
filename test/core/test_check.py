@@ -72,6 +72,8 @@ class TestCheckSameShape:
         with pytest.raises(Exception):
             KORNIA_CHECK_SAME_SHAPE(torch.rand(2, 3), torch.rand(2, 3, 3))
 
+    def test_invalid_raises_false(self):
+        assert KORNIA_CHECK_SAME_SHAPE(torch.rand(2, 3), torch.rand(2, 2, 3), raises=False) is False
 
 class TestCheckType:
     def test_valid(self):
