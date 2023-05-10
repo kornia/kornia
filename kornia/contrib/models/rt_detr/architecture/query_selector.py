@@ -4,9 +4,10 @@ https://github.com/PaddlePaddle/PaddleDetection/blob/5d1f888362241790000950e2b63
 
 from __future__ import annotations
 
+import torch
 from torch import nn
 
-from kornia.core import Module, Tensor
+from kornia.core import Module, Tensor, concatenate
 
 from .common import MLP, conv_norm_act
 
@@ -39,4 +40,33 @@ class QuerySelector(Module):
             self.dec_bbox_head.append(MLP(hidden_dim, hidden_dim, 4, 3))
 
     def forward(self, fmaps: list[Tensor]):
-        pass
+        fmaps = [proj(fmap) for proj, fmap in zip(self.projs, fmaps)]
+
+        feats, shapes, prefix = [], [], [0]
+        for fmap in fmaps:
+            H, W = fmaps.shape[2:]
+            feats.append(fmap.flatten(2).permute(0, 2, 1))  # (N, C, H, W) -> (N, H*W, C)
+            shapes.append([H, W])
+            prefix.append(prefix[-1] + H * W)
+
+        feats = concatenate(feats, 1)
+        prefix.pop()
+
+    def generate_anchors(self, shapes, grid_size=0.05, eps=0.01):
+        anchors = []
+        for i, (h, w) in enumerate(shapes):
+            xs = torch.arange(w)
+            ys = torch.arange(h)
+            grid_x, grid_y = torch.meshgrid(xs, ys)
+            grid_xy = torch.stack([grid_x, grid_y], -1)
+
+            valid_wh = torch.tensor([h, w])
+            grid_xy = grid_xy.unsqueeze(0).add(0.5).div(valid_wh)
+            wh = torch.ones_like(grid_xy) * grid_size * 2**i
+            anchors.append(concatenate([grid_xy, wh], -1).reshape(-1, h * w, 4))
+
+        anchors = concatenate(anchors, 1)
+        valid_mask = ((anchors > eps) & (anchors < 1 - eps)).all(-1, keepdim=True)
+        anchors = anchors.div(1 - anchors).log()
+        anchors = torch.where(valid_mask, anchors, torch.inf)
+        return anchors, valid_mask
