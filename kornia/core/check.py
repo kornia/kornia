@@ -139,15 +139,16 @@ def KORNIA_CHECK_TYPE(x: object, typ: T | tuple[T, ...], msg: str | None = None,
     return True
 
 
-def KORNIA_CHECK_IS_TENSOR(x: object, msg: str | None = None) -> TypeGuard[Tensor]:
+def KORNIA_CHECK_IS_TENSOR(x: object, msg: str | None = None, raises: bool = True) -> TypeGuard[Tensor]:
     """Check the input variable is a Tensor.
 
     Args:
         x: any input variable.
         msg: message to show in the exception.
+        raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
-        TypeException: if the input variable does not match with the expected.
+        TypeException: if the input variable does not match with the expected and raises is False.
 
     Example:
         >>> x = torch.rand(2, 3, 3)
@@ -156,8 +157,9 @@ def KORNIA_CHECK_IS_TENSOR(x: object, msg: str | None = None) -> TypeGuard[Tenso
     """
     # TODO: Move to use typeguard here dropping support for JIT
     if not isinstance(x, Tensor):
-        raise TypeError(f"Not a Tensor type. Got: {type(x)}.\n{msg}")
-
+        if raises:
+            raise TypeError(f"Not a Tensor type. Got: {type(x)}.\n{msg}")
+        return False
     return True
 
 

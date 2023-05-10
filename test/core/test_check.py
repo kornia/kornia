@@ -95,11 +95,14 @@ class TestCheckType:
 
 class TestCheckIsTensor:
     def test_valid(self):
-        KORNIA_CHECK_IS_TENSOR(torch.rand(1))
+        assert KORNIA_CHECK_IS_TENSOR(torch.rand(1)) is True
 
     def test_invalid(self):
         with pytest.raises(Exception):
             KORNIA_CHECK_IS_TENSOR([1, 2, 3])
+
+    def test_invalid_raises_false(self):
+        assert KORNIA_CHECK_IS_TENSOR([1, 2, 3], raises=False) is False
 
 
 class TestCheckIsListOfTensor:
