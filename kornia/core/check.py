@@ -310,15 +310,16 @@ def KORNIA_CHECK_IS_GRAY(x: Tensor, msg: str | None = None, raises: bool = True)
     return True
 
 
-def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: Tensor, msg: str | None = None) -> bool:
+def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: Tensor, msg: str | None = None, raises: bool = True) -> bool:
     """Check whether an image tensor is grayscale or color.
 
     Args:
         x: image tensor to evaluate.
         msg: message to show in the exception.
+        raises: bool indicating whether an exception should be raised upon failure.
 
     Raises:
-        TypeException: if the tensor has not a shape :math:`(1,H,W)` or :math:`(3,H,W)`.
+        TypeException: if the tensor has not a shape :math:`(1,H,W)` or :math:`(3,H,W)` and raises is True.
 
     Example:
         >>> img = torch.rand(2, 3, 4, 4)
@@ -326,7 +327,9 @@ def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: Tensor, msg: str | None = None) -> bool:
         True
     """
     if len(x.shape) < 3 or x.shape[-3] not in [1, 3]:
-        raise TypeError(f"Not a color or gray tensor. Got: {type(x)}.\n{msg}")
+        if raises:
+            raise TypeError(f"Not a color or gray tensor. Got: {type(x)}.\n{msg}")
+        return False
     return True
 
 
