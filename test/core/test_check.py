@@ -215,7 +215,7 @@ class TestCheckDmDesc:
 
 class TestCheckLaf:
     def test_valid(self):
-        KORNIA_CHECK_LAF(torch.rand(4, 2, 2, 3))
+        assert KORNIA_CHECK_LAF(torch.rand(4, 2, 2, 3)) is True
 
     def test_invalid(self):
         with pytest.raises(Exception):
@@ -226,3 +226,6 @@ class TestCheckLaf:
             KORNIA_CHECK_LAF(torch.rand(4, 2, 2, 2))
         with pytest.raises(Exception):
             KORNIA_CHECK_LAF(torch.rand(4, 2, 3, 3, 3))
+
+    def test_invalid_raises_false(self):
+        assert KORNIA_CHECK_LAF(torch.rand(4, 2, 2), raises=False) is False
