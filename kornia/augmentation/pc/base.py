@@ -29,9 +29,8 @@ class AugmentationBasePC(_AugmentationBase):
         :math:`(B, N, 9)` represents xyz, normal, and rgb. Complex point cloud data may use our point cloud
         data type.
     """
-    def __init__(
-        self, p: float = 0.5, p_batch: float = 1.0, same_on_batch: bool = False
-    ) -> None:
+
+    def __init__(self, p: float = 0.5, p_batch: float = 1.0, same_on_batch: bool = False) -> None:
         super().__init__(p=p, p_batch=p_batch, same_on_batch=same_on_batch, keepdim=True)
 
     def validate_tensor(self, input: Tensor) -> None:
@@ -48,7 +47,8 @@ class AugmentationBasePC(_AugmentationBase):
         C = input.size(-1)
         if C < 3:
             raise RuntimeError(
-                f"Insufficient input channels. We expect at least (B, N, C) and C >= 3. Got {input.shape}.")
+                f"Insufficient input channels. We expect at least (B, N, C) and C >= 3. Got {input.shape}."
+            )
         if C == 3:
             return input, None, None, None
         if C < 6:
@@ -76,9 +76,7 @@ class RigidAffineAugmentationBasePC(AugmentationBasePC):
         same_on_batch: apply the same transformation across the batch.
     """
 
-    def __init__(
-        self, p: float = 0.5, p_batch: float = 1.0, same_on_batch: bool = False
-    ) -> None:
+    def __init__(self, p: float = 0.5, p_batch: float = 1.0, same_on_batch: bool = False) -> None:
         super().__init__(p=p, p_batch=p_batch, same_on_batch=same_on_batch)
         self._transform_matrix: Optional[Tensor] = None
 

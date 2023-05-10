@@ -18,6 +18,7 @@ class AugmentationBaseVideo(_AugmentationBase):
           probabilities batch-wise.
         same_on_batch: apply the same transformation across the batch.
     """
+
     def __init__(
         self, p: float = 0.5, p_batch: float = 1.0, same_on_batch: bool = False, keepdim: bool = False
     ) -> None:
