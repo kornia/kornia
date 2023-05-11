@@ -51,8 +51,23 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
         raise ValueError(
             "Input points must be 2D points with shape (2, ) or (B, 2) and must have the same batch sizes."
         )
+    if (
+        (p1[..., 0] < 0).any()
+        or (p1[..., 0] >= image.shape[-1]).any()
+        or (p1[..., 1] < 0).any()
+        or (p1[..., 1] >= image.shape[-2]).any()
+    ):
+        raise ValueError("p1 is out of bounds.")
+    if (
+        (p2[..., 0] < 0).any()
+        or (p2[..., 0] >= image.shape[-1]).any()
+        or (p2[..., 1] < 0).any()
+        or (p2[..., 1] >= image.shape[-2]).any()
+    ):
+        raise ValueError("p2 is out of bounds.")
 
-    KORNIA_CHECK_SHAPE(image, ["C", "H", "W"])
+    if len(image.size()) != 3:
+        raise ValueError("image must have 3 dimensions (C,H,W).")
 
     if color.size(0) != image.size(0):
         raise ValueError("color must have the same number of channels as the image.")
@@ -82,50 +97,48 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
 
     if dx_zero_mask.any():
         dx_zero_x_cords = [
-            x for x_, dy_ in zip(x1[dx_zero_mask], dy[dx_zero_mask]) for x in x_.repeat(int(dy_.item() + 1))
+            x for x_i, dy_i in zip(x1[dx_zero_mask], dy[dx_zero_mask]) for x in x_i.repeat(int(dy_i.item() + 1))
         ]
         dx_zero_y_cords = [
             y
-            for y_, s, dy_ in zip(y1[dx_zero_mask], dy_sign[dx_zero_mask], dy[dx_zero_mask])
-            for y in (y_ + s * torch.arange(0, dy_ + 1, 1).to(image.device))
+            for y_i, s, dy_ in zip(y1[dx_zero_mask], dy_sign[dx_zero_mask], dy[dx_zero_mask])
+            for y in (y_i + s * torch.arange(0, dy_ + 1, 1).to(image.device))
         ]
     if dy_zero_mask.any():
         dy_zero_x_cords = [
             x
-            for x_, s, dx_ in zip(x1[dy_zero_mask], dx_sign[dy_zero_mask], dx[dy_zero_mask])
-            for x in (x_ + s * torch.arange(0, dx_ + 1, 1).to(image.device))
+            for x_i, s, dx_i in zip(x1[dy_zero_mask], dx_sign[dy_zero_mask], dx[dy_zero_mask])
+            for x in (x_i + s * torch.arange(0, dx_i + 1, 1).to(image.device))
         ]
         dy_zero_y_cords = [
-            y for y_, dx_ in zip(y1[dy_zero_mask], dx[dy_zero_mask]) for y in y_.repeat(int(dx_.item() + 1))
+            y for y_i, dx_i in zip(y1[dy_zero_mask], dx[dy_zero_mask]) for y in y_i.repeat(int(dx_i.item() + 1))
         ]
     if dx_gt_dy_mask.any():
         dx_gt_dy_x_cords = [
             x
-            for x_, s, dx_ in zip(x1[dx_gt_dy_mask], dx_sign[dx_gt_dy_mask], dx[dx_gt_dy_mask])
-            for x in (x_ + s * torch.arange(0, dx_ + 1, 1).to(image.device))
+            for x_i, s, dx_i in zip(x1[dx_gt_dy_mask], dx_sign[dx_gt_dy_mask], dx[dx_gt_dy_mask])
+            for x in (x_i + s * torch.arange(0, dx_i + 1, 1).to(image.device))
         ]
         dx_gt_dy_y_cords = [
             y
-            for y_, s, dx_, dy_ in zip(y1[dx_gt_dy_mask], dy_sign[dx_gt_dy_mask], dx[dx_gt_dy_mask], dy[dx_gt_dy_mask])
-            for y in (y_ + s * torch.arange(0, dy_ + 1, dy_ / dx_)[: int(dx_.item()) + 1].ceil().to(image.device))
+            for y_i, s, dx_i, dy_i in zip(
+                y1[dx_gt_dy_mask], dy_sign[dx_gt_dy_mask], dx[dx_gt_dy_mask], dy[dx_gt_dy_mask]
+            )
+            for y in (y_i + s * torch.arange(0, dy_i + 1, dy_i / dx_i)[: int(dx_i.item()) + 1].ceil().to(image.device))
         ]
     if rest_mask.any():
         rest_x_cords = [
             x
-            for x_, s, dx_, dy_ in zip(x1[rest_mask], dx_sign[rest_mask], dx[rest_mask], dy[rest_mask])
-            for x in (x_ + s * torch.arange(0, dx_ + 1, dx_ / dy_)[: int(dy_.item()) + 1].ceil().to(image.device))
+            for x_i, s, dx_i, dy_ in zip(x1[rest_mask], dx_sign[rest_mask], dx[rest_mask], dy[rest_mask])
+            for x in (x_i + s * torch.arange(0, dx_i + 1, dx_i / dy_)[: int(dy_.item()) + 1].ceil().to(image.device))
         ]
         rest_y_cords = [
             y
-            for y_, s, dy_ in zip(y1[rest_mask], dy_sign[rest_mask], dy[rest_mask])
-            for y in (y_ + s * torch.arange(0, dy_ + 1, 1).to(image.device))
+            for y_i, s, dy_i in zip(y1[rest_mask], dy_sign[rest_mask], dy[rest_mask])
+            for y in (y_i + s * torch.arange(0, dy_i + 1, 1).to(image.device))
         ]
-    x_cords = torch.tensor(
-        dx_zero_x_cords + dy_zero_x_cords + dx_gt_dy_x_cords + rest_x_cords, device=image.device
-    ).long()
-    y_cords = torch.tensor(
-        dx_zero_y_cords + dy_zero_y_cords + dx_gt_dy_y_cords + rest_y_cords, device=image.device
-    ).long()
+    x_cords = torch.tensor(dx_zero_x_cords + dy_zero_x_cords + dx_gt_dy_x_cords + rest_x_cords).long()
+    y_cords = torch.tensor(dx_zero_y_cords + dy_zero_y_cords + dx_gt_dy_y_cords + rest_y_cords).long()
     image[:, y_cords, x_cords] = color.view(-1, 1)
     return image
 
