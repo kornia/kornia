@@ -152,7 +152,9 @@ class TestDrawLine:
     def test_draw_lines_batched(self, dtype, device):
         """Test drawing a line with m <= -1."""
         img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
-        img = draw_line(img, torch.tensor([[0, 7], [0, 7], [0, 2]]), torch.tensor([[6, 0], [0, 0], [7, 7]]), torch.tensor([255]))
+        img = draw_line(
+            img, torch.tensor([[0, 7], [0, 7], [0, 2]]), torch.tensor([[6, 0], [0, 0], [7, 7]]), torch.tensor([255])
+        )
         img_mask = torch.tensor(
             [
                 [
@@ -209,19 +211,15 @@ class TestDrawLine:
 
         assert 'color must have the same number of channels as the image.' == str(excinfo.value)
 
-    @pytest.mark.parametrize(
-        'p1,p2',
-        [
-            (torch.rand([10, 2]), torch.rand([20, 2])),
-            (torch.rand([2]), torch.rand([3])),
-        ],
-    )
+    @pytest.mark.parametrize('p1,p2', [(torch.rand([10, 2]), torch.rand([20, 2])), (torch.rand([2]), torch.rand([3]))])
     def test_point_size(self, p1, p2, dtype, device):
         img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
         with pytest.raises(ValueError) as excinfo:
             draw_line(img, p1, p2, torch.tensor([255]))
 
-        assert 'Input points must be 2D points with shape (2, ) or (B, 2) and must have the same batch sizes.' == str(excinfo.value)
+        assert 'Input points must be 2D points with shape (2, ) or (B, 2) and must have the same batch sizes.' == str(
+            excinfo.value
+        )
 
 
 class TestDrawRectangle:
