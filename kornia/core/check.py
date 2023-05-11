@@ -43,9 +43,11 @@ def KORNIA_CHECK_SHAPE(x: Tensor, shape: list[str], raises: bool = True) -> bool
     Example:
         >>> x = torch.rand(2, 3, 4, 4)
         >>> KORNIA_CHECK_SHAPE(x, ["B","C", "H", "W"])  # implicit
+        True
 
         >>> x = torch.rand(2, 3, 4, 4)
         >>> KORNIA_CHECK_SHAPE(x, ["2","3", "H", "W"])  # explicit
+        True
     """
     if '*' == shape[0]:
         shape_to_check = shape[1:]
@@ -92,6 +94,7 @@ def KORNIA_CHECK(condition: bool, msg: str | None = None, raises: bool = True) -
     Example:
         >>> x = torch.rand(2, 3, 3)
         >>> KORNIA_CHECK(x.shape[-2:] == (3, 3), "Invalid homography")
+        True
     """
     if not condition:
         if raises:
@@ -178,7 +181,7 @@ def KORNIA_CHECK_IS_LIST_OF_TENSOR(x: Sequence[object] | None, raises: bool = Tr
 
     Example:
         >>> x = torch.rand(2, 3, 3)
-        >>> KORNIA_CHECK_IS_LIST_OF_TENSOR(x)
+        >>> KORNIA_CHECK_IS_LIST_OF_TENSOR(x, raises=False)
         False
         >>> KORNIA_CHECK_IS_LIST_OF_TENSOR([x])
         True
@@ -207,6 +210,7 @@ def KORNIA_CHECK_SAME_DEVICE(x: Tensor, y: Tensor, raises: bool = True) -> bool:
         >>> x1 = torch.rand(2, 3, 3)
         >>> x2 = torch.rand(1, 3, 1)
         >>> KORNIA_CHECK_SAME_DEVICE(x1, x2)
+        True
     """
     if x.device != y.device:
         if raises:
@@ -230,6 +234,7 @@ def KORNIA_CHECK_SAME_DEVICES(tensors: list[Tensor], msg: str | None = None, rai
         >>> x1 = torch.rand(2, 3, 3)
         >>> x2 = torch.rand(1, 3, 1)
         >>> KORNIA_CHECK_SAME_DEVICES([x1, x2], "Tensors not in the same device")
+        True
     """
     KORNIA_CHECK(isinstance(tensors, list) and len(tensors) >= 1, "Expected a list with at least one element", raises)
     if not all(tensors[0].device == x.device for x in tensors):
@@ -375,5 +380,6 @@ def KORNIA_CHECK_LAF(laf: Tensor, raises: bool = True) -> bool:
     Example:
         >>> lafs = torch.rand(2, 10, 2, 3)
         >>> KORNIA_CHECK_LAF(lafs)
+        True
     """
     return KORNIA_CHECK_SHAPE(laf, ["B", "N", "2", "3"], raises)
