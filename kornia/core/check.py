@@ -77,6 +77,7 @@ def KORNIA_CHECK_SHAPE(x: Tensor, shape: list[str], raises: bool = True) -> bool
                 return False
     return True
 
+
 def KORNIA_CHECK(condition: bool, msg: str | None = None, raises: bool = True) -> bool:
     """Check any arbitrary boolean condition.
 
@@ -236,6 +237,7 @@ def KORNIA_CHECK_SAME_DEVICES(tensors: list[Tensor], msg: str | None = None, rai
             raise Exception(f"Not same device for tensors. Got: {[x.device for x in tensors]}.\n{msg}")
         return False
     return True
+
 
 def KORNIA_CHECK_SAME_SHAPE(x: Tensor, y: Tensor, raises: bool = True) -> bool:
     """Check whether two tensor have the same shape.
