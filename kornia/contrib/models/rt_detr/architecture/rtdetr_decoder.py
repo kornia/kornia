@@ -81,14 +81,12 @@ class RTDETRTransformerDecoderLayer(Module):
         self.dropout2 = nn.Dropout(dropout)
         self.norm2 = nn.LayerNorm(embed_dim)
 
-        self.ffn = nn.Sequential(
-            nn.Linear(embed_dim, embed_dim * 4),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(embed_dim * 4, embed_dim),
-            nn.Dropout(dropout),
-        )
-        self.norm = nn.LayerNorm(embed_dim)
+        self.linear1 = nn.Linear(embed_dim, embed_dim * 4)
+        self.linear2 = nn.Linear(embed_dim * 4, embed_dim)
+        self.act = nn.ReLU(inplace=True)
+        self.dropout3 = nn.Dropout(dropout)
+        self.dropout4 = nn.Dropout(dropout)
+        self.norm3 = nn.LayerNorm(embed_dim)
 
     def forward(
         self, tgt: Tensor, ref_points: Tensor, memory: Tensor, memory_spatial_shapes: Tensor, query_pos_embed: Tensor
@@ -100,7 +98,10 @@ class RTDETRTransformerDecoderLayer(Module):
         out = self.cross_attn(tgt + query_pos_embed, ref_points, memory, memory_spatial_shapes)
         tgt = self.norm2(tgt + self.dropout2(out))
 
-        return self.norm(tgt + self.ffn(tgt))
+        return self.norm3(tgt + self.ffn(tgt))
+
+    def ffn(self, x: Tensor) -> Tensor:
+        return self.dropout4(self.linear2(self.dropout3(self.act(self.linear1(x)))))
 
 
 class RTDETRDecoder(Module):
@@ -116,16 +117,16 @@ class RTDETRDecoder(Module):
     ):
         super().__init__()
         self.num_queries = num_queries
-        self.projs = nn.ModuleList()
+        self.input_proj = nn.ModuleList()
         for ch_in in in_channels:
-            self.projs.append(ConvNormAct(ch_in, hidden_dim, 1, act="none"))
+            self.input_proj.append(ConvNormAct(ch_in, hidden_dim, 1, act="none"))
 
         self.decoder_layers = nn.ModuleList()
         for _ in range(num_decoder_layers):
             layer = RTDETRTransformerDecoderLayer(hidden_dim, num_heads, len(in_channels), num_decoder_points)
             self.decoder_layers.append(layer)
 
-        self.class_embed = nn.Embedding(num_classes, hidden_dim)
+        self.denoising_class_embed = nn.Embedding(num_classes, hidden_dim)
 
         self.query_pos_head = MLP(4, hidden_dim * 2, hidden_dim, 2)
 
@@ -133,15 +134,15 @@ class RTDETRDecoder(Module):
         self.enc_score_head = nn.Linear(hidden_dim, num_classes)
         self.enc_bbox_head = MLP(hidden_dim, hidden_dim, 4, 3)
 
-        self.dec_score_heads = nn.ModuleList()
-        self.dec_bbox_heads = nn.ModuleList()
+        self.dec_score_head = nn.ModuleList()
+        self.dec_bbox_head = nn.ModuleList()
         for _ in range(num_decoder_layers):
-            self.dec_score_heads.append(nn.Linear(hidden_dim, num_classes))
-            self.dec_bbox_heads.append(MLP(hidden_dim, hidden_dim, 4, 3))
+            self.dec_score_head.append(nn.Linear(hidden_dim, num_classes))
+            self.dec_bbox_head.append(MLP(hidden_dim, hidden_dim, 4, 3))
 
     def forward(self, fmaps: list[Tensor]):
         N = fmaps[0].shape[0]
-        fmaps = [proj(fmap) for proj, fmap in zip(self.projs, fmaps)]
+        fmaps = [proj(fmap) for proj, fmap in zip(self.input_proj, fmaps)]
         spatial_shapes = [fmap.shape[2:] for fmap in fmaps]
 
         feats = [fmap.flatten(2).permute(0, 2, 1) for fmap in fmaps]  # (N, C, H, W) -> (N, H*W, C)
@@ -165,12 +166,12 @@ class RTDETRDecoder(Module):
         tgt = feats[batch_indices, topk_indices]
         ref_points = topk_bboxes
         ref_points_sigmoid = ref_points.sigmoid()
-        for decoder_layer, bbox_head in zip(self.decoder_layers, self.dec_bbox_heads):
+        for decoder_layer, bbox_head in zip(self.decoder_layers, self.dec_bbox_head):
             query_pos_embed = self.query_pos_head(ref_points_sigmoid)
             out = decoder_layer(tgt, ref_points_sigmoid.unsqueeze(2), feats, spatial_shapes, query_pos_embed)
             ref_points = bbox_head(out) + ref_points
             ref_points_sigmoid = ref_points.sigmoid()
-        logits = self.dec_score_heads[-1](out)  # in evaluation, only last score head is used
+        logits = self.dec_score_head[-1](out)  # in evaluation, only last score head is used
 
         return ref_points, logits
 

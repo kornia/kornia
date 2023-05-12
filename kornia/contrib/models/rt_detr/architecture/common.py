@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import torch.nn.functional as F
 from torch import nn
+
+from kornia.core import Module, Tensor
 
 
 class ConvNormAct(nn.Sequential):
@@ -11,11 +14,17 @@ class ConvNormAct(nn.Sequential):
         self.act = dict(relu=nn.ReLU, silu=nn.SiLU, none=nn.Identity)[act](inplace=True)
 
 
-class MLP(nn.Sequential):
+# NOTE: can be merged with sam.architecture.mask_decoder.MLP
+class MLP(Module):
     def __init__(self, input_dim: int, hidden_dim: int, output_dim: int, num_layers: int):
-        layers = []
+        super().__init__()
+        self.layers = nn.ModuleList()
         for _ in range(num_layers - 1):
-            layers.extend([nn.Linear(input_dim, hidden_dim), nn.ReLU(inplace=True)])
+            self.layers.append(nn.Linear(input_dim, hidden_dim))
             input_dim = hidden_dim
-        layers.append(nn.Linear(input_dim, output_dim))
-        super().__init__(*layers)
+        self.layers.append(nn.Linear(input_dim, output_dim))
+
+    def forward(self, x: Tensor) -> Tensor:
+        for i, layer in enumerate(self.layers):
+            x = F.relu(layer(x), True) if i < len(self.layers) - 1 else layer(x)
+        return x
