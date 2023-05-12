@@ -66,7 +66,7 @@ class DeformableAttention(Module):
         return out.view(N, C, Lq).permute(0, 2, 1)
 
 
-class QuerySelector(Module):
+class RTDETRDecoder(Module):
     def __init__(
         self, num_classes: int, num_queries: int, in_channels: list[int], hidden_dim: int, num_decoder_layers: int
     ):

@@ -51,7 +51,7 @@ class AIFI(Module):
         out_y = grid_y.reshape(-1, 1) * omega.view(1, -1)
 
         pos_emb = concatenate([out_x.sin(), out_x.cos(), out_y.sin(), out_y.cos()], 1)
-        return pos_emb.unsqueeze(1)  # (H * W, N, C)
+        return pos_emb.unsqueeze(1)  # (H * W, 1, C)
 
 
 class CCFM(Module):
