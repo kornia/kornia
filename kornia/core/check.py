@@ -42,7 +42,7 @@ def KORNIA_CHECK_SHAPE(x: Tensor, shape: list[str], raises: bool = True) -> bool
 
     Example:
         >>> x = torch.rand(2, 3, 4, 4)
-        >>> KORNIA_CHECK_SHAPE(x, ["B","C", "H", "W"])  # implicit
+        >>> KORNIA_CHECK_SHAPE(x, ["B", "C", "H", "W"])  # implicit
         True
 
         >>> x = torch.rand(2, 3, 4, 4)
