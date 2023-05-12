@@ -17,6 +17,7 @@ class QuerySelector(Module):
         self, num_classes: int, num_queries: int, in_channels: list[int], hidden_dim: int, num_decoder_layers: int
     ):
         super().__init__()
+        self.num_queries = num_queries
         self.projs = nn.ModuleList()
         for ch_in in in_channels:
             self.projs.append(conv_norm_act(ch_in, hidden_dim, act="none"))
@@ -40,6 +41,7 @@ class QuerySelector(Module):
             self.dec_bbox_head.append(MLP(hidden_dim, hidden_dim, 4, 3))
 
     def forward(self, fmaps: list[Tensor]):
+        N = fmaps[0].shape[0]
         fmaps = [proj(fmap) for proj, fmap in zip(self.projs, fmaps)]
 
         feats, shapes, prefix = [], [], [0]
@@ -49,8 +51,26 @@ class QuerySelector(Module):
             shapes.append([H, W])
             prefix.append(prefix[-1] + H * W)
 
-        feats = concatenate(feats, 1)
+        feats = concatenate(feats, 1)  # (N, H*W, C)
         prefix.pop()
+
+        anchors, valid_mask = self.generate_anchors(shapes)
+        feats = torch.where(valid_mask, feats, 0)
+        feats = self.enc_output(feats)
+
+        output_logits = self.enc_score_head(feats)
+        output_bboxes = self.enc_bbox_head(feats)
+
+        # only consider class with highest score at each spatial location
+        topk_logits, topk_indices = output_logits.max(-1)[0].topk(self.num_queries, 1)  # (N, num_queries)
+        batch_indices = torch.arange(N, dtype=topk_indices.dtype, device=topk_indices.device)
+
+        # alternative
+        # topk_bboxes = output_bboxes.gather(1, topk_indices.unsqueeze(-1).expand(-1, -1, 4))
+        topk_bboxes = output_bboxes[batch_indices.unsqueeze(1), topk_indices]
+        topk_bboxes = torch.sigmoid(topk_bboxes)
+
+        self.tgt_embed.weight.unsqueeze(0).expand(N, -1, -1)
 
     def generate_anchors(self, shapes, grid_size=0.05, eps=0.01):
         anchors = []
@@ -60,7 +80,7 @@ class QuerySelector(Module):
             grid_x, grid_y = torch.meshgrid(xs, ys)
             grid_xy = torch.stack([grid_x, grid_y], -1)
 
-            valid_wh = torch.tensor([h, w])
+            valid_wh = torch.tensor([h, w])  # wrong order?
             grid_xy = grid_xy.unsqueeze(0).add(0.5).div(valid_wh)
             wh = torch.ones_like(grid_xy) * grid_size * 2**i
             anchors.append(concatenate([grid_xy, wh], -1).reshape(-1, h * w, 4))
