@@ -31,6 +31,7 @@ class AIFI(Module):
         self.encoder = nn.TransformerEncoderLayer(hidden_dim, 8, hidden_dim * 4, 0, "gelu")
 
     def forward(self, x: Tensor) -> Tensor:
+        # NOTE: cache build_2d_sincos_pos_emb to buffer, if input size is known?
         N, C, H, W = x.shape
         x = x.permute(2, 3, 0, 1).flatten(0, 1)  # (N, C, H, W) -> (H * W, N, C)
         out = self.encoder(x + self.build_2d_sincos_pos_emb(H, W, C))
