@@ -14,7 +14,7 @@ from .common import MLP, conv_norm_act
 
 
 class DeformableAttention(Module):
-    def __init__(self, embed_dim: int = 256, num_heads: int = 8, num_levels: int = 4, num_points: int = 4):
+    def __init__(self, embed_dim: int, num_heads: int, num_levels: int, num_points: int):
         super().__init__()
         self.num_heads = num_heads
         self.num_levels = num_levels
@@ -63,12 +63,53 @@ class DeformableAttention(Module):
         attention_weights = attention_weights.permute(0, 2, 1, 3, 4)
         attention_weights = attention_weights.reshape(N * self.num_heads, 1, Lq, self.num_levels * self.num_points)
         out = (torch.stack(sampling_value_list, -2).flatten(-2) * attention_weights).sum(-1)
-        return out.view(N, C, Lq).permute(0, 2, 1)
+        out = out.view(N, C, Lq).permute(0, 2, 1)
+        return self.output_proj(out)
+
+
+class RTDETRTransformerDecoderLayer(Module):
+    def __init__(self, embed_dim: int, num_heads: int, num_levels: int, num_points: int = 4, dropout: float = 0.0):
+        super().__init__()
+        self.self_attn = nn.MultiheadAttention(embed_dim, num_heads, dropout, batch_first=True)
+        self.dropout1 = nn.Dropout(dropout)
+        self.norm1 = nn.LayerNorm(embed_dim)
+
+        self.cross_attn = DeformableAttention(embed_dim, num_heads, num_levels, num_points)
+        self.dropout2 = nn.Dropout(dropout)
+        self.norm2 = nn.LayerNorm(embed_dim)
+
+        self.ffn = nn.Sequential(
+            nn.Linear(embed_dim, embed_dim * 4),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(embed_dim * 4, embed_dim),
+            nn.Dropout(dropout),
+        )
+        self.norm = nn.LayerNorm(embed_dim)
+
+    def forward(
+        self, tgt: Tensor, ref_points: Tensor, memory: Tensor, memory_spatial_shapes: Tensor, query_pos_embed: Tensor
+    ) -> Tensor:
+        q = k = tgt + query_pos_embed
+        out = self.self_attn(q, k, tgt)[0]
+        tgt = self.norm1(tgt + self.dropout1(out))
+
+        out = self.cross_attn(tgt + query_pos_embed, ref_points, memory, memory_spatial_shapes)
+        tgt = self.norm2(tgt + self.dropout2(out))
+
+        return self.norm(tgt + self.ffn(tgt))
 
 
 class RTDETRDecoder(Module):
     def __init__(
-        self, num_classes: int, num_queries: int, in_channels: list[int], hidden_dim: int, num_decoder_layers: int
+        self,
+        num_classes: int,
+        hidden_dim: int,
+        num_queries: int,
+        in_channels: list[int],
+        num_decoder_points: int,
+        num_heads: int,
+        num_decoder_layers: int,
     ):
         super().__init__()
         self.num_queries = num_queries
@@ -76,39 +117,34 @@ class RTDETRDecoder(Module):
         for ch_in in in_channels:
             self.projs.append(conv_norm_act(ch_in, hidden_dim, act="none"))
 
-        decoder_layer = nn.TransformerDecoderLayer(hidden_dim, 8, hidden_dim * 4, 0, "relu")
-        self.decoder = nn.TransformerDecoder(decoder_layer, 6)
+        self.decoder_layers = nn.ModuleList()
+        for _ in range(num_decoder_layers):
+            layer = RTDETRTransformerDecoderLayer(hidden_dim, num_heads, len(in_channels), num_decoder_points)
+            self.decoder_layers.append(layer)
 
         self.class_embed = nn.Embedding(num_classes, hidden_dim)
 
-        self.tgt_embed = nn.Embedding(num_queries, hidden_dim)
         self.query_pos_head = MLP(4, hidden_dim * 2, hidden_dim, 2)
 
         self.enc_output = nn.Sequential(nn.Linear(hidden_dim, hidden_dim), nn.LayerNorm(hidden_dim))
         self.enc_score_head = nn.Linear(hidden_dim, num_classes)
         self.enc_bbox_head = MLP(hidden_dim, hidden_dim, 4, 3)
 
-        self.dec_score_head = nn.ModuleList()
-        self.dec_bbox_head = nn.ModuleList()
+        self.dec_score_heads = nn.ModuleList()
+        self.dec_bbox_heads = nn.ModuleList()
         for _ in range(num_decoder_layers):
-            self.dec_score_head.append(nn.Linear(hidden_dim, num_classes))
-            self.dec_bbox_head.append(MLP(hidden_dim, hidden_dim, 4, 3))
+            self.dec_score_heads.append(nn.Linear(hidden_dim, num_classes))
+            self.dec_bbox_heads.append(MLP(hidden_dim, hidden_dim, 4, 3))
 
     def forward(self, fmaps: list[Tensor]):
         N = fmaps[0].shape[0]
         fmaps = [proj(fmap) for proj, fmap in zip(self.projs, fmaps)]
+        spatial_shapes = [fmap.shape[2:] for fmap in fmaps]
 
-        feats, shapes, prefix = [], [], [0]
-        for fmap in fmaps:
-            H, W = fmaps.shape[2:]
-            feats.append(fmap.flatten(2).permute(0, 2, 1))  # (N, C, H, W) -> (N, H*W, C)
-            shapes.append([H, W])
-            prefix.append(prefix[-1] + H * W)
+        feats = [fmap.flatten(2).permute(0, 2, 1) for fmap in fmaps]  # (N, C, H, W) -> (N, H*W, C)
+        feats = concatenate(feats, 1)
 
-        feats = concatenate(feats, 1)  # (N, H*W, C)
-        prefix.pop()
-
-        anchors, valid_mask = self.generate_anchors(shapes)
+        anchors, valid_mask = self.generate_anchors(spatial_shapes)
         feats = torch.where(valid_mask, feats, 0)
         feats = self.enc_output(feats)
 
@@ -117,25 +153,28 @@ class RTDETRDecoder(Module):
 
         # only consider class with highest score at each spatial location
         topk_logits, topk_indices = output_logits.max(-1)[0].topk(self.num_queries, 1)  # (N, num_queries)
-        batch_indices = torch.arange(N, dtype=topk_indices.dtype, device=topk_indices.device)
 
         # alternative
         # topk_bboxes = output_bboxes.gather(1, topk_indices.unsqueeze(-1).expand(-1, -1, 4))
-        topk_bboxes = output_bboxes[batch_indices.unsqueeze(1), topk_indices]
+        batch_indices = torch.arange(N, dtype=topk_indices.dtype, device=topk_indices.device).unsqueeze(1)
+        topk_bboxes = output_bboxes[batch_indices, topk_indices]
         topk_bboxes = torch.sigmoid(topk_bboxes)
 
-        target = self.tgt_embed.weight.unsqueeze(0).expand(N, -1, -1)
-
+        tgt = feats[batch_indices, topk_indices]
         ref_points = topk_bboxes
-        for layer in self.decoder.layers:
+        for decoder_layer, bbox_head in zip(self.decoder_layers, self.dec_bbox_heads):
             query_pos_embed = self.query_pos_head(ref_points)
-            target = target + query_pos_embed
+            out = decoder_layer(tgt, ref_points.unsqueeze(2), feats, spatial_shapes, query_pos_embed)
+            ref_points = torch.sigmoid(bbox_head(out) + ref_points.logit())
+        logits = self.dec_score_heads[-1](out)  # in evaluation, only last score head is used
 
-            # out = layer(target, ref_points.unsqueeze(2), feats, )
+        return ref_points, logits
 
-    def generate_anchors(self, shapes, grid_size=0.05, eps=0.01):
+    def generate_anchors(
+        self, spatial_shapes: list[tuple[int, int]], grid_size=0.05, eps=0.01
+    ) -> tuple[Tensor, Tensor]:
         anchors = []
-        for i, (h, w) in enumerate(shapes):
+        for i, (h, w) in enumerate(spatial_shapes):
             xs = torch.arange(w)
             ys = torch.arange(h)
             grid_x, grid_y = torch.meshgrid(xs, ys)
