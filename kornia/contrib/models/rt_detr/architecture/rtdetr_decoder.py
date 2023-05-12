@@ -49,6 +49,7 @@ class DeformableAttention(Module):
         ref_points_xy, ref_points_wh = ref_points.view(N, Lq, 1, -1, 1, 4).chunk(2, -1)
         sampling_locations = ref_points_xy + sampling_offsets / self.num_points * ref_points_wh * 0.5
 
+        # https://github.com/PaddlePaddle/PaddleDetection/blob/release/2.6/ppdet/modeling/transformers/utils.py#L71
         split_size = [h * w for h, w in value_spatial_shapes]
         value_list = value.split(split_size, 1)
         sampling_grids = 2 * sampling_locations - 1
@@ -67,6 +68,8 @@ class DeformableAttention(Module):
         return self.output_proj(out)
 
 
+# this is similar to nn.TransformerDecoderLayer, but replace cross attention with deformable attention
+# add use positional embeddings
 class RTDETRTransformerDecoderLayer(Module):
     def __init__(self, embed_dim: int, num_heads: int, num_levels: int, num_points: int = 4, dropout: float = 0.0):
         super().__init__()
@@ -158,14 +161,15 @@ class RTDETRDecoder(Module):
         # topk_bboxes = output_bboxes.gather(1, topk_indices.unsqueeze(-1).expand(-1, -1, 4))
         batch_indices = torch.arange(N, dtype=topk_indices.dtype, device=topk_indices.device).unsqueeze(1)
         topk_bboxes = output_bboxes[batch_indices, topk_indices]
-        topk_bboxes = torch.sigmoid(topk_bboxes)
 
         tgt = feats[batch_indices, topk_indices]
         ref_points = topk_bboxes
+        ref_points_sigmoid = ref_points.sigmoid()
         for decoder_layer, bbox_head in zip(self.decoder_layers, self.dec_bbox_heads):
-            query_pos_embed = self.query_pos_head(ref_points)
-            out = decoder_layer(tgt, ref_points.unsqueeze(2), feats, spatial_shapes, query_pos_embed)
-            ref_points = torch.sigmoid(bbox_head(out) + ref_points.logit())
+            query_pos_embed = self.query_pos_head(ref_points_sigmoid)
+            out = decoder_layer(tgt, ref_points_sigmoid.unsqueeze(2), feats, spatial_shapes, query_pos_embed)
+            ref_points = bbox_head(out) + ref_points
+            ref_points_sigmoid = ref_points.sigmoid()
         logits = self.dec_score_heads[-1](out)  # in evaluation, only last score head is used
 
         return ref_points, logits
