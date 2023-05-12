@@ -10,7 +10,7 @@ from torch import nn
 
 from kornia.core import Module, Tensor, concatenate
 
-from .common import MLP, conv_norm_act
+from .common import MLP, ConvNormAct
 
 
 class DeformableAttention(Module):
@@ -118,7 +118,7 @@ class RTDETRDecoder(Module):
         self.num_queries = num_queries
         self.projs = nn.ModuleList()
         for ch_in in in_channels:
-            self.projs.append(conv_norm_act(ch_in, hidden_dim, 1, act="none"))
+            self.projs.append(ConvNormAct(ch_in, hidden_dim, 1, act="none"))
 
         self.decoder_layers = nn.ModuleList()
         for _ in range(num_decoder_layers):

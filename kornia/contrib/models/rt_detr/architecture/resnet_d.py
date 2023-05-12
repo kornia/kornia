@@ -10,7 +10,7 @@ from torch import nn
 from kornia.core import Module, Tensor
 from kornia.core.check import KORNIA_CHECK
 
-from .common import conv_norm_act
+from .common import ConvNormAct
 
 
 class BottleNeckD(Module):
@@ -23,17 +23,17 @@ class BottleNeckD(Module):
         expanded_out_channels = out_channels * self.expansion
 
         self.convs = nn.Sequential(
-            conv_norm_act(in_channels, width, 1),
-            conv_norm_act(width, width, 3, stride=stride),
-            conv_norm_act(width, expanded_out_channels, 1, act="none"),
+            ConvNormAct(in_channels, width, 1),
+            ConvNormAct(width, width, 3, stride=stride),
+            ConvNormAct(width, expanded_out_channels, 1, act="none"),
         )
 
         if stride == 2:
             self.shortcut = nn.Sequential(
-                nn.AvgPool2d(2, 2), conv_norm_act(in_channels, expanded_out_channels, 1, act="none")
+                nn.AvgPool2d(2, 2), ConvNormAct(in_channels, expanded_out_channels, 1, act="none")
             )
         elif in_channels != out_channels * self.expansion:
-            self.shortcut = conv_norm_act(in_channels, expanded_out_channels, 1, act="none")
+            self.shortcut = ConvNormAct(in_channels, expanded_out_channels, 1, act="none")
         else:
             self.shortcut = nn.Identity()
 
@@ -50,10 +50,10 @@ class ResNetD(Module):
         KORNIA_CHECK(len(n_blocks) == 4)
         super().__init__()
         in_channels = 64
-        self.stem = nn.Sequential(
-            conv_norm_act(3, in_channels // 2, 3, stride=2),
-            conv_norm_act(in_channels // 2, in_channels // 2, 3),
-            conv_norm_act(in_channels // 2, in_channels, 3),
+        self.conv1 = nn.Sequential(
+            ConvNormAct(3, in_channels // 2, 3, stride=2),
+            ConvNormAct(in_channels // 2, in_channels // 2, 3),
+            ConvNormAct(in_channels // 2, in_channels, 3),
             nn.MaxPool2d(3, stride=2, padding=1),
         )
 
@@ -72,7 +72,7 @@ class ResNetD(Module):
         return nn.Sequential(*layers), out_channels * BottleNeckD.expansion
 
     def forward(self, x: Tensor) -> list[Tensor]:
-        out = self.stem(x)
+        out = self.conv1(x)
         fmaps = [self.res2(out)]
         fmaps.append(self.res3(fmaps[-1]))
         fmaps.append(self.res4(fmaps[-1]))

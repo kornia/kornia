@@ -9,15 +9,15 @@ from torch import nn
 
 from kornia.core import Module, Tensor, concatenate
 
-from .common import conv_norm_act
+from .common import ConvNormAct
 
 
 class CSPRepLayer(Module):
     def __init__(self, in_channels: int, out_channels: int, num_blocks: int):
         super().__init__()
-        self.conv1 = conv_norm_act(in_channels, out_channels, 1, act="silu")
-        self.conv2 = conv_norm_act(in_channels, out_channels, 1, act="silu")
-        blocks = [conv_norm_act(out_channels, out_channels, 3, act="silu") for _ in range(num_blocks)]
+        self.conv1 = ConvNormAct(in_channels, out_channels, 1, act="silu")
+        self.conv2 = ConvNormAct(in_channels, out_channels, 1, act="silu")
+        blocks = [ConvNormAct(out_channels, out_channels, 3, act="silu") for _ in range(num_blocks)]
         self.blocks = nn.Sequential(*blocks)
 
     def forward(self, x: Tensor) -> Tensor:
@@ -61,13 +61,13 @@ class CCFM(Module):
         self.lateral_convs = nn.ModuleList()
         self.fpn_blocks = nn.ModuleList()
         for _ in range(num_fmaps - 1):
-            self.lateral_convs.append(conv_norm_act(hidden_dim, hidden_dim, 1, 1, "silu"))
+            self.lateral_convs.append(ConvNormAct(hidden_dim, hidden_dim, 1, 1, "silu"))
             self.fpn_blocks.append(CSPRepLayer(hidden_dim * 2, hidden_dim, 3))
 
         self.downsample_convs = nn.ModuleList()
         self.pan_blocks = nn.ModuleList()
         for _ in range(num_fmaps - 1):
-            self.downsample_convs.append(conv_norm_act(hidden_dim, hidden_dim, 3, 2, "silu"))
+            self.downsample_convs.append(ConvNormAct(hidden_dim, hidden_dim, 3, 2, "silu"))
             self.pan_blocks.append(CSPRepLayer(hidden_dim * 2, hidden_dim, 3))
 
     def forward(self, fmaps: list[Tensor]) -> list[Tensor]:
