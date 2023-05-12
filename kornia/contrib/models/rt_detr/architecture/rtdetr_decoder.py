@@ -56,7 +56,7 @@ class DeformableAttention(Module):
         sampling_value_list = []
         for level, (H, W) in enumerate(value_spatial_shapes):
             # (N, H*W, C) -> (N * num_heads, head_dim, H, W)
-            value_l_ = value_list[level].permute(0, 2, 1).reshape(N * self.num_heads, -1, H, W)
+            value_l_ = value_list[level].flatten(2).permute(0, 2, 1).reshape(N * self.num_heads, -1, H, W)
             sampling_grid_l_ = sampling_grids[:, :, :, level].permute(0, 2, 1, 3, 4).flatten(0, 1)
             sampling_value_list.append(F.grid_sample(value_l_, sampling_grid_l_))
 
@@ -115,7 +115,7 @@ class RTDETRDecoder(Module):
         self.num_queries = num_queries
         self.projs = nn.ModuleList()
         for ch_in in in_channels:
-            self.projs.append(conv_norm_act(ch_in, hidden_dim, act="none"))
+            self.projs.append(conv_norm_act(ch_in, hidden_dim, 1, act="none"))
 
         self.decoder_layers = nn.ModuleList()
         for _ in range(num_decoder_layers):
