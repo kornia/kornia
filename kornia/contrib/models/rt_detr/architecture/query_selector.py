@@ -5,11 +5,65 @@ https://github.com/PaddlePaddle/PaddleDetection/blob/5d1f888362241790000950e2b63
 from __future__ import annotations
 
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 from kornia.core import Module, Tensor, concatenate
 
 from .common import MLP, conv_norm_act
+
+
+class DeformableAttention(Module):
+    def __init__(self, embed_dim: int = 256, num_heads: int = 8, num_levels: int = 4, num_points: int = 4):
+        super().__init__()
+        self.num_heads = num_heads
+        self.num_levels = num_levels
+        self.num_points = num_points
+        self.total_points = num_heads * num_levels * num_points
+
+        self.sampling_offsets = nn.Linear(embed_dim, self.total_points * 2)
+        self.attention_weights = nn.Linear(embed_dim, self.total_points)
+        self.value_proj = nn.Linear(embed_dim, embed_dim)
+        self.output_proj = nn.Linear(embed_dim, embed_dim)
+
+    def forward(
+        self, query: Tensor, ref_points: Tensor, value: Tensor, value_spatial_shapes: list[tuple[int, int]]
+    ) -> Tensor:
+        """
+        Args:
+            query: shape (N, Lq, C)
+            ref_points: shape (N, Lq, n_levels, 4)
+            value: shape (N, Lv, C)
+            value_spatial_shapes: [(H0, W0), (H1, W1), ...]
+        """
+        N, Lq, C = query.shape
+        Lv = value.shape[1]
+
+        value = self.value_proj(value).view(N, Lv, self.num_heads, -1)
+
+        sampling_offsets = self.sampling_offsets(query).view(N, Lq, self.num_heads, self.num_levels, self.num_points, 2)
+        attention_weights = self.attention_weights(query).view(N, Lq, self.num_heads, self.num_levels * self.num_points)
+        attention_weights = attention_weights.softmax(-1).view(N, Lq, self.num_heads, self.num_levels, self.num_points)
+
+        # (N, Lq, num_heads, num_levels, num_points, 2)
+        ref_points_xy, ref_points_wh = ref_points.view(N, Lq, 1, -1, 1, 4).chunk(2, -1)
+        sampling_locations = ref_points_xy + sampling_offsets / self.num_points * ref_points_wh * 0.5
+
+        split_size = [h * w for h, w in value_spatial_shapes]
+        value_list = value.split(split_size, 1)
+        sampling_grids = 2 * sampling_locations - 1
+
+        sampling_value_list = []
+        for level, (H, W) in enumerate(value_spatial_shapes):
+            # (N, H*W, C) -> (N * num_heads, head_dim, H, W)
+            value_l_ = value_list[level].permute(0, 2, 1).reshape(N * self.num_heads, -1, H, W)
+            sampling_grid_l_ = sampling_grids[:, :, :, level].permute(0, 2, 1, 3, 4).flatten(0, 1)
+            sampling_value_list.append(F.grid_sample(value_l_, sampling_grid_l_))
+
+        attention_weights = attention_weights.permute(0, 2, 1, 3, 4)
+        attention_weights = attention_weights.reshape(N * self.num_heads, 1, Lq, self.num_levels * self.num_points)
+        out = (torch.stack(sampling_value_list, -2).flatten(-2) * attention_weights).sum(-1)
+        return out.view(N, C, Lq).permute(0, 2, 1)
 
 
 class QuerySelector(Module):
@@ -59,7 +113,7 @@ class QuerySelector(Module):
         feats = self.enc_output(feats)
 
         output_logits = self.enc_score_head(feats)
-        output_bboxes = self.enc_bbox_head(feats)
+        output_bboxes = anchors + self.enc_bbox_head(feats)
 
         # only consider class with highest score at each spatial location
         topk_logits, topk_indices = output_logits.max(-1)[0].topk(self.num_queries, 1)  # (N, num_queries)
@@ -70,7 +124,14 @@ class QuerySelector(Module):
         topk_bboxes = output_bboxes[batch_indices.unsqueeze(1), topk_indices]
         topk_bboxes = torch.sigmoid(topk_bboxes)
 
-        self.tgt_embed.weight.unsqueeze(0).expand(N, -1, -1)
+        target = self.tgt_embed.weight.unsqueeze(0).expand(N, -1, -1)
+
+        ref_points = topk_bboxes
+        for layer in self.decoder.layers:
+            query_pos_embed = self.query_pos_head(ref_points)
+            target = target + query_pos_embed
+
+            # out = layer(target, ref_points.unsqueeze(2), feats, )
 
     def generate_anchors(self, shapes, grid_size=0.05, eps=0.01):
         anchors = []
