@@ -46,7 +46,7 @@ def KORNIA_CHECK_SHAPE(x: Tensor, shape: list[str], raises: bool = True) -> bool
         True
 
         >>> x = torch.rand(2, 3, 4, 4)
-        >>> KORNIA_CHECK_SHAPE(x, ["2","3", "H", "W"])  # explicit
+        >>> KORNIA_CHECK_SHAPE(x, ["2", "3", "H", "W"])  # explicit
         True
     """
     if '*' == shape[0]:
