@@ -12,16 +12,26 @@ from kornia.core import Module, Tensor, concatenate
 from .common import ConvNormAct
 
 
+# NOTE: conv2 can be fused into conv1
+class RepVggBlock(Module):
+    def __init__(self, in_channels: int, out_channels: int):
+        super().__init__()
+        self.conv1 = ConvNormAct(in_channels, out_channels, 3, act="none")
+        self.conv2 = ConvNormAct(in_channels, out_channels, 1, act="none")
+
+    def forward(self, x: Tensor) -> Tensor:
+        return F.silu(self.conv1(x) + self.conv2(x))
+
+
 class CSPRepLayer(Module):
     def __init__(self, in_channels: int, out_channels: int, num_blocks: int):
         super().__init__()
         self.conv1 = ConvNormAct(in_channels, out_channels, 1, act="silu")
         self.conv2 = ConvNormAct(in_channels, out_channels, 1, act="silu")
-        blocks = [ConvNormAct(out_channels, out_channels, 3, act="silu") for _ in range(num_blocks)]
-        self.blocks = nn.Sequential(*blocks)
+        self.bottlenecks = nn.Sequential(*[RepVggBlock(out_channels, out_channels) for _ in range(num_blocks)])
 
     def forward(self, x: Tensor) -> Tensor:
-        return self.blocks(self.conv1(x)) + self.conv2(x)
+        return self.bottlenecks(self.conv1(x)) + self.conv2(x)
 
 
 class AIFI(Module):
@@ -98,15 +108,18 @@ class CCFM(Module):
 class HybridEncoder(Module):
     def __init__(self, in_channels: list[int], hidden_dim: int = 256):
         super().__init__()
-        self.projs = nn.ModuleList()
-        for in_ch in in_channels:
-            self.projs.append(nn.Sequential(nn.Conv2d(in_ch, hidden_dim, 1, bias=False), nn.BatchNorm2d(hidden_dim)))
+        self.input_proj = nn.ModuleList(
+            [
+                nn.Sequential(nn.Conv2d(in_ch, hidden_dim, 1, bias=False), nn.BatchNorm2d(hidden_dim))
+                for in_ch in in_channels
+            ]
+        )
 
         self.aifi = AIFI(hidden_dim)
         self.ccfm = CCFM(len(in_channels), hidden_dim)
 
     def forward(self, fmaps: list[Tensor]) -> list[Tensor]:
-        fmaps = [proj(fmap) for proj, fmap in zip(self.projs, fmaps)]
+        fmaps = [proj(fmap) for proj, fmap in zip(self.input_proj, fmaps)]
         fmaps[-1] = self.aifi(fmaps[-1])
         fmaps = self.ccfm(fmaps)
         return fmaps
