@@ -192,6 +192,8 @@ class RTDETRHead(Module):
 
         anchors = concatenate(anchors, 1)
         valid_mask = ((anchors > eps) & (anchors < 1 - eps)).all(-1, keepdim=True)
-        anchors = anchors.div(1 - anchors).log()
-        anchors = torch.where(valid_mask, anchors, float("inf"))
+        anchors = torch.log(anchors / (1 - anchors))
+
+        inf = torch.tensor(float("inf"), device=device, dtype=dtype)
+        anchors = torch.where(valid_mask, anchors, inf)
         return anchors, valid_mask
