@@ -1,15 +1,19 @@
+from functools import partial
+
 import pytest
 import torch
 
+from kornia.contrib.models.rt_detr.architecture.hgnetv2 import PPHGNetV2
 from kornia.contrib.models.rt_detr.architecture.hybrid_encoder import HybridEncoder
 from kornia.contrib.models.rt_detr.architecture.resnet_d import ResNetD
 from kornia.contrib.models.rt_detr.architecture.rtdetr_head import RTDETRHead
-from kornia.contrib.models.rt_detr.model import RTDETR
+from kornia.contrib.models.rt_detr.model import RTDETR, RTDETRConfig
 
 
 @pytest.mark.parametrize('shape', ((1, 3, 224, 224), (2, 3, 256, 256)))
-def test_backbone_fmaps(shape, device, dtype):
-    backbone = ResNetD([2, 3, 3, 4]).to(device, dtype)
+@pytest.mark.parametrize('backbone_factory', (partial(ResNetD.from_config, 18), partial(PPHGNetV2.from_config, "L")))
+def test_backbone(backbone_factory, shape, device, dtype):
+    backbone = backbone_factory().to(device, dtype)
     imgs = torch.randn(shape, device=device, dtype=dtype)
     fmaps = backbone(imgs)
 
@@ -23,7 +27,7 @@ def test_backbone_fmaps(shape, device, dtype):
 
 
 @pytest.mark.parametrize("batch_size", (1, 2))
-def test_neck_fmaps(batch_size, device, dtype):
+def test_neck(batch_size, device, dtype):
     in_channels = [64, 128, 256]
     sizes = [32, 16, 8]
     hidden_dim = 64
@@ -40,7 +44,7 @@ def test_neck_fmaps(batch_size, device, dtype):
         assert out.shape[2:] == fmap.shape[2:]
 
 
-def test_rtdetr_decoder(device, dtype):
+def test_rtdetr_head(device, dtype):
     in_channels = [32, 64, 128]
     sizes = [32, 16, 8]
     decoder = RTDETRHead(4, 32, 10, in_channels, 4, 8, 6).to(device, dtype)
@@ -49,9 +53,8 @@ def test_rtdetr_decoder(device, dtype):
     bboxes, logits = decoder(fmaps)
 
 
-def test_integration(device, dtype):
-    model = RTDETR(
-        ResNetD([2, 2, 2, 2]), HybridEncoder([512, 1024, 2048], 64, 128), RTDETRHead(3, 64, 10, [64, 64, 64], 4, 8, 6)
-    ).to(device, dtype)
+@pytest.mark.parametrize("variant", ("r50", "l"))
+def test_rtdetr(variant, device, dtype):
+    model = RTDETR.from_config(RTDETRConfig(variant)).to(device, dtype)
     images = torch.randn(2, 3, 256, 256, device=device, dtype=dtype)
     model(images)

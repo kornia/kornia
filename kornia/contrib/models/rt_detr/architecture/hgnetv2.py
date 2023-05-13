@@ -17,12 +17,13 @@ from .common import ConvNormAct
 class StemBlock(Module):
     def __init__(self, in_channels: int, mid_channels: int, out_channels: int):
         super().__init__()
+        # NOTE: check paddlepaddle SAME padding
         self.stem1 = ConvNormAct(in_channels, mid_channels, 3, 2)
         self.stem2a = ConvNormAct(mid_channels, mid_channels // 2, 2)
         self.stem2b = ConvNormAct(mid_channels // 2, mid_channels, 2)
         self.stem3 = ConvNormAct(mid_channels * 2, mid_channels, 3, 2)
         self.stem4 = ConvNormAct(mid_channels, out_channels, 1)
-        self.pool = nn.MaxPool2d(2, 1, padding=1)
+        self.pool = nn.Sequential(nn.ZeroPad2d((1, 0, 1, 0)), nn.MaxPool2d(2, 1))
 
     def forward(self, x: Tensor) -> Tensor:
         x = self.stem1(x)
@@ -66,10 +67,9 @@ class HGBlock(Module):
         self.aggregation_excitation_conv = ConvNormAct(cfg.out_channels // 2, cfg.out_channels, 1)
 
     def forward(self, x: Tensor) -> Tensor:
-        out, feats = x, []
+        feats = [x]
         for layer in self.layers:
-            out = layer(out)
-            feats.append(out)
+            feats.append(layer(feats[-1]))
         out = concatenate(feats, 1)
         out = self.aggregation_squeeze_conv(out)
         out = self.aggregation_excitation_conv(out)

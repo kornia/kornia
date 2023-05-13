@@ -11,7 +11,16 @@ class ConvNormAct(nn.Sequential):
         self, in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, act: str = "relu", groups: int = 1
     ):
         super().__init__()
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, (kernel_size - 1) // 2, 1, groups, False)
+        if kernel_size % 2 == 0:  # even kernel_size -> asymmetric padding
+            # NOTE: check paddlepaddle's SAME padding
+            # NOTE: this does not account for stride=2
+            p2 = (kernel_size - 1) // 2
+            p1 = kernel_size - 1 - p2
+            self.pad = nn.ZeroPad2d((p1, p2, p1, p2))
+            padding = 0
+        else:
+            padding = (kernel_size - 1) // 2
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, 1, groups, False)
         self.norm = nn.BatchNorm2d(out_channels)
         self.act = dict(relu=nn.ReLU, silu=nn.SiLU, none=nn.Identity)[act](inplace=True)
 
