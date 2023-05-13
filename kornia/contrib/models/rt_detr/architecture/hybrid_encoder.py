@@ -37,18 +37,18 @@ class CSPRepLayer(Module):
 # almost identical to nn.TransformerEncoderLayer
 # but add positional embeddings to q and k
 class AIFI(Module):
-    def __init__(self, hidden_dim: int, num_heads: int = 8, dropout: float = 0.0):
+    def __init__(self, embed_dim: int, num_heads: int, dim_feedforward: int, dropout: float = 0.0):
         super().__init__()
-        self.self_attn = nn.MultiheadAttention(hidden_dim, num_heads, dropout)  # NOTE: batch_first = False
+        self.self_attn = nn.MultiheadAttention(embed_dim, num_heads, dropout)  # NOTE: batch_first = False
         self.dropout1 = nn.Dropout(dropout)
-        self.norm1 = nn.LayerNorm(hidden_dim)
+        self.norm1 = nn.LayerNorm(embed_dim)
 
-        self.linear1 = nn.Linear(hidden_dim, hidden_dim * 4)
+        self.linear1 = nn.Linear(embed_dim, dim_feedforward)
         self.act = nn.GELU()
         self.dropout = nn.Dropout(dropout)
-        self.linear2 = nn.Linear(hidden_dim * 4, hidden_dim)
+        self.linear2 = nn.Linear(dim_feedforward, embed_dim)
         self.dropout2 = nn.Dropout(dropout)
-        self.norm2 = nn.LayerNorm(hidden_dim)
+        self.norm2 = nn.LayerNorm(embed_dim)
 
     def forward(self, x: Tensor) -> Tensor:
         # NOTE: cache build_2d_sincos_pos_emb to buffer, if input size is known?
@@ -122,7 +122,7 @@ class CCFM(Module):
 
 
 class HybridEncoder(Module):
-    def __init__(self, in_channels: list[int], hidden_dim: int = 256):
+    def __init__(self, in_channels: list[int], hidden_dim: int, dim_feedforward: int):
         super().__init__()
         self.input_proj = nn.ModuleList(
             [
@@ -131,7 +131,7 @@ class HybridEncoder(Module):
             ]
         )
 
-        self.aifi = AIFI(hidden_dim)
+        self.aifi = AIFI(hidden_dim, 8, dim_feedforward)
         self.ccfm = CCFM(len(in_channels), hidden_dim)
 
     def forward(self, fmaps: list[Tensor]) -> list[Tensor]:

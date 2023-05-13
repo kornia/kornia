@@ -62,7 +62,7 @@ class ResNetD(Module):
         self.res4, in_channels = self.make_stage(in_channels, 256, 2, n_blocks[2])
         self.res5, in_channels = self.make_stage(in_channels, 512, 2, n_blocks[3])
 
-        self.out_channels = [ch * BottleNeckD.expansion for ch in [64, 128, 256, 512]]
+        self.out_channels = [ch * BottleNeckD.expansion for ch in [128, 256, 512]]
 
     def make_stage(self, in_channels: int, out_channels: int, stride: int, n_blocks: int) -> tuple[Module, int]:
         layers = []
@@ -72,9 +72,9 @@ class ResNetD(Module):
         return nn.Sequential(*layers), out_channels * BottleNeckD.expansion
 
     def forward(self, x: Tensor) -> list[Tensor]:
-        out = self.conv1(x)
-        fmaps = [self.res2(out)]
-        fmaps.append(self.res3(fmaps[-1]))
-        fmaps.append(self.res4(fmaps[-1]))
-        fmaps.append(self.res5(fmaps[-1]))
-        return fmaps
+        x = self.conv1(x)
+        res2 = self.res2(x)
+        res3 = self.res3(res2)
+        res4 = self.res4(res3)
+        res5 = self.res5(res4)
+        return [res3, res4, res5]

@@ -23,16 +23,13 @@ class RTDETRConfig:
     model_type: str | int | RTDETRModelType | None = None
     checkpoint: str | None = None
 
-    backbone_indices: tuple[int, ...] = (1, 2, 3)
-
 
 class RTDETR(ModelBase[RTDETRConfig]):
-    def __init__(self, backbone, neck, head, backbone_indices: tuple[int, ...]):
+    def __init__(self, backbone: ResNetD, neck: HybridEncoder, head: RTDETRHead):
         super().__init__()
         self.backbone = backbone
         self.neck = neck
         self.head = head
-        self.backbone_indices = backbone_indices
 
     @staticmethod
     def from_config(config: RTDETRConfig) -> RTDETR:
@@ -45,11 +42,13 @@ class RTDETR(ModelBase[RTDETRConfig]):
 
         if model_type == RTDETRModelType.r50:
             backbone = ResNetD([3, 4, 6, 3])
-            neck = HybridEncoder(backbone.out_channels, 256)
+            neck = HybridEncoder(backbone.out_channels, 256, 1024)
+            head = RTDETRHead(80, 256, 300, [256, 256, 256], 4, 8, 6)
 
         elif model_type == RTDETRModelType.r101:
             backbone = ResNetD([3, 4, 23, 3])
-            neck = HybridEncoder(backbone.out_channels, 256)
+            neck = HybridEncoder(backbone.out_channels, 384, 2048)
+            head = RTDETRHead(80, 256, 300, [384, 384, 384], 4, 8, 6)
 
         elif model_type == RTDETRModelType.l:
             raise NotImplementedError
@@ -57,9 +56,7 @@ class RTDETR(ModelBase[RTDETRConfig]):
         elif model_type == RTDETRModelType.x:
             raise NotImplementedError
 
-        decoder_head = RTDETRHead(80, 256, 300, [256, 256, 256], 4, 8, 6)
-
-        model = RTDETR(backbone, neck, decoder_head, config.backbone_indices)
+        model = RTDETR(backbone, neck, head)
 
         if config.checkpoint:
             model.load_checkpoint(config.checkpoint)
@@ -68,7 +65,6 @@ class RTDETR(ModelBase[RTDETRConfig]):
     def forward(self, images: Tensor) -> DetectionResults:
         H, W = images.shape[2:]
         fmaps = self.backbone(images)
-        fmaps = [fmaps[idx] for idx in self.backbone_indices]
         fmaps = self.neck(fmaps)
         bboxes, logits = self.head(fmaps)
 
