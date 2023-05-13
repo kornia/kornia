@@ -151,7 +151,7 @@ class RTDETRHead(Module):
 
         # TODO: cache anchors and valid_mask as buffers
         anchors, valid_mask = self.generate_anchors(spatial_shapes, device=memory.device, dtype=memory.dtype)
-        out_memory = torch.where(valid_mask, memory, 0)
+        out_memory = torch.where(valid_mask, memory, 0.0)
         out_memory = self.enc_output(out_memory)
 
         enc_out_logits = self.enc_score_head(out_memory)
@@ -194,6 +194,5 @@ class RTDETRHead(Module):
         valid_mask = ((anchors > eps) & (anchors < 1 - eps)).all(-1, keepdim=True)
         anchors = torch.log(anchors / (1 - anchors))
 
-        inf = torch.tensor(float("inf"), device=device, dtype=dtype)
-        anchors = torch.where(valid_mask, anchors, inf)
+        anchors = torch.where(valid_mask, anchors, float('inf'))
         return anchors, valid_mask
