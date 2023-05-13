@@ -59,7 +59,7 @@ class DeformableAttention(Module):
             # (N, H*W, C) -> (N * num_heads, head_dim, H, W)
             value_l_ = value_list[level].flatten(2).permute(0, 2, 1).reshape(N * self.num_heads, -1, H, W)
             sampling_grid_l_ = sampling_grids[:, :, :, level].permute(0, 2, 1, 3, 4).flatten(0, 1)
-            sampling_value_list.append(F.grid_sample(value_l_, sampling_grid_l_))
+            sampling_value_list.append(F.grid_sample(value_l_, sampling_grid_l_, "bilinear", "zeros", False))
 
         attention_weights = attention_weights.permute(0, 2, 1, 3, 4)
         attention_weights = attention_weights.reshape(N * self.num_heads, 1, Lq, self.num_levels * self.num_points)
@@ -104,7 +104,7 @@ class RTDETRTransformerDecoderLayer(Module):
         return self.dropout4(self.linear2(self.dropout3(self.act(self.linear1(x)))))
 
 
-class RTDETRDecoder(Module):
+class RTDETRHead(Module):
     def __init__(
         self,
         num_classes: int,
@@ -126,7 +126,7 @@ class RTDETRDecoder(Module):
             layer = RTDETRTransformerDecoderLayer(hidden_dim, num_heads, len(in_channels), num_decoder_points)
             self.decoder_layers.append(layer)
 
-        self.denoising_class_embed = nn.Embedding(num_classes, hidden_dim)
+        self.denoising_class_embed = nn.Embedding(num_classes, hidden_dim)  # not used in evaluation
 
         self.query_pos_head = MLP(4, hidden_dim * 2, hidden_dim, 2)
 
@@ -140,7 +140,7 @@ class RTDETRDecoder(Module):
             self.dec_score_head.append(nn.Linear(hidden_dim, num_classes))
             self.dec_bbox_head.append(MLP(hidden_dim, hidden_dim, 4, 3))
 
-    def forward(self, fmaps: list[Tensor]):
+    def forward(self, fmaps: list[Tensor]) -> tuple[Tensor, Tensor]:
         N = fmaps[0].shape[0]
         fmaps = [proj(fmap) for proj, fmap in zip(self.input_proj, fmaps)]
         spatial_shapes = [fmap.shape[2:] for fmap in fmaps]
@@ -152,16 +152,16 @@ class RTDETRDecoder(Module):
         feats = torch.where(valid_mask, feats, 0)
         feats = self.enc_output(feats)
 
-        output_logits = self.enc_score_head(feats)
-        output_bboxes = anchors + self.enc_bbox_head(feats)
+        enc_out_logits = self.enc_score_head(feats)
+        enc_out_bboxes = anchors + self.enc_bbox_head(feats)
 
         # only consider class with highest score at each spatial location
-        topk_logits, topk_indices = output_logits.max(-1)[0].topk(self.num_queries, 1)  # (N, num_queries)
+        topk_logits, topk_indices = enc_out_logits.max(-1)[0].topk(self.num_queries, 1)  # (N, num_queries)
 
         # alternative
         # topk_bboxes = output_bboxes.gather(1, topk_indices.unsqueeze(-1).expand(-1, -1, 4))
         batch_indices = torch.arange(N, dtype=topk_indices.dtype, device=topk_indices.device).unsqueeze(1)
-        topk_bboxes = output_bboxes[batch_indices, topk_indices]
+        topk_bboxes = enc_out_bboxes[batch_indices, topk_indices]
 
         tgt = feats[batch_indices, topk_indices]
         ref_points = topk_bboxes
@@ -182,7 +182,7 @@ class RTDETRDecoder(Module):
         for i, (h, w) in enumerate(spatial_shapes):
             xs = torch.arange(w)
             ys = torch.arange(h)
-            grid_x, grid_y = torch.meshgrid(xs, ys)
+            grid_x, grid_y = torch.meshgrid(xs, ys)  # in the future, need to pass indexing="ij"
             grid_xy = torch.stack([grid_x, grid_y], -1)
 
             valid_wh = torch.tensor([h, w])  # wrong order?

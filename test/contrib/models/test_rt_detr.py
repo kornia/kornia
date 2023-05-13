@@ -3,7 +3,8 @@ import torch
 
 from kornia.contrib.models.rt_detr.architecture.hybrid_encoder import HybridEncoder
 from kornia.contrib.models.rt_detr.architecture.resnet_d import ResNetD
-from kornia.contrib.models.rt_detr.architecture.rtdetr_decoder import RTDETRDecoder
+from kornia.contrib.models.rt_detr.architecture.rtdetr_head import RTDETRHead
+from kornia.contrib.models.rt_detr.model import RTDETR
 
 
 @pytest.mark.parametrize('shape', ((1, 3, 224, 224), (2, 3, 256, 256)))
@@ -40,7 +41,18 @@ def test_neck_fmaps(batch_size, device, dtype):
 def test_rtdetr_decoder(device, dtype):
     in_channels = [32, 64, 128]
     sizes = [32, 16, 8]
-    decoder = RTDETRDecoder(4, 32, 10, in_channels, 4, 8, 6).to(device, dtype)
+    decoder = RTDETRHead(4, 32, 10, in_channels, 4, 8, 6).to(device, dtype)
     fmaps = [torch.randn(2, ch_in, sz, sz, device=device, dtype=dtype) for ch_in, sz in zip(in_channels, sizes)]
 
     bboxes, logits = decoder(fmaps)
+
+
+def test_integration(device, dtype):
+    model = RTDETR(
+        ResNetD([2, 2, 2, 2]),
+        HybridEncoder([512, 1024, 2048], 64),
+        RTDETRHead(3, 64, 10, [64, 64, 64], 4, 8, 6),
+        (1, 2, 3),
+    ).to(device, dtype)
+    images = torch.randn(2, 3, 256, 256, device=device, dtype=dtype)
+    model(images)

@@ -104,3 +104,10 @@ class Prompts:
     def keypoints_labels(self) -> Tensor | None:
         """The keypoints labels from the `points`"""
         return self.points[1] if isinstance(self.points, tuple) else None
+
+
+@dataclass
+class DetectionResults:
+    labels: Tensor
+    scores: Tensor
+    bboxes: Tensor
