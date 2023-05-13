@@ -7,9 +7,11 @@ from kornia.core import Module, Tensor
 
 
 class ConvNormAct(nn.Sequential):
-    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, act: str = "relu"):
+    def __init__(
+        self, in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, act: str = "relu", groups: int = 1
+    ):
         super().__init__()
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, (kernel_size - 1) // 2, bias=False)
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, (kernel_size - 1) // 2, 1, groups, False)
         self.norm = nn.BatchNorm2d(out_channels)
         self.act = dict(relu=nn.ReLU, silu=nn.SiLU, none=nn.Identity)[act](inplace=True)
 

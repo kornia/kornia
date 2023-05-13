@@ -1,6 +1,6 @@
-"""
-https://github.com/PaddlePaddle/PaddleDetection/blob/5d1f888362241790000950e2b63115dc8d1c6019/ppdet/modeling/transformers/rtdetr_transformer.py
-"""
+"""Based on code from
+https://github.com/PaddlePaddle/PaddleDetection/blob/ec37e66685f3bc5a38cd13f60685acea175922e1/
+ppdet/modeling/transformers/rtdetr_transformer.py."""
 
 from __future__ import annotations
 
