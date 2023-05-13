@@ -34,19 +34,35 @@ class CSPRepLayer(Module):
         return self.bottlenecks(self.conv1(x)) + self.conv2(x)
 
 
+# almost identical to nn.TransformerEncoderLayer
+# but add positional embeddings to q and k
 class AIFI(Module):
-    def __init__(self, hidden_dim: int):
+    def __init__(self, hidden_dim: int, num_heads: int = 8, dropout: float = 0.0):
         super().__init__()
-        # note: batch_first=False, norm_first=False
-        self.encoder = nn.TransformerEncoderLayer(hidden_dim, 8, hidden_dim * 4, 0, "gelu")
+        self.self_attn = nn.MultiheadAttention(hidden_dim, num_heads, dropout)  # NOTE: batch_first = False
+        self.dropout1 = nn.Dropout(dropout)
+        self.norm1 = nn.LayerNorm(hidden_dim)
+
+        self.linear1 = nn.Linear(hidden_dim, hidden_dim * 4)
+        self.act = nn.GELU()
+        self.dropout = nn.Dropout(dropout)
+        self.linear2 = nn.Linear(hidden_dim * 4, hidden_dim)
+        self.dropout2 = nn.Dropout(dropout)
+        self.norm2 = nn.LayerNorm(hidden_dim)
 
     def forward(self, x: Tensor) -> Tensor:
         # NOTE: cache build_2d_sincos_pos_emb to buffer, if input size is known?
+        # using post-norm
         N, C, H, W = x.shape
         x = x.permute(2, 3, 0, 1).flatten(0, 1)  # (N, C, H, W) -> (H * W, N, C)
-        out = self.encoder(x + self.build_2d_sincos_pos_emb(H, W, C))
-        out = out.view(H, W, N, C).permute(2, 3, 0, 1)  # (H * W, N, C) -> (N, C, H, W)
-        return out
+        q = k = x + self.build_2d_sincos_pos_emb(H, W, C)
+        x = self.norm1(x + self.dropout1(self.self_attn(q, k, x)[0]))
+        x = self.norm2(x + self.ffn(x))
+        x = x.view(H, W, N, C).permute(2, 3, 0, 1)  # (H * W, N, C) -> (N, C, H, W)
+        return x
+
+    def ffn(self, x: Tensor) -> Tensor:
+        return self.dropout2(self.linear2(self.dropout(self.act(self.linear1(x)))))
 
     @staticmethod
     def build_2d_sincos_pos_emb(w: int, h: int, embed_dim: int, temp: float = 10_000.0) -> Tensor:

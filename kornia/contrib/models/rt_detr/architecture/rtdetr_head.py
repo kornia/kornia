@@ -82,9 +82,9 @@ class RTDETRTransformerDecoderLayer(Module):
         self.norm2 = nn.LayerNorm(embed_dim)
 
         self.linear1 = nn.Linear(embed_dim, embed_dim * 4)
-        self.linear2 = nn.Linear(embed_dim * 4, embed_dim)
         self.act = nn.ReLU(inplace=True)
         self.dropout3 = nn.Dropout(dropout)
+        self.linear2 = nn.Linear(embed_dim * 4, embed_dim)
         self.dropout4 = nn.Dropout(dropout)
         self.norm3 = nn.LayerNorm(embed_dim)
 

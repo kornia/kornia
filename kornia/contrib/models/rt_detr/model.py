@@ -68,7 +68,7 @@ class RTDETR(ModelBase[RTDETRConfig]):
     def forward(self, images: Tensor) -> DetectionResults:
         H, W = images.shape[2:]
         fmaps = self.backbone(images)
-        fmaps = [fmap for i, fmap in enumerate(fmaps) if i in self.backbone_indices]
+        fmaps = [fmaps[idx] for idx in self.backbone_indices]
         fmaps = self.neck(fmaps)
         bboxes, logits = self.head(fmaps)
 
