@@ -146,43 +146,40 @@ class RTDETRHead(Module):
         spatial_shapes = [fmap.shape[2:] for fmap in fmaps]
 
         feats = [fmap.flatten(2).permute(0, 2, 1) for fmap in fmaps]  # (N, C, H, W) -> (N, H*W, C)
-        feats = concatenate(feats, 1)
+        memory = concatenate(feats, 1)  # rename to match original impl
 
         anchors, valid_mask = self.generate_anchors(spatial_shapes)
-        feats = torch.where(valid_mask, feats, 0)
-        feats = self.enc_output(feats)
+        out_memory = torch.where(valid_mask, memory, 0)
+        out_memory = self.enc_output(out_memory)
 
-        enc_out_logits = self.enc_score_head(feats)
-        enc_out_bboxes = anchors + self.enc_bbox_head(feats)
+        enc_out_logits = self.enc_score_head(out_memory)
+        enc_out_bboxes = anchors + self.enc_bbox_head(out_memory)
 
         # only consider class with highest score at each spatial location
-        topk_logits, topk_indices = enc_out_logits.max(-1)[0].topk(self.num_queries, 1)  # (N, num_queries)
+        _, topk_indices = enc_out_logits.max(-1)[0].topk(self.num_queries, 1)  # (N, num_queries)
 
         # alternative
         # topk_bboxes = output_bboxes.gather(1, topk_indices.unsqueeze(-1).expand(-1, -1, 4))
         batch_indices = torch.arange(N, dtype=topk_indices.dtype, device=topk_indices.device).unsqueeze(1)
-        topk_bboxes = enc_out_bboxes[batch_indices, topk_indices]
+        ref_points = enc_out_bboxes[batch_indices, topk_indices]
+        tgt = out_memory[batch_indices, topk_indices]
 
-        tgt = feats[batch_indices, topk_indices]
-        ref_points = topk_bboxes
-        ref_points_sigmoid = ref_points.sigmoid()
         for decoder_layer, bbox_head in zip(self.decoder_layers, self.dec_bbox_head):
-            query_pos_embed = self.query_pos_head(ref_points_sigmoid)
-            out = decoder_layer(tgt, ref_points_sigmoid.unsqueeze(2), feats, spatial_shapes, query_pos_embed)
-            ref_points = bbox_head(out) + ref_points
             ref_points_sigmoid = ref_points.sigmoid()
-        logits = self.dec_score_head[-1](out)  # in evaluation, only last score head is used
+            query_pos_embed = self.query_pos_head(ref_points_sigmoid)
+            tgt = decoder_layer(tgt, ref_points_sigmoid.unsqueeze(2), memory, spatial_shapes, query_pos_embed)
+            ref_points = bbox_head(tgt) + ref_points
+        logits = self.dec_score_head[-1](tgt)  # in evaluation, only last score head is used
 
-        return ref_points, logits
+        return ref_points.sigmoid(), logits
 
     def generate_anchors(
         self, spatial_shapes: list[tuple[int, int]], grid_size=0.05, eps=0.01
     ) -> tuple[Tensor, Tensor]:
         anchors = []
         for i, (h, w) in enumerate(spatial_shapes):
-            xs = torch.arange(w)
-            ys = torch.arange(h)
-            grid_x, grid_y = torch.meshgrid(xs, ys)  # in the future, need to pass indexing="ij"
+            # in the future, need to pass indexing="ij" to torch.meshgrid()
+            grid_y, grid_x = torch.meshgrid(torch.arange(h), torch.arange(w))
             grid_xy = torch.stack([grid_x, grid_y], -1)
 
             valid_wh = torch.tensor([h, w])  # wrong order?

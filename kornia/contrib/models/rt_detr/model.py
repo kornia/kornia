@@ -76,7 +76,7 @@ class RTDETR(ModelBase[RTDETRConfig]):
         cxcy, wh = bboxes.chunk(2, -1)
         bboxes = concatenate([cxcy - wh * 0.5, cxcy + wh * 0.5], -1)
 
-        bboxes = bboxes * tensor([H, W, H, W], device=bboxes.device, dtype=bboxes.dtype).view(1, 1, 4)
+        bboxes = bboxes * tensor([W, H, W, H], device=bboxes.device, dtype=bboxes.dtype).view(1, 1, 4)
         scores = logits.softmax(-1)[:, :, :-1]
 
         scores, labels = scores.max(-1)
