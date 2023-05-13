@@ -5,6 +5,7 @@ from enum import Enum
 
 from kornia.contrib.models import DetectionResults
 from kornia.contrib.models.base import ModelBase
+from kornia.contrib.models.rt_detr.architecture.hgnetv2 import PPHGNetV2
 from kornia.contrib.models.rt_detr.architecture.hybrid_encoder import HybridEncoder
 from kornia.contrib.models.rt_detr.architecture.resnet_d import ResNetD
 from kornia.contrib.models.rt_detr.architecture.rtdetr_head import RTDETRHead
@@ -41,22 +42,22 @@ class RTDETR(ModelBase[RTDETRConfig]):
             model_type = getattr(RTDETRModelType, model_type)
 
         if model_type == RTDETRModelType.r50:
-            backbone = ResNetD([3, 4, 6, 3])
+            backbone = ResNetD.from_config(50)
             hidden_dim = 256
             ff_dim = 1024
 
         elif model_type == RTDETRModelType.r101:
-            backbone = ResNetD([3, 4, 23, 3])
+            backbone = ResNetD.from_config(101)
             hidden_dim = 384
             ff_dim = 2048
 
         elif model_type == RTDETRModelType.l:
-            raise NotImplementedError
+            backbone = PPHGNetV2.from_config("L")
             hidden_dim = 256
             ff_dim = 1024
 
         elif model_type == RTDETRModelType.x:
-            raise NotImplementedError
+            backbone = PPHGNetV2.from_config("X")
             hidden_dim = 384
             ff_dim = 2048
 
