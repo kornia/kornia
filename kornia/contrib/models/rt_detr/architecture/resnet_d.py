@@ -62,7 +62,7 @@ class ResNetD(Module):
         self.res4, in_channels = self.make_stage(in_channels, 256, 2, n_blocks[2])
         self.res5, in_channels = self.make_stage(in_channels, 512, 2, n_blocks[3])
 
-        self.out_channels = tuple(ch * BottleNeckD.expansion for ch in [128, 256, 512])
+        self.out_channels = [ch * BottleNeckD.expansion for ch in [128, 256, 512]]
 
     def make_stage(self, in_channels: int, out_channels: int, stride: int, n_blocks: int) -> tuple[Module, int]:
         layers = []

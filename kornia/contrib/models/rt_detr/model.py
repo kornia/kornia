@@ -26,7 +26,7 @@ class RTDETRConfig:
 
 
 class RTDETR(ModelBase[RTDETRConfig]):
-    def __init__(self, backbone: ResNetD, neck: HybridEncoder, head: RTDETRHead):
+    def __init__(self, backbone: ResNetD | PPHGNetV2, neck: HybridEncoder, head: RTDETRHead):
         super().__init__()
         self.backbone = backbone
         self.neck = neck

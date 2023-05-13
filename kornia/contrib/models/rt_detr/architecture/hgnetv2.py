@@ -92,7 +92,7 @@ class PPHGNetV2(Module):
         KORNIA_CHECK(len(stem_channels) == 3)
         KORNIA_CHECK(len(stage_configs) == 4)
         super().__init__()
-        self.out_channels = tuple(config.out_channels for config in stage_configs[-3:])
+        self.out_channels = [config.out_channels for config in stage_configs[-3:]]
         self.stem = StemBlock(*stem_channels)
         self.stages = nn.ModuleList()
         for cfg in stage_configs:
