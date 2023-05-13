@@ -6,46 +6,43 @@ on:
       python-version:
         description: "The python version desired."
         required: true
-        default: '3.7'
+        default: '3.10'
         type: string
 
       pytorch-version:
         description: "The pytorch version desired."
         required: true
-        default: '1.9.1'
+        default: '2.0.1'
         type: string
 
 runs:
   using: "composite"
   steps:
-    - name: Setup environment (conda)
-      uses: conda-incubator/setup-miniconda@v2
+    - name: Setup environment
+      uses: actions/setup-python@v4
       with:
-        auto-update-conda: true
         python-version: ${{ inputs.python-version }}
-
-    - name: Install curl via conda
-      shell: bash -l {0}
-      run: conda install curl -c conda-forge
+        cache: 'pip'
+        cache-dependency-path: |
+          **/pyproject.toml
+          **/requirements*.txt
 
     - if: ${{ contains(fromJson('["nightly"]'), inputs.pytorch-version ) }}
-      name: Install dependencies
-      shell: bash -l {0}
-      run: |
-            pip install numpy --pre torch[dynamo] --force-reinstall --extra-index-url https://download.pytorch.org/whl/nightly/cpu/
-            pip install onnx
+      name: Install PyTorch nightly
+      shell: bash
+      run: pip install numpy --pre torch[dynamo] --force-reinstall --extra-index-url https://download.pytorch.org/whl/nightly/cpu/
 
     - if: ${{ contains(fromJson('["nightly"]'), inputs.pytorch-version ) == false}}
       name: Install pytorch
-      shell: bash -l {0}
-      run: conda install pytorch=${{ inputs.pytorch-version }} cpuonly -c pytorch
+      shell: bash
+      run: pip install torch==${{ inputs.pytorch-version }}
 
     - name: Install Kornia dev
-      shell: bash -l {0}
+      shell: bash
       run: pip install .[dev,x]
 
-    - name: Environment
-      shell: bash -l {0}
+    - name: Check dependencies and kornia version
+      shell: bash
       run: |
-        curl -O https://raw.githubusercontent.com/pytorch/pytorch/main/torch/utils/collect_env.py
-        python collect_env.py
+        python -c "import torch;print('Pytorch version: ', torch.__version__)"
+        python -c "import kornia;print('Kornia version: ', kornia.__version__)"
