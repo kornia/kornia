@@ -42,19 +42,29 @@ class RTDETR(ModelBase[RTDETRConfig]):
 
         if model_type == RTDETRModelType.r50:
             backbone = ResNetD([3, 4, 6, 3])
-            neck = HybridEncoder(backbone.out_channels, 256, 1024)
-            head = RTDETRHead(80, 256, 300, [256, 256, 256], 4, 8, 6)
+            hidden_dim = 256
+            ff_dim = 1024
 
         elif model_type == RTDETRModelType.r101:
             backbone = ResNetD([3, 4, 23, 3])
-            neck = HybridEncoder(backbone.out_channels, 384, 2048)
-            head = RTDETRHead(80, 256, 300, [384, 384, 384], 4, 8, 6)
+            hidden_dim = 384
+            ff_dim = 2048
 
         elif model_type == RTDETRModelType.l:
             raise NotImplementedError
+            hidden_dim = 256
+            ff_dim = 1024
 
         elif model_type == RTDETRModelType.x:
             raise NotImplementedError
+            hidden_dim = 384
+            ff_dim = 2048
+
+        else:
+            raise ValueError
+
+        neck = HybridEncoder(backbone.out_channels, hidden_dim, ff_dim)
+        head = RTDETRHead(80, 256, 300, [hidden_dim] * 3, 4, 8, 6)
 
         model = RTDETR(backbone, neck, head)
 
