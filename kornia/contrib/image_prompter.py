@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from typing import Any
 
 import torch
@@ -59,6 +60,10 @@ class ImagePrompter:
         dtype: torch.dtype | None = None,
     ) -> None:
         super().__init__()
+        warnings.warn(
+            "ImagePrompter is deprecated in favour of VisualPrompter and will be removed after v0.6.12.",
+            category=DeprecationWarning,
+        )
         if isinstance(config, SamConfig):
             self.model = Sam.from_config(config)
             transforms = (LongestMaxSize(self.model.image_encoder.img_size, p=1.0),)

@@ -19,7 +19,7 @@ class ImageClassifierTrainer(Trainer):
 
     .. seealso::
         Learn how to use this class in the following
-        `example <https://github.com/kornia/kornia/blob/master/examples/train/image_classifier/>`__.
+        `example <https://github.com/kornia/tutorials/tree/master/scripts/training/image_classifier/>`__.
     """
 
     def compute_metrics(self, *args: Tensor) -> Dict[str, float]:
@@ -38,7 +38,7 @@ class SemanticSegmentationTrainer(Trainer):
 
     .. seealso::
         Learn how to use this class in the following
-        `example <https://github.com/kornia/kornia/blob/master/examples/train/semantic_segmentation/>`__.
+        `example <https://github.com/kornia/tutorials/tree/master/scripts/training/semantic_segmentation/>`__.
     """
 
     def compute_metrics(self, *args: Tensor) -> Dict[str, float]:
@@ -57,7 +57,7 @@ class ObjectDetectionTrainer(Trainer):
 
     .. seealso::
         Learn how to use this class in the following
-        `example <https://github.com/kornia/kornia/blob/master/examples/train/object_detection/>`__.
+        `example <https://github.com/kornia/tutorials/tree/master/scripts/training/object_detection/>`__.
     """
 
     def __init__(
