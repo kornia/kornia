@@ -9,6 +9,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.core import Module, Tensor, concatenate
+from kornia.utils import create_meshgrid
 
 from .common import MLP, ConvNormAct
 
@@ -98,10 +99,10 @@ class RTDETRTransformerDecoderLayer(Module):
         out = self.cross_attn(tgt + query_pos_embed, ref_points, memory, memory_spatial_shapes)
         tgt = self.norm2(tgt + self.dropout2(out))
 
-        return self.norm3(tgt + self.ffn(tgt))
+        return self.norm3(tgt + self.dropout4(self.ffn(tgt)))
 
     def ffn(self, x: Tensor) -> Tensor:
-        return self.dropout4(self.linear2(self.dropout3(self.act(self.linear1(x)))))
+        return self.linear2(self.dropout3(self.act(self.linear1(x))))
 
 
 class RTDETRHead(Module):
@@ -148,7 +149,8 @@ class RTDETRHead(Module):
         feats = [fmap.flatten(2).permute(0, 2, 1) for fmap in fmaps]  # (N, C, H, W) -> (N, H*W, C)
         memory = concatenate(feats, 1)  # rename to match original impl
 
-        anchors, valid_mask = self.generate_anchors(spatial_shapes)
+        # TODO: cache anchors and valid_mask as buffers
+        anchors, valid_mask = self.generate_anchors(spatial_shapes, device=memory.device, dtype=memory.dtype)
         out_memory = torch.where(valid_mask, memory, 0)
         out_memory = self.enc_output(out_memory)
 
@@ -173,22 +175,23 @@ class RTDETRHead(Module):
 
         return ref_points.sigmoid(), logits
 
+    @staticmethod
     def generate_anchors(
-        self, spatial_shapes: list[tuple[int, int]], grid_size=0.05, eps=0.01
+        spatial_shapes: list[tuple[int, int]],
+        grid_size: float = 0.05,
+        eps: float = 0.01,
+        device: torch.device | None = None,
+        dtype: torch.dtype = torch.float32,
     ) -> tuple[Tensor, Tensor]:
         anchors = []
         for i, (h, w) in enumerate(spatial_shapes):
-            # in the future, need to pass indexing="ij" to torch.meshgrid()
-            grid_y, grid_x = torch.meshgrid(torch.arange(h), torch.arange(w))
-            grid_xy = torch.stack([grid_x, grid_y], -1)
-
-            valid_wh = torch.tensor([h, w])  # wrong order?
-            grid_xy = grid_xy.unsqueeze(0).add(0.5).div(valid_wh)
+            grid_xy = create_meshgrid(h, w, normalized_coordinates=False, device=device, dtype=dtype)
+            grid_xy = (grid_xy + 0.5) / torch.tensor([h, w], device=device, dtype=dtype)
             wh = torch.ones_like(grid_xy) * grid_size * 2**i
             anchors.append(concatenate([grid_xy, wh], -1).reshape(-1, h * w, 4))
 
         anchors = concatenate(anchors, 1)
         valid_mask = ((anchors > eps) & (anchors < 1 - eps)).all(-1, keepdim=True)
         anchors = anchors.div(1 - anchors).log()
-        anchors = torch.where(valid_mask, anchors, torch.inf)
+        anchors = torch.where(valid_mask, anchors, float("inf"))
         return anchors, valid_mask

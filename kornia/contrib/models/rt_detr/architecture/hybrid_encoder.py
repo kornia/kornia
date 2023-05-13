@@ -55,23 +55,30 @@ class AIFI(Module):
         # using post-norm
         N, C, H, W = x.shape
         x = x.permute(2, 3, 0, 1).flatten(0, 1)  # (N, C, H, W) -> (H * W, N, C)
-        q = k = x + self.build_2d_sincos_pos_emb(H, W, C)
+        q = k = x + self.build_2d_sincos_pos_emb(H, W, C, device=x.device, dtype=x.dtype)
         x = self.norm1(x + self.dropout1(self.self_attn(q, k, x)[0]))
-        x = self.norm2(x + self.ffn(x))
+        x = self.norm2(x + self.dropout2(self.ffn(x)))
         x = x.view(H, W, N, C).permute(2, 3, 0, 1)  # (H * W, N, C) -> (N, C, H, W)
         return x
 
     def ffn(self, x: Tensor) -> Tensor:
-        return self.dropout2(self.linear2(self.dropout(self.act(self.linear1(x)))))
+        return self.linear2(self.dropout(self.act(self.linear1(x))))
 
     @staticmethod
-    def build_2d_sincos_pos_emb(w: int, h: int, embed_dim: int, temp: float = 10_000.0) -> Tensor:
-        xs = torch.arange(w)
-        ys = torch.arange(h)
+    def build_2d_sincos_pos_emb(
+        w: int,
+        h: int,
+        embed_dim: int,
+        temp: float = 10_000.0,
+        device: torch.device | None = None,
+        dtype: torch.dtype = torch.float32,
+    ) -> Tensor:
+        xs = torch.arange(w, device=device, dtype=dtype)
+        ys = torch.arange(h, device=device, dtype=dtype)
         grid_x, grid_y = torch.meshgrid(xs, ys)
 
         pos_dim = embed_dim // 4
-        omega = torch.arange(pos_dim) / pos_dim
+        omega = torch.arange(pos_dim, device=device, dtype=dtype) / pos_dim
         omega = 1.0 / (temp**omega)
 
         out_x = grid_x.reshape(-1, 1) * omega.view(1, -1)
