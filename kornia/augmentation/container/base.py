@@ -277,7 +277,7 @@ class ImageSequentialBase(SequentialBase):
 
 
 class TransformMatrixMinIn:
-    """Enables computation matrix compuatation."""
+    """Enables computation matrix computation."""
 
     _valid_ops_for_transform_computation = ()
     _transformation_matrix_arg: str = "silence"
