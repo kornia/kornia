@@ -35,7 +35,7 @@ runs:
     - if: ${{ contains(fromJson('["nightly"]'), inputs.pytorch-version ) == false}}
       name: Install pytorch
       shell: bash
-      run: pip install torch==${{ inputs.pytorch-version }}
+      run: pip install torch==${{ inputs.pytorch-version }} --index-url https://download.pytorch.org/whl/cpu
 
     - name: Install Kornia dev
       shell: bash
