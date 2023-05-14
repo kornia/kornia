@@ -64,6 +64,7 @@ class AIFI(Module):
     def ffn(self, x: Tensor) -> Tensor:
         return self.linear2(self.dropout(self.act(self.linear1(x))))
 
+    # TODO: make this into a reusable function
     @staticmethod
     def build_2d_sincos_pos_emb(
         w: int,

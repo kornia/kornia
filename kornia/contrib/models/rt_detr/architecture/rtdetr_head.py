@@ -185,6 +185,7 @@ class RTDETRHead(Module):
         device: torch.device | None = None,
         dtype: torch.dtype = torch.float32,
     ) -> tuple[Tensor, Tensor]:
+        # TODO: might make this into a separate reusable function
         anchors = []
         for i, (h, w) in enumerate(spatial_shapes):
             grid_xy = create_meshgrid(h, w, normalized_coordinates=False, device=device, dtype=dtype)

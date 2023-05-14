@@ -11,18 +11,14 @@ from kornia.contrib.models.rt_detr.architecture.hgnetv2 import PPHGNetV2
 from kornia.contrib.models.rt_detr.architecture.hybrid_encoder import HybridEncoder
 from kornia.contrib.models.rt_detr.architecture.resnet_d import ResNetD
 from kornia.contrib.models.rt_detr.architecture.rtdetr_head import RTDETRHead
-from kornia.core import Tensor, tensor
+from kornia.core import Tensor, concatenate, tensor
 
 
 class RTDETRModelType(Enum):
-    r50 = 0
-    r101 = 1
-    l = 2  # noqa: E741
-    x = 3
-
-    @staticmethod
-    def get(model_type: str):
-        pass
+    resnet50 = 0
+    resnet101 = 1
+    hgnetv2_l = 2
+    hgnetv2_x = 3
 
 
 @dataclass
@@ -37,18 +33,18 @@ class RTDETRConfig:
             - L (HGNetV2)
             - X (HGNetV2)
 
-        checkpoint: URL or local path of model weights
         num_classes: number of classes
-        neck_hidden_dim: hidden dim for neck. Default value depends on model type
-        neck_dim_feedforward: feed-forward network dim for neck. Default value depends on model type
+        checkpoint: URL or local path of model weights
+        neck_hidden_dim: hidden dim for neck
+        neck_dim_feedforward: feed-forward network dim for neck
         head_hidden_dim: hidden dim for head. Default: 256
         head_num_queries: number of queries for DETR transformer decoder. Default: 300
     """
 
-    model_type: str | int | RTDETRModelType | None = None
+    model_type: RTDETRModelType | str | int
+    num_classes: int
     checkpoint: str | None = None
 
-    num_classes: int
     neck_hidden_dim: int | None = None
     neck_dim_feedforward: int | None = None
     head_hidden_dim: int = 256
@@ -79,34 +75,30 @@ class RTDETR(ModelBase[RTDETRConfig]):
             config: configuration object for RT-DETR. Only ResNet-50, ResNet-101, L, and X are supported
         """
         model_type = config.model_type
-
         if isinstance(model_type, int):
             model_type = RTDETRModelType(model_type)
         elif isinstance(model_type, str):
             model_type = getattr(RTDETRModelType, model_type)
 
-        if model_type == RTDETRModelType.r50:
+        if model_type == RTDETRModelType.resnet50:
             backbone = ResNetD.from_config(50)
             config.neck_hidden_dim = config.neck_hidden_dim or 256
             config.neck_dim_feedforward = config.neck_dim_feedforward or 1024
 
-        elif model_type == RTDETRModelType.r101:
+        elif model_type == RTDETRModelType.resnet101:
             backbone = ResNetD.from_config(101)
             config.neck_hidden_dim = config.neck_hidden_dim or 384
             config.neck_dim_feedforward = config.neck_dim_feedforward or 2048
 
-        elif model_type == RTDETRModelType.l:
+        elif model_type == RTDETRModelType.hgnetv2_l:
             backbone = PPHGNetV2.from_config("L")
             config.neck_hidden_dim = config.neck_hidden_dim or 256
             config.neck_dim_feedforward = config.neck_dim_feedforward or 1024
 
-        elif model_type == RTDETRModelType.x:
+        elif model_type == RTDETRModelType.hgnetv2_x:
             backbone = PPHGNetV2.from_config("X")
             config.neck_hidden_dim = config.neck_hidden_dim or 384
             config.neck_dim_feedforward = config.neck_dim_feedforward or 2038
-
-        else:
-            raise ValueError
 
         neck = HybridEncoder(backbone.out_channels, config.neck_hidden_dim, config.neck_dim_feedforward)
         head = RTDETRHead(
@@ -127,7 +119,10 @@ class RTDETR(ModelBase[RTDETRConfig]):
 
         # https://github.com/PaddlePaddle/PaddleDetection/blob/5d1f888362241790000950e2b63115dc8d1c6019/ppdet/modeling/post_process.py#L446
         # box format is cxcywh
-        bboxes[..., :2] -= bboxes[..., 2:] * 0.5  # cxcywh -> xywh
+        # convert to xywh
+        # bboxes[..., :2] -= bboxes[..., 2:] * 0.5  # in-place operation is not torch.compile()-friendly
+        cxcy, wh = bboxes.chunk(2, -1)
+        bboxes = concatenate([cxcy - wh * 0.5, wh], -1)
 
         bboxes = bboxes * tensor([W, H, W, H], device=bboxes.device, dtype=bboxes.dtype).view(1, 1, 4)
         scores = logits.softmax(-1)[:, :, :-1]  # why the last class is removed?
