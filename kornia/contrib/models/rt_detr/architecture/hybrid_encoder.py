@@ -8,9 +8,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from kornia.contrib.models.common import ConvNormAct
 from kornia.core import Module, Tensor, concatenate
-
-from .common import ConvNormAct
 
 
 # NOTE: conv2 can be fused into conv1

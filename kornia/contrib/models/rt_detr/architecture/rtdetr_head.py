@@ -8,10 +8,9 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from kornia.contrib.models.common import MLP, ConvNormAct
 from kornia.core import Module, Tensor, concatenate
 from kornia.utils import create_meshgrid
-
-from .common import MLP, ConvNormAct
 
 
 class DeformableAttention(Module):
@@ -152,6 +151,7 @@ class RTDETRHead(Module):
         # TODO: cache anchors and valid_mask as buffers
         anchors, valid_mask = self.generate_anchors(spatial_shapes, device=memory.device, dtype=memory.dtype)
 
+        # NOTE: why not use the mask to gather the values here, instead of filling zeros with torch.where()?
         zero = torch.zeros([], device=memory.device, dtype=memory.dtype)
         out_memory = torch.where(valid_mask, memory, zero)
         out_memory = self.enc_output(out_memory)

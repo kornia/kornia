@@ -7,10 +7,9 @@ from __future__ import annotations
 
 from torch import nn
 
+from kornia.contrib.models.common import ConvNormAct
 from kornia.core import Module, Tensor
 from kornia.core.check import KORNIA_CHECK
-
-from .common import ConvNormAct
 
 
 class BottleNeckD(Module):

@@ -11,11 +11,12 @@ class ConvNormAct(nn.Sequential):
         self, in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, act: str = "relu", groups: int = 1
     ):
         super().__init__()
-        if kernel_size % 2 == 0:  # even kernel_size -> asymmetric padding
-            # NOTE: check paddlepaddle's SAME padding
+        if kernel_size % 2 == 0:
+            # even kernel_size -> asymmetric padding
+            # PPHGNetV2 (for RT-DETR) uses kernel 2
             # NOTE: this does not account for stride=2
-            p2 = (kernel_size - 1) // 2
-            p1 = kernel_size - 1 - p2
+            p1 = (kernel_size - 1) // 2
+            p2 = kernel_size - 1 - p1
             self.pad = nn.ZeroPad2d((p1, p2, p1, p2))
             padding = 0
         else:
@@ -25,17 +26,21 @@ class ConvNormAct(nn.Sequential):
         self.act = dict(relu=nn.ReLU, silu=nn.SiLU, none=nn.Identity)[act](inplace=True)
 
 
-# NOTE: can be merged with sam.architecture.mask_decoder.MLP
+# Lightly adapted from
+# https://github.com/facebookresearch/MaskFormer/blob/main/mask_former/modeling/transformer/transformer_predictor.py
 class MLP(Module):
-    def __init__(self, input_dim: int, hidden_dim: int, output_dim: int, num_layers: int):
+    def __init__(
+        self, input_dim: int, hidden_dim: int, output_dim: int, num_layers: int, sigmoid_output: bool = False
+    ) -> None:
         super().__init__()
-        self.layers = nn.ModuleList()
-        for _ in range(num_layers - 1):
-            self.layers.append(nn.Linear(input_dim, hidden_dim))
-            input_dim = hidden_dim
-        self.layers.append(nn.Linear(input_dim, output_dim))
+        self.num_layers = num_layers
+        h = [hidden_dim] * (num_layers - 1)
+        self.layers = nn.ModuleList(nn.Linear(n, k) for n, k in zip([input_dim] + h, h + [output_dim]))
+        self.sigmoid_output = sigmoid_output
 
     def forward(self, x: Tensor) -> Tensor:
         for i, layer in enumerate(self.layers):
-            x = F.relu(layer(x), True) if i < len(self.layers) - 1 else layer(x)
+            x = F.relu(layer(x)) if i < self.num_layers - 1 else layer(x)
+        if self.sigmoid_output:
+            x = F.sigmoid(x)
         return x
