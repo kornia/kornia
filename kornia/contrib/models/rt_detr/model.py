@@ -123,7 +123,8 @@ class RTDETR(ModelBase[RTDETRConfig]):
         # box format is cxcywh
         # convert to xywh
         # bboxes[..., :2] -= bboxes[..., 2:] * 0.5  # in-place operation is not torch.compile()-friendly
-        cxcy, wh = bboxes.chunk(2, -1)
+        cxcy = bboxes[..., :2]
+        wh = bboxes[..., 2:]
         bboxes = concatenate([cxcy - wh * 0.5, wh], -1)
 
         bboxes = bboxes * tensor([W, H, W, H], device=bboxes.device, dtype=bboxes.dtype).view(1, 1, 4)

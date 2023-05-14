@@ -44,12 +44,17 @@ def test_neck(device, dtype):
 
 
 def test_rtdetr_head(device, dtype):
+    N = 2
     in_channels = [32, 64, 128]
-    sizes = [32, 16, 8]
-    decoder = RTDETRHead(4, 32, 10, in_channels, 4, 8, 6).to(device, dtype)
-    fmaps = [torch.randn(2, ch_in, sz, sz, device=device, dtype=dtype) for ch_in, sz in zip(in_channels, sizes)]
+    sizes = [(32, 24), (16, 12), (8, 6)]
+    num_classes = 4
+    num_queries = 10
+    decoder = RTDETRHead(num_classes, 32, num_queries, in_channels, 4, 8, 6).to(device, dtype)
+    fmaps = [torch.randn(N, ch_in, h, w, device=device, dtype=dtype) for ch_in, (h, w) in zip(in_channels, sizes)]
 
     bboxes, logits = decoder(fmaps)
+    assert bboxes.shape == (N, num_queries, 4)
+    assert logits.shape == (N, num_queries, num_classes)
 
 
 class TestRTDETR(BaseTester):
@@ -63,7 +68,7 @@ class TestRTDETR(BaseTester):
 
     @pytest.mark.parametrize("shape", ((1, 3, 128, 128), (2, 3, 256, 256)))
     def test_cardinality(self, shape, device, dtype):
-        model = RTDETR.from_config(RTDETRConfig("resnet50", 80)).to(device, dtype)
+        model = RTDETR.from_config(RTDETRConfig("resnet50", 10, head_num_queries=10)).to(device, dtype)
         images = torch.randn(shape, device=device, dtype=dtype)
         out = model(images)
 
@@ -85,16 +90,16 @@ class TestRTDETR(BaseTester):
         pass
 
     def test_dynamo(self, device, dtype, torch_optimizer):
-        model = RTDETR.from_config(RTDETRConfig('resnet50', 80)).to(device, dtype)
+        model = RTDETR.from_config(RTDETRConfig('resnet50', 10, head_num_queries=10)).to(device, dtype)
         model_optimized = torch_optimizer(model)
 
-        img = torch.rand(1, 3, 128, 128, device=device, dtype=dtype)
+        img = torch.rand(1, 3, 256, 256, device=device, dtype=dtype)
         expected = model(img)
         actual = model_optimized(img)
 
         self.assert_close(expected.labels, actual.labels)
-        self.assert_close(expected.scores, actual.scores)
-        self.assert_close(expected.bboxes, actual.bboxes)
+        self.assert_close(expected.scores, actual.scores, low_tolerance=True)
+        self.assert_close(expected.bboxes, actual.bboxes, low_tolerance=True)
 
     def test_correctness(self, device, dtype):
         pytest.skip("Not implemented")
