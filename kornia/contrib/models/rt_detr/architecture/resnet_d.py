@@ -27,6 +27,7 @@ class BottleNeckD(Module):
             ConvNormAct(width, expanded_out_channels, 1, act="none"),
         )
 
+        self.shortcut: nn.Module
         if stride == 2:
             self.shortcut = nn.Sequential(
                 nn.AvgPool2d(2, 2), ConvNormAct(in_channels, expanded_out_channels, 1, act="none")
@@ -79,7 +80,7 @@ class ResNetD(Module):
         return [res3, res4, res5]
 
     @staticmethod
-    def from_config(variant: str | int):
+    def from_config(variant: str | int) -> ResNetD:
         arch_configs = {18: [2, 2, 2, 2], 34: [3, 4, 6, 3], 50: [3, 4, 6, 3], 101: [3, 4, 23, 3], 152: [3, 8, 36, 3]}
         variant = int(variant)
         KORNIA_CHECK(variant in arch_configs, "Only variant 18, 34, 50, 101, and 152 are supported")

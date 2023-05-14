@@ -143,7 +143,7 @@ class RTDETRHead(Module):
     def forward(self, fmaps: list[Tensor]) -> tuple[Tensor, Tensor]:
         N = fmaps[0].shape[0]
         fmaps = [proj(fmap) for proj, fmap in zip(self.input_proj, fmaps)]
-        spatial_shapes = [fmap.shape[2:] for fmap in fmaps]
+        spatial_shapes = [(fmap.shape[2], fmap.shape[3]) for fmap in fmaps]
 
         feats = [fmap.flatten(2).permute(0, 2, 1) for fmap in fmaps]  # (N, C, H, W) -> (N, H*W, C)
         memory = concatenate(feats, 1)  # rename to match original impl
@@ -186,14 +186,14 @@ class RTDETRHead(Module):
         dtype: torch.dtype = torch.float32,
     ) -> tuple[Tensor, Tensor]:
         # TODO: might make this into a separate reusable function
-        anchors = []
+        anchors_list = []
         for i, (h, w) in enumerate(spatial_shapes):
             grid_xy = create_meshgrid(h, w, normalized_coordinates=False, device=device, dtype=dtype)
             grid_xy = (grid_xy + 0.5) / torch.tensor([h, w], device=device, dtype=dtype)
             wh = torch.ones_like(grid_xy) * grid_size * 2**i
-            anchors.append(concatenate([grid_xy, wh], -1).reshape(-1, h * w, 4))
+            anchors_list.append(concatenate([grid_xy, wh], -1).reshape(-1, h * w, 4))
 
-        anchors = concatenate(anchors, 1)
+        anchors = concatenate(anchors_list, 1)
         valid_mask = ((anchors > eps) & (anchors < 1 - eps)).all(-1, keepdim=True)
         anchors = torch.log(anchors / (1 - anchors))
 

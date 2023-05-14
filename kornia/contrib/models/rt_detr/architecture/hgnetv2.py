@@ -96,7 +96,7 @@ class PPHGNetV2(Module):
         for cfg in stage_configs:
             self.stages.append(HGStage(cfg))
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> list[Tensor]:
         x = self.stem(x)
         s2 = self.stages[0](x)
         s3 = self.stages[1](s2)
@@ -105,9 +105,9 @@ class PPHGNetV2(Module):
         return [s3, s4, s5]
 
     @staticmethod
-    def from_config(variant: str):
-        arch_configs = dict(
-            L=dict(
+    def from_config(variant: str) -> PPHGNetV2:
+        if variant == "L":
+            return PPHGNetV2(
                 stem_channels=[3, 32, 48],
                 stage_configs=[
                     StageConfig(48, 48, 128, 1, False, False, 3, 6),
@@ -115,8 +115,9 @@ class PPHGNetV2(Module):
                     StageConfig(512, 192, 1024, 3, True, True, 5, 6),
                     StageConfig(1024, 384, 2048, 1, True, True, 5, 6),
                 ],
-            ),
-            X=dict(
+            )
+        elif variant == "X":
+            return PPHGNetV2(
                 stem_channels=[3, 32, 64],
                 stage_configs=[
                     StageConfig(64, 64, 128, 1, False, False, 3, 6),
@@ -124,7 +125,6 @@ class PPHGNetV2(Module):
                     StageConfig(512, 256, 1024, 5, True, True, 5, 6),
                     StageConfig(1024, 512, 2048, 2, True, True, 5, 6),
                 ],
-            ),
-        )
-        KORNIA_CHECK(variant in arch_configs, "Only variant L and X are supported")
-        return PPHGNetV2(**arch_configs[variant])
+            )
+        else:
+            raise ValueError("Only variant L and X are supported")

@@ -80,29 +80,31 @@ class RTDETR(ModelBase[RTDETRConfig]):
         elif isinstance(model_type, str):
             model_type = getattr(RTDETRModelType, model_type)
 
+        backbone: ResNetD | PPHGNetV2
+
         if model_type == RTDETRModelType.resnet50:
             backbone = ResNetD.from_config(50)
-            config.neck_hidden_dim = config.neck_hidden_dim or 256
-            config.neck_dim_feedforward = config.neck_dim_feedforward or 1024
+            neck_hidden_dim = config.neck_hidden_dim or 256
+            neck_dim_feedforward = config.neck_dim_feedforward or 1024
 
         elif model_type == RTDETRModelType.resnet101:
             backbone = ResNetD.from_config(101)
-            config.neck_hidden_dim = config.neck_hidden_dim or 384
-            config.neck_dim_feedforward = config.neck_dim_feedforward or 2048
+            neck_hidden_dim = config.neck_hidden_dim or 384
+            neck_dim_feedforward = config.neck_dim_feedforward or 2048
 
         elif model_type == RTDETRModelType.hgnetv2_l:
             backbone = PPHGNetV2.from_config("L")
-            config.neck_hidden_dim = config.neck_hidden_dim or 256
-            config.neck_dim_feedforward = config.neck_dim_feedforward or 1024
+            neck_hidden_dim = config.neck_hidden_dim or 256
+            neck_dim_feedforward = config.neck_dim_feedforward or 1024
 
         elif model_type == RTDETRModelType.hgnetv2_x:
             backbone = PPHGNetV2.from_config("X")
-            config.neck_hidden_dim = config.neck_hidden_dim or 384
-            config.neck_dim_feedforward = config.neck_dim_feedforward or 2038
+            neck_hidden_dim = config.neck_hidden_dim or 384
+            neck_dim_feedforward = config.neck_dim_feedforward or 2038
 
-        neck = HybridEncoder(backbone.out_channels, config.neck_hidden_dim, config.neck_dim_feedforward)
+        neck = HybridEncoder(backbone.out_channels, neck_hidden_dim, neck_dim_feedforward)
         head = RTDETRHead(
-            config.num_classes, config.head_hidden_dim, config.head_num_queries, [config.neck_hidden_dim] * 3, 4, 8, 6
+            config.num_classes, config.head_hidden_dim, config.head_num_queries, [neck_hidden_dim] * 3, 4, 8, 6
         )
 
         model = RTDETR(backbone, neck, head)
