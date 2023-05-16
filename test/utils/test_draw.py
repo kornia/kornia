@@ -5,7 +5,19 @@ import torch
 
 from kornia.testing import assert_close
 from kornia.utils import create_meshgrid, draw_convex_polygon, draw_rectangle
-from kornia.utils.draw import draw_line
+from kornia.utils.draw import draw_line, draw_pixel
+
+
+class TestDrawPixel:
+    """Test drawing individual pixels."""
+
+    def test_draw_pixel_rgb(self, dtype, device):
+        points = [(1, 3), (2, 4)]
+        color = torch.tensor([5, 10, 15])
+        img = torch.zeros(3, 8, 8, dtype=dtype, device=device)
+        draw_pixel(img, points, color)
+        for x, y in points:
+            assert_close(img[:, x, y], color.to(img.dtype))
 
 
 class TestDrawLine:
