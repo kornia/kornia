@@ -8,6 +8,15 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 # TODO: implement width of the line
 
 
+def draw_pixel(image: torch.Tensor, points: torch.tensor, color: torch.Tensor):
+    r"""Sets a coordinates in a Tensor to a color."""
+    # Channels is col 0.
+    x, y = zip(*points)
+    color = torch.unsqueeze(color, dim=1)
+    image[:, x, y] = color.to(image.dtype)
+    return image
+
+
 def _draw_pixel(image: torch.Tensor, x: int, y: int, color: torch.Tensor) -> None:
     r"""Draws a pixel into an image.
 
