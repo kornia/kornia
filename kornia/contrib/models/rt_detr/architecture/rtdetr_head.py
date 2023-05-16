@@ -130,22 +130,19 @@ class RTDETRHead(Module):
         for ch_in in in_channels:
             self.input_proj.append(ConvNormAct(ch_in, hidden_dim, 1, act="none"))
 
-        self.decoder_layers = nn.ModuleList()
-        for _ in range(num_decoder_layers):
-            layer = RTDETRTransformerDecoderLayer(hidden_dim, num_heads, len(in_channels), num_decoder_points)
-            self.decoder_layers.append(layer)
-
-        self.denoising_class_embed = nn.Embedding(num_classes, hidden_dim)  # not used in evaluation
-
-        self.query_pos_head = MLP(4, hidden_dim * 2, hidden_dim, 2)
-
         self.enc_output = nn.Sequential(nn.Linear(hidden_dim, hidden_dim), nn.LayerNorm(hidden_dim))
         self.enc_score_head = nn.Linear(hidden_dim, num_classes)
         self.enc_bbox_head = MLP(hidden_dim, hidden_dim, 4, 3)
 
+        self.denoising_class_embed = nn.Embedding(num_classes, hidden_dim)  # not used in evaluation
+        self.query_pos_head = MLP(4, hidden_dim * 2, hidden_dim, 2)
+
+        self.decoder_layers = nn.ModuleList()
         self.dec_score_head = nn.ModuleList()
         self.dec_bbox_head = nn.ModuleList()
         for _ in range(num_decoder_layers):
+            layer = RTDETRTransformerDecoderLayer(hidden_dim, num_heads, len(in_channels), num_decoder_points)
+            self.decoder_layers.append(layer)
             self.dec_score_head.append(nn.Linear(hidden_dim, num_classes))
             self.dec_bbox_head.append(MLP(hidden_dim, hidden_dim, 4, 3))
 

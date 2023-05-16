@@ -51,13 +51,15 @@ class AIFI(Module):
         self.norm2 = nn.LayerNorm(embed_dim)
 
     def forward(self, x: Tensor) -> Tensor:
-        # NOTE: cache build_2d_sincos_pos_emb to buffer, if input size is known?
         # using post-norm
         N, C, H, W = x.shape
         x = x.permute(2, 3, 0, 1).flatten(0, 1)  # (N, C, H, W) -> (H * W, N, C)
+
+        # NOTE: cache build_2d_sincos_pos_emb to buffer, if input size is known?
         q = k = x + self.build_2d_sincos_pos_emb(H, W, C, device=x.device, dtype=x.dtype)
         x = self.norm1(x + self.dropout1(self.self_attn(q, k, x, need_weights=False)[0]))
         x = self.norm2(x + self.dropout2(self.ffn(x)))
+
         x = x.view(H, W, N, C).permute(2, 3, 0, 1)  # (H * W, N, C) -> (N, C, H, W)
         return x
 
@@ -132,13 +134,7 @@ class CCFM(Module):
 class HybridEncoder(Module):
     def __init__(self, in_channels: list[int], hidden_dim: int, dim_feedforward: int):
         super().__init__()
-        self.input_proj = nn.ModuleList(
-            [
-                nn.Sequential(nn.Conv2d(in_ch, hidden_dim, 1, bias=False), nn.BatchNorm2d(hidden_dim))
-                for in_ch in in_channels
-            ]
-        )
-
+        self.input_proj = nn.ModuleList([ConvNormAct(in_ch, hidden_dim, 1, act="none") for in_ch in in_channels])
         self.aifi = AIFI(hidden_dim, 8, dim_feedforward)
         self.ccfm = CCFM(len(in_channels), hidden_dim)
 
