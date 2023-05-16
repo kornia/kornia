@@ -56,7 +56,7 @@ class AIFI(Module):
         N, C, H, W = x.shape
         x = x.permute(2, 3, 0, 1).flatten(0, 1)  # (N, C, H, W) -> (H * W, N, C)
         q = k = x + self.build_2d_sincos_pos_emb(H, W, C, device=x.device, dtype=x.dtype)
-        x = self.norm1(x + self.dropout1(self.self_attn(q, k, x)[0]))
+        x = self.norm1(x + self.dropout1(self.self_attn(q, k, x, need_weights=False)[0]))
         x = self.norm2(x + self.dropout2(self.ffn(x)))
         x = x.view(H, W, N, C).permute(2, 3, 0, 1)  # (H * W, N, C) -> (N, C, H, W)
         return x
