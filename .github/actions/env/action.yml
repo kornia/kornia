@@ -22,10 +22,6 @@ runs:
       uses: actions/setup-python@v4
       with:
         python-version: ${{ inputs.python-version }}
-        cache: 'pip'
-        cache-dependency-path: |
-          **/pyproject.toml
-          **/requirements*.txt
 
     - if: ${{ contains(fromJson('["nightly"]'), inputs.pytorch-version ) }}
       name: Install PyTorch nightly
