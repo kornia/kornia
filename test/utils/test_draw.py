@@ -27,6 +27,14 @@ class TestDrawPixel:
         for x, y in points:
             assert_close(img[:, x, y], color.to(img.dtype))
 
+    def test_pixel_grayscale_second_order(self, dtype, device):
+        points = [(1, 3), (2, 4)]
+        color = torch.tensor([100])
+        img = torch.zeros(8, 8, dtype=dtype, device=device)
+        draw_pixel(img, points, color)
+        for x, y in points:
+            assert_close(torch.unsqueeze(img[x, y], dim=0), color.to(img.dtype))
+
 
 class TestDrawLine:
     def test_draw_line_vertical(self, dtype, device):
