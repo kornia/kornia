@@ -128,7 +128,9 @@ class RTDETR(ModelBase[RTDETRConfig]):
         bboxes = concatenate([cxcy - wh * 0.5, wh], -1)
 
         bboxes = bboxes * tensor([W, H, W, H], device=bboxes.device, dtype=bboxes.dtype).view(1, 1, 4)
-        scores = logits.softmax(-1)[:, :, :-1]  # why the last class is removed?
+        scores = logits.sigmoid()
 
+        # the original code is slightly different
+        # it allows 1 bounding box to have multiple classes (multi-label)
         scores, labels = scores.max(-1)
         return DetectionResults(labels, scores, bboxes)

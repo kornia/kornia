@@ -37,34 +37,38 @@ class DeformableAttention(Module):
             value_spatial_shapes: [(H0, W0), (H1, W1), ...]
         """
         N, Lq, C = query.shape
-        Lv = value.shape[1]
-
-        value = self.value_proj(value).view(N, Lv, self.num_heads, -1)
-
         sampling_offsets = self.sampling_offsets(query).view(N, Lq, self.num_heads, self.num_levels, self.num_points, 2)
         attention_weights = self.attention_weights(query).view(N, Lq, self.num_heads, self.num_levels * self.num_points)
         attention_weights = attention_weights.softmax(-1).view(N, Lq, self.num_heads, self.num_levels, self.num_points)
 
         # (N, Lq, num_heads, num_levels, num_points, 2)
-        ref_points_xy, ref_points_wh = ref_points.view(N, Lq, 1, -1, 1, 4).chunk(2, -1)
-        sampling_locations = ref_points_xy + sampling_offsets / self.num_points * ref_points_wh * 0.5
+        ref_points_cxcy = ref_points[:, :, None, :, None, :2]
+        ref_points_wh = ref_points[:, :, None, :, None, 2:]
+        sampling_locations = ref_points_cxcy + sampling_offsets / self.num_points * ref_points_wh * 0.5
 
         # https://github.com/PaddlePaddle/PaddleDetection/blob/release/2.6/ppdet/modeling/transformers/utils.py#L71
-        split_size = [h * w for h, w in value_spatial_shapes]
-        value_list = value.split(split_size, 1)
+        split_size = [H * W for H, W in value_spatial_shapes]
+        value_list = self.value_proj(value).split(split_size, 1)
         sampling_grids = 2 * sampling_locations - 1
 
+        # NOTE: this can be sped up with torch.vmap() ?
         sampling_value_list = []
         for level, (H, W) in enumerate(value_spatial_shapes):
-            # (N, H*W, C) -> (N * num_heads, head_dim, H, W)
-            value_l_ = value_list[level].flatten(2).permute(0, 2, 1).reshape(N * self.num_heads, -1, H, W)
+            # (N * num_heads, head_dim, H, W)
+            value_l_ = value_list[level].permute(0, 2, 1).reshape(N * self.num_heads, -1, H, W)
+            # (N * num_heads, Lq, num_points, 2)
             sampling_grid_l_ = sampling_grids[:, :, :, level].permute(0, 2, 1, 3, 4).flatten(0, 1)
+            # (N * num_heads, head_dim, Lq, num_points)
             sampling_value_list.append(F.grid_sample(value_l_, sampling_grid_l_, "bilinear", "zeros", False))
 
+        # (N * num_heads, head_dim, Lq, num_levels * num_points)
+        sampling_value = concatenate(sampling_value_list, -1)
+
+        # NOTE: probably can be simplified and sped up with einsum
         attention_weights = attention_weights.permute(0, 2, 1, 3, 4)
         attention_weights = attention_weights.reshape(N * self.num_heads, 1, Lq, self.num_levels * self.num_points)
-        out = (torch.stack(sampling_value_list, -2).flatten(-2) * attention_weights).sum(-1)
-        out = out.view(N, C, Lq).permute(0, 2, 1)
+        out = (sampling_value * attention_weights).sum(-1)
+        out = out.reshape(N, C, Lq).permute(0, 2, 1)
         return self.output_proj(out)
 
 
@@ -89,10 +93,15 @@ class RTDETRTransformerDecoderLayer(Module):
         self.norm3 = nn.LayerNorm(embed_dim)
 
     def forward(
-        self, tgt: Tensor, ref_points: Tensor, memory: Tensor, memory_spatial_shapes: Tensor, query_pos_embed: Tensor
+        self,
+        tgt: Tensor,
+        ref_points: Tensor,
+        memory: Tensor,
+        memory_spatial_shapes: list[tuple[int, int]],
+        query_pos_embed: Tensor,
     ) -> Tensor:
         q = k = tgt + query_pos_embed
-        out = self.self_attn(q, k, tgt)[0]
+        out, _ = self.self_attn(q, k, tgt, need_weights=False)
         tgt = self.norm1(tgt + self.dropout1(out))
 
         out = self.cross_attn(tgt + query_pos_embed, ref_points, memory, memory_spatial_shapes)
@@ -163,7 +172,7 @@ class RTDETRHead(Module):
         _, topk_indices = enc_out_logits.max(-1)[0].topk(self.num_queries, 1)  # (N, num_queries)
 
         # alternative
-        # topk_bboxes = output_bboxes.gather(1, topk_indices.unsqueeze(-1).expand(-1, -1, 4))
+        # ref_points = enc_out_bboxes.gather(1, topk_indices.unsqueeze(-1).expand(-1, -1, 4))
         batch_indices = torch.arange(N, dtype=topk_indices.dtype, device=topk_indices.device).unsqueeze(1)
         ref_points = enc_out_bboxes[batch_indices, topk_indices]
         tgt = out_memory[batch_indices, topk_indices]
@@ -172,7 +181,7 @@ class RTDETRHead(Module):
             ref_points_sigmoid = ref_points.sigmoid()
             query_pos_embed = self.query_pos_head(ref_points_sigmoid)
             tgt = decoder_layer(tgt, ref_points_sigmoid.unsqueeze(2), memory, spatial_shapes, query_pos_embed)
-            ref_points = bbox_head(tgt) + ref_points
+            ref_points = ref_points + bbox_head(tgt)
         logits = self.dec_score_head[-1](tgt)  # in evaluation, only last score head is used
 
         return ref_points.sigmoid(), logits
