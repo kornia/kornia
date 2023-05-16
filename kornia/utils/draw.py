@@ -13,7 +13,10 @@ def draw_pixel(image: torch.Tensor, points: torch.tensor, color: torch.Tensor):
     # Channels is col 0.
     x, y = zip(*points)
     color = torch.unsqueeze(color, dim=1)
-    image[:, x, y] = color.to(image.dtype)
+    if len(image.shape) == 2:
+        image[x, y] = color.to(image.dtype)
+    else:
+        image[:, x, y] = color.to(image.dtype)
     return image
 
 
