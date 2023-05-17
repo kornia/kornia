@@ -57,8 +57,8 @@ class HGBlock(Module):
         layer_cls = LightConvNormAct if cfg.light_block else ConvNormAct
         self.layers = nn.ModuleList()
         for i in range(cfg.layer_num):
-            in_c = in_channels if i == 0 else cfg.mid_channels
-            self.layers.append(layer_cls(in_c, cfg.mid_channels, cfg.kernel_size))
+            ch_in = in_channels if i == 0 else cfg.mid_channels
+            self.layers.append(layer_cls(ch_in, cfg.mid_channels, cfg.kernel_size))
 
         total_channels = in_channels + cfg.mid_channels * cfg.layer_num
         self.aggregation_squeeze_conv = ConvNormAct(total_channels, cfg.out_channels // 2, 1)
@@ -77,11 +77,12 @@ class HGBlock(Module):
 class HGStage(nn.Sequential):
     def __init__(self, cfg: StageConfig):
         super().__init__()
-        self.downsample = ConvNormAct(cfg.in_channels, cfg.in_channels, 3, 2, "none") if cfg.downsample else None
+        ch_in = cfg.in_channels
+        self.downsample = ConvNormAct(ch_in, ch_in, 3, 2, "none", ch_in) if cfg.downsample else None
         blocks = []
         for i in range(cfg.num_blocks):
-            in_c = cfg.in_channels if i == 0 else cfg.out_channels
-            blocks.append(HGBlock(in_c, cfg, i > 0))
+            blocks.append(HGBlock(ch_in, cfg, i > 0))
+            ch_in = cfg.out_channels
         self.blocks = nn.Sequential(*blocks)
 
 
