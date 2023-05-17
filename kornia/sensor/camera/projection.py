@@ -1,14 +1,8 @@
-from enum import Enum
-
-import torch  # todo remove
+# todo remove
+import torch
 
 from kornia.core import Module, Tensor
 from kornia.geometry.vector import Vector2, Vector3
-
-
-class CameraProjectionType(Enum):
-    Z1 = 0
-    ORTHOGRAPHIC = 1
 
 
 class ProjectionModel(Module):

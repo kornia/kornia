@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 
-from kornia.core import Module, Tensor, stack, zeros_like
+
+from kornia.core import Module, Tensor
 from kornia.core.check import KORNIA_CHECK_TYPE
 from kornia.geometry.liegroup.se3 import Se3
 from kornia.geometry.vector import Vector2, Vector3
-from kornia.sensor.camera.distortion import AffineTransform, CameraDistortionType
-from kornia.sensor.camera.projection import CameraProjectionType, Z1Projection
+from kornia.sensor.camera.distortion import AffineTransform, DistortionModel
+from kornia.sensor.camera.projection import OrthographicProjection, ProjectionModel, Z1Projection
 
 
 @dataclass
@@ -16,10 +18,21 @@ class ImageSize:
     width: int
 
 
+class CameraDistortionType(Enum):
+    AFFINE = 0
+    BROWN_CONRADY = 1
+    KANNALA_BRANDT = 2
+
+
+class CameraProjectionType(Enum):
+    Z1 = 0
+    ORTHOGRAPHIC = 1
+
+
 class CameraModel(Module):
     def __init__(
         self,
-        image_size: ImageSize,
+        image_size: ImageSize | tuple[int, int],
         distortion_type: CameraDistortionType,
         projection_type: CameraProjectionType,
         params: Tensor,
@@ -27,36 +40,28 @@ class CameraModel(Module):
         super().__init__()
         KORNIA_CHECK_TYPE(distortion_type, CameraDistortionType)
         KORNIA_CHECK_TYPE(projection_type, CameraProjectionType)
-        self.image_size = image_size
-        # TO DO: check params according to distortion type
+        if isinstance(image_size, ImageSize):
+            self._height = image_size.height
+            self._width = image_size.width
+        else:
+            self._height = image_size[0]
+            self._width = image_size[1]
+        #check params according to distortion type
+        check_params(params, distortion_type)
+        self.distortion_model = get_distortion_model(distortion_type, params)
+        self.projection_model = get_projection_model(projection_type)
         self._fx = params[..., 0]
         self._fy = params[..., 1]
         self._cx = params[..., 2]
         self._cy = params[..., 3]
-        self.distortion_model = None
-        self.projection_model = None
-        self.projection_type = projection_type
-        self.distortion_type = distortion_type
-        if distortion_type == CameraDistortionType.AFFINE:
-            self.distortion_model = AffineTransform(params)
-        # elif distortion_type == CameraDistortionType.BROWN_CONRADY:
-        #     self.distortion_model = BrownConradyTransform()
-        if projection_type == CameraProjectionType.Z1:
-            self.projection_model = Z1Projection()
-        # elif projection_type == CameraProjectionType.ORTHOGRAPHIC:
-        #     self.projection_model = OrthographicProjection()
-
-    @property
-    def params(self) -> tuple[Tensor, Tensor, Tensor, Tensor]:
-        return self._fx, self._fy, self._cx, self._cy
 
     @property
     def height(self) -> int:
-        return self.image_size.height
+        return self._height
 
     @property
     def width(self) -> int:
-        return self.image_size.width
+        return self._width
 
     @property
     def fx(self) -> Tensor:
@@ -75,7 +80,7 @@ class CameraModel(Module):
         return self._cy
 
     def matrix(self) -> Tensor:
-        raise NotImplementedError
+        return self.distortion_model.matrix()
 
     @property
     def K(self) -> Tensor:
@@ -88,61 +93,29 @@ class CameraModel(Module):
         return self.projection_model.unproject(self.distortion_model.undistort(points), depth)
 
 
-class PinholeCameraModel(CameraModel):
-    def __init__(self, image_size: ImageSize, params: Tensor | None = None):
-        if params is None:
-            params = Tensor(
-                [
-                    image_size.width * 0.5,
-                    image_size.width * 0.5,
-                    (image_size.width - 1) * 0.5,
-                    (image_size.height - 1) * 0.5,
-                ]
-            )
-        super().__init__(image_size, CameraDistortionType.AFFINE, CameraProjectionType.Z1, params)
+def check_params(params: Tensor, distortion_type: CameraDistortionType) -> None:
+    if distortion_type == CameraDistortionType.AFFINE:
+        if params.shape[-1] != 4:
+            raise ValueError("Invalid number of parameters for affine distortion")
+    elif distortion_type == CameraDistortionType.BROWN_CONRADY:
+        if params.shape[-1] != 12:
+            raise ValueError("Invalid number of parameters for Brown-Conrady distortion")
+    elif distortion_type == CameraDistortionType.KANNALA_BRANDT:
+        if params.shape[-1] != 8:
+            raise ValueError("Invalid number of parameters for Kannala-Brandt distortion")
+    else:
+        raise ValueError("Invalid distortion type")
 
-    def matrix(self) -> Tensor:
-        z = zeros_like(self.fx)
-        row1 = stack((self.fx, z, self.cx), -1)
-        row2 = stack((z, self.fy, self.cy), -1)
-        row3 = stack((z, z, z), -1)
-        K = stack((row1, row2, row3), -2)
-        K[..., -1, -1] = 1.0
-        return K
+def get_projection_model(projection_type: CameraProjectionType) -> ProjectionModel:
+    if projection_type == CameraProjectionType.Z1:
+        return Z1Projection()
+    elif projection_type == CameraProjectionType.ORTHOGRAPHIC:
+        return OrthographicProjection()
+    else:
+        raise ValueError("Invalid projection type")
 
-
-class NamedPose:
-    def __init__(self, pose: Se3, source: str | list[str], destination: str | list[str]):
-        KORNIA_CHECK_TYPE(pose, Se3)
-        KORNIA_CHECK_TYPE(source, (str, list))
-        KORNIA_CHECK_TYPE(destination, (str, list))
-        self.dst_pose_src = pose  # change name dst_pose_src to pose?
-        self.source = source
-        self.destination = destination
-
-    def __repr__(self):
-        return f"NamedPose({self.dst_pose_src},\nsource:{self.source},\ndestination:{self.destination}\n)"
-
-    def __mul__(self, right: NamedPose) -> NamedPose:
-        KORNIA_CHECK_TYPE(right, NamedPose)
-        # this assumes self.destination = right.destination
-        return NamedPose(self.dst_pose_src.inverse() * right.dst_pose_src, right.source, self.destination)
-
-    def inverse(self) -> NamedPose:
-        return NamedPose(self.dst_pose_src.inverse(), self.destination, self.source)
-
-
-class PosedCameraModel:
-    def __init__(self, camera: CameraModel, pose: NamedPose):
-        KORNIA_CHECK_TYPE(camera, CameraModel)
-        KORNIA_CHECK_TYPE(pose, NamedPose)
-        self.camera = camera
-        self.pose = pose
-
-    def transform_to_camera_view(self, points: Vector3) -> Vector3:
-        KORNIA_CHECK_TYPE(points, Vector3)
-        return self.pose.dst_pose_src * points
-
-    def project(self, points: Vector3) -> Vector2:
-        KORNIA_CHECK_TYPE(points, Vector3)
-        return self.camera.project(self.transform_to_camera_view(points))
+def get_distortion_model(distortion_type: CameraDistortionType, params: Tensor) -> DistortionModel:
+    if distortion_type == CameraDistortionType.AFFINE:
+        return AffineTransform(params)
+    else:
+        raise ValueError("Invalid distortion type")
