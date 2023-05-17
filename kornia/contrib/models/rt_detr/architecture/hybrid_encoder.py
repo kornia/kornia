@@ -56,7 +56,7 @@ class AIFI(Module):
         x = x.permute(2, 3, 0, 1).flatten(0, 1)  # (N, C, H, W) -> (H * W, N, C)
 
         # NOTE: cache build_2d_sincos_pos_emb to buffer, if input size is known?
-        q = k = x + self.build_2d_sincos_pos_emb(H, W, C, device=x.device, dtype=x.dtype)
+        q = k = x + self.build_2d_sincos_pos_emb(W, H, C, device=x.device, dtype=x.dtype)
         x = self.norm1(x + self.dropout1(self.self_attn(q, k, x, need_weights=False)[0]))
         x = self.norm2(x + self.dropout2(self.ffn(x)))
 

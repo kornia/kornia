@@ -61,12 +61,12 @@ class TestRTDETR(BaseTester):
     @pytest.mark.parametrize("variant", ("resnet50", "hgnetv2_l"))
     def test_smoke(self, variant, device, dtype):
         model = RTDETR.from_config(RTDETRConfig(variant, 80)).to(device, dtype)
-        images = torch.randn(2, 3, 256, 256, device=device, dtype=dtype)
+        images = torch.randn(2, 3, 224, 256, device=device, dtype=dtype)
         out = model(images)
 
         assert isinstance(out, DetectionResults)
 
-    @pytest.mark.parametrize("shape", ((1, 3, 128, 128), (2, 3, 256, 256)))
+    @pytest.mark.parametrize("shape", ((1, 3, 96, 128), (2, 3, 224, 256)))
     def test_cardinality(self, shape, device, dtype):
         num_queries = 10
         model = RTDETR.from_config(RTDETRConfig("resnet50", 10, head_num_queries=num_queries)).to(device, dtype)
@@ -94,7 +94,7 @@ class TestRTDETR(BaseTester):
         model = RTDETR.from_config(RTDETRConfig('resnet50', 10, head_num_queries=10)).to(device, dtype)
         model_optimized = torch_optimizer(model)
 
-        img = torch.rand(1, 3, 256, 256, device=device, dtype=dtype)
+        img = torch.rand(1, 3, 224, 256, device=device, dtype=dtype)
         expected = model(img)
         actual = model_optimized(img)
 

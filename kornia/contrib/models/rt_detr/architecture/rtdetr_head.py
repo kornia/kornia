@@ -198,11 +198,11 @@ class RTDETRHead(Module):
     ) -> tuple[Tensor, Tensor]:
         # TODO: might make this into a separate reusable function
         anchors_list = []
-        for i, (h, w) in enumerate(spatial_shapes):
-            grid_xy = create_meshgrid(h, w, normalized_coordinates=False, device=device, dtype=dtype)
-            grid_xy = (grid_xy + 0.5) / torch.tensor([h, w], device=device, dtype=dtype)
+        for i, (H, W) in enumerate(spatial_shapes):
+            grid_xy = create_meshgrid(H, W, normalized_coordinates=False, device=device, dtype=dtype)
+            grid_xy = (grid_xy + 0.5) / torch.tensor([H, W], device=device, dtype=dtype)
             wh = torch.ones_like(grid_xy) * grid_size * 2**i
-            anchors_list.append(concatenate([grid_xy, wh], -1).reshape(-1, h * w, 4))
+            anchors_list.append(concatenate([grid_xy, wh], -1).reshape(-1, H * W, 4))
 
         anchors = concatenate(anchors_list, 1)
         valid_mask = ((anchors > eps) & (anchors < 1 - eps)).all(-1, keepdim=True)
