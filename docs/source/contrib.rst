@@ -14,6 +14,10 @@ Base
 
 Structures
 ^^^^^^^^^^
+.. autoclass:: kornia.contrib.models.DetectionResults
+    :members:
+    :undoc-members:
+
 .. _anchor SegmentationResults:
 .. autoclass:: kornia.contrib.models.SegmentationResults
     :members:
@@ -60,6 +64,21 @@ Image Segmentation
 ------------------
 .. autofunction:: connected_components
 
+Real-Time Detection Transformer (RT-DETR)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autoclass:: kornia.contrib.models.rt_detr.RTDETRModelType
+    :members:
+    :undoc-members:
+
+.. autoclass:: kornia.contrib.models.rt_detr.RTDETRConfig
+    :members:
+    :undoc-members:
+
+.. autoclass:: kornia.contrib.models.rt_detr.RTDETR
+    :members: from_config, forward, load_checkpoint
+    :undoc-members:
+    :special-members: __init__,
 
 Segment Anything (SAM)
 ^^^^^^^^^^^^^^^^^^^^^^

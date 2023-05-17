@@ -15,6 +15,8 @@ from kornia.core import Tensor, concatenate, tensor
 
 
 class RTDETRModelType(Enum):
+    """Enum class that maps RT-DETR model type."""
+
     resnet50 = 0
     resnet101 = 1
     hgnetv2_l = 2
@@ -28,17 +30,17 @@ class RTDETRConfig:
     Args:
         model_type: model variant. Available models are
 
-            - ResNet-50
-            - ResNet-101
-            - L (HGNetV2)
-            - X (HGNetV2)
+            - ResNet-50: ``0``, ``'resnet50'`` or :attr:`kornia.contrib.models.rt_detr.RTDETRModelType.resnet50`
+            - ResNet-101: ``1``, ``'resnet101'`` or :attr:`kornia.contrib.models.rt_detr.RTDETRModelType.resnet101`
+            - HGNetV2-L: ``2``, ``'hgnetv2_l'`` or :attr:`kornia.contrib.models.rt_detr.RTDETRModelType.hgnetv2_l`
+            - HGNetV2-X: ``3``, ``'hgnetv2_x'`` or :attr:`kornia.contrib.models.rt_detr.RTDETRModelType.hgnetv2_x`
 
-        num_classes: number of classes
-        checkpoint: URL or local path of model weights
-        neck_hidden_dim: hidden dim for neck
-        neck_dim_feedforward: feed-forward network dim for neck
-        head_hidden_dim: hidden dim for head. Default: 256
-        head_num_queries: number of queries for DETR transformer decoder. Default: 300
+        num_classes: number of classes.
+        checkpoint: URL or local path of model weights.
+        neck_hidden_dim: hidden dim for neck.
+        neck_dim_feedforward: feed-forward network dim for neck.
+        head_hidden_dim: hidden dim for head.
+        head_num_queries: number of queries for DETR transformer decoder.
     """
 
     model_type: RTDETRModelType | str | int
@@ -58,9 +60,9 @@ class RTDETR(ModelBase[RTDETRConfig]):
         """Construct RT-DETR Object Detection model.
 
         Args:
-            backbone: backbone network for feature extraction
-            neck: neck network for feature fusion
-            head: head network to decode features into detection results
+            backbone: backbone network for feature extraction.
+            neck: neck network for feature fusion.
+            head: head network to decode features into detection results.
         """
         super().__init__()
         self.backbone = backbone
@@ -72,7 +74,7 @@ class RTDETR(ModelBase[RTDETRConfig]):
         """Construct RT-DETR Object Detection model from a config object.
 
         Args:
-            config: configuration object for RT-DETR. Only ResNet-50, ResNet-101, L, and X are supported
+            config: configuration object for RT-DETR.
         """
         model_type = config.model_type
         if isinstance(model_type, int):
@@ -113,6 +115,14 @@ class RTDETR(ModelBase[RTDETRConfig]):
         return model
 
     def forward(self, images: Tensor) -> DetectionResults:
+        """Detect objects in an image.
+
+        Args:
+            images: images to be detected. Shape :math:`(N, C, H, W)`.
+
+        Returns:
+            Detection results, stored in :class:`kornia.contrib.models.DetectionResults`.
+        """
         H, W = images.shape[2:]
         fmaps = self.backbone(images)
         fmaps = self.neck(fmaps)
