@@ -100,14 +100,13 @@ class RTDETR(ModelBase[RTDETRConfig]):
         elif model_type == RTDETRModelType.hgnetv2_x:
             backbone = PPHGNetV2.from_config("X")
             neck_hidden_dim = config.neck_hidden_dim or 384
-            neck_dim_feedforward = config.neck_dim_feedforward or 2038
+            neck_dim_feedforward = config.neck_dim_feedforward or 2048
 
-        neck = HybridEncoder(backbone.out_channels, neck_hidden_dim, neck_dim_feedforward)
-        head = RTDETRHead(
-            config.num_classes, config.head_hidden_dim, config.head_num_queries, [neck_hidden_dim] * 3, 4, 8, 6
+        model = RTDETR(
+            backbone,
+            HybridEncoder(backbone.out_channels, neck_hidden_dim, neck_dim_feedforward),
+            RTDETRHead(config.num_classes, config.head_hidden_dim, config.head_num_queries, [neck_hidden_dim] * 3),
         )
-
-        model = RTDETR(backbone, neck, head)
 
         if config.checkpoint:
             model.load_checkpoint(config.checkpoint)
@@ -128,7 +127,7 @@ class RTDETR(ModelBase[RTDETRConfig]):
         bboxes = concatenate([cxcy - wh * 0.5, wh], -1)
 
         bboxes = bboxes * tensor([W, H, W, H], device=bboxes.device, dtype=bboxes.dtype).view(1, 1, 4)
-        scores = logits.sigmoid()
+        scores = logits.sigmoid()  # RT-DETR was trained with focal loss. thus sigmoid is used instead of softmax
 
         # the original code is slightly different
         # it allows 1 bounding box to have multiple classes (multi-label)

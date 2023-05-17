@@ -14,6 +14,8 @@ from kornia.utils import create_meshgrid
 
 
 class DeformableAttention(Module):
+    """Deformable Attention used in Deformable DETR, as described in https://arxiv.org/abs/2010.04159."""
+
     def __init__(self, embed_dim: int, num_heads: int, num_levels: int, num_points: int):
         super().__init__()
         self.num_heads = num_heads
@@ -47,6 +49,7 @@ class DeformableAttention(Module):
         sampling_locations = ref_points_cxcy + sampling_offsets / self.num_points * ref_points_wh * 0.5
 
         # https://github.com/PaddlePaddle/PaddleDetection/blob/release/2.6/ppdet/modeling/transformers/utils.py#L71
+        # https://github.com/fundamentalvision/Deformable-DETR/blob/main/models/ops/functions/ms_deform_attn_func.py#L41
         split_size = [H * W for H, W in value_spatial_shapes]
         value_list = self.value_proj(value).split(split_size, 1)
         sampling_grids = 2 * sampling_locations - 1
@@ -74,8 +77,12 @@ class DeformableAttention(Module):
 
 # this is similar to nn.TransformerDecoderLayer, but replace cross attention with deformable attention
 # add use positional embeddings
-class RTDETRTransformerDecoderLayer(Module):
-    def __init__(self, embed_dim: int, num_heads: int, num_levels: int, num_points: int = 4, dropout: float = 0.0):
+# https://github.com/fundamentalvision/Deformable-DETR/blob/main/models/deformable_transformer.py#L261
+class DeformableTransformerDecoderLayer(Module):
+    """Deformable Transformer Decoder layer used in Deformable DETR, as described in
+    https://arxiv.org/abs/2010.04159."""
+
+    def __init__(self, embed_dim: int, num_levels: int, num_heads: int = 8, num_points: int = 4, dropout: float = 0.0):
         super().__init__()
         self.self_attn = nn.MultiheadAttention(embed_dim, num_heads, dropout, batch_first=True)
         self.dropout1 = nn.Dropout(dropout)
@@ -120,9 +127,9 @@ class RTDETRHead(Module):
         hidden_dim: int,
         num_queries: int,
         in_channels: list[int],
-        num_decoder_points: int,
-        num_heads: int,
-        num_decoder_layers: int,
+        num_heads: int = 8,
+        num_decoder_points: int = 4,
+        num_decoder_layers: int = 6,
     ):
         super().__init__()
         self.num_queries = num_queries
@@ -141,7 +148,7 @@ class RTDETRHead(Module):
         self.dec_score_head = nn.ModuleList()
         self.dec_bbox_head = nn.ModuleList()
         for _ in range(num_decoder_layers):
-            layer = RTDETRTransformerDecoderLayer(hidden_dim, num_heads, len(in_channels), num_decoder_points)
+            layer = DeformableTransformerDecoderLayer(hidden_dim, len(in_channels), num_heads, num_decoder_points)
             self.decoder_layers.append(layer)
             self.dec_score_head.append(nn.Linear(hidden_dim, num_classes))
             self.dec_bbox_head.append(MLP(hidden_dim, hidden_dim, 4, 3))
@@ -167,13 +174,11 @@ class RTDETRHead(Module):
 
         # only consider class with highest score at each spatial location
         _, topk_indices = enc_out_logits.max(-1)[0].topk(self.num_queries, 1)  # (N, num_queries)
-
-        # alternative
-        # ref_points = enc_out_bboxes.gather(1, topk_indices.unsqueeze(-1).expand(-1, -1, 4))
         batch_indices = torch.arange(N, dtype=topk_indices.dtype, device=topk_indices.device).unsqueeze(1)
         ref_points = enc_out_bboxes[batch_indices, topk_indices]
         tgt = out_memory[batch_indices, topk_indices]
 
+        # iterative box refinements
         for decoder_layer, bbox_head in zip(self.decoder_layers, self.dec_bbox_head):
             ref_points_sigmoid = ref_points.sigmoid()
             query_pos_embed = self.query_pos_head(ref_points_sigmoid)
@@ -203,6 +208,7 @@ class RTDETRHead(Module):
         valid_mask = ((anchors > eps) & (anchors < 1 - eps)).all(-1, keepdim=True)
         anchors = torch.log(anchors / (1 - anchors))
 
+        # anchors = torch.where(valid_mask, anchors, float("inf")) fails in PyTorch 1.9.1
         inf = torch.tensor(float('inf'), device=device, dtype=dtype)
         anchors = torch.where(valid_mask, anchors, inf)
         return anchors, valid_mask

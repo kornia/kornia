@@ -108,6 +108,14 @@ class Prompts:
 
 @dataclass
 class DetectionResults:
+    """Encapsulate the results obtained by a Detection model.
+
+    Args:
+        labels: object labels. Shape (B, num_detections)
+        scores: confidence scores. Shape (B, num_detections)
+        bounding_boxes: bounding boxes. Shape (B, num_detections, 4)
+    """
+
     labels: Tensor
     scores: Tensor
-    bboxes: Tensor
+    bounding_boxes: Tensor

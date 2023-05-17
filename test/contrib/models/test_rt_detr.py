@@ -68,14 +68,15 @@ class TestRTDETR(BaseTester):
 
     @pytest.mark.parametrize("shape", ((1, 3, 128, 128), (2, 3, 256, 256)))
     def test_cardinality(self, shape, device, dtype):
-        model = RTDETR.from_config(RTDETRConfig("resnet50", 10, head_num_queries=10)).to(device, dtype)
+        num_queries = 10
+        model = RTDETR.from_config(RTDETRConfig("resnet50", 10, head_num_queries=num_queries)).to(device, dtype)
         images = torch.randn(shape, device=device, dtype=dtype)
         out = model(images)
 
         assert isinstance(out, DetectionResults)
-        assert out.labels.shape[0] == shape[0]
-        assert out.scores.shape[0] == shape[0]
-        assert out.bboxes.shape[0] == shape[0]
+        assert out.labels.shape == (shape[0], num_queries)
+        assert out.scores.shape == (shape[0], num_queries)
+        assert out.bounding_boxes.shape == (shape[0], num_queries, 4)
 
     @pytest.mark.skip("Unnecessary")
     def test_exception(self):
@@ -99,7 +100,4 @@ class TestRTDETR(BaseTester):
 
         self.assert_close(expected.labels, actual.labels)
         self.assert_close(expected.scores, actual.scores, low_tolerance=True)
-        self.assert_close(expected.bboxes, actual.bboxes, low_tolerance=True)
-
-    def test_correctness(self, device, dtype):
-        pytest.skip("Not implemented")
+        self.assert_close(expected.bounding_boxes, actual.bounding_boxes, low_tolerance=True)
