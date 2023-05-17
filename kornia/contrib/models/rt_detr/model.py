@@ -30,10 +30,10 @@ class RTDETRConfig:
     Args:
         model_type: model variant. Available models are
 
-            - ResNet-50: ``0``, ``'resnet50'`` or :attr:`kornia.contrib.models.rt_detr.RTDETRModelType.resnet50`
-            - ResNet-101: ``1``, ``'resnet101'`` or :attr:`kornia.contrib.models.rt_detr.RTDETRModelType.resnet101`
-            - HGNetV2-L: ``2``, ``'hgnetv2_l'`` or :attr:`kornia.contrib.models.rt_detr.RTDETRModelType.hgnetv2_l`
-            - HGNetV2-X: ``3``, ``'hgnetv2_x'`` or :attr:`kornia.contrib.models.rt_detr.RTDETRModelType.hgnetv2_x`
+            - ResNet-50: ``0``, ``'resnet50'`` or :attr:`RTDETRModelType.resnet50`
+            - ResNet-101: ``1``, ``'resnet101'`` or :attr:`RTDETRModelType.resnet101`
+            - HGNetV2-L: ``2``, ``'hgnetv2_l'`` or :attr:`RTDETRModelType.hgnetv2_l`
+            - HGNetV2-X: ``3``, ``'hgnetv2_x'`` or :attr:`RTDETRModelType.hgnetv2_x`
 
         num_classes: number of classes.
         checkpoint: URL or local path of model weights.
@@ -75,6 +75,13 @@ class RTDETR(ModelBase[RTDETRConfig]):
 
         Args:
             config: configuration object for RT-DETR.
+
+        .. note::
+            For ``config.neck_hidden_dim`` and ``config.neck_dim_feedforward``, if they are ``None``,
+            their values will be replaced with the default values depending on the ``config.model_type``.
+            Specifically, ResNet-50 and HGNetV2-L use ``config.neck_hidden_dim=256``,
+            ``config.neck_dim_feedforward=1024``, while ResNet-101 and HGNetV2-X use
+            ``config.neck_hidden_dim=384``, ``config.neck_dim_feedforward=2048``.
         """
         model_type = config.model_type
         if isinstance(model_type, int):

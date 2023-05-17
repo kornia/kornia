@@ -14,6 +14,7 @@ class ConvNormAct(nn.Sequential):
         if kernel_size % 2 == 0:
             # even kernel_size -> asymmetric padding
             # PPHGNetV2 (for RT-DETR) uses kernel 2
+            # follow TensorFlow/PaddlePaddle: top/left side is padded 1 more than bottom/right
             # NOTE: this does not account for stride=2
             p1 = (kernel_size - 1) // 2
             p2 = kernel_size - 1 - p1
