@@ -13,8 +13,9 @@ from kornia.core import Module, Tensor, concatenate
 from kornia.utils import create_meshgrid
 
 
-class DeformableAttention(Module):
-    """Deformable Attention used in Deformable DETR, as described in https://arxiv.org/abs/2010.04159."""
+class MultiScaleDeformableAttention(Module):
+    """Multi-scale Deformable Attention used in Deformable DETR, as described in
+    https://arxiv.org/abs/2010.04159."""
 
     def __init__(self, embed_dim: int, num_heads: int, num_levels: int, num_points: int):
         super().__init__()
@@ -88,7 +89,7 @@ class DeformableTransformerDecoderLayer(Module):
         self.dropout1 = nn.Dropout(dropout)
         self.norm1 = nn.LayerNorm(embed_dim)
 
-        self.cross_attn = DeformableAttention(embed_dim, num_heads, num_levels, num_points)
+        self.cross_attn = MultiScaleDeformableAttention(embed_dim, num_heads, num_levels, num_points)
         self.dropout2 = nn.Dropout(dropout)
         self.norm2 = nn.LayerNorm(embed_dim)
 
