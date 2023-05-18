@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.contrib.models.common import MLP, ConvNormAct
-from kornia.core import Module, Tensor, concatenate
+from kornia.core import Device, Dtype, Module, Tensor, concatenate
 from kornia.utils import create_meshgrid
 
 
@@ -194,8 +194,8 @@ class RTDETRHead(Module):
         spatial_shapes: list[tuple[int, int]],
         grid_size: float = 0.05,
         eps: float = 0.01,
-        device: torch.device | None = None,
-        dtype: torch.dtype = torch.float32,
+        device: Device = None,
+        dtype: Dtype = torch.float32,
     ) -> tuple[Tensor, Tensor]:
         # TODO: might make this into a separate reusable function
         anchors_list = []

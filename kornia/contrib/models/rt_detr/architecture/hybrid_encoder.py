@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.contrib.models.common import ConvNormAct
-from kornia.core import Module, Tensor, concatenate
+from kornia.core import Device, Dtype, Module, Tensor, concatenate
 
 
 # NOTE: conv2 can be fused into conv1
@@ -18,9 +18,10 @@ class RepVggBlock(Module):
         super().__init__()
         self.conv1 = ConvNormAct(in_channels, out_channels, 3, act="none")
         self.conv2 = ConvNormAct(in_channels, out_channels, 1, act="none")
+        self.act = nn.SiLU(inplace=True)
 
     def forward(self, x: Tensor) -> Tensor:
-        return F.silu(self.conv1(x) + self.conv2(x))
+        return self.act(self.conv1(x) + self.conv2(x))
 
 
 class CSPRepLayer(Module):
@@ -69,12 +70,7 @@ class AIFI(Module):
     # TODO: make this into a reusable function
     @staticmethod
     def build_2d_sincos_pos_emb(
-        w: int,
-        h: int,
-        embed_dim: int,
-        temp: float = 10_000.0,
-        device: torch.device | None = None,
-        dtype: torch.dtype = torch.float32,
+        w: int, h: int, embed_dim: int, temp: float = 10_000.0, device: Device = None, dtype: Dtype = torch.float32
     ) -> Tensor:
         xs = torch.arange(w, device=device, dtype=dtype)
         ys = torch.arange(h, device=device, dtype=dtype)

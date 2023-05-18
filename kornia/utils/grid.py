@@ -1,8 +1,6 @@
-from typing import Optional
-
 import torch
 
-from kornia.core import Tensor, stack
+from kornia.core import Device, Dtype, Tensor, stack
 from kornia.utils._compat import torch_meshgrid
 
 
@@ -10,8 +8,8 @@ def create_meshgrid(
     height: int,
     width: int,
     normalized_coordinates: bool = True,
-    device: Optional[torch.device] = torch.device('cpu'),
-    dtype: torch.dtype = torch.float32,
+    device: Device = torch.device('cpu'),
+    dtype: Dtype = torch.float32,
 ) -> Tensor:
     """Generate a coordinate grid for an image.
 
@@ -74,8 +72,8 @@ def create_meshgrid3d(
     height: int,
     width: int,
     normalized_coordinates: bool = True,
-    device: Optional[torch.device] = torch.device('cpu'),
-    dtype: torch.dtype = torch.float32,
+    device: Device = torch.device('cpu'),
+    dtype: Dtype = torch.float32,
 ) -> Tensor:
     """Generate a coordinate grid for an image.
 
