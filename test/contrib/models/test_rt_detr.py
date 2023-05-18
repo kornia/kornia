@@ -49,7 +49,7 @@ def test_rtdetr_head(device, dtype):
     sizes = [(32, 24), (16, 12), (8, 6)]
     num_classes = 4
     num_queries = 10
-    decoder = RTDETRHead(num_classes, 32, num_queries, in_channels, 4, 8, 6).to(device, dtype)
+    decoder = RTDETRHead(num_classes, 32, num_queries, in_channels).to(device, dtype)
     fmaps = [torch.randn(N, ch_in, h, w, device=device, dtype=dtype) for ch_in, (h, w) in zip(in_channels, sizes)]
 
     bboxes, logits = decoder(fmaps)
