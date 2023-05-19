@@ -54,15 +54,15 @@ class HGBlock(Module):
         super().__init__()
         self.identity = identity
 
-        layer_cls = LightConvNormAct if cfg.light_block else ConvNormAct
+        layer_cls = LightConvNormAct if config.light_block else ConvNormAct
         self.layers = nn.ModuleList()
-        for i in range(cfg.layer_num):
-            ch_in = in_channels if i == 0 else cfg.mid_channels
-            self.layers.append(layer_cls(ch_in, cfg.mid_channels, cfg.kernel_size))
+        for i in range(config.layer_num):
+            ch_in = in_channels if i == 0 else config.mid_channels
+            self.layers.append(layer_cls(ch_in, config.mid_channels, config.kernel_size))
 
-        total_channels = in_channels + cfg.mid_channels * cfg.layer_num
-        self.aggregation_squeeze_conv = ConvNormAct(total_channels, cfg.out_channels // 2, 1)
-        self.aggregation_excitation_conv = ConvNormAct(cfg.out_channels // 2, cfg.out_channels, 1)
+        total_channels = in_channels + config.mid_channels * config.layer_num
+        self.aggregation_squeeze_conv = ConvNormAct(total_channels, config.out_channels // 2, 1)
+        self.aggregation_excitation_conv = ConvNormAct(config.out_channels // 2, config.out_channels, 1)
 
     def forward(self, x: Tensor) -> Tensor:
         feats = [x]
@@ -77,13 +77,12 @@ class HGBlock(Module):
 class HGStage(nn.Sequential):
     def __init__(self, config: StageConfig) -> None:
         super().__init__()
-        ch_in = cfg.in_channels
-        self.downsample = ConvNormAct(ch_in, ch_in, 3, 2, "none", ch_in) if cfg.downsample else None
-        blocks = []
-        for i in range(cfg.num_blocks):
-            blocks.append(HGBlock(ch_in, cfg, i > 0))
-            ch_in = cfg.out_channels
-        self.blocks = nn.Sequential(*blocks)
+        ch_in = config.in_channels
+        self.downsample = ConvNormAct(ch_in, ch_in, 3, 2, "none", ch_in) if config.downsample else None
+        self.blocks = nn.Sequential(
+            HGBlock(ch_in, config, False),
+            *[HGBlock(config.out_channels, config, True) for _ in range(config.num_blocks - 1)],
+        )
 
 
 class PPHGNetV2(Module):
