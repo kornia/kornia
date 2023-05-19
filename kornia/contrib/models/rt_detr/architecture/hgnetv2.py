@@ -14,7 +14,7 @@ from kornia.core.check import KORNIA_CHECK
 
 
 class StemBlock(Module):
-    def __init__(self, in_channels: int, mid_channels: int, out_channels: int):
+    def __init__(self, in_channels: int, mid_channels: int, out_channels: int) -> None:
         super().__init__()
         self.stem1 = ConvNormAct(in_channels, mid_channels, 3, 2)
         self.stem2a = ConvNormAct(mid_channels, mid_channels // 2, 2)
@@ -32,7 +32,7 @@ class StemBlock(Module):
 
 # Separable conv
 class LightConvNormAct(nn.Sequential):
-    def __init__(self, in_channels: int, out_channels: int, kernel_size: int):
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: int) -> None:
         super().__init__()
         self.conv1 = ConvNormAct(in_channels, out_channels, 1, act="none")  # point-wise
         self.conv2 = ConvNormAct(out_channels, out_channels, kernel_size, groups=out_channels)  # depth-wise
@@ -50,7 +50,7 @@ class StageConfig(NamedTuple):
 
 
 class HGBlock(Module):
-    def __init__(self, in_channels: int, cfg: StageConfig, identity: bool):
+    def __init__(self, in_channels: int, config: StageConfig, identity: bool) -> None:
         super().__init__()
         self.identity = identity
 
@@ -75,7 +75,7 @@ class HGBlock(Module):
 
 
 class HGStage(nn.Sequential):
-    def __init__(self, cfg: StageConfig):
+    def __init__(self, config: StageConfig) -> None:
         super().__init__()
         ch_in = cfg.in_channels
         self.downsample = ConvNormAct(ch_in, ch_in, 3, 2, "none", ch_in) if cfg.downsample else None
@@ -87,7 +87,7 @@ class HGStage(nn.Sequential):
 
 
 class PPHGNetV2(Module):
-    def __init__(self, stem_channels: list[int], stage_configs: list[StageConfig]):
+    def __init__(self, stem_channels: list[int], stage_configs: list[StageConfig]) -> None:
         KORNIA_CHECK(len(stem_channels) == 3)
         KORNIA_CHECK(len(stage_configs) == 4)
         super().__init__()

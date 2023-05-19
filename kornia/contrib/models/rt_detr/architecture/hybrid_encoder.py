@@ -25,7 +25,7 @@ class RepVggBlock(Module):
 
 
 class CSPRepLayer(Module):
-    def __init__(self, in_channels: int, out_channels: int, num_blocks: int):
+    def __init__(self, in_channels: int, out_channels: int, num_blocks: int) -> None:
         super().__init__()
         self.conv1 = ConvNormAct(in_channels, out_channels, 1, act="silu")
         self.conv2 = ConvNormAct(in_channels, out_channels, 1, act="silu")
@@ -38,7 +38,7 @@ class CSPRepLayer(Module):
 # almost identical to nn.TransformerEncoderLayer
 # but add positional embeddings to q and k
 class AIFI(Module):
-    def __init__(self, embed_dim: int, num_heads: int, dim_feedforward: int, dropout: float = 0.0):
+    def __init__(self, embed_dim: int, num_heads: int, dim_feedforward: int, dropout: float = 0.0) -> None:
         super().__init__()
         self.self_attn = nn.MultiheadAttention(embed_dim, num_heads, dropout)  # NOTE: batch_first = False
         self.dropout1 = nn.Dropout(dropout)
@@ -70,7 +70,7 @@ class AIFI(Module):
     # TODO: make this into a reusable function
     @staticmethod
     def build_2d_sincos_pos_emb(
-        w: int, h: int, embed_dim: int, temp: float = 10_000.0, device: Device = None, dtype: Dtype = torch.float32
+        w: int, h: int, embed_dim: int, temp: float = 10_000.0, device: Device = None, dtype: Dtype = None
     ) -> Tensor:
         xs = torch.arange(w, device=device, dtype=dtype)
         ys = torch.arange(h, device=device, dtype=dtype)
@@ -88,7 +88,7 @@ class AIFI(Module):
 
 
 class CCFM(Module):
-    def __init__(self, num_fmaps: int, hidden_dim: int):
+    def __init__(self, num_fmaps: int, hidden_dim: int) -> None:
         super().__init__()
         self.lateral_convs = nn.ModuleList()
         self.fpn_blocks = nn.ModuleList()
@@ -128,7 +128,7 @@ class CCFM(Module):
 
 
 class HybridEncoder(Module):
-    def __init__(self, in_channels: list[int], hidden_dim: int, dim_feedforward: int):
+    def __init__(self, in_channels: list[int], hidden_dim: int, dim_feedforward: int) -> None:
         super().__init__()
         self.input_proj = nn.ModuleList([ConvNormAct(in_ch, hidden_dim, 1, act="none") for in_ch in in_channels])
         self.aifi = AIFI(hidden_dim, 8, dim_feedforward)

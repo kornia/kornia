@@ -15,7 +15,7 @@ from kornia.core.check import KORNIA_CHECK
 class BottleNeckD(Module):
     expansion = 4
 
-    def __init__(self, in_channels: int, out_channels: int, stride: int, base_width: int):
+    def __init__(self, in_channels: int, out_channels: int, stride: int, base_width: int) -> None:
         KORNIA_CHECK(stride in (1, 2))
         super().__init__()
         width = out_channels * base_width // 64
@@ -46,7 +46,7 @@ class BottleNeckD(Module):
 class ResNetD(Module):
     base_width = 64
 
-    def __init__(self, n_blocks: list[int]):
+    def __init__(self, n_blocks: list[int]) -> None:
         KORNIA_CHECK(len(n_blocks) == 4)
         super().__init__()
         in_channels = 64

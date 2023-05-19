@@ -9,7 +9,7 @@ from kornia.core import Module, Tensor
 class ConvNormAct(nn.Sequential):
     def __init__(
         self, in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, act: str = "relu", groups: int = 1
-    ):
+    ) -> None:
         super().__init__()
         if kernel_size % 2 == 0:
             # even kernel_size -> asymmetric padding

@@ -17,7 +17,7 @@ class MultiScaleDeformableAttention(Module):
     """Multi-scale Deformable Attention used in Deformable DETR, as described in
     https://arxiv.org/abs/2010.04159."""
 
-    def __init__(self, embed_dim: int, num_heads: int, num_levels: int, num_points: int):
+    def __init__(self, embed_dim: int, num_heads: int, num_levels: int, num_points: int) -> None:
         super().__init__()
         self.num_heads = num_heads
         self.num_levels = num_levels
@@ -83,7 +83,7 @@ class DeformableTransformerDecoderLayer(Module):
     """Deformable Transformer Decoder layer used in Deformable DETR, as described in
     https://arxiv.org/abs/2010.04159."""
 
-    def __init__(self, embed_dim: int, num_levels: int, num_heads: int = 8, num_points: int = 4, dropout: float = 0.0):
+    def __init__(self, embed_dim: int, num_levels: int, num_heads: int = 8, num_points: int = 4, dropout: float = 0.0) -> None:
         super().__init__()
         self.self_attn = nn.MultiheadAttention(embed_dim, num_heads, dropout, batch_first=True)
         self.dropout1 = nn.Dropout(dropout)
@@ -131,7 +131,7 @@ class RTDETRHead(Module):
         num_heads: int = 8,
         num_decoder_points: int = 4,
         num_decoder_layers: int = 6,
-    ):
+    ) -> None:
         super().__init__()
         self.num_queries = num_queries
         self.input_proj = nn.ModuleList()
