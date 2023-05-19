@@ -81,7 +81,7 @@ class ResNetD(Module):
 
     @staticmethod
     def from_config(variant: str | int) -> ResNetD:
-        arch_configs = {18: [2, 2, 2, 2], 34: [3, 4, 6, 3], 50: [3, 4, 6, 3], 101: [3, 4, 23, 3], 152: [3, 8, 36, 3]}
+        arch_configs = {50: [3, 4, 6, 3], 101: [3, 4, 23, 3], 152: [3, 8, 36, 3]}
         variant = int(variant)
-        KORNIA_CHECK(variant in arch_configs, "Only variant 18, 34, 50, 101, and 152 are supported")
+        KORNIA_CHECK(variant in arch_configs, "Only variant 50, 101, and 152 are supported")
         return ResNetD(arch_configs[variant])
