@@ -83,7 +83,9 @@ class DeformableTransformerDecoderLayer(Module):
     """Deformable Transformer Decoder layer used in Deformable DETR, as described in
     https://arxiv.org/abs/2010.04159."""
 
-    def __init__(self, embed_dim: int, num_levels: int, num_heads: int = 8, num_points: int = 4, dropout: float = 0.0) -> None:
+    def __init__(
+        self, embed_dim: int, num_levels: int, num_heads: int = 8, num_points: int = 4, dropout: float = 0.0
+    ) -> None:
         super().__init__()
         self.self_attn = nn.MultiheadAttention(embed_dim, num_heads, dropout, batch_first=True)
         self.dropout1 = nn.Dropout(dropout)
