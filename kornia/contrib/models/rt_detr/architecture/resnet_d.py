@@ -16,7 +16,7 @@ class BottleNeckD(Module):
     expansion = 4
 
     def __init__(self, in_channels: int, out_channels: int, stride: int, base_width: int) -> None:
-        KORNIA_CHECK(stride in (1, 2))
+        KORNIA_CHECK(stride in {1, 2})
         super().__init__()
         width = out_channels * base_width // 64
         expanded_out_channels = out_channels * self.expansion
