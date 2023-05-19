@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.contrib.models.common import ConvNormAct
-from kornia.core import Device, Dtype, Module, Tensor, concatenate
+from kornia.core import Module, Tensor, concatenate
 
 
 # NOTE: conv2 can be fused into conv1
@@ -68,10 +68,30 @@ class AIFI(Module):
         return self.linear2(self.dropout(self.act(self.linear1(x))))
 
     # TODO: make this into a reusable function
+    # https://github.com/facebookresearch/moco-v3/blob/main/vits.py#L53
+    # https://github.com/PaddlePaddle/PaddleDetection/blob/79267419e1743157f376a7cb251e01caa3338ce0/ppdet/modeling/transformers/hybrid_encoder.py#L217
     @staticmethod
     def build_2d_sincos_pos_emb(
-        w: int, h: int, embed_dim: int, temp: float = 10_000.0, device: Device = None, dtype: Dtype = None
+        w: int,
+        h: int,
+        embed_dim: int,
+        temp: float = 10_000.0,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ) -> Tensor:
+        """Construct 2D sin-cos positional embeddings.
+
+        Args:
+            w: width of the image or feature map
+            h: height of the image or feature map
+            embed_dim: embedding dimension
+            temp: temperature coefficient
+            device: device to place the positional embeddings
+            dtype: data type of the positional embeddings
+
+        Returns:
+            positional embeddings, shape :math:`(H * W, 1, C)`
+        """
         xs = torch.arange(w, device=device, dtype=dtype)
         ys = torch.arange(h, device=device, dtype=dtype)
         grid_x, grid_y = torch.meshgrid(xs, ys)

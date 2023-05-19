@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.contrib.models.common import MLP, ConvNormAct
-from kornia.core import Device, Dtype, Module, Tensor, concatenate
+from kornia.core import Module, Tensor, concatenate
 from kornia.utils import create_meshgrid
 
 
@@ -38,6 +38,9 @@ class MultiScaleDeformableAttention(Module):
             ref_points: shape (N, Lq, n_levels, 4)
             value: shape (N, Lv, C)
             value_spatial_shapes: [(H0, W0), (H1, W1), ...]
+
+        Returns:
+            output, shape (N, Lq, C)
         """
         N, Lq, C = query.shape
         sampling_offsets = self.sampling_offsets(query).view(N, Lq, self.num_heads, self.num_levels, self.num_points, 2)
@@ -196,10 +199,22 @@ class RTDETRHead(Module):
         spatial_shapes: list[tuple[int, int]],
         grid_size: float = 0.05,
         eps: float = 0.01,
-        device: Device = None,
-        dtype: Dtype = torch.float32,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ) -> tuple[Tensor, Tensor]:
-        # TODO: might make this into a separate reusable function
+        """Generate anchors for RT-DETR.
+
+        Args:
+            spatial_shapes: shape (width, height) of the feature maps
+            grid_size: size of the grid
+            eps: specify the minimum and maximum size of the anchors
+            device: device to place the anchors
+            dtype: data type for the anchors
+
+        Returns:
+            logit of anchors and mask
+        """
+        # TODO: might make this (or some parts of it) into a separate reusable function
         anchors_list = []
         for i, (H, W) in enumerate(spatial_shapes):
             grid_xy = create_meshgrid(H, W, normalized_coordinates=False, device=device, dtype=dtype)
@@ -209,7 +224,7 @@ class RTDETRHead(Module):
 
         anchors = concatenate(anchors_list, 1)
         valid_mask = ((anchors > eps) & (anchors < 1 - eps)).all(-1, keepdim=True)
-        anchors = torch.log(anchors / (1 - anchors))
+        anchors = anchors.logit()
 
         # anchors = torch.where(valid_mask, anchors, float("inf")) fails in PyTorch 1.9.1
         inf = torch.tensor(float('inf'), device=device, dtype=dtype)
