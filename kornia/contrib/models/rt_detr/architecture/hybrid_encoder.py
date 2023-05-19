@@ -14,7 +14,7 @@ from kornia.core import Device, Dtype, Module, Tensor, concatenate
 
 # NOTE: conv2 can be fused into conv1
 class RepVggBlock(Module):
-    def __init__(self, in_channels: int, out_channels: int):
+    def __init__(self, in_channels: int, out_channels: int) -> None:
         super().__init__()
         self.conv1 = ConvNormAct(in_channels, out_channels, 3, act="none")
         self.conv2 = ConvNormAct(in_channels, out_channels, 1, act="none")
