@@ -57,7 +57,7 @@ class Keypoints:
         return self
 
     @property
-    def shape(self) -> Tuple[int, ...] | Size:
+    def shape(self) -> Union[Tuple[int, ...], Size]:
         return self.data.shape
 
     @property
@@ -251,7 +251,7 @@ class Keypoints3D:
         return self
 
     @property
-    def shape(self) -> torch.Size:
+    def shape(self) -> Size:
         return self.data.shape
 
     @property
