@@ -1,7 +1,5 @@
 from kornia.core import Tensor
 
-from .so2 import So2
-
 
 # TODO: Temporary shape check functions until KORNIA_CHECK_SHAPE is ready
 def check_so2_z_shape(z: Tensor) -> None:
@@ -42,16 +40,6 @@ def check_so2_matrix_shape(matrix: Tensor) -> None:
 
 def check_se2_t_shape(t: Tensor) -> None:
     check_so2_t_shape(t)
-
-
-def check_se2_r_t_shape(r: So2, t: Tensor) -> None:
-    z_shape = r.z.shape
-    if ((len(z_shape) == 1) and (len(t.shape) == 2)) or ((len(z_shape) == 0) and len(t.shape) == 1):
-        check_se2_t_shape(t)
-    else:
-        raise ValueError(
-            f"Invalid input, both the inputs should be either batched or unbatched. Got: {r.z.shape} and {t.shape}"
-        )
 
 
 def check_v_shape(v: Tensor) -> None:
