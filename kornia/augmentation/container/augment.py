@@ -153,7 +153,7 @@ class AugmentationSequential(ImageSequential):
     def __init__(
         self,
         *args: Union[_AugmentationBase, ImageSequential],
-        data_keys: List[Union[str, int, DataKey]] = [DataKey.INPUT],
+        data_keys: Union[List[str], List[int], List[DataKey]] = [DataKey.INPUT],
         same_on_batch: Optional[bool] = None,
         keepdim: Optional[bool] = None,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
@@ -246,7 +246,7 @@ class AugmentationSequential(ImageSequential):
         self,
         *args: DataType,
         params: Optional[List[ParamItem]] = None,
-        data_keys: Optional[List[Union[str, int, DataKey]]] = None,
+        data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None,
     ) -> Union[DataType, List[DataType]]:
         """Reverse the transformation applied.
 
@@ -341,7 +341,7 @@ class AugmentationSequential(ImageSequential):
         self,
         *args: DataType,
         params: Optional[List[ParamItem]] = None,
-        data_keys: Optional[List[Union[str, int, DataKey]]] = None,
+        data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None,
     ) -> Union[DataType, List[DataType]]:
         """Compute multiple tensors simultaneously according to ``self.data_keys``."""
         self.clear_state()
@@ -431,6 +431,8 @@ class AugmentationSequential(ImageSequential):
             return VideoKeypoints.from_tensor(arg)
         elif self.contains_3d_augmentation:
             raise NotImplementedError("3D keypoint handlers are not yet supported.")
+        elif isinstance(arg, (Keypoints,)):
+            return arg
         else:
             arg = cast(Tensor, arg)
             # TODO: Add List[Tensor] in the future.

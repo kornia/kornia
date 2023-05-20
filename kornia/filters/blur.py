@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from kornia.core import Module, Tensor
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR
 
-from .filter import filter2d
-from .kernels import get_box_kernel2d, normalize_kernel2d
+from .filter import filter2d, filter2d_separable
+from .kernels import _unpack_2d_ks, get_box_kernel1d, get_box_kernel2d
 
 
 def box_blur(
-    input: Tensor, kernel_size: tuple[int, int] | int, border_type: str = 'reflect', normalized: bool = True
+    input: Tensor, kernel_size: tuple[int, int] | int, border_type: str = 'reflect', separable: bool = False
 ) -> Tensor:
     r"""Blur an image using the box filter.
 
@@ -29,7 +30,7 @@ def box_blur(
         kernel_size: the blurring kernel size.
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``, ``'replicate'`` or ``'circular'``.
-        normalized: if True, L1 norm of the kernel is set to 1.
+        separable: run as composition of two 1d-convolutions.
 
     Returns:
         the blurred tensor with shape :math:`(B,C,H,W)`.
@@ -44,10 +45,18 @@ def box_blur(
         >>> output.shape
         torch.Size([2, 4, 5, 7])
     """
-    kernel = get_box_kernel2d(kernel_size, device=input.device, dtype=input.dtype)
-    if normalized:
-        kernel = normalize_kernel2d(kernel)
-    return filter2d(input, kernel, border_type)
+    KORNIA_CHECK_IS_TENSOR(input)
+
+    if separable:
+        ky, kx = _unpack_2d_ks(kernel_size)
+        kernel_y = get_box_kernel1d(ky, device=input.device, dtype=input.dtype)
+        kernel_x = get_box_kernel1d(kx, device=input.device, dtype=input.dtype)
+        out = filter2d_separable(input, kernel_x, kernel_y, border_type)
+    else:
+        kernel = get_box_kernel2d(kernel_size, device=input.device, dtype=input.dtype)
+        out = filter2d(input, kernel, border_type)
+
+    return out
 
 
 class BoxBlur(Module):
@@ -69,7 +78,7 @@ class BoxBlur(Module):
         border_type: the padding mode to be applied before convolving.
           The expected modes are: ``'constant'``, ``'reflect'``,
           ``'replicate'`` or ``'circular'``. Default: ``'reflect'``.
-        normalized: if True, L1 norm of the kernel is set to 1.
+        separable: run as composition of two 1d-convolutions.
 
     Returns:
         the blurred input tensor.
@@ -87,20 +96,33 @@ class BoxBlur(Module):
     """
 
     def __init__(
-        self, kernel_size: tuple[int, int] | int, border_type: str = 'reflect', normalized: bool = True
+        self, kernel_size: tuple[int, int] | int, border_type: str = 'reflect', separable: bool = False
     ) -> None:
         super().__init__()
         self.kernel_size = kernel_size
         self.border_type = border_type
-        self.normalized = normalized
+        self.separable = separable
+
+        if separable:
+            ky, kx = _unpack_2d_ks(self.kernel_size)
+            self.register_buffer("kernel_y", get_box_kernel1d(ky))
+            self.register_buffer("kernel_x", get_box_kernel1d(kx))
+            self.kernel_y: Tensor
+            self.kernel_x: Tensor
+        else:
+            self.register_buffer("kernel", get_box_kernel2d(kernel_size))
+            self.kernel: Tensor
 
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}"
             f"(kernel_size={self.kernel_size}, "
-            f"normalized={self.normalized}, "
-            f"border_type={self.border_type})"
+            f"border_type={self.border_type}, "
+            f"separable={self.separable})"
         )
 
     def forward(self, input: Tensor) -> Tensor:
-        return box_blur(input, self.kernel_size, self.border_type, self.normalized)
+        KORNIA_CHECK_IS_TENSOR(input)
+        if self.separable:
+            return filter2d_separable(input, self.kernel_x, self.kernel_y, self.border_type)
+        return filter2d(input, self.kernel, self.border_type)

@@ -89,7 +89,7 @@ def find_fundamental(
         raise AssertionError(points1.shape, points2.shape)
     if points1.shape[1] < 8:
         raise AssertionError(points1.shape)
-    if not (weights is None):
+    if weights is not None:
         if not (len(weights.shape) == 2 and weights.shape[1] == points1.shape[1]):
             raise AssertionError(weights.shape)
 

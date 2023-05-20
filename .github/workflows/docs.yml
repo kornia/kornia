@@ -47,7 +47,7 @@ jobs:
         pip install .[docs]
     - name: Build Documentation
       shell: bash -l {0}
-      run: make build-docs
+      run: make build-docs SPHINXOPTS="-W"
     - name: Deploy to GitHub Pages
       if: ${{ github.event_name != 'pull_request' }}
       uses: JamesIves/github-pages-deploy-action@v4

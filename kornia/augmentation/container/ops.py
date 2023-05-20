@@ -75,7 +75,7 @@ class AugmentationSequentialOps:
     def data_keys(self, data_keys: List[DataKey]) -> None:
         self._data_keys = [DataKey.get(inp) for inp in data_keys]
 
-    def preproc_datakeys(self, data_keys: Optional[List[Union[str, int, DataKey]]] = None) -> List[DataKey]:
+    def preproc_datakeys(self, data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None) -> List[DataKey]:
         if data_keys is None:
             return self.data_keys
         else:
@@ -99,7 +99,7 @@ class AugmentationSequentialOps:
         module: Module,
         param: ParamItem,
         extra_args: Dict[DataKey, Dict[str, Any]],
-        data_keys: Optional[List[Union[str, int, DataKey]]] = None,
+        data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None,
     ) -> Union[DataType, List[DataType]]:
         _data_keys = self.preproc_datakeys(data_keys)
         outputs = []
@@ -117,7 +117,7 @@ class AugmentationSequentialOps:
         module: Module,
         param: ParamItem,
         extra_args: Dict[DataKey, Dict[str, Any]],
-        data_keys: Optional[List[Union[str, int, DataKey]]] = None,
+        data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None,
     ) -> Union[DataType, List[DataType]]:
         _data_keys = self.preproc_datakeys(data_keys)
         outputs = []

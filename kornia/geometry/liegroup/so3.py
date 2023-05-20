@@ -1,11 +1,12 @@
 # kornia.geometry.so3 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py
-from typing import Optional, Union
+from __future__ import annotations
 
 from kornia.core import Device, Dtype, Module, Tensor, concatenate, stack, tensor, where, zeros, zeros_like
 from kornia.core.check import KORNIA_CHECK_TYPE
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.quaternion import Quaternion
+from kornia.geometry.vector import Vector3
 
 
 class So3(Module):
@@ -48,10 +49,10 @@ class So3(Module):
     def __repr__(self) -> str:
         return f"{self.q}"
 
-    def __getitem__(self, idx: Union[int, slice]) -> 'So3':
+    def __getitem__(self, idx: int | slice) -> So3:
         return So3(self._q[idx])
 
-    def __mul__(self, right: 'So3') -> 'So3':
+    def __mul__(self, right: So3) -> So3:
         """Compose two So3 transformations.
 
         Args:
@@ -63,11 +64,15 @@ class So3(Module):
         # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py#L98
         if isinstance(right, So3):
             return So3(self.q * right.q)
-        elif isinstance(right, Tensor):
+        elif isinstance(right, (Tensor, Vector3)):
             # KORNIA_CHECK_SHAPE(right, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
             w = zeros(*right.shape[:-1], 1, device=right.device, dtype=right.dtype)
-            quat = Quaternion(concatenate((w, right), -1))
-            return (self.q * quat * self.q.conj()).vec
+            quat = Quaternion(concatenate((w, right.data), -1))
+            out = (self.q * quat * self.q.conj()).vec
+            if isinstance(right, Tensor):
+                return out
+            elif isinstance(right, Vector3):
+                return Vector3(out)
         else:
             raise TypeError(f"Not So3 or Tensor type. Got: {type(right)}")
 
@@ -77,7 +82,7 @@ class So3(Module):
         return self._q
 
     @staticmethod
-    def exp(v: Tensor) -> 'So3':
+    def exp(v: Tensor) -> So3:
         """Converts elements of lie algebra to elements of lie group.
 
         See more: https://vision.in.tum.de/_media/members/demmeln/nurlanov2021so3log.pdf
@@ -125,11 +130,11 @@ class So3(Module):
         return omega
 
     @staticmethod
-    def hat(v: Tensor) -> Tensor:
+    def hat(v: Vector3 | Tensor) -> Tensor:
         """Converts elements from vector space to lie algebra. Returns matrix of shape :math:`(B,3,3)`.
 
         Args:
-            v: vector of shape :math:`(B,3)`.
+            v: Vector3 or tensor of shape :math:`(B,3)`.
 
         Example:
             >>> v = torch.ones((1,3))
@@ -140,7 +145,10 @@ class So3(Module):
                      [-1.,  1.,  0.]]])
         """
         # KORNIA_CHECK_SHAPE(v, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
-        a, b, c = v[..., 0], v[..., 1], v[..., 2]
+        if isinstance(v, Tensor):
+            a, b, c = v[..., 0], v[..., 1], v[..., 2]
+        else:
+            a, b, c = v.x, v.y, v.z
         z = zeros_like(a)
         row0 = stack((z, -c, b), -1)
         row1 = stack((c, z, -a), -1)
@@ -204,7 +212,7 @@ class So3(Module):
         return stack((row0, row1, row2), -2)
 
     @classmethod
-    def from_matrix(cls, matrix: Tensor) -> 'So3':
+    def from_matrix(cls, matrix: Tensor) -> So3:
         """Create So3 from a rotation matrix.
 
         Args:
@@ -220,7 +228,24 @@ class So3(Module):
         return cls(Quaternion.from_matrix(matrix))
 
     @classmethod
-    def identity(cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None) -> 'So3':
+    def from_wxyz(cls, wxyz: Tensor) -> So3:
+        """Create So3 from a tensor representing a quaternion.
+
+        Args:
+            wxyz: the quaternion to convert of shape :math:`(B,4)`.
+
+        Example:
+            >>> q = torch.tensor([1., 0., 0., 0.])
+            >>> s = So3.from_wxyz(q)
+            >>> s
+            Parameter containing:
+            tensor([1., 0., 0., 0.], requires_grad=True)
+        """
+        # KORNIA_CHECK_SHAPE(wxyz, ["B", "4"])  # FIXME: resolve shape bugs. @edgarriba
+        return cls(Quaternion(wxyz))
+
+    @classmethod
+    def identity(cls, batch_size: int | None = None, device: Device | None = None, dtype: Dtype = None) -> So3:
         """Create a So3 group representing an identity rotation.
 
         Args:
@@ -240,7 +265,7 @@ class So3(Module):
         """
         return cls(Quaternion.identity(batch_size, device, dtype))
 
-    def inverse(self) -> 'So3':
+    def inverse(self) -> So3:
         """Returns the inverse transformation.
 
         Example:
@@ -252,7 +277,7 @@ class So3(Module):
         return So3(self.q.conj())
 
     @classmethod
-    def random(cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None) -> 'So3':
+    def random(cls, batch_size: int | None = None, device: Device | None = None, dtype: Dtype = None) -> So3:
         """Create a So3 group representing a random rotation.
 
         Args:
@@ -265,7 +290,7 @@ class So3(Module):
         return cls(Quaternion.random(batch_size, device, dtype))
 
     @classmethod
-    def rot_x(cls, x: Tensor) -> "So3":
+    def rot_x(cls, x: Tensor) -> So3:
         """Construct a x-axis rotation.
 
         Args:
@@ -275,7 +300,7 @@ class So3(Module):
         return cls.exp(stack((x, zs, zs), -1))
 
     @classmethod
-    def rot_y(cls, y: Tensor) -> "So3":
+    def rot_y(cls, y: Tensor) -> So3:
         """Construct a z-axis rotation.
 
         Args:
@@ -285,7 +310,7 @@ class So3(Module):
         return cls.exp(stack((zs, y, zs), -1))
 
     @classmethod
-    def rot_z(cls, z: Tensor) -> "So3":
+    def rot_z(cls, z: Tensor) -> So3:
         """Construct a z-axis rotation.
 
         Args:

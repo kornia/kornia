@@ -13,10 +13,10 @@ class TestFilter2D(BaseTester):
     def test_smoke(self, border_type, normalized, padding, device, dtype):
         kernel = torch.rand(1, 3, 3, device=device, dtype=dtype)
         _, height, width = kernel.shape
-        input = torch.ones(1, 1, 7, 8, device=device, dtype=dtype)
-        b, c, h, w = input.shape
+        sample = torch.ones(1, 1, 7, 8, device=device, dtype=dtype)
+        b, c, h, w = sample.shape
 
-        actual = filter2d(input, kernel, border_type, normalized, padding)
+        actual = filter2d(sample, kernel, border_type, normalized, padding)
         assert isinstance(actual, torch.Tensor)
         assert actual.shape in {(b, c, h, w), (b, c, h - height + 1, w - width + 1)}
 
@@ -26,13 +26,52 @@ class TestFilter2D(BaseTester):
         B: int = batch_size
         kernel = torch.rand(1, 3, 3, device=device, dtype=dtype)
         _, height, width = kernel.shape
-        input = torch.ones(B, 3, 7, 8, device=device, dtype=dtype)
-        b, c, h, w = input.shape
-        out = filter2d(input, kernel, padding=padding)
+        sample = torch.ones(B, 3, 7, 8, device=device, dtype=dtype)
+        b, c, h, w = sample.shape
+        out = filter2d(sample, kernel, padding=padding)
         if padding == 'same':
             assert out.shape == (b, c, h, w)
         else:
             assert out.shape == (b, c, h - height + 1, w - width + 1)
+
+    def test_conv(self, device, dtype):
+        inp = torch.zeros(1, 1, 5, 5, device=device, dtype=dtype)
+        inp[..., 2, 2] = 1.0
+        kernel = torch.arange(1, 10).reshape(3, 3).to(device, dtype)[None]
+        corr_expected = torch.tensor(
+            [
+                [
+                    [
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 9.0, 8.0, 7.0, 0.0],
+                        [0.0, 6.0, 5.0, 4.0, 0.0],
+                        [0.0, 3.0, 2.0, 1.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        conv_expected = torch.tensor(
+            [
+                [
+                    [
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 1.0, 2.0, 3.0, 0.0],
+                        [0.0, 4.0, 5.0, 6.0, 0.0],
+                        [0.0, 7.0, 8.0, 9.0, 0.0],
+                        [0.0, 0.0, 0.0, 0.0, 0.0],
+                    ]
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        out_corr = filter2d(inp, kernel, behaviour='corr')
+        assert_close(out_corr, corr_expected)
+        out_conv = filter2d(inp, kernel, behaviour='conv')
+        assert_close(out_conv, conv_expected)
 
     def test_exception(self):
         k = torch.ones(1, 1, 1)
@@ -64,7 +103,7 @@ class TestFilter2D(BaseTester):
     @pytest.mark.parametrize("padding", ["same", "valid"])
     def test_mean_filter(self, padding, device, dtype):
         kernel = torch.ones(1, 3, 3, device=device, dtype=dtype)
-        input = torch.tensor(
+        sample = torch.tensor(
             [
                 [
                     [
@@ -80,7 +119,7 @@ class TestFilter2D(BaseTester):
             dtype=dtype,
         )
 
-        actual = filter2d(input, kernel, padding=padding)
+        actual = filter2d(sample, kernel, padding=padding)
 
         if padding == 'same':
             expected_same = torch.tensor(
@@ -110,7 +149,7 @@ class TestFilter2D(BaseTester):
     @pytest.mark.parametrize("padding", ["same", "valid"])
     def test_mean_filter_2batch_2ch(self, padding, device, dtype):
         kernel = torch.ones(1, 3, 3, device=device, dtype=dtype)
-        input = torch.tensor(
+        sample = torch.tensor(
             [
                 [
                     [
@@ -126,7 +165,7 @@ class TestFilter2D(BaseTester):
             dtype=dtype,
         ).expand(2, 2, -1, -1)
 
-        actual = filter2d(input, kernel, padding=padding)
+        actual = filter2d(sample, kernel, padding=padding)
 
         if padding == 'same':
             expected_same = torch.tensor(
@@ -155,7 +194,7 @@ class TestFilter2D(BaseTester):
     @pytest.mark.parametrize("padding", ["same", "valid"])
     def test_normalized_mean_filter(self, padding, device, dtype):
         kernel = torch.ones(1, 3, 3, device=device, dtype=dtype)
-        input = torch.tensor(
+        sample = torch.tensor(
             [
                 [
                     [
@@ -172,7 +211,7 @@ class TestFilter2D(BaseTester):
         ).expand(2, 2, -1, -1)
 
         nv: float = 5.0 / 9  # normalization value
-        actual = filter2d(input, kernel, normalized=True, padding=padding)
+        actual = filter2d(sample, kernel, normalized=True, padding=padding)
 
         if padding == 'same':
             expected_same = torch.tensor(
@@ -202,7 +241,7 @@ class TestFilter2D(BaseTester):
     @pytest.mark.parametrize("padding", ["same", "valid"])
     def test_even_sized_filter(self, padding, device, dtype):
         kernel = torch.ones(1, 2, 2, device=device, dtype=dtype)
-        input = torch.tensor(
+        sample = torch.tensor(
             [
                 [
                     [
@@ -218,7 +257,7 @@ class TestFilter2D(BaseTester):
             dtype=dtype,
         )
 
-        actual = filter2d(input, kernel, padding=padding)
+        actual = filter2d(sample, kernel, padding=padding)
 
         if padding == 'same':
             expected_same = torch.tensor(
@@ -250,7 +289,7 @@ class TestFilter2D(BaseTester):
     @pytest.mark.parametrize("padding", ["same", "valid"])
     def test_mix_sized_filter_padding_same(self, padding, device, dtype):
         kernel = torch.ones(1, 5, 6, device=device, dtype=dtype)
-        input_ = torch.tensor(
+        sample_ = torch.tensor(
             [
                 [
                     [
@@ -282,7 +321,7 @@ class TestFilter2D(BaseTester):
             dtype=dtype,
         )
 
-        actual = filter2d(input_, kernel, padding='same', border_type='constant')
+        actual = filter2d(sample_, kernel, padding='same', border_type='constant')
         self.assert_close(actual, expected_same)
 
     @pytest.mark.parametrize("padding", ["same", "valid"])
@@ -307,12 +346,12 @@ class TestFilter2D(BaseTester):
 
     def test_gradcheck(self, device):
         kernel = torch.rand(1, 3, 3, device=device)
-        input = torch.ones(1, 1, 7, 8, device=device)
+        sample = torch.ones(1, 1, 7, 8, device=device)
 
         # evaluate function gradient
-        input = tensor_to_gradcheck_var(input)  # to var
+        sample = tensor_to_gradcheck_var(sample)  # to var
         kernel = tensor_to_gradcheck_var(kernel)  # to var
-        self.gradcheck(filter2d, (input, kernel), nondet_tol=1e-8)
+        self.gradcheck(filter2d, (sample, kernel), nondet_tol=1e-8)
 
     @pytest.mark.skip(reason='filter2d do not have a module')
     def test_module(self):
@@ -377,7 +416,7 @@ class TestFilter3D(BaseTester):
 
     def test_mean_filter(self, device, dtype):
         kernel = torch.ones(1, 3, 3, 3, device=device, dtype=dtype)
-        input = torch.tensor(
+        sample = torch.tensor(
             [
                 [
                     [
@@ -441,12 +480,12 @@ class TestFilter3D(BaseTester):
             dtype=dtype,
         )
 
-        actual = filter3d(input, kernel)
+        actual = filter3d(sample, kernel)
         self.assert_close(actual, expected)
 
     def test_mean_filter_2batch_2ch(self, device, dtype):
         kernel = torch.ones(1, 3, 3, 3, device=device, dtype=dtype)
-        input = torch.tensor(
+        sample = torch.tensor(
             [
                 [
                     [
@@ -477,7 +516,7 @@ class TestFilter3D(BaseTester):
             device=device,
             dtype=dtype,
         )
-        input = input.expand(2, 2, -1, -1, -1)
+        sample = sample.expand(2, 2, -1, -1, -1)
 
         expected = torch.tensor(
             [
@@ -512,12 +551,12 @@ class TestFilter3D(BaseTester):
         )
         expected = expected.expand(2, 2, -1, -1, -1)
 
-        actual = filter3d(input, kernel)
+        actual = filter3d(sample, kernel)
         self.assert_close(actual, expected)
 
     def test_normalized_mean_filter(self, device, dtype):
         kernel = torch.ones(1, 3, 3, 3, device=device, dtype=dtype)
-        input = torch.tensor(
+        sample = torch.tensor(
             [
                 [
                     [
@@ -548,7 +587,7 @@ class TestFilter3D(BaseTester):
             device=device,
             dtype=dtype,
         )
-        input = input.expand(2, 2, -1, -1, -1)
+        sample = sample.expand(2, 2, -1, -1, -1)
 
         nv = 5.0 / 27  # normalization value
         expected = torch.tensor(
@@ -584,13 +623,13 @@ class TestFilter3D(BaseTester):
         )
         expected = expected.expand(2, 2, -1, -1, -1)
 
-        actual = filter3d(input, kernel, normalized=True)
+        actual = filter3d(sample, kernel, normalized=True)
 
         self.assert_close(actual, expected)
 
     def test_even_sized_filter(self, device, dtype):
         kernel = torch.ones(1, 2, 2, 2, device=device, dtype=dtype)
-        input = torch.tensor(
+        sample = torch.tensor(
             [
                 [
                     [
@@ -654,7 +693,7 @@ class TestFilter3D(BaseTester):
             dtype=dtype,
         )
 
-        actual = filter3d(input, kernel)
+        actual = filter3d(sample, kernel)
         self.assert_close(actual, expected)
 
     def test_noncontiguous(self, device, dtype):
@@ -667,12 +706,12 @@ class TestFilter3D(BaseTester):
 
     def test_gradcheck(self, device):
         kernel = torch.rand(1, 3, 3, 3, device=device)
-        input = torch.ones(1, 1, 6, 7, 8, device=device)
+        sample = torch.ones(1, 1, 6, 7, 8, device=device)
 
         # evaluate function gradient
-        input = tensor_to_gradcheck_var(input)  # to var
+        sample = tensor_to_gradcheck_var(sample)  # to var
         kernel = tensor_to_gradcheck_var(kernel)  # to var
-        self.gradcheck(filter3d, (input, kernel), nondet_tol=1e-8)
+        self.gradcheck(filter3d, (sample, kernel), nondet_tol=1e-8)
 
     @pytest.mark.skip(reason='filter3d do not have a module')
     def test_module(self):

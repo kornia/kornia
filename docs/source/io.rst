@@ -20,21 +20,22 @@ natively in Rust to reduce the memory footprint during the decoding and types co
 .. code-block:: python
 
     import kornia as K
+    from kornia.io import ImageLoadType
     from kornia.core import Tensor
 
-    img: Tensor = K.io.load_image(file_path, ImageType.UNCHANGED, device="cuda")
+    img: Tensor = K.io.load_image(file_path, ImageLoadType.UNCHANGED, device="cuda")
     # will load CxHxW / in the original format in "cuda"
 
-    img: Tensor = K.io.load_image(file_path, ImageType.RGB8, device="cpu")
+    img: Tensor = K.io.load_image(file_path, ImageLoadType.RGB8, device="cpu")
     # will load 3xHxW / in torch.uint in range [0,255] in "cpu"
 
-    img: Tensor = K.io.load_image(file_path, ImageType.GRAY8, device="cuda")
+    img: Tensor = K.io.load_image(file_path, ImageLoadType.GRAY8, device="cuda")
     # will load 1xHxW / in torch.uint8 in range [0,255] in "cuda"
 
-    img: Tensor = K.io.load_image(file_path, ImageType.GRAY32, device="cpu")
+    img: Tensor = K.io.load_image(file_path, ImageLoadType.GRAY32, device="cpu")
     # will load 1xHxW / in torch.float32 in range [0,1] in "cpu"
 
-    img: Tensor = K.io.load_image(file_path, ImageType.RGB32, device="cuda")
+    img: Tensor = K.io.load_image(file_path, ImageLoadType.RGB32, device="cuda")
     # will load 3xHxW / in torch.float32 in range [0,1] in "cuda"
 
 .. autofunction:: load_image

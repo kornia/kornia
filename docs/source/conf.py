@@ -6,12 +6,12 @@ import sys
 # by cloning the git repo. Thus, any on-the-fly operation will not effect
 # on the resulting documentation. We therefore need to import and run the
 # corresponding code here.
-spec = importlib.util.spec_from_file_location("generate_example_images", "../generate_example_images.py")
-generate_example_images = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(generate_example_images)
+spec = importlib.util.spec_from_file_location("generate_examples", "../generate_examples.py")
+generate_examples = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(generate_examples)
 
 # Pre-generate the example images
-generate_example_images.main()
+generate_examples.main()
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
@@ -116,7 +116,7 @@ html_baseurl = 'https://kornia.readthedocs.io'
 html_title = "Kornia"
 
 html_theme_options = {
-    'analytics_id': 'G-RKS4WFXVHJ',
+    # 'analytics_id': 'G-RKS4WFXVHJ', # Unsupported by furo theme
     'light_logo': 'img/kornia_logo_only_light.svg',
     'dark_logo': 'img/kornia_logo_only_dark.svg',
     "sidebar_hide_name": True,

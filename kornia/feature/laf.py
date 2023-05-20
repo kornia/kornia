@@ -31,7 +31,8 @@ def get_laf_scale(LAF: Tensor) -> Tensor:
 
 
 def get_laf_center(LAF: Tensor) -> Tensor:
-    """Return a center (keypoint) of the LAFs.
+    """Return a center (keypoint) of the LAFs. The convention is that center of 5-pixel image (coordinates from 0
+    to 4) is 2, and not 2.5.
 
     Args:
         LAF: :math:`(B, N, 2, 3)`
@@ -66,6 +67,25 @@ def get_laf_orientation(LAF: Tensor) -> Tensor:
     return rad2deg(angle_rad).unsqueeze(-1)
 
 
+def rotate_laf(LAF: Tensor, angles_degrees: Tensor) -> Tensor:
+    """Apply additional rotation to the the LAFs. Compared to `set_laf_orientation`, the resulting rotation is
+    original LAF orientation plus angles_degrees.
+
+    Args:
+        LAF: :math:`(B, N, 2, 3)`
+        angles: :math:`(B, N, 1)` in degrees.
+
+    Returns:
+        LAF oriented with angles :math:`(B, N, 2, 3)`
+    """
+    KORNIA_CHECK_LAF(LAF)
+    B, N = LAF.shape[:2]
+    rotmat = angle_to_rotation_matrix(angles_degrees).view(B * N, 2, 2)
+    out_laf = LAF.clone()
+    out_laf[:, :, :2, :2] = torch.bmm(LAF[:, :, :2, :2].reshape(B * N, 2, 2), rotmat).reshape(B, N, 2, 2)
+    return out_laf
+
+
 def set_laf_orientation(LAF: Tensor, angles_degrees: Tensor) -> Tensor:
     """Change the orientation of the LAFs.
 
@@ -78,11 +98,8 @@ def set_laf_orientation(LAF: Tensor, angles_degrees: Tensor) -> Tensor:
     """
     KORNIA_CHECK_LAF(LAF)
     B, N = LAF.shape[:2]
-    rotmat = angle_to_rotation_matrix(angles_degrees).view(B * N, 2, 2)
-    laf_out = concatenate(
-        [torch.bmm(make_upright(LAF).view(B * N, 2, 3)[:, :2, :2], rotmat), LAF.view(B * N, 2, 3)[:, :2, 2:]], dim=2
-    ).view(B, N, 2, 3)
-    return laf_out
+    ori = get_laf_orientation(LAF).reshape_as(angles_degrees)
+    return rotate_laf(LAF, angles_degrees - ori)
 
 
 def laf_from_center_scale_ori(xy: Tensor, scale: Optional[Tensor] = None, ori: Optional[Tensor] = None) -> Tensor:
@@ -141,11 +158,11 @@ def make_upright(laf: Tensor, eps: float = 1e-9) -> Tensor:
     """Rectify the affine matrix, so that it becomes upright.
 
     Args:
-        LAF :math:`(B, N, 2, 3)`
+        laf: :math:`(B, N, 2, 3)`
         eps: for safe division.
 
     Returns:
-        LAF :math:`(B, N, 2, 3)`
+        laf: :math:`(B, N, 2, 3)`
 
     Example:
         >>> input = torch.ones(1, 5, 2, 3)  # BxNx2x3
@@ -261,20 +278,21 @@ def get_laf_pts_to_draw(LAF: Tensor, img_idx: int = 0) -> Tuple[List[int], List[
     # TODO: Refactor doctest
     KORNIA_CHECK_LAF(LAF)
     pts = laf_to_boundary_points(LAF[img_idx : img_idx + 1])[0]
-    pts_np = pts.detach().permute(1, 0, 2).cpu().numpy()
+    pts_np = pts.detach().permute(1, 0, 2).cpu()
     return (pts_np[..., 0].tolist(), pts_np[..., 1].tolist())
 
 
 def denormalize_laf(LAF: Tensor, images: Tensor) -> Tensor:
-    """De-normalize LAFs from scale to image scale.
+    """De-normalize LAFs from scale to image scale. The convention is that center of 5-pixel image (coordinates
+    from 0 to 4) is 2, and not 2.5.
 
         B,N,H,W = images.size()
-        MIN_SIZE = min(H,W)
+        MIN_SIZE = min(H - 1, W -1)
         [a11 a21 x]
         [a21 a22 y]
         becomes
-        [a11*MIN_SIZE a21*MIN_SIZE x*W]
-        [a21*MIN_SIZE a22*MIN_SIZE y*H]
+        [a11*MIN_SIZE a21*MIN_SIZE x*(W-1)]
+        [a21*MIN_SIZE a22*MIN_SIZE y*(W-1)]
 
     Args:
         LAF: :math:`(B, N, 2, 3)`
@@ -285,8 +303,8 @@ def denormalize_laf(LAF: Tensor, images: Tensor) -> Tensor:
     """
     KORNIA_CHECK_LAF(LAF)
     _, _, h, w = images.size()
-    wf = float(w)
-    hf = float(h)
+    wf = float(w - 1)
+    hf = float(h - 1)
     min_size = min(hf, wf)
     coef = torch.ones(1, 1, 2, 3, dtype=LAF.dtype, device=LAF.device) * min_size
     coef[0, 0, 0, 2] = wf
@@ -296,13 +314,14 @@ def denormalize_laf(LAF: Tensor, images: Tensor) -> Tensor:
 
 def normalize_laf(LAF: Tensor, images: Tensor) -> Tensor:
     """Normalize LAFs to [0,1] scale from pixel scale. See below:
+
         B,N,H,W = images.size()
-        MIN_SIZE = min(H,W)
+        MIN_SIZE =  min(H - 1, W -1)
         [a11 a21 x]
         [a21 a22 y]
         becomes:
-        [a11/MIN_SIZE a21/MIN_SIZE x/W]
-        [a21/MIN_SIZE a22/MIN_SIZE y/H]
+        [a11/MIN_SIZE a21/MIN_SIZE x/(W-1)]
+        [a21/MIN_SIZE a22/MIN_SIZE y/(H-1)]
 
     Args:
         LAF: :math:`(B, N, 2, 3)`
@@ -310,12 +329,11 @@ def normalize_laf(LAF: Tensor, images: Tensor) -> Tensor:
 
     Returns:
         the denormalized LAF: :math:`(B, N, 2, 3)`, scale in image percentage (0, 1)
-
     """
     KORNIA_CHECK_LAF(LAF)
     _, _, h, w = images.size()
-    wf = float(w)
-    hf = float(h)
+    wf = float(w - 1)
+    hf = float(h - 1)
     min_size = min(hf, wf)
     coef = torch.ones(1, 1, 2, 3, dtype=LAF.dtype, device=LAF.device) / min_size
     coef[0, 0, 0, 2] = 1.0 / wf
@@ -343,8 +361,8 @@ def generate_patch_grid_from_normalized_LAF(img: Tensor, LAF: Tensor, PS: int = 
     LAF_renorm = denormalize_laf(LAF, img)
 
     grid = F.affine_grid(LAF_renorm.view(B * N, 2, 3), [B * N, ch, PS, PS], align_corners=False)
-    grid[..., :, 0] = 2.0 * grid[..., :, 0].clone() / float(w) - 1.0
-    grid[..., :, 1] = 2.0 * grid[..., :, 1].clone() / float(h) - 1.0
+    grid[..., :, 0] = 2.0 * grid[..., :, 0].clone() / float(w - 1) - 1.0
+    grid[..., :, 1] = 2.0 * grid[..., :, 1].clone() / float(h - 1) - 1.0
     return grid
 
 
@@ -407,23 +425,28 @@ def extract_patches_from_pyramid(
     B, N, _, _ = laf.size()
     _, ch, h, w = img.size()
     scale = 2.0 * get_laf_scale(denormalize_laf(nlaf, img)) / float(PS)
-    pyr_idx = scale.log2().relu().long()
+    max_level = min(img.size(2), img.size(3)) // PS
+    pyr_idx = scale.log2().clamp(min=0.0, max=max(0, max_level - 1)).long()
     cur_img = img
     cur_pyr_level = 0
-    out = zeros(B, N, ch, PS, PS, dtype=nlaf.dtype, device=nlaf.device)
-    while min(cur_img.size(2), cur_img.size(3)) >= PS:
+    out = torch.zeros(B, N, ch, PS, PS).to(nlaf.dtype).to(nlaf.device)
+    we_are_in_business = True
+    while we_are_in_business:
         _, ch, h, w = cur_img.size()
         # for loop temporarily, to be refactored
         for i in range(B):
             scale_mask = (pyr_idx[i] == cur_pyr_level).squeeze()
-            if (scale_mask.float().sum()) == 0:
+            if (scale_mask.float().sum().item()) == 0:
                 continue
             scale_mask = (scale_mask > 0).view(-1)
             grid = generate_patch_grid_from_normalized_LAF(cur_img[i : i + 1], nlaf[i : i + 1, scale_mask, :, :], PS)
             patches = F.grid_sample(
-                cur_img[i : i + 1].expand(grid.size(0), ch, h, w), grid, padding_mode="border", align_corners=False
+                cur_img[i : i + 1].expand(grid.shape[0], ch, h, w), grid, padding_mode="border", align_corners=False
             )
             out[i].masked_scatter_(scale_mask.view(-1, 1, 1, 1), patches)
+        we_are_in_business = min(cur_img.size(2), cur_img.size(3)) >= PS
+        if not we_are_in_business:
+            break
         cur_img = pyrdown(cur_img)
         cur_pyr_level += 1
     return out

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import torch
-from koria.core import Tensor
 
+from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 
@@ -13,6 +13,7 @@ __all__ = [
     "transform_points",
     "point_line_distance",
     "squared_norm",
+    "batched_squared_norm",
     "batched_dot_product",
     "euclidean_distance",
 ]
@@ -54,17 +55,17 @@ def compose_transformations(trans_01: Tensor, trans_12: Tensor) -> Tensor:
         raise ValueError(f"Input number of dims must match. Got {trans_01.dim()} and {trans_12.dim()}")
 
     # unpack input data
-    rmat_01 = trans_01[..., :3, :3]  # Nx3x3
-    rmat_12 = trans_12[..., :3, :3]  # Nx3x3
-    tvec_01 = trans_01[..., :3, -1:]  # Nx3x1
-    tvec_12 = trans_12[..., :3, -1:]  # Nx3x1
+    rmat_01: Tensor = trans_01[..., :3, :3]  # Nx3x3
+    rmat_12: Tensor = trans_12[..., :3, :3]  # Nx3x3
+    tvec_01: Tensor = trans_01[..., :3, -1:]  # Nx3x1
+    tvec_12: Tensor = trans_12[..., :3, -1:]  # Nx3x1
 
     # compute the actual transforms composition
-    rmat_02 = torch.matmul(rmat_01, rmat_12)
-    tvec_02 = torch.matmul(rmat_01, tvec_12) + tvec_01
+    rmat_02: Tensor = torch.matmul(rmat_01, rmat_12)
+    tvec_02: Tensor = torch.matmul(rmat_01, tvec_12) + tvec_01
 
     # pack output tensor
-    trans_02 = torch.zeros_like(trans_01)
+    trans_02: Tensor = torch.zeros_like(trans_01)
     trans_02[..., :3, 0:3] += rmat_02
     trans_02[..., :3, -1:] += tvec_02
     trans_02[..., -1, -1:] += 1.0
@@ -144,6 +145,7 @@ def relative_transformation(trans_01: Tensor, trans_02: Tensor) -> Tensor:
         raise ValueError("Input must be a of the shape Nx4x4 or 4x4." " Got {}".format(trans_02.shape))
     if not trans_01.dim() == trans_02.dim():
         raise ValueError(f"Input number of dims must match. Got {trans_01.dim()} and {trans_02.dim()}")
+
     trans_10 = inverse_transformation(trans_01)
     trans_12 = compose_transformations(trans_10, trans_02)
     return trans_12
@@ -211,7 +213,7 @@ def point_line_distance(point: Tensor, line: Tensor, eps: float = 1e-9) -> Tenso
     KORNIA_CHECK_IS_TENSOR(point)
     KORNIA_CHECK_IS_TENSOR(line)
 
-    if not point.shape[-1] in (2, 3):
+    if point.shape[-1] not in (2, 3):
         raise ValueError(f"pts must be a (*, 2 or 3) tensor. Got {point.shape}")
 
     if not line.shape[-1] == 3:

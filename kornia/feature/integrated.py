@@ -143,7 +143,8 @@ class SIFTFeature(LocalFeature):
     """Convenience module, which implements DoG detector + (Root)SIFT descriptor.
 
     Using `kornia.feature.MultiResolutionDetector` without blur pyramid Still not as good as OpenCV/VLFeat because of
-    https://github.com/kornia/kornia/pull/884, but we are working on it
+    https://github.com/kornia/kornia/pull/884,
+    but we are working on it
     """
 
     def __init__(
@@ -258,7 +259,10 @@ class KeyNetHardNet(LocalFeature):
 
 
 class KeyNetAffNetHardNet(LocalFeature):
-    """Convenience module, which implements KeyNet detector + AffNet + HardNet descriptor."""
+    """Convenience module, which implements KeyNet detector + AffNet + HardNet descriptor.
+
+    .. image:: _static/img/keynet_affnet.jpg
+    """
 
     def __init__(
         self,

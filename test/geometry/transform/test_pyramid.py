@@ -118,8 +118,8 @@ class TestScalePyramid:
 
 class TestBuildPyramid:
     def test_smoke(self, device, dtype):
-        input = torch.ones(1, 2, 4, 5, device=device, dtype=dtype)
-        pyramid = kornia.geometry.transform.build_pyramid(input, max_level=1)
+        sample = torch.ones(1, 2, 4, 5, device=device, dtype=dtype)
+        pyramid = kornia.geometry.transform.build_pyramid(sample, max_level=1)
         assert len(pyramid) == 1
         assert pyramid[0].shape == (1, 2, 4, 5)
 
@@ -128,8 +128,8 @@ class TestBuildPyramid:
     @pytest.mark.parametrize("max_level", (2, 3, 4))
     def test_num_levels(self, batch_size, channels, max_level, device, dtype):
         height, width = 16, 20
-        input = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
-        pyramid = kornia.geometry.transform.build_pyramid(input, max_level)
+        sample = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
+        pyramid = kornia.geometry.transform.build_pyramid(sample, max_level)
         assert len(pyramid) == max_level
         for i in range(1, max_level):
             img = pyramid[i]
@@ -149,8 +149,8 @@ class TestBuildPyramid:
 
 class TestBuildLaplacianPyramid:
     def test_smoke(self, device, dtype):
-        input = torch.ones(1, 2, 4, 5, device=device, dtype=dtype)
-        pyramid = kornia.geometry.transform.build_laplacian_pyramid(input, max_level=1)
+        sample = torch.ones(1, 2, 4, 5, device=device, dtype=dtype)
+        pyramid = kornia.geometry.transform.build_laplacian_pyramid(sample, max_level=1)
         assert len(pyramid) == 1
         assert pyramid[0].shape == (1, 2, 4, 5)
 
@@ -159,8 +159,8 @@ class TestBuildLaplacianPyramid:
     @pytest.mark.parametrize("max_level", (2, 3, 4))
     def test_num_levels(self, batch_size, channels, max_level, device, dtype):
         height, width = 16, 32
-        input = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
-        pyramid = kornia.geometry.transform.build_laplacian_pyramid(input, max_level)
+        sample = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
+        pyramid = kornia.geometry.transform.build_laplacian_pyramid(sample, max_level)
         assert len(pyramid) == max_level
         for i in range(1, max_level):
             img = pyramid[i]

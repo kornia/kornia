@@ -238,14 +238,14 @@ class WunschLineMatcher(Module):
         KORNIA_CHECK_SHAPE(line_seg, ["N", "2", "2"])
         num_lines = len(line_seg)
         line_lengths = torch.norm(line_seg[:, 0] - line_seg[:, 1], dim=1)
-
+        dev = line_seg.device
         # Sample the points separated by at least min_dist_pts along each line
         # The number of samples depends on the length of the line
         num_samples_lst = torch.clamp(
             torch.div(line_lengths, self.min_dist_pts, rounding_mode='floor'), 2, self.num_samples
         ).int()
-        line_points = torch.empty((num_lines, self.num_samples, 2), dtype=torch.float)
-        valid_points = torch.empty((num_lines, self.num_samples), dtype=torch.bool)
+        line_points = torch.empty((num_lines, self.num_samples, 2), dtype=torch.float, device=dev)
+        valid_points = torch.empty((num_lines, self.num_samples), dtype=torch.bool, device=dev)
         for n_samp in range(2, self.num_samples + 1):
             # Consider all lines where we can fit up to n_samp points
             cur_mask = num_samples_lst == n_samp
@@ -256,7 +256,7 @@ class WunschLineMatcher(Module):
 
             # Pad
             cur_line_points = pad(cur_line_points, (0, 0, 0, self.num_samples - n_samp))
-            cur_valid_points = torch.ones(len(cur_line_seg), self.num_samples, dtype=torch.bool)
+            cur_valid_points = torch.ones(len(cur_line_seg), self.num_samples, dtype=torch.bool, device=dev)
             cur_valid_points[:, n_samp:] = False
 
             line_points[cur_mask] = cur_line_points
@@ -317,9 +317,9 @@ class WunschLineMatcher(Module):
         # Recalibrate the scores to get a gap score of 0
         gap = 0.1
         nw_scores = scores - gap
-
+        dev = scores.device
         # Run the dynamic programming algorithm
-        nw_grid = torch.zeros(b, n + 1, m + 1, dtype=torch.float)
+        nw_grid = torch.zeros(b, n + 1, m + 1, dtype=torch.float, device=dev)
         for i in range(n):
             for j in range(m):
                 nw_grid[:, i + 1, j + 1] = torch.maximum(

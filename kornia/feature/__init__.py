@@ -1,5 +1,6 @@
 from .affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, PatchAffineShapeEstimator
 from .defmo import DeFMO
+from .disk import DISK, DISKFeatures
 from .hardnet import HardNet, HardNet8
 from .hynet import TLU, FilterResponseNorm2d, HyNet
 from .integrated import (
@@ -32,6 +33,7 @@ from .laf import (
     make_upright,
     normalize_laf,
     perspective_transform_lafs,
+    rotate_laf,
     scale_laf,
     set_laf_orientation,
 )
@@ -109,6 +111,7 @@ __all__ = [
     "set_laf_orientation",
     "get_laf_descriptors",
     "scale_laf",
+    "rotate_laf",
     "SIFTDescriptor",
     "DenseSIFTDescriptor",
     "MKDDescriptor",
@@ -150,4 +153,6 @@ __all__ = [
     "perspective_transform_lafs",
     "SOLD2_detector",
     "SOLD2",
+    "DISK",
+    "DISKFeatures",
 ]

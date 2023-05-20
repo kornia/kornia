@@ -1,3 +1,0 @@
-hydra-core
-kornia[x]
-torchvision

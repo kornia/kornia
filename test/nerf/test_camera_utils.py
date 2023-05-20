@@ -1,4 +1,5 @@
-from pathlib import Path
+import hashlib
+import urllib.request
 
 import pytest
 import torch
@@ -7,15 +8,46 @@ from kornia.geometry.conversions import QuaternionCoeffOrder, quaternion_to_rota
 from kornia.nerf.camera_utils import create_spiral_path, parse_colmap_output
 from kornia.testing import assert_close
 
+_ref = {
+    'cameras': (
+        'https://raw.githubusercontent.com/kornia/data/main/nerf/cameras.txt',
+        'aee6dbd448be900a0d4de85d08914e47a84f025e16f8498cbf9f7bfc7eff09a6',
+    ),
+    'images': (
+        'https://raw.githubusercontent.com/kornia/data/main/nerf/images.txt',
+        'e6b66a9b76d92e498697edece33be76ae69aa28a960bc895a59495763de61286',
+    ),
+}
+
+
+def _get_data(url: str, sha256: str) -> str:
+    req = urllib.request.Request(url)
+    with urllib.request.urlopen(req) as response:  # nosec
+        data = response.read()
+
+    assert hashlib.sha256(data).hexdigest() == sha256
+
+    return data.decode('utf-8')
+
 
 @pytest.fixture
-def colmap_cameras_path():
-    return Path(__file__).parent / './cameras.txt'
+def colmap_cameras_path(tmp_path):
+    data = _get_data(*_ref['cameras'])
+
+    p = tmp_path / "camera.txt"
+    p.write_text(data)
+
+    yield p
 
 
 @pytest.fixture
-def colmap_images_path():
-    return Path(__file__).parent / './images.txt'
+def colmap_images_path(tmp_path):
+    data = _get_data(*_ref['images'])
+
+    p = tmp_path / "images.txt"
+    p.write_text(data)
+
+    yield p
 
 
 def test_parse_colmap_output(device, dtype, colmap_cameras_path, colmap_images_path) -> None:

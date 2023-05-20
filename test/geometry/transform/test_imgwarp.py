@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 import torch
 from torch.autograd import gradcheck
@@ -5,7 +7,7 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.testing import assert_close
-from kornia.utils._compat import torch_version_lt
+from kornia.utils._compat import torch_version, torch_version_lt
 from kornia.utils.helpers import _torch_inverse_cast
 
 
@@ -416,6 +418,8 @@ class TestWarpPerspective:
         assert_close(patch_warped, expected)
 
     def test_dynamo(self, device, dtype, torch_optimizer):
+        if dtype == torch.float64 and torch_version() == '2.0.0' and sys.platform == 'linux':
+            pytest.xfail('Failling on CI on ubuntu with torch 2.0.0 for float64')
         img = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         H_ab = kornia.eye_like(3, img)
         args = (img, H_ab, (4, 5))
@@ -455,12 +459,12 @@ class TestWarpPerspective:
 class TestRemap:
     def test_smoke(self, device, dtype):
         height, width = 3, 4
-        input = torch.ones(1, 1, height, width, device=device, dtype=dtype)
+        input_org = torch.ones(1, 1, height, width, device=device, dtype=dtype)
         grid = kornia.utils.create_meshgrid(height, width, normalized_coordinates=False, device=device, dtype=dtype)
         input_warped = kornia.geometry.remap(
-            input, grid[..., 0], grid[..., 1], normalized_coordinates=False, align_corners=True
+            input_org, grid[..., 0], grid[..., 1], normalized_coordinates=False, align_corners=True
         )
-        assert_close(input, input_warped, rtol=1e-4, atol=1e-4)
+        assert_close(input_org, input_warped, rtol=1e-4, atol=1e-4)
 
     def test_different_size(self, device, dtype):
         height, width = 3, 4

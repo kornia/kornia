@@ -1,4 +1,5 @@
 from typing import Any, Dict, Optional, Tuple, Type
+from unittest.mock import patch
 
 import pytest
 import torch
@@ -37,6 +38,7 @@ from kornia.augmentation import (
     RandomPlasmaContrast,
     RandomPlasmaShadow,
     RandomPosterize,
+    RandomRain,
     RandomResizedCrop,
     RandomRGBShift,
     RandomRotation,
@@ -52,6 +54,7 @@ from kornia.constants import Resample, pi
 from kornia.geometry import transform_points
 from kornia.testing import BaseTester, assert_close, default_with_one_parameter_changed
 from kornia.utils import create_meshgrid
+from kornia.utils._compat import torch_version
 from kornia.utils.helpers import _torch_inverse_cast
 
 # TODO same_on_batch tests?
@@ -66,6 +69,7 @@ class CommonTests(BaseTester):
     ############################################################################################################
     _augmentation_cls: Optional[Type[AugmentationBase2D]] = None
     _default_param_set: Dict["str", Any] = {}
+
     ############################################################################################################
     # Fixtures
     ############################################################################################################
@@ -3702,6 +3706,29 @@ class TestRandomElasticTransform:
         labels_transformed = compose(features, labels, data_keys=["input", "mask"])[1]
         assert_close(labels_transformed.unique(), torch.tensor([0, 10], dtype=dtype, device=device))
 
+    @pytest.mark.parametrize("batch_prob", [[True, True], [False, True], [False, False]])
+    def test_apply(self, batch_prob, device, dtype):
+        torch.manual_seed(0)
+
+        aug_list = AugmentationSequential(RandomElasticTransform(sigma=(2, 2), alpha=(2, 2)))
+        features = torch.rand(2, 3, 10, 10, dtype=dtype, device=device)
+        labels = torch.randint(0, 10, (2, 1, 10, 10), dtype=dtype, device=device)
+
+        # Make sure the transformation works correctly even if only applied to some images in the batch
+        to_apply = torch.tensor(batch_prob, device=device)
+        with patch.object(aug_list[0], '__batch_prob_generator__', return_value=to_apply):
+            features_transformed, labels_transformed = aug_list(features, labels, data_keys=["input", "mask"])
+            assert_close(aug_list._params[0].data["batch_prob"], to_apply)
+
+            # Images should remain unchanged if the transformation is not applied
+            assert_close(features_transformed[~to_apply], features[~to_apply])
+            assert_close(labels_transformed[~to_apply], labels[~to_apply])
+
+            # At least one value in the images should change if the transformation is applied
+            if to_apply.any():
+                assert features_transformed[to_apply].ne(features[to_apply]).any()
+                assert labels_transformed[to_apply].ne(labels[to_apply]).any()
+
 
 class TestRandomThinPlateSpline:
     def test_smoke(self, device, dtype):
@@ -4036,6 +4063,7 @@ class TestRandomRGBShift:
         out = aug(img)
         assert out.shape == (2, 3, 4, 5)
 
+    @pytest.mark.skipif(torch_version() == '2.0.0', reason='Not working on 2.0')
     def test_onnx_export(self, device, dtype):
         img = torch.rand(1, 3, 4, 5, device=device, dtype=dtype)
         aug = RandomRGBShift(p=1.0).to(device)
@@ -4187,3 +4215,52 @@ class TestRandomMedianBlur:
         )
 
         utils.assert_close(out, expected)
+
+
+class TestRandomRain(BaseTester):
+    torch.manual_seed(0)  # for random reproductibility
+
+    def _get_exception_test_data(self, device, dtype):
+        err_msg_height_bigger = "Height of drop should be greater than zero and less than image height."
+        err_msg_width_bigger = 'Width of drop should be less than image width'
+        err_msg_wrong_ch = 'Number of color channels should be 1 or 3.'
+
+        return [
+            (err_msg_height_bigger, (-2, 0), (2, 3), torch.rand(1, 5, 5, device=device, dtype=dtype)),
+            (err_msg_height_bigger, (6, 6), (2, 3), torch.rand(1, 5, 5, device=device, dtype=dtype)),
+            (err_msg_width_bigger, (2, 2), (6, 6), torch.rand(1, 5, 5, device=device, dtype=dtype)),
+            (err_msg_wrong_ch, (1, 2), (1, 2), torch.rand(2, 4, 5, device=device, dtype=dtype)),
+        ]
+
+    @pytest.mark.parametrize("batch_shape", [(1, 3, 5, 7), (1, 3, 6, 9)])
+    def test_cardinality(self, batch_shape, device, dtype):
+        input_data = torch.rand(batch_shape, device=device, dtype=dtype)
+        output_data = RandomRain(p=1.0, drop_height=(3, 4), drop_width=(2, 3), number_of_drops=(1, 3))(input_data)
+        assert output_data.shape == batch_shape
+
+    def test_smoke(self, device, dtype):
+        input_data = torch.rand(1, 3, 8, 9, device=device, dtype=dtype)
+        aug = RandomRain(p=1.0, drop_height=(2, 3), drop_width=(2, 3), number_of_drops=(1, 3))
+        output_data = aug(input_data)
+        assert output_data.shape == input_data.shape
+        input_data = torch.rand(1, 3, 8, 9, device=device, dtype=dtype)
+        aug = RandomRain(p=1.0, drop_height=(2, 3), drop_width=(-3, -2), number_of_drops=(1, 3))
+        output_data = aug(input_data)
+        assert output_data.shape == input_data.shape
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_gradcheck(self, device):
+        pass
+
+    def test_exception(self, device, dtype):
+        exception_test_data = self._get_exception_test_data(device, dtype)
+        for err_msg, drop_height, drop_width, input_data in exception_test_data:
+            with pytest.raises(Exception) as errinfo:
+                aug = RandomRain(p=1.0, drop_height=drop_height, drop_width=drop_width)
+                aug(input_data)
+
+            assert err_msg in str(errinfo)
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_module(self, device, dtype):
+        pass
