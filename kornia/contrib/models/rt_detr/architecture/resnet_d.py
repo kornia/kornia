@@ -19,7 +19,6 @@ class BottleneckD(Module):
         KORNIA_CHECK(stride in {1, 2})
         super().__init__()
         expanded_out_channels = out_channels * self.expansion
-
         self.convs = nn.Sequential(
             ConvNormAct(in_channels, out_channels, 1),
             ConvNormAct(out_channels, out_channels, 3, stride=stride),
@@ -43,7 +42,7 @@ class BottleneckD(Module):
 
 
 class ResNetD(Module):
-    def __init__(self, n_blocks: list[int], block: BottleneckD = BottleneckD) -> None:
+    def __init__(self, n_blocks: list[int], block: type[BottleneckD] = BottleneckD) -> None:
         KORNIA_CHECK(len(n_blocks) == 4)
         super().__init__()
         in_channels = 64
@@ -63,7 +62,7 @@ class ResNetD(Module):
 
     @staticmethod
     def make_stage(
-        in_channels: int, out_channels: int, stride: int, n_blocks: int, block: BottleneckD
+        in_channels: int, out_channels: int, stride: int, n_blocks: int, block: type[BottleneckD]
     ) -> tuple[Module, int]:
         stage = nn.Sequential(
             block(in_channels, out_channels, stride),

@@ -200,7 +200,7 @@ class RTDETRHead(Module):
         grid_size: float = 0.05,
         eps: float = 0.01,
         device: torch.device | None = None,
-        dtype: torch.dtype | None = None,
+        dtype: torch.dtype = torch.float32,
     ) -> tuple[Tensor, Tensor]:
         """Generate anchors for RT-DETR.
 
