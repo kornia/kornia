@@ -12,19 +12,18 @@ from kornia.core import Module, Tensor
 from kornia.core.check import KORNIA_CHECK
 
 
-class BottleNeckD(Module):
+class BottleneckD(Module):
     expansion = 4
 
-    def __init__(self, in_channels: int, out_channels: int, stride: int, base_width: int) -> None:
+    def __init__(self, in_channels: int, out_channels: int, stride: int) -> None:
         KORNIA_CHECK(stride in {1, 2})
         super().__init__()
-        width = out_channels * base_width // 64
         expanded_out_channels = out_channels * self.expansion
 
         self.convs = nn.Sequential(
-            ConvNormAct(in_channels, width, 1),
-            ConvNormAct(width, width, 3, stride=stride),
-            ConvNormAct(width, expanded_out_channels, 1, act="none"),
+            ConvNormAct(in_channels, out_channels, 1),
+            ConvNormAct(out_channels, out_channels, 3, stride=stride),
+            ConvNormAct(out_channels, expanded_out_channels, 1, act="none"),
         )
 
         self.shortcut: nn.Module
@@ -44,9 +43,7 @@ class BottleNeckD(Module):
 
 
 class ResNetD(Module):
-    base_width = 64
-
-    def __init__(self, n_blocks: list[int]) -> None:
+    def __init__(self, n_blocks: list[int], block: BottleneckD = BottleneckD) -> None:
         KORNIA_CHECK(len(n_blocks) == 4)
         super().__init__()
         in_channels = 64
@@ -57,19 +54,22 @@ class ResNetD(Module):
             nn.MaxPool2d(3, stride=2, padding=1),
         )
 
-        self.res2, in_channels = self.make_stage(in_channels, 64, 1, n_blocks[0])
-        self.res3, in_channels = self.make_stage(in_channels, 128, 2, n_blocks[1])
-        self.res4, in_channels = self.make_stage(in_channels, 256, 2, n_blocks[2])
-        self.res5, in_channels = self.make_stage(in_channels, 512, 2, n_blocks[3])
+        self.res2, in_channels = self.make_stage(in_channels, 64, 1, n_blocks[0], block)
+        self.res3, in_channels = self.make_stage(in_channels, 128, 2, n_blocks[1], block)
+        self.res4, in_channels = self.make_stage(in_channels, 256, 2, n_blocks[2], block)
+        self.res5, in_channels = self.make_stage(in_channels, 512, 2, n_blocks[3], block)
 
-        self.out_channels = [ch * BottleNeckD.expansion for ch in [128, 256, 512]]
+        self.out_channels = [ch * block.expansion for ch in [128, 256, 512]]
 
-    def make_stage(self, in_channels: int, out_channels: int, stride: int, n_blocks: int) -> tuple[Module, int]:
-        layers = []
-        layers.append(BottleNeckD(in_channels, out_channels, stride, self.base_width))
-        for _ in range(n_blocks - 1):
-            layers.append(BottleNeckD(out_channels * BottleNeckD.expansion, out_channels, 1, self.base_width))
-        return nn.Sequential(*layers), out_channels * BottleNeckD.expansion
+    @staticmethod
+    def make_stage(
+        in_channels: int, out_channels: int, stride: int, n_blocks: int, block: BottleneckD
+    ) -> tuple[Module, int]:
+        stage = nn.Sequential(
+            block(in_channels, out_channels, stride),
+            *[block(out_channels * block.expansion, out_channels, 1) for _ in range(n_blocks - 1)],
+        )
+        return stage, out_channels * block.expansion
 
     def forward(self, x: Tensor) -> list[Tensor]:
         x = self.conv1(x)
