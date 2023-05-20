@@ -10,7 +10,7 @@ class PositionEncodingSine(Module):
 
     pe: Tensor
 
-    def __init__(self, d_model, max_shape=(256, 256), temp_bug_fix=True):
+    def __init__(self, d_model, max_shape=(256, 256), temp_bug_fix=True) -> None:
         """
         Args:
             max_shape (tuple): for 1/8 featmap, the max length of 256 corresponds to 2048 pixels

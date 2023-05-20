@@ -69,14 +69,14 @@ class TensorWrapper:
 
         return wrap(val, type(self))
 
-    def __setattr__(self, name, value):
+    def __setattr__(self, name, value) -> None:
         if name in self.__dict__:
             self.__dict__[name] = value
 
         self.used_attrs.add(name)
         setattr(self._data, name, value)
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key, value) -> None:
         self._data[key] = value
 
     def __getitem__(self, key):
@@ -144,10 +144,10 @@ class TensorWrapper:
     def __ne__(self, other):
         return self.__unary_op__(torch.ne, other)
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
         return self.__unary_op__(Tensor.__bool__)
 
-    def __int__(self):
+    def __int__(self) -> int:
         return self.__unary_op__(Tensor.__int__)
 
     def __neg__(self):
@@ -157,5 +157,5 @@ class TensorWrapper:
         args = (self, other) if other is not None else (self,)
         return self.__torch_function__(func, (type(self),), args)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._data)

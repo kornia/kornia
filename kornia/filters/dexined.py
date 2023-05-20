@@ -179,7 +179,7 @@ class DexiNed(Module):
         torch.Size([1, 1, 320, 320])
     """
 
-    def __init__(self, pretrained: bool):
+    def __init__(self, pretrained: bool) -> None:
         super().__init__()
         self.block_1 = DoubleConvBlock(3, 32, 64, stride=2)
         self.block_2 = DoubleConvBlock(64, 128, use_act=False)

@@ -75,7 +75,7 @@ class SOLD2(Module):
         >>> matches = sold2.match(line_seg1, line_seg2, desc1[None], desc2[None])
     """
 
-    def __init__(self, pretrained: bool = True, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, pretrained: bool = True, config: Optional[Dict[str, Any]] = None) -> None:
         super().__init__()
         # Initialize some parameters
         self.config = default_cfg if config is None else config
@@ -168,7 +168,7 @@ class WunschLineMatcher(Module):
         top_k_candidates: int = 10,
         grid_size: int = 8,
         line_score: bool = False,
-    ):
+    ) -> None:
         super().__init__()
         self.cross_check = cross_check
         self.num_samples = num_samples

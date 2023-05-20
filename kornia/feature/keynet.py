@@ -38,7 +38,7 @@ class _FeatureExtractor(Module):
     It loads both, the handcrafted and learnable blocks
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
 
         self.hc_block = _HandcraftedBlock()
@@ -53,7 +53,7 @@ class _FeatureExtractor(Module):
 class _HandcraftedBlock(Module):
     """Helper class for KeyNet, it defines the handcrafted filters within the Key.Net handcrafted block."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.spatial_gradient = SpatialGradient('sobel', 1)
 
@@ -78,7 +78,7 @@ class _LearnableBlock(nn.Sequential):
     It defines the learnable blocks within the Key.Net
     """
 
-    def __init__(self, in_channels: int = 10):
+    def __init__(self, in_channels: int = 10) -> None:
         super().__init__()
 
         self.conv0 = _KeyNetConvBlock(in_channels)
@@ -128,7 +128,7 @@ class KeyNet(Module):
         - Output: :math:`(B, 1, H, W)`
     """
 
-    def __init__(self, pretrained: bool = False, keynet_conf: KeyNet_conf = keynet_default_config):
+    def __init__(self, pretrained: bool = False, keynet_conf: KeyNet_conf = keynet_default_config) -> None:
         super().__init__()
 
         num_filters = keynet_conf['num_filters']
@@ -190,6 +190,6 @@ class KeyNetDetector(MultiResolutionDetector):
         keynet_conf: KeyNet_conf = keynet_default_config,
         ori_module: Optional[Module] = None,
         aff_module: Optional[Module] = None,
-    ):
+    ) -> None:
         model = KeyNet(pretrained, keynet_conf)
         super().__init__(model, num_features, keynet_conf['Detector_conf'], ori_module, aff_module)

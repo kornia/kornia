@@ -42,7 +42,7 @@ class PatchDominantGradientOrientation(nn.Module):
         eps: for safe division, and arctan.
     """
 
-    def __init__(self, patch_size: int = 32, num_angular_bins: int = 36, eps: float = 1e-8):
+    def __init__(self, patch_size: int = 32, num_angular_bins: int = 36, eps: float = 1e-8) -> None:
         super().__init__()
         self.patch_size = patch_size
         self.num_ang_bins = num_angular_bins
@@ -54,7 +54,7 @@ class PatchDominantGradientOrientation(nn.Module):
         sigma: float = float(self.patch_size) / 6.0
         self.weighting = get_gaussian_kernel2d((self.patch_size, self.patch_size), (sigma, sigma), True)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (
             f'{self.__class__.__name__}('
             f'patch_size={self.patch_size}, '
@@ -137,7 +137,7 @@ class OriNet(nn.Module):
         >>> angle = orinet(input) # 16
     """
 
-    def __init__(self, pretrained: bool = False, eps: float = 1e-8):
+    def __init__(self, pretrained: bool = False, eps: float = 1e-8) -> None:
         super().__init__()
         self.features = nn.Sequential(
             nn.Conv2d(1, 16, kernel_size=3, padding=1, bias=False),
@@ -205,7 +205,9 @@ class LAFOrienter(nn.Module):
           or OriNet.
     """  # pylint: disable
 
-    def __init__(self, patch_size: int = 32, num_angular_bins: int = 36, angle_detector: Optional[nn.Module] = None):
+    def __init__(
+        self, patch_size: int = 32, num_angular_bins: int = 36, angle_detector: Optional[nn.Module] = None
+    ) -> None:
         super().__init__()
         self.patch_size = patch_size
         self.num_ang_bins = num_angular_bins
@@ -215,7 +217,7 @@ class LAFOrienter(nn.Module):
         else:
             self.angle_detector = angle_detector
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"{self.__class__.__name__}(patch_size={self.patch_size}, angle_detector={self.angle_detector})"
 
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:

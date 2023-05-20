@@ -8,7 +8,7 @@ from .linear_attention import FullAttention, LinearAttention
 
 
 class LoFTREncoderLayer(nn.Module):
-    def __init__(self, d_model, nhead, attention='linear'):
+    def __init__(self, d_model, nhead, attention='linear') -> None:
         super().__init__()
 
         self.dim = d_model // nhead
@@ -65,7 +65,7 @@ class LoFTREncoderLayer(nn.Module):
 class LocalFeatureTransformer(nn.Module):
     """A Local Feature Transformer (LoFTR) module."""
 
-    def __init__(self, config):
+    def __init__(self, config) -> None:
         super().__init__()
 
         self.config = config

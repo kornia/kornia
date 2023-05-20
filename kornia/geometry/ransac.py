@@ -45,7 +45,7 @@ class RANSAC(Module):
         max_iter: int = 10,
         confidence: float = 0.99,
         max_lo_iters: int = 5,
-    ):
+    ) -> None:
         super().__init__()
         self.inl_th = inl_th
         self.max_iter = max_iter

@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 
 class FinePreprocess(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config) -> None:
         super().__init__()
 
         self.config = config

@@ -23,7 +23,7 @@ class HourglassBackbone(Module):
 
     def __init__(
         self, input_channel: int = 1, depth: int = 4, num_stacks: int = 2, num_blocks: int = 1, num_classes: int = 5
-    ):
+    ) -> None:
         super().__init__()
         self.head = MultitaskHead
         self.net = hg(
@@ -42,7 +42,7 @@ class HourglassBackbone(Module):
 
 
 class MultitaskHead(Module):
-    def __init__(self, input_channels: int):
+    def __init__(self, input_channels: int) -> None:
         super().__init__()
 
         m = int(input_channels / 4)
@@ -65,7 +65,7 @@ class MultitaskHead(Module):
 class Bottleneck2D(Module):
     def __init__(
         self, inplanes: int, planes: int, stride: Union[int, Tuple[int, int]] = 1, downsample: Optional[Module] = None
-    ):
+    ) -> None:
         super().__init__()
 
         self.bn1 = nn.BatchNorm2d(inplanes)
@@ -102,7 +102,7 @@ class Bottleneck2D(Module):
 
 
 class Hourglass(Module):
-    def __init__(self, block: Type[Bottleneck2D], num_blocks: int, planes: int, depth: int, expansion: int = 2):
+    def __init__(self, block: Type[Bottleneck2D], num_blocks: int, planes: int, depth: int, expansion: int = 2) -> None:
         super().__init__()
         self.depth = depth
         self.block = block
@@ -157,7 +157,7 @@ class HourglassNet(Module):
         num_classes: int,
         input_channels: int,
         expansion: int = 2,
-    ):
+    ) -> None:
         super().__init__()
 
         self.inplanes = 64
@@ -258,7 +258,7 @@ class SuperpointDecoder(Module):
         the junction heatmap, with shape (B, H, W).
     """
 
-    def __init__(self, input_feat_dim: int = 128, grid_size: int = 8):
+    def __init__(self, input_feat_dim: int = 128, grid_size: int = 8) -> None:
         super().__init__()
         self.relu = nn.ReLU(inplace=True)
         # Perform strided convolution when using lcnn backbone.
@@ -287,7 +287,7 @@ class PixelShuffleDecoder(Module):
         the (B, 1, H, W) line heatmap.
     """
 
-    def __init__(self, input_feat_dim: int = 128, num_upsample: int = 2, output_channel: int = 2):
+    def __init__(self, input_feat_dim: int = 128, num_upsample: int = 2, output_channel: int = 2) -> None:
         super().__init__()
         # Get channel parameters
         self.channel_conf = self.get_channel_conf(num_upsample)
@@ -351,7 +351,7 @@ class SuperpointDescriptor(Module):
         the semi-dense descriptors with shape (B, 128, H/4, W/4).
     """
 
-    def __init__(self, input_feat_dim: int = 128):
+    def __init__(self, input_feat_dim: int = 128) -> None:
         super().__init__()
         self.relu = nn.ReLU(inplace=True)
         self.convPa = nn.Conv2d(input_feat_dim, 256, kernel_size=3, stride=1, padding=1)
@@ -379,7 +379,7 @@ class SOLD2Net(Module):
             descriptors: semi-dense descriptors.
     """
 
-    def __init__(self, model_cfg: Dict[str, Any]):
+    def __init__(self, model_cfg: Dict[str, Any]) -> None:
         super().__init__()
         self.cfg = model_cfg
 

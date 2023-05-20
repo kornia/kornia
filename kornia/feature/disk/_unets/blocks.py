@@ -17,7 +17,7 @@ class TrivialDownsample(Module):
 
 
 class Conv(nn.Sequential):
-    def __init__(self, in_, out_, size, skip_norm_and_gate=False):
+    def __init__(self, in_, out_, size, skip_norm_and_gate=False) -> None:
         norm: Module
         nonl: Module
 
@@ -35,7 +35,7 @@ class Conv(nn.Sequential):
 
 
 class ThinUnetDownBlock(nn.Sequential):
-    def __init__(self, in_, out_, size=5, is_first=False, setup=None):
+    def __init__(self, in_, out_, size=5, is_first=False, setup=None) -> None:
         self.in_ = in_
         self.out_ = out_
 
@@ -51,7 +51,7 @@ class ThinUnetDownBlock(nn.Sequential):
 
 
 class ThinUnetUpBlock(Module):
-    def __init__(self, bottom_, horizontal_, out_, size=5, setup=None):
+    def __init__(self, bottom_, horizontal_, out_, size=5, setup=None) -> None:
         super().__init__()
 
         self.bottom_ = bottom_

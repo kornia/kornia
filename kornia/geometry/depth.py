@@ -193,7 +193,7 @@ class DepthWarper(Module):
         mode: str = 'bilinear',
         padding_mode: str = 'zeros',
         align_corners: bool = True,
-    ):
+    ) -> None:
         super().__init__()
         # constructor members
         self.width: int = width

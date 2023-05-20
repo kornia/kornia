@@ -34,7 +34,7 @@ class PatchAffineShapeEstimator(nn.Module):
         eps: for safe division.
     """
 
-    def __init__(self, patch_size: int = 19, eps: float = 1e-10):
+    def __init__(self, patch_size: int = 19, eps: float = 1e-10) -> None:
         super().__init__()
         self.patch_size: int = patch_size
         self.gradient: nn.Module = SpatialGradient('sobel', 1)
@@ -42,7 +42,7 @@ class PatchAffineShapeEstimator(nn.Module):
         sigma: float = float(self.patch_size) / math.sqrt(2.0)
         self.weighting: torch.Tensor = get_gaussian_kernel2d((self.patch_size, self.patch_size), (sigma, sigma), True)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"{self.__class__.__name__}(patch_size={self.patch_size}, eps={self.eps})"
 
     def forward(self, patch: torch.Tensor) -> torch.Tensor:
@@ -111,7 +111,7 @@ class LAFAffineShapeEstimator(nn.Module):
                 stacklevel=2,
             )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (
             f'{self.__class__.__name__}'
             f'(patch_size={self.patch_size}, '
@@ -160,7 +160,7 @@ class LAFAffNetShapeEstimator(nn.Module):
         pretrained: Download and set pretrained weights to the model.
     """
 
-    def __init__(self, pretrained: bool = False, preserve_orientation: bool = True):
+    def __init__(self, pretrained: bool = False, preserve_orientation: bool = True) -> None:
         super().__init__()
         self.features = nn.Sequential(
             nn.Conv2d(1, 16, kernel_size=3, padding=1, bias=False),

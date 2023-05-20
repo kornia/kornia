@@ -13,7 +13,7 @@ def elu_feature_map(x):
 
 
 class LinearAttention(Module):
-    def __init__(self, eps=1e-6):
+    def __init__(self, eps=1e-6) -> None:
         super().__init__()
         self.feature_map = elu_feature_map
         self.eps = eps
@@ -56,7 +56,7 @@ class LinearAttention(Module):
 
 
 class FullAttention(Module):
-    def __init__(self, use_dropout=False, attention_dropout=0.1):
+    def __init__(self, use_dropout=False, attention_dropout=0.1) -> None:
         super().__init__()
         self.use_dropout = use_dropout
         self.dropout = Dropout(attention_dropout)

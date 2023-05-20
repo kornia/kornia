@@ -10,7 +10,7 @@ from kornia.utils.grid import create_meshgrid
 class FineMatching(nn.Module):
     """FineMatching with s2d paradigm."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
 
     def forward(self, feat_f0, feat_f1, data):

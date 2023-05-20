@@ -6,7 +6,7 @@ from .blocks import ThinUnetDownBlock, ThinUnetUpBlock
 
 
 class Unet(Module):
-    def __init__(self, in_features=1, up=None, down=None, size=5):
+    def __init__(self, in_features=1, up=None, down=None, size=5) -> None:
         super().__init__()
 
         if not len(down) == len(up) + 1:

@@ -13,7 +13,7 @@ def conv3x3(in_planes, out_planes, stride=1):
 
 
 class BasicBlock(nn.Module):
-    def __init__(self, in_planes, planes, stride=1):
+    def __init__(self, in_planes, planes, stride=1) -> None:
         super().__init__()
         self.conv1 = conv3x3(in_planes, planes, stride)
         self.conv2 = conv3x3(planes, planes)
@@ -43,7 +43,7 @@ class ResNetFPN_8_2(nn.Module):
     Each block has 2 layers.
     """
 
-    def __init__(self, config):
+    def __init__(self, config) -> None:
         super().__init__()
         # Config
         block = BasicBlock
@@ -121,7 +121,7 @@ class ResNetFPN_16_4(nn.Module):
     Each block has 2 layers.
     """
 
-    def __init__(self, config):
+    def __init__(self, config) -> None:
         super().__init__()
         # Config
         block = BasicBlock

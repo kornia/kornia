@@ -49,7 +49,7 @@ class FilterResponseNorm2d(Module):
         is_bias: bool = True,
         is_scale: bool = True,
         is_eps_leanable: bool = False,
-    ):
+    ) -> None:
         super().__init__()
 
         self.num_features = num_features
@@ -108,7 +108,7 @@ class TLU(Module):
         - Output: :math:`(B, \text{num_features}, H, W)`
     """
 
-    def __init__(self, num_features: int):
+    def __init__(self, num_features: int) -> None:
         """max(y, tau) = max(y - tau, 0) + tau = ReLU(y - tau) + tau"""
         super().__init__()
         self.num_features = num_features
@@ -163,7 +163,7 @@ class HyNet(Module):
         dim_desc: int = 128,
         drop_rate: float = 0.3,
         eps_l2_norm: float = 1e-10,
-    ):
+    ) -> None:
         super().__init__()
         self.eps_l2_norm = eps_l2_norm
         self.dim_desc = dim_desc
