@@ -3,7 +3,7 @@ from typing import List
 import torch
 import torch.nn as nn
 
-from kornia.filters import filter2d, get_gaussian_kernel2d
+from kornia.filters import filter2d_separable, get_gaussian_kernel1d
 from kornia.filters.filter import _compute_padding
 
 
@@ -75,15 +75,16 @@ def ssim(
         raise ValueError(f"img1 and img2 shapes must be the same. Got: {img1.shape} and {img2.shape}")
 
     # prepare kernel
-    kernel: torch.Tensor = get_gaussian_kernel2d((window_size, window_size), (1.5, 1.5))
+    kernel_x: torch.Tensor = get_gaussian_kernel1d(window_size,1.5)
+    kernel_y: torch.Tensor = get_gaussian_kernel1d(window_size, 1.5)
 
     # compute coefficients
     C1: float = (0.01 * max_val) ** 2
     C2: float = (0.03 * max_val) ** 2
 
     # compute local mean per channel
-    mu1: torch.Tensor = filter2d(img1, kernel)
-    mu2: torch.Tensor = filter2d(img2, kernel)
+    mu1: torch.Tensor = filter2d_separable(img1, kernel_x, kernel_y)
+    mu2: torch.Tensor = filter2d_separable(img2, kernel_x, kernel_y)
 
     cropping_shape: List[int] = []
     if padding == 'valid':
@@ -98,9 +99,9 @@ def ssim(
     mu2_sq = mu2**2
     mu1_mu2 = mu1 * mu2
 
-    mu_img1_sq = filter2d(img1**2, kernel)
-    mu_img2_sq = filter2d(img2**2, kernel)
-    mu_img1_img2 = filter2d(img1 * img2, kernel)
+    mu_img1_sq = filter2d_separable(img1**2, kernel_x, kernel_y)
+    mu_img2_sq = filter2d_separable(img2**2, kernel_x, kernel_y)
+    mu_img1_img2 = filter2d_separable(img1 * img2, kernel_x, kernel_y)
 
     if padding == 'valid':
         mu_img1_sq = _crop(mu_img1_sq, cropping_shape)
