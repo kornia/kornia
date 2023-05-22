@@ -10,7 +10,10 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 def draw_pixel(image: torch.Tensor, points: torch.tensor, color: torch.Tensor):
     r"""Sets a coordinates in a Tensor to a color."""
-    # Channels is col 0.
+    KORNIA_CHECK(
+        (len(image.shape) == 2 and len(color.shape) == 1) or (image.shape[0] == color.shape[0]),
+        "Color dim must match the channel dims of the provided image image",
+    )
     x, y = zip(*points)
     color = torch.unsqueeze(color, dim=1)
     if len(image.shape) == 2:
