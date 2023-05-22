@@ -104,18 +104,3 @@ class Prompts:
     def keypoints_labels(self) -> Tensor | None:
         """The keypoints labels from the `points`"""
         return self.points[1] if isinstance(self.points, tuple) else None
-
-
-@dataclass
-class DetectionResults:
-    """Encapsulate the results obtained by a Detection model.
-
-    Args:
-        labels: object labels. Shape :math:`(B, D)`, where :math:`D` is the number of detections
-        scores: confidence scores. Shape :math:`(B, D)`
-        bounding_boxes: bounding boxes. Shape :math:`(B, D, 4)`
-    """
-
-    labels: Tensor
-    scores: Tensor
-    bounding_boxes: Tensor

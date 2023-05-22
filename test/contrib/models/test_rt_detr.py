@@ -8,7 +8,6 @@ from kornia.contrib.models.rt_detr.architecture.hybrid_encoder import HybridEnco
 from kornia.contrib.models.rt_detr.architecture.resnet_d import ResNetD
 from kornia.contrib.models.rt_detr.architecture.rtdetr_head import RTDETRHead
 from kornia.contrib.models.rt_detr.model import RTDETR, RTDETRConfig
-from kornia.contrib.models.structures import DetectionResults
 from kornia.testing import BaseTester
 
 
@@ -62,9 +61,7 @@ class TestRTDETR(BaseTester):
     def test_smoke(self, variant, device, dtype):
         model = RTDETR.from_config(RTDETRConfig(variant, 80)).to(device, dtype)
         images = torch.randn(2, 3, 224, 256, device=device, dtype=dtype)
-        out = model(images)
-
-        assert isinstance(out, DetectionResults)
+        model(images)
 
     @pytest.mark.parametrize("shape", ((1, 3, 96, 128), (2, 3, 224, 256)))
     def test_cardinality(self, shape, device, dtype):
@@ -73,10 +70,7 @@ class TestRTDETR(BaseTester):
         images = torch.randn(shape, device=device, dtype=dtype)
         out = model(images)
 
-        assert isinstance(out, DetectionResults)
-        assert out.labels.shape == (shape[0], num_queries)
-        assert out.scores.shape == (shape[0], num_queries)
-        assert out.bounding_boxes.shape == (shape[0], num_queries, 4)
+        assert out.shape == (shape[0], num_queries, 6)
 
     @pytest.mark.skip("Unnecessary")
     def test_exception(self):
@@ -99,5 +93,16 @@ class TestRTDETR(BaseTester):
         actual = model_optimized(img)
 
         self.assert_close(expected.labels, actual.labels)
-        self.assert_close(expected.scores, actual.scores, low_tolerance=True)
-        self.assert_close(expected.bounding_boxes, actual.bounding_boxes, low_tolerance=True)
+        self.assert_close(expected.scores, actual.scores)
+        self.assert_close(expected.bounding_boxes, actual.bounding_boxes)
+
+    @pytest.mark.parametrize("variant", ("resnet50", "hgnetv2_l"))
+    def test_onnx(self, variant, tmp_path, dtype):
+        model = RTDETR.from_config(RTDETRConfig(variant, 80)).to(dtype)
+        img = torch.rand(1, 3, 224, 256, dtype=dtype)
+        onnx_path = str(tmp_path / "rtdetr.onnx")
+
+        # F.grid_sample() requires opset 16
+        torch.onnx.export(model, img, onnx_path, opset_version=16)
+
+        # NOTE: correctness check is not included

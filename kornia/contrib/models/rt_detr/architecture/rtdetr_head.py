@@ -224,7 +224,7 @@ class RTDETRHead(Module):
 
         anchors = concatenate(anchors_list, 1)
         valid_mask = ((anchors > eps) & (anchors < 1 - eps)).all(-1, keepdim=True)
-        anchors = anchors.logit()
+        anchors = torch.log(anchors / (1 - anchors))  # anchors.logit() fails ONNX export
 
         # anchors = torch.where(valid_mask, anchors, float("inf")) fails in PyTorch 1.9.1
         inf = torch.tensor(float('inf'), device=device, dtype=dtype)

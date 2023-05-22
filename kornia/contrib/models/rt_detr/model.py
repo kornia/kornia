@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
-from kornia.contrib.models import DetectionResults
 from kornia.contrib.models.base import ModelBase
 from kornia.contrib.models.rt_detr.architecture.hgnetv2 import PPHGNetV2
 from kornia.contrib.models.rt_detr.architecture.hybrid_encoder import HybridEncoder
@@ -121,14 +120,15 @@ class RTDETR(ModelBase[RTDETRConfig]):
             model.load_checkpoint(config.checkpoint)
         return model
 
-    def forward(self, images: Tensor) -> DetectionResults:
+    def forward(self, images: Tensor) -> Tensor:
         """Detect objects in an image.
 
         Args:
             images: images to be detected. Shape :math:`(N, C, H, W)`.
 
         Returns:
-            Detection results, stored in :class:`kornia.contrib.models.DetectionResults`.
+            Object detection results, in format class id, score, bounding box xywh. Shape :math:`(N, D, 6)`,
+            where :math:`D` is the number of detections.
         """
         H, W = images.shape[2:]
         fmaps = self.backbone(images)
@@ -149,4 +149,4 @@ class RTDETR(ModelBase[RTDETRConfig]):
         # the original code is slightly different
         # it allows 1 bounding box to have multiple classes (multi-label)
         scores, labels = scores.max(-1)
-        return DetectionResults(labels, scores, bboxes)
+        return concatenate([labels.unsqueeze(-1), scores.unsqueeze(-1), bboxes], -1)
