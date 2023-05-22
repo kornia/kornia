@@ -2,6 +2,7 @@ from functools import partial
 
 import pytest
 import torch
+from torch.onnx._constants import ONNX_MAX_OPSET
 
 from kornia.contrib.models.rt_detr.architecture.hgnetv2 import PPHGNetV2
 from kornia.contrib.models.rt_detr.architecture.hybrid_encoder import HybridEncoder
@@ -99,13 +100,12 @@ class TestRTDETR(BaseTester):
         self.assert_close(expected.scores, actual.scores)
         self.assert_close(expected.bounding_boxes, actual.bounding_boxes)
 
+    @pytest.mark.skipif(ONNX_MAX_OPSET < 16, reason="F.grid_sample() requires ONNX opset 16")
     @pytest.mark.parametrize("variant", ("resnet50", "hgnetv2_l"))
     def test_onnx(self, variant, tmp_path, dtype):
+        # NOTE: correctness check is not included
         model = RTDETR.from_config(RTDETRConfig(variant, 80)).to(dtype)
         img = torch.rand(1, 3, 224, 256, dtype=dtype)
         onnx_path = str(tmp_path / "rtdetr.onnx")
 
-        # F.grid_sample() requires opset 16
         torch.onnx.export(model, img, onnx_path, opset_version=16)
-
-        # NOTE: correctness check is not included
