@@ -61,7 +61,7 @@ def test_head(device, dtype):
 
 
 class TestRTDETR(BaseTester):
-    @pytest.mark.parametrize("variant", ("resnet50", "hgnetv2_l"))
+    @pytest.mark.parametrize("variant", ("resnet18", "resnet34", "resnet50", "resnet101", "hgnetv2_l", "hgnetv2_x"))
     def test_smoke(self, variant, device, dtype):
         model = RTDETR.from_config(RTDETRConfig(variant, 80)).to(device, dtype)
         images = torch.randn(2, 3, 224, 256, device=device, dtype=dtype)
@@ -88,8 +88,9 @@ class TestRTDETR(BaseTester):
     def test_module(self):
         pass
 
-    def test_dynamo(self, device, dtype, torch_optimizer):
-        model = RTDETR.from_config(RTDETRConfig('resnet50', 10, head_num_queries=10)).to(device, dtype)
+    @pytest.mark.parametrize("variant", ("resnet50", "hgnetv2_l"))
+    def test_dynamo(self, variant, device, dtype, torch_optimizer):
+        model = RTDETR.from_config(RTDETRConfig(variant, 10, head_num_queries=10)).to(device, dtype)
         model_optimized = torch_optimizer(model)
 
         img = torch.rand(1, 3, 224, 256, device=device, dtype=dtype)
