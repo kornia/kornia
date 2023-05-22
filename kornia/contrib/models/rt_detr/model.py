@@ -16,10 +16,12 @@ from kornia.core import Tensor, concatenate, tensor
 class RTDETRModelType(Enum):
     """Enum class that maps RT-DETR model type."""
 
-    resnet50 = 0
-    resnet101 = 1
-    hgnetv2_l = 2
-    hgnetv2_x = 3
+    resnet18 = 0
+    resnet34 = 1
+    resnet50 = 2
+    resnet101 = 3
+    hgnetv2_l = 4
+    hgnetv2_x = 5
 
 
 @dataclass
@@ -48,8 +50,10 @@ class RTDETRConfig:
 
     neck_hidden_dim: int | None = None
     neck_dim_feedforward: int | None = None
+    neck_expansion: float | None = None
     head_hidden_dim: int = 256
     head_num_queries: int = 300
+    head_num_decoder_layers: int | None = None
 
 
 class RTDETR(ModelBase[RTDETRConfig]):
@@ -90,30 +94,58 @@ class RTDETR(ModelBase[RTDETRConfig]):
 
         backbone: ResNetD | PPHGNetV2
 
-        if model_type == RTDETRModelType.resnet50:
+        if model_type == RTDETRModelType.resnet18:
+            backbone = ResNetD.from_config(18)
+            neck_hidden_dim = config.neck_hidden_dim or 256
+            neck_dim_feedforward = config.neck_dim_feedforward or 1024
+            head_num_decoder_layers = config.head_num_decoder_layers or 3
+            neck_expansion = config.neck_expansion or 0.5
+
+        elif model_type == RTDETRModelType.resnet34:
+            backbone = ResNetD.from_config(34)
+            neck_hidden_dim = config.neck_hidden_dim or 256
+            neck_dim_feedforward = config.neck_dim_feedforward or 1024
+            head_num_decoder_layers = config.head_num_decoder_layers or 4
+            neck_expansion = config.neck_expansion or 0.5
+
+        elif model_type == RTDETRModelType.resnet50:
             backbone = ResNetD.from_config(50)
             neck_hidden_dim = config.neck_hidden_dim or 256
             neck_dim_feedforward = config.neck_dim_feedforward or 1024
+            head_num_decoder_layers = config.head_num_decoder_layers or 6
+            neck_expansion = config.neck_expansion or 1.0
 
         elif model_type == RTDETRModelType.resnet101:
             backbone = ResNetD.from_config(101)
             neck_hidden_dim = config.neck_hidden_dim or 384
             neck_dim_feedforward = config.neck_dim_feedforward or 2048
+            head_num_decoder_layers = config.head_num_decoder_layers or 6
+            neck_expansion = config.neck_expansion or 1.0
 
         elif model_type == RTDETRModelType.hgnetv2_l:
             backbone = PPHGNetV2.from_config("L")
             neck_hidden_dim = config.neck_hidden_dim or 256
             neck_dim_feedforward = config.neck_dim_feedforward or 1024
+            head_num_decoder_layers = config.head_num_decoder_layers or 6
+            neck_expansion = config.neck_expansion or 1.0
 
         elif model_type == RTDETRModelType.hgnetv2_x:
             backbone = PPHGNetV2.from_config("X")
             neck_hidden_dim = config.neck_hidden_dim or 384
             neck_dim_feedforward = config.neck_dim_feedforward or 2048
+            head_num_decoder_layers = config.head_num_decoder_layers or 6
+            neck_expansion = config.neck_expansion or 1.0
 
         model = RTDETR(
             backbone,
-            HybridEncoder(backbone.out_channels, neck_hidden_dim, neck_dim_feedforward),
-            RTDETRHead(config.num_classes, config.head_hidden_dim, config.head_num_queries, [neck_hidden_dim] * 3),
+            HybridEncoder(backbone.out_channels, neck_hidden_dim, neck_dim_feedforward, neck_expansion),
+            RTDETRHead(
+                config.num_classes,
+                config.head_hidden_dim,
+                config.head_num_queries,
+                [neck_hidden_dim] * 3,
+                head_num_decoder_layers,
+            ),
         )
 
         if config.checkpoint:

@@ -45,13 +45,13 @@ def test_neck(device, dtype):
         assert out.shape == (N, hidden_dim, h, w)
 
 
-def test_rtdetr_head(device, dtype):
+def test_head(device, dtype):
     N = 2
     in_channels = [32, 64, 128]
     sizes = [(32, 24), (16, 12), (8, 6)]
     num_classes = 4
     num_queries = 10
-    decoder = RTDETRHead(num_classes, 32, num_queries, in_channels).to(device, dtype)
+    decoder = RTDETRHead(num_classes, 32, num_queries, in_channels, 2).to(device, dtype)
     fmaps = [torch.randn(N, ch_in, h, w, device=device, dtype=dtype) for ch_in, (h, w) in zip(in_channels, sizes)]
 
     bboxes, logits = decoder(fmaps)

@@ -25,14 +25,20 @@ class RepVggBlock(Module):
 
 
 class CSPRepLayer(Module):
-    def __init__(self, in_channels: int, out_channels: int, num_blocks: int) -> None:
+    def __init__(self, in_channels: int, out_channels: int, num_blocks: int, expansion: float = 1.0) -> None:
         super().__init__()
-        self.conv1 = ConvNormAct(in_channels, out_channels, 1, act="silu")
-        self.conv2 = ConvNormAct(in_channels, out_channels, 1, act="silu")
-        self.bottlenecks = nn.Sequential(*[RepVggBlock(out_channels, out_channels) for _ in range(num_blocks)])
+        hidden_channels = int(out_channels * expansion)
+        self.conv1 = ConvNormAct(in_channels, hidden_channels, 1, act="silu")
+        self.conv2 = ConvNormAct(in_channels, hidden_channels, 1, act="silu")
+        self.bottlenecks = nn.Sequential(*[RepVggBlock(hidden_channels, hidden_channels) for _ in range(num_blocks)])
+        self.conv3 = (
+            ConvNormAct(hidden_channels, out_channels, 1, act="silu")
+            if hidden_channels != out_channels
+            else nn.Identity()
+        )
 
     def forward(self, x: Tensor) -> Tensor:
-        return self.bottlenecks(self.conv1(x)) + self.conv2(x)
+        return self.conv3(self.bottlenecks(self.conv1(x)) + self.conv2(x))
 
 
 # almost identical to nn.TransformerEncoderLayer
@@ -108,19 +114,19 @@ class AIFI(Module):
 
 
 class CCFM(Module):
-    def __init__(self, num_fmaps: int, hidden_dim: int) -> None:
+    def __init__(self, num_fmaps: int, hidden_dim: int, expansion: float = 1.0) -> None:
         super().__init__()
         self.lateral_convs = nn.ModuleList()
         self.fpn_blocks = nn.ModuleList()
         for _ in range(num_fmaps - 1):
             self.lateral_convs.append(ConvNormAct(hidden_dim, hidden_dim, 1, 1, "silu"))
-            self.fpn_blocks.append(CSPRepLayer(hidden_dim * 2, hidden_dim, 3))
+            self.fpn_blocks.append(CSPRepLayer(hidden_dim * 2, hidden_dim, 3, expansion))
 
         self.downsample_convs = nn.ModuleList()
         self.pan_blocks = nn.ModuleList()
         for _ in range(num_fmaps - 1):
             self.downsample_convs.append(ConvNormAct(hidden_dim, hidden_dim, 3, 2, "silu"))
-            self.pan_blocks.append(CSPRepLayer(hidden_dim * 2, hidden_dim, 3))
+            self.pan_blocks.append(CSPRepLayer(hidden_dim * 2, hidden_dim, 3, expansion))
 
     def forward(self, fmaps: list[Tensor]) -> list[Tensor]:
         # fmaps is ordered from hi-res to low-res
@@ -148,11 +154,11 @@ class CCFM(Module):
 
 
 class HybridEncoder(Module):
-    def __init__(self, in_channels: list[int], hidden_dim: int, dim_feedforward: int) -> None:
+    def __init__(self, in_channels: list[int], hidden_dim: int, dim_feedforward: int, expansion: float = 1.0) -> None:
         super().__init__()
         self.input_proj = nn.ModuleList([ConvNormAct(in_ch, hidden_dim, 1, act="none") for in_ch in in_channels])
         self.aifi = AIFI(hidden_dim, 8, dim_feedforward)
-        self.ccfm = CCFM(len(in_channels), hidden_dim)
+        self.ccfm = CCFM(len(in_channels), hidden_dim, expansion)
 
     def forward(self, fmaps: list[Tensor]) -> list[Tensor]:
         fmaps = [proj(fmap) for proj, fmap in zip(self.input_proj, fmaps)]

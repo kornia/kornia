@@ -133,9 +133,9 @@ class RTDETRHead(Module):
         hidden_dim: int,
         num_queries: int,
         in_channels: list[int],
+        num_decoder_layers: int,
         num_heads: int = 8,
         num_decoder_points: int = 4,
-        num_decoder_layers: int = 6,
     ) -> None:
         super().__init__()
         self.num_queries = num_queries
