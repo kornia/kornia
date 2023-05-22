@@ -49,7 +49,7 @@ class BottleneckD(Module):
             ConvNormAct(out_channels, out_channels, 3, stride=stride),
             ConvNormAct(out_channels, expanded_out_channels, 1, act="none"),
         )
-        self.shortcut = nn.Identity() if shortcut else _make_shortcut(in_channels, out_channels, stride)
+        self.shortcut = nn.Identity() if shortcut else _make_shortcut(in_channels, expanded_out_channels, stride)
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self, x: Tensor) -> Tensor:
