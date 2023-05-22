@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Union
+from typing import Union
 
 from kornia.core import Tensor
-from kornia.core.check import KORNIA_CHECK_TYPE
 from kornia.geometry.vector import Vector2, Vector3
 from kornia.sensor.camera.distortion import AffineTransform, BrownConradyTransform
-from kornia.sensor.camera.projection import Z1Projection, OrthographicProjection
+from kornia.sensor.camera.projection import OrthographicProjection, Z1Projection
 
 
 class CameraDistortionType(Enum):
@@ -39,7 +38,7 @@ CameraProjectionTypeUnion = Union[Z1Projection, OrthographicProjection]
 
 class CameraModelT:
     def __init__(
-        self, Distortion: CameraDistortionTypeUnion, Projection: CameraProjectionTypeUnion, params: Optional[Tensor]
+        self, Distortion: CameraDistortionTypeUnion, Projection: CameraProjectionTypeUnion, params: Tensor | None
     ) -> None:
         self.params = params
         self.Distortion = Distortion
