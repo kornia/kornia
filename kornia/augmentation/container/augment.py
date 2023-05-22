@@ -1,8 +1,9 @@
 import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
-import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
+from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmentationBase3D
 from kornia.constants import DataKey, Resample
 from kornia.core import Module, Tensor
 from kornia.geometry.boxes import Boxes, VideoBoxes
@@ -175,8 +176,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         self._parse_transformation_matrix_mode(transformation_matrix)
 
         self._valid_ops_for_transform_computation = (
-            K.RigidAffineAugmentationBase2D,
-            K.RigidAffineAugmentationBase3D,
+            RigidAffineAugmentationBase2D,
+            RigidAffineAugmentationBase3D,
             AugmentationSequential,
         )
 
@@ -198,7 +199,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             if isinstance(arg, VideoSequential):
                 self.contains_video_sequential = True
             # NOTE: only for images are supported for 3D.
-            if isinstance(arg, K.AugmentationBase3D):
+            if isinstance(arg, AugmentationBase3D):
                 self.contains_3d_augmentation = True
         self._transform_matrix = None
         self.extra_args = extra_args

@@ -38,6 +38,13 @@ class RandAugment(PolicyAugmentBase):
         n: the number of augmentations to apply sequentially.
         m: magnitude for all the augmentations, ranged from [0, 30].
         policy: candidate transformations. If None, a default candidate list will be used.
+        transformation_matrix_mode: computation mode for the chained transformation matrix, via `.transform_matrix`
+                                    attribute.
+                                    If `silence`, transformation matrix will be computed silently and the non-rigid
+                                    modules will be ignored as identity transformations.
+                                    If `rigid`, transformation matrix will be computed silently and the non-rigid
+                                    modules will trigger errors.
+                                    If `skip`, transformation matrix will be totally ignored.
 
     Examples:
         >>> import kornia.augmentation as K
@@ -97,7 +104,6 @@ class RandAugment(PolicyAugmentBase):
                 minval, maxval = op.magnitude_range
                 mag = m * float(maxval - minval) + minval
             mod_param = op.forward_parameters(batch_shape, mag=mag)
-            op.transform_matrix
             # Compose it
             param = ParamItem(name, [ParamItem(list(module.named_children())[0][0], mod_param)])
             params.append(param)

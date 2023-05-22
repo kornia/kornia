@@ -32,6 +32,13 @@ class TrivialAugment(PolicyAugmentBase):
 
     Args:
         policy: candidate transformations. If None, a default candidate list will be used.
+        transformation_matrix_mode: computation mode for the chained transformation matrix, via `.transform_matrix`
+                                    attribute.
+                                    If `silence`, transformation matrix will be computed silently and the non-rigid
+                                    modules will be ignored as identity transformations.
+                                    If `rigid`, transformation matrix will be computed silently and the non-rigid
+                                    modules will trigger errors.
+                                    If `skip`, transformation matrix will be totally ignored.
 
     Examples:
         >>> import kornia.augmentation as K

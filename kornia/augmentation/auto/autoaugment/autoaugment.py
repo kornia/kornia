@@ -101,6 +101,13 @@ class AutoAugment(PolicyAugmentBase):
 
     Args:
         policy: a customized policy config or presets of "imagenet", "cifar10", and "svhn".
+        transformation_matrix_mode: computation mode for the chained transformation matrix, via `.transform_matrix`
+                                    attribute.
+                                    If `silence`, transformation matrix will be computed silently and the non-rigid
+                                    modules will be ignored as identity transformations.
+                                    If `rigid`, transformation matrix will be computed silently and the non-rigid
+                                    modules will trigger errors.
+                                    If `skip`, transformation matrix will be totally ignored.
 
     Examples:
         >>> import torch
