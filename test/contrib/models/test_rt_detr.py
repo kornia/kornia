@@ -96,9 +96,7 @@ class TestRTDETR(BaseTester):
         expected = model(img)
         actual = model_optimized(img)
 
-        self.assert_close(expected.labels, actual.labels)
-        self.assert_close(expected.scores, actual.scores)
-        self.assert_close(expected.bounding_boxes, actual.bounding_boxes)
+        self.assert_close(actual, expected)
 
     @pytest.mark.skipif(
         torch_version() in ("2.0.0", "2.0.1"),
