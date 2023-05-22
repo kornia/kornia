@@ -12,6 +12,33 @@ from kornia.core import Module, Tensor
 from kornia.core.check import KORNIA_CHECK
 
 
+def _make_shortcut(in_channels: int, out_channels: int, stride: int):
+    if stride == 2:
+        shortcut = nn.Sequential(nn.AvgPool2d(2, 2), ConvNormAct(in_channels, out_channels, 1, act="none"))
+    elif in_channels != out_channels:
+        shortcut = ConvNormAct(in_channels, out_channels, 1, act="none")
+    else:
+        shortcut = nn.Identity()
+    return shortcut
+
+
+class BasicBlockD(Module):
+    expansion = 1
+
+    def __init__(self, in_channels: int, out_channels: int, stride: int) -> None:
+        KORNIA_CHECK(stride in {1, 2})
+        super().__init__()
+        self.convs = nn.Sequential(
+            ConvNormAct(in_channels, out_channels, 3, stride=stride),
+            ConvNormAct(out_channels, out_channels, 3, act="none"),
+        )
+        self.shortcut = _make_shortcut(in_channels, out_channels, stride)
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, x: Tensor) -> Tensor:
+        return self.relu(self.convs(x) + self.shortcut(x))
+
+
 class BottleneckD(Module):
     expansion = 4
 
@@ -24,17 +51,7 @@ class BottleneckD(Module):
             ConvNormAct(out_channels, out_channels, 3, stride=stride),
             ConvNormAct(out_channels, expanded_out_channels, 1, act="none"),
         )
-
-        self.shortcut: nn.Module
-        if stride == 2:
-            self.shortcut = nn.Sequential(
-                nn.AvgPool2d(2, 2), ConvNormAct(in_channels, expanded_out_channels, 1, act="none")
-            )
-        elif in_channels != out_channels * self.expansion:
-            self.shortcut = ConvNormAct(in_channels, expanded_out_channels, 1, act="none")
-        else:
-            self.shortcut = nn.Identity()
-
+        self.shortcut = _make_shortcut(in_channels, expanded_out_channels, stride)
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self, x: Tensor) -> Tensor:
@@ -42,7 +59,7 @@ class BottleneckD(Module):
 
 
 class ResNetD(Module):
-    def __init__(self, n_blocks: list[int], block: type[BottleneckD] = BottleneckD) -> None:
+    def __init__(self, n_blocks: list[int], block: type[BasicBlockD | BottleneckD]) -> None:
         KORNIA_CHECK(len(n_blocks) == 4)
         super().__init__()
         in_channels = 64
@@ -62,7 +79,7 @@ class ResNetD(Module):
 
     @staticmethod
     def make_stage(
-        in_channels: int, out_channels: int, stride: int, n_blocks: int, block: type[BottleneckD]
+        in_channels: int, out_channels: int, stride: int, n_blocks: int, block: type[BasicBlockD | BottleneckD]
     ) -> tuple[Module, int]:
         stage = nn.Sequential(
             block(in_channels, out_channels, stride),
@@ -80,7 +97,16 @@ class ResNetD(Module):
 
     @staticmethod
     def from_config(variant: str | int) -> ResNetD:
-        arch_configs = {50: [3, 4, 6, 3], 101: [3, 4, 23, 3], 152: [3, 8, 36, 3]}
-        variant = int(variant)
-        KORNIA_CHECK(variant in arch_configs, "Only variant 50, 101, and 152 are supported")
-        return ResNetD(arch_configs[variant])
+        variant = str(variant)
+        if variant == "18":
+            return ResNetD([2, 2, 2, 2], BasicBlockD)
+        elif variant == "34":
+            return ResNetD([3, 4, 6, 3], BasicBlockD)
+        elif variant == "50":
+            return ResNetD([3, 4, 6, 3], BottleneckD)
+        elif variant == "101":
+            return ResNetD([3, 4, 23, 3], BottleneckD)
+        elif variant == "152":
+            return ResNetD([3, 8, 36, 3], BottleneckD)
+        else:
+            raise ValueError("Only variant 18, 34, 50, 101, and 152 are supported")

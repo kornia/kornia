@@ -11,7 +11,10 @@ from kornia.contrib.models.rt_detr.model import RTDETR, RTDETRConfig
 from kornia.testing import BaseTester
 
 
-@pytest.mark.parametrize('backbone_factory', (partial(ResNetD.from_config, 50), partial(PPHGNetV2.from_config, "L")))
+@pytest.mark.parametrize(
+    'backbone_factory',
+    (partial(ResNetD.from_config, 18), partial(ResNetD.from_config, 50), partial(PPHGNetV2.from_config, "L")),
+)
 def test_backbone(backbone_factory, device, dtype):
     backbone = backbone_factory().to(device, dtype)
     assert hasattr(backbone, "out_channels")
