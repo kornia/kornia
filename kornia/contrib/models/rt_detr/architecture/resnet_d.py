@@ -12,14 +12,13 @@ from kornia.core import Module, Tensor
 from kornia.core.check import KORNIA_CHECK
 
 
-def _make_shortcut(in_channels: int, out_channels: int, stride: int):
+def _make_shortcut(in_channels: int, out_channels: int, stride: int) -> Module:
     if stride == 2:
-        shortcut = nn.Sequential(nn.AvgPool2d(2, 2), ConvNormAct(in_channels, out_channels, 1, act="none"))
+        return nn.Sequential(nn.AvgPool2d(2, 2), ConvNormAct(in_channels, out_channels, 1, act="none"))
     elif in_channels != out_channels:
-        shortcut = ConvNormAct(in_channels, out_channels, 1, act="none")
+        return ConvNormAct(in_channels, out_channels, 1, act="none")
     else:
-        shortcut = nn.Identity()
-    return shortcut
+        return nn.Identity()
 
 
 class BasicBlockD(Module):
