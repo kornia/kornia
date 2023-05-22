@@ -14,9 +14,6 @@ Base
 
 Structures
 ^^^^^^^^^^
-.. autoclass:: kornia.contrib.models.DetectionResults
-    :members:
-    :undoc-members:
 
 .. _anchor SegmentationResults:
 .. autoclass:: kornia.contrib.models.SegmentationResults
