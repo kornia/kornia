@@ -13,25 +13,24 @@ from kornia.core.check import KORNIA_CHECK
 
 
 def _make_shortcut(in_channels: int, out_channels: int, stride: int) -> Module:
-    if stride == 2:
-        return nn.Sequential(nn.AvgPool2d(2, 2), ConvNormAct(in_channels, out_channels, 1, act="none"))
-    elif in_channels != out_channels:
-        return ConvNormAct(in_channels, out_channels, 1, act="none")
-    else:
-        return nn.Identity()
+    return (
+        nn.Sequential(nn.AvgPool2d(2, 2), ConvNormAct(in_channels, out_channels, 1, act="none"))
+        if stride == 2
+        else ConvNormAct(in_channels, out_channels, 1, act="none")
+    )
 
 
 class BasicBlockD(Module):
     expansion = 1
 
-    def __init__(self, in_channels: int, out_channels: int, stride: int) -> None:
+    def __init__(self, in_channels: int, out_channels: int, stride: int, shortcut: bool) -> None:
         KORNIA_CHECK(stride in {1, 2})
         super().__init__()
         self.convs = nn.Sequential(
             ConvNormAct(in_channels, out_channels, 3, stride=stride),
             ConvNormAct(out_channels, out_channels, 3, act="none"),
         )
-        self.shortcut = _make_shortcut(in_channels, out_channels, stride)
+        self.shortcut = nn.Identity() if shortcut else _make_shortcut(in_channels, out_channels, stride)
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self, x: Tensor) -> Tensor:
@@ -41,7 +40,7 @@ class BasicBlockD(Module):
 class BottleneckD(Module):
     expansion = 4
 
-    def __init__(self, in_channels: int, out_channels: int, stride: int) -> None:
+    def __init__(self, in_channels: int, out_channels: int, stride: int, shortcut: bool) -> None:
         KORNIA_CHECK(stride in {1, 2})
         super().__init__()
         expanded_out_channels = out_channels * self.expansion
@@ -50,7 +49,7 @@ class BottleneckD(Module):
             ConvNormAct(out_channels, out_channels, 3, stride=stride),
             ConvNormAct(out_channels, expanded_out_channels, 1, act="none"),
         )
-        self.shortcut = _make_shortcut(in_channels, expanded_out_channels, stride)
+        self.shortcut = nn.Identity() if shortcut else _make_shortcut(in_channels, out_channels, stride)
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self, x: Tensor) -> Tensor:
@@ -81,8 +80,8 @@ class ResNetD(Module):
         in_channels: int, out_channels: int, stride: int, n_blocks: int, block: type[BasicBlockD | BottleneckD]
     ) -> tuple[Module, int]:
         stage = nn.Sequential(
-            block(in_channels, out_channels, stride),
-            *[block(out_channels * block.expansion, out_channels, 1) for _ in range(n_blocks - 1)],
+            block(in_channels, out_channels, stride, False),
+            *[block(out_channels * block.expansion, out_channels, 1, True) for _ in range(n_blocks - 1)],
         )
         return stage, out_channels * block.expansion
 

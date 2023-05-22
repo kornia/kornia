@@ -2,7 +2,6 @@ from functools import partial
 
 import pytest
 import torch
-from torch.onnx._constants import ONNX_MAX_OPSET
 
 from kornia.contrib.models.rt_detr.architecture.hgnetv2 import PPHGNetV2
 from kornia.contrib.models.rt_detr.architecture.hybrid_encoder import HybridEncoder
@@ -105,7 +104,7 @@ class TestRTDETR(BaseTester):
         torch_version() in ("2.0.0", "2.0.1"),
         reason="aten::scaled_dot_product_attention cannot be exported to ONNX. See https://github.com/pytorch/pytorch/issues/97272",
     )
-    @pytest.mark.skipif(ONNX_MAX_OPSET < 16, reason="F.grid_sample() requires ONNX opset 16")
+    @pytest.mark.skipif(not hasattr(torch.onnx, "symbolic_opset16"), reason="F.grid_sample() requires ONNX opset 16")
     @pytest.mark.parametrize("variant", ("resnet50", "hgnetv2_l"))
     def test_onnx(self, variant, tmp_path, dtype):
         # NOTE: correctness check is not included
