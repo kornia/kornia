@@ -57,9 +57,8 @@ Interactive Demo
 Visit the `Kornia face detection demo on the Hugging Face Spaces
 <https://huggingface.co/spaces/kornia/Face-Detection>`_.
 
-Image Segmentation
-------------------
-.. autofunction:: connected_components
+Object Detection
+----------------
 
 Real-Time Detection Transformer (RT-DETR)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -76,6 +75,10 @@ Real-Time Detection Transformer (RT-DETR)
     :members: from_config, forward, load_checkpoint
     :undoc-members:
     :special-members: __init__,
+
+Image Segmentation
+------------------
+.. autofunction:: connected_components
 
 Segment Anything (SAM)
 ^^^^^^^^^^^^^^^^^^^^^^
