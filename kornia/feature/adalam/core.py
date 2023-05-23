@@ -11,8 +11,9 @@ from .utils import dist_matrix, orientation_diff
 
 
 class AdalamConfig(TypedDict):
-    """
-    area_ratio: Ratio between seed circle area and image area. Higher values produce more seeds with smaller
+    """area_ratio: Ratio between seed circle area and image area.
+
+    Higher values produce more seeds with smaller
         neighborhoods
     search_expansion: Expansion factor of the seed circle radius for the purpose of collecting neighborhoods.
         Increases neighborhood radius without changing seed distribution

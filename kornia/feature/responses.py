@@ -293,7 +293,8 @@ def dog_response_single(input: Tensor, sigma1: float = 1.0, sigma2: float = 1.6)
 class BlobDoG(Module):
     r"""Module that calculates Difference-of-Gaussians blobs.
 
-    See :func:`~kornia.feature.dog_response` for details.
+    See
+    :func: `~kornia.feature.dog_response` for details.
     """
 
     def __init__(self) -> None:
