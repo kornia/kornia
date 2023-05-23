@@ -8,7 +8,7 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 # TODO: implement width of the line
 
 
-def draw_point2d(image: torch.Tensor, points: torch.tensor, color: torch.Tensor) -> torch.Tensor:
+def draw_point2d(image: torch.Tensor, points: torch.Tensor, color: torch.Tensor) -> torch.Tensor:
     r"""Sets one or more coordinates in a Tensor to a color.
 
     Args:
@@ -23,12 +23,15 @@ def draw_point2d(image: torch.Tensor, points: torch.tensor, color: torch.Tensor)
         (len(image.shape) == 2 and len(color.shape) == 1) or (image.shape[0] == color.shape[0]),
         "Color dim must match the channel dims of the provided image",
     )
+    points = points.to(dtype=torch.int64, device=image.device)
     x, y = zip(*points)
-    color = torch.unsqueeze(color, dim=1)
+    if len(color.shape) == 1:
+        color = torch.unsqueeze(color, dim=1)
+    color = color.to(dtype=image.dtype, device=image.device)
     if len(image.shape) == 2:
-        image[y, x] = color.to(image.dtype)
+        image[y, x] = color
     else:
-        image[:, y, x] = color.to(image.dtype)
+        image[:, y, x] = color
     return image
 
 
