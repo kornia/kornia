@@ -4,11 +4,11 @@ import pytest
 import torch
 
 from kornia.contrib.models.rt_detr.architecture.hgnetv2 import PPHGNetV2
-from kornia.contrib.models.rt_detr.architecture.hybrid_encoder import HybridEncoder
+from kornia.contrib.models.rt_detr.architecture.hybrid_encoder import HybridEncoder, RepVggBlock
 from kornia.contrib.models.rt_detr.architecture.resnet_d import ResNetD
 from kornia.contrib.models.rt_detr.architecture.rtdetr_head import RTDETRHead
 from kornia.contrib.models.rt_detr.model import RTDETR, RTDETRConfig
-from kornia.testing import BaseTester
+from kornia.testing import BaseTester, assert_close
 from kornia.utils._compat import torch_version
 
 
@@ -58,6 +58,16 @@ def test_head(device, dtype):
     bboxes, logits = decoder(fmaps)
     assert bboxes.shape == (N, num_queries, 4)
     assert logits.shape == (N, num_queries, num_classes)
+
+
+def test_regvgg_optimize_for_deployment(device, dtype):
+    module = RepVggBlock(64, 64).to(device, dtype).eval()
+    x = torch.randn(2, 64, 9, 9, device=device, dtype=dtype)
+
+    expected = module(x)
+    module.optimize_for_deployment()
+    actual = module(x)
+    assert_close(actual, expected)
 
 
 class TestRTDETR(BaseTester):

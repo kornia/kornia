@@ -7,21 +7,48 @@ from __future__ import annotations
 import torch
 import torch.nn.functional as F
 from torch import nn
+from torch.nn.utils.fusion import fuse_conv_bn_weights
 
 from kornia.contrib.models.common import ConvNormAct
-from kornia.core import Module, Tensor, concatenate
+from kornia.core import Module, Tensor, concatenate, pad
 
 
-# NOTE: conv2 can be fused into conv1
 class RepVggBlock(Module):
     def __init__(self, in_channels: int, out_channels: int) -> None:
         super().__init__()
         self.conv1 = ConvNormAct(in_channels, out_channels, 3, act="none")
         self.conv2 = ConvNormAct(in_channels, out_channels, 1, act="none")
         self.act = nn.SiLU(inplace=True)
+        self.conv: nn.Conv2d | None = None
 
     def forward(self, x: Tensor) -> Tensor:
-        return self.act(self.conv1(x) + self.conv2(x))
+        if self.conv is not None:
+            out = self.act(self.conv(x))
+        else:
+            out = self.act(self.conv1(x) + self.conv2(x))
+        return out
+
+    @torch.no_grad()
+    def optimize_for_deployment(self) -> None:
+        def _fuse_conv_bn_weights(m: ConvNormAct) -> tuple[nn.Parameter, nn.Parameter]:
+            return fuse_conv_bn_weights(
+                m.conv.weight,
+                m.conv.bias,
+                m.norm.running_mean,
+                m.norm.running_var,
+                m.norm.eps,
+                m.norm.weight,
+                m.norm.bias,
+            )
+
+        kernel3x3, bias3x3 = _fuse_conv_bn_weights(self.conv1)
+        kernel1x1, bias1x1 = _fuse_conv_bn_weights(self.conv2)
+        kernel3x3.add_(pad(kernel1x1, [1, 1, 1, 1]))
+        bias3x3.add_(bias1x1)
+
+        self.conv = nn.Conv2d(kernel3x3.shape[1], kernel3x3.shape[0], 3, 1, 1)
+        self.conv.weight = kernel3x3
+        self.conv.bias = bias3x3
 
 
 class CSPRepLayer(Module):
@@ -62,8 +89,9 @@ class AIFI(Module):
         N, C, H, W = x.shape
         x = x.permute(2, 3, 0, 1).flatten(0, 1)  # (N, C, H, W) -> (H * W, N, C)
 
-        # NOTE: cache build_2d_sincos_pos_emb to buffer, if input size is known?
-        q = k = x + self.build_2d_sincos_pos_emb(W, H, C, device=x.device, dtype=x.dtype)
+        # NOTE: cache pos_emb as buffer
+        pos_emb = self.build_2d_sincos_pos_emb(W, H, C, device=x.device, dtype=x.dtype)
+        q = k = x + pos_emb
         x = self.norm1(x + self.dropout1(self.self_attn(q, k, x, need_weights=False)[0]))
         x = self.norm2(x + self.dropout2(self.ffn(x)))
 
