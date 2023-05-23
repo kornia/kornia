@@ -10,7 +10,7 @@ from kornia.contrib.models.rt_detr.architecture.hgnetv2 import PPHGNetV2
 from kornia.contrib.models.rt_detr.architecture.hybrid_encoder import HybridEncoder
 from kornia.contrib.models.rt_detr.architecture.resnet_d import ResNetD
 from kornia.contrib.models.rt_detr.architecture.rtdetr_head import RTDETRHead
-from kornia.core import Tensor, concatenate, tensor
+from kornia.core import Tensor
 
 
 class RTDETRModelType(Enum):
@@ -154,7 +154,7 @@ class RTDETR(ModelBase[RTDETRConfig]):
             model.load_checkpoint(config.checkpoint)
         return model
 
-    def forward(self, images: Tensor) -> Tensor:
+    def forward(self, images: Tensor) -> dict[str, Tensor]:
         """Detect objects in an image.
 
         Args:
@@ -164,23 +164,7 @@ class RTDETR(ModelBase[RTDETRConfig]):
             Object detection results, in format class id, score, bounding box xywh. Shape :math:`(N, D, 6)`,
             where :math:`D` is the number of detections.
         """
-        H, W = images.shape[2:]
         fmaps = self.backbone(images)
         fmaps = self.neck(fmaps)
-        bboxes, logits = self.head(fmaps)
-
-        # https://github.com/PaddlePaddle/PaddleDetection/blob/5d1f888362241790000950e2b63115dc8d1c6019/ppdet/modeling/post_process.py#L446
-        # box format is cxcywh
-        # convert to xywh
-        # bboxes[..., :2] -= bboxes[..., 2:] * 0.5  # in-place operation is not torch.compile()-friendly
-        cxcy = bboxes[..., :2]
-        wh = bboxes[..., 2:]
-        bboxes = concatenate([cxcy - wh * 0.5, wh], -1)
-
-        bboxes = bboxes * tensor([W, H, W, H], device=bboxes.device, dtype=bboxes.dtype).view(1, 1, 4)
-        scores = logits.sigmoid()  # RT-DETR was trained with focal loss. thus sigmoid is used instead of softmax
-
-        # the original code is slightly different
-        # it allows 1 bounding box to have multiple classes (multi-label)
-        scores, labels = scores.max(-1)
-        return concatenate([labels.unsqueeze(-1), scores.unsqueeze(-1), bboxes], -1)
+        logits, boxes = self.head(fmaps)
+        return dict(logits=logits, boxes=boxes)

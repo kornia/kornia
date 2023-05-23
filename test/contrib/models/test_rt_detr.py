@@ -8,6 +8,7 @@ from kornia.contrib.models.rt_detr.architecture.hybrid_encoder import HybridEnco
 from kornia.contrib.models.rt_detr.architecture.resnet_d import ResNetD
 from kornia.contrib.models.rt_detr.architecture.rtdetr_head import RTDETRHead
 from kornia.contrib.models.rt_detr.model import RTDETR, RTDETRConfig
+from kornia.core import Tensor
 from kornia.testing import BaseTester, assert_close
 from kornia.utils._compat import torch_version
 
@@ -75,16 +76,22 @@ class TestRTDETR(BaseTester):
     def test_smoke(self, variant, device, dtype):
         model = RTDETR.from_config(RTDETRConfig(variant, 80)).to(device, dtype)
         images = torch.randn(2, 3, 224, 256, device=device, dtype=dtype)
-        model(images)
+        out = model(images)
+
+        assert "logits" in out and isinstance(out["logits"], Tensor)
+        assert "boxes" in out and isinstance(out["boxes"], Tensor)
 
     @pytest.mark.parametrize("shape", ((1, 3, 96, 128), (2, 3, 224, 256)))
     def test_cardinality(self, shape, device, dtype):
+        num_classes = 10
         num_queries = 10
-        model = RTDETR.from_config(RTDETRConfig("resnet50", 10, head_num_queries=num_queries)).to(device, dtype)
+        model = RTDETR.from_config(RTDETRConfig("resnet50", num_classes, head_num_queries=num_queries))
+        model = model.to(device, dtype)
         images = torch.randn(shape, device=device, dtype=dtype)
         out = model(images)
 
-        assert out.shape == (shape[0], num_queries, 6)
+        assert out["logits"].shape == (shape[0], num_queries, num_classes)
+        assert out["boxes"].shape == (shape[0], num_queries, 4)
 
     @pytest.mark.skip("Unnecessary")
     def test_exception(self):
@@ -107,9 +114,8 @@ class TestRTDETR(BaseTester):
         expected = model(img)
         actual = model_optimized(img)
 
-        self.assert_close(actual[:, :, 0], expected[:, :, 0])  # class id
-        self.assert_close(actual[:, :, 1], expected[:, :, 1], low_tolerance=True)  # score
-        self.assert_close(actual[:, :, 2:], expected[:, :, 2:], low_tolerance=True)  # xywh
+        self.assert_close(actual["logits"], expected["logits"])
+        self.assert_close(actual["boxes"], expected["boxes"])
 
     @pytest.mark.skipif(
         torch_version() in ("2.0.0", "2.0.1"),

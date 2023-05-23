@@ -7,6 +7,7 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.contrib.face_detection import FaceKeypoint
+from kornia.contrib.models.rt_detr import RTDETR, RTDETRConfig
 from kornia.testing import assert_close
 
 
@@ -731,3 +732,17 @@ class TestEdgeDetector:
         op = kornia.contrib.EdgeDetector().to(device, dtype)
         op_jit = torch.jit.script(op)
         assert op_jit is not None
+
+
+class TestObjectDetector:
+    def test_smoke(self, device, dtype):
+        model = RTDETR.from_config(RTDETRConfig("resnet50", 10, head_num_queries=10))
+        threshold = 0.2
+        detector = kornia.contrib.ObjectDetector(model, threshold).to(device, dtype)
+        imgs = torch.randn(2, 3, 128, 128, device=device, dtype=dtype)
+        out = detector(imgs)
+
+        assert len(out) == 2
+        for dets in out:
+            assert dets.shape[1] == 6
+            assert (dets[:, 1] >= threshold).all()

@@ -192,7 +192,7 @@ class RTDETRHead(Module):
             ref_points = ref_points + bbox_head(tgt)
         logits = self.dec_score_head[-1](tgt)  # in evaluation, only last score head is used
 
-        return ref_points.sigmoid(), logits
+        return logits, ref_points.sigmoid()
 
     @staticmethod
     def generate_anchors(
