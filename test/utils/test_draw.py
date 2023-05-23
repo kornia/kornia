@@ -18,7 +18,7 @@ class TestDrawPoint:
         img = torch.zeros(3, 8, 8, dtype=dtype, device=device)
         img = draw_point2d(img, points, color)
         for x, y in points:
-            assert_close(img[:, x, y], color.to(img.dtype))
+            assert_close(img[:, y, x], color.to(img.dtype))
 
     def test_draw_point2d_grayscale_third_order(self, dtype, device):
         """Test plotting multiple [x, y] points on a (1, m, n) image."""
@@ -27,7 +27,7 @@ class TestDrawPoint:
         img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
         img = draw_point2d(img, points, color)
         for x, y in points:
-            assert_close(img[:, x, y], color.to(img.dtype))
+            assert_close(img[:, y, x], color.to(img.dtype))
 
     def test_draw_point2d_grayscale_second_order(self, dtype, device):
         """Test plotting multiple [x, y] points on a (m, n) image."""
@@ -36,7 +36,7 @@ class TestDrawPoint:
         img = torch.zeros(8, 8, dtype=dtype, device=device)
         img = draw_point2d(img, points, color)
         for x, y in points:
-            assert_close(torch.unsqueeze(img[x, y], dim=0), color.to(img.dtype))
+            assert_close(torch.unsqueeze(img[y, x], dim=0), color.to(img.dtype))
 
     def test_draw_point2d_with_mismatched_dims(self, dtype, device):
         """Test that we raise if the len of the color tensor != the # of image channels."""
@@ -54,7 +54,7 @@ class TestDrawPoint:
         img = draw_point2d(img, points, color)
         assert img.dtype is torch.uint8
         for x, y in points:
-            assert_close(img[:, x, y], color.to(torch.uint8))
+            assert_close(img[:, y, x], color.to(torch.uint8))
 
 
 class TestDrawLine:

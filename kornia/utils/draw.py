@@ -26,9 +26,9 @@ def draw_point2d(image: torch.Tensor, points: torch.tensor, color: torch.Tensor)
     x, y = zip(*points)
     color = torch.unsqueeze(color, dim=1)
     if len(image.shape) == 2:
-        image[x, y] = color.to(image.dtype)
+        image[y, x] = color.to(image.dtype)
     else:
-        image[:, x, y] = color.to(image.dtype)
+        image[:, y, x] = color.to(image.dtype)
     return image
 
 
