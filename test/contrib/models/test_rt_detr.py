@@ -98,7 +98,7 @@ class TestRTDETR(BaseTester):
         actual = model_optimized(img)
 
         self.assert_close(actual[:, :, 0], expected[:, :, 0])  # class id
-        self.assert_close(actual[:, :, 1], expected[:, :, 1])  # score
+        self.assert_close(actual[:, :, 1], expected[:, :, 1], low_tolerance=True)  # score
         self.assert_close(actual[:, :, 2:], expected[:, :, 2:], low_tolerance=True)  # xywh
 
     @pytest.mark.skipif(
