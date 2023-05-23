@@ -21,7 +21,7 @@ def draw_point2d(image: torch.Tensor, points: torch.tensor, color: torch.Tensor)
     """
     KORNIA_CHECK(
         (len(image.shape) == 2 and len(color.shape) == 1) or (image.shape[0] == color.shape[0]),
-        "Color dim must match the channel dims of the provided image image",
+        "Color dim must match the channel dims of the provided image",
     )
     x, y = zip(*points)
     color = torch.unsqueeze(color, dim=1)
