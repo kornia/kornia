@@ -32,7 +32,7 @@ def getModelFromType(type: CameraDistortionType, params: Tensor):
         raise ValueError("Invalid distortion type")
 
 
-CameraDistortionTypeUnion = Union[AffineTransform, BrownConradyTransform]
+CameraDistortionType = AffineTransform | BrownConradyTransform
 CameraProjectionTypeUnion = Union[Z1Projection, OrthographicProjection]
 
 
