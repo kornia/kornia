@@ -2,13 +2,9 @@
 
 Paper: https://paperswithcode.com/paper/an-image-is-worth-16x16-words-transformers-1
 
-Based on:
-https://towardsdatascience.com/implementing-visualttransformer-in-pytorch-184f9f16f632
-: https: //paperswithcode.com/paper/an-image-is-worth-16x16-words-transformers-1
+Based on: `https://towardsdatascience.com/implementing-visualttransformer-in-pytorch-184f9f16f632`
 
-Based on
-: https: //towardsdatascience.com/implementing-visualttransformer-in-pytorch-184f9f16f632 Added some tricks from
-https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py
+Added some tricks from: `https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py`
 """
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
