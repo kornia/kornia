@@ -72,15 +72,14 @@ def normalize_transformation(M: Tensor, eps: float = 1e-8) -> Tensor:
 
 # Reference : https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/polynom_solver.cpp
 def solve_quadratic(a, b, c):
-
     delta = b * b - 4 * a * c
 
-    if (delta < 0 ):
+    if delta < 0:
         return 0
 
-    inv_2a = 0.5/a 
+    inv_2a = 0.5 / a
 
-    if (delta == 0):
+    if delta == 0:
         x1 = -b * inv_2a
         x2 = x1
         return [x1]
@@ -93,42 +92,41 @@ def solve_quadratic(a, b, c):
 
 
 def solve_cubic(a, b, c, d):
-
     _PI = torch.tensor(3.14)
 
-    if(a == 0):
+    if a == 0:
         # second order system
-        if (b==0):
-            #first order system
-            if(c==0):
+        if b == 0:
+            # first order system
+            if c == 0:
                 return 0
-            x0 = -d/c
+            x0 = -d / c
             return 1
         x2 = 0
         return solve_quadratic(b, c, d)
 
     # normalized form x^3 + a2 * x^2 + a1 * x + a0 = 0
-    inv_a = 1./ a
+    inv_a = 1.0 / a
     b_a = inv_a * b
     b_a2 = b_a * b_a
 
-    c_a = inv_a * c 
+    c_a = inv_a * c
     d_a = inv_a * d
 
     # solve the cubic equation
     Q = (3 * c_a - b_a2) / 9
-    R = (9 * b_a * c_a - 27 * d_a -2 * b_a * b_a2) / 54
+    R = (9 * b_a * c_a - 27 * d_a - 2 * b_a * b_a2) / 54
     Q3 = Q * Q * Q
     D = Q3 + R * R
-    b_a_3 = (1. / 3.) * b_a
+    b_a_3 = (1.0 / 3.0) * b_a
 
     if Q == 0:
-        if R==0:
+        if R == 0:
             x0 = x1 = x2 = -b_a_3
             return torch.stack((x0, x1, x2))
 
         else:
-            cube_root = torch.pow(2*R, 1/3)
+            cube_root = torch.pow(2 * R, 1 / 3)
             x0 = cube_root - b_a_3
             return [x0]
 
@@ -136,17 +134,17 @@ def solve_cubic(a, b, c, d):
         # three real roots
         theta = torch.acos(R / torch.sqrt(-Q3))
         sqrt_Q = torch.sqrt(-Q)
-        x0 = 2* sqrt_Q * torch.cos(theta / 3.0) - b_a_3
-        x1 = 2 * sqrt_Q * torch.cos((theta + 2 * _PI)/ 3.0) - b_a_3
-        x2 = 2 * sqrt_Q * torch.cos((theta + 4 * _PI)/ 3.0) - b_a_3
+        x0 = 2 * sqrt_Q * torch.cos(theta / 3.0) - b_a_3
+        x1 = 2 * sqrt_Q * torch.cos((theta + 2 * _PI) / 3.0) - b_a_3
+        x2 = 2 * sqrt_Q * torch.cos((theta + 4 * _PI) / 3.0) - b_a_3
         return torch.stack((x1, x0, x2))
 
     # D > 0, one one real root
-    AD = 0.
-    BD = 0.
+    AD = 0.0
+    BD = 0.0
     R_abs = torch.abs(R)
     if R_abs > 1e-16:
-        AD = torch.pow(R_abs + torch.sqrt(D), 1/3)
+        AD = torch.pow(R_abs + torch.sqrt(D), 1 / 3)
         # AD = (R >= 0) ? AD : -AD
         AD = AD if R >= 0 else -AD
         BD = -Q / AD
@@ -155,12 +153,11 @@ def solve_cubic(a, b, c, d):
     return [x0]
 
 
-# Reference: Adapted from the 'run_7point' function in opencv 
+# Reference: Adapted from the 'run_7point' function in opencv
 # https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/fundam.cpp
-def run_7point(points1: torch.Tensor, points2: torch.Tensor
-    ) -> torch.Tensor:
-    r"""Computer the fundamental matrix using the 7-point algorithm
-    
+def run_7point(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
+    r"""Computer the fundamental matrix using the 7-point algorithm.
+
     Args:
         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2), N==7`.
         points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N==7`.
@@ -192,35 +189,49 @@ def run_7point(points1: torch.Tensor, points2: torch.Tensor
     f1 = v[0, :, 7]
     f2 = v[0, :, 8]
 
-    # lambda*f1 + mu*f2 is an arbitary fundamental matrix 
+    # lambda*f1 + mu*f2 is an arbitary fundamental matrix
     # f ~ lamda*f1 + (1 - lambda)*f2
     # det(f) = det(lambda*f1 + (1-lambda)*f2), find lambda
     # form a cubic equation
-    # finding the coefficients of cubic polynomial (coeffs) 
+    # finding the coefficients of cubic polynomial (coeffs)
 
     coeffs = torch.zeros(4, dtype=torch.float64)
 
-    t0 = f2[4]*f2[8] - f2[5]*f2[7]
-    t1 = f2[3]*f2[8] - f2[5]*f2[6]
-    t2 = f2[3]*f2[7] - f2[4]*f2[6]
+    t0 = f2[4] * f2[8] - f2[5] * f2[7]
+    t1 = f2[3] * f2[8] - f2[5] * f2[6]
+    t2 = f2[3] * f2[7] - f2[4] * f2[6]
 
-    coeffs[3] += f2[0]*t0 - f2[1]*t1 + f2[2]*t2
+    coeffs[3] += f2[0] * t0 - f2[1] * t1 + f2[2] * t2
 
-    coeffs[2] += f1[0]*t0 - f1[1]*t1 + f1[2]*t2 - f1[3] * (f2[1]*f2[8] - f2[2]*f2[7]) + \
-                f1[4]*(f2[0]*f2[8] - f2[2]*f2[6]) - f1[5]*(f2[0]*f2[7] - f2[1]*f2[6]) + \
-                f1[6]*(f2[1]*f2[5] - f2[2]*f2[4]) - f1[7]*(f2[0]*f2[5] - f2[2]*f2[3]) + \
-                f1[8]*(f2[0]*f2[4] - f2[1]*f2[3])
+    coeffs[2] += (
+        f1[0] * t0
+        - f1[1] * t1
+        + f1[2] * t2
+        - f1[3] * (f2[1] * f2[8] - f2[2] * f2[7])
+        + f1[4] * (f2[0] * f2[8] - f2[2] * f2[6])
+        - f1[5] * (f2[0] * f2[7] - f2[1] * f2[6])
+        + f1[6] * (f2[1] * f2[5] - f2[2] * f2[4])
+        - f1[7] * (f2[0] * f2[5] - f2[2] * f2[3])
+        + f1[8] * (f2[0] * f2[4] - f2[1] * f2[3])
+    )
 
-    t0 = f1[4]*f1[8] - f1[5]*f1[7]
-    t1 = f1[3]*f1[8] - f1[5]*f1[6]
-    t2 = f1[3]*f1[7] - f1[4]*f1[6]
+    t0 = f1[4] * f1[8] - f1[5] * f1[7]
+    t1 = f1[3] * f1[8] - f1[5] * f1[6]
+    t2 = f1[3] * f1[7] - f1[4] * f1[6]
 
-    coeffs[1] += f2[0]*t0 - f2[1]*t1 + f2[2]*t2 - f2[3]* (f1[1]*f1[8] - f1[2]*f1[7]) + \
-                f2[4]*(f1[0]*f1[8] - f1[2]*f1[6]) - f2[5]*(f1[0]*f1[7] - f1[1]*f1[6]) + \
-                f2[6]*(f1[1]*f1[5] - f1[2]*f1[4]) - f2[7]*(f1[0]*f1[5] - f1[2]*f1[3]) + \
-                f2[8]*(f1[0]*f1[4] - f1[1]*f1[3])
+    coeffs[1] += (
+        f2[0] * t0
+        - f2[1] * t1
+        + f2[2] * t2
+        - f2[3] * (f1[1] * f1[8] - f1[2] * f1[7])
+        + f2[4] * (f1[0] * f1[8] - f1[2] * f1[6])
+        - f2[5] * (f1[0] * f1[7] - f1[1] * f1[6])
+        + f2[6] * (f1[1] * f1[5] - f1[2] * f1[4])
+        - f2[7] * (f1[0] * f1[5] - f1[2] * f1[3])
+        + f2[8] * (f1[0] * f1[4] - f1[1] * f1[3])
+    )
 
-    coeffs[0] += f1[0]*t0 - f1[1]*t1 + f1[2]*t2
+    coeffs[0] += f1[0] * t0 - f1[1] * t1 + f1[2] * t2
 
     # solve the cubic equation, there can be 1 to 3 roots
     # roots = torch.tensor(np.roots(coeffs.numpy()))
@@ -241,33 +252,31 @@ def run_7point(points1: torch.Tensor, points2: torch.Tensor
         fmat = torch.zeros((3, 3), dtype=torch.float64)
         _lambda = roots[i]
         _mu = 1
-        _s = f1[2][2]*roots[i] + f2[2][2]
+        _s = f1[2][2] * roots[i] + f2[2][2]
 
         if abs(_s) > 1e-16:
-            _mu = 1./_s
+            _mu = 1.0 / _s
             _lambda *= _mu
-            fmat[2][2] = 1.
+            fmat[2][2] = 1.0
         else:
-            fmat[2][2] = 0.
+            fmat[2][2] = 0.0
 
         for r in range(3):
             for c in range(3):
                 if r == 2 and c == 2:
                     continue
-                fmat[r][c] = f1[r][c]*_lambda + f2[r][c]*_mu
+                fmat[r][c] = f1[r][c] * _lambda + f2[r][c] * _mu
 
         fmat = transform2.transpose(-2, -1) @ (fmat @ transform1)
 
         fmat = normalize_transformation(fmat)
 
         fmatrix[i] = fmat
-   
+
     return fmatrix
 
 
-def run_8point(
-    points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None
-) -> torch.Tensor:
+def run_8point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None) -> torch.Tensor:
     r"""Compute the fundamental matrix using the DLT formulation.
 
     The linear system is solved by using the Weighted Least Squares Solution for the 8 Points algorithm.
@@ -324,7 +333,7 @@ def run_8point(
 
 
 def find_fundamental(
-    points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None, method: str = "8POINT",
+    points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None, method: str = "8POINT"
 ) -> torch.Tensor:
     r"""
     Args:
