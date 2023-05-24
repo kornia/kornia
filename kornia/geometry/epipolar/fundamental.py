@@ -71,39 +71,39 @@ def normalize_transformation(M: Tensor, eps: float = 1e-8) -> Tensor:
 
 
 # Reference : https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/polynom_solver.cpp
-def solve_quadratic(a, b, c):
+def solve_quadratic(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
 
     delta = b * b - 4 * a * c
 
     if (delta < 0 ):
-        return 0
+        return torch.tensor(0)
 
     inv_2a = 0.5/a 
 
     if (delta == 0):
         x1 = -b * inv_2a
         x2 = x1
-        return [x1]
+        return x1
 
     sqrt_delta = torch.sqrt(delta)
     x1 = (-b + sqrt_delta) * inv_2a
     x2 = (-b - sqrt_delta) * inv_2a
 
-    return torch.stack((x2, x1))
+    return torch.cat([x2, x1])
 
 
-def solve_cubic(a, b, c, d):
+def solve_cubic(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
 
     _PI = torch.tensor(3.14)
 
     if(a == 0):
         # second order system
-        if (b==0):
+        if b == 0:
             #first order system
-            if(c==0):
-                return 0
+            if c == 0:
+                return torch.tensor(0)
             x0 = -d/c
-            return 1
+            return torch.tensor(1.)
         x2 = 0
         return solve_quadratic(b, c, d)
 
@@ -123,36 +123,35 @@ def solve_cubic(a, b, c, d):
     b_a_3 = (1. / 3.) * b_a
 
     if Q == 0:
-        if R==0:
+        if R == 0:
             x0 = x1 = x2 = -b_a_3
-            return torch.stack((x0, x1, x2))
+            return torch.stack([x2, x1, x0])
 
         else:
             cube_root = torch.pow(2*R, 1/3)
             x0 = cube_root - b_a_3
-            return [x0]
+            return x0
 
     if D <= 0:
         # three real roots
         theta = torch.acos(R / torch.sqrt(-Q3))
         sqrt_Q = torch.sqrt(-Q)
-        x0 = 2* sqrt_Q * torch.cos(theta / 3.0) - b_a_3
+        x0 = 2 * sqrt_Q * torch.cos(theta / 3.0) - b_a_3
         x1 = 2 * sqrt_Q * torch.cos((theta + 2 * _PI)/ 3.0) - b_a_3
         x2 = 2 * sqrt_Q * torch.cos((theta + 4 * _PI)/ 3.0) - b_a_3
-        return torch.stack((x1, x0, x2))
+        return torch.stack([x2, x1, x0])
 
     # D > 0, one one real root
-    AD = 0.
-    BD = 0.
+    AD = torch.tensor(0, dtype=torch.float)
+    BD = torch.tensor(0, dtype=torch.float)
     R_abs = torch.abs(R)
     if R_abs > 1e-16:
         AD = torch.pow(R_abs + torch.sqrt(D), 1/3)
-        # AD = (R >= 0) ? AD : -AD
         AD = AD if R >= 0 else -AD
         BD = -Q / AD
     x0 = AD + BD - b_a_3
 
-    return [x0]
+    return x0
 
 
 # Reference: Adapted from the 'run_7point' function in opencv 
@@ -198,7 +197,7 @@ def run_7point(points1: torch.Tensor, points2: torch.Tensor
     # form a cubic equation
     # finding the coefficients of cubic polynomial (coeffs) 
 
-    coeffs = torch.zeros(4, dtype=torch.float64)
+    coeffs = torch.zeros(4, dtype=torch.float)
 
     t0 = f2[4]*f2[8] - f2[5]*f2[7]
     t1 = f2[3]*f2[8] - f2[5]*f2[6]
@@ -229,7 +228,7 @@ def run_7point(points1: torch.Tensor, points2: torch.Tensor
     n = len(roots)
 
     if n < 1 or n > 3:
-        return n
+        return torch.tensor(n)
 
     f1 = f1.view(3, 3)
     f2 = f2.view(3, 3)
@@ -331,14 +330,22 @@ def find_fundamental(
         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2), N>=8`.
         points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=8`.
         weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
+        method: The method to use for computing the fundamental matrix. Supported methods are "7POINT" and "8POINT".
 
     Returns:
-        the computed fundamental matrix with shape :math:`(B, 3*m, 3)` m number of fundamental matrix.
+        the computed fundamental matrix with shape :math:`(B, 3*m, 3)`, where `m` number of fundamental matrix.
+
+    Raises:
+        ValueError: If an invalid method is provided.
+
     """
     if method == "7POINT":
-        return run_7point(points1, points2)
+        result = run_7point(points1, points2)
     elif method == "8POINT":
-        return run_8point(points1, points2, weights)
+        result = run_8point(points1, points2, weights)
+    else:
+        raise ValueError(f"Invalid method: {method}. Supported methods are '7POINT' and '8POINT'.")
+    return result
 
 
 def compute_correspond_epilines(points: Tensor, F_mat: Tensor) -> Tensor:
