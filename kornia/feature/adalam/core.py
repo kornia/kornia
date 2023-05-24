@@ -11,8 +11,8 @@ from .utils import dist_matrix, orientation_diff
 
 
 class AdalamConfig(TypedDict):
-    """A config structure for the Adalam model
-    
+    """A config structure for the Adalam model.
+
     Args:
         area_ratio: Ratio between seed circle area and image area. Higher values produce more seeds with smaller
         neighborhoods
