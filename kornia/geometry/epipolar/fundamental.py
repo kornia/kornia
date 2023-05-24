@@ -72,10 +72,9 @@ def normalize_transformation(M: Tensor, eps: float = 1e-8) -> Tensor:
 
 # Reference : https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/polynom_solver.cpp
 def solve_quadratic(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
-
     delta = b * b - 4 * a * c
 
-    if (delta < 0 ):
+    if delta < 0:
         return torch.tensor(0)
 
     inv_2a = 0.5 / a
@@ -93,17 +92,16 @@ def solve_quadratic(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor) -> torch.
 
 
 def solve_cubic(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
-
     _PI = torch.tensor(3.14)
 
     if a == 0:
         # second order system
         if b == 0:
-            #first order system
+            # first order system
             if c == 0:
                 return torch.tensor(0)
-            x0 = -d/c
-            return torch.tensor(1.)
+            x0 = -d / c
+            return torch.tensor(1.0)
         x2 = 0
         return solve_quadratic(b, c, d)
 
@@ -137,8 +135,8 @@ def solve_cubic(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor, d: torch.Tens
         theta = torch.acos(R / torch.sqrt(-Q3))
         sqrt_Q = torch.sqrt(-Q)
         x0 = 2 * sqrt_Q * torch.cos(theta / 3.0) - b_a_3
-        x1 = 2 * sqrt_Q * torch.cos((theta + 2 * _PI)/ 3.0) - b_a_3
-        x2 = 2 * sqrt_Q * torch.cos((theta + 4 * _PI)/ 3.0) - b_a_3
+        x1 = 2 * sqrt_Q * torch.cos((theta + 2 * _PI) / 3.0) - b_a_3
+        x2 = 2 * sqrt_Q * torch.cos((theta + 4 * _PI) / 3.0) - b_a_3
         return torch.stack([x2, x1, x0])
 
     # D > 0, one one real root
@@ -146,7 +144,7 @@ def solve_cubic(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor, d: torch.Tens
     BD = torch.tensor(0, dtype=torch.float)
     R_abs = torch.abs(R)
     if R_abs > 1e-16:
-        AD = torch.pow(R_abs + torch.sqrt(D), 1/3)
+        AD = torch.pow(R_abs + torch.sqrt(D), 1 / 3)
         AD = AD if R >= 0 else -AD
         BD = -Q / AD
     x0 = AD + BD - b_a_3
