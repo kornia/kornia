@@ -9,7 +9,7 @@ from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.linalg import transform_points
 from kornia.utils.helpers import _torch_svd_cast
-
+import numpy as np
 
 def normalize_points(points: Tensor, eps: float = 1e-8) -> Tuple[Tensor, Tensor]:
     r"""Normalizes points (isotropic).
@@ -70,7 +70,117 @@ def normalize_transformation(M: Tensor, eps: float = 1e-8) -> Tensor:
     return torch.where(norm_val.abs() > eps, M / (norm_val + eps), M)
 
 
-def find_fundamental(
+# Reference: Adapted from the 'run_7point' function in opencv 
+# https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/fundam.cpp
+def run_7point(points1: torch.Tensor, points2: torch.Tensor
+    ) -> torch.Tensor:
+    r"""Computer the fundamental matrix using the 7-point algorithm
+    
+    Args:
+        points1: A set of points in the first image with a tensor shape :math:`(B, N, 2), N==7`.
+        points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N==7`.
+
+    Returns:
+        the computed fundamental matrix with shape :math:`(B, 3*m, 3), Valid values of m are 1, 2 or 3`
+    """
+    if points1.shape != points2.shape:
+        raise AssertionError(points1.shape, points2.shape)
+    if points1.shape[1] != 7:
+        raise AssertionError(points1.shape)
+
+    points1_norm, transform1 = normalize_points(points1)
+    points2_norm, transform2 = normalize_points(points2)
+
+    x1, y1 = torch.chunk(points1_norm, dim=-1, chunks=2)  # Bx1xN
+    x2, y2 = torch.chunk(points2_norm, dim=-1, chunks=2)  # Bx1xN
+
+    ones = torch.ones_like(x1)
+    # form a linear system: which represents
+    # the equation (x2[i], 1)*F*(x1[i], 1) = 0
+    X = torch.cat([x2 * x1, x2 * y1, x2, y2 * x1, y2 * y1, y2, x1, y1, ones], dim=-1)  # BxNx9
+
+    # X * Fmat = 0 is singular (7 equations for 9 variables)
+    # solving for nullspace of X to get two F
+    _, _, v = _torch_svd_cast(X)
+
+    # last two singluar vector as a basic of the space
+    f1 = v[0, :, 7]
+    f2 = v[0, :, 8]
+
+    # lambda*f1 + mu*f2 is an arbitary fundamental matrix 
+    # f ~ lamda*f1 + (1 - lambda)*f2
+    # det(f) = det(lambda*f1 + (1-lambda)*f2), find lambda
+    # form a cubic equation
+    # finding the coefficients of cubic polynomial (coeffs) 
+
+    coeffs = torch.zeros(4, dtype=torch.float64)
+
+    t0 = f2[4]*f2[8] - f2[5]*f2[7]
+    t1 = f2[3]*f2[8] - f2[5]*f2[6]
+    t2 = f2[3]*f2[7] - f2[4]*f2[6]
+
+    coeffs[3] += f2[0]*t0 - f2[1]*t1 + f2[2]*t2
+
+    coeffs[2] += f1[0]*t0 - f1[1]*t1 + f1[2]*t2 - f1[3] * (f2[1]*f2[8] - f2[2]*f2[7]) + \
+                f1[4]*(f2[0]*f2[8] - f2[2]*f2[6]) - f1[5]*(f2[0]*f2[7] - f2[1]*f2[6]) + \
+                f1[6]*(f2[1]*f2[5] - f2[2]*f2[4]) - f1[7]*(f2[0]*f2[5] - f2[2]*f2[3]) + \
+                f1[8]*(f2[0]*f2[4] - f2[1]*f2[3])
+
+    t0 = f1[4]*f1[8] - f1[5]*f1[7]
+    t1 = f1[3]*f1[8] - f1[5]*f1[6]
+    t2 = f1[3]*f1[7] - f1[4]*f1[6]
+
+    coeffs[1] += f2[0]*t0 - f2[1]*t1 + f2[2]*t2 - f2[3]* (f1[1]*f1[8] - f1[2]*f1[7]) + \
+                f2[4]*(f1[0]*f1[8] - f1[2]*f1[6]) - f2[5]*(f1[0]*f1[7] - f1[1]*f1[6]) + \
+                f2[6]*(f1[1]*f1[5] - f1[2]*f1[4]) - f2[7]*(f1[0]*f1[5] - f1[2]*f1[3]) + \
+                f2[8]*(f1[0]*f1[4] - f1[1]*f1[3])
+
+    coeffs[0] += f1[0]*t0 - f1[1]*t1 + f1[2]*t2
+
+    # solve the cubic equation, there can be 1 to 3 roots
+    # need to fix
+    roots = torch.tensor(np.roots(coeffs.numpy()))
+
+    n = len(roots)
+
+    if n < 1 or n > 3:
+        return n
+
+    f1 = f1.view(3, 3)
+    f2 = f2.view(3, 3)
+
+    fmatrix = torch.zeros((n, 3, 3), dtype=torch.float64)
+
+    for i in range(n):
+        # for each root form the fundamental matrix
+        fmat = torch.zeros((3, 3), dtype=torch.float64)
+        _lambda = roots[i]
+        _mu = 1
+        _s = f1[2][2]*roots[i] + f2[2][2]
+
+        if abs(_s) > 1e-16:
+            _mu = 1./_s
+            _lambda *= _mu
+            fmat[2][2] = 1.
+        else:
+            fmat[2][2] = 0.
+
+        for r in range(3):
+            for c in range(3):
+                if r == 2 and c == 2:
+                    continue
+                fmat[r][c] = f1[r][c]*_lambda + f2[r][c]*_mu
+
+        fmat = transform2.transpose(-2, -1) @ (fmat @ transform1)
+
+        fmat = normalize_transformation(fmat)
+
+        fmatrix[i] = fmat
+   
+    return fmatrix
+
+
+def run_8point(
     points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
     r"""Compute the fundamental matrix using the DLT formulation.
@@ -126,6 +236,24 @@ def find_fundamental(
     F_est = transform2.transpose(-2, -1) @ (F_projected @ transform1)
 
     return normalize_transformation(F_est)
+
+
+def find_fundamental(
+    points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None, method: str = "8POINT",
+) -> torch.Tensor:
+    r"""
+    Args:
+        points1: A set of points in the first image with a tensor shape :math:`(B, N, 2), N>=8`.
+        points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=8`.
+        weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
+
+    Returns:
+        the computed fundamental matrix with shape :math:`(B, 3*m, 3)` m number of fundamental matrix.
+    """
+    if method == "7POINT":
+        return run_7point(points1, points2)
+    elif method == "8POINT":
+        return run_8point(points1, points2, weights)
 
 
 def compute_correspond_epilines(points: Tensor, F_mat: Tensor) -> Tensor:
