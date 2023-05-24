@@ -9,7 +9,7 @@ from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.linalg import transform_points
 from kornia.utils.helpers import _torch_svd_cast
-import numpy as np
+
 
 def normalize_points(points: Tensor, eps: float = 1e-8) -> Tuple[Tensor, Tensor]:
     r"""Normalizes points (isotropic).
@@ -68,6 +68,91 @@ def normalize_transformation(M: Tensor, eps: float = 1e-8) -> Tensor:
         raise AssertionError(M.shape)
     norm_val: Tensor = M[..., -1:, -1:]
     return torch.where(norm_val.abs() > eps, M / (norm_val + eps), M)
+
+
+# Reference : https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/polynom_solver.cpp
+def solve_quadratic(a, b, c):
+
+    delta = b * b - 4 * a * c
+
+    if (delta < 0 ):
+        return 0
+
+    inv_2a = 0.5/a 
+
+    if (delta == 0):
+        x1 = -b * inv_2a
+        x2 = x1
+        return [x1]
+
+    sqrt_delta = torch.sqrt(delta)
+    x1 = (-b + sqrt_delta) * inv_2a
+    x2 = (-b - sqrt_delta) * inv_2a
+
+    return torch.stack((x2, x1))
+
+
+def solve_cubic(a, b, c, d):
+
+    _PI = torch.tensor(3.14)
+
+    if(a == 0):
+        # second order system
+        if (b==0):
+            #first order system
+            if(c==0):
+                return 0
+            x0 = -d/c
+            return 1
+        x2 = 0
+        return solve_quadratic(b, c, d)
+
+    # normalized form x^3 + a2 * x^2 + a1 * x + a0 = 0
+    inv_a = 1./ a
+    b_a = inv_a * b
+    b_a2 = b_a * b_a
+
+    c_a = inv_a * c 
+    d_a = inv_a * d
+
+    # solve the cubic equation
+    Q = (3 * c_a - b_a2) / 9
+    R = (9 * b_a * c_a - 27 * d_a -2 * b_a * b_a2) / 54
+    Q3 = Q * Q * Q
+    D = Q3 + R * R
+    b_a_3 = (1. / 3.) * b_a
+
+    if Q == 0:
+        if R==0:
+            x0 = x1 = x2 = -b_a_3
+            return torch.stack((x0, x1, x2))
+
+        else:
+            cube_root = torch.pow(2*R, 1/3)
+            x0 = cube_root - b_a_3
+            return [x0]
+
+    if D <= 0:
+        # three real roots
+        theta = torch.acos(R / torch.sqrt(-Q3))
+        sqrt_Q = torch.sqrt(-Q)
+        x0 = 2* sqrt_Q * torch.cos(theta / 3.0) - b_a_3
+        x1 = 2 * sqrt_Q * torch.cos((theta + 2 * _PI)/ 3.0) - b_a_3
+        x2 = 2 * sqrt_Q * torch.cos((theta + 4 * _PI)/ 3.0) - b_a_3
+        return torch.stack((x1, x0, x2))
+
+    # D > 0, one one real root
+    AD = 0.
+    BD = 0.
+    R_abs = torch.abs(R)
+    if R_abs > 1e-16:
+        AD = torch.pow(R_abs + torch.sqrt(D), 1/3)
+        # AD = (R >= 0) ? AD : -AD
+        AD = AD if R >= 0 else -AD
+        BD = -Q / AD
+    x0 = AD + BD - b_a_3
+
+    return [x0]
 
 
 # Reference: Adapted from the 'run_7point' function in opencv 
@@ -138,8 +223,8 @@ def run_7point(points1: torch.Tensor, points2: torch.Tensor
     coeffs[0] += f1[0]*t0 - f1[1]*t1 + f1[2]*t2
 
     # solve the cubic equation, there can be 1 to 3 roots
-    # need to fix
-    roots = torch.tensor(np.roots(coeffs.numpy()))
+    # roots = torch.tensor(np.roots(coeffs.numpy()))
+    roots = solve_cubic(*coeffs)
 
     n = len(roots)
 
