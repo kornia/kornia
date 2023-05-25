@@ -75,7 +75,7 @@ def ssim(
         raise ValueError(f"img1 and img2 shapes must be the same. Got: {img1.shape} and {img2.shape}")
 
     # prepare kernel
-    kernel: torch.Tensor = get_gaussian_kernel1d(window_size, 1.5)
+    kernel: torch.Tensor = get_gaussian_kernel1d(window_size, 1.5, device=img1.device, dtype=img1.dtype)
 
     # compute coefficients
     C1: float = (0.01 * max_val) ** 2
