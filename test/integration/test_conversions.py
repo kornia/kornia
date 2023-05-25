@@ -322,9 +322,7 @@ class TestQuaternionToRotationMatrixToAngleAxis:
 
 
 class TestAngleOfRotations:
-    """
-    See: https://arxiv.org/pdf/1711.02508.pdf
-    """
+    """See: https://arxiv.org/pdf/1711.02508.pdf."""
 
     @staticmethod
     def matrix_angle_abs(mx: torch.Tensor):
