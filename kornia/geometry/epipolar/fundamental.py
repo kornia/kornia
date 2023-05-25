@@ -94,16 +94,16 @@ def solve_quadratic(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor) -> torch.
 
 def solve_cubic(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
 
-    _PI = torch.tensor(3.14)
+    _PI = torch.tensor(3.141592653589793, device=a.device, dtype=a.dtype)
 
     if a == 0:
         # second order system
         if b == 0:
             #first order system
             if c == 0:
-                return torch.tensor(0)
+                return torch.tensor(0, device=a.device, dtype=a.dtype)
             x0 = -d/c
-            return torch.tensor(1.)
+            return torch.tensor(1., device=a.device, dtype=a.dtype)
         x2 = 0
         return solve_quadratic(b, c, d)
 
@@ -141,9 +141,9 @@ def solve_cubic(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor, d: torch.Tens
         x2 = 2 * sqrt_Q * torch.cos((theta + 4 * _PI)/ 3.0) - b_a_3
         return torch.stack([x2, x1, x0])
 
-    # D > 0, one one real root
-    AD = torch.tensor(0, dtype=torch.float)
-    BD = torch.tensor(0, dtype=torch.float)
+    # D > 0, only one real root
+    AD = torch.tensor(0, device=a.device, dtype=a.dtype)
+    BD = torch.tensor(0, device=a.device, dtype=a.dtype)
     R_abs = torch.abs(R)
     if R_abs > 1e-16:
         AD = torch.pow(R_abs + torch.sqrt(D), 1/3)
@@ -157,7 +157,7 @@ def solve_cubic(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor, d: torch.Tens
 # Reference: Adapted from the 'run_7point' function in opencv
 # https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/fundam.cpp
 def run_7point(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
-    r"""Computer the fundamental matrix using the 7-point algorithm.
+    r"""Compute the fundamental matrix using the 7-point algorithm.
 
     Args:
         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2), N==7`.
@@ -196,7 +196,7 @@ def run_7point(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
     # form a cubic equation
     # finding the coefficients of cubic polynomial (coeffs)
 
-    coeffs = torch.zeros(4, dtype=torch.float)
+    coeffs = torch.zeros(4, device=v.device, dtype=v.dtype)
 
     t0 = f2[4] * f2[8] - f2[5] * f2[7]
     t1 = f2[3] * f2[8] - f2[5] * f2[6]
@@ -241,16 +241,16 @@ def run_7point(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
     n = len(roots)
 
     if n < 1 or n > 3:
-        return torch.tensor(n)
+        return torch.zeros(3, 3, device=v.device, dtype=v.dtype)
 
     f1 = f1.view(3, 3)
     f2 = f2.view(3, 3)
 
-    fmatrix = torch.zeros((n, 3, 3), dtype=torch.float64)
+    fmatrix = torch.zeros((n, 3, 3), device=v.device, dtype=v.dtype)
 
     for i in range(n):
         # for each root form the fundamental matrix
-        fmat = torch.zeros((3, 3), dtype=torch.float64)
+        fmat = torch.zeros((3, 3), device=v.device, dtype=v.dtype)
         _lambda = roots[i]
         _mu = 1
         _s = f1[2][2] * roots[i] + f2[2][2]
