@@ -17,16 +17,16 @@ class AffineTransform:
 
 
 class BrownConradyTransform:
-    def distort(params: Tensor, points: Vector2) -> Vector2:
+    def distort(self, params: Tensor, points: Vector2) -> Vector2:
         raise NotImplementedError
 
-    def undistort(params: Tensor, points: Vector2) -> Vector2:
+    def undistort(self, params: Tensor, points: Vector2) -> Vector2:
         raise NotImplementedError
 
 
 class KannalaBrandtK3Transform:
-    def distort(params: Tensor, points: Vector2) -> Vector2:
+    def distort(self, params: Tensor, points: Vector2) -> Vector2:
         raise NotImplementedError
 
-    def undistort(params: Tensor, points: Vector2) -> Vector2:
+    def undistort(self, params: Tensor, points: Vector2) -> Vector2:
         raise NotImplementedError

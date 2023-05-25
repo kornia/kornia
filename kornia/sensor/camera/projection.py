@@ -8,7 +8,7 @@ class Z1Projection:
     def project(self, points: Vector3) -> Vector2:
         xy = points.data[..., :2]
         z = points.z
-        uv = (xy.T @ torch.diag(z).invers).T if len(z.shape) else xy.T * 1 / z
+        uv = (xy.T @ torch.diag(z).inverse()).T if len(z.shape) else xy.T * 1 / z
         return Vector2(uv)
 
     def unproject(self, points: Vector2, depth: Tensor) -> Vector3:
