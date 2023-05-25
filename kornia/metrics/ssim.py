@@ -75,20 +75,19 @@ def ssim(
         raise ValueError(f"img1 and img2 shapes must be the same. Got: {img1.shape} and {img2.shape}")
 
     # prepare kernel
-    kernel_x: torch.Tensor = get_gaussian_kernel1d(window_size, 1.5)
-    kernel_y: torch.Tensor = get_gaussian_kernel1d(window_size, 1.5)
+    kernel: torch.Tensor = get_gaussian_kernel1d(window_size, 1.5)
 
     # compute coefficients
     C1: float = (0.01 * max_val) ** 2
     C2: float = (0.03 * max_val) ** 2
 
     # compute local mean per channel
-    mu1: torch.Tensor = filter2d_separable(img1, kernel_x, kernel_y)
-    mu2: torch.Tensor = filter2d_separable(img2, kernel_x, kernel_y)
+    mu1: torch.Tensor = filter2d_separable(img1, kernel, kernel)
+    mu2: torch.Tensor = filter2d_separable(img2, kernel, kernel)
 
     cropping_shape: List[int] = []
     if padding == 'valid':
-        height, width = kernel.shape[-2:]
+        height = width = kernel.shape[-1]
         cropping_shape = _compute_padding([height, width])
         mu1 = _crop(mu1, cropping_shape)
         mu2 = _crop(mu2, cropping_shape)
@@ -99,9 +98,9 @@ def ssim(
     mu2_sq = mu2**2
     mu1_mu2 = mu1 * mu2
 
-    mu_img1_sq = filter2d_separable(img1**2, kernel_x, kernel_y)
-    mu_img2_sq = filter2d_separable(img2**2, kernel_x, kernel_y)
-    mu_img1_img2 = filter2d_separable(img1 * img2, kernel_x, kernel_y)
+    mu_img1_sq = filter2d_separable(img1**2, kernel, kernel)
+    mu_img2_sq = filter2d_separable(img2**2, kernel, kernel)
+    mu_img1_img2 = filter2d_separable(img1 * img2, kernel, kernel)
 
     if padding == 'valid':
         mu_img1_sq = _crop(mu_img1_sq, cropping_shape)
