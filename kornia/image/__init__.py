@@ -1,1 +1,1 @@
-from .utils import ImageSize
+from .base import ImageSize
