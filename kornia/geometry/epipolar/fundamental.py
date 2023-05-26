@@ -1,6 +1,6 @@
 """Module containing the functionalities for computing the Fundamental Matrix."""
 
-from typing import Optional, Tuple, Literal
+from typing import Literal, Optional, Tuple
 
 import torch
 
@@ -92,7 +92,6 @@ def solve_quadratic(a: Tensor, b: Tensor, c: Tensor) -> Tensor:
 
 
 def solve_cubic(a: Tensor, b: Tensor, c: Tensor, d: Tensor) -> Tensor:
-
     _PI = torch.tensor(3.141592653589793, device=a.device, dtype=a.dtype)
 
     if a == 0:
