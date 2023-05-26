@@ -101,8 +101,8 @@ def solve_cubic(a: Tensor, b: Tensor, c: Tensor, d: Tensor) -> Tensor:
             # first order system
             if c == 0:
                 return torch.tensor(0, device=a.device, dtype=a.dtype)
-            x0 = -d/c
-            return torch.tensor(1., device=a.device, dtype=a.dtype)
+            x0 = -d / c
+            return torch.tensor(1.0, device=a.device, dtype=a.dtype)
         x2 = 0
         return solve_quadratic(b, c, d)
 
