@@ -1,10 +1,10 @@
 """Module containing the functionalities for computing the Fundamental Matrix."""
 
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Literal
 
 import torch
 
-from kornia.core import Tensor
+from kornia.core import Tensor, concatenate
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.linalg import transform_points
@@ -71,11 +71,11 @@ def normalize_transformation(M: Tensor, eps: float = 1e-8) -> Tensor:
 
 
 # Reference : https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/polynom_solver.cpp
-def solve_quadratic(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
+def solve_quadratic(a: Tensor, b: Tensor, c: Tensor) -> Tensor:
     delta = b * b - 4 * a * c
 
     if delta < 0:
-        return torch.tensor(0)
+        return torch.tensor(0, device=a.device, dtype=a.dtype)
 
     inv_2a = 0.5 / a
 
@@ -91,10 +91,9 @@ def solve_quadratic(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor) -> torch.
     return torch.cat([x2, x1])
 
 
-def solve_cubic(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
+def solve_cubic(a: Tensor, b: Tensor, c: Tensor, d: Tensor) -> Tensor:
 
     _PI = torch.tensor(3.141592653589793, device=a.device, dtype=a.dtype)
-
 
     if a == 0:
         # second order system
@@ -156,20 +155,18 @@ def solve_cubic(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor, d: torch.Tens
 
 # Reference: Adapted from the 'run_7point' function in opencv
 # https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/fundam.cpp
-def run_7point(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
+def run_7point(points1: Tensor, points2: Tensor) -> Tensor:
     r"""Compute the fundamental matrix using the 7-point algorithm.
 
     Args:
-        points1: A set of points in the first image with a tensor shape :math:`(B, N, 2), N==7`.
-        points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N==7`.
+        points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`.
+        points2: A set of points in the second image with a tensor shape :math:`(B, N, 2)`.
 
     Returns:
         the computed fundamental matrix with shape :math:`(B, 3*m, 3), Valid values of m are 1, 2 or 3`
     """
-    if points1.shape != points2.shape:
-        raise AssertionError(points1.shape, points2.shape)
-    if points1.shape[1] != 7:
-        raise AssertionError(points1.shape)
+    KORNIA_CHECK_SHAPE(points1, ['B', '7', '2'])
+    KORNIA_CHECK_SHAPE(points2, ['B', '7', '2'])
 
     points1_norm, transform1 = normalize_points(points1)
     points2_norm, transform2 = normalize_points(points2)
@@ -180,7 +177,7 @@ def run_7point(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
     ones = torch.ones_like(x1)
     # form a linear system: which represents
     # the equation (x2[i], 1)*F*(x1[i], 1) = 0
-    X = torch.cat([x2 * x1, x2 * y1, x2, y2 * x1, y2 * y1, y2, x1, y1, ones], dim=-1)  # BxNx9
+    X = concatenate([x2 * x1, x2 * y1, x2, y2 * x1, y2 * y1, y2, x1, y1, ones], -1)  # BxNx9
 
     # X * Fmat = 0 is singular (7 equations for 9 variables)
     # solving for nullspace of X to get two F
@@ -277,7 +274,7 @@ def run_7point(points1: torch.Tensor, points2: torch.Tensor) -> torch.Tensor:
     return fmatrix
 
 
-def run_8point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None) -> torch.Tensor:
+def run_8point(points1: Tensor, points2: Tensor, weights: Optional[Tensor] = None) -> Tensor:
     r"""Compute the fundamental matrix using the DLT formulation.
 
     The linear system is solved by using the Weighted Least Squares Solution for the 8 Points algorithm.
@@ -334,8 +331,8 @@ def run_8point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
 
 
 def find_fundamental(
-    points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None, method: str = "8POINT"
-) -> torch.Tensor:
+    points1: Tensor, points2: Tensor, weights: Optional[Tensor] = None, method: Literal['8POINT', '7POINT'] = '8POINT'
+) -> Tensor:
     r"""
     Args:
         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2), N>=8`.
@@ -350,9 +347,9 @@ def find_fundamental(
         ValueError: If an invalid method is provided.
 
     """
-    if method == "7POINT":
+    if method.upper() == "7POINT":
         result = run_7point(points1, points2)
-    elif method == "8POINT":
+    elif method.upper() == "8POINT":
         result = run_8point(points1, points2, weights)
     else:
         raise ValueError(f"Invalid method: {method}. Supported methods are '7POINT' and '8POINT'.")
