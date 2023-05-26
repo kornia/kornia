@@ -1,10 +1,23 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Union
 
 from kornia.core import Tensor
 
 
 @dataclass
 class ImageSize:
-    height: Union[int, Tensor]
-    width: Union[int, Tensor]
+    r"""Data class to represent image shape.
+
+    Args:
+        height: image height.
+        width: image width
+    Example:
+        >>> size = ImageSize(3, 4)
+        >>> size.height
+        3
+        >>> size.width
+        4
+    """
+    height: int | Tensor
+    width: int | Tensor
