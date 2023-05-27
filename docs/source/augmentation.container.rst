@@ -21,6 +21,23 @@ for automating the processing of masks, bounding boxes, and keypoints.
    .. automethod:: inverse
 
 
+Augmentation Dispatchers
+------------------------
+Kornia supports two types of augmentation dispatching, namely many-to-many and many-to-one. The former wraps
+different augmentations into one group and allows user to input multiple inputs in align with the number of
+augmentations. The latter aims at performing different augmentations for one input that to obtain a list of
+various transformed data.
+
+.. autoclass:: ManyToManyAugmentationDispather
+
+   .. automethod:: forward
+
+
+.. autoclass:: ManyToOneAugmentationDispather
+
+   .. automethod:: forward
+
+
 
 ImageSequential
 ---------------
@@ -56,7 +73,7 @@ Currently, `VideoSequential` supports data format like :math:`(B, C, T, H, W)` a
 
    transform = K.VideoSequential(
       K.RandomAffine(360),
-      K.ColorJitter(0.2, 0.3, 0.2, 0.3),
+      K.ColorJiggle(0.2, 0.3, 0.2, 0.3),
       data_format="BCTHW",
       same_on_frame=True
    )

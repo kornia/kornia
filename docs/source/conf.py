@@ -42,6 +42,7 @@ extensions = [
     'sphinx.ext.viewcode',
     'sphinx.ext.githubpages',
     'sphinxcontrib.bibtex',
+    "sphinxcontrib.gtagjs",
     'sphinxcontrib.youtube',
     'sphinx_design',
 ]
@@ -91,7 +92,7 @@ release = version
 #
 # This is also used if you do content translation via gettext catalogs.
 # Usually you set "language" from the command line for these cases.
-language = None
+language = 'en'
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
@@ -115,6 +116,7 @@ html_baseurl = 'https://kornia.readthedocs.io'
 html_title = "Kornia"
 
 html_theme_options = {
+    # 'analytics_id': 'G-RKS4WFXVHJ', # Unsupported by furo theme
     'light_logo': 'img/kornia_logo_only_light.svg',
     'dark_logo': 'img/kornia_logo_only_dark.svg',
     "sidebar_hide_name": True,
@@ -134,7 +136,6 @@ html_theme_options = {
         "color-sidebar-caption-text": "white",
         "color-sidebar-link-text--top-level": "white",
     },
-
     # "announcement": """
     #     <a style=\"text-decoration: none; color: white;\"
     #        href=\"https://github.com/kornia/kornia\">

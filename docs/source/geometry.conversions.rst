@@ -22,6 +22,9 @@ Coordinates
 .. autofunction:: normalize_pixel_coordinates
 .. autofunction:: denormalize_pixel_coordinates3d
 .. autofunction:: normalize_pixel_coordinates3d
+.. autofunction:: normalize_points_with_intrinsics
+.. autofunction:: denormalize_points_with_intrinsics
+
 
 Homography
 ----------
@@ -50,3 +53,22 @@ Angle Axis
 
 .. autofunction:: angle_axis_to_quaternion
 .. autofunction:: angle_axis_to_rotation_matrix
+
+Euler Angles
+------------
+
+.. autofunction:: quaternion_from_euler
+.. autofunction:: euler_from_quaternion
+
+Pose
+----------
+
+.. autofunction:: Rt_to_matrix4x4
+.. autofunction:: matrix4x4_to_Rt
+.. autofunction:: worldtocam_to_camtoworld_Rt
+.. autofunction:: camtoworld_to_worldtocam_Rt
+.. autofunction:: camtoworld_graphics_to_vision_4x4
+.. autofunction:: camtoworld_vision_to_graphics_4x4
+.. autofunction:: camtoworld_graphics_to_vision_Rt
+.. autofunction:: camtoworld_vision_to_graphics_Rt
+.. autofunction:: ARKitQTVecs_to_ColmapQTVecs

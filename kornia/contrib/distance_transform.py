@@ -7,11 +7,7 @@ from kornia.filters import filter2d
 from kornia.utils import create_meshgrid
 
 
-def distance_transform(
-    image: torch.Tensor,
-    kernel_size: int = 3,
-    h: float = 0.35
-) -> torch.Tensor:
+def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.35) -> torch.Tensor:
     r"""Approximates the Manhattan distance transform of images using cascaded convolution operations.
 
     The value at each pixel in the output represents the distance to the nearest non-zero pixel in the image image.
@@ -43,8 +39,9 @@ def distance_transform(
     # n_iters is set such that the DT will be able to propagate from any corner of the image to its far,
     # diagonally opposite corner
     n_iters: int = math.ceil(max(image.shape[2], image.shape[3]) / math.floor(kernel_size / 2))
-    grid = create_meshgrid(kernel_size, kernel_size, normalized_coordinates=False,
-                           device=image.device, dtype=image.dtype)
+    grid = create_meshgrid(
+        kernel_size, kernel_size, normalized_coordinates=False, device=image.device, dtype=image.dtype
+    )
 
     grid -= math.floor(kernel_size / 2)
     kernel = torch.hypot(grid[0, :, :, 0], grid[0, :, :, 1])
@@ -54,6 +51,7 @@ def distance_transform(
 
     # It is possible to avoid cloning the image if boundary = image, but this would require modifying the image tensor.
     boundary = image.clone()
+    signal_ones = torch.ones_like(boundary)
 
     for i in range(n_iters):
         cdt = filter2d(boundary, kernel, border_type='replicate')
@@ -68,7 +66,7 @@ def distance_transform(
 
         offset: int = i * kernel_size // 2
         out += (offset + cdt) * mask
-        boundary[mask == 1] = 1
+        boundary = torch.where(mask == 1, signal_ones, boundary)
 
     return out
 
@@ -79,13 +77,9 @@ class DistanceTransform(nn.Module):
     Args:
         kernel_size: size of the convolution kernel.
         h: value that influence the approximation of the min function.
-
     """
-    def __init__(
-        self,
-        kernel_size: int = 3,
-        h: float = 0.35
-    ):
+
+    def __init__(self, kernel_size: int = 3, h: float = 0.35):
         super().__init__()
         self.kernel_size = kernel_size
         self.h = h

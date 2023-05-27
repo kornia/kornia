@@ -1,14 +1,13 @@
-from typing import Dict, Optional, Tuple, Union, cast
-
-import torch
+from typing import Any, Dict, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._3d.base import AugmentationBase3D
+from kornia.augmentation._3d.intensity.base import IntensityAugmentationBase3D
 from kornia.constants import BorderType, Resample
+from kornia.core import Tensor
 from kornia.filters import motion_blur3d
 
 
-class RandomMotionBlur3D(AugmentationBase3D):
+class RandomMotionBlur3D(IntensityAugmentationBase3D):
     r"""Apply random motion blur on 3D volumes (5D tensor).
 
     Args:
@@ -45,6 +44,7 @@ class RandomMotionBlur3D(AugmentationBase3D):
         applied transformation will be merged int to the input transformation tensor and returned.
 
     Examples:
+        >>> import torch
         >>> rng = torch.manual_seed(0)
         >>> input = torch.rand(1, 1, 3, 5, 5)
         >>> motion_blur = RandomMotionBlur3D(3, 35., 0.5, p=1.)
@@ -78,32 +78,29 @@ class RandomMotionBlur3D(AugmentationBase3D):
         self,
         kernel_size: Union[int, Tuple[int, int]],
         angle: Union[
-            torch.Tensor,
+            Tensor,
             float,
             Tuple[float, float, float],
             Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]],
         ],
-        direction: Union[torch.Tensor, float, Tuple[float, float]],
+        direction: Union[Tensor, float, Tuple[float, float]],
         border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,
         resample: Union[str, int, Resample] = Resample.NEAREST.name,
-        return_transform: bool = False,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
-        super().__init__(
-            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
-        )
+        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self.flags = dict(border_type=BorderType.get(border_type), resample=Resample.get(resample))
-        self._param_generator = cast(rg.MotionBlurGenerator3D, rg.MotionBlurGenerator3D(kernel_size, angle, direction))
+        self._param_generator = rg.MotionBlurGenerator3D(kernel_size, angle, direction)
 
-    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return self.identity_matrix(input)
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
-        kernel_size: int = cast(int, params["ksize_factor"].unique().item())
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        kernel_size = int(params["ksize_factor"].unique().item())
         angle = params["angle_factor"]
         direction = params["direction_factor"]
         return motion_blur3d(

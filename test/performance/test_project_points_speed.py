@@ -5,7 +5,7 @@ import torch
 
 import kornia
 
-points_shapes = [(64, 1024 ** 2, 3), (8192, 8192, 3), (1024 ** 2, 64, 3)]
+points_shapes = [(64, 1024**2, 3), (8192, 8192, 3), (1024**2, 64, 3)]
 
 # TODO: remove xfail once we have enough gpu bandwidth in the CI
 

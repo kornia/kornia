@@ -1,0 +1,51 @@
+name: Environment setup
+
+on:
+  workflow_dispatch:
+    inputs:
+      python-version:
+        description: "The python version desired."
+        required: true
+        default: '3.7'
+        type: string
+
+      pytorch-version:
+        description: "The pytorch version desired."
+        required: true
+        default: '1.9.1'
+        type: string
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup environment (conda)
+      uses: conda-incubator/setup-miniconda@v2
+      with:
+        auto-update-conda: true
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install curl via conda
+      shell: bash -l {0}
+      run: conda install curl -c conda-forge
+
+    - if: ${{ contains(fromJson('["nightly"]'), inputs.pytorch-version ) }}
+      name: Install dependencies
+      shell: bash -l {0}
+      run: |
+            pip install numpy --pre torch[dynamo] --force-reinstall --extra-index-url https://download.pytorch.org/whl/nightly/cpu/
+            pip install onnx
+
+    - if: ${{ contains(fromJson('["nightly"]'), inputs.pytorch-version ) == false}}
+      name: Install pytorch
+      shell: bash -l {0}
+      run: conda install pytorch=${{ inputs.pytorch-version }} cpuonly -c pytorch
+
+    - name: Install Kornia dev
+      shell: bash -l {0}
+      run: pip install .[dev,x]
+
+    - name: Environment
+      shell: bash -l {0}
+      run: |
+        curl -O https://raw.githubusercontent.com/pytorch/pytorch/main/torch/utils/collect_env.py
+        python collect_env.py

@@ -1,9 +1,8 @@
-from typing import Dict, List, Optional, Tuple, Union, cast
-
-import torch
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core import Tensor
 from kornia.enhance import solarize
 
 
@@ -21,8 +20,6 @@ class RandomSolarize(IntensityAugmentationBase2D):
             If float x, addition will be generated from (-x, x).
             If tuple (x, y), addition will be generated from (x, y).
         same_on_batch: apply the same transformation across the batch.
-        return_transform: if ``True`` return the matrix describing the transformation applied to each
-            input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
 
@@ -53,26 +50,22 @@ class RandomSolarize(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        thresholds: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.1,
-        additions: Union[torch.Tensor, float, Tuple[float, float], List[float]] = 0.1,
+        thresholds: Union[Tensor, float, Tuple[float, float], List[float]] = 0.1,
+        additions: Union[Tensor, float, Tuple[float, float], List[float]] = 0.1,
         same_on_batch: bool = False,
-        return_transform: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._param_generator = cast(
-            rg.PlainUniformGenerator,
-            rg.PlainUniformGenerator(
-                (thresholds, "thresholds", 0.5, (0.0, 1.0)), (additions, "additions", 0.0, (-0.5, 0.5))
-            ),
+        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
+        self._param_generator = rg.PlainUniformGenerator(
+            (thresholds, "thresholds", 0.5, (0.0, 1.0)), (additions, "additions", 0.0, (-0.5, 0.5))
         )
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
         thresholds = params["thresholds"]
-        additions: Optional[torch.Tensor]
+        additions: Optional[Tensor]
         if "additions" in params:
             additions = params["additions"]
         else:

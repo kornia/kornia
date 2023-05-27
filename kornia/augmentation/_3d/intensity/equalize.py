@@ -1,18 +1,16 @@
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
-import torch
+from torch import Tensor
 
-from kornia.augmentation._3d.base import AugmentationBase3D
+from kornia.augmentation._3d.intensity.base import IntensityAugmentationBase3D
 from kornia.enhance import equalize3d
 
 
-class RandomEqualize3D(AugmentationBase3D):
+class RandomEqualize3D(IntensityAugmentationBase3D):
     r"""Apply random equalization to 3D volumes (5D tensor).
 
     Args:
         p: probability of the image being equalized.
-        return_transform: if ``True`` return the matrix describing the transformation applied to each
-          input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch): apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
           to the batch form (False).
@@ -27,6 +25,7 @@ class RandomEqualize3D(AugmentationBase3D):
         applied transformation will be merged int to the input transformation tensor and returned.
 
     Examples:
+        >>> import torch
         >>> rng = torch.manual_seed(0)
         >>> input = torch.rand(1, 1, 3, 3, 3)
         >>> aug = RandomEqualize3D(p=1.0)
@@ -50,15 +49,13 @@ class RandomEqualize3D(AugmentationBase3D):
         tensor(True)
     """
 
-    def __init__(
-        self, p: float = 0.5, return_transform: bool = False, same_on_batch: bool = False, keepdim: bool = False
-    ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
+    def __init__(self, p: float = 0.5, same_on_batch: bool = False, keepdim: bool = False) -> None:
+        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
 
-    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return self.identity_matrix(input)
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
         return equalize3d(input)

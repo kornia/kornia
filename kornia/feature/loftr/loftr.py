@@ -1,7 +1,10 @@
-from typing import Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 import torch
-import torch.nn as nn
+
+from kornia.core import Module, Tensor
+from kornia.geometry import resize
+from kornia.utils.helpers import map_location_to_cpu
 
 from .backbone import build_backbone
 from .loftr_module import FinePreprocess, LocalFeatureTransformer
@@ -11,46 +14,42 @@ from .utils.position_encoding import PositionEncodingSine
 
 urls: Dict[str, str] = {}
 urls["outdoor"] = "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_outdoor.ckpt"
+urls["indoor_new"] = "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_indoor_ds_new.ckpt"
 urls["indoor"] = "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_indoor.ckpt"
 
 # Comments: the config below is the one corresponding to the pretrained models
 # Some do not change there anything, unless you want to retrain it.
 
-default_cfg = {'backbone_type': 'ResNetFPN',
-               'resolution': (8, 2),
-               'fine_window_size': 5,
-               'fine_concat_coarse_feat': True,
-               'resnetfpn': {'initial_dim': 128, 'block_dims': [128, 196, 256]},
-               'coarse': {'d_model': 256,
-                          'd_ffn': 256,
-                          'nhead': 8,
-                          'layer_names': ['self',
-                                          'cross',
-                                          'self',
-                                          'cross',
-                                          'self',
-                                          'cross',
-                                          'self',
-                                          'cross'],
-                          'attention': 'linear',
-                          'temp_bug_fix': False},
-               'match_coarse': {'thr': 0.2,
-                                'border_rm': 2,
-                                'match_type': 'dual_softmax',
-                                'dsmax_temperature': 0.1,
-                                'skh_iters': 3,
-                                'skh_init_bin_score': 1.0,
-                                'skh_prefilter': True,
-                                'train_coarse_percent': 0.4,
-                                'train_pad_num_gt_min': 200},
-               'fine': {'d_model': 128,
-                        'd_ffn': 128,
-                        'nhead': 8,
-                        'layer_names': ['self', 'cross'],
-                        'attention': 'linear'}}
+default_cfg = {
+    'backbone_type': 'ResNetFPN',
+    'resolution': (8, 2),
+    'fine_window_size': 5,
+    'fine_concat_coarse_feat': True,
+    'resnetfpn': {'initial_dim': 128, 'block_dims': [128, 196, 256]},
+    'coarse': {
+        'd_model': 256,
+        'd_ffn': 256,
+        'nhead': 8,
+        'layer_names': ['self', 'cross', 'self', 'cross', 'self', 'cross', 'self', 'cross'],
+        'attention': 'linear',
+        'temp_bug_fix': False,
+    },
+    'match_coarse': {
+        'thr': 0.2,
+        'border_rm': 2,
+        'match_type': 'dual_softmax',
+        'dsmax_temperature': 0.1,
+        'skh_iters': 3,
+        'skh_init_bin_score': 1.0,
+        'skh_prefilter': True,
+        'train_coarse_percent': 0.4,
+        'train_pad_num_gt_min': 200,
+    },
+    'fine': {'d_model': 128, 'd_ffn': 128, 'nhead': 8, 'layer_names': ['self', 'cross'], 'attention': 'linear'},
+}
 
 
-class LoFTR(nn.Module):
+class LoFTR(Module):
     r"""Module, which finds correspondences between two images.
 
     This is based on the original code from paper "LoFTR: Detector-Free Local
@@ -75,15 +74,17 @@ class LoFTR(nn.Module):
         >>> out = loftr(input)
     """
 
-    def __init__(self, pretrained: Optional[str] = 'outdoor', config: Dict = default_cfg):
+    def __init__(self, pretrained: Optional[str] = 'outdoor', config: Dict[str, Any] = default_cfg):
         super().__init__()
         # Misc
         self.config = config
+        if pretrained == 'indoor_new':
+            self.config['coarse']['temp_bug_fix'] = True
         # Modules
         self.backbone = build_backbone(config)
         self.pos_encoding = PositionEncodingSine(
-            config['coarse']['d_model'],
-            temp_bug_fix=config['coarse']['temp_bug_fix'])
+            config['coarse']['d_model'], temp_bug_fix=config['coarse']['temp_bug_fix']
+        )
         self.loftr_coarse = LocalFeatureTransformer(config['coarse'])
         self.coarse_matching = CoarseMatching(config['match_coarse'])
         self.fine_preprocess = FinePreprocess(config)
@@ -93,12 +94,12 @@ class LoFTR(nn.Module):
         if pretrained is not None:
             if pretrained not in urls.keys():
                 raise ValueError(f"pretrained should be None or one of {urls.keys()}")
-            pretrained_dict = torch.hub.load_state_dict_from_url(
-                urls[pretrained], map_location=lambda storage, loc: storage)
+
+            pretrained_dict = torch.hub.load_state_dict_from_url(urls[pretrained], map_location=map_location_to_cpu)
             self.load_state_dict(pretrained_dict['state_dict'])
         self.eval()
 
-    def forward(self, data: dict) -> Dict[str, torch.Tensor]:
+    def forward(self, data: Dict[str, Tensor]) -> Dict[str, Tensor]:
         """
         Args:
             data: dictionary containing the input data in the following format:
@@ -115,23 +116,27 @@ class LoFTR(nn.Module):
             - ``confidence``, confidence score [0, 1] :math:`(NC)`.
             - ``batch_indexes``, batch indexes for the keypoints and lafs :math:`(NC)`.
         """
-
         # 1. Local Feature CNN
-        data.update({
+        _data: Dict[str, Union[Tensor, int, torch.Size]] = {
             'bs': data['image0'].size(0),
-            'hw0_i': data['image0'].shape[2:], 'hw1_i': data['image1'].shape[2:]
-        })
+            'hw0_i': data['image0'].shape[2:],
+            'hw1_i': data['image1'].shape[2:],
+        }
 
-        if data['hw0_i'] == data['hw1_i']:  # faster & better BN convergence
+        if _data['hw0_i'] == _data['hw1_i']:  # faster & better BN convergence
             feats_c, feats_f = self.backbone(torch.cat([data['image0'], data['image1']], dim=0))
-            (feat_c0, feat_c1), (feat_f0, feat_f1) = feats_c.split(data['bs']), feats_f.split(data['bs'])
+            (feat_c0, feat_c1), (feat_f0, feat_f1) = feats_c.split(_data['bs']), feats_f.split(_data['bs'])
         else:  # handle different input shapes
             (feat_c0, feat_f0), (feat_c1, feat_f1) = self.backbone(data['image0']), self.backbone(data['image1'])
 
-        data.update({
-            'hw0_c': feat_c0.shape[2:], 'hw1_c': feat_c1.shape[2:],
-            'hw0_f': feat_f0.shape[2:], 'hw1_f': feat_f1.shape[2:]
-        })
+        _data.update(
+            {
+                'hw0_c': feat_c0.shape[2:],
+                'hw1_c': feat_c1.shape[2:],
+                'hw0_f': feat_f0.shape[2:],
+                'hw1_f': feat_f1.shape[2:],
+            }
+        )
 
         # 2. coarse-level loftr module
         # add featmap with positional encoding, then flatten it to sequence [N, HW, C]
@@ -147,28 +152,36 @@ class LoFTR(nn.Module):
         feat_c1 = feat_c1.reshape(n1, -1, c1)
 
         mask_c0 = mask_c1 = None  # mask is useful in training
-        if 'mask0' in data:
-            mask_c0, mask_c1 = data['mask0'].flatten(-2), data['mask1'].flatten(-2)
+        if 'mask0' in _data:
+            mask_c0 = resize(data['mask0'], _data['hw0_c'], interpolation='nearest').flatten(-2)
+        if 'mask1' in _data:
+            mask_c1 = resize(data['mask1'], _data['hw1_c'], interpolation='nearest').flatten(-2)
         feat_c0, feat_c1 = self.loftr_coarse(feat_c0, feat_c1, mask_c0, mask_c1)
 
         # 3. match coarse-level
-        self.coarse_matching(feat_c0, feat_c1, data, mask_c0=mask_c0, mask_c1=mask_c1)
+        self.coarse_matching(feat_c0, feat_c1, _data, mask_c0=mask_c0, mask_c1=mask_c1)
 
         # 4. fine-level refinement
-        feat_f0_unfold, feat_f1_unfold = self.fine_preprocess(feat_f0, feat_f1, feat_c0, feat_c1, data)
+        feat_f0_unfold, feat_f1_unfold = self.fine_preprocess(feat_f0, feat_f1, feat_c0, feat_c1, _data)
         if feat_f0_unfold.size(0) != 0:  # at least one coarse level predicted
             feat_f0_unfold, feat_f1_unfold = self.loftr_fine(feat_f0_unfold, feat_f1_unfold)
 
         # 5. match fine-level
-        self.fine_matching(feat_f0_unfold, feat_f1_unfold, data)
+        self.fine_matching(feat_f0_unfold, feat_f1_unfold, _data)
 
-        rename_keys: Dict[str, str] = {"mkpts0_f": 'keypoints0',
-                                       "mkpts1_f": 'keypoints1',
-                                       "mconf": 'confidence',
-                                       "b_ids": 'batch_indexes'}
-        out = {}
+        rename_keys: Dict[str, str] = {
+            "mkpts0_f": 'keypoints0',
+            "mkpts1_f": 'keypoints1',
+            "mconf": 'confidence',
+            "b_ids": 'batch_indexes',
+        }
+        out: Dict[str, Tensor] = {}
         for k, v in rename_keys.items():
-            out[v] = data[k]
+            _d = _data[k]
+            if isinstance(_d, Tensor):
+                out[v] = _d
+            else:
+                raise TypeError(f'Expected Tensor for item `{k}`. Gotcha {type(_d)}')
         return out
 
     def load_state_dict(self, state_dict, *args, **kwargs):

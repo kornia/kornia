@@ -1,0 +1,32 @@
+{% extends "!page.html" %}
+{% block scripts %}
+    {{ super() }}
+    <!-- DocsQA integration start -->
+    <script src="https://jina-docqa-ui.netlify.app/dist/qabot.js"></script>
+    <script type="module" src="https://gradio.s3-us-west-2.amazonaws.com/3.3.1/gradio.js"></script>
+    <script>
+      // This prevents the global search interfere with qa-bot internal text input.
+      document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('qa-bot').forEach((x) => {
+          x.addEventListener('keydown', (event) => {
+            event.stopPropagation();
+          });
+        });
+      });
+    </script>
+    <qa-bot
+        token="_LX-ltnplMGK5qrT05qV-auHldTT_babktyfuL2Gn8aP9_eDldufuLiA"
+        title="Kornia"
+        description="State-of-the-art and curated Computer Vision algorithms for AI"
+        avatar-src="https://github.com/kornia/data/raw/main/pixie_QAbot.png">
+            <template>
+                <dl>
+                    <dt>You can ask questions about Kornia. Try</dt>
+                    <dd>What is Kornia?</dd>
+                    <dd>How can i find correspondences between two images?</dd>
+                    <dd>How to do image augmentation?</dd>
+                </dl>
+            </template>
+    </qa-bot>
+    <!-- DocsQA integration end -->
+{% endblock %}

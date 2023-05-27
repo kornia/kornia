@@ -6,7 +6,7 @@ Face Detection
    :width: 20%
 
 Face detection is the task of detecting faces in a photo or video (and distinguishing them from other objects).
-We provide the :py:class:`kornia.contrib.FaceDetector` to perform multi-face detection in real-time uding the
+We provide the :py:class:`kornia.contrib.FaceDetector` to perform multi-face detection in real-time using the
 :ref:`yunet_model` model.
 
 Learn more: `https://paperswithcode.com/task/face-detection <https://paperswithcode.com/task/face-detection>`_

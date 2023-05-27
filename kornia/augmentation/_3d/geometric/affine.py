@@ -1,14 +1,13 @@
-from typing import Dict, Optional, Tuple, Union, cast
-
-import torch
+from typing import Any, Dict, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._3d.base import AugmentationBase3D
+from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 from kornia.constants import Resample
+from kornia.core import Tensor
 from kornia.geometry import deg2rad, get_affine_matrix3d, warp_affine3d
 
 
-class RandomAffine3D(AugmentationBase3D):
+class RandomAffine3D(GeometricAugmentationBase3D):
     r"""Apply affine transformation 3D volumes (5D tensor).
 
     The transformation is computed so that the center is kept invariant.
@@ -39,9 +38,7 @@ class RandomAffine3D(AugmentationBase3D):
             will be applied.
             If shear is a tuple of 6 tuples, a shear to the i-th facet in the range (-shear[i, 0], shear[i, 1])
             will be applied.
-        resample:
-        return_transform: if ``True`` return the matrix describing the transformation
-            applied to each.
+        resample: resample mode from "nearest" (0) or "bilinear" (1).
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
@@ -57,10 +54,11 @@ class RandomAffine3D(AugmentationBase3D):
         applied transformation will be merged int to the input transformation tensor and returned.
 
     Examples:
+        >>> import torch
         >>> rng = torch.manual_seed(0)
         >>> input = torch.rand(1, 1, 3, 3, 3)
-        >>> aug = RandomAffine3D((15., 20., 20.), p=1., return_transform=True)
-        >>> aug(input)
+        >>> aug = RandomAffine3D((15., 20., 20.), p=1.)
+        >>> aug(input), aug.transform_matrix
         (tensor([[[[[0.4503, 0.4763, 0.1680],
                    [0.2029, 0.4267, 0.3515],
                    [0.3195, 0.5436, 0.3706]],
@@ -86,20 +84,19 @@ class RandomAffine3D(AugmentationBase3D):
     def __init__(
         self,
         degrees: Union[
-            torch.Tensor,
+            Tensor,
             float,
             Tuple[float, float],
             Tuple[float, float, float],
             Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]],
         ],
-        translate: Optional[Union[torch.Tensor, Tuple[float, float, float]]] = None,
+        translate: Optional[Union[Tensor, Tuple[float, float, float]]] = None,
         scale: Optional[
-            Union[
-                torch.Tensor, Tuple[float, float], Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]
-            ]
+            Union[Tensor, Tuple[float, float], Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]]
         ] = None,
         shears: Union[
-            torch.Tensor,
+            None,
+            Tensor,
             float,
             Tuple[float, float],
             Tuple[float, float, float, float, float, float],
@@ -113,23 +110,22 @@ class RandomAffine3D(AugmentationBase3D):
             ],
         ] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-        return_transform: bool = False,
         same_on_batch: bool = False,
         align_corners: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self.degrees = degrees
         self.shears = shears
         self.translate = translate
         self.scale = scale
 
         self.flags = dict(resample=Resample.get(resample), align_corners=align_corners)
-        self._param_generator = cast(rg.AffineGenerator3D, rg.AffineGenerator3D(degrees, translate, scale, shears))
+        self._param_generator = rg.AffineGenerator3D(degrees, translate, scale, shears)
 
-    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        transform: torch.Tensor = get_affine_matrix3d(
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+        transform: Tensor = get_affine_matrix3d(
             params["translations"],
             params["center"],
             params["scale"],
@@ -144,13 +140,15 @@ class RandomAffine3D(AugmentationBase3D):
         return transform
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
-        transform = cast(torch.Tensor, transform)
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        if not isinstance(transform, Tensor):
+            raise TypeError(f'Expected the transform to be a Tensor. Gotcha {type(transform)}')
+
         return warp_affine3d(
             input,
             transform[:, :3, :],
             (input.shape[-3], input.shape[-2], input.shape[-1]),
-            self.flags["resample"].name.lower(),
-            align_corners=self.flags["align_corners"],
+            flags["resample"].name.lower(),
+            align_corners=flags["align_corners"],
         )

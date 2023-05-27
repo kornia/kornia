@@ -1,14 +1,13 @@
 from functools import wraps
-from typing import TYPE_CHECKING, Callable, List
+from typing import Any, Callable, List
 
 import torch
 import torch.nn as nn
 
-if TYPE_CHECKING:
-    import numpy as np
+from kornia.core import Tensor
 
 
-def image_to_tensor(image: "np.ndarray", keepdim: bool = True) -> torch.Tensor:
+def image_to_tensor(image: Any, keepdim: bool = True) -> Tensor:
     """Convert a numpy image to a PyTorch 4d tensor image.
 
     Args:
@@ -38,7 +37,7 @@ def image_to_tensor(image: "np.ndarray", keepdim: bool = True) -> torch.Tensor:
         raise ValueError("Input size must be a two, three or four dimensional array")
 
     input_shape = image.shape
-    tensor: torch.Tensor = torch.from_numpy(image)
+    tensor: Tensor = torch.from_numpy(image)
 
     if len(input_shape) == 2:
         # (H, W) -> (1, H, W)
@@ -56,7 +55,7 @@ def image_to_tensor(image: "np.ndarray", keepdim: bool = True) -> torch.Tensor:
     return tensor.unsqueeze(0) if not keepdim else tensor
 
 
-def image_list_to_tensor(images: List["np.ndarray"]) -> torch.Tensor:
+def image_list_to_tensor(images: List[Any]) -> Tensor:
     """Converts a list of numpy images to a PyTorch 4d tensor image.
 
     Args:
@@ -76,14 +75,14 @@ def image_list_to_tensor(images: List["np.ndarray"]) -> torch.Tensor:
     if len(images[0].shape) != 3:
         raise ValueError("Input images must be three dimensional arrays")
 
-    list_of_tensors: List[torch.Tensor] = []
+    list_of_tensors: List[Tensor] = []
     for image in images:
         list_of_tensors.append(image_to_tensor(image))
-    tensor: torch.Tensor = torch.stack(list_of_tensors)
+    tensor: Tensor = torch.stack(list_of_tensors)
     return tensor
 
 
-def _to_bchw(tensor: torch.Tensor) -> torch.Tensor:
+def _to_bchw(tensor: Tensor) -> Tensor:
     """Convert a PyTorch tensor image to BCHW format.
 
     Args:
@@ -92,8 +91,8 @@ def _to_bchw(tensor: torch.Tensor) -> torch.Tensor:
     Returns:
         input tensor of the form :math:`(B, C, H, W)`.
     """
-    if not isinstance(tensor, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
+    if not isinstance(tensor, Tensor):
+        raise TypeError(f"Input type is not a Tensor. Got {type(tensor)}")
 
     if len(tensor.shape) < 2:
         raise ValueError(f"Input size must be a two, three or four dimensional tensor. Got {tensor.shape}")
@@ -110,7 +109,7 @@ def _to_bchw(tensor: torch.Tensor) -> torch.Tensor:
     return tensor
 
 
-def _to_bcdhw(tensor: torch.Tensor) -> torch.Tensor:
+def _to_bcdhw(tensor: Tensor) -> Tensor:
     """Convert a PyTorch tensor image to BCDHW format.
 
     Args:
@@ -119,8 +118,8 @@ def _to_bcdhw(tensor: torch.Tensor) -> torch.Tensor:
     Returns:
         input tensor of the form :math:`(B, C, D, H, W)`.
     """
-    if not isinstance(tensor, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
+    if not isinstance(tensor, Tensor):
+        raise TypeError(f"Input type is not a Tensor. Got {type(tensor)}")
 
     if len(tensor.shape) < 3:
         raise ValueError(f"Input size must be a three, four or five dimensional tensor. Got {tensor.shape}")
@@ -137,7 +136,7 @@ def _to_bcdhw(tensor: torch.Tensor) -> torch.Tensor:
     return tensor
 
 
-def tensor_to_image(tensor: torch.Tensor, keepdim: bool = False) -> "np.ndarray":
+def tensor_to_image(tensor: Tensor, keepdim: bool = False) -> Any:
     """Converts a PyTorch tensor image to a numpy image.
 
     In case the tensor is in the GPU, it will be copied back to CPU.
@@ -160,14 +159,14 @@ def tensor_to_image(tensor: torch.Tensor, keepdim: bool = False) -> "np.ndarray"
         >>> tensor_to_image(img).shape
         (4, 4, 3)
     """
-    if not isinstance(tensor, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
+    if not isinstance(tensor, Tensor):
+        raise TypeError(f"Input type is not a Tensor. Got {type(tensor)}")
 
     if len(tensor.shape) > 4 or len(tensor.shape) < 2:
         raise ValueError("Input size must be a two, three or four dimensional tensor")
 
     input_shape = tensor.shape
-    image: "np.ndarray" = tensor.cpu().detach().numpy()
+    image = tensor.cpu().detach().numpy()
 
     if len(input_shape) == 2:
         # (H, W) -> (H, W)
@@ -203,11 +202,11 @@ class ImageToTensor(nn.Module):
         super().__init__()
         self.keepdim = keepdim
 
-    def forward(self, x: "np.ndarray") -> torch.Tensor:
+    def forward(self, x: Any) -> Tensor:
         return image_to_tensor(x, keepdim=self.keepdim)
 
 
-def perform_keep_shape_image(f: Callable) -> Callable:
+def perform_keep_shape_image(f: Callable[..., Tensor]) -> Callable[..., Tensor]:
     """A decorator that enable `f` to be applied to an image of arbitrary leading dimensions `(*, C, H, W)`.
 
     It works by first viewing the image as `(B, C, H, W)`, applying the function and re-viewing the image as original
@@ -215,18 +214,16 @@ def perform_keep_shape_image(f: Callable) -> Callable:
     """
 
     @wraps(f)
-    def _wrapper(input: torch.Tensor, *args, **kwargs):
-        from kornia.core.image import Image
-
-        if not isinstance(input, (torch.Tensor, Image)):
-            raise TypeError(f"Input input type is not a torch.Tensor. Got {type(input)}")
+    def _wrapper(input: Tensor, *args: Any, **kwargs: Any) -> Tensor:
+        if not isinstance(input, Tensor):
+            raise TypeError(f"Input input type is not a Tensor. Got {type(input)}")
 
         if input.numel() == 0:
             raise ValueError("Invalid input tensor, it is empty.")
 
         input_shape = input.shape
         input = _to_bchw(input)  # view input as (B, C, H, W)
-        output: torch.Tensor = f(input, *args, **kwargs)
+        output = f(input, *args, **kwargs)
         if len(input_shape) == 3:
             output = output[0]
 
@@ -241,7 +238,7 @@ def perform_keep_shape_image(f: Callable) -> Callable:
     return _wrapper
 
 
-def perform_keep_shape_video(f: Callable) -> Callable:
+def perform_keep_shape_video(f: Callable[..., Tensor]) -> Callable[..., Tensor]:
     """A decorator that enable `f` to be applied to an image of arbitrary leading dimensions `(*, C, D, H, W)`.
 
     It works by first viewing the image as `(B, C, D, H, W)`, applying the function and re-viewing the image as original
@@ -249,16 +246,16 @@ def perform_keep_shape_video(f: Callable) -> Callable:
     """
 
     @wraps(f)
-    def _wrapper(input: torch.Tensor, *args, **kwargs):
-        if not isinstance(input, torch.Tensor):
-            raise TypeError(f"Input input type is not a torch.Tensor. Got {type(input)}")
+    def _wrapper(input: Tensor, *args: Any, **kwargs: Any) -> Tensor:
+        if not isinstance(input, Tensor):
+            raise TypeError(f"Input input type is not a Tensor. Got {type(input)}")
 
         if input.numel() == 0:
             raise ValueError("Invalid input tensor, it is empty.")
 
         input_shape = input.shape
         input = _to_bcdhw(input)  # view input as (B, C, D, H, W)
-        output: torch.Tensor = f(input, *args, **kwargs)
+        output = f(input, *args, **kwargs)
         if len(input_shape) == 4:
             output = output[0]
 

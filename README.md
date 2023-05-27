@@ -20,11 +20,13 @@ English | [简体中文](README_zh-CN.md)
 [![PyPI version](https://badge.fury.io/py/kornia.svg)](https://pypi.org/project/kornia)
 [![Downloads](https://pepy.tech/badge/kornia)](https://pepy.tech/project/kornia)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENCE)
-[![Slack](https://img.shields.io/badge/Slack-4A154B?logo=slack&logoColor=white)](https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-CnydWe5fmvkcktIeRFGCEQ)
+[![Slack](https://img.shields.io/badge/Slack-4A154B?logo=slack&logoColor=white)](https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-2AQRi~X9Uu6PLMuUZdvfjA)
 [![Twitter](https://img.shields.io/twitter/follow/kornia_foss?style=social)](https://twitter.com/kornia_foss)
 
-[![tests-cpu](https://github.com/kornia/kornia/actions/workflows/tests_cpu.yml/badge.svg)](https://github.com/kornia/kornia/actions/workflows/tests_cpu.yml)
+[![tests-cpu](https://github.com/kornia/kornia/actions/workflows/scheduled_test_cpu.yml/badge.svg?event=schedule&&branch=master)](https://github.com/kornia/kornia/actions/workflows/scheduled_test_cpu.yml)
+[![tests-cpu-nightly](https://github.com/kornia/kornia/actions/workflows/scheduled_test_nightly.yml/badge.svg?event=schedule&&branch=master)](https://github.com/kornia/kornia/actions/workflows/scheduled_test_nightly.yml)
 [![tests-cuda](https://github.com/kornia/kornia/actions/workflows/tests_cuda.yml/badge.svg)](https://github.com/kornia/kornia/actions/workflows/tests_cuda.yml)
+[![tests-cpu-float16](https://github.com/kornia/kornia/actions/workflows/scheduled_test_cpu_half.yml/badge.svg?event=schedule&&branch=master)](https://github.com/kornia/kornia/actions/workflows/scheduled_test_cpu_half.yml)
 [![codecov](https://codecov.io/gh/kornia/kornia/branch/master/graph/badge.svg?token=FzCb7e0Bso)](https://codecov.io/gh/kornia/kornia)
 [![Documentation Status](https://readthedocs.org/projects/kornia/badge/?version=latest)](https://kornia.readthedocs.io/en/latest/?badge=latest)
 [![pre-commit.ci status](https://results.pre-commit.ci/badge/github/kornia/kornia/master.svg)](https://results.pre-commit.ci/latest/github/kornia/kornia/master)
@@ -110,11 +112,12 @@ Run our Jupyter notebooks [tutorials](https://kornia-tutorials.readthedocs.io/en
 </div>
 
 :triangular_flag_on_post: **Updates**
-- :white_check_mark: Integrated to [Huggingface Spaces](https://huggingface.co/spaces) with [Gradio](https://github.com/gradio-app/gradio). See [Gradio Web Demo](https://huggingface.co/spaces/akhaliq/Kornia-LoFTR).
+- :white_check_mark: [Image Matching](https://kornia.readthedocs.io/en/latest/applications/image_matching.html) Integrated to [Huggingface Spaces](https://huggingface.co/spaces). See [Gradio Web Demo](https://huggingface.co/spaces/akhaliq/Kornia-LoFTR).
+- :white_check_mark: [Face Detection](https://kornia.readthedocs.io/en/latest/applications/face_detection.html) Integrated to [Huggingface Spaces](https://huggingface.co/spaces). See [Gradio Web Demo](https://huggingface.co/spaces/frapochetti/blurry-faces).
 
 ## Cite
 
-If you are using kornia in your research-related documents, it is recommended that you cite the paper. See more in [CITATION](https://github.com/kornia/kornia/blob/master/CITATION.md).
+If you are using kornia in your research-related documents, it is recommended that you cite the paper. See more in [CITATION](./CITATION.md).
 
   ```bibtex
   @inproceedings{eriba2019kornia,
@@ -127,13 +130,13 @@ If you are using kornia in your research-related documents, it is recommended th
   ```
 
 ## Contributing
-We appreciate all contributions. If you are planning to contribute back bug-fixes, please do so without any further discussion. If you plan to contribute new features, utility functions or extensions, please first open an issue and discuss the feature with us. Please, consider reading the [CONTRIBUTING](https://github.com/kornia/kornia/blob/master/CONTRIBUTING.rst) notes. The participation in this open source project is subject to [Code of Conduct](https://github.com/kornia/kornia/blob/master/CODE_OF_CONDUCT.md).
+We appreciate all contributions. If you are planning to contribute back bug-fixes, please do so without any further discussion. If you plan to contribute new features, utility functions or extensions, please first open an issue and discuss the feature with us. Please, consider reading the [CONTRIBUTING](./CONTRIBUTING.md) notes. The participation in this open source project is subject to [Code of Conduct](./CODE_OF_CONDUCT.md).
 
 
 ## Community
 - **Forums:** discuss implementations, research, etc. [GitHub Forums](https://github.com/kornia/kornia/discussions)
 - **GitHub Issues:** bug reports, feature requests, install issues, RFCs, thoughts, etc. [OPEN](https://github.com/kornia/kornia/issues/new/choose)
-- **Slack:** Join our workspace to keep in touch with our core contributors and be part of our community. [JOIN HERE](https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-CnydWe5fmvkcktIeRFGCEQ)
+- **Slack:** Join our workspace to keep in touch with our core contributors and be part of our community. [JOIN HERE](https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-2AQRi~X9Uu6PLMuUZdvfjA)
 - For general information, please visit our website at www.kornia.org
 
 <a href="https://github.com/Kornia/kornia/graphs/contributors">

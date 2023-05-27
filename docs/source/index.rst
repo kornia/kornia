@@ -31,7 +31,7 @@ Join the community
 
 - Join our social network communities with 1.8k+ members:
    - `Twitter <https://twitter.com/kornia_foss>`_: we share the recent research and news for out mainstream community.
-   - `Slack <https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-CnydWe5fmvkcktIeRFGCEQ>`_: come to us and chat with our engineers and mentors to get support and resolve your questions.
+   - `Slack <https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-2AQRi~X9Uu6PLMuUZdvfjA>`_: come to us and chat with our engineers and mentors to get support and resolve your questions.
    - `LibreCV <https://librecv.org>`_: its our Open Source and Machine Learning community forum. Come and have fun !
 - Subscribe to our `YouTube channel <https://www.youtube.com/channel/UCI1SE1Ij2Fast5BSKxoa7Ag>`_ to get the latest video demos.
 
@@ -50,6 +50,27 @@ Join the community
    OpenCV AI Kit <https://docs.luxonis.com/en/latest/pages/tutorials/creating-custom-nn-models/#kornia>
 
 .. toctree::
+   :caption: API REFERENCE
+   :maxdepth: 2
+   :hidden:
+
+   augmentation
+   color
+   contrib
+   enhance
+   feature
+   filters
+   geometry
+   io
+   losses
+   metrics
+   morphology
+   tracking
+   testing
+   utils
+   x
+
+.. toctree::
    :caption: KORNIA APPLICATIONS
    :hidden:
 
@@ -60,6 +81,7 @@ Join the community
    applications/image_matching
    applications/image_stitching
    applications/image_registration
+   applications/image_denoising
    applications/semantic_segmentation
 
 .. toctree::
@@ -73,34 +95,16 @@ Join the community
    models/defmo
    models/hardnet
    models/affnet
-
-
-.. toctree::
-   :caption: API REFERENCE
-   :maxdepth: 2
-   :hidden:
-
-   augmentation
-   color
-   contrib
-   core
-   enhance
-   feature
-   filters
-   geometry
-   losses
-   metrics
-   morphology
-   tracking
-   utils
-   x
+   models/sold2
+   models/dexined
+   models/segment_anything
 
 .. toctree::
    :caption: SUPPORT
    :hidden:
 
    Issue tracker <https://github.com/kornia/kornia/issues>
-   Slack community <https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-CnydWe5fmvkcktIeRFGCEQ>
+   Slack community <https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-2AQRi~X9Uu6PLMuUZdvfjA>
    LibreCV community <https://librecv.org>
    Twitter @kornia_foss <https://twitter.com/kornia_foss>
    community/chinese

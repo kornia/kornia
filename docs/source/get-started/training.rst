@@ -190,7 +190,7 @@ the debugging and experimentation experience.
 	  K.augmentation.RandomVerticalFlip(p=0.75),
 	  K.augmentation.RandomAffine(degrees=10.),
 	  K.augmentation.PatchSequential(
-		K.augmentation.ColorJitter(0.1, 0.1, 0.1, 0.1, p=0.8),
+		K.augmentation.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=0.8),
 		grid_size=(2, 2),  # cifar-10 is 32x32 and vit is patch 16
 		patchwise_apply=False,
 	  ),
@@ -244,7 +244,7 @@ decouple the process of running your training scripts in a distributed environme
 .. note::
 
 	We haven't tested yet all the possibilities for distributed training.
-	Expect some adventures or `join us <https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-CnydWe5fmvkcktIeRFGCEQ>`_ and help to iterate :)
+	Expect some adventures or `join us <https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-2AQRi~X9Uu6PLMuUZdvfjA>`_ and help to iterate :)
 
 The below recipes are taken from the `accelerate` library in `here <https://github.com/huggingface/accelerate/tree/main/examples#simple-vision-example>`__:
 

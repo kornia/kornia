@@ -8,10 +8,7 @@ from .linear_attention import FullAttention, LinearAttention
 
 
 class LoFTREncoderLayer(nn.Module):
-    def __init__(self,
-                 d_model,
-                 nhead,
-                 attention='linear'):
+    def __init__(self, d_model, nhead, attention='linear'):
         super().__init__()
 
         self.dim = d_model // nhead
@@ -26,20 +23,20 @@ class LoFTREncoderLayer(nn.Module):
 
         # feed-forward network
         self.mlp = nn.Sequential(
-            nn.Linear(d_model * 2, d_model * 2, bias=False),
-            nn.ReLU(True),
-            nn.Linear(d_model * 2, d_model, bias=False),
+            nn.Linear(d_model * 2, d_model * 2, bias=False), nn.ReLU(True), nn.Linear(d_model * 2, d_model, bias=False)
         )
 
         # norm and dropout
         self.norm1 = nn.LayerNorm(d_model)
         self.norm2 = nn.LayerNorm(d_model)
 
-    def forward(self,
-                x: torch.Tensor,
-                source: torch.Tensor,
-                x_mask: Optional[torch.Tensor] = None,
-                source_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+    def forward(
+        self,
+        x: torch.Tensor,
+        source: torch.Tensor,
+        x_mask: Optional[torch.Tensor] = None,
+        source_mask: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         """
         Args:
             x (torch.Tensor): [N, L, C]
@@ -92,7 +89,6 @@ class LocalFeatureTransformer(nn.Module):
             mask0 (torch.Tensor): [N, L] (optional)
             mask1 (torch.Tensor): [N, S] (optional)
         """
-
         if self.d_model != feat0.size(2):
             msg = "the feature number of src and transformer must be equal"
             raise ValueError(msg)

@@ -1,6 +1,7 @@
-from typing import Dict, Optional, Union
+from typing import Any, Dict, Optional, Union
 
 import torch
+from torch import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.enhance import invert
@@ -14,8 +15,6 @@ class RandomInvert(IntensityAugmentationBase2D):
     Args:
         max_val: The expected maximum value in the input tensor. The shape has to
           according to the input tensor shape, or at least has to work with broadcasting.
-        return_transform: if ``True`` return the matrix describing the transformation applied to each
-            input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
@@ -43,18 +42,15 @@ class RandomInvert(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        max_val: Union[float, torch.Tensor] = torch.tensor(1.0),
-        return_transform: bool = False,
+        max_val: Union[float, Tensor] = torch.tensor(1.0),
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
-        super().__init__(
-            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
-        )
+        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self.flags = dict(max_val=max_val)
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
-        return invert(input, torch.as_tensor(self.flags["max_val"], device=input.device, dtype=input.dtype))
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        return invert(input, torch.as_tensor(flags["max_val"], device=input.device, dtype=input.dtype))

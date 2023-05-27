@@ -1,22 +1,19 @@
 # based on: https://github.com/ShiqiYu/libfacedetection.train/blob/74f3aa77c63234dd954d21286e9a60703b8d0868/tasks/task1/yufacedetectnet.py  # noqa
 import math
 from enum import Enum
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from kornia.geometry.bbox import nms as nms_kornia
+from kornia.utils.helpers import map_location_to_cpu
 
-__all__ = [
-    "FaceDetector",
-    "FaceDetectorResult",
-    "FaceKeypoint",
-]
+__all__ = ["FaceDetector", "FaceDetectorResult", "FaceKeypoint"]
 
 
-url: str = "https://github.com/ShiqiYu/libfacedetection.train/raw/master/tasks/task1/weights/yunet_final.pth"
+url: str = "https://github.com/kornia/data/raw/main/yunet_final.pth"
 
 
 class FaceKeypoint(Enum):
@@ -36,8 +33,8 @@ class FaceDetectorResult:
 
     Args:
         data: the encoded results coming from the feature detector with shape :math:`(14,)`.
-
     """
+
     def __init__(self, data: torch.Tensor) -> None:
         if len(data) < 15:
             raise ValueError(f"Result must comes as vector of size(14). Got: {data.shape}.")
@@ -140,18 +137,17 @@ class FaceDetector(nn.Module):
         keep_top_k: the maximum number of detections to return after the nms.
 
     Return:
-        A tensor of shape :math:`(N,15)` to be used with :py:class:`kornia.contrib.FaceDetectorResult`.
+        A list of B tensors with shape :math:`(N,15)` to be used with :py:class:`kornia.contrib.FaceDetectorResult`.
 
     Example:
         >>> img = torch.rand(1, 3, 320, 320)
         >>> detect = FaceDetector()
         >>> res = detect(img)
     """
-    def __init__(self,
-                 top_k: int = 5000,
-                 confidence_threshold: float = 0.3,
-                 nms_threshold: float = 0.3,
-                 keep_top_k: int = 750) -> None:
+
+    def __init__(
+        self, top_k: int = 5000, confidence_threshold: float = 0.3, nms_threshold: float = 0.3, keep_top_k: int = 750
+    ) -> None:
         super().__init__()
         self.top_k = top_k
         self.confidence_threshold = confidence_threshold
@@ -164,61 +160,72 @@ class FaceDetector(nn.Module):
             'variance': [0.1, 0.2],
             'clip': False,
         }
-        self.min_sizes: List[List[int]] = [[10, 16, 24], [32, 48], [64, 96], [128, 192, 256]]
-        self.steps: List[int] = [8, 16, 32, 64]
-        self.variance: List[float] = [0.1, 0.2]
-        self.clip: bool = False
+        self.min_sizes = [[10, 16, 24], [32, 48], [64, 96], [128, 192, 256]]
+        self.steps = [8, 16, 32, 64]
+        self.variance = [0.1, 0.2]
+        self.clip = False
         self.model = YuFaceDetectNet('test', pretrained=True)
-        self.nms: Callable = nms_kornia
+        self.nms = nms_kornia
 
     def preprocess(self, image: torch.Tensor) -> torch.Tensor:
         return image
 
-    def postprocess(self, data: Dict[str, torch.Tensor], height: int, width: int) -> torch.Tensor:
+    def postprocess(self, data: Dict[str, torch.Tensor], height: int, width: int) -> List[torch.Tensor]:
         loc, conf, iou = data['loc'], data['conf'], data['iou']
 
-        scale = torch.tensor([
-            width, height, width, height,
-            width, height, width, height,
-            width, height, width, height,
-            width, height,
-        ], device=loc.device, dtype=loc.dtype)  # 14
+        scale = torch.tensor(
+            [width, height, width, height, width, height, width, height, width, height, width, height, width, height],
+            device=loc.device,
+            dtype=loc.dtype,
+        )  # 14
 
         priors = _PriorBox(self.min_sizes, self.steps, self.clip, image_size=(height, width))
         priors = priors.to(loc.device, loc.dtype)
 
-        boxes = _decode(loc, priors(), self.variance)  # Nx14
-        boxes = boxes * scale
+        batched_dets: List[torch.Tensor] = []
+        for batch_elem in range(loc.shape[0]):
+            boxes = _decode(loc[batch_elem], priors(), self.variance)  # Nx14
+            boxes = boxes * scale
 
-        # clamp here for the compatibility for ONNX
-        cls_scores, iou_scores = conf[:, 1], iou[:, 0]
-        scores = (cls_scores * iou_scores.clamp(0., 1.)).sqrt()
+            # clamp here for the compatibility for ONNX
+            cls_scores, iou_scores = conf[batch_elem, :, 1], iou[batch_elem, :, 0]
+            scores = (cls_scores * iou_scores.clamp(0.0, 1.0)).sqrt()
 
-        # ignore low scores
-        inds = (scores > self.confidence_threshold)
-        boxes, scores = boxes[inds], scores[inds]
+            # ignore low scores
+            inds = scores > self.confidence_threshold
+            boxes, scores = boxes[inds], scores[inds]
 
-        # keep top-K before NMS
-        order = scores.sort(descending=True)[1][:self.top_k]
-        boxes, scores = boxes[order], scores[order]
+            # keep top-K before NMS
+            order = scores.sort(descending=True)[1][: self.top_k]
+            boxes, scores = boxes[order], scores[order]
 
-        # performd NMS
-        # NOTE: nms need to be revise since does not export well to onnx
-        dets = torch.cat((boxes, scores[:, None]), dim=-1)  # Nx15
-        keep = self.nms(boxes[:, :4], scores, self.nms_threshold)
-        if len(keep) > 0:
-            dets = dets[keep, :]
+            # performd NMS
+            # NOTE: nms need to be revise since does not export well to onnx
+            dets = torch.cat((boxes, scores[:, None]), dim=-1)  # Nx15
+            keep = self.nms(boxes[:, :4], scores, self.nms_threshold)
+            if len(keep) > 0:
+                dets = dets[keep, :]
 
-        # keep top-K faster NMS
-        return dets[:self.keep_top_k]
+            # keep top-K faster NMS
+            batched_dets.append(dets[: self.keep_top_k])
+        return batched_dets
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
+    def forward(self, image: torch.Tensor) -> List[torch.Tensor]:
+        r"""Detect faces in a given batch of images.
+
+        Args:
+            image: batch of images :math:`(B,3,H,W)`
+
+        Return:
+            List[torch.Tensor]: list with the boxes found on each image. :math:`Bx(N,15)`.
+        """
         img = self.preprocess(image)
         out = self.model(img)
         return self.postprocess(out, img.shape[-2], img.shape[-1])
 
 
 # utils for the network
+
 
 class ConvDPUnit(nn.Sequential):
     def __init__(self, in_channels, out_channels, withBNRelu=True):
@@ -247,7 +254,7 @@ class Conv4layerBlock(nn.Sequential):
 
 
 class YuFaceDetectNet(nn.Module):
-    def __init__(self, phase, pretrained: bool):
+    def __init__(self, phase: str, pretrained: bool) -> None:
         super().__init__()
         self.phase = phase
         self.num_classes = 2
@@ -281,9 +288,7 @@ class YuFaceDetectNet(nn.Module):
 
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(
-                url, map_location=lambda storage, loc: storage
-            )
+            pretrained_dict = torch.hub.load_state_dict_from_url(url, map_location=map_location_to_cpu)
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
@@ -320,9 +325,7 @@ class YuFaceDetectNet(nn.Module):
         loc_data, conf_data, iou_data = head_data.split((14, 2, 1), dim=-1)
 
         if self.phase == "test":
-            loc_data = loc_data.view(-1, 14)
-            conf_data = torch.softmax(conf_data.view(-1, self.num_classes), dim=-1)
-            iou_data = iou_data.view(-1, 1)
+            conf_data = torch.softmax(conf_data, dim=-1)
         else:
             loc_data = loc_data.view(loc_data.size(0), -1, 14)
             conf_data = conf_data.view(conf_data.size(0), -1, self.num_classes)
@@ -347,14 +350,18 @@ def _decode(loc: torch.Tensor, priors: torch.Tensor, variances: List[float]) -> 
     Return:
         Tensor containing decoded bounding box predictions.
     """
-    boxes = torch.cat((
-        priors[:, 0:2] + loc[:, 0:2] * variances[0] * priors[:, 2:4],
-        priors[:, 2:4] * torch.exp(loc[:, 2:4] * variances[1]),
-        priors[:, 0:2] + loc[:, 4:6] * variances[0] * priors[:, 2:4],
-        priors[:, 0:2] + loc[:, 6:8] * variances[0] * priors[:, 2:4],
-        priors[:, 0:2] + loc[:, 8:10] * variances[0] * priors[:, 2:4],
-        priors[:, 0:2] + loc[:, 10:12] * variances[0] * priors[:, 2:4],
-        priors[:, 0:2] + loc[:, 12:14] * variances[0] * priors[:, 2:4]), 1)
+    boxes = torch.cat(
+        (
+            priors[:, 0:2] + loc[:, 0:2] * variances[0] * priors[:, 2:4],
+            priors[:, 2:4] * torch.exp(loc[:, 2:4] * variances[1]),
+            priors[:, 0:2] + loc[:, 4:6] * variances[0] * priors[:, 2:4],
+            priors[:, 0:2] + loc[:, 6:8] * variances[0] * priors[:, 2:4],
+            priors[:, 0:2] + loc[:, 8:10] * variances[0] * priors[:, 2:4],
+            priors[:, 0:2] + loc[:, 10:12] * variances[0] * priors[:, 2:4],
+            priors[:, 0:2] + loc[:, 12:14] * variances[0] * priors[:, 2:4],
+        ),
+        1,
+    )
     # prepare final output
     tmp = boxes[:, 0:2] - boxes[:, 2:4] / 2
     return torch.cat((tmp, boxes[:, 2:4] + tmp, boxes[:, 4:]), dim=-1)
@@ -371,22 +378,16 @@ class _PriorBox:
         self.dtype: torch.dtype = torch.float32
 
         for i in range(4):
-            if(self.steps[i] != math.pow(2, (i + 3))):
+            if self.steps[i] != math.pow(2, (i + 3)):
                 raise ValueError("steps must be [8,16,32,64]")
 
-        self.feature_map_2th = [int(int((self.image_size[0] + 1) / 2) / 2),
-                                int(int((self.image_size[1] + 1) / 2) / 2)]
-        self.feature_map_3th = [int(self.feature_map_2th[0] / 2),
-                                int(self.feature_map_2th[1] / 2)]
-        self.feature_map_4th = [int(self.feature_map_3th[0] / 2),
-                                int(self.feature_map_3th[1] / 2)]
-        self.feature_map_5th = [int(self.feature_map_4th[0] / 2),
-                                int(self.feature_map_4th[1] / 2)]
-        self.feature_map_6th = [int(self.feature_map_5th[0] / 2),
-                                int(self.feature_map_5th[1] / 2)]
+        self.feature_map_2th = [int(int((self.image_size[0] + 1) / 2) / 2), int(int((self.image_size[1] + 1) / 2) / 2)]
+        self.feature_map_3th = [int(self.feature_map_2th[0] / 2), int(self.feature_map_2th[1] / 2)]
+        self.feature_map_4th = [int(self.feature_map_3th[0] / 2), int(self.feature_map_3th[1] / 2)]
+        self.feature_map_5th = [int(self.feature_map_4th[0] / 2), int(self.feature_map_4th[1] / 2)]
+        self.feature_map_6th = [int(self.feature_map_5th[0] / 2), int(self.feature_map_5th[1] / 2)]
 
-        self.feature_maps = [self.feature_map_3th, self.feature_map_4th,
-                             self.feature_map_5th, self.feature_map_6th]
+        self.feature_maps = [self.feature_map_3th, self.feature_map_4th, self.feature_map_5th, self.feature_map_6th]
 
     def to(self, device: torch.device, dtype: torch.dtype) -> '_PriorBox':
         self.device = device

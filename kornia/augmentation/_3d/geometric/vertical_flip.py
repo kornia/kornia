@@ -1,11 +1,12 @@
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 import torch
+from torch import Tensor
 
-from kornia.augmentation._3d.base import AugmentationBase3D
+from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 
 
-class RandomVerticalFlip3D(AugmentationBase3D):
+class RandomVerticalFlip3D(GeometricAugmentationBase3D):
     r"""Apply random vertical flip to 3D volumes (5D tensor).
 
     Input should be a tensor of shape :math:`(C, D, H, W)` or a batch of tensors :math:`(*, C, D, H, W)`.
@@ -16,9 +17,6 @@ class RandomVerticalFlip3D(AugmentationBase3D):
 
     Args:
         p: probability of the image being flipped.
-        return_transform: if ``True`` return the matrix describing the transformation applied to each
-          input tensor. If ``False`` and the input is a tuple the applied transformation
-          won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
@@ -33,9 +31,10 @@ class RandomVerticalFlip3D(AugmentationBase3D):
         applied transformation will be merged int to the input transformation tensor and returned.
 
     Examples:
+        >>> import torch
         >>> x = torch.eye(3).repeat(3, 1, 1)
-        >>> seq = RandomVerticalFlip3D(p=1.0, return_transform=True)
-        >>> seq(x)
+        >>> seq = RandomVerticalFlip3D(p=1.0)
+        >>> seq(x), seq.transform_matrix
         (tensor([[[[[0., 0., 1.],
                    [0., 1., 0.],
                    [1., 0., 0.]],
@@ -58,19 +57,17 @@ class RandomVerticalFlip3D(AugmentationBase3D):
         tensor(True)
     """
 
-    def __init__(
-        self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False
-    ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
+    def __init__(self, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False) -> None:
+        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
 
-    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         h: int = input.shape[-2]
-        flip_mat: torch.Tensor = torch.tensor(
+        flip_mat: Tensor = torch.tensor(
             [[1, 0, 0, 0], [0, -1, 0, h - 1], [0, 0, 1, 0], [0, 0, 0, 1]], device=input.device, dtype=input.dtype
         )
-        return flip_mat.repeat(input.size(0), 1, 1)
+        return flip_mat.expand(input.shape[0], 4, 4)
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
         return torch.flip(input, [-2])

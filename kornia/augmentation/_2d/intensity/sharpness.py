@@ -1,9 +1,8 @@
-from typing import Dict, Optional, Tuple, Union, cast
-
-import torch
+from typing import Any, Dict, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core import Tensor
 from kornia.enhance import sharpness
 
 
@@ -16,8 +15,6 @@ class RandomSharpness(IntensityAugmentationBase2D):
         p: probability of applying the transformation.
         sharpness: factor of sharpness strength. Must be above 0.
         same_on_batch: apply the same transformation across the batch.
-        return_transform: if ``True`` return the matrix describing the transformation applied to each
-            input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
 
@@ -48,19 +45,16 @@ class RandomSharpness(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        sharpness: Union[torch.Tensor, float, Tuple[float, float], torch.Tensor] = 0.5,
+        sharpness: Union[Tensor, float, Tuple[float, float], Tensor] = 0.5,
         same_on_batch: bool = False,
-        return_transform: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
-        self._param_generator = cast(
-            rg.PlainUniformGenerator, rg.PlainUniformGenerator((sharpness, "sharpness", 0.0, (0, float("inf"))))
-        )
+        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
+        self._param_generator = rg.PlainUniformGenerator((sharpness, "sharpness", 0.0, (0, float("inf"))))
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
         factor = params["sharpness"]
         return sharpness(input, factor)

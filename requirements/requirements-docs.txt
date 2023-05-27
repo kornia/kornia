@@ -1,0 +1,14 @@
+furo
+kornia_moons
+matplotlib
+opencv-python
+PyYAML>=5.1
+sphinx>=4
+sphinx-autodoc-defaultargs
+sphinx-autodoc-typehints
+sphinx-copybutton>=0.3
+sphinx-design
+sphinxcontrib-bibtex
+sphinxcontrib-gtagjs
+sphinxcontrib-youtube
+torchvision

@@ -1,6 +1,7 @@
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
+from torch import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.enhance import denormalize
@@ -17,6 +18,10 @@ class Denormalize(IntensityAugmentationBase2D):
     Args:
         mean: Mean for each channel.
         std: Standard deviations for each channel.
+        same_on_batch: apply the same transformation across the batch.
+        p: probability of applying the transformation.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+                 to the batch form (False).
 
     Return:
         Denormalised tensor with same size as input :math:`(*, C, H, W)`.
@@ -35,13 +40,12 @@ class Denormalize(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        mean: Union[torch.Tensor, Tuple[float], List[float], float],
-        std: Union[torch.Tensor, Tuple[float], List[float], float],
-        return_transform: bool = False,
+        mean: Union[Tensor, Tuple[float], List[float], float],
+        std: Union[Tensor, Tuple[float], List[float], float],
         p: float = 1.0,
         keepdim: bool = False,
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=True, keepdim=keepdim)
+        super().__init__(p=p, same_on_batch=True, keepdim=keepdim)
         if isinstance(mean, float):
             mean = torch.tensor([mean])
 
@@ -57,6 +61,6 @@ class Denormalize(IntensityAugmentationBase2D):
         self.flags = dict(mean=mean, std=std)
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
-        return denormalize(input, self.flags["mean"], self.flags["std"])
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        return denormalize(input, flags["mean"], flags["std"])

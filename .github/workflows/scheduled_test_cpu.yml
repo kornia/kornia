@@ -1,0 +1,52 @@
+name: Tests on CPU (scheduled)
+
+on:
+  push:
+    branches: [master, test-me-*]
+  schedule:
+    - cron: "0 4 * * *"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests-cpu-ubuntu:
+    strategy:
+      fail-fast: false
+      matrix:
+        # os: ['Ubuntu-latest', 'Windows-latest', 'MacOS-latest']
+        pytorch-dtype: ['float32', 'float64']
+
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: 'Ubuntu-latest'
+      python-version: '["3.8", "3.9", "3.10"]'
+      pytorch-version: '["1.9.1", "1.10.2", "1.11.0", "1.12.1", "1.13.1", "2.0.0"]'
+      pytorch-dtype: ${{ matrix.pytorch-dtype }}
+
+  tests-cpu-windows:
+    strategy:
+      fail-fast: true
+      matrix:
+        pytorch-dtype: ['float32', 'float64']
+
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: 'Windows-latest'
+      python-version: '["3.10"]'
+      pytorch-version: '["1.9.1", "2.0.0"]'
+      pytorch-dtype: ${{ matrix.pytorch-dtype }}
+
+  tests-cpu-mac:
+    strategy:
+      fail-fast: true
+      matrix:
+        pytorch-dtype: ['float32', 'float64']
+
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: 'MacOS-latest'
+      python-version: '["3.10"]'
+      pytorch-version: '["2.0.0"]'
+      pytorch-dtype: ${{ matrix.pytorch-dtype }}

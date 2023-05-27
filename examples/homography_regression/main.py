@@ -109,7 +109,7 @@ def HomographyRegressionApp():
         # propagate the error just for a fixed window
         w_size = 100  # window size
         h_2, w_2 = height // 2, width // 2
-        loss = loss[..., h_2 - w_size: h_2 + w_size, w_2 - w_size: w_2 + w_size]
+        loss = loss[..., h_2 - w_size : h_2 + w_size, w_2 - w_size : w_2 + w_size]
         loss = torch.mean(loss)
 
         # compute gradient and update optimizer parameters

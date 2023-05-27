@@ -1,10 +1,14 @@
 r"""Losses based on the divergence between probability distributions."""
 
+from __future__ import annotations
+
 import torch
 import torch.nn.functional as F
 
+from kornia.core import Tensor
 
-def _kl_div_2d(p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
+
+def _kl_div_2d(p: Tensor, q: Tensor) -> Tensor:
     # D_KL(P || Q)
     batch, chans, height, width = p.shape
     unsummed_kl = F.kl_div(
@@ -14,7 +18,7 @@ def _kl_div_2d(p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
     return kl_values
 
 
-def _js_div_2d(p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
+def _js_div_2d(p: Tensor, q: Tensor) -> Tensor:
     # JSD(P || Q)
     m = 0.5 * (p + q)
     return 0.5 * _kl_div_2d(p, m) + 0.5 * _kl_div_2d(q, m)
@@ -23,13 +27,13 @@ def _js_div_2d(p: torch.Tensor, q: torch.Tensor) -> torch.Tensor:
 # TODO: add this to the main module
 
 
-def _reduce_loss(losses: torch.Tensor, reduction: str) -> torch.Tensor:
+def _reduce_loss(losses: Tensor, reduction: str) -> Tensor:
     if reduction == 'none':
         return losses
     return torch.mean(losses) if reduction == 'mean' else torch.sum(losses)
 
 
-def js_div_loss_2d(input: torch.Tensor, target: torch.Tensor, reduction: str = 'mean'):
+def js_div_loss_2d(input: Tensor, target: Tensor, reduction: str = 'mean') -> Tensor:
     r"""Calculate the Jensen-Shannon divergence loss between heatmaps.
 
     Args:
@@ -50,7 +54,7 @@ def js_div_loss_2d(input: torch.Tensor, target: torch.Tensor, reduction: str = '
     return _reduce_loss(_js_div_2d(target, input), reduction)
 
 
-def kl_div_loss_2d(input: torch.Tensor, target: torch.Tensor, reduction: str = 'mean'):
+def kl_div_loss_2d(input: Tensor, target: Tensor, reduction: str = 'mean') -> Tensor:
     r"""Calculate the Kullback-Leibler divergence loss between heatmaps.
 
     Args:

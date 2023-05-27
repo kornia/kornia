@@ -1,17 +1,18 @@
 import logging
-from typing import Callable, Dict, Optional
-
-import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader
+from typing import Any, Callable, Dict, Optional
 
 # the accelerator library is a requirement for the Trainer
 # but it is optional for grousnd base user of kornia.
+import torch
+from torch.optim import Optimizer, lr_scheduler
+from torch.utils.data import DataLoader
+
 try:
     from accelerate import Accelerator
 except ImportError:
     Accelerator = None
 
+from kornia.core import Module, Tensor
 from kornia.metrics import AverageMeter
 
 from .utils import Configuration, StatsTracker, TrainerState
@@ -58,21 +59,21 @@ class Trainer:
         Learn how to use the API in our documentation
         `here <https://kornia.readthedocs.io/en/latest/get-started/training.html>`_.
     """
+
     def __init__(
         self,
-        model: nn.Module,
-        train_dataloader: DataLoader,
-        valid_dataloader: DataLoader,
-        criterion: Optional[nn.Module],
-        optimizer: torch.optim.Optimizer,
-        scheduler: torch.optim.lr_scheduler.CosineAnnealingLR,
+        model: Module,
+        train_dataloader: DataLoader[Any],
+        valid_dataloader: DataLoader[Any],
+        criterion: Optional[Module],
+        optimizer: Optimizer,
+        scheduler: lr_scheduler._LRScheduler,
         config: Configuration,
-        callbacks: Dict[str, Callable] = {},
+        callbacks: Dict[str, Callable[..., None]] = {},
     ) -> None:
         # setup the accelerator
         if Accelerator is None:
-            raise ModuleNotFoundError(
-                "accelerate library is not installed: pip install kornia[x]")
+            raise ModuleNotFoundError('accelerate library is not installed: pip install "kornia[x]"')
         self.accelerator = Accelerator()
 
         # setup the data related objects
@@ -101,7 +102,7 @@ class Trainer:
     def device(self) -> torch.device:
         return self.accelerator.device
 
-    def backward(self, loss: torch.Tensor) -> None:
+    def backward(self, loss: Tensor) -> None:
         self.accelerator.backward(loss)
 
     def fit_epoch(self, epoch: int) -> None:
@@ -131,7 +132,7 @@ class Trainer:
                     f"Loss: {losses.val:.3f} {losses.avg:.3f}"
                 )
 
-    def fit(self,) -> None:
+    def fit(self) -> None:
         # execute the main loop
         # NOTE: Do not change and keep this structure clear for readability.
         for epoch in range(self.num_epochs):
@@ -159,7 +160,7 @@ class Trainer:
     # events stubs
 
     @torch.no_grad()
-    def evaluate(self) -> dict:
+    def evaluate(self) -> Dict[str, AverageMeter]:
         self.model.eval()
         stats = StatsTracker()
         for sample_id, sample in enumerate(self.valid_dataloader):
@@ -180,41 +181,39 @@ class Trainer:
             stats.update_from_dict(self.compute_metrics(out, sample['target']), batch_size)
 
             if sample_id % 10 == 0:
-                self._logger.info(
-                    f"Test: {sample_id}/{len(self.valid_dataloader)} {stats}"
-                )
+                self._logger.info(f"Test: {sample_id}/{len(self.valid_dataloader)} {stats}")
 
         return stats.as_dict()
 
     def on_epoch_start(self, *args, **kwargs):
         ...
 
-    def preprocess(self, x: dict) -> dict:
+    def preprocess(self, x: Dict[str, Tensor]) -> Dict[str, Tensor]:
         return x
 
-    def augmentations(self, x: dict) -> dict:
+    def augmentations(self, x: Dict[str, Tensor]) -> Dict[str, Tensor]:
         return x
 
-    def compute_metrics(self, *args: torch.Tensor) -> Dict[str, float]:
+    def compute_metrics(self, *args: Any) -> Dict[str, float]:
         """Compute metrics during the evaluation."""
         return {}
 
-    def compute_loss(self, *args: torch.Tensor) -> torch.Tensor:
+    def compute_loss(self, *args: Tensor) -> Tensor:
         if self.criterion is None:
             raise RuntimeError("`criterion` should not be None.")
         return self.criterion(*args)
 
-    def on_before_model(self, x: dict) -> dict:
+    def on_before_model(self, x: Dict[str, Tensor]) -> Dict[str, Tensor]:
         return x
 
-    def on_model(self, model, sample: dict):
+    def on_model(self, model: Module, sample: Dict[str, Tensor]) -> Tensor:
         return model(sample["input"])
 
-    def on_after_model(self, output: torch.Tensor, sample: dict):
+    def on_after_model(self, output: Tensor, sample: Dict[str, Tensor]) -> None:
         ...
 
-    def on_checkpoint(self, *args, **kwargs):
+    def on_checkpoint(self, *args: Any, **kwargs: Dict[str, Any]) -> None:
         ...
 
-    def on_epoch_end(self, *args, **kwargs):
+    def on_epoch_end(self, *args: Any, **kwargs: Dict[str, Any]) -> None:
         ...

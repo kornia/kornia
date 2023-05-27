@@ -1,15 +1,13 @@
-from typing import Dict, Optional, Tuple, Union, cast
-
-import torch
-from torch.nn.functional import pad
+from typing import Any, Dict, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._3d.base import AugmentationBase3D, TensorWithTransformMat
+from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 from kornia.constants import Resample
+from kornia.core import Tensor, pad
 from kornia.geometry import crop_by_transform_mat3d, get_perspective_transform3d
 
 
-class RandomCrop3D(AugmentationBase3D):
+class RandomCrop3D(GeometricAugmentationBase3D):
     r"""Apply random crop on 3D volumes (5D tensor).
 
     Crops random sub-volumes on a given size.
@@ -30,9 +28,7 @@ class RandomCrop3D(AugmentationBase3D):
             length 3, it is used to fill R, G, B channels respectively.
             This value is only used when the padding_mode is constant.
         padding_mode: Type of padding. Should be: constant, edge, reflect or symmetric. Default is constant.
-        resample:
-        return_transform: if ``True`` return the matrix describing the transformation applied to each
-          input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated
+        resample: resample mode from "nearest" (0) or "bilinear" (1).
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
@@ -48,6 +44,7 @@ class RandomCrop3D(AugmentationBase3D):
         applied transformation will be merged int to the input transformation tensor and returned.
 
     Examples:
+        >>> import torch
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.randn(1, 1, 3, 3, 3)
         >>> aug = RandomCrop3D((2, 2, 2), p=1.)
@@ -73,16 +70,13 @@ class RandomCrop3D(AugmentationBase3D):
         fill: int = 0,
         padding_mode: str = "constant",
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
-        return_transform: bool = False,
         same_on_batch: bool = False,
         align_corners: bool = True,
         p: float = 1.0,
         keepdim: bool = False,
     ) -> None:
         # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
-        super().__init__(
-            p=1.0, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim
-        )
+        super().__init__(p=1.0, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim)
         self.flags = dict(
             size=size,
             padding=padding,
@@ -92,60 +86,52 @@ class RandomCrop3D(AugmentationBase3D):
             resample=Resample.get(resample),
             align_corners=align_corners,
         )
-        self._param_generator = cast(rg.CropGenerator3D, rg.CropGenerator3D(size, None))
+        self._param_generator = rg.CropGenerator3D(size, None)
 
-    def precrop_padding(self, input: torch.Tensor) -> torch.Tensor:
-        padding = self.flags["padding"]
+    def precrop_padding(self, input: Tensor, flags: Optional[Dict[str, Any]] = None) -> Tensor:
+        flags = self.flags if flags is None else flags
+        padding = flags["padding"]
         if padding is not None:
             if isinstance(padding, int):
                 padding = [padding, padding, padding, padding, padding, padding]
             elif isinstance(padding, (tuple, list)) and len(padding) == 3:
                 padding = [padding[0], padding[0], padding[1], padding[1], padding[2], padding[2]]
             elif isinstance(padding, (tuple, list)) and len(padding) == 6:
-                padding = [padding[0], padding[1], padding[2], padding[3], padding[4], padding[5]]  # type: ignore
+                padding = [padding[0], padding[1], padding[2], padding[3], padding[4], padding[5]]
             else:
                 raise ValueError(f"`padding` must be an integer, 3-element-list or 6-element-list. Got {padding}.")
-            input = pad(input, padding, value=self.flags["fill"], mode=self.flags["padding_mode"])
+            input = pad(input, padding, value=flags["fill"], mode=flags["padding_mode"])
 
-        if self.flags["pad_if_needed"] and input.shape[-3] < self.flags["size"][0]:
-            padding = [0, 0, 0, 0, self.flags["size"][0] - input.shape[-3], self.flags["size"][0] - input.shape[-3]]
-            input = pad(input, padding, value=self.flags["fill"], mode=self.flags["padding_mode"])
+        if flags["pad_if_needed"] and input.shape[-3] < flags["size"][0]:
+            padding = [0, 0, 0, 0, flags["size"][0] - input.shape[-3], flags["size"][0] - input.shape[-3]]
+            input = pad(input, padding, value=flags["fill"], mode=flags["padding_mode"])
 
-        if self.flags["pad_if_needed"] and input.shape[-2] < self.flags["size"][1]:
-            padding = [0, 0, (self.flags["size"][1] - input.shape[-2]), self.flags["size"][1] - input.shape[-2], 0, 0]
-            input = pad(input, padding, value=self.flags["fill"], mode=self.flags["padding_mode"])
+        if flags["pad_if_needed"] and input.shape[-2] < flags["size"][1]:
+            padding = [0, 0, (flags["size"][1] - input.shape[-2]), flags["size"][1] - input.shape[-2], 0, 0]
+            input = pad(input, padding, value=flags["fill"], mode=flags["padding_mode"])
 
-        if self.flags["pad_if_needed"] and input.shape[-1] < self.flags["size"][2]:
-            padding = [self.flags["size"][2] - input.shape[-1], self.flags["size"][2] - input.shape[-1], 0, 0, 0, 0]
-            input = pad(input, padding, value=self.flags["fill"], mode=self.flags["padding_mode"])
+        if flags["pad_if_needed"] and input.shape[-1] < flags["size"][2]:
+            padding = [flags["size"][2] - input.shape[-1], flags["size"][2] - input.shape[-1], 0, 0, 0, 0]
+            input = pad(input, padding, value=flags["fill"], mode=flags["padding_mode"])
 
         return input
 
-    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        transform: torch.Tensor = get_perspective_transform3d(params["src"].to(input), params["dst"].to(input))
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+        transform: Tensor = get_perspective_transform3d(params["src"].to(input), params["dst"].to(input))
         transform = transform.expand(input.shape[0], -1, -1)
         return transform
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
-        transform = cast(torch.Tensor, transform)
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
+        if not isinstance(transform, Tensor):
+            raise TypeError(f'Expected the transform to be a Tensor. Gotcha {type(transform)}')
+
         return crop_by_transform_mat3d(
-            input,
-            transform,
-            self.flags["size"],
-            mode=self.flags["resample"].name.lower(),
-            align_corners=self.flags["align_corners"],
+            input, transform, flags["size"], mode=flags["resample"].name.lower(), align_corners=flags["align_corners"]
         )
 
-    def forward(  # type: ignore
-        self,
-        input: TensorWithTransformMat,
-        params: Optional[Dict[str, torch.Tensor]] = None,
-        return_transform: Optional[bool] = None,
-    ) -> TensorWithTransformMat:
-        if type(input) is tuple:
-            input = (self.precrop_padding(input[0]), input[1])
-        else:
-            input = self.precrop_padding(input)  # type:ignore
-        return super().forward(input, params, return_transform)
+    def forward(self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs: Any) -> Tensor:
+        # TODO: need to align 2D implementations
+        input = self.precrop_padding(input)
+        return super().forward(input, params)

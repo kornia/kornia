@@ -1,0 +1,10 @@
+isort
+kornia-rs==0.0.8
+mypy[reports]
+numpy
+opencv-python
+pre-commit>=2
+pydocstyle
+pytest==7.3.1
+pytest-cov==4
+scipy

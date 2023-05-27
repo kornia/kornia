@@ -1,6 +1,9 @@
-from typing import Dict, List, Optional, Tuple, Union
+from __future__ import annotations
+
+from typing import Any
 
 import torch
+from torch import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.enhance import normalize
@@ -17,9 +20,6 @@ class Normalize(IntensityAugmentationBase2D):
     Args:
         mean: Mean for each channel.
         std: Standard deviations for each channel.
-        return_transform: if ``True`` return the matrix describing the transformation applied to each
-                          input tensor. If ``False`` and the input is a tuple the applied transformation
-                          won't be concatenated.
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
@@ -41,17 +41,16 @@ class Normalize(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        mean: Union[torch.Tensor, Tuple[float], List[float], float],
-        std: Union[torch.Tensor, Tuple[float], List[float], float],
-        return_transform: bool = False,
+        mean: Tensor | tuple[float | int] | list[float | int] | float | int,
+        std: Tensor | tuple[float | int] | list[float | int] | float | int,
         p: float = 1.0,
         keepdim: bool = False,
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=True, keepdim=keepdim)
-        if isinstance(mean, float):
+        super().__init__(p=p, same_on_batch=True, keepdim=keepdim)
+        if isinstance(mean, (int, float)):
             mean = torch.tensor([mean])
 
-        if isinstance(std, float):
+        if isinstance(std, (int, float)):
             std = torch.tensor([std])
 
         if isinstance(mean, (tuple, list)):
@@ -63,6 +62,6 @@ class Normalize(IntensityAugmentationBase2D):
         self.flags = dict(mean=mean, std=std)
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
-        return normalize(input, self.flags["mean"], self.flags["std"])
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
+    ) -> Tensor:
+        return normalize(input, flags["mean"], flags["std"])

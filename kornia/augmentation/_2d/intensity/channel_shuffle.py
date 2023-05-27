@@ -1,8 +1,9 @@
-from typing import Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core import Tensor
 
 
 class RandomChannelShuffle(IntensityAugmentationBase2D):
@@ -11,10 +12,10 @@ class RandomChannelShuffle(IntensityAugmentationBase2D):
     .. image:: _static/img/RandomChannelShuffle.png
 
     Args:
-        return_transform: if ``True`` return the matrix describing the transformation applied to each
-            input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
+        keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
+          to the batch form ``False``.
 
     Examples:
         >>> rng = torch.manual_seed(0)
@@ -33,21 +34,17 @@ class RandomChannelShuffle(IntensityAugmentationBase2D):
         tensor(True)
     """
 
-    def __init__(
-        self, return_transform: bool = False, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False
-    ) -> None:
-        super().__init__(
-            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
-        )
+    def __init__(self, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False) -> None:
+        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
 
-    def generate_parameters(self, shape: torch.Size) -> Dict[str, torch.Tensor]:
+    def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, Tensor]:
         B, C, _, _ = shape
         channels = torch.rand(B, C).argsort(dim=1)
         return dict(channels=channels)
 
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
         out = torch.empty_like(input)
         for i in range(out.shape[0]):
             out[i] = input[i, params["channels"][i]]

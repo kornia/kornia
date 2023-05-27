@@ -1,12 +1,14 @@
-from typing import Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 
-from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
+from kornia.augmentation._2d.base import AugmentationBase2D
+from kornia.core import Tensor, tensor
 from kornia.geometry.transform import get_tps_transform, warp_image_tps
 
 
-class RandomThinPlateSpline(GeometricAugmentationBase2D):
+# NOTE: This NEEDS to be updated. It is out of the random generator controller.
+class RandomThinPlateSpline(AugmentationBase2D):
     r"""Add random noise to the Thin Plate Spline algorithm.
 
     .. image:: _static/img/RandomThinPlateSpline.png
@@ -15,8 +17,6 @@ class RandomThinPlateSpline(GeometricAugmentationBase2D):
         scale: the scale factor to apply to the destination points.
         align_corners: Interpolation flag used by ``grid_sample``.
         mode: Interpolation mode used by `grid_sample`. Either 'bilinear' or 'nearest'.
-        return_transform: if ``True`` return the matrix describing the transformation applied to each
-            input tensor. If ``False`` and the input is a tuple the applied transformation won't be concatenated.
         same_on_batch: apply the same transformation across the batch.
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
@@ -41,32 +41,25 @@ class RandomThinPlateSpline(GeometricAugmentationBase2D):
         self,
         scale: float = 0.2,
         align_corners: bool = False,
-        return_transform: bool = False,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
     ) -> None:
-        super().__init__(
-            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
-        )
+        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self.flags = dict(align_corners=align_corners)
         self.dist = torch.distributions.Uniform(-scale, scale)
 
-    def generate_parameters(self, shape: torch.Size) -> Dict[str, torch.Tensor]:
+    def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, Tensor]:
         B, _, _, _ = shape
-        src = torch.tensor([[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0], [0.0, 0.0]]]).repeat(B, 1, 1)  # Bx5x2
+        src = tensor([[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0], [0.0, 0.0]]]).expand(B, 5, 2)  # Bx5x2
         dst = src + self.dist.rsample(src.shape)
         return dict(src=src, dst=dst)
 
-    # TODO: It is incorrect to return identity
-    def compute_transformation(self, input: torch.Tensor, params: Dict[str, torch.Tensor]) -> torch.Tensor:
-        return self.identity_matrix(input)
-
     def apply_transform(
-        self, input: torch.Tensor, params: Dict[str, torch.Tensor], transform: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
         src = params["src"].to(input)
         dst = params["dst"].to(input)
         # NOTE: warp_image_tps need to use inverse parameters
         kernel, affine = get_tps_transform(dst, src)
-        return warp_image_tps(input, src, kernel, affine, self.flags["align_corners"])
+        return warp_image_tps(input, src, kernel, affine, flags["align_corners"])

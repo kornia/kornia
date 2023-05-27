@@ -1,6 +1,7 @@
-name: test-docs
+name: Documentation
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - master
@@ -9,20 +10,49 @@ on:
     - cron: "0 4 * * *"
 
 jobs:
-  build-docs:
+  test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
     - name: Setup conda dependencies
       uses: conda-incubator/setup-miniconda@v2
       with:
         auto-update-conda: true
-        python-version: 3.6
+        python-version: 3.7
     - name: Install dependencies
       shell: bash -l {0}
       run: |
-        pip install -r docs/requirements.txt
-        pip install .[all]
+        conda install curl -c conda-forge
+        conda install pytorch cpuonly -c pytorch
+        pip install .[dev,x]
+    - name: Run doctest
+      shell: bash -l {0}
+      run: make doctest
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Setup conda dependencies
+      uses: conda-incubator/setup-miniconda@v2
+      with:
+        auto-update-conda: true
+        python-version: 3.7
+    - name: Install dependencies
+      shell: bash -l {0}
+      run: |
+        pip install .[docs]
     - name: Build Documentation
       shell: bash -l {0}
-      run: make build-docs
+      run: make build-docs SPHINXOPTS="-W"
+    - name: Deploy to GitHub Pages
+      if: ${{ github.event_name != 'pull_request' }}
+      uses: JamesIves/github-pages-deploy-action@v4
+      with:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        BRANCH: gh_pages # The branch the action should deploy to.
+        FOLDER: docs/build/html # The folder the action should deploy.
+        CLEAN: true # Automatically remove deleted files from the deploy branch

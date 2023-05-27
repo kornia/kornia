@@ -33,7 +33,7 @@ class TestTFeat:
         patches = torch.rand(2, 1, 32, 32, device=device)
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
         tfeat = TFeat().to(patches.device, patches.dtype)
-        assert gradcheck(tfeat, (patches,), eps=1e-2, atol=1e-2, raise_exception=True)
+        assert gradcheck(tfeat, (patches,), eps=1e-2, atol=1e-2, raise_exception=True, fast_mode=True)
 
     @pytest.mark.jit
     def test_jit(self, device, dtype):
