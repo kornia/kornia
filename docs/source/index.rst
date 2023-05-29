@@ -61,6 +61,7 @@ Join the community
    feature
    filters
    geometry
+   sensor
    io
    losses
    metrics

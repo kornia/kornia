@@ -38,27 +38,35 @@ CameraProjectionType = Union[Z1Projection, OrthographicProjection]
 class CameraModelT:
     r"""Base class to represent camera models based on distortion and projection types.
 
-    Distortion types are of 3 types:
+    Distortion is of 3 types:
         - Affine
         - Brown Conrady
         - Kannala Brandt K3
-    Projection types are of two types:
+    Projection is of 2 types:
         - Z1
         - Orthographic
 
-    Args:
-        distortion: Distortion type
-        projection: Projection type
-        image_size: Image size
-        params: Camera parameters of shape :math:`(B, 4)`
-                for PINHOLE Camera, :math:`(B, 12)`
-                for Brown Conrady, :math:`(B, 8)`
-                for Kannala Brandt K3.
+    Example:
+        >>> params = torch.Tensor([328., 328., 320., 240.])
+        >>> cam = CameraModelT(BrownConradyTransform(), Z1Projection(), ImageSize(480, 640), params)
+        >>> cam.params
+        tensor([328., 328., 320., 240.])
     """
 
     def __init__(
         self, distortion: CameraDistortionType, projection: CameraProjectionType, image_size: ImageSize, params: Tensor
     ) -> None:
+        """Constructor method for CameraModelT class.
+
+        Args:
+            distortion: Distortion type
+            projection: Projection type
+            image_size: Image size
+            params: Camera parameters of shape :math:`(B, 4)`
+                    for PINHOLE Camera, :math:`(B, 12)`
+                    for Brown Conrady, :math:`(B, 8)`
+                    for Kannala Brandt K3.
+        """
         self.distortion = distortion
         self.projection = projection
         self._image_size = image_size
@@ -125,10 +133,10 @@ class CameraModelT:
 
         Example:
             >>> points = Vector3(torch.Tensor([1.0, 1.0, 1.0]))
-            >>> cam = CameraModel(ImageSize(3, 4), CameraModelType.PINHOLE, torch.Tensor([1.0, 1.0, 1.0, 1.0]))
+            >>> cam = CameraModel(ImageSize(480, 640), CameraModelType.PINHOLE, torch.Tensor([328., 328., 320., 240.]))
             >>> cam.project(points)
-            x: 2.0
-            y: 2.0
+            x: 648.0
+            y: 568.0
         """
         return self.distortion.distort(self.params, self.projection.project(points))
 
@@ -144,10 +152,10 @@ class CameraModelT:
 
         Example:
             >>> points = Vector2(torch.Tensor([1.0, 1.0]))
-            >>> cam = CameraModel(ImageSize(3, 4), CameraModelType.PINHOLE, torch.Tensor([1.0, 1.0, 1.0, 1.0]))
+            >>> cam = CameraModel(ImageSize(480, 640), CameraModelType.PINHOLE, torch.Tensor([328., 328., 320., 240.]))
             >>> cam.unproject(points, torch.Tensor([1.0]))
-            x: tensor([0.])
-            y: tensor([0.])
+            x: tensor([-0.9726])
+            y: tensor([-0.7287])
             z: tensor([1.])
         """
         return self.projection.unproject(self.distortion.undistort(self.params, points), depth)
@@ -163,9 +171,9 @@ class PinholeModel(CameraModelT):
     See more: https://en.wikipedia.org/wiki/Pinhole_camera_model
 
     Example:
-        >>> cam = CameraModel(ImageSize(3, 4), CameraModelType.PINHOLE, torch.Tensor([1.0, 1.0, 1.0, 1.0]))
+        >>> cam = CameraModel(ImageSize(480, 640), CameraModelType.PINHOLE, torch.Tensor([328., 328., 320., 240.]))
         >>> cam
-        CameraModel(ImageSize(height=3, width=4), PinholeModel, tensor([1., 1., 1., 1.]))
+        CameraModel(ImageSize(height=480, width=640), PinholeModel, tensor([328., 328., 320., 240.]))
     """
 
     def __init__(self, image_size: ImageSize, params: Tensor) -> None:
@@ -180,19 +188,17 @@ class PinholeModel(CameraModelT):
         super().__init__(AffineTransform(), Z1Projection(), image_size, params)
 
     def matrix(self) -> Tensor:
-        """Returns the camera matrix.
+        r"""Returns the camera matrix.
 
         The matrix is of the form:
 
         .. math::
-            \begin{bmatrix}
-            fx & 0 & cx \\
+            \begin{bmatrix} fx & 0 & cx \\
             0 & fy & cy \\
-            0 & 0 & 1
-            \\end{bmatrix}
+            0 & 0 & 1\end{bmatrix}
 
         Example:
-            >>> cam = CameraModel(ImageSize(3, 4), CameraModelType.PINHOLE, torch.Tensor([1.0, 2.0, 3.0, 4.0]))
+            >>> cam = CameraModel(ImageSize(480, 640), CameraModelType.PINHOLE, torch.Tensor([1.0, 2.0, 3.0, 4.0]))
             >>> cam.matrix()
             tensor([[1., 0., 3.],
                     [0., 2., 4.],
@@ -216,10 +222,10 @@ class PinholeModel(CameraModelT):
             Scaled camera model.
 
         Example:
-            >>> cam = CameraModel(ImageSize(3, 4), CameraModelType.PINHOLE, torch.Tensor([1.0, 1.0, 1.0, 1.0]))
+            >>> cam = CameraModel(ImageSize(480, 640), CameraModelType.PINHOLE, torch.Tensor([328., 328., 320., 240.]))
             >>> cam_scaled = cam.scale(2)
             >>> cam_scaled.params
-            tensor([2., 2., 2., 2.])
+            tensor([656., 656., 640., 480.])
         """
         fx = self.fx * scale_factor
         fy = self.fy * scale_factor
@@ -231,21 +237,46 @@ class PinholeModel(CameraModelT):
 
 
 class BrownConradyModel(CameraModelT):
+    """Brown Conrady Camera Model."""
+
     def __init__(self, image_size: ImageSize, params: Tensor) -> None:
+        """Constructor method for BrownConradyModel class.
+
+        Args:
+            image_size: Image size
+            params: Camera parameters of shape :math:`(B, 12)` of the form :math:`(fx, fy, cx, cy, kb0, kb1, kb2, kb3,
+                    k1, k2, k3, k4)`.
+        """
         if params.shape[-1] != 12 or len(params.shape) > 2:
             raise ValueError("params must be of shape (B, 12) for BROWN_CONRADY Camera")
         super().__init__(BrownConradyTransform(), Z1Projection(), image_size, params)
 
 
 class KannalaBrandtK3(CameraModelT):
+    """Kannala Brandt K3 Camera Model."""
+
     def __init__(self, image_size: ImageSize, params: Tensor) -> None:
+        """Constructor method for KannalaBrandtK3 class.
+
+        Args:
+            image_size: Image size
+            params: Camera parameters of shape :math:`(B, 8)` of the form :math:`(fx, fy, cx, cy, kb0, kb1, kb2, kb3)`.
+        """
         if params.shape[-1] != 8 or len(params.shape) > 2:
             raise ValueError("params must be of shape B, 8 for KANNALA_BRANDT_K3 Camera")
         super().__init__(KannalaBrandtK3Transform(), Z1Projection(), image_size, params)
 
 
 class Orthographic(CameraModelT):
+    """Orthographic Camera Model."""
+
     def __init__(self, image_size: ImageSize, params: Tensor) -> None:
+        """Constructor method for Orthographic class.
+
+        Args:
+            image_size: Image size
+            params: Camera parameters of shape :math:`(B, 4)` of the form :math:`(fx, fy, cx, cy)`.
+        """
         super().__init__(AffineTransform(), OrthographicProjection(), image_size, params)
         if params.shape[-1] != 4 or len(params.shape) > 2:
             raise ValueError("params must be of shape B, 4 for ORTHOGRAPHIC Camera")
@@ -257,23 +288,29 @@ CameraModelVariants = Union[PinholeModel, BrownConradyModel, KannalaBrandtK3, Or
 class CameraModel:
     r"""Class to represent camera models.
 
-    Camera models are of 4 types:
-        - Pinhole (Distortion Type: Affine, Projection Type: Z1)
-        - Brown Conrady (Distortion Type: Brown Conrady, Projection Type: Z1)
-        - Kannala Brandt K3 (Distortion Type: Kannala Brandt K3, Projection Type: Z1)
-        - Orthographic (Distortion Type: Affine, Projection Type: Orthographic)
-
-    Args:
-        image_size: Image size
-        model_type: Camera model type
-        params: Camera parameters of shape :math:`(B, N)`. B is batch size and N depends on the model type.
-                For Pinhole, params are of the form :math:`(fx, fy, cx, cy])`
-                For Brown Conrady, params are of the form :math:`(fx, fy, cx, cy, k1, k2, p1, p2, k3, k4, k5, k6)`.
-                For Kannala Brandt K3, params are of the form :math:`(fx, fy, cx, cy, kb0, kb1, kb2, kb3)`.
-                For Orthographic, params are of the form :math:`(fx, fy, cx, cy)`.
+    Example:
+        >>> # Pinhole Camera Model
+        >>> cam = CameraModel(ImageSize(480, 640), CameraModelType.PINHOLE, torch.Tensor([328., 328., 320., 240.]))
+        >>> # Brown Conrady Camera Model
+        >>> cam = CameraModel(ImageSize(480, 640), CameraModelType.BROWN_CONRADY, torch.Tensor([1.0, 1.0, 1.0, 1.0,
+        ... 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]))
+        >>> # Kannala Brandt K3 Camera Model
+        >>> cam = CameraModel(ImageSize(480, 640), CameraModelType.KANNALA_BRANDT_K3, torch.Tensor([1.0, 1.0, 1.0,
+        ... 1.0, 1.0, 1.0, 1.0, 1.0]))
+        >>> # Orthographic Camera Model
+        >>> cam = CameraModel(ImageSize(480, 640), CameraModelType.ORTHOGRAPHIC, torch.Tensor([328., 328., 320., 240.]))
+        >>> cam.params
+        tensor([328., 328., 320., 240.])
     """
 
     def __init__(self, image_size: ImageSize, model_type: CameraModelType, params: Tensor) -> None:
+        """Constructor method for CameraModel class.
+
+        Args:
+            image_size: Image size
+            model_type: Camera model type
+            params: Camera parameters of shape :math:`(B, N)`.
+        """
         self._model = get_model_from_type(model_type, image_size, params)
 
     def __getattr__(self, name: str) -> Any:
