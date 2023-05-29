@@ -14,7 +14,12 @@ from kornia.utils.one_hot import one_hot
 
 
 def focal_loss(
-    input: Tensor, target: Tensor, alpha: float, gamma: float = 2.0, reduction: str = 'none', eps: float | None = None
+    input: Tensor,
+    target: Tensor,
+    alpha: float | Tensor | None,
+    gamma: float = 2.0,
+    reduction: str = 'none',
+    eps: float | None = None,
 ) -> Tensor:
     r"""Criterion that computes Focal loss.
 
@@ -68,19 +73,30 @@ def focal_loss(
         f"input and target must be in the same device. Got: {input.device} and {target.device}",
     )
 
-    # compute softmax over the classes axis
-    input_soft: Tensor = input.softmax(1)
-    log_input_soft: Tensor = input.log_softmax(1)
-
     # create the labels one hot tensor
     target_one_hot: Tensor = one_hot(target, num_classes=input.shape[1], device=input.device, dtype=input.dtype)
 
+    # compute softmax over the classes axis
+    log_input_soft: Tensor = input.log_softmax(1)
+
     # compute the actual focal loss
-    weight = torch.pow(-input_soft + 1.0, gamma)
+    loss_tmp = -torch.pow(1.0 - log_input_soft.exp(), gamma) * log_input_soft * target_one_hot
+    if alpha is not None:
+        num_of_classes = input.shape[1]
+        if isinstance(alpha, float):
+            alpha_fac = torch.tensor([1 - alpha] + [alpha] * (num_of_classes - 1))
+        elif isinstance(alpha, Tensor) and alpha.shape != (num_of_classes,):
+            raise ValueError(
+                f"`alpha` shape must be (num_of_classes,), that is, {(num_of_classes,)}. Got {alpha.shape}"
+            )
+        else:
+            raise TypeError(f'Expected the `alpha` be a float | Tensor | None. Got {type(alpha)}.')
 
-    focal = -alpha * weight * log_input_soft
-    loss_tmp = torch.einsum('bc...,bc...->b...', (target_one_hot, focal))
+        boradcast_dims = [-1] + [1] * len(input.shape[2:])
+        alpha_fac = alpha_fac.view(boradcast_dims).to(loss_tmp)
+        loss_tmp = loss_tmp * alpha_fac
 
+    loss_tmp = loss_tmp.sum(1)
     if reduction == 'none':
         loss = loss_tmp
     elif reduction == 'mean':
@@ -130,9 +146,11 @@ class FocalLoss(nn.Module):
         >>> output.backward()
     """
 
-    def __init__(self, alpha: float, gamma: float = 2.0, reduction: str = 'none', eps: float | None = None) -> None:
+    def __init__(
+        self, alpha: float | None, gamma: float = 2.0, reduction: str = 'none', eps: float | None = None
+    ) -> None:
         super().__init__()
-        self.alpha: float = alpha
+        self.alpha: float | None = alpha
         self.gamma: float = gamma
         self.reduction: str = reduction
         self.eps: float | None = eps
@@ -144,7 +162,7 @@ class FocalLoss(nn.Module):
 def binary_focal_loss_with_logits(
     input: Tensor,
     target: Tensor,
-    alpha: float = 0.25,
+    alpha: float | None = 0.25,
     gamma: float = 2.0,
     reduction: str = 'none',
     eps: float | None = None,
@@ -205,16 +223,20 @@ def binary_focal_loss_with_logits(
     KORNIA_CHECK_IS_TENSOR(pos_weight)
     KORNIA_CHECK(input.shape[1] == pos_weight.shape[0], "Expected pos_weight equals number of classes.")
 
-    probs_pos = input.sigmoid()
-    probs_neg = (-input).sigmoid()
-
     log_probs_pos = nn.functional.logsigmoid(input)
     log_probs_neg = nn.functional.logsigmoid(-input)
 
-    loss_tmp = (
-        -alpha * pos_weight * probs_neg.pow(gamma) * target * log_probs_pos
-        - (1 - alpha) * probs_pos.pow(gamma) * (1.0 - target) * log_probs_neg
-    )
+    # the alpha term is not extracted to save operations
+    if alpha is None:
+        loss_tmp = (
+            -pos_weight * log_probs_neg.exp().pow(gamma) * target * log_probs_pos
+            - log_probs_pos.exp().pow(gamma) * (1.0 - target) * log_probs_neg
+        )
+    else:
+        loss_tmp = (
+            -alpha * pos_weight * log_probs_neg.exp().pow(gamma) * target * log_probs_pos
+            - (1.0 - alpha) * log_probs_pos.exp().pow(gamma) * (1.0 - target) * log_probs_neg
+        )
 
     if reduction == 'none':
         loss = loss_tmp
@@ -265,10 +287,10 @@ class BinaryFocalLossWithLogits(nn.Module):
     """
 
     def __init__(
-        self, alpha: float, gamma: float = 2.0, reduction: str = 'none', pos_weight: Tensor | None = None
+        self, alpha: float | None, gamma: float = 2.0, reduction: str = 'none', pos_weight: Tensor | None = None
     ) -> None:
         super().__init__()
-        self.alpha: float = alpha
+        self.alpha: float | None = alpha
         self.gamma: float = gamma
         self.reduction: str = reduction
         self.pos_weight: Tensor | None = pos_weight

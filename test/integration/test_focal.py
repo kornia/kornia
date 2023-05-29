@@ -19,7 +19,7 @@ class TestIntegrationFocalLoss:
     num_classes = 2
 
     # focal loss
-    alpha = 2.0
+    alpha = 0.5
     gamma = 2.0
 
     def generate_sample(self, base_target, std_val=0.1):
