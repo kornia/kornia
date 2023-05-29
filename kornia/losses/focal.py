@@ -35,7 +35,9 @@ def focal_loss(
     Args:
         input: logits tensor with shape :math:`(N, C, *)` where C = number of classes.
         target: labels tensor with shape :math:`(N, *)` where each value is :math:`0 ≤ targets[i] ≤ C−1`.
-        alpha: Weighting factor :math:`\alpha \in [0, 1]`.
+        alpha: If `alpha` is `float`, used as weighting factor :math:`\alpha \in [0, 1]`.
+          If `alpha` is `torch.Tensor`, used as the weights for classes,
+          and the size of `alpha` should be (num_of_classes,).
         gamma: Focusing parameter :math:`\gamma >= 0`.
         reduction: Specifies the reduction to apply to the
           output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
@@ -121,7 +123,9 @@ class FocalLoss(nn.Module):
        - :math:`p_t` is the model's estimated probability for each class.
 
     Args:
-        alpha: Weighting factor :math:`\alpha \in [0, 1]`.
+        alpha: If `alpha` is `float`, used as weighting factor :math:`\alpha \in [0, 1]`.
+          If `alpha` is `torch.Tensor`, used as the weights for classes,
+          and the size of `alpha` should be (num_of_classes,).
         gamma: Focusing parameter :math:`\gamma >= 0`.
         reduction: Specifies the reduction to apply to the
           output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
