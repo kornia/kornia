@@ -544,7 +544,7 @@ class TestRotationMatrixToQuaternion:
 
 
 class TestQuaternionToRotationMatrix:
-    @pytest.mark.parametrize("batch_dims", ((1, ), (3, ), (8, ), (1, 1), (5, 6)))
+    @pytest.mark.parametrize("batch_dims", ((1,), (3,), (8,), (1, 1), (5, 6)))
     def test_smoke_batch_xyzw(self, batch_dims, device, dtype):
         quaternion = torch.zeros(*batch_dims, 4, device=device, dtype=dtype)
         with pytest.warns(UserWarning):
@@ -553,7 +553,7 @@ class TestQuaternionToRotationMatrix:
             )
         assert matrix.shape == (*batch_dims, 3, 3)
 
-    @pytest.mark.parametrize("batch_dims", ((1, ), (3, ), (8, ), (1, 1), (5, 6)))
+    @pytest.mark.parametrize("batch_dims", ((1,), (3,), (8,), (1, 1), (5, 6)))
     def test_smoke_batch(self, batch_dims, device, dtype):
         quaternion = torch.zeros(*batch_dims, 4, device=device, dtype=dtype)
         matrix = kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternion, order=QuaternionCoeffOrder.WXYZ)
