@@ -544,20 +544,20 @@ class TestRotationMatrixToQuaternion:
 
 
 class TestQuaternionToRotationMatrix:
-    @pytest.mark.parametrize("batch_size", (1, 3, 8))
-    def test_smoke_batch_xyzw(self, batch_size, device, dtype):
-        quaternion = torch.zeros(batch_size, 4, device=device, dtype=dtype)
+    @pytest.mark.parametrize("batch_dims", ((1, ), (3, ), (8, ), (1, 1), (5, 6)))
+    def test_smoke_batch_xyzw(self, batch_dims, device, dtype):
+        quaternion = torch.zeros(*batch_dims, 4, device=device, dtype=dtype)
         with pytest.warns(UserWarning):
             matrix = kornia.geometry.conversions.quaternion_to_rotation_matrix(
                 quaternion, order=QuaternionCoeffOrder.XYZW
             )
-        assert matrix.shape == (batch_size, 3, 3)
+        assert matrix.shape == (*batch_dims, 3, 3)
 
-    @pytest.mark.parametrize("batch_size", (1, 3, 8))
-    def test_smoke_batch(self, batch_size, device, dtype):
-        quaternion = torch.zeros(batch_size, 4, device=device, dtype=dtype)
+    @pytest.mark.parametrize("batch_dims", ((1, ), (3, ), (8, ), (1, 1), (5, 6)))
+    def test_smoke_batch(self, batch_dims, device, dtype):
+        quaternion = torch.zeros(*batch_dims, 4, device=device, dtype=dtype)
         matrix = kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternion, order=QuaternionCoeffOrder.WXYZ)
-        assert matrix.shape == (batch_size, 3, 3)
+        assert matrix.shape == (*batch_dims, 3, 3)
 
     def test_unit_quaternion_xyzw(self, device, dtype, atol, rtol):
         quaternion = torch.tensor((0.0, 0.0, 0.0, 1.0), device=device, dtype=dtype)
