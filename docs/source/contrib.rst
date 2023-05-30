@@ -24,7 +24,7 @@ Structures
     :undoc-members:
 
 VisualPrompter
--------------
+--------------
 
 .. autoclass:: kornia.contrib.visual_prompter.VisualPrompter
     :members: set_image, reset_image, compile, predict, preprocess_image, preprocess_prompts

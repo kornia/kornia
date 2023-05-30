@@ -76,8 +76,9 @@ def compose_transformations(trans_01: Tensor, trans_12: Tensor) -> Tensor:
 
 
 def inverse_transformation(trans_12: Tensor) -> Tensor:
-    r"""Function that inverts a 4x4 homogeneous transformation
-    :math:`T_1^{2} = \begin{bmatrix} R_1 & t_1 \\ \mathbf{0} & 1 \end{bmatrix}`
+    r"""Function that inverts a 4x4 homogeneous transformation.
+
+     :math:`T_1^{2} = \begin{bmatrix} R_1 & t_1 \\ \mathbf{0} & 1 \end{bmatrix}`
 
     The inverse transformation is computed as follows:
 
@@ -117,9 +118,9 @@ def inverse_transformation(trans_12: Tensor) -> Tensor:
 
 
 def relative_transformation(trans_01: Tensor, trans_02: Tensor) -> Tensor:
-    r"""Function that computes the relative homogeneous transformation from a
-    reference transformation :math:`T_1^{0} = \begin{bmatrix} R_1 & t_1 \\
-    \mathbf{0} & 1 \end{bmatrix}` to destination :math:`T_2^{0} =
+    r"""Function that computes the relative homogeneous transformation from a reference transformation.
+
+    :math:`T_1^{0} = \begin{bmatrix} R_1 & t_1 \\ \mathbf{0} & 1 \end{bmatrix}` to destination :math:`T_2^{0} =
     \begin{bmatrix} R_2 & t_2 \\ \mathbf{0} & 1 \end{bmatrix}`.
 
     The relative transformation is computed as follows:
@@ -217,7 +218,7 @@ def point_line_distance(point: Tensor, line: Tensor, eps: float = 1e-9) -> Tenso
     KORNIA_CHECK_IS_TENSOR(point)
     KORNIA_CHECK_IS_TENSOR(line)
 
-    if not point.shape[-1] in (2, 3):
+    if point.shape[-1] not in (2, 3):
         raise ValueError(f"pts must be a (*, 2 or 3) tensor. Got {point.shape}")
 
     if not line.shape[-1] == 3:

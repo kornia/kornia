@@ -2,6 +2,7 @@ import pytest
 import torch
 
 from kornia.geometry.liegroup import Se2, So2
+from kornia.geometry.vector import Vector2
 from kornia.testing import BaseTester
 
 
@@ -108,6 +109,26 @@ class TestSe2(BaseTester):
     def test_mul(self, device, dtype, batch_size):
         s1 = Se2.identity(batch_size, device, dtype)
         s2 = Se2.random(batch_size, device, dtype)
+        s1_pose_s2 = s1 * s2
+        s2_pose_s2 = s2 * s2.inverse()
+        zeros_vec = torch.zeros(2, device=device, dtype=dtype)
+        if batch_size is not None:
+            zeros_vec = zeros_vec.repeat(batch_size, 1)
+        so2_expected = So2.identity(batch_size, device, dtype)
+        self.assert_close(s1_pose_s2.r.z, s2.r.z)
+        self.assert_close(s1_pose_s2.t, s2.t)
+        self.assert_close(s2_pose_s2.r.z.real, so2_expected.z.real)
+        self.assert_close(s2_pose_s2.r.z.imag, so2_expected.z.imag)
+        self.assert_close(s2_pose_s2.t, zeros_vec)
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_mul_vector(self, device, dtype, batch_size):
+        s1 = Se2.identity(batch_size, device, dtype)
+        if batch_size is None:
+            shape = ()
+        else:
+            shape = (batch_size,)
+        s2 = Se2(So2.identity(batch_size, device, dtype), Vector2.random(shape, device, dtype))
         s1_pose_s2 = s1 * s2
         s2_pose_s2 = s2 * s2.inverse()
         zeros_vec = torch.zeros(2, device=device, dtype=dtype)

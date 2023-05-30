@@ -33,13 +33,13 @@ test-slow: FORCE
 	pytest -v --device all --dtype all -m "(jit or grad or nn)"
 
 lint: FORCE
-	pre-commit run flake8 --all-files
+	pre-commit run ruff --all-files
 
 mypy: FORCE
 	mypy
 
 yapf: FORCE
-	yapf --in-place --parallel --recursive kornia/ test/ examples/
+	yapf --in-place --parallel --recursive kornia/ test/
 
 doctest:
 	pytest -v --doctest-modules kornia/

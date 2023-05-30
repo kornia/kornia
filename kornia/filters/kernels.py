@@ -149,7 +149,7 @@ def _modified_bessel_0(x: Tensor) -> Tensor:
 
 
 def _modified_bessel_1(x: Tensor) -> Tensor:
-    r"""adapted from:
+    r"""Adapted from:
 
     https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
     """
@@ -175,7 +175,7 @@ def _modified_bessel_1(x: Tensor) -> Tensor:
 
 
 def _modified_bessel_i(n: int, x: Tensor) -> Tensor:
-    r"""adapted from:
+    r"""Adapted from:
 
     https://github.com/Project-MONAI/MONAI/blob/master/monai/networks/layers/convutils.py
     """
