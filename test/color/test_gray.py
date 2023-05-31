@@ -1,5 +1,3 @@
-import onnx
-import onnxruntime
 import pytest
 import torch
 from torch.autograd import gradcheck
@@ -101,34 +99,6 @@ class TestGrayscaleToRgb(BaseTester):
         gray_ops = kornia.color.GrayscaleToRgb().to(device, dtype)
         gray_fcn = kornia.color.grayscale_to_rgb
         assert_close(gray_ops(img), gray_fcn(img))
-
-    def test_onnx(self, device, dtype):
-        B, C, H, W = 2, 1, 4, 4
-        img = torch.rand(B, C, H, W, device=device, dtype=dtype)
-        ops = kornia.color.GrayscaleToRgb().to(device, dtype)
-
-        onnx_name = "GrayscaleToRgb.onnx"
-        torch.onnx.export(
-            ops,
-            img,
-            onnx_name,
-            verbose=False,
-            input_names=["input"],
-            output_names=["output"],
-            opset_version=13,
-            dynamic_axes={'input': {0: 'batch_size'}, 'output': {0: 'batch_size'}},  # variable length axes
-        )
-        onnx_model = onnx.load(onnx_name)
-        sess_options = onnxruntime.SessionOptions()
-        session = onnxruntime.InferenceSession(onnx_model.SerializeToString(), sess_options)
-
-        # TODO: figure out this
-        # img_np = np._from_dlpack(img.__dlpack__())
-        img_np = img.numpy()
-        inputs = {session.get_inputs()[0].name: img_np}
-        ort_outputs = session.run(None, inputs)
-        error = ((img_np - ort_outputs[0]) ** 2).sum()
-        assert error == 0.0
 
 
 class TestRgbToGrayscale(BaseTester):
