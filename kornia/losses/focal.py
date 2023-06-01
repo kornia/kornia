@@ -5,8 +5,8 @@ import warnings
 import torch
 import torch.nn as nn
 
-from kornia.core import Tensor
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core import Tensor, tensor
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
 from kornia.utils.one_hot import one_hot
 
 # based on:
@@ -74,7 +74,8 @@ def focal_loss(
         input.device == target.device,
         f"input and target must be in the same device. Got: {input.device} and {target.device}",
     )
-        KORNIA_CHECK_TYPE(alpha, (float, Tensor, None))
+    KORNIA_CHECK_TYPE(alpha, (float, Tensor, None))
+
     # create the labels one hot tensor
     target_one_hot: Tensor = one_hot(target, num_classes=input.shape[1], device=input.device, dtype=input.dtype)
 
@@ -86,11 +87,15 @@ def focal_loss(
     if alpha is not None:
         num_of_classes = input.shape[1]
         if isinstance(alpha, float):
-            alpha_fac = tensor([1 - alpha] + [alpha] * (num_of_classes - 1))
-        KORNIA_CHECK_SHAPE(alpha, [str(num_of_classes),], f"`alpha` shape must be (num_of_classes,)!")
+            alpha_fac = tensor(
+                [1 - alpha] + [alpha] * (num_of_classes - 1), dtype=loss_tmp.dtype, device=loss_tmp.device
+            )
+        else:
+            KORNIA_CHECK_SHAPE(alpha, [str(num_of_classes)], "`alpha` shape must be (num_of_classes,)!")
+            alpha_fac = alpha.to(loss_tmp)
 
         boradcast_dims = [-1] + [1] * len(input.shape[2:])
-        alpha_fac = alpha_fac.view(boradcast_dims).to(loss_tmp)
+        alpha_fac = alpha_fac.view(boradcast_dims)
         loss_tmp = loss_tmp * alpha_fac
 
     loss_tmp = loss_tmp.sum(1)
