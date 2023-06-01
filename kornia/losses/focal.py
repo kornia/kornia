@@ -74,7 +74,7 @@ def focal_loss(
         input.device == target.device,
         f"input and target must be in the same device. Got: {input.device} and {target.device}",
     )
-
+        KORNIA_CHECK_TYPE(alpha, (float, Tensor, None))
     # create the labels one hot tensor
     target_one_hot: Tensor = one_hot(target, num_classes=input.shape[1], device=input.device, dtype=input.dtype)
 
@@ -86,13 +86,8 @@ def focal_loss(
     if alpha is not None:
         num_of_classes = input.shape[1]
         if isinstance(alpha, float):
-            alpha_fac = torch.tensor([1 - alpha] + [alpha] * (num_of_classes - 1))
-        elif isinstance(alpha, Tensor) and alpha.shape != (num_of_classes,):
-            raise ValueError(
-                f"`alpha` shape must be (num_of_classes,), that is, {(num_of_classes,)}. Got {alpha.shape}"
-            )
-        else:
-            raise TypeError(f'Expected the `alpha` be a float | Tensor | None. Got {type(alpha)}.')
+            alpha_fac = tensor([1 - alpha] + [alpha] * (num_of_classes - 1))
+        KORNIA_CHECK_SHAPE(alpha, [str(num_of_classes),], f"`alpha` shape must be (num_of_classes,)!")
 
         boradcast_dims = [-1] + [1] * len(input.shape[2:])
         alpha_fac = alpha_fac.view(boradcast_dims).to(loss_tmp)
