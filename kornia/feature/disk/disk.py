@@ -28,7 +28,7 @@ class DISK(Module):
         >>> features = disk(images)
     """
 
-    def __init__(self, desc_dim=128, unet=None) -> None:
+    def __init__(self, desc_dim: int = 128, unet: None | Module = None) -> None:
         super().__init__()
 
         self.desc_dim = desc_dim

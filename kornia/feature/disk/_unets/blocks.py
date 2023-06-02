@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from typing import Any
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -6,18 +10,17 @@ from kornia.core import Module, Tensor
 
 
 class TrivialUpsample(Module):
-    def forward(self, x):
-        r = F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=False)
-        return r
+    def forward(self, x: Tensor) -> Tensor:
+        return F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=False)
 
 
 class TrivialDownsample(Module):
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
         return F.avg_pool2d(x, 2)
 
 
 class Conv(nn.Sequential):
-    def __init__(self, in_, out_, size, skip_norm_and_gate=False) -> None:
+    def __init__(self, in_: int, out_: int, size: int, skip_norm_and_gate: bool = False) -> None:
         norm: Module
         nonl: Module
 
@@ -35,7 +38,7 @@ class Conv(nn.Sequential):
 
 
 class ThinUnetDownBlock(nn.Sequential):
-    def __init__(self, in_, out_, size=5, is_first=False, setup=None) -> None:
+    def __init__(self, in_: int, out_: int, size: int = 5, is_first: bool = False, setup: Any = None) -> None:
         self.in_ = in_
         self.out_ = out_
 
@@ -51,7 +54,7 @@ class ThinUnetDownBlock(nn.Sequential):
 
 
 class ThinUnetUpBlock(Module):
-    def __init__(self, bottom_, horizontal_, out_, size=5, setup=None) -> None:
+    def __init__(self, bottom_: int, horizontal_: int, out_: int, size: int = 5, setup: Any = None) -> None:
         super().__init__()
 
         self.bottom_ = bottom_
