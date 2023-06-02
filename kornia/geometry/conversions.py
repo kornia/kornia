@@ -566,7 +566,7 @@ def quaternion_to_rotation_matrix(
     tzz: Tensor = tz * z
     one: Tensor = tensor(1.0)
 
-    matrix: Tensor = stack(
+    matrix_flat: Tensor = stack(
         (
             one - (tyy + tzz),
             txy - twz,
@@ -579,10 +579,12 @@ def quaternion_to_rotation_matrix(
             one - (txx + tyy),
         ),
         dim=-1,
-    ).view(-1, 3, 3)
+    )
 
-    if len(quaternion.shape) == 1:
-        matrix = torch.squeeze(matrix, dim=0)
+    # this slightly awkward construction of the output shape is to satisfy torchscript
+    output_shape = list(quaternion.shape[:-1]) + [3, 3]
+    matrix = matrix_flat.reshape(output_shape)
+
     return matrix
 
 
