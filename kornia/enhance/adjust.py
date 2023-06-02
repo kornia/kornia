@@ -867,7 +867,7 @@ def _blend_one(input1: Tensor, input2: Tensor, factor: Tensor) -> Tensor:
     return torch.clamp(res, 0, 1)
 
 
-def _build_lut(histo, step):
+def _build_lut(histo: Tensor, step: Tensor) -> Tensor:
     # Compute the cumulative sum, shifting by step // 2
     # and then normalization by step.
     step_trunc = torch.div(step, 2, rounding_mode='trunc')
