@@ -1,4 +1,5 @@
 import math
+from typing import Tuple
 
 import torch
 
@@ -10,7 +11,7 @@ class PositionEncodingSine(Module):
 
     pe: Tensor
 
-    def __init__(self, d_model, max_shape=(256, 256), temp_bug_fix=True) -> None:
+    def __init__(self, d_model: int, max_shape: Tuple[int, int] = (256, 256), temp_bug_fix: bool = True) -> None:
         """
         Args:
             max_shape (tuple): for 1/8 featmap, the max length of 256 corresponds to 2048 pixels
@@ -26,7 +27,7 @@ class PositionEncodingSine(Module):
         pe = self._create_position_encoding(max_shape)
         self.register_buffer('pe', pe, persistent=False)  # [1, C, H, W]
 
-    def _create_position_encoding(self, max_shape):
+    def _create_position_encoding(self, max_shape: Tuple[int, int]) -> Tensor:
         """Creates a position encoding from scratch.
 
         For 1/8 feature map (which is standard): If the input image size is H, W (both divisible by 8), the max_shape
@@ -50,7 +51,7 @@ class PositionEncodingSine(Module):
         pe[3::4, :, :] = torch.cos(y_position * div_term)
         return pe.unsqueeze(0)
 
-    def update_position_encoding_size(self, max_shape):
+    def update_position_encoding_size(self, max_shape: Tuple[int, int]) -> None:
         """Updates position encoding to new max_shape.
 
         For 1/8 feature map (which is standard): If the input image size is H, W (both divisible by 8), the max_shape
@@ -58,7 +59,7 @@ class PositionEncodingSine(Module):
         """
         self.pe = self._create_position_encoding(max_shape).to(self.pe.device)
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
         """
         Args:
             x: [N, C, H, W]
