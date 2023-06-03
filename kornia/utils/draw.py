@@ -94,7 +94,7 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
     y1, y2 = min(y1, y2).long(), max(y1, y2).long()
 
     # line equation that determines the distance away from the line
-    def line_equation(x, y):
+    def line_equation(x: int, y: int) -> Tensor:
         return A * x + B * y + C
 
     # vertical line
