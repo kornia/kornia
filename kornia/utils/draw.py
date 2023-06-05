@@ -28,10 +28,9 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
 
     Args:
         image: the input image to where to draw the lines with shape :math`(C,H,W)`.
-        p1: the start point [x y] of the line with shape (2).
-        p2: the end point [x y] of the line with shape (2).
+        p1: the start point [x y] of the line with shape (2, ) or (B, 2).
+        p2: the end point [x y] of the line with shape (2, ) or (B, 2).
         color: the color of the line with shape :math`(C)` where :math`C` is the number of channels of the image.
-
     Return:
         the image with containing the line.
 
@@ -47,8 +46,24 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
                  [  0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.],
                  [  0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.]]])
     """
-    if (len(p1) != 2) or (len(p2) != 2):
-        raise ValueError("p1 and p2 must have length 2.")
+    if (p1.shape[0] != p2.shape[0]) or (p1.shape[-1] != 2 or p2.shape[-1] != 2):
+        raise ValueError(
+            "Input points must be 2D points with shape (2, ) or (B, 2) and must have the same batch sizes."
+        )
+    if (
+        (p1[..., 0] < 0).any()
+        or (p1[..., 0] >= image.shape[-1]).any()
+        or (p1[..., 1] < 0).any()
+        or (p1[..., 1] >= image.shape[-2]).any()
+    ):
+        raise ValueError("p1 is out of bounds.")
+    if (
+        (p2[..., 0] < 0).any()
+        or (p2[..., 0] >= image.shape[-1]).any()
+        or (p2[..., 1] < 0).any()
+        or (p2[..., 1] >= image.shape[-2]).any()
+    ):
+        raise ValueError("p2 is out of bounds.")
 
     if len(image.size()) != 3:
         raise ValueError("image must have 3 dimensions (C,H,W).")
@@ -56,78 +71,80 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
     if color.size(0) != image.size(0):
         raise ValueError("color must have the same number of channels as the image.")
 
-    if (p1[0] >= image.size(2)) or (p1[1] >= image.size(1) or (p1[0] < 0) or (p1[1] < 0)):
-        raise ValueError("p1 is out of bounds.")
-
-    if (p2[0] >= image.size(2)) or (p2[1] >= image.size(1) or (p2[0] < 0) or (p2[1] < 0)):
-        raise ValueError("p2 is out of bounds.")
-
     # move p1 and p2 to the same device as the input image
     # move color to the same device and dtype as the input image
     p1 = p1.to(image.device).to(torch.int64)
     p2 = p2.to(image.device).to(torch.int64)
     color = color.to(image)
 
-    # assign points
-    x1, y1 = p1
-    x2, y2 = p2
+    x1, y1 = p1[..., 0], p1[..., 1]
+    x2, y2 = p2[..., 0], p2[..., 1]
+    dx = x2 - x1
+    dy = y2 - y1
+    dx_sign = torch.sign(dx)
+    dy_sign = torch.sign(dy)
+    dx, dy = torch.abs(dx), torch.abs(dy)
+    dx_zero_mask = dx == 0
+    dy_zero_mask = dy == 0
+    dx_gt_dy_mask = (dx > dy) & ~(dx_zero_mask | dy_zero_mask)
+    rest_mask = ~(dx_zero_mask | dy_zero_mask | dx_gt_dy_mask)
 
-    # calcullate coefficients A,B,C of line
-    # from equation Ax + By + C = 0
-    A = y2 - y1
-    B = x1 - x2
-    C = x2 * y1 - x1 * y2
+    dx_zero_x_coords, dx_zero_y_coords = [], []
+    dy_zero_x_coords, dy_zero_y_coords = [], []
+    dx_gt_dy_x_coords, dx_gt_dy_y_coords = [], []
+    rest_x_coords, rest_y_coords = [], []
 
-    # make sure A is positive to utilize the function properly
-    if A < 0:
-        A = -A
-        B = -B
-        C = -C
+    if dx_zero_mask.any():
+        dx_zero_x_coords = [
+            x for x_i, dy_i in zip(x1[dx_zero_mask], dy[dx_zero_mask]) for x in x_i.repeat(int(dy_i.item() + 1))
+        ]
+        dx_zero_y_coords = [
+            y
+            for y_i, s, dy_ in zip(y1[dx_zero_mask], dy_sign[dx_zero_mask], dy[dx_zero_mask])
+            for y in (y_i + s * torch.arange(0, dy_ + 1, 1, device=image.device))
+        ]
 
-    # calculate the slope of the line
-    # check for division by zero
-    if B != 0:
-        m = -A / B
+    if dy_zero_mask.any():
+        dy_zero_x_coords = [
+            x
+            for x_i, s, dx_i in zip(x1[dy_zero_mask], dx_sign[dy_zero_mask], dx[dy_zero_mask])
+            for x in (x_i + s * torch.arange(0, dx_i + 1, 1, device=image.device))
+        ]
+        dy_zero_y_coords = [
+            y for y_i, dx_i in zip(y1[dy_zero_mask], dx[dy_zero_mask]) for y in y_i.repeat(int(dx_i.item() + 1))
+        ]
 
-    # make sure you start drawing in the right direction
-    x1, x2 = min(x1, x2).long(), max(x1, x2).long()
-    y1, y2 = min(y1, y2).long(), max(y1, y2).long()
-
-    # line equation that determines the distance away from the line
-    def line_equation(x, y):
-        return A * x + B * y + C
-
-    # vertical line
-    if B == 0:
-        image[:, y1 : y2 + 1, x1] = color
-    # horizontal line
-    elif A == 0:
-        image[:, y1, x1 : x2 + 1] = color
-    # slope between 0 and 1
-    elif 0 < m < 1:
-        for i in range(x1, x2 + 1):
-            _draw_pixel(image, i, y1, color)
-            if line_equation(i + 1, y1 + 0.5) > 0:
-                y1 += 1
-    # slope greater than or equal to 1
-    elif m >= 1:
-        for j in range(y1, y2 + 1):
-            _draw_pixel(image, x1, j, color)
-            if line_equation(x1 + 0.5, j + 1) < 0:
-                x1 += 1
-    # slope less then -1
-    elif m <= -1:
-        for j in range(y1, y2 + 1):
-            _draw_pixel(image, x2, j, color)
-            if line_equation(x2 - 0.5, j + 1) > 0:
-                x2 -= 1
-    # slope between -1 and 0
-    elif -1 < m < 0:
-        for i in range(x1, x2 + 1):
-            _draw_pixel(image, i, y2, color)
-            if line_equation(i + 1, y2 - 0.5) > 0:
-                y2 -= 1
-
+    if dx_gt_dy_mask.any():
+        dx_gt_dy_x_coords = [
+            x
+            for x_i, s, dx_i in zip(x1[dx_gt_dy_mask], dx_sign[dx_gt_dy_mask], dx[dx_gt_dy_mask])
+            for x in (x_i + s * torch.arange(0, dx_i + 1, 1, device=image.device))
+        ]
+        dx_gt_dy_y_coords = [
+            y
+            for y_i, s, dx_i, dy_i in zip(
+                y1[dx_gt_dy_mask], dy_sign[dx_gt_dy_mask], dx[dx_gt_dy_mask], dy[dx_gt_dy_mask]
+            )
+            for y in (
+                y_i + s * torch.arange(0, dy_i + 1, dy_i / dx_i, device=image.device)[: int(dx_i.item()) + 1].ceil()
+            )
+        ]
+    if rest_mask.any():
+        rest_x_coords = [
+            x
+            for x_i, s, dx_i, dy_ in zip(x1[rest_mask], dx_sign[rest_mask], dx[rest_mask], dy[rest_mask])
+            for x in (
+                x_i + s * torch.arange(0, dx_i + 1, dx_i / dy_, device=image.device)[: int(dy_.item()) + 1].ceil()
+            )
+        ]
+        rest_y_coords = [
+            y
+            for y_i, s, dy_i in zip(y1[rest_mask], dy_sign[rest_mask], dy[rest_mask])
+            for y in (y_i + s * torch.arange(0, dy_i + 1, 1, device=image.device))
+        ]
+    x_coords = torch.tensor(dx_zero_x_coords + dy_zero_x_coords + dx_gt_dy_x_coords + rest_x_coords).long()
+    y_coords = torch.tensor(dx_zero_y_coords + dy_zero_y_coords + dx_gt_dy_y_coords + rest_y_coords).long()
+    image[:, y_coords, x_coords] = color.view(-1, 1)
     return image
 
 
