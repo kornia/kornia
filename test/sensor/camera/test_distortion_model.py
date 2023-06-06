@@ -1,7 +1,7 @@
 import torch
 
 from kornia.geometry.vector import Vector2
-from kornia.sensor.camera.distortion import AffineTransform
+from kornia.sensor.camera.distortion_model import AffineTransform
 from kornia.testing import BaseTester
 
 

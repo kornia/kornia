@@ -1,4 +1,4 @@
-from .camera import (
+from .camera_model import (
     BrownConradyModel,
     CameraModel,
     CameraModelT,

@@ -7,8 +7,8 @@ from typing import Any, Union
 from kornia.core import Tensor, stack, zeros_like
 from kornia.geometry.vector import Vector2, Vector3
 from kornia.image import ImageSize
-from kornia.sensor.camera.distortion import AffineTransform, BrownConradyTransform, KannalaBrandtK3Transform
-from kornia.sensor.camera.projection import OrthographicProjection, Z1Projection
+from kornia.sensor.camera.distortion_model import AffineTransform, BrownConradyTransform, KannalaBrandtK3Transform
+from kornia.sensor.camera.projection_model import OrthographicProjection, Z1Projection
 
 
 class CameraModelType(Enum):
