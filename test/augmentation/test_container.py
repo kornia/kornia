@@ -450,6 +450,18 @@ class TestAugmentationSequential:
         assert out_inv[3].shape == points.shape
         assert_close(out_inv[3], points, atol=1e-4, rtol=1e-4)
 
+    def test_random_resized_crop(self, device, dtype):
+        size = 50
+        input = torch.randn(3, 3, 100, 100, device=device, dtype=dtype)
+        mask = torch.randn(3, 1, 100, 100, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.RandomResizedCrop((size, size), p=1.0), data_keys=["input", "mask"])
+
+        reproducibility_test((input, mask), aug)
+
+        out = aug(input, mask)
+        assert out[0].shape == (3, 3, size, size)
+        assert out[1].shape == (3, 1, size, size)
+
     @pytest.mark.parametrize(
         'bbox',
         [
