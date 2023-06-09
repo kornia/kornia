@@ -143,9 +143,7 @@ class VonMisesKernel(nn.Module):
         if not len(x.shape) == 4 or x.shape[1] != 1:
             raise ValueError(f"Invalid input shape, we expect Bx1xHxW. Got: {x.shape}")
 
-        # TODO: unify the two lines below when pytorch 1.6 support is dropped
-        emb0: Tensor = torch.jit.annotate(Tensor, self.emb0)
-        emb0 = emb0.to(x).repeat(x.size(0), 1, 1, 1)
+        emb0 = self.emb0.to(x).repeat(x.size(0), 1, 1, 1)
         frange = self.frange.to(x) * x
         emb1 = torch.cos(frange)
         emb2 = torch.sin(frange)

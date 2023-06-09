@@ -3,7 +3,7 @@ FROM google/cloud-sdk:slim
 # Build args.
 ARG GITHUB_REF=refs/heads/master
 
-ARG PYTHON_VERSION=3.7
+ARG PYTHON_VERSION=3.8
 
 ARG PYTORCH_VERSION=1.8
 
