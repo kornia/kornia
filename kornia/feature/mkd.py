@@ -143,6 +143,9 @@ class VonMisesKernel(nn.Module):
         if not len(x.shape) == 4 or x.shape[1] != 1:
             raise ValueError(f"Invalid input shape, we expect Bx1xHxW. Got: {x.shape}")
 
+        if not isinstance(self.emb0, Tensor):
+            raise TypeError(f"Emb0 type is not a Tensor. Got {type(x)}")
+
         emb0 = self.emb0.to(x).repeat(x.size(0), 1, 1, 1)
         frange = self.frange.to(x) * x
         emb1 = torch.cos(frange)
