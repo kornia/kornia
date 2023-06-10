@@ -33,7 +33,7 @@ Use the actions:
 
 Has the inputs:
 - `os`: (string, default: `ubuntu-latest`) the OS name same as supported by [gha](https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#choosing-github-hosted-runners).
-- `python-version`: (json list of strings, default: `'["3.7"]'`) a string with
+- `python-version`: (json list of strings, default: `'["3.8"]'`) a string with
   format of a json list within strings for each python version desired.
 - `pytorch-version`: (json list of strings, default: `'["1.9.1"]'`) a string
   with format of a json list within strings for each pytorch version desired.
