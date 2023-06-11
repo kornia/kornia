@@ -225,7 +225,7 @@ maintainable.
         assert x.shape == (batch_size, 2, 3)
     ```
 
-- We give support to static type checker for Python >= 3.7
+- We give support to static type checker for Python >= 3.8
 
   - Please, read
     [MyPy cheatsheet](https://mypy.readthedocs.io/en/stable/cheat_sheet_py3.html#type-hints-cheat-sheet-python-3) for

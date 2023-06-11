@@ -8,12 +8,12 @@ responsible for the setup of an environment for kornia in development mode on
 CI.
 
 Use the actions:
-- `conda-incubator/setup-miniconda`
+- `setup-python@v4`
 
 Has the inputs:
-- `python-version`: (string, default: `'3.7'`) the python version desired.
-  - The version should be supported by `setup-miniconda` action.
-- `pytorch-version`: (string, default: `'1.9.1`') the pytorch version desired.
+- `python-version`: (string, default: `'3.10'`) the python version desired.
+  - The version should be supported by `setup-python@v4` action.
+- `pytorch-version`: (string, default: `'2.0.1`') the pytorch version desired.
   - This value will be used to install pytorch using conda from pytorch
     channel.
   - If the value passed is `nightly` the nightly version of pytorch with dynamo
