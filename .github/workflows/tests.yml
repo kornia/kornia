@@ -4,7 +4,7 @@ on:
       python-version:
         required: false
         type: string
-        default: '["3.7"]'
+        default: '["3.8"]'
       pytorch-version:
         required: false
         type: string

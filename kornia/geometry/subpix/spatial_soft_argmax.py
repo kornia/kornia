@@ -125,7 +125,8 @@ def _get_window_grid_kernel3d(d: int, h: int, w: int, device: torch.device = tor
 class ConvSoftArgmax2d(Module):
     r"""Module that calculates soft argmax 2d per window.
 
-    See :func:`~kornia.geometry.subpix.conv_soft_argmax2d` for details.
+    See
+    :func: `~kornia.geometry.subpix.conv_soft_argmax2d` for details.
     """
 
     def __init__(
@@ -175,7 +176,8 @@ class ConvSoftArgmax2d(Module):
 class ConvSoftArgmax3d(Module):
     r"""Module that calculates soft argmax 3d per window.
 
-    See :func:`~kornia.geometry.subpix.conv_soft_argmax3d` for details.
+    See
+    :func: `~kornia.geometry.subpix.conv_soft_argmax3d` for details.
     """
 
     def __init__(
@@ -607,7 +609,8 @@ def conv_quad_interp3d(input: Tensor, strict_maxima_bonus: float = 10.0, eps: fl
 class ConvQuadInterp3d(Module):
     r"""Calculate soft argmax 3d per window.
 
-    See :func:`~kornia.geometry.subpix.conv_quad_interp3d` for details.
+    See
+    :func: `~kornia.geometry.subpix.conv_quad_interp3d` for details.
     """
 
     def __init__(self, strict_maxima_bonus: float = 10.0, eps: float = 1e-7) -> None:

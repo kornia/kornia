@@ -8,12 +8,12 @@ responsible for the setup of an environment for kornia in development mode on
 CI.
 
 Use the actions:
-- `conda-incubator/setup-miniconda`
+- `setup-python@v4`
 
 Has the inputs:
-- `python-version`: (string, default: `'3.7'`) the python version desired.
-  - The version should be supported by `setup-miniconda` action.
-- `pytorch-version`: (string, default: `'1.9.1`') the pytorch version desired.
+- `python-version`: (string, default: `'3.10'`) the python version desired.
+  - The version should be supported by `setup-python@v4` action.
+- `pytorch-version`: (string, default: `'2.0.1`') the pytorch version desired.
   - This value will be used to install pytorch using conda from pytorch
     channel.
   - If the value passed is `nightly` the nightly version of pytorch with dynamo
@@ -33,7 +33,7 @@ Use the actions:
 
 Has the inputs:
 - `os`: (string, default: `ubuntu-latest`) the OS name same as supported by [gha](https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#choosing-github-hosted-runners).
-- `python-version`: (json list of strings, default: `'["3.7"]'`) a string with
+- `python-version`: (json list of strings, default: `'["3.8"]'`) a string with
   format of a json list within strings for each python version desired.
 - `pytorch-version`: (json list of strings, default: `'["1.9.1"]'`) a string
   with format of a json list within strings for each pytorch version desired.
