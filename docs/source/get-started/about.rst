@@ -1,11 +1,6 @@
 About
 =====
 
-We also run `LibreCV.org <https://librecv.org/>`_. Join us !!
-
-.. image:: https://github.com/kornia/data/raw/main/LibreCV.png
-   :align: center
-
 Cite us
 -------
 
