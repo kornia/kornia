@@ -76,7 +76,7 @@ class _BasicAugmentationBase(Module):
     def __repr__(self) -> str:
         txt = f"p={self.p}, p_batch={self.p_batch}, same_on_batch={self.same_on_batch}"
         if isinstance(self._param_generator, RandomGeneratorBase):
-            txt = f"{str(self._param_generator)}, {txt}"
+            txt = f"{self._param_generator!s}, {txt}"
         for k, v in self.flags.items():
             if isinstance(v, Enum):
                 txt += f", {k}={v.name.lower()}"

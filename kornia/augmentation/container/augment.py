@@ -159,7 +159,9 @@ class AugmentationSequential(ImageSequential):
         random_apply: Union[int, bool, Tuple[int, int]] = False,
         random_apply_weights: Optional[List[float]] = None,
         transformation_matrix: str = "silence",
-        extra_args: Dict[DataKey, Dict[str, Any]] = {DataKey.MASK: dict(resample=Resample.NEAREST, align_corners=None)},
+        extra_args: Dict[DataKey, Dict[str, Any]] = {
+            DataKey.MASK: {"resample": Resample.NEAREST, "align_corners": None}
+        },
     ) -> None:
         super().__init__(
             *args,
