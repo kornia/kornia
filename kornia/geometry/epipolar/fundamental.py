@@ -1,7 +1,7 @@
 """Module containing the functionalities for computing the Fundamental Matrix."""
 
-from typing import Optional, Tuple, Literal
 import math
+from typing import Literal, Optional, Tuple
 
 import torch
 
@@ -73,7 +73,6 @@ def normalize_transformation(M: Tensor, eps: float = 1e-8) -> Tensor:
 
 # Reference : https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/polynom_solver.cpp
 def solve_quadratic(coeffs: Tensor) -> Tensor:
-
     r"""Solve given quadratic quation.
 
     The function takes the coefficients of quadratic equation and returns the solutions.
@@ -86,9 +85,9 @@ def solve_quadratic(coeffs: Tensor) -> Tensor:
     """
 
     # Coefficients of quadratic equation
-    a = coeffs[:, 0] # coefficient of x^2
-    b = coeffs[:, 1] # coefficient of x 
-    c = coeffs[:, 2] # constant term
+    a = coeffs[:, 0]  # coefficient of x^2
+    b = coeffs[:, 1]  # coefficient of x
+    c = coeffs[:, 2]  # constant term
 
     # Calculate discriminant
     delta = b * b - 4 * a * c
@@ -106,9 +105,9 @@ def solve_quadratic(coeffs: Tensor) -> Tensor:
     # Handle cases with negative discriminant
     if torch.any(mask_negative):
         solution[mask_negative, :] = torch.tensor(0, device=coeffs.device, dtype=coeffs.dtype)
-    
+
     sqrt_delta = torch.sqrt(delta)
-    
+
     # Handle cases with non-negative discriminant
     mask = torch.bitwise_and(~mask_negative, ~mask_zero)
     if torch.any(mask):
@@ -121,7 +120,7 @@ def solve_quadratic(coeffs: Tensor) -> Tensor:
 def solve_cubic(coeffs: Tensor) -> Tensor:
     r"""Solve given cubic quation.
 
-    The function takes the coefficients of cubic equation and returns 
+    The function takes the coefficients of cubic equation and returns
     the solutions.
 
     Args:
@@ -134,10 +133,10 @@ def solve_cubic(coeffs: Tensor) -> Tensor:
     _PI = torch.tensor(math.pi, device=coeffs.device, dtype=coeffs.dtype)
 
     # Coefficients of cubic equation
-    a = coeffs[:, 0] # coefficient of x^3
-    b = coeffs[:, 1] # coefficient of x^2
-    c = coeffs[:, 2] # coefficient of x
-    d = coeffs[:, 3] # constant term
+    a = coeffs[:, 0]  # coefficient of x^3
+    b = coeffs[:, 1]  # coefficient of x^2
+    c = coeffs[:, 2]  # coefficient of x
+    d = coeffs[:, 3]  # constant term
 
     zero_tensor = torch.tensor(0, device=a.device, dtype=a.dtype)
     one_tensor = torch.tensor(1.0, device=a.device, dtype=a.dtype)
@@ -179,7 +178,7 @@ def solve_cubic(coeffs: Tensor) -> Tensor:
     a_Q_zero = torch.ones_like(a)
     a_R_zero = torch.ones_like(a)
     a_D_zero = torch.ones_like(a)
-    
+
     a_Q_zero[~mask_a_zero] = Q
     a_R_zero[~mask_a_zero] = R
     a_D_zero[~mask_a_zero] = D
@@ -189,14 +188,16 @@ def solve_cubic(coeffs: Tensor) -> Tensor:
     mask_Q_zero_solutions = (a_Q_zero == 0) & (a_R_zero != 0)
 
     if torch.any(mask_Q_zero):
-        x0_Q_zero = torch.pow(2 * R[mask_Q_zero], 1/3) - b_a_3[mask_Q_zero]
+        x0_Q_zero = torch.pow(2 * R[mask_Q_zero], 1 / 3) - b_a_3[mask_Q_zero]
         solutions[mask_Q_zero_solutions, 0] = x0_Q_zero
 
     mask_QR_zero = (Q == 0) & (R == 0)
     mask_QR_zero_solutions = (a_Q_zero == 0) & (a_R_zero == 0)
 
     if torch.any(mask_QR_zero):
-        solutions[mask_QR_zero_solutions] = torch.stack([-b_a_3[mask_QR_zero], -b_a_3[mask_QR_zero], -b_a_3[mask_QR_zero]], dim=1)
+        solutions[mask_QR_zero_solutions] = torch.stack(
+            [-b_a_3[mask_QR_zero], -b_a_3[mask_QR_zero], -b_a_3[mask_QR_zero]], dim=1
+        )
 
     # D <= 0
     mask_D_zero = (D <= 0) & (Q != 0)
@@ -231,7 +232,8 @@ def solve_cubic(coeffs: Tensor) -> Tensor:
         x0_D_positive = AD[mask_D_positive] + BD[mask_D_positive] - b_a_3[mask_D_positive]
         solutions[mask_D_positive_solution, 0] = x0_D_positive
 
-    return solutions 
+    return solutions
+
 
 # Reference: Adapted from the 'run_7point' function in opencv
 # https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/fundam.cpp
