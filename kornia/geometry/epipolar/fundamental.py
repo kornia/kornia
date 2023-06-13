@@ -119,8 +119,6 @@ def solve_quadratic(coeffs: Tensor) -> Tensor:
 
 
 def solve_cubic(coeffs: Tensor) -> Tensor:
-
-
     r"""Solve given cubic quation.
 
     The function takes the coefficients of cubic equation and returns 
