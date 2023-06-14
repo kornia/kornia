@@ -33,9 +33,9 @@ Use the actions:
 
 Has the inputs:
 - `os`: (string, default: `ubuntu-latest`) the OS name same as supported by [gha](https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#choosing-github-hosted-runners).
-- `python-version`: (json list of strings, default: `'["3.8"]'`) a string with
+- `python-version`: (json list of strings, default: `'["3.10"]'`) a string with
   format of a json list within strings for each python version desired.
-- `pytorch-version`: (json list of strings, default: `'["1.9.1"]'`) a string
+- `pytorch-version`: (json list of strings, default: `'["2.0.0"]'`) a string
   with format of a json list within strings for each pytorch version desired.
 - `pytorch-dtype`: (string, default: `float32`) the dtype used to generate
   the tests with pytest.
@@ -49,7 +49,7 @@ Has the inputs:
 A matrix strategy will be adopted from the list of python and pytorch version.
 
 ### Tests tutorials
-This workflow ([.github/workflows/tests_tutorials.yml](workflows/tests_tutorials.yml)) will setup
+This workflow ([.github/workflows/test_tutorials.yml](workflows/tests_tutorials.yml)) will setup
 an environment using the [env](#Env) action, clone the [tutorials repo](https://github.com/kornia/tutorials), and execute the tutorials.
 
 Use the actions:
@@ -66,3 +66,21 @@ Has the inputs:
   the matrix strategy.
 
 A matrix strategy will be adopted from the list of python and pytorch version.
+
+### Tests typing
+This workflow ([.github/workflows/test_typing.yml](workflows/test_typing.yml)) will setup
+an environment using the [env](#Env) action, run the typing tests using mypy and
+uploading the coverage report to codecov.
+
+Use the actions:
+- `actions/checkout`
+- `.github/actions/env`
+
+Has the inputs:
+- `os`: (string, default: `ubuntu-latest`) the OS name same as supported by [gha](https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#choosing-github-hosted-runners).
+- `python-version`: (json list of strings, default: `'["3.10"]'`) a string with
+  format of a json list within strings for each python version desired.
+- `pytorch-version`: (json list of strings, default: `'["2.0.0"]'`) a string
+  with format of a json list within strings for each pytorch version desired.
+- `fail-fast`: (boolean, default: `false`) to set the `fail-fast` behavior on
+  the matrix strategy.
