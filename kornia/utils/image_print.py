@@ -1,12 +1,11 @@
-"""Convert an image (argv[1]) to an ANSI text string (xterm-256color).
+"""Convert an image tensor to an ANSI text string (xterm-256color).
 
 Nice long listing of all 256 colors and their codes.
 
 Taken from https://gist.github.com/klange/1687427
 """
+from typing import Tuple
 import re
-import sys
-
 from torch import float16, float32, float64
 
 import kornia
@@ -280,33 +279,22 @@ SHORT2RGB_DICT = dict(CLUT)
 RGB2SHORT_DICT = {v: k for k, v in SHORT2RGB_DICT.items()}
 
 
-def _str2hex(hexstr):
+def _str2hex(hexstr: str) -> int:
     return int(hexstr, 16)
 
 
-def _strip_hash(rgb):
+def _strip_hash(rgb: str) -> str:
     # Strip leading `#` if exists.
     if rgb.startswith('#'):
         rgb = rgb.lstrip('#')
     return rgb
 
 
-def short2rgb(short):
+def short2rgb(short: str) -> str:
     return SHORT2RGB_DICT[short]
 
 
-def print_all():
-    """Print all 256 xterm color codes."""
-    for short, rgb in CLUT:
-        sys.stdout.write(f'\033[48;5;{short}m{short}:{rgb}')
-        sys.stdout.write("\033[0m  ")
-        sys.stdout.write(f'\033[38;5;{short}m{short}:{rgb}')
-        sys.stdout.write("\033[0m\n")
-    print("Printed all codes.")
-    print("You can translate a hex or 0-255 code by providing an argument.")
-
-
-def rgb2short(rgb):
+def rgb2short(rgb: str) -> Tuple[str, str]:
     """Find the closest xterm-256 approximation to the given RGB value.
 
     Args:
@@ -347,7 +335,7 @@ def rgb2short(rgb):
     return equiv, res
 
 
-def image_to_terminal(image: Tensor, max_width: int = 256) -> str:
+def image_to_string(image: Tensor, max_width: int = 256) -> str:
     """Obtain the closest xterm-256 approximation string from an image tensor.
 
     The tensor shall be either 0~1 float type or 0~255 long type.
@@ -356,20 +344,27 @@ def image_to_terminal(image: Tensor, max_width: int = 256) -> str:
         image: an RGB image with shape :math:`3HW`.
 
     Note:
-        Need to use `print(image_to_terminal(...))`.
+        Need to use `print(image_to_string(...))`.
     """
-    if image.dtype not in [float16, float32, float64]:
-        image = image / 255.0
+    assert len(image.shape) == 3 and image.shape[0] == 3, \
+        f"Only RGB image with a shape of `3HW` is supported. Got {image.shape}."
 
-    image = kornia.geometry.resize(image, (image.size(-2) * max_width // image.size(-1), max_width))
+    if image.dtype not in [float16, float32, float64]:
+        assert image.min() >= 0 and image.max() <= 255, f"Invalid image value range. Got ({image.min()}, {image.max()})."
+        image = image / 255.  # In case of resizing.
+    else:
+        assert image.min() >= 0 and image.max() <= 1, f"Invalid image value range. Got ({image.min()}, {image.max()})."
+
+    if image.shape[-1] > max_width:
+        image = kornia.geometry.resize(image, (image.size(-2) * max_width // image.size(-1), max_width))
 
     image = (image * 255).long()
 
     res = ""
     for y in range(image.size(-2)):
         for x in range(image.size(-1)):
-            p = image[:, y, x]
-            h = f"{p[0]:2x}{p[1]:2x}{p[2]:2x}"
+            r, g, b = image[:, y, x]
+            h = "%2x%2x%2x" % (r, g, b)
             short, _ = rgb2short(h)
             res += "\033[48;5;%sm  " % short
         res += "\033[0m\n"
