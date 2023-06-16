@@ -4,8 +4,9 @@ Nice long listing of all 256 colors and their codes.
 
 Taken from https://gist.github.com/klange/1687427
 """
-from typing import Tuple
 import re
+from typing import Tuple
+
 from torch import float16, float32, float64
 
 import kornia
@@ -346,12 +347,15 @@ def image_to_string(image: Tensor, max_width: int = 256) -> str:
     Note:
         Need to use `print(image_to_string(...))`.
     """
-    assert len(image.shape) == 3 and image.shape[0] == 3, \
-        f"Only RGB image with a shape of `3HW` is supported. Got {image.shape}."
+    assert (
+        len(image.shape) == 3 and image.shape[0] == 3
+    ), f"Only RGB image with a shape of `3HW` is supported. Got {image.shape}."
 
     if image.dtype not in [float16, float32, float64]:
-        assert image.min() >= 0 and image.max() <= 255, f"Invalid image value range. Got ({image.min()}, {image.max()})."
-        image = image / 255.  # In case of resizing.
+        assert (
+            image.min() >= 0 and image.max() <= 255
+        ), f"Invalid image value range. Got ({image.min()}, {image.max()})."
+        image = image / 255.0  # In case of resizing.
     else:
         assert image.min() >= 0 and image.max() <= 1, f"Invalid image value range. Got ({image.min()}, {image.max()})."
 
@@ -364,7 +368,7 @@ def image_to_string(image: Tensor, max_width: int = 256) -> str:
     for y in range(image.size(-2)):
         for x in range(image.size(-1)):
             r, g, b = image[:, y, x]
-            h = "%2x%2x%2x" % (r, g, b)
+            h = f"{r:2x}{g:2x}{b:2x}"
             short, _ = rgb2short(h)
             res += "\033[48;5;%sm  " % short
         res += "\033[0m\n"
