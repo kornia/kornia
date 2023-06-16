@@ -419,7 +419,7 @@ def rotation_matrix_to_quaternion(
         eps: float = torch.finfo(numerator.dtype).tiny
         return numerator / torch.clamp(denominator, min=eps)
 
-    rotation_matrix_vec: Tensor = rotation_matrix.view(*rotation_matrix.shape[:-2], 9)
+    rotation_matrix_vec: Tensor = rotation_matrix.reshape(*rotation_matrix.shape[:-2], 9)
 
     m00, m01, m02, m10, m11, m12, m20, m21, m22 = torch.chunk(rotation_matrix_vec, chunks=9, dim=-1)
 
