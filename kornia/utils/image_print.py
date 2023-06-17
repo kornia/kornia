@@ -11,6 +11,7 @@ from torch import float16, float32, float64
 
 import kornia
 from kornia.core import Tensor
+from kornia.core.check import KORNIA_CHECK_IS_IMAGE
 
 # color look-up table
 # 8-bit, RGB hex
@@ -347,17 +348,11 @@ def image_to_string(image: Tensor, max_width: int = 256) -> str:
     Note:
         Need to use `print(image_to_string(...))`.
     """
-    assert (
-        len(image.shape) == 3 and image.shape[0] == 3
-    ), f"Only RGB image with a shape of `3HW` is supported. Got {image.shape}."
+    KORNIA_CHECK_IS_IMAGE(image, None, raises=True)
+    assert len(image.shape) == 3, f"Expect one image only. Got {image.shape[0]} entries."
 
     if image.dtype not in [float16, float32, float64]:
-        assert (
-            image.min() >= 0 and image.max() <= 255
-        ), f"Invalid image value range. Got ({image.min()}, {image.max()})."
         image = image / 255.0  # In case of resizing.
-    else:
-        assert image.min() >= 0 and image.max() <= 1, f"Invalid image value range. Got ({image.min()}, {image.max()})."
 
     if image.shape[-1] > max_width:
         image = kornia.geometry.resize(image, (image.size(-2) * max_width // image.size(-1), max_width))

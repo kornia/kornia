@@ -5,6 +5,8 @@ from typing import Any, Sequence, TypeVar, cast
 
 from typing_extensions import TypeGuard
 
+from torch import float16, float32, float64
+
 from kornia.core import Tensor
 
 __all__ = [
@@ -18,6 +20,7 @@ __all__ = [
     "KORNIA_CHECK_SAME_DEVICES",
     "KORNIA_CHECK_IS_COLOR",
     "KORNIA_CHECK_IS_GRAY",
+    "KORNIA_CHECK_IS_IMAGE",
     "KORNIA_CHECK_DM_DESC",
     "KORNIA_CHECK_LAF",
 ]
@@ -334,6 +337,43 @@ def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: Tensor, msg: str | None = None, raises: boo
     if len(x.shape) < 3 or x.shape[-3] not in [1, 3]:
         if raises:
             raise TypeError(f"Not a color or gray tensor. Got: {type(x)}.\n{msg}")
+        return False
+    return True
+
+
+def KORNIA_CHECK_IS_IMAGE(x: Tensor, msg: str | None = None, raises: bool = True) -> bool:
+    """Check whether an image tensor is ranged properly [0, 1] for float or [0, 255] for int.
+
+    Args:
+        x: image tensor to evaluate.
+        msg: message to show in the exception.
+        raises: bool indicating whether an exception should be raised upon failure.
+
+    Raises:
+        TypeException: if all the input tensor has not 1) a shape :math:`(3,H,W)`,
+        2) [0, 1] for float or [0, 255] for int, 3) and raises is True.
+
+    Example:
+        >>> img = torch.rand(2, 3, 4, 4)
+        >>> KORNIA_CHECK_IS_IMAGE(img, "It is not an image")
+        True
+    """
+    res = KORNIA_CHECK_IS_COLOR_OR_GRAY(x, msg, raises=raises)
+
+    if not raises and not res:
+        return False
+
+    err_msg = f"Invalid image value range. Expect [0, 1] but got [{x.min()}, {x.max()}]."
+    if msg is not None:
+        err_msg += f"\n{msg}"
+
+    if x.dtype in [float16, float32, float64] and (x.min() < 0. or x.max() > 1.):
+        if raises:
+            raise ValueError(err_msg)
+        return False
+    elif x.min() < 0 or x.max() > 255:
+        if raises:
+            raise ValueError(err_msg)
         return False
     return True
 
