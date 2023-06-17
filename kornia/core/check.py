@@ -3,9 +3,8 @@ from __future__ import annotations
 
 from typing import Any, Sequence, TypeVar, cast
 
-from typing_extensions import TypeGuard
-
 from torch import float16, float32, float64
+from typing_extensions import TypeGuard
 
 from kornia.core import Tensor
 
@@ -367,7 +366,7 @@ def KORNIA_CHECK_IS_IMAGE(x: Tensor, msg: str | None = None, raises: bool = True
     if msg is not None:
         err_msg += f"\n{msg}"
 
-    if x.dtype in [float16, float32, float64] and (x.min() < 0. or x.max() > 1.):
+    if x.dtype in [float16, float32, float64] and (x.min() < 0.0 or x.max() > 1.0):
         if raises:
             raise ValueError(err_msg)
         return False
