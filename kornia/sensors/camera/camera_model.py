@@ -7,8 +7,8 @@ from typing import Any, Union
 from kornia.core import Tensor, stack, zeros_like
 from kornia.geometry.vector import Vector2, Vector3
 from kornia.image import ImageSize
-from kornia.sensor.camera.distortion_model import AffineTransform, BrownConradyTransform, KannalaBrandtK3Transform
-from kornia.sensor.camera.projection_model import OrthographicProjection, Z1Projection
+from kornia.sensors.camera.distortion_model import AffineTransform, BrownConradyTransform, KannalaBrandtK3Transform
+from kornia.sensors.camera.projection_model import OrthographicProjection, Z1Projection
 
 
 class CameraModelType(Enum):
@@ -35,7 +35,7 @@ CameraDistortionType = Union[AffineTransform, BrownConradyTransform, KannalaBran
 CameraProjectionType = Union[Z1Projection, OrthographicProjection]
 
 
-class CameraModelT:
+class CameraModelBase:
     r"""Base class to represent camera models based on distortion and projection types.
 
     Distortion is of 3 types:
@@ -48,7 +48,7 @@ class CameraModelT:
 
     Example:
         >>> params = torch.Tensor([328., 328., 320., 240.])
-        >>> cam = CameraModelT(BrownConradyTransform(), Z1Projection(), ImageSize(480, 640), params)
+        >>> cam = CameraModelBase(BrownConradyTransform(), Z1Projection(), ImageSize(480, 640), params)
         >>> cam.params
         tensor([328., 328., 320., 240.])
     """
@@ -56,7 +56,7 @@ class CameraModelT:
     def __init__(
         self, distortion: CameraDistortionType, projection: CameraProjectionType, image_size: ImageSize, params: Tensor
     ) -> None:
-        """Constructor method for CameraModelT class.
+        """Constructor method for CameraModelBase class.
 
         Args:
             distortion: Distortion type
@@ -161,7 +161,7 @@ class CameraModelT:
         return self.projection.unproject(self.distortion.undistort(self.params, points), depth)
 
 
-class PinholeModel(CameraModelT):
+class PinholeModel(CameraModelBase):
     r"""Class to represent Pinhole Camera Model.
 
     The pinhole camera model describes the mathematical relationship between
@@ -236,7 +236,7 @@ class PinholeModel(CameraModelT):
         return PinholeModel(image_size, params)
 
 
-class BrownConradyModel(CameraModelT):
+class BrownConradyModel(CameraModelBase):
     """Brown Conrady Camera Model."""
 
     def __init__(self, image_size: ImageSize, params: Tensor) -> None:
@@ -252,7 +252,7 @@ class BrownConradyModel(CameraModelT):
         super().__init__(BrownConradyTransform(), Z1Projection(), image_size, params)
 
 
-class KannalaBrandtK3(CameraModelT):
+class KannalaBrandtK3(CameraModelBase):
     """Kannala Brandt K3 Camera Model."""
 
     def __init__(self, image_size: ImageSize, params: Tensor) -> None:
@@ -267,7 +267,7 @@ class KannalaBrandtK3(CameraModelT):
         super().__init__(KannalaBrandtK3Transform(), Z1Projection(), image_size, params)
 
 
-class Orthographic(CameraModelT):
+class Orthographic(CameraModelBase):
     """Orthographic Camera Model."""
 
     def __init__(self, image_size: ImageSize, params: Tensor) -> None:

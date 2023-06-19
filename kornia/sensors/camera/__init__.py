@@ -1,7 +1,7 @@
 from .camera_model import (
     BrownConradyModel,
     CameraModel,
-    CameraModelT,
+    CameraModelBase,
     CameraModelType,
     KannalaBrandtK3,
     Orthographic,
@@ -11,7 +11,7 @@ from .camera_model import (
 __all__ = [
     "BrownConradyModel",
     "CameraModel",
-    "CameraModelT",
+    "CameraModelBase",
     "CameraModelType",
     "KannalaBrandtK3",
     "Orthographic",

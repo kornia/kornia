@@ -1,7 +1,7 @@
 import torch
 
 from kornia.geometry.vector import Vector2, Vector3
-from kornia.sensor.camera.projection_model import Z1Projection
+from kornia.sensors.camera.projection_model import Z1Projection
 from kornia.testing import BaseTester
 
 
