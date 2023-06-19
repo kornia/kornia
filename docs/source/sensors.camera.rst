@@ -1,7 +1,7 @@
-kornia.sensor.camera
+kornia.sensors.camera
 ======================
 
-.. currentmodule:: kornia.sensor.camera
+.. currentmodule:: kornia.sensors.camera
 
 Camera models available in Kornia are as follows:
 
@@ -16,5 +16,5 @@ Camera models available in Kornia are as follows:
 .. autoclass:: PinholeModel
     :members:
 
-.. autoclass:: CameraModelT
+.. autoclass:: CameraModelBase
     :members:
