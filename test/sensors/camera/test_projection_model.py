@@ -1,3 +1,4 @@
+import pytest
 import torch
 
 from kornia.geometry.vector import Vector2, Vector3
@@ -6,21 +7,27 @@ from kornia.testing import BaseTester
 
 
 class TestZ1Projection(BaseTester):
+    @pytest.mark.skip(reason='Unnecessary test')
     def test_smoke(self, device, dtype):
         pass
 
+    @pytest.mark.skip(reason='Unnecessary test')
     def test_cardinality(self, device, dtype):
         pass
 
+    @pytest.mark.skip(reason='Unnecessary test')
     def test_exception(self, device, dtype):
         pass
 
+    @pytest.mark.skip(reason='Unnecessary test')
     def test_gradcheck(self, device):
         pass
 
+    @pytest.mark.skip(reason='Unnecessary test')
     def test_jit(self, device, dtype):
         pass
 
+    @pytest.mark.skip(reason='Unnecessary test')
     def test_module(self, device, dtype):
         pass
 
