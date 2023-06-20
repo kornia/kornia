@@ -79,51 +79,6 @@ namespaces = false
   skip-string-normalization = true
   skip-magic-trailing-comma = true
 
-[tool.pytest.ini_options]
-  addopts = "--color=yes"
-  testpaths = ["test"]
-  markers =[
-    "jit: mark a test as torchscript test",
-    "grad: mark a test as gradcheck test",
-    "nn: mark a test as module test"
-]
-
-[tool.coverage.report]
-exclude_lines = [
-  "pragma: no cover",
-  "def __repr__",
-  "if self.debug:",
-  "raise",
-  "if 0:",
-  "if __name__ == .__main__.:",
-]
-
-[tool.mypy]
-  files = ["kornia/"]
-  pretty = true
-  check_untyped_defs = true
-  disallow_any_generics = true
-  disallow_incomplete_defs = true
-  show_error_codes = true
-  ignore_missing_imports = true
-  no_implicit_optional = true
-  warn_unused_ignores = true
-  warn_redundant_casts = true
-
-[tool.distutils.bdist_wheel]
-  universal = true
-
-[tool.pydocstyle]
-match = '.*\.py'
-ignore = """
-D105
-D107
-D203
-D204
-D213
-D406
-D407"""
-
 [tool.ruff]
 select = [
   "C9",
@@ -172,3 +127,48 @@ max-statements = 258
 "test/*" = ["PLR0402", "S101"]
 "test/enhance/test_core.py" = ["S311"]
 "test/nerf/test_camera_utils.py" = ["S310"]
+
+[tool.pytest.ini_options]
+  addopts = "--color=yes"
+  testpaths = ["test"]
+  markers =[
+    "jit: mark a test as torchscript test",
+    "grad: mark a test as gradcheck test",
+    "nn: mark a test as module test"
+]
+
+[tool.coverage.report]
+exclude_lines = [
+  "pragma: no cover",
+  "def __repr__",
+  "if self.debug:",
+  "raise",
+  "if 0:",
+  "if __name__ == .__main__.:",
+]
+
+[tool.mypy]
+  files = ["kornia/"]
+  pretty = true
+  check_untyped_defs = true
+  disallow_any_generics = true
+  disallow_incomplete_defs = true
+  show_error_codes = true
+  ignore_missing_imports = true
+  no_implicit_optional = true
+  warn_unused_ignores = true
+  warn_redundant_casts = true
+
+[tool.distutils.bdist_wheel]
+  universal = true
+
+[tool.pydocstyle]
+match = '.*\.py'
+ignore = """
+D105
+D107
+D203
+D204
+D213
+D406
+D407"""
