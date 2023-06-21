@@ -162,7 +162,7 @@ class TestFindFundamental:
         F_mat = epi.find_fundamental(points1, points2, weights)
         assert_close(F_mat, Fm_expected, rtol=1e-4, atol=1e-4)
 
-    def test_8point_opencv(self, device, dtype):
+    def test_7point_opencv(self, device, dtype):
         points1 = torch.tensor(
             [
                 [
@@ -196,35 +196,48 @@ class TestFindFundamental:
         )
 
         # generated with OpenCV using above points
+        # Fm_expected shape is 9x3 
         # import cv2
         # Fm_expected, _ = cv2.findFundamentalMat(
         #   points1.detach().numpy().reshape(-1, 1, 2),
         #   points2.detach().numpy().reshape(-1, 1, 2), cv2.FM_7POINT)
 
-        Fm_expected = torch.tensor(
+        Fm_expected = torch.tensor([
             [
                 [
-                    [-0.0901827, 1.05515785, -0.54726062],
-                    [0.51914823, 1.02476892, -1.05783979],
-                    [-0.45860077, -1.01580301, 1.0],
+                    [-2.87490907, 5.41934672, 0.73871396],
+                    [0.34010174, 3.70371623, -4.65517276],
+                    [-0.1809933, -0.56577107, 1.0],
                 ],
+
                 [
                     [0.14465888, 0.68711702, -0.65570944],
                     [0.53424758, 0.7988479, -0.75446946],
                     [-0.48201197, -1.05375511, 1.0],
                 ],
                 [
-                    [-2.87490907, 5.41934672, 0.73871396],
-                    [0.34010174, 3.70371623, -4.65517276],
-                    [-0.1809933, -0.56577107, 1.0],
+                    [-0.0901827, 1.05515785, -0.54726062],
+                    [0.51914823, 1.02476892, -1.05783979],
+                    [-0.45860077, -1.01580301, 1.0],
                 ],
+            ]
             ],
             device=device,
             dtype=dtype,
         )
-
         F_mat = epi.find_fundamental(points1, points2, method="7POINT")
         assert_close(F_mat, Fm_expected, rtol=1e-3, atol=1e-3)
+
+    @pytest.mark.xfail(reason="TODO: fix #685")
+    def test_synthetic_sampson_7point(self, device, dtype):
+        scene: Dict[str, torch.Tensor] = utils.generate_two_view_random_scene(device, dtype)
+        x1 = scene['x1'][:, :7, :]
+        x2 = scene['x2'][:, :7, :]
+        F_est = epi.find_fundamental(x1, x2, None, "7POINT")
+        for i in range(3):
+            F = F_est[0][i].unsqueeze(0)
+            error = epi.sampson_epipolar_distance(x1, x2, F)
+            assert_close(error, torch.tensor(0.0, device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
 
     @pytest.mark.xfail(reason="TODO: fix #685")
     def test_synthetic_sampson(self, device, dtype):
