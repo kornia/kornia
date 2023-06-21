@@ -73,7 +73,6 @@ def normalize_transformation(M: Tensor, eps: float = 1e-8) -> Tensor:
 
 # Reference : https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/polynom_solver.cpp
 def solve_quadratic(coeffs: Tensor) -> Tensor:
-
     r"""Solve given quadratic equation.
 
     The function takes the coefficients of quadratic equation and returns the solutions.
@@ -108,7 +107,6 @@ def solve_quadratic(coeffs: Tensor) -> Tensor:
     # Handle cases with negative discriminant
     # if torch.any(mask_negative):
     #     solution[mask_negative, :] = torch.tensor(0, device=coeffs.device, dtype=coeffs.dtype)
-    
 
     sqrt_delta = torch.sqrt(delta)
 
@@ -143,7 +141,7 @@ def solve_cubic(coeffs: Tensor) -> Tensor:
     c = coeffs[:, 2]  # coefficient of x
     d = coeffs[:, 3]  # constant term
 
-    zero_tensor = torch.tensor(0, device=a.device, dtype=a.dtype)
+    torch.tensor(0, device=a.device, dtype=a.dtype)
     one_tensor = torch.tensor(1.0, device=a.device, dtype=a.dtype)
 
     solutions = torch.zeros((len(coeffs), 3), device=a.device, dtype=a.dtype)
@@ -152,7 +150,7 @@ def solve_cubic(coeffs: Tensor) -> Tensor:
     mask_b_zero = b == 0
     mask_c_zero = c == 0
 
-    mask_zero_order = mask_a_zero & mask_b_zero & mask_c_zero
+    mask_a_zero & mask_b_zero & mask_c_zero
     mask_first_order = mask_a_zero & mask_b_zero & ~mask_c_zero
     mask_second_order = mask_a_zero & ~mask_b_zero & ~mask_c_zero
 
@@ -288,8 +286,8 @@ def run_7point(points1: Tensor, points2: Tensor) -> Tensor:
     f1_det = torch.linalg.det(f1)
     f2_det = torch.linalg.det(f2)
     coeffs[:, 0] = f1_det
-    coeffs[:, 1] = torch.einsum('bii->b', f2@torch.inverse(f1)) * f1_det
-    coeffs[:, 2] = torch.einsum('bii->b', f1@torch.inverse(f2)) * f2_det
+    coeffs[:, 1] = torch.einsum('bii->b', f2 @ torch.inverse(f1)) * f1_det
+    coeffs[:, 2] = torch.einsum('bii->b', f1 @ torch.inverse(f2)) * f2_det
     coeffs[:, 3] = f2_det
 
     # solve the cubic equation, there can be 1 to 3 roots
@@ -302,33 +300,34 @@ def run_7point(points1: Tensor, points2: Tensor) -> Tensor:
     _lambda = roots
     _mu = torch.ones_like(_lambda)
 
-    _s = f1[valid_root_mask, 2, 2].unsqueeze(dim=1) * roots[valid_root_mask] + f2[valid_root_mask, 2, 2].unsqueeze(dim=1)
+    _s = f1[valid_root_mask, 2, 2].unsqueeze(dim=1) * roots[valid_root_mask] + f2[valid_root_mask, 2, 2].unsqueeze(
+        dim=1
+    )
     # _s_non_zero_mask = torch.abs(_s ) > 1e-16
     _s_non_zero_mask = ~torch.isclose(_s, torch.tensor(0.0, device=v.device, dtype=v.dtype))
 
     _mu[_s_non_zero_mask] = 1.0 / _s[_s_non_zero_mask]
     _lambda[_s_non_zero_mask] = _lambda[_s_non_zero_mask] * _mu[_s_non_zero_mask]
 
-
     f1_expanded = f1.unsqueeze(1).expand(batch_size, 3, 3, 3)
     f2_expanded = f2.unsqueeze(1).expand(batch_size, 3, 3, 3)
 
-
-    fmatrix[valid_root_mask] = f1_expanded[valid_root_mask] *  _lambda[valid_root_mask, :, None, None] + \
-                                f2_expanded[valid_root_mask] * _mu[valid_root_mask, :, None, None]
-
+    fmatrix[valid_root_mask] = (
+        f1_expanded[valid_root_mask] * _lambda[valid_root_mask, :, None, None]
+        + f2_expanded[valid_root_mask] * _mu[valid_root_mask, :, None, None]
+    )
 
     mat_ind = torch.zeros(3, 3, dtype=torch.bool)
     mat_ind[2, 2] = True
     fmatrix[_s_non_zero_mask, mat_ind] = 1.0
     fmatrix[~_s_non_zero_mask, mat_ind] = 0.0
 
-
     trans1_exp = transform1[valid_root_mask].unsqueeze(1).expand(-1, fmatrix.shape[2], -1, -1)
-    trans2_exp = transform2[valid_root_mask].unsqueeze(1).expand(-1, fmatrix.shape[2], -1, -1) 
+    trans2_exp = transform2[valid_root_mask].unsqueeze(1).expand(-1, fmatrix.shape[2], -1, -1)
 
-
-    fmatrix[valid_root_mask] = torch.matmul(trans2_exp.transpose(-2, -1), torch.matmul(fmatrix[valid_root_mask], trans1_exp))
+    fmatrix[valid_root_mask] = torch.matmul(
+        trans2_exp.transpose(-2, -1), torch.matmul(fmatrix[valid_root_mask], trans1_exp)
+    )
 
     return normalize_transformation(fmatrix)
 
