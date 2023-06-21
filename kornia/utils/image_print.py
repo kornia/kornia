@@ -9,7 +9,6 @@ from typing import Tuple
 
 from torch import float16, float32, float64
 
-import kornia
 from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK_IS_IMAGE
 
