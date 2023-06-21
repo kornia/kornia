@@ -5,7 +5,6 @@ from kornia.utils import image_to_string
 
 
 class TestImageToString:
-
     def test_image_to_string(self):
         img = torch.rand(3, 15, 15)
         image_to_string(img)
