@@ -9,7 +9,7 @@ from typing import Tuple
 
 from torch import float16, float32, float64
 
-import kornia
+from kornia.geometry import resize
 from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK_IS_IMAGE
 
@@ -355,7 +355,7 @@ def image_to_string(image: Tensor, max_width: int = 256) -> str:
         image = image / 255.0  # In case of resizing.
 
     if image.shape[-1] > max_width:
-        image = kornia.geometry.resize(image, (image.size(-2) * max_width // image.size(-1), max_width))
+        image = resize(image, (image.size(-2) * max_width // image.size(-1), max_width))
 
     image = (image * 255).long()
 
