@@ -20,12 +20,6 @@ Kornia leverages the Visual Prompting task through the :code:`VisualPrompter`` A
 the Segment Anything Model (SAM) into its computer vision toolkit. By incorporating SAM and the VisualPrompter API,
 developers can harness the efficiency of Visual Prompting for faster segmentation tasks and improved computer vision workflows. This seamless integration allows users to utilize pre-trained vision transformers, significantly reducing manual data labeling efforts and enabling the "teaching" of smaller AI systems. As a result, Kornia users can take advantage of the versatility and adaptability offered by Visual Prompting, unlocking new possibilities for various computer vision applications.
 
-
-Kornia provides a couple of backbones based on `transformers <https://paperswithcode.com/methods/category/vision-transformer>`_
-to perform image classification. Checkout the following apis :py:class:`~kornia.contrib.VisionTransformer`,
-:py:class:`~kornia.contrib.ClassificationHead` and combine as follows to customize your own classifier:
-
-
 How to use with Kornia
 ----------------------
 

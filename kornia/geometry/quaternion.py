@@ -167,7 +167,8 @@ class Quaternion(Module):
     def real(self) -> Tensor:
         """Return the real part with shape :math:`(B,)`.
 
-        Alias for :func:`~kornia.geometry.quaternion.Quaternion.w`
+        Alias for
+        :func: `~kornia.geometry.quaternion.Quaternion.w`
         """
         return self.w
 
@@ -188,7 +189,8 @@ class Quaternion(Module):
     def scalar(self) -> Tensor:
         """Return a scalar with the real with shape :math:`(B,)`.
 
-        Alias for :func:`~kornia.geometry.quaternion.Quaternion.w`
+        Alias for
+        :func: `~kornia.geometry.quaternion.Quaternion.w`
         """
         return self.real
 
@@ -237,7 +239,7 @@ class Quaternion(Module):
             >>> m
             tensor([[1., 0., 0.],
                     [0., 1., 0.],
-                    [0., 0., 1.]], grad_fn=<SqueezeBackward1>)
+                    [0., 0., 1.]], grad_fn=<ReshapeAliasBackward0>)
         """
         return quaternion_to_rotation_matrix(self.data, order=QuaternionCoeffOrder.WXYZ)
 

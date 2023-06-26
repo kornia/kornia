@@ -1,5 +1,5 @@
-What is Kornia ?
-================
+What is Kornia library ?
+========================
 
 Kornia is a differentiable library that allows classical computer vision to be integrated into deep learning models.
 
