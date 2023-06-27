@@ -78,8 +78,9 @@ class TestRTDETR(BaseTester):
         images = torch.randn(2, 3, 224, 256, device=device, dtype=dtype)
         out = model(images)
 
-        assert "logits" in out and isinstance(out["logits"], Tensor)
-        assert "boxes" in out and isinstance(out["boxes"], Tensor)
+        assert isinstance(out, list)
+        for det in out:
+            assert isinstance(det, Tensor)
 
     @pytest.mark.parametrize("shape", ((1, 3, 96, 128), (2, 3, 224, 256)))
     def test_cardinality(self, shape, device, dtype):
@@ -90,8 +91,10 @@ class TestRTDETR(BaseTester):
         images = torch.randn(shape, device=device, dtype=dtype)
         out = model(images)
 
-        assert out["logits"].shape == (shape[0], num_queries, num_classes)
-        assert out["boxes"].shape == (shape[0], num_queries, 4)
+        assert len(out) == shape[0]
+        for det in out:
+            assert det.shape[0] <= num_queries
+            assert det.shape[1] == 6
 
     @pytest.mark.skip("Unnecessary")
     def test_exception(self):
@@ -119,8 +122,8 @@ class TestRTDETR(BaseTester):
         expected = model(img)
         actual = model_optimized(img)
 
-        self.assert_close(actual["logits"], expected["logits"], low_tolerance=True)
-        self.assert_close(actual["boxes"], expected["boxes"], low_tolerance=True)
+        for det_expected, det_actual in zip(expected, actual):
+            self.assert_close(det_expected, det_actual, low_tolerance=True)
 
     @pytest.mark.skipif(
         torch_version() in ("2.0.0", "2.0.1"),

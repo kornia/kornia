@@ -8,6 +8,7 @@ from enum import Enum
 from kornia.contrib.models.base import ModelBase
 from kornia.contrib.models.rt_detr.architecture.hgnetv2 import PPHGNetV2
 from kornia.contrib.models.rt_detr.architecture.hybrid_encoder import HybridEncoder
+from kornia.contrib.models.rt_detr.architecture.post_processor import DETRPostProcessor
 from kornia.contrib.models.rt_detr.architecture.resnet_d import ResNetD
 from kornia.contrib.models.rt_detr.architecture.rtdetr_head import RTDETRHead
 from kornia.core import Tensor
@@ -58,12 +59,15 @@ class RTDETRConfig:
     head_hidden_dim: int = 256
     head_num_queries: int = 300
     head_num_decoder_layers: int | None = None
+    confidence_threshold: float = 0.3
 
 
 class RTDETR(ModelBase[RTDETRConfig]):
     """RT-DETR Object Detection model, as described in https://arxiv.org/abs/2304.08069."""
 
-    def __init__(self, backbone: ResNetD | PPHGNetV2, neck: HybridEncoder, head: RTDETRHead):
+    def __init__(
+        self, backbone: ResNetD | PPHGNetV2, neck: HybridEncoder, head: RTDETRHead, post_processor: DETRPostProcessor
+    ):
         """Construct RT-DETR Object Detection model.
 
         Args:
@@ -75,6 +79,7 @@ class RTDETR(ModelBase[RTDETRConfig]):
         self.backbone = backbone
         self.neck = neck
         self.head = head
+        self.post_processor = post_processor
 
     @staticmethod
     def from_config(config: RTDETRConfig) -> RTDETR:
@@ -148,13 +153,14 @@ class RTDETR(ModelBase[RTDETRConfig]):
                 [neck_hidden_dim] * 3,
                 head_num_decoder_layers,
             ),
+            DETRPostProcessor(config.confidence_threshold),
         )
 
         if config.checkpoint:
             model.load_checkpoint(config.checkpoint)
         return model
 
-    def forward(self, images: Tensor) -> dict[str, Tensor]:
+    def forward(self, images: Tensor) -> list[Tensor]:
         """Detect objects in an image.
 
         Args:
@@ -167,4 +173,5 @@ class RTDETR(ModelBase[RTDETRConfig]):
         fmaps = self.backbone(images)
         fmaps = self.neck(fmaps)
         logits, boxes = self.head(fmaps)
-        return dict(logits=logits, boxes=boxes)
+        detections = self.post_processor(logits, boxes, images.shape[2], images.shape[3])
+        return detections

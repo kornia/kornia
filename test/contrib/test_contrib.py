@@ -737,12 +737,10 @@ class TestEdgeDetector:
 class TestObjectDetector:
     def test_smoke(self, device, dtype):
         model = RTDETR.from_config(RTDETRConfig("resnet50", 10, head_num_queries=10))
-        threshold = 0.2
-        detector = kornia.contrib.ObjectDetector(model, threshold).to(device, dtype)
+        detector = kornia.contrib.ObjectDetector(model).to(device, dtype)
         imgs = torch.randn(2, 3, 128, 128, device=device, dtype=dtype)
         out = detector(imgs)
 
         assert len(out) == 2
         for dets in out:
             assert dets.shape[1] == 6
-            assert (dets[:, 1] >= threshold).all()
