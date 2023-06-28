@@ -736,7 +736,7 @@ class TestEdgeDetector:
 
 class TestObjectDetector:
     def test_smoke(self, device, dtype):
-        model = RTDETR.from_config(RTDETRConfig("resnet50", 10, head_num_queries=10))
+        model = RTDETR.from_config(RTDETRConfig("resnet50d", 10, head_num_queries=10)).eval()
         detector = kornia.contrib.ObjectDetector(model).to(device, dtype)
         imgs = torch.randn(2, 3, 128, 128, device=device, dtype=dtype)
         out = detector(imgs)

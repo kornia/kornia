@@ -53,8 +53,7 @@ def test_head(device, dtype):
     sizes = [(32, 24), (16, 12), (8, 6)]
     num_classes = 5
     num_queries = 10
-    decoder = RTDETRHead(num_classes, 32, num_queries, in_channels, 2).to(device, dtype)
-    decoder.eval()  # remove this once training is supported
+    decoder = RTDETRHead(num_classes, 32, num_queries, in_channels, 2).to(device, dtype).eval()
     fmaps = [torch.randn(N, ch_in, h, w, device=device, dtype=dtype) for ch_in, (h, w) in zip(in_channels, sizes)]
 
     logits, boxes = decoder(fmaps)
@@ -75,8 +74,7 @@ def test_regvgg_optimize_for_deployment(device, dtype):
 class TestRTDETR(BaseTester):
     @pytest.mark.parametrize("variant", ("resnet18d", "resnet34d", "resnet50d", "resnet101d", "hgnetv2_l", "hgnetv2_x"))
     def test_smoke(self, variant, device, dtype):
-        model = RTDETR.from_config(RTDETRConfig(variant, 80)).to(device, dtype)
-        model.eval()  # remove this once training is supported
+        model = RTDETR.from_config(RTDETRConfig(variant, 80)).to(device, dtype).eval()
         images = torch.randn(2, 3, 224, 256, device=device, dtype=dtype)
         out = model(images)
 
@@ -89,8 +87,7 @@ class TestRTDETR(BaseTester):
         num_classes = 10
         num_queries = 10
         model = RTDETR.from_config(RTDETRConfig("resnet50d", num_classes, head_num_queries=num_queries))
-        model = model.to(device, dtype)
-        model.eval()  # remove this once training is supported
+        model = model.to(device, dtype).eval()
         images = torch.randn(shape, device=device, dtype=dtype)
         out = model(images)
 
@@ -118,8 +115,7 @@ class TestRTDETR(BaseTester):
         # but fails on GitHub Actions Ubuntu-latest CPU, PyTorch 2.0.0.
         # Perhaps random weights cause outputs to be much more different?
         # Using pre-trained weights might see a smaller difference.
-        model = RTDETR.from_config(RTDETRConfig(variant, 10, head_num_queries=10)).to(device, dtype)
-        model.eval()  # remove this once training is supported
+        model = RTDETR.from_config(RTDETRConfig(variant, 10, head_num_queries=10)).to(device, dtype).eval()
         model_optimized = torch_optimizer(model)
 
         img = torch.rand(1, 3, 224, 256, device=device, dtype=dtype)
