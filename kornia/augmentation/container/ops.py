@@ -202,15 +202,18 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
         """
         if isinstance(module, (K.GeometricAugmentationBase2D,)):
             if isinstance(input, list):
+                tfm_input = []
                 for inp in input:
                     inp = module.transform_tensor(inp)
-                    inp = module.transform_masks(
+                    tfm_inp = module.transform_masks(
                         inp,
                         params=cls.get_instance_module_param(param),
                         flags=module.flags,
                         transform=module.transform_matrix,
                         **extra_args,
                     )
+                    tfm_input.append(tfm_inp)
+                input = tfm_input
 
             else:
                 input = module.transform_masks(
@@ -228,11 +231,14 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
 
         elif isinstance(module, (_AugmentationBase)):
             if isinstance(input, list):
+                tfm_input = []
                 for inp in input:
                     inp = module.transform_tensor(inp)
-                    inp = module.transform_masks(
+                    tfm_inp = module.transform_masks(
                         inp, params=cls.get_instance_module_param(param), flags=module.flags, **extra_args
                     )
+                    tfm_input.append(tfm_inp)
+                input = tfm_input
             else:
                 input = module.transform_masks(
                     input, params=cls.get_instance_module_param(param), flags=module.flags, **extra_args
@@ -240,10 +246,13 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
 
         elif isinstance(module, K.ImageSequential) and not module.is_intensity_only():
             if isinstance(input, list):
+                tfm_input = []
                 for inp in input:
-                    inp = module.transform_masks(
+                    tfm_inp = module.transform_masks(
                         inp, params=cls.get_sequential_module_param(param), extra_args=extra_args
                     )
+                    tfm_input.append(tfm_inp)
+                    input = tfm_input
             else:
                 input = module.transform_masks(
                     input, params=cls.get_sequential_module_param(param), extra_args=extra_args
@@ -251,10 +260,13 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
 
         elif isinstance(module, K.container.ImageSequentialBase):
             if isinstance(input, list):
+                tfm_input = []
                 for inp in input:
-                    inp = module.transform_masks(
+                    tfm_inp = module.transform_masks(
                         inp, params=cls.get_sequential_module_param(param), extra_args=extra_args
                     )
+                    tfm_input.append(tfm_inp)
+                input = tfm_input
             else:
                 input = module.transform_masks(
                     input, params=cls.get_sequential_module_param(param), extra_args=extra_args
@@ -262,9 +274,10 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
 
         elif isinstance(module, (K.auto.operations.OperationBase,)):
             if isinstance(input, list):
-                for inp in input:
-                    inp = MaskSequentialOps.transform(inp, module=module.op, param=param, extra_args=extra_args)
-                return input
+                return [
+                    MaskSequentialOps.transform(inp, module=module.op, param=param, extra_args=extra_args)
+                    for inp in input
+                ]
             else:
                 return MaskSequentialOps.transform(input, module=module.op, param=param, extra_args=extra_args)
         return input
