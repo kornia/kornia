@@ -190,8 +190,8 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
 
     @classmethod
     def transform(
-        cls, input: Tensor | List[Tensor], module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}
-    ) -> Tensor | List[Tensor]:
+        cls, input: Union[Tensor, List[Tensor]], module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}
+    ) -> Union[Tensor, List[Tensor]]:
         """Apply a transformation with respect to the parameters.
 
         Args:
