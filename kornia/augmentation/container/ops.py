@@ -189,7 +189,9 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
     """Apply and inverse transformations for mask tensors."""
 
     @classmethod
-    def transform(cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}) -> Tensor:
+    def transform(
+        cls, input: Tensor | List[Tensor], module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}
+    ) -> Tensor | List[Tensor]:
         """Apply a transformation with respect to the parameters.
 
         Args:
@@ -199,13 +201,26 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
             param: the corresponding parameters to the module.
         """
         if isinstance(module, (K.GeometricAugmentationBase2D,)):
-            input = module.transform_masks(
-                input,
-                params=cls.get_instance_module_param(param),
-                flags=module.flags,
-                transform=module.transform_matrix,
-                **extra_args,
-            )
+            if isinstance(input, list):
+                for inp in input:
+                    inp = module.transform_tensor(inp)
+                    inp = module.transform_masks(
+                        inp,
+                        params=cls.get_instance_module_param(param),
+                        flags=module.flags,
+                        transform=module.transform_matrix,
+                        **extra_args,
+                    )
+                    inp = inp.squeeze(0)
+
+            else:
+                input = module.transform_masks(
+                    input,
+                    params=cls.get_instance_module_param(param),
+                    flags=module.flags,
+                    transform=module.transform_matrix,
+                    **extra_args,
+                )
 
         elif isinstance(module, (K.GeometricAugmentationBase3D,)):
             raise NotImplementedError(
@@ -213,18 +228,47 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
             )
 
         elif isinstance(module, (_AugmentationBase)):
-            input = module.transform_masks(
-                input, params=cls.get_instance_module_param(param), flags=module.flags, **extra_args
-            )
+            if isinstance(input, list):
+                for inp in input:
+                    inp = module.transform_tensor(inp)
+                    inp = module.transform_masks(
+                        inp, params=cls.get_instance_module_param(param), flags=module.flags, **extra_args
+                    )
+                    inp = inp.squeeze(0)
+            else:
+                input = module.transform_masks(
+                    input, params=cls.get_instance_module_param(param), flags=module.flags, **extra_args
+                )
 
         elif isinstance(module, K.ImageSequential) and not module.is_intensity_only():
-            input = module.transform_masks(input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
+            if isinstance(input, list):
+                for inp in input:
+                    inp = module.transform_masks(
+                        inp, params=cls.get_sequential_module_param(param), extra_args=extra_args
+                    )
+            else:
+                input = module.transform_masks(
+                    input, params=cls.get_sequential_module_param(param), extra_args=extra_args
+                )
 
         elif isinstance(module, K.container.ImageSequentialBase):
-            input = module.transform_masks(input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
+            if isinstance(input, list):
+                for inp in input:
+                    inp = module.transform_masks(
+                        inp, params=cls.get_sequential_module_param(param), extra_args=extra_args
+                    )
+            else:
+                input = module.transform_masks(
+                    input, params=cls.get_sequential_module_param(param), extra_args=extra_args
+                )
 
         elif isinstance(module, (K.auto.operations.OperationBase,)):
-            return MaskSequentialOps.transform(input, module=module.op, param=param, extra_args=extra_args)
+            if isinstance(input, list):
+                for inp in input:
+                    inp = MaskSequentialOps.transform(inp, module=module.op, param=param, extra_args=extra_args)
+                return input
+            else:
+                return MaskSequentialOps.transform(input, module=module.op, param=param, extra_args=extra_args)
         return input
 
     @classmethod
