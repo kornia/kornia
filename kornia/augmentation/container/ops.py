@@ -211,7 +211,6 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
                         transform=module.transform_matrix,
                         **extra_args,
                     )
-                    inp = inp.squeeze(0)
 
             else:
                 input = module.transform_masks(
@@ -234,7 +233,6 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
                     inp = module.transform_masks(
                         inp, params=cls.get_instance_module_param(param), flags=module.flags, **extra_args
                     )
-                    inp = inp.squeeze(0)
             else:
                 input = module.transform_masks(
                     input, params=cls.get_instance_module_param(param), flags=module.flags, **extra_args
