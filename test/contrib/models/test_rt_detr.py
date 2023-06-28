@@ -54,6 +54,7 @@ def test_head(device, dtype):
     num_classes = 5
     num_queries = 10
     decoder = RTDETRHead(num_classes, 32, num_queries, in_channels, 2).to(device, dtype)
+    decoder.eval()  # remove this once training is supported
     fmaps = [torch.randn(N, ch_in, h, w, device=device, dtype=dtype) for ch_in, (h, w) in zip(in_channels, sizes)]
 
     logits, boxes = decoder(fmaps)
@@ -75,6 +76,7 @@ class TestRTDETR(BaseTester):
     @pytest.mark.parametrize("variant", ("resnet18", "resnet34", "resnet50", "resnet101", "hgnetv2_l", "hgnetv2_x"))
     def test_smoke(self, variant, device, dtype):
         model = RTDETR.from_config(RTDETRConfig(variant, 80)).to(device, dtype)
+        model.eval()  # remove this once training is supported
         images = torch.randn(2, 3, 224, 256, device=device, dtype=dtype)
         out = model(images)
 
@@ -88,6 +90,7 @@ class TestRTDETR(BaseTester):
         num_queries = 10
         model = RTDETR.from_config(RTDETRConfig("resnet50", num_classes, head_num_queries=num_queries))
         model = model.to(device, dtype)
+        model.eval()  # remove this once training is supported
         images = torch.randn(shape, device=device, dtype=dtype)
         out = model(images)
 
@@ -116,6 +119,7 @@ class TestRTDETR(BaseTester):
         # Perhaps random weights cause outputs to be much more different?
         # Using pre-trained weights might see a smaller difference.
         model = RTDETR.from_config(RTDETRConfig(variant, 10, head_num_queries=10)).to(device, dtype)
+        model.eval()  # remove this once training is supported
         model_optimized = torch_optimizer(model)
 
         img = torch.rand(1, 3, 224, 256, device=device, dtype=dtype)
@@ -133,7 +137,7 @@ class TestRTDETR(BaseTester):
     @pytest.mark.parametrize("variant", ("resnet50", "hgnetv2_l"))
     def test_onnx(self, variant, tmp_path, dtype):
         # NOTE: correctness check is not included
-        model = RTDETR.from_config(RTDETRConfig(variant, 80)).to(dtype)
+        model = RTDETR.from_config(RTDETRConfig(variant, 80)).to(dtype).eval()
         img = torch.rand(1, 3, 224, 256, dtype=dtype)
         onnx_path = str(tmp_path / "rtdetr.onnx")
 

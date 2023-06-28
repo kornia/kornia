@@ -160,6 +160,10 @@ class RTDETRHead(Module):
             self.dec_bbox_head.append(MLP(hidden_dim, hidden_dim, 4, 3))
 
     def forward(self, fmaps: list[Tensor]) -> tuple[Tensor, Tensor]:
+        # NOTE: remove this once training is supported
+        if self.training:
+            raise RuntimeError("Only evaluation mode is supported. Please call model.eval().")
+
         N = fmaps[0].shape[0]
         fmaps = [proj(fmap) for proj, fmap in zip(self.input_proj, fmaps)]
         spatial_shapes = [(fmap.shape[2], fmap.shape[3]) for fmap in fmaps]
