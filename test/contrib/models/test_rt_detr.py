@@ -73,7 +73,7 @@ def test_regvgg_optimize_for_deployment(device, dtype):
 
 
 class TestRTDETR(BaseTester):
-    @pytest.mark.parametrize("variant", ("resnet18", "resnet34", "resnet50", "resnet101", "hgnetv2_l", "hgnetv2_x"))
+    @pytest.mark.parametrize("variant", ("resnet18d", "resnet34d", "resnet50d", "resnet101d", "hgnetv2_l", "hgnetv2_x"))
     def test_smoke(self, variant, device, dtype):
         model = RTDETR.from_config(RTDETRConfig(variant, 80)).to(device, dtype)
         model.eval()  # remove this once training is supported
@@ -88,7 +88,7 @@ class TestRTDETR(BaseTester):
     def test_cardinality(self, shape, device, dtype):
         num_classes = 10
         num_queries = 10
-        model = RTDETR.from_config(RTDETRConfig("resnet50", num_classes, head_num_queries=num_queries))
+        model = RTDETR.from_config(RTDETRConfig("resnet50d", num_classes, head_num_queries=num_queries))
         model = model.to(device, dtype)
         model.eval()  # remove this once training is supported
         images = torch.randn(shape, device=device, dtype=dtype)
@@ -112,7 +112,7 @@ class TestRTDETR(BaseTester):
         ...
 
     @pytest.mark.skip("Needs more investigation")
-    @pytest.mark.parametrize("variant", ("resnet50", "hgnetv2_l"))
+    @pytest.mark.parametrize("variant", ("resnet50d", "hgnetv2_l"))
     def test_dynamo(self, variant, device, dtype, torch_optimizer):
         # NOTE: This test passes on Mac M1 CPU, PyTorch 2.0.0,
         # but fails on GitHub Actions Ubuntu-latest CPU, PyTorch 2.0.0.
@@ -134,7 +134,7 @@ class TestRTDETR(BaseTester):
         reason="aten::scaled_dot_product_attention cannot be exported to ONNX. See https://github.com/pytorch/pytorch/issues/97262",
     )  # remove this once the fix is released to stable
     @pytest.mark.skipif(not hasattr(torch.onnx, "symbolic_opset16"), reason="F.grid_sample() requires ONNX opset 16")
-    @pytest.mark.parametrize("variant", ("resnet50", "hgnetv2_l"))
+    @pytest.mark.parametrize("variant", ("resnet50d", "hgnetv2_l"))
     def test_onnx(self, variant, tmp_path, dtype):
         # NOTE: correctness check is not included
         model = RTDETR.from_config(RTDETRConfig(variant, 80)).to(dtype).eval()
