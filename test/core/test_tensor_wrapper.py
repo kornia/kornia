@@ -1,3 +1,5 @@
+# ruff: noqa: PLR0124
+
 import pytest
 import torch
 
