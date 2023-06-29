@@ -24,7 +24,7 @@ class ObjectDetector(Module):
             number of detections in the given image, :math:`6` represents class id, score, and `xywh` bounding box.
         """
         # NOTE: also supports other input format? e.g. PIL Image
-        original_sizes = [img.shape[-2:] for img in imgs]
+        original_sizes = [(img.shape[1], img.shape[2]) for img in imgs]
         resized_imgs = [F.interpolate(img.unsqueeze(0), self.eval_size, mode=self.interpolation_mode) for img in imgs]
         return self.model(concatenate(resized_imgs), original_sizes)
 
@@ -38,7 +38,7 @@ class ObjectDetector(Module):
         options: dict[str, str | int | bool] | None = None,
         disable: bool = False,
     ) -> None:
-        self.model = torch.compile(
+        self.model = torch.compile(  # type: ignore
             self.model,
             fullgraph=fullgraph,
             dynamic=dynamic,

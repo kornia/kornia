@@ -174,7 +174,7 @@ class RTDETR(ModelBase[RTDETRConfig]):
             raise RuntimeError("Only evaluation mode is supported. Please call model.eval().")
 
         if original_sizes is None:
-            original_sizes = [images.shape[-2:]] * images.shape[0]
+            original_sizes = [(images.shape[2], images.shape[3])] * images.shape[0]
 
         fmaps = self.backbone(images)
         fmaps = self.neck(fmaps)
