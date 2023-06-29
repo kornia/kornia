@@ -195,7 +195,7 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
         """Apply a transformation with respect to the parameters.
 
         Args:
-            input: the input tensor.
+            input: the input tensor or list of tensors.
             module: any torch Module but only kornia augmentation modules will count
                 to apply transformations.
             param: the corresponding parameters to the module.
@@ -243,9 +243,9 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
         elif isinstance(module, K.ImageSequential) and not module.is_intensity_only():
             if isinstance(input, list):
                 tfm_input = []
-                params = cls.get_sequential_module_param(param)
+                seq_params = cls.get_sequential_module_param(param)
                 for inp in input:
-                    tfm_inp = module.transform_masks(inp, params=params, extra_args=extra_args)
+                    tfm_inp = module.transform_masks(inp, params=seq_params, extra_args=extra_args)
                     tfm_input.append(tfm_inp)
                     input = tfm_input
             else:
@@ -256,9 +256,9 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
         elif isinstance(module, K.container.ImageSequentialBase):
             if isinstance(input, list):
                 tfm_input = []
-                params = cls.get_sequential_module_param(param)
+                seq_params = cls.get_sequential_module_param(param)
                 for inp in input:
-                    tfm_inp = module.transform_masks(inp, params=params, extra_args=extra_args)
+                    tfm_inp = module.transform_masks(inp, params=seq_params, extra_args=extra_args)
                     tfm_input.append(tfm_inp)
                 input = tfm_input
             else:
