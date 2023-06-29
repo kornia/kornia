@@ -1,5 +1,3 @@
-# ruff: noqa: PLR0124
-
 import pytest
 import torch
 
@@ -68,6 +66,8 @@ class TestTensorWrapper(BaseTester):
     def test_unary_ops(self, device, dtype):
         data = torch.rand(2, device=device, dtype=dtype)
         x = TensorWrapper(data)
+        x1 = TensorWrapper(data)
+        x2 = TensorWrapper(data)
 
         self.assert_close(x.add(x), x + x)
         self.assert_close(x.add(1), 1 + x)
@@ -80,12 +80,12 @@ class TestTensorWrapper(BaseTester):
         self.assert_close(x.div(x), x / x)
         self.assert_close(x.true_divide(x), x / x)
         self.assert_close(x.floor_divide(x), x // x)
-        self.assert_close(x.ge(x), x >= x)
-        self.assert_close(x.gt(x), x > x)
-        self.assert_close(x.lt(x), x < x)
-        self.assert_close(x.le(x), x <= x)
-        self.assert_close(x.eq(x), x == x)
-        self.assert_close(x.ne(x), x != x)
+        self.assert_close(x1.ge(x2), x1 >= x2)
+        self.assert_close(x1.gt(x2), x1 > x2)
+        self.assert_close(x1.lt(x2), x1 < x2)
+        self.assert_close(x1.le(x2), x1 <= x2)
+        self.assert_close(x1.eq(x2), x1 == x2)
+        self.assert_close(x1.ne(x2), x1 != x2)
         self.assert_close(-x, -data)
 
     def test_callable(self, device, dtype):
