@@ -160,7 +160,7 @@ class RTDETR(ModelBase[RTDETRConfig]):
             model.load_checkpoint(config.checkpoint)
         return model
 
-    def forward(self, images: Tensor) -> list[Tensor]:
+    def forward(self, images: Tensor, original_sizes: list[tuple[int, int]] | None = None) -> list[Tensor]:
         """Detect objects in an image.
 
         Args:
@@ -170,8 +170,14 @@ class RTDETR(ModelBase[RTDETRConfig]):
             Object detection results, in format class id, score, bounding box xywh. Shape :math:`(N, D, 6)`,
             where :math:`D` is the number of detections.
         """
+        if self.training:
+            raise RuntimeError("Only evaluation mode is supported. Please call model.eval().")
+
+        if original_sizes is None:
+            original_sizes = [images.shape[-2:]] * images.shape[0]
+
         fmaps = self.backbone(images)
         fmaps = self.neck(fmaps)
         logits, boxes = self.head(fmaps)
-        detections = self.post_processor(logits, boxes, images.shape[2], images.shape[3])
+        detections = self.post_processor(logits, boxes, original_sizes)
         return detections

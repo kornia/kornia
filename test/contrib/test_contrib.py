@@ -736,11 +736,13 @@ class TestEdgeDetector:
 
 class TestObjectDetector:
     def test_smoke(self, device, dtype):
+        batch_size = 3
         model = RTDETR.from_config(RTDETRConfig("resnet50d", 10, head_num_queries=10)).eval()
-        detector = kornia.contrib.ObjectDetector(model).to(device, dtype)
-        imgs = torch.randn(2, 3, 128, 128, device=device, dtype=dtype)
+        detector = kornia.contrib.ObjectDetector(model, 128).to(device, dtype)
+        sizes = torch.randint(5, 10, (batch_size, 2)) * 32
+        imgs = [torch.randn(3, h, w, device=device, dtype=dtype) for h, w in sizes]
         out = detector(imgs)
 
-        assert len(out) == 2
+        assert len(out) == batch_size
         for dets in out:
             assert dets.shape[1] == 6
