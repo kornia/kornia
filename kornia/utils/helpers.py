@@ -38,8 +38,8 @@ def get_mps_device_if_available() -> torch.device:
     dev = 'cpu'
     if hasattr(torch.backends, 'mps'):
         if torch.backends.mps.is_available():
-            dev ='mps'
-    return torch.device(dev) 
+            dev = 'mps'
+    return torch.device(dev)
 
 
 @overload
