@@ -1,5 +1,5 @@
 from typing import Any, Dict, List, Optional, Union
-import os
+import sys
 import platform
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
