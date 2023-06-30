@@ -28,6 +28,21 @@ def get_cuda_device_if_available(index: int = 0) -> torch.device:
         dev = torch.device('cpu')
     return dev
 
+def get_mps_device_if_available() -> torch.device:
+    """Tries to get mps device, if fail, returns cpu.
+
+    Returns:
+        torch.device
+    """
+    try:
+        if torch.backends.mps.is_available():
+            dev = torch.device('mps')
+        else:
+            dev = torch.device('cpu')
+    except BaseException as e:  # noqa: F841
+        dev = torch.device('cpu')
+    return dev
+
 
 @overload
 def map_location_to_cpu(storage: Tensor, location: str) -> Tensor:
