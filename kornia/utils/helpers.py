@@ -28,6 +28,7 @@ def get_cuda_device_if_available(index: int = 0) -> torch.device:
         dev = torch.device('cpu')
     return dev
 
+
 def get_mps_device_if_available() -> torch.device:
     """Tries to get mps device, if fail, returns cpu.
 
