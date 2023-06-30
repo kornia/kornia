@@ -2,6 +2,8 @@ import warnings
 from functools import wraps
 from inspect import isclass, isfunction
 from typing import TYPE_CHECKING, Any, Callable, List, Optional, Tuple, Union, overload
+import platform
+import sys
 
 import torch
 from torch.linalg import inv_ex
@@ -40,6 +42,17 @@ def get_mps_device_if_available() -> torch.device:
         if torch.backends.mps.is_available():
             dev = 'mps'
     return torch.device(dev)
+
+def get_cuda_or_mps_device_if_available() -> torch.device:
+    """Checks OS and platform and runs get_cuda_device_if_available or get_mps_device_if_available.
+
+    Returns:
+        torch.device
+    """
+    if sys.platform == "darwin" and platform.machine() == "arm64":
+        return get_mps_device_if_available()
+    else:
+        return get_cuda_device_if_available()
 
 
 @overload
