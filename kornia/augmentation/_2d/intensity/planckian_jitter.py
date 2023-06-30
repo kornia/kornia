@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional, Union
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.core import Tensor, stack, tensor
-from kornia.utils import get_cuda_device_if_available, get_cuda_or_mps_device_if_available
+from kornia.utils import get_cuda_or_mps_device_if_available
 
 
 def get_planckian_coeffs(mode: str) -> Tensor:
