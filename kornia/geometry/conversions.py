@@ -419,7 +419,7 @@ def rotation_matrix_to_quaternion(
         eps: float = torch.finfo(numerator.dtype).tiny
         return numerator / torch.clamp(denominator, min=eps)
 
-    rotation_matrix_vec: Tensor = rotation_matrix.view(*rotation_matrix.shape[:-2], 9)
+    rotation_matrix_vec: Tensor = rotation_matrix.reshape(*rotation_matrix.shape[:-2], 9)
 
     m00, m01, m02, m10, m11, m12, m20, m21, m22 = torch.chunk(rotation_matrix_vec, chunks=9, dim=-1)
 
@@ -566,7 +566,7 @@ def quaternion_to_rotation_matrix(
     tzz: Tensor = tz * z
     one: Tensor = tensor(1.0)
 
-    matrix: Tensor = stack(
+    matrix_flat: Tensor = stack(
         (
             one - (tyy + tzz),
             txy - twz,
@@ -579,10 +579,12 @@ def quaternion_to_rotation_matrix(
             one - (txx + tyy),
         ),
         dim=-1,
-    ).view(-1, 3, 3)
+    )
 
-    if len(quaternion.shape) == 1:
-        matrix = torch.squeeze(matrix, dim=0)
+    # this slightly awkward construction of the output shape is to satisfy torchscript
+    output_shape = list(quaternion.shape[:-1]) + [3, 3]
+    matrix = matrix_flat.reshape(output_shape)
+
     return matrix
 
 
