@@ -107,7 +107,7 @@ class AugmentationSequentialOps:
             op = self._get_op(dcate)
             extra_arg = extra_args[dcate] if dcate in extra_args else {}
             if dcate.name == "MASK" and isinstance(inp, list):
-                outputs.append(op.transform_list(inp, module, param=param, extra_args=extra_arg))
+                outputs.append(MaskSequentialOps.transform_list(inp, module, param=param, extra_args=extra_arg))
             else:
                 outputs.append(op.transform(inp, module, param=param, extra_args=extra_arg))
         if len(outputs) == 1 and isinstance(outputs, (list, tuple)):
