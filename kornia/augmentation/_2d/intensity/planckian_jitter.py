@@ -1,6 +1,6 @@
-from typing import Any, Dict, List, Optional, Union
-import os
 import platform
+from typing import Any, Dict, List, Optional, Union
+
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.core import Tensor, stack, tensor
