@@ -1,6 +1,8 @@
 from typing import Any, Dict, List, Optional, Union
 import sys
 import platform
+from typing import Any, Dict, List, Optional, Union
+
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.core import Tensor, stack, tensor
@@ -171,7 +173,8 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         _param_min: float = 0.0
         _param_max: float = float(self.pl.shape[0])
 
-        self._param_generator = rg.PlanckianJitterGenerator([_param_min, _param_max])
+        self._param_generator = rg.PlanckianJitterGenerator(
+            [_param_min, _param_max])
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
