@@ -35,14 +35,11 @@ def get_mps_device_if_available() -> torch.device:
     Returns:
         torch.device
     """
-    try:
+    dev = 'cpu'
+    if hasattr(torch.backends, 'mps'):
         if torch.backends.mps.is_available():
-            dev = torch.device('mps')
-        else:
-            dev = torch.device('cpu')
-    except BaseException as e:  # noqa: F841
-        dev = torch.device('cpu')
-    return dev
+            dev ='mps'
+    return torch.device(dev) 
 
 
 @overload
