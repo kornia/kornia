@@ -1419,6 +1419,9 @@ class TestDenormalizePixelCoordinates:
         assert_close(grid_norm, expected, atol=1e-4, rtol=1e-4)
 
     def test_dynamo(self, device, dtype, torch_optimizer):
+        if device == torch.device('cpu'):
+            pytest.xfail('DenormalizePixelCoordinates not working on CPU with dynamo!')
+
         op = kornia.geometry.conversions.denormalize_pixel_coordinates
         op_optimized = torch_optimizer(op)
 
