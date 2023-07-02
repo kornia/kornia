@@ -269,7 +269,7 @@ def run_7point(points1: Tensor, points2: Tensor) -> Tensor:
     # X * Fmat = 0 is singular (7 equations for 9 variables)
     # solving for nullspace of X to get two F
     ####### unstable failing gradcheck
-   # _, _, v = torch.linalg.svd(X)
+    # _, _, v = torch.linalg.svd(X)
     _, _, v = _torch_svd_cast(X)
 
     # last two singular vector as a basic of the space
