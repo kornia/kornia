@@ -163,8 +163,8 @@ class TestFindHomographyDLT:
 
     @pytest.mark.parametrize("batch_size, num_points", [(1, 4), (2, 5), (3, 6)])
     def test_shape(self, batch_size, num_points, device, dtype):
-        # TODO: test fails on macos with pytorch 1.9.1
-        if sys.platform == 'darwin' and torch.__version__ == '1.9.1':
+        # TODO: test fails on macos with pytorch 1.9.1 and python 3.8
+        if sys.platform == 'darwin' and torch.__version__ == '1.9.1' and sys.version_info >= (3, 8):
             pytest.skip("test fails on macos")
         B, N = batch_size, num_points
         points1 = torch.rand(B, N, 2, device=device, dtype=dtype)
