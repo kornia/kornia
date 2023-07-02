@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 
 from kornia.core import Tensor, tensor
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.utils.one_hot import one_hot
 
 # based on:
@@ -16,10 +16,11 @@ from kornia.utils.one_hot import one_hot
 def focal_loss(
     input: Tensor,
     target: Tensor,
-    alpha: float | Tensor | None,
+    alpha: float | None,
     gamma: float = 2.0,
     reduction: str = 'none',
     eps: float | None = None,
+    weight: Tensor | None = None,
 ) -> Tensor:
     r"""Criterion that computes Focal loss.
 
@@ -34,17 +35,17 @@ def focal_loss(
 
     Args:
         input: logits tensor with shape :math:`(N, C, *)` where C = number of classes.
-        target: labels tensor with shape :math:`(N, *)` where each value is :math:`0 ≤ targets[i] ≤ C−1`.
-        alpha: If `alpha` is `float`, used as weighting factor :math:`\alpha \in [0, 1]`.
-          If `alpha` is `torch.Tensor`, used as the weights for classes,
-          and the size of `alpha` should be (num_of_classes,).
+        target: labels tensor with shape :math:`(N, *)` where each value is an integer
+          representing correct classification :math:`0 ≤ targets[i] ≤ C−1`.
+        alpha: Weighting factor :math:`\alpha \in [0, 1]`.
         gamma: Focusing parameter :math:`\gamma >= 0`.
         reduction: Specifies the reduction to apply to the
           output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
           will be applied, ``'mean'``: the sum of the output will be divided by
           the number of elements in the output, ``'sum'``: the output will be
           summed.
-        eps: Deprecated: scalar to enforce numerical stabiliy. This is no longer used.
+        eps: Deprecated: scalar to enforce numerical stability. This is no longer used.
+        weight: weights for classes with shape :math:`(num_of_classes,)`.
 
     Return:
         the computed loss.
@@ -65,16 +66,15 @@ def focal_loss(
         )
 
     KORNIA_CHECK_SHAPE(input, ["B", "C", "*"])
-
-    n = input.shape[0]
-    out_size = (n,) + input.shape[2:]
-
-    KORNIA_CHECK(target.shape[1:] == input.shape[2:], f'Expected target size {out_size}, got {target.size()}')
+    out_size = (input.shape[0],) + input.shape[2:]
+    KORNIA_CHECK(
+        (input.shape[0] == target.shape[0] and target.shape[1:] == input.shape[2:]),
+        f'Expected target size {out_size}, got {target.shape}',
+    )
     KORNIA_CHECK(
         input.device == target.device,
         f"input and target must be in the same device. Got: {input.device} and {target.device}",
     )
-    KORNIA_CHECK_TYPE(alpha, (float, Tensor, None))
 
     # create the labels one hot tensor
     target_one_hot: Tensor = one_hot(target, num_classes=input.shape[1], device=input.device, dtype=input.dtype)
@@ -83,20 +83,28 @@ def focal_loss(
     log_input_soft: Tensor = input.log_softmax(1)
 
     # compute the actual focal loss
-    loss_tmp = -torch.pow(1.0 - log_input_soft.exp(), gamma) * log_input_soft * target_one_hot
-    if alpha is not None:
-        num_of_classes = input.shape[1]
-        if isinstance(alpha, float):
-            alpha_fac = tensor(
-                [1 - alpha] + [alpha] * (num_of_classes - 1), dtype=loss_tmp.dtype, device=loss_tmp.device
-            )
-        else:
-            KORNIA_CHECK_SHAPE(alpha, [str(num_of_classes)], "`alpha` shape must be (num_of_classes,)!")
-            alpha_fac = alpha.to(loss_tmp)
+    loss_tmp: Tensor = -torch.pow(1.0 - log_input_soft.exp(), gamma) * log_input_soft * target_one_hot
 
-        boradcast_dims = [-1] + [1] * len(input.shape[2:])
+    num_of_classes = input.shape[1]
+    boradcast_dims = [-1] + [1] * len(input.shape[2:])
+    if alpha is not None:
+        alpha_fac = tensor([1 - alpha] + [alpha] * (num_of_classes - 1), dtype=loss_tmp.dtype, device=loss_tmp.device)
         alpha_fac = alpha_fac.view(boradcast_dims)
         loss_tmp = loss_tmp * alpha_fac
+
+    if weight is not None:
+        KORNIA_CHECK_IS_TENSOR(weight, "weight must be Tensor or None.")
+        KORNIA_CHECK(
+            (weight.shape[0] == num_of_classes and weight.numel() == num_of_classes),
+            f'weight shape must be (num_of_classes,): ({num_of_classes},), got {weight.shape}',
+        )
+        KORNIA_CHECK(
+            weight.device == input.device,
+            f"weight and input must be in the same device. Got: {weight.device} and {input.device}",
+        )
+
+        weight = weight.view(boradcast_dims)
+        loss_tmp = weight * loss_tmp
 
     loss_tmp = loss_tmp.sum(1)
     if reduction == 'none':
@@ -123,22 +131,20 @@ class FocalLoss(nn.Module):
        - :math:`p_t` is the model's estimated probability for each class.
 
     Args:
-        alpha: If `alpha` is `float`, used as weighting factor :math:`\alpha \in [0, 1]`.
-          If `alpha` is `torch.Tensor`, used as the weights for classes,
-          and the size of `alpha` should be (num_of_classes,).
+        alpha: Weighting factor :math:`\alpha \in [0, 1]`.
         gamma: Focusing parameter :math:`\gamma >= 0`.
         reduction: Specifies the reduction to apply to the
           output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
           will be applied, ``'mean'``: the sum of the output will be divided by
           the number of elements in the output, ``'sum'``: the output will be
           summed.
-        eps: Deprecated: scalar to enforce numerical stability. This is no longer
-          used.
+        eps: Deprecated: scalar to enforce numerical stability. This is no longer used.
+        weight: weights for classes with shape :math:`(num_of_classes,)`.
 
     Shape:
         - Input: :math:`(N, C, *)` where C = number of classes.
-        - Target: :math:`(N, *)` where each value is
-          :math:`0 ≤ targets[i] ≤ C−1`.
+        - Target: :math:`(N, *)` where each value is an integer
+          representing correct classification :math:`0 ≤ targets[i] ≤ C−1`.
 
     Example:
         >>> N = 5  # num_classes
@@ -151,16 +157,22 @@ class FocalLoss(nn.Module):
     """
 
     def __init__(
-        self, alpha: float | None, gamma: float = 2.0, reduction: str = 'none', eps: float | None = None
+        self,
+        alpha: float | None,
+        gamma: float = 2.0,
+        reduction: str = 'none',
+        eps: float | None = None,
+        weight: Tensor | None = None,
     ) -> None:
         super().__init__()
         self.alpha: float | None = alpha
         self.gamma: float = gamma
         self.reduction: str = reduction
         self.eps: float | None = eps
+        self.weight: Tensor | None = weight
 
     def forward(self, input: Tensor, target: Tensor) -> Tensor:
-        return focal_loss(input, target, self.alpha, self.gamma, self.reduction, self.eps)
+        return focal_loss(input, target, self.alpha, self.gamma, self.reduction, self.eps, self.weight)
 
 
 def binary_focal_loss_with_logits(
@@ -171,8 +183,11 @@ def binary_focal_loss_with_logits(
     reduction: str = 'none',
     eps: float | None = None,
     pos_weight: Tensor | None = None,
+    weight: Tensor | None = None,
 ) -> Tensor:
-    r"""Function that computes Binary Focal loss.
+    r"""Criterion that computes Binary Focal loss.
+
+    According to :cite:`lin2018focal`, the Focal loss is computed as follows:
 
     .. math::
 
@@ -182,9 +197,10 @@ def binary_focal_loss_with_logits(
        - :math:`p_t` is the model's estimated probability for each class.
 
     Args:
-        input: input data tensor of arbitrary shape.
-        target: the target tensor with shape matching input.
-        alpha: Weighting factor for the rare class :math:`\alpha \in [0, 1]`.
+        input: logits tensor with shape :math:`(N, C, *)` where C = number of classes.
+        target: labels tensor with the same shape as input :math:`(N, C, *)`
+          where each value is :math:`0.` or :math:`1.`.
+        alpha: Weighting factor :math:`\alpha \in [0, 1]`.
         gamma: Focusing parameter :math:`\gamma >= 0`.
         reduction: Specifies the reduction to apply to the
           output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
@@ -192,9 +208,9 @@ def binary_focal_loss_with_logits(
           the number of elements in the output, ``'sum'``: the output will be
           summed.
         eps: Deprecated: scalar for numerically stability when dividing. This is no longer used.
-        pos_weight: a weight of positive examples.
+        pos_weight: a weight of positive examples with shape :math:`(num_of_classes,)`.
           It’s possible to trade off recall and precision by adding weights to positive examples.
-          Must be a vector with length equal to the number of classes.
+        weight: weights for classes with shape :math:`(num_of_classes,)`.
 
     Returns:
         the computed loss.
@@ -216,31 +232,51 @@ def binary_focal_loss_with_logits(
         )
 
     KORNIA_CHECK_SHAPE(input, ["B", "C", "*"])
+    KORNIA_CHECK(input.shape == target.shape, f'Expected target size {input.shape}, got {target.shape}')
     KORNIA_CHECK(
-        input.shape[0] == target.shape[0],
-        f'Expected input batch_size ({input.shape[0]}) to match target batch_size ({target.shape[0]}).',
+        input.device == target.device,
+        f"input and target must be in the same device. Got: {input.device} and {target.device}",
     )
 
-    if pos_weight is None:
-        pos_weight = torch.ones([input.shape[1], *([1] * len(input.shape[2:]))], device=input.device, dtype=input.dtype)
+    log_probs_pos: Tensor = nn.functional.logsigmoid(input)
+    log_probs_neg: Tensor = nn.functional.logsigmoid(-input)
 
-    KORNIA_CHECK_IS_TENSOR(pos_weight)
-    KORNIA_CHECK(input.shape[1] == pos_weight.shape[0], "Expected pos_weight equals number of classes.")
+    pos_term: Tensor = -log_probs_neg.exp().pow(gamma) * target * log_probs_pos
+    neg_term: Tensor = -log_probs_pos.exp().pow(gamma) * (1.0 - target) * log_probs_neg
+    if alpha is not None:
+        pos_term = alpha * pos_term
+        neg_term = (1.0 - alpha) * neg_term
 
-    log_probs_pos = nn.functional.logsigmoid(input)
-    log_probs_neg = nn.functional.logsigmoid(-input)
-
-    # the alpha term is not extracted to save operations
-    if alpha is None:
-        loss_tmp = (
-            -pos_weight * log_probs_neg.exp().pow(gamma) * target * log_probs_pos
-            - log_probs_pos.exp().pow(gamma) * (1.0 - target) * log_probs_neg
+    num_of_classes = input.shape[1]
+    boradcast_dims = [-1] + [1] * len(input.shape[2:])
+    if pos_weight is not None:
+        KORNIA_CHECK_IS_TENSOR(pos_weight, "pos_weight must be Tensor or None.")
+        KORNIA_CHECK(
+            (pos_weight.shape[0] == num_of_classes and pos_weight.numel() == num_of_classes),
+            f'pos_weight shape must be (num_of_classes,): ({num_of_classes},), got {pos_weight.shape}',
         )
-    else:
-        loss_tmp = (
-            -alpha * pos_weight * log_probs_neg.exp().pow(gamma) * target * log_probs_pos
-            - (1.0 - alpha) * log_probs_pos.exp().pow(gamma) * (1.0 - target) * log_probs_neg
+        KORNIA_CHECK(
+            pos_weight.device == input.device,
+            f"pos_weight and input must be in the same device. Got: {pos_weight.device} and {input.device}",
         )
+
+        pos_weight = pos_weight.view(boradcast_dims)
+        pos_term = pos_weight * pos_term
+
+    loss_tmp: Tensor = pos_term + neg_term
+    if weight is not None:
+        KORNIA_CHECK_IS_TENSOR(weight, "weight must be Tensor or None.")
+        KORNIA_CHECK(
+            (weight.shape[0] == num_of_classes and weight.numel() == num_of_classes),
+            f'weight shape must be (num_of_classes,): ({num_of_classes},), got {weight.shape}',
+        )
+        KORNIA_CHECK(
+            weight.device == input.device,
+            f"weight and input must be in the same device. Got: {weight.device} and {input.device}",
+        )
+
+        weight = weight.view(boradcast_dims)
+        loss_tmp = weight * loss_tmp
 
     if reduction == 'none':
         loss = loss_tmp
@@ -266,20 +302,21 @@ class BinaryFocalLossWithLogits(nn.Module):
        - :math:`p_t` is the model's estimated probability for each class.
 
     Args:
-        alpha: Weighting factor for the rare class :math:`\alpha \in [0, 1]`.
+        alpha: Weighting factor :math:`\alpha \in [0, 1]`.
         gamma: Focusing parameter :math:`\gamma >= 0`.
         reduction: Specifies the reduction to apply to the
           output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction
           will be applied, ``'mean'``: the sum of the output will be divided by
           the number of elements in the output, ``'sum'``: the output will be
           summed.
-        pos_weight: a weight of positive examples.
+        pos_weight: a weight of positive examples with shape :math:`(num_of_classes,)`.
           It’s possible to trade off recall and precision by adding weights to positive examples.
-          Must be a vector with length equal to the number of classes.
+        weight: weights for classes with shape :math:`(num_of_classes,)`.
 
     Shape:
-        - Input: :math:`(N, *)`.
-        - Target: :math:`(N, *)`.
+        - Input: :math:`(N, C, *)` where C = number of classes.
+        - Target: the same shape as Input :math:`(N, C, *)`
+          where each value is :math:`0.` or :math:`1.`.
 
     Examples:
         >>> kwargs = {"alpha": 0.25, "gamma": 2.0, "reduction": 'mean'}
@@ -291,15 +328,21 @@ class BinaryFocalLossWithLogits(nn.Module):
     """
 
     def __init__(
-        self, alpha: float | None, gamma: float = 2.0, reduction: str = 'none', pos_weight: Tensor | None = None
+        self,
+        alpha: float | None,
+        gamma: float = 2.0,
+        reduction: str = 'none',
+        pos_weight: Tensor | None = None,
+        weight: Tensor | None = None,
     ) -> None:
         super().__init__()
         self.alpha: float | None = alpha
         self.gamma: float = gamma
         self.reduction: str = reduction
         self.pos_weight: Tensor | None = pos_weight
+        self.weight: Tensor | None = weight
 
     def forward(self, input: Tensor, target: Tensor) -> Tensor:
         return binary_focal_loss_with_logits(
-            input, target, self.alpha, self.gamma, self.reduction, pos_weight=self.pos_weight
+            input, target, self.alpha, self.gamma, self.reduction, pos_weight=self.pos_weight, weight=self.weight
         )

@@ -77,7 +77,7 @@ class TestBinaryFocalLossWithLogits:
     def test_gradcheck(self, device, dtype):
         alpha, gamma = 0.5, 2.0  # for focal loss with logits
         logits = torch.rand(2, 3, 2).to(device, dtype)
-        labels = torch.rand(2, 1, 3, 2)
+        labels = torch.rand(2, 3, 2)
         labels = labels.to(device, dtype).long()
 
         logits = tensor_to_gradcheck_var(logits)  # to var
