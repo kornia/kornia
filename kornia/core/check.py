@@ -340,13 +340,15 @@ def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: Tensor, msg: str | None = None, raises: boo
     return True
 
 
-def KORNIA_CHECK_IS_IMAGE(x: Tensor, msg: str | None = None, raises: bool = True) -> bool:
-    """Check whether an image tensor is ranged properly [0, 1] for float or [0, 255] for int.
+def KORNIA_CHECK_IS_IMAGE(x: Tensor, msg: str | None = None, raises: bool = True, bits: int = 8) -> bool:
+    """Check whether an image tensor is ranged properly [0, 1] for float or [0, 2 ** bits] for int.
 
     Args:
         x: image tensor to evaluate.
         msg: message to show in the exception.
         raises: bool indicating whether an exception should be raised upon failure.
+        bits: the image bits. The default checks if given integer input image is an
+            8-bit image (0-255) or not.
 
     Raises:
         TypeException: if all the input tensor has not 1) a shape :math:`(3,H,W)`,
@@ -370,7 +372,7 @@ def KORNIA_CHECK_IS_IMAGE(x: Tensor, msg: str | None = None, raises: bool = True
         if raises:
             raise ValueError(err_msg)
         return False
-    elif x.min() < 0 or x.max() > 255:
+    elif x.min() < 0 or x.max() > 2 ** bits - 1:
         if raises:
             raise ValueError(err_msg)
         return False
