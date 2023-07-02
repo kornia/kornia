@@ -1,5 +1,3 @@
-import sys
-
 import pytest
 import torch
 from torch.autograd import gradcheck
