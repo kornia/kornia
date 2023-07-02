@@ -393,16 +393,14 @@ class TestFindHomographyDLTIter:
         assert H.shape == (1, 3, 3)
 
     @pytest.mark.parametrize("batch_size, num_points", [(1, 4), (2, 5), (3, 6)])
+    @pytest.mark.skipif(torch_version_le(1, 9, 1), reason="Known bug in torch 1.9.1 on macos")
     def test_shape(self, batch_size, num_points, device, dtype):
-        if sys.platform == 'darwin' and torch_version_le(1, 9, 1):
-            pytest.skip("Known bug in torch 1.9.1 on macos")
-        else:
-            B, N = batch_size, num_points
-            points1 = torch.rand(B, N, 2, device=device, dtype=dtype)
-            points2 = torch.rand(B, N, 2, device=device, dtype=dtype)
-            weights = torch.ones(B, N, device=device, dtype=dtype)
-            H = find_homography_dlt_iterated(points1, points2, weights, 5)
-            assert H.shape == (B, 3, 3)
+        B, N = batch_size, num_points
+        points1 = torch.rand(B, N, 2, device=device, dtype=dtype)
+        points2 = torch.rand(B, N, 2, device=device, dtype=dtype)
+        weights = torch.ones(B, N, device=device, dtype=dtype)
+        H = find_homography_dlt_iterated(points1, points2, weights, 5)
+        assert H.shape == (B, 3, 3)
 
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_clean_points(self, batch_size, device, dtype):
