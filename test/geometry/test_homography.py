@@ -395,7 +395,7 @@ class TestFindHomographyDLTIter:
     @pytest.mark.parametrize("batch_size, num_points", [(1, 4), (2, 5), (3, 6)])
     def test_shape(self, batch_size, num_points, device, dtype):
         if sys.platform == 'darwin' and torch.__version__ == '1.9.1':
-            raise NotImplementedError("Implement a stupid routine.")
+            pytest.skip("Known bug in torch 1.9.1 on macos")
         else:
             B, N = batch_size, num_points
             points1 = torch.rand(B, N, 2, device=device, dtype=dtype)
