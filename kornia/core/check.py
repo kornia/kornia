@@ -372,7 +372,7 @@ def KORNIA_CHECK_IS_IMAGE(x: Tensor, msg: str | None = None, raises: bool = True
         if raises:
             raise ValueError(err_msg)
         return False
-    elif x.min() < 0 or x.max() > 2 ** bits - 1:
+    elif x.min() < 0 or x.max() > 2**bits - 1:
         if raises:
             raise ValueError(err_msg)
         return False
