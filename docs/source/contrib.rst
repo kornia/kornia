@@ -63,6 +63,7 @@ Object Detection
 .. autoclass:: ObjectDetector
     :members:
     :undoc-members:
+    :special-members: __init__,
 
 Real-Time Detection Transformer (RT-DETR)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -70,6 +71,7 @@ Real-Time Detection Transformer (RT-DETR)
 .. autoclass:: kornia.contrib.models.rt_detr.RTDETRModelType
     :members:
     :undoc-members:
+    :member-order: bysource
 
 .. autoclass:: kornia.contrib.models.rt_detr.RTDETRConfig
     :members:
@@ -79,6 +81,10 @@ Real-Time Detection Transformer (RT-DETR)
     :members: from_config, forward, load_checkpoint
     :undoc-members:
     :special-members: __init__,
+
+.. autoclass:: kornia.contrib.models.rt_detr.DETRPostProcessor
+    :members:
+    :undoc-members:
 
 Image Segmentation
 ------------------

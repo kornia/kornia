@@ -8,19 +8,24 @@ class DETRPostProcessor(Module):
         super().__init__()
         self.confidence_threshold = confidence_threshold
 
-    def forward(self, logits: Tensor, boxes: Tensor, original_sizes: list[tuple[int, int]]) -> list[Tensor]:
+    def forward(self, data: dict[str, Tensor], original_sizes: list[tuple[int, int]]) -> list[Tensor]:
         """Post-process outputs from DETR.
 
         Args:
-            logits: logits of the detections. Shape (N, K, C), where K is the number of queries in the decoder,
-            C is the number of classes.
-            boxes: bounding boxes of the detections. Shape (N, K, 4).
+            data: dictionary with keys ``logits`` and ``boxes``. ``logits`` has shape :math:`(N, Q, K)` and
+                ``boxes`` has shape :math:`(N, Q, 4)`, where :math:`Q` is the number of queries, :math:`K`
+                is the number of classes.
             original_sizes: original image size of the input images. Each tuple represent (img_height, img_width).
 
         Returns:
-            processed detections. For each image, the detections have shape (D, 6), where D is the number of detections
+            Processed detections. For each image, the detections have shape (D, 6), where D is the number of detections
             in that image, 6 represent (class_id, confidence_score, x, y, w, h).
         """
+        logits = data["logits"]
+        boxes = data["boxes"]
+
+        # NOTE: boxes are not clipped to image dimensions
+
         # https://github.com/PaddlePaddle/PaddleDetection/blob/5d1f888362241790000950e2b63115dc8d1c6019/ppdet/modeling/post_process.py#L446
         # box format is cxcywh
         # convert to xywh
@@ -42,4 +47,5 @@ class DETRPostProcessor(Module):
             scores_i = scores[i, mask].unsqueeze(-1)
             boxes_i = boxes[i, mask]
             detections.append(concatenate([labels_i, scores_i, boxes_i], -1))
+
         return detections

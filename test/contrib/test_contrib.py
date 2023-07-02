@@ -7,7 +7,7 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.contrib.face_detection import FaceKeypoint
-from kornia.contrib.models.rt_detr import RTDETR, RTDETRConfig
+from kornia.contrib.models.rt_detr import RTDETR, DETRPostProcessor, RTDETRConfig
 from kornia.testing import assert_close
 
 
@@ -737,12 +737,18 @@ class TestEdgeDetector:
 class TestObjectDetector:
     def test_smoke(self, device, dtype):
         batch_size = 3
-        model = RTDETR.from_config(RTDETRConfig("resnet50d", 10, head_num_queries=10)).eval()
-        detector = kornia.contrib.ObjectDetector(model, 128).to(device, dtype)
+        confidence = 0.3
+        config = RTDETRConfig("resnet50d", 10, head_num_queries=10)
+        model = RTDETR.from_config(config).to(device, dtype).eval()
+        post_processor = DETRPostProcessor(confidence).to(device, dtype).eval()
+        detector = kornia.contrib.ObjectDetector(model, post_processor, 32)
+
         sizes = torch.randint(5, 10, (batch_size, 2)) * 32
         imgs = [torch.randn(3, h, w, device=device, dtype=dtype) for h, w in sizes]
-        out = detector(imgs)
+        detections = detector.predict(imgs)
 
-        assert len(out) == batch_size
-        for dets in out:
+        assert len(detections) == batch_size
+        for dets in detections:
             assert dets.shape[1] == 6
+            assert torch.all(dets[:, 0].int() == dets[:, 0])
+            assert torch.all(dets[:, 1] >= 0.3)

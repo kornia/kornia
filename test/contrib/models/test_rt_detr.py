@@ -8,7 +8,6 @@ from kornia.contrib.models.rt_detr.architecture.hybrid_encoder import HybridEnco
 from kornia.contrib.models.rt_detr.architecture.resnet_d import ResNetD
 from kornia.contrib.models.rt_detr.architecture.rtdetr_head import RTDETRHead
 from kornia.contrib.models.rt_detr.model import RTDETR, RTDETRConfig
-from kornia.core import Tensor
 from kornia.testing import BaseTester, assert_close
 from kornia.utils._compat import torch_version
 
@@ -74,27 +73,25 @@ def test_regvgg_optimize_for_deployment(device, dtype):
 class TestRTDETR(BaseTester):
     @pytest.mark.parametrize("variant", ("resnet18d", "resnet34d", "resnet50d", "resnet101d", "hgnetv2_l", "hgnetv2_x"))
     def test_smoke(self, variant, device, dtype):
-        model = RTDETR.from_config(RTDETRConfig(variant, 80)).to(device, dtype).eval()
+        model = RTDETR.from_config(RTDETRConfig(variant, 10)).to(device, dtype).eval()
         images = torch.randn(2, 3, 224, 256, device=device, dtype=dtype)
         out = model(images)
 
-        assert isinstance(out, list)
-        for det in out:
-            assert isinstance(det, Tensor)
+        assert isinstance(out, dict)
+        assert set(out.keys()) == set(["logits", "boxes"])
 
     @pytest.mark.parametrize("shape", ((1, 3, 96, 128), (2, 3, 224, 256)))
     def test_cardinality(self, shape, device, dtype):
         num_classes = 10
         num_queries = 10
-        model = RTDETR.from_config(RTDETRConfig("resnet50d", num_classes, head_num_queries=num_queries))
-        model = model.to(device, dtype).eval()
+        config = RTDETRConfig("resnet50d", num_classes, head_num_queries=num_queries)
+        model = RTDETR.from_config(config).to(device, dtype).eval()
+
         images = torch.randn(shape, device=device, dtype=dtype)
         out = model(images)
 
-        assert len(out) == shape[0]
-        for det in out:
-            assert det.shape[0] <= num_queries
-            assert det.shape[1] == 6
+        assert out["logits"].shape == (shape[0], num_queries, num_classes)
+        assert out["boxes"].shape == (shape[0], num_queries, 4)
 
     @pytest.mark.skip("Unnecessary")
     def test_exception(self):
@@ -122,8 +119,7 @@ class TestRTDETR(BaseTester):
         expected = model(img)
         actual = model_optimized(img)
 
-        for det_expected, det_actual in zip(expected, actual):
-            self.assert_close(det_expected, det_actual, low_tolerance=True)
+        self.assert_close(actual, expected)
 
     @pytest.mark.skipif(
         torch_version() in ("2.0.0", "2.0.1"),

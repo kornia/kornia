@@ -8,7 +8,6 @@ from enum import Enum
 from kornia.contrib.models.base import ModelBase
 from kornia.contrib.models.rt_detr.architecture.hgnetv2 import PPHGNetV2
 from kornia.contrib.models.rt_detr.architecture.hybrid_encoder import HybridEncoder
-from kornia.contrib.models.rt_detr.architecture.post_processor import DETRPostProcessor
 from kornia.contrib.models.rt_detr.architecture.resnet_d import ResNetD
 from kornia.contrib.models.rt_detr.architecture.rtdetr_head import RTDETRHead
 from kornia.core import Tensor
@@ -65,9 +64,7 @@ class RTDETRConfig:
 class RTDETR(ModelBase[RTDETRConfig]):
     """RT-DETR Object Detection model, as described in https://arxiv.org/abs/2304.08069."""
 
-    def __init__(
-        self, backbone: ResNetD | PPHGNetV2, neck: HybridEncoder, head: RTDETRHead, post_processor: DETRPostProcessor
-    ):
+    def __init__(self, backbone: ResNetD | PPHGNetV2, neck: HybridEncoder, head: RTDETRHead):
         """Construct RT-DETR Object Detection model.
 
         Args:
@@ -79,7 +76,6 @@ class RTDETR(ModelBase[RTDETRConfig]):
         self.backbone = backbone
         self.neck = neck
         self.head = head
-        self.post_processor = post_processor
 
     @staticmethod
     def from_config(config: RTDETRConfig) -> RTDETR:
@@ -153,31 +149,26 @@ class RTDETR(ModelBase[RTDETRConfig]):
                 [neck_hidden_dim] * 3,
                 head_num_decoder_layers,
             ),
-            DETRPostProcessor(config.confidence_threshold),
         )
 
         if config.checkpoint:
             model.load_checkpoint(config.checkpoint)
         return model
 
-    def forward(self, images: Tensor, original_sizes: list[tuple[int, int]] | None = None) -> list[Tensor]:
+    def forward(self, images: Tensor) -> dict[str, Tensor]:
         """Detect objects in an image.
 
         Args:
             images: images to be detected. Shape :math:`(N, C, H, W)`.
 
         Returns:
-            Object detection results, in format class id, score, bounding box xywh. Shape :math:`(N, D, 6)`,
-            where :math:`D` is the number of detections.
+            Dictionary with keys ``logits`` and ``boxes``. ``logits`` has shape :math:`(N, Q, K)` and ``boxes`` has
+            shape :math:`(N, Q, 4)`, where :math:`Q` is the number of queries, :math:`K` is the number of classes.
         """
         if self.training:
             raise RuntimeError("Only evaluation mode is supported. Please call model.eval().")
 
-        if original_sizes is None:
-            original_sizes = [(images.shape[2], images.shape[3])] * images.shape[0]
-
         fmaps = self.backbone(images)
         fmaps = self.neck(fmaps)
         logits, boxes = self.head(fmaps)
-        detections = self.post_processor(logits, boxes, original_sizes)
-        return detections
+        return dict(logits=logits, boxes=boxes)
