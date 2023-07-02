@@ -4,9 +4,7 @@ from .grid import create_meshgrid, create_meshgrid3d
 from .helpers import (
     _extract_device_dtype,
     deprecated,
-    get_cuda_device_if_available,
     get_cuda_or_mps_device_if_available,
-    get_mps_device_if_available,
     is_autocast_enabled,
     map_location_to_cpu,
     safe_inverse_with_mask,
@@ -23,8 +21,6 @@ __all__ = [
     "one_hot",
     "create_meshgrid",
     "create_meshgrid3d",
-    "get_cuda_device_if_available",
-    "get_mps_device_if_available",
     "get_cuda_or_mps_device_if_available",
     "tensor_to_image",
     "image_to_tensor",
