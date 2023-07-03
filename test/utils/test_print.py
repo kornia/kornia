@@ -32,7 +32,7 @@ class TestImageToString:
             img = torch.rand(3, 15, 15) * 10
             image_to_string(img)
 
-    def test_print_smoke(self,):
+    def test_print_smoke(self):
         img = torch.rand(3, 15, 15)
         print_image(img)
 
