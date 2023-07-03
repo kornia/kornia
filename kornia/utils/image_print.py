@@ -5,13 +5,13 @@ Nice long listing of all 256 colors and their codes.
 Taken from https://gist.github.com/klange/1687427
 """
 import re
-from typing import Tuple
+from typing import Tuple, Union
 
 from torch import float16, float32, float64
 
 import kornia
 from kornia.core import Tensor
-from kornia.core.check import KORNIA_CHECK_IS_IMAGE
+from kornia.core.check import KORNIA_CHECK_IS_IMAGE, KORNIA_CHECK_SHAPE
 from kornia.io import ImageLoadType
 
 # color look-up table
@@ -348,7 +348,7 @@ def image_to_string(image: Tensor, max_width: int = 256) -> str:
         max_width: maximum width of the input image.
     """
     KORNIA_CHECK_IS_IMAGE(image, None, raises=True)
-    assert len(image.shape) == 3, f"Expect one image only. Got {image.shape[0]} entries."
+    KORNIA_CHECK_SHAPE(image, ["C", "H", "W"])
 
     if image.dtype not in [float16, float32, float64]:
         image = image / 255.0  # In case of resizing.
@@ -369,15 +369,20 @@ def image_to_string(image: Tensor, max_width: int = 256) -> str:
     return res
 
 
-def print_image(image_path: str, max_width: int = 96) -> None:
+def print_image(image: Union[str, Tensor], max_width: int = 96) -> None:
     """Print an image to the terminal.
 
     Args:
-        image_path: path to a valid image file.
+        image: path to a valid image file or a tensor.
         max_width: maximum width to print to terminal.
 
     Note:
         Need to use `print_image(...)`.
     """
-    image = kornia.io.load_image(image_path, ImageLoadType.RGB8)
-    print(image_to_string(image, max_width))
+    if isinstance(image, str):
+        img = kornia.io.load_image(image, ImageLoadType.RGB8)
+    elif isinstance(image, Tensor):
+        img = image
+    else:
+        raise RuntimeError(f"Expect image type to be either Tensor or str. Got {type(image)}.")
+    print(image_to_string(img, max_width))

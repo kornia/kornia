@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from kornia.utils import image_to_string
+from kornia.utils import image_to_string, print_image
 
 
 class TestImageToString:
@@ -31,3 +31,10 @@ class TestImageToString:
         with pytest.raises(ValueError):
             img = torch.rand(3, 15, 15) * 10
             image_to_string(img)
+
+    def test_print_smoke(self,):
+        img = torch.rand(3, 15, 15)
+        print_image(img)
+
+        with pytest.raises(RuntimeError):
+            print_image([img])  # Do not accept list
