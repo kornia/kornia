@@ -100,7 +100,7 @@ to query the image masks from the SAM model.
 
     model_type = 'vit_h'
     checkpoint = './https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth'
-    device = get_cuda_or_mps_device_if_available
+    device = get_cuda_or_mps_device_if_available()
 
     # Load image
     image = load_image('./example.jpg', ImageLoadType.RGB32, device)
