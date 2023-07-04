@@ -39,6 +39,8 @@ Device
 -------
 
 .. autofunction:: get_cuda_device_if_available
+.. autofunction:: get_mps_device_if_available
+.. autofunction:: get_cuda_or_mps_device_if_available
 .. autofunction:: map_location_to_cpu
 
 
