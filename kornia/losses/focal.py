@@ -79,7 +79,7 @@ def focal_loss(
     if alpha is not None:
         alpha_fac = tensor([1 - alpha] + [alpha] * (num_of_classes - 1), dtype=loss_tmp.dtype, device=loss_tmp.device)
         alpha_fac = alpha_fac.view(boradcast_dims)
-        loss_tmp = loss_tmp * alpha_fac
+        loss_tmp = alpha_fac * loss_tmp
 
     if weight is not None:
         KORNIA_CHECK_IS_TENSOR(weight, "weight must be Tensor or None.")
@@ -95,7 +95,6 @@ def focal_loss(
         weight = weight.view(boradcast_dims)
         loss_tmp = weight * loss_tmp
 
-    loss_tmp = loss_tmp.sum(1)
     if reduction == 'none':
         loss = loss_tmp
     elif reduction == 'mean':
@@ -145,11 +144,7 @@ class FocalLoss(nn.Module):
     """
 
     def __init__(
-        self,
-        alpha: float | None,
-        gamma: float = 2.0,
-        reduction: str = 'none',
-        weight: Tensor | None = None,
+        self, alpha: float | None, gamma: float = 2.0, reduction: str = 'none', weight: Tensor | None = None
     ) -> None:
         super().__init__()
         self.alpha: float | None = alpha

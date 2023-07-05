@@ -115,7 +115,8 @@ class TestFocalLoss:
         labels = torch.rand(2, 3, 2) * num_classes
         labels = labels.to(device).long()
 
-        assert kornia.losses.focal_loss(logits, labels, alpha=0.5, gamma=2.0, reduction="none").shape == (2, 3, 2)
+        loss_shape = kornia.losses.focal_loss(logits, labels, alpha=0.5, gamma=2.0, reduction="none").shape
+        assert loss_shape == (2, num_classes, 3, 2)
 
     def test_smoke_sum(self, device, dtype):
         num_classes = 3
