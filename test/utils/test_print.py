@@ -24,7 +24,7 @@ class TestImageToString:
         img = torch.rand(3, 15, 15)
         image_to_string(img, max_width=12)
 
-        with pytest.raises(AssertionError):
+        with pytest.raises(TypeError):
             img = torch.rand(1, 3, 15, 15)
             image_to_string(img)
 
