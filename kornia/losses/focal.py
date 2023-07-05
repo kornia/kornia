@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import warnings
-
 import torch
 import torch.nn as nn
 
@@ -19,7 +17,6 @@ def focal_loss(
     alpha: float | None,
     gamma: float = 2.0,
     reduction: str = 'none',
-    eps: float | None = None,
     weight: Tensor | None = None,
 ) -> Tensor:
     r"""Criterion that computes Focal loss.
@@ -44,7 +41,6 @@ def focal_loss(
           will be applied, ``'mean'``: the sum of the output will be divided by
           the number of elements in the output, ``'sum'``: the output will be
           summed.
-        eps: Deprecated: scalar to enforce numerical stability. This is no longer used.
         weight: weights for classes with shape :math:`(num_of_classes,)`.
 
     Return:
@@ -57,13 +53,6 @@ def focal_loss(
         >>> output = focal_loss(input, target, alpha=0.5, gamma=2.0, reduction='mean')
         >>> output.backward()
     """
-    if eps is not None and not torch.jit.is_scripting():
-        warnings.warn(
-            "`focal_loss` has been reworked for improved numerical stability "
-            "and the `eps` argument is no longer necessary",
-            DeprecationWarning,
-            stacklevel=2,
-        )
 
     KORNIA_CHECK_SHAPE(input, ["B", "C", "*"])
     out_size = (input.shape[0],) + input.shape[2:]
@@ -138,7 +127,6 @@ class FocalLoss(nn.Module):
           will be applied, ``'mean'``: the sum of the output will be divided by
           the number of elements in the output, ``'sum'``: the output will be
           summed.
-        eps: Deprecated: scalar to enforce numerical stability. This is no longer used.
         weight: weights for classes with shape :math:`(num_of_classes,)`.
 
     Shape:
@@ -161,18 +149,16 @@ class FocalLoss(nn.Module):
         alpha: float | None,
         gamma: float = 2.0,
         reduction: str = 'none',
-        eps: float | None = None,
         weight: Tensor | None = None,
     ) -> None:
         super().__init__()
         self.alpha: float | None = alpha
         self.gamma: float = gamma
         self.reduction: str = reduction
-        self.eps: float | None = eps
         self.weight: Tensor | None = weight
 
     def forward(self, input: Tensor, target: Tensor) -> Tensor:
-        return focal_loss(input, target, self.alpha, self.gamma, self.reduction, self.eps, self.weight)
+        return focal_loss(input, target, self.alpha, self.gamma, self.reduction, self.weight)
 
 
 def binary_focal_loss_with_logits(
@@ -181,7 +167,6 @@ def binary_focal_loss_with_logits(
     alpha: float | None = 0.25,
     gamma: float = 2.0,
     reduction: str = 'none',
-    eps: float | None = None,
     pos_weight: Tensor | None = None,
     weight: Tensor | None = None,
 ) -> Tensor:
@@ -207,7 +192,6 @@ def binary_focal_loss_with_logits(
           will be applied, ``'mean'``: the sum of the output will be divided by
           the number of elements in the output, ``'sum'``: the output will be
           summed.
-        eps: Deprecated: scalar for numerically stability when dividing. This is no longer used.
         pos_weight: a weight of positive examples with shape :math:`(num_of_classes,)`.
           It’s possible to trade off recall and precision by adding weights to positive examples.
         weight: weights for classes with shape :math:`(num_of_classes,)`.
@@ -222,14 +206,6 @@ def binary_focal_loss_with_logits(
         >>> binary_focal_loss_with_logits(logits, labels, **kwargs)
         tensor(21.8725)
     """
-
-    if eps is not None and not torch.jit.is_scripting():
-        warnings.warn(
-            "`binary_focal_loss_with_logits` has been reworked for improved numerical stability "
-            "and the `eps` argument is no longer necessary",
-            DeprecationWarning,
-            stacklevel=2,
-        )
 
     KORNIA_CHECK_SHAPE(input, ["B", "C", "*"])
     KORNIA_CHECK(input.shape == target.shape, f'Expected target size {input.shape}, got {target.shape}')
@@ -344,5 +320,5 @@ class BinaryFocalLossWithLogits(nn.Module):
 
     def forward(self, input: Tensor, target: Tensor) -> Tensor:
         return binary_focal_loss_with_logits(
-            input, target, self.alpha, self.gamma, self.reduction, pos_weight=self.pos_weight, weight=self.weight
+            input, target, self.alpha, self.gamma, self.reduction, self.pos_weight, self.weight
         )
