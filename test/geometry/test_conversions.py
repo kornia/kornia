@@ -1589,8 +1589,10 @@ class TestNormalizePointsWithIntrinsics:
         op = kornia.geometry.conversions.normalize_points_with_intrinsics
         op_optimized = torch_optimizer(op)
 
-        op_optimized(points_2d, camera_matrix)
-        op(points_2d, camera_matrix)
+        actual = op_optimized(points_2d, camera_matrix)
+        expected = op(points_2d, camera_matrix)
+
+        assert_close(actual, expected)
 
 
 class TestRt2Extrinsics:
