@@ -16,9 +16,10 @@ from kornia.core import (
     where,
     zeros_like,
 )
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_TYPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES
 from kornia.geometry.liegroup.so3 import So3
 from kornia.geometry.linalg import batched_dot_product
+from kornia.geometry.quaternion import Quaternion
 from kornia.geometry.vector import Vector3
 
 
@@ -30,7 +31,6 @@ class Se3(Module):
     See more: https://ingmec.ual.es/~jlblanco/papers/jlblanco2010geometry3D_techrep.pdf
 
     Example:
-        >>> from kornia.geometry.quaternion import Quaternion
         >>> q = Quaternion.identity()
         >>> s = Se3(So3(q), torch.ones(3))
         >>> s.r
@@ -41,7 +41,7 @@ class Se3(Module):
         tensor([1., 1., 1.], requires_grad=True)
     """
 
-    def __init__(self, rotation: So3, translation: Vector3 | Tensor) -> None:
+    def __init__(self, rotation: Quaternion | So3, translation: Vector3 | Tensor) -> None:
         """Constructor for the base class.
 
         Internally represented by a unit quaternion `q` and a translation 3-vector.
@@ -53,7 +53,7 @@ class Se3(Module):
         Example:
             >>> from kornia.geometry.quaternion import Quaternion
             >>> q = Quaternion.identity(batch_size=1)
-            >>> s = Se3(So3(q), torch.ones((1, 3)))
+            >>> s = Se3(q, torch.ones((1, 3)))
             >>> s.r
             Parameter containing:
             tensor([[1., 0., 0., 0.]], requires_grad=True)
@@ -62,17 +62,23 @@ class Se3(Module):
             tensor([[1., 1., 1.]], requires_grad=True)
         """
         super().__init__()
-        KORNIA_CHECK_TYPE(rotation, So3)
+        # KORNIA_CHECK_TYPE(rotation, (Quaternion, So3))
+        if not isinstance(rotation, (Quaternion, So3)):
+            raise TypeError(f"rotation type is {type(rotation)}")
         # KORNIA_CHECK_TYPE(translation, (Vector3, Tensor))
         if not isinstance(translation, (Vector3, Tensor)):
             raise TypeError(f"translation type is {type(translation)}")
         # KORNIA_CHECK_SHAPE(t, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
         self._translation: Vector3 | Parameter
-        self._rotation: So3 = rotation
+        self._rotation: So3
         if isinstance(translation, Tensor):
             self._translation = Parameter(translation)
         else:
             self._translation = translation
+        if isinstance(rotation, Quaternion):
+            self._rotation = So3(rotation)
+        else:
+            self._rotation = rotation
 
     def __repr__(self) -> str:
         return f"rotation: {self.r}\ntranslation: {self.t}"
@@ -106,6 +112,11 @@ class Se3(Module):
     def so3(self) -> So3:
         """Return the underlying rotation(So3)."""
         return self._rotation
+
+    @property
+    def quaternion(self) -> Quaternion:
+        """Return the underlying rotation(Quaternion)."""
+        return self._rotation.q
 
     @property
     def r(self) -> So3:
