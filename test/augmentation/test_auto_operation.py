@@ -74,22 +74,22 @@ class TestOperations:
 
 class TestAutoAugment:
     @pytest.mark.parametrize("policy", ["imagenet", "cifar10", "svhn", [[("shear_x", 0.9, 4), ("invert", 0.2, None)]]])
-    def test_smoke(self, policy):
+    def test_smoke(self, policy, device, dtype):
         aug = AutoAugment(policy)
-        in_tensor = torch.rand(10, 3, 50, 50, requires_grad=True)
+        in_tensor = torch.rand(10, 3, 50, 50, device=device, dtype=dtype, requires_grad=True)
         aug(in_tensor)
         aug.is_intensity_only()
 
-    def test_transform_mat(self):
+    def test_transform_mat(self, device, dtype):
         aug = AutoAugment([[("shear_x", 0.9, 4), ("invert", 0.2, None)]], transformation_matrix_mode="silence")
-        in_tensor = torch.rand(10, 3, 50, 50, requires_grad=True)
+        in_tensor = torch.rand(10, 3, 50, 50, device=device, dtype=dtype, requires_grad=True)
         aug(in_tensor)
         trans = aug.get_transformation_matrix(in_tensor, params=aug._params)
         assert_close(trans, aug.transform_matrix)
 
-    def test_reproduce(self):
+    def test_reproduce(self, device, dtype):
         aug = AutoAugment()
-        in_tensor = torch.rand(10, 3, 50, 50, requires_grad=True)
+        in_tensor = torch.rand(10, 3, 50, 50, device=device, dtype=dtype, requires_grad=True)
         out_tensor = aug(in_tensor)
         out_tensor_2 = aug(in_tensor, params=aug._params)
         assert_close(out_tensor, out_tensor_2)
@@ -109,16 +109,19 @@ class TestRandAugment:
         in_tensor = torch.rand(10, 3, 50, 50, requires_grad=True)
         aug(in_tensor)
 
-    def test_transform_mat(self):
+    def test_transform_mat(self, device, dtype):
         aug = RandAugment(n=3, m=15)
-        in_tensor = torch.rand(10, 3, 50, 50, requires_grad=True)
+        in_tensor = torch.rand(10, 3, 50, 50, device=device, dtype=dtype, requires_grad=True)
         aug(in_tensor)
         trans = aug.get_transformation_matrix(in_tensor, params=aug._params)
-        assert_close(trans, aug.transform_matrix)
+        try:
+            assert_close(trans, aug.transform_matrix)
+        except:
+            assert False, aug._params
 
-    def test_reproduce(self):
+    def test_reproduce(self, device, dtype):
         aug = RandAugment(n=3, m=15)
-        in_tensor = torch.rand(10, 3, 50, 50, requires_grad=True)
+        in_tensor = torch.rand(10, 3, 50, 50, device=device, dtype=dtype, requires_grad=True)
         out_tensor = aug(in_tensor)
         out_tensor_2 = aug(in_tensor, params=aug._params)
         assert_close(out_tensor, out_tensor_2)
@@ -134,17 +137,17 @@ class TestTrivialAugment:
         in_tensor = torch.rand(10, 3, 50, 50, requires_grad=True)
         aug(in_tensor)
 
-    def test_transform_mat(self):
+    def test_transform_mat(self, device, dtype):
         aug = TrivialAugment()
-        in_tensor = torch.rand(10, 3, 50, 50, requires_grad=True)
+        in_tensor = torch.rand(10, 3, 50, 50, device=device, dtype=dtype, requires_grad=True)
         aug(in_tensor)
         aug(in_tensor)
         trans = aug.get_transformation_matrix(in_tensor, params=aug._params)
         assert_close(trans, aug.transform_matrix)
 
-    def test_reproduce(self):
+    def test_reproduce(self, device, dtype):
         aug = TrivialAugment()
-        in_tensor = torch.rand(10, 3, 50, 50, requires_grad=True)
+        in_tensor = torch.rand(10, 3, 50, 50, device=device, dtype=dtype, requires_grad=True)
         out_tensor = aug(in_tensor)
         out_tensor_2 = aug(in_tensor, params=aug._params)
         assert_close(out_tensor, out_tensor_2)

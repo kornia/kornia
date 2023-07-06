@@ -157,7 +157,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         keepdim: Optional[bool] = None,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
         random_apply_weights: Optional[List[float]] = None,
-        transformation_matrix: str = "silence",
+        transformation_matrix_mode: str = "silence",
         extra_args: Dict[DataKey, Dict[str, Any]] = {
             DataKey.MASK: {"resample": Resample.NEAREST, "align_corners": None}
         },
@@ -173,7 +173,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             random_apply_weights=random_apply_weights,
         )
 
-        self._parse_transformation_matrix_mode(transformation_matrix)
+        self._parse_transformation_matrix_mode(transformation_matrix_mode)
 
         self._valid_ops_for_transform_computation = (
             RigidAffineAugmentationBase2D,
