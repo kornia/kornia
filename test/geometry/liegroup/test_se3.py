@@ -12,7 +12,7 @@ class TestSe3(BaseTester):
     def _make_rand_se3d(self, device, dtype, batch_size) -> Se3:
         q = Quaternion.random(batch_size, device, dtype)
         t = self._make_rand_data(device, dtype, batch_size, dims=3)
-        return Se3(So3(q), t)
+        return Se3(q, t)
 
     def _make_rand_se3d_vec(self, device, dtype, batch_size) -> Se3:
         q = Quaternion.random(batch_size, device, dtype)
@@ -70,7 +70,7 @@ class TestSe3(BaseTester):
     def test_getitem(self, device, dtype, batch_size):
         q = Quaternion.random(batch_size, device, dtype)
         t = torch.rand(batch_size, 3, device=device, dtype=dtype)
-        s = Se3(So3(q), t)
+        s = Se3(q, t)
         for i in range(batch_size):
             s1 = s[i]
             self.assert_close(s1.r.q.data, q.data[i])
