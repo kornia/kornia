@@ -1,9 +1,9 @@
 import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
-from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
 from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmentationBase3D
+from kornia.augmentation.base import _AugmentationBase
 from kornia.constants import DataKey, Resample
 from kornia.core import Module, Tensor
 from kornia.geometry.boxes import Boxes, VideoBoxes

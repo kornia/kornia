@@ -489,8 +489,10 @@ class ShearY(OperationBase):
             )
         super().__init__(
             K.RandomShear(
-                (0.0, 0.0, magnitude_range[0], magnitude_range[1]), same_on_batch=False, p=initial_probability,
-                align_corners=True
+                (0.0, 0.0, magnitude_range[0], magnitude_range[1]),
+                same_on_batch=False,
+                p=initial_probability,
+                align_corners=True,
             ),
             initial_magnitude=[("shear_y", initial_magnitude)],
             temperature=temperature,
