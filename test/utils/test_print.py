@@ -29,7 +29,7 @@ class TestImageToString:
             image_to_string(img)
         assert "shape must be [['C', 'H', 'W']]. Got torch.Size([1, 3, 15, 15])}" in str(errinfo)
 
-        with pytest.raises(ValueError) as errinfo::
+        with pytest.raises(ValueError) as errinfo:
             img = torch.rand(3, 15, 15) * 10
             image_to_string(img)
         assert "Invalid image value range. Expect [0, 1] but got" in str(errinfo)
