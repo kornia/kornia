@@ -2,6 +2,7 @@ import math
 
 import pytest
 import torch
+import torch.nn.functional as F
 from torch.autograd import gradcheck
 
 import kornia
@@ -10,59 +11,60 @@ from kornia.utils import torch_meshgrid
 
 
 class TestBinaryFocalLossWithLogits:
-    def test_smoke_none(self, device, dtype):
+    @pytest.mark.parametrize('reduction', ['none', 'mean', 'sum'])
+    def test_value_same_as_torch_bce_loss(self, device, dtype, reduction):
         logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
         labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
 
-        assert kornia.losses.binary_focal_loss_with_logits(
-            logits, labels, alpha=0.5, gamma=2.0, reduction="none"
-        ).shape == (2, 3, 2)
-
-    def test_smoke_sum(self, device, dtype):
-        logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
-        labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
-
-        assert (
-            kornia.losses.binary_focal_loss_with_logits(logits, labels, alpha=0.5, gamma=2.0, reduction="sum").shape
-            == ()
+        focal_equivalent_bce_loss = kornia.losses.binary_focal_loss_with_logits(
+            logits, labels, alpha=None, gamma=0, reduction=reduction
         )
+        torch_bce_loss = F.binary_cross_entropy_with_logits(logits, labels, reduction=reduction)
+        assert_close(focal_equivalent_bce_loss, torch_bce_loss)
 
-    def test_smoke_mean(self, device, dtype):
+    @pytest.mark.parametrize('reduction', ['none', 'mean', 'sum'])
+    def test_value_same_as_torch_bce_loss_pos_weight_weight(self, device, dtype, reduction):
+        num_classes = 3
+        logits = torch.rand(2, num_classes, 2, dtype=dtype, device=device)
+        labels = torch.rand(2, num_classes, 2, dtype=dtype, device=device)
+
+        pos_weight = torch.rand(num_classes, 1, dtype=dtype, device=device)
+        weight = torch.rand(num_classes, 1, dtype=dtype, device=device)
+
+        focal_equivalent_bce_loss = kornia.losses.binary_focal_loss_with_logits(
+            logits, labels, alpha=None, gamma=0, reduction=reduction, pos_weight=pos_weight, weight=weight
+        )
+        torch_bce_loss = F.binary_cross_entropy_with_logits(
+            logits, labels, reduction=reduction, pos_weight=pos_weight, weight=weight
+        )
+        assert_close(focal_equivalent_bce_loss, torch_bce_loss)
+
+    @pytest.mark.parametrize('reduction,expected_shape', [('none', (2, 3, 2)), ('mean', ()), ('sum', ())])
+    @pytest.mark.parametrize('alpha', [None, 0.2, 0.5])
+    @pytest.mark.parametrize('gamma', [0.0, 1.0, 2.0])
+    def test_shape_alpha_gamma(self, device, dtype, reduction, expected_shape, alpha, gamma):
         logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
         labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
 
-        assert (
-            kornia.losses.binary_focal_loss_with_logits(logits, labels, alpha=0.5, gamma=2.0, reduction="mean").shape
-            == ()
-        )
+        actual_shape = kornia.losses.binary_focal_loss_with_logits(
+            logits, labels, alpha=alpha, gamma=gamma, reduction=reduction
+        ).shape
+        assert actual_shape == expected_shape
 
-    def test_smoke_mean_flat(self, device, dtype):
+    @pytest.mark.parametrize('reduction,expected_shape', [('none', (2, 3, 2)), ('mean', ()), ('sum', ())])
+    @pytest.mark.parametrize("pos_weight", [None, (1, 2, 5)])
+    @pytest.mark.parametrize("weight", [None, (0.2, 0.5, 0.8)])
+    def test_shape_pos_weight_weight(self, device, dtype, reduction, expected_shape, pos_weight, weight):
         logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
         labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
 
-        assert (
-            kornia.losses.binary_focal_loss_with_logits(logits, labels, alpha=0.5, gamma=2.0, reduction="mean").shape
-            == ()
-        )
+        pos_weight = None if pos_weight is None else torch.tensor(pos_weight, dtype=dtype, device=device)
+        weight = None if weight is None else torch.tensor(weight, dtype=dtype, device=device)
 
-    @pytest.mark.parametrize("pos_weight", [None, 1, 5])
-    def test_smoke_pos_weight(self, device, dtype, pos_weight):
-        logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
-        labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
-
-        assert (
-            kornia.losses.binary_focal_loss_with_logits(
-                logits,
-                labels,
-                alpha=0.5,
-                gamma=2.0,
-                reduction="mean",
-                pos_weight=None
-                if pos_weight is None
-                else torch.full([logits.size(1), 1], pos_weight, dtype=dtype, device=device),
-            ).shape
-            == ()
-        )
+        actual_shape = kornia.losses.binary_focal_loss_with_logits(
+            logits, labels, alpha=0.8, gamma=0.5, reduction=reduction, pos_weight=pos_weight, weight=weight
+        ).shape
+        assert actual_shape == expected_shape
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
@@ -70,114 +72,106 @@ class TestBinaryFocalLossWithLogits:
 
         op = kornia.losses.binary_focal_loss_with_logits
         op_optimized = torch_optimizer(op)
-        actual = op_optimized(logits, labels, alpha=0.5, gamma=2.0, reduction="none")
-        expected = op(logits, labels, alpha=0.5, gamma=2.0, reduction="none")
+
+        args = (0.25, 2.0)
+        actual = op_optimized(logits, labels, *args)
+        expected = op(logits, labels, *args)
         assert_close(actual, expected)
 
     def test_gradcheck(self, device, dtype):
-        alpha, gamma = 0.5, 2.0  # for focal loss with logits
         logits = torch.rand(2, 3, 2).to(device, dtype)
-        labels = torch.rand(2, 3, 2)
-        labels = labels.to(device, dtype).long()
-
         logits = tensor_to_gradcheck_var(logits)  # to var
-        assert gradcheck(
-            kornia.losses.binary_focal_loss_with_logits,
-            (logits, labels, alpha, gamma),
-            raise_exception=True,
-            fast_mode=True,
-        )
+        labels = torch.rand(2, 3, 2).to(device, dtype)
 
-    def test_same_output(self, device, dtype):
+        args = (0.25, 2.0)
+        op = kornia.losses.binary_focal_loss_with_logits
+        assert gradcheck(op, (logits, labels, *args), raise_exception=True, fast_mode=True)
+
+    def test_module(self, device, dtype):
         logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
         labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
 
-        kwargs = {"alpha": 0.25, "gamma": 2.0, "reduction": "mean"}
-
-        assert kornia.losses.binary_focal_loss_with_logits(
-            logits, labels, **kwargs
-        ) == kornia.losses.BinaryFocalLossWithLogits(**kwargs)(logits, labels)
+        args = (0.25, 2.0)
+        op = kornia.losses.binary_focal_loss_with_logits
+        op_module = kornia.losses.BinaryFocalLossWithLogits(*args)
+        assert_close(op_module(logits, labels), op(logits, labels, *args))
 
     def test_numeric_stability(self, device, dtype):
         logits = torch.tensor([[100.0, -100]], dtype=dtype, device=device)
         labels = torch.tensor([[1.0, 0.0]], dtype=dtype, device=device)
-        expected = torch.tensor([[0.0, 0.0]], dtype=dtype, device=device)
 
-        kwargs = {"alpha": 0.25, "gamma": 2.0, "reduction": 'none'}
-        actual = kornia.losses.binary_focal_loss_with_logits(logits, labels, **kwargs)
-        assert_close(actual, expected, atol=1e-3, rtol=1e-3)
+        args = (0.25, 2.0)
+        actual = kornia.losses.binary_focal_loss_with_logits(logits, labels, *args)
+        expected = torch.tensor([[0.0, 0.0]], dtype=dtype, device=device)
+        assert_close(actual, expected)
 
 
 class TestFocalLoss:
-    def test_smoke_none(self, device, dtype):
+    @pytest.mark.parametrize('reduction,expected_shape', [('none', (2, 3, 3, 2)), ('mean', ()), ('sum', ())])
+    @pytest.mark.parametrize('alpha', [None, 0.2, 0.5])
+    @pytest.mark.parametrize('gamma', [0.0, 1.0, 2.0])
+    def test_shape_alpha_gamma(self, device, dtype, reduction, expected_shape, alpha, gamma):
         num_classes = 3
         logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
-        labels = torch.rand(2, 3, 2) * num_classes
-        labels = labels.to(device).long()
+        labels = torch.randint(num_classes, (2, 3, 2), device=device)
 
-        loss_shape = kornia.losses.focal_loss(logits, labels, alpha=0.5, gamma=2.0, reduction="none").shape
-        assert loss_shape == (2, num_classes, 3, 2)
+        actual_shape = kornia.losses.focal_loss(logits, labels, alpha=alpha, gamma=gamma, reduction=reduction).shape
+        assert actual_shape == expected_shape
 
-    def test_smoke_sum(self, device, dtype):
-        num_classes = 3
-        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
-        labels = torch.rand(2, 3, 2) * num_classes
-        labels = labels.to(device).long()
-
-        assert kornia.losses.focal_loss(logits, labels, alpha=0.5, gamma=2.0, reduction="sum").shape == ()
-
-    def test_smoke_mean(self, device, dtype):
-        num_classes = 3
-        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
-        labels = torch.rand(2, 3, 2) * num_classes
-        labels = labels.to(device).long()
-
-        assert kornia.losses.focal_loss(logits, labels, alpha=0.5, gamma=2.0, reduction="mean").shape == ()
-
-    def test_smoke_mean_flat(self, device, dtype):
+    @pytest.mark.parametrize('reduction,expected_shape', [('none', (2, 3)), ('mean', ()), ('sum', ())])
+    def test_shape_target_with_only_one_dim(self, device, dtype, reduction, expected_shape):
         num_classes = 3
         logits = torch.rand(2, num_classes, device=device, dtype=dtype)
-        labels = torch.rand(2) * num_classes
-        labels = labels.to(device).long()
-        assert kornia.losses.focal_loss(logits, labels, alpha=0.5, gamma=2.0, reduction="mean").shape == ()
+        labels = torch.randint(num_classes, (2,), device=device)
 
-    def test_gradcheck(self, device, dtype):
+        actual_shape = kornia.losses.focal_loss(logits, labels, alpha=0.1, gamma=1.5, reduction=reduction).shape
+        assert actual_shape == expected_shape
+
+    @pytest.mark.parametrize('reduction,expected_shape', [('none', (2, 3, 3, 2)), ('mean', ()), ('sum', ())])
+    @pytest.mark.parametrize("weight", [None, (0.2, 0.5, 0.8)])
+    def test_shape_weight(self, device, dtype, reduction, expected_shape, weight):
         num_classes = 3
-        alpha, gamma = 0.5, 2.0  # for focal loss
         logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
-        labels = torch.rand(2, 3, 2) * num_classes
-        labels = labels.to(device).long()
+        labels = torch.randint(num_classes, (2, 3, 2), device=device)
 
-        logits = tensor_to_gradcheck_var(logits)  # to var
-        assert gradcheck(kornia.losses.focal_loss, (logits, labels, alpha, gamma), raise_exception=True, fast_mode=True)
+        weight = None if weight is None else torch.tensor(weight, dtype=dtype, device=device)
+
+        actual_shape = kornia.losses.focal_loss(
+            logits, labels, alpha=0.8, gamma=0.5, reduction=reduction, weight=weight
+        ).shape
+        assert actual_shape == expected_shape
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         num_classes = 3
-        params = (0.5, 2.0)
         logits = torch.rand(2, num_classes, device=device, dtype=dtype)
-        labels = torch.rand(2) * num_classes
-        labels = labels.to(device).long()
+        labels = torch.randint(num_classes, (2,), device=device)
 
         op = kornia.losses.focal_loss
         op_optimized = torch_optimizer(op)
 
-        actual = op_optimized(logits, labels, *params)
-        expected = op(logits, labels, *params)
+        args = (0.25, 2.0)
+        actual = op_optimized(logits, labels, *args)
+        expected = op(logits, labels, *args)
         assert_close(actual, expected)
+
+    def test_gradcheck(self, device, dtype):
+        num_classes = 3
+        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
+        logits = tensor_to_gradcheck_var(logits)  # to var
+        labels = torch.randint(num_classes, (2, 3, 2), device=device)
+
+        args = (0.25, 2.0)
+        assert gradcheck(kornia.losses.focal_loss, (logits, labels, *args), raise_exception=True, fast_mode=True)
 
     def test_module(self, device, dtype):
         num_classes = 3
-        params = (0.5, 2.0)
         logits = torch.rand(2, num_classes, device=device, dtype=dtype)
-        labels = torch.rand(2) * num_classes
-        labels = labels.to(device).long()
+        labels = torch.randint(num_classes, (2,), device=device)
 
+        args = (0.25, 2.0)
         op = kornia.losses.focal_loss
-        op_module = kornia.losses.FocalLoss(*params)
-
-        actual = op_module(logits, labels)
-        expected = op(logits, labels, *params)
-        assert_close(actual, expected)
+        op_module = kornia.losses.FocalLoss(*args)
+        assert_close(op_module(logits, labels), op(logits, labels, *args))
 
 
 class TestTverskyLoss:

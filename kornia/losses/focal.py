@@ -33,7 +33,7 @@ def focal_loss(
     Args:
         input: logits tensor with shape :math:`(N, C, *)` where C = number of classes.
         target: labels tensor with shape :math:`(N, *)` where each value is an integer
-          representing correct classification :math:`0 ≤ targets[i] ≤ C−1`.
+          representing correct classification :math:`target[i] \in [0, C)`.
         alpha: Weighting factor :math:`\alpha \in [0, 1]`.
         gamma: Focusing parameter :math:`\gamma >= 0`.
         reduction: Specifies the reduction to apply to the
@@ -131,7 +131,7 @@ class FocalLoss(nn.Module):
     Shape:
         - Input: :math:`(N, C, *)` where C = number of classes.
         - Target: :math:`(N, *)` where each value is an integer
-          representing correct classification :math:`0 ≤ targets[i] ≤ C−1`.
+          representing correct classification :math:`target[i] \in [0, C)`.
 
     Example:
         >>> N = 5  # num_classes
@@ -179,7 +179,7 @@ def binary_focal_loss_with_logits(
     Args:
         input: logits tensor with shape :math:`(N, C, *)` where C = number of classes.
         target: labels tensor with the same shape as input :math:`(N, C, *)`
-          where each value is :math:`0.` or :math:`1.`.
+          where each value is between 0 and 1.
         alpha: Weighting factor :math:`\alpha \in [0, 1]`.
         gamma: Focusing parameter :math:`\gamma >= 0`.
         reduction: Specifies the reduction to apply to the
@@ -188,7 +188,7 @@ def binary_focal_loss_with_logits(
           the number of elements in the output, ``'sum'``: the output will be
           summed.
         pos_weight: a weight of positive examples with shape :math:`(num_of_classes,)`.
-          It’s possible to trade off recall and precision by adding weights to positive examples.
+          It is possible to trade off recall and precision by adding weights to positive examples.
         weight: weights for classes with shape :math:`(num_of_classes,)`.
 
     Returns:
@@ -281,13 +281,13 @@ class BinaryFocalLossWithLogits(nn.Module):
           the number of elements in the output, ``'sum'``: the output will be
           summed.
         pos_weight: a weight of positive examples with shape :math:`(num_of_classes,)`.
-          It’s possible to trade off recall and precision by adding weights to positive examples.
+          It is possible to trade off recall and precision by adding weights to positive examples.
         weight: weights for classes with shape :math:`(num_of_classes,)`.
 
     Shape:
         - Input: :math:`(N, C, *)` where C = number of classes.
         - Target: the same shape as Input :math:`(N, C, *)`
-          where each value is :math:`0.` or :math:`1.`.
+          where each value is between 0 and 1.
 
     Examples:
         >>> kwargs = {"alpha": 0.25, "gamma": 2.0, "reduction": 'mean'}
