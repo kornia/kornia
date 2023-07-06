@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 import torch
 from torch.autograd import gradcheck
@@ -15,6 +17,7 @@ from kornia.geometry.homography import (
     symmetric_transfer_error,
 )
 from kornia.testing import assert_close
+from kornia.utils._compat import torch_version_le
 
 
 class TestSampleValidation:
@@ -391,6 +394,9 @@ class TestFindHomographyDLTIter:
         assert H.shape == (1, 3, 3)
 
     @pytest.mark.parametrize("batch_size, num_points", [(1, 4), (2, 5), (3, 6)])
+    @pytest.mark.skipif(
+        sys.platform == "darwin" and torch_version_le(1, 9, 1), reason="Known bug in torch 1.9.1 on macos"
+    )
     def test_shape(self, batch_size, num_points, device, dtype):
         B, N = batch_size, num_points
         points1 = torch.rand(B, N, 2, device=device, dtype=dtype)
