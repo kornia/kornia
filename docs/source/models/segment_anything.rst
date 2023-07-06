@@ -96,11 +96,11 @@ to query the image masks from the SAM model.
     from kornia.io import load_image, ImageLoadType
     from kornia.geometry.keypoints import Keypoints
     from kornia.geometry.boxes import Boxes
-    from kornia.utils import get_cuda_device_if_available
+    from kornia.utils import get_cuda_or_mps_device_if_available
 
     model_type = 'vit_h'
     checkpoint = './https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth'
-    device = get_cuda_device_if_available()
+    device = get_cuda_or_mps_device_if_available
 
     # Load image
     image = load_image('./example.jpg', ImageLoadType.RGB32, device)
@@ -180,7 +180,7 @@ parameters. If a checkpoint URL or path for a file is seted, the method will aut
 .. code-block:: python
 
     from kornia.contrib.models.sam import Sam, SamConfig
-    from kornia.utils import get_cuda_device_if_available
+    from kornia.utils import get_cuda_or_mps_device_if_available
 
     # model_type can be:
     #   0, 'vit_h' or `kornia.contrib.models.sam.SamModelType.vit_h`
@@ -190,7 +190,7 @@ parameters. If a checkpoint URL or path for a file is seted, the method will aut
 
     # The checkpoint can be a filepath or a url
     checkpoint = './path_for_the_model_checkpoint.pth'
-    device = get_cuda_device_if_available()
+    device = get_cuda_or_mps_device_if_available()
 
     # Load config
     config = SamConfig(model_type, checkpoint)
@@ -216,13 +216,13 @@ If a URL is passed the model will automatically download and cache the weights u
 .. code-block:: python
 
     from kornia.contrib.models.sam import Sam, SamConfig
-    from kornia.utils import get_cuda_device_if_available
+    from kornia.utils import get_cuda_or_mps_device_if_available
 
     model_type = 'vit_b'
 
     # The checkpoint can be a filepath or a url
     checkpoint = './path_for_the_model_checkpoint.pth'
-    device = get_cuda_device_if_available()
+    device = get_cuda_or_mps_device_if_available()
 
     # Load/build the model
     sam_model = Sam.from_config(SamConfig(model_type))
@@ -245,13 +245,13 @@ This is a simple example, of how to directly use the SAM model loaded. We recomm
     from kornia.contrib.models.sam import Sam
     from kornia.contrib.models import SegmentationResults
     from kornia.io import load_image, ImageLoadType
-    from kornia.utils import get_cuda_device_if_available
+    from kornia.utils import get_cuda_or_mps_device_if_available
     from kornia.geometry import resize
     from kornia.enhance import normalize
 
     model_type = 'vit_b' # or can be a number `2` or the enum sam.SamModelType.vit_b
     checkpoint_path = './path_for_the_model_checkpoint.pth'
-    device = get_cuda_device_if_available()
+    device = get_cuda_or_mps_device_if_available()
 
     # Load the model
     sam_model = Sam.from_pretrained(model_type, checkpoint_path, device)
