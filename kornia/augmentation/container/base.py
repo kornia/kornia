@@ -282,10 +282,10 @@ class TransformMatrixMinIn:
     _valid_ops_for_transform_computation = ()
     _transformation_matrix_arg: str = "silence"
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, *args, **kwargs) -> None:  # type:ignore
         super().__init__(*args, **kwargs)
         self._transform_matrix: Optional[Tensor] = None
-        self._transform_matrices: List[Tensor] = []
+        self._transform_matrices: List[Optional[Tensor]] = []
 
     def _parse_transformation_matrix_mode(self, transformation_matrix_mode: str) -> None:
         _valid_transformation_matrix_args = ["silence", "rigid", "skip"]

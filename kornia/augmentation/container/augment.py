@@ -175,7 +175,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         self._parse_transformation_matrix_mode(transformation_matrix_mode)
 
-        self._valid_ops_for_transform_computation = (
+        self._valid_ops_for_transform_computation: Tuple[Any, ...] = (
             RigidAffineAugmentationBase2D,
             RigidAffineAugmentationBase3D,
             AugmentationSequential,

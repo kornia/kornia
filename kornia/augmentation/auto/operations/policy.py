@@ -22,7 +22,7 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
     def __init__(self, *operations: OperationBase) -> None:
         self.validate_operations(*operations)
         super().__init__(*operations)
-        self._valid_ops_for_transform_computation = (OperationBase,)
+        self._valid_ops_for_transform_computation: Tuple[Any, ...] = (OperationBase,)
 
     def _update_transform_matrix_for_valid_op(self, module: Module) -> None:
         self._transform_matrices.append(module.transform_matrix)  # type: ignore

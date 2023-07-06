@@ -159,7 +159,7 @@ class OperationBase(Module):
     @property
     def transform_matrix(self) -> Optional[Tensor]:
         if hasattr(self.op, "transform_matrix"):
-            return self.op.transform_matrix
+            return self.op.transform_matrix  # type:ignore
         return None
 
     @property

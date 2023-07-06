@@ -22,7 +22,7 @@ class PolicyAugmentBase(TransformMatrixMinIn, ImageSequentialBase):
         policies = self.compose_policy(policy)
         super().__init__(*policies)
         self._parse_transformation_matrix_mode(transformation_matrix_mode)
-        self._valid_ops_for_transform_computation = (PolicySequential,)
+        self._valid_ops_for_transform_computation: Tuple[Any, ...] = (PolicySequential,)
 
     def _update_transform_matrix_for_valid_op(self, module: PolicySequential) -> None:  # type: ignore
         self._transform_matrices.append(module.transform_matrix)
