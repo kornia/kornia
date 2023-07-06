@@ -17,24 +17,26 @@ class TestImageToString:
         )
         assert out == expected
 
-    def test_errors(self):
+    def test_exception(self):
         img = torch.rand(3, 15, 15)
         image_to_string(img)
 
         img = torch.rand(3, 15, 15)
         image_to_string(img, max_width=12)
 
-        with pytest.raises(TypeError):
+        with pytest.raises(TypeError) as errinfo:
             img = torch.rand(1, 3, 15, 15)
             image_to_string(img)
+        assert "shape must be [['C', 'H', 'W']]. Got torch.Size([1, 3, 15, 15])}" in str(errinfo)
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError) as errinfo::
             img = torch.rand(3, 15, 15) * 10
             image_to_string(img)
+        assert "Invalid image value range. Expect [0, 1] but got" in str(errinfo)
+
+        with pytest.raises(RuntimeError):
+            print_image([img])  # Do not accept list
 
     def test_print_smoke(self):
         img = torch.rand(3, 15, 15)
         print_image(img)
-
-        with pytest.raises(RuntimeError):
-            print_image([img])  # Do not accept list
