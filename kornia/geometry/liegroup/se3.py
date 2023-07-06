@@ -32,7 +32,7 @@ class Se3(Module):
 
     Example:
         >>> q = Quaternion.identity()
-        >>> s = Se3(So3(q), torch.ones(3))
+        >>> s = Se3(q, torch.ones(3))
         >>> s.r
         Parameter containing:
         tensor([1., 0., 0., 0.], requires_grad=True)
@@ -176,7 +176,7 @@ class Se3(Module):
         Example:
             >>> from kornia.geometry.quaternion import Quaternion
             >>> q = Quaternion.identity()
-            >>> Se3(So3(q), torch.zeros(3)).log()
+            >>> Se3(q, torch.zeros(3)).log()
             tensor([0., 0., 0., 0., 0., 0.], grad_fn=<CatBackward0>)
         """
         omega = self.r.log()
