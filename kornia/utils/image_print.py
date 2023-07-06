@@ -333,9 +333,9 @@ def rgb2short(rgb: str) -> Tuple[str, str]:
                 res.append(closest)
                 break
             i += 1
-    res = ''.join([('%02.x' % i) for i in res])
-    equiv = RGB2SHORT_DICT[res]
-    return equiv, res
+    _res = ''.join([('%02.x' % i) for i in res])
+    equiv = RGB2SHORT_DICT[_res]
+    return equiv, _res
 
 
 def image_to_string(image: Tensor, max_width: int = 256) -> str:
