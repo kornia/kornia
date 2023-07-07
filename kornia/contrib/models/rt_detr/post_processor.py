@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from kornia.core import Module, Tensor, concatenate, tensor
 
 
@@ -8,14 +10,15 @@ class DETRPostProcessor(Module):
         super().__init__()
         self.confidence_threshold = confidence_threshold
 
-    def forward(self, data: dict[str, Tensor], original_sizes: list[tuple[int, int]]) -> list[Tensor]:
+    def forward(self, data: dict[str, Tensor], meta: dict[str, Any]) -> list[Tensor]:
         """Post-process outputs from DETR.
 
         Args:
             data: dictionary with keys ``logits`` and ``boxes``. ``logits`` has shape :math:`(N, Q, K)` and
                 ``boxes`` has shape :math:`(N, Q, 4)`, where :math:`Q` is the number of queries, :math:`K`
                 is the number of classes.
-            original_sizes: original image size of the input images. Each tuple represent (img_height, img_width).
+            meta: dictionary containing meta information. It must have key ``original_size``, which is the
+                original image size of input images. Each tuple represent (img_height, img_width).
 
         Returns:
             Processed detections. For each image, the detections have shape (D, 6), where D is the number of detections
@@ -23,6 +26,7 @@ class DETRPostProcessor(Module):
         """
         logits = data["logits"]
         boxes = data["boxes"]
+        original_sizes = meta["original_size"]
 
         # NOTE: boxes are not clipped to image dimensions
 
