@@ -3,6 +3,7 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia.testing as utils  # test utils
+from kornia.feature.integrated import LightGlueMatcher
 from kornia.feature.laf import laf_from_center_scale_ori
 from kornia.feature.matching import (
     DescriptorMatcher,
@@ -14,7 +15,6 @@ from kornia.feature.matching import (
     match_smnn,
     match_snn,
 )
-from kornia.feature.integrated import LightGlueMatcher
 from kornia.testing import assert_close
 
 
@@ -477,12 +477,8 @@ class TestLightGlueDISK:
         data_dev = utils.dict_to(data, device, dtype)
         lg = LightGlueMatcher('disk').to(device)
         with torch.no_grad():
-            dists, idxs = lg(
-                data_dev['descs1'], data_dev['descs2'][:1], data_dev['lafs1'], data_dev['lafs2'][:, :1]
-            )
-            dists, idxs = lg(
-                data_dev['descs1'][:1], data_dev['descs2'], data_dev['lafs1'][:, :1], data_dev['lafs2']
-            )
+            dists, idxs = lg(data_dev['descs1'], data_dev['descs2'][:1], data_dev['lafs1'], data_dev['lafs2'][:, :1])
+            dists, idxs = lg(data_dev['descs1'][:1], data_dev['descs2'], data_dev['lafs1'][:, :1], data_dev['lafs2'])
 
     @pytest.mark.parametrize("data", ["lightglue_idxs"], indirect=True)
     def test_empty_nocrash(self, device, dtype, data):

@@ -9,12 +9,12 @@ from .integrated import (
     KeyNetAffNetHardNet,
     KeyNetHardNet,
     LAFDescriptor,
+    LightGlueMatcher,
     LocalFeature,
     LocalFeatureMatcher,
     SIFTFeature,
     SIFTFeatureScaleSpace,
     get_laf_descriptors,
-    LightGlueMatcher,
 )
 from .keynet import KeyNet, KeyNetDetector
 from .laf import (
@@ -38,8 +38,8 @@ from .laf import (
     scale_laf,
     set_laf_orientation,
 )
-from .loftr import LoFTR
 from .lightglue.lightglue import LightGlue
+from .loftr import LoFTR
 from .matching import (
     DescriptorMatcher,
     GeometryAwareDescriptorMatcher,

@@ -13,6 +13,8 @@ from .affine_shape import LAFAffNetShapeEstimator
 from .hardnet import HardNet
 from .keynet import KeyNetDetector
 from .laf import extract_patches_from_pyramid, get_laf_center, scale_laf
+from .lightglue.lightglue import LightGlue
+from .matching import GeometryAwareDescriptorMatcher, _no_match
 from .orientation import LAFOrienter, OriNet, PassLAF
 from .responses import BlobDoG, BlobDoGSingle, BlobHessian, CornerGFTT
 from .scale_space_detector import (
@@ -22,8 +24,6 @@ from .scale_space_detector import (
     get_default_detector_config,
 )
 from .siftdesc import SIFTDescriptor
-from .lightglue.lightglue import LightGlue
-from .matching import GeometryAwareDescriptorMatcher, _no_match
 
 
 def get_laf_descriptors(
@@ -398,7 +398,7 @@ class LocalFeatureMatcher(Module):
 
 
 class LightGlueMatcher(GeometryAwareDescriptorMatcher):
-    """LightGlue-based matcher  in kornia API. 
+    """LightGlue-based matcher  in kornia API.
      This is based on the original code from paper "LightGlue: Local Feature Matching at Light Speed". See :cite:`LightGlue2023` for
     more details.
 
@@ -416,13 +416,15 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
         self.params = params
         self.matcher = LightGlue(self.feature_name, **params)
 
-    def forward(self,
-                desc1: Tensor,
-                desc2: Tensor,
-                lafs1: Tensor,
-                lafs2: Tensor,
-                hw1: Optional[Tuple[int, int]] = None,
-                hw2: Optional[Tuple[int, int]] = None) -> Tuple[Tensor, Tensor]:
+    def forward(
+        self,
+        desc1: Tensor,
+        desc2: Tensor,
+        lafs1: Tensor,
+        lafs2: Tensor,
+        hw1: Optional[Tuple[int, int]] = None,
+        hw2: Optional[Tuple[int, int]] = None,
+    ) -> Tuple[Tensor, Tensor]:
         """
         Args:
             desc1: Batch of descriptors of a shape :math:`(B1, D)`.
@@ -438,10 +440,12 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
         if (desc1.shape[0] < 2) or (desc2.shape[0] < 2):
             return _no_match(desc1)
 
-        input_dict = {"keypoints0": get_laf_center(lafs1),
-                      "keypoints1": get_laf_center(lafs2),
-                      "descriptors0": desc1[None],
-                      "descriptors1": desc2[None]}
+        input_dict = {
+            "keypoints0": get_laf_center(lafs1),
+            "keypoints1": get_laf_center(lafs2),
+            "descriptors0": desc1[None],
+            "descriptors1": desc2[None],
+        }
         if hw1 is None:
             hw1 = input_dict['keypoints0'].max(dim=1)[0].squeeze().flip(0)
         if hw2 is None:
