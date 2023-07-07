@@ -1,3 +1,6 @@
+# Adopted from https://github.com/cvg/LightGlue with removing einops dependency
+# LightGlue authors and copyright: Philipp Lindenberger, Paul-Edouard Sarlin, Marc Pollefeys
+
 from pathlib import Path
 from types import SimpleNamespace
 import torch
@@ -11,8 +14,6 @@ try:
     FOUND_OFFICIAL_FLASH = True
 except ModuleNotFoundError:
     FOUND_OFFICIAL_FLASH = False
-
-torch.backends.cudnn.deterministic = True
 
 
 def math_clamp(x, min_, max_):

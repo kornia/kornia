@@ -398,14 +398,13 @@ class LocalFeatureMatcher(Module):
 
 
 class LightGlueMatcher(GeometryAwareDescriptorMatcher):
-    """Module version of matching functions.
-
-    See :func:`~kornia.feature.match_nn`, :func:`~kornia.feature.match_snn`,
-        :func:`~kornia.feature.match_mnn` or :func:`~kornia.feature.match_smnn` for more details.
+    """LightGlue-based matcher  in kornia API. 
+     This is based on the original code from paper "LightGlue: Local Feature Matching at Light Speed". See :cite:`LightGlue2023` for
+    more details.
 
     Args:
-        match_mode: type of matching, can be `fginn`.
-        th: threshold on distance ratio, or other quality measure.
+        feature_name: type of matching, can be `disk` or `superpoint`.
+        params: LightGlue params.
     """
 
     known_modes = ['superpoint', 'disk']
