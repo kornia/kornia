@@ -373,19 +373,16 @@ def rotation_matrix_to_angle_axis(rotation_matrix: Tensor) -> Tensor:
 
 
 def rotation_matrix_to_quaternion(
-    rotation_matrix: Tensor, eps: float = 1.0e-8, order: QuaternionCoeffOrder = QuaternionCoeffOrder.XYZW
+    rotation_matrix: Tensor, eps: float = 1.0e-8, order: QuaternionCoeffOrder = QuaternionCoeffOrder.WXYZ
 ) -> Tensor:
     r"""Convert 3x3 rotation matrix to 4d quaternion vector.
 
-    The quaternion vector has components in (w, x, y, z) or (x, y, z, w) format.
-
-    .. note::
-        The (x, y, z, w) order is going to be deprecated in favor of efficiency.
+    The quaternion vector has components in (w, x, y, z) format.
 
     Args:
         rotation_matrix: the rotation matrix to convert with shape :math:`(*, 3, 3)`.
         eps: small value to avoid zero division.
-        order: quaternion coefficient order. Note: 'xyzw' will be deprecated in favor of 'wxyz'.
+        order: quaternion coefficient order.
 
     Return:
         the rotation in quaternion with shape :math:`(*, 4)`.
@@ -488,16 +485,16 @@ def normalize_quaternion(quaternion: Tensor, eps: float = 1.0e-12) -> Tensor:
 
 
 def quaternion_to_rotation_matrix(
-    quaternion: Tensor, order: QuaternionCoeffOrder = QuaternionCoeffOrder.XYZW
+    quaternion: Tensor, order: QuaternionCoeffOrder = QuaternionCoeffOrder.WXYZ
 ) -> Tensor:
     r"""Convert a quaternion to a rotation matrix.
 
-    The quaternion should be in (x, y, z, w) or (w, x, y, z) format.
+    The quaternion should be in (w, x, y, z) format.
 
     Args:
         quaternion: a tensor containing a quaternion to be converted.
           The tensor can be of shape :math:`(*, 4)`.
-        order: quaternion coefficient order. Note: 'xyzw' will be deprecated in favor of 'wxyz'.
+        order: quaternion coefficient order.
 
     Return:
         the rotation matrix of shape :math:`(*, 3, 3)`.
@@ -561,16 +558,16 @@ def quaternion_to_rotation_matrix(
     return matrix
 
 
-def quaternion_to_angle_axis(quaternion: Tensor, order: QuaternionCoeffOrder = QuaternionCoeffOrder.XYZW) -> Tensor:
+def quaternion_to_angle_axis(quaternion: Tensor, order: QuaternionCoeffOrder = QuaternionCoeffOrder.WXYZ) -> Tensor:
     """Convert quaternion vector to angle axis of rotation in radians.
 
-    The quaternion should be in (x, y, z, w) or (w, x, y, z) format.
+    The quaternion should be in (w, x, y, z) format.
 
     Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h
 
     Args:
         quaternion: tensor with quaternions.
-        order: quaternion coefficient order. Note: 'xyzw' will be deprecated in favor of 'wxyz'.
+        order: quaternion coefficient order.
 
     Return:
         tensor with angle axis of rotation.
@@ -623,17 +620,17 @@ def quaternion_to_angle_axis(quaternion: Tensor, order: QuaternionCoeffOrder = Q
 
 
 def quaternion_log_to_exp(
-    quaternion: Tensor, eps: float = 1.0e-8, order: QuaternionCoeffOrder = QuaternionCoeffOrder.XYZW
+    quaternion: Tensor, eps: float = 1.0e-8, order: QuaternionCoeffOrder = QuaternionCoeffOrder.WXYZ
 ) -> Tensor:
     r"""Apply exponential map to log quaternion.
 
-    The quaternion should be in (x, y, z, w) or (w, x, y, z) format.
+    The quaternion should be in (w, x, y, z) format.
 
     Args:
         quaternion: a tensor containing a quaternion to be converted.
           The tensor can be of shape :math:`(*, 3)`.
         eps: a small number for clamping.
-        order: quaternion coefficient order. Note: 'xyzw' will be deprecated in favor of 'wxyz'.
+        order: quaternion coefficient order.
 
     Return:
         the quaternion exponential map of shape :math:`(*, 4)`.
@@ -668,17 +665,17 @@ def quaternion_log_to_exp(
 
 
 def quaternion_exp_to_log(
-    quaternion: Tensor, eps: float = 1.0e-8, order: QuaternionCoeffOrder = QuaternionCoeffOrder.XYZW
+    quaternion: Tensor, eps: float = 1.0e-8, order: QuaternionCoeffOrder = QuaternionCoeffOrder.WXYZ
 ) -> Tensor:
     r"""Apply the log map to a quaternion.
 
-    The quaternion should be in (x, y, z, w) format.
+    The quaternion should be in (w, x, y, z) format.
 
     Args:
         quaternion: a tensor containing a quaternion to be converted.
           The tensor can be of shape :math:`(*, 4)`.
         eps: a small number for clamping.
-        order: quaternion coefficient order. Note: 'xyzw' will be deprecated in favor of 'wxyz'.
+        order: quaternion coefficient order.
 
     Return:
         the quaternion log map of shape :math:`(*, 3)`.
@@ -718,16 +715,16 @@ def quaternion_exp_to_log(
 # https://github.com/facebookresearch/QuaterNet/blob/master/common/quaternion.py#L138
 
 
-def angle_axis_to_quaternion(angle_axis: Tensor, order: QuaternionCoeffOrder = QuaternionCoeffOrder.XYZW) -> Tensor:
+def angle_axis_to_quaternion(angle_axis: Tensor, order: QuaternionCoeffOrder = QuaternionCoeffOrder.WXYZ) -> Tensor:
     r"""Convert an angle axis to a quaternion.
 
-    The quaternion vector has components in (x, y, z, w) or (w, x, y, z) format.
+    The quaternion vector has components in (w, x, y, z) format.
 
     Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h
 
     Args:
         angle_axis: tensor with angle axis in radians.
-        order: quaternion coefficient order. Note: 'xyzw' will be deprecated in favor of 'wxyz'.
+        order: quaternion coefficient order.
 
     Return:
         tensor with quaternion.
