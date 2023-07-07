@@ -47,10 +47,11 @@ def focal_loss(
         the computed loss.
 
     Example:
-        >>> N = 5  # num_classes
-        >>> input = torch.randn(1, N, 3, 5, requires_grad=True)
-        >>> target = torch.empty(1, 3, 5, dtype=torch.long).random_(N)
-        >>> output = focal_loss(input, target, alpha=0.5, gamma=2.0, reduction='mean')
+        >>> C = 5  # num_classes
+        >>> input = torch.randn(1, C, 3, 5, requires_grad=True)
+        >>> target = torch.randint(C, (1, 3, 5))
+        >>> kwargs = {"alpha": 0.5, "gamma": 2.0, "reduction": 'mean'}
+        >>> output = focal_loss(input, target, **kwargs)
         >>> output.backward()
     """
 
@@ -134,11 +135,11 @@ class FocalLoss(nn.Module):
           representing correct classification :math:`target[i] \in [0, C)`.
 
     Example:
-        >>> N = 5  # num_classes
+        >>> C = 5  # num_classes
+        >>> input = torch.randn(1, C, 3, 5, requires_grad=True)
+        >>> target = torch.randint(C, (1, 3, 5))
         >>> kwargs = {"alpha": 0.5, "gamma": 2.0, "reduction": 'mean'}
         >>> criterion = FocalLoss(**kwargs)
-        >>> input = torch.randn(1, N, 3, 5, requires_grad=True)
-        >>> target = torch.empty(1, 3, 5, dtype=torch.long).random_(N)
         >>> output = criterion(input, target)
         >>> output.backward()
     """
@@ -195,11 +196,12 @@ def binary_focal_loss_with_logits(
         the computed loss.
 
     Examples:
+        >>> C = 3  # num_classes
+        >>> input = torch.randn(1, C, 5, requires_grad=True)
+        >>> target = torch.randint(2, (1, C, 5))
         >>> kwargs = {"alpha": 0.25, "gamma": 2.0, "reduction": 'mean'}
-        >>> logits = torch.tensor([[[6.325]],[[5.26]],[[87.49]]])
-        >>> labels = torch.tensor([[[1.]],[[1.]],[[0.]]])
-        >>> binary_focal_loss_with_logits(logits, labels, **kwargs)
-        tensor(21.8725)
+        >>> output = binary_focal_loss_with_logits(input, target, **kwargs)
+        >>> output.backward()
     """
 
     KORNIA_CHECK_SHAPE(input, ["B", "C", "*"])
@@ -290,11 +292,12 @@ class BinaryFocalLossWithLogits(nn.Module):
           where each value is between 0 and 1.
 
     Examples:
+        >>> C = 3  # num_classes
+        >>> input = torch.randn(1, C, 5, requires_grad=True)
+        >>> target = torch.randint(2, (1, C, 5))
         >>> kwargs = {"alpha": 0.25, "gamma": 2.0, "reduction": 'mean'}
-        >>> loss = BinaryFocalLossWithLogits(**kwargs)
-        >>> input = torch.randn(1, 3, 5, requires_grad=True)
-        >>> target = torch.empty(1, 3, 5, dtype=torch.long).random_(2)
-        >>> output = loss(input, target)
+        >>> criterion = BinaryFocalLossWithLogits(**kwargs)
+        >>> output = criterion(input, target)
         >>> output.backward()
     """
 
