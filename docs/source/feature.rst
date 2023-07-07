@@ -58,6 +58,12 @@ Matching
 .. autoclass:: GeometryAwareDescriptorMatcher
    :members: forward
 
+.. autoclass:: LightGlueMatcher
+   :members: forward
+
+.. autoclass:: LightGlue
+   :members: forward
+
 .. autoclass:: LocalFeature
    :members: forward
 

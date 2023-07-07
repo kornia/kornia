@@ -14,6 +14,7 @@ from .integrated import (
     SIFTFeature,
     SIFTFeatureScaleSpace,
     get_laf_descriptors,
+    LightGlueMatcher,
 )
 from .keynet import KeyNet, KeyNetDetector
 from .laf import (
@@ -38,6 +39,7 @@ from .laf import (
     set_laf_orientation,
 )
 from .loftr import LoFTR
+from .lightglue.lightglue import LightGlue
 from .matching import (
     DescriptorMatcher,
     GeometryAwareDescriptorMatcher,
@@ -105,6 +107,8 @@ __all__ = [
     "laf_to_boundary_points",
     "ellipse_to_laf",
     "make_upright",
+    "LightGlue",
+    "LightGlueMatcher",
     "get_laf_scale",
     "get_laf_center",
     "get_laf_orientation",

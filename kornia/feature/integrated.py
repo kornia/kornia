@@ -22,6 +22,8 @@ from .scale_space_detector import (
     get_default_detector_config,
 )
 from .siftdesc import SIFTDescriptor
+from .lightglue.lightglue import LightGlue
+from .matching import GeometryAwareDescriptorMatcher, _no_match
 
 
 def get_laf_descriptors(
@@ -393,3 +395,64 @@ class LocalFeatureMatcher(Module):
             'confidence': concatenate(out_confidence, dim=0).view(-1),
             'batch_indexes': concatenate(out_batch_indexes, dim=0).view(-1),
         }
+
+
+class LightGlueMatcher(GeometryAwareDescriptorMatcher):
+    """Module version of matching functions.
+
+    See :func:`~kornia.feature.match_nn`, :func:`~kornia.feature.match_snn`,
+        :func:`~kornia.feature.match_mnn` or :func:`~kornia.feature.match_smnn` for more details.
+
+    Args:
+        match_mode: type of matching, can be `fginn`.
+        th: threshold on distance ratio, or other quality measure.
+    """
+
+    known_modes = ['superpoint', 'disk']
+
+    def __init__(self, feature_name: str = 'disk', params: Dict = {}) -> None:
+        feature_name_: str = feature_name.lower()
+        super().__init__(feature_name_)
+        self.feature_name = feature_name_
+        self.params = params
+        self.matcher = LightGlue(self.feature_name, **params)
+
+    def forward(self,
+                desc1: Tensor,
+                desc2: Tensor,
+                lafs1: Tensor,
+                lafs2: Tensor,
+                hw1: Optional[Tuple[int, int]] = None,
+                hw2: Optional[Tuple[int, int]] = None) -> Tuple[Tensor, Tensor]:
+        """
+        Args:
+            desc1: Batch of descriptors of a shape :math:`(B1, D)`.
+            desc2: Batch of descriptors of a shape :math:`(B2, D)`.
+            lafs1: LAFs of a shape :math:`(1, B1, 2, 3)`.
+            lafs2: LAFs of a shape :math:`(1, B1, 2, 3)`.
+
+        Return:
+            - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
+            - Long tensor indexes of matching descriptors in desc1 and desc2,
+                shape of :math:`(B3, 2)` where :math:`0 <= B3 <= B1`.
+        """
+        if (desc1.shape[0] < 2) or (desc2.shape[0] < 2):
+            return _no_match(desc1)
+
+        input_dict = {"keypoints0": get_laf_center(lafs1),
+                      "keypoints1": get_laf_center(lafs2),
+                      "descriptors0": desc1[None],
+                      "descriptors1": desc2[None]}
+        if hw1 is None:
+            hw1 = input_dict['keypoints0'].max(dim=1)[0].squeeze().flip(0)
+        if hw2 is None:
+            hw2 = input_dict['keypoints1'].max(dim=1)[0].squeeze().flip(0)
+        input_dict['image_size0'] = hw1.flip(0)[None].to(lafs1.device)
+        input_dict['image_size1'] = hw2.flip(0)[None].to(lafs1.device)
+        for k, v in input_dict.items():
+            print(k, v.shape)
+        pred = self.matcher(input_dict)
+        matches0, mscores0 = pred['matches0'], pred['matching_scores0']
+        valid = matches0 > -1
+        matches = torch.stack([torch.where(valid)[1], matches0[valid]], -1)
+        return mscores0[valid].reshape(-1, 1), matches
