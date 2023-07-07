@@ -408,13 +408,6 @@ def rotation_matrix_to_quaternion(
     if order.name not in QuaternionCoeffOrder.__members__.keys():
         raise ValueError(f"order must be one of {QuaternionCoeffOrder.__members__.keys()}")
 
-    if order == QuaternionCoeffOrder.XYZW:
-        warnings.warn(
-            "`XYZW` quaternion coefficient order is deprecated and"
-            " will be removed after > 0.6. "
-            "Please use `QuaternionCoeffOrder.WXYZ` instead."
-        )
-
     def safe_zero_division(numerator: Tensor, denominator: Tensor) -> Tensor:
         eps: float = torch.finfo(numerator.dtype).tiny
         return numerator / torch.clamp(denominator, min=eps)
@@ -431,8 +424,6 @@ def rotation_matrix_to_quaternion(
         qx = safe_zero_division(m21 - m12, sq)
         qy = safe_zero_division(m02 - m20, sq)
         qz = safe_zero_division(m10 - m01, sq)
-        if order == QuaternionCoeffOrder.XYZW:
-            return concatenate((qx, qy, qz, qw), dim=-1)
         return concatenate((qw, qx, qy, qz), dim=-1)
 
     def cond_1():
@@ -441,8 +432,6 @@ def rotation_matrix_to_quaternion(
         qx = 0.25 * sq
         qy = safe_zero_division(m01 + m10, sq)
         qz = safe_zero_division(m02 + m20, sq)
-        if order == QuaternionCoeffOrder.XYZW:
-            return concatenate((qx, qy, qz, qw), dim=-1)
         return concatenate((qw, qx, qy, qz), dim=-1)
 
     def cond_2():
@@ -451,8 +440,6 @@ def rotation_matrix_to_quaternion(
         qx = safe_zero_division(m01 + m10, sq)
         qy = 0.25 * sq
         qz = safe_zero_division(m12 + m21, sq)
-        if order == QuaternionCoeffOrder.XYZW:
-            return concatenate((qx, qy, qz, qw), dim=-1)
         return concatenate((qw, qx, qy, qz), dim=-1)
 
     def cond_3():
@@ -461,8 +448,6 @@ def rotation_matrix_to_quaternion(
         qx = safe_zero_division(m02 + m20, sq)
         qy = safe_zero_division(m12 + m21, sq)
         qz = 0.25 * sq
-        if order == QuaternionCoeffOrder.XYZW:
-            return concatenate((qx, qy, qz, qw), dim=-1)
         return concatenate((qw, qx, qy, qz), dim=-1)
 
     where_2 = where(m11 > m22, cond_2(), cond_3())
@@ -534,21 +519,11 @@ def quaternion_to_rotation_matrix(
     if order.name not in QuaternionCoeffOrder.__members__.keys():
         raise ValueError(f"order must be one of {QuaternionCoeffOrder.__members__.keys()}")
 
-    if order == QuaternionCoeffOrder.XYZW:
-        warnings.warn(
-            "`XYZW` quaternion coefficient order is deprecated and"
-            " will be removed after > 0.6. "
-            "Please use `QuaternionCoeffOrder.WXYZ` instead."
-        )
-
     # normalize the input quaternion
     quaternion_norm: Tensor = normalize_quaternion(quaternion)
 
     # unpack the normalized quaternion components
-    if order == QuaternionCoeffOrder.XYZW:
-        x, y, z, w = torch.chunk(quaternion_norm, chunks=4, dim=-1)
-    else:
-        w, x, y, z = torch.chunk(quaternion_norm, chunks=4, dim=-1)
+    w, x, y, z = torch.chunk(quaternion_norm, chunks=4, dim=-1)
 
     # compute the actual conversion
     tx: Tensor = 2.0 * x
@@ -619,28 +594,16 @@ def quaternion_to_angle_axis(quaternion: Tensor, order: QuaternionCoeffOrder = Q
     if order.name not in QuaternionCoeffOrder.__members__.keys():
         raise ValueError(f"order must be one of {QuaternionCoeffOrder.__members__.keys()}")
 
-    if order == QuaternionCoeffOrder.XYZW:
-        warnings.warn(
-            "`XYZW` quaternion coefficient order is deprecated and"
-            " will be removed after > 0.6. "
-            "Please use `QuaternionCoeffOrder.WXYZ` instead."
-        )
     # unpack input and compute conversion
     q1: Tensor = tensor([])
     q2: Tensor = tensor([])
     q3: Tensor = tensor([])
     cos_theta: Tensor = tensor([])
 
-    if order == QuaternionCoeffOrder.XYZW:
-        q1 = quaternion[..., 0]
-        q2 = quaternion[..., 1]
-        q3 = quaternion[..., 2]
-        cos_theta = quaternion[..., 3]
-    else:
-        cos_theta = quaternion[..., 0]
-        q1 = quaternion[..., 1]
-        q2 = quaternion[..., 2]
-        q3 = quaternion[..., 3]
+    cos_theta = quaternion[..., 0]
+    q1 = quaternion[..., 1]
+    q2 = quaternion[..., 2]
+    q3 = quaternion[..., 3]
 
     sin_squared_theta: Tensor = q1 * q1 + q2 * q2 + q3 * q3
 
@@ -691,13 +654,6 @@ def quaternion_log_to_exp(
     if order.name not in QuaternionCoeffOrder.__members__.keys():
         raise ValueError(f"order must be one of {QuaternionCoeffOrder.__members__.keys()}")
 
-    if order == QuaternionCoeffOrder.XYZW:
-        warnings.warn(
-            "`XYZW` quaternion coefficient order is deprecated and"
-            " will be removed after > 0.6. "
-            "Please use `QuaternionCoeffOrder.WXYZ` instead."
-        )
-
     # compute quaternion norm
     norm_q: Tensor = torch.norm(quaternion, p=2, dim=-1, keepdim=True).clamp(min=eps)
 
@@ -707,10 +663,7 @@ def quaternion_log_to_exp(
 
     # compose quaternion and return
     quaternion_exp: Tensor = tensor([])
-    if order == QuaternionCoeffOrder.XYZW:
-        quaternion_exp = concatenate((quaternion_vector, quaternion_scalar), dim=-1)
-    else:
-        quaternion_exp = concatenate((quaternion_scalar, quaternion_vector), dim=-1)
+    quaternion_exp = concatenate((quaternion_scalar, quaternion_vector), dim=-1)
 
     return quaternion_exp
 
@@ -746,23 +699,12 @@ def quaternion_exp_to_log(
     if order.name not in QuaternionCoeffOrder.__members__.keys():
         raise ValueError(f"order must be one of {QuaternionCoeffOrder.__members__.keys()}")
 
-    if order == QuaternionCoeffOrder.XYZW:
-        warnings.warn(
-            "`XYZW` quaternion coefficient order is deprecated and"
-            " will be removed after > 0.6. "
-            "Please use `QuaternionCoeffOrder.WXYZ` instead."
-        )
-
     # unpack quaternion vector and scalar
     quaternion_vector: Tensor = tensor([])
     quaternion_scalar: Tensor = tensor([])
 
-    if order == QuaternionCoeffOrder.XYZW:
-        quaternion_vector = quaternion[..., 0:3]
-        quaternion_scalar = quaternion[..., 3:4]
-    else:
-        quaternion_scalar = quaternion[..., 0:1]
-        quaternion_vector = quaternion[..., 1:4]
+    quaternion_scalar = quaternion[..., 0:1]
+    quaternion_vector = quaternion[..., 1:4]
 
     # compute quaternion norm
     norm_q: Tensor = torch.norm(quaternion_vector, p=2, dim=-1, keepdim=True).clamp(min=eps)
@@ -809,13 +751,6 @@ def angle_axis_to_quaternion(angle_axis: Tensor, order: QuaternionCoeffOrder = Q
     if order.name not in QuaternionCoeffOrder.__members__.keys():
         raise ValueError(f"order must be one of {QuaternionCoeffOrder.__members__.keys()}")
 
-    if order == QuaternionCoeffOrder.XYZW:
-        warnings.warn(
-            "`XYZW` quaternion coefficient order is deprecated and"
-            " will be removed after > 0.6. "
-            "Please use `QuaternionCoeffOrder.WXYZ` instead."
-        )
-
     # unpack input and compute conversion
     a0: Tensor = angle_axis[..., 0:1]
     a1: Tensor = angle_axis[..., 1:2]
@@ -834,16 +769,10 @@ def angle_axis_to_quaternion(angle_axis: Tensor, order: QuaternionCoeffOrder = Q
     w: Tensor = where(mask, torch.cos(half_theta), ones)
 
     quaternion: Tensor = torch.zeros(size=(*angle_axis.shape[:-1], 4), dtype=angle_axis.dtype, device=angle_axis.device)
-    if order == QuaternionCoeffOrder.XYZW:
-        quaternion[..., 0:1] = a0 * k
-        quaternion[..., 1:2] = a1 * k
-        quaternion[..., 2:3] = a2 * k
-        quaternion[..., 3:4] = w
-    else:
-        quaternion[..., 1:2] = a0 * k
-        quaternion[..., 2:3] = a1 * k
-        quaternion[..., 3:4] = a2 * k
-        quaternion[..., 0:1] = w
+    quaternion[..., 1:2] = a0 * k
+    quaternion[..., 2:3] = a1 * k
+    quaternion[..., 3:4] = a2 * k
+    quaternion[..., 0:1] = w
     return quaternion
 
 
