@@ -21,7 +21,7 @@ def _cdist(d1: Tensor, d2: Tensor) -> Tensor:
     return dm
 
 
-def _get_default_fginn_params() -> dict[str, Any]:
+def _get_default_fginn_params() -> Dict[str, Any]:
     config = {"th": 0.85, "mutual": False, "spatial_th": 10.0}
     return config
 
