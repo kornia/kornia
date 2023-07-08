@@ -1,4 +1,6 @@
-from typing import Any, Dict, Optional, Union
+from __future__ import annotations
+
+from typing import Any
 
 import torch
 
@@ -12,7 +14,7 @@ from .utils.coarse_matching import CoarseMatching
 from .utils.fine_matching import FineMatching
 from .utils.position_encoding import PositionEncodingSine
 
-urls: Dict[str, str] = {}
+urls: dict[str, str] = {}
 urls["outdoor"] = "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_outdoor.ckpt"
 urls["indoor_new"] = "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_indoor_ds_new.ckpt"
 urls["indoor"] = "http://cmp.felk.cvut.cz/~mishkdmy/models/loftr_indoor.ckpt"
@@ -74,7 +76,7 @@ class LoFTR(Module):
         >>> out = loftr(input)
     """
 
-    def __init__(self, pretrained: Optional[str] = 'outdoor', config: Dict[str, Any] = default_cfg) -> None:
+    def __init__(self, pretrained: str | None = 'outdoor', config: dict[str, Any] = default_cfg) -> None:
         super().__init__()
         # Misc
         self.config = config
@@ -99,7 +101,7 @@ class LoFTR(Module):
             self.load_state_dict(pretrained_dict['state_dict'])
         self.eval()
 
-    def forward(self, data: Dict[str, Tensor]) -> Dict[str, Tensor]:
+    def forward(self, data: dict[str, Tensor]) -> dict[str, Tensor]:
         """
         Args:
             data: dictionary containing the input data in the following format:
@@ -117,7 +119,7 @@ class LoFTR(Module):
             - ``batch_indexes``, batch indexes for the keypoints and lafs :math:`(NC)`.
         """
         # 1. Local Feature CNN
-        _data: Dict[str, Union[Tensor, int, torch.Size]] = {
+        _data: dict[str, Tensor | int | torch.Size] = {
             'bs': data['image0'].size(0),
             'hw0_i': data['image0'].shape[2:],
             'hw1_i': data['image1'].shape[2:],
@@ -169,13 +171,13 @@ class LoFTR(Module):
         # 5. match fine-level
         self.fine_matching(feat_f0_unfold, feat_f1_unfold, _data)
 
-        rename_keys: Dict[str, str] = {
+        rename_keys: dict[str, str] = {
             "mkpts0_f": 'keypoints0',
             "mkpts1_f": 'keypoints1',
             "mconf": 'confidence',
             "b_ids": 'batch_indexes',
         }
-        out: Dict[str, Tensor] = {}
+        out: dict[str, Tensor] = {}
         for k, v in rename_keys.items():
             _d = _data[k]
             if isinstance(_d, Tensor):
@@ -184,7 +186,7 @@ class LoFTR(Module):
                 raise TypeError(f'Expected Tensor for item `{k}`. Gotcha {type(_d)}')
         return out
 
-    def load_state_dict(self, state_dict, *args, **kwargs):
+    def load_state_dict(self, state_dict: dict[str, Any], *args: Any, **kwargs: Any) -> Any:  # type: ignore[override]
         for k in list(state_dict.keys()):
             if k.startswith('matcher.'):
                 state_dict[k.replace('matcher.', '', 1)] = state_dict.pop(k)

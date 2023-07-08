@@ -1,14 +1,18 @@
+from __future__ import annotations
+
 import copy
-from typing import Optional
+from typing import Any, Literal
 
 import torch
 import torch.nn as nn
 
+from kornia.core import Module, Tensor
+
 from .linear_attention import FullAttention, LinearAttention
 
 
-class LoFTREncoderLayer(nn.Module):
-    def __init__(self, d_model, nhead, attention='linear') -> None:
+class LoFTREncoderLayer(Module):
+    def __init__(self, d_model: int, nhead: int, attention: Literal['linear'] | None = 'linear') -> None:
         super().__init__()
 
         self.dim = d_model // nhead
@@ -31,18 +35,14 @@ class LoFTREncoderLayer(nn.Module):
         self.norm2 = nn.LayerNorm(d_model)
 
     def forward(
-        self,
-        x: torch.Tensor,
-        source: torch.Tensor,
-        x_mask: Optional[torch.Tensor] = None,
-        source_mask: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
+        self, x: Tensor, source: Tensor, x_mask: Tensor | None = None, source_mask: Tensor | None = None
+    ) -> Tensor:
         """
         Args:
-            x (torch.Tensor): [N, L, C]
-            source (torch.Tensor): [N, S, C]
-            x_mask (torch.Tensor): [N, L] (optional)
-            source_mask (torch.Tensor): [N, S] (optional)
+            x: [N, L, C]
+            source: [N, S, C]
+            x_mask: [N, L] (optional)
+            source_mask: [N, S] (optional)
         """
         bs = x.size(0)
         query, key, value = x, source, source
@@ -62,10 +62,10 @@ class LoFTREncoderLayer(nn.Module):
         return x + message
 
 
-class LocalFeatureTransformer(nn.Module):
+class LocalFeatureTransformer(Module):
     """A Local Feature Transformer (LoFTR) module."""
 
-    def __init__(self, config) -> None:
+    def __init__(self, config: dict[str, Any]) -> None:
         super().__init__()
 
         self.config = config
@@ -76,18 +76,20 @@ class LocalFeatureTransformer(nn.Module):
         self.layers = nn.ModuleList([copy.deepcopy(encoder_layer) for _ in range(len(self.layer_names))])
         self._reset_parameters()
 
-    def _reset_parameters(self):
+    def _reset_parameters(self) -> None:
         for p in self.parameters():
             if p.dim() > 1:
                 nn.init.xavier_uniform_(p)
 
-    def forward(self, feat0, feat1, mask0=None, mask1=None):
+    def forward(
+        self, feat0: Tensor, feat1: Tensor, mask0: None | Tensor = None, mask1: None | Tensor = None
+    ) -> tuple[Tensor, Tensor]:
         """
         Args:
-            feat0 (torch.Tensor): [N, L, C]
-            feat1 (torch.Tensor): [N, S, C]
-            mask0 (torch.Tensor): [N, L] (optional)
-            mask1 (torch.Tensor): [N, S] (optional)
+            feat0: [N, L, C]
+            feat1: [N, S, C]
+            mask0: [N, L] (optional)
+            mask1: [N, S] (optional)
         """
         if self.d_model != feat0.size(2):
             msg = "the feature number of src and transformer must be equal"
