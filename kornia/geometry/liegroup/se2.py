@@ -290,8 +290,11 @@ class Se2(Module):
             tensor([[-1., -1.]], requires_grad=True)
         """
         r_inv: So2 = self.r.inverse()
-        t_inv: Tensor = r_inv * (-1 * self.t)
-        return Se2(r_inv, t_inv)
+        _t = -1 * self.t
+        if isinstance(_t, int):
+            raise TypeError('Unexpected integer from `-1 * translation`')
+
+        return Se2(r_inv, r_inv * _t)
 
     @classmethod
     def random(cls, batch_size: int | None = None, device: Device | None = None, dtype: Dtype = None) -> Se2:
