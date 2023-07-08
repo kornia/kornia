@@ -1,5 +1,5 @@
 import warnings
-from typing import Any, ClassVar, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
@@ -147,9 +147,6 @@ class AugmentationSequential(ImageSequential):
         [torch.Size([1, 2, 3, 5, 6]), torch.Size([1, 2, 3, 5, 6]), ...([1, 2, 1, 4, 2]), torch.Size([1, 2, 1, 2])]
     """
 
-    _transform_matrix: Optional[Tensor]
-    _transform_matrices: ClassVar[List[Tensor]] = []
-
     def __init__(
         self,
         *args: Union[_AugmentationBase, ImageSequential],
@@ -163,6 +160,9 @@ class AugmentationSequential(ImageSequential):
             DataKey.MASK: {"resample": Resample.NEAREST, "align_corners": None}
         },
     ) -> None:
+        self._transform_matrix: Optional[Tensor]
+        self._transform_matrices: List[Tensor] = []
+
         super().__init__(
             *args,
             same_on_batch=same_on_batch,
@@ -199,7 +199,7 @@ class AugmentationSequential(ImageSequential):
             # NOTE: only for images are supported for 3D.
             if isinstance(arg, K.AugmentationBase3D):
                 self.contains_3d_augmentation = True
-        self._transform_matrix: Optional[Tensor] = None
+        self._transform_matrix = None
         self.extra_args = extra_args
 
     def clear_state(self) -> None:
