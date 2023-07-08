@@ -44,10 +44,11 @@ class ObjectDetector:
             post_processor: a post-processing module.
         """
         super().__init__()
-        self.model = model
-        self.pre_processor = pre_processor
-        self.post_processor = post_processor
+        self.model = model.eval()
+        self.pre_processor = pre_processor.eval()
+        self.post_processor = post_processor.eval()
 
+    @torch.inference_mode()
     def predict(self, imgs: list[Tensor]) -> list[Tensor]:
         """Detect objects in a given list of images.
 
