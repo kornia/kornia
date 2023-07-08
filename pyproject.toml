@@ -75,6 +75,33 @@ requires = [
   skip-string-normalization = true
   skip-magic-trailing-comma = true
 
+[tool.ruff]
+  line-length = 120
+  target-version = "py37"
+  select = ["C9", "E", "F", "I", "PL", "S", "UP", "W", "YTT", "BLE", "C4", "RUF"]
+  ignore = [
+    "PLR2004", # Allow to use inplace values in comparisons instead of constants
+    "PLW2901", # Allow overwritten values on loops
+  ]
+
+  [tool.ruff.isort]
+    known-first-party = ["examples", "kornia", "test"]
+
+  [tool.ruff.mccabe]
+    max-complexity = 40
+
+  [tool.ruff.pylint]
+    max-args = 16
+    max-branches = 32
+    max-returns = 16
+    max-statements = 124
+
+  [tool.ruff.per-file-ignores]
+    "*/__init__.py" = ["F401", "F403"] # Allow unused imports and star imports
+    "kornia/__init__.py" = ["I001"] # Allow unsorted imports
+    "test/*" = ["S101", "S311", "BLE"] # allow assert, random, ignore BLE
+    "docs/*" = ["S101", "PLR0912", "PLR0915"] # allow assert, ignore max branches and statements
+
 [tool.pytest.ini_options]
   addopts = "--color=yes"
   testpaths = ["test"]
@@ -112,30 +139,3 @@ exclude_lines = [
 [tool.pydocstyle]
   match = '.*\.py'
   ignore = ['D105','D107','D203','D204','D213','D406','D407']
-
-[tool.ruff]
-  line-length = 120
-  target-version = "py37"
-  select = ["C9", "E", "F", "I", "PL", "S", "UP", "W", "YTT", "BLE", "C4", "RUF"]
-  ignore = [
-    "PLR2004", # Allow to use inplace values in comparisons instead of constants
-    "PLW2901", # Allow overwritten values on loops
-  ]
-
-  [tool.ruff.isort]
-    known-first-party = ["examples", "kornia", "test"]
-
-  [tool.ruff.mccabe]
-    max-complexity = 40
-
-  [tool.ruff.pylint]
-    max-args = 16
-    max-branches = 32
-    max-returns = 16
-    max-statements = 124
-
-  [tool.ruff.per-file-ignores]
-    "*/__init__.py" = ["F401", "F403"] # Allow unused imports and star imports
-    "kornia/__init__.py" = ["I001"] # Allow unsorted imports
-    "test/*" = ["S101", "S311", "BLE"] # allow assert, random, ignore BLE
-    "docs/*" = ["S101", "PLR0912", "PLR0915"] # allow assert, ignore max branches and statements

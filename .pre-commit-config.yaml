@@ -15,12 +15,12 @@ repos:
         exclude: ^$|.devcontainer
 
   - repo: https://github.com/tox-dev/pyproject-fmt
-    rev: "0.11.2"
+    rev: "0.13.0"
     hooks:
       - id: pyproject-fmt
 
-  - repo: https://github.com/charliermarsh/ruff-pre-commit
-    rev: v0.0.270
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.0.276
     hooks:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]
@@ -31,7 +31,7 @@ repos:
       - id: black
 
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.2.4
+    rev: v2.2.5
     hooks:
       - id: codespell
         args:
@@ -41,7 +41,7 @@ repos:
           - "*.bib,*.ipynb"
 
   - repo: https://github.com/PyCQA/docformatter
-    rev: v1.7.1
+    rev: v1.7.3
     hooks:
       - id: docformatter
         args: [--in-place, --wrap-summaries=115, --wrap-descriptions=120]

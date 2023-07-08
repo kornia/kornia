@@ -79,7 +79,7 @@ copyright = f'2019, {author}'
 version = ''
 
 if 'READTHEDOCS' not in os.environ:
-    # if developing locally, use pyro.__version__ as version
+    # if developing locally, use kornia.__version__ as version
     from kornia import __version__
 
     version = __version__

@@ -1,3 +1,5 @@
+import platform
+import sys
 import warnings
 from functools import wraps
 from inspect import isclass, isfunction
@@ -23,6 +25,31 @@ def get_cuda_device_if_available(index: int = 0) -> torch.device:
         return torch.device(f'cuda:{index}')
 
     return torch.device('cpu')
+
+
+def get_mps_device_if_available() -> torch.device:
+    """Tries to get mps device, if fail, returns cpu.
+
+    Returns:
+        torch.device
+    """
+    dev = 'cpu'
+    if hasattr(torch.backends, 'mps'):
+        if torch.backends.mps.is_available():
+            dev = 'mps'
+    return torch.device(dev)
+
+
+def get_cuda_or_mps_device_if_available() -> torch.device:
+    """Checks OS and platform and runs get_cuda_device_if_available or get_mps_device_if_available.
+
+    Returns:
+        torch.device
+    """
+    if sys.platform == "darwin" and platform.machine() == "arm64":
+        return get_mps_device_if_available()
+    else:
+        return get_cuda_device_if_available()
 
 
 @overload
