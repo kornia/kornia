@@ -1,3 +1,4 @@
+# type: ignore
 # pytorch tensor wrapper class
 # insipired by:
 # https://github.com/pytorch/pytorch/blob/591dfffa38848de54b7f5f4e49260847024c9281/test/test_overrides.py#L748
