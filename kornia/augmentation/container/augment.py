@@ -1,5 +1,5 @@
 import warnings
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, ClassVar, Dict, List, Optional, Tuple, Union, cast
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
@@ -16,6 +16,10 @@ from .patch import PatchSequential
 from .video import VideoSequential
 
 __all__ = ["AugmentationSequential"]
+
+_BOXES_OPTIONS = {DataKey.BBOX, DataKey.BBOX_XYXY, DataKey.BBOX_XYWH}
+_KEYPOINTS_OPTIONS = {DataKey.KEYPOINTS}
+_IMG_MSK_OPTIONS = {DataKey.INPUT, DataKey.MASK}
 
 
 class AugmentationSequential(ImageSequential):
@@ -144,11 +148,7 @@ class AugmentationSequential(ImageSequential):
     """
 
     _transform_matrix: Optional[Tensor]
-    _transform_matrices: List[Tensor] = []
-
-    _boxes_options = {DataKey.BBOX, DataKey.BBOX_XYXY, DataKey.BBOX_XYWH}
-    _keypoints_options = {DataKey.KEYPOINTS}
-    _img_msk_options = {DataKey.INPUT, DataKey.MASK}
+    _transform_matrices: ClassVar[List[Tensor]] = []
 
     def __init__(
         self,
@@ -296,11 +296,11 @@ class AugmentationSequential(ImageSequential):
     def _arguments_preproc(self, *args: DataType, data_keys: List[DataKey]) -> List[DataType]:
         inp: List[DataType] = []
         for arg, dcate in zip(args, data_keys):
-            if DataKey.get(dcate) in self._img_msk_options:
+            if DataKey.get(dcate) in _IMG_MSK_OPTIONS:
                 inp.append(arg)
-            elif DataKey.get(dcate) in self._keypoints_options:
+            elif DataKey.get(dcate) in _KEYPOINTS_OPTIONS:
                 inp.append(self._preproc_keypoints(arg, dcate))
-            elif DataKey.get(dcate) in self._boxes_options:
+            elif DataKey.get(dcate) in _BOXES_OPTIONS:
                 inp.append(self._preproc_boxes(arg, dcate))
             else:
                 raise NotImplementedError(f"input type of {dcate} is not implemented.")
@@ -311,12 +311,12 @@ class AugmentationSequential(ImageSequential):
     ) -> List[DataType]:
         out: List[DataType] = []
         for in_arg, out_arg, dcate in zip(in_args, out_args, data_keys):
-            if DataKey.get(dcate) in self._img_msk_options:
+            if DataKey.get(dcate) in _IMG_MSK_OPTIONS:
                 # It is tensor type already.
                 out.append(out_arg)
                 # TODO: may add the float to integer (for masks), etc.
 
-            elif DataKey.get(dcate) in self._keypoints_options:
+            elif DataKey.get(dcate) in _KEYPOINTS_OPTIONS:
                 _out_k = self._postproc_keypoint(in_arg, cast(Keypoints, out_arg), dcate)
                 if is_autocast_enabled() and isinstance(in_arg, (Tensor, Keypoints)):
                     if isinstance(_out_k, list):
@@ -325,7 +325,7 @@ class AugmentationSequential(ImageSequential):
                         _out_k = _out_k.type(in_arg.dtype)
                 out.append(_out_k)
 
-            elif DataKey.get(dcate) in self._boxes_options:
+            elif DataKey.get(dcate) in _BOXES_OPTIONS:
                 _out_b = self._postproc_boxes(in_arg, cast(Boxes, out_arg), dcate)
                 if is_autocast_enabled() and isinstance(in_arg, (Tensor, Boxes)):
                     if isinstance(_out_b, list):

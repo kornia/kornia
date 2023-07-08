@@ -136,7 +136,6 @@ class ImageRegistrator(Module):
         >>> registrator = ImageRegistrator('similarity')
         >>> homo = registrator.register(img_src, img_dst)
     """
-    known_models = ['homography', 'similarity', 'translation', 'scale', 'rotation']
 
     # TODO: resolve better type, potentially using factory.
     def __init__(
@@ -151,6 +150,7 @@ class ImageRegistrator(Module):
         warper: Optional[Type[BaseWarper]] = None,
     ) -> None:
         super().__init__()
+        self.known_models = ['homography', 'similarity', 'translation', 'scale', 'rotation']
         # We provide pre-defined combinations or allow user to supply model
         # together with warper
         if not isinstance(model_type, str):

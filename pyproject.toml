@@ -91,7 +91,7 @@ requires = [
     max-complexity = 40
 
   [tool.ruff.pylint]
-    max-args = 16
+    max-args = 20
     max-branches = 32
     max-returns = 16
     max-statements = 124
@@ -99,7 +99,7 @@ requires = [
   [tool.ruff.per-file-ignores]
     "*/__init__.py" = ["F401", "F403"] # Allow unused imports and star imports
     "kornia/__init__.py" = ["I001"] # Allow unsorted imports
-    "test/*" = ["S101", "S311", "BLE"] # allow assert, random, ignore BLE
+    "test/*" = ["S101", "S311", "BLE", "RUF012"] # allow assert, random, ignore BLE, mutable class attr
     "docs/*" = ["S101", "PLR0912", "PLR0915"] # allow assert, ignore max branches and statements
 
 [tool.pytest.ini_options]
