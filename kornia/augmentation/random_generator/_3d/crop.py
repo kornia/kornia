@@ -75,7 +75,7 @@ class CropGenerator3D(RandomGeneratorBase):
 
         if (x_diff < 0).any() or (y_diff < 0).any() or (z_diff < 0).any():
             raise ValueError(
-                f"input_size {(depth, height, width)} cannot be smaller than crop size {str(size)} in any dimension."
+                f"input_size {(depth, height, width)} cannot be smaller than crop size {size!s} in any dimension."
             )
 
         if batch_size == 0:

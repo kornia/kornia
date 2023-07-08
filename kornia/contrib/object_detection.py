@@ -29,7 +29,7 @@ class ResizePreProcessor(Module):
         # NOTE: antialias=False is used in F.interpolate()
         original_sizes = [(img.shape[1], img.shape[2]) for img in imgs]
         resized_imgs = [F.interpolate(img.unsqueeze(0), self.size, mode=self.interpolation_mode) for img in imgs]
-        return concatenate(resized_imgs), dict(original_size=original_sizes)
+        return concatenate(resized_imgs), {"original_size": original_sizes}
 
 
 class ObjectDetector:

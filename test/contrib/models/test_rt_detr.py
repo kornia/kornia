@@ -78,7 +78,7 @@ class TestRTDETR(BaseTester):
         out = model(images)
 
         assert isinstance(out, dict)
-        assert set(out.keys()) == set(["logits", "boxes"])
+        assert set(out.keys()) == {"logits", "boxes"}
 
     @pytest.mark.parametrize("shape", ((1, 3, 96, 128), (2, 3, 224, 256)))
     def test_cardinality(self, shape, device, dtype):
