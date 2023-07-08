@@ -201,7 +201,7 @@ class ScalePyramid(Module):
                 # Hack, because PyTorch does not allow to pad more than original size.
                 # But for the huge sigmas, one needs huge kernel and padding...
 
-                ksize = min(ksize, min(cur_level.size(2), cur_level.size(3)))
+                ksize = min(ksize, cur_level.size(2), cur_level.size(3))
                 if ksize % 2 == 0:
                     ksize += 1
 

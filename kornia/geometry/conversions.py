@@ -1,6 +1,7 @@
+from __future__ import annotations
+
 import enum
 import warnings
-from typing import Optional, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -99,7 +100,7 @@ def deg2rad(tensor: Tensor) -> Tensor:
     return tensor * pi.to(tensor.device).type(tensor.dtype) / 180.0
 
 
-def pol2cart(rho: Tensor, phi: Tensor) -> Tuple[Tensor, Tensor]:
+def pol2cart(rho: Tensor, phi: Tensor) -> tuple[Tensor, Tensor]:
     r"""Function that converts polar coordinates to cartesian coordinates.
 
     Args:
@@ -123,7 +124,7 @@ def pol2cart(rho: Tensor, phi: Tensor) -> Tuple[Tensor, Tensor]:
     return x, y
 
 
-def cart2pol(x: Tensor, y: Tensor, eps: float = 1.0e-8) -> Tuple[Tensor, Tensor]:
+def cart2pol(x: Tensor, y: Tensor, eps: float = 1.0e-8) -> tuple[Tensor, Tensor]:
     """Function that converts cartesian coordinates to polar coordinates.
 
     Args:
@@ -404,9 +405,8 @@ def rotation_matrix_to_quaternion(
     if not rotation_matrix.shape[-2:] == (3, 3):
         raise ValueError(f"Input size must be a (*, 3, 3) tensor. Got {rotation_matrix.shape}")
 
-    if not torch.jit.is_scripting():
-        if order.name not in QuaternionCoeffOrder.__members__.keys():
-            raise ValueError(f"order must be one of {QuaternionCoeffOrder.__members__.keys()}")
+    if order.name not in QuaternionCoeffOrder.__members__.keys():
+        raise ValueError(f"order must be one of {QuaternionCoeffOrder.__members__.keys()}")
 
     if order == QuaternionCoeffOrder.XYZW:
         warnings.warn(
@@ -419,7 +419,7 @@ def rotation_matrix_to_quaternion(
         eps: float = torch.finfo(numerator.dtype).tiny
         return numerator / torch.clamp(denominator, min=eps)
 
-    rotation_matrix_vec: Tensor = rotation_matrix.view(*rotation_matrix.shape[:-2], 9)
+    rotation_matrix_vec: Tensor = rotation_matrix.reshape(*rotation_matrix.shape[:-2], 9)
 
     m00, m01, m02, m10, m11, m12, m20, m21, m22 = torch.chunk(rotation_matrix_vec, chunks=9, dim=-1)
 
@@ -531,9 +531,8 @@ def quaternion_to_rotation_matrix(
     if not quaternion.shape[-1] == 4:
         raise ValueError(f"Input must be a tensor of shape (*, 4). Got {quaternion.shape}")
 
-    if not torch.jit.is_scripting():
-        if order.name not in QuaternionCoeffOrder.__members__.keys():
-            raise ValueError(f"order must be one of {QuaternionCoeffOrder.__members__.keys()}")
+    if order.name not in QuaternionCoeffOrder.__members__.keys():
+        raise ValueError(f"order must be one of {QuaternionCoeffOrder.__members__.keys()}")
 
     if order == QuaternionCoeffOrder.XYZW:
         warnings.warn(
@@ -566,7 +565,7 @@ def quaternion_to_rotation_matrix(
     tzz: Tensor = tz * z
     one: Tensor = tensor(1.0)
 
-    matrix: Tensor = stack(
+    matrix_flat: Tensor = stack(
         (
             one - (tyy + tzz),
             txy - twz,
@@ -579,10 +578,12 @@ def quaternion_to_rotation_matrix(
             one - (txx + tyy),
         ),
         dim=-1,
-    ).view(-1, 3, 3)
+    )
 
-    if len(quaternion.shape) == 1:
-        matrix = torch.squeeze(matrix, dim=0)
+    # this slightly awkward construction of the output shape is to satisfy torchscript
+    output_shape = list(quaternion.shape[:-1]) + [3, 3]
+    matrix = matrix_flat.reshape(output_shape)
+
     return matrix
 
 
@@ -615,9 +616,8 @@ def quaternion_to_angle_axis(quaternion: Tensor, order: QuaternionCoeffOrder = Q
     if not quaternion.shape[-1] == 4:
         raise ValueError(f"Input must be a tensor of shape Nx4 or 4. Got {quaternion.shape}")
 
-    if not torch.jit.is_scripting():
-        if order.name not in QuaternionCoeffOrder.__members__.keys():
-            raise ValueError(f"order must be one of {QuaternionCoeffOrder.__members__.keys()}")
+    if order.name not in QuaternionCoeffOrder.__members__.keys():
+        raise ValueError(f"order must be one of {QuaternionCoeffOrder.__members__.keys()}")
 
     if order == QuaternionCoeffOrder.XYZW:
         warnings.warn(
@@ -688,9 +688,8 @@ def quaternion_log_to_exp(
     if not quaternion.shape[-1] == 3:
         raise ValueError(f"Input must be a tensor of shape (*, 3). Got {quaternion.shape}")
 
-    if not torch.jit.is_scripting():
-        if order.name not in QuaternionCoeffOrder.__members__.keys():
-            raise ValueError(f"order must be one of {QuaternionCoeffOrder.__members__.keys()}")
+    if order.name not in QuaternionCoeffOrder.__members__.keys():
+        raise ValueError(f"order must be one of {QuaternionCoeffOrder.__members__.keys()}")
 
     if order == QuaternionCoeffOrder.XYZW:
         warnings.warn(
@@ -744,9 +743,8 @@ def quaternion_exp_to_log(
     if not quaternion.shape[-1] == 4:
         raise ValueError(f"Input must be a tensor of shape (*, 4). Got {quaternion.shape}")
 
-    if not torch.jit.is_scripting():
-        if order.name not in QuaternionCoeffOrder.__members__.keys():
-            raise ValueError(f"order must be one of {QuaternionCoeffOrder.__members__.keys()}")
+    if order.name not in QuaternionCoeffOrder.__members__.keys():
+        raise ValueError(f"order must be one of {QuaternionCoeffOrder.__members__.keys()}")
 
     if order == QuaternionCoeffOrder.XYZW:
         warnings.warn(
@@ -808,9 +806,8 @@ def angle_axis_to_quaternion(angle_axis: Tensor, order: QuaternionCoeffOrder = Q
     if not angle_axis.shape[-1] == 3:
         raise ValueError(f"Input must be a tensor of shape Nx3 or 3. Got {angle_axis.shape}")
 
-    if not torch.jit.is_scripting():
-        if order.name not in QuaternionCoeffOrder.__members__.keys():
-            raise ValueError(f"order must be one of {QuaternionCoeffOrder.__members__.keys()}")
+    if order.name not in QuaternionCoeffOrder.__members__.keys():
+        raise ValueError(f"order must be one of {QuaternionCoeffOrder.__members__.keys()}")
 
     if order == QuaternionCoeffOrder.XYZW:
         warnings.warn(
@@ -853,7 +850,7 @@ def angle_axis_to_quaternion(angle_axis: Tensor, order: QuaternionCoeffOrder = Q
 # inspired by: https://stackoverflow.com/questions/56207448/efficient-quaternions-to-euler-transformation
 
 
-def euler_from_quaternion(w: Tensor, x: Tensor, y: Tensor, z: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
+def euler_from_quaternion(w: Tensor, x: Tensor, y: Tensor, z: Tensor) -> tuple[Tensor, Tensor, Tensor]:
     """Convert a quaternion coefficients to Euler angles.
 
     Returned angles are in radians in XYZ convention.
@@ -888,7 +885,7 @@ def euler_from_quaternion(w: Tensor, x: Tensor, y: Tensor, z: Tensor) -> Tuple[T
     return roll, pitch, yaw
 
 
-def quaternion_from_euler(roll: Tensor, pitch: Tensor, yaw: Tensor) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+def quaternion_from_euler(roll: Tensor, pitch: Tensor, yaw: Tensor) -> tuple[Tensor, Tensor, Tensor, Tensor]:
     """Convert Euler angles to quaternion coefficients.
 
     Euler angles are assumed to be in radians in XYZ convention.
@@ -1069,7 +1066,7 @@ def angle_to_rotation_matrix(angle: Tensor) -> Tensor:
 
 
 def normalize_homography(
-    dst_pix_trans_src_pix: Tensor, dsize_src: Tuple[int, int], dsize_dst: Tuple[int, int]
+    dst_pix_trans_src_pix: Tensor, dsize_src: tuple[int, int], dsize_dst: tuple[int, int]
 ) -> Tensor:
     r"""Normalize a given homography in pixels to [-1, 1].
 
@@ -1104,11 +1101,7 @@ def normalize_homography(
 
 
 def normal_transform_pixel(
-    height: int,
-    width: int,
-    eps: float = 1e-14,
-    device: Optional[torch.device] = None,
-    dtype: Optional[torch.dtype] = None,
+    height: int, width: int, eps: float = 1e-14, device: torch.device | None = None, dtype: torch.dtype | None = None
 ) -> Tensor:
     r"""Compute the normalization matrix from image size in pixels to [-1, 1].
 
@@ -1137,8 +1130,8 @@ def normal_transform_pixel3d(
     height: int,
     width: int,
     eps: float = 1e-14,
-    device: Optional[torch.device] = None,
-    dtype: Optional[torch.dtype] = None,
+    device: torch.device | None = None,
+    dtype: torch.dtype | None = None,
 ) -> Tensor:
     r"""Compute the normalization matrix from image size in pixels to [-1, 1].
 
@@ -1170,7 +1163,7 @@ def normal_transform_pixel3d(
 
 
 def denormalize_homography(
-    dst_pix_trans_src_pix: Tensor, dsize_src: Tuple[int, int], dsize_dst: Tuple[int, int]
+    dst_pix_trans_src_pix: Tensor, dsize_src: tuple[int, int], dsize_dst: tuple[int, int]
 ) -> Tensor:
     r"""De-normalize a given homography in pixels from [-1, 1] to actual height and width.
 
@@ -1204,7 +1197,7 @@ def denormalize_homography(
 
 
 def normalize_homography3d(
-    dst_pix_trans_src_pix: Tensor, dsize_src: Tuple[int, int, int], dsize_dst: Tuple[int, int, int]
+    dst_pix_trans_src_pix: Tensor, dsize_src: tuple[int, int, int], dsize_dst: tuple[int, int, int]
 ) -> Tensor:
     r"""Normalize a given homography in pixels to [-1, 1].
 
@@ -1346,7 +1339,7 @@ def Rt_to_matrix4x4(R: Tensor, t: Tensor) -> Tensor:
     return convert_affinematrix_to_homography3d(Rt)
 
 
-def matrix4x4_to_Rt(extrinsics: Tensor) -> Tuple[Tensor, Tensor]:
+def matrix4x4_to_Rt(extrinsics: Tensor) -> tuple[Tensor, Tensor]:
     r"""Converts 4x4 extrinsics into 3x3 rotation matrix R and 1x3 translation vector ts.
 
     Args:
@@ -1399,7 +1392,7 @@ def camtoworld_graphics_to_vision_4x4(extrinsics_graphics: Tensor) -> Tensor:
     return extrinsics_graphics @ invert_yz
 
 
-def camtoworld_graphics_to_vision_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
+def camtoworld_graphics_to_vision_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
     r"""Converts graphics coordinate frame (e.g. OpenGL) to vision coordinate frame (e.g. OpenCV.), , i.e. flips y
     and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards]. Vision convention: [+x, +y, +z] ==
 
@@ -1456,7 +1449,7 @@ def camtoworld_vision_to_graphics_4x4(extrinsics_vision: Tensor) -> Tensor:
     return extrinsics_vision @ invert_yz
 
 
-def camtoworld_vision_to_graphics_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
+def camtoworld_vision_to_graphics_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
     r"""Converts graphics coordinate frame (e.g. OpenGL) to vision coordinate frame (e.g. OpenCV.), , i.e. flips y
     and z axis. Graphics convention: [+x, +y, +z] == [right, up, backwards]. Vision convention: [+x, +y, +z] ==
 
@@ -1485,7 +1478,7 @@ def camtoworld_vision_to_graphics_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tens
     return matrix4x4_to_Rt(mat4x4)
 
 
-def camtoworld_to_worldtocam_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
+def camtoworld_to_worldtocam_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
     r"""Converts camtoworld, i.e. projection from camera coordinate system to world coordinate system, to worldtocam
     frame i.e. projection from world to the camera coordinate system (used in Colmap).
     See
@@ -1517,7 +1510,7 @@ def camtoworld_to_worldtocam_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
     return (R_inv, new_t)
 
 
-def worldtocam_to_camtoworld_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
+def worldtocam_to_camtoworld_Rt(R: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
     r"""Converts worldtocam frame i.e. projection from world to the camera coordinate system (used in Colmap) to
     camtoworld, i.e. projection from camera coordinate system to world coordinate system.
 
@@ -1547,7 +1540,7 @@ def worldtocam_to_camtoworld_Rt(R: Tensor, t: Tensor) -> Tuple[Tensor, Tensor]:
     return (R_inv, new_t)
 
 
-def ARKitQTVecs_to_ColmapQTVecs(qvec: Tensor, tvec: Tensor) -> Tuple[Tensor, Tensor]:
+def ARKitQTVecs_to_ColmapQTVecs(qvec: Tensor, tvec: Tensor) -> tuple[Tensor, Tensor]:
     r"""Converts output of Apple ARKit screen pose (in quaternion representation) to the camera-to-world
     transformation, expected by Colmap, also in quaternion representation.
 

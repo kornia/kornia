@@ -7,7 +7,7 @@ on:
     - cron: "0 4 * * *"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -47,17 +47,10 @@ jobs:
     uses: ./.github/workflows/tests.yml
     with:
       os: 'MacOS-latest'
-      python-version: '["3.10"]'
-      pytorch-version: '["2.0.0"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
 
-  tests-tutorials:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: ['Ubuntu-latest']
-    uses: ./.github/workflows/tests_tutorials.yml
-    with:
-      os: ${{ matrix.os }}
-      python-version: '["3.10"]'
-      pytorch-version: '["2.0.0"]'
+  test-tutorials:
+    uses: ./.github/workflows/test_tutorials.yml
+
+  test-typing:
+    uses: ./.github/workflows/test_typing.yml

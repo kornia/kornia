@@ -38,9 +38,6 @@ lint: FORCE
 mypy: FORCE
 	mypy
 
-yapf: FORCE
-	yapf --in-place --parallel --recursive kornia/ test/
-
 doctest:
 	pytest -v --doctest-modules kornia/
 

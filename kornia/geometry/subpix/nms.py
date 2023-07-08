@@ -162,6 +162,7 @@ def nms2d(input: Tensor, kernel_size: tuple[int, int], mask_only: bool = False) 
 def nms3d(input: Tensor, kernel_size: tuple[int, int, int], mask_only: bool = False) -> Tensor:
     r"""Apply non maxima suppression to filter.
 
-    See :class:`~kornia.feature.NonMaximaSuppression3d` for details.
+    See
+    :class: `~kornia.feature.NonMaximaSuppression3d` for details.
     """
     return NonMaximaSuppression3d(kernel_size)(input, mask_only)

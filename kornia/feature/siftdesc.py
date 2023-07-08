@@ -177,7 +177,8 @@ def sift_describe(
 ) -> Tensor:
     r"""Computes the sift descriptor.
 
-    See :class:`~kornia.feature.SIFTDescriptor` for details.
+    See
+    :class: `~kornia.feature.SIFTDescriptor` for details.
     """
     return SIFTDescriptor(patch_size, num_ang_bins, num_spatial_bins, rootsift, clipval)(input)
 

@@ -523,41 +523,33 @@ class TestRotationMatrixToQuaternion:
             fast_mode=True,
         )
 
-    def test_jit_xyzw(self, device, dtype):
-        op = kornia.geometry.conversions.quaternion_log_to_exp
-        op_script = torch.jit.script(op)
+    @pytest.mark.parametrize('order', ['wxyz', 'xyzw'])
+    def test_dynamo(self, device, dtype, torch_optimizer, order):
         quaternion = torch.tensor((0.0, 0.0, 1.0), device=device, dtype=dtype)
-        with pytest.warns(UserWarning):
-            actual = op_script(quaternion)
-        with pytest.warns(UserWarning):
-            expected = op(quaternion)
-        assert_close(actual, expected)
+        op = kornia.geometry.conversions.quaternion_log_to_exp
+        op_optimized = torch_optimizer(op)
 
-    def test_jit(self, device, dtype):
-        eps = torch.finfo(dtype).eps
-        op = kornia.geometry.conversions.quaternion_log_to_exp
-        op_script = torch.jit.script(op)
-        quaternion = torch.tensor((0.0, 0.0, 1.0), device=device, dtype=dtype)
-        actual = op_script(quaternion, eps=eps, order=QuaternionCoeffOrder.WXYZ)
-        expected = op(quaternion, eps=eps, order=QuaternionCoeffOrder.WXYZ)
+        actual = op_optimized(quaternion, order=QuaternionCoeffOrder(order))
+        expected = op(quaternion, order=QuaternionCoeffOrder(order))
+
         assert_close(actual, expected)
 
 
 class TestQuaternionToRotationMatrix:
-    @pytest.mark.parametrize("batch_size", (1, 3, 8))
-    def test_smoke_batch_xyzw(self, batch_size, device, dtype):
-        quaternion = torch.zeros(batch_size, 4, device=device, dtype=dtype)
+    @pytest.mark.parametrize("batch_dims", ((), (1,), (3,), (8,), (1, 1), (5, 6)))
+    def test_smoke_batch_xyzw(self, batch_dims, device, dtype):
+        quaternion = torch.zeros(*batch_dims, 4, device=device, dtype=dtype)
         with pytest.warns(UserWarning):
             matrix = kornia.geometry.conversions.quaternion_to_rotation_matrix(
                 quaternion, order=QuaternionCoeffOrder.XYZW
             )
-        assert matrix.shape == (batch_size, 3, 3)
+        assert matrix.shape == (*batch_dims, 3, 3)
 
-    @pytest.mark.parametrize("batch_size", (1, 3, 8))
-    def test_smoke_batch(self, batch_size, device, dtype):
-        quaternion = torch.zeros(batch_size, 4, device=device, dtype=dtype)
+    @pytest.mark.parametrize("batch_dims", ((), (1,), (3,), (8,), (1, 1), (5, 6)))
+    def test_smoke_batch(self, batch_dims, device, dtype):
+        quaternion = torch.zeros(*batch_dims, 4, device=device, dtype=dtype)
         matrix = kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternion, order=QuaternionCoeffOrder.WXYZ)
-        assert matrix.shape == (batch_size, 3, 3)
+        assert matrix.shape == (*batch_dims, 3, 3)
 
     def test_unit_quaternion_xyzw(self, device, dtype, atol, rtol):
         quaternion = torch.tensor((0.0, 0.0, 0.0, 1.0), device=device, dtype=dtype)
@@ -643,20 +635,16 @@ class TestQuaternionToRotationMatrix:
             fast_mode=True,
         )
 
-    def test_jit_xyzw(self, device, dtype):
-        op = kornia.geometry.conversions.quaternion_to_rotation_matrix
-        op_jit = torch.jit.script(op)
+    @pytest.mark.parametrize('order', ['wxyz', 'xyzw'])
+    def test_dynamo(self, device, dtype, torch_optimizer, order):
         quaternion = torch.tensor((0.0, 0.0, 1.0, 0.0), device=device, dtype=dtype)
-        with pytest.warns(UserWarning):
-            assert_close(op(quaternion), op_jit(quaternion))
-
-    def test_jit(self, device, dtype):
         op = kornia.geometry.conversions.quaternion_to_rotation_matrix
-        op_jit = torch.jit.script(op)
-        quaternion = torch.tensor((0.0, 0.0, 0.0, 1.0), device=device, dtype=dtype)
-        assert_close(
-            op(quaternion, order=QuaternionCoeffOrder.WXYZ), op_jit(quaternion, order=QuaternionCoeffOrder.WXYZ)
-        )
+        op_optimized = torch_optimizer(op)
+
+        actual = op_optimized(quaternion, order=QuaternionCoeffOrder(order))
+        expected = op(quaternion, order=QuaternionCoeffOrder(order))
+
+        assert_close(actual, expected)
 
 
 class TestQuaternionLogToExp:
@@ -811,22 +799,16 @@ class TestQuaternionLogToExp:
             fast_mode=True,
         )
 
-    def test_jit_xyzw(self, device, dtype):
-        op = kornia.geometry.conversions.quaternion_log_to_exp
-        op_jit = torch.jit.script(op)
+    @pytest.mark.parametrize('order', ['wxyz', 'xyzw'])
+    def test_dynamo(self, device, dtype, torch_optimizer, order):
         quaternion = torch.tensor((0.0, 0.0, 1.0), device=device, dtype=dtype)
-        with pytest.warns(UserWarning):
-            assert_close(
-                op(quaternion, order=QuaternionCoeffOrder.XYZW), op_jit(quaternion, order=QuaternionCoeffOrder.XYZW)
-            )
+        op = kornia.geometry.conversions.quaternion_log_to_exp
+        op_optimized = torch_optimizer(op)
 
-    def test_jit(self, device, dtype):
-        op = kornia.geometry.conversions.quaternion_log_to_exp
-        op_jit = torch.jit.script(op)
-        quaternion = torch.tensor((0.0, 0.0, 1.0), device=device, dtype=dtype)
-        assert_close(
-            op(quaternion, order=QuaternionCoeffOrder.WXYZ), op_jit(quaternion, order=QuaternionCoeffOrder.WXYZ)
-        )
+        actual = op_optimized(quaternion, order=QuaternionCoeffOrder(order))
+        expected = op(quaternion, order=QuaternionCoeffOrder(order))
+
+        assert_close(actual, expected)
 
 
 class TestQuaternionExpToLog:
@@ -975,21 +957,16 @@ class TestQuaternionExpToLog:
             fast_mode=True,
         )
 
-    def test_jit_xyzw(self, device, dtype, atol, rtol):
-        op = kornia.geometry.conversions.quaternion_exp_to_log
-        op_jit = torch.jit.script(op)
+    @pytest.mark.parametrize('order', ['wxyz', 'xyzw'])
+    def test_dynamo(self, device, dtype, torch_optimizer, order):
         quaternion = torch.tensor((0.0, 0.0, 1.0, 0.0), device=device, dtype=dtype)
-        with pytest.warns(UserWarning):
-            assert_close(op(quaternion), op_jit(quaternion), atol=atol, rtol=rtol)
-
-    def test_jit(self, device, dtype, atol, rtol):
         op = kornia.geometry.conversions.quaternion_exp_to_log
-        op_script = torch.jit.script(op)
+        op_optimized = torch_optimizer(op)
 
-        quaternion = torch.tensor((0.0, 0.0, 0.0, 1.0), device=device, dtype=dtype)
-        actual = op_script(quaternion, eps=torch.finfo(dtype).eps, order=QuaternionCoeffOrder.WXYZ)
-        expected = op(quaternion, eps=torch.finfo(dtype).eps, order=QuaternionCoeffOrder.WXYZ)
-        assert_close(actual, expected, atol=atol, rtol=rtol)
+        actual = op_optimized(quaternion, order=QuaternionCoeffOrder(order))
+        expected = op(quaternion, order=QuaternionCoeffOrder(order))
+
+        assert_close(actual, expected)
 
 
 class TestAngleAxisToRotationMatrix:
@@ -1248,11 +1225,16 @@ class TestConvertPointsToHomogeneous:
             kornia.geometry.conversions.convert_points_to_homogeneous, (points_h,), raise_exception=True, fast_mode=True
         )
 
-    def test_jit(self, device, dtype):
-        op = kornia.geometry.conversions.convert_points_to_homogeneous
-        op_jit = torch.jit.script(op)
+    def test_dynamo(self, device, dtype, torch_optimizer):
         points_h = torch.zeros(1, 2, 3, device=device, dtype=dtype)
-        assert_close(op(points_h), op_jit(points_h))
+
+        op = kornia.geometry.conversions.convert_points_to_homogeneous
+        op_optimized = torch_optimizer(op)
+
+        actual = op_optimized(points_h)
+        expected = op(points_h)
+
+        assert_close(actual, expected)
 
 
 class TestConvertAtoH:
@@ -1281,11 +1263,16 @@ class TestConvertAtoH:
             fast_mode=True,
         )
 
-    def test_jit(self, device, dtype):
-        op = kornia.geometry.conversions.convert_affinematrix_to_homography
-        op_jit = torch.jit.script(op)
+    def test_dynamo(self, device, dtype, torch_optimizer):
         points_h = torch.zeros(1, 2, 3, device=device, dtype=dtype)
-        assert_close(op(points_h), op_jit(points_h))
+
+        op = kornia.geometry.conversions.convert_affinematrix_to_homography
+        op_optimized = torch_optimizer(op)
+
+        actual = op_optimized(points_h)
+        expected = op(points_h)
+
+        assert_close(actual, expected)
 
 
 class TestConvertPointsFromHomogeneous:
@@ -1347,11 +1334,16 @@ class TestConvertPointsFromHomogeneous:
             fast_mode=True,
         )
 
-    def test_jit(self, device, dtype):
-        op = kornia.geometry.conversions.convert_points_from_homogeneous
-        op_jit = torch.jit.script(op)
+    def test_dynamo(self, device, dtype, torch_optimizer):
         points_h = torch.zeros(1, 2, 3, device=device, dtype=dtype)
-        assert_close(op(points_h), op_jit(points_h))
+
+        op = kornia.geometry.conversions.convert_points_from_homogeneous
+        op_optimized = torch_optimizer(op)
+
+        actual = op_optimized(points_h)
+        expected = op(points_h)
+
+        assert_close(actual, expected)
 
 
 class TestNormalizePixelCoordinates:
@@ -1383,15 +1375,19 @@ class TestNormalizePixelCoordinates:
 
         assert_close(grid_norm, expected, atol=atol, rtol=rtol)
 
-    def test_jit(self, device, dtype):
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        if device == torch.device('cpu'):
+            pytest.skip('NormalizePixelCoordinates not working on CPU with dynamo!')
+
         op = kornia.geometry.conversions.normalize_pixel_coordinates
-        op_script = torch.jit.script(op)
+        op_optimized = torch_optimizer(op)
 
         height, width = 3, 4
         grid = kornia.utils.create_meshgrid(height, width, normalized_coordinates=True, device=device).to(dtype=dtype)
 
-        actual = op_script(grid, height, width)
+        actual = op_optimized(grid, height, width)
         expected = op(grid, height, width)
+
         assert_close(actual, expected)
 
 
@@ -1422,14 +1418,17 @@ class TestDenormalizePixelCoordinates:
 
         assert_close(grid_norm, expected, atol=1e-4, rtol=1e-4)
 
-    def test_jit(self, device, dtype):
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        if device == torch.device('cpu'):
+            pytest.xfail('DenormalizePixelCoordinates not working on CPU with dynamo!')
+
         op = kornia.geometry.conversions.denormalize_pixel_coordinates
-        op_script = torch.jit.script(op)
+        op_optimized = torch_optimizer(op)
 
         height, width = 3, 4
         grid = kornia.utils.create_meshgrid(height, width, normalized_coordinates=True, device=device).to(dtype=dtype)
 
-        actual = op_script(grid, height, width)
+        actual = op_optimized(grid, height, width)
         expected = op(grid, height, width)
 
         assert_close(actual, expected)
@@ -1476,12 +1475,16 @@ class TestProjectPoints:
             kornia.geometry.camera.project_points, (points_3d, camera_matrix), raise_exception=True, fast_mode=True
         )
 
-    def test_jit(self, device, dtype):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         points_3d = torch.zeros(1, 3, device=device, dtype=dtype)
         camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(1, -1, -1)
         op = kornia.geometry.camera.project_points
-        op_jit = torch.jit.script(op)
-        assert_close(op(points_3d, camera_matrix), op_jit(points_3d, camera_matrix))
+        op_optimized = torch_optimizer(op)
+
+        actual = op_optimized(points_3d, camera_matrix)
+        expected = op(points_3d, camera_matrix)
+
+        assert_close(actual, expected)
 
 
 class TestDenormalizePointsWithIntrinsics:
@@ -1520,13 +1523,16 @@ class TestDenormalizePointsWithIntrinsics:
             fast_mode=True,
         )
 
-    def test_jit(self, device, dtype):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         points_2d = torch.zeros(1, 2, device=device, dtype=dtype)
         camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(1, -1, -1)
-        args = (points_2d, camera_matrix)
         op = kornia.geometry.conversions.denormalize_points_with_intrinsics
-        op_jit = torch.jit.script(op)
-        assert_close(op(*args), op_jit(*args))
+        op_optimized = torch_optimizer(op)
+
+        actual = op_optimized(points_2d, camera_matrix)
+        expected = op(points_2d, camera_matrix)
+
+        assert_close(actual, expected)
 
 
 class TestNormalizePointsWithIntrinsics:
@@ -1577,13 +1583,16 @@ class TestNormalizePointsWithIntrinsics:
             fast_mode=True,
         )
 
-    def test_jit(self, device, dtype):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         points_2d = torch.zeros(1, 2, device=device, dtype=dtype)
         camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(1, -1, -1)
-        args = (points_2d, camera_matrix)
         op = kornia.geometry.conversions.normalize_points_with_intrinsics
-        op_jit = torch.jit.script(op)
-        assert_close(op(*args), op_jit(*args))
+        op_optimized = torch_optimizer(op)
+
+        actual = op_optimized(points_2d, camera_matrix)
+        expected = op(points_2d, camera_matrix)
+
+        assert_close(actual, expected)
 
 
 class TestRt2Extrinsics:
@@ -1797,12 +1806,18 @@ class TestQuaternionFromEuler(BaseTester):
     def test_module(self, device, dtype):
         pass
 
-    @pytest.mark.skip()
-    def test_jit(self, device, dtype):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         roll, pitch, yaw = torch.rand(3, 2, device=device, dtype=dtype)
+
         op = quaternion_from_euler
-        op_jit = torch.jit.script(op)
-        assert_close(op(roll, pitch, yaw), op_jit(roll, pitch, yaw))
+        op_optimized = torch_optimizer(op)
+
+        actual = op_optimized(roll, pitch, yaw)
+        expected = op(roll, pitch, yaw)
+
+        assert_close(actual[0], expected[0])
+        assert_close(actual[1], expected[1])
+        assert_close(actual[2], expected[2])
 
     def test_forth_and_back(self, device, dtype):
         roll, pitch, yaw = torch.rand(3, 2, device=device, dtype=dtype)

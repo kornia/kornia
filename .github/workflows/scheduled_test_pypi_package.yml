@@ -1,4 +1,4 @@
-name: Python package
+name: Test PyPI package
 
 on:
   schedule:
@@ -10,7 +10,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ['3.7', '3.8', '3.9', '3.10']
+        python-version: ['3.8', '3.9', '3.10']
 
     steps:
       - name: Checkout kornia
@@ -21,8 +21,10 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Download Kornia binary
+      - name: Pip install Kornia
+        run: pip install kornia
+
+      - name: Check dependencies and kornia version
         run: |
-          pip install torch -f https://download.pytorch.org/whl/torch_stable.html
-          pip install kornia
-          python -c "import kornia"
+          python -c "import torch;print('Pytorch version: ', torch.__version__)"
+          python -c "import kornia;print('Kornia version: ', kornia.__version__)"
