@@ -154,7 +154,7 @@ class HardNet8(nn.Module):
         self.eval()
 
     @staticmethod
-    def weights_init(m):
+    def weights_init(m: object) -> None:
         if isinstance(m, nn.Conv2d):
             nn.init.orthogonal_(m.weight.data, gain=0.6)
             if m.bias is not None:

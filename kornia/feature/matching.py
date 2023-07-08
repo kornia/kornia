@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 
@@ -21,7 +21,7 @@ def _cdist(d1: Tensor, d2: Tensor) -> Tensor:
     return dm
 
 
-def _get_default_fginn_params():
+def _get_default_fginn_params() -> dict[str, Any]:
     config = {"th": 0.85, "mutual": False, "spatial_th": 10.0}
     return config
 
@@ -373,9 +373,9 @@ class GeometryAwareDescriptorMatcher(Module):
             params.update(self.params)
             out = match_fginn(desc1, desc2, lafs1, lafs2, params['th'], params['spatial_th'], params['mutual'])
         elif self.match_mode == 'adalam':
-            params = get_adalam_default_config()
-            params.update(self.params)
-            out = match_adalam(desc1, desc2, lafs1, lafs2, config=params)
+            _params = get_adalam_default_config()
+            _params.update(self.params)  # type: ignore[typeddict-item]
+            out = match_adalam(desc1, desc2, lafs1, lafs2, config=_params)
         else:
             raise NotImplementedError
         return out
