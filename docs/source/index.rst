@@ -91,6 +91,7 @@ Join the community
    :caption: KORNIA MODELS
    :hidden:
 
+   models/rt_detr
    models/segment_anything
    models/yunet
    models/vit
