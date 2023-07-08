@@ -80,7 +80,6 @@ requires = [
   target-version = "py37"
   select = ["C9", "E", "F", "I", "PL", "S", "UP", "W", "YTT", "BLE", "C4", "RUF"]
   ignore = [
-    "PLR2004", # Allow to use inplace values in comparisons instead of constants
     "PLW2901", # Allow overwritten values on loops
   ]
 
@@ -95,6 +94,7 @@ requires = [
     max-branches = 32
     max-returns = 16
     max-statements = 124
+    allow-magic-value-types = ["str", "bytes", "int", "float"]
 
   [tool.ruff.per-file-ignores]
     "*/__init__.py" = ["F401", "F403"] # Allow unused imports and star imports
