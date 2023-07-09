@@ -15,19 +15,22 @@ class TestImageHistogram2d:
     def test_shape(self, device, dtype, kernel):
         sample = torch.ones(32, 32, device=device, dtype=dtype)
         hist, pdf = TestImageHistogram2d.fcn(sample, 0.0, 1.0, 256, kernel=kernel)
-        assert hist.shape == (256,) and pdf.shape == (256,)
+        assert hist.shape == (256,)
+        assert pdf.shape == (256,)
 
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_shape_channels(self, device, dtype, kernel):
         sample = torch.ones(3, 32, 32, device=device, dtype=dtype)
         hist, pdf = TestImageHistogram2d.fcn(sample, 0.0, 1.0, 256, kernel=kernel)
-        assert hist.shape == (3, 256) and pdf.shape == (3, 256)
+        assert hist.shape == (3, 256)
+        assert pdf.shape == (3, 256)
 
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_shape_batch(self, device, dtype, kernel):
         sample = torch.ones(8, 3, 32, 32, device=device, dtype=dtype)
         hist, pdf = TestImageHistogram2d.fcn(sample, 0.0, 1.0, 256, kernel=kernel)
-        assert hist.shape == (8, 3, 256) and pdf.shape == (8, 3, 256)
+        assert hist.shape == (8, 3, 256)
+        assert pdf.shape == (8, 3, 256)
 
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_gradcheck(self, device, dtype, kernel):
