@@ -243,7 +243,7 @@ class TestRotationMatrixToQuaternion:
             fast_mode=True,
         )
 
-    def test_dynamo(self, device, dtype, torch_optimizer, order):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         quaternion = torch.tensor((0.0, 0.0, 1.0), device=device, dtype=dtype)
         op = kornia.geometry.conversions.quaternion_log_to_exp
         op_optimized = torch_optimizer(op)
@@ -296,7 +296,7 @@ class TestQuaternionToRotationMatrix:
             fast_mode=True,
         )
 
-    def test_dynamo(self, device, dtype, torch_optimizer, order):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         quaternion = torch.tensor((0.0, 0.0, 1.0, 0.0), device=device, dtype=dtype)
         op = kornia.geometry.conversions.quaternion_to_rotation_matrix
         op_optimized = torch_optimizer(op)
@@ -365,7 +365,7 @@ class TestQuaternionLogToExp:
             fast_mode=True,
         )
 
-    def test_dynamo(self, device, dtype, torch_optimizer, order):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         quaternion = torch.tensor((0.0, 0.0, 1.0), device=device, dtype=dtype)
         op = kornia.geometry.conversions.quaternion_log_to_exp
         op_optimized = torch_optimizer(op)
@@ -431,7 +431,7 @@ class TestQuaternionExpToLog:
             fast_mode=True,
         )
 
-    def test_dynamo(self, device, dtype, torch_optimizer, order):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         quaternion = torch.tensor((0.0, 0.0, 1.0, 0.0), device=device, dtype=dtype)
         op = kornia.geometry.conversions.quaternion_exp_to_log
         op_optimized = torch_optimizer(op)
