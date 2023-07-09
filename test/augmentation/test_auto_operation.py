@@ -114,10 +114,7 @@ class TestRandAugment:
         in_tensor = torch.rand(10, 3, 50, 50, device=device, dtype=dtype, requires_grad=True)
         aug(in_tensor)
         trans = aug.get_transformation_matrix(in_tensor, params=aug._params)
-        try:
-            assert_close(trans, aug.transform_matrix)
-        except:
-            assert False, aug._params
+        assert_close(trans, aug.transform_matrix)
 
     def test_reproduce(self, device, dtype):
         aug = RandAugment(n=3, m=15)
