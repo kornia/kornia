@@ -4,6 +4,7 @@ import math
 from typing import Any
 
 import torch
+from torch import nn
 
 from kornia.core import Module, Tensor
 from kornia.geometry.subpix import dsnt

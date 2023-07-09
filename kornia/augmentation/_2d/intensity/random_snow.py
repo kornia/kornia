@@ -42,8 +42,8 @@ class RandomSnow(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        KORNIA_CHECK(all([0 <= el <= 1 for el in snow_coefficient]), "Snow coefficient values must be between 0 and 1.")
-        KORNIA_CHECK(all([1 <= el for el in brightness]), "Brightness values must be greater than 1.")
+        KORNIA_CHECK(all(0 <= el <= 1 for el in snow_coefficient), "Snow coefficient values must be between 0 and 1.")
+        KORNIA_CHECK(all(1 <= el for el in brightness), "Brightness values must be greater than 1.")
 
         self._param_generator = rg.PlainUniformGenerator(
             (snow_coefficient, "snow_coefficient", 0.5, (0.0, 1.0)), (brightness, "brightness", None, None)

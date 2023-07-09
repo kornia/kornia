@@ -100,9 +100,9 @@ class MosaicGenerator(RandomGeneratorBase):
             batch_shapes = torch.zeros([0, 3], device=_device, dtype=torch.long)
         else:
             batch_shapes = torch.stack([torch.as_tensor(batch_shape[1:], device=_device) for _ in range(batch_size)])
-        return dict(
-            permutation=mosiac_ids.to(device=_device, dtype=torch.long),
-            src=crop_src,
-            dst=crop_dst,
-            batch_shapes=batch_shapes,
-        )
+        return {
+            "permutation": mosiac_ids.to(device=_device, dtype=torch.long),
+            "src": crop_src,
+            "dst": crop_dst,
+            "batch_shapes": batch_shapes,
+        }

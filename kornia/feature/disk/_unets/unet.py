@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import torch.nn as nn
+from torch import nn
 
 from kornia.core import Module, Tensor
 
@@ -18,13 +18,13 @@ class Unet(Module):
         self.down = down
         self.in_features = in_features
 
-        down_dims = [in_features] + down
+        down_dims = [in_features, *down]
         self.path_down = nn.ModuleList()
         for i, (d_in, d_out) in enumerate(zip(down_dims[:-1], down_dims[1:])):
             down_block = ThinUnetDownBlock(d_in, d_out, size=size, is_first=i == 0)
             self.path_down.append(down_block)
 
-        bot_dims = [down[-1]] + up
+        bot_dims = [down[-1], *up]
         hor_dims = down_dims[-2::-1]
         self.path_up = nn.ModuleList()
         for i, (d_bot, d_hor, d_out) in enumerate(zip(bot_dims, hor_dims, up)):

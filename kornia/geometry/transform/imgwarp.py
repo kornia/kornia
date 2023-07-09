@@ -535,7 +535,7 @@ def invert_affine_transform(matrix: Tensor) -> Tensor:
     r"""Invert an affine transformation.
 
     The function computes an inverse affine transformation represented by
-    2×3 matrix:
+    2x3 matrix:
 
     .. math::
         \begin{bmatrix}
@@ -543,7 +543,7 @@ def invert_affine_transform(matrix: Tensor) -> Tensor:
             a_{21} & a_{22} & b_{2} \\
         \end{bmatrix}
 
-    The result is also a 2×3 matrix of the same type as M.
+    The result is also a 2x3 matrix of the same type as M.
 
     Args:
         matrix: original affine transform. The tensor must be
@@ -877,7 +877,7 @@ def warp_affine3d(
     P_norm: Tensor = src_norm_trans_dst_norm[:, :3]  # Bx3x4
 
     # compute meshgrid and apply to input
-    dsize_out: list[int] = [B, C] + list(size_out)
+    dsize_out: list[int] = [B, C, *list(size_out)]
     grid = F.affine_grid(P_norm, dsize_out, align_corners=align_corners)
     return grid_sample(src, grid, align_corners=align_corners, mode=flags, padding_mode=padding_mode)
 

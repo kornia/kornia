@@ -7,7 +7,7 @@ https://github.com/scikit-image/scikit-image/blob/a48bf6774718c64dade4548153ae16
 from typing import Tuple
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 from .rgb import linear_rgb_to_rgb, rgb_to_linear_rgb
 from .xyz import rgb_to_xyz, xyz_to_rgb

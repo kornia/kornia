@@ -121,7 +121,7 @@ class RandomAffine3D(GeometricAugmentationBase3D):
         self.translate = translate
         self.scale = scale
 
-        self.flags = dict(resample=Resample.get(resample), align_corners=align_corners)
+        self.flags = {"resample": Resample.get(resample), "align_corners": align_corners}
         self._param_generator = rg.AffineGenerator3D(degrees, translate, scale, shears)
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:

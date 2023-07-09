@@ -22,7 +22,7 @@ _ref = {
 
 def _get_data(url: str, sha256: str) -> str:
     req = urllib.request.Request(url)
-    with urllib.request.urlopen(req) as response:  # nosec
+    with urllib.request.urlopen(req) as response:  # noqa: S310
         data = response.read()
 
     assert hashlib.sha256(data).hexdigest() == sha256

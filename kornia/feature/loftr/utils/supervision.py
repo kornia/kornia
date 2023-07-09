@@ -46,7 +46,7 @@ def spvs_coarse(data: dict[str, Any], config: dict[str, Any]) -> None:
     scale = config['LOFTR']['RESOLUTION'][0]
     scale0 = scale * data['scale0'][:, None] if 'scale0' in data else scale
     scale1 = scale * data['scale1'][:, None] if 'scale0' in data else scale
-    h0, w0, h1, w1 = map(lambda x: x // scale, [H0, W0, H1, W1])
+    h0, w0, h1, w1 = (x // scale for x in [H0, W0, H1, W1])
 
     # 2. warp grids
     # create kpts in meshgrid and resize them to image resolution

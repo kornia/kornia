@@ -1,8 +1,8 @@
 from typing import Dict, Optional
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 
 from kornia.constants import pi
 from kornia.core.check import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE

@@ -52,7 +52,7 @@ class Vector3(TensorWrapper):
     ) -> "Vector3":
         if shape is None:
             shape = ()
-        return cls(rand(shape + (3,), device=device, dtype=dtype))
+        return cls(rand((*shape, 3), device=device, dtype=dtype))
 
     # TODO: polish overload
     # @overload
@@ -124,7 +124,7 @@ class Vector2(TensorWrapper):
     def random(cls, shape: Optional[Tuple[int, ...]] = None, device: Device = None, dtype: Dtype = None) -> "Vector2":
         if shape is None:
             shape = ()
-        return cls(rand(shape + (2,), device=device, dtype=dtype))
+        return cls(rand((*shape, 2), device=device, dtype=dtype))
 
     @classmethod
     def from_coords(

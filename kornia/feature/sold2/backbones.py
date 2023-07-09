@@ -2,8 +2,8 @@
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Type, Union
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 from torch.nn.functional import pixel_shuffle, softmax
 
 from kornia.core import Module, Tensor

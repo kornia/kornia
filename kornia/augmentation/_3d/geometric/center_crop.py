@@ -75,7 +75,7 @@ class CenterCrop3D(GeometricAugmentationBase3D):
             self.size = (size, size, size)
         else:
             raise Exception(f"Invalid size type. Expected (int, tuple(int, int int). Got: {size}.")
-        self.flags = dict(align_corners=align_corners, resample=Resample.get(resample))
+        self.flags = {"align_corners": align_corners, "resample": Resample.get(resample)}
 
     def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, Tensor]:
         return rg.center_crop_generator3d(

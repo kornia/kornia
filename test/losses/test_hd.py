@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 import torch
-import torch.nn as nn
 from scipy.ndimage import convolve
+from torch import nn
 from torch.autograd import gradcheck
 
 import kornia

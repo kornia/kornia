@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections import OrderedDict
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 
 from kornia.core import Module, Tensor, concatenate
 from kornia.core.check import KORNIA_CHECK

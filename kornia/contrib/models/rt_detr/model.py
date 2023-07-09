@@ -171,4 +171,4 @@ class RTDETR(ModelBase[RTDETRConfig]):
         fmaps = self.backbone(images)
         fmaps = self.neck(fmaps)
         logits, boxes = self.head(fmaps)
-        return dict(logits=logits, boxes=boxes)
+        return {"logits": logits, "boxes": boxes}

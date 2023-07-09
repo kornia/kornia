@@ -53,7 +53,7 @@ class Attention(Module):
         qkv = self.to_qkv(x).chunk(3, dim=-1)
 
         b, p, n, hd = qkv[0].shape
-        q, k, v = map(lambda t: t.reshape(b, p, n, self.heads, hd // self.heads).transpose(2, 3), qkv)
+        q, k, v = (t.reshape(b, p, n, self.heads, hd // self.heads).transpose(2, 3) for t in qkv)
 
         dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale
         attn = self.attend(dots)

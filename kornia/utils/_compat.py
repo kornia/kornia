@@ -33,25 +33,23 @@ if TYPE_CHECKING:
     def torch_meshgrid(tensors: List[Tensor], indexing: Optional[str] = None) -> Tuple[Tensor, ...]:
         ...
 
+elif torch_version_ge(1, 10, 0):
+
+    def torch_meshgrid(tensors: List[Tensor], indexing: str):
+        return torch.meshgrid(tensors, indexing=indexing)
+
 else:
-    if torch_version_ge(1, 10, 0):
-
-        def torch_meshgrid(tensors: List[Tensor], indexing: str):
-            return torch.meshgrid(tensors, indexing=indexing)
-
-    else:
-        # TODO: remove this branch when kornia relies on torch >= 1.10.0
-        def torch_meshgrid(tensors: List[Tensor], indexing: str):
-            return torch.meshgrid(tensors)
+    # TODO: remove this branch when kornia relies on torch >= 1.10.0
+    def torch_meshgrid(tensors: List[Tensor], indexing: str):
+        return torch.meshgrid(tensors)
 
 
 if TYPE_CHECKING:
     # TODO: remove this branch when kornia relies on torch >= 1.10.0
     _T = TypeVar('_T')
     torch_inference_mode: Callable[..., ContextManager[_T]]
+elif torch_version_ge(1, 10, 0):
+    torch_inference_mode = torch.inference_mode
 else:
-    if torch_version_ge(1, 10, 0):
-        torch_inference_mode = torch.inference_mode
-    else:
-        # TODO: remove this branch when kornia relies on torch >= 1.10.0
-        torch_inference_mode = torch.no_grad
+    # TODO: remove this branch when kornia relies on torch >= 1.10.0
+    torch_inference_mode = torch.no_grad

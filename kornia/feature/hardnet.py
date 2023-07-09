@@ -1,8 +1,8 @@
 from typing import Dict
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.testing import is_mps_tensor_safe

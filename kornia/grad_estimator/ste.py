@@ -1,7 +1,6 @@
 from typing import Any, Callable, Optional, Tuple
 
-import torch.nn as nn
-from torch import Tensor
+from torch import Tensor, nn
 from torch.autograd import Function
 
 __all__ = ["STEFunction", "StraightThroughEstimator"]

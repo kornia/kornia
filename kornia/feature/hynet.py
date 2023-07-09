@@ -1,7 +1,7 @@
 from typing import Dict
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 from kornia.core import Module, Parameter, Tensor, tensor, zeros
 from kornia.utils.helpers import map_location_to_cpu
@@ -217,7 +217,6 @@ class HyNet(Module):
             pretrained_dict = torch.hub.load_state_dict_from_url(urls['liberty'], map_location=map_location_to_cpu)
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
-        return
 
     def forward(self, x: Tensor) -> Tensor:
         x = self.layer1(x)
