@@ -320,7 +320,7 @@ class TransformMatrixMinIn:
                 "Please either update the module or change the `transformation_matrix` argument."
             )
 
-    def _update_transform_matrix(self, transform_matrix: Tensor) -> None:
+    def _update_transform_matrix(self, transform_matrix: Optional[Tensor]) -> None:
         if self._transform_matrix is None:
             self._transform_matrix = transform_matrix
         else:

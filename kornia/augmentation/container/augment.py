@@ -1,5 +1,5 @@
 import warnings
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union, cast
 
 from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
 from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmentationBase3D
@@ -163,7 +163,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         },
     ) -> None:
         self._transform_matrix: Optional[Tensor]
-        self._transform_matrices: List[Tensor] = []
+        self._transform_matrices: Sequence[Tensor] = []
 
         super().__init__(
             *args,
