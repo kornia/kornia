@@ -30,24 +30,24 @@ def _get_data(url: str, sha256: str) -> str:
     return data.decode('utf-8')
 
 
-@pytest.fixture
+@pytest.fixture()
 def colmap_cameras_path(tmp_path):
     data = _get_data(*_ref['cameras'])
 
     p = tmp_path / "camera.txt"
     p.write_text(data)
 
-    yield p
+    return p
 
 
-@pytest.fixture
+@pytest.fixture()
 def colmap_images_path(tmp_path):
     data = _get_data(*_ref['images'])
 
     p = tmp_path / "images.txt"
     p.write_text(data)
 
-    yield p
+    return p
 
 
 def test_parse_colmap_output(device, dtype, colmap_cameras_path, colmap_images_path) -> None:

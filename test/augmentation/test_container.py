@@ -147,7 +147,7 @@ class TestVideoSequential:
             output_2 = output_2.transpose(1, 2)
         assert_close(output_1, output_2)
 
-    @pytest.mark.jit
+    @pytest.mark.jit()
     @pytest.mark.skip(reason="turn off due to Union Type")
     def test_jit(self, device, dtype):
         B, C, D, H, W = 2, 3, 5, 4, 4
@@ -493,7 +493,8 @@ class TestAugmentationSequential:
 
         assert len(transformed) == len(inputs)
         bboxes_transformed = transformed[-1]
-        assert len(bboxes_transformed) == len(bbox) and bboxes_transformed.__class__ == bbox.__class__
+        assert len(bboxes_transformed) == len(bbox)
+        assert bboxes_transformed.__class__ == bbox.__class__
         for i in range(len(bbox)):
             assert len(bboxes_transformed[i]) == len(bbox[i])
 
@@ -650,7 +651,7 @@ class TestAugmentationSequential:
         if random_apply is False:
             reproducibility_test((inp, mask, bbox, keypoints, bbox_2, bbox_wh, bbox_wh_2), aug)
 
-    @pytest.mark.jit
+    @pytest.mark.jit()
     @pytest.mark.skip(reason="turn off due to Union Type")
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4

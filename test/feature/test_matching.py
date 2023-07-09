@@ -222,7 +222,7 @@ class TestMatchSMNN:
         assert gradcheck(match_smnn, (desc1, desc2, 0.8), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
         assert gradcheck(matcher, (desc1, desc2), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
 
-    @pytest.mark.jit
+    @pytest.mark.jit()
     @pytest.mark.parametrize("match_type", ["nn", "snn", "mnn", "smnn"])
     def test_jit(self, match_type, device, dtype):
         desc1 = torch.rand(5, 8, device=device, dtype=dtype)
@@ -334,7 +334,7 @@ class TestMatchFGINN:
             match_fginn, (desc1, desc2, lafs1, lafs2, 0.8, 0.05), raise_exception=True, nondet_tol=1e-4, fast_mode=True
         )
 
-    @pytest.mark.jit
+    @pytest.mark.jit()
     @pytest.mark.skip("keyword-arg expansion is not supported")
     def test_jit(self, device, dtype):
         desc1 = torch.rand(5, 8, device=device, dtype=dtype)

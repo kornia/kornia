@@ -50,15 +50,19 @@ class TestBoxes2D:
 
         # Boxes
         h, w = boxes.get_boxes_shape()
-        assert h.ndim == 1 and w.ndim == 1
-        assert len(h) == 2 and len(w) == 2
+        assert h.ndim == 1
+        assert w.ndim == 1
+        assert len(h) == 2
+        assert len(w) == 2
         assert_close(h, torch.as_tensor([2.0, 3.0], device=device, dtype=dtype))
         assert_close(w, torch.as_tensor([3.0, 4.0], device=device, dtype=dtype))
 
         # Box batch
         h, w = boxes_batch.get_boxes_shape()
-        assert h.ndim == 2 and w.ndim == 2
-        assert h.shape == (1, 2) and w.shape == (1, 2)
+        assert h.ndim == 2
+        assert w.ndim == 2
+        assert h.shape == (1, 2)
+        assert w.shape == (1, 2)
         assert_close(h, torch.as_tensor([[2.0, 3.0]], device=device, dtype=dtype))
         assert_close(w, torch.as_tensor([[3.0, 4.0]], device=device, dtype=dtype))
 
@@ -68,8 +72,10 @@ class TestBoxes2D:
         batched_boxes = Boxes(torch.stack([t_box1, t_box2]))
 
         h, w = batched_boxes.get_boxes_shape()
-        assert h.ndim == 2 and w.ndim == 2
-        assert h.shape == (2, 1) and w.shape == (2, 1)
+        assert h.ndim == 2
+        assert w.ndim == 2
+        assert h.shape == (2, 1)
+        assert w.shape == (2, 1)
         assert_close(h, torch.as_tensor([[2], [3]], device=device, dtype=dtype))
         assert_close(w, torch.as_tensor([[3], [4]], device=device, dtype=dtype))
 
@@ -445,16 +451,21 @@ class TestBbox3D:
 
         # Boxes
         d, h, w = boxes.get_boxes_shape()
-        assert h.ndim == 1 and w.ndim == 1
-        assert len(d) == 2 and len(h) == 2 and len(w) == 2
+        assert h.ndim == 1
+        assert w.ndim == 1
+        assert len(d) == 2
+        assert len(h) == 2
+        assert len(w) == 2
         assert_close(d, torch.as_tensor([31.0, 61.0], device=device, dtype=dtype))
         assert_close(h, torch.as_tensor([21.0, 51.0], device=device, dtype=dtype))
         assert_close(w, torch.as_tensor([11.0, 41.0], device=device, dtype=dtype))
 
         # Box batch
         d, h, w = boxes_batch.get_boxes_shape()
-        assert h.ndim == 2 and w.ndim == 2
-        assert h.shape == (1, 2) and w.shape == (1, 2)
+        assert h.ndim == 2
+        assert w.ndim == 2
+        assert h.shape == (1, 2)
+        assert w.shape == (1, 2)
         assert_close(d, torch.as_tensor([[31.0, 61.0]], device=device, dtype=dtype))
         assert_close(h, torch.as_tensor([[21.0, 51.0]], device=device, dtype=dtype))
         assert_close(w, torch.as_tensor([[11.0, 41.0]], device=device, dtype=dtype))
@@ -473,8 +484,12 @@ class TestBbox3D:
         batched_boxes = Boxes3D(torch.stack([t_box1, t_box2]))
 
         d, h, w = batched_boxes.get_boxes_shape()
-        assert d.ndim == 2 and h.ndim == 2 and w.ndim == 2
-        assert d.shape == (2, 1) and h.shape == (2, 1) and w.shape == (2, 1)
+        assert d.ndim == 2
+        assert h.ndim == 2
+        assert w.ndim == 2
+        assert d.shape == (2, 1)
+        assert h.shape == (2, 1)
+        assert w.shape == (2, 1)
         assert_close(d, torch.as_tensor([[31.0], [61.0]], device=device, dtype=dtype))
         assert_close(h, torch.as_tensor([[21.0], [51.0]], device=device, dtype=dtype))
         assert_close(w, torch.as_tensor([[11.0], [41.0]], device=device, dtype=dtype))

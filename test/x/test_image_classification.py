@@ -16,33 +16,33 @@ class DummyDatasetClassification(Dataset):
         return torch.ones(3, 32, 32), torch.tensor(1)
 
 
-@pytest.fixture
+@pytest.fixture()
 def model():
     return nn.Sequential(VisionTransformer(image_size=32), ClassificationHead(num_classes=10))
 
 
-@pytest.fixture
+@pytest.fixture()
 def dataloader():
     dataset = DummyDatasetClassification()
     return torch.utils.data.DataLoader(dataset, batch_size=1)
 
 
-@pytest.fixture
+@pytest.fixture()
 def criterion():
     return nn.CrossEntropyLoss()
 
 
-@pytest.fixture
+@pytest.fixture()
 def optimizer(model):
     return torch.optim.AdamW(model.parameters())
 
 
-@pytest.fixture
+@pytest.fixture()
 def scheduler(optimizer, dataloader):
     return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, len(dataloader))
 
 
-@pytest.fixture
+@pytest.fixture()
 def configuration():
     config = Configuration()
     config.num_epochs = 1

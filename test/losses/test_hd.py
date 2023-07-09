@@ -84,7 +84,7 @@ class HausdorffERLossNumpy(nn.Module):
         pred: (b, 1, x, y, z) or (b, 1, x, y)
         target: (b, 1, x, y, z) or (b, 1, x, y)
         """
-        assert pred.dim() == 4 or pred.dim() == 5, "Only 2D and 3D supported"
+        assert pred.dim() in (4, 5), "Only 2D and 3D supported"
         assert pred.dim() == target.dim() and target.size(1) == 1, "Prediction and target need to be of same dimension"
         return torch.stack(
             [
