@@ -140,7 +140,7 @@ def _tuple_range_reader(
                 f"Got {input_range}"
             )
     else:
-        if isinstance(input_range, (float, int)):
+        if isinstance(input_range, (float, int)):  # noqa: PLR5501
             if input_range < 0:
                 raise ValueError(f"If input_range is only one number it must be a positive number. Got{input_range}")
             input_range_tmp = tensor([-input_range, input_range], device=device, dtype=dtype).repeat(target_shape[0], 1)

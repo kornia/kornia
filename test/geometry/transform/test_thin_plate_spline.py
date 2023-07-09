@@ -54,7 +54,7 @@ class TestTransformParameters:
     @pytest.mark.parametrize('batch_size', [1, 3])
     @pytest.mark.parametrize('requires_grad', [True, False])
     def test_gradcheck(self, batch_size, device, dtype, requires_grad):
-        opts = dict(device=device, dtype=torch.float64)
+        opts = {'device': device, 'dtype': torch.float64}
         src, dst = _sample_points(batch_size, **opts)
         src.requires_grad_(requires_grad)
         dst.requires_grad_(not requires_grad)
@@ -125,7 +125,7 @@ class TestWarpPoints:
     @pytest.mark.parametrize('batch_size', [1, 3])
     @pytest.mark.parametrize('requires_grad', [True, False])
     def test_gradcheck(self, batch_size, device, dtype, requires_grad):
-        opts = dict(device=device, dtype=torch.float64)
+        opts = {'device': device, 'dtype': torch.float64}
         src, dst = _sample_points(batch_size, **opts)
         kernel, affine = kornia.geometry.transform.get_tps_transform(src, dst)
         kernel.requires_grad_(requires_grad)
@@ -213,7 +213,7 @@ class TestWarpImage:
     @pytest.mark.grad
     @pytest.mark.parametrize('batch_size', [1, 3])
     def test_gradcheck(self, batch_size, device, dtype):
-        opts = dict(device=device, dtype=torch.float64)
+        opts = {'device': device, 'dtype': torch.float64}
         src, dst = _sample_points(batch_size, **opts)
         kernel, affine = kornia.geometry.transform.get_tps_transform(src, dst)
         image = torch.rand(batch_size, 3, 8, 8, requires_grad=True, **opts)

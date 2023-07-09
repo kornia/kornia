@@ -1,5 +1,5 @@
 import pytest
-import torch.nn as nn
+from torch import nn
 
 from kornia.metrics import AverageMeter
 from kornia.x import EarlyStopping, ModelCheckpoint

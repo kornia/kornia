@@ -59,7 +59,7 @@ class MixupGenerator(RandomGeneratorBase):
         mixup_lambdas: torch.Tensor = _adapted_rsampling((batch_size,), self.lambda_sampler, same_on_batch)
         mixup_lambdas = mixup_lambdas * batch_probs
 
-        return dict(
-            mixup_pairs=mixup_pairs.to(device=_device, dtype=torch.long),
-            mixup_lambdas=mixup_lambdas.to(device=_device, dtype=_dtype),
-        )
+        return {
+            "mixup_pairs": mixup_pairs.to(device=_device, dtype=torch.long),
+            "mixup_lambdas": mixup_lambdas.to(device=_device, dtype=_dtype),
+        }

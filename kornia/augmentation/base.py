@@ -76,7 +76,7 @@ class _BasicAugmentationBase(Module):
     def __repr__(self) -> str:
         txt = f"p={self.p}, p_batch={self.p_batch}, same_on_batch={self.same_on_batch}"
         if isinstance(self._param_generator, RandomGeneratorBase):
-            txt = f"{str(self._param_generator)}, {txt}"
+            txt = f"{self._param_generator!s}, {txt}"
         for k, v in self.flags.items():
             if isinstance(v, Enum):
                 txt += f", {k}={v.name.lower()}"
@@ -123,12 +123,11 @@ class _BasicAugmentationBase(Module):
             batch_prob = zeros(1) + 1
         elif p_batch == 0:
             batch_prob = zeros(1)
-        else:
+        elif isinstance(self._p_batch_gen, (RelaxedBernoulli,)):
             # NOTE: there is no simple way to know if the sampler has `rsample` or not
-            if isinstance(self._p_batch_gen, (RelaxedBernoulli,)):
-                batch_prob = _adapted_rsampling((1,), self._p_batch_gen, same_on_batch)
-            else:
-                batch_prob = _adapted_sampling((1,), self._p_batch_gen, same_on_batch)
+            batch_prob = _adapted_rsampling((1,), self._p_batch_gen, same_on_batch)
+        else:
+            batch_prob = _adapted_sampling((1,), self._p_batch_gen, same_on_batch)
 
         if batch_prob.sum() == 1:
             elem_prob: Tensor
@@ -136,11 +135,10 @@ class _BasicAugmentationBase(Module):
                 elem_prob = zeros(batch_shape[0]) + 1
             elif p == 0:
                 elem_prob = zeros(batch_shape[0])
+            elif isinstance(self._p_gen, (RelaxedBernoulli,)):
+                elem_prob = _adapted_rsampling((batch_shape[0],), self._p_gen, same_on_batch)
             else:
-                if isinstance(self._p_gen, (RelaxedBernoulli,)):
-                    elem_prob = _adapted_rsampling((batch_shape[0],), self._p_gen, same_on_batch)
-                else:
-                    elem_prob = _adapted_sampling((batch_shape[0],), self._p_gen, same_on_batch)
+                elem_prob = _adapted_sampling((batch_shape[0],), self._p_gen, same_on_batch)
             batch_prob = batch_prob * elem_prob
         else:
             batch_prob = batch_prob.repeat(batch_shape[0])

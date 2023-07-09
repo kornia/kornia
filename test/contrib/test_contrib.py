@@ -397,7 +397,7 @@ class TestLambdaModule:
         img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         func = self.add_2_layer
         if not callable(func):
-            raise TypeError(f"Argument lambd should be callable, got {repr(type(func).__name__)}")
+            raise TypeError(f"Argument lambd should be callable, got {type(func).__name__!r}")
         assert isinstance(kornia.contrib.Lambda(func)(img), torch.Tensor)
 
     @pytest.mark.parametrize("x", [3, 2, 5])

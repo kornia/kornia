@@ -90,8 +90,8 @@ class MotionBlurGenerator3D(RandomGeneratorBase):
         direction_factor = _adapted_rsampling((batch_size,), self.direction_sampler, same_on_batch)
         ksize_factor = _adapted_rsampling((batch_size,), self.ksize_sampler, same_on_batch).int() * 2 + 1
 
-        return dict(
-            ksize_factor=ksize_factor.to(device=_device, dtype=torch.int32),
-            angle_factor=angle_factor.to(device=_device, dtype=_dtype),
-            direction_factor=direction_factor.to(device=_device, dtype=_dtype),
-        )
+        return {
+            'ksize_factor': ksize_factor.to(device=_device, dtype=torch.int32),
+            'angle_factor': angle_factor.to(device=_device, dtype=_dtype),
+            'direction_factor': direction_factor.to(device=_device, dtype=_dtype),
+        }

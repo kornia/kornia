@@ -39,7 +39,7 @@ class ImageStitcher(Module):
         self.estimator = estimator
         self.blending_method = blending_method
         if estimator not in ['ransac', 'vanilla']:
-            raise NotImplementedError(f"Unsupported estimator {estimator}. Use ‘ransac’ or ‘vanilla’ instead.")
+            raise NotImplementedError(f"Unsupported estimator {estimator}. Use `ransac` or `vanilla` instead.")
         if estimator == "ransac":
             self.ransac = RANSAC('homography')
 
@@ -58,7 +58,7 @@ class ImageStitcher(Module):
             homo, _ = self.ransac(keypoints2, keypoints1)
             homo = homo[None]
         else:
-            raise NotImplementedError(f"Unsupported estimator {self.estimator}. Use ‘ransac’ or ‘vanilla’ instead.")
+            raise NotImplementedError(f"Unsupported estimator {self.estimator}. Use `ransac` or `vanilla` instead.")
         return homo
 
     def estimate_transform(self, *args: Tensor, **kwargs: Tensor) -> Tensor:
@@ -77,7 +77,7 @@ class ImageStitcher(Module):
         if self.blending_method == "naive":
             out = where(mask == 1, src_img, dst_img)
         else:
-            raise NotImplementedError(f"Unsupported blending method {self.blending_method}. Use ‘naive’.")
+            raise NotImplementedError(f"Unsupported blending method {self.blending_method}. Use `naive`.")
         return out
 
     def preprocess(self, image_1: Tensor, image_2: Tensor) -> Dict[str, Tensor]:

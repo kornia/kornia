@@ -1,8 +1,8 @@
 from typing import List, Optional
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 from typing_extensions import TypedDict
 
 from kornia.core import Module, Tensor, concatenate

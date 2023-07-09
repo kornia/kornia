@@ -8,7 +8,7 @@ from kornia.testing import assert_close
 class TestQuaternion:
     def _make_rand_data(self, device, dtype, batch_size):
         shape = [] if batch_size is None else [batch_size]
-        return torch.rand(shape + [4], device=device, dtype=dtype)
+        return torch.rand([*shape, 4], device=device, dtype=dtype)
 
     def assert_close(self, actual, expected, rtol=None, atol=None):
         if isinstance(actual, Quaternion):

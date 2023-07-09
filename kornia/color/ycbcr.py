@@ -1,6 +1,5 @@
 import torch
-import torch.nn as nn
-from torch import Tensor
+from torch import Tensor, nn
 
 
 def _rgb_to_y(r: Tensor, g: Tensor, b: Tensor) -> Tensor:

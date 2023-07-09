@@ -53,26 +53,22 @@ requires = [
   license-files = ["LICENSE"]
   include-package-data = false
 
-[tool.setuptools.dynamic]
-  dependencies = {file = ["requirements/requirements.txt"]}
-  version = {attr = "kornia.__version__"}
-  readme = {file = ["README.md"], content-type = "text/markdown"}
+  [tool.setuptools.dynamic]
+    dependencies = {file = ["requirements/requirements.txt"]}
+    version = {attr = "kornia.__version__"}
+    readme = {file = ["README.md"], content-type = "text/markdown"}
 
   [tool.setuptools.dynamic.optional-dependencies]
     dev = {file = "requirements/requirements-dev.txt"}
     docs = {file = ["requirements/requirements-docs.txt"]}
     x = {file = ["requirements/requirements-x.txt"]}
 
-[tool.setuptools.packages.find]
-exclude = [
-    "docs*",
-    "test*",
-    "examples*",
-]
-namespaces = false
+  [tool.setuptools.packages.find]
+    exclude = ["docs*", "test*", "examples*"]
+    namespaces = false
 
-[tool.setuptools.package-data]
-  kornia = ["py.typed"]
+  [tool.setuptools.package-data]
+    kornia = ["py.typed"]
 
 [tool.black]
   line-length = 120
@@ -80,53 +76,31 @@ namespaces = false
   skip-magic-trailing-comma = true
 
 [tool.ruff]
-select = [
-  "C9",
-  "E",
-  "F",
-  "I",
-  "PL",
-  "S",
-  "UP",
-  "W",
-  "YTT",
-]
-ignore = [
-  "E402",
-	"F403",
-	"PLR0402",
-	"PLR1711",
-	"PLR5501",
-  "PLR2004",
-  "PLW2901"
-]
-line-length = 120
-target-version = "py37"
+  line-length = 120
+  target-version = "py37"
+  select = ["C9", "E", "F", "I", "PL", "S", "UP", "W", "YTT", "BLE", "C4", "RUF"]
+  ignore = [
+    "PLW2901", # Allow overwritten values on loops
+  ]
 
-[tool.ruff.isort]
-  known-first-party = ["examples", "kornia", "test"]
+  [tool.ruff.isort]
+    known-first-party = ["examples", "kornia", "test"]
 
-[tool.ruff.mccabe]
-max-complexity = 39
+  [tool.ruff.mccabe]
+    max-complexity = 40
 
-[tool.ruff.pylint]
-max-args = 16
-max-branches = 45
-max-returns = 13
-max-statements = 258
+  [tool.ruff.pylint]
+    max-args = 20
+    max-branches = 32
+    max-returns = 16
+    max-statements = 124
+    allow-magic-value-types = ["str", "bytes", "int", "float"]
 
-[tool.ruff.per-file-ignores]
-"*/__init__.py" = ["F401"]
-"docs/*" = ["S101", "S113"]
-"docs/generate_examples.py" = ["C901", "PLR0912", "PLR0915"]
-"kornia/__init__.py" = ["I001"]
-"kornia/augmentation/container/base.py" = ["PLC1901"]
-"kornia/color/hls.py" = ["E741"]
-"kornia/contrib/models/sam/architecture/image_encoder.py" = ["PLR0913"]
-"kornia/enhance/equalization.py" = ["E741"]
-"test/*" = ["PLR0402", "S101"]
-"test/enhance/test_core.py" = ["S311"]
-"test/nerf/test_camera_utils.py" = ["S310"]
+  [tool.ruff.per-file-ignores]
+    "*/__init__.py" = ["F401", "F403"] # Allow unused imports and star imports
+    "kornia/__init__.py" = ["I001"] # Allow unsorted imports
+    "test/*" = ["S101", "S311", "BLE", "RUF012"] # allow assert, random, ignore BLE, mutable class attr
+    "docs/*" = ["S101", "PLR0912", "PLR0915"] # allow assert, ignore max branches and statements
 
 [tool.pytest.ini_options]
   addopts = "--color=yes"
@@ -163,12 +137,5 @@ exclude_lines = [
   universal = true
 
 [tool.pydocstyle]
-match = '.*\.py'
-ignore = """
-D105
-D107
-D203
-D204
-D213
-D406
-D407"""
+  match = '.*\.py'
+  ignore = ['D105','D107','D203','D204','D213','D406','D407']

@@ -78,7 +78,7 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator = rg.MotionBlurGenerator(kernel_size, angle, direction)
-        self.flags = dict(border_type=BorderType.get(border_type), resample=Resample.get(resample))
+        self.flags = {"border_type": BorderType.get(border_type), "resample": Resample.get(resample)}
 
     def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, Tensor]:
         params = super().generate_parameters(batch_shape)

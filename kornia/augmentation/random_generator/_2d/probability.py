@@ -41,7 +41,7 @@ class ProbabilityGenerator(RandomGeneratorBase):
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         probs_mask: Tensor = _adapted_sampling((batch_size,), self.sampler, same_on_batch).bool()
-        return dict(probs=probs_mask)
+        return {"probs": probs_mask}
 
 
 def random_prob_generator(

@@ -1,7 +1,7 @@
 from typing import Tuple
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 from kornia.utils import create_meshgrid
 from kornia.utils.helpers import _torch_solve_cast

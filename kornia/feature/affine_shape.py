@@ -3,7 +3,7 @@ import warnings
 from typing import Dict, Optional
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 from kornia.filters.kernels import get_gaussian_kernel2d

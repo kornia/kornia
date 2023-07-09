@@ -85,10 +85,10 @@ class ColorJitterGenerator(RandomGeneratorBase):
         contrast_factor = _adapted_rsampling((batch_size,), self.contrast_sampler, same_on_batch)
         hue_factor = _adapted_rsampling((batch_size,), self.hue_sampler, same_on_batch)
         saturation_factor = _adapted_rsampling((batch_size,), self.saturation_sampler, same_on_batch)
-        return dict(
-            brightness_factor=brightness_factor.to(device=_device, dtype=_dtype),
-            contrast_factor=contrast_factor.to(device=_device, dtype=_dtype),
-            hue_factor=hue_factor.to(device=_device, dtype=_dtype),
-            saturation_factor=saturation_factor.to(device=_device, dtype=_dtype),
-            order=self.randperm(4).to(device=_device, dtype=_dtype).long(),
-        )
+        return {
+            "brightness_factor": brightness_factor.to(device=_device, dtype=_dtype),
+            "contrast_factor": contrast_factor.to(device=_device, dtype=_dtype),
+            "hue_factor": hue_factor.to(device=_device, dtype=_dtype),
+            "saturation_factor": saturation_factor.to(device=_device, dtype=_dtype),
+            "order": self.randperm(4).to(device=_device, dtype=_dtype).long(),
+        }

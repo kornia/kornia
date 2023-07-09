@@ -21,14 +21,10 @@ def get_cuda_device_if_available(index: int = 0) -> torch.device:
     Returns:
         torch.device
     """
-    try:
-        if torch.cuda.is_available():
-            dev = torch.device(f'cuda:{index}')
-        else:
-            dev = torch.device('cpu')
-    except BaseException as e:  # noqa: F841
-        dev = torch.device('cpu')
-    return dev
+    if torch.cuda.is_available():
+        return torch.device(f'cuda:{index}')
+
+    return torch.device('cpu')
 
 
 def get_mps_device_if_available() -> torch.device:
@@ -205,12 +201,11 @@ def _torch_linalg_svdvals(input: Tensor) -> Tensor:
     if TYPE_CHECKING:
         # TODO: remove this branch when kornia relies on torch >= 1.10
         out: Tensor
+    elif torch_version_ge(1, 10):
+        out = torch.linalg.svdvals(input.to(dtype))
     else:
-        if torch_version_ge(1, 10):
-            out = torch.linalg.svdvals(input.to(dtype))
-        else:
-            # TODO: remove this branch when kornia relies on torch >= 1.10
-            _, out, _ = torch.linalg.svd(input.to(dtype))
+        # TODO: remove this branch when kornia relies on torch >= 1.10
+        _, out, _ = torch.linalg.svd(input.to(dtype))
     return out.to(input.dtype)
 
 
@@ -249,12 +244,11 @@ def safe_solve_with_mask(B: Tensor, A: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         A_LU: Tensor
         pivots: Tensor
         info: Tensor
+    elif torch_version_ge(1, 13):
+        A_LU, pivots, info = torch.linalg.lu_factor_ex(A.to(dtype))
     else:
-        if torch_version_ge(1, 13):
-            A_LU, pivots, info = torch.linalg.lu_factor_ex(A.to(dtype))
-        else:
-            # TODO: remove this branch when kornia relies on torch >= 1.13
-            A_LU, pivots, info = torch.lu(A.to(dtype), True, get_infos=True)
+        # TODO: remove this branch when kornia relies on torch >= 1.13
+        A_LU, pivots, info = torch.lu(A.to(dtype), True, get_infos=True)
 
     valid_mask: Tensor = info == 0
     n_dim_B = len(B.shape)
@@ -265,12 +259,11 @@ def safe_solve_with_mask(B: Tensor, A: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
     if TYPE_CHECKING:
         # TODO: remove this branch when kornia relies on torch >= 1.13
         X: Tensor
+    elif torch_version_ge(1, 13):
+        X = torch.linalg.lu_solve(A_LU, pivots, B.to(dtype))
     else:
-        if torch_version_ge(1, 13):
-            X = torch.linalg.lu_solve(A_LU, pivots, B.to(dtype))
-        else:
-            # TODO: remove this branch when kornia relies on torch >= 1.13
-            X = torch.lu_solve(B.to(dtype), A_LU, pivots)
+        # TODO: remove this branch when kornia relies on torch >= 1.13
+        X = torch.lu_solve(B.to(dtype), A_LU, pivots)
 
     return X.to(B.dtype), A_LU.to(A.dtype), valid_mask
 

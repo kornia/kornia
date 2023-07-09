@@ -59,7 +59,7 @@ class Normalize(IntensityAugmentationBase2D):
         if isinstance(std, (tuple, list)):
             std = torch.tensor(std)
 
-        self.flags = dict(mean=mean, std=std)
+        self.flags = {"mean": mean, "std": std}
 
     def apply_transform(
         self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None

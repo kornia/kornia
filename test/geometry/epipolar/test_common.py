@@ -41,4 +41,17 @@ def generate_two_view_random_scene(
     x1 = scene['points2d'][0:1].to(device, dtype)
     x2 = scene['points2d'][1:2].to(device, dtype)
 
-    return dict(K1=K1, K2=K2, R1=R1, R2=R2, t1=t1, t2=t2, P1=P1, P2=P2, F=F_mat, X=X, x1=x1, x2=x2)
+    return {
+        "K1": K1,
+        "K2": K2,
+        "R1": R1,
+        "R2": R2,
+        "t1": t1,
+        "t2": t2,
+        "P1": P1,
+        "P2": P2,
+        "F": F_mat,
+        "X": X,
+        "x1": x1,
+        "x2": x2,
+    }

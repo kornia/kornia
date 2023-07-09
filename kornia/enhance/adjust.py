@@ -224,7 +224,7 @@ def adjust_gamma(input: Tensor, gamma: Union[float, Tensor], gain: Union[float, 
 
     Args:
         input: Image to be adjusted in the shape of :math:`(*, H, W)`.
-        gamma: Non negative real number, same as γ\gammaγ in the equation.
+        gamma: Non negative real number, same as y\gammay in the equation.
             gamma larger than 1 make the shadows darker, while gamma smaller than 1 make
             dark regions lighter.
         gain: The constant multiplier.
@@ -1149,7 +1149,7 @@ class AdjustGamma(Module):
     The input image is expected to be in the range of [0, 1].
 
     Args:
-        gamma: Non negative real number, same as γ\gammaγ in the equation.
+        gamma: Non negative real number, same as y\gammay in the equation.
           gamma larger than 1 make the shadows darker, while gamma smaller than 1 make
           dark regions lighter.
         gain: The constant multiplier.

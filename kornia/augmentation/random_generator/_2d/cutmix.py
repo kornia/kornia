@@ -86,10 +86,10 @@ class CutmixGenerator(RandomGeneratorBase):
         _common_param_check(batch_size, same_on_batch)
 
         if batch_size == 0:
-            return dict(
-                mix_pairs=zeros([0, 3], device=_device, dtype=torch.long),
-                crop_src=zeros([0, 4, 2], device=_device, dtype=_dtype),
-            )
+            return {
+                "mix_pairs": zeros([0, 3], device=_device, dtype=torch.long),
+                "crop_src": zeros([0, 4, 2], device=_device, dtype=_dtype),
+            }
 
         with torch.no_grad():
             batch_probs: torch.Tensor = _adapted_sampling(
@@ -132,8 +132,8 @@ class CutmixGenerator(RandomGeneratorBase):
         # (B * num_mix, 4, 2) => (num_mix, batch_size, 4, 2)
         crop_src = crop_src.view(self.num_mix, batch_size, 4, 2)
 
-        return dict(
-            mix_pairs=mix_pairs.to(device=_device, dtype=torch.long),
-            crop_src=crop_src.floor().to(device=_device, dtype=_dtype),
-            image_shape=as_tensor(batch_shape[-2:], device=_device, dtype=_dtype),
-        )
+        return {
+            "mix_pairs": mix_pairs.to(device=_device, dtype=torch.long),
+            "crop_src": crop_src.floor().to(device=_device, dtype=_dtype),
+            "image_shape": as_tensor(batch_shape[-2:], device=_device, dtype=_dtype),
+        }
