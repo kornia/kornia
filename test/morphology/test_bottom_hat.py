@@ -63,13 +63,13 @@ class TestBottomHat:
             test = torch.ones(2, 3, 4, device=device, dtype=dtype)
             assert bottom_hat(sample, test)
 
-    @pytest.mark.grad
+    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         sample = torch.rand(2, 3, 4, 4, requires_grad=True, device=device, dtype=torch.float64)
         kernel = torch.rand(3, 3, requires_grad=True, device=device, dtype=torch.float64)
         assert gradcheck(bottom_hat, (sample, kernel), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit
+    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         op = bottom_hat
         op_script = torch.jit.script(op)

@@ -24,7 +24,7 @@ from kornia.geometry.quaternion import Quaternion
 from kornia.testing import BaseTester, assert_close, create_eye_batch, tensor_to_gradcheck_var
 
 
-@pytest.fixture
+@pytest.fixture()
 def atol(device, dtype):
     """Lower tolerance for cuda-float16 only."""
     if 'cuda' in device.type and dtype == torch.float16:
@@ -32,7 +32,7 @@ def atol(device, dtype):
     return 1.0e-4
 
 
-@pytest.fixture
+@pytest.fixture()
 def rtol(device, dtype):
     """Lower tolerance for cuda-float16 only."""
     if 'cuda' in device.type and dtype == torch.float16:

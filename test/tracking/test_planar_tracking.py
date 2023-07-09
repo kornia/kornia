@@ -8,7 +8,7 @@ from kornia.tracking import HomographyTracker
 from kornia.utils._compat import torch_version_le
 
 
-@pytest.fixture
+@pytest.fixture()
 def data():
     url = 'https://github.com/kornia/data_test/blob/main/loftr_outdoor_and_homography_data.pt?raw=true'
     return torch.hub.load_state_dict_from_url(url)
