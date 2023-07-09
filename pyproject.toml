@@ -72,12 +72,12 @@ requires = [
 
 [tool.black]
   line-length = 120
-  skip-string-normalization = true
   skip-magic-trailing-comma = true
+  skip-string-normalization = true
 
 [tool.ruff]
   line-length = 120
-  target-version = "py37"
+  target-version = "py38"
   select = ["C9", "E", "F", "I", "PL", "S", "UP", "W", "YTT", "BLE", "C4", "RUF"]
   ignore = [
     "PLW2901", # Allow overwritten values on loops
@@ -87,56 +87,57 @@ requires = [
     known-first-party = ["examples", "kornia", "test"]
 
   [tool.ruff.mccabe]
-    max-complexity = 40
+    max-complexity = 20
 
   [tool.ruff.pylint]
-    max-args = 20
-    max-branches = 32
-    max-returns = 16
-    max-statements = 124
-    allow-magic-value-types = ["str", "bytes", "int", "float"]
+    allow-magic-value-types = ["bytes", "float", "int", "str"]
+    max-args = 17  # Recommended: 5
+    max-branches = 21  # Recommended: 12
+    max-returns = 13  # Recommended: 6
+    max-statements = 64  # Recommended: 50
 
   [tool.ruff.per-file-ignores]
     "*/__init__.py" = ["F401", "F403"] # Allow unused imports and star imports
+    "docs/*" = ["S101", "PLR0912", "PLR0915"] # allow assert, ignore max branches and statements
+    "docs/generate_examples.py" = ["C901"] # Allow too complex function
     "kornia/__init__.py" = ["I001"] # Allow unsorted imports
     "test/*" = ["S101", "S311", "BLE", "RUF012"] # allow assert, random, ignore BLE, mutable class attr
-    "docs/*" = ["S101", "PLR0912", "PLR0915"] # allow assert, ignore max branches and statements
 
 [tool.pytest.ini_options]
   addopts = "--color=yes"
   testpaths = ["test"]
   markers =[
-    "jit: mark a test as torchscript test",
     "grad: mark a test as gradcheck test",
+    "jit: mark a test as torchscript test",
     "nn: mark a test as module test"
 ]
 
 [tool.coverage.report]
 exclude_lines = [
-  "pragma: no cover",
   "def __repr__",
-  "if self.debug:",
-  "raise",
-  "if 0:",
   "if __name__ == .__main__.:",
+  "if 0:",
+  "if self.debug:",
+  "pragma: no cover",
+  "raise",
 ]
 
 [tool.mypy]
-  files = ["kornia/"]
-  pretty = true
   check_untyped_defs = true
   disallow_any_generics = true
   disallow_incomplete_defs = true
   disallow_untyped_defs = true
-  show_error_codes = true
+  files = ["kornia/"]
   ignore_missing_imports = true
   no_implicit_optional = true
-  warn_unused_ignores = true
+  pretty = true
+  show_error_codes = true
   warn_redundant_casts = true
+  warn_unused_ignores = true
 
 [tool.distutils.bdist_wheel]
   universal = true
 
 [tool.pydocstyle]
-  match = '.*\.py'
   ignore = ['D105','D107','D203','D204','D213','D406','D407']
+  match = '.*\.py'

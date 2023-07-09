@@ -6,7 +6,7 @@ from kornia.x import EarlyStopping, ModelCheckpoint
 from kornia.x.utils import TrainerState
 
 
-@pytest.fixture
+@pytest.fixture()
 def model():
     return nn.Conv2d(3, 10, kernel_size=1)
 

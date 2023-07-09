@@ -208,7 +208,7 @@ class TestUpscaleDouble(BaseTester):
         op_optimized = torch_optimizer(op)
         self.assert_close(op(img), op_optimized(img))
 
-    @pytest.mark.grad
+    @pytest.mark.grad()
     def test_gradcheck(self, device):
         x = self.prepare_data((1, 2, 5, 5), device)
         x = utils.tensor_to_gradcheck_var(x)

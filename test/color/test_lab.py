@@ -97,13 +97,13 @@ class TestRgbToLab(BaseTester):
         data_out = lab(rgb(data, clip=False))
         self.assert_close(data_out, data)
 
-    @pytest.mark.grad
+    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_lab, (img,), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit
+    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -242,14 +242,14 @@ class TestLabToRgb(BaseTester):
         unclipped_data_out = rgb(lab(data), clip=False)
         self.assert_close(unclipped_data_out, data)
 
-    @pytest.mark.grad
+    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         img = kornia.color.rgb_to_lab(img)
         assert gradcheck(kornia.color.lab_to_rgb, (img,), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit
+    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)

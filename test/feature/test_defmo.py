@@ -28,7 +28,7 @@ class TestDeFMO:
         defmo = DeFMO().to(patches.device, patches.dtype)
         assert gradcheck(defmo, (patches,), eps=1e-4, atol=1e-4, nondet_tol=1e-8, raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit
+    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 1, 6, 128, 160
         patches = torch.rand(B, C, H, W, device=device, dtype=dtype)

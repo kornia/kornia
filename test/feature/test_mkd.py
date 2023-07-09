@@ -134,7 +134,7 @@ class TestVonMisesKernel:
 
         assert gradcheck(vm_describe, (patches, ps), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
 
-    @pytest.mark.jit
+    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 13, 13
         patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
@@ -187,7 +187,7 @@ class TestEmbedGradients:
 
         assert gradcheck(emb_grads_describe, (patches, ps), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
 
-    @pytest.mark.jit
+    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 2, 13, 13
         patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
@@ -261,7 +261,7 @@ class TestExplicitSpacialEncoding:
             explicit_spatial_describe, (patches, ps), raise_exception=True, nondet_tol=1e-4, fast_mode=True
         )
 
-    @pytest.mark.jit
+    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 2, 13, 13
         patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
@@ -323,7 +323,7 @@ class TestWhitening:
 
         assert gradcheck(whitening_describe, (patches, in_dims), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
 
-    @pytest.mark.jit
+    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         batch_size, in_dims = 1, 175
         patches = torch.rand(batch_size, in_dims).to(device)
@@ -398,7 +398,7 @@ class TestMKDDescriptor:
         assert gradcheck(mkd_describe, (patches, ps), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
 
     @pytest.mark.skip("neither dict, nor nn.ModuleDict works")
-    @pytest.mark.jit
+    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         batch_size, channels, ps = 1, 1, 19
         patches = torch.rand(batch_size, channels, ps, ps).to(device)

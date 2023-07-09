@@ -124,13 +124,13 @@ class TestRgbToHls(BaseTester):
         ext_rand_slice = (torch.rand((1, 3, 32, 32), dtype=dtype, device=device) >= 0.5).float()
         assert not kornia.color.rgb_to_hls(ext_rand_slice).isnan().any()
 
-    @pytest.mark.grad
+    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_hls, (img,), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit
+    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         if version.parse(torch.__version__) < version.parse('1.7.0'):
             warnings.warn(
@@ -250,13 +250,13 @@ class TestHlsToRgb(BaseTester):
         data[:, 0] -= 4 * math.pi
         self.assert_close(f(data), expected, low_tolerance=True)
 
-    @pytest.mark.grad
+    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.hls_to_rgb, (img,), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit
+    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         if version.parse(torch.__version__) < version.parse('1.7.0'):
             warnings.warn(

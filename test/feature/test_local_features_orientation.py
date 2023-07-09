@@ -74,7 +74,7 @@ class TestPatchDominantGradientOrientation:
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
         assert gradcheck(ori, (patches,), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit
+    @pytest.mark.jit()
     @pytest.mark.skip(" Compiled functions can't take variable number")
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 13, 13
@@ -123,7 +123,7 @@ class TestOriNet:
         ori = OriNet().to(device=device, dtype=patches.dtype)
         assert gradcheck(ori, (patches,), raise_exception=True)
 
-    @pytest.mark.jit
+    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 32, 32
         patches = torch.ones(B, C, H, W, device=device, dtype=dtype)

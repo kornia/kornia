@@ -187,7 +187,8 @@ class TestFindHomographyDLT:
         weights = torch.ones(B, N, device=device, dtype=dtype)
         H_noweights = find_homography_dlt(points1, points2, None)
         H_withweights = find_homography_dlt(points1, points2, weights)
-        assert H_noweights.shape == (B, 3, 3) and H_withweights.shape == (B, 3, 3)
+        assert H_noweights.shape == (B, 3, 3)
+        assert H_withweights.shape == (B, 3, 3)
         assert_close(H_noweights, H_withweights, rtol=1e-3, atol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -222,7 +223,7 @@ class TestFindHomographyDLT:
 
         assert_close(kornia.geometry.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-3, atol=1e-4)
 
-    @pytest.mark.grad
+    @pytest.mark.grad()
     def test_gradcheck(self, device):
         points_src = utils.tensor_to_gradcheck_var(
             torch.rand(1, 10, 2, device=device, dtype=torch.float64, requires_grad=True)
@@ -239,7 +240,7 @@ class TestFindHomographyDLT:
             fast_mode=True,
         )
 
-    @pytest.mark.grad
+    @pytest.mark.grad()
     def test_gradcheck_lu(self, device):
         points_src = utils.tensor_to_gradcheck_var(
             torch.rand(1, 10, 2, device=device, dtype=torch.float64, requires_grad=True)
@@ -328,7 +329,8 @@ class TestFindHomographyFromLinesDLT:
         ls2 = torch.stack([points2st, points2end], dim=2)
         H_noweights = find_homography_lines_dlt(ls1, ls2, None)
         H_withweights = find_homography_lines_dlt(ls1, ls2, weights)
-        assert H_noweights.shape == (B, 3, 3) and H_withweights.shape == (B, 3, 3)
+        assert H_noweights.shape == (B, 3, 3)
+        assert H_withweights.shape == (B, 3, 3)
         assert_close(H_noweights, H_withweights, rtol=1e-3, atol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -369,7 +371,7 @@ class TestFindHomographyFromLinesDLT:
 
         assert_close(kornia.geometry.transform_points(dst_homo_src, points_src_st), points_dst_st, rtol=1e-3, atol=1e-4)
 
-    @pytest.mark.grad
+    @pytest.mark.grad()
     def test_gradcheck(self, device):
         points_src_st = torch.rand(1, 10, 2, device=device, dtype=torch.float64, requires_grad=True)
         points_src_end = torch.rand(1, 10, 2, device=device, dtype=torch.float64, requires_grad=True)
@@ -421,7 +423,7 @@ class TestFindHomographyDLTIter:
 
         assert_close(kornia.geometry.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-3, atol=1e-4)
 
-    @pytest.mark.grad
+    @pytest.mark.grad()
     def test_gradcheck(self, device):
         torch.manual_seed(0)
         points_src = utils.tensor_to_gradcheck_var(
@@ -438,7 +440,7 @@ class TestFindHomographyDLTIter:
             fast_mode=True,
         )
 
-    @pytest.mark.grad
+    @pytest.mark.grad()
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_dirty_points_and_gradcheck(self, batch_size, device, dtype):
         # generate input data
