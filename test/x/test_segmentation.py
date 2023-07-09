@@ -15,33 +15,33 @@ class DummyDatasetSegmentation(Dataset):
         return torch.ones(3, 32, 32), torch.ones(32, 32).long()
 
 
-@pytest.fixture
+@pytest.fixture()
 def model():
     return nn.Conv2d(3, 10, kernel_size=1)
 
 
-@pytest.fixture
+@pytest.fixture()
 def dataloader():
     dataset = DummyDatasetSegmentation()
     return torch.utils.data.DataLoader(dataset, batch_size=1)
 
 
-@pytest.fixture
+@pytest.fixture()
 def criterion():
     return nn.CrossEntropyLoss()
 
 
-@pytest.fixture
+@pytest.fixture()
 def optimizer(model):
     return torch.optim.AdamW(model.parameters())
 
 
-@pytest.fixture
+@pytest.fixture()
 def scheduler(optimizer, dataloader):
     return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, len(dataloader))
 
 
-@pytest.fixture
+@pytest.fixture()
 def configuration():
     config = Configuration()
     config.num_epochs = 1

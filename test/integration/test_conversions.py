@@ -7,7 +7,7 @@ from kornia.geometry.conversions import QuaternionCoeffOrder
 from kornia.testing import assert_close
 
 
-@pytest.fixture
+@pytest.fixture()
 def atol(device, dtype):
     """Lower tolerance for cuda-float16 only."""
     if 'cuda' in device.type and dtype == torch.float16:
@@ -15,7 +15,7 @@ def atol(device, dtype):
     return 1.0e-4
 
 
-@pytest.fixture
+@pytest.fixture()
 def rtol(device, dtype):
     """Lower tolerance for cuda-float16 only."""
     if 'cuda' in device.type and dtype == torch.float16:

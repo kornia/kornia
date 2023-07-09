@@ -28,7 +28,7 @@ class TestTriangulation:
         points3d = epi.triangulate_points(P1, P2, points1, points2)
         assert points3d.shape == (B, N, 3)
 
-    @pytest.mark.xfail
+    @pytest.mark.xfail()
     def test_two_view(self, device, dtype):
         num_views: int = 2
         num_points: int = 10

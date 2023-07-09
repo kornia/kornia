@@ -50,10 +50,12 @@ class TestVisionTransformer:
         vit = kornia.contrib.VisionTransformer(image_size=image_size, num_heads=H, embed_dim=D).to(device, dtype)
 
         out = vit(img)
-        assert isinstance(out, torch.Tensor) and out.shape == (B, T, D)
+        assert isinstance(out, torch.Tensor)
+        assert out.shape == (B, T, D)
 
         feats = vit.encoder_results
-        assert isinstance(feats, list) and len(feats) == 12
+        assert isinstance(feats, list)
+        assert len(feats) == 12
         for f in feats:
             assert f.shape == (B, T, D)
 
@@ -80,7 +82,8 @@ class TestMobileViT:
         mvit = kornia.contrib.MobileViT(mode=mode, patch_size=patch_size).to(device, dtype)
 
         out = mvit(img)
-        assert isinstance(out, torch.Tensor) and out.shape == (B, channel[mode], 8, 8)
+        assert isinstance(out, torch.Tensor)
+        assert out.shape == (B, channel[mode], 8, 8)
 
 
 class TestClassificationHead:

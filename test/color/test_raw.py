@@ -117,13 +117,13 @@ class TestRawToRgb(BaseTester):
         assert_close(bgres[:, :, 1:5, 1:5], grres[:, :, 2:6, 1:5])
         assert_close(bgres[:, :, 1:5, 1:5], rgres[:, :, 2:6, 2:6])
 
-    @pytest.mark.grad
+    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 1, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.raw_to_rgb, (img, kornia.color.raw.CFA.BG), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit
+    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         if version.parse(torch.__version__) < version.parse('1.7.0'):
             warnings.warn(
@@ -168,13 +168,13 @@ class TestRgbToRaw(BaseTester):
 
         # Reverse test in rawtorgb is sufficient functional test
 
-    @pytest.mark.grad
+    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_raw, (img, kornia.color.raw.CFA.BG), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit
+    @pytest.mark.jit()
     def test_jit(self, device, dtype):
         if version.parse(torch.__version__) < version.parse('1.7.0'):
             warnings.warn(
