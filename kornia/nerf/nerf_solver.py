@@ -178,7 +178,7 @@ class NerfSolver:
             epoch_psnr = self._train_one_epoch()
 
             if i_epoch % 10 == 0:
-                current_time = datetime.now().strftime("%H:%M:%S")
+                current_time = datetime.now().strftime("%H:%M:%S")  # noqa: DTZ005
                 print(f'Epoch: {i_epoch}: epoch_psnr = {epoch_psnr}; time: {current_time}')
 
     def render_views(self, cameras: PinholeCamera) -> ImageTensors:

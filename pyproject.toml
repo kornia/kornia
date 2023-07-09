@@ -77,8 +77,65 @@ requires = [
 
 [tool.ruff]
   line-length = 120
-  target-version = "py37"
-  select = ["C9", "E", "F", "I", "PL", "S", "UP", "W", "YTT", "BLE", "C4", "RUF"]
+  target-version = "py38"
+  select = [
+    "AIR",    # Airflow
+    "ASYNC",  # flake8-async
+    "BLE",    # flake8-blind-except
+    "C4",     # flake8-comprehensions
+    "C90",    # McCabe cyclomatic complexity
+    "CPY",    # Copyright-related rules
+    "DTZ",    # flake8-datetimez
+    "E",      # pycodestyle
+    "F",      # Pyflakes
+    "FLY",    # flynt
+    "I",      # isort
+    "ICN",    # flake8-import-conventions
+    "INT",    # flake8-gettext
+    "NPY",    # NumPy-specific rules
+    "PL",     # Pylint
+    "PYI",    # flake8-pyi
+    "RSE",    # flake8-raise
+    "RUF",    # Ruff-specific rules
+    "S",      # flake8-bandit
+    "SLOT",   # flake8-slots
+    "T10",    # flake8-debugger
+    "TID",    # flake8-tidy-imports
+    "UP",     # pyupgrade
+    "W",      # pycodestyle
+    "YTT",    # flake8-2020
+    # "A",    # flake8-builtins
+    # "ANN",  # flake8-annotations
+    # "ARG",  # flake8-unused-arguments
+    # "B",    # flake8-bugbear
+    # "COM",  # flake8-commas
+    # "D",    # pydocstyle
+    # "DJ",   # flake8-django
+    # "EM",   # flake8-errmsg
+    # "ERA",  # eradicate
+    # "EXE",  # flake8-executable
+    # "FA",   # flake8-future-annotations
+    # "FBT",  # flake8-boolean-trap
+    # "FIX",  # flake8-fixme
+    # "G",    # flake8-logging-format
+    # "INP",  # flake8-no-pep420
+    # "ISC",  # flake8-implicit-str-concat
+    # "N",    # pep8-naming
+    # "PD",   # pandas-vet
+    # "PERF", # Perflint
+    # "PGH",  # pygrep-hooks
+    # "PIE",  # flake8-pie
+    # "PT",   # flake8-pytest-style
+    # "PTH",  # flake8-use-pathlib
+    # "Q",    # flake8-quotes
+    # "RET",  # flake8-return
+    # "SIM",  # flake8-simplify
+    # "SLF",  # flake8-self
+    # "T20",  # flake8-print
+    # "TCH",  # flake8-type-checking
+    # "TD",   # flake8-todos
+    # "TRY",  # tryceratops
+  ]
   ignore = [
     "PLW2901", # Allow overwritten values on loops
   ]

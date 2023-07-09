@@ -22,7 +22,7 @@ def available_package() -> bool:
 
 
 def create_random_img8(height: int, width: int, channels: int) -> np.ndarray:
-    return (np.random.rand(height, width, channels) * 255).astype(np.uint8)
+    return (np.random.Generator(height, width, channels) * 255).astype(np.uint8)
 
 
 @pytest.mark.skipif(not available_package(), reason="kornia_rs only supports python >=3.7 and pt >= 1.10.0")
