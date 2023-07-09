@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import enum
-
 import torch
 import torch.nn.functional as F
 
@@ -52,11 +50,6 @@ __all__ = [
     "camtoworld_vision_to_graphics_Rt",
     "ARKitQTVecs_to_ColmapQTVecs",
 ]
-
-
-class QuaternionCoeffOrder(enum.Enum):
-    XYZW = 'xyzw'
-    WXYZ = 'wxyz'
 
 
 def rad2deg(tensor: Tensor) -> Tensor:
@@ -368,12 +361,12 @@ def rotation_matrix_to_angle_axis(rotation_matrix: Tensor) -> Tensor:
 
     if not rotation_matrix.shape[-2:] == (3, 3):
         raise ValueError(f"Input size must be a (*, 3, 3) tensor. Got {rotation_matrix.shape}")
-    quaternion: Tensor = rotation_matrix_to_quaternion(rotation_matrix, order=QuaternionCoeffOrder.WXYZ)
-    return quaternion_to_angle_axis(quaternion, order=QuaternionCoeffOrder.WXYZ)
+    quaternion: Tensor = rotation_matrix_to_quaternion(rotation_matrix)
+    return quaternion_to_angle_axis(quaternion)
 
 
 def rotation_matrix_to_quaternion(
-    rotation_matrix: Tensor, eps: float = 1.0e-8, order: QuaternionCoeffOrder = QuaternionCoeffOrder.WXYZ
+    rotation_matrix: Tensor, eps: float = 1.0e-8
 ) -> Tensor:
     r"""Convert 3x3 rotation matrix to 4d quaternion vector.
 
@@ -382,7 +375,6 @@ def rotation_matrix_to_quaternion(
     Args:
         rotation_matrix: the rotation matrix to convert with shape :math:`(*, 3, 3)`.
         eps: small value to avoid zero division.
-        order: quaternion coefficient order.
 
     Return:
         the rotation in quaternion with shape :math:`(*, 4)`.
@@ -391,8 +383,7 @@ def rotation_matrix_to_quaternion(
         >>> input = tensor([[1., 0., 0.],
         ...                       [0., 1., 0.],
         ...                       [0., 0., 1.]])
-        >>> rotation_matrix_to_quaternion(input, eps=torch.finfo(input.dtype).eps,
-        ...                               order=QuaternionCoeffOrder.WXYZ)
+        >>> rotation_matrix_to_quaternion(input, eps=torch.finfo(input.dtype).eps)
         tensor([1., 0., 0., 0.])
     """
     if not isinstance(rotation_matrix, Tensor):
@@ -400,9 +391,6 @@ def rotation_matrix_to_quaternion(
 
     if not rotation_matrix.shape[-2:] == (3, 3):
         raise ValueError(f"Input size must be a (*, 3, 3) tensor. Got {rotation_matrix.shape}")
-
-    if order.name not in QuaternionCoeffOrder.__members__.keys():
-        raise ValueError(f"order must be one of {QuaternionCoeffOrder.__members__.keys()}")
 
     def safe_zero_division(numerator: Tensor, denominator: Tensor) -> Tensor:
         eps: float = torch.finfo(numerator.dtype).tiny
@@ -485,7 +473,7 @@ def normalize_quaternion(quaternion: Tensor, eps: float = 1.0e-12) -> Tensor:
 
 
 def quaternion_to_rotation_matrix(
-    quaternion: Tensor, order: QuaternionCoeffOrder = QuaternionCoeffOrder.WXYZ
+    quaternion: Tensor
 ) -> Tensor:
     r"""Convert a quaternion to a rotation matrix.
 
@@ -494,14 +482,13 @@ def quaternion_to_rotation_matrix(
     Args:
         quaternion: a tensor containing a quaternion to be converted.
           The tensor can be of shape :math:`(*, 4)`.
-        order: quaternion coefficient order.
 
     Return:
         the rotation matrix of shape :math:`(*, 3, 3)`.
 
     Example:
         >>> quaternion = tensor((0., 0., 0., 1.))
-        >>> quaternion_to_rotation_matrix(quaternion, order=QuaternionCoeffOrder.WXYZ)
+        >>> quaternion_to_rotation_matrix(quaternion)
         tensor([[-1.,  0.,  0.],
                 [ 0., -1.,  0.],
                 [ 0.,  0.,  1.]])
@@ -512,14 +499,14 @@ def quaternion_to_rotation_matrix(
     if not quaternion.shape[-1] == 4:
         raise ValueError(f"Input must be a tensor of shape (*, 4). Got {quaternion.shape}")
 
-    if order.name not in QuaternionCoeffOrder.__members__.keys():
-        raise ValueError(f"order must be one of {QuaternionCoeffOrder.__members__.keys()}")
-
     # normalize the input quaternion
     quaternion_norm: Tensor = normalize_quaternion(quaternion)
 
     # unpack the normalized quaternion components
-    w, x, y, z = torch.chunk(quaternion_norm, chunks=4, dim=-1)
+    w = quaternion_norm[..., 0]
+    x = quaternion_norm[..., 1]
+    y = quaternion_norm[..., 2]
+    z = quaternion_norm[..., 3]
 
     # compute the actual conversion
     tx: Tensor = 2.0 * x
@@ -558,7 +545,7 @@ def quaternion_to_rotation_matrix(
     return matrix
 
 
-def quaternion_to_angle_axis(quaternion: Tensor, order: QuaternionCoeffOrder = QuaternionCoeffOrder.WXYZ) -> Tensor:
+def quaternion_to_angle_axis(quaternion: Tensor) -> Tensor:
     """Convert quaternion vector to angle axis of rotation in radians.
 
     The quaternion should be in (w, x, y, z) format.
@@ -567,7 +554,6 @@ def quaternion_to_angle_axis(quaternion: Tensor, order: QuaternionCoeffOrder = Q
 
     Args:
         quaternion: tensor with quaternions.
-        order: quaternion coefficient order.
 
     Return:
         tensor with angle axis of rotation.
@@ -579,16 +565,13 @@ def quaternion_to_angle_axis(quaternion: Tensor, order: QuaternionCoeffOrder = Q
     Example:
         >>> quaternion = tensor((1., 0., 0., 0.))
         >>> quaternion_to_angle_axis(quaternion)
-        tensor([3.1416, 0.0000, 0.0000])
+        tensor([0., 0., 0.])
     """
     if not torch.is_tensor(quaternion):
         raise TypeError(f"Input type is not a Tensor. Got {type(quaternion)}")
 
     if not quaternion.shape[-1] == 4:
         raise ValueError(f"Input must be a tensor of shape Nx4 or 4. Got {quaternion.shape}")
-
-    if order.name not in QuaternionCoeffOrder.__members__.keys():
-        raise ValueError(f"order must be one of {QuaternionCoeffOrder.__members__.keys()}")
 
     # unpack input and compute conversion
     q1: Tensor = tensor([])
@@ -620,7 +603,7 @@ def quaternion_to_angle_axis(quaternion: Tensor, order: QuaternionCoeffOrder = Q
 
 
 def quaternion_log_to_exp(
-    quaternion: Tensor, eps: float = 1.0e-8, order: QuaternionCoeffOrder = QuaternionCoeffOrder.WXYZ
+    quaternion: Tensor, eps: float = 1.0e-8
 ) -> Tensor:
     r"""Apply exponential map to log quaternion.
 
@@ -630,15 +613,13 @@ def quaternion_log_to_exp(
         quaternion: a tensor containing a quaternion to be converted.
           The tensor can be of shape :math:`(*, 3)`.
         eps: a small number for clamping.
-        order: quaternion coefficient order.
 
     Return:
         the quaternion exponential map of shape :math:`(*, 4)`.
 
     Example:
         >>> quaternion = tensor((0., 0., 0.))
-        >>> quaternion_log_to_exp(quaternion, eps=torch.finfo(quaternion.dtype).eps,
-        ...                       order=QuaternionCoeffOrder.WXYZ)
+        >>> quaternion_log_to_exp(quaternion, eps=torch.finfo(quaternion.dtype).eps)
         tensor([1., 0., 0., 0.])
     """
     if not isinstance(quaternion, Tensor):
@@ -646,9 +627,6 @@ def quaternion_log_to_exp(
 
     if not quaternion.shape[-1] == 3:
         raise ValueError(f"Input must be a tensor of shape (*, 3). Got {quaternion.shape}")
-
-    if order.name not in QuaternionCoeffOrder.__members__.keys():
-        raise ValueError(f"order must be one of {QuaternionCoeffOrder.__members__.keys()}")
 
     # compute quaternion norm
     norm_q: Tensor = torch.norm(quaternion, p=2, dim=-1, keepdim=True).clamp(min=eps)
@@ -665,7 +643,7 @@ def quaternion_log_to_exp(
 
 
 def quaternion_exp_to_log(
-    quaternion: Tensor, eps: float = 1.0e-8, order: QuaternionCoeffOrder = QuaternionCoeffOrder.WXYZ
+    quaternion: Tensor, eps: float = 1.0e-8
 ) -> Tensor:
     r"""Apply the log map to a quaternion.
 
@@ -675,15 +653,13 @@ def quaternion_exp_to_log(
         quaternion: a tensor containing a quaternion to be converted.
           The tensor can be of shape :math:`(*, 4)`.
         eps: a small number for clamping.
-        order: quaternion coefficient order.
 
     Return:
         the quaternion log map of shape :math:`(*, 3)`.
 
     Example:
         >>> quaternion = tensor((1., 0., 0., 0.))
-        >>> quaternion_exp_to_log(quaternion, eps=torch.finfo(quaternion.dtype).eps,
-        ...                       order=QuaternionCoeffOrder.WXYZ)
+        >>> quaternion_exp_to_log(quaternion, eps=torch.finfo(quaternion.dtype).eps)
         tensor([0., 0., 0.])
     """
     if not isinstance(quaternion, Tensor):
@@ -691,9 +667,6 @@ def quaternion_exp_to_log(
 
     if not quaternion.shape[-1] == 4:
         raise ValueError(f"Input must be a tensor of shape (*, 4). Got {quaternion.shape}")
-
-    if order.name not in QuaternionCoeffOrder.__members__.keys():
-        raise ValueError(f"order must be one of {QuaternionCoeffOrder.__members__.keys()}")
 
     # unpack quaternion vector and scalar
     quaternion_vector: Tensor = tensor([])
@@ -715,7 +688,7 @@ def quaternion_exp_to_log(
 # https://github.com/facebookresearch/QuaterNet/blob/master/common/quaternion.py#L138
 
 
-def angle_axis_to_quaternion(angle_axis: Tensor, order: QuaternionCoeffOrder = QuaternionCoeffOrder.WXYZ) -> Tensor:
+def angle_axis_to_quaternion(angle_axis: Tensor) -> Tensor:
     r"""Convert an angle axis to a quaternion.
 
     The quaternion vector has components in (w, x, y, z) format.
@@ -724,7 +697,6 @@ def angle_axis_to_quaternion(angle_axis: Tensor, order: QuaternionCoeffOrder = Q
 
     Args:
         angle_axis: tensor with angle axis in radians.
-        order: quaternion coefficient order.
 
     Return:
         tensor with quaternion.
@@ -735,7 +707,7 @@ def angle_axis_to_quaternion(angle_axis: Tensor, order: QuaternionCoeffOrder = Q
 
     Example:
         >>> angle_axis = tensor((0., 1., 0.))
-        >>> angle_axis_to_quaternion(angle_axis, order=QuaternionCoeffOrder.WXYZ)
+        >>> angle_axis_to_quaternion(angle_axis)
         tensor([0.8776, 0.0000, 0.4794, 0.0000])
     """
     if not torch.is_tensor(angle_axis):
@@ -743,9 +715,6 @@ def angle_axis_to_quaternion(angle_axis: Tensor, order: QuaternionCoeffOrder = Q
 
     if not angle_axis.shape[-1] == 3:
         raise ValueError(f"Input must be a tensor of shape Nx3 or 3. Got {angle_axis.shape}")
-
-    if order.name not in QuaternionCoeffOrder.__members__.keys():
-        raise ValueError(f"order must be one of {QuaternionCoeffOrder.__members__.keys()}")
 
     # unpack input and compute conversion
     a0: Tensor = angle_axis[..., 0:1]
@@ -1486,9 +1455,9 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: Tensor, tvec: Tensor) -> tuple[Tensor, Ten
     """
     # ToDo:  integrate QuaterniaonAPI
 
-    Rcg = quaternion_to_rotation_matrix(qvec, order=QuaternionCoeffOrder.WXYZ)
+    Rcg = quaternion_to_rotation_matrix(qvec)
     Rcv, Tcv = camtoworld_graphics_to_vision_Rt(Rcg, tvec)
     R_colmap, t_colmap = camtoworld_to_worldtocam_Rt(Rcv, Tcv)
     t_colmap = t_colmap.reshape(-1, 3, 1)
-    q_colmap = rotation_matrix_to_quaternion(R_colmap.contiguous(), order=QuaternionCoeffOrder.WXYZ)
+    q_colmap = rotation_matrix_to_quaternion(R_colmap.contiguous())
     return q_colmap, t_colmap
