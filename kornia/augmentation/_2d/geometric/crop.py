@@ -89,16 +89,16 @@ class RandomCrop(GeometricAugmentationBase2D):
         # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
         super().__init__(p=1.0, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim)
         self._param_generator = rg.CropGenerator(size)
-        self.flags = dict(
-            size=size,
-            padding=padding,
-            pad_if_needed=pad_if_needed,
-            fill=fill,
-            padding_mode=padding_mode,
-            resample=Resample.get(resample),
-            align_corners=align_corners,
-            cropping_mode=cropping_mode,
-        )
+        self.flags = {
+            "size": size,
+            "padding": padding,
+            "pad_if_needed": pad_if_needed,
+            "fill": fill,
+            "padding_mode": padding_mode,
+            "resample": Resample.get(resample),
+            "align_corners": align_corners,
+            "cropping_mode": cropping_mode,
+        }
 
     def compute_padding(self, shape: Tuple[int, ...], flags: Optional[Dict[str, Any]] = None) -> List[int]:
         flags = self.flags if flags is None else flags

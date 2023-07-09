@@ -27,7 +27,7 @@ class ImageClassifierTrainer(Trainer):
             raise AssertionError
         out, target = args
         acc1, acc5 = accuracy(out, target, topk=(1, 5))
-        return dict(top1=acc1.item(), top5=acc5.item())
+        return {"top1": acc1.item(), "top5": acc5.item()}
 
 
 class SemanticSegmentationTrainer(Trainer):
@@ -46,7 +46,7 @@ class SemanticSegmentationTrainer(Trainer):
             raise AssertionError
         out, target = args
         iou = mean_iou(out.argmax(1), target, out.shape[1]).mean()
-        return dict(iou=iou.item())
+        return {"iou": iou.item()}
 
 
 class ObjectDetectionTrainer(Trainer):

@@ -297,10 +297,10 @@ def _compute_equalized_tiles(interp_tiles: torch.Tensor, luts: torch.Tensor) -> 
     tiles_equalized[:, 1:-1, gh - 1] = torch.addcmul(b, tih.squeeze(1), torch.sub(t, b))
 
     # border region (w)
-    l, r, _, _ = preinterp_tiles_equalized[:, 0, 1:-1].unbind(2)
-    tiles_equalized[:, 0, 1:-1] = torch.addcmul(r, tiw, torch.sub(l, r))
-    l, r, _, _ = preinterp_tiles_equalized[:, gw - 1, 1:-1].unbind(2)
-    tiles_equalized[:, gw - 1, 1:-1] = torch.addcmul(r, tiw, torch.sub(l, r))
+    left, right, _, _ = preinterp_tiles_equalized[:, 0, 1:-1].unbind(2)
+    tiles_equalized[:, 0, 1:-1] = torch.addcmul(right, tiw, torch.sub(left, right))
+    left, right, _, _ = preinterp_tiles_equalized[:, gw - 1, 1:-1].unbind(2)
+    tiles_equalized[:, gw - 1, 1:-1] = torch.addcmul(right, tiw, torch.sub(left, right))
 
     # same type as the input
     return tiles_equalized.div(255.0)

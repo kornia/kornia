@@ -2,9 +2,8 @@ from abc import abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
+from torch import nn, optim
 
 from kornia.core import Module, Tensor
 from kornia.geometry.conversions import angle_to_rotation_matrix, convert_affinematrix_to_homography
@@ -137,7 +136,6 @@ class ImageRegistrator(Module):
         >>> registrator = ImageRegistrator('similarity')
         >>> homo = registrator.register(img_src, img_dst)
     """
-    known_models = ['homography', 'similarity', 'translation', 'scale', 'rotation']
 
     # TODO: resolve better type, potentially using factory.
     def __init__(
@@ -152,6 +150,7 @@ class ImageRegistrator(Module):
         warper: Optional[Type[BaseWarper]] = None,
     ) -> None:
         super().__init__()
+        self.known_models = ['homography', 'similarity', 'translation', 'scale', 'rotation']
         # We provide pre-defined combinations or allow user to supply model
         # together with warper
         if not isinstance(model_type, str):
@@ -159,24 +158,23 @@ class ImageRegistrator(Module):
                 raise ValueError("You must supply warper together with custom model")
             self.warper = warper
             self.model = model_type
+        elif model_type.lower() == "homography":
+            self.warper = HomographyWarper
+            self.model = Homography()
+        elif model_type.lower() == "similarity":
+            self.warper = HomographyWarper
+            self.model = Similarity(True, True, True)
+        elif model_type.lower() == "translation":
+            self.warper = HomographyWarper
+            self.model = Similarity(False, False, True)
+        elif model_type.lower() == "rotation":
+            self.warper = HomographyWarper
+            self.model = Similarity(True, False, False)
+        elif model_type.lower() == "scale":
+            self.warper = HomographyWarper
+            self.model = Similarity(False, True, False)
         else:
-            if model_type.lower() == "homography":
-                self.warper = HomographyWarper
-                self.model = Homography()
-            elif model_type.lower() == "similarity":
-                self.warper = HomographyWarper
-                self.model = Similarity(True, True, True)
-            elif model_type.lower() == "translation":
-                self.warper = HomographyWarper
-                self.model = Similarity(False, False, True)
-            elif model_type.lower() == "rotation":
-                self.warper = HomographyWarper
-                self.model = Similarity(True, False, False)
-            elif model_type.lower() == "scale":
-                self.warper = HomographyWarper
-                self.model = Similarity(False, True, False)
-            else:
-                raise ValueError(f"{model_type} is not supported. Try {self.known_models}")
+            raise ValueError(f"{model_type} is not supported. Try {self.known_models}")
         self.pyramid_levels = pyramid_levels
         self.optimizer = optimizer
         self.lr = lr

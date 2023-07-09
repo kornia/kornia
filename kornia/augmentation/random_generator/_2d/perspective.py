@@ -83,4 +83,4 @@ class PerspectiveGenerator(RandomGeneratorBase):
 
         end_points = start_points + offset
 
-        return dict(start_points=start_points, end_points=end_points)
+        return {"start_points": start_points, "end_points": end_points}

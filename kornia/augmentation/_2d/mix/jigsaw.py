@@ -49,7 +49,7 @@ class RandomJigsaw(MixAugmentationBaseV2):
     ) -> None:
         super().__init__(p=p, p_batch=1.0, same_on_batch=same_on_batch, keepdim=keepdim, data_keys=data_keys)
         self._param_generator = rg.JigsawGenerator(grid, ensure_perm)
-        self.flags = dict(grid=grid)
+        self.flags = {"grid": grid}
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], maybe_flags: Optional[Dict[str, Any]] = None

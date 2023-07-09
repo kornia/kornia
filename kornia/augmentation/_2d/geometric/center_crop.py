@@ -79,13 +79,13 @@ class CenterCrop(GeometricAugmentationBase2D):
         else:
             raise Exception(f"Invalid size type. Expected (int, tuple(int, int). " f"Got: {type(size)}.")
 
-        self.flags = dict(
-            resample=Resample.get(resample),
-            cropping_mode=cropping_mode,
-            align_corners=align_corners,
-            size=self.size,
-            padding_mode="zeros",
-        )
+        self.flags = {
+            "resample": Resample.get(resample),
+            "cropping_mode": cropping_mode,
+            "align_corners": align_corners,
+            "size": self.size,
+            "padding_mode": "zeros",
+        }
 
     def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, Tensor]:
         return rg.center_crop_generator(batch_shape[0], batch_shape[-2], batch_shape[-1], self.size, self.device)

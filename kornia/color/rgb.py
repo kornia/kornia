@@ -1,7 +1,7 @@
 from typing import Union, cast
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 
 def rgb_to_bgr(image: torch.Tensor) -> torch.Tensor:

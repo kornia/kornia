@@ -72,7 +72,7 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
                 category=DeprecationWarning,
             )
 
-        self.flags = dict(kernel_size=kernel_size, separable=separable, border_type=BorderType.get(border_type))
+        self.flags = {"kernel_size": kernel_size, "separable": separable, "border_type": BorderType.get(border_type)}
         self._param_generator = rg.RandomGaussianBlurGenerator(sigma)
 
     def apply_transform(

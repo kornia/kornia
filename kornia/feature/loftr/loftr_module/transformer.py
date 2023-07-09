@@ -2,7 +2,7 @@ import copy
 from typing import Optional
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 from .linear_attention import FullAttention, LinearAttention
 

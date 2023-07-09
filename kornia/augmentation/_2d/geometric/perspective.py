@@ -68,7 +68,7 @@ class RandomPerspective(GeometricAugmentationBase2D):
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator = rg.PerspectiveGenerator(distortion_scale, sampling_method=sampling_method)
 
-        self.flags: Dict[str, Any] = dict(align_corners=align_corners, resample=Resample.get(resample))
+        self.flags: Dict[str, Any] = {"align_corners": align_corners, "resample": Resample.get(resample)}
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return get_perspective_transform(params["start_points"].to(input), params["end_points"].to(input))

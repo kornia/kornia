@@ -200,7 +200,6 @@ class ConvSoftArgmax3d(Module):
         self.eps = eps
         self.output_value = output_value
         self.strict_maxima_bonus = strict_maxima_bonus
-        return
 
     def __repr__(self) -> str:
         return (
@@ -618,7 +617,6 @@ class ConvQuadInterp3d(Module):
         super().__init__()
         self.strict_maxima_bonus = strict_maxima_bonus
         self.eps = eps
-        return
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(strict_maxima_bonus={self.strict_maxima_bonus})"

@@ -46,14 +46,14 @@ class RandomThinPlateSpline(AugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
-        self.flags = dict(align_corners=align_corners)
+        self.flags = {"align_corners": align_corners}
         self.dist = torch.distributions.Uniform(-scale, scale)
 
     def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, Tensor]:
         B, _, _, _ = shape
         src = tensor([[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0], [0.0, 0.0]]]).expand(B, 5, 2)  # Bx5x2
         dst = src + self.dist.rsample(src.shape)
-        return dict(src=src, dst=dst)
+        return {"src": src, "dst": dst}
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None

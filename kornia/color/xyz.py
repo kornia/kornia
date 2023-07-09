@@ -1,5 +1,5 @@
 import torch
-import torch.nn as nn
+from torch import nn
 
 
 def rgb_to_xyz(image: torch.Tensor) -> torch.Tensor:

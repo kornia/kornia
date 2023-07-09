@@ -59,14 +59,14 @@ class RandomElasticTransform(AugmentationBase2D):
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
 
-        self.flags = dict(
-            kernel_size=kernel_size,
-            sigma=sigma,
-            alpha=alpha,
-            align_corners=align_corners,
-            resample=Resample.get(resample),
-            padding_mode=padding_mode,
-        )
+        self.flags = {
+            "kernel_size": kernel_size,
+            "sigma": sigma,
+            "alpha": alpha,
+            "align_corners": align_corners,
+            "resample": Resample.get(resample),
+            "padding_mode": padding_mode,
+        }
 
     def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, Tensor]:
         B, _, H, W = shape
@@ -74,7 +74,7 @@ class RandomElasticTransform(AugmentationBase2D):
             noise = torch.rand(1, 2, H, W, device=self.device, dtype=self.dtype).expand(B, 2, H, W)
         else:
             noise = torch.rand(B, 2, H, W, device=self.device, dtype=self.dtype)
-        return dict(noise=noise * 2 - 1)
+        return {"noise": noise * 2 - 1}
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None

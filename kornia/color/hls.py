@@ -107,20 +107,20 @@ def hls_to_rgb(image: Tensor) -> Tensor:
     _HLS2RGB = tensor([[[0.0]], [[8.0]], [[4.0]]], device=image.device, dtype=image.dtype)  # 3x1x1
 
     im: Tensor = image.unsqueeze(-4)
-    h: Tensor = im[..., 0, :, :]
-    l: Tensor = im[..., 1, :, :]
-    s: Tensor = im[..., 2, :, :]
-    h = h * (6 / math.pi)  # h * 360 / (2 * math.pi) / 30
-    a = s * torch.min(l, 1.0 - l)
+    h_ch: Tensor = im[..., 0, :, :]
+    l_ch: Tensor = im[..., 1, :, :]
+    s_ch: Tensor = im[..., 2, :, :]
+    h_ch = h_ch * (6 / math.pi)  # h * 360 / (2 * math.pi) / 30
+    a = s_ch * torch.min(l_ch, 1.0 - l_ch)
 
     # kr = (0 + h) % 12
     # kg = (8 + h) % 12
     # kb = (4 + h) % 12
-    k: Tensor = (h + _HLS2RGB) % 12
+    k: Tensor = (h_ch + _HLS2RGB) % 12
 
     # l - a * max(min(min(k - 3.0, 9.0 - k), 1), -1)
     mink = torch.min(k - 3.0, 9.0 - k)
-    return torch.addcmul(l, a, mink.clamp_(min=-1.0, max=1.0), value=-1)
+    return torch.addcmul(l_ch, a, mink.clamp_(min=-1.0, max=1.0), value=-1)
 
 
 class RgbToHls(Module):

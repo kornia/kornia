@@ -77,15 +77,15 @@ class RandomMosaic(MixAugmentationBaseV2):
         self.start_ratio_range = start_ratio_range
         self._param_generator = rg.MosaicGenerator(output_size, mosaic_grid, start_ratio_range)
 
-        self.flags = dict(
-            mosaic_grid=mosaic_grid,
-            output_size=output_size,
-            min_bbox_size=min_bbox_size,
-            padding_mode=padding_mode,
-            resample=Resample.get(resample),
-            align_corners=align_corners,
-            cropping_mode=cropping_mode,
-        )
+        self.flags = {
+            "mosaic_grid": mosaic_grid,
+            "output_size": output_size,
+            "min_bbox_size": min_bbox_size,
+            "padding_mode": padding_mode,
+            "resample": Resample.get(resample),
+            "align_corners": align_corners,
+            "cropping_mode": cropping_mode,
+        }
 
     def apply_transform_mask(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         raise NotImplementedError
