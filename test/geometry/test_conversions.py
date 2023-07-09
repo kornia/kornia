@@ -209,12 +209,8 @@ class TestRotationMatrixToQuaternion:
     def test_back_and_forth(self, device, dtype, atol, rtol):
         eps = torch.finfo(dtype).eps
         matrix = torch.tensor(((1.0, 0.0, 0.0), (0.0, 0.0, -1.0), (0.0, 1.0, 0.0)), device=device, dtype=dtype)
-        quaternion = kornia.geometry.conversions.rotation_matrix_to_quaternion(
-            matrix, eps=eps
-        )
-        matrix_hat = kornia.geometry.conversions.quaternion_to_rotation_matrix(
-            quaternion
-        )
+        quaternion = kornia.geometry.conversions.rotation_matrix_to_quaternion(matrix, eps=eps)
+        matrix_hat = kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternion)
         assert_close(matrix, matrix_hat, atol=atol, rtol=rtol)
 
     def test_corner_case(self, device, dtype, atol, rtol):
@@ -231,9 +227,7 @@ class TestRotationMatrixToQuaternion:
         quaternion_true = torch.tensor(
             (0.177614107728004, 0.280136495828629, -0.440902262926102, 0.834015488624573), device=device, dtype=dtype
         )
-        quaternion = kornia.geometry.conversions.rotation_matrix_to_quaternion(
-            matrix, eps=eps
-        )
+        quaternion = kornia.geometry.conversions.rotation_matrix_to_quaternion(matrix, eps=eps)
         torch.set_printoptions(precision=10)
         assert_close(quaternion_true, quaternion, atol=atol, rtol=rtol)
 
@@ -243,9 +237,7 @@ class TestRotationMatrixToQuaternion:
         matrix = tensor_to_gradcheck_var(matrix)
         # evaluate function gradient
         assert gradcheck(
-            partial(
-                kornia.geometry.conversions.rotation_matrix_to_quaternion, eps=eps
-            ),
+            partial(kornia.geometry.conversions.rotation_matrix_to_quaternion, eps=eps),
             (matrix,),
             raise_exception=True,
             fast_mode=True,
@@ -319,18 +311,14 @@ class TestQuaternionLogToExp:
     @pytest.mark.parametrize("batch_size", (1, 3, 8))
     def test_smoke_batch(self, batch_size, device, dtype):
         quaternion_log = torch.zeros(batch_size, 3, device=device, dtype=dtype)
-        quaternion_exp = kornia.geometry.conversions.quaternion_log_to_exp(
-            quaternion_log
-        )
+        quaternion_exp = kornia.geometry.conversions.quaternion_log_to_exp(quaternion_log)
         assert quaternion_exp.shape == (batch_size, 4)
 
     def test_unit_quaternion(self, device, dtype, atol, rtol):
         eps = torch.finfo(dtype).eps
         quaternion_log = torch.tensor((0.0, 0.0, 0.0), device=device, dtype=dtype)
         expected = torch.tensor((1.0, 0.0, 0.0, 0.0), device=device, dtype=dtype)
-        quaternion_exp = kornia.geometry.conversions.quaternion_log_to_exp(
-            quaternion_log, eps=eps
-        )
+        quaternion_exp = kornia.geometry.conversions.quaternion_log_to_exp(quaternion_log, eps=eps)
         assert_close(quaternion_exp, expected, atol=atol, rtol=rtol)
 
     def test_pi_quaternion_x(self, device, dtype, atol, rtol):
@@ -338,9 +326,7 @@ class TestQuaternionLogToExp:
         one = torch.tensor(1.0, device=device, dtype=dtype)
         quaternion_log = torch.tensor((1.0, 0.0, 0.0), device=device, dtype=dtype)
         expected = torch.tensor((torch.cos(one), torch.sin(one), 0.0, 0.0), device=device, dtype=dtype)
-        quaternion_exp = kornia.geometry.conversions.quaternion_log_to_exp(
-            quaternion_log, eps=eps
-        )
+        quaternion_exp = kornia.geometry.conversions.quaternion_log_to_exp(quaternion_log, eps=eps)
         assert_close(quaternion_exp, expected, atol=atol, rtol=rtol)
 
     def test_pi_quaternion_y(self, device, dtype, atol, rtol):
@@ -348,9 +334,7 @@ class TestQuaternionLogToExp:
         one = torch.tensor(1.0, device=device, dtype=dtype)
         quaternion_log = torch.tensor((0.0, 1.0, 0.0), device=device, dtype=dtype)
         expected = torch.tensor((torch.cos(one), 0.0, torch.sin(one), 0.0), device=device, dtype=dtype)
-        quaternion_exp = kornia.geometry.conversions.quaternion_log_to_exp(
-            quaternion_log, eps=eps
-        )
+        quaternion_exp = kornia.geometry.conversions.quaternion_log_to_exp(quaternion_log, eps=eps)
         assert_close(quaternion_exp, expected, atol=atol, rtol=rtol)
 
     def test_pi_quaternion_z(self, device, dtype, atol, rtol):
@@ -358,21 +342,15 @@ class TestQuaternionLogToExp:
         one = torch.tensor(1.0, device=device, dtype=dtype)
         quaternion_log = torch.tensor((0.0, 0.0, 1.0), device=device, dtype=dtype)
         expected = torch.tensor((torch.cos(one), 0.0, 0.0, torch.sin(one)), device=device, dtype=dtype)
-        quaternion_exp = kornia.geometry.conversions.quaternion_log_to_exp(
-            quaternion_log, eps=eps
-        )
+        quaternion_exp = kornia.geometry.conversions.quaternion_log_to_exp(quaternion_log, eps=eps)
         assert_close(quaternion_exp, expected, atol=atol, rtol=rtol)
 
     def test_back_and_forth(self, device, dtype, atol, rtol):
         eps = torch.finfo(dtype).eps
         quaternion_log = torch.tensor((1.0, 0.0, 0.0), device=device, dtype=dtype)
 
-        quaternion_exp = kornia.geometry.conversions.quaternion_log_to_exp(
-            quaternion_log, eps=eps
-        )
-        quaternion_log_hat = kornia.geometry.conversions.quaternion_exp_to_log(
-            quaternion_exp, eps=eps
-        )
+        quaternion_exp = kornia.geometry.conversions.quaternion_log_to_exp(quaternion_log, eps=eps)
+        quaternion_log_hat = kornia.geometry.conversions.quaternion_exp_to_log(quaternion_exp, eps=eps)
         assert_close(quaternion_log, quaternion_log_hat, atol=atol, rtol=rtol)
 
     def test_gradcheck(self, device, dtype):
@@ -403,56 +381,42 @@ class TestQuaternionExpToLog:
     def test_smoke_batch(self, batch_size, device, dtype):
         eps = torch.finfo(dtype).eps
         quaternion_exp = torch.zeros(batch_size, 4, device=device, dtype=dtype)
-        quaternion_log = kornia.geometry.conversions.quaternion_exp_to_log(
-            quaternion_exp, eps=eps
-        )
+        quaternion_log = kornia.geometry.conversions.quaternion_exp_to_log(quaternion_exp, eps=eps)
         assert quaternion_log.shape == (batch_size, 3)
 
     def test_unit_quaternion(self, device, dtype, atol, rtol):
         eps = torch.finfo(dtype).eps
         quaternion_exp = torch.tensor((1.0, 0.0, 0.0, 0.0), device=device, dtype=dtype)
         expected = torch.tensor((0.0, 0.0, 0.0), device=device, dtype=dtype)
-        quaternion_log = kornia.geometry.conversions.quaternion_exp_to_log(
-            quaternion_exp, eps=eps
-        )
+        quaternion_log = kornia.geometry.conversions.quaternion_exp_to_log(quaternion_exp, eps=eps)
         assert_close(quaternion_log, expected, atol=atol, rtol=rtol)
 
     def test_pi_quaternion_x(self, device, dtype, atol, rtol):
         eps = torch.finfo(dtype).eps
         quaternion_exp = torch.tensor((0.0, 1.0, 0.0, 0.0), device=device, dtype=dtype)
         expected = torch.tensor((kornia.pi / 2.0, 0.0, 0.0), device=device, dtype=dtype)
-        quaternion_log = kornia.geometry.conversions.quaternion_exp_to_log(
-            quaternion_exp, eps=eps
-        )
+        quaternion_log = kornia.geometry.conversions.quaternion_exp_to_log(quaternion_exp, eps=eps)
         assert_close(quaternion_log, expected, atol=atol, rtol=rtol)
 
     def test_pi_quaternion_y(self, device, dtype, atol, rtol):
         eps = torch.finfo(dtype).eps
         quaternion_exp = torch.tensor((0.0, 0.0, 1.0, 0.0), device=device, dtype=dtype)
         expected = torch.tensor((0.0, kornia.pi / 2.0, 0.0), device=device, dtype=dtype)
-        quaternion_log = kornia.geometry.conversions.quaternion_exp_to_log(
-            quaternion_exp, eps=eps
-        )
+        quaternion_log = kornia.geometry.conversions.quaternion_exp_to_log(quaternion_exp, eps=eps)
         assert_close(quaternion_log, expected, atol=atol, rtol=rtol)
 
     def test_pi_quaternion_z(self, device, dtype, atol, rtol):
         eps = torch.finfo(dtype).eps
         quaternion_exp = torch.tensor((0.0, 0.0, 0.0, 1.0), device=device, dtype=dtype)
         expected = torch.tensor((0.0, 0.0, kornia.pi / 2.0), device=device, dtype=dtype)
-        quaternion_log = kornia.geometry.conversions.quaternion_exp_to_log(
-            quaternion_exp, eps=eps
-        )
+        quaternion_log = kornia.geometry.conversions.quaternion_exp_to_log(quaternion_exp, eps=eps)
         assert_close(quaternion_log, expected, atol=atol, rtol=rtol)
 
     def test_back_and_forth(self, device, dtype, atol, rtol):
         eps = torch.finfo(dtype).eps
         quaternion_exp = torch.tensor((0.0, 1.0, 0.0, 0.0), device=device, dtype=dtype)
-        quaternion_log = kornia.geometry.conversions.quaternion_exp_to_log(
-            quaternion_exp, eps=eps
-        )
-        quaternion_exp_hat = kornia.geometry.conversions.quaternion_log_to_exp(
-            quaternion_log, eps=eps
-        )
+        quaternion_log = kornia.geometry.conversions.quaternion_exp_to_log(quaternion_exp, eps=eps)
+        quaternion_exp_hat = kornia.geometry.conversions.quaternion_log_to_exp(quaternion_log, eps=eps)
         assert_close(quaternion_exp, quaternion_exp_hat, atol=atol, rtol=rtol)
 
     def test_gradcheck(self, device, dtype):
@@ -534,9 +498,7 @@ class TestRotationMatrixToAngleAxis:
         # generate input data
         quaternion = torch.rand(batch_size, 4, device=device, dtype=dtype)
         quaternion = kornia.geometry.conversions.normalize_quaternion(quaternion + 1e-6)
-        rotation_matrix = kornia.geometry.conversions.quaternion_to_rotation_matrix(
-            quaternion=quaternion
-        )
+        rotation_matrix = kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternion=quaternion)
 
         eye_batch = create_eye_batch(batch_size, 3, device=device, dtype=dtype)
         rotation_matrix_eye = torch.matmul(rotation_matrix, rotation_matrix.transpose(-2, -1))
@@ -547,9 +509,7 @@ class TestRotationMatrixToAngleAxis:
     def test_gradcheck(self, batch_size, device, dtype):
         quaternion = torch.rand(batch_size, 4, device=device, dtype=dtype)
         quaternion = kornia.geometry.conversions.normalize_quaternion(quaternion + 1e-6)
-        rotation_matrix = kornia.geometry.conversions.quaternion_to_rotation_matrix(
-            quaternion=quaternion
-        )
+        rotation_matrix = kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternion=quaternion)
         # evaluate function gradient
         rotation_matrix = tensor_to_gradcheck_var(rotation_matrix)  # to var
         assert gradcheck(

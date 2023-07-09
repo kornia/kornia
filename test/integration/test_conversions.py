@@ -26,9 +26,7 @@ class TestAngleAxisToQuaternionToAngleAxis:
     def test_zero_angle(self, device, dtype, atol, rtol):
         angle_axis = torch.tensor((0.0, 0.0, 0.0), device=device, dtype=dtype)
         quaternion = kornia.geometry.conversions.angle_axis_to_quaternion(angle_axis)
-        angle_axis_hat = kornia.geometry.conversions.quaternion_to_angle_axis(
-            quaternion
-        )
+        angle_axis_hat = kornia.geometry.conversions.quaternion_to_angle_axis(quaternion)
         assert_close(angle_axis_hat, angle_axis, atol=atol, rtol=rtol)
 
     @pytest.mark.parametrize("axis", (0, 1, 2))
@@ -38,9 +36,7 @@ class TestAngleAxisToQuaternionToAngleAxis:
         array[axis] = theta
         angle_axis = torch.tensor(array, device=device, dtype=dtype)
         quaternion = kornia.geometry.conversions.angle_axis_to_quaternion(angle_axis)
-        angle_axis_hat = kornia.geometry.conversions.quaternion_to_angle_axis(
-            quaternion
-        )
+        angle_axis_hat = kornia.geometry.conversions.quaternion_to_angle_axis(quaternion)
         assert_close(angle_axis_hat, angle_axis, atol=atol, rtol=rtol)
 
     @pytest.mark.parametrize("axis", (0, 1, 2))
@@ -50,9 +46,7 @@ class TestAngleAxisToQuaternionToAngleAxis:
         array[axis] = kornia.pi / 2.0
         angle_axis = torch.tensor(array, device=device, dtype=dtype)
         quaternion = kornia.geometry.conversions.angle_axis_to_quaternion(angle_axis)
-        angle_axis_hat = kornia.geometry.conversions.quaternion_to_angle_axis(
-            quaternion
-        )
+        angle_axis_hat = kornia.geometry.conversions.quaternion_to_angle_axis(quaternion)
         assert_close(angle_axis_hat, angle_axis, atol=atol, rtol=rtol)
 
 
@@ -60,9 +54,7 @@ class TestQuaternionToAngleAxisToQuaternion:
     def test_unit_quaternion(self, device, dtype, atol, rtol):
         quaternion = torch.tensor((1.0, 0.0, 0.0, 0.0), device=device, dtype=dtype)
         angle_axis = kornia.geometry.conversions.quaternion_to_angle_axis(quaternion)
-        quaternion_hat = kornia.geometry.conversions.angle_axis_to_quaternion(
-            angle_axis
-        )
+        quaternion_hat = kornia.geometry.conversions.angle_axis_to_quaternion(angle_axis)
         assert_close(quaternion_hat, quaternion, atol=atol, rtol=rtol)
 
     @pytest.mark.parametrize("axis", (0, 1, 2))
@@ -71,9 +63,7 @@ class TestQuaternionToAngleAxisToQuaternion:
         array[1 + axis] = 1.0
         quaternion = torch.tensor(array, device=device, dtype=dtype)
         angle_axis = kornia.geometry.conversions.quaternion_to_angle_axis(quaternion)
-        quaternion_hat = kornia.geometry.conversions.angle_axis_to_quaternion(
-            angle_axis
-        )
+        quaternion_hat = kornia.geometry.conversions.angle_axis_to_quaternion(angle_axis)
         assert_close(quaternion_hat, quaternion, atol=atol, rtol=rtol)
 
     @pytest.mark.parametrize("axis", (0, 1, 2))
@@ -83,9 +73,7 @@ class TestQuaternionToAngleAxisToQuaternion:
         array[1 + axis] = np.sin(theta / 2.0)
         quaternion = torch.tensor(array, device=device, dtype=dtype)
         angle_axis = kornia.geometry.conversions.quaternion_to_angle_axis(quaternion)
-        quaternion_hat = kornia.geometry.conversions.angle_axis_to_quaternion(
-            angle_axis
-        )
+        quaternion_hat = kornia.geometry.conversions.angle_axis_to_quaternion(angle_axis)
         assert_close(quaternion_hat, quaternion, atol=atol, rtol=rtol)
 
 
@@ -108,9 +96,7 @@ class TestQuaternionToRotationMatrixToAngleAxis:
         angle_axis_expected = torch.tensor(angle_axis_expected, device=device, dtype=dtype)
         assert_close(angle_axis, angle_axis_expected, atol=atol, rtol=rtol)
 
-        quaternion_hat = kornia.geometry.conversions.angle_axis_to_quaternion(
-            angle_axis
-        )
+        quaternion_hat = kornia.geometry.conversions.angle_axis_to_quaternion(angle_axis)
         assert_close(quaternion_hat, quaternion, atol=atol, rtol=rtol)
 
     @pytest.mark.parametrize("axis", (0, 1, 2))
@@ -127,9 +113,7 @@ class TestQuaternionToRotationMatrixToAngleAxis:
         assert rot_m.shape[-1] == 3
         assert rot_m.shape[-2] == 3
 
-        quaternion_hat = kornia.geometry.conversions.rotation_matrix_to_quaternion(
-            rot_m
-        )
+        quaternion_hat = kornia.geometry.conversions.rotation_matrix_to_quaternion(rot_m)
         assert_close(quaternion_hat, quaternion, atol=atol, rtol=rtol)
 
     @pytest.mark.parametrize("axis", (0, 1, 2))
@@ -146,9 +130,7 @@ class TestQuaternionToRotationMatrixToAngleAxis:
         quaternion = kornia.geometry.conversions.rotation_matrix_to_quaternion(rot_m)
         assert quaternion.shape[-1] == 4
 
-        angle_axis_hat = kornia.geometry.conversions.quaternion_to_angle_axis(
-            quaternion
-        )
+        angle_axis_hat = kornia.geometry.conversions.quaternion_to_angle_axis(quaternion)
         assert_close(angle_axis_hat, angle_axis, atol=atol, rtol=rtol)
 
     @pytest.mark.parametrize("axis", (0, 1, 2))
@@ -260,9 +242,7 @@ class TestAngleOfRotations:
         rot_m, axis = TestAngleOfRotations.axis_and_angle_to_rotation_matrix(
             axis_name=axis_name, angle=angle, device=device, dtype=dtype
         )
-        quaternion = kornia.geometry.conversions.rotation_matrix_to_quaternion(
-            rot_m, eps=eps
-        )
+        quaternion = kornia.geometry.conversions.rotation_matrix_to_quaternion(rot_m, eps=eps)
         # compute quaternion rotation angle
         # See Section 2.4.4 Equation (105a) in https://arxiv.org/pdf/1711.02508.pdf
         angle_hat = 2.0 * torch.atan2(quaternion[..., 1:4].norm(p=2, dim=-1, keepdim=True), quaternion[..., 0:1])
@@ -308,9 +288,7 @@ class TestAngleOfRotations:
         rot_m, axis = TestAngleOfRotations.axis_and_angle_to_rotation_matrix(
             axis_name=axis_name, angle=angle, device=device, dtype=dtype
         )
-        quaternion = kornia.geometry.conversions.rotation_matrix_to_quaternion(
-            rot_m, eps=eps
-        )
+        quaternion = kornia.geometry.conversions.rotation_matrix_to_quaternion(rot_m, eps=eps)
         log_q = kornia.geometry.conversions.quaternion_exp_to_log(quaternion, eps=eps)
         # compute angle_axis rotation angle
         angle_hat = 2.0 * log_q.norm(p=2, dim=-1, keepdim=True)

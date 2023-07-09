@@ -365,9 +365,7 @@ def rotation_matrix_to_angle_axis(rotation_matrix: Tensor) -> Tensor:
     return quaternion_to_angle_axis(quaternion)
 
 
-def rotation_matrix_to_quaternion(
-    rotation_matrix: Tensor, eps: float = 1.0e-8
-) -> Tensor:
+def rotation_matrix_to_quaternion(rotation_matrix: Tensor, eps: float = 1.0e-8) -> Tensor:
     r"""Convert 3x3 rotation matrix to 4d quaternion vector.
 
     The quaternion vector has components in (w, x, y, z) format.
@@ -472,9 +470,7 @@ def normalize_quaternion(quaternion: Tensor, eps: float = 1.0e-12) -> Tensor:
 # https://github.com/tensorflow/graphics/blob/master/tensorflow_graphics/geometry/transformation/rotation_matrix_3d.py#L247
 
 
-def quaternion_to_rotation_matrix(
-    quaternion: Tensor
-) -> Tensor:
+def quaternion_to_rotation_matrix(quaternion: Tensor) -> Tensor:
     r"""Convert a quaternion to a rotation matrix.
 
     The quaternion should be in (w, x, y, z) format.
@@ -602,9 +598,7 @@ def quaternion_to_angle_axis(quaternion: Tensor) -> Tensor:
     return angle_axis
 
 
-def quaternion_log_to_exp(
-    quaternion: Tensor, eps: float = 1.0e-8
-) -> Tensor:
+def quaternion_log_to_exp(quaternion: Tensor, eps: float = 1.0e-8) -> Tensor:
     r"""Apply exponential map to log quaternion.
 
     The quaternion should be in (w, x, y, z) format.
@@ -642,9 +636,7 @@ def quaternion_log_to_exp(
     return quaternion_exp
 
 
-def quaternion_exp_to_log(
-    quaternion: Tensor, eps: float = 1.0e-8
-) -> Tensor:
+def quaternion_exp_to_log(quaternion: Tensor, eps: float = 1.0e-8) -> Tensor:
     r"""Apply the log map to a quaternion.
 
     The quaternion should be in (w, x, y, z) format.
