@@ -63,6 +63,7 @@ Join the community
    geometry
    sensors
    io
+   image
    losses
    metrics
    morphology
