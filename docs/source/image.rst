@@ -9,11 +9,11 @@ Module to provide a high level API to process images.
     :members:
     :undoc-members:
 
-.. autoclass:: ImagePixelFormat
+.. autoclass:: PixelFormat
     :members:
     :undoc-members:
 
-.. autoclass:: ChannelOrder
+.. autoclass:: ChannelsOrder
     :members:
     :undoc-members:
 

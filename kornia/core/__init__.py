@@ -19,6 +19,7 @@ from ._backend import (
     zeros,
     zeros_like,
 )
+from .tensor_wrapper import TensorWrapper
 
 __all__ = [
     "concatenate",
@@ -40,4 +41,5 @@ __all__ = [
     "zeros_like",
     "linspace",
     "diag",
+    "TensorWrapper",
 ]

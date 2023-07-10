@@ -32,8 +32,8 @@ class PixelFormat(Enum):
 
 class ChannelsOrder(Enum):
     r"""Enum that represents the channels order of an image."""
-    CHANNEL_FIRST = 0
-    CHANNEL_LAST = 1
+    CHANNELS_FIRST = 0
+    CHANNELS_LAST = 1
 
 
 @dataclass

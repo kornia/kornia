@@ -137,7 +137,7 @@ class Image:
     def from_numpy(
         cls,
         data,
-        channels_order: ChannelsOrder = ChannelsOrder.CHANNEL_LAST,
+        channels_order: ChannelsOrder = ChannelsOrder.CHANNELS_LAST,
         pixel_format: PixelFormat = PixelFormat.RGB,
     ) -> Image:
         """Construct an image tensor from a numpy array.
@@ -154,7 +154,7 @@ class Image:
             >>> assert img.channels == 3
             >>> assert img.shape == (3, 4, 5)
         """
-        if channels_order == ChannelsOrder.CHANNEL_LAST:
+        if channels_order == ChannelsOrder.CHANNELS_LAST:
             _data = image_to_tensor(data)
             image_size = ImageSize(height=data.shape[0], width=data.shape[1])
             channels = data.shape[2]
@@ -196,7 +196,7 @@ class Image:
             image_size=ImageSize(height=_data.shape[1], width=_data.shape[2]),
             channels=_data.shape[0],
             pixel_format=PixelFormat.RGB,
-            channels_order=ChannelsOrder.CHANNEL_FIRST,
+            channels_order=ChannelsOrder.CHANNELS_FIRST,
         )
 
         return cls(_data, layout)

@@ -13,7 +13,7 @@ class TestImage:
             image_size=ImageSize(4, 5),
             channels=3,
             pixel_format=PixelFormat.RGB,
-            channels_order=ChannelsOrder.CHANNEL_FIRST,
+            channels_order=ChannelsOrder.CHANNELS_FIRST,
         )
 
         img = Image(data, layout)
@@ -26,7 +26,7 @@ class TestImage:
         assert img.dtype == torch.uint8
         assert img.layout == layout
         assert img.pixel_format == PixelFormat.RGB
-        assert img.channels_order == ChannelsOrder.CHANNEL_FIRST
+        assert img.channels_order == ChannelsOrder.CHANNELS_FIRST
 
     def test_numpy(self, device):
         # as it was from cv2.imread
