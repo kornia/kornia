@@ -1,7 +1,6 @@
-# https://github.com/microsoft/Cream/blob/main/TinyViT/models/tiny_vit.py
-# https://github.com/ChaoningZhang/MobileSAM/blob/master/mobile_sam/modeling/tiny_vit_sam.py
-# TODO: make this available as an image classifier
-# TODO: change url to fixed commit hash
+# https://github.com/microsoft/Cream/blob/8dc38822b99fff8c262c585a32a4f09ac504d693/TinyViT/models/tiny_vit.py
+# https://github.com/ChaoningZhang/MobileSAM/blob/01ea8d0f5590082f0c1ceb0a3e2272593f20154b/mobile_sam/modeling/tiny_vit_sam.py
+# NOTE: make this available as an image classifier?
 
 import itertools
 from typing import Any
@@ -13,15 +12,28 @@ from torch.utils import checkpoint
 from kornia.contrib.models.common import DropPath, LayerNorm2d
 from kornia.contrib.models.sam.architecture.image_encoder import window_partition, window_unpartition
 from kornia.core import Module, Tensor
+from kornia.core.check import KORNIA_CHECK
+
+
+def _make_pair(x: int | tuple[int, int]) -> tuple[int, int]:
+    return (x, x) if isinstance(x, int) else x
 
 
 class ConvBN(nn.Sequential):
     def __init__(
-        self, in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, padding: int = 0, groups: int = 1
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int,
+        stride: int = 1,
+        padding: int = 0,
+        groups: int = 1,
+        activation: type[Module] = nn.Identity,
     ) -> None:
         super().__init__()
         self.c = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, groups=groups, bias=False)
         self.bn = nn.BatchNorm2d(out_channels)
+        self.act = activation()
 
 
 class PatchEmbed(nn.Sequential):
@@ -43,46 +55,39 @@ class MBConv(Module):
     ) -> None:
         super().__init__()
         hidden_channels = int(in_channels * expansion_ratio)
-        self.conv1 = ConvBN(in_channels, hidden_channels, 1)  # point-wise
-        self.act1 = activation()
-        self.conv2 = ConvBN(hidden_channels, hidden_channels, 3, 1, 1, hidden_channels)  # depth-wise
-        self.act2 = activation()
+        self.conv1 = ConvBN(in_channels, hidden_channels, 1, activation=activation)  # point-wise
+        self.conv2 = ConvBN(
+            hidden_channels, hidden_channels, 3, 1, 1, hidden_channels, activation=activation
+        )  # depth-wise
         self.conv3 = ConvBN(hidden_channels, out_channels, 1)
         self.drop_path = DropPath(drop_path)
-        self.act3 = activation()
+        self.act = activation()
 
     def forward(self, x: Tensor) -> Tensor:
-        out = self.act1(self.conv1(x))
-        out = self.act2(self.conv2(out))
-        out = self.drop_path(self.conv3(out))
-        out = self.act3(x + out)
-        return out
+        return self.act(x + self.drop_path(self.conv3(self.conv2(self.conv1(x)))))
 
 
 class PatchMerging(Module):
     def __init__(
-        self, input_resolution: tuple[int, int], dim: int, out_dim: int, stride: int, activation: type[Module] = nn.GELU
+        self,
+        input_resolution: int | tuple[int, int],
+        dim: int,
+        out_dim: int,
+        stride: int,
+        activation: type[Module] = nn.GELU,
     ) -> None:
-        # assert stride in (1, 2)
+        KORNIA_CHECK(stride in (1, 2), "stride must be either 1 or 2")
         super().__init__()
-        self.input_resolution = input_resolution
-        self.conv1 = ConvBN(dim, out_dim, 1)
-        self.act1 = activation()
-        self.conv2 = ConvBN(out_dim, out_dim, 3, stride, 1, groups=out_dim)
-        self.act2 = activation()
+        self.input_resolution = _make_pair(input_resolution)
+        self.conv1 = ConvBN(dim, out_dim, 1, activation=activation)
+        self.conv2 = ConvBN(out_dim, out_dim, 3, stride, 1, groups=out_dim, activation=activation)
         self.conv3 = ConvBN(out_dim, out_dim, 1)
 
     def forward(self, x: Tensor) -> Tensor:
-        # (B, H * W, C) -> (B, C, H, W)
         if x.ndim == 3:
-            x = x.transpose(1, 2).unflatten(2, self.input_resolution)
-
-        x = self.act1(self.conv1(x))
-        x = self.act2(self.conv2(x))
-        x = self.conv3(x)
-
-        # (B, C, H, W) -> (B, H * W, C)
-        x = x.flatten(2).transpose(1, 2)
+            x = x.transpose(1, 2).unflatten(2, self.input_resolution)  # (B, H * W, C) -> (B, C, H, W)
+        x = self.conv3(self.conv2(self.conv1(x)))
+        x = x.flatten(2).transpose(1, 2)  # (B, C, H, W) -> (B, H * W, C)
         return x
 
 
@@ -90,14 +95,11 @@ class ConvLayer(Module):
     def __init__(
         self,
         dim: int,
-        input_resolution: tuple[int, int],
         depth: int,
-        stride: int,
         activation: type[Module] = nn.GELU,
         drop_path: float | list[float] = 0.0,
-        downsample: type[PatchMerging] | None = None,
+        downsample: Module | None = None,
         use_checkpoint: bool = False,
-        out_dim: int | None = None,
         conv_expand_ratio: float = 4.0,
     ) -> None:
         super().__init__()
@@ -111,18 +113,13 @@ class ConvLayer(Module):
         )
 
         # patch merging layer
-        self.downsample: Module
-        if downsample is not None:
-            self.downsample = downsample(
-                input_resolution, dim=dim, out_dim=out_dim, stride=stride, activation=activation
-            )
-        else:
-            self.downsample = nn.Identity()
+        self.downsample = downsample
 
     def forward(self, x: Tensor) -> Tensor:
         for blk in self.blocks:
             x = checkpoint.checkpoint(blk, x) if self.use_checkpoint else blk(x)
-        x = self.downsample(x)
+        if self.downsample is not None:
+            x = self.downsample(x)
         return x
 
 
@@ -130,14 +127,12 @@ class MLP(nn.Sequential):
     def __init__(
         self,
         in_features: int,
-        hidden_features: int | None = None,
-        out_features: int | None = None,
+        hidden_features: int,
+        out_features: int,
         activation: type[Module] = nn.GELU,
         drop: float = 0.0,
     ) -> None:
         super().__init__()
-        out_features = out_features or in_features
-        hidden_features = hidden_features or in_features
         self.norm = nn.LayerNorm(in_features)
         self.fc1 = nn.Linear(in_features, hidden_features)
         self.act1 = activation()
@@ -146,7 +141,9 @@ class MLP(nn.Sequential):
         self.drop2 = nn.Dropout(drop)
 
 
-# TODO: check if can merge with image_encoder.Attention
+# NOTE: differences from image_encoder.Attention:
+# - different relative position encoding mechanism (separable/decomposed vs joint)
+# - this impl supports attn_ratio (increase output size for value), though it is not used
 class Attention(Module):
     def __init__(
         self,
@@ -170,10 +167,17 @@ class Attention(Module):
         self.qkv = nn.Linear(dim, h)
         self.proj = nn.Linear(self.dh, dim)
 
+        indices, attn_offset_size = self.build_attention_bias(resolution)
+        self.attention_biases = nn.Parameter(torch.zeros(num_heads, attn_offset_size))
+        self.register_buffer('attention_bias_idxs', indices, persistent=False)
+        self.attention_bias_idxs: Tensor
+        self.ab: Tensor | None = None
+
+    @staticmethod
+    def build_attention_bias(resolution: tuple[int, int]) -> tuple[Tensor, int]:
         points = list(itertools.product(range(resolution[0]), range(resolution[1])))
-        N = len(points)
         attention_offsets: dict[tuple[int, int], int] = {}
-        idxs = []
+        idxs: list[int] = []
         for p1 in points:
             for p2 in points:
                 offset = (abs(p1[0] - p2[0]), abs(p1[1] - p2[1]))
@@ -181,9 +185,10 @@ class Attention(Module):
                     attention_offsets[offset] = len(attention_offsets)
                 idxs.append(attention_offsets[offset])
 
-        self.attention_biases = nn.Parameter(torch.zeros(num_heads, len(attention_offsets)))
-        self.register_buffer('attention_bias_idxs', torch.LongTensor(idxs).view(N, N), persistent=False)
-        self.ab: Tensor | None = None
+        N = len(points)
+        indices = torch.LongTensor(idxs).view(N, N)
+        attn_offset_size = len(attention_offsets)
+        return indices, attn_offset_size
 
     @torch.no_grad()
     def train(self, mode=True):
@@ -207,25 +212,10 @@ class Attention(Module):
 
 
 class TinyViTBlock(Module):
-    r"""TinyViT Block.
-
-    Args:
-        dim (int): Number of input channels.
-        input_resolution (tuple[int, int]): Input resolution.
-        num_heads (int): Number of attention heads.
-        window_size (int): Window size.
-        mlp_ratio (float): Ratio of mlp hidden dim to embedding dim.
-        drop (float, optional): Dropout rate. Default: 0.0
-        drop_path (float, optional): Stochastic depth rate. Default: 0.0
-        local_conv_size (int): the kernel size of the convolution between
-                               Attention and MLP. Default: 3
-        activation: the activation function. Default: nn.GELU
-    """
-
     def __init__(
         self,
         dim: int,
-        input_resolution: tuple[int, int],
+        input_resolution: int | tuple[int, int],
         num_heads: int,
         window_size: int = 7,
         mlp_ratio: float = 4.0,
@@ -234,96 +224,88 @@ class TinyViTBlock(Module):
         local_conv_size: int = 3,
         activation: type[Module] = nn.GELU,
     ) -> None:
+        """Create TinyViT Block.
+
+        Args:
+            dim (int): Number of input channels.
+            input_resolution (tuple[int, int]): Input resolution.
+            num_heads (int): Number of attention heads.
+            window_size (int): Window size.
+            mlp_ratio (float): Ratio of mlp hidden dim to embedding dim.
+            drop (float, optional): Dropout rate. Default: 0.0
+            drop_path (float, optional): Stochastic depth rate. Default: 0.0
+            local_conv_size (int): the kernel size of the convolution between
+                                Attention and MLP. Default: 3
+            activation: the activation function. Default: nn.GELU
+        """
+        KORNIA_CHECK(dim % num_heads == 0, "dim must be divislbe by num_heads")
         super().__init__()
-        self.dim = dim
-        self.input_resolution = input_resolution
-        self.num_heads = num_heads
+        self.input_resolution = _make_pair(input_resolution)
         self.window_size = window_size
-        self.mlp_ratio = mlp_ratio
-
-        self.drop_path = DropPath(drop_path)
-
-        # assert dim % num_heads == 0, 'dim must be divisible by num_heads'
         head_dim = dim // num_heads
 
-        window_resolution = (window_size, window_size)
-        self.attn = Attention(dim, head_dim, num_heads, 1.0, window_resolution)
-        self.mlp = MLP(dim, int(dim * mlp_ratio), activation=activation, drop=drop)
+        self.attn = Attention(dim, head_dim, num_heads, 1.0, (window_size, window_size))
+        self.drop_path1 = DropPath(drop_path)
         self.local_conv = ConvBN(dim, dim, local_conv_size, 1, local_conv_size // 2, dim)
+        self.mlp = MLP(dim, int(dim * mlp_ratio), dim, activation, drop)
+        self.drop_path2 = DropPath(drop_path)
 
     def forward(self, x: Tensor) -> Tensor:
         H, W = self.input_resolution
         B, L, C = x.shape
-        # assert L == H * W, "input feature has wrong size"
         res_x = x
-        if H == self.window_size and W == self.window_size:
-            x = self.attn(x)
-        else:
-            x = x.view(B, H, W, C)
-            x, (Hp, Wp) = window_partition(x, self.window_size)  # (B * num_windows, window_size, window_size, C)
-            x = self.attn(x.flatten(1, 2))
-            x = window_unpartition(x, self.window_size, (Hp, Wp), (H, W))
-            x = x.view(B, L, C)
 
-        x = res_x + self.drop_path(x)
+        x = x.view(B, H, W, C)
+        x, pad_hw = window_partition(x, self.window_size)  # (B * num_windows, window_size, window_size, C)
+        x = self.attn(x.flatten(1, 2))
+        x = window_unpartition(x, self.window_size, pad_hw, (H, W))
+        x = x.view(B, L, C)
+
+        x = res_x + self.drop_path1(x)
 
         x = x.transpose(1, 2).reshape(B, C, H, W)
         x = self.local_conv(x)
         x = x.view(B, C, L).transpose(1, 2)
 
-        x = x + self.drop_path(self.mlp(x))
+        x = x + self.drop_path2(self.mlp(x))
         return x
-
-    def extra_repr(self) -> str:
-        return (
-            f"dim={self.dim}, input_resolution={self.input_resolution}, num_heads={self.num_heads}, "
-            f"window_size={self.window_size}, mlp_ratio={self.mlp_ratio}"
-        )
 
 
 class BasicLayer(Module):
-    """A basic TinyViT layer for one stage.
-
-    Args:
-        dim (int): Number of input channels.
-        input_resolution (tuple[int]): Input resolution.
-        depth (int): Number of blocks.
-        num_heads (int): Number of attention heads.
-        window_size (int): Local window size.
-        mlp_ratio (float): Ratio of mlp hidden dim to embedding dim.
-        drop (float, optional): Dropout rate. Default: 0.0
-        drop_path (float | tuple[float], optional): Stochastic depth rate. Default: 0.0
-        downsample (nn.Module | None, optional): Downsample layer at the end of the layer. Default: None
-        use_checkpoint (bool): Whether to use checkpointing to save memory. Default: False.
-        local_conv_size: the kernel size of the depthwise convolution between attention and MLP. Default: 3
-        activation: the activation function. Default: nn.GELU
-        out_dim: the output dimension of the layer. Default: dim
-    """
-
     def __init__(
         self,
         dim: int,
-        input_resolution: tuple[int, int],
+        input_resolution: int | tuple[int, int],
         depth: int,
         num_heads: int,
         window_size: int,
         mlp_ratio: float = 4.0,
         drop: float = 0.0,
         drop_path: float | list[float] = 0.0,
-        stride: int = 2,
-        downsample: type[PatchMerging] | None = None,
+        downsample: Module | None = None,
         use_checkpoint: bool = False,
         local_conv_size: int = 3,
         activation: type[Module] = nn.GELU,
-        out_dim: int | None = None,
     ) -> None:
+        """A basic TinyViT layer for one stage.
+
+        Args:
+            dim (int): Number of input channels.
+            input_resolution (tuple[int]): Input resolution.
+            depth (int): Number of blocks.
+            num_heads (int): Number of attention heads.
+            window_size (int): Local window size.
+            mlp_ratio (float): Ratio of mlp hidden dim to embedding dim.
+            drop (float, optional): Dropout rate. Default: 0.0
+            drop_path (float | tuple[float], optional): Stochastic depth rate. Default: 0.0
+            downsample (nn.Module | None, optional): Downsample layer at the end of the layer. Default: None
+            use_checkpoint (bool): Whether to use checkpointing to save memory. Default: False.
+            local_conv_size: the kernel size of the depthwise convolution between attention and MLP. Default: 3
+            activation: the activation function. Default: nn.GELU
+        """
         super().__init__()
-        self.dim = dim
-        self.input_resolution = input_resolution
-        self.depth = depth
         self.use_checkpoint = use_checkpoint
 
-        # build blocks
         self.blocks = nn.ModuleList(
             [
                 TinyViTBlock(
@@ -342,22 +324,14 @@ class BasicLayer(Module):
         )
 
         # patch merging layer
-        self.downsample: Module
-        if downsample is not None:
-            self.downsample = downsample(
-                input_resolution, dim=dim, out_dim=out_dim, stride=stride, activation=activation
-            )
-        else:
-            self.downsample = nn.Identity()
+        self.downsample = downsample
 
     def forward(self, x: Tensor) -> Tensor:
         for blk in self.blocks:
             x = checkpoint.checkpoint(blk, x) if self.use_checkpoint else blk(x)
-        x = self.downsample(x)
+        if self.downsample is not None:
+            x = self.downsample(x)
         return x
-
-    def extra_repr(self) -> str:
-        return f"dim={self.dim}, input_resolution={self.input_resolution}, depth={self.depth}"
 
 
 class TinyViT(Module):
@@ -378,69 +352,74 @@ class TinyViT(Module):
         local_conv_size: int = 3,
         # layer_lr_decay: float = 1.0,
         activation: type[Module] = nn.GELU,
+        mobile_sam: bool = True,
     ) -> None:
         super().__init__()
         self.img_size = img_size
-        self.stride = 16
-
         # self.num_classes = num_classes
-        self.depths = depths
         self.num_layers = len(depths)
-        self.mlp_ratio = mlp_ratio
-
         self.patch_embed = PatchEmbed(in_chans, embed_dims[0], activation)
-        self.patches_resolution = (img_size // 4, img_size // 4)
+        input_resolution = img_size // 4
 
-        # stochastic depth
-        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]  # stochastic depth decay rule
+        # stochastic depth decay rule
+        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]
+        strides = [2, 2, 1, 1] if mobile_sam else [2, 2, 2, 1]
 
         # build layers
         self.layers = nn.Sequential()
-        for i_layer in range(self.num_layers):
+        for i_layer, (embed_dim, depth, num_heads_i, window_size, stride) in enumerate(
+            zip(embed_dims, depths, num_heads, window_sizes, strides)
+        ):
+            out_dim = embed_dims[min(i_layer + 1, len(embed_dims) - 1)]
+            downsample = (
+                PatchMerging(input_resolution, embed_dim, out_dim, stride, activation)
+                if (i_layer < self.num_layers - 1)
+                else None
+            )
             kwargs: dict[str, Any] = {
-                'dim': embed_dims[i_layer],
-                'input_resolution': (
-                    self.patches_resolution[0] // (2 ** min(i_layer, 2)),
-                    self.patches_resolution[1] // (2 ** min(i_layer, 2)),
-                ),
-                'depth': depths[i_layer],
-                'drop_path': dpr[sum(depths[:i_layer]) : sum(depths[: i_layer + 1])],
-                'stride': 2 if i_layer < self.num_layers - 2 else 1,  # only for MobileSAM
-                'downsample': PatchMerging if (i_layer < self.num_layers - 1) else None,
-                'use_checkpoint': use_checkpoint,
-                'out_dim': embed_dims[min(i_layer + 1, len(embed_dims) - 1)],
-                'activation': activation,
+                "dim": embed_dim,
+                "depth": depth,
+                "drop_path": dpr[sum(depths[:i_layer]) : sum(depths[: i_layer + 1])],
+                "downsample": downsample,
+                "use_checkpoint": use_checkpoint,
+                "activation": activation,
             }
             layer: ConvLayer | BasicLayer
             if i_layer == 0:
                 layer = ConvLayer(conv_expand_ratio=mbconv_expand_ratio, **kwargs)
             else:
                 layer = BasicLayer(
-                    num_heads=num_heads[i_layer],
-                    window_size=window_sizes[i_layer],
-                    mlp_ratio=self.mlp_ratio,
+                    input_resolution=input_resolution,
+                    num_heads=num_heads_i,
+                    window_size=window_size,
+                    mlp_ratio=mlp_ratio,
                     drop=drop_rate,
                     local_conv_size=local_conv_size,
                     **kwargs,
                 )
             self.layers.append(layer)
+            input_resolution //= stride
+        self.feat_size = input_resolution
 
         # Classifier head
+        # NOTE: needs this to load pre-trained weights with strict=True
         num_classes = 1000
         self.norm_head = nn.LayerNorm(embed_dims[-1])
-        self.head = nn.Linear(embed_dims[-1], num_classes) if num_classes > 0 else torch.nn.Identity()
+        self.head = nn.Linear(embed_dims[-1], num_classes)
 
         # init weights
         self.apply(self._init_weights)
         # self.set_layer_lr_decay(layer_lr_decay)
 
-        # only in MobileSAM
-        self.neck = nn.Sequential(
-            nn.Conv2d(embed_dims[-1], 256, 1, bias=False),
-            LayerNorm2d(256),
-            nn.Conv2d(256, 256, 3, 1, 1, bias=False),
-            LayerNorm2d(256),
-        )
+        if mobile_sam:
+            self.neck = nn.Sequential(
+                nn.Conv2d(embed_dims[-1], 256, 1, bias=False),
+                LayerNorm2d(256),
+                nn.Conv2d(256, 256, 3, 1, 1, bias=False),
+                LayerNorm2d(256),
+            )
+        else:
+            self.neck = None
 
     # def set_layer_lr_decay(self, layer_lr_decay):
     #     decay_rate = layer_lr_decay
@@ -493,13 +472,13 @@ class TinyViT(Module):
         x = self.patch_embed(x)
         x = self.layers(x)
 
-        # only in MobileSAM
-        x = x.unflatten(1, (self.img_size // self.stride, self.img_size // self.stride))
-        x = self.neck(x.permute(0, 3, 1, 2))
-
-        # x = x.mean(1)
-        # x = self.norm_head(x)
-        # x = self.head(x)
+        if self.neck is not None:
+            # MobileSAM
+            x = x.unflatten(1, (self.feat_size, self.feat_size)).permute(0, 3, 1, 2)
+            x = self.neck(x)
+        else:
+            x = x.mean(1)
+            x = self.head(self.norm_head(x))
         return x
 
 

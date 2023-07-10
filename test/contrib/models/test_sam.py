@@ -49,7 +49,7 @@ class TestSam(BaseTester):
             model(inpt, [{}], False)
         assert 'The number of images (`B`) should match with the length of prompts!' in str(errinfo)
 
-    @pytest.mark.parametrize('model_type', ['vit_b', 'vit_l', 'vit_h'])
+    @pytest.mark.parametrize('model_type', ['vit_b', 'vit_l', 'vit_h', 'mobile_sam'])
     def test_config(self, device, model_type):
         model = Sam.from_config(SamConfig(model_type))
         model = model.to(device=device)
