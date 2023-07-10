@@ -4,7 +4,7 @@ import urllib.request
 import pytest
 import torch
 
-from kornia.geometry.conversions import QuaternionCoeffOrder, quaternion_to_rotation_matrix
+from kornia.geometry.conversions import quaternion_to_rotation_matrix
 from kornia.nerf.camera_utils import create_spiral_path, parse_colmap_output
 from kornia.testing import assert_close
 
@@ -66,7 +66,7 @@ def test_parse_colmap_output(device, dtype, colmap_cameras_path, colmap_images_p
     tz = -1.0631749488011808
 
     q = torch.tensor([qw, qx, qy, qz], device=device, dtype=dtype)
-    R = quaternion_to_rotation_matrix(q, order=QuaternionCoeffOrder.WXYZ)
+    R = quaternion_to_rotation_matrix(q)
     t = torch.tensor([tx, ty, tz], device=device, dtype=dtype)
 
     assert_close(R, cameras.rotation_matrix[2])

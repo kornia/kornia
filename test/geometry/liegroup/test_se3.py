@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from kornia.geometry.conversions import QuaternionCoeffOrder, euler_from_quaternion, rotation_matrix_to_quaternion
+from kornia.geometry.conversions import euler_from_quaternion, rotation_matrix_to_quaternion
 from kornia.geometry.liegroup import Se3, So3
 from kornia.geometry.quaternion import Quaternion
 from kornia.geometry.vector import Vector3
@@ -201,7 +201,7 @@ class TestSe3(BaseTester):
     def test_rot_x(self, device, dtype, batch_size):
         x = self._make_rand_data(device, dtype, batch_size, dims=1).squeeze(-1)
         se3 = Se3.rot_x(x)
-        quat = rotation_matrix_to_quaternion(se3.so3.matrix(), order=QuaternionCoeffOrder.WXYZ)
+        quat = rotation_matrix_to_quaternion(se3.so3.matrix())
         quat = Quaternion(quat)
         roll, _, _ = euler_from_quaternion(*quat.coeffs)
         self.assert_close(x, roll)
@@ -211,7 +211,7 @@ class TestSe3(BaseTester):
     def test_rot_y(self, device, dtype, batch_size):
         y = self._make_rand_data(device, dtype, batch_size, dims=1).squeeze(-1)
         se3 = Se3.rot_y(y)
-        quat = rotation_matrix_to_quaternion(se3.so3.matrix(), order=QuaternionCoeffOrder.WXYZ)
+        quat = rotation_matrix_to_quaternion(se3.so3.matrix())
         quat = Quaternion(quat)
         _, pitch, _ = euler_from_quaternion(*quat.coeffs)
         self.assert_close(y, pitch)
@@ -221,7 +221,7 @@ class TestSe3(BaseTester):
     def test_rot_z(self, device, dtype, batch_size):
         z = self._make_rand_data(device, dtype, batch_size, dims=1).squeeze(-1)
         se3 = Se3.rot_z(z)
-        quat = rotation_matrix_to_quaternion(se3.so3.matrix(), order=QuaternionCoeffOrder.WXYZ)
+        quat = rotation_matrix_to_quaternion(se3.so3.matrix())
         quat = Quaternion(quat)
         _, _, yaw = euler_from_quaternion(*quat.coeffs)
         self.assert_close(z, yaw)
