@@ -86,7 +86,7 @@ class CoarseMatching(Module):
             self.skh_iters = config['skh_iters']
             self.skh_prefilter = config['skh_prefilter']
         else:
-            raise NotImplementedError()
+            raise NotImplementedError
 
     def forward(
         self,
