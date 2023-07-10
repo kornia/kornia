@@ -341,7 +341,7 @@ class TinyViT(Module):
         self,
         img_size: int = 224,
         in_chans: int = 3,
-        # num_classes=1000,
+        num_classes: int = 1000,
         embed_dims: list[int] = [96, 192, 384, 768],
         depths: list[int] = [2, 2, 6, 2],
         num_heads: list[int] = [3, 6, 12, 24],
@@ -406,13 +406,9 @@ class TinyViT(Module):
 
         # Classifier head
         # NOTE: needs this to load pre-trained weights with strict=True
-        num_classes = 1000
+        # TODO: enable strict=False, or host our own weights
         self.norm_head = nn.LayerNorm(embed_dims[-1])
         self.head = nn.Linear(embed_dims[-1], num_classes)
-
-        # init weights
-        self.apply(self._init_weights)
-        # self.set_layer_lr_decay(layer_lr_decay)
 
         self.neck: Module | None
         if mobile_sam:
@@ -425,53 +421,6 @@ class TinyViT(Module):
         else:
             self.neck = None
 
-    # def set_layer_lr_decay(self, layer_lr_decay):
-    #     decay_rate = layer_lr_decay
-
-    #     # layers -> blocks (depth)
-    #     depth = sum(self.depths)
-    #     lr_scales = [decay_rate ** (depth - i - 1) for i in range(depth)]
-
-    #     def _set_lr_scale(m, scale):
-    #         for p in m.parameters():
-    #             p.lr_scale = scale
-
-    #     self.patch_embed.apply(lambda x: _set_lr_scale(x, lr_scales[0]))
-    #     i = 0
-    #     for layer in self.layers:
-    #         for block in layer.blocks:
-    #             block.apply(lambda x: _set_lr_scale(x, lr_scales[i]))
-    #             i += 1
-    #         if not isinstance(layer.downsample, nn.Identity):
-    #             layer.downsample.apply(lambda x: _set_lr_scale(x, lr_scales[i - 1]))
-    #     assert i == depth
-    #     for m in [self.norm_head, self.head]:
-    #         m.apply(lambda x: _set_lr_scale(x, lr_scales[-1]))
-
-    #     for k, p in self.named_parameters():
-    #         p.param_name = k
-
-    #     def _check_lr_scale(m):
-    #         for p in m.parameters():
-    #             assert hasattr(p, 'lr_scale'), p.param_name
-
-    #     self.apply(_check_lr_scale)
-
-    @staticmethod
-    def _init_weights(m):
-        if isinstance(m, nn.Linear):
-            nn.init.trunc_normal_(m.weight, std=0.02)
-            if isinstance(m, nn.Linear) and m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-        elif isinstance(m, nn.LayerNorm):
-            nn.init.constant_(m.bias, 0)
-            nn.init.constant_(m.weight, 1.0)
-        # NOTE: how about batch norm and conv2d?
-
-    @torch.jit.ignore
-    def no_weight_decay_keywords(self):
-        return {'attention_biases'}
-
     def forward(self, x: Tensor) -> Tensor:
         x = self.patch_embed(x)
         x = self.layers(x)
@@ -481,6 +430,7 @@ class TinyViT(Module):
             x = x.unflatten(1, (self.feat_size, self.feat_size)).permute(0, 3, 1, 2)
             x = self.neck(x)
         else:
+            # classification
             x = x.mean(1)
             x = self.head(self.norm_head(x))
         return x
