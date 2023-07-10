@@ -27,4 +27,4 @@ class PlanckianJitterGenerator(RandomGeneratorBase):
         _common_param_check(batch_size, same_on_batch)
         pl_idx = _adapted_rsampling((batch_size,), self.pl_idx_dist, same_on_batch)
 
-        return dict(idx=pl_idx.long())
+        return {"idx": pl_idx.long()}

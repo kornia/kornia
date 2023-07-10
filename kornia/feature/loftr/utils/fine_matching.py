@@ -1,7 +1,7 @@
 import math
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 from kornia.geometry.subpix import dsnt
 from kornia.utils.grid import create_meshgrid

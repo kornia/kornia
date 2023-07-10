@@ -6,7 +6,7 @@ from kornia.testing import assert_close
 
 
 class TestRenderGaussian2d:
-    @pytest.fixture
+    @pytest.fixture()
     def gaussian(self, device, dtype):
         return torch.tensor(
             [

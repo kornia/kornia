@@ -203,7 +203,20 @@ def generate_two_view_random_scene(
     x1 = scene['points2d'][0:1].to(device, dtype)
     x2 = scene['points2d'][1:2].to(device, dtype)
 
-    return dict(K1=K1, K2=K2, R1=R1, R2=R2, t1=t1, t2=t2, P1=P1, P2=P2, F=F_mat, X=X, x1=x1, x2=x2)
+    return {
+        "K1": K1,
+        "K2": K2,
+        "R1": R1,
+        "R2": R2,
+        "t1": t1,
+        "t2": t2,
+        "P1": P1,
+        "P2": P2,
+        "F": F_mat,
+        "X": X,
+        "x1": x1,
+        "x2": x2,
+    }
 
 
 def cartesian_product_of_parameters(**possible_parameters):
@@ -237,7 +250,7 @@ def _get_precision(device: torch.device, dtype: torch.dtype) -> float:
 def _get_precision_by_name(
     device: torch.device, device_target: str, tol_val: float, tol_val_default: float = 1e-4
 ) -> float:
-    if device_target not in ['cpu', 'cuda', 'xla']:
+    if device_target not in ['cpu', 'cuda', 'xla', 'mps']:
         raise ValueError(f"Invalid device name: {device_target}.")
 
     if device_target in device.type:

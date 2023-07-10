@@ -1,7 +1,7 @@
 from typing import Callable, Dict, List, Optional, Type
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 from kornia.core import Module, Tensor, concatenate, stack
 from kornia.utils.helpers import map_location_to_cpu
@@ -246,9 +246,7 @@ class RenderingDeFMO(Module):
         renders = []
         for ki in range(times.shape[1]):
             t_tensor = (
-                # TODO: replace by after deprecate pytorch 1.6
-                # times[list(range(times.shape[0])), ki]
-                times[[x for x in range(times.shape[0])], ki]  # skipcq: PYL-R1721
+                times[list(range(times.shape[0])), ki]
                 .unsqueeze(-1)
                 .unsqueeze(-1)
                 .unsqueeze(-1)

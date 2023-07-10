@@ -81,6 +81,7 @@ class TestGrayscaleToRgb(BaseTester):
         img_rgb = kornia.color.grayscale_to_rgb(data)
         assert_close(img_rgb, expected)
 
+    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 1, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
@@ -194,6 +195,7 @@ class TestRgbToGrayscale(BaseTester):
         assert img_gray.device == device
         assert img_gray.dtype == dtype
 
+    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
@@ -286,6 +288,7 @@ class TestBgrToGrayscale(BaseTester):
         img_gray = kornia.color.bgr_to_grayscale(data)
         assert_close(img_gray, expected)
 
+    @pytest.mark.grad()
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)

@@ -4,11 +4,11 @@ on:
       python-version:
         required: false
         type: string
-        default: '["3.7"]'
+        default: '["3.10"]'
       pytorch-version:
         required: false
         type: string
-        default: '["1.9.1"]'
+        default: '["2.0.0"]'
       os:
         required: false
         type: string
@@ -48,6 +48,7 @@ jobs:
     steps:
     - name: Checkout kornia
       uses: actions/checkout@v3
+
     - name: Setting environment on ${{ inputs.os }} with python ${{ matrix.python-version }} and pytorch ${{ matrix.pytorch-version }}
       uses: ./.github/actions/env
       with:
@@ -58,7 +59,6 @@ jobs:
       continue-on-error: ${{ inputs.continue-on-error }}
       shell: bash -l {0}
       run: pytest -v --device cpu --dtype ${{ inputs.pytorch-dtype }} ${{ inputs.pytest-extra }} --cov=kornia --cov-report xml ./test
-
 
     - if: always()
       name: Upload coverage

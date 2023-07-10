@@ -1,8 +1,8 @@
 from typing import Any, Dict, List, Tuple, Union
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 
 from kornia.constants import pi
 from kornia.core import Tensor, tensor, zeros
@@ -143,9 +143,10 @@ class VonMisesKernel(nn.Module):
         if not len(x.shape) == 4 or x.shape[1] != 1:
             raise ValueError(f"Invalid input shape, we expect Bx1xHxW. Got: {x.shape}")
 
-        # TODO: unify the two lines below when pytorch 1.6 support is dropped
-        emb0: Tensor = torch.jit.annotate(Tensor, self.emb0)
-        emb0 = emb0.to(x).repeat(x.size(0), 1, 1, 1)
+        if not isinstance(self.emb0, Tensor):
+            raise TypeError(f"Emb0 type is not a Tensor. Got {type(x)}")
+
+        emb0 = self.emb0.to(x).repeat(x.size(0), 1, 1, 1)
         frange = self.frange.to(x) * x
         emb1 = torch.cos(frange)
         emb2 = torch.sin(frange)

@@ -1,7 +1,7 @@
 import math
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 from kornia.filters import filter2d
 from kornia.utils import create_meshgrid

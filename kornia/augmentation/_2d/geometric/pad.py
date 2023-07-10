@@ -49,7 +49,7 @@ class PadTo(GeometricAugmentationBase2D):
         self, size: Tuple[int, int], pad_mode: str = "constant", pad_value: Union[int, float] = 0, keepdim: bool = False
     ) -> None:
         super().__init__(p=1.0, same_on_batch=True, p_batch=1.0, keepdim=keepdim)
-        self.flags = dict(size=size, pad_mode=pad_mode, pad_value=pad_value)
+        self.flags = {"size": size, "pad_mode": pad_mode, "pad_value": pad_value}
 
     # TODO: It is incorrect to return identity
     # TODO: Having a resampled version with ``warp_affine``

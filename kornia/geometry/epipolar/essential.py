@@ -124,7 +124,7 @@ def motion_from_essential(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tens
     r"""Get Motion (R's and t's ) from Essential matrix.
 
     Computes and return four possible poses exist for the decomposition of the Essential
-    matrix. The possible solutions are :math:`[R1,t], [R1,−t], [R2,t], [R2,−t]`.
+    matrix. The possible solutions are :math:`[R1,t], [R1,-t], [R2,t], [R2,-t]`.
 
     Args:
         E_mat: The essential matrix in the form of :math:`(*, 3, 3)`.
@@ -264,7 +264,7 @@ def relative_camera_motion(
 
     Given the motion parameters of two cameras, computes the motion parameters of the second
     one assuming the first one to be at the origin. If :math:`T1` and :math:`T2` are the camera motions,
-    the computed relative motion is :math:`T = T_{2}T^{−1}_{1}`.
+    the computed relative motion is :math:`T = T_{2}T^{-1}_{1}`.
 
     Args:
         R1: The first camera rotation matrix with shape :math:`(*, 3, 3)`.

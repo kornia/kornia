@@ -38,7 +38,7 @@ class TestVector3(BaseTester):
 
     @pytest.mark.parametrize("shape", ((), (1,), (2, 4)))
     def test_from_coords_tensor(self, device, dtype, shape):
-        xyz = torch.rand(shape + (3,), device=device, dtype=dtype)
+        xyz = torch.rand((*shape, 3), device=device, dtype=dtype)
         vec = Vector3.from_coords(xyz[..., 0], xyz[..., 1], xyz[..., 2])
         assert vec.shape[:-1] == shape
         assert vec.x.shape == shape
@@ -107,7 +107,7 @@ class TestVector2(BaseTester):
 
     @pytest.mark.parametrize("shape", ((), (1,), (2, 4)))
     def test_from_coords_tensor(self, device, dtype, shape):
-        xy = torch.rand(shape + (2,), device=device, dtype=dtype)
+        xy = torch.rand((*shape, 2), device=device, dtype=dtype)
         vec = Vector2.from_coords(xy[..., 0], xy[..., 1])
         assert vec.shape[:-1] == shape
         assert vec.x.shape == shape

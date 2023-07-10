@@ -22,7 +22,7 @@ def available_package() -> bool:
 
 
 def create_random_img8(height: int, width: int, channels: int) -> np.ndarray:
-    return (np.random.rand(height, width, channels) * 255).astype(np.uint8)
+    return (np.random.rand(height, width, channels) * 255).astype(np.uint8)  # noqa: NPY002
 
 
 @pytest.mark.skipif(not available_package(), reason="kornia_rs only supports python >=3.7 and pt >= 1.10.0")
@@ -63,19 +63,24 @@ class TestLoadImage:
             assert os.path.isfile(file_path)
 
             img = load_image(file_path, ImageLoadType.GRAY8)
-            assert img.shape[0] == 1 and img.dtype == torch.uint8
+            assert img.shape[0] == 1
+            assert img.dtype == torch.uint8
 
             img = load_image(file_path, ImageLoadType.GRAY32)
-            assert img.shape[0] == 1 and img.dtype == torch.float32
+            assert img.shape[0] == 1
+            assert img.dtype == torch.float32
 
             img = load_image(file_path, ImageLoadType.RGB8)
-            assert img.shape[0] == 3 and img.dtype == torch.uint8
+            assert img.shape[0] == 3
+            assert img.dtype == torch.uint8
 
             img = load_image(file_path, ImageLoadType.RGB32)
-            assert img.shape[0] == 3 and img.dtype == torch.float32
+            assert img.shape[0] == 3
+            assert img.dtype == torch.float32
 
             img = load_image(file_path, ImageLoadType.RGBA8)
-            assert img.shape[0] == 4 and img.dtype == torch.uint8
+            assert img.shape[0] == 4
+            assert img.dtype == torch.uint8
 
     @pytest.mark.parametrize("ext", ["png", "jpg"])
     def test_types_gray(self, ext):
@@ -87,16 +92,21 @@ class TestLoadImage:
             assert os.path.isfile(file_path)
 
             img = load_image(file_path, ImageLoadType.GRAY8)
-            assert img.shape[0] == 1 and img.dtype == torch.uint8
+            assert img.shape[0] == 1
+            assert img.dtype == torch.uint8
 
             img = load_image(file_path, ImageLoadType.GRAY32)
-            assert img.shape[0] == 1 and img.dtype == torch.float32
+            assert img.shape[0] == 1
+            assert img.dtype == torch.float32
 
             img = load_image(file_path, ImageLoadType.RGB8)
-            assert img.shape[0] == 3 and img.dtype == torch.uint8
+            assert img.shape[0] == 3
+            assert img.dtype == torch.uint8
 
             img = load_image(file_path, ImageLoadType.RGB32)
-            assert img.shape[0] == 3 and img.dtype == torch.float32
+            assert img.shape[0] == 3
+            assert img.dtype == torch.float32
 
             img = load_image(file_path, ImageLoadType.RGBA8)
-            assert img.shape[0] == 4 and img.dtype == torch.uint8
+            assert img.shape[0] == 4
+            assert img.dtype == torch.uint8

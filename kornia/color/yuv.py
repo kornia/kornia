@@ -1,7 +1,7 @@
 from typing import Tuple
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 
 def rgb_to_yuv(image: torch.Tensor) -> torch.Tensor:

@@ -24,18 +24,18 @@ class TestSe2(BaseTester):
 
     @pytest.mark.parametrize("input_shape", [(1,), (2,), (5,), ()])
     def test_cardinality(self, device, dtype, input_shape):
-        t_input_shape = input_shape + (2,)
-        z = torch.randn(input_shape + (2,), dtype=dtype, device=device)
+        t_input_shape = (*input_shape, 2)
+        z = torch.randn((*input_shape, 2), dtype=dtype, device=device)
         t = torch.randn(t_input_shape, dtype=dtype, device=device)
         s = Se2(So2(torch.complex(z[..., 0], z[..., 1])), t)
-        theta = torch.rand(input_shape + (3,), dtype=dtype, device=device)
+        theta = torch.rand((*input_shape, 3), dtype=dtype, device=device)
         assert s.so2.z.shape == input_shape
         assert s.t.shape == t_input_shape
         assert (s * s).so2.z.shape == input_shape
         assert (s * s).t.shape == t_input_shape
         assert s.exp(theta).so2.z.shape == input_shape
         assert s.exp(theta).t.shape == t_input_shape
-        assert s.log().shape == input_shape + (3,)
+        assert s.log().shape == (*input_shape, 3)
         if not any(input_shape):
             expected_hat_shape = (3, 3)
         else:

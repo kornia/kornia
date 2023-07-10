@@ -91,4 +91,4 @@ class TranslateGenerator(RandomGeneratorBase):
         else:
             translate_y = torch.zeros((batch_size,), device=_device, dtype=_dtype)
 
-        return dict(translate_x=translate_x, translate_y=translate_y)
+        return {"translate_x": translate_x, "translate_y": translate_y}

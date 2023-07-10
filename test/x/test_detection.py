@@ -1,6 +1,6 @@
 import pytest
 import torch
-import torch.nn as nn
+from torch import nn
 from torch.utils.data import Dataset
 
 from kornia.x import Configuration, ObjectDetectionTrainer
@@ -24,33 +24,33 @@ class DummyModel(nn.Module):
         return self.model(x)
 
 
-@pytest.fixture
+@pytest.fixture()
 def model():
     return DummyModel()
 
 
-@pytest.fixture
+@pytest.fixture()
 def dataloader():
     dataset = DummyDatasetDetection()
     return torch.utils.data.DataLoader(dataset, batch_size=1)
 
 
-@pytest.fixture
+@pytest.fixture()
 def criterion():
     return nn.MSELoss()
 
 
-@pytest.fixture
+@pytest.fixture()
 def optimizer(model):
     return torch.optim.AdamW(model.parameters())
 
 
-@pytest.fixture
+@pytest.fixture()
 def scheduler(optimizer, dataloader):
     return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, len(dataloader))
 
 
-@pytest.fixture
+@pytest.fixture()
 def configuration():
     config = Configuration()
     config.num_epochs = 1

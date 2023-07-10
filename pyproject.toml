@@ -8,7 +8,7 @@ keywords = [
 ]
 license = {text = "Apache-2.0"}
 authors = [{name = "Edgar Riba", email = "edgar@kornia.org"}]
-requires-python = ">=3.7"
+requires-python = ">=3.8"
 classifiers = [
   "Development Status :: 4 - Beta",
   "Environment :: Console",
@@ -21,7 +21,6 @@ classifiers = [
   "Natural Language :: English",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.7",
   "Programming Language :: Python :: 3.8",
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
@@ -54,122 +53,147 @@ requires = [
   license-files = ["LICENSE"]
   include-package-data = false
 
-[tool.setuptools.dynamic]
-  dependencies = {file = ["requirements/requirements.txt"]}
-  version = {attr = "kornia.__version__"}
-  readme = {file = ["README.md"], content-type = "text/markdown"}
+  [tool.setuptools.dynamic]
+    dependencies = {file = ["requirements/requirements.txt"]}
+    version = {attr = "kornia.__version__"}
+    readme = {file = ["README.md"], content-type = "text/markdown"}
 
   [tool.setuptools.dynamic.optional-dependencies]
     dev = {file = "requirements/requirements-dev.txt"}
     docs = {file = ["requirements/requirements-docs.txt"]}
     x = {file = ["requirements/requirements-x.txt"]}
 
-[tool.setuptools.packages.find]
-exclude = [
-    "docs*",
-    "test*",
-    "examples*",
-]
-namespaces = false
+  [tool.setuptools.packages.find]
+    exclude = ["docs*", "test*", "examples*"]
+    namespaces = false
 
-[tool.setuptools.package-data]
-  kornia = ["py.typed"]
+  [tool.setuptools.package-data]
+    kornia = ["py.typed"]
 
 [tool.black]
   line-length = 120
-  skip-string-normalization = true
   skip-magic-trailing-comma = true
+  skip-string-normalization = true
+
+[tool.ruff]
+  line-length = 120
+  target-version = "py38"
+  select = [
+    "AIR",    # Airflow
+    "ASYNC",  # flake8-async
+    "BLE",    # flake8-blind-except
+    "C4",     # flake8-comprehensions
+    "C90",    # McCabe cyclomatic complexity
+    "CPY",    # Copyright-related rules
+    "DTZ",    # flake8-datetimez
+    "E",      # pycodestyle
+    "F",      # Pyflakes
+    "FLY",    # flynt
+    "I",      # isort
+    "ICN",    # flake8-import-conventions
+    "INT",    # flake8-gettext
+    "NPY",    # NumPy-specific rules
+    "PL",     # Pylint
+    "PYI",    # flake8-pyi
+    "RSE",    # flake8-raise
+    "RUF",    # Ruff-specific rules
+    "S",      # flake8-bandit
+    "SLOT",   # flake8-slots
+    "T10",    # flake8-debugger
+    "TID",    # flake8-tidy-imports
+    "UP",     # pyupgrade
+    "W",      # pycodestyle
+    "YTT",    # flake8-2020
+    # "A",    # flake8-builtins
+    # "ANN",  # flake8-annotations
+    # "ARG",  # flake8-unused-arguments
+    # "B",    # flake8-bugbear
+    # "COM",  # flake8-commas
+    # "D",    # pydocstyle
+    # "DJ",   # flake8-django
+    # "EM",   # flake8-errmsg
+    # "ERA",  # eradicate
+    # "EXE",  # flake8-executable
+    # "FA",   # flake8-future-annotations
+    # "FBT",  # flake8-boolean-trap
+    # "FIX",  # flake8-fixme
+    # "G",    # flake8-logging-format
+    # "INP",  # flake8-no-pep420
+    # "ISC",  # flake8-implicit-str-concat
+    # "N",    # pep8-naming
+    # "PD",   # pandas-vet
+    # "PERF", # Perflint
+    # "PGH",  # pygrep-hooks
+    # "PIE",  # flake8-pie
+    # "PT",   # flake8-pytest-style
+    # "PTH",  # flake8-use-pathlib
+    # "Q",    # flake8-quotes
+    # "RET",  # flake8-return
+    # "SIM",  # flake8-simplify
+    # "SLF",  # flake8-self
+    # "T20",  # flake8-print
+    # "TCH",  # flake8-type-checking
+    # "TD",   # flake8-todos
+    # "TRY",  # tryceratops
+  ]
+  ignore = [
+    "PLW2901", # Allow overwritten values on loops
+  ]
+
+  [tool.ruff.isort]
+    known-first-party = ["examples", "kornia", "test"]
+
+  [tool.ruff.mccabe]
+    max-complexity = 20
+
+  [tool.ruff.pylint]
+    allow-magic-value-types = ["bytes", "float", "int", "str"]
+    max-args = 17  # Recommended: 5
+    max-branches = 21  # Recommended: 12
+    max-returns = 13  # Recommended: 6
+    max-statements = 64  # Recommended: 50
+
+  [tool.ruff.per-file-ignores]
+    "*/__init__.py" = ["F401", "F403"] # Allow unused imports and star imports
+    "docs/*" = ["S101", "PLR0912", "PLR0915"] # allow assert, ignore max branches and statements
+    "docs/generate_examples.py" = ["C901"] # Allow too complex function
+    "kornia/__init__.py" = ["I001"] # Allow unsorted imports
+    "test/*" = ["S101", "S311", "BLE", "RUF012"] # allow assert, random, ignore BLE, mutable class attr
 
 [tool.pytest.ini_options]
   addopts = "--color=yes"
   testpaths = ["test"]
   markers =[
-    "jit: mark a test as torchscript test",
     "grad: mark a test as gradcheck test",
+    "jit: mark a test as torchscript test",
     "nn: mark a test as module test"
 ]
 
 [tool.coverage.report]
 exclude_lines = [
-  "pragma: no cover",
   "def __repr__",
-  "if self.debug:",
-  "raise",
-  "if 0:",
   "if __name__ == .__main__.:",
+  "if 0:",
+  "if self.debug:",
+  "pragma: no cover",
+  "raise",
 ]
 
 [tool.mypy]
-  files = ["kornia/"]
-  pretty = true
   check_untyped_defs = true
   disallow_any_generics = true
   disallow_incomplete_defs = true
-  show_error_codes = true
+  files = ["kornia/"]
   ignore_missing_imports = true
   no_implicit_optional = true
-  warn_unused_ignores = true
+  pretty = true
+  show_error_codes = true
   warn_redundant_casts = true
+  warn_unused_ignores = true
 
 [tool.distutils.bdist_wheel]
   universal = true
 
 [tool.pydocstyle]
-match = '.*\.py'
-ignore = """
-D105
-D107
-D203
-D204
-D213
-D406
-D407"""
-
-[tool.ruff]
-select = [
-  "C9",
-  "E",
-  "F",
-  "I",
-  "PL",
-  "S",
-  "UP",
-  "W",
-  "YTT",
-]
-ignore = [
-  "E402",
-	"F403",
-	"PLR0402",
-	"PLR1711",
-	"PLR5501",
-  "PLR2004",
-  "PLW2901"
-]
-line-length = 120
-target-version = "py37"
-
-[tool.ruff.isort]
-  known-first-party = ["examples", "kornia", "test"]
-
-[tool.ruff.mccabe]
-max-complexity = 39
-
-[tool.ruff.pylint]
-max-args = 16
-max-branches = 45
-max-returns = 13
-max-statements = 258
-
-[tool.ruff.per-file-ignores]
-"*/__init__.py" = ["F401"]
-"docs/*" = ["S101", "S113"]
-"docs/generate_examples.py" = ["C901", "PLR0912", "PLR0915"]
-"kornia/__init__.py" = ["I001"]
-"kornia/augmentation/container/base.py" = ["PLC1901"]
-"kornia/color/hls.py" = ["E741"]
-"kornia/contrib/models/sam/architecture/image_encoder.py" = ["PLR0913"]
-"kornia/enhance/equalization.py" = ["E741"]
-"test/*" = ["PLR0402", "S101"]
-"test/enhance/test_core.py" = ["S311"]
-"test/nerf/test_camera_utils.py" = ["S310"]
+  ignore = ['D105','D107','D203','D204','D213','D406','D407']
+  match = '.*\.py'

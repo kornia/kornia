@@ -178,4 +178,11 @@ class AffineGenerator(RandomGeneratorBase):
             sx = tensor([0] * batch_size, device=_device, dtype=_dtype)
             sy = tensor([0] * batch_size, device=_device, dtype=_dtype)
 
-        return dict(translations=translations, center=center, scale=_scale, angle=angle, shear_x=sx, shear_y=sy)
+        return {
+            "translations": translations,
+            "center": center,
+            "scale": _scale,
+            "angle": angle,
+            "shear_x": sx,
+            "shear_y": sy,
+        }

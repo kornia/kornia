@@ -147,7 +147,7 @@ class TestVideoSequential:
             output_2 = output_2.transpose(1, 2)
         assert_close(output_1, output_2)
 
-    @pytest.mark.jit
+    @pytest.mark.jit()
     @pytest.mark.skip(reason="turn off due to Union Type")
     def test_jit(self, device, dtype):
         B, C, D, H, W = 2, 3, 5, 4, 4
@@ -450,6 +450,18 @@ class TestAugmentationSequential:
         assert out_inv[3].shape == points.shape
         assert_close(out_inv[3], points, atol=1e-4, rtol=1e-4)
 
+    def test_random_resized_crop(self, device, dtype):
+        size = 50
+        input = torch.randn(3, 3, 100, 100, device=device, dtype=dtype)
+        mask = torch.randn(3, 1, 100, 100, device=device, dtype=dtype)
+        aug = K.AugmentationSequential(K.RandomResizedCrop((size, size), p=1.0), data_keys=["input", "mask"])
+
+        reproducibility_test((input, mask), aug)
+
+        out = aug(input, mask)
+        assert out[0].shape == (3, 3, size, size)
+        assert out[1].shape == (3, 1, size, size)
+
     @pytest.mark.parametrize(
         'bbox',
         [
@@ -481,7 +493,8 @@ class TestAugmentationSequential:
 
         assert len(transformed) == len(inputs)
         bboxes_transformed = transformed[-1]
-        assert len(bboxes_transformed) == len(bbox) and bboxes_transformed.__class__ == bbox.__class__
+        assert len(bboxes_transformed) == len(bbox)
+        assert bboxes_transformed.__class__ == bbox.__class__
         for i in range(len(bbox)):
             assert len(bboxes_transformed[i]) == len(bbox[i])
 
@@ -638,7 +651,7 @@ class TestAugmentationSequential:
         if random_apply is False:
             reproducibility_test((inp, mask, bbox, keypoints, bbox_2, bbox_wh, bbox_wh_2), aug)
 
-    @pytest.mark.jit
+    @pytest.mark.jit()
     @pytest.mark.skip(reason="turn off due to Union Type")
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 3, 4, 4

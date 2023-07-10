@@ -7,6 +7,7 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.contrib.face_detection import FaceKeypoint
+from kornia.contrib.models.rt_detr import RTDETR, DETRPostProcessor, RTDETRConfig
 from kornia.testing import assert_close
 
 
@@ -49,10 +50,12 @@ class TestVisionTransformer:
         vit = kornia.contrib.VisionTransformer(image_size=image_size, num_heads=H, embed_dim=D).to(device, dtype)
 
         out = vit(img)
-        assert isinstance(out, torch.Tensor) and out.shape == (B, T, D)
+        assert isinstance(out, torch.Tensor)
+        assert out.shape == (B, T, D)
 
         feats = vit.encoder_results
-        assert isinstance(feats, list) and len(feats) == 12
+        assert isinstance(feats, list)
+        assert len(feats) == 12
         for f in feats:
             assert f.shape == (B, T, D)
 
@@ -79,7 +82,8 @@ class TestMobileViT:
         mvit = kornia.contrib.MobileViT(mode=mode, patch_size=patch_size).to(device, dtype)
 
         out = mvit(img)
-        assert isinstance(out, torch.Tensor) and out.shape == (B, channel[mode], 8, 8)
+        assert isinstance(out, torch.Tensor)
+        assert out.shape == (B, channel[mode], 8, 8)
 
 
 class TestClassificationHead:
@@ -396,7 +400,7 @@ class TestLambdaModule:
         img = torch.rand(B, C, H, W, device=device, dtype=dtype)
         func = self.add_2_layer
         if not callable(func):
-            raise TypeError(f"Argument lambd should be callable, got {repr(type(func).__name__)}")
+            raise TypeError(f"Argument lambd should be callable, got {type(func).__name__!r}")
         assert isinstance(kornia.contrib.Lambda(func)(img), torch.Tensor)
 
     @pytest.mark.parametrize("x", [3, 2, 5])
@@ -731,3 +735,24 @@ class TestEdgeDetector:
         op = kornia.contrib.EdgeDetector().to(device, dtype)
         op_jit = torch.jit.script(op)
         assert op_jit is not None
+
+
+class TestObjectDetector:
+    def test_smoke(self, device, dtype):
+        batch_size = 3
+        confidence = 0.3
+        config = RTDETRConfig("resnet50d", 10, head_num_queries=10)
+        model = RTDETR.from_config(config).to(device, dtype).eval()
+        pre_processor = kornia.contrib.object_detection.ResizePreProcessor(32)
+        post_processor = DETRPostProcessor(confidence).to(device, dtype).eval()
+        detector = kornia.contrib.ObjectDetector(model, pre_processor, post_processor)
+
+        sizes = torch.randint(5, 10, (batch_size, 2)) * 32
+        imgs = [torch.randn(3, h, w, device=device, dtype=dtype) for h, w in sizes]
+        detections = detector.predict(imgs)
+
+        assert len(detections) == batch_size
+        for dets in detections:
+            assert dets.shape[1] == 6
+            assert torch.all(dets[:, 0].int() == dets[:, 0])
+            assert torch.all(dets[:, 1] >= 0.3)

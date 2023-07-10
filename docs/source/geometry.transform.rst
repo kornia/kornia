@@ -15,6 +15,8 @@ Warp operators
 .. autofunction:: warp_affine3d
 .. autofunction:: warp_image_tps
 .. autofunction:: warp_points_tps
+.. autofunction:: warp_grid
+.. autofunction:: warp_grid3d
 .. autofunction:: remap
 
 Image 2d transforms

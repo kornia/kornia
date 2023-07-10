@@ -1,7 +1,7 @@
 from itertools import product
 
 import torch
-import torch.utils.benchmark as benchmark
+from torch.utils import benchmark
 
 # Compare takes a list of measurements which we'll save in results.
 results = []

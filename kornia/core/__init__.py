@@ -7,6 +7,7 @@ from ._backend import (
     as_tensor,
     complex,
     concatenate,
+    diag,
     eye,
     linspace,
     normalize,
@@ -38,4 +39,5 @@ __all__ = [
     "complex",
     "zeros_like",
     "linspace",
+    "diag",
 ]

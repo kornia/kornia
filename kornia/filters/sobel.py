@@ -212,7 +212,6 @@ class SpatialGradient3d(Module):
         self.order: int = order
         self.mode: str = mode
         self.kernel = get_spatial_gradient_kernel3d(mode, order)
-        return
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(order={self.order}, mode={self.mode})"

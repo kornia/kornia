@@ -13,7 +13,7 @@ RGBColor = List[float]
 def _list_color_to_tensor(
     colors: List[RGBColor], dtype: Optional[torch.dtype], device: Optional[torch.device]
 ) -> Tensor:
-    return tensor([color for color in colors], dtype=dtype, device=device).T
+    return tensor(list(colors), dtype=dtype, device=device).T
 
 
 class ColorMap(ABC):

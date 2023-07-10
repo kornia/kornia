@@ -85,4 +85,4 @@ class ShearGenerator(RandomGeneratorBase):
         sx = sx.to(device=_device, dtype=_dtype)
         sy = sy.to(device=_device, dtype=_dtype)
 
-        return dict(center=center, shear_x=sx, shear_y=sy)
+        return {"center": center, "shear_x": sx, "shear_y": sy}

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import torch
-import torch.nn as nn
+from torch import nn
 
-import kornia.metrics as metrics
+from kornia import metrics
 
 
 def psnr_loss(input: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Tensor:

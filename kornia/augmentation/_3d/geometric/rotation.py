@@ -85,7 +85,7 @@ class RandomRotation3D(GeometricAugmentationBase3D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self.flags = dict(resample=Resample.get(resample), align_corners=align_corners)
+        self.flags = {"resample": Resample.get(resample), "align_corners": align_corners}
         self._param_generator = rg.RotationGenerator3D(degrees)
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:

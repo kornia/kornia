@@ -52,10 +52,10 @@ class ResizeGenerator(RandomGeneratorBase):
         _dtype = self.dtype
 
         if batch_size == 0:
-            return dict(
-                src=torch.zeros([0, 4, 2], device=_device, dtype=_dtype),
-                dst=torch.zeros([0, 4, 2], device=_device, dtype=_dtype),
-            )
+            return {
+                "src": torch.zeros([0, 4, 2], device=_device, dtype=_dtype),
+                "dst": torch.zeros([0, 4, 2], device=_device, dtype=_dtype),
+            }
 
         input_size = h, w = (batch_shape[-2], batch_shape[-1])
 
@@ -91,4 +91,4 @@ class ResizeGenerator(RandomGeneratorBase):
         _input_size = tensor(input_size, device=_device, dtype=torch.long).expand(batch_size, -1)
         _output_size = tensor(output_size, device=_device, dtype=torch.long).expand(batch_size, -1)
 
-        return dict(src=src, dst=dst, input_size=_input_size, output_size=_output_size)
+        return {"src": src, "dst": dst, "input_size": _input_size, "output_size": _output_size}
