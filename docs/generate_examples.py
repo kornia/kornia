@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 import cv2
-import matplotlib
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import requests
@@ -16,7 +16,7 @@ from kornia_moons.feature import visualize_LAF
 import kornia as K
 from kornia.core import Tensor
 
-matplotlib.use("Agg")
+mpl.use("Agg")
 
 
 def download_tutorials_examples(download_infos: dict[str, str], directory: Path):

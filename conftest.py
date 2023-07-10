@@ -2,7 +2,7 @@ import sys
 from itertools import product
 from typing import Dict
 
-import numpy
+import numpy as np
 import pytest
 import torch
 
@@ -105,7 +105,7 @@ def pytest_addoption(parser):
 
 @pytest.fixture(autouse=True)
 def add_doctest_deps(doctest_namespace):
-    doctest_namespace["np"] = numpy
+    doctest_namespace["np"] = np
     doctest_namespace["torch"] = torch
     doctest_namespace["kornia"] = kornia
 

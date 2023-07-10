@@ -118,7 +118,7 @@ class DType(Enum, metaclass=_KORNIA_EnumMeta):
         elif data == DType.FLOAT64:
             return torch.float64
 
-        raise ValueError()
+        raise ValueError
 
 
 # TODO: (low-priority) add INPUT3D, MASK3D, BBOX3D, LAFs etc.
