@@ -368,7 +368,7 @@ class TinyViT(Module):
         strides = [2, 2, 1, 1] if mobile_sam else [2, 2, 2, 1]
 
         # build layers
-        self.layers = nn.Sequential()
+        layers = []
         for i_layer, (embed_dim, depth, num_heads_i, window_size, stride) in enumerate(
             zip(embed_dims, depths, num_heads, window_sizes, strides)
         ):
@@ -399,8 +399,9 @@ class TinyViT(Module):
                     local_conv_size=local_conv_size,
                     **kwargs,
                 )
-            self.layers.append(layer)
+            layers.append(layer)
             input_resolution //= stride
+        self.layers = nn.Sequential(*layers)
         self.feat_size = input_resolution
 
         # Classifier head
