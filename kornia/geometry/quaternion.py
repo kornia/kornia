@@ -8,7 +8,6 @@ from typing import Optional, Tuple, Union
 from kornia.core import Device, Dtype, Module, Parameter, Tensor, concatenate, rand, stack, tensor, where
 from kornia.core.check import KORNIA_CHECK_TYPE
 from kornia.geometry.conversions import (
-    QuaternionCoeffOrder,
     angle_axis_to_quaternion,
     normalize_quaternion,
     quaternion_to_rotation_matrix,
@@ -241,7 +240,7 @@ class Quaternion(Module):
                     [0., 1., 0.],
                     [0., 0., 1.]], grad_fn=<ReshapeAliasBackward0>)
         """
-        return quaternion_to_rotation_matrix(self.data, order=QuaternionCoeffOrder.WXYZ)
+        return quaternion_to_rotation_matrix(self.data)
 
     @classmethod
     def from_matrix(cls, matrix: Tensor) -> 'Quaternion':
@@ -257,7 +256,7 @@ class Quaternion(Module):
             Parameter containing:
             tensor([[1., 0., 0., 0.]], requires_grad=True)
         """
-        return cls(rotation_matrix_to_quaternion(matrix, order=QuaternionCoeffOrder.WXYZ))
+        return cls(rotation_matrix_to_quaternion(matrix))
 
     @classmethod
     def from_axis_angle(cls, axis_angle: Tensor) -> 'Quaternion':
@@ -273,7 +272,7 @@ class Quaternion(Module):
             Parameter containing:
             tensor([[0.8776, 0.4794, 0.0000, 0.0000]], requires_grad=True)
         """
-        return cls(angle_axis_to_quaternion(axis_angle, order=QuaternionCoeffOrder.WXYZ))
+        return cls(angle_axis_to_quaternion(axis_angle))
 
     @classmethod
     def identity(

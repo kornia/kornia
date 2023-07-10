@@ -5,7 +5,7 @@ import torch
 
 from kornia.core import Device, Tensor
 from kornia.geometry.camera import PinholeCamera
-from kornia.geometry.conversions import QuaternionCoeffOrder, quaternion_to_rotation_matrix
+from kornia.geometry.conversions import quaternion_to_rotation_matrix
 
 
 def parse_colmap_output(
@@ -94,7 +94,7 @@ def parse_colmap_output(
 
             # Extrinsic
             q = torch.tensor([qw, qx, qy, qz], device=device)
-            R = quaternion_to_rotation_matrix(q, order=QuaternionCoeffOrder.WXYZ)
+            R = quaternion_to_rotation_matrix(q)
             t = torch.tensor([tx, ty, tz], device=device)
             extrinsic = torch.eye(4, device=device, dtype=dtype)
             extrinsic[:3, :3] = R
