@@ -2,7 +2,7 @@ import math
 from typing import Tuple
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 from kornia.core import Module, Tensor, concatenate, eye, normalize
 from kornia.core.check import KORNIA_CHECK_SHAPE
@@ -121,7 +121,6 @@ class SIFTDescriptor(Module):
             bias=False,
         )
         self.pk.weight.data.copy_(nw.reshape(1, 1, nw.size(0), nw.size(1)))
-        return
 
     def get_pooling_kernel(self) -> Tensor:
         return self.pk.weight.detach()
@@ -260,7 +259,6 @@ class DenseSIFTDescriptor(Module):
         self.PoolingConv.weight.data.copy_(
             _get_reshape_kernel(num_ang_bins, num_spatial_bins, num_spatial_bins).float()
         )
-        return
 
     def get_pooling_kernel(self) -> Tensor:
         return self.bin_pooling_kernel.weight.detach()

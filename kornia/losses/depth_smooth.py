@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 # Based on
 # https://github.com/tensorflow/models/blob/master/research/struct2depth/model.py#L625-L641

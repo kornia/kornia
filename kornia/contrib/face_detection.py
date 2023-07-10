@@ -4,8 +4,8 @@ from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 
 from kornia.geometry.bbox import nms as nms_kornia
 from kornia.utils.helpers import map_location_to_cpu

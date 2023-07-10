@@ -298,11 +298,10 @@ class DescriptorMatcher(Module):
         th: threshold on distance ratio, or other quality measure.
     """
 
-    known_modes = ['nn', 'mnn', 'snn', 'smnn']
-
     def __init__(self, match_mode: str = 'snn', th: float = 0.8) -> None:
         super().__init__()
         _match_mode: str = match_mode.lower()
+        self.known_modes = ['nn', 'mnn', 'snn', 'smnn']
         if _match_mode not in self.known_modes:
             raise NotImplementedError(f"{match_mode} is not supported. Try one of {self.known_modes}")
         self.match_mode = _match_mode
@@ -345,11 +344,10 @@ class GeometryAwareDescriptorMatcher(Module):
         th: threshold on distance ratio, or other quality measure.
     """
 
-    known_modes = ['fginn', "adalam"]
-
     def __init__(self, match_mode: str = 'fginn', params: Dict[str, Tensor] = {}) -> None:
         super().__init__()
         _match_mode: str = match_mode.lower()
+        self.known_modes = ['fginn', "adalam"]
         if _match_mode not in self.known_modes:
             raise NotImplementedError(f"{match_mode} is not supported. Try one of {self.known_modes}")
         self.match_mode = _match_mode

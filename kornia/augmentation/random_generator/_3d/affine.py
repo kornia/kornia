@@ -205,15 +205,15 @@ class AffineGenerator3D(RandomGeneratorBase):
         else:
             sxy = sxz = syx = syz = szx = szy = torch.tensor([0] * batch_size, device=_device, dtype=_dtype)
 
-        return dict(
-            translations=torch.as_tensor(translations, device=_device, dtype=_dtype),
-            center=torch.as_tensor(center, device=_device, dtype=_dtype),
-            scale=torch.as_tensor(scale, device=_device, dtype=_dtype),
-            angles=torch.as_tensor(angles, device=_device, dtype=_dtype),
-            sxy=torch.as_tensor(sxy, device=_device, dtype=_dtype),
-            sxz=torch.as_tensor(sxz, device=_device, dtype=_dtype),
-            syx=torch.as_tensor(syx, device=_device, dtype=_dtype),
-            syz=torch.as_tensor(syz, device=_device, dtype=_dtype),
-            szx=torch.as_tensor(szx, device=_device, dtype=_dtype),
-            szy=torch.as_tensor(szy, device=_device, dtype=_dtype),
-        )
+        return {
+            'translations': torch.as_tensor(translations, device=_device, dtype=_dtype),
+            'center': torch.as_tensor(center, device=_device, dtype=_dtype),
+            'scale': torch.as_tensor(scale, device=_device, dtype=_dtype),
+            'angles': torch.as_tensor(angles, device=_device, dtype=_dtype),
+            'sxy': torch.as_tensor(sxy, device=_device, dtype=_dtype),
+            'sxz': torch.as_tensor(sxz, device=_device, dtype=_dtype),
+            'syx': torch.as_tensor(syx, device=_device, dtype=_dtype),
+            'syz': torch.as_tensor(syz, device=_device, dtype=_dtype),
+            'szx': torch.as_tensor(szx, device=_device, dtype=_dtype),
+            'szy': torch.as_tensor(szy, device=_device, dtype=_dtype),
+        }

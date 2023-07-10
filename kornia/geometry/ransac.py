@@ -35,8 +35,6 @@ class RANSAC(Module):
         max_local_iterations: number of local optimization (polishing) iterations.
     """
 
-    supported_models = ['homography', 'fundamental', 'homography_from_linesegments']
-
     def __init__(
         self,
         model_type: str = 'homography',
@@ -47,6 +45,7 @@ class RANSAC(Module):
         max_lo_iters: int = 5,
     ):
         super().__init__()
+        self.supported_models = ['homography', 'fundamental', 'homography_from_linesegments']
         self.inl_th = inl_th
         self.max_iter = max_iter
         self.batch_size = batch_size

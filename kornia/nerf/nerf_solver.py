@@ -3,7 +3,7 @@ from typing import Optional, Union
 
 import torch
 import torch.nn.functional as F
-import torch.optim as optim
+from torch import optim
 
 from kornia.core import Module, Tensor, tensor, zeros
 from kornia.geometry.camera import PinholeCamera

@@ -314,13 +314,12 @@ def override_parameters(
     for k, v in params_override.items():
         if k in params_override:
             out[k] = v
+        elif if_none_exist == 'ignore':
+            pass
+        elif if_none_exist == 'raise':
+            raise RuntimeError(f"Param `{k}` not existed in `{params_override}`.")
         else:
-            if if_none_exist == 'ignore':
-                pass
-            elif if_none_exist == 'raise':
-                raise RuntimeError(f"Param `{k}` not existed in `{params_override}`.")
-            else:
-                raise ValueError(f"`{if_none_exist}` is not a valid option.")
+            raise ValueError(f"`{if_none_exist}` is not a valid option.")
     return out
 
 

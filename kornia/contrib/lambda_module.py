@@ -23,7 +23,7 @@ class Lambda(Module):
     def __init__(self, func: Callable[..., Tensor]) -> None:
         super().__init__()
         if not callable(func):
-            raise TypeError(f"Argument lambd should be callable, got {repr(type(func).__name__)}")
+            raise TypeError(f"Argument lambd should be callable, got {type(func).__name__!r}")
 
         self.func = func
 

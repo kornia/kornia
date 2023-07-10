@@ -35,9 +35,13 @@ class Resize(GeometricAugmentationBase2D):
     ) -> None:
         super().__init__(p=1.0, same_on_batch=True, p_batch=p, keepdim=keepdim)
         self._param_generator = rg.ResizeGenerator(resize_to=size, side=side)
-        self.flags = dict(
-            size=size, side=side, resample=Resample.get(resample), align_corners=align_corners, antialias=antialias
-        )
+        self.flags = {
+            "size": size,
+            "side": side,
+            "resample": Resample.get(resample),
+            "align_corners": align_corners,
+            "antialias": antialias,
+        }
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         if params["output_size"] == input.shape[-2:]:

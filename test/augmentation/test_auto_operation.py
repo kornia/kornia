@@ -4,9 +4,8 @@ from typing import List
 import pytest
 import torch
 
-import kornia.augmentation.auto.operations.ops as ops
 from kornia.augmentation.auto.autoaugment import AutoAugment
-from kornia.augmentation.auto.operations import OperationBase
+from kornia.augmentation.auto.operations import OperationBase, ops
 from kornia.augmentation.auto.rand_augment.rand_augment import RandAugment
 from kornia.augmentation.auto.rand_augment.rand_augment import default_policy as randaug_config
 from kornia.augmentation.auto.trivial_augment import TrivialAugment
@@ -18,7 +17,7 @@ from test.augmentation.test_container import reproducibility_test
 
 def _find_all_ops() -> List[OperationBase]:
     _ops = [op for _, op in inspect.getmembers(ops, inspect.isclass)]
-    return list([op() for op in _ops if issubclass(op, OperationBase) and op != OperationBase])
+    return [op() for op in _ops if issubclass(op, OperationBase) and op != OperationBase]
 
 
 def _test_sequential(augment_method, device, dtype):

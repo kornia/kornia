@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 from kornia.core import Tensor, tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE

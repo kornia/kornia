@@ -80,7 +80,7 @@ class OperationBase(Module):
 
     def _init_magnitude(self, initial_magnitude: Optional[List[Tuple[str, Optional[float]]]]) -> None:
         if isinstance(initial_magnitude, (list, tuple)):
-            if not all([isinstance(ini_mag, (list, tuple)) and len(ini_mag) == 2 for ini_mag in initial_magnitude]):
+            if not all(isinstance(ini_mag, (list, tuple)) and len(ini_mag) == 2 for ini_mag in initial_magnitude):
                 raise ValueError(f"`initial_magnitude` shall be a list of 2-element tuples. Got {initial_magnitude}")
             if len(initial_magnitude) != 1:
                 raise NotImplementedError("Multi magnitudes operations are not yet supported.")
@@ -106,11 +106,10 @@ class OperationBase(Module):
                 self.op._p_batch_gen = RelaxedBernoulli(self.temperature, self.probability)
             else:
                 self.op._p_gen = RelaxedBernoulli(self.temperature, self.probability)
+        elif self._is_batch_operation:
+            self.op._p_batch_gen = Bernoulli(self.probability)
         else:
-            if self._is_batch_operation:
-                self.op._p_batch_gen = Bernoulli(self.probability)
-            else:
-                self.op._p_gen = Bernoulli(self.probability)
+            self.op._p_gen = Bernoulli(self.probability)
 
     def train(self: T, mode: bool = True) -> T:
         self._update_probability_gen(relaxation=mode)

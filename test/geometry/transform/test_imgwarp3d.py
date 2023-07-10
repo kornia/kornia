@@ -24,7 +24,7 @@ class TestWarpAffine3d:
         sample = torch.rand(B, C, 3, 4, 5, device=device, dtype=dtype)
         P = torch.rand(B, 3, 4, device=device, dtype=dtype)
         output = proj.warp_affine3d(sample, P, out_shape)
-        assert list(output.shape) == [B, C] + list(out_shape)
+        assert list(output.shape) == [B, C, *list(out_shape)]
 
     def test_gradcheck(self, device):
         # generate input data

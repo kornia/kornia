@@ -2,7 +2,7 @@ from functools import wraps
 from typing import Any, Callable, List
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 from kornia.core import Tensor
 

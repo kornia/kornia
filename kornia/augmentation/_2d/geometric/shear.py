@@ -69,9 +69,11 @@ class RandomShear(GeometricAugmentationBase2D):
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator: rg.ShearGenerator = rg.ShearGenerator(shear)
-        self.flags = dict(
-            resample=Resample.get(resample), padding_mode=SamplePadding.get(padding_mode), align_corners=align_corners
-        )
+        self.flags = {
+            "resample": Resample.get(resample),
+            "padding_mode": SamplePadding.get(padding_mode),
+            "align_corners": align_corners,
+        }
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return get_shear_matrix2d(

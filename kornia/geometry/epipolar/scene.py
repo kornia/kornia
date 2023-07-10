@@ -42,4 +42,4 @@ def generate_scene(num_views: int, num_points: int) -> Dict[str, torch.Tensor]:
     # project points3d and backproject to image plane
     points2d = transform_points(P, points3d.expand(num_views, -1, -1))
 
-    return dict(K=K, R=rot_mat, t=tvec, P=P, points3d=points3d, points2d=points2d)
+    return {"K": K, "R": rot_mat, "t": tvec, "P": P, "points3d": points3d, "points2d": points2d}

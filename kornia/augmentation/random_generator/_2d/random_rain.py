@@ -69,9 +69,9 @@ class RainGenerator(RandomGeneratorBase):
             self.coordinates_sampler,
             same_on_batch=same_on_batch,
         ).to(device=_device)
-        return dict(
-            number_of_drops_factor=number_of_drops_factor,
-            coordinates_factor=coordinates_factor,
-            drop_height_factor=drop_height_factor,
-            drop_width_factor=drop_width_factor,
-        )
+        return {
+            'number_of_drops_factor': number_of_drops_factor,
+            'coordinates_factor': coordinates_factor,
+            'drop_height_factor': drop_height_factor,
+            'drop_width_factor': drop_width_factor,
+        }

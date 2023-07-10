@@ -53,4 +53,4 @@ class RandomGaussianBlurGenerator(RandomGeneratorBase):
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.sigma])
         sigma = _adapted_rsampling((batch_size,), self.sigma_sampler, same_on_batch)
-        return dict(sigma=sigma.to(device=_device, dtype=_dtype))
+        return {"sigma": sigma.to(device=_device, dtype=_dtype)}

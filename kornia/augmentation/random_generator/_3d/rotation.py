@@ -61,8 +61,12 @@ class RotationGenerator3D(RandomGeneratorBase):
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.degrees])
 
-        return dict(
-            yaw=_adapted_rsampling((batch_size,), self.yaw_sampler, same_on_batch).to(device=_device, dtype=_dtype),
-            pitch=_adapted_rsampling((batch_size,), self.pitch_sampler, same_on_batch).to(device=_device, dtype=_dtype),
-            roll=_adapted_rsampling((batch_size,), self.roll_sampler, same_on_batch).to(device=_device, dtype=_dtype),
-        )
+        return {
+            "yaw": _adapted_rsampling((batch_size,), self.yaw_sampler, same_on_batch).to(device=_device, dtype=_dtype),
+            "pitch": _adapted_rsampling((batch_size,), self.pitch_sampler, same_on_batch).to(
+                device=_device, dtype=_dtype
+            ),
+            "roll": _adapted_rsampling((batch_size,), self.roll_sampler, same_on_batch).to(
+                device=_device, dtype=_dtype
+            ),
+        }

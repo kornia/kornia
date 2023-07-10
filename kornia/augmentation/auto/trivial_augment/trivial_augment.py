@@ -3,9 +3,9 @@ from typing import Iterator, List, Optional, Tuple
 import torch
 from torch.distributions import Categorical
 
-import kornia.augmentation.auto.rand_augment.ops as ops
 from kornia.augmentation.auto.base import SUBPLOLICY_CONFIG, PolicyAugmentBase
 from kornia.augmentation.auto.operations.policy import PolicySequential
+from kornia.augmentation.auto.rand_augment import ops
 from kornia.augmentation.container.params import ParamItem
 from kornia.core import Module
 

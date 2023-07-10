@@ -17,6 +17,10 @@ from .video import VideoSequential
 
 __all__ = ["AugmentationSequential"]
 
+_BOXES_OPTIONS = {DataKey.BBOX, DataKey.BBOX_XYXY, DataKey.BBOX_XYWH}
+_KEYPOINTS_OPTIONS = {DataKey.KEYPOINTS}
+_IMG_MSK_OPTIONS = {DataKey.INPUT, DataKey.MASK}
+
 
 class AugmentationSequential(ImageSequential):
     r"""AugmentationSequential for handling multiple input types like inputs, masks, keypoints at once.
@@ -143,13 +147,6 @@ class AugmentationSequential(ImageSequential):
         [torch.Size([1, 2, 3, 5, 6]), torch.Size([1, 2, 3, 5, 6]), ...([1, 2, 1, 4, 2]), torch.Size([1, 2, 1, 2])]
     """
 
-    _transform_matrix: Optional[Tensor]
-    _transform_matrices: List[Tensor] = []
-
-    _boxes_options = {DataKey.BBOX, DataKey.BBOX_XYXY, DataKey.BBOX_XYWH}
-    _keypoints_options = {DataKey.KEYPOINTS}
-    _img_msk_options = {DataKey.INPUT, DataKey.MASK}
-
     def __init__(
         self,
         *args: Union[_AugmentationBase, ImageSequential],
@@ -159,8 +156,13 @@ class AugmentationSequential(ImageSequential):
         random_apply: Union[int, bool, Tuple[int, int]] = False,
         random_apply_weights: Optional[List[float]] = None,
         transformation_matrix: str = "silence",
-        extra_args: Dict[DataKey, Dict[str, Any]] = {DataKey.MASK: dict(resample=Resample.NEAREST, align_corners=None)},
+        extra_args: Dict[DataKey, Dict[str, Any]] = {
+            DataKey.MASK: {"resample": Resample.NEAREST, "align_corners": None}
+        },
     ) -> None:
+        self._transform_matrix: Optional[Tensor]
+        self._transform_matrices: List[Tensor] = []
+
         super().__init__(
             *args,
             same_on_batch=same_on_batch,
@@ -197,7 +199,7 @@ class AugmentationSequential(ImageSequential):
             # NOTE: only for images are supported for 3D.
             if isinstance(arg, K.AugmentationBase3D):
                 self.contains_3d_augmentation = True
-        self._transform_matrix: Optional[Tensor] = None
+        self._transform_matrix = None
         self.extra_args = extra_args
 
     def clear_state(self) -> None:
@@ -294,11 +296,11 @@ class AugmentationSequential(ImageSequential):
     def _arguments_preproc(self, *args: DataType, data_keys: List[DataKey]) -> List[DataType]:
         inp: List[DataType] = []
         for arg, dcate in zip(args, data_keys):
-            if DataKey.get(dcate) in self._img_msk_options:
+            if DataKey.get(dcate) in _IMG_MSK_OPTIONS:
                 inp.append(arg)
-            elif DataKey.get(dcate) in self._keypoints_options:
+            elif DataKey.get(dcate) in _KEYPOINTS_OPTIONS:
                 inp.append(self._preproc_keypoints(arg, dcate))
-            elif DataKey.get(dcate) in self._boxes_options:
+            elif DataKey.get(dcate) in _BOXES_OPTIONS:
                 inp.append(self._preproc_boxes(arg, dcate))
             else:
                 raise NotImplementedError(f"input type of {dcate} is not implemented.")
@@ -309,12 +311,12 @@ class AugmentationSequential(ImageSequential):
     ) -> List[DataType]:
         out: List[DataType] = []
         for in_arg, out_arg, dcate in zip(in_args, out_args, data_keys):
-            if DataKey.get(dcate) in self._img_msk_options:
+            if DataKey.get(dcate) in _IMG_MSK_OPTIONS:
                 # It is tensor type already.
                 out.append(out_arg)
                 # TODO: may add the float to integer (for masks), etc.
 
-            elif DataKey.get(dcate) in self._keypoints_options:
+            elif DataKey.get(dcate) in _KEYPOINTS_OPTIONS:
                 _out_k = self._postproc_keypoint(in_arg, cast(Keypoints, out_arg), dcate)
                 if is_autocast_enabled() and isinstance(in_arg, (Tensor, Keypoints)):
                     if isinstance(_out_k, list):
@@ -323,7 +325,7 @@ class AugmentationSequential(ImageSequential):
                         _out_k = _out_k.type(in_arg.dtype)
                 out.append(_out_k)
 
-            elif DataKey.get(dcate) in self._boxes_options:
+            elif DataKey.get(dcate) in _BOXES_OPTIONS:
                 _out_b = self._postproc_boxes(in_arg, cast(Boxes, out_arg), dcate)
                 if is_autocast_enabled() and isinstance(in_arg, (Tensor, Boxes)):
                     if isinstance(_out_b, list):
