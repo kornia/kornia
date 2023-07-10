@@ -7,9 +7,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from torch import nn, ones
+from torch import nn
 
-from kornia.core import Module, Tensor, zeros
+from kornia.core import Module, Tensor
 
 
 class MLPBlock(Module):
@@ -21,23 +21,6 @@ class MLPBlock(Module):
 
     def forward(self, x: Tensor) -> Tensor:
         return self.lin2(self.act(self.lin1(x)))
-
-
-# From https://github.com/facebookresearch/detectron2/blob/main/detectron2/layers/batch_norm.py
-# Itself from https://github.com/facebookresearch/ConvNeXt/blob/d1fa8f6fef0a165b27399986cc2bdacc92777e40/models/convnext.py#L119  # noqa
-class LayerNorm2d(Module):
-    def __init__(self, num_channels: int, eps: float = 1e-6) -> None:
-        super().__init__()
-        self.weight = nn.Parameter(ones(num_channels))
-        self.bias = nn.Parameter(zeros(num_channels))
-        self.eps = eps
-
-    def forward(self, x: Tensor) -> Tensor:
-        u = x.mean(1, keepdim=True)
-        s = (x - u).pow(2).mean(1, keepdim=True)
-        x = (x - u) / (s + self.eps).sqrt()
-        x = self.weight[:, None, None] * x + self.bias[:, None, None]
-        return x
 
 
 class LayerNorm(nn.LayerNorm):

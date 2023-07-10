@@ -1,4 +1,7 @@
 # https://github.com/microsoft/Cream/blob/main/TinyViT/models/tiny_vit.py
+# https://github.com/ChaoningZhang/MobileSAM/blob/master/mobile_sam/modeling/tiny_vit_sam.py
+# TODO: make this available as an image classifier
+# TODO: change url to fixed commit hash
 
 import itertools
 from typing import Any
@@ -7,7 +10,7 @@ import torch
 from torch import nn
 from torch.utils import checkpoint
 
-from kornia.contrib.models.common import DropPath
+from kornia.contrib.models.common import DropPath, LayerNorm2d
 from kornia.contrib.models.sam.architecture.image_encoder import window_partition, window_unpartition
 from kornia.core import Module, Tensor
 
@@ -58,13 +61,14 @@ class MBConv(Module):
 
 class PatchMerging(Module):
     def __init__(
-        self, input_resolution: tuple[int, int], dim: int, out_dim: int, activation: type[Module] = nn.GELU
+        self, input_resolution: tuple[int, int], dim: int, out_dim: int, stride: int, activation: type[Module] = nn.GELU
     ) -> None:
+        # assert stride in (1, 2)
         super().__init__()
         self.input_resolution = input_resolution
         self.conv1 = ConvBN(dim, out_dim, 1)
         self.act1 = activation()
-        self.conv2 = ConvBN(out_dim, out_dim, 3, 2, 1, groups=out_dim)
+        self.conv2 = ConvBN(out_dim, out_dim, 3, stride, 1, groups=out_dim)
         self.act2 = activation()
         self.conv3 = ConvBN(out_dim, out_dim, 1)
 
@@ -88,6 +92,7 @@ class ConvLayer(Module):
         dim: int,
         input_resolution: tuple[int, int],
         depth: int,
+        stride: int,
         activation: type[Module] = nn.GELU,
         drop_path: float | list[float] = 0.0,
         downsample: type[PatchMerging] | None = None,
@@ -108,7 +113,9 @@ class ConvLayer(Module):
         # patch merging layer
         self.downsample: Module
         if downsample is not None:
-            self.downsample = downsample(input_resolution, dim=dim, out_dim=out_dim, activation=activation)
+            self.downsample = downsample(
+                input_resolution, dim=dim, out_dim=out_dim, stride=stride, activation=activation
+            )
         else:
             self.downsample = nn.Identity()
 
@@ -139,6 +146,7 @@ class MLP(nn.Sequential):
         self.drop2 = nn.Dropout(drop)
 
 
+# TODO: check if can merge with image_encoder.Attention
 class Attention(Module):
     def __init__(
         self,
@@ -252,8 +260,8 @@ class TinyViTBlock(Module):
             x = self.attn(x)
         else:
             x = x.view(B, H, W, C)
-            x, (Hp, Wp) = window_partition(x, self.window_size)
-            x = self.attn(x)
+            x, (Hp, Wp) = window_partition(x, self.window_size)  # (B * num_windows, window_size, window_size, C)
+            x = self.attn(x.flatten(1, 2))
             x = window_unpartition(x, self.window_size, (Hp, Wp), (H, W))
             x = x.view(B, L, C)
 
@@ -302,6 +310,7 @@ class BasicLayer(Module):
         mlp_ratio: float = 4.0,
         drop: float = 0.0,
         drop_path: float | list[float] = 0.0,
+        stride: int = 2,
         downsample: type[PatchMerging] | None = None,
         use_checkpoint: bool = False,
         local_conv_size: int = 3,
@@ -335,7 +344,9 @@ class BasicLayer(Module):
         # patch merging layer
         self.downsample: Module
         if downsample is not None:
-            self.downsample = downsample(input_resolution, dim=dim, out_dim=out_dim, activation=activation)
+            self.downsample = downsample(
+                input_resolution, dim=dim, out_dim=out_dim, stride=stride, activation=activation
+            )
         else:
             self.downsample = nn.Identity()
 
@@ -361,7 +372,7 @@ class TinyViT(Module):
         window_sizes: list[int] = [7, 7, 14, 7],
         mlp_ratio: float = 4.0,
         drop_rate: float = 0.0,
-        drop_path_rate: float = 0.1,
+        drop_path_rate: float = 0.0,
         use_checkpoint: bool = False,
         mbconv_expand_ratio: float = 4.0,
         local_conv_size: int = 3,
@@ -369,6 +380,8 @@ class TinyViT(Module):
         activation: type[Module] = nn.GELU,
     ) -> None:
         super().__init__()
+        self.img_size = img_size
+        self.stride = 16
 
         # self.num_classes = num_classes
         self.depths = depths
@@ -387,11 +400,12 @@ class TinyViT(Module):
             kwargs: dict[str, Any] = {
                 'dim': embed_dims[i_layer],
                 'input_resolution': (
-                    self.patches_resolution[0] // (2**i_layer),
-                    self.patches_resolution[1] // (2**i_layer),
+                    self.patches_resolution[0] // (2 ** min(i_layer, 2)),
+                    self.patches_resolution[1] // (2 ** min(i_layer, 2)),
                 ),
                 'depth': depths[i_layer],
                 'drop_path': dpr[sum(depths[:i_layer]) : sum(depths[: i_layer + 1])],
+                'stride': 2 if i_layer < self.num_layers - 2 else 1,  # only for MobileSAM
                 'downsample': PatchMerging if (i_layer < self.num_layers - 1) else None,
                 'use_checkpoint': use_checkpoint,
                 'out_dim': embed_dims[min(i_layer + 1, len(embed_dims) - 1)],
@@ -412,12 +426,21 @@ class TinyViT(Module):
             self.layers.append(layer)
 
         # Classifier head
-        # self.norm_head = nn.LayerNorm(embed_dims[-1])
-        # self.head = nn.Linear(embed_dims[-1], num_classes) if num_classes > 0 else torch.nn.Identity()
+        num_classes = 1000
+        self.norm_head = nn.LayerNorm(embed_dims[-1])
+        self.head = nn.Linear(embed_dims[-1], num_classes) if num_classes > 0 else torch.nn.Identity()
 
         # init weights
         self.apply(self._init_weights)
         # self.set_layer_lr_decay(layer_lr_decay)
+
+        # only in MobileSAM
+        self.neck = nn.Sequential(
+            nn.Conv2d(embed_dims[-1], 256, 1, bias=False),
+            LayerNorm2d(256),
+            nn.Conv2d(256, 256, 3, 1, 1, bias=False),
+            LayerNorm2d(256),
+        )
 
     # def set_layer_lr_decay(self, layer_lr_decay):
     #     decay_rate = layer_lr_decay
@@ -469,7 +492,47 @@ class TinyViT(Module):
     def forward(self, x: Tensor) -> Tensor:
         x = self.patch_embed(x)
         x = self.layers(x)
-        x = x.mean(1)
+
+        # only in MobileSAM
+        x = x.unflatten(1, (self.img_size // self.stride, self.img_size // self.stride))
+        x = self.neck(x.permute(0, 3, 1, 2))
+
+        # x = x.mean(1)
         # x = self.norm_head(x)
         # x = self.head(x)
         return x
+
+
+def tiny_vit_5m(img_size: int) -> TinyViT:
+    return TinyViT(
+        img_size=img_size,
+        in_chans=3,
+        embed_dims=[64, 128, 160, 320],
+        depths=[2, 2, 6, 2],
+        num_heads=[2, 4, 5, 10],
+        window_sizes=[7, 7, 14, 7],
+        drop_path_rate=0.0,
+    )
+
+
+def tiny_vit_11m(img_size: int) -> TinyViT:
+    return TinyViT(
+        img_size=img_size,
+        in_chans=3,
+        embed_dims=[64, 128, 256, 448],
+        depths=[2, 2, 6, 2],
+        num_heads=[2, 4, 8, 14],
+        window_sizes=[7, 7, 14, 7],
+        drop_path_rate=0.1,
+    )
+
+
+def tiny_vit_21m(img_size: int) -> TinyViT:
+    return TinyViT(
+        img_size=img_size,
+        embed_dims=[96, 192, 384, 576],
+        depths=[2, 2, 6, 2],
+        num_heads=[3, 6, 12, 18],
+        window_sizes=[7, 7, 14, 7],
+        drop_path_rate=0.2,
+    )

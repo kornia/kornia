@@ -20,6 +20,7 @@ from kornia.contrib.models.sam.architecture.common import LayerNorm
 from kornia.contrib.models.sam.architecture.image_encoder import ImageEncoderViT
 from kornia.contrib.models.sam.architecture.mask_decoder import MaskDecoder
 from kornia.contrib.models.sam.architecture.prompt_encoder import PromptEncoder
+from kornia.contrib.models.sam.architecture.tiny_vit import TinyViT, tiny_vit_5m
 from kornia.contrib.models.sam.architecture.transformer import TwoWayTransformer
 from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
@@ -31,6 +32,7 @@ class SamModelType(Enum):
     vit_h = 0
     vit_l = 1
     vit_b = 2
+    mobile_sam = 3
 
 
 @dataclass
@@ -64,7 +66,7 @@ class Sam(ModelBase[SamConfig]):
     mask_threshold: float = 0.0
 
     def __init__(
-        self, image_encoder: ImageEncoderViT, prompt_encoder: PromptEncoder, mask_decoder: MaskDecoder
+        self, image_encoder: ImageEncoderViT | TinyViT, prompt_encoder: PromptEncoder, mask_decoder: MaskDecoder
     ) -> None:
         """SAM predicts object masks from an image and input prompts.
 
@@ -99,7 +101,12 @@ class Sam(ModelBase[SamConfig]):
         if isinstance(model_type, int):
             model_type = SamModelType(model_type)
         elif isinstance(model_type, str):
-            _map_sam_type = {'vit_h': SamModelType.vit_h, 'vit_l': SamModelType.vit_l, 'vit_b': SamModelType.vit_b}
+            _map_sam_type = {
+                'vit_h': SamModelType.vit_h,
+                'vit_l': SamModelType.vit_l,
+                'vit_b': SamModelType.vit_b,
+                'mobile_sam': SamModelType.mobile_sam,
+            }
             model_type = _map_sam_type[model_type]
 
         if model_type == SamModelType.vit_b:
@@ -122,6 +129,33 @@ class Sam(ModelBase[SamConfig]):
                 encoder_num_heads=16,
                 encoder_global_attn_indexes=(7, 15, 23, 31),
             )
+
+        elif model_type == SamModelType.mobile_sam:
+            # TODO: merge this with _build_sam()
+            prompt_embed_dim = 256
+            image_size = 1024
+            vit_patch_size = 16
+            image_embedding_size = image_size // vit_patch_size
+
+            model = Sam(
+                image_encoder=tiny_vit_5m(image_size),
+                prompt_encoder=PromptEncoder(
+                    embed_dim=prompt_embed_dim,
+                    image_embedding_size=(image_embedding_size, image_embedding_size),
+                    input_image_size=(image_size, image_size),
+                    mask_in_chans=16,
+                ),
+                mask_decoder=MaskDecoder(
+                    num_multimask_outputs=3,
+                    transformer=TwoWayTransformer(depth=2, embedding_dim=prompt_embed_dim, mlp_dim=2048, num_heads=8),
+                    transformer_dim=prompt_embed_dim,
+                    iou_head_depth=3,
+                    iou_head_hidden_dim=256,
+                ),
+                #     pixel_mean=[123.675, 116.28, 103.53],
+                #     pixel_std=[58.395, 57.12, 57.375],
+            )
+
         elif (
             isinstance(config.encoder_embed_dim, int)
             and isinstance(config.encoder_depth, int)
@@ -134,6 +168,7 @@ class Sam(ModelBase[SamConfig]):
                 encoder_num_heads=config.num_heads,
                 encoder_global_attn_indexes=config.encoder_global_attn_indexes,
             )
+
         else:
             raise NotImplementedError('Unexpected config. The model_type should be provide or the encoder configs.')
 
