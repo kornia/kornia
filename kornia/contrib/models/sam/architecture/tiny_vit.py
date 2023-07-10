@@ -4,11 +4,11 @@ import itertools
 from typing import Any
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 from torch.utils import checkpoint
 
 from kornia.contrib.models.common import DropPath
+from kornia.contrib.models.sam.architecture.image_encoder import window_partition, window_unpartition
 from kornia.core import Module, Tensor
 
 
@@ -252,29 +252,9 @@ class TinyViTBlock(Module):
             x = self.attn(x)
         else:
             x = x.view(B, H, W, C)
-            pad_b = (self.window_size - H % self.window_size) % self.window_size
-            pad_r = (self.window_size - W % self.window_size) % self.window_size
-            padding = pad_b > 0 or pad_r > 0
-
-            if padding:
-                x = F.pad(x, (0, 0, 0, pad_r, 0, pad_b))
-
-            pH, pW = H + pad_b, W + pad_r
-            nH = pH // self.window_size
-            nW = pW // self.window_size
-            # window partition
-            x = (
-                x.view(B, nH, self.window_size, nW, self.window_size, C)
-                .transpose(2, 3)
-                .reshape(B * nH * nW, self.window_size * self.window_size, C)
-            )
+            x, (Hp, Wp) = window_partition(x, self.window_size)
             x = self.attn(x)
-            # window reverse
-            x = x.view(B, nH, nW, self.window_size, self.window_size, C).transpose(2, 3).reshape(B, pH, pW, C)
-
-            if padding:
-                x = x[:, :H, :W].contiguous()
-
+            x = window_unpartition(x, self.window_size, (Hp, Wp), (H, W))
             x = x.view(B, L, C)
 
         x = res_x + self.drop_path(x)
@@ -385,7 +365,7 @@ class TinyViT(Module):
         use_checkpoint: bool = False,
         mbconv_expand_ratio: float = 4.0,
         local_conv_size: int = 3,
-        layer_lr_decay: float = 1.0,
+        # layer_lr_decay: float = 1.0,
         activation: type[Module] = nn.GELU,
     ) -> None:
         super().__init__()
@@ -402,7 +382,7 @@ class TinyViT(Module):
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]  # stochastic depth decay rule
 
         # build layers
-        self.layers = nn.ModuleList()
+        self.layers = nn.Sequential()
         for i_layer in range(self.num_layers):
             kwargs: dict[str, Any] = {
                 'dim': embed_dims[i_layer],
@@ -437,41 +417,42 @@ class TinyViT(Module):
 
         # init weights
         self.apply(self._init_weights)
-        self.set_layer_lr_decay(layer_lr_decay)
+        # self.set_layer_lr_decay(layer_lr_decay)
 
-    def set_layer_lr_decay(self, layer_lr_decay):
-        decay_rate = layer_lr_decay
+    # def set_layer_lr_decay(self, layer_lr_decay):
+    #     decay_rate = layer_lr_decay
 
-        # layers -> blocks (depth)
-        depth = sum(self.depths)
-        lr_scales = [decay_rate ** (depth - i - 1) for i in range(depth)]
+    #     # layers -> blocks (depth)
+    #     depth = sum(self.depths)
+    #     lr_scales = [decay_rate ** (depth - i - 1) for i in range(depth)]
 
-        def _set_lr_scale(m, scale):
-            for p in m.parameters():
-                p.lr_scale = scale
+    #     def _set_lr_scale(m, scale):
+    #         for p in m.parameters():
+    #             p.lr_scale = scale
 
-        self.patch_embed.apply(lambda x: _set_lr_scale(x, lr_scales[0]))
-        i = 0
-        for layer in self.layers:
-            for block in layer.blocks:
-                block.apply(lambda x: _set_lr_scale(x, lr_scales[i]))
-                i += 1
-            if not isinstance(layer.downsample, nn.Identity):
-                layer.downsample.apply(lambda x: _set_lr_scale(x, lr_scales[i - 1]))
-        # assert i == depth
-        # for m in [self.norm_head, self.head]:
-        #     m.apply(lambda x: _set_lr_scale(x, lr_scales[-1]))
+    #     self.patch_embed.apply(lambda x: _set_lr_scale(x, lr_scales[0]))
+    #     i = 0
+    #     for layer in self.layers:
+    #         for block in layer.blocks:
+    #             block.apply(lambda x: _set_lr_scale(x, lr_scales[i]))
+    #             i += 1
+    #         if not isinstance(layer.downsample, nn.Identity):
+    #             layer.downsample.apply(lambda x: _set_lr_scale(x, lr_scales[i - 1]))
+    #     assert i == depth
+    #     for m in [self.norm_head, self.head]:
+    #         m.apply(lambda x: _set_lr_scale(x, lr_scales[-1]))
 
-        # for k, p in self.named_parameters():
-        #     p.param_name = k
+    #     for k, p in self.named_parameters():
+    #         p.param_name = k
 
-        # def _check_lr_scale(m):
-        #     for p in m.parameters():
-        #         assert hasattr(p, 'lr_scale'), p.param_name
+    #     def _check_lr_scale(m):
+    #         for p in m.parameters():
+    #             assert hasattr(p, 'lr_scale'), p.param_name
 
-        # self.apply(_check_lr_scale)
+    #     self.apply(_check_lr_scale)
 
-    def _init_weights(self, m):
+    @staticmethod
+    def _init_weights(m):
         if isinstance(m, nn.Linear):
             nn.init.trunc_normal_(m.weight, std=0.02)
             if isinstance(m, nn.Linear) and m.bias is not None:
@@ -479,28 +460,16 @@ class TinyViT(Module):
         elif isinstance(m, nn.LayerNorm):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
+        # NOTE: how about batch norm and conv2d?
 
     @torch.jit.ignore
     def no_weight_decay_keywords(self):
         return {'attention_biases'}
 
-    def forward_features(self, x):
-        # x: (N, C, H, W)
-        x = self.patch_embed(x)
-
-        x = self.layers[0](x)
-        start_i = 1
-
-        for i in range(start_i, len(self.layers)):
-            layer = self.layers[i]
-            x = layer(x)
-
-        x = x.mean(1)
-
-        return x
-
     def forward(self, x: Tensor) -> Tensor:
-        x = self.forward_features(x)
+        x = self.patch_embed(x)
+        x = self.layers(x)
+        x = x.mean(1)
         # x = self.norm_head(x)
         # x = self.head(x)
         return x
