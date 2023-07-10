@@ -413,6 +413,7 @@ class TinyViT(Module):
         self.apply(self._init_weights)
         # self.set_layer_lr_decay(layer_lr_decay)
 
+        self.neck: Module | None
         if mobile_sam:
             self.neck = nn.Sequential(
                 nn.Conv2d(embed_dims[-1], 256, 1, bias=False),
