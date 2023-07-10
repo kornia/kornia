@@ -2,6 +2,8 @@
 # https://github.com/ChaoningZhang/MobileSAM/blob/01ea8d0f5590082f0c1ceb0a3e2272593f20154b/mobile_sam/modeling/tiny_vit_sam.py
 # NOTE: make this available as an image classifier?
 
+from __future__ import annotations
+
 import itertools
 from typing import Any
 
