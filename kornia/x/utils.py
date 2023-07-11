@@ -1,8 +1,8 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, Tuple
+from typing import Any, Callable, Dict, Tuple
 
-from kornia.core import Module
+from kornia.core import Module, Tensor
 from kornia.metrics.average_meter import AverageMeter
 
 # import yaml
@@ -52,11 +52,11 @@ class Lambda(Module):
         torch.Size([1, 4, 32, 16])
     """
 
-    def __init__(self, fcn):
+    def __init__(self, fcn: Callable[..., Any]) -> None:
         super().__init__()
         self.fcn = fcn
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Any:
         return self.fcn(x)
 
 
@@ -67,7 +67,7 @@ class StatsTracker:
         self._stats: Dict[str, AverageMeter] = {}
 
     @property
-    def stats(self):
+    def stats(self) -> Dict[str, AverageMeter]:
         return self._stats
 
     def update(self, key: str, val: float, batch_size: int) -> None:

@@ -22,7 +22,7 @@ class AverageMeter:
     def __init__(self) -> None:
         self.reset()
 
-    def reset(self):
+    def reset(self) -> None:
         self.val = 0
         self._avg = 0
         self.sum = 0

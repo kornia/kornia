@@ -815,7 +815,9 @@ def get_shear_matrix3d(
     return shear_mat
 
 
-def _compute_shear_matrix_3d(sxy_tan, sxz_tan, syx_tan, syz_tan, szx_tan, szy_tan):
+def _compute_shear_matrix_3d(
+    sxy_tan: Tensor, sxz_tan: Tensor, syx_tan: Tensor, syz_tan: Tensor, szx_tan: Tensor, szy_tan: Tensor
+) -> tuple[Tensor, ...]:
     ones = torch.ones_like(sxy_tan)
 
     m00, m10, m20 = ones, sxy_tan, sxz_tan

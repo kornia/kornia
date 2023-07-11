@@ -128,7 +128,7 @@ class SIFTDescriptor(Module):
     def get_weighting_kernel(self) -> Tensor:
         return self.gk.detach()
 
-    def forward(self, input):
+    def forward(self, input: Tensor) -> Tensor:
         KORNIA_CHECK_SHAPE(input, ["B", "1", f"{self.patch_size}", f"{self.patch_size}"])
         B: int = input.shape[0]
         self.pk = self.pk.to(input.dtype).to(input.device)

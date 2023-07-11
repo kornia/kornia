@@ -1,10 +1,14 @@
+from typing import Any, Dict, Tuple
+
 import torch
 import torch.nn.functional as F
 from torch import nn
 
+from kornia.core import Module, Tensor
 
-class FinePreprocess(nn.Module):
-    def __init__(self, config):
+
+class FinePreprocess(Module):
+    def __init__(self, config: Dict[str, Any]) -> None:
         super().__init__()
 
         self.config = config
@@ -20,12 +24,14 @@ class FinePreprocess(nn.Module):
 
         self._reset_parameters()
 
-    def _reset_parameters(self):
+    def _reset_parameters(self) -> None:
         for p in self.parameters():
             if p.dim() > 1:
                 nn.init.kaiming_normal_(p, mode="fan_out", nonlinearity="relu")
 
-    def forward(self, feat_f0, feat_f1, feat_c0, feat_c1, data):
+    def forward(
+        self, feat_f0: Tensor, feat_f1: Tensor, feat_c0: Tensor, feat_c1: Tensor, data: Dict[str, Any]
+    ) -> Tuple[Tensor, Tensor]:
         W = self.W
         stride = data['hw0_f'][0] // data['hw0_c'][0]
 

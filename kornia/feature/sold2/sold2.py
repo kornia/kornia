@@ -75,7 +75,7 @@ class SOLD2(Module):
         >>> matches = sold2.match(line_seg1, line_seg2, desc1[None], desc2[None])
     """
 
-    def __init__(self, pretrained: bool = True, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, pretrained: bool = True, config: Optional[Dict[str, Any]] = None) -> None:
         super().__init__()
         # Initialize some parameters
         self.config = default_cfg if config is None else config
@@ -143,7 +143,7 @@ class SOLD2(Module):
         """
         return self.line_matcher(line_seg1, line_seg2, desc1, desc2)
 
-    def adapt_state_dict(self, state_dict):
+    def adapt_state_dict(self, state_dict: Dict[str, Any]) -> Dict[str, Any]:
         del state_dict["w_junc"]
         del state_dict["w_heatmap"]
         del state_dict["w_desc"]
@@ -168,7 +168,7 @@ class WunschLineMatcher(Module):
         top_k_candidates: int = 10,
         grid_size: int = 8,
         line_score: bool = False,
-    ):
+    ) -> None:
         super().__init__()
         self.cross_check = cross_check
         self.num_samples = num_samples
@@ -343,7 +343,7 @@ def keypoints_to_grid(keypoints: Tensor, img_size: Tuple[int, int]) -> Tensor:
     return grid_points
 
 
-def batched_linspace(start, end, step, dim):
+def batched_linspace(start: Tensor, end: Tensor, step: int, dim: int) -> Tensor:
     """Batch version of torch.normalize (similar to the numpy one)."""
     intervals = ((end - start) / (step - 1)).unsqueeze(dim)
     broadcast_size = [1] * len(intervals.shape)

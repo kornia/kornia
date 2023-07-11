@@ -1,4 +1,5 @@
 import math
+from typing import Tuple
 
 import torch
 
@@ -55,7 +56,7 @@ def piecewise_arange(piecewise_idxer: Tensor) -> Tensor:
     return ranges[tmp]
 
 
-def batch_2x2_inv(m, check_dets=False):
+def batch_2x2_inv(m: Tensor, check_dets: bool = False) -> Tensor:
     a = m[..., 0, 0]
     b = m[..., 0, 1]
     c = m[..., 1, 0]
@@ -71,15 +72,15 @@ def batch_2x2_inv(m, check_dets=False):
     return minv / det.unsqueeze(-1).unsqueeze(-1)
 
 
-def batch_2x2_Q(m):
+def batch_2x2_Q(m: Tensor) -> Tensor:
     return batch_2x2_inv(batch_2x2_invQ(m), check_dets=True)
 
 
-def batch_2x2_invQ(m):
+def batch_2x2_invQ(m: Tensor) -> Tensor:
     return m @ m.transpose(-1, -2)
 
 
-def batch_2x2_det(m):
+def batch_2x2_det(m: Tensor) -> Tensor:
     a = m[..., 0, 0]
     b = m[..., 0, 1]
     c = m[..., 1, 0]
@@ -87,7 +88,7 @@ def batch_2x2_det(m):
     return a * d - b * c
 
 
-def batch_2x2_ellipse(m):
+def batch_2x2_ellipse(m: Tensor) -> Tuple[Tensor, Tensor]:
     am = m[..., 0, 0]
     bm = m[..., 0, 1]
     cm = m[..., 1, 0]
@@ -130,7 +131,7 @@ def draw_first_k_couples(k: int, rdims: Tensor, dv: torch.device) -> Tensor:
     return torch.remainder(idx_sequence.unsqueeze(-1), rdims)
 
 
-def random_samples_indices(iters, rdims, dv):
+def random_samples_indices(iters: int, rdims: Tensor, dv: torch.device) -> Tensor:
     rands = torch.rand(size=(iters, 2, rdims.shape[0]), device=dv)
     scaled_rands = rands * (rdims - 1e-8).float()
     rand_samples_rel = scaled_rands.long()

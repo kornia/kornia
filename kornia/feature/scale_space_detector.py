@@ -102,7 +102,7 @@ class ScaleSpaceDetector(Module):
         # like Difference-of-Gaussians
         self.scale_space_response = scale_space_response
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}("
             f"num_features={self.num_features}, "
@@ -268,7 +268,7 @@ class MultiResolutionDetector(Module):
         config: Detector_config = get_default_detector_config(),
         ori_module: Optional[Module] = None,
         aff_module: Optional[Module] = None,
-    ):
+    ) -> None:
         super().__init__()
         self.model = model
         # Load extraction configuration

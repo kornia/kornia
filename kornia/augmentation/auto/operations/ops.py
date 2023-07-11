@@ -38,7 +38,9 @@ class AutoContrast(OperationBase):
         symmetric_megnitude: if to randomly assign the magnitude as negative or not.
     """
 
-    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1, symmetric_megnitude: bool = False):
+    def __init__(
+        self, initial_probability: float = 0.5, temperature: float = 0.1, symmetric_megnitude: bool = False
+    ) -> None:
         super().__init__(
             K.RandomAutoContrast(same_on_batch=False, p=initial_probability),
             initial_magnitude=None,
@@ -66,7 +68,7 @@ class Brightness(OperationBase):
         magnitude_range: Tuple[float, float] = (0.2, 1.8),
         temperature: float = 0.1,
         symmetric_megnitude: bool = False,
-    ):
+    ) -> None:
         super().__init__(
             K.RandomBrightness(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("brightness_factor", initial_magnitude)],
@@ -94,7 +96,7 @@ class Contrast(OperationBase):
         magnitude_range: Tuple[float, float] = (0.2, 1.8),
         temperature: float = 0.1,
         symmetric_megnitude: bool = False,
-    ):
+    ) -> None:
         super().__init__(
             K.RandomContrast(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("contrast_factor", initial_magnitude)],
@@ -122,7 +124,7 @@ class Hue(OperationBase):
         magnitude_range: Tuple[float, float] = (-0.5, 0.5),
         temperature: float = 0.1,
         symmetric_megnitude: bool = False,
-    ):
+    ) -> None:
         super().__init__(
             K.RandomHue(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("hue_factor", initial_magnitude)],
@@ -150,7 +152,7 @@ class Saturate(OperationBase):
         magnitude_range: Tuple[float, float] = (0.2, 1.8),
         temperature: float = 0.1,
         symmetric_megnitude: bool = False,
-    ):
+    ) -> None:
         super().__init__(
             K.RandomSaturation(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("saturation_factor", initial_magnitude)],
@@ -175,7 +177,7 @@ class Equalize(OperationBase):
         STE gradient estimator applied for back propagation.
     """
 
-    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1):
+    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1) -> None:
         super().__init__(
             K.RandomEqualize(same_on_batch=False, p=initial_probability),
             initial_magnitude=None,
@@ -194,7 +196,7 @@ class Gray(OperationBase):
         temperature: temperature for RelaxedBernoulli distribution used during training.
     """
 
-    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1):
+    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1) -> None:
         super().__init__(
             K.RandomGrayscale(same_on_batch=False, p=initial_probability),
             initial_magnitude=None,
@@ -212,7 +214,7 @@ class Invert(OperationBase):
         temperature: temperature for RelaxedBernoulli distribution used during training.
     """
 
-    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1):
+    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1) -> None:
         super().__init__(
             K.RandomInvert(same_on_batch=False, p=initial_probability),
             initial_magnitude=None,
@@ -247,7 +249,7 @@ class Posterize(OperationBase):
         magnitude_range: Tuple[float, float] = (1.0, 8.0),
         temperature: float = 0.1,
         symmetric_megnitude: bool = False,
-    ):
+    ) -> None:
         super().__init__(
             K.RandomPosterize(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("bits_factor", initial_magnitude)],
@@ -280,7 +282,7 @@ class Solarize(OperationBase):
         magnitude_range: Tuple[float, float] = (0.0, 1.0),
         temperature: float = 0.1,
         symmetric_megnitude: bool = False,
-    ):
+    ) -> None:
         super().__init__(
             K.RandomSolarize(magnitude_range, additions=0.0, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("thresholds", initial_magnitude)],
@@ -312,7 +314,7 @@ class SolarizeAdd(OperationBase):
         magnitude_range: Tuple[float, float] = (-0.3, 0.3),
         temperature: float = 0.1,
         symmetric_megnitude: bool = False,
-    ):
+    ) -> None:
         super().__init__(
             K.RandomSolarize(thresholds=0.5, additions=magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("additions", initial_magnitude)],
@@ -341,7 +343,7 @@ class Sharpness(OperationBase):
         magnitude_range: Tuple[float, float] = (0.1, 1.9),
         temperature: float = 0.1,
         symmetric_megnitude: bool = False,
-    ):
+    ) -> None:
         super().__init__(
             K.RandomSharpness(magnitude_range, same_on_batch=False, p=initial_probability),
             initial_magnitude=[("sharpness", initial_magnitude)],
@@ -359,7 +361,7 @@ class HorizontalFlip(OperationBase):
         temperature: temperature for RelaxedBernoulli distribution used during training.
     """
 
-    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1):
+    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1) -> None:
         super().__init__(
             K.RandomHorizontalFlip(same_on_batch=False, p=initial_probability),
             initial_magnitude=None,
@@ -376,7 +378,7 @@ class VerticalFlip(OperationBase):
         temperature: temperature for RelaxedBernoulli distribution used during training.
     """
 
-    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1):
+    def __init__(self, initial_probability: float = 0.5, temperature: float = 0.1) -> None:
         super().__init__(
             K.RandomVerticalFlip(same_on_batch=False, p=initial_probability),
             initial_magnitude=None,
@@ -404,7 +406,7 @@ class Rotate(OperationBase):
         magnitude_range: Tuple[float, float] = (0.0, 30.0),
         temperature: float = 0.1,
         symmetric_megnitude: bool = True,
-    ):
+    ) -> None:
         if symmetric_megnitude and magnitude_range[0] < 0:
             raise ValueError(
                 f"Lower bound of {self.__class__.__name__} is a symmetric operation. "
@@ -442,7 +444,7 @@ class ShearX(OperationBase):
         magnitude_range: Tuple[float, float] = (0.0, 0.3),
         temperature: float = 0.1,
         symmetric_megnitude: bool = True,
-    ):
+    ) -> None:
         if symmetric_megnitude and magnitude_range[0] < 0:
             raise ValueError(
                 f"Lower bound of {self.__class__.__name__} is a symmetric operation. "
@@ -481,7 +483,7 @@ class ShearY(OperationBase):
         magnitude_range: Tuple[float, float] = (0.0, 0.3),
         temperature: float = 0.1,
         symmetric_megnitude: bool = True,
-    ):
+    ) -> None:
         if symmetric_megnitude and magnitude_range[0] < 0:
             raise ValueError(
                 f"Lower bound of {self.__class__.__name__} is a symmetric operation. "
@@ -517,7 +519,7 @@ class TranslateX(OperationBase):
         magnitude_range: Tuple[float, float] = (0.0, 0.5),
         temperature: float = 0.1,
         symmetric_megnitude: bool = True,
-    ):
+    ) -> None:
         if symmetric_megnitude and magnitude_range[0] < 0:
             raise ValueError(
                 f"Lower bound of {self.__class__.__name__} is a symmetric operation. "
@@ -550,7 +552,7 @@ class TranslateY(OperationBase):
         magnitude_range: Tuple[float, float] = (0.0, 0.5),
         temperature: float = 0.1,
         symmetric_megnitude: bool = True,
-    ):
+    ) -> None:
         if symmetric_megnitude and magnitude_range[0] < 0:
             raise ValueError(
                 f"Lower bound of {self.__class__.__name__} is a symmetric operation. "

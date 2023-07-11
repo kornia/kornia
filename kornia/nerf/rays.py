@@ -81,11 +81,11 @@ class RaySampler:
             self._camera_ids = camera_ids
 
         @property
-        def points_2d(self):
+        def points_2d(self) -> Tensor:
             return self._points_2d
 
         @property
-        def camera_ids(self):
+        def camera_ids(self) -> List[int]:
             return self._camera_ids
 
     def _calc_ray_params(self, cameras: PinholeCamera, points_2d_camera: Dict[int, Points2D]) -> None:

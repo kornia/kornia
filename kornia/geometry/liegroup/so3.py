@@ -52,7 +52,7 @@ class So3(Module):
     def __getitem__(self, idx: int | slice) -> So3:
         return So3(self._q[idx])
 
-    def __mul__(self, right):
+    def __mul__(self, right: So3) -> So3:
         """Compose two So3 transformations.
 
         Args:
@@ -146,7 +146,8 @@ class So3(Module):
         """
         # KORNIA_CHECK_SHAPE(v, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
         if isinstance(v, Tensor):
-            a, b, c = v[..., 0], v[..., 1], v[..., 2]
+            # TODO: Figure out why mypy think `v` can be a Vector3 which didn't allow ellipsis on index
+            a, b, c = v[..., 0], v[..., 1], v[..., 2]  # type: ignore[index]
         else:
             a, b, c = v.x, v.y, v.z
         z = zeros_like(a)

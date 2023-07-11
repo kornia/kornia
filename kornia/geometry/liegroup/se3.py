@@ -124,7 +124,7 @@ class Se3(Module):
         return self._rotation
 
     @property
-    def t(self) -> Vector3 | Parameter:
+    def t(self) -> Vector3 | Tensor:
         """Return the underlying translation vector of shape :math:`(B,3)`."""
         return self._translation
 
@@ -134,7 +134,7 @@ class Se3(Module):
         return self._rotation
 
     @property
-    def translation(self) -> Vector3 | Parameter:
+    def translation(self) -> Vector3 | Tensor:
         """Return the underlying translation vector of shape :math:`(B,3)`."""
         return self._translation
 
@@ -312,7 +312,11 @@ class Se3(Module):
             tensor([-1., -1., -1.], requires_grad=True)
         """
         r_inv = self.r.inverse()
-        return Se3(r_inv, r_inv * (-1 * self.t))
+        _t = -1 * self.t
+        if isinstance(_t, int):
+            raise TypeError('Unexpected integer from `-1 * translation`')
+
+        return Se3(r_inv, r_inv * _t)
 
     @classmethod
     def random(cls, batch_size: int | None = None, device: Device | None = None, dtype: Dtype = None) -> Se3:

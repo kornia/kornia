@@ -26,7 +26,7 @@ class ColorMap(ABC):
         num_colors: int,
         device: Optional[torch.device],
         dtype: Optional[torch.dtype],
-    ):
+    ) -> None:
         self._dtype = dtype
         self._device = device
 
@@ -118,7 +118,7 @@ class AUTUMN(ColorMap):
 
     def __init__(
         self, num_colors: int = 64, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None
-    ):
+    ) -> None:
         super().__init__(base_colormap=_BASE_AUTUMN, num_colors=num_colors, device=device, dtype=dtype)
 
 

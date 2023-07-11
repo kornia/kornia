@@ -49,7 +49,7 @@ class FilterResponseNorm2d(Module):
         is_bias: bool = True,
         is_scale: bool = True,
         is_eps_leanable: bool = False,
-    ):
+    ) -> None:
         super().__init__()
 
         self.num_features = num_features
@@ -66,13 +66,13 @@ class FilterResponseNorm2d(Module):
             self.register_buffer('eps', tensor([eps]))
         self.reset_parameters()
 
-    def reset_parameters(self):
+    def reset_parameters(self) -> None:
         nn.init.ones_(self.weight)
         nn.init.zeros_(self.bias)
         if self.is_eps_leanable:
             nn.init.constant_(self.eps, self.init_eps)
 
-    def extra_repr(self):
+    def extra_repr(self) -> str:
         return 'num_features={num_features}, eps={init_eps}'.format(**self.__dict__)
 
     def forward(self, x: Tensor) -> Tensor:
@@ -108,18 +108,18 @@ class TLU(Module):
         - Output: :math:`(B, \text{num_features}, H, W)`
     """
 
-    def __init__(self, num_features: int):
+    def __init__(self, num_features: int) -> None:
         """max(y, tau) = max(y - tau, 0) + tau = ReLU(y - tau) + tau"""
         super().__init__()
         self.num_features = num_features
         self.tau = Parameter(-torch.ones(1, num_features, 1, 1), requires_grad=True)
         self.reset_parameters()
 
-    def reset_parameters(self):
+    def reset_parameters(self) -> None:
         # nn.init.zeros_(self.tau)
         nn.init.constant_(self.tau, -1)
 
-    def extra_repr(self):
+    def extra_repr(self) -> str:
         return 'num_features={num_features}'.format(**self.__dict__)
 
     def forward(self, x: Tensor) -> Tensor:
@@ -163,7 +163,7 @@ class HyNet(Module):
         dim_desc: int = 128,
         drop_rate: float = 0.3,
         eps_l2_norm: float = 1e-10,
-    ):
+    ) -> None:
         super().__init__()
         self.eps_l2_norm = eps_l2_norm
         self.dim_desc = dim_desc
