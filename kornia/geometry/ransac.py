@@ -43,7 +43,7 @@ class RANSAC(Module):
         max_iter: int = 10,
         confidence: float = 0.99,
         max_lo_iters: int = 5,
-    ):
+    ) -> None:
         super().__init__()
         self.supported_models = ['homography', 'fundamental', 'homography_from_linesegments']
         self.inl_th = inl_th

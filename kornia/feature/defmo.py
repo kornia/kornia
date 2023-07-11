@@ -206,7 +206,7 @@ class ResNet(Module):
 
 
 class EncoderDeFMO(Module):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         model = ResNet(Bottleneck, [3, 4, 6, 3])  # ResNet50
         modelc1 = nn.Sequential(*list(model.children())[:3])
@@ -219,7 +219,7 @@ class EncoderDeFMO(Module):
 
 
 class RenderingDeFMO(Module):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.tsr_steps: int = 24
         model = nn.Sequential(

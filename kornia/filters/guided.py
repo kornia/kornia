@@ -193,7 +193,7 @@ class GuidedBlur(Module):
 
     def __init__(
         self, kernel_size: tuple[int, int] | int, eps: float, border_type: str = 'reflect', subsample: int = 1
-    ):
+    ) -> None:
         super().__init__()
         self.kernel_size = kernel_size
         self.eps = eps

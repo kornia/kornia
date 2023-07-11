@@ -29,7 +29,7 @@ class StereoException(Exception):
 
 
 class StereoCamera:
-    def __init__(self, rectified_left_camera: Tensor, rectified_right_camera: Tensor):
+    def __init__(self, rectified_left_camera: Tensor, rectified_right_camera: Tensor) -> None:
         r"""Class representing a horizontal stereo camera setup.
 
         Args:

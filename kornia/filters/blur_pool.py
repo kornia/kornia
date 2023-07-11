@@ -49,7 +49,7 @@ class BlurPool2D(Module):
                   [0.0000, 0.0625, 0.3125]]]])
     """
 
-    def __init__(self, kernel_size: tuple[int, int] | int, stride: int = 2):
+    def __init__(self, kernel_size: tuple[int, int] | int, stride: int = 2) -> None:
         super().__init__()
         self.kernel_size = kernel_size
         self.stride = stride
@@ -96,7 +96,7 @@ class MaxBlurPool2D(Module):
 
     def __init__(
         self, kernel_size: tuple[int, int] | int, stride: int = 2, max_pool_size: int = 2, ceil_mode: bool = False
-    ):
+    ) -> None:
         super().__init__()
         self.kernel_size = kernel_size
         self.stride = stride
@@ -114,7 +114,7 @@ class MaxBlurPool2D(Module):
 class EdgeAwareBlurPool2D(Module):
     def __init__(
         self, kernel_size: tuple[int, int] | int, edge_threshold: float = 1.25, edge_dilation_kernel_size: int = 3
-    ):
+    ) -> None:
         super().__init__()
         self.kernel_size = kernel_size
         self.edge_threshold = edge_threshold

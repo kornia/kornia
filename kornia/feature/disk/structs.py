@@ -5,7 +5,7 @@ from typing import Any
 
 import torch.nn.functional as F
 
-from kornia.core import Tensor
+from kornia.core import Device, Tensor
 
 
 @dataclass
@@ -25,11 +25,11 @@ class DISKFeatures:
     detection_scores: Tensor
 
     @property
-    def n(self):
+    def n(self) -> int:
         return self.keypoints.shape[0]
 
     @property
-    def device(self):
+    def device(self) -> Device:
         return self.keypoints.device
 
     @property
