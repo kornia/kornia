@@ -26,7 +26,7 @@ repos:
         args: [--fix, --exit-non-zero-on-fix]
 
   - repo: https://github.com/psf/black
-    rev: 23.3.0
+    rev: 23.7.0
     hooks:
       - id: black
 
@@ -41,7 +41,7 @@ repos:
           - "*.bib,*.ipynb"
 
   - repo: https://github.com/PyCQA/docformatter
-    rev: v1.7.3
+    rev: v1.7.5
     hooks:
       - id: docformatter
         args: [--in-place, --wrap-summaries=115, --wrap-descriptions=120]
