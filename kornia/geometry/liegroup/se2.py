@@ -19,9 +19,19 @@ from kornia.core import (
     zeros_like,
 )
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_TYPE
-from kornia.geometry.liegroup._utils import check_se2_omega_shape, check_se2_r_t_shape, check_v_shape
+from kornia.geometry.liegroup._utils import check_se2_omega_shape, check_se2_t_shape, check_v_shape
 from kornia.geometry.liegroup.so2 import So2
 from kornia.geometry.vector import Vector2
+
+
+def _check_se2_r_t_shape(r: So2, t: Tensor) -> None:
+    z_shape = r.z.shape
+    if ((len(z_shape) == 1) and (len(t.shape) == 2)) or ((len(z_shape) == 0) and len(t.shape) == 1):
+        check_se2_t_shape(t)
+    else:
+        raise ValueError(
+            f"Invalid input, both the inputs should be either batched or unbatched. Got: {r.z.shape} and {t.shape}"
+        )
 
 
 class Se2(Module):
@@ -70,7 +80,7 @@ class Se2(Module):
         self._translation: Vector2 | Parameter
         self._rotation: So2 = rotation
         if isinstance(translation, Tensor):
-            check_se2_r_t_shape(rotation, translation)  # TODO remove
+            _check_se2_r_t_shape(rotation, translation)  # TODO remove
             self._translation = Parameter(translation)
         else:
             self._translation = translation
@@ -89,7 +99,7 @@ class Se2(Module):
     def __mul__(self, right: Tensor) -> Tensor:
         ...
 
-    def __mul__(self, right):
+    def __mul__(self, right: Se2 | Tensor) -> Se2 | Tensor:
         """Compose two Se2 transformations.
 
         Args:
@@ -107,7 +117,7 @@ class Se2(Module):
             return Se2(_r, _t)
         elif isinstance(right, (Vector2, Tensor)):
             # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
-            # check_se2_r_t_shape(so2, risght)
+            # _check_se2_r_t_shape(so2, risght)
             return so2 * right + t
         else:
             raise TypeError(f"Unsupported type: {type(right)}")
@@ -188,7 +198,7 @@ class Se2(Module):
         return stack((upsilon[..., 0, 0], upsilon[..., 1, 0], theta), -1)
 
     @staticmethod
-    def hat(v):
+    def hat(v: Tensor) -> Tensor:
         """Converts elements from vector space to lie algebra. Returns matrix of shape :math:`(B, 3, 3)`.
 
         Args:
@@ -280,8 +290,11 @@ class Se2(Module):
             tensor([[-1., -1.]], requires_grad=True)
         """
         r_inv: So2 = self.r.inverse()
-        t_inv: Tensor = r_inv * (-1 * self.t)
-        return Se2(r_inv, t_inv)
+        _t = -1 * self.t
+        if isinstance(_t, int):
+            raise TypeError('Unexpected integer from `-1 * translation`')
+
+        return Se2(r_inv, r_inv * _t)
 
     @classmethod
     def random(cls, batch_size: int | None = None, device: Device | None = None, dtype: Dtype = None) -> Se2:

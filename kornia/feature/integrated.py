@@ -154,7 +154,7 @@ class SIFTFeature(LocalFeature):
         rootsift: bool = True,
         device: Device = torch.device('cpu'),
         config: Detector_config = get_default_detector_config(),
-    ):
+    ) -> None:
         patch_size: int = 41
         detector = MultiResolutionDetector(
             BlobDoGSingle(1.0, 1.6),
@@ -182,7 +182,7 @@ class SIFTFeatureScaleSpace(LocalFeature):
         upright: bool = False,
         rootsift: bool = True,
         device: Device = torch.device('cpu'),
-    ):
+    ) -> None:
         patch_size: int = 41
         detector = ScaleSpaceDetector(
             num_features,
@@ -209,7 +209,7 @@ class GFTTAffNetHardNet(LocalFeature):
         upright: bool = False,
         device: Device = torch.device('cpu'),
         config: Detector_config = get_default_detector_config(),
-    ):
+    ) -> None:
         detector = MultiResolutionDetector(
             CornerGFTT(),
             num_features,
@@ -230,7 +230,7 @@ class HesAffNetHardNet(LocalFeature):
         upright: bool = False,
         device: Device = torch.device('cpu'),
         config: Detector_config = get_default_detector_config(),
-    ):
+    ) -> None:
         detector = MultiResolutionDetector(
             BlobHessian(),
             num_features,
@@ -251,7 +251,7 @@ class KeyNetHardNet(LocalFeature):
         upright: bool = False,
         device: Device = torch.device('cpu'),
         scale_laf: float = 1.0,
-    ):
+    ) -> None:
         ori_module = PassLAF() if upright else LAFOrienter(angle_detector=OriNet(True))
         detector = KeyNetDetector(True, num_features=num_features, ori_module=ori_module).to(device)
         descriptor = LAFDescriptor(None, patch_size=32, grayscale_descriptor=True).to(device)
@@ -270,7 +270,7 @@ class KeyNetAffNetHardNet(LocalFeature):
         upright: bool = False,
         device: Device = torch.device('cpu'),
         scale_laf: float = 1.0,
-    ):
+    ) -> None:
         ori_module = PassLAF() if upright else LAFOrienter(angle_detector=OriNet(True))
         detector = KeyNetDetector(
             True, num_features=num_features, ori_module=ori_module, aff_module=LAFAffNetShapeEstimator(True).eval()

@@ -185,7 +185,7 @@ class Trainer:
 
         return stats.as_dict()
 
-    def on_epoch_start(self, *args, **kwargs):
+    def on_epoch_start(self, *args: Any, **kwargs: Any) -> None:
         ...
 
     def preprocess(self, x: Dict[str, Tensor]) -> Dict[str, Tensor]:

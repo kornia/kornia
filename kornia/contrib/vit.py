@@ -212,7 +212,7 @@ class VisionTransformer(Module):
         self.encoder = TransformerEncoder(hidden_dim, depth, num_heads, dropout_rate, dropout_attn)
 
     @property
-    def encoder_results(self):
+    def encoder_results(self) -> List[Tensor]:
         return self.encoder.results
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

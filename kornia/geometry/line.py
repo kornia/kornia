@@ -1,6 +1,6 @@
 # kornia.geometry.line module inspired by Eigen::geometry::ParametrizedLine
 # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/ParametrizedLine.h
-from typing import Optional, Tuple, Union
+from typing import Iterator, Optional, Tuple, Union
 
 import torch
 
@@ -49,7 +49,7 @@ class ParametrizedLine(Module):
     def __getitem__(self, idx: int) -> Tensor:
         return self.origin if idx == 0 else self.direction
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Tensor]:
         yield from (self.origin, self.direction)
 
     @property

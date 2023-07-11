@@ -63,7 +63,7 @@ class Normalize(nn.Module):
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return normalize(input, self.mean, self.std)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         repr = f"(mean={self.mean}, std={self.std})"
         return self.__class__.__name__ + repr
 
@@ -165,7 +165,7 @@ class Denormalize(nn.Module):
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return denormalize(input, self.mean, self.std)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         repr = f"(mean={self.mean}, std={self.std})"
         return self.__class__.__name__ + repr
 

@@ -228,7 +228,7 @@ class FaceDetector(nn.Module):
 
 
 class ConvDPUnit(nn.Sequential):
-    def __init__(self, in_channels, out_channels, withBNRelu=True):
+    def __init__(self, in_channels: int, out_channels: int, withBNRelu: bool = True) -> None:
         super().__init__()
         self.add_module("conv1", nn.Conv2d(in_channels, out_channels, 1, 1, 0, bias=True, groups=1))
         self.add_module("conv2", nn.Conv2d(out_channels, out_channels, 3, 1, 1, bias=True, groups=out_channels))

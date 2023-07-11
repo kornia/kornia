@@ -1,6 +1,7 @@
 from typing import List, Optional, Tuple, Union, cast
 
 import torch
+from torch import Size
 
 from kornia.core import Tensor
 from kornia.geometry import transform_points
@@ -56,11 +57,11 @@ class Keypoints:
         return self
 
     @property
-    def shape(self):
+    def shape(self) -> Union[Tuple[int, ...], Size]:
         return self.data.shape
 
     @property
-    def data(self):
+    def data(self) -> Tensor:
         return self._data
 
     @property
@@ -250,7 +251,7 @@ class Keypoints3D:
         return self
 
     @property
-    def shape(self) -> torch.Size:
+    def shape(self) -> Size:
         return self.data.shape
 
     @property
