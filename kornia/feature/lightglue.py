@@ -1,12 +1,14 @@
+import math
+import warnings
 from pathlib import Path
 from types import SimpleNamespace
-import warnings
-from kornia.core import Module, ModuleList, Tensor, arange, stack, softmax, concatenate, where, ones_like, zeros, einsum
+from typing import Any, Callable, Dict, Optional, Tuple
+
 import torch
-from torch import nn
 import torch.nn.functional as F
-from typing import Optional, List, Callable, Tuple, Dict, Any
-import math
+from torch import nn
+
+from kornia.core import Module, ModuleList, Tensor, arange, concatenate, einsum, ones_like, softmax, stack, where, zeros
 
 try:
     from flash_attn.modules.mha import FlashCrossAttention
@@ -24,9 +26,7 @@ def math_clamp(x, min_, max_):  # type: ignore
 
 
 @torch.cuda.amp.custom_fwd(cast_inputs=torch.float32)
-def normalize_keypoints(
-        kpts: Tensor,
-        size: Tensor) -> Tensor:
+def normalize_keypoints(kpts: Tensor, size: Tensor) -> Tensor:
     if isinstance(size, torch.Size):
         size = Tensor(size)[None]
     shift = size.float().to(kpts) / 2
@@ -41,22 +41,20 @@ def rotate_half(x: Tensor) -> Tensor:
     return stack((-x2, x1), dim=-1).flatten(start_dim=-2)
 
 
-def apply_cached_rotary_emb(
-        freqs: Tensor, t: Tensor) -> Tensor:
+def apply_cached_rotary_emb(freqs: Tensor, t: Tensor) -> Tensor:
     return (t * freqs[0]) + (rotate_half(t) * freqs[1])
 
 
 class LearnableFourierPositionalEncoding(Module):
-    def __init__(self, M: int, dim: int, F_dim: Optional[int] = None,
-                 gamma: float = 1.0) -> None:
+    def __init__(self, M: int, dim: int, F_dim: Optional[int] = None, gamma: float = 1.0) -> None:
         super().__init__()
         F_dim = F_dim if F_dim is not None else dim
         self.gamma = gamma
         self.Wr = nn.Linear(M, F_dim // 2, bias=False)
-        nn.init.normal_(self.Wr.weight.data, mean=0, std=self.gamma ** -2)
+        nn.init.normal_(self.Wr.weight.data, mean=0, std=self.gamma**-2)
 
     def forward(self, x: Tensor) -> Tensor:
-        """ encode position vector """
+        """Encode position vector."""
         projected = self.Wr(x)
         cosines, sines = torch.cos(projected), torch.sin(projected)
         emb = stack([cosines, sines], 0).unsqueeze(-3)
@@ -66,16 +64,11 @@ class LearnableFourierPositionalEncoding(Module):
 class TokenConfidence(Module):
     def __init__(self, dim: int) -> None:
         super().__init__()
-        self.token = nn.Sequential(
-            nn.Linear(dim, 1),
-            nn.Sigmoid()
-        )
+        self.token = nn.Sequential(nn.Linear(dim, 1), nn.Sigmoid())
 
     def forward(self, desc0: Tensor, desc1: Tensor) -> Tuple[Tensor, Tensor]:
-        """ get confidence tokens """
-        return (
-            self.token(desc0.detach().float()).squeeze(-1),
-            self.token(desc1.detach().float()).squeeze(-1))
+        """Get confidence tokens."""
+        return (self.token(desc0.detach().float()).squeeze(-1), self.token(desc1.detach().float()).squeeze(-1))
 
 
 class Attention(Module):
@@ -94,7 +87,7 @@ class Attention(Module):
     def forward(self, q: Tensor, k: Tensor, v: Tensor) -> Tensor:
         if self.enable_flash and q.device.type == 'cuda':
             if FlashCrossAttention:
-                q, k, v = [x.transpose(-2, -3) for x in [q, k, v]]
+                q, k, v = (x.transpose(-2, -3) for x in [q, k, v])
                 m = self.flash_(q.half(), stack([k, v], 2).half())
                 return m.transpose(-2, -3).to(q.dtype)
             else:  # use torch 2.0 scaled_dot_product_attention with flash
@@ -111,25 +104,23 @@ class Attention(Module):
 
 
 class Transformer(Module):
-    def __init__(self, embed_dim: int, num_heads: int,
-                 flash: bool = False, bias: bool = True) -> None:
+    def __init__(self, embed_dim: int, num_heads: int, flash: bool = False, bias: bool = True) -> None:
         super().__init__()
         self.embed_dim = embed_dim
         self.num_heads = num_heads
         assert self.embed_dim % num_heads == 0
         self.head_dim = self.embed_dim // num_heads
-        self.Wqkv = nn.Linear(embed_dim, 3*embed_dim, bias=bias)
+        self.Wqkv = nn.Linear(embed_dim, 3 * embed_dim, bias=bias)
         self.inner_attn = Attention(flash)
         self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
         self.ffn = nn.Sequential(
-            nn.Linear(2*embed_dim, 2*embed_dim),
-            nn.LayerNorm(2*embed_dim, elementwise_affine=True),
+            nn.Linear(2 * embed_dim, 2 * embed_dim),
+            nn.LayerNorm(2 * embed_dim, elementwise_affine=True),
             nn.GELU(),
-            nn.Linear(2*embed_dim, embed_dim)
+            nn.Linear(2 * embed_dim, embed_dim),
         )
 
-    def _forward(self, x: Tensor,
-                 encoding: Optional[Tensor] = None) -> Tensor:
+    def _forward(self, x: Tensor, encoding: Optional[Tensor] = None) -> Tensor:
         qkv = self.Wqkv(x)
         qkv = qkv.unflatten(-1, (self.num_heads, -1, 3)).transpose(1, 2)
         q, k, v = qkv[..., 0], qkv[..., 1], qkv[..., 2]
@@ -137,30 +128,30 @@ class Transformer(Module):
             q = apply_cached_rotary_emb(encoding, q)
             k = apply_cached_rotary_emb(encoding, k)
         context = self.inner_attn(q, k, v)
-        message = self.out_proj(
-            context.transpose(1, 2).flatten(start_dim=-2))
+        message = self.out_proj(context.transpose(1, 2).flatten(start_dim=-2))
         return x + self.ffn(concatenate([x, message], -1))
 
-    def forward(self, x0: Tensor, x1: Tensor, encoding0: Optional[Tensor] = None, encoding1: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
+    def forward(
+        self, x0: Tensor, x1: Tensor, encoding0: Optional[Tensor] = None, encoding1: Optional[Tensor] = None
+    ) -> Tuple[Tensor, Tensor]:
         return self._forward(x0, encoding0), self._forward(x1, encoding1)
 
 
 class CrossTransformer(Module):
-    def __init__(self, embed_dim: int, num_heads: int,
-                 flash: bool = False, bias: bool = True) -> None:
+    def __init__(self, embed_dim: int, num_heads: int, flash: bool = False, bias: bool = True) -> None:
         super().__init__()
         self.heads = num_heads
         dim_head = embed_dim // num_heads
-        self.scale = dim_head ** -0.5
+        self.scale = dim_head**-0.5
         inner_dim = dim_head * num_heads
         self.to_qk = nn.Linear(embed_dim, inner_dim, bias=bias)
         self.to_v = nn.Linear(embed_dim, inner_dim, bias=bias)
         self.to_out = nn.Linear(inner_dim, embed_dim, bias=bias)
         self.ffn = nn.Sequential(
-            nn.Linear(2*embed_dim, 2*embed_dim),
-            nn.LayerNorm(2*embed_dim, elementwise_affine=True),
+            nn.Linear(2 * embed_dim, 2 * embed_dim),
+            nn.LayerNorm(2 * embed_dim, elementwise_affine=True),
             nn.GELU(),
-            nn.Linear(2*embed_dim, embed_dim)
+            nn.Linear(2 * embed_dim, embed_dim),
         )
 
         if flash and FLASH_AVAILABLE:
@@ -174,9 +165,7 @@ class CrossTransformer(Module):
     def forward(self, x0: Tensor, x1: Tensor) -> Tuple[Tensor, Tensor]:
         qk0, qk1 = self.map_(self.to_qk, x0, x1)
         v0, v1 = self.map_(self.to_v, x0, x1)
-        qk0, qk1, v0, v1 = map(
-            lambda t: t.unflatten(-1, (self.heads, -1)).transpose(1, 2),
-            (qk0, qk1, v0, v1))
+        qk0, qk1, v0, v1 = (t.unflatten(-1, (self.heads, -1)).transpose(1, 2) for t in (qk0, qk1, v0, v1))
         if self.flash is not None:
             m0 = self.flash(qk0, qk1, v1)
             m1 = self.flash(qk1, qk0, v0)
@@ -187,24 +176,21 @@ class CrossTransformer(Module):
             attn10 = softmax(sim.transpose(-2, -1).contiguous(), dim=-1)
             m0 = einsum('bhij, bhjd -> bhid', attn01, v1)
             m1 = einsum('bhji, bhjd -> bhid', attn10.transpose(-2, -1), v0)
-        m0, m1 = self.map_(lambda t: t.transpose(1, 2).flatten(start_dim=-2),
-                           m0, m1)
+        m0, m1 = self.map_(lambda t: t.transpose(1, 2).flatten(start_dim=-2), m0, m1)
         m0, m1 = self.map_(self.to_out, m0, m1)
         x0 = x0 + self.ffn(concatenate([x0, m0], -1))
         x1 = x1 + self.ffn(concatenate([x1, m1], -1))
         return x0, x1
 
 
-def sigmoid_log_double_softmax(
-        sim: Tensor, z0: Tensor, z1: Tensor) -> Tensor:
-    """ create the log assignment matrix from logits and similarity"""
+def sigmoid_log_double_softmax(sim: Tensor, z0: Tensor, z1: Tensor) -> Tensor:
+    """Create the log assignment matrix from logits and similarity."""
     b, m, n = sim.shape
     certainties = F.logsigmoid(z0) + F.logsigmoid(z1).transpose(1, 2)
     scores0 = F.log_softmax(sim, 2)
-    scores1 = F.log_softmax(
-        sim.transpose(-1, -2).contiguous(), 2).transpose(-1, -2)
-    scores = sim.new_full((b, m+1, n+1), 0)
-    scores[:, :m, :n] = (scores0 + scores1 + certainties)
+    scores1 = F.log_softmax(sim.transpose(-1, -2).contiguous(), 2).transpose(-1, -2)
+    scores = sim.new_full((b, m + 1, n + 1), 0)
+    scores[:, :m, :n] = scores0 + scores1 + certainties
     scores[:, :-1, -1] = F.logsigmoid(-z0.squeeze(-1))
     scores[:, -1, :-1] = F.logsigmoid(-z1.squeeze(-1))
     return scores
@@ -218,10 +204,10 @@ class MatchAssignment(Module):
         self.final_proj = nn.Linear(dim, dim, bias=True)
 
     def forward(self, desc0: Tensor, desc1: Tensor) -> Tuple[Tensor, Tensor]:
-        """ build assignment matrix from descriptors """
+        """Build assignment matrix from descriptors."""
         mdesc0, mdesc1 = self.final_proj(desc0), self.final_proj(desc1)
         _, _, d = mdesc0.shape
-        mdesc0, mdesc1 = mdesc0 / d**.25, mdesc1 / d**.25
+        mdesc0, mdesc1 = mdesc0 / d**0.25, mdesc1 / d**0.25
         sim = einsum('bmd,bnd->bmn', mdesc0, mdesc1)
         z0 = self.matchability(desc0)
         z1 = self.matchability(desc1)
@@ -235,7 +221,7 @@ class MatchAssignment(Module):
 
 
 def filter_matches(scores: Tensor, th: float) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
-    """ obtain matches from a log assignment matrix [Bx M+1 x N+1]"""
+    """Obtain matches from a log assignment matrix [Bx M+1 x N+1]"""
     max0, max1 = scores[:, :-1, :-1].max(2), scores[:, :-1, :-1].max(1)
     m0, m1 = max0.indices, max1.indices
     mutual0 = arange(m0.shape[1]).to(m0)[None] == m1.gather(1, m0)
@@ -269,29 +255,23 @@ class LightGlue(Module):
         'weights': None,
     }
 
-    required_data_keys = [
-        'image0', 'image1']
+    required_data_keys = ['image0', 'image1']
 
     version = "v0.1_arxiv"
     url = "https://github.com/cvg/LightGlue/releases/download/{}/{}_lightglue.pth"
 
-    features = {
-        'superpoint': ('superpoint_lightglue', 256),
-        'disk': ('disk_lightglue', 128)
-    }
+    features = {'superpoint': ('superpoint_lightglue', 256), 'disk': ('disk_lightglue', 128)}
 
     def __init__(self, features: str = 'superpoint', **conf) -> None:  # type: ignore
         super().__init__()
         temp_conf = {**self.default_conf, **conf}
         if features is not None:
-            assert (features in list(self.features.keys()))
-            temp_conf['weights'], temp_conf['input_dim'] = \
-                self.features[features]
+            assert features in list(self.features.keys())
+            temp_conf['weights'], temp_conf['input_dim'] = self.features[features]
         self.conf = conf_ = SimpleNamespace(**temp_conf)
 
         if conf_.input_dim != conf_.descriptor_dim:
-            self.input_proj = nn.Linear(
-                conf_.input_dim, conf_.descriptor_dim, bias=True)
+            self.input_proj = nn.Linear(conf_.input_dim, conf_.descriptor_dim, bias=True)
         else:
             self.input_proj = nn.Identity()  # type: ignore
 
@@ -299,31 +279,25 @@ class LightGlue(Module):
         self.posenc = LearnableFourierPositionalEncoding(2, head_dim, head_dim)
 
         h, n, d = conf_.num_heads, conf_.n_layers, conf_.descriptor_dim
-        self.self_attn = ModuleList(
-            [Transformer(d, h, conf_.flash) for _ in range(n)])
-        self.cross_attn = ModuleList(
-            [CrossTransformer(d, h, conf_.flash) for _ in range(n)])
-        self.log_assignment = ModuleList(
-            [MatchAssignment(d) for _ in range(n)])
-        self.token_confidence = ModuleList([
-            TokenConfidence(d) for _ in range(n-1)])
+        self.self_attn = ModuleList([Transformer(d, h, conf_.flash) for _ in range(n)])
+        self.cross_attn = ModuleList([CrossTransformer(d, h, conf_.flash) for _ in range(n)])
+        self.log_assignment = ModuleList([MatchAssignment(d) for _ in range(n)])
+        self.token_confidence = ModuleList([TokenConfidence(d) for _ in range(n - 1)])
 
         if features is not None:
             fname = f'{conf_.weights}_{self.version}.pth'.replace('.', '-')
-            state_dict = torch.hub.load_state_dict_from_url(
-                self.url.format(self.version, features), file_name=fname)
+            state_dict = torch.hub.load_state_dict_from_url(self.url.format(self.version, features), file_name=fname)
             self.load_state_dict(state_dict, strict=False)
         elif conf_.weights is not None:
             path = Path(__file__).parent
-            path = path / 'weights/{}.pth'.format(self.conf.weights)
+            path = path / f'weights/{self.conf.weights}.pth'
             state_dict = torch.load(str(path), map_location='cpu')
             self.load_state_dict(state_dict, strict=False)
 
         print('Loaded LightGlue model')
 
     def forward(self, data: Dict) -> Dict:  # type: ignore
-        """
-        Match keypoints and descriptors between two images
+        """Match keypoints and descriptors between two images.
 
         Input (dict):
             image0: dict
@@ -387,14 +361,13 @@ class LightGlue(Module):
         token0, token1 = None, None
         for i in range(self.conf.n_layers):
             # self+cross attention
-            desc0, desc1 = self.self_attn[i](
-                desc0, desc1, encoding0, encoding1)
+            desc0, desc1 = self.self_attn[i](desc0, desc1, encoding0, encoding1)
             desc0, desc1 = self.cross_attn[i](desc0, desc1)
             if i == self.conf.n_layers - 1:
                 continue  # no early stopping or adaptive width at last layer
             if dec > 0:  # early stopping
                 token0, token1 = self.token_confidence[i](desc0, desc1)
-                if self.stop(token0, token1, self.conf_th(i), dec, m+n):
+                if self.stop(token0, token1, self.conf_th(i), dec, m + n):
                     break
             if wic > 0:  # point pruning
                 match0, match1 = self.log_assignment[i].scores(desc0, desc1)
@@ -412,7 +385,7 @@ class LightGlue(Module):
         if wic > 0:  # scatter with indices after pruning
             scores_, _ = self.log_assignment[i](desc0, desc1)
             dt, dev = scores_.dtype, scores_.device
-            scores = zeros(b, m+1, n+1, dtype=dt, device=dev)
+            scores = zeros(b, m + 1, n + 1, dtype=dt, device=dev)
             scores[:, :-1, :-1] = -torch.inf
             scores[:, ind0[0], -1] = scores_[:, :-1, -1]
             scores[:, -1, ind1[0]] = scores_[:, -1, :-1]
@@ -421,8 +394,7 @@ class LightGlue(Module):
         else:
             scores, _ = self.log_assignment[i](desc0, desc1)
 
-        m0, m1, mscores0, mscores1 = filter_matches(
-            scores, self.conf.filter_threshold)
+        m0, m1, mscores0, mscores1 = filter_matches(scores, self.conf.filter_threshold)
 
         matches, mscores = [], []
         for k in range(b):
@@ -436,7 +408,7 @@ class LightGlue(Module):
             'matches1': m1,
             'matching_scores0': mscores0,
             'matching_scores1': mscores1,
-            'stop': i+1,
+            'stop': i + 1,
             'prune0': prune0,
             'prune1': prune1,
             'matches': matches,
@@ -444,22 +416,19 @@ class LightGlue(Module):
         }
 
     def conf_th(self, i: int) -> float:
-        """ scaled confidence threshold """
+        """Scaled confidence threshold."""
         return math_clamp(0.8 + 0.1 * math.exp(-4.0 * float(i) / self.conf.n_layers), 0.0, 1.0)
 
-    def get_mask(self, confidence: Tensor, match: Tensor,
-                 conf_th: float, match_th: float) -> Tensor:
-        """ mask points which should be removed """
+    def get_mask(self, confidence: Tensor, match: Tensor, conf_th: float, match_th: float) -> Tensor:
+        """Mask points which should be removed."""
         if conf_th and confidence is not None:
-            mask = where(confidence > conf_th, match,
-                               match.new_tensor(1.0)) > match_th
+            mask = where(confidence > conf_th, match, match.new_tensor(1.0)) > match_th
         else:
             mask = match > match_th
         return mask
 
-    def stop(self, token0: Tensor, token1: Tensor,
-             conf_th: float, inl_th: float, seql: int) -> Tensor:
-        """ evaluate stopping condition"""
+    def stop(self, token0: Tensor, token1: Tensor, conf_th: float, inl_th: float, seql: int) -> Tensor:
+        """Evaluate stopping condition."""
         tokens = concatenate([token0, token1], -1)
         if conf_th:
             pos = 1.0 - (tokens < conf_th).float().sum() / seql

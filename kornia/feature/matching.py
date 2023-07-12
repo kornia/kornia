@@ -343,6 +343,7 @@ class GeometryAwareDescriptorMatcher(Module):
         match_mode: type of matching, can be `fginn`.
         th: threshold on distance ratio, or other quality measure.
     """
+
     known_modes: ClassVar[List[str]] = ['fginn', "adalam"]
 
     def __init__(self, match_mode: str = 'fginn', params: Dict[str, Tensor] = {}) -> None:

@@ -157,7 +157,7 @@ Local Affine Frames (LAF)
 .. autoclass:: LAFAffNetShapeEstimator
    :members: forward
 
-Layers 
+Layers
 ------
 
 .. autoclass:: FilterResponseNorm2d
