@@ -459,7 +459,8 @@ class TestLightGlueDISK:
         torch.random.manual_seed(0)
         # This is not unit test, but that is quite good integration test
         data_dev = utils.dict_to(data, device, dtype)
-        lg = LightGlueMatcher('disk').to(device=device, dtype=dtype).eval()
+        config = {"depth_confidence": -1, "width_confidence": -1}
+        lg = LightGlueMatcher('disk', config).to(device=device, dtype=dtype).eval()
         with torch.no_grad():
             dists, idxs = lg(data_dev['descs1'], data_dev['descs2'], data_dev['lafs1'], data_dev['lafs2'])
         assert idxs.shape[1] == 2
