@@ -24,7 +24,7 @@ class TestSam(BaseTester):
         keypoints = torch.randint(0, img_size, (1, 2, 2), device=device, dtype=torch.float)
         labels = torch.randnint(0, 1, (1, 2), device=device, dtype=torch.float)
 
-        model(inpt, [dict(points=(keypoints, labels))], False)
+        model(inpt, [{'points': (keypoints, labels)}], False)
 
     @pytest.mark.parametrize('batch_size', [1, 3])
     @pytest.mark.parametrize('N', [2, 5])
