@@ -60,7 +60,7 @@ class TestImage:
             image_size=ImageSize(4, 5),
             channels=3,
             pixel_format=PixelFormat.RGB,
-            channels_order=ChannelsOrder.CHANNEL_FIRST,
+            channels_order=ChannelsOrder.CHANNELS_FIRST,
         )
         img = Image(data, layout=layout)
         assert_close(data, Image.from_dlpack(img.to_dlpack()).data)
