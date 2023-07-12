@@ -317,7 +317,7 @@ class LightGlue(Module):
             matching_scores1: [B x N]
             matches: List[[Si x 2]], scores: List[[Si]]
         """
-        with torch.autocast(enabled=self.conf.mp, device_type='cuda'):
+        with torch.cuda.amp.autocast(enabled=self.conf.mp):
             return self._forward(data)
 
     def _forward(self, data: Dict[str, Dict[str, Tensor]]) -> Dict[str, Any]:
