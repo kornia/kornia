@@ -69,7 +69,9 @@ class TokenConfidence(Module):
 
     def forward(self, desc0: Tensor, desc1: Tensor) -> Tuple[Tensor, Tensor]:
         """Get confidence tokens."""
-        return (self.token(desc0.detach().float()).squeeze(-1), self.token(desc1.detach().float()).squeeze(-1))
+        dtype = self.token[0].weight.dtype
+        orig_dtype = desc0.dtype
+        return (self.token(desc0.detach().to(dtype)).squeeze(-1).to(orig_dtype), self.token(desc1.detach().to(dtype)).squeeze(-1).to(orig_dtype))
 
 
 class Attention(Module):
