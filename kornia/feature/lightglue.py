@@ -10,6 +10,7 @@ from torch import nn
 
 from kornia.core import Module, ModuleList, Tensor, arange, concatenate, einsum, ones_like, softmax, stack, where, zeros
 from kornia.core.check import KORNIA_CHECK
+from kornia.utils._compat import torch_meshgrid
 
 try:
     from flash_attn.modules.mha import FlashCrossAttention
@@ -401,7 +402,7 @@ class LightGlue(Module):
             scores[:, :-1, :-1] = -inf
             scores[:, ind0[0], -1] = scores_[:, :-1, -1]
             scores[:, -1, ind1[0]] = scores_[:, -1, :-1]
-            x, y = torch.meshgrid(ind0[0], ind1[0], indexing='ij')
+            x, y = torch_meshgrid(ind0[0], ind1[0], indexing='ij')
             scores[:, x, y] = scores_[:, :-1, :-1]
         else:
             scores, _ = self.log_assignment[i](desc0, desc1)
