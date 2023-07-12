@@ -33,11 +33,12 @@ if [ ! -e $conda_bin ]; then
     $dev_env_dir/miniconda.sh -b -u -p $dev_env_dir
 fi
 
-# define a python version to initialise the conda environment
-python_version=${PYTHON_VERSION:-"3.10"}
-pytorch_version=${PYTORCH_VERSION:-"2.0.1"}
+# define a python version to initialise the conda environment.
+# by default we assume python 3.8
+python_version=${PYTHON_VERSION:-"3.8"}
+pytorch_version=${PYTORCH_VERSION:-"1.13.1"}
 pytorch_mode=${PYTORCH_MODE:-""}  # use `cpuonly` for CPU or leave it in blank for GPU
-cuda_version=${CUDA_VERSION:-"11.8"}
+cuda_version=${CUDA_VERSION:-"11.7"}
 
 # configure for nightly builds
 pytorch_channel="pytorch"
@@ -62,7 +63,7 @@ $conda_bin clean -ya
 # activate local virtual environment
 source $conda_bin_dir/activate $dev_env_dir/envs/venv
 
-# install pytorch
+# install pytorch and torchvision
 conda install pytorch=$pytorch_version $pytorch_cuda_version -c $pytorch_channel
 
 # install testing dependencies
