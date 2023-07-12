@@ -5,6 +5,7 @@ from torch.utils.dlpack import from_dlpack, to_dlpack
 
 from kornia.core import Tensor
 from kornia.image.base import ChannelsOrder, ImageLayout, ImageSize, PixelFormat
+from kornia.io.io import ImageLoadType, load_image, write_image
 
 # TODO: move this utils to kornia.image.conversions
 from kornia.utils.image import image_to_tensor, tensor_to_image
@@ -207,10 +208,33 @@ class Image:
 
     @classmethod
     def from_file(cls, file_path: str) -> Image:
-        """Construct an image tensor from a given file.
+        """Construct an image tensor from a file.
 
-        .. warning::
-
-            COMING SOON !
+        Args:
+            file_path: the path to the file to read the image from.
         """
-        raise NotImplementedError("not implemented yet.")
+        # TODO: allow user to specify the desired type and device
+        data: Tensor = load_image(file_path, desired_type=ImageLoadType.RGB8, device="cpu")
+        layout = ImageLayout(
+            image_size=ImageSize(height=data.shape[1], width=data.shape[2]),
+            channels=data.shape[0],
+            pixel_format=PixelFormat.RGB,
+            channels_order=ChannelsOrder.CHANNELS_FIRST,
+        )
+        return cls(data, layout)
+
+    def write(self, file_path: str) -> None:
+        """Write the image to a file.
+
+        For now, only support writing to JPEG format.
+
+        Args:
+            file_path: the path to the file to write the image to.
+
+        Example:
+            >>> import numpy as np
+            >>> data = np.ones((4, 5, 3), dtype=np.uint8)  # HxWxC
+            >>> img = Image.from_numpy(data)
+            >>> img.write("test.jpg")
+        """
+        write_image(file_path, self.data)

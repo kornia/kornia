@@ -8,7 +8,7 @@ import pytest
 import torch
 
 from kornia.core import Tensor
-from kornia.io import ImageLoadType, load_image
+from kornia.io import ImageLoadType, load_image, write_image
 from kornia.utils._compat import torch_version_ge
 
 try:
@@ -25,20 +25,25 @@ def create_random_img8(height: int, width: int, channels: int) -> np.ndarray:
     return (np.random.rand(height, width, channels) * 255).astype(np.uint8)  # noqa: NPY002
 
 
+def create_random_img8_torch(height: int, width: int, channels: int) -> Tensor:
+    return (torch.rand(channels, height, width) * 255).to(torch.uint8)
+
+
 @pytest.mark.skipif(not available_package(), reason="kornia_rs only supports python >=3.7 and pt >= 1.10.0")
-class TestLoadImage:
+class TestIoImage:
     def test_smoke(self):
         height, width = 4, 5
-        img_np: np.ndarray = create_random_img8(height, width, 3)
+        img_th: Tensor = create_random_img8_torch(height, width, 3)
+
         with tempfile.NamedTemporaryFile() as tmp:
-            file_path: str = tmp.name + ".png"
-            cv2.imwrite(file_path, img_np)
+            file_path: str = tmp.name + ".jpg"
+            write_image(file_path, img_th)
+
             assert os.path.isfile(file_path)
 
-            img_cv: np.ndarray = cv2.imread(file_path)
-            img_th: Tensor = load_image(file_path, ImageLoadType.UNCHANGED)
+            img_load: Tensor = load_image(file_path, ImageLoadType.UNCHANGED)
 
-            assert img_cv.shape[:2] == img_th.shape[1:]
+            assert img_th.shape == img_load.shape
             assert img_th.shape[1:] == (height, width)
             assert str(img_th.device) == "cpu"
 

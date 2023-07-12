@@ -1,3 +1,5 @@
+import tempfile
+
 import numpy as np
 import torch
 
@@ -64,3 +66,13 @@ class TestImage:
         )
         img = Image(data, layout=layout)
         assert_close(data, Image.from_dlpack(img.to_dlpack()).data)
+
+    def test_load_write(self):
+        data = torch.randint(0, 255, (3, 4, 5), dtype=torch.uint8)
+        img = Image.from_numpy(data.numpy(), channels_order=ChannelsOrder.CHANNELS_FIRST)
+
+        with tempfile.NamedTemporaryFile(suffix=".jpg") as file:
+            img.write(file.name)
+            img2 = Image.from_file(file.name)
+            # NOTE: the tolerance is high due to the jpeg compression
+            assert_close(img.data, img2.data, atol=1e-1, rtol=1e-1)
