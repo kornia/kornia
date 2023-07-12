@@ -163,7 +163,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         },
     ) -> None:
         self._transform_matrix: Optional[Tensor]
-        self._transform_matrices: Sequence[Tensor] = []
+        self._transform_matrices: List[Optional[Tensor]] = []
 
         super().__init__(
             *args,

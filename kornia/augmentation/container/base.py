@@ -279,7 +279,7 @@ class ImageSequentialBase(SequentialBase):
 class TransformMatrixMinIn:
     """Enables computation matrix computation."""
 
-    _valid_ops_for_transform_computation = ()
+    _valid_ops_for_transform_computation: Tuple[Any, ...] = ()
     _transformation_matrix_arg: str = "silence"
 
     def __init__(self, *args, **kwargs) -> None:  # type:ignore
