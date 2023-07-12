@@ -71,7 +71,10 @@ class TokenConfidence(Module):
         """Get confidence tokens."""
         dtype = self.token[0].weight.dtype
         orig_dtype = desc0.dtype
-        return (self.token(desc0.detach().to(dtype)).squeeze(-1).to(orig_dtype), self.token(desc1.detach().to(dtype)).squeeze(-1).to(orig_dtype))
+        return (
+            self.token(desc0.detach().to(dtype)).squeeze(-1).to(orig_dtype),
+            self.token(desc1.detach().to(dtype)).squeeze(-1).to(orig_dtype),
+        )
 
 
 class Attention(Module):
