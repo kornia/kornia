@@ -49,7 +49,7 @@ Descriptors
 
 
 Local Features (Detector and Descriptors together)
------------
+---------------------------------------------------
 
 
 .. autoclass:: LocalFeature
