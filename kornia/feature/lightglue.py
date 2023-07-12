@@ -402,7 +402,7 @@ class LightGlue(Module):
             scores[:, :-1, :-1] = -inf
             scores[:, ind0[0], -1] = scores_[:, :-1, -1]
             scores[:, -1, ind1[0]] = scores_[:, -1, :-1]
-            x, y = torch_meshgrid(ind0[0], ind1[0], indexing='ij')
+            x, y = torch_meshgrid([ind0[0], ind1[0]], 'ij')
             scores[:, x, y] = scores_[:, :-1, :-1]
         else:
             scores, _ = self.log_assignment[i](desc0, desc1)
