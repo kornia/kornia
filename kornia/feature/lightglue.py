@@ -2,13 +2,11 @@ import math
 import warnings
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Callable, Dict, Optional, Tuple
-
-import torch
+from kornia.core import Module, ModuleList, Tensor, arange, stack, softmax, concatenate, where, ones_like, zeros, einsum
+from kornia.core.check import KORNIA_CHECK
 import torch.nn.functional as F
-from torch import nn
-
-from kornia.core import Module, ModuleList, Tensor, arange, concatenate, einsum, ones_like, softmax, stack, where, zeros
+from typing import Optional, List, Callable, Tuple, Dict, Any, ClassVar
+import math
 
 try:
     from flash_attn.modules.mha import FlashCrossAttention
@@ -108,7 +106,7 @@ class Transformer(Module):
         super().__init__()
         self.embed_dim = embed_dim
         self.num_heads = num_heads
-        assert self.embed_dim % num_heads == 0
+        KORNIA_CHECK(self.embed_dim % num_heads == 0, "Embed dimension should be dividable by num_heads")
         self.head_dim = self.embed_dim // num_heads
         self.Wqkv = nn.Linear(embed_dim, 3 * embed_dim, bias=bias)
         self.inner_attn = Attention(flash)
@@ -241,7 +239,7 @@ def filter_matches(scores: Tensor, th: float) -> Tuple[Tensor, Tensor, Tensor, T
 
 
 class LightGlue(Module):
-    default_conf = {
+    default_conf: ClassVar[Dict[str, Any]] = {
         'name': 'lightglue',  # just for interfacing
         'input_dim': 256,  # input descriptor dimension (autoselected from weights)
         'descriptor_dim': 256,
@@ -255,19 +253,24 @@ class LightGlue(Module):
         'weights': None,
     }
 
-    required_data_keys = ['image0', 'image1']
+    required_data_keys: ClassVar [List[str]] = [
+        'image0', 'image1']
 
-    version = "v0.1_arxiv"
-    url = "https://github.com/cvg/LightGlue/releases/download/{}/{}_lightglue.pth"
+    version: ClassVar[str] = "v0.1_arxiv"
+    url: ClassVar[str] = "https://github.com/cvg/LightGlue/releases/download/{}/{}_lightglue.pth"
 
-    features = {'superpoint': ('superpoint_lightglue', 256), 'disk': ('disk_lightglue', 128)}
+    features: ClassVar[Dict[str, Any]] = {
+        'superpoint': ('superpoint_lightglue', 256),
+        'disk': ('disk_lightglue', 128)
+    }
 
     def __init__(self, features: str = 'superpoint', **conf) -> None:  # type: ignore
         super().__init__()
         temp_conf = {**self.default_conf, **conf}
         if features is not None:
-            assert features in list(self.features.keys())
-            temp_conf['weights'], temp_conf['input_dim'] = self.features[features]
+            KORNIA_CHECK(features in list(self.features.keys()), "Features keys are wrong")
+            temp_conf['weights'], temp_conf['input_dim'] = \
+                self.features[features]
         self.conf = conf_ = SimpleNamespace(**temp_conf)
 
         if conf_.input_dim != conf_.descriptor_dim:
@@ -321,7 +324,7 @@ class LightGlue(Module):
 
     def _forward(self, data: Dict[str, Dict[str, Tensor]]) -> Dict[str, Any]:
         for key in self.required_data_keys:
-            assert key in data, f'Missing key {key} in data'
+            KORNIA_CHECK(key in data, f'Missing key {key} in data')
         data0, data1 = data['image0'], data['image1']
         kpts0_, kpts1_ = data0['keypoints'], data1['keypoints']
         b, m, _ = kpts0_.shape
@@ -332,14 +335,13 @@ class LightGlue(Module):
         kpts0 = normalize_keypoints(kpts0_, size=size0)
         kpts1 = normalize_keypoints(kpts1_, size=size1)
 
-        assert torch.all(kpts0 >= -1) and torch.all(kpts0 <= 1)
-        assert torch.all(kpts1 >= -1) and torch.all(kpts1 <= 1)
+        KORNIA_CHECK(torch.all(kpts0 >= -1).item() and torch.all(kpts0 <= 1).item(), "")  # type: ignore
+        KORNIA_CHECK(torch.all(kpts1 >= -1).item() and torch.all(kpts1 <= 1).item(), "")  # type: ignore
 
         desc0 = data0['descriptors'].detach()
         desc1 = data1['descriptors'].detach()
-
-        assert desc0.shape[-1] == self.conf.input_dim
-        assert desc1.shape[-1] == self.conf.input_dim
+        KORNIA_CHECK(desc0.shape[-1] == self.conf.input_dim, "Descriptor dimension does not match input dim in config")
+        KORNIA_CHECK(desc1.shape[-1] == self.conf.input_dim, "Descriptor dimension does not match input dim in config")
 
         if torch.is_autocast_enabled():
             desc0 = desc0.half()
