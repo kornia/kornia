@@ -26,7 +26,7 @@ ones_like = torch.ones_like
 where = torch.where
 complex = torch.complex
 diag = torch.diag
-softmax = F.softmax
+softmax = torch.nn.functional.softmax
 
 
 # constructors
