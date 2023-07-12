@@ -335,7 +335,7 @@ class LightGlue(Module):
         if hasattr(torch, 'inf'):
             inf = torch.inf
         else:
-            inf = torch.tensor(1e9, dtype=kpts0_.dtype, device=kpts0_.device)
+            inf = math.inf
 
         b, m, _ = kpts0_.shape
         b, n, _ = kpts1_.shape
