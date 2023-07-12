@@ -9,6 +9,7 @@ from .integrated import (
     KeyNetAffNetHardNet,
     KeyNetHardNet,
     LAFDescriptor,
+    LightGlueMatcher,
     LocalFeature,
     LocalFeatureMatcher,
     SIFTFeature,
@@ -37,6 +38,7 @@ from .laf import (
     scale_laf,
     set_laf_orientation,
 )
+from .lightglue import LightGlue
 from .loftr import LoFTR
 from .matching import (
     DescriptorMatcher,
@@ -155,4 +157,6 @@ __all__ = [
     "SOLD2",
     "DISK",
     "DISKFeatures",
+    "LightGlue",
+    "LightGlueMatcher",
 ]
