@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, ClassVar, Dict, List, Optional, Tuple
 
 import torch
 
@@ -344,10 +344,11 @@ class GeometryAwareDescriptorMatcher(Module):
         th: threshold on distance ratio, or other quality measure.
     """
 
+    known_modes: ClassVar[List[str]] = ['fginn', "adalam"]
+
     def __init__(self, match_mode: str = 'fginn', params: Dict[str, Tensor] = {}) -> None:
         super().__init__()
         _match_mode: str = match_mode.lower()
-        self.known_modes = ['fginn', "adalam"]
         if _match_mode not in self.known_modes:
             raise NotImplementedError(f"{match_mode} is not supported. Try one of {self.known_modes}")
         self.match_mode = _match_mode

@@ -138,6 +138,7 @@ requires = [
   ]
   ignore = [
     "PLW2901", # Allow overwritten values on loops
+    "PLR0915", # Allow condition check in list comprehension
   ]
 
   [tool.ruff.isort]
