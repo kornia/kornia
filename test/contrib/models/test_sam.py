@@ -22,7 +22,7 @@ class TestSam(BaseTester):
         img_size = model.image_encoder.img_size
         inpt = torch.randn(1, 3, img_size, img_size, device=device)
         keypoints = torch.randint(0, img_size, (1, 2, 2), device=device, dtype=torch.float)
-        labels = torch.randnint(0, 1, (1, 2), device=device, dtype=torch.float)
+        labels = torch.randint(0, 1, (1, 2), device=device, dtype=torch.float)
 
         model(inpt, [{'points': (keypoints, labels)}], False)
 
