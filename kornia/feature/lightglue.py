@@ -330,6 +330,13 @@ class LightGlue(Module):
             KORNIA_CHECK(key in data, f'Missing key {key} in data')
         data0, data1 = data['image0'], data['image1']
         kpts0_, kpts1_ = data0['keypoints'], data1['keypoints']
+        
+        # torch 1.9.0 compatibility
+        if hasattr(torch, 'inf'):
+            inf = torch.inf 
+        else:
+            inf = torch.tensor(1e9, dtype=kpts0_.dtype, device=kpts0_.device)
+
         b, m, _ = kpts0_.shape
         b, n, _ = kpts1_.shape
         size0, size1 = data0.get('image_size'), data1.get('image_size')
@@ -391,7 +398,7 @@ class LightGlue(Module):
             scores_, _ = self.log_assignment[i](desc0, desc1)
             dt, dev = scores_.dtype, scores_.device
             scores = zeros(b, m + 1, n + 1, dtype=dt, device=dev)
-            scores[:, :-1, :-1] = -torch.inf
+            scores[:, :-1, :-1] = -inf
             scores[:, ind0[0], -1] = scores_[:, :-1, -1]
             scores[:, -1, ind1[0]] = scores_[:, -1, :-1]
             x, y = torch.meshgrid(ind0[0], ind1[0], indexing='ij')
