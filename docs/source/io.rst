@@ -39,6 +39,7 @@ natively in Rust to reduce the memory footprint during the decoding and types co
     # will load 3xHxW / in torch.float32 in range [0,1] in "cuda"
 
 .. autofunction:: load_image
+.. autofunction:: write_image
 
 .. autoclass:: ImageLoadType
     :members:
