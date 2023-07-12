@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Union
+
 import torch
 
 # classes
@@ -36,5 +38,5 @@ as_tensor = torch.as_tensor
 rand = torch.rand
 
 # type alias
-Device = str | torch.device | None
-Dtype = torch.dtype | None
+Device = Union[str, torch.device, None]
+Dtype = Union[torch.dtype, None]
