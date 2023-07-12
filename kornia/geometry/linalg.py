@@ -42,11 +42,8 @@ def compose_transformations(trans_01: Tensor, trans_12: Tensor) -> Tensor:
         >>> trans_12 = torch.eye(4)  # 4x4
         >>> trans_02 = compose_transformations(trans_01, trans_12)  # 4x4
     """
-    if not torch.is_tensor(trans_01):
-        raise TypeError(f"Input trans_01 type is not a Tensor. Got {type(trans_01)}")
-
-    if not torch.is_tensor(trans_12):
-        raise TypeError(f"Input trans_12 type is not a Tensor. Got {type(trans_12)}")
+    KORNIA_CHECK_IS_TENSOR(trans_01)
+    KORNIA_CHECK_IS_TENSOR(trans_12)
 
     if not ((trans_01.dim() in (2, 3)) and (trans_01.shape[-2:] == (4, 4))):
         raise ValueError("Input trans_01 must be a of the shape Nx4x4 or 4x4." " Got {}".format(trans_01.shape))
@@ -97,20 +94,20 @@ def inverse_transformation(trans_12: Tensor) -> Tensor:
         >>> trans_12 = torch.rand(1, 4, 4)  # Nx4x4
         >>> trans_21 = inverse_transformation(trans_12)  # Nx4x4
     """
-    if not torch.is_tensor(trans_12):
-        raise TypeError(f"Input type is not a Tensor. Got {type(trans_12)}")
+    KORNIA_CHECK_IS_TENSOR(trans_12)
+
     if not ((trans_12.dim() in (2, 3)) and (trans_12.shape[-2:] == (4, 4))):
         raise ValueError(f"Input size must be a Nx4x4 or 4x4. Got {trans_12.shape}")
     # unpack input tensor
-    rmat_12: Tensor = trans_12[..., :3, 0:3]  # Nx3x3
-    tvec_12: Tensor = trans_12[..., :3, 3:4]  # Nx3x1
+    rmat_12 = trans_12[..., :3, 0:3]  # Nx3x3
+    tvec_12 = trans_12[..., :3, 3:4]  # Nx3x1
 
     # compute the actual inverse
-    rmat_21: Tensor = torch.transpose(rmat_12, -1, -2)
-    tvec_21: Tensor = torch.matmul(-rmat_21, tvec_12)
+    rmat_21 = torch.transpose(rmat_12, -1, -2)
+    tvec_21 = torch.matmul(-rmat_21, tvec_12)
 
     # pack to output tensor
-    trans_21: Tensor = torch.zeros_like(trans_12)
+    trans_21 = torch.zeros_like(trans_12)
     trans_21[..., :3, 0:3] += rmat_21
     trans_21[..., :3, -1:] += tvec_21
     trans_21[..., -1, -1:] += 1.0
@@ -141,18 +138,17 @@ def relative_transformation(trans_01: Tensor, trans_02: Tensor) -> Tensor:
         >>> trans_02 = torch.eye(4)  # 4x4
         >>> trans_12 = relative_transformation(trans_01, trans_02)  # 4x4
     """
-    if not torch.is_tensor(trans_01):
-        raise TypeError(f"Input trans_01 type is not a Tensor. Got {type(trans_01)}")
-    if not torch.is_tensor(trans_02):
-        raise TypeError(f"Input trans_02 type is not a Tensor. Got {type(trans_02)}")
+    KORNIA_CHECK_IS_TENSOR(trans_01)
+    KORNIA_CHECK_IS_TENSOR(trans_02)
     if not ((trans_01.dim() in (2, 3)) and (trans_01.shape[-2:] == (4, 4))):
         raise ValueError("Input must be a of the shape Nx4x4 or 4x4." " Got {}".format(trans_01.shape))
     if not ((trans_02.dim() in (2, 3)) and (trans_02.shape[-2:] == (4, 4))):
         raise ValueError("Input must be a of the shape Nx4x4 or 4x4." " Got {}".format(trans_02.shape))
     if not trans_01.dim() == trans_02.dim():
         raise ValueError(f"Input number of dims must match. Got {trans_01.dim()} and {trans_02.dim()}")
-    trans_10: Tensor = inverse_transformation(trans_01)
-    trans_12: Tensor = compose_transformations(trans_10, trans_02)
+
+    trans_10 = inverse_transformation(trans_01)
+    trans_12 = compose_transformations(trans_10, trans_02)
     return trans_12
 
 
@@ -160,11 +156,11 @@ def transform_points(trans_01: Tensor, points_1: Tensor) -> Tensor:
     r"""Function that applies transformations to a set of points.
 
     Args:
-        trans_01 (Tensor): tensor for transformations of shape
+        trans_01: tensor for transformations of shape
           :math:`(B, D+1, D+1)`.
-        points_1 (Tensor): tensor of points of shape :math:`(B, N, D)`.
+        points_1: tensor of points of shape :math:`(B, N, D)`.
     Returns:
-        Tensor: tensor of N-dimensional points.
+        a tensor of N-dimensional points.
 
     Shape:
         - Output: :math:`(B, N, D)`

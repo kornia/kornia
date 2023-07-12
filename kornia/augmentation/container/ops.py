@@ -1,6 +1,8 @@
 from abc import ABCMeta, abstractmethod
 from typing import Any, Callable, Dict, Generic, List, Optional, Type, TypeVar, Union
 
+from typing_extensions import ParamSpec
+
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
 from kornia.constants import DataKey
@@ -128,12 +130,14 @@ class AugmentationSequentialOps:
         return outputs
 
 
-def make_input_only_sequential(module: 'K.container.ImageSequentialBase') -> Callable[..., Tensor]:
+P = ParamSpec('P')
+
+
+def make_input_only_sequential(module: 'K.container.ImageSequentialBase') -> Callable[P, Tensor]:
     """Disable all other additional inputs (e.g. ) for ImageSequential."""
 
-    def f(*args, **kwargs):
-        out = module(*args, **kwargs)
-        return out
+    def f(*args: P.args, **kwargs: P.kwargs) -> Tensor:
+        return module(*args, **kwargs)
 
     return f
 

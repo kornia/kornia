@@ -18,7 +18,7 @@ class TestIntegrationFocalLoss:
     num_classes = 2
 
     # focal loss
-    alpha = 2.0
+    alpha = 0.5
     gamma = 2.0
 
     def generate_sample(self, base_target, std_val=0.1):
@@ -37,7 +37,11 @@ class TestIntegrationFocalLoss:
         for i in range(1, self.num_classes):
             target[..., i:-i, i:-i] = i
 
-        m = nn.Sequential(nn.Conv2d(1, self.num_classes, kernel_size=3, padding=1), nn.ReLU(True)).to(device)
+        m = nn.Sequential(
+            nn.Conv2d(1, self.num_classes // 2, kernel_size=3, padding=1),
+            nn.ReLU(True),
+            nn.Conv2d(self.num_classes // 2, self.num_classes, kernel_size=3, padding=1),
+        ).to(device)
         m.apply(self.init_weights)
 
         optimizer = optim.Adam(m.parameters(), lr=self.lr)

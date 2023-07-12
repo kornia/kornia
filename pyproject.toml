@@ -138,6 +138,7 @@ requires = [
   ]
   ignore = [
     "PLW2901", # Allow overwritten values on loops
+    "PLR0915", # Allow condition check in list comprehension
   ]
 
   [tool.ruff.isort]
@@ -183,6 +184,7 @@ exclude_lines = [
   check_untyped_defs = true
   disallow_any_generics = true
   disallow_incomplete_defs = true
+  disallow_untyped_defs = true
   files = ["kornia/"]
   ignore_missing_imports = true
   no_implicit_optional = true

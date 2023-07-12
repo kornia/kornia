@@ -11,9 +11,21 @@ Detectors
 .. autofunction:: hessian_response
 .. autofunction:: dog_response
 .. autofunction:: dog_response_single
-.. autoclass:: SOLD2_detector
-   :members: forward
+.. autoclass:: BlobHessian
+.. autoclass:: CornerGFTT
+.. autoclass:: CornerHarris
+.. autoclass:: BlobDoG
+.. autoclass:: BlobDoGSingle
+.. autoclass:: KeyNet
+.. autoclass:: MultiResolutionDetector
+   :members: forward, remove_borders, detect_features_on_single_level, detect
 
+
+.. autoclass:: ScaleSpaceDetector
+  :members: forward
+
+.. autoclass:: KeyNetDetector
+   :members: forward
 
 Descriptors
 -----------
@@ -34,18 +46,16 @@ Descriptors
 
 .. autofunction:: get_laf_descriptors
 
-Matching
---------
-
-.. autofunction:: match_nn
-.. autofunction:: match_mnn
-.. autofunction:: match_snn
-.. autofunction:: match_smnn
-.. autofunction:: match_fginn
-.. autofunction:: match_adalam
 
 
-.. autoclass:: DescriptorMatcher
+Local Features (Detector and Descriptors together)
+---------------------------------------------------
+
+
+.. autoclass:: LocalFeature
+   :members: forward
+
+.. autoclass:: SOLD2_detector
    :members: forward
 
 .. autoclass:: DISK
@@ -54,12 +64,6 @@ Matching
 .. autoclass:: DISKFeatures
    :undoc-members:
    :members: x, y, to
-
-.. autoclass:: GeometryAwareDescriptorMatcher
-   :members: forward
-
-.. autoclass:: LocalFeature
-   :members: forward
 
 .. autoclass:: SIFTFeature
    :members: forward
@@ -79,7 +83,30 @@ Matching
 .. autoclass:: KeyNetHardNet
    :members: forward
 
+
+Matching
+--------
+
+.. autofunction:: match_nn
+.. autofunction:: match_mnn
+.. autofunction:: match_snn
+.. autofunction:: match_smnn
+.. autofunction:: match_fginn
+.. autofunction:: match_adalam
+
+.. autoclass:: DescriptorMatcher
+   :members: forward
+
+.. autoclass:: GeometryAwareDescriptorMatcher
+   :members: forward
+
 .. autoclass:: LocalFeatureMatcher
+   :members: forward
+
+.. autoclass:: LightGlueMatcher
+   :members: forward
+
+.. autoclass:: LightGlue
    :members: forward
 
 .. autoclass:: LoFTR
@@ -109,29 +136,6 @@ Local Affine Frames (LAF)
 .. autofunction:: KORNIA_CHECK_LAF
 .. autofunction:: perspective_transform_lafs
 
-Module
-------
-
-.. autoclass:: BlobHessian
-.. autoclass:: CornerGFTT
-.. autoclass:: CornerHarris
-.. autoclass:: BlobDoG
-.. autoclass:: BlobDoGSingle
-.. autoclass:: KeyNet
-.. autoclass:: FilterResponseNorm2d
-.. autoclass:: TLU
-
-
-.. autoclass:: MultiResolutionDetector
-   :members: forward, remove_borders, detect_features_on_single_level, detect
-
-
-.. autoclass:: ScaleSpaceDetector
-  :members: forward
-
-.. autoclass:: KeyNetDetector
-   :members: forward
-
 .. autoclass:: PassLAF
    :members: forward
 
@@ -152,6 +156,15 @@ Module
 
 .. autoclass:: LAFAffNetShapeEstimator
    :members: forward
+
+Layers
+------
+
+.. autoclass:: FilterResponseNorm2d
+.. autoclass:: TLU
+
+Other
+------
 
 .. autoclass:: DeFMO
    :members: forward

@@ -42,7 +42,7 @@ class RandomRain(IntensityAugmentationBase2D):
         number_of_drops: tuple[int, int] = (1000, 2000),
         drop_height: tuple[int, int] = (5, 20),
         drop_width: tuple[int, int] = (-5, 5),
-    ):
+    ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self._param_generator = RainGenerator(number_of_drops, drop_height, drop_width)
 

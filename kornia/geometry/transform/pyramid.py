@@ -92,7 +92,7 @@ class PyrUp(Module):
         >>> output = PyrUp()(input)  # 1x2x8x8
     """
 
-    def __init__(self, border_type: str = 'reflect', align_corners: bool = False):
+    def __init__(self, border_type: str = 'reflect', align_corners: bool = False) -> None:
         super().__init__()
         self.border_type: str = border_type
         self.align_corners: bool = align_corners
@@ -128,7 +128,9 @@ class ScalePyramid(Module):
         >>> sp, sigmas, pds = ScalePyramid(3, 15)(input)
     """
 
-    def __init__(self, n_levels: int = 3, init_sigma: float = 1.6, min_size: int = 15, double_image: bool = False):
+    def __init__(
+        self, n_levels: int = 3, init_sigma: float = 1.6, min_size: int = 15, double_image: bool = False
+    ) -> None:
         super().__init__()
         # 3 extra levels are needed for DoG nms.
         self.n_levels = n_levels
@@ -342,12 +344,12 @@ def build_pyramid(
     return pyramid
 
 
-def is_powerof_two(x):
+def is_powerof_two(x: int) -> bool:
     # check if number x is a power of two
-    return x and (not (x & (x - 1)))
+    return bool(x) and (not (x & (x - 1)))
 
 
-def find_next_powerof_two(x):
+def find_next_powerof_two(x: int) -> int:
     # return the nearest power of 2
     n = math.ceil(math.log(x) / math.log(2))
     return 2**n
