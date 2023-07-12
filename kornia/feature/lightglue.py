@@ -330,10 +330,10 @@ class LightGlue(Module):
             KORNIA_CHECK(key in data, f'Missing key {key} in data')
         data0, data1 = data['image0'], data['image1']
         kpts0_, kpts1_ = data0['keypoints'], data1['keypoints']
-        
+
         # torch 1.9.0 compatibility
         if hasattr(torch, 'inf'):
-            inf = torch.inf 
+            inf = torch.inf
         else:
             inf = torch.tensor(1e9, dtype=kpts0_.dtype, device=kpts0_.device)
 
