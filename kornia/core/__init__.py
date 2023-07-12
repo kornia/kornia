@@ -25,7 +25,7 @@ from ._backend import (
     zeros,
     zeros_like,
 )
-from .tensor_wrapper import TensorWrapper
+from .tensor_wrapper import TensorWrapper  # type: ignore
 
 __all__ = [
     "arange",

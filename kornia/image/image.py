@@ -1,14 +1,20 @@
 from __future__ import annotations
 
+from typing import Any
+
 import torch
 from torch.utils.dlpack import from_dlpack, to_dlpack
 
-from kornia.core import Tensor
+from kornia.core import Device, Dtype, Tensor
 from kornia.image.base import ChannelsOrder, ImageLayout, ImageSize, PixelFormat
 from kornia.io.io import ImageLoadType, load_image, write_image
 
 # TODO: move this utils to kornia.image.conversions
 from kornia.utils.image import image_to_tensor, tensor_to_image
+
+# placeholder for numpy
+np_ndarray = Any
+DLPack = Any
 
 
 class Image:
@@ -66,7 +72,7 @@ class Image:
         return f"Image data: {self.data}\nLayout: {self.layout}"
 
     # TODO: explore use TensorWrapper
-    def to(self, device=None, dtype=None) -> Image:
+    def to(self, device: Device = None, dtype: Dtype = None) -> Image:
         if device is not None and isinstance(device, torch.dtype):
             dtype, device = device, None
         return Image(self.data.to(device, dtype), self.layout)
@@ -113,12 +119,12 @@ class Image:
     @property
     def height(self) -> int:
         """Return the image height (columns)."""
-        return self.layout.image_size.height
+        return int(self.layout.image_size.height)
 
     @property
     def width(self) -> int:
         """Return the image width (rows)."""
-        return self.layout.image_size.width
+        return int(self.layout.image_size.width)
 
     @property
     def pixel_format(self) -> PixelFormat:
@@ -137,7 +143,7 @@ class Image:
     @classmethod
     def from_numpy(
         cls,
-        data,
+        data: np_ndarray,
         channels_order: ChannelsOrder = ChannelsOrder.CHANNELS_LAST,
         pixel_format: PixelFormat = PixelFormat.RGB,
     ) -> Image:
@@ -174,12 +180,12 @@ class Image:
         # create the image tensor
         return cls(_data, layout)
 
-    def to_numpy(self):
+    def to_numpy(self) -> np_ndarray:
         """Return a numpy array with the shape of :math:`(H,W,C)`."""
         return tensor_to_image(self.data, keepdim=True)
 
     @classmethod
-    def from_dlpack(cls, data) -> Image:
+    def from_dlpack(cls, data: DLPack) -> Image:
         """Construct an image tensor from a DLPack capsule.
 
         Args:
@@ -202,7 +208,7 @@ class Image:
 
         return cls(_data, layout)
 
-    def to_dlpack(self):
+    def to_dlpack(self) -> DLPack:
         """Return a DLPack capsule from the image tensor."""
         return to_dlpack(self.data)
 

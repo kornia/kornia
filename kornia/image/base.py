@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 
+from kornia.core import Tensor
+
 
 @dataclass(frozen=True)
 class ImageSize:
@@ -19,8 +21,8 @@ class ImageSize:
         >>> size.width
         4
     """
-    height: int
-    width: int
+    height: int | Tensor
+    width: int | Tensor
 
 
 class PixelFormat(Enum):
