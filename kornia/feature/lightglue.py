@@ -322,7 +322,7 @@ class LightGlue(Module):
 
     def _forward(self, data: Dict[str, Dict[str, Tensor]]) -> Dict[str, Any]:
         for key in self.required_data_keys:
-            KORNIA_CHECK(key in data, f'Missing key {key} in data')  # pylint: disable=PLR0915
+            KORNIA_CHECK(key in data, f'Missing key {key} in data')
         data0, data1 = data['image0'], data['image1']
         kpts0_, kpts1_ = data0['keypoints'], data1['keypoints']
         b, m, _ = kpts0_.shape
