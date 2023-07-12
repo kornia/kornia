@@ -6,6 +6,8 @@ from kornia.core import Module, ModuleList, Tensor, arange, stack, softmax, conc
 from kornia.core.check import KORNIA_CHECK
 import torch.nn.functional as F
 from typing import Optional, List, Callable, Tuple, Dict, Any, ClassVar
+import torch
+import torch.nn as nn
 import math
 
 try:
