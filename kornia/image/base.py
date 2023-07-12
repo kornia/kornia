@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 
-@dataclass
+@dataclass(frozen=True)
 class ImageSize:
     r"""Data class to represent image shape.
 
@@ -36,7 +36,7 @@ class ChannelsOrder(Enum):
     CHANNELS_LAST = 1
 
 
-@dataclass
+@dataclass(frozen=True)
 class ImageLayout:
     """Data class to represent the layout of an image.
 

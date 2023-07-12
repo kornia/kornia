@@ -158,7 +158,7 @@ class Image:
             _data = image_to_tensor(data)
             image_size = ImageSize(height=data.shape[0], width=data.shape[1])
             channels = data.shape[2]
-        elif channels_order == ChannelsOrder.CHANNEL_FIRST:
+        elif channels_order == ChannelsOrder.CHANNELS_FIRST:
             _data = torch.from_numpy(data)
             image_size = ImageSize(height=data.shape[1], width=data.shape[2])
             channels = data.shape[0]
