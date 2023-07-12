@@ -192,10 +192,12 @@ class Attention(Module):
         attn_offset_size = len(attention_offsets)
         return indices, attn_offset_size
 
+    # is this really necessary?
     @torch.no_grad()
-    def train(self, mode=True):
+    def train(self, mode: bool = True) -> Attention:
         super().train(mode)
         self.ab = None if (mode and self.ab is not None) else self.attention_biases[:, self.attention_bias_idxs]
+        return self
 
     def forward(self, x: Tensor) -> Tensor:
         B, N, _ = x.shape
@@ -358,13 +360,15 @@ class TinyViT(Module):
     ) -> None:
         super().__init__()
         self.img_size = img_size
-        # self.num_classes = num_classes
         self.num_layers = len(depths)
         self.patch_embed = PatchEmbed(in_chans, embed_dims[0], activation)
         input_resolution = img_size // 4
 
         # stochastic depth decay rule
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]
+
+        # MobileSAM adjusts the stride to match the total stride of other ViT backbones
+        # used in original SAM (stride 16)
         strides = [2, 2, 1, 1] if mobile_sam else [2, 2, 2, 1]
 
         # build layers
@@ -410,16 +414,16 @@ class TinyViT(Module):
         self.norm_head = nn.LayerNorm(embed_dims[-1])
         self.head = nn.Linear(embed_dims[-1], num_classes)
 
-        self.neck: Module | None
-        if mobile_sam:
-            self.neck = nn.Sequential(
+        self.neck = (
+            nn.Sequential(
                 nn.Conv2d(embed_dims[-1], 256, 1, bias=False),
                 LayerNorm2d(256),
                 nn.Conv2d(256, 256, 3, 1, 1, bias=False),
                 LayerNorm2d(256),
             )
-        else:
-            self.neck = None
+            if mobile_sam
+            else None
+        )
 
     def forward(self, x: Tensor) -> Tensor:
         x = self.patch_embed(x)
