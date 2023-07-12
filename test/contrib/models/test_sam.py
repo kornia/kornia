@@ -14,8 +14,17 @@ def _pad_rb(x, size):
 
 
 class TestSam(BaseTester):
-    def test_smoke(self):
-        ...
+    @pytest.mark.parametrize('model_type', ['vit_b', 'mobile_sam'])
+    def test_smoke(self, device, model_type):
+        model = Sam.from_config(SamConfig(model_type)).to(device)
+        assert isinstance(model, Sam)
+
+        img_size = model.image_encoder.img_size
+        inpt = torch.randn(1, 3, img_size, img_size, device=device)
+        keypoints = torch.randint(0, img_size, (1, 2, 2), device=device, dtype=torch.float)
+        labels = torch.randnint(0, 1, (1, 2), device=device, dtype=torch.float)
+
+        model(inpt, [dict(points=(keypoints, labels))], False)
 
     @pytest.mark.parametrize('batch_size', [1, 3])
     @pytest.mark.parametrize('N', [2, 5])

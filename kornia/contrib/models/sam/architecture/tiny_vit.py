@@ -360,18 +360,31 @@ class TinyViT(Module):
     ) -> None:
         super().__init__()
         self.img_size = img_size
-        self.num_layers = len(depths)
+        self.mobile_sam = mobile_sam
+        self.neck: Module | None
+        if mobile_sam:
+            # MobileSAM adjusts the stride to match the total stride of other ViT backbones
+            # used in original SAM (stride 16)
+            strides = [2, 2, 1, 1]
+            self.neck = nn.Sequential(
+                nn.Conv2d(embed_dims[-1], 256, 1, bias=False),
+                LayerNorm2d(256),
+                nn.Conv2d(256, 256, 3, 1, 1, bias=False),
+                LayerNorm2d(256),
+            )
+        else:
+            strides = [2, 2, 2, 1]
+            self.neck = None
+
         self.patch_embed = PatchEmbed(in_chans, embed_dims[0], activation)
         input_resolution = img_size // 4
 
+        # NOTE: if we don't support training, this might be unimportant
         # stochastic depth decay rule
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]
 
-        # MobileSAM adjusts the stride to match the total stride of other ViT backbones
-        # used in original SAM (stride 16)
-        strides = [2, 2, 1, 1] if mobile_sam else [2, 2, 2, 1]
-
         # build layers
+        n_layers = len(depths)
         layers = []
         for i_layer, (embed_dim, depth, num_heads_i, window_size, stride) in enumerate(
             zip(embed_dims, depths, num_heads, window_sizes, strides)
@@ -379,7 +392,7 @@ class TinyViT(Module):
             out_dim = embed_dims[min(i_layer + 1, len(embed_dims) - 1)]
             downsample = (
                 PatchMerging(input_resolution, embed_dim, out_dim, stride, activation)
-                if (i_layer < self.num_layers - 1)
+                if (i_layer < n_layers - 1)
                 else None
             )
             kwargs: dict[str, Any] = {
@@ -406,7 +419,7 @@ class TinyViT(Module):
             layers.append(layer)
             input_resolution //= stride
         self.layers = nn.Sequential(*layers)
-        self.feat_size = input_resolution
+        self.feat_size = input_resolution  # final feature map size
 
         # Classifier head
         # NOTE: needs this to load pre-trained weights with strict=True
@@ -414,25 +427,14 @@ class TinyViT(Module):
         self.norm_head = nn.LayerNorm(embed_dims[-1])
         self.head = nn.Linear(embed_dims[-1], num_classes)
 
-        self.neck = (
-            nn.Sequential(
-                nn.Conv2d(embed_dims[-1], 256, 1, bias=False),
-                LayerNorm2d(256),
-                nn.Conv2d(256, 256, 3, 1, 1, bias=False),
-                LayerNorm2d(256),
-            )
-            if mobile_sam
-            else None
-        )
-
     def forward(self, x: Tensor) -> Tensor:
         x = self.patch_embed(x)
         x = self.layers(x)
 
-        if self.neck is not None:
+        if self.mobile_sam:
             # MobileSAM
             x = x.unflatten(1, (self.feat_size, self.feat_size)).permute(0, 3, 1, 2)
-            x = self.neck(x)
+            x = self.neck(x)  # type: ignore
         else:
             # classification
             x = x.mean(1)
@@ -440,31 +442,31 @@ class TinyViT(Module):
         return x
 
 
-def tiny_vit_5m(img_size: int) -> TinyViT:
+def tiny_vit_5m(img_size: int, **kwargs: Any) -> TinyViT:
     return TinyViT(
         img_size=img_size,
-        in_chans=3,
         embed_dims=[64, 128, 160, 320],
         depths=[2, 2, 6, 2],
         num_heads=[2, 4, 5, 10],
         window_sizes=[7, 7, 14, 7],
         drop_path_rate=0.0,
+        **kwargs,
     )
 
 
-def tiny_vit_11m(img_size: int) -> TinyViT:
+def tiny_vit_11m(img_size: int, **kwargs: Any) -> TinyViT:
     return TinyViT(
         img_size=img_size,
-        in_chans=3,
         embed_dims=[64, 128, 256, 448],
         depths=[2, 2, 6, 2],
         num_heads=[2, 4, 8, 14],
         window_sizes=[7, 7, 14, 7],
         drop_path_rate=0.1,
+        **kwargs,
     )
 
 
-def tiny_vit_21m(img_size: int) -> TinyViT:
+def tiny_vit_21m(img_size: int, **kwargs: Any) -> TinyViT:
     return TinyViT(
         img_size=img_size,
         embed_dims=[96, 192, 384, 576],
@@ -472,4 +474,5 @@ def tiny_vit_21m(img_size: int) -> TinyViT:
         num_heads=[3, 6, 12, 18],
         window_sizes=[7, 7, 14, 7],
         drop_path_rate=0.2,
+        **kwargs,
     )

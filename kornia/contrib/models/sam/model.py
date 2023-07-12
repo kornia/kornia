@@ -138,7 +138,7 @@ class Sam(ModelBase[SamConfig]):
             image_embedding_size = image_size // vit_patch_size
 
             model = Sam(
-                image_encoder=tiny_vit_5m(image_size),
+                image_encoder=tiny_vit_5m(image_size, mobile_sam=True),
                 prompt_encoder=PromptEncoder(
                     embed_dim=prompt_embed_dim,
                     image_embedding_size=(image_embedding_size, image_embedding_size),
