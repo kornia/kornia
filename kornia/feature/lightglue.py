@@ -2,13 +2,14 @@ import math
 import warnings
 from pathlib import Path
 from types import SimpleNamespace
-from kornia.core import Module, ModuleList, Tensor, arange, stack, softmax, concatenate, where, ones_like, zeros, einsum
-from kornia.core.check import KORNIA_CHECK
-import torch.nn.functional as F
-from typing import Optional, List, Callable, Tuple, Dict, Any, ClassVar
+from typing import Any, Callable, ClassVar, Dict, List, Optional, Tuple
+
 import torch
-import torch.nn as nn
-import math
+import torch.nn.functional as F
+from torch import nn
+
+from kornia.core import Module, ModuleList, Tensor, arange, concatenate, einsum, ones_like, softmax, stack, where, zeros
+from kornia.core.check import KORNIA_CHECK
 
 try:
     from flash_attn.modules.mha import FlashCrossAttention
@@ -255,24 +256,19 @@ class LightGlue(Module):
         'weights': None,
     }
 
-    required_data_keys: ClassVar [List[str]] = [
-        'image0', 'image1']
+    required_data_keys: ClassVar[List[str]] = ['image0', 'image1']
 
     version: ClassVar[str] = "v0.1_arxiv"
     url: ClassVar[str] = "https://github.com/cvg/LightGlue/releases/download/{}/{}_lightglue.pth"
 
-    features: ClassVar[Dict[str, Any]] = {
-        'superpoint': ('superpoint_lightglue', 256),
-        'disk': ('disk_lightglue', 128)
-    }
+    features: ClassVar[Dict[str, Any]] = {'superpoint': ('superpoint_lightglue', 256), 'disk': ('disk_lightglue', 128)}
 
     def __init__(self, features: str = 'superpoint', **conf) -> None:  # type: ignore
         super().__init__()
         temp_conf = {**self.default_conf, **conf}
         if features is not None:
             KORNIA_CHECK(features in list(self.features.keys()), "Features keys are wrong")
-            temp_conf['weights'], temp_conf['input_dim'] = \
-                self.features[features]
+            temp_conf['weights'], temp_conf['input_dim'] = self.features[features]
         self.conf = conf_ = SimpleNamespace(**temp_conf)
 
         if conf_.input_dim != conf_.descriptor_dim:
