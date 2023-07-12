@@ -94,10 +94,10 @@ class Attention(Module):
             else:  # use torch 2.0 scaled_dot_product_attention with flash
                 args = [x.half().contiguous() for x in [q, k, v]]
                 with torch.backends.cuda.sdp_kernel(enable_flash=True):
-                    return F.scaled_dot_product_attention(*args).to(q.dtype)  # type: ignore
+                    return F.scaled_dot_product_attention(*args).to(q.dtype)
         elif hasattr(F, 'scaled_dot_product_attention'):
             args = [x.contiguous() for x in [q, k, v]]
-            return F.scaled_dot_product_attention(*args).to(q.dtype)  # type: ignore
+            return F.scaled_dot_product_attention(*args).to(q.dtype)
         else:
             s = q.shape[-1] ** -0.5
             attn = softmax(einsum('...id,...jd->...ij', q, k) * s, -1)
@@ -322,7 +322,7 @@ class LightGlue(Module):
 
     def _forward(self, data: Dict[str, Dict[str, Tensor]]) -> Dict[str, Any]:
         for key in self.required_data_keys:
-            KORNIA_CHECK(key in data, f'Missing key {key} in data')
+            KORNIA_CHECK(key in data, f'Missing key {key} in data')  # pylint: disable=PLR0915
         data0, data1 = data['image0'], data['image1']
         kpts0_, kpts1_ = data0['keypoints'], data1['keypoints']
         b, m, _ = kpts0_.shape
