@@ -140,7 +140,7 @@ def write_image(path_file: str, image: Tensor) -> None:
     image_np = image.permute(1, 2, 0).numpy()  # HxWx3
 
     # encode the image using the kornia_rs
-    image_encoded: list[int] = image_encoder.encode(image_np.tobytes(), image.shape)
+    image_encoded: list[int] = image_encoder.encode(image_np.tobytes(), image_np.shape)
 
     # save the image using the
     kornia_rs.write_image_jpeg(path_file, image_encoded)
