@@ -167,7 +167,7 @@ class Image:
             >>> data = np.ones((4, 5, 3), dtype=np.uint8)  # HxWxC
             >>> img = Image.from_numpy(data)
             >>> assert img.channels == 3
-            >>> assert img.shape == (3, 4, 5)
+            >>> assert img.shape == (4, 5, 3)
         """
         if channels_order == ChannelsOrder.CHANNELS_LAST:
             image_size = ImageSize(height=data.shape[0], width=data.shape[1])
@@ -247,4 +247,7 @@ class Image:
             >>> img = Image.from_numpy(data)
             >>> img.write("test.jpg")
         """
-        write_image(file_path, self.data)
+        data = self.data
+        if self.channels_order == ChannelsOrder.CHANNELS_LAST:
+            data = data.permute(2, 0, 1)
+        write_image(file_path, data)

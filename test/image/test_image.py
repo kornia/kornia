@@ -81,3 +81,8 @@ class TestImage:
 
         # NOTE: the tolerance is high due to the jpeg compression
         assert (img.float().data - img2.float().data).pow(2).mean() > 0.5
+
+    def test_write_first_channel(self, tmp_path: Path) -> None:
+        data = np.ones((4, 5, 3), dtype=np.uint8)
+        img = Image.from_numpy(data, pixel_format=PixelFormat.RGB, channels_order=ChannelsOrder.CHANNELS_LAST)
+        img.write(tmp_path / "image.jpg")
