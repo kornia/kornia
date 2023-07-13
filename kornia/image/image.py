@@ -165,9 +165,10 @@ class Image:
 
         Example:
             >>> data = np.ones((4, 5, 3), dtype=np.uint8)  # HxWxC
-            >>> img = Image.from_numpy(data)
+            >>> img = Image.from_numpy(data, pixel_format=PixelFormat.BGR)
             >>> assert img.channels == 3
-            >>> assert img.shape == (4, 5, 3)
+            >>> assert img.width == 5
+            >>> assert img.height == 4
         """
         if channels_order == ChannelsOrder.CHANNELS_LAST:
             image_size = ImageSize(height=data.shape[0], width=data.shape[1])
