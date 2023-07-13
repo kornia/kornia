@@ -159,7 +159,7 @@ class Image:
         """Construct an image tensor from a numpy array.
 
         Args:
-            data: a numpy array with the shape of :math:`(H,W,C).
+            data: a numpy array containing the image data.
             channels_order: the channel order of the image.
             pixel_format: the pixel format of the image.
 
