@@ -295,15 +295,15 @@ def angle_axis_to_rotation_matrix(angle_axis: Tensor) -> Tensor:
         cos_theta = torch.cos(theta)
         sin_theta = torch.sin(theta)
 
-        r00 = cos_theta + wx * wx * (k_one - cos_theta)
-        r10 = wz * sin_theta + wx * wy * (k_one - cos_theta)
-        r20 = -wy * sin_theta + wx * wz * (k_one - cos_theta)
-        r01 = wx * wy * (k_one - cos_theta) - wz * sin_theta
-        r11 = cos_theta + wy * wy * (k_one - cos_theta)
-        r21 = wx * sin_theta + wy * wz * (k_one - cos_theta)
-        r02 = wy * sin_theta + wx * wz * (k_one - cos_theta)
-        r12 = -wx * sin_theta + wy * wz * (k_one - cos_theta)
-        r22 = cos_theta + wz * wz * (k_one - cos_theta)
+        r00 = cos_theta + wx * wx * torch.logical_not(cos_theta)
+        r10 = wz * sin_theta + wx * wy * torch.logical_not(cos_theta)
+        r20 = -wy * sin_theta + wx * wz * torch.logical_not(cos_theta)
+        r01 = wx * wy * torch.logical_not(cos_theta) - wz * sin_theta
+        r11 = cos_theta + wy * wy * torch.logical_not(cos_theta)
+        r21 = wx * sin_theta + wy * wz * torch.logical_not(cos_theta)
+        r02 = wy * sin_theta + wx * wz * torch.logical_not(cos_theta)
+        r12 = -wx * sin_theta + wy * wz * torch.logical_not(cos_theta)
+        r22 = cos_theta + wz * wz * torch.logical_not(cos_theta)
         rotation_matrix = concatenate([r00, r01, r02, r10, r11, r12, r20, r21, r22], dim=1)
         return rotation_matrix.view(-1, 3, 3)
 
