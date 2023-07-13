@@ -1,11 +1,13 @@
 from pathlib import Path
 
 import numpy as np
+import pytest
 import torch
 
 from kornia.image.base import ChannelsOrder, ImageLayout, ImageSize, PixelFormat
 from kornia.image.image import Image
 from kornia.testing import assert_close
+from kornia.utils._compat import torch_version_le
 
 
 class TestImage:
@@ -67,14 +69,15 @@ class TestImage:
         img = Image(data, layout=layout)
         assert_close(data, Image.from_dlpack(img.to_dlpack()).data)
 
+    @pytest.mark.skipif(torch_version_le(1, 9, 1), reason="dlpack is broken in torch<=1.9.1")
     def test_load_write(self, tmp_path: Path) -> None:
         data = torch.randint(0, 255, (3, 4, 5), dtype=torch.uint8)
         img = Image.from_numpy(data.numpy(), channels_order=ChannelsOrder.CHANNELS_FIRST)
 
         file_name = tmp_path / "image.jpg"
 
-        img.write(str(file_name))
-        img2 = Image.from_file(str(file_name))
+        img.write(file_name)
+        img2 = Image.from_file(file_name)
 
         # NOTE: the tolerance is high due to the jpeg compression
         assert (img.float().data - img2.float().data).pow(2).mean() > 0.5

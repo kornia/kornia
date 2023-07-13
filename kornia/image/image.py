@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import torch
@@ -211,7 +212,7 @@ class Image:
         return to_dlpack(self.data)
 
     @classmethod
-    def from_file(cls, file_path: str) -> Image:
+    def from_file(cls, file_path: str | Path) -> Image:
         """Construct an image tensor from a file.
 
         Args:
@@ -227,7 +228,7 @@ class Image:
         )
         return cls(data, layout)
 
-    def write(self, file_path: str) -> None:
+    def write(self, file_path: str | Path) -> None:
         """Write the image to a file.
 
         For now, only support writing to JPEG format.
