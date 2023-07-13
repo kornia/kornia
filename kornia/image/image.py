@@ -62,6 +62,11 @@ class Image:
             data: a torch tensor containing the image data.
             layout: a dataclass containing the image layout information.
         """
+        if layout.channels_order == ChannelsOrder.CHANNELS_FIRST:
+            shape = [str(layout.channels), str(layout.image_size.height), str(layout.image_size.width)]
+        else:
+            shape = [str(layout.image_size.height), str(layout.image_size.width), str(layout.channels)]
+        KORNIA_CHECK_SHAPE(data, shape)
         self._data = data
         self._layout = layout
 
