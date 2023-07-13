@@ -49,7 +49,7 @@ class ImageLayout:
         channels_order: channels order.
 
     Example:
-        >>> layout = ImageLayout(ImageSize(3, 4), 3, PixelFormat.RGB, ChannelsOrder.CHANNEL_LAST)
+        >>> layout = ImageLayout(ImageSize(3, 4), 3, PixelFormat.RGB, ChannelsOrder.CHANNELS_LAST)
         >>> layout.image_size
         ImageSize(height=3, width=4)
         >>> layout.channels
@@ -57,7 +57,7 @@ class ImageLayout:
         >>> layout.pixel_format
         <PixelFormat.RGB: 1>
         >>> layout.channels_order
-        <ChannelsOrder.CHANNEL_LAST: 1>
+        <ChannelsOrder.CHANNELS_LAST: 1>
     """
 
     image_size: ImageSize
