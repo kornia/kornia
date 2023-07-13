@@ -288,7 +288,6 @@ def angle_axis_to_rotation_matrix(angle_axis: Tensor) -> Tensor:
         # We want to be careful to only evaluate the square root if the
         # norm of the angle_axis vector is greater than zero. Otherwise
         # we get a division by zero.
-        k_one = 1.0
         theta = torch.sqrt(theta2)
         wxyz = angle_axis / (theta + eps)
         wx, wy, wz = torch.chunk(wxyz, 3, dim=1)
