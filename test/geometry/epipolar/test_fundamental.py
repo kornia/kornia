@@ -100,6 +100,15 @@ class TestFindFundamental:
         F_mat = epi.find_fundamental(points1, points2, weights)
         assert F_mat.shape == (B, 3, 3)
 
+    @pytest.mark.parametrize("batch_size", [1, 2, 3])
+    def test_shape_7point(self, batch_size, device, dtype):
+        B = batch_size
+        points1 = torch.rand(B, 7, 2, device=device, dtype=dtype)
+        points2 = torch.rand(B, 7, 2, device=device, dtype=dtype)
+        weights = torch.ones(B, 7, device=device, dtype=dtype)
+        F_mat = epi.find_fundamental(points1, points2, method="7POINT")
+        assert F_mat.shape == (B, 3, 3, 3)
+
     def test_opencv_svd(self, device, dtype):
         points1 = torch.tensor(
             [
