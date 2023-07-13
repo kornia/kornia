@@ -7,11 +7,9 @@ import torch
 from torch.utils.dlpack import from_dlpack, to_dlpack
 
 from kornia.core import Device, Dtype, Tensor
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.image.base import ChannelsOrder, ImageLayout, ImageSize, PixelFormat
 from kornia.io.io import ImageLoadType, load_image, write_image
-
-# TODO: move this utils to kornia.image.conversions
-from kornia.utils.image import image_to_tensor, tensor_to_image
 
 # placeholder for numpy
 np_ndarray = Any
@@ -62,11 +60,16 @@ class Image:
             data: a torch tensor containing the image data.
             layout: a dataclass containing the image layout information.
         """
+        # TODO: move this to a function KORNIA_CHECK_IMAGE_LAYOUT
         if layout.channels_order == ChannelsOrder.CHANNELS_FIRST:
             shape = [str(layout.channels), str(layout.image_size.height), str(layout.image_size.width)]
-        else:
+        elif layout.channels_order == ChannelsOrder.CHANNELS_LAST:
             shape = [str(layout.image_size.height), str(layout.image_size.width), str(layout.channels)]
+        else:
+            raise NotImplementedError(f"Layout {layout.channels_order} not implemented.")
+
         KORNIA_CHECK_SHAPE(data, shape)
+
         self._data = data
         self._layout = layout
 
@@ -167,11 +170,9 @@ class Image:
             >>> assert img.shape == (3, 4, 5)
         """
         if channels_order == ChannelsOrder.CHANNELS_LAST:
-            _data = image_to_tensor(data)
             image_size = ImageSize(height=data.shape[0], width=data.shape[1])
             channels = data.shape[2]
         elif channels_order == ChannelsOrder.CHANNELS_FIRST:
-            _data = torch.from_numpy(data)
             image_size = ImageSize(height=data.shape[1], width=data.shape[2])
             channels = data.shape[0]
         else:
@@ -183,11 +184,11 @@ class Image:
         )
 
         # create the image tensor
-        return cls(_data, layout)
+        return cls(torch.from_numpy(data), layout)
 
     def to_numpy(self) -> np_ndarray:
-        """Return a numpy array with the shape of :math:`(H,W,C)`."""
-        return tensor_to_image(self.data, keepdim=True)
+        """Return a numpy array in cpu from the image tensor."""
+        return self.data.cpu().detach().numpy()
 
     @classmethod
     def from_dlpack(cls, data: DLPack) -> Image:

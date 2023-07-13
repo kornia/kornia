@@ -42,7 +42,7 @@ class TestImage:
         assert img.height == 4
         assert img.width == 5
         assert img.pixel_format == PixelFormat.RGB
-        assert img.shape == (3, 4, 5)
+        assert img.shape == (4, 5, 3)
         assert img.device == device
         assert img.dtype == torch.uint8
         assert_close(data, img.to_numpy())
