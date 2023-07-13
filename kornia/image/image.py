@@ -35,17 +35,13 @@ class Image:
         layout: a dataclass containing the image layout information.
 
     Examples:
-        >>> import kornia
-        >>> import torch
-        >>> import numpy as np
-        >>>
         >>> # from a torch.tensor
         >>> data = torch.randint(0, 255, (3, 4, 5))  # CxHxW
         >>> layout = ImageLayout(
         ...     image_size=ImageSize(4, 5),
         ...     channels=3,
         ...     pixel_format=PixelFormat.RGB,
-        ...     channels_order=ChannelsOrder.CHANNEL_FIRST,
+        ...     channels_order=ChannelsOrder.CHANNELS_FIRST,
         ... )
         >>> img = Image(data, layout)
         >>> assert img.channels == 3
@@ -75,7 +71,9 @@ class Image:
     def to(self, device: Device = None, dtype: Dtype = None) -> Image:
         if device is not None and isinstance(device, torch.dtype):
             dtype, device = device, None
-        return Image(self.data.to(device, dtype), self.layout)
+        # put the data to the device and dtype
+        self._data = self.data.to(device, dtype)
+        return self
 
     # TODO: explore use TensorWrapper
     def clone(self) -> Image:
@@ -138,7 +136,9 @@ class Image:
 
     # TODO: figure out a better way map this function
     def float(self) -> Image:
-        return Image(self.data.float(), self.layout)
+        """Return the image as float."""
+        self._data = self.data.float()
+        return self
 
     @classmethod
     def from_numpy(
@@ -155,7 +155,6 @@ class Image:
             pixel_format: the pixel format of the image.
 
         Example:
-            >>> import numpy as np
             >>> data = np.ones((4, 5, 3), dtype=np.uint8)  # HxWxC
             >>> img = Image.from_numpy(data)
             >>> assert img.channels == 3
@@ -170,7 +169,7 @@ class Image:
             image_size = ImageSize(height=data.shape[1], width=data.shape[2])
             channels = data.shape[0]
         else:
-            raise ValueError("channels_order must be either CHANNEL_LAST or CHANNEL")
+            raise ValueError("channels_order must be either `CHANNELS_LAST` or `CHANNELS_FIRST`")
 
         # create the image layout based on the input data
         layout = ImageLayout(
@@ -192,7 +191,6 @@ class Image:
             data: a DLPack capsule from numpy, tvm or jax.
 
         Example:
-            >>> import numpy as np
             >>> x = np.ones((4, 5, 3))
             >>> img = Image.from_dlpack(x.__dlpack__())
         """
@@ -238,7 +236,6 @@ class Image:
             file_path: the path to the file to write the image to.
 
         Example:
-            >>> import numpy as np
             >>> data = np.ones((4, 5, 3), dtype=np.uint8)  # HxWxC
             >>> img = Image.from_numpy(data)
             >>> img.write("test.jpg")

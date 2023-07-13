@@ -5,6 +5,7 @@ except ImportError:
 
 import os
 from enum import Enum
+from pathlib import Path
 
 import torch
 from torch.utils import dlpack  # TODO: remove this if kornia relies on torch>=1.10
@@ -52,7 +53,7 @@ def to_uint8(image: Tensor) -> Tensor:
     return image.mul(255.0).byte()
 
 
-def load_image(path_file: str, desired_type: ImageLoadType, device: Device = "cpu") -> Tensor:
+def load_image(path_file: str | Path, desired_type: ImageLoadType, device: Device = "cpu") -> Tensor:
     """Read an image file and decode using the Kornia Rust backend.
 
     Args:
@@ -65,6 +66,9 @@ def load_image(path_file: str, desired_type: ImageLoadType, device: Device = "cp
     """
     if kornia_rs is None:
         raise ModuleNotFoundError("The io API is not available: `pip install kornia_rs` in a Linux system.")
+
+    if isinstance(path_file, Path):
+        path_file = str(path_file)
 
     KORNIA_CHECK(os.path.isfile(path_file), f"Invalid file: {path_file}")
     image: Tensor = load_image_to_tensor(path_file, device)  # CxHxW
@@ -110,7 +114,7 @@ def load_image(path_file: str, desired_type: ImageLoadType, device: Device = "cp
     return Tensor([])
 
 
-def write_image(path_file: str, image: Tensor) -> None:
+def write_image(path_file: str | Path, image: Tensor) -> None:
     """Save an image file using the Kornia Rust backend.
 
     For now, we only support the writing of JPEG of the following types: RGB8.
@@ -124,6 +128,9 @@ def write_image(path_file: str, image: Tensor) -> None:
     """
     if kornia_rs is None:
         raise ModuleNotFoundError("The io API is not available: `pip install kornia_rs` in a Linux system.")
+
+    if isinstance(path_file, Path):
+        path_file = str(path_file)
 
     KORNIA_CHECK("jpg" in path_file[-3:], f"Invalid file extension: {path_file}")
     KORNIA_CHECK(image.dim() == 3 and image.shape[0] == 3, f"Invalid image shape: {image.shape}")

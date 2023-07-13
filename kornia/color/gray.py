@@ -1,4 +1,4 @@
-from typing import Optional
+from __future__ import annotations
 
 import torch
 
@@ -21,7 +21,6 @@ def grayscale_to_rgb(image: Tensor) -> Tensor:
         RGB version of the image with shape :math:`(*,3,H,W)`.
 
     Example:
-        >>> import torch
         >>> input = torch.randn(2, 1, 4, 5)
         >>> gray = grayscale_to_rgb(input) # 2x3x4x5
     """
@@ -33,7 +32,7 @@ def grayscale_to_rgb(image: Tensor) -> Tensor:
     return concatenate([image, image, image], -3)
 
 
-def rgb_to_grayscale(image: Tensor, rgb_weights: Optional[Tensor] = None) -> Tensor:
+def rgb_to_grayscale(image: Tensor, rgb_weights: Tensor | None = None) -> Tensor:
     r"""Convert a RGB image to grayscale version of image.
 
     .. image:: _static/img/rgb_to_grayscale.png
@@ -52,7 +51,6 @@ def rgb_to_grayscale(image: Tensor, rgb_weights: Optional[Tensor] = None) -> Ten
        color_conversions.html>`__.
 
     Example:
-        >>> import torch
         >>> input = torch.rand(2, 3, 4, 5)
         >>> gray = rgb_to_grayscale(input) # 2x1x4x5
     """
@@ -95,7 +93,6 @@ def bgr_to_grayscale(image: Tensor) -> Tensor:
         grayscale version of the image with shape :math:`(*,1,H,W)`.
 
     Example:
-        >>> import torch
         >>> input = torch.rand(2, 3, 4, 5)
         >>> gray = bgr_to_grayscale(input) # 2x1x4x5
     """
@@ -121,7 +118,6 @@ class GrayscaleToRgb(Module):
         https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
 
     Example:
-        >>> import torch
         >>> input = torch.rand(2, 1, 4, 5)
         >>> rgb = GrayscaleToRgb()
         >>> output = rgb(input)  # 2x3x4x5
@@ -144,13 +140,12 @@ class RgbToGrayscale(Module):
         https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
 
     Example:
-        >>> import torch
         >>> input = torch.rand(2, 3, 4, 5)
         >>> gray = RgbToGrayscale()
         >>> output = gray(input)  # 2x1x4x5
     """
 
-    def __init__(self, rgb_weights: Optional[Tensor] = None) -> None:
+    def __init__(self, rgb_weights: Tensor | None | None = None) -> None:
         super().__init__()
         if rgb_weights is None:
             rgb_weights = Tensor([0.299, 0.587, 0.114])
@@ -173,7 +168,6 @@ class BgrToGrayscale(Module):
         https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
 
     Example:
-        >>> import torch
         >>> input = torch.rand(2, 3, 4, 5)
         >>> gray = BgrToGrayscale()
         >>> output = gray(input)  # 2x1x4x5

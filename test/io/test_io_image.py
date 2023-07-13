@@ -1,6 +1,5 @@
-import os
 import sys
-import tempfile
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -31,87 +30,89 @@ def create_random_img8_torch(height: int, width: int, channels: int) -> Tensor:
 
 @pytest.mark.skipif(not available_package(), reason="kornia_rs only supports python >=3.7 and pt >= 1.10.0")
 class TestIoImage:
-    def test_smoke(self):
+    def test_smoke(self, tmp_path: Path) -> None:
         height, width = 4, 5
         img_th: Tensor = create_random_img8_torch(height, width, 3)
 
-        with tempfile.NamedTemporaryFile() as tmp:
-            file_path: str = tmp.name + ".jpg"
-            write_image(file_path, img_th)
+        file_path = tmp_path / "image.jpg"
+        write_image(file_path, img_th)
 
-            assert os.path.isfile(file_path)
+        assert file_path.is_file()
 
-            img_load: Tensor = load_image(file_path, ImageLoadType.UNCHANGED)
+        img_load: Tensor = load_image(file_path, ImageLoadType.UNCHANGED)
 
-            assert img_th.shape == img_load.shape
-            assert img_th.shape[1:] == (height, width)
-            assert str(img_th.device) == "cpu"
+        assert img_th.shape == img_load.shape
+        assert img_th.shape[1:] == (height, width)
+        assert str(img_th.device) == "cpu"
 
-    def test_device(self, device):
+    def test_device(self, device, tmp_path: Path) -> None:
         height, width = 4, 5
         img_np: np.ndarray = create_random_img8(height, width, 3)
-        with tempfile.NamedTemporaryFile() as tmp:
-            file_path: str = tmp.name + ".png"
-            cv2.imwrite(file_path, img_np)
-            assert os.path.isfile(file_path)
 
-            img_th: Tensor = load_image(file_path, ImageLoadType.UNCHANGED, str(device))
-            assert str(img_th.device) == str(device)
+        file_path = tmp_path / "image.png"
+        cv2.imwrite(str(file_path), img_np)
+
+        assert file_path.is_file()
+
+        img_th: Tensor = load_image(file_path, ImageLoadType.UNCHANGED, str(device))
+        assert str(img_th.device) == str(device)
 
     @pytest.mark.parametrize("ext", ["png", "jpg"])
-    def test_types_color(self, ext):
+    def test_types_color(self, tmp_path: Path, ext) -> None:
         height, width = 4, 5
         img_np: np.ndarray = create_random_img8(height, width, 3)
-        with tempfile.NamedTemporaryFile() as tmp:
-            file_path: str = tmp.name + f".{ext}"
-            cv2.imwrite(file_path, img_np)
-            assert os.path.isfile(file_path)
 
-            img = load_image(file_path, ImageLoadType.GRAY8)
-            assert img.shape[0] == 1
-            assert img.dtype == torch.uint8
+        file_path = tmp_path / f"image.{ext}"
+        cv2.imwrite(str(file_path), img_np)
 
-            img = load_image(file_path, ImageLoadType.GRAY32)
-            assert img.shape[0] == 1
-            assert img.dtype == torch.float32
+        assert file_path.is_file()
 
-            img = load_image(file_path, ImageLoadType.RGB8)
-            assert img.shape[0] == 3
-            assert img.dtype == torch.uint8
+        img = load_image(file_path, ImageLoadType.GRAY8)
+        assert img.shape[0] == 1
+        assert img.dtype == torch.uint8
 
-            img = load_image(file_path, ImageLoadType.RGB32)
-            assert img.shape[0] == 3
-            assert img.dtype == torch.float32
+        img = load_image(file_path, ImageLoadType.GRAY32)
+        assert img.shape[0] == 1
+        assert img.dtype == torch.float32
 
-            img = load_image(file_path, ImageLoadType.RGBA8)
-            assert img.shape[0] == 4
-            assert img.dtype == torch.uint8
+        img = load_image(file_path, ImageLoadType.RGB8)
+        assert img.shape[0] == 3
+        assert img.dtype == torch.uint8
+
+        img = load_image(file_path, ImageLoadType.RGB32)
+        assert img.shape[0] == 3
+        assert img.dtype == torch.float32
+
+        img = load_image(file_path, ImageLoadType.RGBA8)
+        assert img.shape[0] == 4
+        assert img.dtype == torch.uint8
 
     @pytest.mark.parametrize("ext", ["png", "jpg"])
-    def test_types_gray(self, ext):
+    def test_types_gray(self, tmp_path: Path, ext) -> None:
         height, width = 4, 5
         img_np: np.ndarray = create_random_img8(height, width, 1)
-        with tempfile.NamedTemporaryFile() as tmp:
-            file_path: str = tmp.name + f".{ext}"
-            cv2.imwrite(file_path, img_np)
-            assert os.path.isfile(file_path)
 
-            img = load_image(file_path, ImageLoadType.GRAY8)
-            assert img.shape[0] == 1
-            assert img.dtype == torch.uint8
+        file_path = tmp_path / f"image.{ext}"
+        cv2.imwrite(str(file_path), img_np)
 
-            img = load_image(file_path, ImageLoadType.GRAY32)
-            assert img.shape[0] == 1
-            assert img.dtype == torch.float32
+        assert file_path.is_file()
 
-            img = load_image(file_path, ImageLoadType.RGB8)
-            assert img.shape[0] == 3
-            assert img.dtype == torch.uint8
+        img = load_image(file_path, ImageLoadType.GRAY8)
+        assert img.shape[0] == 1
+        assert img.dtype == torch.uint8
 
-            img = load_image(file_path, ImageLoadType.RGB32)
-            assert img.shape[0] == 3
-            assert img.dtype == torch.float32
+        img = load_image(file_path, ImageLoadType.GRAY32)
+        assert img.shape[0] == 1
+        assert img.dtype == torch.float32
 
-            img = load_image(file_path, ImageLoadType.RGBA8)
-            assert img.shape[0] == 4
-            assert img.dtype == torch.uint8
+        img = load_image(file_path, ImageLoadType.RGB8)
+        assert img.shape[0] == 3
+        assert img.dtype == torch.uint8
+
+        img = load_image(file_path, ImageLoadType.RGB32)
+        assert img.shape[0] == 3
+        assert img.dtype == torch.float32
+
+        img = load_image(file_path, ImageLoadType.RGBA8)
+        assert img.shape[0] == 4
+        assert img.dtype == torch.uint8
