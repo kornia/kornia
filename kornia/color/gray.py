@@ -145,7 +145,7 @@ class RgbToGrayscale(Module):
         >>> output = gray(input)  # 2x1x4x5
     """
 
-    def __init__(self, rgb_weights: Tensor | None | None = None) -> None:
+    def __init__(self, rgb_weights: Tensor | None = None) -> None:
         super().__init__()
         if rgb_weights is None:
             rgb_weights = Tensor([0.299, 0.587, 0.114])
