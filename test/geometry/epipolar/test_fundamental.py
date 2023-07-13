@@ -105,7 +105,7 @@ class TestFindFundamental:
         B = batch_size
         points1 = torch.rand(B, 7, 2, device=device, dtype=dtype)
         points2 = torch.rand(B, 7, 2, device=device, dtype=dtype)
-        weights = torch.ones(B, 7, device=device, dtype=dtype)
+        torch.ones(B, 7, device=device, dtype=dtype)
         F_mat = epi.find_fundamental(points1, points2, method="7POINT")
         assert F_mat.shape == (B, 3, 3, 3)
 
