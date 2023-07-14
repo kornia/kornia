@@ -442,6 +442,26 @@ class TinyViT(Module):
             x = self.head(self.norm_head(x))
         return x
 
+    @staticmethod
+    def from_config(variant: str, pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
+        """Create a TinyViT model from pre-defined variants.
+
+        Args:
+            variant: TinyViT variant. Possible values: ``'5m'``, ``'11m'``, ``'21m'``.
+            pretrained: whether to use pre-trained weights. Possible values: ``False``, ``True``, ``'in22k'``,
+                ``'in1k'``. For TinyViT-21M (``variant='21m'``), ``'in1k_384'``, ``'in1k_512'`` are also available.
+            **kwargs: other keyword arguments that will be passed to :func:`TinyViT.__init__`.
+        Returns:
+            A TinyViT model
+
+        .. note::
+            When ``img_size`` is different from the pre-trained size, bicubic interpolation will be performed on
+            attention biases. When using ``pretrained=True``, ImageNet-1k checkpoint (``'in1k'``) is used.
+            For feature extraction or fine-tuning, ImageNet-22k checkpoint (``'in22k'``) is preferred.
+        """
+        KORNIA_CHECK(variant in ("5m", "11m", "21m"), "Only variant 5m, 11m, and 21m are supported")
+        return {"5m": _tiny_vit_5m, "11m": _tiny_vit_11m, "21m": _tiny_vit_21m}[variant](pretrained, **kwargs)
+
 
 def _load_pretrained(model: TinyViT, url: str) -> TinyViT:
     model_state_dict = model.state_dict()
@@ -467,9 +487,8 @@ def _load_pretrained(model: TinyViT, url: str) -> TinyViT:
             state_dict[k] = attention_biases.view(n_heads2, L2)
 
     if state_dict["head.weight"].shape[0] != model.head.out_features:
-        warnings.warn(
-            "Number of classes does not match pre-trained checkpoint's." "Resetting classification head to zeros"
-        )
+        msg = "Number of classes does not match pre-trained checkpoint's. Resetting classification head to zeros"
+        warnings.warn(msg)
         state_dict["head.weight"] = torch.zeros_like(model.head.weight)
         state_dict["head.bias"] = torch.zeros_like(model.head.bias)
 
@@ -477,22 +496,8 @@ def _load_pretrained(model: TinyViT, url: str) -> TinyViT:
     return model
 
 
-def tiny_vit_5m(img_size: int, pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
-    """
-    Args:
-        img_size: size of input image.
-        pretrained: whether to use pre-trained weights. Possible values: ``False``, ``True``, ``'in22k'``, ``'in1k'``.
-        **kwargs: other keyword arguments that will be passed to :func:`TinyViT.__init__`.
-    Returns:
-        TinyViT-5M model
-
-    .. note::
-        When ``img_size`` is different from the pre-trained size, bicubic interpolation will be performed on attention
-        biases. When using ``pretrained=True``, ImageNet-1k checkpoint (``'in1k'``) is used. For feature extraction or
-        fine-tuning, ImageNet-22k checkpoint (``'in22k'``) should be better.
-    """
+def _tiny_vit_5m(pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
     model = TinyViT(
-        img_size=img_size,
         embed_dims=[64, 128, 160, 320],
         depths=[2, 2, 6, 2],
         num_heads=[2, 4, 5, 10],
@@ -514,22 +519,8 @@ def tiny_vit_5m(img_size: int, pretrained: bool | str = False, **kwargs: Any) ->
     return model
 
 
-def tiny_vit_11m(img_size: int, pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
-    """
-    Args:
-        img_size: size of input image.
-        pretrained: whether to use pre-trained weights. Possible values: ``False``, ``True``, ``'in22k'``, ``'in1k'``.
-        **kwargs: other keyword arguments that will be passed to :func:`TinyViT.__init__`.
-    Returns:
-        TinyViT-11M model
-
-    .. note::
-        When ``img_size`` is different from the pre-trained size, bicubic interpolation will be performed on attention
-        biases. When using ``pretrained=True``, ImageNet-1k checkpoint (``'in1k'``) is used. For feature extraction or
-        fine-tuning, ImageNet-22k checkpoint (``'in22k'``) should be better.
-    """
+def _tiny_vit_11m(pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
     model = TinyViT(
-        img_size=img_size,
         embed_dims=[64, 128, 256, 448],
         depths=[2, 2, 6, 2],
         num_heads=[2, 4, 8, 14],
@@ -551,24 +542,8 @@ def tiny_vit_11m(img_size: int, pretrained: bool | str = False, **kwargs: Any) -
     return model
 
 
-def tiny_vit_21m(img_size: int, pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
-    """
-    Args:
-        img_size: size of input image.
-        pretrained: whether to use pre-trained weights. Possible values: ``False``, ``True``, ``'in22k'``, ``'in1k'``
-            ``'in1k_384``, ``'in1k_512``.
-        **kwargs: other keyword arguments that will be passed to :func:`TinyViT.__init__`.
-    Returns:
-        TinyViT-21M model
-
-    .. note::
-        When ``img_size`` is different from the pre-trained size, bicubic interpolation will be performed on attention
-        biases. When using ``pretrained=True``, ImageNet-1k checkpoint is used (``'in1k'``, ``'in1k_384'``, or
-        ``'in1k_512'``, depending on ``img_size``). For feature extraction or fine-tuning, ImageNet-22k checkpoint
-        (``'in22k'``) should be better.
-    """
+def _tiny_vit_21m(pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
     model = TinyViT(
-        img_size=img_size,
         embed_dims=[96, 192, 384, 576],
         depths=[2, 2, 6, 2],
         num_heads=[3, 6, 12, 18],
@@ -580,6 +555,7 @@ def tiny_vit_21m(img_size: int, pretrained: bool | str = False, **kwargs: Any) -
     if pretrained:
         if pretrained is True:
             pretrained = "in1k"
+            img_size = kwargs.get("img_size", 224)
             if img_size >= 384:
                 pretrained = "in1k_384"
             if img_size >= 512:
