@@ -8,6 +8,7 @@ import itertools
 from typing import Any
 
 import torch
+import torch.nn.functional as F
 from torch import nn
 from torch.utils import checkpoint
 
@@ -356,7 +357,7 @@ class TinyViT(Module):
         local_conv_size: int = 3,
         # layer_lr_decay: float = 1.0,
         activation: type[Module] = nn.GELU,
-        mobile_sam: bool = True,
+        mobile_sam: bool = False,
     ) -> None:
         super().__init__()
         self.img_size = img_size
@@ -364,7 +365,7 @@ class TinyViT(Module):
         self.neck: Module | None
         if mobile_sam:
             # MobileSAM adjusts the stride to match the total stride of other ViT backbones
-            # used in original SAM (stride 16)
+            # used in the original SAM (stride 16)
             strides = [2, 2, 1, 1]
             self.neck = nn.Sequential(
                 nn.Conv2d(embed_dims[-1], 256, 1, bias=False),
@@ -442,8 +443,48 @@ class TinyViT(Module):
         return x
 
 
-def tiny_vit_5m(img_size: int, **kwargs: Any) -> TinyViT:
-    return TinyViT(
+def _load_pretrained(model: TinyViT, url: str) -> TinyViT:
+    model_state_dict = model.state_dict()
+    state_dict = torch.hub.load_state_dict_from_url(url)
+
+    # official checkpoint has "model" key
+    if "model" in state_dict:
+        state_dict = state_dict["model"]
+
+    # https://github.com/microsoft/Cream/blob/8dc38822b99fff8c262c585a32a4f09ac504d693/TinyViT/utils.py#L163
+    # bicubic interpolate attention biases
+    ab_keys = [k for k in state_dict.keys() if "attention_biases" in k]
+    for k in ab_keys:
+        ab_pretrained = state_dict[k]
+        ab_model = model_state_dict[k]
+        n_heads1, L1 = ab_pretrained.shape
+        n_heads2, L2 = ab_model.shape
+
+        KORNIA_CHECK(n_heads1 == n_heads2, f"Fail to load {k}. Pre-trained checkpoint should have num_heads={n_heads1}")
+        if L1 != L2:
+            S1 = int(L1**0.5)
+            S2 = int(L2**0.5)
+            ab_pretrained = F.interpolate(ab_pretrained.view(1, n_heads1, S1, S1), size=(S2, S2), mode='bicubic')
+            state_dict[k] = ab_pretrained.view(n_heads2, L2)
+
+    n_classes1 = state_dict["head.weight"].shape[0]
+    n_classes2 = model.head.out_features
+    if n_classes1 != n_classes2:
+        state_dict["head.weight"] = torch.zeros_like(model.head.weight)
+        state_dict["head.bias"] = torch.zeros_like(model.head.bias)
+
+    model.load_state_dict(state_dict)
+    return model
+
+
+def tiny_vit_5m(img_size: int, pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
+    """
+    Args:
+        img_size: size of input image
+        pretrained: whether to use pre-trained weights. Possible values: False, True, in1k, in22k
+        **kwargs: other keyword arguments that will be passed to TinyViT.__init__()
+    """
+    model = TinyViT(
         img_size=img_size,
         embed_dims=[64, 128, 160, 320],
         depths=[2, 2, 6, 2],
@@ -453,9 +494,28 @@ def tiny_vit_5m(img_size: int, **kwargs: Any) -> TinyViT:
         **kwargs,
     )
 
+    if pretrained:
+        if pretrained is True:
+            pretrained = "in1k"
 
-def tiny_vit_11m(img_size: int, **kwargs: Any) -> TinyViT:
-    return TinyViT(
+        # NOTE: for feature extraction or fine-tuning, ImageNet-22k checkpoint should be better
+        url = {
+            "in22k": "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_5m_22k_distill.pth",
+            "in1k": "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_5m_22kto1k_distill.pth",
+        }[pretrained]
+        model = _load_pretrained(model, url)
+
+    return model
+
+
+def tiny_vit_11m(img_size: int, pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
+    """
+    Args:
+        img_size: size of input image
+        pretrained: whether to use pre-trained weights. Possible values: False, True, in1k, in22k
+        **kwargs: other keyword arguments that will be passed to TinyViT.__init__()
+    """
+    model = TinyViT(
         img_size=img_size,
         embed_dims=[64, 128, 256, 448],
         depths=[2, 2, 6, 2],
@@ -465,9 +525,28 @@ def tiny_vit_11m(img_size: int, **kwargs: Any) -> TinyViT:
         **kwargs,
     )
 
+    if pretrained:
+        if pretrained is True:
+            pretrained = "in1k"
 
-def tiny_vit_21m(img_size: int, **kwargs: Any) -> TinyViT:
-    return TinyViT(
+        # NOTE: for feature extraction or fine-tuning, ImageNet-22k checkpoint should be better
+        url = {
+            "in22k": "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_11m_22k_distill.pth",
+            "in1k": "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_11m_22kto1k_distill.pth",
+        }[pretrained]
+        model = _load_pretrained(model, url)
+
+    return model
+
+
+def tiny_vit_21m(img_size: int, pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
+    """
+    Args:
+        img_size: size of input image
+        pretrained: whether to use pre-trained weights. Possible values: False, True, in22k, in1k, in1k_384, in1k_512
+        **kwargs: other keyword arguments that will be passed to TinyViT.__init__()
+    """
+    model = TinyViT(
         img_size=img_size,
         embed_dims=[96, 192, 384, 576],
         depths=[2, 2, 6, 2],
@@ -476,3 +555,22 @@ def tiny_vit_21m(img_size: int, **kwargs: Any) -> TinyViT:
         drop_path_rate=0.2,
         **kwargs,
     )
+
+    if pretrained:
+        if pretrained is True:
+            pretrained = "in1k"
+            if img_size >= 384:
+                pretrained = "in1k_384"
+            if img_size >= 512:
+                pretrained = "in1k_512"
+
+        # NOTE: for feature extraction or fine-tuning, ImageNet-22k checkpoint should be better
+        url = {
+            "in22k": "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22k_distill.pth",
+            "in1k": "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22kto1k_distill.pth",
+            "in1k_384": "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22kto1k_384_distill.pth",
+            "in1k_512": "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22kto1k_512_distill.pth",
+        }[pretrained]
+        model = _load_pretrained(model, url)
+
+    return model
