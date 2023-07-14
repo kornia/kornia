@@ -12,8 +12,7 @@ import torch.nn.functional as F
 from torch import nn
 from torch.utils import checkpoint
 
-from kornia.contrib.models.common import DropPath, LayerNorm2d
-from kornia.contrib.models.sam.architecture.image_encoder import window_partition, window_unpartition
+from kornia.contrib.models.common import DropPath, LayerNorm2d, window_partition, window_unpartition
 from kornia.core import Module, Tensor
 from kornia.core.check import KORNIA_CHECK
 
