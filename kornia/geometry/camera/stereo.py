@@ -1,3 +1,4 @@
+import warnings
 from typing import Any
 
 import torch
@@ -38,6 +39,10 @@ class StereoCamera:
             rectified_right_camera: The rectified right camera projection matrix
               of shape :math:`(B, 3, 4)`
         """
+        warnings.warn(
+            "kornia.geometry.camera.StereoCamera will be deprecated in future versions. Please use kornia.sensors.camera instead.",
+            category=DeprecationWarning,
+        )
         self._check_stereo_camera(rectified_left_camera, rectified_right_camera)
         self.rectified_left_camera: Tensor = rectified_left_camera
         self.rectified_right_camera: Tensor = rectified_right_camera
