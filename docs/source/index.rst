@@ -93,6 +93,7 @@ Join the community
 
    models/rt_detr
    models/segment_anything
+   models/mobile_sam
    models/yunet
    models/vit
    models/vit_mobile

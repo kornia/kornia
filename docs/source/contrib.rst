@@ -96,6 +96,7 @@ Segment Anything (SAM)
 .. autoclass:: kornia.contrib.models.sam.SamModelType
     :members:
     :undoc-members:
+    :member-order: bysource
 
 .. autoclass:: kornia.contrib.models.sam.SamConfig
     :members:
