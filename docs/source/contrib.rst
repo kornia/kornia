@@ -121,6 +121,8 @@ Image Classification
 
 .. autoclass:: VisionTransformer
 .. autoclass:: MobileViT
+.. autoclass:: TinyViT
+    :members:
 .. autoclass:: ClassificationHead
 
 Image Stitching

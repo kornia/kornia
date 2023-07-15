@@ -58,9 +58,7 @@ class MBConv(Module):
         super().__init__()
         hidden_channels = int(in_channels * expansion_ratio)
         self.conv1 = ConvBN(in_channels, hidden_channels, 1, activation=activation)  # point-wise
-        self.conv2 = ConvBN(
-            hidden_channels, hidden_channels, 3, 1, 1, hidden_channels, activation=activation
-        )  # depth-wise
+        self.conv2 = ConvBN(hidden_channels, hidden_channels, 3, 1, 1, hidden_channels, activation)  # depth-wise
         self.conv3 = ConvBN(hidden_channels, out_channels, 1)
         self.drop_path = DropPath(drop_path)
         self.act = activation()
@@ -228,20 +226,6 @@ class TinyViTBlock(Module):
         local_conv_size: int = 3,
         activation: type[Module] = nn.GELU,
     ) -> None:
-        """Create TinyViT Block.
-
-        Args:
-            dim (int): Number of input channels.
-            input_resolution (tuple[int, int]): Input resolution.
-            num_heads (int): Number of attention heads.
-            window_size (int): Window size.
-            mlp_ratio (float): Ratio of mlp hidden dim to embedding dim.
-            drop (float, optional): Dropout rate. Default: 0.0
-            drop_path (float, optional): Stochastic depth rate. Default: 0.0
-            local_conv_size (int): the kernel size of the convolution between
-                                Attention and MLP. Default: 3
-            activation: the activation function. Default: nn.GELU
-        """
         KORNIA_CHECK(dim % num_heads == 0, "dim must be divislbe by num_heads")
         super().__init__()
         self.input_resolution = _make_pair(input_resolution)
@@ -291,22 +275,6 @@ class BasicLayer(Module):
         local_conv_size: int = 3,
         activation: type[Module] = nn.GELU,
     ) -> None:
-        """A basic TinyViT layer for one stage.
-
-        Args:
-            dim (int): Number of input channels.
-            input_resolution (tuple[int]): Input resolution.
-            depth (int): Number of blocks.
-            num_heads (int): Number of attention heads.
-            window_size (int): Local window size.
-            mlp_ratio (float): Ratio of mlp hidden dim to embedding dim.
-            drop (float, optional): Dropout rate. Default: 0.0
-            drop_path (float | tuple[float], optional): Stochastic depth rate. Default: 0.0
-            downsample (nn.Module | None, optional): Downsample layer at the end of the layer. Default: None
-            use_checkpoint (bool): Whether to use checkpointing to save memory. Default: False.
-            local_conv_size: the kernel size of the depthwise convolution between attention and MLP. Default: 3
-            activation: the activation function. Default: nn.GELU
-        """
         super().__init__()
         self.use_checkpoint = use_checkpoint
 
@@ -339,6 +307,26 @@ class BasicLayer(Module):
 
 
 class TinyViT(Module):
+    """TinyViT model, as described in https://arxiv.org/abs/2207.10666
+
+    Args:
+        img_size: Size of input image.
+        in_chans: Number of input image's channels.
+        num_classes: Number of output classes.
+        embed_dims: List of embedding dimensions.
+        depths: List of block count for each downsampling stage
+        num_heads: List of attention heads used in self-attention for each downsampling stage.
+        window_sizes: List of self-attention's window size for each downsampling stage.
+        mlp_ratio: Ratio of MLP dimension to embedding dimension in self-attention.
+        drop_rate: Dropout rate.
+        drop_path_rate: Stochastic depth rate.
+        use_checkpoint: Whether to use activation checkpointing to trade compute for memory.
+        mbconv_expand_ratio: Expansion ratio used in MBConv block.
+        local_conv_size: Kernel size of convolution used in TinyViTBlock
+        activation: activation function.
+        mobile_same: Whether to use modifications for MobileSAM.
+    """
+
     def __init__(
         self,
         img_size: int = 224,
@@ -429,6 +417,7 @@ class TinyViT(Module):
         self.head = nn.Linear(embed_dims[-1], num_classes)
 
     def forward(self, x: Tensor) -> Tensor:
+        """Classify images if ``mobile_sam=False``, produce feature maps if ``mobile_sam=True``."""
         x = self.patch_embed(x)
         x = self.layers(x)
 
@@ -450,9 +439,7 @@ class TinyViT(Module):
             variant: TinyViT variant. Possible values: ``'5m'``, ``'11m'``, ``'21m'``.
             pretrained: whether to use pre-trained weights. Possible values: ``False``, ``True``, ``'in22k'``,
                 ``'in1k'``. For TinyViT-21M (``variant='21m'``), ``'in1k_384'``, ``'in1k_512'`` are also available.
-            **kwargs: other keyword arguments that will be passed to :func:`TinyViT.__init__`.
-        Returns:
-            A TinyViT model
+            **kwargs: other keyword arguments that will be passed to :class:`TinyViT`.
 
         .. note::
             When ``img_size`` is different from the pre-trained size, bicubic interpolation will be performed on
