@@ -6,7 +6,9 @@ Based on: `https://towardsdatascience.com/implementing-visualttransformer-in-pyt
 
 Added some tricks from: `https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py`
 """
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from __future__ import annotations
+
+from typing import Any, Callable
 
 import torch
 from torch import nn
@@ -21,7 +23,7 @@ class ResidualAdd(Module):
         super().__init__()
         self.fn = fn
 
-    def forward(self, x: Tensor, **kwargs: Dict[str, Any]) -> Tensor:
+    def forward(self, x: Tensor, **kwargs: Any) -> Tensor:
         res = x
         x = self.fn(x, **kwargs)
         x += res
@@ -60,7 +62,7 @@ class MultiHeadAttention(Module):
         self.projection = nn.Linear(emb_size, emb_size)
         self.projection_drop = nn.Dropout(proj_drop)  # added timm trick
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         B, N, C = x.shape
         # split keys, queries and values in num_heads
         # NOTE: the line below differs from timm
@@ -114,9 +116,9 @@ class TransformerEncoder(Module):
         self.blocks = nn.Sequential(
             *(TransformerEncoderBlock(embed_dim, num_heads, dropout_rate, dropout_attn) for _ in range(depth))
         )
-        self.results: List[torch.Tensor] = []
+        self.results: list[Tensor] = []
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         self.results = []
         out = x
         for m in self.blocks.children():
@@ -134,7 +136,7 @@ class PatchEmbedding(Module):
         out_channels: int = 768,
         patch_size: int = 16,
         image_size: int = 224,
-        backbone: Optional[Module] = None,
+        backbone: Module | None = None,
     ) -> None:
         super().__init__()
         self.in_channels = in_channels
@@ -152,11 +154,11 @@ class PatchEmbedding(Module):
         self.cls_token = nn.Parameter(torch.randn(1, 1, out_channels))
         self.positions = nn.Parameter(torch.randn(feat_size + 1, out_channels))
 
-    def _compute_feats_dims(self, image_size: Tuple[int, int, int]) -> Tuple[int, int]:
+    def _compute_feats_dims(self, image_size: tuple[int, int, int]) -> tuple[int, int]:
         out = self.backbone(torch.zeros(1, *image_size)).detach()
         return out.shape[-3], out.shape[-2] * out.shape[-1]
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         x = self.backbone(x)
         B, N, _, _ = x.shape
         x = x.view(B, N, -1).permute(0, 2, 1)  # BxNxE
@@ -206,7 +208,7 @@ class VisionTransformer(Module):
         num_heads: int = 12,
         dropout_rate: float = 0.0,
         dropout_attn: float = 0.0,
-        backbone: Optional[Module] = None,
+        backbone: Module | None = None,
     ) -> None:
         super().__init__()
         self.image_size = image_size
@@ -219,12 +221,12 @@ class VisionTransformer(Module):
         self.encoder = TransformerEncoder(hidden_dim, depth, num_heads, dropout_rate, dropout_attn)
 
     @property
-    def encoder_results(self) -> List[Tensor]:
+    def encoder_results(self) -> list[Tensor]:
         return self.encoder.results
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if not isinstance(x, torch.Tensor):
-            raise TypeError(f"Input x type is not a torch.Tensor. Got: {type(x)}")
+    def forward(self, x: Tensor) -> Tensor:
+        if not isinstance(x, Tensor):
+            raise TypeError(f"Input x type is not a Tensor. Got: {type(x)}")
 
         if self.image_size not in (*x.shape[-2:],) and x.shape[-3] != self.in_channels:
             raise ValueError(
@@ -234,3 +236,18 @@ class VisionTransformer(Module):
         out = self.patch_embedding(x)
         out = self.encoder(out)
         return out
+
+    @staticmethod
+    def from_config(variant: str, **kwargs: Any) -> VisionTransformer:
+        model_type, patch_size = variant.split("/")
+        patch_size = int(patch_size)
+
+        _kwargs = {
+            "vit_ti": {"embed_dim": 192, "depth": 12, "num_heads": 3},
+            "vit_s": {"embed_dim": 384, "depth": 12, "num_heads": 6},
+            "vit_b": {"embed_dim": 768, "depth": 12, "num_heads": 12},
+            "vit_l": {"embed_dim": 1024, "depth": 24, "num_heads": 16},
+            "vit_h": {"embed_dim": 1280, "depth": 32, "num_heads": 16},
+        }[model_type]
+
+        return VisionTransformer(patch_size=patch_size, **_kwargs, **kwargs)
