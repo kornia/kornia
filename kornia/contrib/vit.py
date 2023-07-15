@@ -11,7 +11,6 @@ from __future__ import annotations
 import os
 from typing import Any, Callable
 
-import requests
 import torch
 from torch import nn
 
@@ -33,17 +32,13 @@ _checkpoint_dict = {
 }
 
 
-def download_to_torch_hub(url: str) -> str:
+def download_to_torch_hub(url: str, progress: bool = True) -> str:
     torch_hub_dir = torch.hub.get_dir()
     filename = os.path.basename(url)
     file_path = os.path.join(torch_hub_dir, filename)
 
     if not os.path.exists(file_path):
-        with requests.get(url, stream=True, timeout=60) as resp:
-            resp.raise_for_status()
-            with open(file_path, "wb") as f:
-                for chunk in resp.iter_content(8192):
-                    f.write(chunk)
+        torch.hub.download_url_to_file(url, file_path, progress=progress)
 
     return file_path
 
