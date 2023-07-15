@@ -9,9 +9,9 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.contrib.models.common import LayerNorm2d
+from kornia.contrib.models.common import LayerNorm2d, window_partition, window_unpartition
 from kornia.contrib.models.sam.architecture.common import MLPBlock
-from kornia.core import Module, Tensor, pad, zeros
+from kornia.core import Module, Tensor, zeros
 
 
 # This class and its supporting functions below lightly adapted from the ViTDet backbone available at: https://github.com/facebookresearch/detectron2/blob/main/detectron2/modeling/backbone/vit.py # noqa
@@ -221,53 +221,6 @@ class Attention(Module):
         x = self.proj(x)
 
         return x
-
-
-def window_partition(x: Tensor, window_size: int) -> tuple[Tensor, tuple[int, int]]:
-    """Partition into non-overlapping windows with padding if needed.
-
-    Args:
-        x: input tokens with [B, H, W, C].
-        window_size: window size.
-
-    Returns:
-        windows: windows after partition with [B * num_windows, window_size, window_size, C].
-        (Hp, Wp): padded height and width before partition
-    """
-    B, H, W, C = x.shape
-
-    pad_h = (window_size - H % window_size) % window_size
-    pad_w = (window_size - W % window_size) % window_size
-    if pad_h > 0 or pad_w > 0:
-        x = pad(x, (0, 0, 0, pad_w, 0, pad_h))
-    Hp, Wp = H + pad_h, W + pad_w
-
-    x = x.view(B, Hp // window_size, window_size, Wp // window_size, window_size, C)
-    windows = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(-1, window_size, window_size, C)
-    return windows, (Hp, Wp)
-
-
-def window_unpartition(windows: Tensor, window_size: int, pad_hw: tuple[int, int], hw: tuple[int, int]) -> Tensor:
-    """Window unpartition into original sequences and removing padding.
-
-    Args:
-        x: input tokens with [B * num_windows, window_size, window_size, C].
-        window_size: window size.
-        pad_hw: padded height and width (Hp, Wp).
-        hw: original height and width (H, W) before padding.
-
-    Returns:
-        x: unpartitioned sequences with [B, H, W, C].
-    """
-    Hp, Wp = pad_hw
-    H, W = hw
-    B = windows.shape[0] // (Hp * Wp // window_size // window_size)
-    x = windows.view(B, Hp // window_size, Wp // window_size, window_size, window_size, -1)
-    x = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(B, Hp, Wp, -1)
-
-    if Hp > H or Wp > W:
-        x = x[:, :H, :W, :].contiguous()
-    return x
 
 
 def get_rel_pos(q_size: int, k_size: int, rel_pos: Tensor) -> Tensor:

@@ -1,18 +1,18 @@
 # https://github.com/microsoft/Cream/blob/8dc38822b99fff8c262c585a32a4f09ac504d693/TinyViT/models/tiny_vit.py
 # https://github.com/ChaoningZhang/MobileSAM/blob/01ea8d0f5590082f0c1ceb0a3e2272593f20154b/mobile_sam/modeling/tiny_vit_sam.py
-# NOTE: make this available as an image classifier?
 
 from __future__ import annotations
 
 import itertools
+import warnings
 from typing import Any
 
 import torch
+import torch.nn.functional as F
 from torch import nn
 from torch.utils import checkpoint
 
-from kornia.contrib.models.common import DropPath, LayerNorm2d
-from kornia.contrib.models.sam.architecture.image_encoder import window_partition, window_unpartition
+from kornia.contrib.models.common import DropPath, LayerNorm2d, window_partition, window_unpartition
 from kornia.core import Module, Tensor
 from kornia.core.check import KORNIA_CHECK
 
@@ -58,9 +58,7 @@ class MBConv(Module):
         super().__init__()
         hidden_channels = int(in_channels * expansion_ratio)
         self.conv1 = ConvBN(in_channels, hidden_channels, 1, activation=activation)  # point-wise
-        self.conv2 = ConvBN(
-            hidden_channels, hidden_channels, 3, 1, 1, hidden_channels, activation=activation
-        )  # depth-wise
+        self.conv2 = ConvBN(hidden_channels, hidden_channels, 3, 1, 1, hidden_channels, activation)  # depth-wise
         self.conv3 = ConvBN(hidden_channels, out_channels, 1)
         self.drop_path = DropPath(drop_path)
         self.act = activation()
@@ -228,20 +226,6 @@ class TinyViTBlock(Module):
         local_conv_size: int = 3,
         activation: type[Module] = nn.GELU,
     ) -> None:
-        """Create TinyViT Block.
-
-        Args:
-            dim (int): Number of input channels.
-            input_resolution (tuple[int, int]): Input resolution.
-            num_heads (int): Number of attention heads.
-            window_size (int): Window size.
-            mlp_ratio (float): Ratio of mlp hidden dim to embedding dim.
-            drop (float, optional): Dropout rate. Default: 0.0
-            drop_path (float, optional): Stochastic depth rate. Default: 0.0
-            local_conv_size (int): the kernel size of the convolution between
-                                Attention and MLP. Default: 3
-            activation: the activation function. Default: nn.GELU
-        """
         KORNIA_CHECK(dim % num_heads == 0, "dim must be divislbe by num_heads")
         super().__init__()
         self.input_resolution = _make_pair(input_resolution)
@@ -291,22 +275,6 @@ class BasicLayer(Module):
         local_conv_size: int = 3,
         activation: type[Module] = nn.GELU,
     ) -> None:
-        """A basic TinyViT layer for one stage.
-
-        Args:
-            dim (int): Number of input channels.
-            input_resolution (tuple[int]): Input resolution.
-            depth (int): Number of blocks.
-            num_heads (int): Number of attention heads.
-            window_size (int): Local window size.
-            mlp_ratio (float): Ratio of mlp hidden dim to embedding dim.
-            drop (float, optional): Dropout rate. Default: 0.0
-            drop_path (float | tuple[float], optional): Stochastic depth rate. Default: 0.0
-            downsample (nn.Module | None, optional): Downsample layer at the end of the layer. Default: None
-            use_checkpoint (bool): Whether to use checkpointing to save memory. Default: False.
-            local_conv_size: the kernel size of the depthwise convolution between attention and MLP. Default: 3
-            activation: the activation function. Default: nn.GELU
-        """
         super().__init__()
         self.use_checkpoint = use_checkpoint
 
@@ -339,6 +307,26 @@ class BasicLayer(Module):
 
 
 class TinyViT(Module):
+    """TinyViT model, as described in https://arxiv.org/abs/2207.10666
+
+    Args:
+        img_size: Size of input image.
+        in_chans: Number of input image's channels.
+        num_classes: Number of output classes.
+        embed_dims: List of embedding dimensions.
+        depths: List of block count for each downsampling stage
+        num_heads: List of attention heads used in self-attention for each downsampling stage.
+        window_sizes: List of self-attention's window size for each downsampling stage.
+        mlp_ratio: Ratio of MLP dimension to embedding dimension in self-attention.
+        drop_rate: Dropout rate.
+        drop_path_rate: Stochastic depth rate.
+        use_checkpoint: Whether to use activation checkpointing to trade compute for memory.
+        mbconv_expand_ratio: Expansion ratio used in MBConv block.
+        local_conv_size: Kernel size of convolution used in TinyViTBlock
+        activation: activation function.
+        mobile_same: Whether to use modifications for MobileSAM.
+    """
+
     def __init__(
         self,
         img_size: int = 224,
@@ -356,7 +344,7 @@ class TinyViT(Module):
         local_conv_size: int = 3,
         # layer_lr_decay: float = 1.0,
         activation: type[Module] = nn.GELU,
-        mobile_sam: bool = True,
+        mobile_sam: bool = False,
     ) -> None:
         super().__init__()
         self.img_size = img_size
@@ -364,7 +352,7 @@ class TinyViT(Module):
         self.neck: Module | None
         if mobile_sam:
             # MobileSAM adjusts the stride to match the total stride of other ViT backbones
-            # used in original SAM (stride 16)
+            # used in the original SAM (stride 16)
             strides = [2, 2, 1, 1]
             self.neck = nn.Sequential(
                 nn.Conv2d(embed_dims[-1], 256, 1, bias=False),
@@ -422,12 +410,14 @@ class TinyViT(Module):
         self.feat_size = input_resolution  # final feature map size
 
         # Classifier head
-        # NOTE: needs this to load pre-trained weights with strict=True
+        # NOTE: this is redundant for MobileSAM, but we still need it
+        # to load pre-trained weights with strict=True
         # TODO: enable strict=False, or host our own weights
         self.norm_head = nn.LayerNorm(embed_dims[-1])
         self.head = nn.Linear(embed_dims[-1], num_classes)
 
     def forward(self, x: Tensor) -> Tensor:
+        """Classify images if ``mobile_sam=False``, produce feature maps if ``mobile_sam=True``."""
         x = self.patch_embed(x)
         x = self.layers(x)
 
@@ -441,10 +431,60 @@ class TinyViT(Module):
             x = self.head(self.norm_head(x))
         return x
 
+    @staticmethod
+    def from_config(variant: str, pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
+        """Create a TinyViT model from pre-defined variants.
 
-def tiny_vit_5m(img_size: int, **kwargs: Any) -> TinyViT:
-    return TinyViT(
-        img_size=img_size,
+        Args:
+            variant: TinyViT variant. Possible values: ``'5m'``, ``'11m'``, ``'21m'``.
+            pretrained: whether to use pre-trained weights. Possible values: ``False``, ``True``, ``'in22k'``,
+                ``'in1k'``. For TinyViT-21M (``variant='21m'``), ``'in1k_384'``, ``'in1k_512'`` are also available.
+            **kwargs: other keyword arguments that will be passed to :class:`TinyViT`.
+
+        .. note::
+            When ``img_size`` is different from the pre-trained size, bicubic interpolation will be performed on
+            attention biases. When using ``pretrained=True``, ImageNet-1k checkpoint (``'in1k'``) is used.
+            For feature extraction or fine-tuning, ImageNet-22k checkpoint (``'in22k'``) is preferred.
+        """
+        KORNIA_CHECK(variant in ("5m", "11m", "21m"), "Only variant 5m, 11m, and 21m are supported")
+        return {"5m": _tiny_vit_5m, "11m": _tiny_vit_11m, "21m": _tiny_vit_21m}[variant](pretrained, **kwargs)
+
+
+def _load_pretrained(model: TinyViT, url: str) -> TinyViT:
+    model_state_dict = model.state_dict()
+    state_dict = torch.hub.load_state_dict_from_url(url)
+
+    # official checkpoint has "model" key
+    if "model" in state_dict:
+        state_dict = state_dict["model"]
+
+    # https://github.com/microsoft/Cream/blob/8dc38822b99fff8c262c585a32a4f09ac504d693/TinyViT/utils.py#L163
+    # bicubic interpolate attention biases
+    ab_keys = [k for k in state_dict.keys() if "attention_biases" in k]
+    for k in ab_keys:
+        n_heads1, L1 = state_dict[k].shape
+        n_heads2, L2 = model_state_dict[k].shape
+        KORNIA_CHECK(n_heads1 == n_heads2, f"Fail to load {k}. Pre-trained checkpoint should have num_heads={n_heads1}")
+
+        if L1 != L2:
+            S1 = int(L1**0.5)
+            S2 = int(L2**0.5)
+            attention_biases = state_dict[k].view(1, n_heads1, S1, S1)
+            attention_biases = F.interpolate(attention_biases, size=(S2, S2), mode='bicubic')
+            state_dict[k] = attention_biases.view(n_heads2, L2)
+
+    if state_dict["head.weight"].shape[0] != model.head.out_features:
+        msg = "Number of classes does not match pre-trained checkpoint's. Resetting classification head to zeros"
+        warnings.warn(msg)
+        state_dict["head.weight"] = torch.zeros_like(model.head.weight)
+        state_dict["head.bias"] = torch.zeros_like(model.head.bias)
+
+    model.load_state_dict(state_dict)
+    return model
+
+
+def _tiny_vit_5m(pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
+    model = TinyViT(
         embed_dims=[64, 128, 160, 320],
         depths=[2, 2, 6, 2],
         num_heads=[2, 4, 5, 10],
@@ -453,10 +493,21 @@ def tiny_vit_5m(img_size: int, **kwargs: Any) -> TinyViT:
         **kwargs,
     )
 
+    if pretrained:
+        if pretrained is True:
+            pretrained = "in1k"
 
-def tiny_vit_11m(img_size: int, **kwargs: Any) -> TinyViT:
-    return TinyViT(
-        img_size=img_size,
+        url = {
+            "in22k": "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_5m_22k_distill.pth",
+            "in1k": "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_5m_22kto1k_distill.pth",
+        }[pretrained]
+        model = _load_pretrained(model, url)
+
+    return model
+
+
+def _tiny_vit_11m(pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
+    model = TinyViT(
         embed_dims=[64, 128, 256, 448],
         depths=[2, 2, 6, 2],
         num_heads=[2, 4, 8, 14],
@@ -465,10 +516,21 @@ def tiny_vit_11m(img_size: int, **kwargs: Any) -> TinyViT:
         **kwargs,
     )
 
+    if pretrained:
+        if pretrained is True:
+            pretrained = "in1k"
 
-def tiny_vit_21m(img_size: int, **kwargs: Any) -> TinyViT:
-    return TinyViT(
-        img_size=img_size,
+        url = {
+            "in22k": "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_11m_22k_distill.pth",
+            "in1k": "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_11m_22kto1k_distill.pth",
+        }[pretrained]
+        model = _load_pretrained(model, url)
+
+    return model
+
+
+def _tiny_vit_21m(pretrained: bool | str = False, **kwargs: Any) -> TinyViT:
+    model = TinyViT(
         embed_dims=[96, 192, 384, 576],
         depths=[2, 2, 6, 2],
         num_heads=[3, 6, 12, 18],
@@ -476,3 +538,22 @@ def tiny_vit_21m(img_size: int, **kwargs: Any) -> TinyViT:
         drop_path_rate=0.2,
         **kwargs,
     )
+
+    if pretrained:
+        if pretrained is True:
+            pretrained = "in1k"
+            img_size = kwargs.get("img_size", 224)
+            if img_size >= 384:
+                pretrained = "in1k_384"
+            if img_size >= 512:
+                pretrained = "in1k_512"
+
+        url = {
+            "in22k": "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22k_distill.pth",
+            "in1k": "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22kto1k_distill.pth",
+            "in1k_384": "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22kto1k_384_distill.pth",
+            "in1k_512": "https://github.com/wkcn/TinyViT-model-zoo/releases/download/checkpoints/tiny_vit_21m_22kto1k_512_distill.pth",
+        }[pretrained]
+        model = _load_pretrained(model, url)
+
+    return model
