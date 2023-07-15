@@ -237,7 +237,6 @@ class TestFindFundamental:
         F_mat = epi.find_fundamental(points1, points2, method="7POINT")
         assert_close(F_mat, Fm_expected, rtol=1e-3, atol=1e-3)
 
-    @pytest.mark.xfail(reason="TODO: fix #685")
     def test_synthetic_sampson_7point(self, device, dtype):
         scene: Dict[str, torch.Tensor] = utils.generate_two_view_random_scene(device, dtype)
         x1 = scene['x1'][:, :7, :]
@@ -245,10 +244,22 @@ class TestFindFundamental:
         F_est = epi.find_fundamental(x1, x2, None, "7POINT")
         for i in range(3):
             F = F_est[0][i].unsqueeze(0)
-            error = epi.sampson_epipolar_distance(x1, x2, F)
-            assert_close(error, torch.tensor(0.0, device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
+            if torch.all(F != 0):
+                error = epi.sampson_epipolar_distance(x1, x2, F)
+                assert_close(error, torch.zeros((F.shape[0], 7), device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
 
-    @pytest.mark.xfail(reason="TODO: fix #685")
+    def test_epipolar_constraint_7point(self, device, dtype):
+        scene: Dict[str, torch.Tensor] = utils.generate_two_view_random_scene(device, dtype)
+        x1 = scene['x1'][:, :7, :]
+        x2 = scene['x2'][:, :7, :]
+        F_est = epi.find_fundamental(x1, x2, None, "7POINT")
+        for i in range(3):
+            F = F_est[0][i].unsqueeze(0)
+            if torch.all(F != 0):
+                distance = epi.symmetrical_epipolar_distance(x1, x2, F)
+                mean_error = distance.mean()
+                assert_close(mean_error, torch.tensor(0.0, device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
+
     def test_synthetic_sampson(self, device, dtype):
         scene: Dict[str, torch.Tensor] = utils.generate_two_view_random_scene(device, dtype)
 
@@ -259,7 +270,7 @@ class TestFindFundamental:
         F_est = epi.find_fundamental(x1, x2, weights)
 
         error = epi.sampson_epipolar_distance(x1, x2, F_est)
-        assert_close(error, torch.tensor(0.0, device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
+        assert_close(error, torch.zeros((x1.shape[:2]), device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
         points1 = torch.rand(1, 10, 2, device=device, dtype=torch.float64, requires_grad=True)
