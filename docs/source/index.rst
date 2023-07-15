@@ -96,6 +96,7 @@ Join the community
    models/yunet
    models/vit
    models/vit_mobile
+   models/tiny_vit
    models/loftr
    models/defmo
    models/hardnet

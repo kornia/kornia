@@ -20,8 +20,8 @@ from kornia.contrib.models.sam.architecture.common import LayerNorm
 from kornia.contrib.models.sam.architecture.image_encoder import ImageEncoderViT
 from kornia.contrib.models.sam.architecture.mask_decoder import MaskDecoder
 from kornia.contrib.models.sam.architecture.prompt_encoder import PromptEncoder
-from kornia.contrib.models.sam.architecture.tiny_vit import TinyViT, tiny_vit_5m
 from kornia.contrib.models.sam.architecture.transformer import TwoWayTransformer
+from kornia.contrib.models.tiny_vit import TinyViT
 from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
@@ -138,7 +138,7 @@ class Sam(ModelBase[SamConfig]):
             image_embedding_size = image_size // vit_patch_size
 
             model = Sam(
-                image_encoder=tiny_vit_5m(image_size, mobile_sam=True),
+                image_encoder=TinyViT.from_config("5m", img_size=image_size, mobile_sam=True),
                 prompt_encoder=PromptEncoder(
                     embed_dim=prompt_embed_dim,
                     image_embedding_size=(image_embedding_size, image_embedding_size),
