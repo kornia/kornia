@@ -1,6 +1,7 @@
 """Module containing the functionalities for computing the Fundamental Matrix."""
 
-from typing import Optional, Tuple
+import math
+from typing import Literal, Optional, Tuple
 
 import torch
 
@@ -70,9 +71,269 @@ def normalize_transformation(M: Tensor, eps: float = 1e-8) -> Tensor:
     return torch.where(norm_val.abs() > eps, M / (norm_val + eps), M)
 
 
-def find_fundamental(
-    points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None
-) -> torch.Tensor:
+# Reference : https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/polynom_solver.cpp
+def solve_quadratic(coeffs: Tensor) -> Tensor:
+    r"""Solve given quadratic equation.
+
+    The function takes the coefficients of quadratic equation and returns the solutions.
+
+    Args:
+        coeffs : The coefficients of quadratic equation :`(B, 3)`
+
+    Returns:
+        A tensor of shape `(B, 2)` containing the solutions to the quadratic equation.
+    """
+
+    KORNIA_CHECK_SHAPE(coeffs, ['B', '3'])
+
+    # Coefficients of quadratic equation
+    a = coeffs[:, 0]  # coefficient of x^2
+    b = coeffs[:, 1]  # coefficient of x
+    c = coeffs[:, 2]  # constant term
+
+    # Calculate discriminant
+    delta = b * b - 4 * a * c
+
+    # Create masks for negative and zero discriminant
+    mask_negative = delta < 0
+    mask_zero = delta == 0
+
+    # Calculate 1/(2*a) for efficient computation
+    inv_2a = 0.5 / a
+
+    # Initialize solution tensor
+    solution = torch.zeros((coeffs.shape[0], 2), device=coeffs.device, dtype=coeffs.dtype)
+
+    # Handle cases with negative discriminant
+    # if torch.any(mask_negative):
+    #     solution[mask_negative, :] = torch.tensor(0, device=coeffs.device, dtype=coeffs.dtype)
+
+    sqrt_delta = torch.sqrt(delta)
+
+    # Handle cases with non-negative discriminant
+    mask = torch.bitwise_and(~mask_negative, ~mask_zero)
+    if torch.any(mask):
+        solution[mask, 0] = (-b[mask] + sqrt_delta[mask]) * inv_2a[mask]
+        solution[mask, 1] = (-b[mask] - sqrt_delta[mask]) * inv_2a[mask]
+
+    return solution
+
+
+def solve_cubic(coeffs: Tensor) -> Tensor:
+    r"""Solve given cubic equation.
+
+    The function takes the coefficients of cubic equation and returns
+    the solutions.
+
+    Args:
+        coeffs : The coefficients cubic equation : `(B, 4)`
+
+    Returns:
+        A tensor of shape `(B, 3)` containing the solutions to the cubic equation.
+    """
+    KORNIA_CHECK_SHAPE(coeffs, ['B', '4'])
+
+    _PI = torch.tensor(math.pi, device=coeffs.device, dtype=coeffs.dtype)
+
+    # Coefficients of cubic equation
+    a = coeffs[:, 0]  # coefficient of x^3
+    b = coeffs[:, 1]  # coefficient of x^2
+    c = coeffs[:, 2]  # coefficient of x
+    d = coeffs[:, 3]  # constant term
+
+    torch.tensor(0, device=a.device, dtype=a.dtype)
+    one_tensor = torch.tensor(1.0, device=a.device, dtype=a.dtype)
+
+    solutions = torch.zeros((len(coeffs), 3), device=a.device, dtype=a.dtype)
+
+    mask_a_zero = a == 0
+    mask_b_zero = b == 0
+    mask_c_zero = c == 0
+
+    mask_a_zero & mask_b_zero & mask_c_zero
+    mask_first_order = mask_a_zero & mask_b_zero & ~mask_c_zero
+    mask_second_order = mask_a_zero & ~mask_b_zero & ~mask_c_zero
+
+    if torch.any(mask_second_order):
+        solutions[mask_second_order, 0:2] = solve_quadratic(coeffs[mask_second_order, 1:])
+
+    if torch.any(mask_first_order):
+        solutions[mask_first_order, 0] = one_tensor
+
+    # if torch.any(mask_zero_order):
+    #     solutions[mask_zero_order, 0] = zero_tensor
+
+    # Normalized form x^3 + a2 * x^2 + a1 * x + a0 = 0
+    inv_a = 1.0 / a[~mask_a_zero]
+    b_a = inv_a * b[~mask_a_zero]
+    b_a2 = b_a * b_a
+
+    c_a = inv_a * c[~mask_a_zero]
+    d_a = inv_a * d[~mask_a_zero]
+
+    # Solve the cubic equation
+    Q = (3 * c_a - b_a2) / 9
+    R = (9 * b_a * c_a - 27 * d_a - 2 * b_a * b_a2) / 54
+    Q3 = Q * Q * Q
+    D = Q3 + R * R
+    b_a_3 = (1.0 / 3.0) * b_a
+
+    a_Q_zero = torch.ones_like(a)
+    a_R_zero = torch.ones_like(a)
+    a_D_zero = torch.ones_like(a)
+
+    a_Q_zero[~mask_a_zero] = Q
+    a_R_zero[~mask_a_zero] = R
+    a_D_zero[~mask_a_zero] = D
+
+    # Q == 0
+    mask_Q_zero = (Q == 0) & (R != 0)
+    mask_Q_zero_solutions = (a_Q_zero == 0) & (a_R_zero != 0)
+
+    if torch.any(mask_Q_zero):
+        x0_Q_zero = torch.pow(2 * R[mask_Q_zero], 1 / 3) - b_a_3[mask_Q_zero]
+        solutions[mask_Q_zero_solutions, 0] = x0_Q_zero
+
+    mask_QR_zero = (Q == 0) & (R == 0)
+    mask_QR_zero_solutions = (a_Q_zero == 0) & (a_R_zero == 0)
+
+    if torch.any(mask_QR_zero):
+        solutions[mask_QR_zero_solutions] = torch.stack(
+            [-b_a_3[mask_QR_zero], -b_a_3[mask_QR_zero], -b_a_3[mask_QR_zero]], dim=1
+        )
+
+    # D <= 0
+    mask_D_zero = (D <= 0) & (Q != 0)
+    mask_D_zero_solutions = (a_D_zero <= 0) & (a_Q_zero != 0)
+
+    if torch.any(mask_D_zero):
+        theta_D_zero = torch.acos(R[mask_D_zero] / torch.sqrt(-Q3[mask_D_zero]))
+        sqrt_Q_D_zero = torch.sqrt(-Q[mask_D_zero])
+        x0_D_zero = 2 * sqrt_Q_D_zero * torch.cos(theta_D_zero / 3.0) - b_a_3[mask_D_zero]
+        x1_D_zero = 2 * sqrt_Q_D_zero * torch.cos((theta_D_zero + 2 * _PI) / 3.0) - b_a_3[mask_D_zero]
+        x2_D_zero = 2 * sqrt_Q_D_zero * torch.cos((theta_D_zero + 4 * _PI) / 3.0) - b_a_3[mask_D_zero]
+        solutions[mask_D_zero_solutions] = torch.stack([x0_D_zero, x1_D_zero, x2_D_zero], dim=1)
+
+    a_D_positive = torch.zeros_like(a)
+    a_D_positive[~mask_a_zero] = D
+    # D > 0
+    mask_D_positive_solution = (a_D_positive > 0) & (a_Q_zero != 0)
+    mask_D_positive = (D > 0) & (Q != 0)
+    if torch.any(mask_D_positive):
+        AD = torch.zeros_like(R)
+        BD = torch.zeros_like(R)
+        R_abs = torch.abs(R)
+        mask_R_positive = R_abs > 1e-16
+        if torch.any(mask_R_positive):
+            AD[mask_R_positive] = torch.pow(R_abs[mask_R_positive] + torch.sqrt(D[mask_R_positive]), 1 / 3)
+            mask_R_positive_ = R < 0
+
+            if torch.any(mask_R_positive_):
+                AD[mask_R_positive_] = -AD[mask_R_positive_]
+
+            BD[mask_R_positive] = -Q[mask_R_positive] / AD[mask_R_positive]
+        x0_D_positive = AD[mask_D_positive] + BD[mask_D_positive] - b_a_3[mask_D_positive]
+        solutions[mask_D_positive_solution, 0] = x0_D_positive
+
+    return solutions
+
+
+# Reference: Adapted from the 'run_7point' function in opencv
+# https://github.com/opencv/opencv/blob/4.x/modules/calib3d/src/fundam.cpp
+def run_7point(points1: Tensor, points2: Tensor) -> Tensor:
+    r"""Compute the fundamental matrix using the 7-point algorithm.
+
+    Args:
+        points1: A set of points in the first image with a tensor shape :math:`(B, N, 2)`.
+        points2: A set of points in the second image with a tensor shape :math:`(B, N, 2)`.
+
+    Returns:
+        the computed fundamental matrix with shape :math:`(B, 3*m, 3), Valid values of m are 1, 2 or 3`
+    """
+    KORNIA_CHECK_SHAPE(points1, ['B', '7', '2'])
+    KORNIA_CHECK_SHAPE(points2, ['B', '7', '2'])
+
+    batch_size = points1.shape[0]
+
+    points1_norm, transform1 = normalize_points(points1)
+    points2_norm, transform2 = normalize_points(points2)
+
+    x1, y1 = torch.chunk(points1_norm, dim=-1, chunks=2)  # Bx1xN
+    x2, y2 = torch.chunk(points2_norm, dim=-1, chunks=2)  # Bx1xN
+
+    ones = torch.ones_like(x1)
+    # form a linear system: which represents
+    # the equation (x2[i], 1)*F*(x1[i], 1) = 0
+    X = concatenate([x2 * x1, x2 * y1, x2, y2 * x1, y2 * y1, y2, x1, y1, ones], -1)  # BxNx9
+
+    # X * Fmat = 0 is singular (7 equations for 9 variables)
+    # solving for nullspace of X to get two F
+    ####### unstable failing gradcheck
+    # _, _, v = torch.linalg.svd(X)
+    _, _, v = _torch_svd_cast(X)
+
+    # last two singular vector as a basic of the space
+    f1 = v[..., 7].view(-1, 3, 3)
+    f2 = v[..., 8].view(-1, 3, 3)
+
+    # lambda*f1 + mu*f2 is an arbitrary fundamental matrix
+    # f ~ lambda*f1 + (1 - lambda)*f2
+    # det(f) = det(lambda*f1 + (1-lambda)*f2), find lambda
+    # form a cubic equation
+    # finding the coefficients of cubic polynomial (coeffs)
+
+    coeffs = torch.zeros((batch_size, 4), device=v.device, dtype=v.dtype)
+
+    f1_det = torch.linalg.det(f1)
+    f2_det = torch.linalg.det(f2)
+    coeffs[:, 0] = f1_det
+    coeffs[:, 1] = torch.einsum('bii->b', f2 @ torch.inverse(f1)) * f1_det
+    coeffs[:, 2] = torch.einsum('bii->b', f1 @ torch.inverse(f2)) * f2_det
+    coeffs[:, 3] = f2_det
+
+    # solve the cubic equation, there can be 1 to 3 roots
+    # roots = torch.tensor(np.roots(coeffs.numpy()))
+    roots = solve_cubic(coeffs)
+
+    fmatrix = torch.zeros((batch_size, 3, 3, 3), device=v.device, dtype=v.dtype)
+    valid_root_mask = (torch.count_nonzero(roots, dim=1) < 3) | (torch.count_nonzero(roots, dim=1) > 1)
+
+    _lambda = roots
+    _mu = torch.ones_like(_lambda)
+
+    _s = f1[valid_root_mask, 2, 2].unsqueeze(dim=1) * roots[valid_root_mask] + f2[valid_root_mask, 2, 2].unsqueeze(
+        dim=1
+    )
+    # _s_non_zero_mask = torch.abs(_s ) > 1e-16
+    _s_non_zero_mask = ~torch.isclose(_s, torch.tensor(0.0, device=v.device, dtype=v.dtype))
+
+    _mu[_s_non_zero_mask] = 1.0 / _s[_s_non_zero_mask]
+    _lambda[_s_non_zero_mask] = _lambda[_s_non_zero_mask] * _mu[_s_non_zero_mask]
+
+    f1_expanded = f1.unsqueeze(1).expand(batch_size, 3, 3, 3)
+    f2_expanded = f2.unsqueeze(1).expand(batch_size, 3, 3, 3)
+
+    fmatrix[valid_root_mask] = (
+        f1_expanded[valid_root_mask] * _lambda[valid_root_mask, :, None, None]
+        + f2_expanded[valid_root_mask] * _mu[valid_root_mask, :, None, None]
+    )
+
+    mat_ind = torch.zeros(3, 3, dtype=torch.bool)
+    mat_ind[2, 2] = True
+    fmatrix[_s_non_zero_mask, mat_ind] = 1.0
+    fmatrix[~_s_non_zero_mask, mat_ind] = 0.0
+
+    trans1_exp = transform1[valid_root_mask].unsqueeze(1).expand(-1, fmatrix.shape[2], -1, -1)
+    trans2_exp = transform2[valid_root_mask].unsqueeze(1).expand(-1, fmatrix.shape[2], -1, -1)
+
+    fmatrix[valid_root_mask] = torch.matmul(
+        trans2_exp.transpose(-2, -1), torch.matmul(fmatrix[valid_root_mask], trans1_exp)
+    )
+
+    return normalize_transformation(fmatrix)
+
+
+def run_8point(points1: Tensor, points2: Tensor, weights: Optional[Tensor] = None) -> Tensor:
     r"""Compute the fundamental matrix using the DLT formulation.
 
     The linear system is solved by using the Weighted Least Squares Solution for the 8 Points algorithm.
@@ -126,6 +387,32 @@ def find_fundamental(
     F_est = transform2.transpose(-2, -1) @ (F_projected @ transform1)
 
     return normalize_transformation(F_est)
+
+
+def find_fundamental(
+    points1: Tensor, points2: Tensor, weights: Optional[Tensor] = None, method: Literal['8POINT', '7POINT'] = '8POINT'
+) -> Tensor:
+    r"""
+    Args:
+        points1: A set of points in the first image with a tensor shape :math:`(B, N, 2), N>=8`.
+        points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=8`.
+        weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
+        method: The method to use for computing the fundamental matrix. Supported methods are "7POINT" and "8POINT".
+
+    Returns:
+        the computed fundamental matrix with shape :math:`(B, 3*m, 3)`, where `m` number of fundamental matrix.
+
+    Raises:
+        ValueError: If an invalid method is provided.
+
+    """
+    if method.upper() == "7POINT":
+        result = run_7point(points1, points2)
+    elif method.upper() == "8POINT":
+        result = run_8point(points1, points2, weights)
+    else:
+        raise ValueError(f"Invalid method: {method}. Supported methods are '7POINT' and '8POINT'.")
+    return result
 
 
 def compute_correspond_epilines(points: Tensor, F_mat: Tensor) -> Tensor:
