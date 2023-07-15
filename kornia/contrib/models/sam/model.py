@@ -8,6 +8,7 @@ anything/blob/3518c86b78b3bc9cf4fbe3d18e682fad1c79dc51/segment_anything/modeling
 """
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
@@ -55,6 +56,7 @@ class SamConfig:
 
     model_type: str | int | SamModelType | None = None
     checkpoint: str | None = None
+    pretrained: bool = False
 
     encoder_embed_dim: int | None = None
     encoder_depth: int | None = None
@@ -172,8 +174,20 @@ class Sam(ModelBase[SamConfig]):
         else:
             raise NotImplementedError('Unexpected config. The model_type should be provide or the encoder configs.')
 
-        if config.checkpoint:
-            model.load_checkpoint(config.checkpoint)
+        checkpoint = config.checkpoint
+        if config.pretrained:
+            if checkpoint is None:
+                checkpoint = {
+                    SamModelType.vit_b: "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth",
+                    SamModelType.vit_l: "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_l_0b3195.pth",
+                    SamModelType.vit_h: "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth",
+                    SamModelType.mobile_sam: "https://github.com/ChaoningZhang/MobileSAM/raw/master/weights/mobile_sam.pt",
+                }[model_type]
+            else:
+                warnings.warn("checkpoint is not None. pretrained=True is ignored")
+
+        if checkpoint:
+            model.load_checkpoint(checkpoint)
 
         return model
 
