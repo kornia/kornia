@@ -45,6 +45,7 @@ class SamConfig:
             - 0, 'vit_h' or :func:`kornia.contrib.sam.SamModelType.vit_h`
             - 1, 'vit_l' or :func:`kornia.contrib.sam.SamModelType.vit_l`
             - 2, 'vit_b' or :func:`kornia.contrib.sam.SamModelType.vit_b`
+            - 3, 'mobile_sam', or :func:`kornia.contrib.sam.SamModelType.mobile_sam`
 
         checkpoint: URL or a path for a file with the weights of the model
         encoder_embed_dim: Patch embedding dimension.
