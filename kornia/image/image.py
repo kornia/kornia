@@ -7,8 +7,8 @@ import torch
 from torch.utils.dlpack import from_dlpack, to_dlpack
 
 from kornia.core import Device, Dtype, Tensor
-from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.image.base import ChannelsOrder, ImageLayout, ImageSize, PixelFormat
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.image.base import ChannelsOrder, ColorSpace, ImageLayout, ImageSize, PixelFormat
 from kornia.io.io import ImageLoadType, load_image, write_image
 
 # placeholder for numpy
@@ -35,29 +35,33 @@ class Image:
 
     Examples:
         >>> # from a torch.tensor
-        >>> data = torch.randint(0, 255, (3, 4, 5))  # CxHxW
+        >>> data = torch.randint(0, 255, (3, 4, 5), dtype=torch.uint8)  # CxHxW
+        >>> pixel_format = PixelFormat(
+        ...     color_space=ColorSpace.RGB,
+        ...     bit_depth=8,
+        ... )
         >>> layout = ImageLayout(
         ...     image_size=ImageSize(4, 5),
         ...     channels=3,
-        ...     pixel_format=PixelFormat.RGB,
         ...     channels_order=ChannelsOrder.CHANNELS_FIRST,
         ... )
-        >>> img = Image(data, layout)
+        >>> img = Image(data, pixel_format, layout)
         >>> assert img.channels == 3
 
         >>> # from a numpy array (like opencv)
         >>> data = np.ones((4, 5, 3), dtype=np.uint8)  # HxWxC
-        >>> img = Image.from_numpy(data, pixel_format=PixelFormat.BGR)
+        >>> img = Image.from_numpy(data, color_space=ColorSpace.RGB)
         >>> assert img.channels == 3
         >>> assert img.width == 5
         >>> assert img.height == 4
     """
 
-    def __init__(self, data: Tensor, layout: ImageLayout) -> None:
+    def __init__(self, data: Tensor, pixel_format: PixelFormat, layout: ImageLayout) -> None:
         """Image constructor.
 
         Args:
             data: a torch tensor containing the image data.
+            pixel_format: the pixel format of the image.
             layout: a dataclass containing the image layout information.
         """
         # TODO: move this to a function KORNIA_CHECK_IMAGE_LAYOUT
@@ -69,12 +73,14 @@ class Image:
             raise NotImplementedError(f"Layout {layout.channels_order} not implemented.")
 
         KORNIA_CHECK_SHAPE(data, shape)
+        KORNIA_CHECK(data.element_size() == pixel_format.bit_depth // 8, "Invalid bit depth.")
 
         self._data = data
+        self._pixel_format = pixel_format
         self._layout = layout
 
     def __repr__(self) -> str:
-        return f"Image data: {self.data}\nLayout: {self.layout}"
+        return f"Image data: {self.data}\nPixel Format: {self.pixel_format}\n Layout: {self.layout}"
 
     # TODO: explore use TensorWrapper
     def to(self, device: Device = None, dtype: Dtype = None) -> Image:
@@ -86,7 +92,7 @@ class Image:
 
     # TODO: explore use TensorWrapper
     def clone(self) -> Image:
-        return Image(self.data.clone(), self.layout)
+        return Image(self.data.clone(), self.pixel_format, self.layout)
 
     @property
     def data(self) -> Tensor:
@@ -107,6 +113,11 @@ class Image:
     def device(self) -> torch.device:
         """Return the image device."""
         return self.data.device
+
+    @property
+    def pixel_format(self) -> PixelFormat:
+        """Return the pixel format."""
+        return self._pixel_format
 
     @property
     def layout(self) -> ImageLayout:
@@ -134,11 +145,6 @@ class Image:
         return int(self.layout.image_size.width)
 
     @property
-    def pixel_format(self) -> PixelFormat:
-        """Return the pixel format."""
-        return self.layout.pixel_format
-
-    @property
     def channels_order(self) -> ChannelsOrder:
         """Return the channels order."""
         return self.layout.channels_order
@@ -149,23 +155,28 @@ class Image:
         self._data = self.data.float()
         return self
 
+    # TODO implement this
+    def to_color_space(self, color_space: ColorSpace) -> Image:
+        """Convert the image to a different color space."""
+        raise NotImplementedError
+
     @classmethod
     def from_numpy(
         cls,
         data: np_ndarray,
+        color_space: ColorSpace = ColorSpace.RGB,
         channels_order: ChannelsOrder = ChannelsOrder.CHANNELS_LAST,
-        pixel_format: PixelFormat = PixelFormat.RGB,
     ) -> Image:
         """Construct an image tensor from a numpy array.
 
         Args:
             data: a numpy array containing the image data.
-            channels_order: the channel order of the image.
+            color_space: the color space of the image.
             pixel_format: the pixel format of the image.
 
         Example:
             >>> data = np.ones((4, 5, 3), dtype=np.uint8)  # HxWxC
-            >>> img = Image.from_numpy(data, pixel_format=PixelFormat.BGR)
+            >>> img = Image.from_numpy(data, color_space=ColorSpace.RGB)
             >>> assert img.channels == 3
             >>> assert img.width == 5
             >>> assert img.height == 4
@@ -179,13 +190,14 @@ class Image:
         else:
             raise ValueError("channels_order must be either `CHANNELS_LAST` or `CHANNELS_FIRST`")
 
+        # create the pixel format based on the input data
+        pixel_format = PixelFormat(color_space=color_space, bit_depth=data.itemsize * 8)
+
         # create the image layout based on the input data
-        layout = ImageLayout(
-            image_size=image_size, channels=channels, pixel_format=pixel_format, channels_order=channels_order
-        )
+        layout = ImageLayout(image_size=image_size, channels=channels, channels_order=channels_order)
 
         # create the image tensor
-        return cls(torch.from_numpy(data), layout)
+        return cls(torch.from_numpy(data), pixel_format, layout)
 
     def to_numpy(self) -> np_ndarray:
         """Return a numpy array in cpu from the image tensor."""
@@ -202,17 +214,18 @@ class Image:
             >>> x = np.ones((4, 5, 3))
             >>> img = Image.from_dlpack(x.__dlpack__())
         """
-        _data = from_dlpack(data)
+        _data: Tensor = from_dlpack(data)
+
+        pixel_format = PixelFormat(color_space=ColorSpace.RGB, bit_depth=_data.element_size() * 8)
 
         # create the image layout based on the input data
         layout = ImageLayout(
             image_size=ImageSize(height=_data.shape[1], width=_data.shape[2]),
             channels=_data.shape[0],
-            pixel_format=PixelFormat.RGB,
             channels_order=ChannelsOrder.CHANNELS_FIRST,
         )
 
-        return cls(_data, layout)
+        return cls(_data, pixel_format, layout)
 
     def to_dlpack(self) -> DLPack:
         """Return a DLPack capsule from the image tensor."""
@@ -227,13 +240,15 @@ class Image:
         """
         # TODO: allow user to specify the desired type and device
         data: Tensor = load_image(file_path, desired_type=ImageLoadType.RGB8, device="cpu")
+
+        pixel_format = PixelFormat(color_space=ColorSpace.RGB, bit_depth=data.element_size() * 8)
+
         layout = ImageLayout(
             image_size=ImageSize(height=data.shape[1], width=data.shape[2]),
             channels=data.shape[0],
-            pixel_format=PixelFormat.RGB,
             channels_order=ChannelsOrder.CHANNELS_FIRST,
         )
-        return cls(data, layout)
+        return cls(data, pixel_format, layout)
 
     def write(self, file_path: str | Path) -> None:
         """Write the image to a file.

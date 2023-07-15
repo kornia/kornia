@@ -25,11 +25,32 @@ class ImageSize:
     width: int | Tensor
 
 
-class PixelFormat(Enum):
+class ColorSpace(Enum):
     r"""Enum that represents the pixel format of an image."""
-    GRAY = 0
-    RGB = 1
-    BGR = 2
+    UNKNOWN = 0  # for now, in case of multi band images
+    GRAY = 1
+    RGB = 2
+    BGR = 3
+
+
+@dataclass(frozen=True)
+class PixelFormat:
+    r"""Data class to represent the pixel format of an image.
+
+    Args:
+        color_space: color space.
+        bit_depth: the number of bits per channel.
+
+    Example:
+        >>> pixel_format = PixelFormat(ColorSpace.RGB, 8)
+        >>> pixel_format.color_space
+        <ColorSpace.RGB: 2>
+        >>> pixel_format.bit_depth
+        8
+    """
+
+    color_space: ColorSpace
+    bit_depth: int
 
 
 class ChannelsOrder(Enum):
@@ -45,24 +66,20 @@ class ImageLayout:
     Args:
         image_size: image size.
         channels: number of channels.
-        pixel_format: pixel format.
         channels_order: channels order.
 
     Example:
-        >>> layout = ImageLayout(ImageSize(3, 4), 3, PixelFormat.RGB, ChannelsOrder.CHANNELS_LAST)
+        >>> layout = ImageLayout(ImageSize(3, 4), 3, ChannelsOrder.CHANNELS_LAST)
         >>> layout.image_size
         ImageSize(height=3, width=4)
         >>> layout.channels
         3
-        >>> layout.pixel_format
-        <PixelFormat.RGB: 1>
         >>> layout.channels_order
         <ChannelsOrder.CHANNELS_LAST: 1>
     """
 
     image_size: ImageSize
     channels: int
-    pixel_format: PixelFormat
     channels_order: ChannelsOrder
 
 
