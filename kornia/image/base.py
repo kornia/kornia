@@ -26,7 +26,7 @@ class ImageSize:
 
 
 class ColorSpace(Enum):
-    r"""Enum that represents the pixel format of an image."""
+    r"""Enum that represents the color space of an image."""
     UNKNOWN = 0  # for now, in case of multi band images
     GRAY = 1
     RGB = 2
