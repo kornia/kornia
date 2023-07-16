@@ -91,3 +91,7 @@ class TestSam(BaseTester):
 
         self.assert_close(expected[0].logits, actual[0].logits)
         self.assert_close(expected[0].scores, actual[0].scores)
+
+    @pytest.mark.parametrize("model_type", ["vit_b", "mobile_sam"])
+    def test_pretrained(self, model_type):
+        Sam.from_config(SamConfig(model_type, pretrained=True))
