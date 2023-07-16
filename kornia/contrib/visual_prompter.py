@@ -52,9 +52,7 @@ class VisualPrompter:
 
     def __init__(
         self,
-        config: SamConfig = SamConfig(
-            model_type='vit_h', checkpoint='https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth'
-        ),
+        config: SamConfig = SamConfig(model_type='vit_h', pretrained=True),
         device: torch.device | None = None,
         dtype: torch.dtype | None = None,
     ) -> None:
