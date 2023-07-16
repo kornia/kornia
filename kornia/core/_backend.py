@@ -1,8 +1,8 @@
+from __future__ import annotations
+
 from typing import Union
 
 import torch
-import torch.nn.functional as F
-from torch import device
 
 # classes
 Tensor = torch.Tensor
@@ -17,8 +17,8 @@ arange = torch.arange
 concatenate = torch.cat
 stack = torch.stack
 linspace = torch.linspace
-normalize = F.normalize
-pad = F.pad
+normalize = torch.nn.functional.normalize
+pad = torch.nn.functional.pad
 eye = torch.eye
 einsum = torch.einsum
 zeros = torch.zeros
@@ -28,7 +28,7 @@ ones_like = torch.ones_like
 where = torch.where
 complex = torch.complex
 diag = torch.diag
-softmax = F.softmax
+softmax = torch.nn.functional.softmax
 
 
 # constructors
@@ -38,5 +38,5 @@ as_tensor = torch.as_tensor
 rand = torch.rand
 
 # type alias
-Device = Union[str, device, None]
+Device = Union[str, torch.device, None]
 Dtype = Union[torch.dtype, None]
