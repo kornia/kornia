@@ -57,12 +57,14 @@ Join the community
    augmentation
    color
    contrib
+   core
    enhance
    feature
    filters
    geometry
    sensors
    io
+   image
    losses
    metrics
    morphology
