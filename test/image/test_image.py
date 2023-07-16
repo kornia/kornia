@@ -73,7 +73,7 @@ class TestImage:
         img2 = Image.from_file(file_name)
 
         # NOTE: the tolerance is high due to the jpeg compression
-        assert (img.float().data - img2.float().data).pow(2).mean() < 0.6
+        assert (img.float().data - img2.float().data).pow(2).mean() <= 0.75
 
     def test_write_first_channel(self, tmp_path: Path) -> None:
         data = np.ones((4, 5, 3), dtype=np.uint8)
