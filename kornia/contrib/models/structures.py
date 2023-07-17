@@ -27,7 +27,8 @@ class SegmentationResults:
 
         Shape will be the same of logits :math:`(B, C, H, W)` where :math:`C` is the number masks predicted.
 
-        .. note:: If you run `original_res_logits`, this will generate the masks based on the original resolution logits.
+        .. note:: If you run `original_res_logits`, this will generate the masks
+           based on the original resolution logits.
            Otherwise, this will use the low resolution logits (self.logits).
         """
         if self._original_res_logits is not None:
