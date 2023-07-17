@@ -101,6 +101,13 @@ class AutoAugment(PolicyAugmentBase):
 
     Args:
         policy: a customized policy config or presets of "imagenet", "cifar10", and "svhn".
+        transformation_matrix_mode: computation mode for the chained transformation matrix, via `.transform_matrix`
+                                    attribute.
+                                    If `silent`, transformation matrix will be computed silently and the non-rigid
+                                    modules will be ignored as identity transformations.
+                                    If `rigid`, transformation matrix will be computed silently and the non-rigid
+                                    modules will trigger errors.
+                                    If `skip`, transformation matrix will be totally ignored.
 
     Examples:
         >>> import torch
@@ -111,7 +118,9 @@ class AutoAugment(PolicyAugmentBase):
         torch.Size([5, 3, 30, 30])
     """
 
-    def __init__(self, policy: Union[str, List[SUBPLOLICY_CONFIG]] = "imagenet") -> None:
+    def __init__(
+        self, policy: Union[str, List[SUBPLOLICY_CONFIG]] = "imagenet", transformation_matrix_mode: str = "silent"
+    ) -> None:
         if policy == "imagenet":
             _policy = imagenet_policy
         elif policy == "cifar10":
@@ -123,7 +132,7 @@ class AutoAugment(PolicyAugmentBase):
         else:
             raise NotImplementedError(f"Invalid policy `{policy}`.")
 
-        super().__init__(_policy)
+        super().__init__(_policy, transformation_matrix_mode=transformation_matrix_mode)
         selection_weights = tensor([1.0 / len(self)] * len(self))
         self.rand_selector = Categorical(selection_weights)
 

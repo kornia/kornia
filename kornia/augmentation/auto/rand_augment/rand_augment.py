@@ -38,6 +38,13 @@ class RandAugment(PolicyAugmentBase):
         n: the number of augmentations to apply sequentially.
         m: magnitude for all the augmentations, ranged from [0, 30].
         policy: candidate transformations. If None, a default candidate list will be used.
+        transformation_matrix_mode: computation mode for the chained transformation matrix, via `.transform_matrix`
+                                    attribute.
+                                    If `silent`, transformation matrix will be computed silently and the non-rigid
+                                    modules will be ignored as identity transformations.
+                                    If `rigid`, transformation matrix will be computed silently and the non-rigid
+                                    modules will trigger errors.
+                                    If `skip`, transformation matrix will be totally ignored.
 
     Examples:
         >>> import kornia.augmentation as K
@@ -47,7 +54,13 @@ class RandAugment(PolicyAugmentBase):
         torch.Size([5, 3, 30, 30])
     """
 
-    def __init__(self, n: int, m: int, policy: Optional[List[SUBPLOLICY_CONFIG]] = None) -> None:
+    def __init__(
+        self,
+        n: int,
+        m: int,
+        policy: Optional[List[SUBPLOLICY_CONFIG]] = None,
+        transformation_matrix_mode: str = "silent",
+    ) -> None:
         if m <= 0 or m >= 30:
             raise ValueError(f"Expect `m` in [0, 30]. Got {m}.")
 
@@ -56,7 +69,7 @@ class RandAugment(PolicyAugmentBase):
         else:
             _policy = policy
 
-        super().__init__(_policy)
+        super().__init__(_policy, transformation_matrix_mode=transformation_matrix_mode)
         selection_weights = torch.tensor([1.0 / len(self)] * len(self))
         self.rand_selector = Categorical(selection_weights)
         self.n = n
@@ -64,7 +77,7 @@ class RandAugment(PolicyAugmentBase):
 
     def compose_subpolicy_sequential(self, subpolicy: SUBPLOLICY_CONFIG) -> PolicySequential:
         if len(subpolicy) != 1:
-            raise RuntimeError(f"Each policy must have only one operation for TrivialAugment. Got {len(subpolicy)}.")
+            raise RuntimeError(f"Each policy must have only one operation for RandAugment. Got {len(subpolicy)}.")
         name, low, high = subpolicy[0]
         return PolicySequential(*[getattr(ops, name)(low, high)])
 

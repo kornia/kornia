@@ -32,6 +32,13 @@ class TrivialAugment(PolicyAugmentBase):
 
     Args:
         policy: candidate transformations. If None, a default candidate list will be used.
+        transformation_matrix_mode: computation mode for the chained transformation matrix, via `.transform_matrix`
+                                    attribute.
+                                    If `silent`, transformation matrix will be computed silently and the non-rigid
+                                    modules will be ignored as identity transformations.
+                                    If `rigid`, transformation matrix will be computed silently and the non-rigid
+                                    modules will trigger errors.
+                                    If `skip`, transformation matrix will be totally ignored.
 
     Examples:
         >>> import kornia.augmentation as K
@@ -41,13 +48,15 @@ class TrivialAugment(PolicyAugmentBase):
         torch.Size([5, 3, 30, 30])
     """
 
-    def __init__(self, policy: Optional[List[SUBPLOLICY_CONFIG]] = None) -> None:
+    def __init__(
+        self, policy: Optional[List[SUBPLOLICY_CONFIG]] = None, transformation_matrix_mode: str = "silent"
+    ) -> None:
         if policy is None:
             _policy = default_policy
         else:
             _policy = policy
 
-        super().__init__(_policy)
+        super().__init__(_policy, transformation_matrix_mode=transformation_matrix_mode)
         selection_weights = torch.tensor([1.0 / len(self)] * len(self))
         self.rand_selector = Categorical(selection_weights)
 
