@@ -24,14 +24,14 @@ class Quaternion(Module):
 
     The general definition of a quaternion is given by:
 
-    .. math ::
+    .. math::
 
         Q = a + b \cdot \mathbf{i} + c \cdot \mathbf{j} + d \cdot \mathbf{k}
 
     Thus, we represent a rotation quaternion as a contiguous tensor structure to
     perform rigid bodies transformations:
 
-    .. math ::
+    .. math::
 
         Q = \begin{bmatrix} q_w & q_x & q_y & q_z \end{bmatrix}
 

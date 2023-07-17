@@ -294,7 +294,7 @@ def get_perspective_transform(points_src: Tensor, points_dst: Tensor) -> Tensor:
     The function calculates the matrix of a perspective transform that maps from
     the source to destination points:
 
-    .. math ::
+    .. math::
 
         \begin{bmatrix}
         x^{'} \\
@@ -964,7 +964,7 @@ def get_perspective_transform3d(src: Tensor, dst: Tensor) -> Tensor:
 
     The function calculates the matrix of a perspective transform so that:
 
-    .. math ::
+    .. math::
 
         \begin{bmatrix}
         t_{i}x_{i}^{'} \\
@@ -983,12 +983,12 @@ def get_perspective_transform3d(src: Tensor, dst: Tensor) -> Tensor:
 
     where
 
-    .. math ::
+    .. math::
         dst(i) = (x_{i}^{'},y_{i}^{'},z_{i}^{'}), src(i) = (x_{i}, y_{i}, z_{i}), i = 0,1,2,5,7
 
     Concrete math is as below:
 
-    .. math ::
+    .. math:
 
         \[ u_i =\frac{c_{00} * x_i + c_{01} * y_i + c_{02} * z_i + c_{03}}
             {c_{30} * x_i + c_{31} * y_i + c_{32} * z_i + c_{33}} \]
@@ -997,7 +997,7 @@ def get_perspective_transform3d(src: Tensor, dst: Tensor) -> Tensor:
         \[ w_i =\frac{c_{20} * x_i + c_{21} * y_i + c_{22} * z_i + c_{23}}
             {c_{30} * x_i + c_{31} * y_i + c_{32} * z_i + c_{33}} \]
 
-    .. math ::
+    .. math::
 
         \begin{pmatrix}
         x_0 & y_0 & z_0 & 1 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & -x_0*u_0 & -y_0*u_0 & -z_0 * u_0 \\

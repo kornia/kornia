@@ -25,7 +25,7 @@ def charbonnier_loss(img1: Tensor, img2: Tensor, reduction: str = "none") -> Ten
         [3] https://hal.inria.fr/inria-00074015/document
         [4] https://arxiv.org/pdf/1712.05927.pdf
 
-    . note::
+    .. note::
         This implementation follows the formulation by Barron [1]. Other works utilize
         a slightly different implementation (see [4]).
 
@@ -89,7 +89,7 @@ class CharbonnierLoss(Module):
         [3] https://hal.inria.fr/inria-00074015/document
         [4] https://arxiv.org/pdf/1712.05927.pdf
 
-    . note::
+    .. note::
         This implementation follows the formulation by Barron [1]. Other works utilize
         a slightly different implementation (see [4]).
 
