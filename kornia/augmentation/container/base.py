@@ -280,7 +280,7 @@ class TransformMatrixMinIn:
     """Enables computation matrix computation."""
 
     _valid_ops_for_transform_computation: Tuple[Any, ...] = ()
-    _transformation_matrix_arg: str = "silence"
+    _transformation_matrix_arg: str = "silent"
 
     def __init__(self, *args, **kwargs) -> None:  # type:ignore
         super().__init__(*args, **kwargs)
@@ -288,7 +288,7 @@ class TransformMatrixMinIn:
         self._transform_matrices: List[Optional[Tensor]] = []
 
     def _parse_transformation_matrix_mode(self, transformation_matrix_mode: str) -> None:
-        _valid_transformation_matrix_args = {"silence", "rigid", "skip"}
+        _valid_transformation_matrix_args = {"silence", "silent", "rigid", "skip"}
         if transformation_matrix_mode not in _valid_transformation_matrix_args:
             raise ValueError(
                 f"`transformation_matrix` has to be one of {_valid_transformation_matrix_args}. "

@@ -40,7 +40,7 @@ class RandAugment(PolicyAugmentBase):
         policy: candidate transformations. If None, a default candidate list will be used.
         transformation_matrix_mode: computation mode for the chained transformation matrix, via `.transform_matrix`
                                     attribute.
-                                    If `silence`, transformation matrix will be computed silently and the non-rigid
+                                    If `silent`, transformation matrix will be computed silently and the non-rigid
                                     modules will be ignored as identity transformations.
                                     If `rigid`, transformation matrix will be computed silently and the non-rigid
                                     modules will trigger errors.
@@ -59,7 +59,7 @@ class RandAugment(PolicyAugmentBase):
         n: int,
         m: int,
         policy: Optional[List[SUBPLOLICY_CONFIG]] = None,
-        transformation_matrix_mode: str = "silence",
+        transformation_matrix_mode: str = "silent",
     ) -> None:
         if m <= 0 or m >= 30:
             raise ValueError(f"Expect `m` in [0, 30]. Got {m}.")

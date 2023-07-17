@@ -103,7 +103,7 @@ class AutoAugment(PolicyAugmentBase):
         policy: a customized policy config or presets of "imagenet", "cifar10", and "svhn".
         transformation_matrix_mode: computation mode for the chained transformation matrix, via `.transform_matrix`
                                     attribute.
-                                    If `silence`, transformation matrix will be computed silently and the non-rigid
+                                    If `silent`, transformation matrix will be computed silently and the non-rigid
                                     modules will be ignored as identity transformations.
                                     If `rigid`, transformation matrix will be computed silently and the non-rigid
                                     modules will trigger errors.
@@ -119,7 +119,7 @@ class AutoAugment(PolicyAugmentBase):
     """
 
     def __init__(
-        self, policy: Union[str, List[SUBPLOLICY_CONFIG]] = "imagenet", transformation_matrix_mode: str = "silence"
+        self, policy: Union[str, List[SUBPLOLICY_CONFIG]] = "imagenet", transformation_matrix_mode: str = "silent"
     ) -> None:
         if policy == "imagenet":
             _policy = imagenet_policy

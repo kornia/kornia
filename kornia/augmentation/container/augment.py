@@ -50,7 +50,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         transformation_matrix_mode: computation mode for the chained transformation matrix, via `.transform_matrix`
                                     attribute.
-                                    If `silence`, transformation matrix will be computed silently and the non-rigid
+                                    If `silent`, transformation matrix will be computed silently and the non-rigid
                                     modules will be ignored as identity transformations.
                                     If `rigid`, transformation matrix will be computed silently and the non-rigid
                                     modules will trigger errors.
@@ -157,7 +157,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         keepdim: Optional[bool] = None,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
         random_apply_weights: Optional[List[float]] = None,
-        transformation_matrix_mode: str = "silence",
+        transformation_matrix_mode: str = "silent",
         extra_args: Dict[DataKey, Dict[str, Any]] = {
             DataKey.MASK: {"resample": Resample.NEAREST, "align_corners": None}
         },
