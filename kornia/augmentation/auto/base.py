@@ -4,7 +4,8 @@ import torch
 
 from kornia.augmentation.auto.operations.base import OperationBase
 from kornia.augmentation.auto.operations.policy import PolicySequential
-from kornia.augmentation.container.base import ImageSequentialBase
+from kornia.augmentation.container.base import ImageSequentialBase, TransformMatrixMinIn
+from kornia.augmentation.container.ops import InputSequentialOps
 from kornia.augmentation.container.params import ParamItem
 from kornia.core import Module, Tensor
 from kornia.utils import eye_like
@@ -14,12 +15,21 @@ OP_CONFIG = Tuple[str, NUMBER, Optional[NUMBER]]
 SUBPLOLICY_CONFIG = List[OP_CONFIG]
 
 
-class PolicyAugmentBase(ImageSequentialBase):
+class PolicyAugmentBase(TransformMatrixMinIn, ImageSequentialBase):
     """Policy-based image augmentation."""
 
-    def __init__(self, policy: List[SUBPLOLICY_CONFIG]) -> None:
+    def __init__(self, policy: List[SUBPLOLICY_CONFIG], transformation_matrix_mode: str = "silence") -> None:
         policies = self.compose_policy(policy)
         super().__init__(*policies)
+        self._parse_transformation_matrix_mode(transformation_matrix_mode)
+        self._valid_ops_for_transform_computation: Tuple[Any, ...] = (PolicySequential,)
+
+    def _update_transform_matrix_for_valid_op(self, module: PolicySequential) -> None:  # type: ignore
+        self._transform_matrices.append(module.transform_matrix)
+
+    def clear_state(self) -> None:
+        self._reset_transform_matrix_state()
+        return super().clear_state()
 
     def compose_policy(self, policy: List[SUBPLOLICY_CONFIG]) -> List[PolicySequential]:
         """Compose policy by the provided policy config."""
@@ -80,3 +90,10 @@ class PolicyAugmentBase(ImageSequentialBase):
             param = ParamItem(name, mod_param)
             params.append(param)
         return params
+
+    def transform_inputs(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
+        for param in params:
+            module = self.get_submodule(param.name)
+            input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
+            self._update_transform_matrix_by_module(module)
+        return input

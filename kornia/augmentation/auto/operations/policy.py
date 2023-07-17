@@ -4,14 +4,15 @@ from torch import Size
 
 import kornia.augmentation as K
 from kornia.augmentation.auto.operations import OperationBase
-from kornia.augmentation.container.base import ImageSequentialBase
+from kornia.augmentation.container.base import ImageSequentialBase, TransformMatrixMinIn
+from kornia.augmentation.container.ops import InputSequentialOps
 from kornia.augmentation.container.params import ParamItem
 from kornia.augmentation.utils import _transform_input, override_parameters
 from kornia.core import Module, Tensor, as_tensor
 from kornia.utils import eye_like
 
 
-class PolicySequential(ImageSequentialBase):
+class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
     """Policy tuple for applying multiple operations.
 
     Args:
@@ -21,6 +22,14 @@ class PolicySequential(ImageSequentialBase):
     def __init__(self, *operations: OperationBase) -> None:
         self.validate_operations(*operations)
         super().__init__(*operations)
+        self._valid_ops_for_transform_computation: Tuple[Any, ...] = (OperationBase,)
+
+    def _update_transform_matrix_for_valid_op(self, module: Module) -> None:
+        self._transform_matrices.append(module.transform_matrix)  # type: ignore
+
+    def clear_state(self) -> None:
+        self._reset_transform_matrix_state()
+        return super().clear_state()
 
     def validate_operations(self, *operations: OperationBase) -> None:
         invalid_ops: List[OperationBase] = []
@@ -97,3 +106,10 @@ class PolicySequential(ImageSequentialBase):
             param = ParamItem(name, mod_param)
             params.append(param)
         return params
+
+    def transform_inputs(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
+        for param in params:
+            module = self.get_submodule(param.name)
+            input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
+            self._update_transform_matrix_by_module(module)
+        return input

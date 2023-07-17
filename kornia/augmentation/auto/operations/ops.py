@@ -451,7 +451,7 @@ class ShearX(OperationBase):
                 f"The lower bound must above 0. Got {magnitude_range[0]}."
             )
         super().__init__(
-            K.RandomShear(magnitude_range, same_on_batch=False, p=initial_probability),
+            K.RandomShear(magnitude_range, same_on_batch=False, p=initial_probability, align_corners=True),
             initial_magnitude=[("shear_x", initial_magnitude)],
             temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
@@ -491,7 +491,10 @@ class ShearY(OperationBase):
             )
         super().__init__(
             K.RandomShear(
-                (0.0, 0.0, magnitude_range[0], magnitude_range[1]), same_on_batch=False, p=initial_probability
+                (0.0, 0.0, magnitude_range[0], magnitude_range[1]),
+                same_on_batch=False,
+                p=initial_probability,
+                align_corners=True,
             ),
             initial_magnitude=[("shear_y", initial_magnitude)],
             temperature=temperature,
@@ -526,7 +529,7 @@ class TranslateX(OperationBase):
                 f"The lower bound must above 0. Got {magnitude_range[0]}."
             )
         super().__init__(
-            K.RandomTranslate(magnitude_range, same_on_batch=False, p=initial_probability),
+            K.RandomTranslate(magnitude_range, same_on_batch=False, p=initial_probability, align_corners=True),
             initial_magnitude=[("translate_x", initial_magnitude)],
             temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
@@ -559,7 +562,7 @@ class TranslateY(OperationBase):
                 f"The lower bound must above 0. Got {magnitude_range[0]}."
             )
         super().__init__(
-            K.RandomTranslate(None, magnitude_range, same_on_batch=False, p=initial_probability),
+            K.RandomTranslate(None, magnitude_range, same_on_batch=False, p=initial_probability, align_corners=True),
             initial_magnitude=[("translate_y", initial_magnitude)],
             temperature=temperature,
             symmetric_megnitude=symmetric_megnitude,
