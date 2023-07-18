@@ -201,7 +201,7 @@ class Sam(ModelBase[SamConfig]):
         This method expects that the images have already been pre-processed, at least been normalized, resized and
         padded to be compatible with the `self.image_encoder`.
 
-        .. note: For each image :math:`(3, H, W)`, it is possible to input a batch (:math:`K`) of :math:`N` prompts,
+        .. note:: For each image :math:`(3, H, W)`, it is possible to input a batch (:math:`K`) of :math:`N` prompts,
                  the results are batched by the number of prompts batch. So given a prompt with :math:`K=5`, and
                  :math:`N=10`, the results will look like :math:`5xCxHxW` where :math:`C` is determined by
                  multimask_output. And within each of these masks :math:`(5xC)`, it should be possible to find

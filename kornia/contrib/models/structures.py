@@ -27,7 +27,8 @@ class SegmentationResults:
 
         Shape will be the same of logits :math:`(B, C, H, W)` where :math:`C` is the number masks predicted.
 
-        .. note: If you run `original_res_logits`, this will generate the masks based on the original resolution logits.
+        .. note:: If you run `original_res_logits`, this will generate the masks
+           based on the original resolution logits.
            Otherwise, this will use the low resolution logits (self.logits).
         """
         if self._original_res_logits is not None:
@@ -44,7 +45,7 @@ class SegmentationResults:
 
         Resize to image encoder input -> remove padding (bottom and right) -> Resize to original size
 
-        .. note: This method set a internal `original_res_logits` which will be used if available for the binary masks.
+        .. note:: This method set a internal `original_res_logits` which will be used if available for the binary masks.
 
         Args:
             input_size: The size of the image input to the model, in (H, W) format. Used to remove padding.
