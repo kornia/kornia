@@ -988,7 +988,7 @@ def get_perspective_transform3d(src: Tensor, dst: Tensor) -> Tensor:
 
     Concrete math is as below:
 
-    .. math:
+    .. math::
 
         \[ u_i =\frac{c_{00} * x_i + c_{01} * y_i + c_{02} * z_i + c_{03}}
             {c_{30} * x_i + c_{31} * y_i + c_{32} * z_i + c_{33}} \]
