@@ -213,9 +213,7 @@ def zca_mean(
 
     if dim >= len(inp_size) or dim < -len(inp_size):
         raise IndexError(
-            "Dimension out of range (expected to be in range of [{},{}], but got {}".format(
-                -len(inp_size), len(inp_size) - 1, dim
-            )
+            f"Dimension out of range (expected to be in range of [{-len(inp_size)},{len(inp_size) - 1}], but got {dim}"
         )
 
     if dim < 0:
@@ -345,9 +343,7 @@ def linear_transform(inp: Tensor, transform_matrix: Tensor, mean_vector: Tensor,
 
     if dim >= len(inp_size) or dim < -len(inp_size):
         raise IndexError(
-            "Dimension out of range (expected to be in range of [{},{}], but got {}".format(
-                -len(inp_size), len(inp_size) - 1, dim
-            )
+            f"Dimension out of range (expected to be in range of [{-len(inp_size)},{len(inp_size) - 1}], but got {dim}"
         )
 
     if dim < 0:
