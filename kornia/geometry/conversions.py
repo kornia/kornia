@@ -17,11 +17,11 @@ __all__ = [
     "convert_points_to_homogeneous",
     "convert_affinematrix_to_homography",
     "convert_affinematrix_to_homography3d",
-    "angle_axis_to_rotation_matrix",
-    "angle_axis_to_quaternion",
-    "rotation_matrix_to_angle_axis",
+    "axis_angle_to_rotation_matrix",
+    "axis_angle_to_quaternion",
+    "rotation_matrix_to_axis_angle",
     "rotation_matrix_to_quaternion",
-    "quaternion_to_angle_axis",
+    "quaternion_to_axis_angle",
     "quaternion_to_rotation_matrix",
     "quaternion_log_to_exp",
     "quaternion_exp_to_log",
@@ -256,41 +256,41 @@ def convert_affinematrix_to_homography3d(A: Tensor) -> Tensor:
     return _convert_affinematrix_to_homography_impl(A)
 
 
-def angle_axis_to_rotation_matrix(angle_axis: Tensor) -> Tensor:
+def axis_angle_to_rotation_matrix(axis_angle: Tensor) -> Tensor:
     r"""Convert 3d vector of axis-angle rotation to 3x3 rotation matrix.
 
     Args:
-        angle_axis: tensor of 3d vector of axis-angle rotations in radians with shape :math:`(N, 3)`.
+        axis_angle: tensor of 3d vector of axis-angle rotations in radians with shape :math:`(N, 3)`.
 
     Returns:
         tensor of rotation matrices of shape :math:`(N, 3, 3)`.
 
     Example:
         >>> input = tensor([[0., 0., 0.]])
-        >>> angle_axis_to_rotation_matrix(input)
+        >>> axis_angle_to_rotation_matrix(input)
         tensor([[[1., 0., 0.],
                  [0., 1., 0.],
                  [0., 0., 1.]]])
 
         >>> input = tensor([[1.5708, 0., 0.]])
-        >>> angle_axis_to_rotation_matrix(input)
+        >>> axis_angle_to_rotation_matrix(input)
         tensor([[[ 1.0000e+00,  0.0000e+00,  0.0000e+00],
                  [ 0.0000e+00, -3.6200e-06, -1.0000e+00],
                  [ 0.0000e+00,  1.0000e+00, -3.6200e-06]]])
     """
-    if not isinstance(angle_axis, Tensor):
-        raise TypeError(f"Input type is not a Tensor. Got {type(angle_axis)}")
+    if not isinstance(axis_angle, Tensor):
+        raise TypeError(f"Input type is not a Tensor. Got {type(axis_angle)}")
 
-    if not angle_axis.shape[-1] == 3:
-        raise ValueError(f"Input size must be a (*, 3) tensor. Got {angle_axis.shape}")
+    if not axis_angle.shape[-1] == 3:
+        raise ValueError(f"Input size must be a (*, 3) tensor. Got {axis_angle.shape}")
 
-    def _compute_rotation_matrix(angle_axis: Tensor, theta2: Tensor, eps: float = 1e-6) -> Tensor:
+    def _compute_rotation_matrix(axis_angle: Tensor, theta2: Tensor, eps: float = 1e-6) -> Tensor:
         # We want to be careful to only evaluate the square root if the
-        # norm of the angle_axis vector is greater than zero. Otherwise
+        # norm of the axis_angle vector is greater than zero. Otherwise
         # we get a division by zero.
         k_one = 1.0
         theta = torch.sqrt(theta2)
-        wxyz = angle_axis / (theta + eps)
+        wxyz = axis_angle / (theta + eps)
         wx, wy, wz = torch.chunk(wxyz, 3, dim=1)
         cos_theta = torch.cos(theta)
         sin_theta = torch.sin(theta)
@@ -307,21 +307,21 @@ def angle_axis_to_rotation_matrix(angle_axis: Tensor) -> Tensor:
         rotation_matrix = concatenate([r00, r01, r02, r10, r11, r12, r20, r21, r22], dim=1)
         return rotation_matrix.view(-1, 3, 3)
 
-    def _compute_rotation_matrix_taylor(angle_axis: Tensor) -> Tensor:
-        rx, ry, rz = torch.chunk(angle_axis, 3, dim=1)
+    def _compute_rotation_matrix_taylor(axis_angle: Tensor) -> Tensor:
+        rx, ry, rz = torch.chunk(axis_angle, 3, dim=1)
         k_one = torch.ones_like(rx)
         rotation_matrix = concatenate([k_one, -rz, ry, rz, k_one, -rx, -ry, rx, k_one], dim=1)
         return rotation_matrix.view(-1, 3, 3)
 
     # stolen from ceres/rotation.h
 
-    _angle_axis = torch.unsqueeze(angle_axis, dim=1)
-    theta2 = torch.matmul(_angle_axis, _angle_axis.transpose(1, 2))
+    _axis_angle = torch.unsqueeze(axis_angle, dim=1)
+    theta2 = torch.matmul(_axis_angle, _axis_angle.transpose(1, 2))
     theta2 = torch.squeeze(theta2, dim=1)
 
     # compute rotation matrices
-    rotation_matrix_normal = _compute_rotation_matrix(angle_axis, theta2)
-    rotation_matrix_taylor = _compute_rotation_matrix_taylor(angle_axis)
+    rotation_matrix_normal = _compute_rotation_matrix(axis_angle, theta2)
+    rotation_matrix_taylor = _compute_rotation_matrix_taylor(axis_angle)
 
     # create mask to handle both cases
     eps = 1e-6
@@ -334,7 +334,7 @@ def angle_axis_to_rotation_matrix(angle_axis: Tensor) -> Tensor:
     return rotation_matrix  # Nx3x3
 
 
-def rotation_matrix_to_angle_axis(rotation_matrix: Tensor) -> Tensor:
+def rotation_matrix_to_axis_angle(rotation_matrix: Tensor) -> Tensor:
     r"""Convert 3x3 rotation matrix to Rodrigues vector in radians.
 
     Args:
@@ -347,13 +347,13 @@ def rotation_matrix_to_angle_axis(rotation_matrix: Tensor) -> Tensor:
         >>> input = tensor([[1., 0., 0.],
         ...                       [0., 1., 0.],
         ...                       [0., 0., 1.]])
-        >>> rotation_matrix_to_angle_axis(input)
+        >>> rotation_matrix_to_axis_angle(input)
         tensor([0., 0., 0.])
 
         >>> input = tensor([[1., 0., 0.],
         ...                       [0., 0., -1.],
         ...                       [0., 1., 0.]])
-        >>> rotation_matrix_to_angle_axis(input)
+        >>> rotation_matrix_to_axis_angle(input)
         tensor([1.5708, 0.0000, 0.0000])
     """
     if not isinstance(rotation_matrix, Tensor):
@@ -362,7 +362,7 @@ def rotation_matrix_to_angle_axis(rotation_matrix: Tensor) -> Tensor:
     if not rotation_matrix.shape[-2:] == (3, 3):
         raise ValueError(f"Input size must be a (*, 3, 3) tensor. Got {rotation_matrix.shape}")
     quaternion: Tensor = rotation_matrix_to_quaternion(rotation_matrix)
-    return quaternion_to_angle_axis(quaternion)
+    return quaternion_to_axis_angle(quaternion)
 
 
 def rotation_matrix_to_quaternion(rotation_matrix: Tensor, eps: float = 1.0e-8) -> Tensor:
@@ -541,8 +541,8 @@ def quaternion_to_rotation_matrix(quaternion: Tensor) -> Tensor:
     return matrix
 
 
-def quaternion_to_angle_axis(quaternion: Tensor) -> Tensor:
-    """Convert quaternion vector to angle axis of rotation in radians.
+def quaternion_to_axis_angle(quaternion: Tensor) -> Tensor:
+    """Convert quaternion vector to axis angle of rotation in radians.
 
     The quaternion should be in (w, x, y, z) format.
 
@@ -552,7 +552,7 @@ def quaternion_to_angle_axis(quaternion: Tensor) -> Tensor:
         quaternion: tensor with quaternions.
 
     Return:
-        tensor with angle axis of rotation.
+        tensor with axis angle of rotation.
 
     Shape:
         - Input: :math:`(*, 4)` where `*` means, any number of dimensions
@@ -560,7 +560,7 @@ def quaternion_to_angle_axis(quaternion: Tensor) -> Tensor:
 
     Example:
         >>> quaternion = tensor((1., 0., 0., 0.))
-        >>> quaternion_to_angle_axis(quaternion)
+        >>> quaternion_to_axis_angle(quaternion)
         tensor([0., 0., 0.])
     """
     if not torch.is_tensor(quaternion):
@@ -591,11 +591,11 @@ def quaternion_to_angle_axis(quaternion: Tensor) -> Tensor:
     k_neg: Tensor = 2.0 * torch.ones_like(sin_theta)
     k: Tensor = where(sin_squared_theta > 0.0, k_pos, k_neg)
 
-    angle_axis: Tensor = torch.zeros_like(quaternion)[..., :3]
-    angle_axis[..., 0] += q1 * k
-    angle_axis[..., 1] += q2 * k
-    angle_axis[..., 2] += q3 * k
-    return angle_axis
+    axis_angle: Tensor = torch.zeros_like(quaternion)[..., :3]
+    axis_angle[..., 0] += q1 * k
+    axis_angle[..., 1] += q2 * k
+    axis_angle[..., 2] += q3 * k
+    return axis_angle
 
 
 def quaternion_log_to_exp(quaternion: Tensor, eps: float = 1.0e-8) -> Tensor:
@@ -680,15 +680,15 @@ def quaternion_exp_to_log(quaternion: Tensor, eps: float = 1.0e-8) -> Tensor:
 # https://github.com/facebookresearch/QuaterNet/blob/master/common/quaternion.py#L138
 
 
-def angle_axis_to_quaternion(angle_axis: Tensor) -> Tensor:
-    r"""Convert an angle axis to a quaternion.
+def axis_angle_to_quaternion(axis_angle: Tensor) -> Tensor:
+    r"""Convert an axis angle to a quaternion.
 
     The quaternion vector has components in (w, x, y, z) format.
 
     Adapted from ceres C++ library: ceres-solver/include/ceres/rotation.h
 
     Args:
-        angle_axis: tensor with angle axis in radians.
+        axis_angle: tensor with axis angle in radians.
 
     Return:
         tensor with quaternion.
@@ -698,20 +698,20 @@ def angle_axis_to_quaternion(angle_axis: Tensor) -> Tensor:
         - Output: :math:`(*, 4)`
 
     Example:
-        >>> angle_axis = tensor((0., 1., 0.))
-        >>> angle_axis_to_quaternion(angle_axis)
+        >>> axis_angle = tensor((0., 1., 0.))
+        >>> axis_angle_to_quaternion(axis_angle)
         tensor([0.8776, 0.0000, 0.4794, 0.0000])
     """
-    if not torch.is_tensor(angle_axis):
-        raise TypeError(f"Input type is not a Tensor. Got {type(angle_axis)}")
+    if not torch.is_tensor(axis_angle):
+        raise TypeError(f"Input type is not a Tensor. Got {type(axis_angle)}")
 
-    if not angle_axis.shape[-1] == 3:
-        raise ValueError(f"Input must be a tensor of shape Nx3 or 3. Got {angle_axis.shape}")
+    if not axis_angle.shape[-1] == 3:
+        raise ValueError(f"Input must be a tensor of shape Nx3 or 3. Got {axis_angle.shape}")
 
     # unpack input and compute conversion
-    a0: Tensor = angle_axis[..., 0:1]
-    a1: Tensor = angle_axis[..., 1:2]
-    a2: Tensor = angle_axis[..., 2:3]
+    a0: Tensor = axis_angle[..., 0:1]
+    a1: Tensor = axis_angle[..., 1:2]
+    a2: Tensor = axis_angle[..., 2:3]
     theta_squared: Tensor = a0 * a0 + a1 * a1 + a2 * a2
 
     theta: Tensor = torch.sqrt(theta_squared)
@@ -725,7 +725,7 @@ def angle_axis_to_quaternion(angle_axis: Tensor) -> Tensor:
     k: Tensor = where(mask, k_pos, k_neg)
     w: Tensor = where(mask, torch.cos(half_theta), ones)
 
-    quaternion: Tensor = torch.zeros(size=(*angle_axis.shape[:-1], 4), dtype=angle_axis.dtype, device=angle_axis.device)
+    quaternion: Tensor = torch.zeros(size=(*axis_angle.shape[:-1], 4), dtype=axis_angle.dtype, device=axis_angle.device)
     quaternion[..., 1:2] = a0 * k
     quaternion[..., 2:3] = a1 * k
     quaternion[..., 3:4] = a2 * k

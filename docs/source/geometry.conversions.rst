@@ -36,7 +36,7 @@ Homography
 Quaternion
 ----------
 
-.. autofunction:: quaternion_to_angle_axis
+.. autofunction:: quaternion_to_axis_angle
 .. autofunction:: quaternion_to_rotation_matrix
 .. autofunction:: quaternion_log_to_exp
 .. autofunction:: quaternion_exp_to_log
@@ -45,14 +45,14 @@ Quaternion
 Rotation Matrix
 ---------------
 
-.. autofunction:: rotation_matrix_to_angle_axis
+.. autofunction:: rotation_matrix_to_axis_angle
 .. autofunction:: rotation_matrix_to_quaternion
 
-Angle Axis
+Axis Angle
 ----------
 
-.. autofunction:: angle_axis_to_quaternion
-.. autofunction:: angle_axis_to_rotation_matrix
+.. autofunction:: axis_angle_to_quaternion
+.. autofunction:: axis_angle_to_rotation_matrix
 
 Euler Angles
 ------------
