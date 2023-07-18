@@ -33,7 +33,7 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor) -> Tensor:
     Reference:
         [1] https://arxiv.org/pdf/1705.08790.pdf
 
-    . note::
+    .. note::
         This loss function only supports multi-class (C > 1) labels. For binary
         labels please use the Lovasz-Hinge loss.
 
@@ -121,7 +121,7 @@ class LovaszSoftmaxLoss(nn.Module):
     Reference:
         [1] https://arxiv.org/pdf/1705.08790.pdf
 
-    . note::
+    .. note::
         This loss function only supports multi-class (C > 1) labels. For binary
         labels please use the Lovasz-Hinge loss.
 

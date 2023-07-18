@@ -41,7 +41,7 @@ def focal_loss(
           will be applied, ``'mean'``: the sum of the output will be divided by
           the number of elements in the output, ``'sum'``: the output will be
           summed.
-        weight: weights for classes with shape :math:`(num_of_classes,)`.
+        weight: weights for classes with shape :math:`(num\_of\_classes,)`.
 
     Return:
         the computed loss.
@@ -127,7 +127,7 @@ class FocalLoss(nn.Module):
           will be applied, ``'mean'``: the sum of the output will be divided by
           the number of elements in the output, ``'sum'``: the output will be
           summed.
-        weight: weights for classes with shape :math:`(num_of_classes,)`.
+        weight: weights for classes with shape :math:`(num\_of\_classes,)`.
 
     Shape:
         - Input: :math:`(N, C, *)` where C = number of classes.
@@ -188,9 +188,9 @@ def binary_focal_loss_with_logits(
           will be applied, ``'mean'``: the sum of the output will be divided by
           the number of elements in the output, ``'sum'``: the output will be
           summed.
-        pos_weight: a weight of positive examples with shape :math:`(num_of_classes,)`.
+        pos_weight: a weight of positive examples with shape :math:`(num\_of\_classes,)`.
           It is possible to trade off recall and precision by adding weights to positive examples.
-        weight: weights for classes with shape :math:`(num_of_classes,)`.
+        weight: weights for classes with shape :math:`(num\_of\_classes,)`.
 
     Returns:
         the computed loss.
@@ -282,9 +282,9 @@ class BinaryFocalLossWithLogits(nn.Module):
           will be applied, ``'mean'``: the sum of the output will be divided by
           the number of elements in the output, ``'sum'``: the output will be
           summed.
-        pos_weight: a weight of positive examples with shape :math:`(num_of_classes,)`.
+        pos_weight: a weight of positive examples with shape :math:`(num\_of\_classes,)`.
           It is possible to trade off recall and precision by adding weights to positive examples.
-        weight: weights for classes with shape :math:`(num_of_classes,)`.
+        weight: weights for classes with shape :math:`(num\_of\_classes,)`.
 
     Shape:
         - Input: :math:`(N, C, *)` where C = number of classes.
