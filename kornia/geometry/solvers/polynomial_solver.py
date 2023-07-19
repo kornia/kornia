@@ -39,6 +39,11 @@ def solve_quadratic(coeffs: Tensor) -> Tensor:
     # Initialize solution tensor
     solution = torch.zeros((coeffs.shape[0], 2), device=coeffs.device, dtype=coeffs.dtype)
 
+    # Handle cases with zero discriminant
+    if torch.any(mask_zero):
+        solution[mask_zero, 0] = -b[mask_zero] * inv_2a[mask_zero]
+        solution[mask_zero, 1] = solution[mask_zero, 0]
+
     # Handle cases with negative discriminant
     # if torch.any(mask_negative):
     #     solution[mask_negative, :] = torch.tensor(0, device=coeffs.device, dtype=coeffs.dtype)
