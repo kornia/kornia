@@ -9,5 +9,6 @@ from .liegroup import *
 from .linalg import *
 from .line import *
 from .ransac import *
+from .solvers import *
 from .subpix import *
 from .transform import *
