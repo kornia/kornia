@@ -1,5 +1,6 @@
 """Module containing the functionalities for computing the real roots of polynomial equation."""
 import math
+
 import torch
 
 from kornia.core import Tensor

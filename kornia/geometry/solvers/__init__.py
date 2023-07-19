@@ -1,9 +1,3 @@
-from .polynomial_solver import (
-    solve_quadratic,
-    solve_cubic,
-)
+from .polynomial_solver import solve_cubic, solve_quadratic
 
-__all__ = [
-    "solve_quadratic",
-    "solve_cubic",
-]
+__all__ = ["solve_quadratic", "solve_cubic"]
