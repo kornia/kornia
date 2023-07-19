@@ -7,6 +7,7 @@ from kornia.constants import pi
 from kornia.core import Tensor, concatenate, pad, stack, tensor, where
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.utils.helpers import _torch_inverse_cast
+from kornia.utils import deprecated
 
 __all__ = [
     "rad2deg",
@@ -18,10 +19,14 @@ __all__ = [
     "convert_affinematrix_to_homography",
     "convert_affinematrix_to_homography3d",
     "axis_angle_to_rotation_matrix",
+    "angle_axis_to_rotation_matrix",
     "axis_angle_to_quaternion",
+    "angle_axis_to_quaternion",
     "rotation_matrix_to_axis_angle",
+    "rotation_matrix_to_angle_axis",
     "rotation_matrix_to_quaternion",
     "quaternion_to_axis_angle",
+    "quaternion_to_angle_axis",
     "quaternion_to_rotation_matrix",
     "quaternion_log_to_exp",
     "quaternion_exp_to_log",
@@ -255,7 +260,6 @@ def convert_affinematrix_to_homography3d(A: Tensor) -> Tensor:
 
     return _convert_affinematrix_to_homography_impl(A)
 
-
 def axis_angle_to_rotation_matrix(axis_angle: Tensor) -> Tensor:
     r"""Convert 3d vector of axis-angle rotation to 3x3 rotation matrix.
 
@@ -334,6 +338,11 @@ def axis_angle_to_rotation_matrix(axis_angle: Tensor) -> Tensor:
     return rotation_matrix  # Nx3x3
 
 
+@deprecated(replace_with='axis_angle_to_rotation_matrix', version='0.7.0')
+def angle_axis_to_rotation_matrix(axis_angle: Tensor) -> Tensor:
+    return axis_angle_to_rotation_matrix(axis_angle)
+
+
 def rotation_matrix_to_axis_angle(rotation_matrix: Tensor) -> Tensor:
     r"""Convert 3x3 rotation matrix to Rodrigues vector in radians.
 
@@ -363,6 +372,11 @@ def rotation_matrix_to_axis_angle(rotation_matrix: Tensor) -> Tensor:
         raise ValueError(f"Input size must be a (*, 3, 3) tensor. Got {rotation_matrix.shape}")
     quaternion: Tensor = rotation_matrix_to_quaternion(rotation_matrix)
     return quaternion_to_axis_angle(quaternion)
+
+
+@deprecated(replace_with='rotation_matrix_to_axis_angle', version='0.7.0')
+def rotation_matrix_to_angle_axis(rotation_matrix: Tensor) -> Tensor:
+    return rotation_matrix_to_axis_angle(rotation_matrix)
 
 
 def rotation_matrix_to_quaternion(rotation_matrix: Tensor, eps: float = 1.0e-8) -> Tensor:
@@ -598,6 +612,11 @@ def quaternion_to_axis_angle(quaternion: Tensor) -> Tensor:
     return axis_angle
 
 
+@deprecated(replace_with='quaternion_to_axis_angle', version='0.7.0')
+def quaternion_to_angle_axis(quaternion: Tensor) -> Tensor:
+    return quaternion_to_axis_angle(quaternion)
+
+
 def quaternion_log_to_exp(quaternion: Tensor, eps: float = 1.0e-8) -> Tensor:
     r"""Apply exponential map to log quaternion.
 
@@ -731,6 +750,11 @@ def axis_angle_to_quaternion(axis_angle: Tensor) -> Tensor:
     quaternion[..., 3:4] = a2 * k
     quaternion[..., 0:1] = w
     return quaternion
+
+
+@deprecated(replace_with='axis_angle_to_quaternion', version='0.7.0')
+def angle_axis_to_quaternion(axis_angle: Tensor) -> Tensor:
+    return axis_angle_to_quaternion(axis_angle)
 
 
 # inspired by: https://stackoverflow.com/questions/56207448/efficient-quaternions-to-euler-transformation
