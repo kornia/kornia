@@ -6,8 +6,8 @@ import torch.nn.functional as F
 from kornia.constants import pi
 from kornia.core import Tensor, concatenate, pad, stack, tensor, where
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
-from kornia.utils.helpers import _torch_inverse_cast
 from kornia.utils import deprecated
+from kornia.utils.helpers import _torch_inverse_cast
 
 __all__ = [
     "rad2deg",
@@ -259,6 +259,7 @@ def convert_affinematrix_to_homography3d(A: Tensor) -> Tensor:
         raise ValueError(f"Input matrix must be a Bx3x4 tensor. Got {A.shape}")
 
     return _convert_affinematrix_to_homography_impl(A)
+
 
 def axis_angle_to_rotation_matrix(axis_angle: Tensor) -> Tensor:
     r"""Convert 3d vector of axis-angle rotation to 3x3 rotation matrix.
