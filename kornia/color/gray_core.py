@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import keras_core as keras
-import torch
-import tensorflow as tf
-import numpy as np
 import jax.numpy as jnp
+import keras_core as keras
+import numpy as np
+import tensorflow as tf
+import torch
+
 
 def KORNIA_CHECK_IS_TENSOR(x: object, msg: str | None = None, raises: bool = True):
     if not isinstance(x, [tf.Tensor, torch.Tensor, np.ndarray, jnp.array]):
@@ -12,6 +13,7 @@ def KORNIA_CHECK_IS_TENSOR(x: object, msg: str | None = None, raises: bool = Tru
             raise TypeError(f"Not a Tensor type. Got: {type(x)}.\n{msg}")
         return False
     return True
+
 
 def bgr_to_rgb(image):
     if not isinstance(image, [tf.Tensor, torch.Tensor, np.ndarray, jnp.array]):
@@ -23,6 +25,7 @@ def bgr_to_rgb(image):
     # flip image channels
     out = keras.ops.flip(image, axis=-3)
     return out
+
 
 def grayscale_to_rgb(image):
     r"""Convert a grayscale image to RGB version of image.
@@ -48,6 +51,7 @@ def grayscale_to_rgb(image):
         raise ValueError(f"Input size must have a shape of (*, 1, H, W). " f"Got {image.shape}.")
 
     return keras.ops.concatenate([image, image, image], -3)
+
 
 def rgb_to_grayscale(image, rgb_weights=None):
     r"""Convert a RGB image to grayscale version of image.
@@ -117,6 +121,7 @@ def rgb_to_grayscale(image, rgb_weights=None):
     w_r, w_g, w_b = keras.ops.split(rgb_weights, 3, axis=0)
     return w_r * r + w_g * g + w_b * b
 
+
 def bgr_to_grayscale(image):
     r"""Convert a BGR image to grayscale.
 
@@ -140,6 +145,7 @@ def bgr_to_grayscale(image):
     image_rgb = bgr_to_rgb(image)
     return rgb_to_grayscale(image_rgb)
 
+
 class GrayscaleToRgb(keras.layers.Layer):
     r"""Module to convert a grayscale image to RGB version of image.
 
@@ -157,13 +163,14 @@ class GrayscaleToRgb(keras.layers.Layer):
         >>> rgb = GrayscaleToRgb()
         >>> output = rgb(input)  # 2x3x4x5
     """
-    
+
     def __init__(self):
         super().__init__()
 
     def call(self, inputs):
         return grayscale_to_rgb(inputs)
-    
+
+
 class RgbToGrayscale(keras.layers.Layer):
     r"""Module to convert a RGB image to grayscale version of image.
 
@@ -198,7 +205,8 @@ class RgbToGrayscale(keras.layers.Layer):
 
     def forward(self, image):
         return rgb_to_grayscale(image, rgb_weights=self.rgb_weights)
-    
+
+
 class BgrToGrayscale(keras.layers.Layer):
     r"""Module to convert a BGR image to grayscale version of image.
 
@@ -216,6 +224,7 @@ class BgrToGrayscale(keras.layers.Layer):
         >>> gray = BgrToGrayscale()
         >>> output = gray(input)  # 2x1x4x5
     """
+
     def __init__(self):
         super().__init__()
 
