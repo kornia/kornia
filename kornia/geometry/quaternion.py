@@ -8,7 +8,7 @@ from typing import Optional, Tuple, Union
 from kornia.core import Device, Dtype, Module, Parameter, Tensor, concatenate, rand, stack, tensor, where
 from kornia.core.check import KORNIA_CHECK_TYPE
 from kornia.geometry.conversions import (
-    angle_axis_to_quaternion,
+    axis_angle_to_quaternion,
     normalize_quaternion,
     quaternion_to_rotation_matrix,
     rotation_matrix_to_quaternion,
@@ -272,7 +272,7 @@ class Quaternion(Module):
             Parameter containing:
             tensor([[0.8776, 0.4794, 0.0000, 0.0000]], requires_grad=True)
         """
-        return cls(angle_axis_to_quaternion(axis_angle))
+        return cls(axis_angle_to_quaternion(axis_angle))
 
     @classmethod
     def identity(
