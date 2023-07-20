@@ -88,7 +88,7 @@ def solve_cubic(coeffs: Tensor) -> Tensor:
 
     # Zero order cases are automatically handled since solutions is initialized with zeros.
     # No need for explicit handling of mask_zero_order as solutions already contains zeros by default.
-    
+
     mask_first_order = mask_a_zero & mask_b_zero & ~mask_c_zero
     mask_second_order = mask_a_zero & ~mask_b_zero & ~mask_c_zero
 
