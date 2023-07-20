@@ -36,27 +36,25 @@ def solve_quadratic(coeffs: Tensor) -> Tensor:
     # Calculate 1/(2*a) for efficient computation
     inv_2a = 0.5 / a
 
-    # Initialize solution tensor
-    solution = torch.zeros((coeffs.shape[0], 2), device=coeffs.device, dtype=coeffs.dtype)
+    # Initialize solutions tensor
+    solutions = torch.zeros((coeffs.shape[0], 2), device=coeffs.device, dtype=coeffs.dtype)
 
     # Handle cases with zero discriminant
     if torch.any(mask_zero):
-        solution[mask_zero, 0] = -b[mask_zero] * inv_2a[mask_zero]
-        solution[mask_zero, 1] = solution[mask_zero, 0]
+        solutions[mask_zero, 0] = -b[mask_zero] * inv_2a[mask_zero]
+        solutions[mask_zero, 1] = solutions[mask_zero, 0]
 
-    # Handle cases with negative discriminant
-    # if torch.any(mask_negative):
-    #     solution[mask_negative, :] = torch.tensor(0, device=coeffs.device, dtype=coeffs.dtype)
+    # Negative discriminant cases are automatically handled since solutions is initialized with zeros.
 
     sqrt_delta = torch.sqrt(delta)
 
     # Handle cases with non-negative discriminant
     mask = torch.bitwise_and(~mask_negative, ~mask_zero)
     if torch.any(mask):
-        solution[mask, 0] = (-b[mask] + sqrt_delta[mask]) * inv_2a[mask]
-        solution[mask, 1] = (-b[mask] - sqrt_delta[mask]) * inv_2a[mask]
+        solutions[mask, 0] = (-b[mask] + sqrt_delta[mask]) * inv_2a[mask]
+        solutions[mask, 1] = (-b[mask] - sqrt_delta[mask]) * inv_2a[mask]
 
-    return solution
+    return solutions
 
 
 def solve_cubic(coeffs: Tensor) -> Tensor:
@@ -87,7 +85,9 @@ def solve_cubic(coeffs: Tensor) -> Tensor:
     mask_b_zero = b == 0
     mask_c_zero = c == 0
 
-    mask_a_zero & mask_b_zero & mask_c_zero
+    # Zero order cases are automatically handled since solutions is initialized with zeros.
+    # No need for explicit handling of mask_zero_order as solutions already contains zeros by default.
+    
     mask_first_order = mask_a_zero & mask_b_zero & ~mask_c_zero
     mask_second_order = mask_a_zero & ~mask_b_zero & ~mask_c_zero
 
@@ -96,9 +96,6 @@ def solve_cubic(coeffs: Tensor) -> Tensor:
 
     if torch.any(mask_first_order):
         solutions[mask_first_order, 0] = torch.tensor(1.0, device=a.device, dtype=a.dtype)
-
-    # if torch.any(mask_zero_order):
-    #     solutions[mask_zero_order, 0] = torch.tensor(0, device=a.device, dtype=a.dtype)
 
     # Normalized form x^3 + a2 * x^2 + a1 * x + a0 = 0
     inv_a = 1.0 / a[~mask_a_zero]
