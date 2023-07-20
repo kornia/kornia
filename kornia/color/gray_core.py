@@ -82,36 +82,10 @@ def rgb_to_grayscale(image, rgb_weights=None):
 
     if rgb_weights is None:
         # 8 bit images
-        backend = keras.backend.backend()
-        if backend == "numpy":
-            if image.dtype == np.uint8:
-                rgb_weights = np.array([76, 150, 29], dtype=np.uint8)
-            elif image.dtype in (np.float16, np.float32, np.float64):
-                rgb_weights = np.array([0.299, 0.587, 0.114], dtype=image.dtype)
-            else:
-                raise TypeError(f"Unknown data type: {image.dtype}")
-        elif backend == "jax":
-            if image.dtype == jnp.uint8:
-                rgb_weights = jnp.array([76, 150, 29], dtype=jnp.uint8)
-            elif image.dtype in (jnp.float16, jnp.float32, jnp.float64):
-                rgb_weights = jnp.array([0.299, 0.587, 0.114], dtype=image.dtype)
-            else:
-                raise TypeError(f"Unknown data type: {image.dtype}")
-        elif backend == "torch":
-            if image.dtype == torch.uint8:
-                rgb_weights = torch.tensor([76, 150, 29], dtype=torch.uint8)
-            elif image.dtype in (torch.float16, torch.float32, torch.float64):
-                rgb_weights = torch.array([0.299, 0.587, 0.114], dtype=image.dtype)
-            else:
-                raise TypeError(f"Unknown data type: {image.dtype}")
-        elif backend == "tensorflow":
-            if image.dtype == tf.uint8:
-                rgb_weights = tf.convert_to_tensor([76, 150, 29], dtype=tf.uint8)
-            elif image.dtype in (tf.float16, tf.float32, tf.float64):
-                rgb_weights = tf.convert_to_tensor([0.299, 0.587, 0.114], dtype=image.dtype)
-            else:
-                raise TypeError(f"Unknown data type: {image.dtype}")
-        # is tensor that we make sure is in the same device/dtype
+        if str(image.dtype)[-5:] == "uint8":
+            rgb_weights = keras.ops.convert_to_tensor([76, 150, 29], dtype=image.dtype)
+        elif str(image.dtype)[-7:-2] in ["float16", "float32", "float64"]:
+            rgb_weights = keras.ops.convert_to_tensor([0.299, 0.587, 0.114], dtype=image.dtype)
 
     # unpack the color image channels with RGB order
     r = image[..., 0:1, :, :]
