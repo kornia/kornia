@@ -45,7 +45,7 @@ class RandomSharpness(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        sharpness: Union[Tensor, float, Tuple[float, float], Tensor] = 0.5,
+        sharpness: Union[Tensor, float, Tuple[float, float]] = 0.5,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
