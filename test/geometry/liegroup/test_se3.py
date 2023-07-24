@@ -182,6 +182,15 @@ class TestSe3(BaseTester):
         self.assert_close(rot_mat[..., 0:3, 3], t)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_from_matrix(self, device, dtype, batch_size):
+        matrix = torch.tensor(((1.0, 0.0, 0.0, 0.0), (0.0, 0.0, -1.0, 0.0), (0.0, 1.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0)), device=device, dtype=dtype)
+        if batch_size is not None:
+            matrix = matrix.repeat(batch_size, 1, 1)
+        s = Se3.from_matrix(matrix)
+        self.assert_close(s.r.matrix(), matrix[..., 0:3, 0:3])
+        self.assert_close(s.t, matrix[..., 0:3, 3])
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_from_qxyz(self, device, dtype, batch_size):
         qxyz = self._make_rand_data(device, dtype, batch_size, dims=7)
         s = Se3.from_qxyz(qxyz)

@@ -206,6 +206,10 @@ class TestSe2(BaseTester):
         self.assert_close(p1, p2.squeeze(-1))
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_from_matrix(self, device, dtype, batch_size):
+        pass
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_inverse(self, device, batch_size, dtype):
         s = Se2.random(batch_size, device, dtype)
         s_in_in = s.inverse().inverse()
