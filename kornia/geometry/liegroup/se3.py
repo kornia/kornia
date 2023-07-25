@@ -284,15 +284,13 @@ class Se3(Module):
             matrix: tensor of shape :math:`(B, 4, 4)`.
 
         Example:
-            >>> s = Se3.from_matrix(torch.eye(4).repeat(2, 1, 1))
+            >>> s = Se3.from_matrix(torch.eye(4))
             >>> s.r
             Parameter containing:
-            tensor([1., 0., 0., 0.],
-                   [1., 0., 0., 0.]], requires_grad=True)
+            tensor([1., 0., 0., 0.], requires_grad=True)
             >>> s.t
             Parameter containing:
-            tensor([[0., 0., 0.],
-                    [0., 0., 0.]], requires_grad=True)
+            tensor([0., 0., 0.], requires_grad=True)
         """
         # KORNIA_CHECK_SHAPE(matrix, ["B", "4", "4"])  # FIXME: resolve shape bugs. @edgarriba
         r = So3.from_matrix(matrix[..., :3, :3])

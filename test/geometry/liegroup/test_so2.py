@@ -39,6 +39,8 @@ class TestSo2(BaseTester):
     @pytest.mark.parametrize("input_shape", [(1, 2, 2), (2, 2, 2), (5, 2, 2), (2, 2)])
     def test_matrix_cardinality(self, device, dtype, input_shape):
         matrix = torch.rand(input_shape, dtype=dtype, device=device)
+        matrix[..., 0, 1] = -matrix[..., 1, 0]
+        matrix[..., 1, 1] = matrix[..., 0, 0]
         s = So2.from_matrix(matrix)
         assert s.matrix().shape == input_shape
 
@@ -56,6 +58,9 @@ class TestSo2(BaseTester):
         with pytest.raises(ValueError):
             theta = torch.rand((2, 2), dtype=dtype, device=device)
             assert So2.hat(theta)
+        with pytest.raises(ValueError):
+            m = torch.rand((2, 2, 1), dtype=dtype, device=device)
+            assert So2.from_matrix(m)
         with pytest.raises(ValueError):
             m = torch.rand((2, 2, 1), dtype=dtype, device=device)
             assert So2.from_matrix(m)
@@ -180,6 +185,20 @@ class TestSo2(BaseTester):
         p1 = s * t
         p2 = s.matrix() @ t[..., None]
         self.assert_close(p1, p2.squeeze(-1))
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_from_matrix(self, device, dtype, batch_size):
+        matrix = torch.eye(2, device=device, dtype=dtype)
+        if batch_size is not None:
+            matrix = matrix.repeat(batch_size, 1, 1)
+            one = torch.ones((batch_size,), device=device, dtype=dtype)
+            zero = torch.zeros((batch_size,), device=device, dtype=dtype)
+        else:
+            one = torch.tensor(1, device=device, dtype=dtype)
+            zero = torch.tensor(0, device=device, dtype=dtype)
+        s = So2.from_matrix(matrix)
+        self.assert_close(s.z.real, one)
+        self.assert_close(s.z.imag, zero)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     @pytest.mark.parametrize("cdtype", (torch.cfloat, torch.cdouble))
