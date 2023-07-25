@@ -1268,10 +1268,8 @@ def homography_warp(
     """
     if not src_homo_dst.device == patch_src.device:
         raise TypeError(
-            "Patch and homography must be on the same device. \
-                         Got patch.device: {} src_H_dst.device: {}.".format(
-                patch_src.device, src_homo_dst.device
-            )
+            f"Patch and homography must be on the same device. \
+                         Got patch.device: {patch_src.device} src_H_dst.device: {src_homo_dst.device}."
         )
     if normalized_homography:
         height, width = dsize
@@ -1333,10 +1331,8 @@ def homography_warp3d(
     """
     if not src_homo_dst.device == patch_src.device:
         raise TypeError(
-            "Patch and homography must be on the same device. \
-                         Got patch.device: {} src_H_dst.device: {}.".format(
-                patch_src.device, src_homo_dst.device
-            )
+            f"Patch and homography must be on the same device. \
+                         Got patch.device: {patch_src.device} src_H_dst.device: {src_homo_dst.device}."
         )
 
     depth, height, width = dsize
