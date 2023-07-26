@@ -3,10 +3,6 @@ Stereo Camera
 
 .. currentmodule:: kornia.geometry.camera.stereo
 
-.. warning::
-   :mod:`kornia.geometry.camera` will be deprecated in future versions. Please use
-   :mod:`kornia.sensors.camera` instead.
-
 In this module we provide the :class:`StereoCamera` that contains functionality for working with a horizontal stereo camera setup.
 
 The horizontal stereo camera setup is assumed to be calibrated and rectified such that the setup can be described by two camera matrices:

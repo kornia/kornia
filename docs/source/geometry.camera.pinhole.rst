@@ -3,10 +3,6 @@ Pinhole Camera
 
 .. currentmodule:: kornia.geometry.camera.pinhole
 
-.. warning::
-   :mod:`kornia.geometry.camera` will be deprecated in future versions. Please use
-   :mod:`kornia.sensors.camera` instead.
-
 In this module we have all the functions and data structures needed to describe the projection of a 3D scene space onto a 2D image plane.
 
 In computer vision, we can map between the 3D world and a 2D image using *projective geometry*. The module implements the simplest camera model, the **Pinhole Camera**, which is the most basic model for general projective cameras from the finite cameras group.

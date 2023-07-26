@@ -1,4 +1,3 @@
-import warnings
 from typing import Iterable, List, Union
 
 import torch
@@ -27,10 +26,6 @@ class PinholeCamera:
     """
 
     def __init__(self, intrinsics: Tensor, extrinsics: Tensor, height: Tensor, width: Tensor) -> None:
-        warnings.warn(
-            "kornia.geometry.camera.PinholeCamera will be deprecated in future versions. Please use kornia.sensors.camera instead.",
-            category=DeprecationWarning,
-        )
         # verify batch size and shapes
         self._check_valid([intrinsics, extrinsics, height, width])
         self._check_valid_params(intrinsics, "intrinsics")
