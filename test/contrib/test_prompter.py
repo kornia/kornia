@@ -3,15 +3,15 @@ import sys
 import pytest
 import torch
 
-from kornia.contrib.image_prompter import ImagePrompter
 from kornia.contrib.models.sam import SamConfig
+from kornia.contrib.visual_prompter import VisualPrompter
 from kornia.testing import BaseTester
 
 
-class TestImagePrompter(BaseTester):
+class TestVisualPrompter(BaseTester):
     def test_smoke(self, device, dtype):
         inpt = torch.rand(3, 77, 128, device=device, dtype=dtype)
-        prompter = ImagePrompter(SamConfig('vit_b'), device, dtype)
+        prompter = VisualPrompter(SamConfig('vit_b'), device, dtype)
 
         prompter.set_image(inpt)
         assert prompter.is_image_set
@@ -26,7 +26,7 @@ class TestImagePrompter(BaseTester):
         # SAM: don't supports float64
         dtype = torch.float32
         inpt = torch.rand(3, 77, 128, device=device, dtype=dtype)
-        prompter = ImagePrompter(SamConfig('vit_b'), device, dtype)
+        prompter = VisualPrompter(SamConfig('vit_b'), device, dtype)
 
         keypoints = torch.randint(0, min(inpt.shape[-2:]), (batch_size, N, 2), device=device).to(dtype=dtype)
         labels = torch.randint(0, 1, (batch_size, N), device=device).to(dtype=dtype)
@@ -40,7 +40,7 @@ class TestImagePrompter(BaseTester):
         assert out.scores.shape == (1, C)
 
     def test_exception(self):
-        prompter = ImagePrompter(SamConfig('vit_b'))
+        prompter = VisualPrompter(SamConfig('vit_b'))
 
         inpt = torch.rand(1, 3, 1, 2)
 
@@ -92,7 +92,7 @@ class TestImagePrompter(BaseTester):
         dtype = torch.float32
         img = torch.rand(3, 128, 75, device=device, dtype=dtype)
 
-        prompter = ImagePrompter(SamConfig('vit_b'), device, dtype)
+        prompter = VisualPrompter(SamConfig('vit_b'), device, dtype)
         prompter.set_image(img)
 
         expected = prompter.predict(img)
