@@ -17,7 +17,7 @@ Defining a `Pinhole` camera model is as simple as:
     from kornia.image import ImageSize
     from kornia.sensors.camera import CameraModel, CameraModelType
 
-    params = torch.Tensor([328., 328., 320., 240.]) # fx, fy, cx, cy
+    params = torch.tensor([328., 328., 320., 240.]) # fx, fy, cx, cy
     cam = CameraModel(ImageSize(480, 640), CameraModelType.PINHOLE, params)
 
 To define a custom camera model based on distortion and projection types, one can use the :class:`CameraModelBase` api:
@@ -29,7 +29,7 @@ To define a custom camera model based on distortion and projection types, one ca
     from kornia.sensors.camera.distortion_model import AffineTransform
     from kornia.sensors.camera.projection_model import Z1Projection
 
-    params = torch.Tensor([328., 328., 320., 240.])
+    params = torch.tensor([328., 328., 320., 240.])
     cam = CameraModelBase(AffineTransform(), Z1Projection(), ImageSize(480, 640), params)
 
 
