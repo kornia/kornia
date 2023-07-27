@@ -10,6 +10,7 @@ from kornia.core import Device, Dtype, Tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.image.base import ChannelsOrder, ColorSpace, ImageLayout, ImageSize, PixelFormat
 from kornia.io.io import ImageLoadType, load_image, write_image
+from kornia.utils.image_print import image_to_string
 
 # placeholder for numpy
 np_ndarray = Any
@@ -84,6 +85,15 @@ class Image:
 
     # TODO: explore use TensorWrapper
     def to(self, device: Device = None, dtype: Dtype = None) -> Image:
+        """Move the image to the given device and dtype.
+
+        Args:
+            device: the device to move the image to.
+            dtype: the data type to cast the image to.
+
+        Returns:
+            Image: the image moved to the given device and dtype.
+        """
         if device is not None and isinstance(device, torch.dtype):
             dtype, device = device, None
         # put the data to the device and dtype
@@ -92,6 +102,7 @@ class Image:
 
     # TODO: explore use TensorWrapper
     def clone(self) -> Image:
+        """Return a copy of the image."""
         return Image(self.data.clone(), self.pixel_format, self.layout)
 
     @property
@@ -267,3 +278,18 @@ class Image:
         if self.channels_order == ChannelsOrder.CHANNELS_LAST:
             data = data.permute(2, 0, 1)
         write_image(file_path, data)
+
+    def print(self, max_width: int = 256) -> None:
+        """Print the image tensor to the console.
+
+        .. image:: https://github.com/kornia/data/blob/a82d2bdc868f3774a1be91419a2870e54222389e/print_image.png
+
+        Args:
+            max_width: the maximum width of the image to print.
+
+        Example:
+            >>> data = np.ones((4, 5, 3), dtype=np.uint8)  # HxWxC
+            >>> img = Image.from_numpy(data)
+            >>> img.print()
+        """
+        print(image_to_string(self.data, max_width))

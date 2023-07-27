@@ -372,6 +372,8 @@ def image_to_string(image: Tensor, max_width: int = 256) -> str:
 def print_image(image: Union[str, Tensor], max_width: int = 96) -> None:
     """Print an image to the terminal.
 
+    .. image:: https://github.com/kornia/data/blob/a82d2bdc868f3774a1be91419a2870e54222389e/print_image.png
+
     Args:
         image: path to a valid image file or a tensor.
         max_width: maximum width to print to terminal.
