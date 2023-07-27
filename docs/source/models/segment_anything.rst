@@ -40,8 +40,8 @@ The :code:`VisualPrompter` works querying on a single image, if you want to expl
 you can use the :code:`Sam` directly. But, for it you will need to write the boilerplate to preprocess and postprocess to
 use it. This boilerplate, is already handle on the high-level API :code:`VisualPrompter`.
 
-Image Prompter
-^^^^^^^^^^^^^^
+Visual Prompter
+^^^^^^^^^^^^^^^
 .. _anchor Prompter:
 
 The High level API :code:`VisualPrompter` handle with the image and prompt transformation, preprocessing and prediction for
