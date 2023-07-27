@@ -7,8 +7,15 @@ from kornia.geometry.liegroup import Se2, Se3, So2, So3
 from kornia.geometry.quaternion import Quaternion
 
 
+def check_R_shape(R: Tensor):
+    if len(R.shape) > 3 or len(R.shape) < 2:
+        raise ValueError(f"R must be either 2x2 or 3x3, got {R.shape}")
+    if list(R.shape[-2:]) not in ([2, 2], [3, 3]):
+        raise ValueError(f"R must be either 2x2 or 3x3, got {R.shape}")
+
+
 class NamedPose:
-    r"""Class to represent a pose between two frames.
+    r"""Class to represent a named pose between two frames.
 
     Internally represented by either Se2 or Se3.
     """
@@ -19,7 +26,7 @@ class NamedPose:
         self._frame_b = frame_b or uuid.uuid4().hex
 
     def __repr__(self) -> str:
-        return f"NamedPose(t_a_b={self.t_a_b}, \n {self._frame_a} -> {self._frame_b})"
+        return f"NamedPose(t_a_b={self.t_a_b}, \n frame: {self._frame_a} -> frame: {self._frame_b})"
 
     def __mul__(self, other: NamedPose) -> NamedPose:
         t_a_b = self.t_a_b * other.t_a_b
@@ -50,23 +57,23 @@ class NamedPose:
         elif isinstance(R, So2):
             return cls(Se2(R, T), frame_a, frame_b)
         elif isinstance(R, Tensor):
-            if R.shape[-2:] == (3, 3):
-                RT = eye(4)
-                RT[:3, :3] = R
-                RT[:3, 3] = T
-                return cls(Se3.from_matrix(RT), frame_a, frame_b)
-            elif R.shape[-2:] == (2, 2):
-                RT = eye(3)
-                RT[:2, :2] = R
-                RT[:2, 2] = T
+            check_R_shape(R)
+            dim = R.shape[-1]
+            RT = eye(dim + 1, device=R.device, dtype=R.dtype)
+            RT[..., :dim, :dim] = R
+            RT[..., :dim, dim] = T
+            if dim == 2:
                 return cls(Se2.from_matrix(RT), frame_a, frame_b)
-            else:
-                raise ValueError(f"R must be either 2x2 or 3x3, got {R.shape}")
+            elif dim == 3:
+                return cls(Se3.from_matrix(RT), frame_a, frame_b)
         else:
             raise ValueError(f"R must be either So2, So3, Quaternion, or Tensor, got {type(R)}")
 
     def from_colmap():
-        pass
+        raise NotImplementedError
 
     def inverse(self) -> NamedPose:
         return NamedPose(self.t_a_b.inverse(), self.frame_b, self.frame_a)
+
+    def transform(self, points: Tensor) -> Tensor:
+        return self.t_a_b * points
