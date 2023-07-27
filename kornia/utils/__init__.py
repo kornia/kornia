@@ -1,5 +1,5 @@
 from ._compat import torch_meshgrid
-from .draw import draw_convex_polygon, draw_line, draw_rectangle
+from .draw import draw_convex_polygon, draw_line, draw_point2d, draw_rectangle
 from .grid import create_meshgrid, create_meshgrid3d
 from .helpers import (
     _extract_device_dtype,
@@ -35,6 +35,7 @@ __all__ = [
     "draw_convex_polygon",
     "draw_rectangle",
     "draw_line",
+    "draw_point2d",
     "_extract_device_dtype",
     "safe_inverse_with_mask",
     "safe_solve_with_mask",
