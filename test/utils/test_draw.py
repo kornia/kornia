@@ -5,7 +5,70 @@ import torch
 
 from kornia.testing import assert_close
 from kornia.utils import create_meshgrid, draw_convex_polygon, draw_rectangle
-from kornia.utils.draw import draw_line
+from kornia.utils.draw import draw_line, draw_point2d
+
+
+class TestDrawPoint:
+    """Test drawing individual pixels."""
+
+    def test_draw_point2d_rgb(self, dtype, device):
+        """Test plotting multiple [x, y] points."""
+        points = torch.tensor([(1, 3), (2, 4)], device=device)
+        color = torch.tensor([5, 10, 15], dtype=dtype, device=device)
+        img = torch.zeros(3, 8, 8, dtype=dtype, device=device)
+        img = draw_point2d(img, points, color)
+        for x, y in points:
+            assert_close(img[:, y, x], color.to(img.dtype))
+
+    def test_draw_point2d_grayscale_third_order(self, dtype, device):
+        """Test plotting multiple [x, y] points on a (1, m, n) image."""
+        points = torch.tensor([(1, 3), (2, 4)], device=device)
+        color = torch.tensor([100], dtype=dtype, device=device)
+        img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
+        img = draw_point2d(img, points, color)
+        for x, y in points:
+            assert_close(img[:, y, x], color.to(img.dtype))
+
+    def test_draw_point2d_grayscale_second_order(self, dtype, device):
+        """Test plotting multiple [x, y] points on a (m, n) image."""
+        points = torch.tensor([(1, 3), (2, 4)], device=device)
+        color = torch.tensor([100], dtype=dtype, device=device)
+        img = torch.zeros(8, 8, dtype=dtype, device=device)
+        img = draw_point2d(img, points, color)
+        for x, y in points:
+            assert_close(torch.unsqueeze(img[y, x], dim=0), color.to(img.dtype))
+
+    def test_draw_point2d_with_mismatched_dims(self, dtype, device):
+        """Test that we raise if the len of the color tensor != the # of image channels."""
+        points = torch.tensor([(1, 3), (2, 4)], device=device)
+        color = torch.tensor([100], dtype=dtype, device=device)
+        img = torch.zeros(3, 8, 8, dtype=dtype, device=device)
+        with pytest.raises(Exception):
+            draw_point2d(img, points, color)
+
+    def test_draw_point2d_with_mismatched_dtype(self, device):
+        """Test that the color is correctly cast to the image dtype when drawing points."""
+        points = torch.tensor([(1, 3), (2, 4)], device=device)
+        color = torch.tensor([5, 10, 15], dtype=torch.float32, device=device)
+        img = torch.zeros(3, 8, 8, dtype=torch.uint8, device=device)
+        img = draw_point2d(img, points, color)
+        assert img.dtype is torch.uint8
+        for x, y in points:
+            assert_close(img[:, y, x], color.to(torch.uint8))
+
+    def test_draw_point2d_with_singleton_color_dims(self, dtype, device):
+        """Ensure that plotting behavior is consistent if we have a singleton dim for the color."""
+        points = torch.tensor([(1, 3), (2, 4)], device=device)
+        # Plot given a color tensor of shape [3]
+        color_vec = torch.tensor([5, 10, 15], dtype=torch.float32, device=device)
+        vec_img = torch.zeros(3, 8, 8, dtype=torch.uint8, device=device)
+        drawn_vec_img = draw_point2d(vec_img, points, color_vec)
+        # Plot given a color tensor of shape [3, 1]
+        color_mat = torch.unsqueeze(color_vec, dim=1)
+        mat_img = vec_img.clone()
+        drawn_mat_img = draw_point2d(mat_img, points, color_mat)
+        # Ensure that we get the same underlying image back
+        assert_close(drawn_vec_img, drawn_mat_img)
 
 
 class TestDrawLine:
