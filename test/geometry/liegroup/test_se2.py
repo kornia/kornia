@@ -206,6 +206,19 @@ class TestSe2(BaseTester):
         self.assert_close(p1, p2.squeeze(-1))
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_from_matrix(self, device, dtype, batch_size):
+        theta = self._make_rand_data(device, dtype, (batch_size,))
+        t = self._make_rand_data(device, dtype, (batch_size, 2))
+        s = So2.exp(theta)
+        p1 = s * t
+        RT = torch.eye(3, device=device, dtype=dtype)
+        if batch_size is not None:
+            RT = RT.repeat(batch_size, 1, 1)
+        RT[..., :2, :2] = s.matrix()
+        p2 = Se2.from_matrix(RT) * t
+        self.assert_close(p1, p2)
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_inverse(self, device, batch_size, dtype):
         s = Se2.random(batch_size, device, dtype)
         s_in_in = s.inverse().inverse()

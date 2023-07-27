@@ -277,6 +277,27 @@ class Se3(Module):
         return rt_4x4
 
     @classmethod
+    def from_matrix(cls, matrix: Tensor) -> Se3:
+        """Create a Se3 group from a matrix.
+
+        Args:
+            matrix: tensor of shape :math:`(B, 4, 4)`.
+
+        Example:
+            >>> s = Se3.from_matrix(torch.eye(4))
+            >>> s.r
+            Parameter containing:
+            tensor([1., 0., 0., 0.], requires_grad=True)
+            >>> s.t
+            Parameter containing:
+            tensor([0., 0., 0.], requires_grad=True)
+        """
+        # KORNIA_CHECK_SHAPE(matrix, ["B", "4", "4"])  # FIXME: resolve shape bugs. @edgarriba
+        r = So3.from_matrix(matrix[..., :3, :3])
+        t = matrix[..., :3, -1]
+        return cls(r, t)
+
+    @classmethod
     def from_qxyz(cls, qxyz: Tensor) -> Se3:
         """Create a Se3 group a quaternion and translation vector.
 

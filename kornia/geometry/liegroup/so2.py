@@ -7,6 +7,7 @@ from typing import overload
 from kornia.core import Device, Dtype, Module, Parameter, Tensor, complex, rand, stack, tensor, zeros_like
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
 from kornia.geometry.liegroup._utils import (
+    check_so2_matrix,
     check_so2_matrix_shape,
     check_so2_t_shape,
     check_so2_theta_shape,
@@ -196,6 +197,7 @@ class So2(Module):
         """
         # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
         check_so2_matrix_shape(matrix)
+        check_so2_matrix(matrix)
         z = complex(matrix[..., 0, 0], matrix[..., 1, 0])
         return cls(z)
 
