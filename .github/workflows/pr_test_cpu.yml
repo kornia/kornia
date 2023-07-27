@@ -22,7 +22,7 @@ jobs:
     with:
       os: ${{ matrix.os }}
       python-version: '["3.8", "3.10"]'
-      pytorch-version: '["1.9.1", "2.0.0"]'
+      pytorch-version: '["1.9.1", "2.0.1"]'
       pytorch-dtype: 'float32'
 
   tests-cpu-fp64:
@@ -31,7 +31,7 @@ jobs:
     uses: ./.github/workflows/tests.yml
     with:
       python-version: '["3.8", "3.10"]'
-      pytorch-version: '["1.9.1", "2.0.0"]'
+      pytorch-version: '["1.9.1", "2.0.1"]'
       pytorch-dtype: 'float64'
 
   test-typing:

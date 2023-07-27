@@ -418,7 +418,7 @@ class TestWarpPerspective:
         assert_close(patch_warped, expected)
 
     def test_dynamo(self, device, dtype, torch_optimizer):
-        if dtype == torch.float64 and torch_version() == '2.0.0' and sys.platform == 'linux':
+        if dtype == torch.float64 and torch_version() in {'2.0.0', '2.0.1'} and sys.platform == 'linux':
             pytest.xfail('Failling on CI on ubuntu with torch 2.0.0 for float64')
         img = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         H_ab = kornia.eye_like(3, img)

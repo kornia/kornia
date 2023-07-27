@@ -8,7 +8,7 @@ on:
       pytorch-version:
         required: false
         type: string
-        default: '["2.0.0"]'
+        default: '["2.0.1"]'
       os:
         required: false
         type: string
