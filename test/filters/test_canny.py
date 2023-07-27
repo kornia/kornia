@@ -297,7 +297,7 @@ class TestCanny(BaseTester):
 
     @pytest.mark.parametrize('kernel_size', [5, (5, 7)])
     @pytest.mark.parametrize('batch_size', [1, 2])
-    @pytest.mark.skipif(torch_version() == '2.0.0', reason='Not working on 2.0')
+    @pytest.mark.skipif(torch_version() in {'2.0.0', '2.0.1'}, reason='Not working on 2.0')
     def test_dynamo(self, batch_size, kernel_size, device, dtype, torch_optimizer):
         inpt = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
         op = Canny(kernel_size=kernel_size)
