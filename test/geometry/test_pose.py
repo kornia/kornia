@@ -2,7 +2,7 @@ import pytest
 import torch
 
 from kornia.geometry import NamedPose
-from kornia.geometry.liegroup import So2, So3, Se2, Se3
+from kornia.geometry.liegroup import Se2, Se3, So2, So3
 from kornia.testing import BaseTester
 
 
@@ -34,8 +34,12 @@ class TestNamedPose(BaseTester):
         pass
 
     def test_mul(self, device, dtype):
-        b_from_a = NamedPose(Se3.trans_x(torch.tensor([1.0], device=device, dtype=dtype)), frame1="frame_a", frame2="frame_b")
-        c_from_b = NamedPose(Se3.trans_y(torch.tensor([1.0], device=device, dtype=dtype)), frame1="frame_b", frame2="frame_c")
+        b_from_a = NamedPose(
+            Se3.trans_x(torch.tensor([1.0], device=device, dtype=dtype)), frame1="frame_a", frame2="frame_b"
+        )
+        c_from_b = NamedPose(
+            Se3.trans_y(torch.tensor([1.0], device=device, dtype=dtype)), frame1="frame_b", frame2="frame_c"
+        )
         c_from_a = b_from_a * c_from_b
         assert isinstance(c_from_a, NamedPose)
         assert isinstance(c_from_a.pose, Se3)
@@ -66,9 +70,11 @@ class TestNamedPose(BaseTester):
         b_from_a = NamedPose.from_RT(b_from_a_rotation, b_from_a_translation, frame1="frame_a", frame2="frame_b")
         assert isinstance(b_from_a, NamedPose)
         assert isinstance(b_from_a.pose, Se2)
-    
+
     def test_inverse(self, device, dtype):
-        b_from_a = NamedPose(Se3.trans_x(torch.tensor([1.0], device=device, dtype=dtype)), frame1="frame_a", frame2="frame_b")
+        b_from_a = NamedPose(
+            Se3.trans_x(torch.tensor([1.0], device=device, dtype=dtype)), frame1="frame_a", frame2="frame_b"
+        )
         a_from_b = b_from_a.inverse()
         assert isinstance(a_from_b, NamedPose)
         assert isinstance(a_from_b.pose, Se3)
