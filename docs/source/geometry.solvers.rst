@@ -23,7 +23,7 @@ Finds the real roots of a quadratic equation
     roots = solve_quadratic(coeffs)
 
 .. note::
-   In cases where a quadratic polynomial has only one real root, the output will be in the format [real_root, 0]. And for the 
+   In cases where a quadratic polynomial has only one real root, the output will be in the format [real_root, 0]. And for the
    complex roots should be represented as 0. This is done to maintain a consistent output shape for all cases.
 
 
