@@ -11,13 +11,24 @@ from kornia.core.check import KORNIA_CHECK_SHAPE
 def solve_quadratic(coeffs: Tensor) -> Tensor:
     r"""Solve given quadratic equation.
 
-    The function takes the coefficients of quadratic equation and returns the solutions.
+    The function takes the coefficients of quadratic equation and returns the real roots.
+
+    .. math:: coeffs[0]x^2 + coeffs[1]x + coeffs[2] = 0
 
     Args:
         coeffs : The coefficients of quadratic equation :`(B, 3)`
 
     Returns:
-        A tensor of shape `(B, 2)` containing the solutions to the quadratic equation.
+        A tensor of shape `(B, 2)` containing the real roots to the quadratic equation.
+
+    Example:
+        >>> coeffs = torch.tensor([[1., 4., 4.]])
+        >>> roots = solve_quadratic(coeffs)
+
+    .. note::
+       In cases where a quadratic polynomial has only one real root, the output will be in the format
+       [real_root, 0]. And for the complex roots should be represented as 0. This is done to maintain
+       a consistent output shape for all cases.
     """
 
     KORNIA_CHECK_SHAPE(coeffs, ['B', '3'])
@@ -62,13 +73,24 @@ def solve_cubic(coeffs: Tensor) -> Tensor:
     r"""Solve given cubic equation.
 
     The function takes the coefficients of cubic equation and returns
-    the solutions.
+    the real roots.
+
+    .. math:: coeffs[0]x^3 + coeffs[1]x^2 + coeffs[2]x + coeffs[3] = 0
 
     Args:
         coeffs : The coefficients cubic equation : `(B, 4)`
 
     Returns:
-        A tensor of shape `(B, 3)` containing the solutions to the cubic equation.
+        A tensor of shape `(B, 3)` containing the real roots to the cubic equation.
+
+    Example:
+        >>> coeffs = torch.tensor([[32., 3., -11., -6.]])
+        >>> roots = solve_cubic(coeffs)
+
+    .. note::
+       In cases where a cubic polynomial has only one or two real roots, the output for the non-real
+       roots should be represented as 0. Thus, the output for a single real root should be in the
+       format [real_root, 0, 0], and for two real roots, it should be [real_root_1, real_root_2, 0].
     """
     KORNIA_CHECK_SHAPE(coeffs, ['B', '4'])
 
