@@ -10,4 +10,3 @@ Polynomial Solvers
 
 .. autofunction:: solve_quadratic
 .. autofunction:: solve_cubic
-
