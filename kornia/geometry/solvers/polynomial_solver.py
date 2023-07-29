@@ -12,7 +12,7 @@ def solve_quadratic(coeffs: Tensor) -> Tensor:
     r"""Solve given quadratic equation.
 
     The function takes the coefficients of quadratic equation and returns the real roots.
-    
+
     .. math:: coeffs[0]x^2 + coeffs[1]x + coeffs[2] = 0
 
     Args:
@@ -69,7 +69,7 @@ def solve_cubic(coeffs: Tensor) -> Tensor:
 
     The function takes the coefficients of cubic equation and returns
     the real roots.
-    
+
     .. math:: coeffs[0]x^3 + coeffs[1]x^2 + coeffs[2]x + coeffs[3] = 0
 
     Args:
@@ -81,7 +81,6 @@ def solve_cubic(coeffs: Tensor) -> Tensor:
     Example:
         >>> coeffs = torch.tensor([[32., 3., -11., -6.]])
         >>> roots = solve_cubic(coeffs)
-
     """
     KORNIA_CHECK_SHAPE(coeffs, ['B', '4'])
 
