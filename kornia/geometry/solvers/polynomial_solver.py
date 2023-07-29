@@ -24,6 +24,12 @@ def solve_quadratic(coeffs: Tensor) -> Tensor:
     Example:
         >>> coeffs = torch.tensor([[1., 4., 4.]])
         >>> roots = solve_quadratic(coeffs)
+
+    .. note::
+       In cases where a quadratic polynomial has only one real root, the output will be in the format 
+       [real_root, 0]. And for the complex roots should be represented as 0. This is done to maintain 
+       a consistent output shape for all cases.
+
     """
 
     KORNIA_CHECK_SHAPE(coeffs, ['B', '3'])
@@ -81,6 +87,11 @@ def solve_cubic(coeffs: Tensor) -> Tensor:
     Example:
         >>> coeffs = torch.tensor([[32., 3., -11., -6.]])
         >>> roots = solve_cubic(coeffs)
+
+    .. note::
+       In cases where a cubic polynomial has only one or two real roots, the output for the non-real
+       roots should be represented as 0. Thus, the output for a single real root should be in the 
+       format [real_root, 0, 0], and for two real roots, it should be [real_root_1, real_root_2, 0].
 
     """
     KORNIA_CHECK_SHAPE(coeffs, ['B', '4'])
