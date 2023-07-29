@@ -282,14 +282,14 @@ class Image:
     def print(self, max_width: int = 256) -> None:
         """Print the image tensor to the console.
 
-        .. image:: https://github.com/kornia/data/blob/a82d2bdc868f3774a1be91419a2870e54222389e/print_image.png
-
         Args:
             max_width: the maximum width of the image to print.
 
-        Example:
-            >>> data = np.ones((4, 5, 3), dtype=np.uint8)  # HxWxC
-            >>> img = Image.from_numpy(data)
-            >>> img.print()
+        .. code-block:: python
+
+            img = Image.from_file("panda.png")
+            img.print()
+
+        .. image:: https://github.com/kornia/data/blob/main/print_image.png?raw=true
         """
         print(image_to_string(self.data, max_width))
