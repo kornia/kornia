@@ -7,11 +7,17 @@ from kornia.geometry.liegroup import Se2, Se3, So2, So3
 from kornia.geometry.quaternion import Quaternion
 
 
-def check_R_shape(R: Tensor) -> None:
-    if len(R.shape) > 3 or len(R.shape) < 2:
-        raise ValueError(f"R must be either 2x2 or 3x3, got {R.shape}")
-    if list(R.shape[-2:]) not in ([2, 2], [3, 3]):
-        raise ValueError(f"R must be either 2x2 or 3x3, got {R.shape}")
+def check_matrix_shape(matrix: Tensor, matrix_type: str = "R") -> None:
+    target_shapes = []
+    if matrix_type == "R":
+        target_shapes = [[2, 2], [3, 3]]
+    elif matrix_type == "RT":
+        target_shapes = [[3, 3], [4, 4]]
+    if len(matrix.shape) > 3 or len(matrix.shape) < 2 or list(matrix.shape[-2:]) not in target_shapes:
+        raise ValueError(
+            f"{matrix_type} must be either {target_shapes[0]}x{target_shapes[0]} or \
+              {target_shapes[1]}x{target_shapes[1]}, got {matrix.shape}"
+        )
 
 
 class NamedPose:
@@ -20,31 +26,30 @@ class NamedPose:
     Internally represented by either Se2 or Se3.
 
     Example:
-        >>> b_from_a = NamedPose(Se3.identity(), frame1="frame_a", frame2="frame_b")
+        >>> b_from_a = NamedPose(Se3.identity(), frame_src="frame_a", frame_dst="frame_b")
         >>> b_from_a
-        NamedPose(frame2_from_frame1=rotation: Parameter containing:
+        NamedPose(dst_from_src=rotation: Parameter containing:
         tensor([1., 0., 0., 0.], requires_grad=True)
         translation: x: 0.0
         y: 0.0
         z: 0.0,
-        frame1: frame_a -> frame2: frame_b)
+        frame_src: frame_a -> frame_dst: frame_b)
     """
 
-    def __init__(self, frame2_from_frame1: Se2 | Se3, frame1: str | None = None, frame2: str | None = None) -> None:
+    def __init__(self, dst_from_src: Se2 | Se3, frame_src: str | None = None, frame_dst: str | None = None) -> None:
         """Constructor for NamedPose.
 
         Args:
-            frame2_from_frame1: Pose from frame 1 to frame 2.
-            frame1: Name of frame a.
-            frame2: Name of frame b.
+            dst_from_src: Pose from frame 1 to frame 2.
+            src: Name of frame a.
+            dst: Name of frame b.
         """
-        self._frame2_from_frame1 = frame2_from_frame1
-        self._frame1 = frame1 or uuid.uuid4().hex
-        self._frame2 = frame2 or uuid.uuid4().hex
+        self._dst_from_src = dst_from_src
+        self._frame_src = frame_src or uuid.uuid4().hex
+        self._frame_dst = frame_dst or uuid.uuid4().hex
 
     def __repr__(self) -> str:
-        return f"NamedPose(frame2_from_frame1={self._frame2_from_frame1}, \
-                \nframe1: {self._frame1} -> frame2: {self._frame2})"
+        return f"NamedPose(dst_from_src={self._dst_from_src},\nframe_src: {self._frame_src} -> frame_dst: {self._frame_dst})"
 
     def __mul__(self, other: NamedPose) -> NamedPose:
         """Compose two NamedPoses.
@@ -56,88 +61,120 @@ class NamedPose:
             NamedPose: Composed NamedPose.
 
         Example:
-            >>> b_from_a = NamedPose(Se3.identity(), frame1="frame_a", frame2="frame_b")
-            >>> c_from_b = NamedPose(Se3.identity(), frame1="frame_b", frame2="frame_c")
+            >>> b_from_a = NamedPose(Se3.identity(), frame_src="frame_a", frame_dst="frame_b")
+            >>> c_from_b = NamedPose(Se3.identity(), frame_src="frame_b", frame_dst="frame_c")
             >>> b_from_a * c_from_b
-            NamedPose(frame2_from_frame1=rotation: Parameter containing:
+            NamedPose(dst_from_src=rotation: Parameter containing:
             tensor([1., 0., 0., 0.], requires_grad=True)
             translation: x: 0.0
             y: 0.0
             z: 0.0,
-            frame1: frame_a -> frame2: frame_c)
+            frame_src: frame_a -> frame_dst: frame_c)
         """
-        if self.frame2 != other.frame1:
+        if self._frame_dst != other._frame_src:
             raise ValueError(f"Cannot compose {self} with {other}")
-        return NamedPose(self.pose * other.pose, self.frame1, other.frame2)
+        return NamedPose(self.pose * other.pose, self._frame_src, other._frame_dst)
 
     @property
     def pose(self) -> Se2 | Se3:
         """Pose from frame 1 to frame 2."""
-        return self._frame2_from_frame1
+        return self._dst_from_src
 
     @property
     def rotation(self) -> So3 | So2:
         """Rotation part of the pose."""
-        return self._frame2_from_frame1.rotation
+        return self._dst_from_src.rotation
 
     @property
     def translation(self) -> Tensor:
         """Translation part of the pose."""
-        return self._frame2_from_frame1.translation
+        return self._dst_from_src.translation
 
     @property
-    def frame1(self) -> str:
-        """Name of frame 1."""
-        return self._frame1
+    def frame_src(self) -> str:
+        """Name of the source frame."""
+        return self._frame_src
 
     @property
-    def frame2(self) -> str:
-        """Name of frame 2."""
-        return self._frame2
+    def frame_dst(self) -> str:
+        """Name of the destination frame."""
+        return self._frame_dst
 
     @classmethod
     def from_RT(
-        cls, R: So3 | So2 | Tensor | Quaternion, T: Tensor, frame1: str | None = None, frame2: str | None = None
-    ) -> NamedPose:
+        cls, R: So3 | So2 | Tensor | Quaternion, T: Tensor, frame_src: str | None = None, frame_dst: str | None = None
+    ) -> NamedPose | None:
         """Construct NamedPose from rotation and translation.
 
         Args:
             R : Rotation part of the pose.
             T : Translation part of the pose.
-            frame1 : Name of frame a.
-            frame2 : Name of frame b.
+            frame_src : Name of the source frame.
+            frame_dst : Name of the destination frame.
 
         Returns:
             NamedPose: NamedPose constructed from rotation and translation.
 
         Example:
-            >>> b_from_a_rotation = So3.identity()
+            >>> b_from_a_rot = So3.identity()
             >>> b_from_a_trans = torch.tensor([1., 2., 3.])
-            >>> b_from_a = NamedPose.from_RT(b_from_a_rotation, b_from_a_trans, frame1="frame_a", frame2="frame_b")
+            >>> b_from_a = NamedPose.from_RT(b_from_a_rot, b_from_a_trans, frame_src="frame_a", frame_dst="frame_b")
             >>> b_from_a
-            NamedPose(frame2_from_frame1=rotation: Parameter containing:
+            NamedPose(dst_from_src=rotation: Parameter containing:
             tensor([1., 0., 0., 0.], requires_grad=True)
             translation: Parameter containing:
             tensor([1., 2., 3.], requires_grad=True),
-            frame1: frame_a -> frame2: frame_b)
+            frame_src: frame_a -> frame_dst: frame_b)
         """
-        # TODO: Add support for RT matrix
         if isinstance(R, (So3, Quaternion)):
-            return cls(Se3(R, T), frame1, frame2)
+            return cls(Se3(R, T), frame_src, frame_dst)
         elif isinstance(R, So2):
-            return cls(Se2(R, T), frame1, frame2)
+            return cls(Se2(R, T), frame_src, frame_dst)
         elif isinstance(R, Tensor):
-            check_R_shape(R)
+            check_matrix_shape(R)
             dim = R.shape[-1]
             RT = eye(dim + 1, device=R.device, dtype=R.dtype)
             RT[..., :dim, :dim] = R
             RT[..., :dim, dim] = T
             if dim == 2:
-                return cls(Se2.from_matrix(RT), frame1, frame2)
+                return cls(Se2.from_matrix(RT), frame_src, frame_dst)
             elif dim == 3:
-                return cls(Se3.from_matrix(RT), frame1, frame2)
+                return cls(Se3.from_matrix(RT), frame_src, frame_dst)
         else:
             raise ValueError(f"R must be either So2, So3, Quaternion, or Tensor, got {type(R)}")
+        return None
+
+    @classmethod
+    def from_matrix(
+        cls, matrix: Tensor, frame_src: str | None = None, frame_dst: str | None = None
+    ) -> NamedPose | None:
+        """Construct NamedPose from a matrix.
+
+        Args:
+            matrix : Matrix representation of the pose.
+            frame_src : Name of the source frame.
+            frame_dst : Name of the destination frame.
+
+        Returns:
+            NamedPose: NamedPose constructed from a matrix.
+
+        Example:
+            >>> b_from_a_matrix = Se3.identity().matrix()
+            >>> b_from_a = NamedPose.from_matrix(b_from_a_matrix, frame_src="frame_a", frame_dst="frame_b")
+            >>> b_from_a
+            NamedPose(dst_from_src=rotation: Parameter containing:
+            tensor([1., 0., 0., 0.], requires_grad=True)
+            translation: Parameter containing:
+            tensor([0., 0., 0.], requires_grad=True),
+            frame_src: frame_a -> frame_dst: frame_b)
+        """
+        check_matrix_shape(matrix, matrix_type="RT")
+        dim = matrix.shape[-1]
+        if dim == 3:
+            return cls(Se2.from_matrix(matrix), frame_src, frame_dst)
+        elif dim == 4:
+            return cls(Se3.from_matrix(matrix), frame_src, frame_dst)
+        return None
 
     @classmethod
     def from_colmap() -> NamedPose:
@@ -150,29 +187,29 @@ class NamedPose:
             NamedPose: Inverse of the NamedPose.
 
         Example:
-            >>> b_from_a = NamedPose(Se3.identity(), frame1="frame_a", frame2="frame_b")
+            >>> b_from_a = NamedPose(Se3.identity(), frame_src="frame_a", frame_dst="frame_b")
             >>> b_from_a.inverse()
-            NamedPose(frame2_from_frame1=rotation: Parameter containing:
+            NamedPose(dst_from_src=rotation: Parameter containing:
             tensor([1., -0., -0., -0.], requires_grad=True)
             translation: x: 0.0
             y: 0.0
             z: 0.0,
-            frame1: frame_b -> frame2: frame_a)
+            frame_src: frame_b -> frame_dst: frame_a)
         """
-        return NamedPose(self._frame2_from_frame1.inverse(), self.frame2, self.frame1)
+        return NamedPose(self._dst_from_src.inverse(), self._frame_dst, self._frame_src)
 
-    def transform(self, points_in_frame1: Tensor) -> Tensor:
+    def transform(self, points_in_src: Tensor) -> Tensor:
         """Transform points from frame 1 to frame 2.
 
         Args:
-            points_in_frame1: Points in frame 1.
+            points_in_src: Points in frame 1.
 
         Returns:
             Tensor: Points in frame 2.
 
         Example:
-            >>> b_from_a = NamedPose(Se3.identity(), frame1="frame_a", frame2="frame_b")
+            >>> b_from_a = NamedPose(Se3.identity(), frame_src="frame_a", frame_dst="frame_b")
             >>> b_from_a.transform(torch.tensor([1., 2., 3.]))
             tensor([1., 2., 3.], grad_fn=<AddBackward0>)
         """
-        return self._frame2_from_frame1 * points_in_frame1
+        return self._dst_from_src * points_in_src
