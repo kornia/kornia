@@ -60,4 +60,3 @@ Projections
 
 .. autoclass:: Z1Projection
     :members:
-
