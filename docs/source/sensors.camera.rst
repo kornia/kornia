@@ -47,3 +47,17 @@ To define a custom camera model based on distortion and projection types, one ca
 
 .. autoclass:: PinholeModel
     :members:
+
+Distortions
+-----------
+
+.. autoclass:: AffineTransform
+    :members:
+
+
+Projections
+-----------
+
+.. autoclass:: Z1Projection
+    :members:
+
