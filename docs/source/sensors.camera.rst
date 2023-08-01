@@ -51,12 +51,16 @@ To define a custom camera model based on distortion and projection types, one ca
 Distortions
 -----------
 
+.. currentmodule:: kornia.sensors.camera.distortion_model
+
 .. autoclass:: AffineTransform
     :members:
 
 
 Projections
 -----------
+
+.. currentmodule:: kornia.sensors.camera.projection_model
 
 .. autoclass:: Z1Projection
     :members:
