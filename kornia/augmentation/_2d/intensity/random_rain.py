@@ -50,7 +50,7 @@ class RandomRain(IntensityAugmentationBase2D):
         self, image: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
     ) -> Tensor:
         # Check array and drops size
-        KORNIA_CHECK(image.shape[1] == 3 or image.shape[1] == 1, "Number of color channels should be 1 or 3.")
+        KORNIA_CHECK(image.shape[1] in {3, 1}, "Number of color channels should be 1 or 3.")
         KORNIA_CHECK(
             bool(
                 torch.all(params['drop_height_factor'] <= image.shape[2])

@@ -276,6 +276,28 @@ class Se2(Module):
         rt_3x3[..., -1, -1] = 1.0
         return rt_3x3
 
+    @classmethod
+    def from_matrix(cls, matrix: Tensor) -> Se2:
+        """Create an Se2 group from a matrix.
+
+        Args:
+            matrix: tensor of shape :math:`(B, 3, 3)`.
+
+        Example:
+            >>> s = Se2.from_matrix(torch.eye(3).repeat(2, 1, 1))
+            >>> s.r
+            Parameter containing:
+            tensor([1.+0.j, 1.+0.j], requires_grad=True)
+            >>> s.t
+            Parameter containing:
+            tensor([[0., 0.],
+                    [0., 0.]], requires_grad=True)
+        """
+        # KORNIA_CHECK_SHAPE(matrix, ["B", "3", "3"])  # FIXME: resolve shape bugs. @edgarriba
+        r = So2.from_matrix(matrix[..., :2, :2])
+        t = matrix[..., :2, -1]
+        return cls(r, t)
+
     def inverse(self) -> Se2:
         """Returns the inverse transformation.
 

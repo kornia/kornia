@@ -139,38 +139,37 @@ def _tuple_range_reader(
                 f"Degrees must be a {list(target_shape)} tensor for the degree range for independent operation."
                 f"Got {input_range}"
             )
+    elif isinstance(input_range, (float, int)):
+        if input_range < 0:
+            raise ValueError(f"If input_range is only one number it must be a positive number. Got{input_range}")
+        input_range_tmp = tensor([-input_range, input_range], device=device, dtype=dtype).repeat(target_shape[0], 1)
+
+    elif (
+        isinstance(input_range, (tuple, list))
+        and len(input_range) == 2
+        and isinstance(input_range[0], (float, int))
+        and isinstance(input_range[1], (float, int))
+    ):
+        input_range_tmp = tensor(input_range, device=device, dtype=dtype).repeat(target_shape[0], 1)
+
+    elif (
+        isinstance(input_range, (tuple, list))
+        and len(input_range) == target_shape[0]
+        and all(isinstance(x, (float, int)) for x in input_range)
+    ):
+        input_range_tmp = tensor([(-s, s) for s in input_range], device=device, dtype=dtype)
+
+    elif (
+        isinstance(input_range, (tuple, list))
+        and len(input_range) == target_shape[0]
+        and all(isinstance(x, (tuple, list)) for x in input_range)
+    ):
+        input_range_tmp = tensor(input_range, device=device, dtype=dtype)
+
     else:
-        if isinstance(input_range, (float, int)):  # noqa: PLR5501
-            if input_range < 0:
-                raise ValueError(f"If input_range is only one number it must be a positive number. Got{input_range}")
-            input_range_tmp = tensor([-input_range, input_range], device=device, dtype=dtype).repeat(target_shape[0], 1)
-
-        elif (
-            isinstance(input_range, (tuple, list))
-            and len(input_range) == 2
-            and isinstance(input_range[0], (float, int))
-            and isinstance(input_range[1], (float, int))
-        ):
-            input_range_tmp = tensor(input_range, device=device, dtype=dtype).repeat(target_shape[0], 1)
-
-        elif (
-            isinstance(input_range, (tuple, list))
-            and len(input_range) == target_shape[0]
-            and all(isinstance(x, (float, int)) for x in input_range)
-        ):
-            input_range_tmp = tensor([(-s, s) for s in input_range], device=device, dtype=dtype)
-
-        elif (
-            isinstance(input_range, (tuple, list))
-            and len(input_range) == target_shape[0]
-            and all(isinstance(x, (tuple, list)) for x in input_range)
-        ):
-            input_range_tmp = tensor(input_range, device=device, dtype=dtype)
-
-        else:
-            raise TypeError(
-                "If not pass a tensor, it must be float, (float, float) for isotropic operation or a tuple of "
-                f"{target_size} floats or {target_size} (float, float) for independent operation. Got {input_range}."
-            )
+        raise TypeError(
+            "If not pass a tensor, it must be float, (float, float) for isotropic operation or a tuple of "
+            f"{target_size} floats or {target_size} (float, float) for independent operation. Got {input_range}."
+        )
 
     return input_range_tmp
