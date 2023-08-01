@@ -63,7 +63,7 @@ class NamedPose:
         Example:
             >>> b_from_a = NamedPose(Se3.identity(), frame_src="frame_a", frame_dst="frame_b")
             >>> c_from_b = NamedPose(Se3.identity(), frame_src="frame_b", frame_dst="frame_c")
-            >>> b_from_a * c_from_b
+            >>> c_from_b * b_from_a
             NamedPose(dst_from_src=rotation: Parameter containing:
             tensor([1., 0., 0., 0.], requires_grad=True)
             translation: x: 0.0
@@ -71,9 +71,10 @@ class NamedPose:
             z: 0.0,
             frame_src: frame_a -> frame_dst: frame_c)
         """
-        if self._frame_dst != other._frame_src:
+        if self._frame_src != other._frame_dst:
             raise ValueError(f"Cannot compose {self} with {other}")
-        return NamedPose(self.pose * other.pose, self._frame_src, other._frame_dst)
+        # TODO: fix mypy error
+        return NamedPose(other.pose * self.pose, other._frame_src, self._frame_dst)
 
     @property
     def pose(self) -> Se2 | Se3:
@@ -101,8 +102,12 @@ class NamedPose:
         return self._frame_dst
 
     @classmethod
-    def from_RT(
-        cls, R: So3 | So2 | Tensor | Quaternion, T: Tensor, frame_src: str | None = None, frame_dst: str | None = None
+    def from_rt(
+        cls,
+        rotation: So3 | So2 | Tensor | Quaternion,
+        translation: Tensor,
+        frame_src: str | None = None,
+        frame_dst: str | None = None,
     ) -> NamedPose | None:
         """Construct NamedPose from rotation and translation.
 
@@ -118,7 +123,7 @@ class NamedPose:
         Example:
             >>> b_from_a_rot = So3.identity()
             >>> b_from_a_trans = torch.tensor([1., 2., 3.])
-            >>> b_from_a = NamedPose.from_RT(b_from_a_rot, b_from_a_trans, frame_src="frame_a", frame_dst="frame_b")
+            >>> b_from_a = NamedPose.from_rt(b_from_a_rot, b_from_a_trans, frame_src="frame_a", frame_dst="frame_b")
             >>> b_from_a
             NamedPose(dst_from_src=rotation: Parameter containing:
             tensor([1., 0., 0., 0.], requires_grad=True)
@@ -126,22 +131,22 @@ class NamedPose:
             tensor([1., 2., 3.], requires_grad=True),
             frame_src: frame_a -> frame_dst: frame_b)
         """
-        if isinstance(R, (So3, Quaternion)):
-            return cls(Se3(R, T), frame_src, frame_dst)
-        elif isinstance(R, So2):
-            return cls(Se2(R, T), frame_src, frame_dst)
-        elif isinstance(R, Tensor):
-            check_matrix_shape(R)
-            dim = R.shape[-1]
-            RT = eye(dim + 1, device=R.device, dtype=R.dtype)
-            RT[..., :dim, :dim] = R
-            RT[..., :dim, dim] = T
+        if isinstance(rotation, (So3, Quaternion)):
+            return cls(Se3(rotation, translation), frame_src, frame_dst)
+        elif isinstance(rotation, So2):
+            return cls(Se2(rotation, translation), frame_src, frame_dst)
+        elif isinstance(rotation, Tensor):
+            check_matrix_shape(rotation)
+            dim = rotation.shape[-1]
+            RT = eye(dim + 1, device=rotation.device, dtype=rotation.dtype)
+            RT[..., :dim, :dim] = rotation
+            RT[..., :dim, dim] = translation
             if dim == 2:
                 return cls(Se2.from_matrix(RT), frame_src, frame_dst)
             elif dim == 3:
                 return cls(Se3.from_matrix(RT), frame_src, frame_dst)
         else:
-            raise ValueError(f"R must be either So2, So3, Quaternion, or Tensor, got {type(R)}")
+            raise ValueError(f"R must be either So2, So3, Quaternion, or Tensor, got {type(rotation)}")
         return None
 
     @classmethod
@@ -198,7 +203,7 @@ class NamedPose:
         """
         return NamedPose(self._dst_from_src.inverse(), self._frame_dst, self._frame_src)
 
-    def transform(self, points_in_src: Tensor) -> Tensor:
+    def transform_points(self, points_in_src: Tensor) -> Tensor:
         """Transform points from frame 1 to frame 2.
 
         Args:
@@ -209,7 +214,7 @@ class NamedPose:
 
         Example:
             >>> b_from_a = NamedPose(Se3.identity(), frame_src="frame_a", frame_dst="frame_b")
-            >>> b_from_a.transform(torch.tensor([1., 2., 3.]))
+            >>> b_from_a.transform_points(torch.tensor([1., 2., 3.]))
             tensor([1., 2., 3.], grad_fn=<AddBackward0>)
         """
         return self._dst_from_src * points_in_src

@@ -40,34 +40,34 @@ class TestNamedPose(BaseTester):
         c_from_b = NamedPose(
             Se3.trans_y(torch.tensor([1.0], device=device, dtype=dtype)), frame_src="frame_b", frame_dst="frame_c"
         )
-        c_from_a = b_from_a * c_from_b
+        c_from_a = c_from_b * b_from_a
         assert isinstance(c_from_a, NamedPose)
         assert isinstance(c_from_a.pose, Se3)
         assert c_from_a.frame_src == "frame_a"
         assert c_from_a.frame_dst == "frame_c"
 
-    def test_fromRT(self, device, dtype):
+    def test_from_rt(self, device, dtype):
         b_from_a_rotation = So3.random(device=device, dtype=dtype)
         b_from_a_translation = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=dtype)
-        b_from_a = NamedPose.from_RT(b_from_a_rotation, b_from_a_translation, frame_src="frame_a", frame_dst="frame_b")
+        b_from_a = NamedPose.from_rt(b_from_a_rotation, b_from_a_translation, frame_src="frame_a", frame_dst="frame_b")
         assert isinstance(b_from_a, NamedPose)
         assert isinstance(b_from_a.pose, Se3)
 
         b_from_a_rotation = So2.random(device=device, dtype=dtype)
         b_from_a_translation = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
-        b_from_a = NamedPose.from_RT(b_from_a_rotation, b_from_a_translation, frame_src="frame_a", frame_dst="frame_b")
+        b_from_a = NamedPose.from_rt(b_from_a_rotation, b_from_a_translation, frame_src="frame_a", frame_dst="frame_b")
         assert isinstance(b_from_a, NamedPose)
         assert isinstance(b_from_a.pose, Se2)
 
         b_from_a_rotation = torch.eye(3, device=device, dtype=dtype)
         b_from_a_translation = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=dtype)
-        b_from_a = NamedPose.from_RT(b_from_a_rotation, b_from_a_translation, frame_src="frame_a", frame_dst="frame_b")
+        b_from_a = NamedPose.from_rt(b_from_a_rotation, b_from_a_translation, frame_src="frame_a", frame_dst="frame_b")
         assert isinstance(b_from_a, NamedPose)
         assert isinstance(b_from_a.pose, Se3)
 
         b_from_a_rotation = torch.eye(2, device=device, dtype=dtype)
         b_from_a_translation = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
-        b_from_a = NamedPose.from_RT(b_from_a_rotation, b_from_a_translation, frame_src="frame_a", frame_dst="frame_b")
+        b_from_a = NamedPose.from_rt(b_from_a_rotation, b_from_a_translation, frame_src="frame_a", frame_dst="frame_b")
         assert isinstance(b_from_a, NamedPose)
         assert isinstance(b_from_a.pose, Se2)
 
@@ -75,15 +75,15 @@ class TestNamedPose(BaseTester):
         b_from_a_matrix = Se3.identity(device=device, dtype=dtype).matrix()
         b_from_a = NamedPose.from_matrix(b_from_a_matrix, frame_src="frame_a", frame_dst="frame_b")
         point_in_a = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=dtype)
-        point_in_b = b_from_a.transform(point_in_a)
-        self.assert_close(point_in_a, point_in_b)
+        point_in_b = b_from_a.transform_points(point_in_a)
+        self.assert_close(point_in_b, point_in_a)
         assert isinstance(b_from_a, NamedPose)
         assert isinstance(b_from_a.pose, Se3)
 
         b_from_a_matrix = torch.eye(3, device=device, dtype=dtype)
         b_from_a = NamedPose.from_matrix(b_from_a_matrix, frame_src="frame_a", frame_dst="frame_b")
         point_in_a = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
-        point_in_b = b_from_a.transform(point_in_a)
+        point_in_b = b_from_a.transform_points(point_in_a)
         self.assert_close(point_in_b, point_in_a)
         assert isinstance(b_from_a, NamedPose)
         assert isinstance(b_from_a.pose, Se2)
@@ -99,7 +99,7 @@ class TestNamedPose(BaseTester):
         assert a_from_b.frame_dst == "frame_a"
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
-    def test_transform(self, device, dtype, batch_size):
+    def transform_points(self, device, dtype, batch_size):
         if batch_size is None:
             points_in_a = torch.randn(3, device=device, dtype=dtype)
             b_from_a_se3 = Se3.trans_x(torch.tensor(1.0, device=device, dtype=dtype))
@@ -108,6 +108,6 @@ class TestNamedPose(BaseTester):
             b_from_a_se3 = Se3.trans_x(torch.tensor([1.0], device=device, dtype=dtype))
         b_from_a = NamedPose(b_from_a_se3, frame_src="frame_a", frame_dst="frame_b")
         a_from_b = b_from_a.inverse()
-        points_in_b = b_from_a.transform(points_in_a)
+        points_in_b = b_from_a.transform_points(points_in_a)
         assert points_in_b.shape == points_in_a.shape
-        self.assert_close(a_from_b.transform(points_in_b), points_in_a)
+        self.assert_close(a_from_b.transform_points(points_in_b), points_in_a)
