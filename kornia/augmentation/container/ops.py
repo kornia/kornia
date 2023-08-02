@@ -87,7 +87,7 @@ class AugmentationSequentialOps:
             return InputSequentialOps
         if data_key == DataKey.MASK:
             return MaskSequentialOps
-        if data_key == DataKey.BBOX or data_key == DataKey.BBOX_XYWH or data_key == DataKey.BBOX_XYXY:
+        if data_key in {DataKey.BBOX, DataKey.BBOX_XYWH, DataKey.BBOX_XYXY}:
             return BoxSequentialOps
         if data_key == DataKey.KEYPOINTS:
             return KeypointSequentialOps

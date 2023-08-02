@@ -47,10 +47,10 @@ class TestSolvePnpDlt:
         torch.manual_seed(84)
 
         tau = 2 * 3.141592653589793
-        angle_axis_1 = self._get_samples(shape=(1, 3), low=-tau, high=tau, dtype=dtype, device=device)
-        angle_axis_2 = self._get_samples(shape=(1, 3), low=-tau, high=tau, dtype=dtype, device=device)
-        rotation_1 = kornia.geometry.angle_axis_to_rotation_matrix(angle_axis_1)
-        rotation_2 = kornia.geometry.angle_axis_to_rotation_matrix(angle_axis_2)
+        axis_angle_1 = self._get_samples(shape=(1, 3), low=-tau, high=tau, dtype=dtype, device=device)
+        axis_angle_2 = self._get_samples(shape=(1, 3), low=-tau, high=tau, dtype=dtype, device=device)
+        rotation_1 = kornia.geometry.axis_angle_to_rotation_matrix(axis_angle_1)
+        rotation_2 = kornia.geometry.axis_angle_to_rotation_matrix(axis_angle_2)
 
         translation_1 = self._get_samples(shape=(3,), low=-100, high=100, dtype=dtype, device=device)
         translation_2 = self._get_samples(shape=(3,), low=-100, high=100, dtype=dtype, device=device)

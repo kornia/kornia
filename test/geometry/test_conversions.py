@@ -45,72 +45,72 @@ def rtol(device, dtype):
 
 class TestAngleAxisToQuaternion:
     def test_smoke(self, device, dtype):
-        angle_axis = torch.zeros(3, dtype=dtype, device=device)
-        quaternion = kornia.geometry.conversions.angle_axis_to_quaternion(angle_axis)
+        axis_angle = torch.zeros(3, dtype=dtype, device=device)
+        quaternion = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
         assert quaternion.shape == (4,)
 
     @pytest.mark.parametrize("batch_size", (1, 3, 8))
     def test_smoke_batch(self, batch_size, device, dtype):
-        angle_axis = torch.zeros(batch_size, 3, device=device, dtype=dtype)
-        quaternion = kornia.geometry.conversions.angle_axis_to_quaternion(angle_axis)
+        axis_angle = torch.zeros(batch_size, 3, device=device, dtype=dtype)
+        quaternion = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
         assert quaternion.shape == (batch_size, 4)
 
     def test_zero_angle(self, device, dtype, atol, rtol):
-        angle_axis = torch.tensor((0.0, 0.0, 0.0), device=device, dtype=dtype)
+        axis_angle = torch.tensor((0.0, 0.0, 0.0), device=device, dtype=dtype)
         expected = torch.tensor((1.0, 0.0, 0.0, 0.0), device=device, dtype=dtype)
-        quaternion = kornia.geometry.conversions.angle_axis_to_quaternion(angle_axis)
+        quaternion = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
         assert_close(quaternion, expected, atol=atol, rtol=rtol)
 
     def test_small_angle_x(self, device, dtype, atol, rtol):
         theta = 1.0e-2
-        angle_axis = torch.tensor((theta, 0.0, 0.0), device=device, dtype=dtype)
+        axis_angle = torch.tensor((theta, 0.0, 0.0), device=device, dtype=dtype)
         expected = torch.tensor((np.cos(theta / 2.0), np.sin(theta / 2.0), 0.0, 0.0), device=device, dtype=dtype)
-        quaternion = kornia.geometry.conversions.angle_axis_to_quaternion(angle_axis)
+        quaternion = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
         assert_close(quaternion, expected, atol=atol, rtol=rtol)
 
     def test_small_angle_y(self, device, dtype, atol, rtol):
         theta = 1.0e-2
-        angle_axis = torch.tensor((0.0, theta, 0.0), device=device, dtype=dtype)
+        axis_angle = torch.tensor((0.0, theta, 0.0), device=device, dtype=dtype)
         expected = torch.tensor((np.cos(theta / 2.0), 0.0, np.sin(theta / 2.0), 0.0), device=device, dtype=dtype)
-        quaternion = kornia.geometry.conversions.angle_axis_to_quaternion(angle_axis)
+        quaternion = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
         assert_close(quaternion, expected, atol=atol, rtol=rtol)
 
     def test_small_angle_z(self, device, dtype, atol, rtol):
         theta = 1.0e-2
-        angle_axis = torch.tensor((0.0, 0.0, theta), device=device, dtype=dtype)
+        axis_angle = torch.tensor((0.0, 0.0, theta), device=device, dtype=dtype)
         expected = torch.tensor((np.cos(theta / 2.0), 0.0, 0.0, np.sin(theta / 2.0)), device=device, dtype=dtype)
-        quaternion = kornia.geometry.conversions.angle_axis_to_quaternion(angle_axis)
+        quaternion = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
         assert_close(quaternion, expected, atol=atol, rtol=rtol)
 
     def test_x_rotation(self, device, dtype, atol, rtol):
         half_sqrt2 = 0.5 * np.sqrt(2.0)
-        angle_axis = torch.tensor((kornia.pi / 2.0, 0.0, 0.0), device=device, dtype=dtype)
+        axis_angle = torch.tensor((kornia.pi / 2.0, 0.0, 0.0), device=device, dtype=dtype)
         expected = torch.tensor((half_sqrt2, half_sqrt2, 0.0, 0.0), device=device, dtype=dtype)
-        quaternion = kornia.geometry.conversions.angle_axis_to_quaternion(angle_axis)
+        quaternion = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
         assert_close(quaternion, expected, atol=atol, rtol=rtol)
 
     def test_y_rotation(self, device, dtype, atol, rtol):
         half_sqrt2 = 0.5 * np.sqrt(2.0)
-        angle_axis = torch.tensor((0.0, kornia.pi / 2.0, 0.0), device=device, dtype=dtype)
+        axis_angle = torch.tensor((0.0, kornia.pi / 2.0, 0.0), device=device, dtype=dtype)
         expected = torch.tensor((half_sqrt2, 0.0, half_sqrt2, 0.0), device=device, dtype=dtype)
-        quaternion = kornia.geometry.conversions.angle_axis_to_quaternion(angle_axis)
+        quaternion = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
         assert_close(quaternion, expected, atol=atol, rtol=rtol)
 
     def test_z_rotation(self, device, dtype, atol, rtol):
         half_sqrt2 = 0.5 * np.sqrt(2.0)
-        angle_axis = torch.tensor((0.0, 0.0, kornia.pi / 2.0), device=device, dtype=dtype)
+        axis_angle = torch.tensor((0.0, 0.0, kornia.pi / 2.0), device=device, dtype=dtype)
         expected = torch.tensor((half_sqrt2, 0.0, 0.0, half_sqrt2), device=device, dtype=dtype)
-        quaternion = kornia.geometry.conversions.angle_axis_to_quaternion(angle_axis)
+        quaternion = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
         assert_close(quaternion, expected, atol=atol, rtol=rtol)
 
     def test_gradcheck(self, device, dtype):
         eps = torch.finfo(dtype).eps
-        angle_axis = torch.tensor((0.0, 0.0, 0.0), device=device, dtype=dtype) + eps
-        angle_axis = tensor_to_gradcheck_var(angle_axis)
+        axis_angle = torch.tensor((0.0, 0.0, 0.0), device=device, dtype=dtype) + eps
+        axis_angle = tensor_to_gradcheck_var(axis_angle)
         # evaluate function gradient
         assert gradcheck(
-            partial(kornia.geometry.conversions.angle_axis_to_quaternion),
-            (angle_axis,),
+            partial(kornia.geometry.conversions.axis_angle_to_quaternion),
+            (axis_angle,),
             raise_exception=True,
             fast_mode=True,
         )
@@ -119,59 +119,59 @@ class TestAngleAxisToQuaternion:
 class TestQuaternionToAngleAxis:
     def test_smoke(self, device, dtype):
         quaternion = torch.zeros(4, device=device, dtype=dtype)
-        angle_axis = kornia.geometry.conversions.quaternion_to_angle_axis(quaternion)
-        assert angle_axis.shape == (3,)
+        axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
+        assert axis_angle.shape == (3,)
 
     @pytest.mark.parametrize("batch_size", (1, 3, 8))
     def test_smoke_batch(self, batch_size, device, dtype):
         quaternion = torch.zeros(batch_size, 4, device=device, dtype=dtype)
-        angle_axis = kornia.geometry.conversions.quaternion_to_angle_axis(quaternion)
-        assert angle_axis.shape == (batch_size, 3)
+        axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
+        assert axis_angle.shape == (batch_size, 3)
 
     def test_unit_quaternion(self, device, dtype, atol, rtol):
         quaternion = torch.tensor((1.0, 0.0, 0.0, 0.0), device=device, dtype=dtype)
         expected = torch.tensor((0.0, 0.0, 0.0), device=device, dtype=dtype)
-        angle_axis = kornia.geometry.conversions.quaternion_to_angle_axis(quaternion)
-        assert_close(angle_axis, expected, atol=atol, rtol=rtol)
+        axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
+        assert_close(axis_angle, expected, atol=atol, rtol=rtol)
 
     def test_x_rotation(self, device, dtype, atol, rtol):
         quaternion = torch.tensor((0.0, 1.0, 0.0, 0.0), device=device, dtype=dtype)
         expected = torch.tensor((kornia.pi, 0.0, 0.0), device=device, dtype=dtype)
-        angle_axis = kornia.geometry.conversions.quaternion_to_angle_axis(quaternion)
-        assert_close(angle_axis, expected, atol=atol, rtol=rtol)
+        axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
+        assert_close(axis_angle, expected, atol=atol, rtol=rtol)
 
     def test_y_rotation(self, device, dtype, atol, rtol):
         quaternion = torch.tensor((0.0, 0.0, 1.0, 0.0), device=device, dtype=dtype)
         expected = torch.tensor((0.0, kornia.pi, 0.0), device=device, dtype=dtype)
-        angle_axis = kornia.geometry.conversions.quaternion_to_angle_axis(quaternion)
-        assert_close(angle_axis, expected, atol=atol, rtol=rtol)
+        axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
+        assert_close(axis_angle, expected, atol=atol, rtol=rtol)
 
     def test_z_rotation(self, device, dtype, atol, rtol):
         quaternion = torch.tensor((np.sqrt(3.0) / 2.0, 0.0, 0.0, 0.5), device=device, dtype=dtype)
         expected = torch.tensor((0.0, 0.0, kornia.pi / 3.0), device=device, dtype=dtype)
-        angle_axis = kornia.geometry.conversions.quaternion_to_angle_axis(quaternion)
-        assert_close(angle_axis, expected, atol=atol, rtol=rtol)
+        axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
+        assert_close(axis_angle, expected, atol=atol, rtol=rtol)
 
     def test_small_angle_x(self, device, dtype, atol, rtol):
         theta = 1.0e-2
         quaternion = torch.tensor((np.cos(theta / 2.0), np.sin(theta / 2.0), 0.0, 0.0), device=device, dtype=dtype)
         expected = torch.tensor((theta, 0.0, 0.0), device=device, dtype=dtype)
-        angle_axis = kornia.geometry.conversions.quaternion_to_angle_axis(quaternion)
-        assert_close(angle_axis, expected, atol=atol, rtol=rtol)
+        axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
+        assert_close(axis_angle, expected, atol=atol, rtol=rtol)
 
     def test_small_angle_y(self, device, dtype, atol, rtol):
         theta = 1.0e-2
         quaternion = torch.tensor((np.cos(theta / 2), 0.0, np.sin(theta / 2), 0.0), device=device, dtype=dtype)
         expected = torch.tensor((0.0, theta, 0.0), device=device, dtype=dtype)
-        angle_axis = kornia.geometry.conversions.quaternion_to_angle_axis(quaternion)
-        assert_close(angle_axis, expected, atol=atol, rtol=rtol)
+        axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
+        assert_close(axis_angle, expected, atol=atol, rtol=rtol)
 
     def test_small_angle_z(self, device, dtype, atol, rtol):
         theta = 1.0e-2
         quaternion = torch.tensor((np.cos(theta / 2), 0.0, 0.0, np.sin(theta / 2)), device=device, dtype=dtype)
         expected = torch.tensor((0.0, 0.0, theta), device=device, dtype=dtype)
-        angle_axis = kornia.geometry.conversions.quaternion_to_angle_axis(quaternion)
-        assert_close(angle_axis, expected, atol=atol, rtol=rtol)
+        axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
+        assert_close(axis_angle, expected, atol=atol, rtol=rtol)
 
     def test_gradcheck(self, device, dtype):
         eps = torch.finfo(dtype).eps
@@ -179,7 +179,7 @@ class TestQuaternionToAngleAxis:
         quaternion = tensor_to_gradcheck_var(quaternion)
         # evaluate function gradient
         assert gradcheck(
-            partial(kornia.geometry.conversions.quaternion_to_angle_axis),
+            partial(kornia.geometry.conversions.quaternion_to_axis_angle),
             (quaternion,),
             raise_exception=True,
             fast_mode=True,
@@ -444,27 +444,27 @@ class TestQuaternionExpToLog:
 
 class TestAngleAxisToRotationMatrix:
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
-    def test_rand_angle_axis_gradcheck(self, batch_size, device, dtype, atol, rtol):
+    def test_rand_axis_angle_gradcheck(self, batch_size, device, dtype, atol, rtol):
         # generate input data
-        angle_axis = torch.rand(batch_size, 3, device=device, dtype=dtype)
+        axis_angle = torch.rand(batch_size, 3, device=device, dtype=dtype)
         eye_batch = create_eye_batch(batch_size, 3, device=device, dtype=dtype)
 
         # apply transform
-        rotation_matrix = kornia.geometry.conversions.angle_axis_to_rotation_matrix(angle_axis)
+        rotation_matrix = kornia.geometry.conversions.axis_angle_to_rotation_matrix(axis_angle)
 
         rotation_matrix_eye = torch.matmul(rotation_matrix, rotation_matrix.transpose(-2, -1))
         assert_close(rotation_matrix_eye, eye_batch, atol=atol, rtol=rtol)
 
         # evaluate function gradient
-        angle_axis = tensor_to_gradcheck_var(angle_axis)  # to var
+        axis_angle = tensor_to_gradcheck_var(axis_angle)  # to var
         assert gradcheck(
-            kornia.geometry.conversions.angle_axis_to_rotation_matrix,
-            (angle_axis,),
+            kornia.geometry.conversions.axis_angle_to_rotation_matrix,
+            (axis_angle,),
             raise_exception=True,
             fast_mode=True,
         )
 
-    def test_angle_axis_to_rotation_matrix(self, device, dtype, atol, rtol):
+    def test_axis_angle_to_rotation_matrix(self, device, dtype, atol, rtol):
         rmat_1 = torch.tensor(
             (
                 (-0.30382753, -0.95095137, -0.05814062),
@@ -489,7 +489,7 @@ class TestAngleAxisToRotationMatrix:
         rmat = torch.stack((rmat_2, rmat_1), dim=0)
         rvec = torch.stack((rvec_2, rvec_1), dim=0)
 
-        assert_close(kornia.geometry.conversions.angle_axis_to_rotation_matrix(rvec), rmat, atol=atol, rtol=rtol)
+        assert_close(kornia.geometry.conversions.axis_angle_to_rotation_matrix(rvec), rmat, atol=atol, rtol=rtol)
 
 
 class TestRotationMatrixToAngleAxis:
@@ -513,13 +513,13 @@ class TestRotationMatrixToAngleAxis:
         # evaluate function gradient
         rotation_matrix = tensor_to_gradcheck_var(rotation_matrix)  # to var
         assert gradcheck(
-            kornia.geometry.conversions.rotation_matrix_to_angle_axis,
+            kornia.geometry.conversions.rotation_matrix_to_axis_angle,
             (rotation_matrix,),
             raise_exception=True,
             fast_mode=True,
         )
 
-    def test_rotation_matrix_to_angle_axis(self, device, dtype, atol, rtol):
+    def test_rotation_matrix_to_axis_angle(self, device, dtype, atol, rtol):
         rmat_1 = torch.tensor(
             (
                 (-0.30382753, -0.95095137, -0.05814062),
@@ -544,7 +544,7 @@ class TestRotationMatrixToAngleAxis:
         rmat = torch.stack((rmat_2, rmat_1), dim=0)
         rvec = torch.stack((rvec_2, rvec_1), dim=0)
 
-        assert_close(kornia.geometry.conversions.rotation_matrix_to_angle_axis(rmat), rvec, atol=atol, rtol=rtol)
+        assert_close(kornia.geometry.conversions.rotation_matrix_to_axis_angle(rmat), rvec, atol=atol, rtol=rtol)
 
 
 def test_pi():
@@ -1099,7 +1099,7 @@ class TestCamtoworldGraphicsToVision:
         # generate input data
         t_vis = torch.tensor([2, 3, 4], device=device, dtype=dtype).view(1, 3, 1).repeat(batch_size, 1, 1)
         angles = torch.tensor([0, kornia.pi / 2.0, 0.0], device=device, dtype=dtype)[None]
-        R_vis = kornia.geometry.angle_axis_to_rotation_matrix(angles).repeat(batch_size, 1, 1)
+        R_vis = kornia.geometry.axis_angle_to_rotation_matrix(angles).repeat(batch_size, 1, 1)
         K_vis = Rt_to_matrix4x4(R_vis, t_vis)
         K_graf = camtoworld_vision_to_graphics_4x4(K_vis)
 
@@ -1128,7 +1128,7 @@ class TestCamtoworldGraphicsToVision:
     def test_gradcheck(self, batch_size, device, dtype):
         t_vis = torch.tensor([2, 3, 4], device=device, dtype=dtype).view(1, 3, 1).repeat(batch_size, 1, 1)
         angles = torch.tensor([0, kornia.pi / 2.0, 0.0], device=device, dtype=dtype)[None]
-        R_vis = kornia.geometry.angle_axis_to_rotation_matrix(angles).repeat(batch_size, 1, 1)
+        R_vis = kornia.geometry.axis_angle_to_rotation_matrix(angles).repeat(batch_size, 1, 1)
         K_vis = Rt_to_matrix4x4(R_vis, t_vis)
         assert gradcheck(
             camtoworld_graphics_to_vision_4x4, (tensor_to_gradcheck_var(K_vis)), raise_exception=True, fast_mode=True
@@ -1144,7 +1144,7 @@ class TestCamtoworldRtToPoseRt:
         # generate input data
         t = torch.tensor([2, 3, 4], device=device, dtype=dtype).view(1, 3, 1).repeat(batch_size, 1, 1)
         angles = torch.tensor([0, kornia.pi / 2.0, 0.0], device=device, dtype=dtype)[None]
-        R = kornia.geometry.angle_axis_to_rotation_matrix(angles).repeat(batch_size, 1, 1)
+        R = kornia.geometry.axis_angle_to_rotation_matrix(angles).repeat(batch_size, 1, 1)
 
         Rp, tp = camtoworld_to_worldtocam_Rt(R, t)
 
@@ -1163,7 +1163,7 @@ class TestCamtoworldRtToPoseRt:
     def test_gradcheck(self, batch_size, device, dtype):
         t = torch.tensor([2, 3, 4], device=device, dtype=dtype).view(1, 3, 1).repeat(batch_size, 1, 1)
         angles = torch.tensor([0, kornia.pi / 2.0, 0.0], device=device, dtype=dtype)[None]
-        R = kornia.geometry.angle_axis_to_rotation_matrix(angles).repeat(batch_size, 1, 1)
+        R = kornia.geometry.axis_angle_to_rotation_matrix(angles).repeat(batch_size, 1, 1)
         assert gradcheck(
             camtoworld_to_worldtocam_Rt,
             (tensor_to_gradcheck_var(R), tensor_to_gradcheck_var(t)),
@@ -1184,11 +1184,11 @@ class TestCARKitToColmap:
         t = torch.tensor([1, 0, 0], device=device, dtype=dtype).view(1, 3, 1)
         ang_deg = torch.tensor([45, 60.0, 0.0], device=device, dtype=dtype)[None]
         ang_rad = kornia.geometry.conversions.deg2rad(ang_deg)
-        qvec = kornia.geometry.angle_axis_to_quaternion(ang_rad)
+        qvec = kornia.geometry.axis_angle_to_quaternion(ang_rad)
 
         q_colmap, t_colmap = ARKitQTVecs_to_ColmapQTVecs(qvec, t)
 
-        angles_colmap = kornia.geometry.conversions.quaternion_to_angle_axis(q_colmap)
+        angles_colmap = kornia.geometry.conversions.quaternion_to_axis_angle(q_colmap)
         angles_colmap = kornia.geometry.conversions.rad2deg(angles_colmap)
         expected_angles = torch.tensor([[116.8870620728, 0.0, -71.7524719238]], device=device, dtype=dtype)
         expected_t = torch.tensor([[[-0.5256], [0.3558], [0.7727]]], device=device, dtype=dtype)

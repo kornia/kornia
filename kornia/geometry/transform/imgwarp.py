@@ -7,8 +7,8 @@ from torch.nn.functional import grid_sample
 from kornia.core import Tensor, concatenate, stack, tensor, zeros
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.geometry.conversions import (
-    angle_axis_to_rotation_matrix,
     angle_to_rotation_matrix,
+    axis_angle_to_rotation_matrix,
     convert_affinematrix_to_homography,
     convert_affinematrix_to_homography3d,
     deg2rad,
@@ -693,7 +693,7 @@ def get_affine_matrix3d(
         translations: tensor containing the translation vector (dx,dy,dz) with shape :math:`(B, 3)`.
         center: tensor containing the center vector (x,y,z) with shape :math:`(B, 3)`.
         scale: tensor containing the scale factor with shape :math:`(B)`.
-        angle: angle axis vector containing the rotation angles in degrees in the form
+        angle: axis angle vector containing the rotation angles in degrees in the form
             of (rx, ry, rz) with shape :math:`(B, 3)`. Internally it calls Rodrigues to compute
             the rotation matrix from axis-angle.
         sxy: tensor containing the shear factor in the xy-direction with shape :math:`(B)`.
@@ -915,7 +915,7 @@ def get_projective_transform(center: Tensor, angles: Tensor, scales: Tensor) -> 
 
     Args:
         center: center of the rotation (x,y,z) in the source with shape :math:`(B, 3)`.
-        angles: angle axis vector containing the rotation angles in degrees in the form
+        angles: axis angle vector containing the rotation angles in degrees in the form
             of (rx, ry, rz) with shape :math:`(B, 3)`. Internally it calls Rodrigues to compute
             the rotation matrix from axis-angle.
         scales: scale factor for x-y-z-directions with shape :math:`(B, 3)`.
@@ -936,8 +936,8 @@ def get_projective_transform(center: Tensor, angles: Tensor, scales: Tensor) -> 
         raise AssertionError(center.dtype, angles.dtype)
 
     # create rotation matrix
-    angle_axis_rad: Tensor = deg2rad(angles)
-    rmat: Tensor = angle_axis_to_rotation_matrix(angle_axis_rad)  # Bx3x3
+    axis_angle_rad: Tensor = deg2rad(angles)
+    rmat: Tensor = axis_angle_to_rotation_matrix(axis_angle_rad)  # Bx3x3
     scaling_matrix: Tensor = eye_like(3, rmat)
     scaling_matrix = scaling_matrix * scales.unsqueeze(dim=1)
     rmat = rmat @ scaling_matrix.to(rmat)
@@ -1268,10 +1268,8 @@ def homography_warp(
     """
     if not src_homo_dst.device == patch_src.device:
         raise TypeError(
-            "Patch and homography must be on the same device. \
-                         Got patch.device: {} src_H_dst.device: {}.".format(
-                patch_src.device, src_homo_dst.device
-            )
+            f"Patch and homography must be on the same device. Got patch.device: {patch_src.device} "
+            f"src_H_dst.device: {src_homo_dst.device}."
         )
     if normalized_homography:
         height, width = dsize
@@ -1333,10 +1331,8 @@ def homography_warp3d(
     """
     if not src_homo_dst.device == patch_src.device:
         raise TypeError(
-            "Patch and homography must be on the same device. \
-                         Got patch.device: {} src_H_dst.device: {}.".format(
-                patch_src.device, src_homo_dst.device
-            )
+            f"Patch and homography must be on the same device. Got patch.device: {patch_src.device} "
+            f"src_H_dst.device: {src_homo_dst.device}."
         )
 
     depth, height, width = dsize

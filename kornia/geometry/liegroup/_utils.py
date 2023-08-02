@@ -38,6 +38,12 @@ def check_so2_matrix_shape(matrix: Tensor) -> None:
         raise ValueError(f"Invalid input size, we expect [B, 2, 2] or [2, 2]. Got: {matrix_shape}")
 
 
+def check_so2_matrix(matrix: Tensor) -> None:
+    for m in matrix.reshape(-1, 2, 2):
+        if m[0, 0] != m[1, 1] or m[0, 1] != -m[1, 0]:
+            raise ValueError("Invalid rotation matrix")
+
+
 def check_se2_t_shape(t: Tensor) -> None:
     check_so2_t_shape(t)
 

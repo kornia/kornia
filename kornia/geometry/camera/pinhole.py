@@ -576,7 +576,7 @@ def get_optical_pose_base(pinholes: Tensor) -> Tensor:
     raise NotImplementedError
     # TODO: We have rtvec_to_pose in torchgeometry
     # https://github.com/whh14/torchgeometry/blob/master/torchgeometry/conversions.py#L240
-    # But it relies on angle_axis_to_rotation_matrix
+    # But it relies on axis_angle_to_rotation_matrix
     # And since then, it was changed from returning Nx4x4 matrix to Nx3x3
     # return rtvec_to_pose(optical_pose_parent)   type: ignore
 

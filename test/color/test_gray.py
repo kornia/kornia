@@ -201,7 +201,7 @@ class TestRgbToGrayscale(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.rgb_to_grayscale, (img,), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.skipif(torch_version() == '2.0.0', reason='Not working on 2.0')
+    @pytest.mark.skipif(torch_version() in {'2.0.0', '2.0.1'}, reason='Not working on 2.0')
     def test_dynamo(self, device, dtype, torch_optimizer):
         # TODO: investigate the problem with dynamo
         B, C, H, W = 2, 3, 4, 4
@@ -294,7 +294,7 @@ class TestBgrToGrayscale(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.bgr_to_grayscale, (img,), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.skipif(torch_version() == '2.0.0', reason='Not working on 2.0')
+    @pytest.mark.skipif(torch_version() in {'2.0.0', '2.0.1'}, reason='Not working on 2.0')
     def test_dynamo(self, device, dtype, torch_optimizer):
         # TODO: investigate the problem with dynamo
         B, C, H, W = 2, 3, 4, 4
