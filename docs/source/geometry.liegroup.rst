@@ -3,7 +3,7 @@ kornia.geometry.liegroup
 
 .. currentmodule:: kornia.geometry.liegroup
 
-The Lie group encompasses the concepts of `group` and `smooth manifold` in a unique body. 
+The Lie group encompasses the concepts of `group` and `smooth manifold` in a unique body.
 
 A group is a non-empty set with an operation that satisfies the following constraints: the operation is associative, has an identity element,
 and every element of the set has an inverse element.
