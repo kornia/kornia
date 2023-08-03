@@ -23,9 +23,9 @@ lie algebra
 
 .. image:: data/lie.png
 
-The Lie algebra :math:`m`: The tangent space at the identity is called the Lie algebra of :math:`M`.
-The Lie algebra :math:`m` is a vector space. As such, its elements can be identified with vectors in :math:`R^m`, whose
-dimension :math:`m` is the number of degrees of freedom of :math:`M`.
+If :math:`M` is the manifold that represents a lie group, the tangent space at the identity is called the Lie algebra of :math:`M`.
+The Lie algebra :math:`m` is a vector space. As such, its elements can be identified with vectors in :math:`R^d`, whose
+dimension :math:`d` is the number of degrees of freedom of :math:`M`. For example :math:`d` would be 3 in the case of lie group :math:`SO3`
 
 lie group and lie algebra
 ==========================
@@ -33,8 +33,8 @@ lie group and lie algebra
 Every Lie group has an associated Lie algebra. We relate the
 Lie group with its Lie algebra through the following facts
 
-#. The Lie algebra :math:`m` is a vector space. As such, its elements can be identified with vectors in :math:`R^m`, whose
-   dimension :math:`m` is the number of degrees of freedom of :math:`M`.
+#. The Lie algebra :math:`m` is a vector space. As such, its elements can be identified with vectors in :math:`R^d`, whose
+   dimension :math:`d` is the number of degrees of freedom of :math:`M`.
 
 #. The exponential map, `exp` : :math:`m` → :math:`M`, exactly converts elements of the Lie algebra into elements of the group.
    The `log` map is the inverse operation.
