@@ -45,7 +45,7 @@ class PosterizeGenerator(RandomGeneratorBase):
         elif not (len(bits.size()) == 1 and bits.size(0) == 2):
             raise ValueError(f"'bits' shall be either a scalar or a length 2 tensor. Got {bits}.")
         _joint_range_check(bits, 'bits', (0, 8))
-        self.bit_sampler = Uniform(bits[0], bits[1], validate_args=False)
+        self.bit_sampler = Uniform(bits[0].clone(), bits[1].clone(), validate_args=False)
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]

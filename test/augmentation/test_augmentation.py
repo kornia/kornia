@@ -16,11 +16,15 @@ from kornia.augmentation import (
     LongestMaxSize,
     Normalize,
     PadTo,
+    RandomAffine,
+    RandomAffine3D,
     RandomBoxBlur,
     RandomBrightness,
     RandomChannelShuffle,
     RandomContrast,
     RandomCrop,
+    RandomCrop3D,
+    RandomCutMixV2,
     RandomElasticTransform,
     RandomEqualize,
     RandomErasing,
@@ -32,7 +36,14 @@ from kornia.augmentation import (
     RandomHorizontalFlip,
     RandomHue,
     RandomInvert,
+    RandomJigsaw,
     RandomMedianBlur,
+    RandomMosaic,
+    RandomMotionBlur,
+    RandomMixUpV2,
+    RandomMotionBlur3D,
+    RandomPerspective,
+    RandomPerspective3D,
     RandomPlanckianJitter,
     RandomPlasmaBrightness,
     RandomPlasmaContrast,
@@ -40,9 +51,12 @@ from kornia.augmentation import (
     RandomPosterize,
     RandomRain,
     RandomResizedCrop,
+    RandomRotation3D,
     RandomRGBShift,
     RandomRotation,
+    RandomTranslate,
     RandomSaturation,
+    RandomShear,
     RandomSnow,
     RandomThinPlateSpline,
     RandomVerticalFlip,
@@ -4262,3 +4276,81 @@ class TestRandomRain(BaseTester):
     @pytest.mark.skip(reason="not implemented yet")
     def test_module(self, device, dtype):
         pass
+
+
+
+class DummyMPDataset(torch.utils.data.Dataset):
+    def __init__(self):
+        super().__init__()
+        # we add all transforms that could potentially fail in
+        # multiprocessing with a spawn context below, that is all the
+        # trasnforms that define a RNG
+        self._transform = torch.nn.Sequential(
+            RandomTranslate(),
+            RandomShear(0.1),
+            RandomPosterize(),
+            RandomErasing(),
+            RandomPlanckianJitter(),
+            RandomMotionBlur(kernel_size=3, angle=(0, 360),
+                            direction=(-1, 1)),
+            RandomGaussianBlur(3, (0.1, 2.0)),
+            RandomPerspective(),
+            ColorJitter(),
+            ColorJiggle(),
+            RandomJigsaw(),
+            RandomAffine(degrees = 15),
+            RandomMotionBlur3D(kernel_size=3, angle=(0, 360),
+                            direction=(-1, 1)),
+            RandomPerspective3D(),
+            RandomAffine3D(degrees = 15),
+            RandomRotation3D(degrees = 15),
+        )
+
+        self._resize = Resize((10, 10))
+        self._mosaic = RandomMosaic((2, 2))
+        self._crop = RandomCrop((5, 5))
+        self._crop3d = RandomCrop3D((5, 5,5))
+        self._mixup = RandomMixUpV2()
+        self._cutmix = RandomCutMixV2()
+        self._rain = RandomRain(p=1, drop_height=(1,  2),
+                                drop_width=(1, 2),
+                                number_of_drops=(1, 1))
+    def __len__(self):
+        return 10
+
+    def __getitem__(self, _):
+        mosaic = self._mosaic(torch.rand(1, 3, 64, 64))
+        rain = self._rain(torch.rand(1, 1, 5, 5))
+        rain = self._resize(rain)
+        cropped = self._crop(torch.rand(3, 3, 64, 64))
+        cropped3d = self._crop3d(torch.rand(3, 64, 64, 64))
+        mixed = self._mixup(torch.rand(3, 3, 64, 64),
+                            torch.rand(3, 3, 64, 64))
+        mixed = self._cutmix(torch.rand(3, 3, 64, 64), mixed)
+
+        return (self._transform(mixed),
+                cropped,
+                cropped3d,
+                mixed,
+                mosaic,
+                rain)
+
+
+class TestMultiprocessing:
+    torch.manual_seed(0)  # for random reproductibility
+
+    def test_spawn_multiprocessing_context(self):
+        dataset = DummyMPDataset()
+        dataloader = torch.utils.data.DataLoader(
+            dataset,
+            batch_size=4,
+            num_workers=4,
+            pin_memory=True,
+            persistent_workers=True,
+            multiprocessing_context='spawn'
+        )
+
+        for _ in dataloader:
+            pass
+
+        torch.cuda.empty_cache()

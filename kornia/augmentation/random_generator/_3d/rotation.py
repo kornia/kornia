@@ -52,9 +52,9 @@ class RotationGenerator3D(RandomGeneratorBase):
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         degrees = _tuple_range_reader(self.degrees, 3, device, dtype)
-        self.yaw_sampler = Uniform(degrees[0][0], degrees[0][1], validate_args=False)
-        self.pitch_sampler = Uniform(degrees[1][0], degrees[1][1], validate_args=False)
-        self.roll_sampler = Uniform(degrees[2][0], degrees[2][1], validate_args=False)
+        self.yaw_sampler = Uniform(degrees[0][0].clone(), degrees[0][1].clone(), validate_args=False)
+        self.pitch_sampler = Uniform(degrees[1][0].clone(), degrees[1][1].clone(), validate_args=False)
+        self.roll_sampler = Uniform(degrees[2][0].clone(), degrees[2][1].clone(), validate_args=False)
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]

@@ -46,7 +46,7 @@ class RandomGaussianBlurGenerator(RandomGeneratorBase):
 
         _joint_range_check(sigma, "sigma", (0, float('inf')))
 
-        self.sigma_sampler = Uniform(sigma[0], sigma[1], validate_args=False)
+        self.sigma_sampler = Uniform(sigma[0].clone(), sigma[1].clone(), validate_args=False)
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]

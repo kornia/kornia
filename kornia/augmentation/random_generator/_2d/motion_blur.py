@@ -69,8 +69,8 @@ class MotionBlurGenerator(RandomGeneratorBase):
         else:
             raise TypeError(f"Unsupported type: {type(self.kernel_size)}")
 
-        self.angle_sampler = Uniform(angle[0], angle[1], validate_args=False)
-        self.direction_sampler = Uniform(direction[0], direction[1], validate_args=False)
+        self.angle_sampler = Uniform(angle[0].clone(), angle[1].clone(), validate_args=False)
+        self.direction_sampler = Uniform(direction[0].clone(), direction[1].clone(), validate_args=False)
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]

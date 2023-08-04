@@ -67,10 +67,10 @@ class ColorJiggleGenerator(RandomGeneratorBase):
         _joint_range_check(hue, "hue", (-0.5, 0.5))
         _joint_range_check(saturation, "saturation", (0, float('inf')))
 
-        self.brightness_sampler = Uniform(brightness[0], brightness[1], validate_args=False)
-        self.contrast_sampler = Uniform(contrast[0], contrast[1], validate_args=False)
-        self.hue_sampler = Uniform(hue[0], hue[1], validate_args=False)
-        self.saturation_sampler = Uniform(saturation[0], saturation[1], validate_args=False)
+        self.brightness_sampler = Uniform(brightness[0].clone(), brightness[1].clone(), validate_args=False)
+        self.contrast_sampler = Uniform(contrast[0].clone(), contrast[1].clone(), validate_args=False)
+        self.hue_sampler = Uniform(hue[0].clone(), hue[1].clone(), validate_args=False)
+        self.saturation_sampler = Uniform(saturation[0].clone(), saturation[1].clone(), validate_args=False)
         self.randperm = partial(torch.randperm, device=device, dtype=dtype)
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:

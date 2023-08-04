@@ -44,7 +44,7 @@ class MixupGenerator(RandomGeneratorBase):
             lambda_val = torch.as_tensor(self.lambda_val, device=device, dtype=dtype)
 
         _joint_range_check(lambda_val, 'lambda_val', bounds=(0, 1))
-        self.lambda_sampler = Uniform(lambda_val[0], lambda_val[1], validate_args=False)
+        self.lambda_sampler = Uniform(lambda_val[0].clone(), lambda_val[1].clone(), validate_args=False)
         self.prob_sampler = Bernoulli(torch.tensor(float(self.p), device=device, dtype=dtype))
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:

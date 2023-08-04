@@ -58,11 +58,11 @@ class ShearGenerator(RandomGeneratorBase):
 
         _joint_range_check(_shear[0], "shear")
         _joint_range_check(_shear[1], "shear")
-        self.shear_x = _shear[0]
-        self.shear_y = _shear[1]
+        self.shear_x = _shear[0].clone()
+        self.shear_y = _shear[1].clone()
 
-        shear_x_sampler = Uniform(_shear[0][0], _shear[0][1], validate_args=False)
-        shear_y_sampler = Uniform(_shear[1][0], _shear[1][1], validate_args=False)
+        shear_x_sampler = Uniform(_shear[0][0].clone(), _shear[0][1].clone(), validate_args=False)
+        shear_y_sampler = Uniform(_shear[1][0].clone(), _shear[1][1].clone(), validate_args=False)
 
         self.shear_x_sampler = shear_x_sampler
         self.shear_y_sampler = shear_y_sampler

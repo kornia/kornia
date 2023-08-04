@@ -103,12 +103,12 @@ class AffineGenerator3D(RandomGeneratorBase):
         shear: Optional[torch.Tensor] = None
         if self.shears is not None:
             shear = _tuple_range_reader(self.shears, 6, device, dtype)
-            self.sxy_sampler = Uniform(shear[0, 0], shear[0, 1], validate_args=False)
-            self.sxz_sampler = Uniform(shear[1, 0], shear[1, 1], validate_args=False)
-            self.syx_sampler = Uniform(shear[2, 0], shear[2, 1], validate_args=False)
-            self.syz_sampler = Uniform(shear[3, 0], shear[3, 1], validate_args=False)
-            self.szx_sampler = Uniform(shear[4, 0], shear[4, 1], validate_args=False)
-            self.szy_sampler = Uniform(shear[5, 0], shear[5, 1], validate_args=False)
+            self.sxy_sampler = Uniform(shear[0, 0].clone(), shear[0, 1].clone(), validate_args=False)
+            self.sxz_sampler = Uniform(shear[1, 0].clone(), shear[1, 1].clone(), validate_args=False)
+            self.syx_sampler = Uniform(shear[2, 0].clone(), shear[2, 1].clone(), validate_args=False)
+            self.syz_sampler = Uniform(shear[3, 0].clone(), shear[3, 1].clone(), validate_args=False)
+            self.szx_sampler = Uniform(shear[4, 0].clone(), shear[4, 1].clone(), validate_args=False)
+            self.szy_sampler = Uniform(shear[5, 0].clone(), shear[5, 1].clone(), validate_args=False)
 
         # check translation range
         self._translate: Optional[torch.Tensor] = None
@@ -129,13 +129,13 @@ class AffineGenerator3D(RandomGeneratorBase):
             _singular_range_check(self._scale[0], 'scale-x', bounds=(0, float('inf')), mode='2d')
             _singular_range_check(self._scale[1], 'scale-y', bounds=(0, float('inf')), mode='2d')
             _singular_range_check(self._scale[2], 'scale-z', bounds=(0, float('inf')), mode='2d')
-            self.scale_1_sampler = Uniform(self._scale[0, 0], self._scale[0, 1], validate_args=False)
-            self.scale_2_sampler = Uniform(self._scale[1, 0], self._scale[1, 1], validate_args=False)
-            self.scale_3_sampler = Uniform(self._scale[2, 0], self._scale[2, 1], validate_args=False)
+            self.scale_1_sampler = Uniform(self._scale[0, 0].clone(), self._scale[0, 1].clone(), validate_args=False)
+            self.scale_2_sampler = Uniform(self._scale[1, 0].clone(), self._scale[1, 1].clone(), validate_args=False)
+            self.scale_3_sampler = Uniform(self._scale[2, 0].clone(), self._scale[2, 1].clone(), validate_args=False)
 
-        self.yaw_sampler = Uniform(degrees[0][0], degrees[0][1], validate_args=False)
-        self.pitch_sampler = Uniform(degrees[1][0], degrees[1][1], validate_args=False)
-        self.roll_sampler = Uniform(degrees[2][0], degrees[2][1], validate_args=False)
+        self.yaw_sampler = Uniform(degrees[0][0].clone(), degrees[0][1].clone(), validate_args=False)
+        self.pitch_sampler = Uniform(degrees[1][0].clone(), degrees[1][1].clone(), validate_args=False)
+        self.roll_sampler = Uniform(degrees[2][0].clone(), degrees[2][1].clone(), validate_args=False)
 
         self.uniform_sampler = Uniform(
             torch.tensor(0, device=device, dtype=dtype),
