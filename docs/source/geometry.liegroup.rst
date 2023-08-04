@@ -19,7 +19,7 @@ In robotics, we say that our state vector evolves on this surface, that is, the 
 the state.
 
 lie algebra
-==========================
+===========
 
 .. image:: data/lie.png
 
