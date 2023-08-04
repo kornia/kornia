@@ -5,7 +5,70 @@ import torch
 
 from kornia.testing import assert_close
 from kornia.utils import create_meshgrid, draw_convex_polygon, draw_rectangle
-from kornia.utils.draw import draw_line
+from kornia.utils.draw import draw_line, draw_point2d
+
+
+class TestDrawPoint:
+    """Test drawing individual pixels."""
+
+    def test_draw_point2d_rgb(self, dtype, device):
+        """Test plotting multiple [x, y] points."""
+        points = torch.tensor([(1, 3), (2, 4)], device=device)
+        color = torch.tensor([5, 10, 15], dtype=dtype, device=device)
+        img = torch.zeros(3, 8, 8, dtype=dtype, device=device)
+        img = draw_point2d(img, points, color)
+        for x, y in points:
+            assert_close(img[:, y, x], color.to(img.dtype))
+
+    def test_draw_point2d_grayscale_third_order(self, dtype, device):
+        """Test plotting multiple [x, y] points on a (1, m, n) image."""
+        points = torch.tensor([(1, 3), (2, 4)], device=device)
+        color = torch.tensor([100], dtype=dtype, device=device)
+        img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
+        img = draw_point2d(img, points, color)
+        for x, y in points:
+            assert_close(img[:, y, x], color.to(img.dtype))
+
+    def test_draw_point2d_grayscale_second_order(self, dtype, device):
+        """Test plotting multiple [x, y] points on a (m, n) image."""
+        points = torch.tensor([(1, 3), (2, 4)], device=device)
+        color = torch.tensor([100], dtype=dtype, device=device)
+        img = torch.zeros(8, 8, dtype=dtype, device=device)
+        img = draw_point2d(img, points, color)
+        for x, y in points:
+            assert_close(torch.unsqueeze(img[y, x], dim=0), color.to(img.dtype))
+
+    def test_draw_point2d_with_mismatched_dims(self, dtype, device):
+        """Test that we raise if the len of the color tensor != the # of image channels."""
+        points = torch.tensor([(1, 3), (2, 4)], device=device)
+        color = torch.tensor([100], dtype=dtype, device=device)
+        img = torch.zeros(3, 8, 8, dtype=dtype, device=device)
+        with pytest.raises(Exception):
+            draw_point2d(img, points, color)
+
+    def test_draw_point2d_with_mismatched_dtype(self, device):
+        """Test that the color is correctly cast to the image dtype when drawing points."""
+        points = torch.tensor([(1, 3), (2, 4)], device=device)
+        color = torch.tensor([5, 10, 15], dtype=torch.float32, device=device)
+        img = torch.zeros(3, 8, 8, dtype=torch.uint8, device=device)
+        img = draw_point2d(img, points, color)
+        assert img.dtype is torch.uint8
+        for x, y in points:
+            assert_close(img[:, y, x], color.to(torch.uint8))
+
+    def test_draw_point2d_with_singleton_color_dims(self, dtype, device):
+        """Ensure that plotting behavior is consistent if we have a singleton dim for the color."""
+        points = torch.tensor([(1, 3), (2, 4)], device=device)
+        # Plot given a color tensor of shape [3]
+        color_vec = torch.tensor([5, 10, 15], dtype=torch.float32, device=device)
+        vec_img = torch.zeros(3, 8, 8, dtype=torch.uint8, device=device)
+        drawn_vec_img = draw_point2d(vec_img, points, color_vec)
+        # Plot given a color tensor of shape [3, 1]
+        color_mat = torch.unsqueeze(color_vec, dim=1)
+        mat_img = vec_img.clone()
+        drawn_mat_img = draw_point2d(mat_img, points, color_mat)
+        # Ensure that we get the same underlying image back
+        assert_close(drawn_vec_img, drawn_mat_img)
 
 
 class TestDrawLine:
@@ -69,9 +132,9 @@ class TestDrawLine:
             [
                 [
                     [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 255.0, 0.0],
+                    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 255.0, 0.0],
                     [0.0, 0.0, 0.0, 0.0, 0.0, 255.0, 0.0, 0.0],
                     [0.0, 0.0, 0.0, 0.0, 255.0, 0.0, 0.0, 0.0],
-                    [0.0, 0.0, 0.0, 255.0, 0.0, 0.0, 0.0, 0.0],
                     [0.0, 0.0, 0.0, 255.0, 0.0, 0.0, 0.0, 0.0],
                     [0.0, 0.0, 255.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                     [0.0, 255.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
@@ -90,10 +153,10 @@ class TestDrawLine:
         img_mask = torch.tensor(
             [
                 [
-                    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 255.0],
-                    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 255.0, 0.0],
+                    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 255.0, 255.0],
                     [0.0, 0.0, 0.0, 0.0, 0.0, 255.0, 0.0, 0.0],
-                    [0.0, 0.0, 0.0, 255.0, 255.0, 0.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.0, 0.0, 255.0, 0.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.0, 255.0, 0.0, 0.0, 0.0, 0.0],
                     [0.0, 0.0, 255.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                     [0.0, 255.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                     [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
@@ -112,9 +175,9 @@ class TestDrawLine:
         img_mask = torch.tensor(
             [
                 [
-                    [255.0, 255.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                    [0.0, 0.0, 255.0, 255.0, 255.0, 0.0, 0.0, 0.0],
-                    [0.0, 0.0, 0.0, 0.0, 0.0, 255.0, 255.0, 0.0],
+                    [255.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    [0.0, 255.0, 255.0, 255.0, 0.0, 0.0, 0.0, 0.0],
+                    [0.0, 0.0, 0.0, 0.0, 255.0, 255.0, 255.0, 0.0],
                     [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                     [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                     [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
@@ -139,9 +202,33 @@ class TestDrawLine:
                     [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                     [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                     [0.0, 255.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                    [0.0, 0.0, 255.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    [0.0, 255.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                     [0.0, 0.0, 255.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                     [0.0, 0.0, 0.0, 255.0, 0.0, 0.0, 0.0, 0.0],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        assert_close(img, img_mask)
+
+    def test_draw_lines_batched(self, dtype, device):
+        """Test drawing a line with m <= -1."""
+        img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
+        img = draw_line(
+            img, torch.tensor([[0, 7], [0, 7], [0, 2]]), torch.tensor([[6, 0], [0, 0], [7, 7]]), torch.tensor([255])
+        )
+        img_mask = torch.tensor(
+            [
+                [
+                    [255.0, 0.0, 0.0, 0.0, 0.0, 0.0, 255.0, 0.0],
+                    [255.0, 0.0, 0.0, 0.0, 0.0, 0.0, 255.0, 0.0],
+                    [255.0, 0.0, 0.0, 0.0, 0.0, 255.0, 0.0, 0.0],
+                    [255.0, 255.0, 0.0, 0.0, 255.0, 0.0, 0.0, 0.0],
+                    [255.0, 0.0, 255.0, 255.0, 0.0, 0.0, 0.0, 0.0],
+                    [255.0, 0.0, 255.0, 255.0, 255.0, 0.0, 0.0, 0.0],
+                    [255.0, 255.0, 0.0, 0.0, 0.0, 255.0, 0.0, 0.0],
+                    [255.0, 0.0, 0.0, 0.0, 0.0, 0.0, 255.0, 255.0],
                 ]
             ],
             device=device,
@@ -187,21 +274,15 @@ class TestDrawLine:
 
         assert 'color must have the same number of channels as the image.' == str(excinfo.value)
 
-    @pytest.mark.parametrize(
-        'p1,p2',
-        [
-            ((0, 1), (1, 5, 2)),
-            ((0, 1, 2), (1, 5)),
-            (torch.tensor([0, 1]), torch.tensor([0, 2, 3])),
-            (torch.tensor([0, 1, 5]), torch.tensor([0, 2])),
-        ],
-    )
+    @pytest.mark.parametrize('p1,p2', [(torch.rand([10, 2]), torch.rand([20, 2])), (torch.rand([2]), torch.rand([3]))])
     def test_point_size(self, p1, p2, dtype, device):
         img = torch.zeros(1, 8, 8, dtype=dtype, device=device)
         with pytest.raises(ValueError) as excinfo:
             draw_line(img, p1, p2, torch.tensor([255]))
 
-        assert 'p1 and p2 must have length 2.' == str(excinfo.value)
+        assert 'Input points must be 2D points with shape (2, ) or (B, 2) and must have the same batch sizes.' == str(
+            excinfo.value
+        )
 
 
 class TestDrawRectangle:

@@ -1,0 +1,10 @@
+kornia-rs==0.0.8
+mypy[reports]
+numpy
+onnx
+opencv-python
+pre-commit>=2
+pydocstyle
+pytest==7.4.0
+pytest-cov==4.1.0
+scipy

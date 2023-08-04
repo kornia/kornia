@@ -8,6 +8,8 @@ from kornia.core import Device, Tensor, tensor
 from kornia.geometry.bbox import bbox_generator
 from kornia.geometry.transform.affwarp import _side_to_image_size
 
+__all__ = ["ResizeGenerator"]
+
 
 class ResizeGenerator(RandomGeneratorBase):
     r"""Get parameters for ```resize``` transformation for resize transform.
@@ -43,17 +45,17 @@ class ResizeGenerator(RandomGeneratorBase):
         self.dtype = dtype
         pass
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device = self.device
         _dtype = self.dtype
 
         if batch_size == 0:
-            return dict(
-                src=torch.zeros([0, 4, 2], device=_device, dtype=_dtype),
-                dst=torch.zeros([0, 4, 2], device=_device, dtype=_dtype),
-            )
+            return {
+                "src": torch.zeros([0, 4, 2], device=_device, dtype=_dtype),
+                "dst": torch.zeros([0, 4, 2], device=_device, dtype=_dtype),
+            }
 
         input_size = h, w = (batch_shape[-2], batch_shape[-1])
 
@@ -66,25 +68,27 @@ class ResizeGenerator(RandomGeneratorBase):
 
         if isinstance(self.output_size, int):
             aspect_ratio = w / h
-            self.output_size = _side_to_image_size(self.output_size, aspect_ratio, self.side)
+            output_size = _side_to_image_size(self.output_size, aspect_ratio, self.side)
+        else:
+            output_size = self.output_size
 
         if not (
-            len(self.output_size) == 2
-            and isinstance(self.output_size[0], (int,))
-            and isinstance(self.output_size[1], (int,))
-            and self.output_size[0] > 0
-            and self.output_size[1] > 0
+            len(output_size) == 2
+            and isinstance(output_size[0], (int,))
+            and isinstance(output_size[1], (int,))
+            and output_size[0] > 0
+            and output_size[1] > 0
         ):
-            raise AssertionError(f"`resize_to` must be a tuple of 2 positive integers. Got {self.output_size}.")
+            raise AssertionError(f"`resize_to` must be a tuple of 2 positive integers. Got {output_size}.")
 
         dst = bbox_generator(
             tensor(0, device=_device, dtype=_dtype),
             tensor(0, device=_device, dtype=_dtype),
-            tensor(self.output_size[1], device=_device, dtype=_dtype),
-            tensor(self.output_size[0], device=_device, dtype=_dtype),
+            tensor(output_size[1], device=_device, dtype=_dtype),
+            tensor(output_size[0], device=_device, dtype=_dtype),
         ).repeat(batch_size, 1, 1)
 
         _input_size = tensor(input_size, device=_device, dtype=torch.long).expand(batch_size, -1)
-        _output_size = tensor(self.output_size, device=_device, dtype=torch.long).expand(batch_size, -1)
+        _output_size = tensor(output_size, device=_device, dtype=torch.long).expand(batch_size, -1)
 
-        return dict(src=src, dst=dst, input_size=_input_size, output_size=_output_size)
+        return {"src": src, "dst": dst, "input_size": _input_size, "output_size": _output_size}

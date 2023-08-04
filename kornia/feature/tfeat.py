@@ -1,9 +1,9 @@
 from typing import Dict
 
 import torch
-import torch.nn as nn
+from torch import nn
 
-from kornia.testing import KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.utils.helpers import map_location_to_cpu
 
 urls: Dict[str, str] = {}

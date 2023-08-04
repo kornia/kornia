@@ -33,11 +33,15 @@ Intensity
 .. autoclass:: RandomSaturation
 .. autoclass:: RandomSharpness
 .. autoclass:: RandomSolarize
+.. autoclass:: RandomMedianBlur
+.. autoclass:: RandomSnow
+.. autoclass:: RandomRain
 
 Geometric
 ~~~~~~~~~
 
 .. autoclass:: CenterCrop
+.. autoclass:: PadTo
 .. autoclass:: RandomAffine
 .. autoclass:: RandomCrop
 .. autoclass:: RandomErasing

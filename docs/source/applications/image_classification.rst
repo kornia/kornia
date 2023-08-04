@@ -47,21 +47,29 @@ image classification problems. However, one can leverage this is API using the m
 use existing libraries from the PyTorch ecosystem such as `torchvision <https://pytorch.org/vision/stable/models.html>`_
 or `timm <https://rwightman.github.io/pytorch-image-models/>`_.
 
-.. literalinclude:: ../../../examples/train/image_classifier/main.py
-   :language: python
-   :lines: 20-46
+Create the dataloaders:
 
-Define your augmentations and callbacks:
-
-.. literalinclude:: ../../../examples/train/image_classifier/main.py
+.. literalinclude:: ../_static/scripts/image_classifier.py
    :language: python
-   :lines: 49-66
+   :lines: 20-36
+
+Define your model, losses, optimizers and schedulers:
+
+.. literalinclude:: ../_static/scripts/image_classifier.py
+   :language: python
+   :lines: 37-48
+
+Define your augmentations:
+
+.. literalinclude:: ../_static/scripts/image_classifier.py
+   :language: python
+   :lines: 50-65
 
 Finally, instantiate the :py:class:`~kornia.x.ImageClassifierTrainer` and execute your training pipeline.
 
-.. literalinclude:: ../../../examples/train/image_classifier/main.py
+.. literalinclude:: ../_static/scripts/image_classifier.py
    :language: python
-   :lines: 68-74
+   :lines: 66-78
 
 .. seealso::
-   Play with the full example `here <https://github.com/kornia/kornia/tree/master/examples/train/image_classifier>`_
+   Play with the full example `here <https://github.com/kornia/tutorials/tree/master/scripts/training/image_classifier>`_

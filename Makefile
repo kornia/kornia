@@ -12,7 +12,7 @@ test-cuda: FORCE
 	pytest -v --device cuda --dtype all --cov=kornia test/
 
 test-mps: FORCE
-	pytest -v --device mps --dtype float32 -k "not (grad or exception or jit)"  test/
+	pytest -v --device mps --dtype float32 -k "not (grad or exception or jit or dynamo)"  test/
 
 test-module: FORCE
 	pytest -v --device all --dtype all  test/$(module)
@@ -33,13 +33,10 @@ test-slow: FORCE
 	pytest -v --device all --dtype all -m "(jit or grad or nn)"
 
 lint: FORCE
-	pre-commit run flake8 --all-files
+	pre-commit run ruff --all-files
 
 mypy: FORCE
 	mypy
-
-yapf: FORCE
-	yapf --in-place --parallel --recursive kornia/ test/ examples/
 
 doctest:
 	pytest -v --doctest-modules kornia/

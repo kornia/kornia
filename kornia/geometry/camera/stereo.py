@@ -1,3 +1,5 @@
+from typing import Any
+
 import torch
 
 from kornia.core import Tensor, stack, zeros
@@ -6,7 +8,7 @@ from kornia.utils.grid import create_meshgrid
 
 
 class StereoException(Exception):
-    def __init__(self, msg: str, *args, **kwargs):
+    def __init__(self, msg: str, *args: Any, **kwargs: Any) -> None:
         r"""Custom exception for the :module:`~kornia.geometry.camera.stereo` module.
 
         Adds a general helper module redirecting the user to the proper documentation site.
@@ -27,7 +29,7 @@ class StereoException(Exception):
 
 
 class StereoCamera:
-    def __init__(self, rectified_left_camera: Tensor, rectified_right_camera: Tensor):
+    def __init__(self, rectified_left_camera: Tensor, rectified_right_camera: Tensor) -> None:
         r"""Class representing a horizontal stereo camera setup.
 
         Args:
@@ -46,7 +48,7 @@ class StereoCamera:
         self._Q_matrix = self._init_Q_matrix()
 
     @staticmethod
-    def _check_stereo_camera(rectified_left_camera: Tensor, rectified_right_camera: Tensor):
+    def _check_stereo_camera(rectified_left_camera: Tensor, rectified_right_camera: Tensor) -> None:
         r"""Utility function to ensure user specified correct camera matrices.
 
         Args:
@@ -221,7 +223,7 @@ class StereoCamera:
         return reproject_disparity_to_3D(disparity_tensor, self.Q)
 
 
-def _check_disparity_tensor(disparity_tensor: Tensor):
+def _check_disparity_tensor(disparity_tensor: Tensor) -> None:
     r"""Utility function to ensure correct user provided correct disparity tensor.
 
     Args:
@@ -248,13 +250,12 @@ def _check_disparity_tensor(disparity_tensor: Tensor):
         )
 
 
-def _check_Q_matrix(Q_matrix: Tensor):
+def _check_Q_matrix(Q_matrix: Tensor) -> None:
     r"""Utility function to ensure Q matrix is of correct form.
 
     Args:
         Q_matrix: The Q matrix for reprojecting disparity to a point cloud of shape :math:`(B, 4, 4)`
     """
-
     if not isinstance(Q_matrix, Tensor):
         raise StereoException(f"Expected 'Q_matrix' to be an instance of Tensor but got {type(Q_matrix)}.")
 

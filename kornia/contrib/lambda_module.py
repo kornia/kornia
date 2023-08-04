@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Any, Callable
 
 from kornia.core import Module, Tensor
 
@@ -23,9 +23,9 @@ class Lambda(Module):
     def __init__(self, func: Callable[..., Tensor]) -> None:
         super().__init__()
         if not callable(func):
-            raise TypeError(f"Argument lambd should be callable, got {repr(type(func).__name__)}")
+            raise TypeError(f"Argument lambd should be callable, got {type(func).__name__!r}")
 
         self.func = func
 
-    def forward(self, img: Tensor, *args, **kwargs) -> Tensor:
+    def forward(self, img: Tensor, *args: Any, **kwargs: Any) -> Tensor:
         return self.func(img, *args, **kwargs)

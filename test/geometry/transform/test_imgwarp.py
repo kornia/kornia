@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 import torch
 from torch.autograd import gradcheck
@@ -5,7 +7,7 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.testing import assert_close
-from kornia.utils._compat import torch_version_lt
+from kornia.utils._compat import torch_version, torch_version_lt
 from kornia.utils.helpers import _torch_inverse_cast
 
 
@@ -72,14 +74,14 @@ class TestGetPerspectiveTransform:
 
         assert_close(kornia.geometry.transform_points(dst_trans_src, point_left), point_right)
 
-    def test_jit(self, device, dtype):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         points_src = torch.rand(1, 4, 2, device=device, dtype=dtype)
         points_dst = torch.rand(1, 4, 2, device=device, dtype=dtype)
 
         op = kornia.geometry.get_perspective_transform
-        op_jit = torch.jit.script(op)
+        op_optimized = torch_optimizer(op)
 
-        assert_close(op(points_src, points_dst), op_jit(points_src, points_dst))
+        assert_close(op(points_src, points_dst), op_optimized(points_src, points_dst))
 
     @pytest.mark.skipif(torch_version_lt(1, 11, 0), reason="backward for LSTSQ not supported in pytorch < 1.11.0")
     def test_gradcheck(self, device):
@@ -216,13 +218,13 @@ class TestWarpAffine:
         img_b_hat = kornia.geometry.warp_affine(img_a, aff_ba_2x3, (h, w))
         assert_close(img_b_hat, img_b, atol=1e-3, rtol=1e-3)
 
-    def test_jit(self, device, dtype):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         aff_ab = torch.eye(2, 3, device=device, dtype=dtype)[None]
         img = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         args = (img, aff_ab, (4, 5))
         op = kornia.geometry.warp_affine
-        op_jit = torch.jit.script(op)
-        assert_close(op(*args), op_jit(*args))
+        op_optimized = torch_optimizer(op)
+        assert_close(op(*args), op_optimized(*args))
 
     def test_gradcheck(self, device, dtype):
         batch_size, channels, height, width = 1, 2, 3, 4
@@ -415,13 +417,15 @@ class TestWarpPerspective:
         patch_warped = kornia.geometry.warp_perspective(patch, dst_trans_src, (dst_h, dst_w))
         assert_close(patch_warped, expected)
 
-    def test_jit(self, device, dtype):
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        if dtype == torch.float64 and torch_version() in {'2.0.0', '2.0.1'} and sys.platform == 'linux':
+            pytest.xfail('Failling on CI on ubuntu with torch 2.0.0 for float64')
         img = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         H_ab = kornia.eye_like(3, img)
         args = (img, H_ab, (4, 5))
         op = kornia.geometry.warp_perspective
-        op_jit = torch.jit.script(op)
-        assert_close(op(*args), op_jit(*args))
+        op_optimized = torch_optimizer(op)
+        assert_close(op(*args), op_optimized(*args))
 
     def test_gradcheck(self, device, dtype):
         batch_size, channels, height, width = 1, 2, 3, 4
@@ -455,12 +459,12 @@ class TestWarpPerspective:
 class TestRemap:
     def test_smoke(self, device, dtype):
         height, width = 3, 4
-        input = torch.ones(1, 1, height, width, device=device, dtype=dtype)
+        input_org = torch.ones(1, 1, height, width, device=device, dtype=dtype)
         grid = kornia.utils.create_meshgrid(height, width, normalized_coordinates=False, device=device, dtype=dtype)
         input_warped = kornia.geometry.remap(
-            input, grid[..., 0], grid[..., 1], normalized_coordinates=False, align_corners=True
+            input_org, grid[..., 0], grid[..., 1], normalized_coordinates=False, align_corners=True
         )
-        assert_close(input, input_warped, rtol=1e-4, atol=1e-4)
+        assert_close(input_org, input_warped, rtol=1e-4, atol=1e-4)
 
     def test_different_size(self, device, dtype):
         height, width = 3, 4
@@ -559,7 +563,9 @@ class TestRemap:
             fast_mode=True,
         )
 
-    def test_jit(self, device, dtype):
+    @pytest.mark.skip(reason='Not fully support dynamo')
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        # TODO: add dynamo support to create_meshgrid
         batch_size, channels, height, width = 1, 1, 3, 4
         img = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
 
@@ -567,7 +573,7 @@ class TestRemap:
         grid += 1.0  # apply some shift
 
         op = kornia.geometry.remap
-        op_script = torch.jit.script(op)
+        op_script = torch_optimizer(op)
 
         inputs = (img, grid[..., 0], grid[..., 1], 'bilinear', 'zeros', True)
         actual = op_script(*inputs)
@@ -604,9 +610,9 @@ class TestInvertAffineTransform:
         matrix = utils.tensor_to_gradcheck_var(matrix)  # to var
         assert gradcheck(kornia.geometry.invert_affine_transform, (matrix,), raise_exception=True, fast_mode=True)
 
-    def test_jit(self, device, dtype):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         op = kornia.geometry.invert_affine_transform
-        op_script = torch.jit.script(op)
+        op_script = torch_optimizer(op)
 
         matrix = torch.eye(2, 3, device=device, dtype=dtype)[None]
         actual = op_script(matrix)

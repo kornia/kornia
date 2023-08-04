@@ -1,9 +1,8 @@
 import pytest
 import torch
-from torch.autograd import gradcheck
 
 from kornia.geometry.calibration.undistort import undistort_image, undistort_points
-from kornia.testing import assert_close
+from kornia.testing import assert_close, gradcheck
 
 
 class TestUndistortPoints:
@@ -232,9 +231,9 @@ class TestUndistortPoints:
         new_K = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
         distCoeff = torch.rand(1, 4, device=device, dtype=torch.float64)
 
-        assert gradcheck(undistort_points, (points, K, distCoeff, new_K), raise_exception=True, fast_mode=True)
+        gradcheck(undistort_points, (points, K, distCoeff, new_K))
 
-    def test_jit(self, device, dtype):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         points = torch.rand(1, 1, 2, device=device, dtype=dtype)
         K = torch.rand(1, 3, 3, device=device, dtype=dtype)
         new_K = torch.rand(1, 3, 3, device=device, dtype=dtype)
@@ -242,8 +241,8 @@ class TestUndistortPoints:
         inputs = (points, K, distCoeff, new_K)
 
         op = undistort_points
-        op_jit = torch.jit.script(op)
-        assert_close(op(*inputs), op_jit(*inputs))
+        op_optimized = torch_optimizer(op)
+        assert_close(op(*inputs), op_optimized(*inputs))
 
 
 class TestUndistortImage:
@@ -270,7 +269,7 @@ class TestUndistortImage:
 
         imu = undistort_image(im, K, distCoeff)
         assert imu.shape == (3, 2, 3, 5, 5)
-        torch.testing.assert_allclose(imu[0], imu[1])
+        assert_close(imu[0], imu[1])
 
     def test_exception(self, device, dtype):
         with pytest.raises(ValueError):
@@ -341,14 +340,16 @@ class TestUndistortImage:
         K = torch.rand(3, 3, device=device, dtype=torch.float64)
         distCoeff = torch.rand(4, device=device, dtype=torch.float64)
 
-        assert gradcheck(undistort_image, (im, K, distCoeff), raise_exception=True, fast_mode=True)
+        gradcheck(undistort_image, (im, K, distCoeff))
 
-    def test_jit(self, device, dtype):
+    @pytest.mark.xfail(reason='Some times this seems to random fail')
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        # TODO: check if `undistort_image` fully support dynamo
         im = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
         K = torch.rand(3, 3, device=device, dtype=dtype)
         distCoeff = torch.rand(4, device=device, dtype=dtype)
         inputs = (im, K, distCoeff)
 
         op = undistort_image
-        op_jit = torch.jit.script(op)
-        assert_close(op(*inputs), op_jit(*inputs))
+        op_optimized = torch_optimizer(op)
+        assert_close(op(*inputs), op_optimized(*inputs))

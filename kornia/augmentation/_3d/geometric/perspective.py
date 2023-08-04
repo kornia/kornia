@@ -1,13 +1,13 @@
 from typing import Any, Dict, Optional, Union
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._3d.base import AugmentationBase3D
+from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 from kornia.constants import Resample
 from kornia.core import Tensor
 from kornia.geometry import get_perspective_transform3d, warp_perspective3d
 
 
-class RandomPerspective3D(AugmentationBase3D):
+class RandomPerspective3D(GeometricAugmentationBase3D):
     r"""Apply andom perspective transformation to 3D volumes (5D tensor).
 
     Args:
@@ -71,10 +71,9 @@ class RandomPerspective3D(AugmentationBase3D):
         align_corners: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
-        self.flags = dict(resample=Resample.get(resample), align_corners=align_corners)
+        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
+        self.flags = {"resample": Resample.get(resample), "align_corners": align_corners}
         self._param_generator = rg.PerspectiveGenerator3D(distortion_scale)
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:

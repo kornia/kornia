@@ -4,13 +4,14 @@ import torch
 from kornia.geometry.conversions import euler_from_quaternion
 from kornia.geometry.liegroup import So3
 from kornia.geometry.quaternion import Quaternion
+from kornia.geometry.vector import Vector3
 from kornia.testing import BaseTester
 
 
 class TestSo3(BaseTester):
     def _make_rand_data(self, device, dtype, batch_size, dims):
         shape = [] if batch_size is None else [batch_size]
-        return torch.rand(shape + [dims], device=device, dtype=dtype)
+        return torch.rand([*shape, dims], device=device, dtype=dtype)
 
     def test_smoke(self, device, dtype):
         q = Quaternion.from_coeffs(1.0, 0.0, 0.0, 0.0)
@@ -60,6 +61,21 @@ class TestSo3(BaseTester):
         q1 = Quaternion.identity(batch_size, device, dtype)
         q2 = Quaternion.random(batch_size, device, dtype)
         t = self._make_rand_data(device, dtype, batch_size, dims=3)
+        s1 = So3(q1)
+        s2 = So3(q2)
+        self.assert_close((s1 * s2).q.data, s2.q.data)
+        self.assert_close((s2 * s2.inverse()).q.data, s1.q.data)
+        self.assert_close((s1 * t), t)
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_mul_vec(self, device, dtype, batch_size):
+        q1 = Quaternion.identity(batch_size, device, dtype)
+        q2 = Quaternion.random(batch_size, device, dtype)
+        if batch_size is None:
+            shape = ()
+        else:
+            shape = (batch_size,)
+        t = Vector3.random(shape, device, dtype)
         s1 = So3(q1)
         s2 = So3(q2)
         self.assert_close((s1 * s2).q.data, s2.q.data)
@@ -155,6 +171,12 @@ class TestSo3(BaseTester):
             rp_ = torch.matmul(r1, pvec)
             self.assert_close(rp_, qp_.vec)  # p_ = R*p = q*p*q_inv
             self.assert_close(rp_.norm(), pvec.norm())
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_from_wxyz(self, device, dtype, batch_size):
+        wxyz = self._make_rand_data(device, dtype, batch_size, dims=4)
+        s = So3.from_wxyz(wxyz)
+        self.assert_close(s.q.data, wxyz)
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_ortho(self, device, dtype, batch_size):

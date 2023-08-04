@@ -46,6 +46,7 @@ transforms, camera, conversions, linalg and depth. We next describe each of them
 
    geometry.bbox
    geometry.boxes
+   geometry.keypoints
    geometry.calibration
    geometry.camera
    geometry.conversions
@@ -56,6 +57,7 @@ transforms, camera, conversions, linalg and depth. We next describe each of them
    geometry.linalg
    geometry.line
    geometry.quaternion
+   geometry.solvers
    geometry.subpix
    geometry.transform
    geometry.ransac

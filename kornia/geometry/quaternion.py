@@ -5,16 +5,15 @@
 from math import pi
 from typing import Optional, Tuple, Union
 
-from kornia.core import Module, Parameter, Tensor, concatenate, rand, stack, tensor, where
+from kornia.core import Device, Dtype, Module, Parameter, Tensor, concatenate, rand, stack, tensor, where
+from kornia.core.check import KORNIA_CHECK_TYPE
 from kornia.geometry.conversions import (
-    QuaternionCoeffOrder,
-    angle_axis_to_quaternion,
+    axis_angle_to_quaternion,
     normalize_quaternion,
     quaternion_to_rotation_matrix,
     rotation_matrix_to_quaternion,
 )
 from kornia.geometry.linalg import batched_dot_product
-from kornia.testing import KORNIA_CHECK_TYPE
 
 
 class Quaternion(Module):
@@ -25,14 +24,14 @@ class Quaternion(Module):
 
     The general definition of a quaternion is given by:
 
-    .. math ::
+    .. math::
 
         Q = a + b \cdot \mathbf{i} + c \cdot \mathbf{j} + d \cdot \mathbf{k}
 
     Thus, we represent a rotation quaternion as a contiguous tensor structure to
     perform rigid bodies transformations:
 
-    .. math ::
+    .. math::
 
         Q = \begin{bmatrix} q_w & q_x & q_y & q_z \end{bmatrix}
 
@@ -72,7 +71,7 @@ class Quaternion(Module):
     def __repr__(self) -> str:
         return f"{self.data}"
 
-    def __getitem__(self, idx) -> 'Quaternion':
+    def __getitem__(self, idx: Union[int, slice]) -> 'Quaternion':
         return Quaternion(self.data[idx])
 
     def __neg__(self) -> 'Quaternion':
@@ -167,7 +166,8 @@ class Quaternion(Module):
     def real(self) -> Tensor:
         """Return the real part with shape :math:`(B,)`.
 
-        Alias for :func:`~kornia.geometry.quaternion.Quaternion.w`
+        Alias for
+        :func: `~kornia.geometry.quaternion.Quaternion.w`
         """
         return self.w
 
@@ -188,7 +188,8 @@ class Quaternion(Module):
     def scalar(self) -> Tensor:
         """Return a scalar with the real with shape :math:`(B,)`.
 
-        Alias for :func:`~kornia.geometry.quaternion.Quaternion.w`
+        Alias for
+        :func: `~kornia.geometry.quaternion.Quaternion.w`
         """
         return self.real
 
@@ -237,9 +238,9 @@ class Quaternion(Module):
             >>> m
             tensor([[1., 0., 0.],
                     [0., 1., 0.],
-                    [0., 0., 1.]], grad_fn=<SqueezeBackward1>)
+                    [0., 0., 1.]], grad_fn=<ReshapeAliasBackward0>)
         """
-        return quaternion_to_rotation_matrix(self.data, order=QuaternionCoeffOrder.WXYZ)
+        return quaternion_to_rotation_matrix(self.data)
 
     @classmethod
     def from_matrix(cls, matrix: Tensor) -> 'Quaternion':
@@ -255,7 +256,7 @@ class Quaternion(Module):
             Parameter containing:
             tensor([[1., 0., 0., 0.]], requires_grad=True)
         """
-        return cls(rotation_matrix_to_quaternion(matrix, order=QuaternionCoeffOrder.WXYZ))
+        return cls(rotation_matrix_to_quaternion(matrix))
 
     @classmethod
     def from_axis_angle(cls, axis_angle: Tensor) -> 'Quaternion':
@@ -271,10 +272,12 @@ class Quaternion(Module):
             Parameter containing:
             tensor([[0.8776, 0.4794, 0.0000, 0.0000]], requires_grad=True)
         """
-        return cls(angle_axis_to_quaternion(axis_angle, order=QuaternionCoeffOrder.WXYZ))
+        return cls(axis_angle_to_quaternion(axis_angle))
 
     @classmethod
-    def identity(cls, batch_size: Optional[int] = None, device=None, dtype=None) -> 'Quaternion':
+    def identity(
+        cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None
+    ) -> 'Quaternion':
         """Create a quaternion representing an identity rotation.
 
         Args:
@@ -286,7 +289,7 @@ class Quaternion(Module):
             Parameter containing:
             tensor([1., 0., 0., 0.], requires_grad=True)
         """
-        data: Tensor = tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype)
+        data = tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype)
         if batch_size is not None:
             data = data.repeat(batch_size, 1)
         return cls(data)
@@ -312,7 +315,9 @@ class Quaternion(Module):
     # TODO: update signature
     # def random(cls, shape: Optional[List] = None, device = None, dtype = None) -> 'Quaternion':
     @classmethod
-    def random(cls, batch_size: Optional[int] = None, device=None, dtype=None) -> 'Quaternion':
+    def random(
+        cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None
+    ) -> 'Quaternion':
         """Create a random unit quaternion of shape :math:`(B, 4)`.
 
         Uniformly distributed across the rotation space as per: http://planning.cs.uiuc.edu/node198.html
@@ -326,7 +331,7 @@ class Quaternion(Module):
         """
         rand_shape = (batch_size,) if batch_size is not None else ()
 
-        r1, r2, r3 = rand((3,) + rand_shape, device=device, dtype=dtype)
+        r1, r2, r3 = rand((3, *rand_shape), device=device, dtype=dtype)
         q1 = (1.0 - r1).sqrt() * ((2 * pi * r2).sin())
         q2 = (1.0 - r1).sqrt() * ((2 * pi * r2).cos())
         q3 = r1.sqrt() * (2 * pi * r3).sin()

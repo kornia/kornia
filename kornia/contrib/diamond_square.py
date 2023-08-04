@@ -5,9 +5,9 @@ from typing import Callable, List, Optional, Tuple, Union
 import torch
 
 from kornia.core import Tensor
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.enhance import normalize_min_max
 from kornia.filters import filter2d
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 # the default kernels for the diamond square
 default_diamond_kernel: List[List[float]] = [[0.25, 0.0, 0.25], [0.0, 0.0, 0.0], [0.25, 0.0, 0.25]]
@@ -142,7 +142,7 @@ def diamond_square(
     roughness: Union[float, Tensor] = 0.5,
     random_scale: Union[float, Tensor] = 1.0,
     random_fn: Callable[..., Tensor] = torch.rand,
-    normalize_range: Optional[Tuple[int, int]] = None,
+    normalize_range: Optional[Tuple[float, float]] = None,
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
 ) -> Tensor:
@@ -207,5 +207,5 @@ def diamond_square(
     # normalize the output in the range using min-max
     if normalize_range is not None:
         min_val, max_val = normalize_range
-        img = normalize_min_max(img, min_val, max_val)
+        img = normalize_min_max(img.contiguous(), min_val, max_val)
     return img

@@ -5,7 +5,7 @@ import torch
 from kornia.core import Tensor, as_tensor, tensor
 
 
-def _common_param_check(batch_size: int, same_on_batch: Optional[bool] = None):
+def _common_param_check(batch_size: int, same_on_batch: Optional[bool] = None) -> None:
     """Valid batch_size and same_on_batch params."""
     if not (type(batch_size) is int and batch_size >= 0):
         raise AssertionError(f"`batch_size` shall be a positive integer. Got {batch_size}.")
@@ -16,8 +16,8 @@ def _common_param_check(batch_size: int, same_on_batch: Optional[bool] = None):
 def _range_bound(
     factor: Union[Tensor, float, Tuple[float, float], List[float]],
     name: str,
-    center: float = 0.0,
-    bounds: Tuple[float, float] = (0, float('inf')),
+    center: Optional[float] = 0.0,
+    bounds: Optional[Tuple[float, float]] = (0, float('inf')),
     check: Optional[str] = 'joint',
     device: torch.device = torch.device('cpu'),
     dtype: torch.dtype = torch.get_default_dtype(),
@@ -29,7 +29,9 @@ def _range_bound(
 
     if factor.dim() == 0:
         if factor < 0:
-            raise ValueError(f"If {name} is a single number number, it must be non negative. Got {factor}")
+            raise ValueError(f"If {name} is a single number, it must be non negative. Got {factor}.")
+        if center is None or bounds is None:
+            raise ValueError(f"`center` and `bounds` cannot be None for single number. Got {center}, {bounds}.")
         # Should be something other than clamp
         # Currently, single value factor will not out of scope as long as the user provided it.
         # Note: I personally think throw an error will be better than a coarse clamp.
@@ -137,38 +139,37 @@ def _tuple_range_reader(
                 f"Degrees must be a {list(target_shape)} tensor for the degree range for independent operation."
                 f"Got {input_range}"
             )
+    elif isinstance(input_range, (float, int)):
+        if input_range < 0:
+            raise ValueError(f"If input_range is only one number it must be a positive number. Got{input_range}")
+        input_range_tmp = tensor([-input_range, input_range], device=device, dtype=dtype).repeat(target_shape[0], 1)
+
+    elif (
+        isinstance(input_range, (tuple, list))
+        and len(input_range) == 2
+        and isinstance(input_range[0], (float, int))
+        and isinstance(input_range[1], (float, int))
+    ):
+        input_range_tmp = tensor(input_range, device=device, dtype=dtype).repeat(target_shape[0], 1)
+
+    elif (
+        isinstance(input_range, (tuple, list))
+        and len(input_range) == target_shape[0]
+        and all(isinstance(x, (float, int)) for x in input_range)
+    ):
+        input_range_tmp = tensor([(-s, s) for s in input_range], device=device, dtype=dtype)
+
+    elif (
+        isinstance(input_range, (tuple, list))
+        and len(input_range) == target_shape[0]
+        and all(isinstance(x, (tuple, list)) for x in input_range)
+    ):
+        input_range_tmp = tensor(input_range, device=device, dtype=dtype)
+
     else:
-        if isinstance(input_range, (float, int)):
-            if input_range < 0:
-                raise ValueError(f"If input_range is only one number it must be a positive number. Got{input_range}")
-            input_range_tmp = tensor([-input_range, input_range], device=device, dtype=dtype).repeat(target_shape[0], 1)
-
-        elif (
-            isinstance(input_range, (tuple, list))
-            and len(input_range) == 2
-            and isinstance(input_range[0], (float, int))
-            and isinstance(input_range[1], (float, int))
-        ):
-            input_range_tmp = tensor(input_range, device=device, dtype=dtype).repeat(target_shape[0], 1)
-
-        elif (
-            isinstance(input_range, (tuple, list))
-            and len(input_range) == target_shape[0]
-            and all(isinstance(x, (float, int)) for x in input_range)
-        ):
-            input_range_tmp = tensor([(-s, s) for s in input_range], device=device, dtype=dtype)
-
-        elif (
-            isinstance(input_range, (tuple, list))
-            and len(input_range) == target_shape[0]
-            and all(isinstance(x, (tuple, list)) for x in input_range)
-        ):
-            input_range_tmp = tensor(input_range, device=device, dtype=dtype)
-
-        else:
-            raise TypeError(
-                "If not pass a tensor, it must be float, (float, float) for isotropic operation or a tuple of "
-                f"{target_size} floats or {target_size} (float, float) for independent operation. Got {input_range}."
-            )
+        raise TypeError(
+            "If not pass a tensor, it must be float, (float, float) for isotropic operation or a tuple of "
+            f"{target_size} floats or {target_size} (float, float) for independent operation. Got {input_range}."
+        )
 
     return input_range_tmp

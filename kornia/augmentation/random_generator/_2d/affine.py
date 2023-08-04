@@ -8,6 +8,8 @@ from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _
 from kornia.core import Tensor, as_tensor, concatenate, stack, tensor, zeros
 from kornia.utils.helpers import _extract_device_dtype
 
+__all__ = ["AffineGenerator"]
+
 
 class AffineGenerator(RandomGeneratorBase):
     r"""Get parameters for ``affine`` for a random affine transform.
@@ -34,8 +36,8 @@ class AffineGenerator(RandomGeneratorBase):
             - center (Tensor): element-wise center with a shape of (B, 2).
             - scale (Tensor): element-wise scales with a shape of (B, 2).
             - angle (Tensor): element-wise rotation angles with a shape of (B,).
-            - sx (Tensor): element-wise x-axis shears with a shape of (B,).
-            - sy (Tensor): element-wise y-axis shears with a shape of (B,).
+            - shear_x (Tensor): element-wise x-axis shears with a shape of (B,).
+            - shear_y (Tensor): element-wise y-axis shears with a shape of (B,).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes. By default,
@@ -131,7 +133,7 @@ class AffineGenerator(RandomGeneratorBase):
         self.shear_x_sampler = shear_x_sampler
         self.shear_y_sampler = shear_y_sampler
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         height = batch_shape[-2]
         width = batch_shape[-1]
@@ -173,6 +175,14 @@ class AffineGenerator(RandomGeneratorBase):
             sx = sx.to(device=_device, dtype=_dtype)
             sy = sy.to(device=_device, dtype=_dtype)
         else:
-            sx = sy = tensor([0] * batch_size, device=_device, dtype=_dtype)
+            sx = tensor([0] * batch_size, device=_device, dtype=_dtype)
+            sy = tensor([0] * batch_size, device=_device, dtype=_dtype)
 
-        return dict(translations=translations, center=center, scale=_scale, angle=angle, sx=sx, sy=sy)
+        return {
+            "translations": translations,
+            "center": center,
+            "scale": _scale,
+            "angle": angle,
+            "shear_x": sx,
+            "shear_y": sy,
+        }

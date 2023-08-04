@@ -4,7 +4,7 @@ from torch.autograd import gradcheck
 
 import kornia
 from kornia.testing import assert_close
-from kornia.utils._compat import torch_version_geq
+from kornia.utils._compat import torch_version_ge
 
 
 def _sample_points(batch_size, device, dtype=torch.float32):
@@ -50,17 +50,17 @@ class TestTransformParameters:
             src = torch.rand(batch_size, 5)
             assert kornia.geometry.transform.get_tps_transform(src, src)
 
-    @pytest.mark.grad
+    @pytest.mark.grad()
     @pytest.mark.parametrize('batch_size', [1, 3])
     @pytest.mark.parametrize('requires_grad', [True, False])
     def test_gradcheck(self, batch_size, device, dtype, requires_grad):
-        opts = dict(device=device, dtype=torch.float64)
+        opts = {'device': device, 'dtype': torch.float64}
         src, dst = _sample_points(batch_size, **opts)
         src.requires_grad_(requires_grad)
         dst.requires_grad_(not requires_grad)
         assert gradcheck(kornia.geometry.transform.get_tps_transform, (src, dst), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit
+    @pytest.mark.jit()
     @pytest.mark.parametrize('batch_size', [1, 3])
     def test_jit(self, batch_size, device, dtype):
         src, dst = _sample_points(batch_size, device)
@@ -121,11 +121,11 @@ class TestWarpPoints:
             affine_bad = torch.rand(batch_size, 3)
             assert kornia.geometry.transform.warp_points_tps(src, src, kernel, affine_bad)
 
-    @pytest.mark.grad
+    @pytest.mark.grad()
     @pytest.mark.parametrize('batch_size', [1, 3])
     @pytest.mark.parametrize('requires_grad', [True, False])
     def test_gradcheck(self, batch_size, device, dtype, requires_grad):
-        opts = dict(device=device, dtype=torch.float64)
+        opts = {'device': device, 'dtype': torch.float64}
         src, dst = _sample_points(batch_size, **opts)
         kernel, affine = kornia.geometry.transform.get_tps_transform(src, dst)
         kernel.requires_grad_(requires_grad)
@@ -134,7 +134,7 @@ class TestWarpPoints:
             kornia.geometry.transform.warp_points_tps, (src, dst, kernel, affine), raise_exception=True, fast_mode=True
         )
 
-    @pytest.mark.jit
+    @pytest.mark.jit()
     @pytest.mark.parametrize('batch_size', [1, 3])
     def test_jit(self, batch_size, device, dtype):
         src, dst = _sample_points(batch_size, device)
@@ -154,7 +154,7 @@ class TestWarpImage:
         assert warp.shape == tensor.shape
 
     @pytest.mark.skipif(
-        torch_version_geq(1, 10), reason="for some reason the solver detects singular matrices in pytorch >=1.10."
+        torch_version_ge(1, 10), reason="for some reason the solver detects singular matrices in pytorch >=1.10."
     )
     @pytest.mark.parametrize('batch_size', [1, 3])
     def test_warp(self, batch_size, device, dtype):
@@ -210,10 +210,10 @@ class TestWarpImage:
             affine_bad = torch.rand(batch_size, 3)
             assert kornia.geometry.transform.warp_image_tps(image, dst, kernel, affine_bad)
 
-    @pytest.mark.grad
+    @pytest.mark.grad()
     @pytest.mark.parametrize('batch_size', [1, 3])
     def test_gradcheck(self, batch_size, device, dtype):
-        opts = dict(device=device, dtype=torch.float64)
+        opts = {'device': device, 'dtype': torch.float64}
         src, dst = _sample_points(batch_size, **opts)
         kernel, affine = kornia.geometry.transform.get_tps_transform(src, dst)
         image = torch.rand(batch_size, 3, 8, 8, requires_grad=True, **opts)
@@ -227,7 +227,7 @@ class TestWarpImage:
             fast_mode=True,
         )
 
-    @pytest.mark.jit
+    @pytest.mark.jit()
     @pytest.mark.parametrize('batch_size', [1, 3])
     def test_jit(self, batch_size, device, dtype):
         src, dst = _sample_points(batch_size, device)

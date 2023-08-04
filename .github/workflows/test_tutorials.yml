@@ -1,0 +1,72 @@
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        required: false
+        type: string
+        default: '["3.10"]'
+      pytorch-version:
+        required: false
+        type: string
+        default: '["2.0.1"]'
+      os:
+        required: false
+        type: string
+        default: ubuntu-latest
+      fail-fast:
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  tests-tutorials:
+    name: python-${{ matrix.python-version }}, torch-${{ matrix.pytorch-version }}
+    runs-on: ${{ inputs.os }}
+    strategy:
+      fail-fast: ${{ inputs.fail-fast }}
+      matrix:
+        python-version: ${{ fromJSON(inputs.python-version) }}
+        pytorch-version: ${{ fromJSON(inputs.pytorch-version) }}
+        exclude:
+          - pytorch-version: '1.9.1'
+            python-version: '3.10'
+          - pytorch-version: '1.10.2'
+            python-version: '3.10'
+
+    steps:
+      - name: Checkout kornia
+        uses: actions/checkout@v3
+
+      - name: Setting environment on ${{ inputs.os }} with python ${{ matrix.python-version }} and pytorch ${{ matrix.pytorch-version }}
+        uses: ./.github/actions/env
+        with:
+          python-version: ${{ matrix.python-version }}
+          pytorch-version: ${{ matrix.pytorch-version }}
+
+      - name: Checkout tutorials
+        uses: actions/checkout@v3
+        with:
+          repository: 'kornia/tutorials'
+          path: 'tutorials-repo/'
+
+      - name: Install dependencies
+        working-directory: ./tutorials-repo/
+        shell: bash -l {0}
+        run: |
+          conda install torchvision -c pytorch
+          make setup
+
+      - name: Check deps
+        working-directory: ./tutorials-repo/
+        shell: bash -l {0}
+        run: make check-deps
+
+      - name: Generate tutorials
+        working-directory: ./tutorials-repo/
+        shell: bash -l {0}
+        run: make generate
+
+      - name: Run tutorials
+        working-directory: ./tutorials-repo/
+        shell: bash -l {0}
+        run: make execute

@@ -1,4 +1,4 @@
-from typing import Dict, Union
+from typing import Dict, Tuple, Union
 
 import torch
 from torch.distributions import Uniform
@@ -42,7 +42,7 @@ class PerspectiveGenerator3D(RandomGeneratorBase):
             tensor(0, device=device, dtype=dtype), tensor(1, device=device, dtype=dtype), validate_args=False
         )
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         depth = batch_shape[-3]
         height = batch_shape[-2]
@@ -86,4 +86,4 @@ class PerspectiveGenerator3D(RandomGeneratorBase):
         )
         end_points = start_points + factor * rand_val * pts_norm
 
-        return dict(start_points=start_points, end_points=end_points)
+        return {"start_points": start_points, "end_points": end_points}

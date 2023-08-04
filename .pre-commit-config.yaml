@@ -10,69 +10,38 @@ repos:
       - id: end-of-file-fixer
       - id: trailing-whitespace
       - id: check-yaml
+      - id: requirements-txt-fixer
       - id: pretty-format-json
         exclude: ^$|.devcontainer
 
-  - repo: https://github.com/asottile/setup-cfg-fmt
-    rev: v2.2.0
+  - repo: https://github.com/tox-dev/pyproject-fmt
+    rev: "0.13.0"
     hooks:
-      - id: setup-cfg-fmt
+      - id: pyproject-fmt
 
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.0.281
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
 
   - repo: https://github.com/psf/black
-    rev: 22.12.0
+    rev: 23.7.0
     hooks:
       - id: black
 
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.2.2
+    rev: v2.2.5
     hooks:
       - id: codespell
         args:
           - --ignore-words-list
-          - "ans,hist"
+          - "ans,hist,laf"
           - --skip
           - "*.bib,*.ipynb"
 
-  - repo: https://github.com/PyCQA/isort
-    rev: v5.11.3
-    hooks:
-      - id: isort
-
-  - repo: https://github.com/PyCQA/flake8
-    rev: 6.0.0
-    hooks:
-      - id: flake8
-
-  - repo: https://github.com/asottile/pyupgrade
-    rev: v3.3.1
-    hooks:
-      - id: pyupgrade
-        args: [--py37-plus]
-
-  - repo: https://github.com/PyCQA/bandit
-    rev: 1.7.4
-    hooks:
-      - id: bandit
-        name: bandit excluding the test directory
-        language_version: python3
-        exclude: ^test/
-      - id: bandit
-        name: bandit only the test directory
-        language_version: python3
-        files: ^test/
-        args:
-          - --skip
-          - "B101,B311"
-
   - repo: https://github.com/PyCQA/docformatter
-    rev: v1.5.1
+    rev: v1.7.5
     hooks:
       - id: docformatter
         args: [--in-place, --wrap-summaries=115, --wrap-descriptions=120]
-
-  - repo: https://github.com/asottile/yesqa
-    rev: v1.4.0
-    hooks:
-      - id: yesqa
-        name: Unused noqa

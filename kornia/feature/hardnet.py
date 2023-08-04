@@ -1,10 +1,11 @@
 from typing import Dict
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 
-from kornia.testing import KORNIA_CHECK_SHAPE, is_mps_tensor_safe
+from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.testing import is_mps_tensor_safe
 from kornia.utils.helpers import map_location_to_cpu
 
 urls: Dict[str, str] = {}
@@ -114,7 +115,7 @@ class HardNet8(nn.Module):
     """
     patch_size = 32
 
-    def __init__(self, pretrained: bool = False):
+    def __init__(self, pretrained: bool = False) -> None:
         super().__init__()
         self.features = nn.Sequential(
             nn.Conv2d(1, 32, kernel_size=3, padding=1, bias=False),
@@ -153,7 +154,7 @@ class HardNet8(nn.Module):
         self.eval()
 
     @staticmethod
-    def weights_init(m):
+    def weights_init(m: object) -> None:
         if isinstance(m, nn.Conv2d):
             nn.init.orthogonal_(m.weight.data, gain=0.6)
             if m.bias is not None:

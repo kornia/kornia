@@ -1,7 +1,7 @@
 from typing import Tuple
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 from kornia.utils import create_meshgrid
 from kornia.utils.helpers import _torch_solve_cast
@@ -26,8 +26,9 @@ def _pair_square_euclidean(tensor1: torch.Tensor, tensor2: torch.Tensor) -> torc
 def _kernel_distance(squared_distances: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     r"""Compute the TPS kernel distance function: :math:`r^2 log(r)`, where `r` is the euclidean distance.
 
-    Since :math:`\log(r) = 1/2 \log(r^2)`, this function takes the squared distance matrix and calculates
-    :math:`0.5 r^2 log(r^2)`.
+    Since
+    :math: `\log(r) = 1/2 \log(r^2)`, this function takes the squared distance matrix and calculates
+    :math: `0.5 r^2 log(r^2)`.
     """
     # r^2 * log(r) = 1/2 * r^2 * log(r^2)
     return 0.5 * squared_distances * squared_distances.add(eps).log()

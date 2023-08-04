@@ -67,7 +67,7 @@ class Trainer:
         valid_dataloader: DataLoader[Any],
         criterion: Optional[Module],
         optimizer: Optimizer,
-        scheduler: lr_scheduler.CosineAnnealingLR,
+        scheduler: lr_scheduler._LRScheduler,
         config: Configuration,
         callbacks: Dict[str, Callable[..., None]] = {},
     ) -> None:
@@ -185,7 +185,7 @@ class Trainer:
 
         return stats.as_dict()
 
-    def on_epoch_start(self, *args, **kwargs):
+    def on_epoch_start(self, *args: Any, **kwargs: Any) -> None:
         ...
 
     def preprocess(self, x: Dict[str, Tensor]) -> Dict[str, Tensor]:
@@ -194,7 +194,7 @@ class Trainer:
     def augmentations(self, x: Dict[str, Tensor]) -> Dict[str, Tensor]:
         return x
 
-    def compute_metrics(self, *args: Tensor) -> Dict[str, float]:
+    def compute_metrics(self, *args: Any) -> Dict[str, float]:
         """Compute metrics during the evaluation."""
         return {}
 
@@ -206,14 +206,14 @@ class Trainer:
     def on_before_model(self, x: Dict[str, Tensor]) -> Dict[str, Tensor]:
         return x
 
-    def on_model(self, model, sample: Dict[str, Tensor]):
+    def on_model(self, model: Module, sample: Dict[str, Tensor]) -> Tensor:
         return model(sample["input"])
 
-    def on_after_model(self, output: Tensor, sample: Dict[str, Tensor]):
+    def on_after_model(self, output: Tensor, sample: Dict[str, Tensor]) -> None:
         ...
 
-    def on_checkpoint(self, *args, **kwargs):
+    def on_checkpoint(self, *args: Any, **kwargs: Dict[str, Any]) -> None:
         ...
 
-    def on_epoch_end(self, *args, **kwargs):
+    def on_epoch_end(self, *args: Any, **kwargs: Dict[str, Any]) -> None:
         ...

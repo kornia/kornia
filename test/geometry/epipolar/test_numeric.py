@@ -22,15 +22,15 @@ class TestSkewSymmetric:
 
     @pytest.mark.parametrize("shapes", [(1, 1), (1, 5), (2, 1), (2, 5), (4, 1), (4, 5)])
     def test_shapes(self, device, dtype, shapes):
-        input_shape = shapes + (3,)
-        output_shape = shapes + (3, 3)
+        input_shape = (*shapes, 3)
+        output_shape = (*shapes, 3, 3)
         t = torch.rand(*input_shape, device=device, dtype=dtype)
         cross_product_matrix = epi.cross_product_matrix(t)
         assert cross_product_matrix.shape == output_shape
 
     @pytest.mark.parametrize("shapes", [(1, 1), (1, 5), (2, 1), (2, 5), (4, 1), (4, 5)])
     def test_funcional_shapes(self, device, dtype, shapes):
-        input_shape = shapes + (3,)
+        input_shape = (*shapes, 3)
         t = torch.rand(*input_shape, device=device, dtype=dtype)
 
         # Feed batches

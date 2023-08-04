@@ -14,6 +14,8 @@ from .face_detection import *
 from .histogram_matching import histogram_matching, interp
 from .image_stitching import ImageStitcher
 from .lambda_module import Lambda
+from .models.tiny_vit import TinyViT
+from .object_detection import ObjectDetector
 from .vit import VisionTransformer
 from .vit_mobile import MobileViT
 
@@ -28,6 +30,7 @@ __all__ = [
     "interp",
     "VisionTransformer",
     "MobileViT",
+    "TinyViT",
     "ClassificationHead",
     "Lambda",
     "ImageStitcher",
@@ -35,4 +38,5 @@ __all__ = [
     "distance_transform",
     "DistanceTransform",
     "diamond_square",
+    "ObjectDetector",
 ]

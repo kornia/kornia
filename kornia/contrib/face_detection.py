@@ -4,8 +4,8 @@ from enum import Enum
 from typing import Dict, List, Optional, Tuple
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 
 from kornia.geometry.bbox import nms as nms_kornia
 from kornia.utils.helpers import map_location_to_cpu
@@ -228,7 +228,7 @@ class FaceDetector(nn.Module):
 
 
 class ConvDPUnit(nn.Sequential):
-    def __init__(self, in_channels, out_channels, withBNRelu=True):
+    def __init__(self, in_channels: int, out_channels: int, withBNRelu: bool = True) -> None:
         super().__init__()
         self.add_module("conv1", nn.Conv2d(in_channels, out_channels, 1, 1, 0, bias=True, groups=1))
         self.add_module("conv2", nn.Conv2d(out_channels, out_channels, 3, 1, 1, bias=True, groups=out_channels))
@@ -254,7 +254,7 @@ class Conv4layerBlock(nn.Sequential):
 
 
 class YuFaceDetectNet(nn.Module):
-    def __init__(self, phase, pretrained: bool):
+    def __init__(self, phase: str, pretrained: bool) -> None:
         super().__init__()
         self.phase = phase
         self.num_classes = 2

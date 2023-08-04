@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 import torch
-import torch.nn as nn
 from scipy.ndimage import convolve
+from torch import nn
 from torch.autograd import gradcheck
 
 import kornia
@@ -44,9 +44,7 @@ class HausdorffERLossNumpy(nn.Module):
         eroted = np.zeros_like(bound)
 
         for batch in range(len(bound)):
-
             for k in range(self.erosions):
-
                 # compute convolution with kernel
                 dilation = convolve(bound[batch], kernel, mode="constant", cval=0.0)
 
@@ -86,7 +84,7 @@ class HausdorffERLossNumpy(nn.Module):
         pred: (b, 1, x, y, z) or (b, 1, x, y)
         target: (b, 1, x, y, z) or (b, 1, x, y)
         """
-        assert pred.dim() == 4 or pred.dim() == 5, "Only 2D and 3D supported"
+        assert pred.dim() in (4, 5), "Only 2D and 3D supported"
         assert pred.dim() == target.dim() and target.size(1) == 1, "Prediction and target need to be of same dimension"
         return torch.stack(
             [

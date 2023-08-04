@@ -1,11 +1,26 @@
 # kornia.geometry.so3 module inspired by Sophus-sympy.
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py
-from typing import Optional, Tuple
+from __future__ import annotations
 
-from kornia.core import Module, Parameter, Tensor, concatenate, eye, pad, rand, stack, tensor, where, zeros_like
+from kornia.core import (
+    Device,
+    Dtype,
+    Module,
+    Parameter,
+    Tensor,
+    concatenate,
+    eye,
+    pad,
+    stack,
+    tensor,
+    where,
+    zeros_like,
+)
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES
 from kornia.geometry.liegroup.so3 import So3
 from kornia.geometry.linalg import batched_dot_product
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_TYPE
+from kornia.geometry.quaternion import Quaternion
+from kornia.geometry.vector import Vector3
 
 
 class Se3(Module):
@@ -16,9 +31,8 @@ class Se3(Module):
     See more: https://ingmec.ual.es/~jlblanco/papers/jlblanco2010geometry3D_techrep.pdf
 
     Example:
-        >>> from kornia.geometry.quaternion import Quaternion
         >>> q = Quaternion.identity()
-        >>> s = Se3(So3(q), torch.ones(3))
+        >>> s = Se3(q, torch.ones(3))
         >>> s.r
         Parameter containing:
         tensor([1., 0., 0., 0.], requires_grad=True)
@@ -27,19 +41,19 @@ class Se3(Module):
         tensor([1., 1., 1.], requires_grad=True)
     """
 
-    def __init__(self, rotation: So3, translation: Tensor) -> None:
+    def __init__(self, rotation: Quaternion | So3, translation: Vector3 | Tensor) -> None:
         """Constructor for the base class.
 
         Internally represented by a unit quaternion `q` and a translation 3-vector.
 
         Args:
             rotation: So3 group encompassing a rotation.
-            translation: translation vector with the shape of :math:`(B, 3)`.
+            translation: Vector3 or translation tensor with the shape of :math:`(B, 3)`.
 
         Example:
             >>> from kornia.geometry.quaternion import Quaternion
             >>> q = Quaternion.identity(batch_size=1)
-            >>> s = Se3(So3(q), torch.ones((1, 3)))
+            >>> s = Se3(q, torch.ones((1, 3)))
             >>> s.r
             Parameter containing:
             tensor([[1., 0., 0., 0.]], requires_grad=True)
@@ -48,18 +62,31 @@ class Se3(Module):
             tensor([[1., 1., 1.]], requires_grad=True)
         """
         super().__init__()
-        KORNIA_CHECK_TYPE(rotation, So3)
+        # KORNIA_CHECK_TYPE(rotation, (Quaternion, So3))
+        if not isinstance(rotation, (Quaternion, So3)):
+            raise TypeError(f"rotation type is {type(rotation)}")
+        # KORNIA_CHECK_TYPE(translation, (Vector3, Tensor))
+        if not isinstance(translation, (Vector3, Tensor)):
+            raise TypeError(f"translation type is {type(translation)}")
         # KORNIA_CHECK_SHAPE(t, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
-        self._rotation = rotation
-        self._translation = Parameter(translation)
+        self._translation: Vector3 | Parameter
+        self._rotation: So3
+        if isinstance(translation, Tensor):
+            self._translation = Parameter(translation)
+        else:
+            self._translation = translation
+        if isinstance(rotation, Quaternion):
+            self._rotation = So3(rotation)
+        else:
+            self._rotation = rotation
 
     def __repr__(self) -> str:
         return f"rotation: {self.r}\ntranslation: {self.t}"
 
-    def __getitem__(self, idx) -> 'Se3':
+    def __getitem__(self, idx: int | slice) -> Se3:
         return Se3(self._rotation[idx], self._translation[idx])
 
-    def __mul__(self, right: "Se3") -> "Se3":
+    def __mul__(self, right: Se3) -> Se3 | Vector3 | Tensor:
         """Compose two Se3 transformations.
 
         Args:
@@ -71,15 +98,13 @@ class Se3(Module):
         so3 = self.so3
         t = self.t
         if isinstance(right, Se3):
-            KORNIA_CHECK_TYPE(right, Se3)
             # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py#L97
             _r = so3 * right.so3
             _t = t + so3 * right.t
             return Se3(_r, _t)
-        elif isinstance(right, Tensor):
-            KORNIA_CHECK_TYPE(right, Tensor)
+        elif isinstance(right, (Vector3, Tensor)):
             # KORNIA_CHECK_SHAPE(right, ["B", "N"])  # FIXME: resolve shape bugs. @edgarriba
-            return so3 * right + t
+            return so3 * right + t.data
         else:
             raise TypeError(f"Unsupported type: {type(right)}")
 
@@ -89,12 +114,17 @@ class Se3(Module):
         return self._rotation
 
     @property
+    def quaternion(self) -> Quaternion:
+        """Return the underlying rotation(Quaternion)."""
+        return self._rotation.q
+
+    @property
     def r(self) -> So3:
         """Return the underlying rotation(So3)."""
         return self._rotation
 
     @property
-    def t(self) -> Tensor:
+    def t(self) -> Vector3 | Tensor:
         """Return the underlying translation vector of shape :math:`(B,3)`."""
         return self._translation
 
@@ -104,12 +134,12 @@ class Se3(Module):
         return self._rotation
 
     @property
-    def translation(self) -> Tensor:
+    def translation(self) -> Vector3 | Tensor:
         """Return the underlying translation vector of shape :math:`(B,3)`."""
         return self._translation
 
     @staticmethod
-    def exp(v) -> 'Se3':
+    def exp(v: Tensor) -> Se3:
         """Converts elements of lie algebra to elements of lie group.
 
         Args:
@@ -146,11 +176,12 @@ class Se3(Module):
         Example:
             >>> from kornia.geometry.quaternion import Quaternion
             >>> q = Quaternion.identity()
-            >>> Se3(So3(q), torch.zeros(3)).log()
+            >>> Se3(q, torch.zeros(3)).log()
             tensor([0., 0., 0., 0., 0., 0.], grad_fn=<CatBackward0>)
         """
         omega = self.r.log()
         theta = batched_dot_product(omega, omega).sqrt()
+        t = self.t.data
         omega_hat = So3.hat(omega)
         omega_hat_sq = omega_hat @ omega_hat
         V_inv = (
@@ -158,11 +189,11 @@ class Se3(Module):
             - 0.5 * omega_hat
             + ((1 - theta * (theta / 2).cos() / (2 * (theta / 2).sin())) / theta.pow(2))[..., None, None] * omega_hat_sq
         )
-        t = where(theta[..., None] != 0.0, (self.t[..., None, :] * V_inv).sum(-1), self.t)
+        t = where(theta[..., None] != 0.0, (t[..., None, :] * V_inv).sum(-1), t)
         return concatenate((t, omega), -1)
 
     @staticmethod
-    def hat(v) -> Tensor:
+    def hat(v: Tensor) -> Tensor:
         """Converts elements from vector space to lie algebra.
 
         Args:
@@ -186,7 +217,7 @@ class Se3(Module):
         return pad(rt, (0, 0, 0, 1))  # add zeros bottom
 
     @staticmethod
-    def vee(omega) -> Tensor:
+    def vee(omega: Tensor) -> Tensor:
         """Converts elements from lie algebra to vector space.
 
         Args:
@@ -207,7 +238,7 @@ class Se3(Module):
         return concatenate((head, tail), -1)
 
     @classmethod
-    def identity(cls, batch_size: Optional[int] = None, device=None, dtype=None) -> 'Se3':
+    def identity(cls, batch_size: int | None = None, device: Device | None = None, dtype: Dtype = None) -> Se3:
         """Create a Se3 group representing an identity rotation and zero translation.
 
         Args:
@@ -219,14 +250,15 @@ class Se3(Module):
             Parameter containing:
             tensor([1., 0., 0., 0.], requires_grad=True)
             >>> s.t
-            Parameter containing:
-            tensor([0., 0., 0.], requires_grad=True)
+            x: 0.0
+            y: 0.0
+            z: 0.0
         """
-        t: Tensor = tensor([0.0, 0.0, 0.0], device=device, dtype=dtype)
+        t = tensor([0.0, 0.0, 0.0], device=device, dtype=dtype)
         if batch_size is not None:
             t = t.repeat(batch_size, 1)
 
-        return cls(So3.identity(batch_size, device, dtype), t)
+        return cls(So3.identity(batch_size, device, dtype), Vector3(t))
 
     def matrix(self) -> Tensor:
         """Returns the matrix representation of shape :math:`(B, 4, 4)`.
@@ -239,12 +271,55 @@ class Se3(Module):
                     [0., 0., 1., 1.],
                     [0., 0., 0., 1.]], grad_fn=<CopySlices>)
         """
-        rt = concatenate((self.r.matrix(), self.t[..., None]), -1)
+        rt = concatenate((self.r.matrix(), self.t.data[..., None]), -1)
         rt_4x4 = pad(rt, (0, 0, 0, 1))  # add last row zeros
         rt_4x4[..., -1, -1] = 1.0
         return rt_4x4
 
-    def inverse(self) -> 'Se3':
+    @classmethod
+    def from_matrix(cls, matrix: Tensor) -> Se3:
+        """Create a Se3 group from a matrix.
+
+        Args:
+            matrix: tensor of shape :math:`(B, 4, 4)`.
+
+        Example:
+            >>> s = Se3.from_matrix(torch.eye(4))
+            >>> s.r
+            Parameter containing:
+            tensor([1., 0., 0., 0.], requires_grad=True)
+            >>> s.t
+            Parameter containing:
+            tensor([0., 0., 0.], requires_grad=True)
+        """
+        # KORNIA_CHECK_SHAPE(matrix, ["B", "4", "4"])  # FIXME: resolve shape bugs. @edgarriba
+        r = So3.from_matrix(matrix[..., :3, :3])
+        t = matrix[..., :3, -1]
+        return cls(r, t)
+
+    @classmethod
+    def from_qxyz(cls, qxyz: Tensor) -> Se3:
+        """Create a Se3 group a quaternion and translation vector.
+
+        Args:
+            qxyz: tensor of shape :math:`(B, 7)`.
+
+        Example:
+            >>> qxyz = torch.tensor([1., 2., 3., 0., 0., 0., 1.])
+            >>> s = Se3.from_qxyz(qxyz)
+            >>> s.r
+            Parameter containing:
+            tensor([1., 2., 3., 0.], requires_grad=True)
+            >>> s.t
+            x: 0.0
+            y: 0.0
+            z: 1.0
+        """
+        # KORNIA_CHECK_SHAPE(qxyz, ["B", "7"])  # FIXME: resolve shape bugs. @edgarriba
+        q, xyz = qxyz[..., :4], qxyz[..., 4:]
+        return cls(So3.from_wxyz(q), Vector3(xyz))
+
+    def inverse(self) -> Se3:
         """Returns the inverse transformation.
 
         Example:
@@ -258,10 +333,14 @@ class Se3(Module):
             tensor([-1., -1., -1.], requires_grad=True)
         """
         r_inv = self.r.inverse()
-        return Se3(r_inv, r_inv * (-1 * self.t))
+        _t = -1 * self.t
+        if isinstance(_t, int):
+            raise TypeError('Unexpected integer from `-1 * translation`')
+
+        return Se3(r_inv, r_inv * _t)
 
     @classmethod
-    def random(cls, batch_size: Optional[int] = None, device=None, dtype=None) -> 'Se3':
+    def random(cls, batch_size: int | None = None, device: Device | None = None, dtype: Dtype = None) -> Se3:
         """Create a Se3 group representing a random transformation.
 
         Args:
@@ -271,17 +350,18 @@ class Se3(Module):
             >>> s = Se3.random()
             >>> s = Se3.random(batch_size=3)
         """
-        r = So3.random(batch_size, device, dtype)
-        shape: Tuple[int, ...]
+        shape: tuple[int, ...]
         if batch_size is None:
-            shape = (3,)
+            shape = ()
         else:
             KORNIA_CHECK(batch_size >= 1, msg="batch_size must be positive")
-            shape = (batch_size, 3)
-        return cls(r, rand(shape, device=device, dtype=dtype))
+            shape = (batch_size,)
+        r = So3.random(batch_size, device, dtype)
+        t = Vector3.random(shape, device, dtype)
+        return cls(r, t)
 
     @classmethod
-    def rot_x(cls, x: Tensor) -> "Se3":
+    def rot_x(cls, x: Tensor) -> Se3:
         """Construct a x-axis rotation.
 
         Args:
@@ -291,7 +371,7 @@ class Se3(Module):
         return cls(So3.rot_x(x), stack((zs, zs, zs), -1))
 
     @classmethod
-    def rot_y(cls, y: Tensor) -> "Se3":
+    def rot_y(cls, y: Tensor) -> Se3:
         """Construct a y-axis rotation.
 
         Args:
@@ -301,7 +381,7 @@ class Se3(Module):
         return cls(So3.rot_y(y), stack((zs, zs, zs), -1))
 
     @classmethod
-    def rot_z(cls, z: Tensor) -> "Se3":
+    def rot_z(cls, z: Tensor) -> Se3:
         """Construct a z-axis rotation.
 
         Args:
@@ -311,7 +391,7 @@ class Se3(Module):
         return cls(So3.rot_z(z), stack((zs, zs, zs), -1))
 
     @classmethod
-    def trans(cls, x: Tensor, y: Tensor, z: Tensor) -> "Se3":
+    def trans(cls, x: Tensor, y: Tensor, z: Tensor) -> Se3:
         """Construct a translation only Se3 instance.
 
         Args:
@@ -327,7 +407,7 @@ class Se3(Module):
         return cls(rotation, stack((x, y, z), -1))
 
     @classmethod
-    def trans_x(cls, x: Tensor) -> "Se3":
+    def trans_x(cls, x: Tensor) -> Se3:
         """Construct a x-axis translation.
 
         Args:
@@ -337,7 +417,7 @@ class Se3(Module):
         return cls.trans(x, zs, zs)
 
     @classmethod
-    def trans_y(cls, y: Tensor) -> "Se3":
+    def trans_y(cls, y: Tensor) -> Se3:
         """Construct a y-axis translation.
 
         Args:
@@ -347,7 +427,7 @@ class Se3(Module):
         return cls.trans(zs, y, zs)
 
     @classmethod
-    def trans_z(cls, z: Tensor) -> "Se3":
+    def trans_z(cls, z: Tensor) -> Se3:
         """Construct a z-axis translation.
 
         Args:

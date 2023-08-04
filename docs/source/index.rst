@@ -32,7 +32,6 @@ Join the community
 - Join our social network communities with 1.8k+ members:
    - `Twitter <https://twitter.com/kornia_foss>`_: we share the recent research and news for out mainstream community.
    - `Slack <https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-2AQRi~X9Uu6PLMuUZdvfjA>`_: come to us and chat with our engineers and mentors to get support and resolve your questions.
-   - `LibreCV <https://librecv.org>`_: its our Open Source and Machine Learning community forum. Come and have fun !
 - Subscribe to our `YouTube channel <https://www.youtube.com/channel/UCI1SE1Ij2Fast5BSKxoa7Ag>`_ to get the latest video demos.
 
 ----
@@ -48,34 +47,7 @@ Join the community
    Tutorials <https://kornia-tutorials.readthedocs.io/en/latest/>
    get-started/training
    OpenCV AI Kit <https://docs.luxonis.com/en/latest/pages/tutorials/creating-custom-nn-models/#kornia>
-
-.. toctree::
-   :caption: KORNIA APPLICATIONS
-   :hidden:
-
-   applications/intro
-   applications/face_detection
-   applications/image_augmentations
-   applications/image_classification
-   applications/image_matching
-   applications/image_stitching
-   applications/image_registration
-   applications/semantic_segmentation
-
-.. toctree::
-   :caption: KORNIA MODELS
-   :hidden:
-
-   models/yunet
-   models/vit
-   models/vit_mobile
-   models/loftr
-   models/defmo
-   models/hardnet
-   models/affnet
-   models/sold2
-   models/dexined
-
+   get-started/governance
 
 .. toctree::
    :caption: API REFERENCE
@@ -85,11 +57,14 @@ Join the community
    augmentation
    color
    contrib
+   core
    enhance
    feature
    filters
    geometry
+   sensors
    io
+   image
    losses
    metrics
    morphology
@@ -97,6 +72,40 @@ Join the community
    testing
    utils
    x
+
+.. toctree::
+   :caption: KORNIA APPLICATIONS
+   :hidden:
+
+   applications/intro
+   applications/visual_prompting
+   applications/face_detection
+   applications/image_augmentations
+   applications/image_classification
+   applications/image_matching
+   applications/image_stitching
+   applications/image_registration
+   applications/image_denoising
+   applications/semantic_segmentation
+   applications/object_detection
+
+.. toctree::
+   :caption: KORNIA MODELS
+   :hidden:
+
+   models/rt_detr
+   models/segment_anything
+   models/mobile_sam
+   models/yunet
+   models/vit
+   models/vit_mobile
+   models/tiny_vit
+   models/loftr
+   models/defmo
+   models/hardnet
+   models/affnet
+   models/sold2
+   models/dexined
 
 .. toctree::
    :caption: SUPPORT
@@ -117,5 +126,4 @@ Join the community
 
    community/contribute
    community/faqs
-   community/governance
    community/bibliography

@@ -9,6 +9,8 @@ from kornia.core import Tensor
 from kornia.geometry.bbox import bbox_generator
 from kornia.utils.helpers import _extract_device_dtype
 
+__all__ = ["MosaicGenerator"]
+
 
 class MosaicGenerator(RandomGeneratorBase):
     r"""Generate mixup indexes and lambdas for a batch of inputs.
@@ -57,7 +59,7 @@ class MosaicGenerator(RandomGeneratorBase):
             validate_args=False,
         )
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         input_sizes = (batch_shape[-2], batch_shape[-1])
         # output_size = input_sizes if self.output_size is None else self.output_size
@@ -98,9 +100,9 @@ class MosaicGenerator(RandomGeneratorBase):
             batch_shapes = torch.zeros([0, 3], device=_device, dtype=torch.long)
         else:
             batch_shapes = torch.stack([torch.as_tensor(batch_shape[1:], device=_device) for _ in range(batch_size)])
-        return dict(
-            permutation=mosiac_ids.to(device=_device, dtype=torch.long),
-            src=crop_src,
-            dst=crop_dst,
-            batch_shapes=batch_shapes,
-        )
+        return {
+            "permutation": mosiac_ids.to(device=_device, dtype=torch.long),
+            "src": crop_src,
+            "dst": crop_dst,
+            "batch_shapes": batch_shapes,
+        }

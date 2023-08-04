@@ -8,6 +8,8 @@ from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _
 from kornia.core import Tensor
 from kornia.utils.helpers import _extract_device_dtype
 
+__all__ = ["MotionBlurGenerator"]
+
 
 class MotionBlurGenerator(RandomGeneratorBase):
     r"""Get parameters for motion blur.
@@ -70,7 +72,7 @@ class MotionBlurGenerator(RandomGeneratorBase):
         self.angle_sampler = Uniform(angle[0], angle[1], validate_args=False)
         self.direction_sampler = Uniform(direction[0], direction[1], validate_args=False)
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         # self.ksize_factor.expand((batch_size, -1))
@@ -79,8 +81,8 @@ class MotionBlurGenerator(RandomGeneratorBase):
         direction_factor = _adapted_rsampling((batch_size,), self.direction_sampler, same_on_batch)
         ksize_factor = _adapted_rsampling((batch_size,), self.ksize_sampler, same_on_batch).int() * 2 + 1
 
-        return dict(
-            ksize_factor=ksize_factor.to(device=_device, dtype=torch.int32),
-            angle_factor=angle_factor.to(device=_device, dtype=_dtype),
-            direction_factor=direction_factor.to(device=_device, dtype=_dtype),
-        )
+        return {
+            "ksize_factor": ksize_factor.to(device=_device, dtype=torch.int32),
+            "angle_factor": angle_factor.to(device=_device, dtype=_dtype),
+            "direction_factor": direction_factor.to(device=_device, dtype=_dtype),
+        }

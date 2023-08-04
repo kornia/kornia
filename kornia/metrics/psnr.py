@@ -38,10 +38,10 @@ def psnr(input: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Ten
         https://en.wikipedia.org/wiki/Peak_signal-to-noise_ratio#Definition
     """
     if not isinstance(input, torch.Tensor):
-        raise TypeError(f"Expected torch.Tensor but got {type(target)}.")
+        raise TypeError(f"Expected torch.Tensor but got {type(input)}.")
 
     if not isinstance(target, torch.Tensor):
-        raise TypeError(f"Expected torch.Tensor but got {type(input)}.")
+        raise TypeError(f"Expected torch.Tensor but got {type(target)}.")
 
     if input.shape != target.shape:
         raise TypeError(f"Expected tensors of equal shapes, but got {input.shape} and {target.shape}")

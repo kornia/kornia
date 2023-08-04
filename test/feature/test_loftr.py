@@ -8,7 +8,7 @@ import kornia.testing as utils  # test utils
 from kornia.feature import LoFTR
 from kornia.geometry import resize
 from kornia.testing import assert_close
-from kornia.utils._compat import torch_version_geq
+from kornia.utils._compat import torch_version_ge
 
 
 class TestLoFTR:
@@ -20,7 +20,7 @@ class TestLoFTR:
         loftr = LoFTR('indoor').to(device, dtype)
         assert loftr is not None
 
-    @pytest.mark.skipif(torch_version_geq(1, 10), reason="RuntimeError: CUDA out of memory with pytorch>=1.10")
+    @pytest.mark.skipif(torch_version_ge(1, 10), reason="RuntimeError: CUDA out of memory with pytorch>=1.10")
     @pytest.mark.skipif(sys.platform == "win32", reason="this test takes so much memory in the CI with Windows")
     @pytest.mark.parametrize("data", ["loftr_fund"], indirect=True)
     def test_pretrained_indoor(self, device, dtype, data):
@@ -31,7 +31,7 @@ class TestLoFTR:
         assert_close(out['keypoints0'], data_dev["loftr_indoor_tentatives0"])
         assert_close(out['keypoints1'], data_dev["loftr_indoor_tentatives1"])
 
-    @pytest.mark.skipif(torch_version_geq(1, 10), reason="RuntimeError: CUDA out of memory with pytorch>=1.10")
+    @pytest.mark.skipif(torch_version_ge(1, 10), reason="RuntimeError: CUDA out of memory with pytorch>=1.10")
     @pytest.mark.skipif(sys.platform == "win32", reason="this test takes so much memory in the CI with Windows")
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     def test_pretrained_outdoor(self, device, dtype, data):
@@ -46,9 +46,9 @@ class TestLoFTR:
         patches = torch.rand(1, 1, 32, 32, device=device)
         mask = torch.rand(1, 32, 32, device=device)
         loftr = LoFTR().to(patches.device, patches.dtype)
-        input = {"image0": patches, "image1": patches, "mask0": mask, "mask1": mask}
+        sample = {"image0": patches, "image1": patches, "mask0": mask, "mask1": mask}
         with torch.no_grad():
-            out = loftr(input)
+            out = loftr(sample)
         assert out is not None
 
     def test_gradcheck(self, device):
@@ -68,10 +68,10 @@ class TestLoFTR:
         B, C, H, W = 1, 1, 32, 32
         patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
         patches2x = resize(patches, (48, 48))
-        input = {"image0": patches, "image1": patches2x}
+        sample = {"image0": patches, "image1": patches2x}
         model = LoFTR().to(patches.device, patches.dtype).eval()
         model_jit = torch.jit.script(model)
-        out = model(input)
-        out_jit = model_jit(input)
+        out = model(sample)
+        out_jit = model_jit(sample)
         for k, v in out.items():
             assert_close(v, out_jit[k])

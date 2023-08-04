@@ -27,7 +27,7 @@ class _KORNIA_EnumMeta(EnumMeta):
 
         return any(val == other for val in self)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return ' | '.join(f"{self.__name__}.{val.name}" for val in self)
 
 
@@ -118,11 +118,12 @@ class DType(Enum, metaclass=_KORNIA_EnumMeta):
         elif data == DType.FLOAT64:
             return torch.float64
 
-        raise ValueError()
+        raise ValueError
 
 
 # TODO: (low-priority) add INPUT3D, MASK3D, BBOX3D, LAFs etc.
 class DataKey(Enum, metaclass=_KORNIA_EnumMeta):
+    IMAGE = 0
     INPUT = 0
     MASK = 1
     BBOX = 2

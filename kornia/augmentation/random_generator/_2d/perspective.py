@@ -1,4 +1,4 @@
-from typing import Dict, Union
+from typing import Dict, Tuple, Union
 
 import torch
 from torch.distributions import Uniform
@@ -7,6 +7,8 @@ from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check
 from kornia.core import Tensor, tensor
 from kornia.utils.helpers import _extract_device_dtype
+
+__all__ = ["PerspectiveGenerator"]
 
 
 class PerspectiveGenerator(RandomGeneratorBase):
@@ -49,7 +51,7 @@ class PerspectiveGenerator(RandomGeneratorBase):
             tensor(0, device=device, dtype=dtype), tensor(1, device=device, dtype=dtype), validate_args=False
         )
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         height = batch_shape[-2]
         width = batch_shape[-1]
@@ -81,4 +83,4 @@ class PerspectiveGenerator(RandomGeneratorBase):
 
         end_points = start_points + offset
 
-        return dict(start_points=start_points, end_points=end_points)
+        return {"start_points": start_points, "end_points": end_points}

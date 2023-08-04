@@ -1,4 +1,6 @@
-from typing import Any, Dict, List, Optional, Tuple, Union
+from __future__ import annotations
+
+from typing import Any
 
 import torch
 from torch import Tensor
@@ -39,17 +41,16 @@ class Normalize(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        mean: Union[Tensor, Tuple[float], List[float], float],
-        std: Union[Tensor, Tuple[float], List[float], float],
+        mean: Tensor | tuple[float | int] | list[float | int] | float | int,
+        std: Tensor | tuple[float | int] | list[float | int] | float | int,
         p: float = 1.0,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=True, keepdim=keepdim)
-        if isinstance(mean, float):
+        super().__init__(p=p, same_on_batch=True, keepdim=keepdim)
+        if isinstance(mean, (int, float)):
             mean = torch.tensor([mean])
 
-        if isinstance(std, float):
+        if isinstance(std, (int, float)):
             std = torch.tensor([std])
 
         if isinstance(mean, (tuple, list)):
@@ -58,9 +59,9 @@ class Normalize(IntensityAugmentationBase2D):
         if isinstance(std, (tuple, list)):
             std = torch.tensor(std)
 
-        self.flags = dict(mean=mean, std=std)
+        self.flags = {"mean": mean, "std": std}
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
     ) -> Tensor:
         return normalize(input, flags["mean"], flags["std"])

@@ -46,8 +46,20 @@ class TestHyperplane(BaseTester):
         p0 = Vector3.random(shape, device, dtype)
         n0 = Vector3.random(shape, device, dtype).normalized()
         pl0 = Hyperplane.from_vector(n0, p0)
-        assert pl0.normal.shape == shape or () + (3,)
-        assert pl0.offset.shape == (shape + () if shape is not None else ())
+        assert pl0.normal.shape == shape or (3,)
+        assert pl0.offset.shape == ((*shape,) if shape is not None else ())
+
+    def test_serialization(self, device, dtype, tmp_path):
+        p = Vector3.random((), device, dtype)
+        n = Vector3.random((), device, dtype).normalized()
+        plane = Hyperplane.from_vector(n, p)
+
+        file_path = tmp_path / "plane.pt"
+        torch.save(plane, file_path)
+        assert file_path.is_file()
+
+        loaded_plane = torch.load(file_path)
+        self.assert_close(plane.normal.unwrap(), loaded_plane.normal.unwrap())
 
     # TODO: implement `Vector2`
     # @pytest.mark.parametrize("batch_size", [1, 2])
@@ -66,8 +78,8 @@ class TestHyperplane(BaseTester):
         v2 = Vector3.random(shape, device, dtype)
         # TODO: improve api so that we can accept Vector too
         p0 = Hyperplane.through(v0, v1, v2)
-        assert p0.normal.shape == shape or () + (3,)
-        assert p0.offset.shape == (shape + () if shape is not None else ())
+        assert p0.normal.shape == shape or (3,)
+        assert p0.offset.shape == ((*shape,) if shape is not None else ())
 
     @pytest.mark.parametrize("shape", (None, (1,), (2, 1)))
     def test_abs_signed_distance(self, device, dtype, shape):

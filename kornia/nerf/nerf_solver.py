@@ -3,7 +3,7 @@ from typing import Optional, Union
 
 import torch
 import torch.nn.functional as F
-import torch.optim as optim
+from torch import optim
 
 from kornia.core import Module, Tensor, tensor, zeros
 from kornia.geometry.camera import PinholeCamera
@@ -53,7 +53,7 @@ class NerfSolver:
         batch_size: int,
         num_ray_points: int,
         irregular_ray_sampling: bool = True,
-        log_space_encoding=True,
+        log_space_encoding: bool = True,
         lr: float = 1.0e-3,
     ) -> None:
         r"""Initializes training.
@@ -178,7 +178,7 @@ class NerfSolver:
             epoch_psnr = self._train_one_epoch()
 
             if i_epoch % 10 == 0:
-                current_time = datetime.now().strftime("%H:%M:%S")
+                current_time = datetime.now().strftime("%H:%M:%S")  # noqa: DTZ005
                 print(f'Epoch: {i_epoch}: epoch_psnr = {epoch_psnr}; time: {current_time}')
 
     def render_views(self, cameras: PinholeCamera) -> ImageTensors:

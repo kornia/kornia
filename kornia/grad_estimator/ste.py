@@ -1,7 +1,6 @@
 from typing import Any, Callable, Optional, Tuple
 
-import torch.nn as nn
-from torch import Tensor
+from torch import Tensor, nn
 from torch.autograd import Function
 
 __all__ = ["STEFunction", "StraightThroughEstimator"]
@@ -105,12 +104,12 @@ class StraightThroughEstimator(nn.Module):
                   [0.0422, 0.0566, 0.0626, 0.0422]]]])
     """
 
-    def __init__(self, target_fn: nn.Module, grad_fn: Optional[Callable[..., Any]] = None):
+    def __init__(self, target_fn: nn.Module, grad_fn: Optional[Callable[..., Any]] = None) -> None:
         super().__init__()
         self.target_fn = target_fn
         self.grad_fn = grad_fn
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"{self.__class__.__name__}(target_fn={self.target_fn}, grad_fn={self.grad_fn})"
 
     def forward(self, input: Tensor) -> Tensor:

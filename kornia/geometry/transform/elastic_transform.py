@@ -1,24 +1,26 @@
-from typing import Tuple
+from typing import Tuple, Union
 
-import torch
 import torch.nn.functional as F
 
-from kornia.filters import filter2d, get_gaussian_kernel2d
+from kornia.core import Tensor, concatenate, tensor
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.filters import filter2d
+from kornia.filters.kernels import get_gaussian_kernel2d
 from kornia.utils import create_meshgrid
 
 __all__ = ["elastic_transform2d"]
 
 
 def elastic_transform2d(
-    image: torch.Tensor,
-    noise: torch.Tensor,
+    image: Tensor,
+    noise: Tensor,
     kernel_size: Tuple[int, int] = (63, 63),
-    sigma: Tuple[float, float] = (32.0, 32.0),
-    alpha: Tuple[float, float] = (1.0, 1.0),
+    sigma: Union[Tuple[float, float], Tensor] = (32.0, 32.0),
+    alpha: Union[Tuple[float, float], Tensor] = (1.0, 1.0),
     align_corners: bool = False,
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
-) -> torch.Tensor:
+) -> Tensor:
     r"""Apply elastic transform of images as described in :cite:`Simard2003BestPF`.
 
     .. image:: _static/img/elastic_transform2d.png
@@ -36,10 +38,6 @@ def elastic_transform2d(
         align_corners: Interpolation flag used by ```grid_sample```.
         mode: Interpolation mode used by ```grid_sample```. Either ``'bilinear'`` or ``'nearest'``.
         padding_mode: The padding used by ```grid_sample```. Either ``'zeros'``, ``'border'`` or ``'refection'``.
-
-    .. note:
-        ```sigma``` and ```alpha``` can also be a ``torch.Tensor``. However, you could not torchscript
-         this function with tensor until PyTorch 1.8 is released.
 
     Returns:
         the elastically transformed input image with shape :math:`(B,C,H,W)`.
@@ -62,31 +60,38 @@ def elastic_transform2d(
         >>> image_hat = elastic_transform2d(image, noise, (3, 3), alpha=alpha)
         >>> image_hat.mean().backward()
     """
-    if not isinstance(image, torch.Tensor):
-        raise TypeError(f"Input image is not torch.Tensor. Got {type(image)}")
+    KORNIA_CHECK_IS_TENSOR(image)
+    KORNIA_CHECK_IS_TENSOR(noise)
+    KORNIA_CHECK_SHAPE(image, ['B', 'C', 'H', 'W'])
+    KORNIA_CHECK_SHAPE(noise, ['B', 'C', 'H', 'W'])
 
-    if not isinstance(noise, torch.Tensor):
-        raise TypeError(f"Input noise is not torch.Tensor. Got {type(noise)}")
-
-    if not len(image.shape) == 4:
-        raise ValueError(f"Invalid image shape, we expect BxCxHxW. Got: {image.shape}")
-
-    if not len(noise.shape) == 4 or noise.shape[1] != 2:
-        raise ValueError(f"Invalid noise shape, we expect Bx2xHxW. Got: {noise.shape}")
+    device, dtype = image.device, image.dtype
+    # if isinstance(sigma, tuple):
+    #    sigma_t = tensor(sigma, device=device, dtype=dtype)
+    if isinstance(sigma, Tensor):
+        sigma = sigma.expand(2)[None, ...]
+    #        sigma = sigma.to(device=device, dtype=dtype)
 
     # Get Gaussian kernel for 'y' and 'x' displacement
-    kernel_x: torch.Tensor = get_gaussian_kernel2d(kernel_size, (sigma[0], sigma[0]))[None]
-    kernel_y: torch.Tensor = get_gaussian_kernel2d(kernel_size, (sigma[1], sigma[1]))[None]
+    kernel_x = get_gaussian_kernel2d(kernel_size, sigma)  # _t[0].expand(2).unsqueeze(0))
+    kernel_y = get_gaussian_kernel2d(kernel_size, sigma)  # _t[1].expand(2).unsqueeze(0))
+
+    if isinstance(alpha, Tensor):
+        alpha_x = alpha[0]
+        alpha_y = alpha[1]
+    else:
+        alpha_x = tensor(alpha[0], device=device, dtype=dtype)
+        alpha_y = tensor(alpha[1], device=device, dtype=dtype)
 
     # Convolve over a random displacement matrix and scale them with 'alpha'
-    disp_x: torch.Tensor = noise[:, :1]
-    disp_y: torch.Tensor = noise[:, 1:]
+    disp_x = noise[:, :1]
+    disp_y = noise[:, 1:]
 
-    disp_x = filter2d(disp_x, kernel=kernel_y, border_type='constant') * alpha[0]
-    disp_y = filter2d(disp_y, kernel=kernel_x, border_type='constant') * alpha[1]
+    disp_x = filter2d(disp_x, kernel=kernel_y, border_type='constant') * alpha_x
+    disp_y = filter2d(disp_y, kernel=kernel_x, border_type='constant') * alpha_y
 
     # stack and normalize displacement
-    disp = torch.cat([disp_x, disp_y], dim=1).permute(0, 2, 3, 1)
+    disp = concatenate([disp_x, disp_y], 1).permute(0, 2, 3, 1)
 
     # Warp image based on displacement matrix
     _, _, h, w = image.shape

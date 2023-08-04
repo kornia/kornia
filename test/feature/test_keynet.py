@@ -1,10 +1,8 @@
-import pytest
 import torch
 from torch.autograd import gradcheck
 
 import kornia.testing as utils  # test utils
 from kornia.feature import KeyNet
-from kornia.testing import assert_close
 
 
 class TestKeyNet:
@@ -25,11 +23,3 @@ class TestKeyNet:
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
         keynet = KeyNet().to(patches.device, patches.dtype)
         assert gradcheck(keynet, (patches,), eps=1e-4, atol=1e-4, nondet_tol=1e-8, raise_exception=True, fast_mode=True)
-
-    @pytest.mark.jit
-    def test_jit(self, device, dtype):
-        B, C, H, W = 2, 1, 32, 32
-        patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
-        model = KeyNet(True).to(patches.device, patches.dtype).eval()
-        model_jit = torch.jit.script(KeyNet(True).to(patches.device, patches.dtype).eval())
-        assert_close(model(patches), model_jit(patches))

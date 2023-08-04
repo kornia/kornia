@@ -1,13 +1,14 @@
 import math
+from typing import Tuple
 
 import torch
 
 from kornia.core import Tensor
 
 
-def arange_sequence(ranges):
-    """
-    returns a sequence of the ranges specified by the argument.
+def arange_sequence(ranges: Tensor) -> Tensor:
+    """Returns a sequence of the ranges specified by the argument.
+
     Example:
     [2, 5, 1, 2] -> [0, 1, 0, 1, 2, 3, 4, 0, 0, 1]
     """
@@ -18,7 +19,7 @@ def arange_sequence(ranges):
     return complete_ranges[complete_ranges < ranges.unsqueeze(-1)]
 
 
-def dist_matrix(d1, d2, is_normalized=False):
+def dist_matrix(d1: Tensor, d2: Tensor, is_normalized: bool = False) -> Tensor:
     if is_normalized:
         return 2 - 2.0 * d1 @ d2.t()
     x_norm = (d1**2).sum(1).view(-1, 1)
@@ -29,14 +30,14 @@ def dist_matrix(d1, d2, is_normalized=False):
     return distmat
 
 
-def orientation_diff(o1, o2):
+def orientation_diff(o1: Tensor, o2: Tensor) -> Tensor:
     diff = o2 - o1
     diff[diff < -180] += 360
     diff[diff >= 180] -= 360
     return diff
 
 
-def piecewise_arange(piecewise_idxer: Tensor):
+def piecewise_arange(piecewise_idxer: Tensor) -> Tensor:
     """
     count repeated indices
     Example:
@@ -55,7 +56,7 @@ def piecewise_arange(piecewise_idxer: Tensor):
     return ranges[tmp]
 
 
-def batch_2x2_inv(m, check_dets=False):
+def batch_2x2_inv(m: Tensor, check_dets: bool = False) -> Tensor:
     a = m[..., 0, 0]
     b = m[..., 0, 1]
     c = m[..., 1, 0]
@@ -71,15 +72,15 @@ def batch_2x2_inv(m, check_dets=False):
     return minv / det.unsqueeze(-1).unsqueeze(-1)
 
 
-def batch_2x2_Q(m):
+def batch_2x2_Q(m: Tensor) -> Tensor:
     return batch_2x2_inv(batch_2x2_invQ(m), check_dets=True)
 
 
-def batch_2x2_invQ(m):
+def batch_2x2_invQ(m: Tensor) -> Tensor:
     return m @ m.transpose(-1, -2)
 
 
-def batch_2x2_det(m):
+def batch_2x2_det(m: Tensor) -> Tensor:
     a = m[..., 0, 0]
     b = m[..., 0, 1]
     c = m[..., 1, 0]
@@ -87,7 +88,7 @@ def batch_2x2_det(m):
     return a * d - b * c
 
 
-def batch_2x2_ellipse(m):
+def batch_2x2_ellipse(m: Tensor) -> Tuple[Tensor, Tensor]:
     am = m[..., 0, 0]
     bm = m[..., 0, 1]
     cm = m[..., 1, 0]
@@ -111,14 +112,15 @@ def batch_2x2_ellipse(m):
     return eigenvals, eigenvecs
 
 
-def draw_first_k_couples(k: int, rdims: Tensor, dv: torch.device):
+def draw_first_k_couples(k: int, rdims: Tensor, dv: torch.device) -> Tensor:
     # exhaustive search over the first n samples:
     # n(n+1)/2 = n2/2 + n/2 couples
     # max n for which we can exhaustively sample with k couples:
     # n2/2 + n/2 = k
     # n = sqrt(1/4 + 2k)-1/2 = (sqrt(8k+1)-1)/2
     max_exhaustive_search = int(math.sqrt(2 * k + 0.25) - 0.5)
-    residual_search = k - max_exhaustive_search * (max_exhaustive_search + 1) / 2
+    residual_search = int(k - max_exhaustive_search * (max_exhaustive_search + 1) / 2)
+
     repeats = torch.cat(
         [
             torch.arange(max_exhaustive_search, dtype=torch.long, device=dv) + 1,
@@ -129,7 +131,7 @@ def draw_first_k_couples(k: int, rdims: Tensor, dv: torch.device):
     return torch.remainder(idx_sequence.unsqueeze(-1), rdims)
 
 
-def random_samples_indices(iters, rdims, dv):
+def random_samples_indices(iters: int, rdims: Tensor, dv: torch.device) -> Tensor:
     rands = torch.rand(size=(iters, 2, rdims.shape[0]), device=dv)
     scaled_rands = rands * (rdims - 1e-8).float()
     rand_samples_rel = scaled_rands.long()

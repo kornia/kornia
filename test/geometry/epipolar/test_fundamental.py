@@ -100,6 +100,15 @@ class TestFindFundamental:
         F_mat = epi.find_fundamental(points1, points2, weights)
         assert F_mat.shape == (B, 3, 3)
 
+    @pytest.mark.parametrize("batch_size", [1, 2, 3])
+    def test_shape_7point(self, batch_size, device, dtype):
+        B = batch_size
+        points1 = torch.rand(B, 7, 2, device=device, dtype=dtype)
+        points2 = torch.rand(B, 7, 2, device=device, dtype=dtype)
+        torch.ones(B, 7, device=device, dtype=dtype)
+        F_mat = epi.find_fundamental(points1, points2, method="7POINT")
+        assert F_mat.shape == (B, 3, 3, 3)
+
     def test_opencv_svd(self, device, dtype):
         points1 = torch.tensor(
             [
@@ -162,7 +171,95 @@ class TestFindFundamental:
         F_mat = epi.find_fundamental(points1, points2, weights)
         assert_close(F_mat, Fm_expected, rtol=1e-4, atol=1e-4)
 
-    @pytest.mark.xfail(reason="TODO: fix #685")
+    def test_7point_opencv(self, device, dtype):
+        points1 = torch.tensor(
+            [
+                [
+                    [0.8569, 0.5982],
+                    [0.0059, 0.9649],
+                    [0.1968, 0.8846],
+                    [0.6084, 0.3467],
+                    [0.9633, 0.5274],
+                    [0.8941, 0.8939],
+                    [0.0863, 0.5133],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        points2 = torch.tensor(
+            [
+                [
+                    [0.0928, 0.3013],
+                    [0.0989, 0.9649],
+                    [0.0341, 0.4827],
+                    [0.8294, 0.4469],
+                    [0.2230, 0.2998],
+                    [0.1722, 0.8182],
+                    [0.5264, 0.8869],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        # generated with OpenCV using above points
+        # Fm_expected shape is 9x3
+        # import cv2
+        # Fm_expected, _ = cv2.findFundamentalMat(
+        #   points1.detach().numpy().reshape(-1, 1, 2),
+        #   points2.detach().numpy().reshape(-1, 1, 2), cv2.FM_7POINT)
+
+        Fm_expected = torch.tensor(
+            [
+                [
+                    [
+                        [-2.87490907, 5.41934672, 0.73871396],
+                        [0.34010174, 3.70371623, -4.65517276],
+                        [-0.1809933, -0.56577107, 1.0],
+                    ],
+                    [
+                        [0.14465888, 0.68711702, -0.65570944],
+                        [0.53424758, 0.7988479, -0.75446946],
+                        [-0.48201197, -1.05375511, 1.0],
+                    ],
+                    [
+                        [-0.0901827, 1.05515785, -0.54726062],
+                        [0.51914823, 1.02476892, -1.05783979],
+                        [-0.45860077, -1.01580301, 1.0],
+                    ],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        F_mat = epi.find_fundamental(points1, points2, method="7POINT")
+        assert_close(F_mat, Fm_expected, rtol=1e-3, atol=1e-3)
+
+    def test_synthetic_sampson_7point(self, device, dtype):
+        scene: Dict[str, torch.Tensor] = utils.generate_two_view_random_scene(device, dtype)
+        x1 = scene['x1'][:, :7, :]
+        x2 = scene['x2'][:, :7, :]
+        F_est = epi.find_fundamental(x1, x2, None, "7POINT")
+        for i in range(3):
+            F = F_est[0][i].unsqueeze(0)
+            if torch.all(F != 0):
+                error = epi.sampson_epipolar_distance(x1, x2, F)
+                assert_close(error, torch.zeros((F.shape[0], 7), device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
+
+    def test_epipolar_constraint_7point(self, device, dtype):
+        scene: Dict[str, torch.Tensor] = utils.generate_two_view_random_scene(device, dtype)
+        x1 = scene['x1'][:, :7, :]
+        x2 = scene['x2'][:, :7, :]
+        F_est = epi.find_fundamental(x1, x2, None, "7POINT")
+        for i in range(3):
+            F = F_est[0][i].unsqueeze(0)
+            if torch.all(F != 0):
+                distance = epi.symmetrical_epipolar_distance(x1, x2, F)
+                mean_error = distance.mean()
+                assert_close(mean_error, torch.tensor(0.0, device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
+
     def test_synthetic_sampson(self, device, dtype):
         scene: Dict[str, torch.Tensor] = utils.generate_two_view_random_scene(device, dtype)
 
@@ -173,7 +270,7 @@ class TestFindFundamental:
         F_est = epi.find_fundamental(x1, x2, weights)
 
         error = epi.sampson_epipolar_distance(x1, x2, F_est)
-        assert_close(error, torch.tensor(0.0, device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
+        assert_close(error, torch.zeros((x1.shape[:2]), device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
         points1 = torch.rand(1, 10, 2, device=device, dtype=torch.float64, requires_grad=True)

@@ -6,8 +6,8 @@ from kornia.augmentation.base import _BasicAugmentationBase
 from kornia.augmentation.utils import _transform_input, _transform_output_shape, _validate_input_dtype
 from kornia.constants import DataKey, DType
 from kornia.core import Tensor, tensor
+from kornia.core.check import KORNIA_UNWRAP
 from kornia.geometry.boxes import Boxes
-from kornia.testing import KORNIA_UNWRAP
 
 
 class MixAugmentationBaseV2(_BasicAugmentationBase):
@@ -24,7 +24,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
         data_keys: the input type sequential for applying augmentations.
-            Accepts "input", "mask", "bbox", "bbox_xyxy", "bbox_xywh", "keypoints".
+            Accepts "input", "image", "mask", "bbox", "bbox_xyxy", "bbox_xywh", "keypoints".
     """
 
     def __init__(
@@ -52,7 +52,8 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         return input
 
     def transform_input(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
-        to_apply = params['batch_prob']
+        batch_prob = params['batch_prob']
+        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         ori_shape = input.shape
         in_tensor = self.transform_tensor(input)
         output = in_tensor
@@ -66,7 +67,8 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         return output
 
     def transform_mask(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
-        to_apply = params['batch_prob']
+        batch_prob = params['batch_prob']
+        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         output = input
         if sum(to_apply) != len(to_apply):
             output = self.apply_non_transform_mask(input, params, flags)
@@ -80,7 +82,8 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
             if not (len(input.shape) == 4 and input.shape[2:] == torch.Size([4, 2])):
                 raise RuntimeError(f"Only BxNx4x2 tensor is supported. Got {input.shape}.")
             input = Boxes(input, False, mode="vertices_plus")
-        to_apply = params['batch_prob']
+        batch_prob = params['batch_prob']
+        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         output = input
         if sum(to_apply) != len(to_apply):
             output = self.apply_non_transform_boxes(input, params, flags)
@@ -89,7 +92,8 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         return output
 
     def transform_keypoint(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
-        to_apply = params['batch_prob']
+        batch_prob = params['batch_prob']
+        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         output = input
         if sum(to_apply) != len(to_apply):
             output = self.apply_non_transform_keypoint(input, params, flags)
@@ -98,7 +102,8 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         return output
 
     def transform_class(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
-        to_apply = params['batch_prob']
+        batch_prob = params['batch_prob']
+        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         output = input
         if sum(to_apply) != len(to_apply):
             output = self.apply_non_transform_class(input, params, flags)
@@ -182,9 +187,9 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         return outputs
 
     @torch.jit.ignore
-    def inverse(self, **kwargs):
+    def inverse(self, **kwargs: Any) -> Optional[Tensor]:
         raise RuntimeError(f"Inverse for {self.__class__.__name__} is not supported.")
 
     @property
-    def transform_matrix(self):
+    def transform_matrix(self) -> Optional[Tensor]:
         raise RuntimeError(f"Transformation matrices for {self.__class__.__name__} is not supported.")

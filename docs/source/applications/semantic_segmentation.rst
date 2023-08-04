@@ -24,27 +24,27 @@ use existing libraries from the PyTorch ecosystem such as `torchvision <https://
 
 Create the dataloaders and transforms:
 
-.. literalinclude:: ../../../examples/train/semantic_segmentation/main.py
+.. literalinclude:: ../_static/scripts/semantic_segmentation.py
    :language: python
    :lines: 17-50
 
 Define your model, losses, optimizers and schedulers:
 
-.. literalinclude:: ../../../examples/train/semantic_segmentation/main.py
+.. literalinclude:: ../_static/scripts/semantic_segmentation.py
    :language: python
    :lines: 52-60
 
 Create your preprocessing and augmentations pipeline:
 
-.. literalinclude:: ../../../examples/train/semantic_segmentation/main.py
+.. literalinclude:: ../_static/scripts/semantic_segmentation.py
    :language: python
    :lines: 62-81
 
 Finally, instantiate the :py:class:`~kornia.x.SemanticSegmentationTrainer` and execute your training pipeline.
 
-.. literalinclude:: ../../../examples/train/semantic_segmentation/main.py
+.. literalinclude:: ../_static/scripts/semantic_segmentation.py
    :language: python
    :lines: 83-91
 
 .. seealso::
-   Play with the full example `here <https://github.com/kornia/kornia/tree/master/examples/train/semantic_segmentation>`_
+   Play with the full example `here <https://github.com/kornia/tutorials/tree/master/scripts/training/semantic_segmentation>`_

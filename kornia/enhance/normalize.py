@@ -3,7 +3,7 @@
 from typing import List, Tuple, Union
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 __all__ = ["normalize", "normalize_min_max", "denormalize", "Normalize", "Denormalize"]
 
@@ -45,10 +45,10 @@ class Normalize(nn.Module):
     ) -> None:
         super().__init__()
 
-        if isinstance(mean, float):
+        if isinstance(mean, (int, float)):
             mean = torch.tensor([mean])
 
-        if isinstance(std, float):
+        if isinstance(std, (int, float)):
             std = torch.tensor([std])
 
         if isinstance(mean, (tuple, list)):
@@ -63,7 +63,7 @@ class Normalize(nn.Module):
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return normalize(input, self.mean, self.std)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         repr = f"(mean={self.mean}, std={self.std})"
         return self.__class__.__name__ + repr
 
@@ -165,7 +165,7 @@ class Denormalize(nn.Module):
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         return denormalize(input, self.mean, self.std)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         repr = f"(mean={self.mean}, std={self.std})"
         return self.__class__.__name__ + repr
 

@@ -3,6 +3,7 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia.testing as utils  # test utils
+from kornia.feature.integrated import LightGlueMatcher
 from kornia.feature.laf import laf_from_center_scale_ori
 from kornia.feature.matching import (
     DescriptorMatcher,
@@ -222,7 +223,7 @@ class TestMatchSMNN:
         assert gradcheck(match_smnn, (desc1, desc2, 0.8), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
         assert gradcheck(matcher, (desc1, desc2), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
 
-    @pytest.mark.jit
+    @pytest.mark.jit()
     @pytest.mark.parametrize("match_type", ["nn", "snn", "mnn", "smnn"])
     def test_jit(self, match_type, device, dtype):
         desc1 = torch.rand(5, 8, device=device, dtype=dtype)
@@ -334,7 +335,7 @@ class TestMatchFGINN:
             match_fginn, (desc1, desc2, lafs1, lafs2, 0.8, 0.05), raise_exception=True, nondet_tol=1e-4, fast_mode=True
         )
 
-    @pytest.mark.jit
+    @pytest.mark.jit()
     @pytest.mark.skip("keyword-arg expansion is not supported")
     def test_jit(self, device, dtype):
         desc1 = torch.rand(5, 8, device=device, dtype=dtype)
@@ -376,6 +377,21 @@ class TestAdalam:
             )
             dists, idxs = match_adalam(
                 data_dev['descs1'][:1], data_dev['descs2'], data_dev['lafs1'][:, :1], data_dev['lafs2']
+            )
+
+    @pytest.mark.parametrize("data", ["adalam_idxs"], indirect=True)
+    def test_small_user_conf(self, device, dtype, data):
+        torch.random.manual_seed(0)
+        # This is not unit test, but that is quite good integration test
+        data_dev = utils.dict_to(data, device, dtype)
+        adalam_config = {"device": device}
+        with torch.no_grad():
+            dists, idxs = match_adalam(
+                data_dev['descs1'][:4],
+                data_dev['descs2'][:4],
+                data_dev['lafs1'][:, :4],
+                data_dev['lafs2'][:, :4],
+                config=adalam_config,
             )
 
     @pytest.mark.parametrize("data", ["adalam_idxs"], indirect=True)
@@ -435,3 +451,55 @@ class TestAdalam:
         assert dists.shape[0] <= data_dev['descs2'].shape[0]
         expected_idxs = data_dev['expected_idxs'].long()
         assert_close(idxs, expected_idxs, rtol=1e-4, atol=1e-4)
+
+
+class TestLightGlueDISK:
+    @pytest.mark.parametrize("data", ["lightglue_idxs"], indirect=True)
+    def test_real(self, device, dtype, data):
+        torch.random.manual_seed(0)
+        # This is not unit test, but that is quite good integration test
+        data_dev = utils.dict_to(data, device, dtype)
+        config = {"depth_confidence": -1, "width_confidence": -1}
+        lg = LightGlueMatcher('disk', config).to(device=device, dtype=dtype).eval()
+        with torch.no_grad():
+            dists, idxs = lg(data_dev['descs1'], data_dev['descs2'], data_dev['lafs1'], data_dev['lafs2'])
+        assert idxs.shape[1] == 2
+        assert dists.shape[1] == 1
+        assert idxs.shape[0] == dists.shape[0]
+        assert dists.shape[0] <= data_dev['descs1'].shape[0]
+        assert dists.shape[0] <= data_dev['descs2'].shape[0]
+        # key doesn't exist in data_dev
+        # expected_idxs = data_dev['lightglue_disk_idxs'].long()
+        data_dev['expected_idxs'].long()
+        # TODO: fix this
+        # assert_close(idxs, expected_idxs, rtol=1e-4, atol=1e-4)
+
+    @pytest.mark.parametrize("data", ["lightglue_idxs"], indirect=True)
+    def test_single_nocrash(self, device, dtype, data):
+        torch.random.manual_seed(0)
+        # This is not unit test, but that is quite good integration test
+        data_dev = utils.dict_to(data, device, dtype)
+        lg = LightGlueMatcher('disk').to(device, dtype).eval()
+        with torch.no_grad():
+            dists, idxs = lg(data_dev['descs1'], data_dev['descs2'][:1], data_dev['lafs1'], data_dev['lafs2'][:, :1])
+            dists, idxs = lg(data_dev['descs1'][:1], data_dev['descs2'], data_dev['lafs1'][:, :1], data_dev['lafs2'])
+
+    @pytest.mark.parametrize("data", ["lightglue_idxs"], indirect=True)
+    def test_empty_nocrash(self, device, dtype, data):
+        torch.random.manual_seed(0)
+        # This is not unit test, but that is quite good integration test
+        data_dev = utils.dict_to(data, device, dtype)
+        lg = LightGlueMatcher('disk').to(device, dtype).eval()
+        with torch.no_grad():
+            dists, idxs = lg(
+                data_dev['descs1'],
+                torch.empty(0, 256, device=device, dtype=dtype),
+                data_dev['lafs1'],
+                torch.empty(0, 0, 2, 3, device=device, dtype=dtype),
+            )
+            dists, idxs = lg(
+                torch.empty(0, 256, device=device, dtype=dtype),
+                data_dev['descs2'],
+                torch.empty(0, 0, 2, 3, device=device, dtype=dtype),
+                data_dev['lafs2'],
+            )

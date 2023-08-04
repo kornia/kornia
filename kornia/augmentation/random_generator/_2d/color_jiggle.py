@@ -9,6 +9,8 @@ from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _
 from kornia.core import Tensor
 from kornia.utils.helpers import _extract_device_dtype
 
+__all__ = ["ColorJiggleGenerator"]
+
 
 class ColorJiggleGenerator(RandomGeneratorBase):
     r"""Generate random color jiter parameters for a batch of images following OpenCV.
@@ -71,7 +73,7 @@ class ColorJiggleGenerator(RandomGeneratorBase):
         self.saturation_sampler = Uniform(saturation[0], saturation[1], validate_args=False)
         self.randperm = partial(torch.randperm, device=device, dtype=dtype)
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.brightness, self.contrast, self.hue, self.saturation])
@@ -79,10 +81,10 @@ class ColorJiggleGenerator(RandomGeneratorBase):
         contrast_factor = _adapted_rsampling((batch_size,), self.contrast_sampler, same_on_batch)
         hue_factor = _adapted_rsampling((batch_size,), self.hue_sampler, same_on_batch)
         saturation_factor = _adapted_rsampling((batch_size,), self.saturation_sampler, same_on_batch)
-        return dict(
-            brightness_factor=brightness_factor.to(device=_device, dtype=_dtype),
-            contrast_factor=contrast_factor.to(device=_device, dtype=_dtype),
-            hue_factor=hue_factor.to(device=_device, dtype=_dtype),
-            saturation_factor=saturation_factor.to(device=_device, dtype=_dtype),
-            order=self.randperm(4).to(device=_device, dtype=_dtype).long(),
-        )
+        return {
+            "brightness_factor": brightness_factor.to(device=_device, dtype=_dtype),
+            "contrast_factor": contrast_factor.to(device=_device, dtype=_dtype),
+            "hue_factor": hue_factor.to(device=_device, dtype=_dtype),
+            "saturation_factor": saturation_factor.to(device=_device, dtype=_dtype),
+            "order": self.randperm(4).to(device=_device, dtype=_dtype).long(),
+        }

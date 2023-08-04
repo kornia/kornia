@@ -1,11 +1,15 @@
+from typing import Any, Dict, Optional, Union
+
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
+
+from kornia.core import Module, Tensor
 
 INF = 1e9
 
 
-def mask_border(m, b: int, v):
+def mask_border(m: Tensor, b: int, v: Union[Tensor, float, int, bool]) -> None:
     """Mask borders with value
     Args:
         m (torch.Tensor): [N, H0, W0, H1, W1]
@@ -25,7 +29,9 @@ def mask_border(m, b: int, v):
     m[:, :, :, :, -b:] = v
 
 
-def mask_border_with_padding(m, bd, v, p_m0, p_m1):
+def mask_border_with_padding(
+    m: Tensor, bd: int, v: Union[Tensor, float, int, bool], p_m0: Tensor, p_m1: Tensor
+) -> None:
     if bd <= 0:
         return
 
@@ -43,7 +49,7 @@ def mask_border_with_padding(m, bd, v, p_m0, p_m1):
         m[b_idx, :, :, :, w1 - bd :] = v
 
 
-def compute_max_candidates(p_m0, p_m1):
+def compute_max_candidates(p_m0: Tensor, p_m1: Tensor) -> Tensor:
     """Compute the max candidates of all pairs within a batch.
 
     Args:
@@ -55,8 +61,8 @@ def compute_max_candidates(p_m0, p_m1):
     return max_cand
 
 
-class CoarseMatching(nn.Module):
-    def __init__(self, config):
+class CoarseMatching(Module):
+    def __init__(self, config: Dict[str, Any]) -> None:
         super().__init__()
         self.config = config
         # general config
@@ -80,9 +86,16 @@ class CoarseMatching(nn.Module):
             self.skh_iters = config['skh_iters']
             self.skh_prefilter = config['skh_prefilter']
         else:
-            raise NotImplementedError()
+            raise NotImplementedError
 
-    def forward(self, feat_c0, feat_c1, data, mask_c0=None, mask_c1=None):
+    def forward(
+        self,
+        feat_c0: Tensor,
+        feat_c1: Tensor,
+        data: Dict[str, Tensor],
+        mask_c0: Optional[Tensor] = None,
+        mask_c1: Optional[Tensor] = None,
+    ) -> None:
         """
         Args:
             feat0 (torch.Tensor): [N, L, C]
@@ -104,18 +117,18 @@ class CoarseMatching(nn.Module):
         _, L, S, _ = feat_c0.size(0), feat_c0.size(1), feat_c1.size(1), feat_c0.size(2)
 
         # normalize
-        feat_c0, feat_c1 = map(lambda feat: feat / feat.shape[-1] ** 0.5, [feat_c0, feat_c1])
+        feat_c0, feat_c1 = (feat / feat.shape[-1] ** 0.5 for feat in [feat_c0, feat_c1])
 
         if self.match_type == 'dual_softmax':
             sim_matrix = torch.einsum("nlc,nsc->nls", feat_c0, feat_c1) / self.temperature
-            if mask_c0 is not None:
+            if mask_c0 is not None and mask_c1 is not None:
                 sim_matrix.masked_fill_(~(mask_c0[..., None] * mask_c1[:, None]).bool(), -INF)
             conf_matrix = F.softmax(sim_matrix, 1) * F.softmax(sim_matrix, 2)
 
         elif self.match_type == 'sinkhorn':
             # sinkhorn, dustbin included
             sim_matrix = torch.einsum("nlc,nsc->nls", feat_c0, feat_c1)
-            if mask_c0 is not None:
+            if mask_c0 is not None and mask_c1 is not None:
                 sim_matrix[:, :L, :S].masked_fill_(~(mask_c0[..., None] * mask_c1[:, None]).bool(), -INF)
 
             # build uniform prior & use sinkhorn
@@ -139,7 +152,7 @@ class CoarseMatching(nn.Module):
         data.update(**self.get_coarse_match(conf_matrix, data))
 
     @torch.no_grad()
-    def get_coarse_match(self, conf_matrix, data):
+    def get_coarse_match(self, conf_matrix: Tensor, data: Dict[str, Tensor]) -> Dict[str, Tensor]:
         """
         Args:
             conf_matrix (torch.Tensor): [N, L, S]
@@ -223,9 +236,9 @@ class CoarseMatching(nn.Module):
             )
             mconf_gt = torch.zeros(len(data['spv_b_ids']), device=_device)  # set conf of gt paddings to all zero
 
-            b_ids, i_ids, j_ids, mconf = map(
-                lambda x, y: torch.cat([x[pred_indices], y[gt_pad_indices]], dim=0),
-                *zip(
+            b_ids, i_ids, j_ids, mconf = (  # type: ignore
+                torch.cat([x[pred_indices], y[gt_pad_indices]], dim=0)  # type: ignore[has-type]
+                for x, y in zip(
                     [b_ids, data['spv_b_ids']],
                     [i_ids, data['spv_i_ids']],
                     [j_ids, data['spv_j_ids']],

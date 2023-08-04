@@ -1,10 +1,9 @@
-from typing import List
+from __future__ import annotations
 
 import torch
-import torch.nn as nn
-from torch import Tensor
+from torch import Tensor, nn
 
-from kornia.testing import KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK_SHAPE
 
 # based on:
 # https://github.com/bermanmaxim/LovaszSoftmax
@@ -34,14 +33,14 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor) -> Tensor:
     Reference:
         [1] https://arxiv.org/pdf/1705.08790.pdf
 
-    . note::
+    .. note::
         This loss function only supports multi-class (C > 1) labels. For binary
         labels please use the Lovasz-Hinge loss.
 
     Args:
         pred: logits tensor with shape :math:`(N, C, H, W)` where C = number of classes > 1.
         labels: labels tensor with shape :math:`(N, H, W)` where each value
-          is :math:`0 ≤ targets[i] ≤ C−1`.
+          is :math:`0 ≤ targets[i] ≤ C-1`.
 
     Return:
         a scalar with the computed loss.
@@ -77,7 +76,7 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor) -> Tensor:
     pred_soft: Tensor = pred_flatten.softmax(1)
 
     # compute actual loss
-    losses: List[Tensor] = []
+    losses: list[Tensor] = []
     batch_index: Tensor = torch.arange(B, device=pred.device).reshape(-1, 1).repeat(1, N).reshape(-1)
     for c in range(C):
         foreground: Tensor = 1.0 * (target_flatten == c)
@@ -122,14 +121,14 @@ class LovaszSoftmaxLoss(nn.Module):
     Reference:
         [1] https://arxiv.org/pdf/1705.08790.pdf
 
-    . note::
+    .. note::
         This loss function only supports multi-class (C > 1) labels. For binary
         labels please use the Lovasz-Hinge loss.
 
     Args:
         pred: logits tensor with shape :math:`(N, C, H, W)` where C = number of classes > 1.
         labels: labels tensor with shape :math:`(N, H, W)` where each value
-          is :math:`0 ≤ targets[i] ≤ C−1`.
+          is :math:`0 ≤ targets[i] ≤ C-1`.
 
     Return:
         a scalar with the computed loss.

@@ -7,7 +7,7 @@ from kornia.core import Module, Tensor, stack, tensor, where
 
 
 def rgb_to_hls(image: Tensor, eps: float = 1e-8) -> Tensor:
-    r"""Convert a RGB image to HLS.
+    r"""Convert an RGB image to HLS.
 
     .. image:: _static/img/rgb_to_hls.png
 
@@ -51,9 +51,7 @@ def rgb_to_hls(image: Tensor, eps: float = 1e-8) -> Tensor:
         # so, h, l and s require inplace operations
         # NOTE: stack() increases in a 10% the cost in colab
         image_hls = torch.empty_like(image)
-        h = torch.select(image_hls, -3, 0)
-        l_ = torch.select(image_hls, -3, 1)
-        s = torch.select(image_hls, -3, 2)
+        h, l_, s = image_hls[..., 0, :, :], image_hls[..., 1, :, :], image_hls[..., 2, :, :]
         torch.add(maxc, minc, out=l_)  # l = max + min
         torch.sub(maxc, minc, out=s)  # s = max - min
 
@@ -65,19 +63,18 @@ def rgb_to_hls(image: Tensor, eps: float = 1e-8) -> Tensor:
     l_ /= 2  # luminance
 
     # note that r,g and b were previously div by (max - min)
-    r = torch.select(im, -3, 0)
-    g = torch.select(im, -3, 1)
-    b = torch.select(im, -3, 2)
+    r, g, b = im[..., 0, :, :], im[..., 1, :, :], im[..., 2, :, :]
     # h[imax == 0] = (((g - b) / (max - min)) % 6)[imax == 0]
     # h[imax == 1] = (((b - r) / (max - min)) + 2)[imax == 1]
     # h[imax == 2] = (((r - g) / (max - min)) + 4)[imax == 2]
-    cond = imax.unsqueeze(-3) == _RGB2HSL_IDX
+    cond = imax[..., None, :, :] == _RGB2HSL_IDX
     if image.requires_grad:
-        h = torch.mul((g - b) % 6, torch.select(cond, -3, 0))
+        h = ((g - b) % 6) * cond[..., 0, :, :]
     else:
-        torch.mul((g - b).remainder(6), torch.select(cond, -3, 0), out=h)
-    h += torch.add(b - r, 2) * torch.select(cond, -3, 1)
-    h += torch.add(r - g, 4) * torch.select(cond, -3, 2)
+        # replacing `torch.mul` with `out=h` with python * operator gives wrong results
+        torch.mul((g - b) % 6, cond[..., 0, :, :], out=h)
+    h += (b - r + 2) * cond[..., 1, :, :]
+    h += (r - g + 4) * cond[..., 2, :, :]
     # h = 2.0 * math.pi * (60.0 * h) / 360.0
     h *= math.pi / 3.0  # hue [0, 2*pi]
 
@@ -110,20 +107,20 @@ def hls_to_rgb(image: Tensor) -> Tensor:
     _HLS2RGB = tensor([[[0.0]], [[8.0]], [[4.0]]], device=image.device, dtype=image.dtype)  # 3x1x1
 
     im: Tensor = image.unsqueeze(-4)
-    h: Tensor = torch.select(im, -3, 0)
-    l: Tensor = torch.select(im, -3, 1)
-    s: Tensor = torch.select(im, -3, 2)
-    h = h * (6 / math.pi)  # h * 360 / (2 * math.pi) / 30
-    a = s * torch.min(l, 1.0 - l)
+    h_ch: Tensor = im[..., 0, :, :]
+    l_ch: Tensor = im[..., 1, :, :]
+    s_ch: Tensor = im[..., 2, :, :]
+    h_ch = h_ch * (6 / math.pi)  # h * 360 / (2 * math.pi) / 30
+    a = s_ch * torch.min(l_ch, 1.0 - l_ch)
 
     # kr = (0 + h) % 12
     # kg = (8 + h) % 12
     # kb = (4 + h) % 12
-    k: Tensor = (h + _HLS2RGB) % 12
+    k: Tensor = (h_ch + _HLS2RGB) % 12
 
     # l - a * max(min(min(k - 3.0, 9.0 - k), 1), -1)
     mink = torch.min(k - 3.0, 9.0 - k)
-    return torch.addcmul(l, a, mink.clamp_(min=-1.0, max=1.0), value=-1)
+    return torch.addcmul(l_ch, a, mink.clamp_(min=-1.0, max=1.0), value=-1)
 
 
 class RgbToHls(Module):

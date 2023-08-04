@@ -64,12 +64,11 @@ class RandomPerspective(GeometricAugmentationBase2D):
         p: float = 0.5,
         keepdim: bool = False,
         sampling_method: str = "basic",
-        return_transform: Optional[bool] = None,
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator = rg.PerspectiveGenerator(distortion_scale, sampling_method=sampling_method)
 
-        self.flags: Dict[str, Any] = dict(align_corners=align_corners, resample=Resample.get(resample))
+        self.flags: Dict[str, Any] = {"align_corners": align_corners, "resample": Resample.get(resample)}
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return get_perspective_transform(params["start_points"].to(input), params["end_points"].to(input))
@@ -79,7 +78,7 @@ class RandomPerspective(GeometricAugmentationBase2D):
     ) -> Tensor:
         _, _, height, width = input.shape
         if not isinstance(transform, Tensor):
-            raise TypeError(f'Expected the transform be a Tensor. Gotcha {type(transform)}')
+            raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
 
         return warp_perspective(
             input, transform, (height, width), mode=flags["resample"].name.lower(), align_corners=flags["align_corners"]
@@ -92,6 +91,8 @@ class RandomPerspective(GeometricAugmentationBase2D):
         transform: Optional[Tensor] = None,
         size: Optional[Tuple[int, int]] = None,
     ) -> Tensor:
+        if not isinstance(transform, Tensor):
+            raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
         return self.apply_transform(
             input,
             params=self._params,

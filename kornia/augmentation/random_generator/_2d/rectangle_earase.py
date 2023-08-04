@@ -8,6 +8,8 @@ from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _
 from kornia.core import Tensor, as_tensor, tensor, where
 from kornia.utils.helpers import _extract_device_dtype
 
+__all__ = ["RectangleEraseGenerator"]
+
 
 class RectangleEraseGenerator(RandomGeneratorBase):
     r"""Get parameters for ```erasing``` transformation for erasing transform.
@@ -69,7 +71,7 @@ class RectangleEraseGenerator(RandomGeneratorBase):
             tensor(0, device=device, dtype=dtype), tensor(1, device=device, dtype=dtype), validate_args=False
         )
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         height = batch_shape[-2]
         width = batch_shape[-1]
@@ -124,10 +126,10 @@ class RectangleEraseGenerator(RandomGeneratorBase):
         xs = xs_ratio * (width - widths + 1)
         ys = ys_ratio * (height - heights + 1)
 
-        return dict(
-            widths=widths.floor(),
-            heights=heights.floor(),
-            xs=xs.floor(),
-            ys=ys.floor(),
-            values=tensor([self.value] * batch_size, device=_device, dtype=_dtype),
-        )
+        return {
+            "widths": widths.floor(),
+            "heights": heights.floor(),
+            "xs": xs.floor(),
+            "ys": ys.floor(),
+            "values": tensor([self.value] * batch_size, device=_device, dtype=_dtype),
+        }

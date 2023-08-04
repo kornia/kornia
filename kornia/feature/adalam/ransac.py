@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Any, Dict, Tuple, Union
 
 import torch
 
@@ -7,7 +7,7 @@ from kornia.core import Tensor
 from .utils import arange_sequence, batch_2x2_ellipse, batch_2x2_inv, draw_first_k_couples, piecewise_arange
 
 
-def stable_sort_residuals(residuals, ransidx):
+def stable_sort_residuals(residuals: Tensor, ransidx: Tensor) -> Tuple[Tensor, Tensor]:
     logres = torch.log(residuals + 1e-10)
     minlogres = torch.min(logres)
     maxlogres = torch.max(logres)
@@ -21,7 +21,9 @@ def stable_sort_residuals(residuals, ransidx):
     return residuals[iters_range.unsqueeze(-1), sorting_idxes], sorting_idxes
 
 
-def group_sum_and_cumsum(scores_mat, end_group_idx, group_idx=None):
+def group_sum_and_cumsum(
+    scores_mat: Tensor, end_group_idx: Tensor, group_idx: Union[Tensor, slice, None] = None
+) -> Tuple[Tensor, Union[Tensor, None]]:
     cumulative_scores = torch.cumsum(scores_mat, dim=1)
     ending_cumusums = cumulative_scores[:, end_group_idx]
     shifted_ending_cumusums = torch.cat(
@@ -39,7 +41,9 @@ def group_sum_and_cumsum(scores_mat, end_group_idx, group_idx=None):
     return grouped_sums, None
 
 
-def confidence_based_inlier_selection(residuals, ransidx, rdims, idxoffsets, dv, min_confidence):
+def confidence_based_inlier_selection(
+    residuals: Tensor, ransidx: Tensor, rdims: Tensor, idxoffsets: Tensor, dv: torch.device, min_confidence: Tensor
+) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
     numransacs = rdims.shape[0]
     numiters = residuals.shape[0]
 
@@ -58,6 +62,9 @@ def confidence_based_inlier_selection(residuals, ransidx, rdims, idxoffsets, dv,
     inlier_weights[too_perfect_fits] = 0.0
 
     balanced_rdims, weights_cumsums = group_sum_and_cumsum(inlier_weights, end_rans_indexing, ransidx)
+    if not isinstance(weights_cumsums, Tensor):
+        raise TypeError('Expected the `weights_cumsums` to be a Tensor!')
+
     progressive_inl_rates = weights_cumsums.float() / (balanced_rdims.repeat_interleave(rdims, dim=1)).float()
 
     good_inl_mask = (sorted_res_sqr * min_confidence <= progressive_inl_rates) | too_perfect_fits
@@ -97,7 +104,9 @@ def sample_padded_inliers(
     return padded_inlier_x, padded_inlier_y
 
 
-def ransac(xsamples, ysamples, rdims: Tensor, config, iters=128, refit=True):
+def ransac(
+    xsamples: Tensor, ysamples: Tensor, rdims: Tensor, config: Dict[str, Any], iters: int = 128, refit: bool = True
+) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
     DET_THR = config['detected_scale_rate_threshold']
     MIN_CONFIDENCE = config['min_confidence']
     dv: torch.device = config['device']

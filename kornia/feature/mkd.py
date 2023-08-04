@@ -1,8 +1,8 @@
 from typing import Any, Dict, List, Tuple, Union
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 
 from kornia.constants import pi
 from kornia.core import Tensor, tensor, zeros
@@ -143,9 +143,10 @@ class VonMisesKernel(nn.Module):
         if not len(x.shape) == 4 or x.shape[1] != 1:
             raise ValueError(f"Invalid input shape, we expect Bx1xHxW. Got: {x.shape}")
 
-        # TODO: unify the two lines below when pytorch 1.6 support is dropped
-        emb0: Tensor = torch.jit.annotate(Tensor, self.emb0)
-        emb0 = emb0.to(x).repeat(x.size(0), 1, 1, 1)
+        if not isinstance(self.emb0, Tensor):
+            raise TypeError(f"Emb0 type is not a Tensor. Got {type(x)}")
+
+        emb0 = self.emb0.to(x).repeat(x.size(0), 1, 1, 1)
         frange = self.frange.to(x) * x
         emb1 = torch.cos(frange)
         emb2 = torch.sin(frange)
@@ -155,20 +156,11 @@ class VonMisesKernel(nn.Module):
 
     def __repr__(self) -> str:
         return (
-            self.__class__.__name__
-            + '('
-            + 'patch_size='
-            + str(self.patch_size)
-            + ', '
-            + 'n='
-            + str(self.n)
-            + ', '
-            + 'd='
-            + str(self.d)
-            + ', '
-            + 'coeffs='
-            + str(self.coeffs)
-            + ')'
+            f"{self.__class__.__name__}("
+            f"patch_size={self.patch_size}, "
+            f"n={self.n}, "
+            f"d={self.d}, "
+            f"coeffs={self.coeffs})"
         )
 
 
@@ -225,19 +217,10 @@ class EmbedGradients(nn.Module):
         return y
 
     def __repr__(self) -> str:
-        return (
-            self.__class__.__name__
-            + '('
-            + 'patch_size='
-            + str(self.patch_size)
-            + ', '
-            + 'relative='
-            + str(self.relative)
-            + ')'
-        )
+        return f"{self.__class__.__name__}(patch_size={self.patch_size}, relative={self.relative})"
 
 
-def spatial_kernel_embedding(kernel_type, grids: Dict[str, Tensor]) -> Tensor:
+def spatial_kernel_embedding(kernel_type: str, grids: Dict[str, Tensor]) -> Tensor:
     r"""Compute embeddings for cartesian and polar parametrizations."""
     factors = {"phi": 1.0, "rho": pi / sqrt2, "x": pi / 2, "y": pi / 2}
     if kernel_type == 'cart':
@@ -363,26 +346,13 @@ class ExplicitSpacialEncoding(nn.Module):
 
     def __repr__(self) -> str:
         return (
-            self.__class__.__name__
-            + '('
-            + 'kernel_type='
-            + str(self.kernel_type)
-            + ', '
-            + 'fmap_size='
-            + str(self.fmap_size)
-            + ', '
-            + 'in_dims='
-            + str(self.in_dims)
-            + ', '
-            + 'out_dims='
-            + str(self.out_dims)
-            + ', '
-            + 'do_gmask='
-            + str(self.do_gmask)
-            + ', '
-            + 'do_l2='
-            + str(self.do_l2)
-            + ')'
+            f'{self.__class__.__name__}('
+            f'kernel_type={self.kernel_type}, '
+            f'fmap_size={self.fmap_size}, '
+            f'in_dims={self.in_dims}, '
+            f'out_dims={self.out_dims}, '
+            f'do_gmask={self.do_gmask}, '
+            f'do_l2={self.do_l2})'
         )
 
 
@@ -497,17 +467,10 @@ class Whitening(nn.Module):
 
     def __repr__(self) -> str:
         return (
-            self.__class__.__name__
-            + '('
-            + 'xform='
-            + str(self.xform)
-            + ', '
-            + 'in_dims='
-            + str(self.in_dims)
-            + ', '
-            + 'output_dims='
-            + str(self.output_dims)
-            + ')'
+            f'{self.__class__.__name__}('
+            f'xform={self.xform}, '
+            f'in_dims={self.in_dims}, '
+            f'output_dims={self.output_dims})'
         )
 
 
@@ -620,23 +583,12 @@ class MKDDescriptor(nn.Module):
 
     def __repr__(self) -> str:
         return (
-            self.__class__.__name__
-            + '('
-            + 'patch_size='
-            + str(self.patch_size)
-            + ', '
-            + 'kernel_type='
-            + str(self.kernel_type)
-            + ', '
-            + 'whitening='
-            + str(self.whitening)
-            + ', '
-            + 'training_set='
-            + str(self.training_set)
-            + ', '
-            + 'output_dims='
-            + str(self.output_dims)
-            + ')'
+            f'{self.__class__.__name__}('
+            f'patch_size={self.patch_size}, '
+            f'kernel_type={self.kernel_type}, '
+            f'whitening={self.whitening}, '
+            f'training_set={self.training_set}, '
+            f'output_dims={self.output_dims})'
         )
 
 

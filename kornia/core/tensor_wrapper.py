@@ -1,18 +1,16 @@
+# type: ignore
 # pytorch tensor wrapper class
 # insipired by:
 # https://github.com/pytorch/pytorch/blob/591dfffa38848de54b7f5f4e49260847024c9281/test/test_overrides.py#L748
 import collections
-from typing import Any
 
 import torch
 from torch import Tensor
 
-# wrap inputs if necessary
 
 # TODO: promote to KORNIA_WRAP
-
-
 def wrap(v, cls):
+    # wrap inputs if necessary
     if type(v) in {tuple, list}:
         return type(v)(wrap(vi, cls) for vi in v)
 
@@ -20,13 +18,11 @@ def wrap(v, cls):
 
 
 # TODO: promote to KORNIA_UNWRAP
-
-
 def unwrap(v):
     if type(v) in {tuple, list}:
         return type(v)(unwrap(vi) for vi in v)
 
-    return v._data if not isinstance(v, Tensor) else v
+    return v._data if isinstance(v, TensorWrapper) else v
 
 
 class TensorWrapper:
@@ -35,15 +31,22 @@ class TensorWrapper:
         self.__dict__["used_attrs"] = set()
         self.__dict__["used_calls"] = set()
 
-    @property
-    def data(self) -> Tensor:
-        return self._data
+    def unwrap(self):
+        return unwrap(self)
+
+    def __getstate__(self):
+        return self.__dict__
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
 
     def __repr__(self) -> str:
-        return f"{self.data}"
+        return f"{self._data}"
 
     def __getattr__(self, name):
-        if name in self.__dict__:
+        if name == "data":
+            return self._data
+        elif name in self.__dict__:
             return self.__dict__[name]
         self.used_attrs.add(name)
 
@@ -63,14 +66,14 @@ class TensorWrapper:
 
         return wrap(val, type(self))
 
-    def __setattr__(self, name, value):
+    def __setattr__(self, name, value) -> None:
         if name in self.__dict__:
             self.__dict__[name] = value
 
         self.used_attrs.add(name)
         setattr(self._data, name, value)
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key, value) -> None:
         self._data[key] = value
 
     def __getitem__(self, key):
@@ -99,10 +102,19 @@ class TensorWrapper:
     def __add__(self, other):
         return self.__unary_op__(torch.add, other)
 
+    def __radd__(self, other):
+        return self.__unary_op__(torch.add, other)
+
     def __mul__(self, other):
         return self.__unary_op__(torch.mul, other)
 
+    def __rmul__(self, other):
+        return self.__unary_op__(torch.mul, other)
+
     def __sub__(self, other):
+        return self.__unary_op__(torch.sub, other)
+
+    def __rsub__(self, other):
         return self.__unary_op__(torch.sub, other)
 
     def __truediv__(self, other):
@@ -129,18 +141,18 @@ class TensorWrapper:
     def __ne__(self, other):
         return self.__unary_op__(torch.ne, other)
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
         return self.__unary_op__(Tensor.__bool__)
 
-    def __int__(self):
+    def __int__(self) -> int:
         return self.__unary_op__(Tensor.__int__)
 
     def __neg__(self):
         return self.__unary_op__(Tensor.negative)
 
-    def __unary_op__(self, func: Any, other=None):
+    def __unary_op__(self, func, other=None):
         args = (self, other) if other is not None else (self,)
         return self.__torch_function__(func, (type(self),), args)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._data)

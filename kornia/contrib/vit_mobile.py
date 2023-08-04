@@ -1,39 +1,41 @@
-from typing import Tuple
+from typing import Any, Dict, Tuple
 
 import torch
 from torch import nn
 
+from kornia.core import Module, Tensor
 
-def conv_1x1_bn(inp: int, oup: int) -> nn.Module:
+
+def conv_1x1_bn(inp: int, oup: int) -> Module:
     return nn.Sequential(nn.Conv2d(inp, oup, 1, 1, 0, bias=False), nn.BatchNorm2d(oup), nn.SiLU())
 
 
-def conv_nxn_bn(inp: int, oup: int, kernal_size: int = 3, stride: int = 1) -> nn.Module:
+def conv_nxn_bn(inp: int, oup: int, kernal_size: int = 3, stride: int = 1) -> Module:
     return nn.Sequential(nn.Conv2d(inp, oup, kernal_size, stride, 1, bias=False), nn.BatchNorm2d(oup), nn.SiLU())
 
 
-class PreNorm(nn.Module):
-    def __init__(self, dim: int, fn: nn.Module) -> None:
+class PreNorm(Module):
+    def __init__(self, dim: int, fn: Module) -> None:
         super().__init__()
         self.norm = nn.LayerNorm(dim)
         self.fn = fn
 
-    def forward(self, x: torch.Tensor, **kwargs) -> torch.Tensor:
+    def forward(self, x: Tensor, **kwargs: Dict[str, Any]) -> Tensor:
         return self.fn(self.norm(x), **kwargs)
 
 
-class FeedForward(nn.Module):
+class FeedForward(Module):
     def __init__(self, dim: int, hidden_dim: int, dropout: float = 0.0) -> None:
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(dim, hidden_dim), nn.SiLU(), nn.Dropout(dropout), nn.Linear(hidden_dim, dim), nn.Dropout(dropout)
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         return self.net(x)
 
 
-class Attention(nn.Module):
+class Attention(Module):
     def __init__(self, dim: int, heads: int = 8, dim_head: int = 64, dropout: float = 0.0) -> None:
         super().__init__()
         inner_dim = dim_head * heads
@@ -47,21 +49,20 @@ class Attention(nn.Module):
 
         self.to_out = nn.Sequential(nn.Linear(inner_dim, dim), nn.Dropout(dropout)) if project_out else nn.Identity()
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         qkv = self.to_qkv(x).chunk(3, dim=-1)
 
-        B, P, N, HD = qkv[0].shape
-        q, k, v = map(lambda t: t.contiguous().view(B, P, self.heads, N, HD // self.heads), qkv)
+        b, p, n, hd = qkv[0].shape
+        q, k, v = (t.reshape(b, p, n, self.heads, hd // self.heads).transpose(2, 3) for t in qkv)
 
         dots = torch.matmul(q, k.transpose(-1, -2)) * self.scale
         attn = self.attend(dots)
         out = torch.matmul(attn, v)
-        B, P, H, N, D = out.shape
-        out = out.view(B, P, N, H * D)
+        out = out.transpose(2, 3).reshape(b, p, n, hd)
         return self.to_out(out)
 
 
-class Transformer(nn.Module):
+class Transformer(Module):
     """Transformer block described in ViT.
 
     Paper: https://arxiv.org/abs/2010.11929
@@ -89,14 +90,14 @@ class Transformer(nn.Module):
                 )
             )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         for attn, ff in self.layers:
             x = attn(x) + x
             x = ff(x) + x
         return x
 
 
-class MV2Block(nn.Module):
+class MV2Block(Module):
     """MV2 block described in MobileNetV2.
 
     Paper: https://arxiv.org/pdf/1801.04381
@@ -141,14 +142,14 @@ class MV2Block(nn.Module):
                 nn.BatchNorm2d(oup),
             )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         if self.use_res_connect:
             return x + self.conv(x)
         else:
             return self.conv(x)
 
 
-class MobileViTBlock(nn.Module):
+class MobileViTBlock(Module):
     """MobileViT block mentioned in MobileViT.
 
     Args:
@@ -182,18 +183,28 @@ class MobileViTBlock(nn.Module):
         self.conv3 = conv_1x1_bn(dim, channel)
         self.conv4 = conv_nxn_bn(2 * channel, channel, kernel_size)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         y = x.clone()
 
         # Local representations
         x = self.conv1(x)
         x = self.conv2(x)
 
-        # Global representations
         b, d, h, w = x.shape
-        x = x.view(b, self.ph * self.pw, (h // self.ph) * (w // self.pw), d)
+        nh, nw = h // self.ph, w // self.pw
+
+        # Global representations
+        # [b, d, h, w] -> [b * d * nh, nw, ph, pw]
+        x = x.reshape(b * d * nh, self.ph, nw, self.pw).transpose(1, 2)
+        # [b * d * nh, nw, ph, pw] -> [b, (ph pw), (nh nw), d]
+        x = x.reshape(b, d, nh * nw, self.ph * self.pw).transpose(1, 3)
+
         x = self.transformer(x)
-        x = x.view(b, d, h, w)
+
+        # [b, (ph pw), (nh nw), d] -> [b * d * nh, nw, ph, pw]
+        x = x.transpose(1, 3).reshape(b * d * nh, nw, self.ph, self.pw)
+        # [b * d * nh, nw, ph, pw] -> [b, d, h, w]
+        x = x.transpose(1, 2).reshape(b, d, h, w)
 
         # Fusion
         x = self.conv3(x)
@@ -202,7 +213,7 @@ class MobileViTBlock(nn.Module):
         return x
 
 
-class MobileViT(nn.Module):
+class MobileViT(Module):
     """Module MobileViT. Default arguments is for MobileViT XXS.
 
     Paper: https://arxiv.org/abs/2110.02178
@@ -265,7 +276,7 @@ class MobileViT(nn.Module):
 
         self.conv2 = conv_1x1_bn(channels[-2], channels[-1])
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         x = self.conv1(x)
         x = self.mv2[0](x)
 

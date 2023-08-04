@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from torch.optim import Optimizer, lr_scheduler
 from torch.utils.data import DataLoader
@@ -19,7 +19,7 @@ class ImageClassifierTrainer(Trainer):
 
     .. seealso::
         Learn how to use this class in the following
-        `example <https://github.com/kornia/kornia/blob/master/examples/train/image_classifier/>`__.
+        `example <https://github.com/kornia/tutorials/tree/master/scripts/training/image_classifier/>`__.
     """
 
     def compute_metrics(self, *args: Tensor) -> Dict[str, float]:
@@ -27,7 +27,7 @@ class ImageClassifierTrainer(Trainer):
             raise AssertionError
         out, target = args
         acc1, acc5 = accuracy(out, target, topk=(1, 5))
-        return dict(top1=acc1.item(), top5=acc5.item())
+        return {"top1": acc1.item(), "top5": acc5.item()}
 
 
 class SemanticSegmentationTrainer(Trainer):
@@ -38,7 +38,7 @@ class SemanticSegmentationTrainer(Trainer):
 
     .. seealso::
         Learn how to use this class in the following
-        `example <https://github.com/kornia/kornia/blob/master/examples/train/semantic_segmentation/>`__.
+        `example <https://github.com/kornia/tutorials/tree/master/scripts/training/semantic_segmentation/>`__.
     """
 
     def compute_metrics(self, *args: Tensor) -> Dict[str, float]:
@@ -46,7 +46,7 @@ class SemanticSegmentationTrainer(Trainer):
             raise AssertionError
         out, target = args
         iou = mean_iou(out.argmax(1), target, out.shape[1]).mean()
-        return dict(iou=iou.item())
+        return {"iou": iou.item()}
 
 
 class ObjectDetectionTrainer(Trainer):
@@ -57,7 +57,7 @@ class ObjectDetectionTrainer(Trainer):
 
     .. seealso::
         Learn how to use this class in the following
-        `example <https://github.com/kornia/kornia/blob/master/examples/train/object_detection/>`__.
+        `example <https://github.com/kornia/tutorials/tree/master/scripts/training/object_detection/>`__.
     """
 
     def __init__(
@@ -67,7 +67,7 @@ class ObjectDetectionTrainer(Trainer):
         valid_dataloader: DataLoader[Any],
         criterion: Optional[Module],
         optimizer: Optimizer,
-        scheduler: lr_scheduler.CosineAnnealingLR,
+        scheduler: lr_scheduler._LRScheduler,
         config: Configuration,
         num_classes: int,
         callbacks: Optional[Dict[str, Callable[..., None]]] = None,
@@ -80,7 +80,7 @@ class ObjectDetectionTrainer(Trainer):
         self.loss_computed_by_model = loss_computed_by_model
         self.num_classes = num_classes
 
-    def on_model(self, model: Module, sample: Dict[str, Tensor]):
+    def on_model(self, model: Module, sample: Dict[str, Tensor]) -> Tensor:
         if self.loss_computed_by_model and model.training:
             return model(sample["input"], sample["target"])
         return model(sample["input"])
@@ -95,7 +95,7 @@ class ObjectDetectionTrainer(Trainer):
             raise RuntimeError("`criterion` should not be None if `loss_computed_by_model` is False.")
         return self.criterion(*args)
 
-    def compute_metrics(self, *args: Tensor) -> Dict[str, float]:
+    def compute_metrics(self, *args: Tuple[Dict[str, Tensor]]) -> Dict[str, float]:
         if (
             isinstance(args[0], dict)
             and "boxes" in args[0]

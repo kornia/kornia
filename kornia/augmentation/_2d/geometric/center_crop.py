@@ -1,11 +1,9 @@
-from typing import Any, Dict, Optional, Tuple, Union, cast
-
-import torch
-from torch import Tensor
+from typing import Any, Dict, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
+from kornia.core import Tensor
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
 
 
@@ -70,11 +68,10 @@ class CenterCrop(GeometricAugmentationBase2D):
         p: float = 1.0,
         keepdim: bool = False,
         cropping_mode: str = "slice",
-        return_transform: Optional[bool] = None,
     ) -> None:
         # same_on_batch is always True for CenterCrop
         # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
-        super().__init__(p=1.0, return_transform=return_transform, same_on_batch=True, p_batch=p, keepdim=keepdim)
+        super().__init__(p=1.0, same_on_batch=True, p_batch=p, keepdim=keepdim)
         if isinstance(size, tuple):
             self.size = (size[0], size[1])
         elif isinstance(size, int):
@@ -82,15 +79,15 @@ class CenterCrop(GeometricAugmentationBase2D):
         else:
             raise Exception(f"Invalid size type. Expected (int, tuple(int, int). " f"Got: {type(size)}.")
 
-        self.flags = dict(
-            resample=Resample.get(resample),
-            cropping_mode=cropping_mode,
-            align_corners=align_corners,
-            size=self.size,
-            padding_mode="zeros",
-        )
+        self.flags = {
+            "resample": Resample.get(resample),
+            "cropping_mode": cropping_mode,
+            "align_corners": align_corners,
+            "size": self.size,
+            "padding_mode": "zeros",
+        }
 
-    def generate_parameters(self, batch_shape: torch.Size) -> Dict[str, Tensor]:
+    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, Tensor]:
         return rg.center_crop_generator(batch_shape[0], batch_shape[-2], batch_shape[-1], self.size, self.device)
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
@@ -104,7 +101,8 @@ class CenterCrop(GeometricAugmentationBase2D):
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         if flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
-            transform = cast(Tensor, transform)
+            if not isinstance(transform, Tensor):
+                raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
 
             return crop_by_transform_mat(
                 input, transform[:, :2, :], self.size, flags["resample"].name.lower(), "zeros", flags["align_corners"]
@@ -126,7 +124,8 @@ class CenterCrop(GeometricAugmentationBase2D):
             )
         if size is None:
             size = self.size
-        transform = cast(Tensor, transform)
+        if not isinstance(transform, Tensor):
+            raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
         return crop_by_transform_mat(
             input,
             transform[:, :2, :],

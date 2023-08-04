@@ -4,7 +4,7 @@ from typing import Dict
 
 import torch
 
-from kornia.geometry.conversions import angle_axis_to_rotation_matrix
+from kornia.geometry.conversions import axis_angle_to_rotation_matrix
 from kornia.geometry.linalg import transform_points
 
 from .projection import projection_from_KRt, random_intrinsics
@@ -22,7 +22,7 @@ def generate_scene(num_views: int, num_points: int) -> Dict[str, torch.Tensor]:
 
     rvec = torch.rand(num_views, 3)
     rvec = ang * rvec / torch.norm(rvec, dim=1, keepdim=True)  # Nx3
-    rot_mat = angle_axis_to_rotation_matrix(rvec)  # Nx3x3
+    rot_mat = axis_angle_to_rotation_matrix(rvec)  # Nx3x3
     # matches with cv2.Rodrigues -> yay !
 
     # Create random translation per view
@@ -42,4 +42,4 @@ def generate_scene(num_views: int, num_points: int) -> Dict[str, torch.Tensor]:
     # project points3d and backproject to image plane
     points2d = transform_points(P, points3d.expand(num_views, -1, -1))
 
-    return dict(K=K, R=rot_mat, t=tvec, P=P, points3d=points3d, points2d=points2d)
+    return {"K": K, "R": rot_mat, "t": tvec, "P": P, "points3d": points3d, "points2d": points2d}

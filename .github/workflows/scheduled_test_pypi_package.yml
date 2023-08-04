@@ -1,0 +1,30 @@
+name: Test PyPI package
+
+on:
+  schedule:
+    - cron:  '0 4 * * *'
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ['3.8', '3.9', '3.10']
+
+    steps:
+      - name: Checkout kornia
+        uses: actions/checkout@v3
+
+      - name: Config Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Pip install Kornia
+        run: pip install kornia
+
+      - name: Check dependencies and kornia version
+        run: |
+          python -c "import torch;print('Pytorch version: ', torch.__version__)"
+          python -c "import kornia;print('Kornia version: ', kornia.__version__)"

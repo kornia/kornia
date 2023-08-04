@@ -30,7 +30,7 @@ class RaySampler:
         self._min_depth = min_depth
         self._max_depth = max_depth
         self._ndc = ndc
-        self._device = torch.device(device)
+        self._device = device
         self._dtype = dtype
 
     @property
@@ -54,7 +54,7 @@ class RaySampler:
             return 0
         return self.origins.shape[0]
 
-    def _calc_ray_directions_cam(self, cameras: PinholeCamera, points_2d: Tensor):
+    def _calc_ray_directions_cam(self, cameras: PinholeCamera, points_2d: Tensor) -> Tensor:
         # FIXME: This function should call perspective.unproject_points or, implement in PinholeCamera unproject to
         # camera coordinates that will call perspective.unproject_points
         fx = cameras.fx
@@ -81,11 +81,11 @@ class RaySampler:
             self._camera_ids = camera_ids
 
         @property
-        def points_2d(self):
+        def points_2d(self) -> Tensor:
             return self._points_2d
 
         @property
-        def camera_ids(self):
+        def camera_ids(self) -> List[int]:
             return self._camera_ids
 
     def _calc_ray_params(self, cameras: PinholeCamera, points_2d_camera: Dict[int, Points2D]) -> None:
@@ -96,7 +96,6 @@ class RaySampler:
             cameras: scene cameras: PinholeCamera
             points_2d_camera: a dictionary that groups Point2D objects by total number of casted rays
         """
-
         # Unproject 2d points in image plane to 3d world for two depths
         origins = []
         directions = []
@@ -105,7 +104,6 @@ class RaySampler:
         camera_ids = []
         points_2d = []
         for obj in points_2d_camera.values():
-
             # FIXME: Below both world and camera ray directions are calculated. It could be that world ray directions
             # will not be necessary and can be removed here
             num_cams_group, num_points_per_cam_group = obj._points_2d.shape[:2]
@@ -347,7 +345,9 @@ class UniformRaySampler(RaySampler):
     def __init__(self, min_depth: float, max_depth: float, ndc: bool, device: Device, dtype: torch.dtype) -> None:
         super().__init__(min_depth, max_depth, ndc, device, dtype)
 
-    def sample_points_2d(self, heights: Tensor, widths: Tensor, sampling_step=1) -> Dict[int, RaySampler.Points2D]:
+    def sample_points_2d(
+        self, heights: Tensor, widths: Tensor, sampling_step: int = 1
+    ) -> Dict[int, RaySampler.Points2D]:
         r"""Uniformly sample pixel points in 2d for all scene camera pixels.
 
         Args:
@@ -381,7 +381,9 @@ class UniformRaySampler(RaySampler):
         self._calc_ray_params(cameras, points_2d_camera)
 
 
-def sample_lengths(num_rays: int, num_ray_points: int, device: Device, dtype: torch.dtype, irregular=False) -> Tensor:
+def sample_lengths(
+    num_rays: int, num_ray_points: int, device: Device, dtype: torch.dtype, irregular: bool = False
+) -> Tensor:
     if num_ray_points <= 1:
         raise ValueError('Number of ray points must be greater than 1')
     if not irregular:

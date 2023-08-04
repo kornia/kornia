@@ -6,7 +6,7 @@ from torch import Tensor
 from torch.nn import Module, Parameter
 
 from kornia.color import hsv_to_rgb, rgb_to_grayscale, rgb_to_hsv
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_COLOR_OR_GRAY, KORNIA_CHECK_IS_TENSOR
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_COLOR_OR_GRAY, KORNIA_CHECK_IS_TENSOR
 from kornia.utils.helpers import _torch_histc_cast
 from kornia.utils.image import perform_keep_shape_image, perform_keep_shape_video
 
@@ -16,7 +16,6 @@ def adjust_saturation_raw(image: Tensor, factor: Union[float, Tensor]) -> Tensor
 
     Expecting image to be in hsv format already.
     """
-
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
     KORNIA_CHECK(isinstance(factor, (float, Tensor)), "Factor should be float or Tensor.")
 
@@ -70,7 +69,6 @@ def adjust_saturation_with_gray_subtraction(image: Tensor, factor: Union[float, 
         >>> adjust_saturation_with_gray_subtraction(x, y).shape
         torch.Size([2, 3, 3, 3])
     """
-
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
     KORNIA_CHECK(isinstance(factor, (float, Tensor)), "Factor should be float or Tensor.")
     KORNIA_CHECK_IS_COLOR_OR_GRAY(image, "Image should be an RGB or gray image")
@@ -129,7 +127,6 @@ def adjust_saturation(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
         >>> adjust_saturation(x, y).shape
         torch.Size([2, 3, 3, 3])
     """
-
     # convert the rgb image to hsv
     x_hsv: Tensor = rgb_to_hsv(image)
 
@@ -147,7 +144,6 @@ def adjust_hue_raw(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
 
     Expecting image to be in hsv format already.
     """
-
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
     KORNIA_CHECK(
         isinstance(factor, (float, Tensor)),
@@ -207,7 +203,6 @@ def adjust_hue(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
         >>> adjust_hue(x, y).shape
         torch.Size([2, 3, 3, 3])
     """
-
     # convert the rgb image to hsv
     x_hsv: Tensor = rgb_to_hsv(image)
 
@@ -229,7 +224,7 @@ def adjust_gamma(input: Tensor, gamma: Union[float, Tensor], gain: Union[float, 
 
     Args:
         input: Image to be adjusted in the shape of :math:`(*, H, W)`.
-        gamma: Non negative real number, same as γ\gammaγ in the equation.
+        gamma: Non negative real number, same as y\gammay in the equation.
             gamma larger than 1 make the shadows darker, while gamma smaller than 1 make
             dark regions lighter.
         gain: The constant multiplier.
@@ -253,7 +248,6 @@ def adjust_gamma(input: Tensor, gamma: Union[float, Tensor], gain: Union[float, 
         >>> adjust_gamma(x, y1, y2).shape
         torch.Size([2, 5, 3, 3])
     """
-
     if not isinstance(input, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
 
@@ -315,7 +309,7 @@ def adjust_contrast(image: Tensor, factor: Union[float, Tensor], clip_output: bo
             in the batch. 0 generates a completely black image, 1 does not modify
             the input image while any other non-negative number modify the
             brightness by this factor.
-            clip_output: whether to clip the output image with range of [0, 1].
+        clip_output: whether to clip the output image with range of [0, 1].
 
     Return:
         Adjusted image in the shape of :math:`(*, H, W)`.
@@ -349,7 +343,7 @@ def adjust_contrast(image: Tensor, factor: Union[float, Tensor], clip_output: bo
     while len(factor.shape) != len(image.shape):
         factor = factor[..., None]
 
-    KORNIA_CHECK(any(factor >= 0), f"Contrast factor must be positive. Got {factor}")
+    KORNIA_CHECK(any(factor >= 0), "Contrast factor must be positive.")
 
     # Apply contrast factor to each channel
     img_adjust: Tensor = image * factor
@@ -403,7 +397,7 @@ def adjust_contrast_with_mean_subtraction(image: Tensor, factor: Union[float, Te
     while len(factor.shape) != len(image.shape):
         factor = factor[..., None]
 
-    KORNIA_CHECK(any(factor >= 0), f"Contrast factor must be positive. Got {factor}")
+    KORNIA_CHECK(any(factor >= 0), "Contrast factor must be positive.")
 
     if image.shape[-3] == 3:
         img_mean = rgb_to_grayscale(image).mean((-2, -1), True)
@@ -418,7 +412,7 @@ def adjust_contrast_with_mean_subtraction(image: Tensor, factor: Union[float, Te
     return img_adjust
 
 
-def adjust_brightness(image: Tensor, factor: Union[float, Tensor], clip_output=True) -> Tensor:
+def adjust_brightness(image: Tensor, factor: Union[float, Tensor], clip_output: bool = True) -> Tensor:
     r"""Adjust the brightness of an image tensor.
 
     .. image:: _static/img/adjust_brightness.png
@@ -485,7 +479,7 @@ def adjust_brightness(image: Tensor, factor: Union[float, Tensor], clip_output=T
     return img_adjust
 
 
-def adjust_brightness_accumulative(image: Tensor, factor: Union[float, Tensor], clip_output=True) -> Tensor:
+def adjust_brightness_accumulative(image: Tensor, factor: Union[float, Tensor], clip_output: bool = True) -> Tensor:
     r"""Adjust the brightness accumulatively of an image tensor.
 
     This implementation follows PIL convention.
@@ -542,8 +536,8 @@ def adjust_sigmoid(image: Tensor, cutoff: float = 0.5, gain: float = 10, inv: bo
     The input image is expected to be in the range of [0, 1].
 
     Reference:
-    [1]: Gustav J. Braun, "Image Lightness Rescaling Using Sigmoidal Contrast Enhancement Functions",
-        http://markfairchild.org/PDFs/PAP07.pdf
+        [1]: Gustav J. Braun, "Image Lightness Rescaling Using Sigmoidal Contrast Enhancement Functions",
+             http://markfairchild.org/PDFs/PAP07.pdf
 
     Args:
         image: Image to be adjusted in the shape of :math:`(*, H, W)`.
@@ -722,7 +716,7 @@ def posterize(input: Tensor, bits: Union[int, Tensor]) -> Tensor:
     Example:
         >>> x = torch.rand(1, 6, 3, 3)
         >>> out = posterize(x, bits=8)
-        >>> torch.testing.assert_allclose(x, out)
+        >>> torch.testing.assert_close(x, out)
 
         >>> x = torch.rand(2, 6, 3, 3)
         >>> bits = torch.tensor([4, 2])
@@ -748,13 +742,13 @@ def posterize(input: Tensor, bits: Union[int, Tensor]) -> Tensor:
     # Ref: https://github.com/tensorflow/tpu/blob/master/models/official/efficientnet/autoaugment.py#L222
     # Potential approach: implementing kornia.LUT with floating points
     # https://github.com/albumentations-team/albumentations/blob/master/albumentations/augmentations/functional.py#L472
-    def _left_shift(input: Tensor, shift: Tensor):
+    def _left_shift(input: Tensor, shift: Tensor) -> Tensor:
         return ((input * 255).to(torch.uint8) * (2**shift)).to(input.dtype) / 255.0
 
-    def _right_shift(input: Tensor, shift: Tensor):
+    def _right_shift(input: Tensor, shift: Tensor) -> Tensor:
         return (input * 255).to(torch.uint8) / (2**shift).to(input.dtype) / 255.0
 
-    def _posterize_one(input: Tensor, bits: Tensor):
+    def _posterize_one(input: Tensor, bits: Tensor) -> Tensor:
         # Single bits value condition
         if bits == 0:
             return torch.zeros_like(input)
@@ -873,7 +867,7 @@ def _blend_one(input1: Tensor, input2: Tensor, factor: Tensor) -> Tensor:
     return torch.clamp(res, 0, 1)
 
 
-def _build_lut(histo, step):
+def _build_lut(histo: Tensor, step: Tensor) -> Tensor:
     # Compute the cumulative sum, shifting by step // 2
     # and then normalization by step.
     step_trunc = torch.div(step, 2, rounding_mode='trunc')
@@ -1155,7 +1149,7 @@ class AdjustGamma(Module):
     The input image is expected to be in the range of [0, 1].
 
     Args:
-        gamma: Non negative real number, same as γ\gammaγ in the equation.
+        gamma: Non negative real number, same as y\gammay in the equation.
           gamma larger than 1 make the shadows darker, while gamma smaller than 1 make
           dark regions lighter.
         gain: The constant multiplier.
@@ -1304,8 +1298,8 @@ class AdjustSigmoid(Module):
     The input image is expected to be in the range of [0, 1].
 
     Reference:
-    [1]: Gustav J. Braun, "Image Lightness Rescaling Using Sigmoidal Contrast Enhancement Functions",
-        http://markfairchild.org/PDFs/PAP07.pdf
+        [1]: Gustav J. Braun, "Image Lightness Rescaling Using Sigmoidal Contrast Enhancement Functions",
+             http://markfairchild.org/PDFs/PAP07.pdf
 
     Args:
         image: Image to be adjusted in the shape of :math:`(*, H, W)`.

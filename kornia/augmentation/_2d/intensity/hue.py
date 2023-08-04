@@ -17,8 +17,7 @@ class RandomHue(IntensityAugmentationBase2D):
 
     Args:
         p: probability of applying the transformation.
-        hue: the saturation factor to apply
-        silence_instantiation_warning: if True, silence the warning at instantiation.
+        hue: the saturation factor to apply.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
@@ -27,9 +26,9 @@ class RandomHue(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     .. note::
-        This function internally uses :func:`kornia.enhance.adjust_hue
+        This function internally uses :func:`kornia.enhance.adjust_hue`
 
-        Examples:
+    Examples:
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.rand(1, 3, 3, 3)
         >>> aug = RandomHue(hue = (-0.5,0.5),p=1.)
@@ -47,6 +46,7 @@ class RandomHue(IntensityAugmentationBase2D):
                   [0.5185, 0.8964, 0.4556]]]])
 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+
         >>> input = torch.rand(1, 3, 32, 32)
         >>> aug = RandomHue((-0.2,0.2), p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
@@ -54,14 +54,9 @@ class RandomHue(IntensityAugmentationBase2D):
     """
 
     def __init__(
-        self,
-        hue: Tuple[float, float] = (0.0, 0.0),
-        same_on_batch: bool = False,
-        p: float = 1.0,
-        keepdim: bool = False,
-        return_transform: Optional[bool] = None,
+        self, hue: Tuple[float, float] = (0.0, 0.0), same_on_batch: bool = False, p: float = 1.0, keepdim: bool = False
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self.hue: Tensor = _range_bound(hue, 'hue', bounds=(-0.5, 0.5))
         self._param_generator = rg.PlainUniformGenerator((self.hue, "hue_factor", None, None))
 

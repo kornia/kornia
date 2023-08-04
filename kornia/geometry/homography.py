@@ -4,7 +4,7 @@ from typing import Optional, Tuple
 import torch
 
 from kornia.core import Tensor
-from kornia.testing import KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.utils import _extract_device_dtype, safe_inverse_with_mask, safe_solve_with_mask
 from kornia.utils.helpers import _torch_svd_cast
 
@@ -245,14 +245,17 @@ def sample_is_valid_for_homography(points1: Tensor, points2: Tensor) -> Tensor:
 
 
 def find_homography_lines_dlt(ls1: Tensor, ls2: Tensor, weights: Optional[Tensor] = None) -> Tensor:
-    r"""Compute the homography matrix using the DLT formulation for line correspondences.
+    """Compute the homography matrix using the DLT formulation for line correspondences.
 
     See :cite:`homolines2001` for details.
+
     The linear system is solved by using the Weighted Least Squares Solution for the 4 Line correspondences algorithm.
+
     Args:
         ls1: A set of line segments in the first image with a tensor shape :math:`(B, N, 2, 2)`.
         ls2: A set of line segments in the second image with a tensor shape :math:`(B, N, 2, 2)`.
         weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
+
     Returns:
         the computed homography matrix with shape :math:`(B, 3, 3)`.
     """

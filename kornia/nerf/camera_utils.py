@@ -5,7 +5,7 @@ import torch
 
 from kornia.core import Device, Tensor
 from kornia.geometry.camera import PinholeCamera
-from kornia.geometry.conversions import QuaternionCoeffOrder, quaternion_to_rotation_matrix
+from kornia.geometry.conversions import quaternion_to_rotation_matrix
 
 
 def parse_colmap_output(
@@ -67,7 +67,7 @@ def parse_colmap_output(
 
         # Read line with camera quaternion
         line = line.strip()
-        if line.endswith('png') or line.endswith('jpg\n'):
+        if line.endswith(('jpg', 'png')):
             split_line = line.split(' ')
             qw = float(split_line[1])
             qx = float(split_line[2])
@@ -94,7 +94,7 @@ def parse_colmap_output(
 
             # Extrinsic
             q = torch.tensor([qw, qx, qy, qz], device=device)
-            R = quaternion_to_rotation_matrix(q, order=QuaternionCoeffOrder.WXYZ)
+            R = quaternion_to_rotation_matrix(q)
             t = torch.tensor([tx, ty, tz], device=device)
             extrinsic = torch.eye(4, device=device, dtype=dtype)
             extrinsic[:3, :3] = R
@@ -138,7 +138,6 @@ def create_spiral_path(cameras: PinholeCamera, rad: float, num_views: int, num_c
         num_views: Number of created cameras: int
         num_circles: Number of spiral circles: int
     """
-
     # Average locations over all cameras
     mean_center = cameras.translation_vector.mean(0, False).squeeze(-1)
     device = cameras.intrinsics.device

@@ -31,20 +31,25 @@ class Resize(GeometricAugmentationBase2D):
         align_corners: bool = True,
         antialias: bool = False,
         p: float = 1.0,
-        return_transform: Optional[bool] = None,
         keepdim: bool = False,
     ) -> None:
-        super().__init__(p=1.0, return_transform=return_transform, same_on_batch=True, p_batch=p, keepdim=keepdim)
+        super().__init__(p=1.0, same_on_batch=True, p_batch=p, keepdim=keepdim)
         self._param_generator = rg.ResizeGenerator(resize_to=size, side=side)
-        self.flags = dict(
-            size=size, side=side, resample=Resample.get(resample), align_corners=align_corners, antialias=antialias
-        )
+        self.flags = {
+            "size": size,
+            "side": side,
+            "resample": Resample.get(resample),
+            "align_corners": align_corners,
+            "antialias": antialias,
+        }
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         if params["output_size"] == input.shape[-2:]:
             return eye_like(3, input)
 
-        transform: Tensor = get_perspective_transform(params["src"], params["dst"])
+        transform: Tensor = torch.as_tensor(
+            get_perspective_transform(params["src"], params["dst"]), dtype=input.dtype, device=input.device
+        )
         transform = transform.expand(input.shape[0], -1, -1)
         return transform
 
@@ -82,7 +87,7 @@ class Resize(GeometricAugmentationBase2D):
             raise TypeError(f'Expected the size be a tuple. Gotcha {type(size)}')
 
         if not isinstance(transform, Tensor):
-            raise TypeError(f'Expected the transform be a Tensor. Gotcha {type(transform)}')
+            raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
 
         return crop_by_transform_mat(
             input, transform[:, :2, :], size, flags["resample"].name.lower(), "zeros", flags["align_corners"]
@@ -102,17 +107,9 @@ class LongestMaxSize(Resize):
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         align_corners: bool = True,
         p: float = 1.0,
-        return_transform: Optional[bool] = None,
     ) -> None:
         # TODO: Support max_size list input to randomly select from
-        super().__init__(
-            size=max_size,
-            side="long",
-            resample=resample,
-            return_transform=return_transform,
-            align_corners=align_corners,
-            p=p,
-        )
+        super().__init__(size=max_size, side="long", resample=resample, align_corners=align_corners, p=p)
 
 
 class SmallestMaxSize(Resize):
@@ -128,14 +125,6 @@ class SmallestMaxSize(Resize):
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         align_corners: bool = True,
         p: float = 1.0,
-        return_transform: Optional[bool] = None,
     ) -> None:
         # TODO: Support max_size list input to randomly select from
-        super().__init__(
-            size=max_size,
-            side="short",
-            resample=resample,
-            return_transform=return_transform,
-            align_corners=align_corners,
-            p=p,
-        )
+        super().__init__(size=max_size, side="short", resample=resample, align_corners=align_corners, p=p)

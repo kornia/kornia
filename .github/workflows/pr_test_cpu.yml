@@ -1,9 +1,12 @@
-name: Run tests on CPU
+name: Tests on CPU (PR)
 
 on:
+  push:
+    branches: [test-me-*]
   pull_request:
     branches: [master]
-    types: [opened, reopened, synchronize, review_requested, ready_for_review]
+    types: [opened, reopened, synchronize, ready_for_review, labeled]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -11,37 +14,53 @@ concurrency:
 
 jobs:
   tests-cpu:
-    name: ${{ matrix.os }} - python-${{ matrix.python-version }}, torch-${{ matrix.pytorch-version }}, ${{ matrix.pytorch-dtype }}
-    runs-on: ${{ matrix.os }}-latest
+    strategy:
+      fail-fast: false  # TODO: enable it when CI be stable (when drop support to torch 1.9.1)
+      matrix:
+        os: ['Ubuntu-latest', 'Windows-latest', 'MacOS-latest']
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: ${{ matrix.os }}
+      python-version: '["3.8", "3.10"]'
+      pytorch-version: '["1.9.1", "2.0.1"]'
+      pytorch-dtype: 'float32'
+
+  tests-cpu-fp64:
+    strategy:
+      fail-fast: true
+    uses: ./.github/workflows/tests.yml
+    with:
+      python-version: '["3.8", "3.10"]'
+      pytorch-version: '["1.9.1", "2.0.1"]'
+      pytorch-dtype: 'float64'
+
+  test-typing:
+    uses: ./.github/workflows/test_typing.yml
+
+  test-tutorials:
+    uses: ./.github/workflows/test_tutorials.yml
+
+  collector:
+    needs: [tests-cpu, tests-cpu-fp64, test-tutorials, test-typing]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+    - name: check for failures
+      if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+      run: echo job failed && exit 1
+
+  tests-nightly:
+    if:  contains(github.event.pull_request.labels.*.name, 'nightly')
+    name: ${{ matrix.os }} - torch-nightly, ${{ matrix.pytorch-dtype }}
 
     strategy:
-      fail-fast: false # TODO: enable it when CI be stable
+      fail-fast: false
       matrix:
-        os: ['Ubuntu', 'Windows', 'MacOS']
-        python-version: ['3.7', '3.8']
-        pytorch-version: ['1.9.1', '1.13.0']
-        pytorch-dtype: ['float16', 'float32', 'float64']
+        os: ['Ubuntu-latest', 'Windows-latest'] #, 'MacOS-latest'] add it when https://github.com/pytorch/pytorch/pull/89262 be merged
+        pytorch-dtype: ['float32', 'float64']
 
-    steps:
-      - name: Checkout kornia
-        uses: actions/checkout@v3
-
-      - name: Setting environment on ${{ matrix.os }} with python ${{ matrix.python-version }} and pytorch  ${{ matrix.pytorch-version }}
-        uses: ./.github/actions/env
-        with:
-          python-version: ${{ matrix.python-version }}
-          pytorch-version: ${{ matrix.pytorch-version }}
-
-      - name: Run CPU tests ${{ matrix.pytorch-dtype }}
-        continue-on-error: ${{ contains('float16', matrix.pytorch-dtype) }}  # Remove this when float16 stop raising errors
-        shell: bash -l {0}
-        run: pytest -v --device cpu --dtype ${{ matrix.pytorch-dtype }} --cov=kornia --cov-report xml ./test
-
-      - if: always()
-        name: Upload coverage
-        uses: codecov/codecov-action@v3
-        with:
-          file: coverage.xml
-          token: ${{ secrets.CODECOV_TOKEN }} # to not depend on build via GH API
-          flags: cpu,${{ matrix.os }}_py-${{ matrix.python-version }}_pt-${{ matrix.pytorch-version }}_${{ matrix.pytorch-dtype }}
-          name: cpu-coverage
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: ${{ matrix.os }}
+      pytorch-version: '["nightly"]'
+      pytorch-dtype: ${{ matrix.pytorch-dtype }}

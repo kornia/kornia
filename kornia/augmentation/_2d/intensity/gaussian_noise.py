@@ -1,9 +1,9 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import torch
-from torch import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.core import Tensor
 
 
 def _randn_like(input: Tensor, mean: float, std: float) -> Tensor:
@@ -42,20 +42,12 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
     """
 
     def __init__(
-        self,
-        mean: float = 0.0,
-        std: float = 1.0,
-        same_on_batch: bool = False,
-        p: float = 0.5,
-        keepdim: bool = False,
-        return_transform: Optional[bool] = None,
+        self, mean: float = 0.0, std: float = 1.0, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False
     ) -> None:
-        super().__init__(
-            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
-        )
-        self.flags = dict(mean=mean, std=std)
+        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
+        self.flags = {"mean": mean, "std": std}
 
-    def generate_parameters(self, shape: torch.Size) -> Dict[str, Tensor]:
+    def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, Tensor]:
         return {}
 
     def apply_transform(

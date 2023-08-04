@@ -2,7 +2,7 @@ import sys
 
 import pytest
 import torch
-import torch.nn as nn
+from torch import nn
 from torch.autograd import gradcheck
 
 import kornia
@@ -25,6 +25,7 @@ from kornia.feature import (
 from kornia.feature.integrated import LocalFeatureMatcher
 from kornia.geometry import RANSAC, resize, transform_points
 from kornia.testing import assert_close
+from kornia.utils._compat import torch_version_le
 
 
 # TODO: add kornia.testing.BaseTester
@@ -256,6 +257,7 @@ class TestLocalFeatureMatcher:
 
         assert gradcheck(proxy_forward, (patches, patches05), eps=1e-4, atol=1e-4, raise_exception=True, fast_mode=True)
 
+    @pytest.mark.skipif(torch_version_le(1, 9, 1), reason="Fails for bached torch.linalg.solve")
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     def test_real_sift(self, device, dtype, data):
         torch.random.manual_seed(0)
@@ -272,11 +274,12 @@ class TestLocalFeatureMatcher:
         # Reprojection error of 5px is OK
         assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)
 
+    @pytest.mark.skipif(torch_version_le(1, 9, 1), reason="Fails for bached torch.linalg.solve")
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     def test_real_sift_preextract(self, device, dtype, data):
         torch.random.manual_seed(0)
         # This is not unit test, but that is quite good integration test
-        feat = SIFTFeature(1000)
+        feat = SIFTFeature(1000).to(device, dtype)
         matcher = LocalFeatureMatcher(feat, DescriptorMatcher('snn', 0.8)).to(device)
         ransac = RANSAC('homography', 1.0, 1024, 5).to(device, dtype)
         data_dev = utils.dict_to(data, device, dtype)
@@ -298,6 +301,7 @@ class TestLocalFeatureMatcher:
         # Reprojection error of 5px is OK
         assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)
 
+    @pytest.mark.skipif(torch_version_le(1, 9, 1), reason="Fails for bached torch.linalg.solve")
     @pytest.mark.skipif(sys.platform == "win32", reason="this test takes so much memory in the CI with Windows")
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     def test_real_gftt(self, device, dtype, data):
@@ -315,6 +319,7 @@ class TestLocalFeatureMatcher:
         # Reprojection error of 5px is OK
         assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)
 
+    @pytest.mark.skipif(torch_version_le(1, 9, 1), reason="Fails for bached torch.linalg.solve")
     @pytest.mark.skipif(sys.platform == "win32", reason="this test takes so much memory in the CI with Windows")
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     def test_real_keynet(self, device, dtype, data):

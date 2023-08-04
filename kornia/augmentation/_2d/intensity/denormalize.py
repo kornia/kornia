@@ -44,9 +44,8 @@ class Denormalize(IntensityAugmentationBase2D):
         std: Union[Tensor, Tuple[float], List[float], float],
         p: float = 1.0,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=True, keepdim=keepdim)
+        super().__init__(p=p, same_on_batch=True, keepdim=keepdim)
         if isinstance(mean, float):
             mean = torch.tensor([mean])
 
@@ -59,7 +58,7 @@ class Denormalize(IntensityAugmentationBase2D):
         if isinstance(std, (tuple, list)):
             std = torch.tensor(std)
 
-        self.flags = dict(mean=mean, std=std)
+        self.flags = {"mean": mean, "std": std}
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None

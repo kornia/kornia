@@ -1,8 +1,10 @@
-import torch
-from torch import Tensor
+from __future__ import annotations
 
+import torch
+
+from kornia.core import Tensor
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE, check_is_tensor
 
 __all__ = [
     "compose_transformations",
@@ -11,12 +13,13 @@ __all__ = [
     "transform_points",
     "point_line_distance",
     "squared_norm",
+    "batched_squared_norm",
     "batched_dot_product",
     "euclidean_distance",
 ]
 
 
-def compose_transformations(trans_01: torch.Tensor, trans_12: torch.Tensor) -> torch.Tensor:
+def compose_transformations(trans_01: Tensor, trans_12: Tensor) -> Tensor:
     r"""Function that composes two homogeneous transformations.
 
     .. math::
@@ -39,11 +42,8 @@ def compose_transformations(trans_01: torch.Tensor, trans_12: torch.Tensor) -> t
         >>> trans_12 = torch.eye(4)  # 4x4
         >>> trans_02 = compose_transformations(trans_01, trans_12)  # 4x4
     """
-    if not torch.is_tensor(trans_01):
-        raise TypeError(f"Input trans_01 type is not a torch.Tensor. Got {type(trans_01)}")
-
-    if not torch.is_tensor(trans_12):
-        raise TypeError(f"Input trans_12 type is not a torch.Tensor. Got {type(trans_12)}")
+    KORNIA_CHECK_IS_TENSOR(trans_01)
+    KORNIA_CHECK_IS_TENSOR(trans_12)
 
     if not ((trans_01.dim() in (2, 3)) and (trans_01.shape[-2:] == (4, 4))):
         raise ValueError("Input trans_01 must be a of the shape Nx4x4 or 4x4." " Got {}".format(trans_01.shape))
@@ -55,26 +55,27 @@ def compose_transformations(trans_01: torch.Tensor, trans_12: torch.Tensor) -> t
         raise ValueError(f"Input number of dims must match. Got {trans_01.dim()} and {trans_12.dim()}")
 
     # unpack input data
-    rmat_01: torch.Tensor = trans_01[..., :3, :3]  # Nx3x3
-    rmat_12: torch.Tensor = trans_12[..., :3, :3]  # Nx3x3
-    tvec_01: torch.Tensor = trans_01[..., :3, -1:]  # Nx3x1
-    tvec_12: torch.Tensor = trans_12[..., :3, -1:]  # Nx3x1
+    rmat_01: Tensor = trans_01[..., :3, :3]  # Nx3x3
+    rmat_12: Tensor = trans_12[..., :3, :3]  # Nx3x3
+    tvec_01: Tensor = trans_01[..., :3, -1:]  # Nx3x1
+    tvec_12: Tensor = trans_12[..., :3, -1:]  # Nx3x1
 
     # compute the actual transforms composition
-    rmat_02: torch.Tensor = torch.matmul(rmat_01, rmat_12)
-    tvec_02: torch.Tensor = torch.matmul(rmat_01, tvec_12) + tvec_01
+    rmat_02: Tensor = torch.matmul(rmat_01, rmat_12)
+    tvec_02: Tensor = torch.matmul(rmat_01, tvec_12) + tvec_01
 
     # pack output tensor
-    trans_02: torch.Tensor = torch.zeros_like(trans_01)
+    trans_02: Tensor = torch.zeros_like(trans_01)
     trans_02[..., :3, 0:3] += rmat_02
     trans_02[..., :3, -1:] += tvec_02
     trans_02[..., -1, -1:] += 1.0
     return trans_02
 
 
-def inverse_transformation(trans_12):
-    r"""Function that inverts a 4x4 homogeneous transformation
-    :math:`T_1^{2} = \begin{bmatrix} R_1 & t_1 \\ \mathbf{0} & 1 \end{bmatrix}`
+def inverse_transformation(trans_12: Tensor) -> Tensor:
+    r"""Function that inverts a 4x4 homogeneous transformation.
+
+     :math:`T_1^{2} = \begin{bmatrix} R_1 & t_1 \\ \mathbf{0} & 1 \end{bmatrix}`
 
     The inverse transformation is computed as follows:
 
@@ -93,30 +94,30 @@ def inverse_transformation(trans_12):
         >>> trans_12 = torch.rand(1, 4, 4)  # Nx4x4
         >>> trans_21 = inverse_transformation(trans_12)  # Nx4x4
     """
-    if not torch.is_tensor(trans_12):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(trans_12)}")
+    KORNIA_CHECK_IS_TENSOR(trans_12)
+
     if not ((trans_12.dim() in (2, 3)) and (trans_12.shape[-2:] == (4, 4))):
         raise ValueError(f"Input size must be a Nx4x4 or 4x4. Got {trans_12.shape}")
     # unpack input tensor
-    rmat_12: torch.Tensor = trans_12[..., :3, 0:3]  # Nx3x3
-    tvec_12: torch.Tensor = trans_12[..., :3, 3:4]  # Nx3x1
+    rmat_12 = trans_12[..., :3, 0:3]  # Nx3x3
+    tvec_12 = trans_12[..., :3, 3:4]  # Nx3x1
 
     # compute the actual inverse
-    rmat_21: torch.Tensor = torch.transpose(rmat_12, -1, -2)
-    tvec_21: torch.Tensor = torch.matmul(-rmat_21, tvec_12)
+    rmat_21 = torch.transpose(rmat_12, -1, -2)
+    tvec_21 = torch.matmul(-rmat_21, tvec_12)
 
     # pack to output tensor
-    trans_21: torch.Tensor = torch.zeros_like(trans_12)
+    trans_21 = torch.zeros_like(trans_12)
     trans_21[..., :3, 0:3] += rmat_21
     trans_21[..., :3, -1:] += tvec_21
     trans_21[..., -1, -1:] += 1.0
     return trans_21
 
 
-def relative_transformation(trans_01: torch.Tensor, trans_02: torch.Tensor) -> torch.Tensor:
-    r"""Function that computes the relative homogeneous transformation from a
-    reference transformation :math:`T_1^{0} = \begin{bmatrix} R_1 & t_1 \\
-    \mathbf{0} & 1 \end{bmatrix}` to destination :math:`T_2^{0} =
+def relative_transformation(trans_01: Tensor, trans_02: Tensor) -> Tensor:
+    r"""Function that computes the relative homogeneous transformation from a reference transformation.
+
+    :math:`T_1^{0} = \begin{bmatrix} R_1 & t_1 \\ \mathbf{0} & 1 \end{bmatrix}` to destination :math:`T_2^{0} =
     \begin{bmatrix} R_2 & t_2 \\ \mathbf{0} & 1 \end{bmatrix}`.
 
     The relative transformation is computed as follows:
@@ -137,30 +138,29 @@ def relative_transformation(trans_01: torch.Tensor, trans_02: torch.Tensor) -> t
         >>> trans_02 = torch.eye(4)  # 4x4
         >>> trans_12 = relative_transformation(trans_01, trans_02)  # 4x4
     """
-    if not torch.is_tensor(trans_01):
-        raise TypeError(f"Input trans_01 type is not a torch.Tensor. Got {type(trans_01)}")
-    if not torch.is_tensor(trans_02):
-        raise TypeError(f"Input trans_02 type is not a torch.Tensor. Got {type(trans_02)}")
+    KORNIA_CHECK_IS_TENSOR(trans_01)
+    KORNIA_CHECK_IS_TENSOR(trans_02)
     if not ((trans_01.dim() in (2, 3)) and (trans_01.shape[-2:] == (4, 4))):
         raise ValueError("Input must be a of the shape Nx4x4 or 4x4." " Got {}".format(trans_01.shape))
     if not ((trans_02.dim() in (2, 3)) and (trans_02.shape[-2:] == (4, 4))):
         raise ValueError("Input must be a of the shape Nx4x4 or 4x4." " Got {}".format(trans_02.shape))
     if not trans_01.dim() == trans_02.dim():
         raise ValueError(f"Input number of dims must match. Got {trans_01.dim()} and {trans_02.dim()}")
-    trans_10: torch.Tensor = inverse_transformation(trans_01)
-    trans_12: torch.Tensor = compose_transformations(trans_10, trans_02)
+
+    trans_10 = inverse_transformation(trans_01)
+    trans_12 = compose_transformations(trans_10, trans_02)
     return trans_12
 
 
-def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Tensor:
+def transform_points(trans_01: Tensor, points_1: Tensor) -> Tensor:
     r"""Function that applies transformations to a set of points.
 
     Args:
-        trans_01 (torch.Tensor): tensor for transformations of shape
+        trans_01: tensor for transformations of shape
           :math:`(B, D+1, D+1)`.
-        points_1 (torch.Tensor): tensor of points of shape :math:`(B, N, D)`.
+        points_1: tensor of points of shape :math:`(B, N, D)`.
     Returns:
-        torch.Tensor: tensor of N-dimensional points.
+        a tensor of N-dimensional points.
 
     Shape:
         - Output: :math:`(B, N, D)`
@@ -171,8 +171,8 @@ def transform_points(trans_01: torch.Tensor, points_1: torch.Tensor) -> torch.Te
         >>> trans_01 = torch.eye(4).view(1, 4, 4)  # Bx4x4
         >>> points_0 = transform_points(trans_01, points_1)  # BxNx3
     """
-    check_is_tensor(trans_01)
-    check_is_tensor(points_1)
+    KORNIA_CHECK_IS_TENSOR(trans_01)
+    KORNIA_CHECK_IS_TENSOR(points_1)
     if not trans_01.shape[0] == points_1.shape[0] and trans_01.shape[0] != 1:
         raise ValueError(
             "Input batch size must be the same for both tensors or 1." f"Got {trans_01.shape} and {points_1.shape}"
@@ -214,7 +214,7 @@ def point_line_distance(point: Tensor, line: Tensor, eps: float = 1e-9) -> Tenso
     KORNIA_CHECK_IS_TENSOR(point)
     KORNIA_CHECK_IS_TENSOR(line)
 
-    if not point.shape[-1] in (2, 3):
+    if point.shape[-1] not in (2, 3):
         raise ValueError(f"pts must be a (*, 2 or 3) tensor. Got {point.shape}")
 
     if not line.shape[-1] == 3:
@@ -242,6 +242,7 @@ def euclidean_distance(x: Tensor, y: Tensor, keepdim: bool = False, eps: float =
     """Compute the Euclidean distance between two set of n-dimensional points.
 
     More: https://en.wikipedia.org/wiki/Euclidean_distance
+
     Args:
         x: first set of points of shape :math:`(*, N)`.
         y: second set of points of shape :math:`(*, N)`.

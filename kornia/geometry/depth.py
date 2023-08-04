@@ -5,8 +5,8 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core import Module, Tensor, concatenate, tensor
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.filters.sobel import spatial_gradient
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.utils import create_meshgrid
 
 from .camera import PinholeCamera, cam2pixel, pixel2cam, project_points, unproject_points
@@ -193,7 +193,7 @@ class DepthWarper(Module):
         mode: str = 'bilinear',
         padding_mode: str = 'zeros',
         align_corners: bool = True,
-    ):
+    ) -> None:
         super().__init__()
         # constructor members
         self.width: int = width
@@ -241,16 +241,16 @@ class DepthWarper(Module):
         self._dst_proj_src = dst_proj_src
         return self
 
-    def _compute_projection(self, x, y, invd):
+    def _compute_projection(self, x: Union[int, float], y: Union[int, float], invd: Union[int, float]) -> Tensor:
         if self._dst_proj_src is None or self._pinhole_src is None:
             raise ValueError("Please, call compute_projection_matrix.")
 
         point = tensor([[[x], [y], [invd], [1.0]]], device=self._dst_proj_src.device, dtype=self._dst_proj_src.dtype)
         flow = torch.matmul(self._dst_proj_src, point)
         z = 1.0 / flow[:, 2]
-        x = flow[:, 0] * z
-        y = flow[:, 1] * z
-        return concatenate([x, y], 1)
+        _x = flow[:, 0] * z
+        _y = flow[:, 1] * z
+        return concatenate([_x, _y], 1)
 
     def compute_subpixel_step(self) -> Tensor:
         """Compute the required inverse depth step to achieve sub pixel accurate sampling of the depth cost volume,
@@ -347,7 +347,7 @@ def depth_warp(
     height: int,
     width: int,
     align_corners: bool = True,
-):
+) -> Tensor:
     r"""Function that warps a tensor from destination frame to reference given the depth in the reference frame.
 
     See :class:`~kornia.geometry.warp.DepthWarper` for details.

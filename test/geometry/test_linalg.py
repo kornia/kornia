@@ -116,11 +116,11 @@ class TestTransformPoints:
             kornia.geometry.transform_points, (dst_homo_src, points_src), raise_exception=True, fast_mode=True
         )
 
-    def test_jit(self, device, dtype):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         points = torch.ones(1, 2, 2, device=device, dtype=dtype)
         transform = kornia.eye_like(3, points)
         op = kornia.geometry.transform_points
-        op_script = torch.jit.script(op)
+        op_script = torch_optimizer(op)
         actual = op_script(transform, points)
         expected = op(transform, points)
         assert_close(actual, expected, atol=1e-4, rtol=1e-4)
@@ -419,12 +419,12 @@ class TestEuclideanDistance(BaseTester):
         pt2 = torch.rand(2, 3, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kgl.euclidean_distance, (pt1, pt2), raise_exception=True, fast_mode=True)
 
-    def test_jit(self, device, dtype):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         pt1 = torch.rand(2, 3, device=device, dtype=dtype)
         pt2 = torch.rand(2, 3, device=device, dtype=dtype)
         op = kgl.euclidean_distance
-        op_jit = torch.jit.script(op)
-        self.assert_close(op(pt1, pt2), op_jit(pt1, pt2))
+        op_optimized = torch_optimizer(op)
+        self.assert_close(op(pt1, pt2), op_optimized(pt1, pt2))
 
     def test_module(self, device, dtype):
         pass

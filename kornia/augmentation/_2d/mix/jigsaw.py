@@ -24,7 +24,7 @@ class RandomJigsaw(MixAugmentationBaseV2):
         ensure_perm: to ensure the nonidentical patch permutation generation against
             the original one.
         data_keys: the input type sequential for applying augmentations.
-            Accepts "input", "mask", "bbox", "bbox_xyxy", "bbox_xywh", "keypoints".
+            Accepts "input", "image", "mask", "bbox", "bbox_xyxy", "bbox_xywh", "keypoints".
         p: probability of applying the transformation for the whole batch.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
@@ -49,13 +49,14 @@ class RandomJigsaw(MixAugmentationBaseV2):
     ) -> None:
         super().__init__(p=p, p_batch=1.0, same_on_batch=same_on_batch, keepdim=keepdim, data_keys=data_keys)
         self._param_generator = rg.JigsawGenerator(grid, ensure_perm)
-        self.flags = dict(grid=grid)
+        self.flags = {"grid": grid}
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], maybe_flags: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         # different from the Base class routine. This function will not refer to any non-transformation images.
-        to_apply = params['batch_prob']
+        batch_prob = params['batch_prob']
+        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         input = input[to_apply].clone()
 
         b, c, h, w = input.shape

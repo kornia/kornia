@@ -2,12 +2,12 @@ import math
 from typing import Tuple
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 from kornia.core import Module, Tensor, concatenate, eye, normalize
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.filters import get_gaussian_kernel2d, spatial_gradient
 from kornia.geometry.conversions import pi
-from kornia.testing import KORNIA_CHECK_SHAPE
 
 
 def _get_reshape_kernel(kd: int, ky: int, kx: int) -> Tensor:
@@ -81,23 +81,12 @@ class SIFTDescriptor(Module):
 
     def __repr__(self) -> str:
         return (
-            self.__class__.__name__
-            + '('
-            + 'num_ang_bins='
-            + str(self.num_ang_bins)
-            + ', '
-            + 'num_spatial_bins='
-            + str(self.num_spatial_bins)
-            + ', '
-            + 'patch_size='
-            + str(self.patch_size)
-            + ', '
-            + 'rootsift='
-            + str(self.rootsift)
-            + ', '
-            + 'clipval='
-            + str(self.clipval)
-            + ')'
+            f"{self.__class__.__name__}("
+            f"num_ang_bins={self.num_ang_bins}, "
+            f"num_spatial_bins={self.num_spatial_bins}, "
+            f"patch_size={self.patch_size}, "
+            f"rootsift={self.rootsift}, "
+            f"clipval={self.clipval})"
         )
 
     def __init__(
@@ -132,7 +121,6 @@ class SIFTDescriptor(Module):
             bias=False,
         )
         self.pk.weight.data.copy_(nw.reshape(1, 1, nw.size(0), nw.size(1)))
-        return
 
     def get_pooling_kernel(self) -> Tensor:
         return self.pk.weight.detach()
@@ -140,7 +128,7 @@ class SIFTDescriptor(Module):
     def get_weighting_kernel(self) -> Tensor:
         return self.gk.detach()
 
-    def forward(self, input):
+    def forward(self, input: Tensor) -> Tensor:
         KORNIA_CHECK_SHAPE(input, ["B", "1", f"{self.patch_size}", f"{self.patch_size}"])
         B: int = input.shape[0]
         self.pk = self.pk.to(input.dtype).to(input.device)
@@ -188,7 +176,8 @@ def sift_describe(
 ) -> Tensor:
     r"""Computes the sift descriptor.
 
-    See :class:`~kornia.feature.SIFTDescriptor` for details.
+    See
+    :class: `~kornia.feature.SIFTDescriptor` for details.
     """
     return SIFTDescriptor(patch_size, num_ang_bins, num_spatial_bins, rootsift, clipval)(input)
 
@@ -221,26 +210,13 @@ class DenseSIFTDescriptor(Module):
 
     def __repr__(self) -> str:
         return (
-            self.__class__.__name__
-            + '('
-            + 'num_ang_bins='
-            + str(self.num_ang_bins)
-            + ', '
-            + 'num_spatial_bins='
-            + str(self.num_spatial_bins)
-            + ', '
-            + 'spatial_bin_size='
-            + str(self.spatial_bin_size)
-            + ', '
-            + 'rootsift='
-            + str(self.rootsift)
-            + ', '
-            + 'stride='
-            + str(self.stride)
-            + ', '
-            + 'clipval='
-            + str(self.clipval)
-            + ')'
+            f'{self.__class__.__name__}('
+            f'num_ang_bins={self.num_ang_bins}, '
+            f'num_spatial_bins={self.num_spatial_bins}, '
+            f'spatial_bin_size={self.spatial_bin_size}, '
+            f'rootsift={self.rootsift}, '
+            f'stride={self.stride}, '
+            f'clipval={self.clipval})'
         )
 
     def __init__(
@@ -283,7 +259,6 @@ class DenseSIFTDescriptor(Module):
         self.PoolingConv.weight.data.copy_(
             _get_reshape_kernel(num_ang_bins, num_spatial_bins, num_spatial_bins).float()
         )
-        return
 
     def get_pooling_kernel(self) -> Tensor:
         return self.bin_pooling_kernel.weight.detach()

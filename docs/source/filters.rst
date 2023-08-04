@@ -8,9 +8,12 @@ The functions in this sections perform various image filtering operations.
 Blurring
 --------
 
+.. autofunction:: bilateral_blur
 .. autofunction:: blur_pool2d
 .. autofunction:: box_blur
 .. autofunction:: gaussian_blur2d
+.. autofunction:: guided_blur
+.. autofunction:: joint_bilateral_blur
 .. autofunction:: max_blur_pool2d
 .. autofunction:: median_blur
 .. autofunction:: motion_blur
@@ -22,7 +25,8 @@ Interactive Demo
 
     <gradio-app space="kornia/kornia-image-filtering"></gradio-app>
 
-Visit the demo on `Hugging Face Spaces <https://huggingface.co/spaces/kornia/kornia-image-filtering>`_.
+Visit the `Kornia image filtering demo on the Hugging Face Spaces
+<https://huggingface.co/spaces/kornia/kornia-image-filtering>`_.
 
 Edge detection
 --------------
@@ -48,7 +52,8 @@ Interactive Demo
 
     <gradio-app space="kornia/edge_detector"></gradio-app>
 
-Visit the demo on `Hugging Face Spaces <https://huggingface.co/spaces/kornia/edge_detector>`_.
+Visit the `Kornia edge detector demo on the Hugging Face Spaces
+<https://huggingface.co/spaces/kornia/edge_detector>`_.
 
 
 Filtering API
@@ -74,10 +79,13 @@ Kernels
 Module
 ------
 
+.. autoclass:: BilateralBlur
 .. autoclass:: BlurPool2D
 .. autoclass:: BoxBlur
 .. autoclass:: MaxBlurPool2D
 .. autoclass:: MedianBlur
 .. autoclass:: GaussianBlur2d
+.. autoclass:: GuidedBlur
+.. autoclass:: JointBilateralBlur
 .. autoclass:: MotionBlur
 .. autoclass:: UnsharpMask

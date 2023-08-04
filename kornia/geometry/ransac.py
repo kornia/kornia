@@ -5,6 +5,7 @@ from typing import Callable, Optional, Tuple
 import torch
 
 from kornia.core import Device, Module, Tensor, zeros
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry import (
     find_fundamental,
     find_homography_dlt,
@@ -18,7 +19,6 @@ from kornia.geometry.homography import (
     oneway_transfer_error,
     sample_is_valid_for_homography,
 )
-from kornia.testing import KORNIA_CHECK_SHAPE
 
 __all__ = ["RANSAC"]
 
@@ -35,8 +35,6 @@ class RANSAC(Module):
         max_local_iterations: number of local optimization (polishing) iterations.
     """
 
-    supported_models = ['homography', 'fundamental', 'homography_from_linesegments']
-
     def __init__(
         self,
         model_type: str = 'homography',
@@ -45,8 +43,9 @@ class RANSAC(Module):
         max_iter: int = 10,
         confidence: float = 0.99,
         max_lo_iters: int = 5,
-    ):
+    ) -> None:
         super().__init__()
+        self.supported_models = ['homography', 'fundamental', 'homography_from_linesegments']
         self.inl_th = inl_th
         self.max_iter = max_iter
         self.batch_size = batch_size

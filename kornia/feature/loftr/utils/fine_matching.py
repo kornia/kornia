@@ -1,19 +1,22 @@
+from __future__ import annotations
+
 import math
+from typing import Any
 
 import torch
-import torch.nn as nn
 
+from kornia.core import Module, Tensor
 from kornia.geometry.subpix import dsnt
 from kornia.utils.grid import create_meshgrid
 
 
-class FineMatching(nn.Module):
+class FineMatching(Module):
     """FineMatching with s2d paradigm."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
 
-    def forward(self, feat_f0, feat_f1, data):
+    def forward(self, feat_f0: Tensor, feat_f1: Tensor, data: dict[str, Any]) -> None:
         """
         Args:
             feat0 (torch.Tensor): [M, WW, C]
@@ -68,7 +71,7 @@ class FineMatching(nn.Module):
         self.get_fine_match(coords_normalized, data)
 
     @torch.no_grad()
-    def get_fine_match(self, coords_normed, data):
+    def get_fine_match(self, coords_normed: Tensor, data: dict[str, Any]) -> None:
         W, _, _, scale = self.W, self.WW, self.C, self.scale
 
         # mkpts0_f and mkpts1_f

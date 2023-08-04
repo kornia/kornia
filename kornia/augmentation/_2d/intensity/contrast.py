@@ -16,9 +16,8 @@ class RandomContrast(IntensityAugmentationBase2D):
 
     Args:
         p: probability of applying the transformation.
-        contrast: the contrast factor to apply
-        clip_output: if true clip output
-        silence_instantiation_warning: if True, silence the warning at instantiation.
+        contrast: the contrast factor to apply.
+        clip_output: if true clip output.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
@@ -27,12 +26,12 @@ class RandomContrast(IntensityAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     .. note::
-        This function internally uses :func:`kornia.enhance.adjust_contrast
+        This function internally uses :func:`kornia.enhance.adjust_contrast`
 
-        Examples:
+    Examples:
         >>> rng = torch.manual_seed(0)
         >>> inputs = torch.rand(1, 3, 3, 3)
-        >>> aug = RandomContrast(contrast = (0.5,2.),p=1.)
+        >>> aug = RandomContrast(contrast = (0.5, 2.), p = 1.)
         >>> aug(inputs)
         tensor([[[[0.2750, 0.4258, 0.0490],
                   [0.0732, 0.1704, 0.3514],
@@ -47,6 +46,7 @@ class RandomContrast(IntensityAugmentationBase2D):
                   [0.2325, 0.3064, 0.5281]]]])
 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+
         >>> input = torch.rand(1, 3, 32, 32)
         >>> aug = RandomContrast((0.8,1.2), p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
@@ -60,9 +60,8 @@ class RandomContrast(IntensityAugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self.contrast: Tensor = _range_bound(contrast, 'contrast', center=1.0)
         self._param_generator = rg.PlainUniformGenerator((self.contrast, "contrast_factor", None, None))
 

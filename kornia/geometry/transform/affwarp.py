@@ -1,7 +1,7 @@
 from typing import Optional, Tuple, Union
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 from kornia.filters import gaussian_blur2d
 from kornia.utils import _extract_device_dtype

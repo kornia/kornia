@@ -1,14 +1,24 @@
+from __future__ import annotations
+
 import math
-from typing import List, Tuple
 
 import torch
 import torch.nn.functional as F
 
 from kornia.core import Module, Tensor, pad, stack, tensor
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.filters import filter2d, gaussian_blur2d
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
-__all__ = ["PyrDown", "PyrUp", "ScalePyramid", "pyrdown", "pyrup", "build_pyramid", "build_laplacian_pyramid"]
+__all__ = [
+    "PyrDown",
+    "PyrUp",
+    "ScalePyramid",
+    "pyrdown",
+    "pyrup",
+    "build_pyramid",
+    "build_laplacian_pyramid",
+    "upscale_double",
+]
 
 
 def _get_pyramid_gaussian_kernel() -> Tensor:
@@ -82,7 +92,7 @@ class PyrUp(Module):
         >>> output = PyrUp()(input)  # 1x2x8x8
     """
 
-    def __init__(self, border_type: str = 'reflect', align_corners: bool = False):
+    def __init__(self, border_type: str = 'reflect', align_corners: bool = False) -> None:
         super().__init__()
         self.border_type: str = border_type
         self.align_corners: bool = align_corners
@@ -118,7 +128,9 @@ class ScalePyramid(Module):
         >>> sp, sigmas, pds = ScalePyramid(3, 15)(input)
     """
 
-    def __init__(self, n_levels: int = 3, init_sigma: float = 1.6, min_size: int = 15, double_image: bool = False):
+    def __init__(
+        self, n_levels: int = 3, init_sigma: float = 1.6, min_size: int = 15, double_image: bool = False
+    ) -> None:
         super().__init__()
         # 3 extra levels are needed for DoG nms.
         self.n_levels = n_levels
@@ -131,31 +143,17 @@ class ScalePyramid(Module):
 
     def __repr__(self) -> str:
         return (
-            self.__class__.__name__
-            + '(n_levels='
-            + str(self.n_levels)
-            + ', '
-            + 'init_sigma='
-            + str(self.init_sigma)
-            + ', '
-            + 'min_size='
-            + str(self.min_size)
-            + ', '
-            + 'extra_levels='
-            + str(self.extra_levels)
-            + ', '
-            + 'border='
-            + str(self.border)
-            + ', '
-            + 'sigma_step='
-            + str(self.sigma_step)
-            + ', '
-            + 'double_image='
-            + str(self.double_image)
-            + ')'
+            f'{self.__class__.__name__}('
+            f'n_levels={self.n_levels}, '
+            f'init_sigma={self.init_sigma}, '
+            f'min_size={self.min_size}, '
+            f'extra_levels={self.extra_levels}, '
+            f'border={self.border}, '
+            f'sigma_step={self.sigma_step}, '
+            f'double_image={self.double_image})'
         )
 
-    def get_kernel_size(self, sigma: float):
+    def get_kernel_size(self, sigma: float) -> int:
         ksize = int(2.0 * 4.0 * sigma + 1.0)
 
         #  matches OpenCV, but may cause padding problem for small images
@@ -166,12 +164,12 @@ class ScalePyramid(Module):
             ksize += 1
         return ksize
 
-    def get_first_level(self, input: Tensor) -> Tuple[Tensor, float, float]:
+    def get_first_level(self, input: Tensor) -> tuple[Tensor, float, float]:
         pixel_distance = 1.0
         cur_sigma = 0.5
         # Same as in OpenCV up to interpolation difference
         if self.double_image:
-            x = F.interpolate(input, scale_factor=2.0, mode='bilinear', align_corners=False)
+            x = upscale_double(input)
             pixel_distance = 0.5
             cur_sigma *= 2.0
         else:
@@ -186,7 +184,7 @@ class ScalePyramid(Module):
             cur_level = x
         return cur_level, cur_sigma, pixel_distance
 
-    def forward(self, x: Tensor) -> Tuple[List[Tensor], List[Tensor], List[Tensor]]:
+    def forward(self, x: Tensor) -> tuple[list[Tensor], list[Tensor], list[Tensor]]:
         bs, _, _, _ = x.size()
         cur_level, cur_sigma, pixel_distance = self.get_first_level(x)
 
@@ -203,7 +201,7 @@ class ScalePyramid(Module):
                 # Hack, because PyTorch does not allow to pad more than original size.
                 # But for the huge sigmas, one needs huge kernel and padding...
 
-                ksize = min(ksize, min(cur_level.size(2), cur_level.size(3)))
+                ksize = min(ksize, cur_level.size(2), cur_level.size(3))
                 if ksize % 2 == 0:
                     ksize += 1
 
@@ -213,9 +211,8 @@ class ScalePyramid(Module):
                 sigmas[-1][:, level_idx] = cur_sigma
                 pixel_dists[-1][:, level_idx] = pixel_distance
             _pyr = pyr[-1][-self.extra_levels]
-            nextOctaveFirstLevel = F.interpolate(
-                _pyr, size=(_pyr.size(-2) // 2, _pyr.size(-1) // 2), mode='nearest'
-            )  # Nearest matches OpenCV SIFT
+            nextOctaveFirstLevel = _pyr[:, :, ::2, ::2]
+
             pixel_distance *= 2.0
             cur_sigma = self.init_sigma
             if min(nextOctaveFirstLevel.size(2), nextOctaveFirstLevel.size(3)) <= self.min_size:
@@ -307,7 +304,7 @@ def pyrup(input: Tensor, border_type: str = 'reflect', align_corners: bool = Fal
 
 def build_pyramid(
     input: Tensor, max_level: int, border_type: str = 'reflect', align_corners: bool = False
-) -> List[Tensor]:
+) -> list[Tensor]:
     r"""Construct the Gaussian pyramid for a tensor image.
 
     .. image:: _static/img/build_pyramid.png
@@ -335,7 +332,7 @@ def build_pyramid(
     )
 
     # create empty list and append the original image
-    pyramid: List[Tensor] = []
+    pyramid: list[Tensor] = []
     pyramid.append(input)
 
     # iterate and downsample
@@ -347,12 +344,12 @@ def build_pyramid(
     return pyramid
 
 
-def is_powerof_two(x):
+def is_powerof_two(x: int) -> bool:
     # check if number x is a power of two
-    return x and (not (x & (x - 1)))
+    return bool(x) and (not (x & (x - 1)))
 
 
-def find_next_powerof_two(x):
+def find_next_powerof_two(x: int) -> int:
     # return the nearest power of 2
     n = math.ceil(math.log(x) / math.log(2))
     return 2**n
@@ -360,7 +357,7 @@ def find_next_powerof_two(x):
 
 def build_laplacian_pyramid(
     input: Tensor, max_level: int, border_type: str = 'reflect', align_corners: bool = False
-) -> List[Tensor]:
+) -> list[Tensor]:
     r"""Construct the Laplacian pyramid for a tensor image.
 
     The function constructs a vector of images and builds the Laplacian pyramid
@@ -399,9 +396,9 @@ def build_laplacian_pyramid(
         input = pad(input, padding, "reflect")
 
     # create gaussian pyramid
-    gaussian_pyramid: List[Tensor] = build_pyramid(input, max_level, border_type, align_corners)
+    gaussian_pyramid: list[Tensor] = build_pyramid(input, max_level, border_type, align_corners)
     # create empty list
-    laplacian_pyramid: List[Tensor] = []
+    laplacian_pyramid: list[Tensor] = []
 
     # iterate and compute difference of adjacent layers in a gaussian pyramid
     for i in range(max_level - 1):
@@ -410,3 +407,27 @@ def build_laplacian_pyramid(
         laplacian_pyramid.append(laplacian)
     laplacian_pyramid.append(gaussian_pyramid[-1])
     return laplacian_pyramid
+
+
+def upscale_double(x: Tensor) -> Tensor:
+    r"""Upscale image by the factor of 2, even indices maps to original indices.
+
+    Odd indices are linearly interpolated from the even ones.
+
+    Args:
+        x: input image.
+
+    Shape:
+        - Input: :math:`(*, H, W)`
+        - Output :math:`(*, H, W)`
+    """
+    KORNIA_CHECK_IS_TENSOR(x)
+    KORNIA_CHECK_SHAPE(x, ["*", "H", "W"])
+    double_shape = x.shape[:-2] + (x.shape[-2] * 2, x.shape[-1] * 2)
+    upscaled = torch.zeros(double_shape, device=x.device, dtype=x.dtype)
+    upscaled[..., ::2, ::2] = x
+    upscaled[..., ::2, 1::2][..., :-1] = (upscaled[..., ::2, ::2][..., :-1] + upscaled[..., ::2, 2::2]) / 2
+    upscaled[..., ::2, -1] = upscaled[..., ::2, -2]
+    upscaled[..., 1::2, :][..., :-1, :] = (upscaled[..., ::2, :][..., :-1, :] + upscaled[..., 2::2, :]) / 2
+    upscaled[..., -1, :] = upscaled[..., -2, :]
+    return upscaled

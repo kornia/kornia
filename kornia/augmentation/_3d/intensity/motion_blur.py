@@ -1,13 +1,13 @@
 from typing import Any, Dict, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
-from kornia.augmentation._3d.base import AugmentationBase3D
+from kornia.augmentation._3d.intensity.base import IntensityAugmentationBase3D
 from kornia.constants import BorderType, Resample
 from kornia.core import Tensor
 from kornia.filters import motion_blur3d
 
 
-class RandomMotionBlur3D(AugmentationBase3D):
+class RandomMotionBlur3D(IntensityAugmentationBase3D):
     r"""Apply random motion blur on 3D volumes (5D tensor).
 
     Args:
@@ -89,12 +89,9 @@ class RandomMotionBlur3D(AugmentationBase3D):
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
     ) -> None:
-        super().__init__(
-            p=p, return_transform=return_transform, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim
-        )
-        self.flags = dict(border_type=BorderType.get(border_type), resample=Resample.get(resample))
+        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
+        self.flags = {"border_type": BorderType.get(border_type), "resample": Resample.get(resample)}
         self._param_generator = rg.MotionBlurGenerator3D(kernel_size, angle, direction)
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:

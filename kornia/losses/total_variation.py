@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 from kornia.core import Module, Tensor
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 
 def total_variation(img: Tensor, reduction: str = "sum") -> Tensor:
@@ -76,5 +78,5 @@ class TotalVariation(Module):
         [1] https://en.wikipedia.org/wiki/Total_variation
     """
 
-    def forward(self, img) -> Tensor:
+    def forward(self, img: Tensor) -> Tensor:
         return total_variation(img)

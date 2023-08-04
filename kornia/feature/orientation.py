@@ -1,14 +1,13 @@
-import math
 from typing import Dict, Optional
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 
 from kornia.constants import pi
-from kornia.filters import SpatialGradient, get_gaussian_kernel2d
+from kornia.core.check import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
+from kornia.filters import SpatialGradient, get_gaussian_discrete_kernel1d, get_gaussian_kernel2d
 from kornia.geometry import rad2deg
-from kornia.testing import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 from kornia.utils.helpers import map_location_to_cpu
 
 from .laf import extract_patches_from_pyramid, get_laf_orientation, set_laf_orientation
@@ -23,11 +22,12 @@ class PassLAF(nn.Module):
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            laf: 4d tensor.
-            img: the input image tensor.
+            laf: :math:`(B, N, 2, 3)`
+            img: :math:`(B, 1, H, W)`
 
-        Return:
-            torch.Tensor: unchanged laf from the input."""
+        Returns:
+            LAF, unchanged :math:`(B, N, 2, 3)`
+        """
         return laf
 
 
@@ -42,41 +42,35 @@ class PatchDominantGradientOrientation(nn.Module):
         eps: for safe division, and arctan.
     """
 
-    def __init__(self, patch_size: int = 32, num_angular_bins: int = 36, eps: float = 1e-8):
+    def __init__(self, patch_size: int = 32, num_angular_bins: int = 36, eps: float = 1e-8) -> None:
         super().__init__()
         self.patch_size = patch_size
         self.num_ang_bins = num_angular_bins
         self.gradient = SpatialGradient('sobel', 1)
         self.eps = eps
-        self.angular_smooth = nn.Conv1d(1, 1, kernel_size=3, padding=1, bias=False, padding_mode="circular")
+        self.angular_smooth = nn.Conv1d(1, 1, kernel_size=5, padding=2, bias=False, padding_mode="circular")
         with torch.no_grad():
-            self.angular_smooth.weight[:] = torch.tensor([[[0.33, 0.34, 0.33]]])
-        sigma: float = float(self.patch_size) / math.sqrt(2.0)
+            self.angular_smooth.weight[:] = get_gaussian_discrete_kernel1d(5, 1.6)
+        sigma: float = float(self.patch_size) / 6.0
         self.weighting = get_gaussian_kernel2d((self.patch_size, self.patch_size), (sigma, sigma), True)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (
-            self.__class__.__name__ + '('
-            'patch_size='
-            + str(self.patch_size)
-            + ', '
-            + 'num_ang_bins='
-            + str(self.num_ang_bins)
-            + ', '
-            + 'eps='
-            + str(self.eps)
-            + ')'
+            f'{self.__class__.__name__}('
+            f'patch_size={self.patch_size}, '
+            f'num_ang_bins={self.num_ang_bins}, '
+            f'eps={self.eps})'
         )
 
     def forward(self, patch: torch.Tensor) -> torch.Tensor:
-        """Args:
-            patch: shape [Bx1xHxW]
+        """
+        Args:
+            patch: :math:`(B, 1, H, W)`
+
         Returns:
-            torch.Tensor: angle shape [B]"""
-        if not isinstance(patch, torch.Tensor):
-            raise TypeError(f"Input type is not a torch.Tensor. Got {type(patch)}")
-        if not len(patch.shape) == 4:
-            raise ValueError(f"Invalid input shape, we expect Bx1xHxW. Got: {patch.shape}")
+            angle in radians: :math:`(B)`
+        """
+        KORNIA_CHECK_SHAPE(patch, ["B", "1", "H", "W"])
         _, CH, W, H = patch.size()
         if (W != self.patch_size) or (H != self.patch_size) or (CH != 1):
             raise TypeError(
@@ -90,7 +84,7 @@ class PatchDominantGradientOrientation(nn.Module):
         gx: torch.Tensor = grads[:, :, 0]
         gy: torch.Tensor = grads[:, :, 1]
 
-        mag: torch.Tensor = torch.sqrt(gx * gx + gy * gy + self.eps)
+        mag: torch.Tensor = torch.sqrt(gx * gx + gy * gy + self.eps) * self.weighting
         ori: torch.Tensor = torch.atan2(gy, gx + self.eps) + 2.0 * pi
 
         o_big = float(self.num_ang_bins) * (ori + 1.0 * pi) / (2.0 * pi)
@@ -107,9 +101,15 @@ class PatchDominantGradientOrientation(nn.Module):
             )
             ang_bins_list.append(ang_bins_i)
         ang_bins = torch.cat(ang_bins_list, 1).view(-1, 1, self.num_ang_bins)
-        ang_bins = self.angular_smooth(ang_bins)
-        values, indices = ang_bins.view(-1, self.num_ang_bins).max(1)
-        angle = -((2.0 * pi * indices.to(patch.dtype) / float(self.num_ang_bins)) - pi)
+        ang_bins = self.angular_smooth(ang_bins).view(-1, self.num_ang_bins)
+        values, indices = ang_bins.max(1)
+        indices_left = (self.num_ang_bins + indices - 1) % self.num_ang_bins
+        indices_right = (indices + 1) % self.num_ang_bins
+        left = torch.gather(ang_bins, 1, indices_left.reshape(-1, 1)).reshape(-1)
+        center = values
+        right = torch.gather(ang_bins, 1, indices_right.reshape(-1, 1)).reshape(-1)
+        c_subpix = 0.5 * (left - right) / (left + right - 2.0 * center)
+        angle = -((2.0 * pi * (indices.to(patch.dtype) + c_subpix) / float(self.num_ang_bins)) - pi)
         return angle
 
 
@@ -137,7 +137,7 @@ class OriNet(nn.Module):
         >>> angle = orinet(input) # 16
     """
 
-    def __init__(self, pretrained: bool = False, eps: float = 1e-8):
+    def __init__(self, pretrained: bool = False, eps: float = 1e-8) -> None:
         super().__init__()
         self.features = nn.Sequential(
             nn.Conv2d(1, 16, kernel_size=3, padding=1, bias=False),
@@ -180,10 +180,13 @@ class OriNet(nn.Module):
         return (x - mp.detach()) / (sp.detach() + eps)
 
     def forward(self, patch: torch.Tensor) -> torch.Tensor:
-        """Args:
-            patch: (torch.Tensor) shape [Bx1xHxW]
+        """
+        Args:
+            patch: :math:`(B, 1, H, W)`
+
         Returns:
-            patch: (torch.Tensor) shape [B]"""
+            angle in radians: :math:`(B)`
+        """
         xy = self.features(self._normalize_input(patch)).view(-1, 2)
         angle = torch.atan2(xy[:, 0] + 1e-8, xy[:, 1] + self.eps)
         return angle
@@ -202,7 +205,9 @@ class LAFOrienter(nn.Module):
           or OriNet.
     """  # pylint: disable
 
-    def __init__(self, patch_size: int = 32, num_angular_bins: int = 36, angle_detector: Optional[nn.Module] = None):
+    def __init__(
+        self, patch_size: int = 32, num_angular_bins: int = 36, angle_detector: Optional[nn.Module] = None
+    ) -> None:
         super().__init__()
         self.patch_size = patch_size
         self.num_ang_bins = num_angular_bins
@@ -212,20 +217,17 @@ class LAFOrienter(nn.Module):
         else:
             self.angle_detector = angle_detector
 
-    def __repr__(self):
-        return (
-            self.__class__.__name__ + '('
-            'patch_size=' + str(self.patch_size) + ', ' + 'angle_detector=' + str(self.angle_detector) + ')'
-        )
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(patch_size={self.patch_size}, angle_detector={self.angle_detector})"
 
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            laf: shape [BxNx2x3]
-            img: shape [Bx1xHxW]
+            laf: :math:`(B, N, 2, 3)`
+            img: :math:`(B, 1, H, W)`
 
         Returns:
-            laf_out, shape [BxNx2x3]
+            LAF_out: :math:`(B, N, 2, 3)`
         """
         KORNIA_CHECK_LAF(laf)
         KORNIA_CHECK_SHAPE(img, ["B", "C", "H", "W"])

@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 
 from kornia.utils.one_hot import one_hot
 
@@ -34,7 +36,7 @@ def tversky_loss(
     Args:
         input: logits tensor with shape :math:`(N, C, H, W)` where C = number of classes.
         target: labels tensor with shape :math:`(N, H, W)` where each value
-          is :math:`0 ≤ targets[i] ≤ C−1`.
+          is :math:`0 ≤ targets[i] ≤ C-1`.
         alpha: the first coefficient in the denominator.
         beta: the second coefficient in the denominator.
         eps: scalar for numerical stability.
@@ -109,7 +111,7 @@ class TverskyLoss(nn.Module):
     Shape:
         - Input: :math:`(N, C, H, W)` where C = number of classes.
         - Target: :math:`(N, H, W)` where each value is
-          :math:`0 ≤ targets[i] ≤ C−1`.
+          :math:`0 ≤ targets[i] ≤ C-1`.
 
     Examples:
         >>> N = 5  # num_classes

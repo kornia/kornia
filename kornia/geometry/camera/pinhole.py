@@ -1,11 +1,11 @@
-from typing import Iterable, List
+from typing import Iterable, List, Union
 
 import torch
 
 from kornia.core import Device, Tensor
+from kornia.core.check import KORNIA_CHECK_SAME_DEVICE
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.linalg import inverse_transformation, transform_points
-from kornia.testing import KORNIA_CHECK_SAME_DEVICE
 from kornia.utils.helpers import _torch_inverse_cast
 
 
@@ -153,7 +153,7 @@ class PinholeCamera:
         return self.extrinsics[..., 0, -1]
 
     @tx.setter
-    def tx(self, value) -> 'PinholeCamera':
+    def tx(self, value: Union[Tensor, float, int]) -> 'PinholeCamera':
         r"""Set the x-coordinate of the translation vector with the given value."""
         self.extrinsics[..., 0, -1] = value
         return self
@@ -168,7 +168,7 @@ class PinholeCamera:
         return self.extrinsics[..., 1, -1]
 
     @ty.setter
-    def ty(self, value) -> 'PinholeCamera':
+    def ty(self, value: Union[Tensor, float, int]) -> 'PinholeCamera':
         r"""Set the y-coordinate of the translation vector with the given value."""
         self.extrinsics[..., 1, -1] = value
         return self
@@ -183,7 +183,7 @@ class PinholeCamera:
         return self.extrinsics[..., 2, -1]
 
     @tz.setter
-    def tz(self, value) -> 'PinholeCamera':
+    def tz(self, value: Union[Tensor, float, int]) -> 'PinholeCamera':
         r"""Set the y-coordinate of the translation vector with the given value."""
         self.extrinsics[..., 2, -1] = value
         return self
@@ -240,7 +240,7 @@ class PinholeCamera:
         """
         return self.intrinsics.inverse()
 
-    def scale(self, scale_factor) -> 'PinholeCamera':
+    def scale(self, scale_factor: Tensor) -> 'PinholeCamera':
         r"""Scale the pinhole model.
 
         Args:
@@ -262,7 +262,7 @@ class PinholeCamera:
         width: Tensor = scale_factor * self.width.clone()
         return PinholeCamera(intrinsics, self.extrinsics, height, width)
 
-    def scale_(self, scale_factor) -> 'PinholeCamera':
+    def scale_(self, scale_factor: Union[float, int, Tensor]) -> 'PinholeCamera':
         r"""Scale the pinhole model in-place.
 
         Args:
@@ -307,7 +307,7 @@ class PinholeCamera:
         P = self.intrinsics @ self.extrinsics
         return convert_points_from_homogeneous(transform_points(P, point_3d))
 
-    def unproject(self, point_2d: Tensor, depth: Tensor):
+    def unproject(self, point_2d: Tensor, depth: Tensor) -> Tensor:
         r"""Unproject a 2d point in 3d.
 
         Transform coordinates in the pixel frame to the world frame.
@@ -343,8 +343,20 @@ class PinholeCamera:
     # NOTE: just for test. Decide if we keep it.
     @classmethod
     def from_parameters(
-        self, fx, fy, cx, cy, height, width, tx, ty, tz, batch_size, device: Device, dtype: torch.dtype
-    ):
+        self,
+        fx: Tensor,
+        fy: Tensor,
+        cx: Tensor,
+        cy: Tensor,
+        height: int,
+        width: int,
+        tx: Tensor,
+        ty: Tensor,
+        tz: Tensor,
+        batch_size: int,
+        device: Device,
+        dtype: torch.dtype,
+    ) -> 'PinholeCamera':
         # create the camera matrix
         intrinsics = torch.zeros(batch_size, 4, 4, device=device, dtype=dtype)
         intrinsics[..., 0, 0] += fx
@@ -564,7 +576,7 @@ def get_optical_pose_base(pinholes: Tensor) -> Tensor:
     raise NotImplementedError
     # TODO: We have rtvec_to_pose in torchgeometry
     # https://github.com/whh14/torchgeometry/blob/master/torchgeometry/conversions.py#L240
-    # But it relies on angle_axis_to_rotation_matrix
+    # But it relies on axis_angle_to_rotation_matrix
     # And since then, it was changed from returning Nx4x4 matrix to Nx3x3
     # return rtvec_to_pose(optical_pose_parent)   type: ignore
 

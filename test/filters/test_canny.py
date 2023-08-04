@@ -1,45 +1,66 @@
 import pytest
 import torch
-from torch.autograd import gradcheck
 
-import kornia
-import kornia.testing as utils  # test utils
-from kornia.testing import assert_close
+from kornia.filters import Canny, canny
+from kornia.testing import BaseTester, tensor_to_gradcheck_var
+from kornia.utils._compat import torch_version
 
 
-class TestCanny:
-    def test_shape(self, device, dtype):
-        inp = torch.zeros(1, 3, 4, 4, device=device, dtype=dtype)
-
-        canny = kornia.filters.Canny()
-        magnitude, edges = canny(inp)
-
-        assert magnitude.shape == (1, 1, 4, 4)
-        assert edges.shape == (1, 1, 4, 4)
-
-    def test_shape_batch(self, device, dtype):
-        batch_size = 2
+class TestCanny(BaseTester):
+    @pytest.mark.parametrize('batch_size', [1, 2])
+    @pytest.mark.parametrize('kernel_size', [3, (5, 7)])
+    @pytest.mark.parametrize('sigma', [(1.5, 1.0), (2.5, 0.5)])
+    @pytest.mark.parametrize('hysteresis', [False, True])
+    @pytest.mark.parametrize('low_threshold,high_threshold', [(0.1, 0.2), (0.3, 0.5)])
+    def test_smoke(self, batch_size, kernel_size, sigma, hysteresis, low_threshold, high_threshold, device, dtype):
         inp = torch.zeros(batch_size, 3, 4, 4, device=device, dtype=dtype)
 
-        canny = kornia.filters.Canny()
-        magnitude, edges = canny(inp)
+        op = Canny(low_threshold, high_threshold, kernel_size, sigma, hysteresis)
+        actual = op(inp)
+        assert len(actual) == 2
+        assert actual[0].shape == (batch_size, 1, 4, 4)
+        assert actual[1].shape == (batch_size, 1, 4, 4)
+
+    @pytest.mark.parametrize('batch_size', [1, 2])
+    def test_cardinality(self, batch_size, device, dtype):
+        inp = torch.zeros(batch_size, 3, 4, 4, device=device, dtype=dtype)
+
+        op = Canny()
+        magnitude, edges = op(inp)
 
         assert magnitude.shape == (batch_size, 1, 4, 4)
         assert edges.shape == (batch_size, 1, 4, 4)
 
-    def test_noncontiguous(self, device, dtype):
-        batch_size = 3
-        inp = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
+    def test_exception(self, device, dtype):
+        with pytest.raises(Exception) as errinfo:
+            Canny(0.3, 0.2)
+        assert 'low_threshold should be smaller than the high_threshold' in str(errinfo)
 
-        magnitude, edges = kornia.filters.canny(inp)
+        with pytest.raises(Exception) as errinfo:
+            Canny(-2, 0.3)
+        assert 'Invalid low threshold.' in str(errinfo)
 
-        assert inp.is_contiguous() is False
+        with pytest.raises(Exception) as errinfo:
+            Canny(0.1, 3)
+        assert 'Invalid high threshold.' in str(errinfo)
+
+        with pytest.raises(Exception) as errinfo:
+            canny(1)
+        assert 'Not a Tensor type' in str(errinfo)
+
+        inp = torch.zeros(3, 4, 4, device=device, dtype=dtype)
+        with pytest.raises(Exception) as errinfo:
+            canny(inp)
+        assert 'shape must be [[\'B\', \'C\', \'H\', \'W\']]' in str(errinfo)
+
+    @pytest.mark.parametrize('batch_size', [1, 2])
+    def test_noncontiguous(self, batch_size, device, dtype):
+        inp = torch.rand(batch_size, 3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
+
+        magnitude, edges = canny(inp)
 
         assert magnitude.is_contiguous()
         assert edges.is_contiguous()
-
-        assert magnitude.shape == (batch_size, 1, 5, 5)
-        assert edges.shape == (batch_size, 1, 5, 5)
 
     def test_magnitude(self, device, dtype):
         inp = torch.tensor(
@@ -90,11 +111,10 @@ class TestCanny:
             dtype=dtype,
         )
 
-        magnitude, edges = kornia.filters.canny(inp)
+        magnitude, edges = canny(inp)
 
-        tol_val: float = utils._get_precision(device, dtype)
-        assert_close(magnitude, expected_magnitude, rtol=tol_val, atol=tol_val)
-        assert_close(edges, expected_edges, rtol=tol_val, atol=tol_val)
+        self.assert_close(magnitude, expected_magnitude, atol=1e-4, rtol=1e-4)
+        self.assert_close(edges, expected_edges, atol=1e-4, rtol=1e-4)
 
     def test_magnitude_hyst(self, device, dtype):
         inp = torch.tensor(
@@ -145,11 +165,10 @@ class TestCanny:
             dtype=dtype,
         )
 
-        magnitude, edges = kornia.filters.canny(inp, hysteresis=True)
+        magnitude, edges = canny(inp, hysteresis=True)
 
-        tol_val: float = utils._get_precision(device, dtype)
-        assert_close(magnitude, expected_magnitude, rtol=tol_val, atol=tol_val)
-        assert_close(edges, expected_edges, rtol=tol_val, atol=tol_val)
+        self.assert_close(magnitude, expected_magnitude, atol=1e-4, rtol=1e-4)
+        self.assert_close(edges, expected_edges, atol=1e-4, rtol=1e-4)
 
     def test_magnitude_hyst_false(self, device, dtype):
         inp = torch.tensor(
@@ -200,11 +219,10 @@ class TestCanny:
             dtype=dtype,
         )
 
-        magnitude, edges = kornia.filters.canny(inp, hysteresis=False)
+        magnitude, edges = canny(inp, hysteresis=False)
 
-        tol_val: float = utils._get_precision(device, dtype)
-        assert_close(magnitude, expected_magnitude, rtol=tol_val, atol=tol_val)
-        assert_close(edges, expected_edges, rtol=tol_val, atol=tol_val)
+        self.assert_close(magnitude, expected_magnitude, atol=1e-4, rtol=1e-4)
+        self.assert_close(edges, expected_edges, atol=1e-4, rtol=1e-4)
 
     def test_magnitude_threshold(self, device, dtype):
         inp = torch.tensor(
@@ -255,34 +273,38 @@ class TestCanny:
             dtype=dtype,
         )
 
-        magnitude, edges = kornia.filters.canny(inp, low_threshold=0.3, high_threshold=0.9)
+        magnitude, edges = canny(inp, low_threshold=0.3, high_threshold=0.9)
 
-        tol_val: float = utils._get_precision(device, dtype)
-        assert_close(magnitude, expected_magnitude, rtol=tol_val, atol=tol_val)
-        assert_close(edges, expected_edges, rtol=tol_val, atol=tol_val)
+        self.assert_close(magnitude, expected_magnitude, atol=1e-4, rtol=1e-4)
+        self.assert_close(edges, expected_edges, atol=1e-4, rtol=1e-4)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         if "cuda" in str(device):
             pytest.skip("RuntimeError: Backward is not reentrant, i.e., running backward,")
         batch_size, channels, height, width = 1, 1, 3, 4
-        img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
-        img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.filters.canny, img, raise_exception=True, fast_mode=True)
-
-    def test_jit(self, device, dtype):
-        img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
-        op = kornia.filters.sobel
-        op_script = torch.jit.script(op)
-        expected_magnitude, expected_edges = op(img)
-        actual_magnitude, actual_edges = op_script(img)
-        assert_close(actual_magnitude, expected_magnitude)
-        assert_close(actual_edges, expected_edges)
+        img = torch.rand(batch_size, channels, height, width, device=device)
+        img = tensor_to_gradcheck_var(img)
+        self.gradcheck(canny, img)
 
     def test_module(self, device, dtype):
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
-        op = kornia.filters.canny
-        op_module = kornia.filters.Canny()
+        op = canny
+        op_module = Canny()
         expected_magnitude, expected_edges = op(img)
         actual_magnitude, actual_edges = op_module(img)
-        assert_close(actual_magnitude, expected_magnitude)
-        assert_close(actual_edges, expected_edges)
+        self.assert_close(actual_magnitude, expected_magnitude)
+        self.assert_close(actual_edges, expected_edges)
+
+    @pytest.mark.parametrize('kernel_size', [5, (5, 7)])
+    @pytest.mark.parametrize('batch_size', [1, 2])
+    @pytest.mark.skipif(torch_version() in {'2.0.0', '2.0.1'}, reason='Not working on 2.0')
+    def test_dynamo(self, batch_size, kernel_size, device, dtype, torch_optimizer):
+        inpt = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
+        op = Canny(kernel_size=kernel_size)
+        op_optimized = torch_optimizer(op)
+
+        expected_magnitude, expected_edges = op(inpt)
+        actual_magnitude, actual_edges = op_optimized(inpt)
+
+        self.assert_close(actual_magnitude, expected_magnitude)
+        self.assert_close(actual_edges, expected_edges)

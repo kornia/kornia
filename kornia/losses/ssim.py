@@ -1,7 +1,9 @@
-import torch
-import torch.nn as nn
+from __future__ import annotations
 
-import kornia.metrics as metrics
+import torch
+from torch import nn
+
+from kornia import metrics
 
 
 def ssim_loss(

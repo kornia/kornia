@@ -1,13 +1,13 @@
 # kornia.geometry.line module inspired by Eigen::geometry::ParametrizedLine
 # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/ParametrizedLine.h
-from typing import Optional, Tuple, Union
+from typing import Iterator, Optional, Tuple, Union
 
 import torch
 
 from kornia.core import Module, Parameter, Tensor, normalize, where
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.geometry.linalg import batched_dot_product, squared_norm
 from kornia.geometry.plane import Hyperplane
-from kornia.testing import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.utils.helpers import _torch_svd_cast
 
 __all__ = ["ParametrizedLine", "fit_line"]
@@ -46,10 +46,10 @@ class ParametrizedLine(Module):
     def __repr__(self) -> str:
         return str(self)
 
-    def __getitem__(self, idx) -> Tensor:
+    def __getitem__(self, idx: int) -> Tensor:
         return self.origin if idx == 0 else self.direction
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Tensor]:
         yield from (self.origin, self.direction)
 
     @property
@@ -67,7 +67,7 @@ class ParametrizedLine(Module):
         return self.direction.shape[-1]
 
     @classmethod
-    def through(cls, p0, p1) -> "ParametrizedLine":
+    def through(cls, p0: Tensor, p1: Tensor) -> "ParametrizedLine":
         """Constructs a parametrized line going from a point :math:`p0` to :math:`p1`.
 
         Args:

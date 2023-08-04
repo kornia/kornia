@@ -6,6 +6,8 @@ from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.random_generator.utils import randperm
 from kornia.augmentation.utils import _common_param_check
 
+__all__ = ["JigsawGenerator"]
+
 
 class JigsawGenerator(RandomGeneratorBase):
     r"""Generate Jigsaw permutation indices for a batch of inputs.
@@ -37,7 +39,7 @@ class JigsawGenerator(RandomGeneratorBase):
         self._device = device
         self._dtype = dtype
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
 
@@ -52,4 +54,4 @@ class JigsawGenerator(RandomGeneratorBase):
             rand_ids = torch.stack(
                 [randperm(perm_times, ensure_perm=self.ensure_perm, device=self._device) for _ in range(batch_size)]
             )
-        return dict(permutation=rand_ids)
+        return {"permutation": rand_ids}

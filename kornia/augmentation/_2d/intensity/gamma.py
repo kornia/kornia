@@ -15,9 +15,8 @@ class RandomGamma(IntensityAugmentationBase2D):
 
     Args:
         p: probability of applying the transformation.
-        gamma: the gamma factor to apply
-        gain: the gain factor to apply
-        silence_instantiation_warning: if True, silence the warning at instantiation.
+        gamma: the gamma factor to apply.
+        gain: the gain factor to apply.
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
@@ -59,9 +58,8 @@ class RandomGamma(IntensityAugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
-        return_transform: Optional[bool] = None,
     ) -> None:
-        super().__init__(p=p, return_transform=return_transform, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator = rg.PlainUniformGenerator(
             (gamma, "gamma_factor", None, None), (gain, "gain_factor", None, None)
         )

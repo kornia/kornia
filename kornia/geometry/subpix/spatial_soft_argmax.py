@@ -1,13 +1,13 @@
-from typing import Tuple, Union
+from __future__ import annotations
 
 import torch
 import torch.nn.functional as F
 
-from kornia.core import Module, Tensor, concatenate, stack, tensor, zeros
+from kornia.core import Module, Tensor, concatenate, stack, tensor, where, zeros
 from kornia.filters.sobel import spatial_gradient3d
 from kornia.geometry.conversions import normalize_pixel_coordinates, normalize_pixel_coordinates3d
 from kornia.utils import create_meshgrid, create_meshgrid3d
-from kornia.utils._compat import torch_version_geq
+from kornia.utils._compat import torch_version_ge
 from kornia.utils.helpers import safe_solve_with_mask
 
 from .dsnt import spatial_expectation2d, spatial_softmax2d
@@ -125,15 +125,16 @@ def _get_window_grid_kernel3d(d: int, h: int, w: int, device: torch.device = tor
 class ConvSoftArgmax2d(Module):
     r"""Module that calculates soft argmax 2d per window.
 
-    See :func:`~kornia.geometry.subpix.conv_soft_argmax2d` for details.
+    See
+    :func: `~kornia.geometry.subpix.conv_soft_argmax2d` for details.
     """
 
     def __init__(
         self,
-        kernel_size: Tuple[int, int] = (3, 3),
-        stride: Tuple[int, int] = (1, 1),
-        padding: Tuple[int, int] = (1, 1),
-        temperature: Union[Tensor, float] = tensor(1.0),
+        kernel_size: tuple[int, int] = (3, 3),
+        stride: tuple[int, int] = (1, 1),
+        padding: tuple[int, int] = (1, 1),
+        temperature: Tensor | float = tensor(1.0),
         normalized_coordinates: bool = True,
         eps: float = 1e-8,
         output_value: bool = False,
@@ -149,32 +150,17 @@ class ConvSoftArgmax2d(Module):
 
     def __repr__(self) -> str:
         return (
-            self.__class__.__name__
-            + '('
-            + 'kernel_size='
-            + str(self.kernel_size)
-            + ', '
-            + 'stride='
-            + str(self.stride)
-            + ', '
-            + 'padding='
-            + str(self.padding)
-            + ', '
-            + 'temperature='
-            + str(self.temperature)
-            + ', '
-            + 'normalized_coordinates='
-            + str(self.normalized_coordinates)
-            + ', '
-            + 'eps='
-            + str(self.eps)
-            + ', '
-            + 'output_value='
-            + str(self.output_value)
-            + ')'
+            f"{self.__class__.__name__}"
+            f"(kernel_size={self.kernel_size}, "
+            f"stride={self.stride}, "
+            f"padding={self.padding}, "
+            f"temperature={self.temperature}, "
+            f"normalized_coordinates={self.normalized_coordinates}, "
+            f"eps={self.eps}, "
+            f"output_value={self.output_value})"
         )
 
-    def forward(self, x: Tensor):
+    def forward(self, x: Tensor) -> Tensor | tuple[Tensor, Tensor]:
         return conv_soft_argmax2d(
             x,
             self.kernel_size,
@@ -190,15 +176,16 @@ class ConvSoftArgmax2d(Module):
 class ConvSoftArgmax3d(Module):
     r"""Module that calculates soft argmax 3d per window.
 
-    See :func:`~kornia.geometry.subpix.conv_soft_argmax3d` for details.
+    See
+    :func: `~kornia.geometry.subpix.conv_soft_argmax3d` for details.
     """
 
     def __init__(
         self,
-        kernel_size: Tuple[int, int, int] = (3, 3, 3),
-        stride: Tuple[int, int, int] = (1, 1, 1),
-        padding: Tuple[int, int, int] = (1, 1, 1),
-        temperature: Union[Tensor, float] = tensor(1.0),
+        kernel_size: tuple[int, int, int] = (3, 3, 3),
+        stride: tuple[int, int, int] = (1, 1, 1),
+        padding: tuple[int, int, int] = (1, 1, 1),
+        temperature: Tensor | float = tensor(1.0),
         normalized_coordinates: bool = False,
         eps: float = 1e-8,
         output_value: bool = True,
@@ -213,39 +200,21 @@ class ConvSoftArgmax3d(Module):
         self.eps = eps
         self.output_value = output_value
         self.strict_maxima_bonus = strict_maxima_bonus
-        return
 
     def __repr__(self) -> str:
         return (
-            self.__class__.__name__
-            + '('
-            + 'kernel_size='
-            + str(self.kernel_size)
-            + ', '
-            + 'stride='
-            + str(self.stride)
-            + ', '
-            + 'padding='
-            + str(self.padding)
-            + ', '
-            + 'temperature='
-            + str(self.temperature)
-            + ', '
-            + 'normalized_coordinates='
-            + str(self.normalized_coordinates)
-            + ', '
-            + 'eps='
-            + str(self.eps)
-            + ', '
-            + 'strict_maxima_bonus='
-            + str(self.strict_maxima_bonus)
-            + ', '
-            + 'output_value='
-            + str(self.output_value)
-            + ')'
+            f"{self.__class__.__name__}"
+            f"(kernel_size={self.kernel_size}, "
+            f"stride={self.stride}, "
+            f"padding={self.padding}, "
+            f"temperature={self.temperature}, "
+            f"normalized_coordinates={self.normalized_coordinates}, "
+            f"eps={self.eps}, "
+            f"strict_maxima_bonus={self.strict_maxima_bonus}, "
+            f"output_value={self.output_value})"
         )
 
-    def forward(self, x: Tensor):
+    def forward(self, x: Tensor) -> Tensor | tuple[Tensor, Tensor]:
         return conv_soft_argmax3d(
             x,
             self.kernel_size,
@@ -261,14 +230,14 @@ class ConvSoftArgmax3d(Module):
 
 def conv_soft_argmax2d(
     input: Tensor,
-    kernel_size: Tuple[int, int] = (3, 3),
-    stride: Tuple[int, int] = (1, 1),
-    padding: Tuple[int, int] = (1, 1),
-    temperature: Union[Tensor, float] = tensor(1.0),
+    kernel_size: tuple[int, int] = (3, 3),
+    stride: tuple[int, int] = (1, 1),
+    padding: tuple[int, int] = (1, 1),
+    temperature: Tensor | float = tensor(1.0),
     normalized_coordinates: bool = True,
     eps: float = 1e-8,
     output_value: bool = False,
-) -> Union[Tensor, Tuple[Tensor, Tensor]]:
+) -> Tensor | tuple[Tensor, Tensor]:
     r"""Compute the convolutional spatial Soft-Argmax 2D over the windows of a given heatmap.
 
     .. math::
@@ -319,13 +288,13 @@ def conv_soft_argmax2d(
         raise ValueError(f"Temperature should be positive float or tensor. Got: {temperature}")
 
     b, c, h, w = input.shape
-    kx, ky = kernel_size
+    ky, kx = kernel_size
     device: torch.device = input.device
     dtype: torch.dtype = input.dtype
     input = input.view(b * c, 1, h, w)
 
-    center_kernel: Tensor = _get_center_kernel2d(kx, ky, device).to(dtype)
-    window_kernel: Tensor = _get_window_grid_kernel2d(kx, ky, device).to(dtype)
+    center_kernel: Tensor = _get_center_kernel2d(ky, kx, device).to(dtype)
+    window_kernel: Tensor = _get_window_grid_kernel2d(ky, kx, device).to(dtype)
 
     # applies exponential normalization trick
     # https://timvieira.github.io/blog/post/2014/02/11/exp-normalize-trick/
@@ -374,15 +343,15 @@ def conv_soft_argmax2d(
 
 def conv_soft_argmax3d(
     input: Tensor,
-    kernel_size: Tuple[int, int, int] = (3, 3, 3),
-    stride: Tuple[int, int, int] = (1, 1, 1),
-    padding: Tuple[int, int, int] = (1, 1, 1),
-    temperature: Union[Tensor, float] = tensor(1.0),
+    kernel_size: tuple[int, int, int] = (3, 3, 3),
+    stride: tuple[int, int, int] = (1, 1, 1),
+    padding: tuple[int, int, int] = (1, 1, 1),
+    temperature: Tensor | float = tensor(1.0),
     normalized_coordinates: bool = False,
     eps: float = 1e-8,
     output_value: bool = True,
     strict_maxima_bonus: float = 0.0,
-) -> Union[Tensor, Tuple[Tensor, Tensor]]:
+) -> Tensor | tuple[Tensor, Tensor]:
     r"""Compute the convolutional spatial Soft-Argmax 3D over the windows of a given heatmap.
 
     .. math::
@@ -439,13 +408,13 @@ def conv_soft_argmax3d(
         raise ValueError(f"Temperature should be positive float or tensor. Got: {temperature}")
 
     b, c, d, h, w = input.shape
-    kx, ky, kz = kernel_size
+    kz, ky, kx = kernel_size
     device: torch.device = input.device
     dtype: torch.dtype = input.dtype
     input = input.view(b * c, 1, d, h, w)
 
-    center_kernel: Tensor = _get_center_kernel3d(kx, ky, kz, device).to(dtype)
-    window_kernel: Tensor = _get_window_grid_kernel3d(kx, ky, kz, device).to(dtype)
+    center_kernel: Tensor = _get_center_kernel3d(kz, ky, kx, device).to(dtype)
+    window_kernel: Tensor = _get_window_grid_kernel3d(kz, ky, kx, device).to(dtype)
 
     # applies exponential normalization trick
     # https://timvieira.github.io/blog/post/2014/02/11/exp-normalize-trick/
@@ -541,20 +510,16 @@ class SpatialSoftArgmax2d(Module):
 
     def __repr__(self) -> str:
         return (
-            self.__class__.__name__
-            + '(temperature='
-            + str(self.temperature)
-            + ', '
-            + 'normalized_coordinates='
-            + str(self.normalized_coordinates)
-            + ')'
+            f"{self.__class__.__name__}"
+            f"temperature={self.temperature}, "
+            f"normalized_coordinates={self.normalized_coordinates})"
         )
 
     def forward(self, input: Tensor) -> Tensor:
         return spatial_soft_argmax2d(input, self.temperature, self.normalized_coordinates)
 
 
-def conv_quad_interp3d(input: Tensor, strict_maxima_bonus: float = 10.0, eps: float = 1e-7) -> Tuple[Tensor, Tensor]:
+def conv_quad_interp3d(input: Tensor, strict_maxima_bonus: float = 10.0, eps: float = 1e-7) -> tuple[Tensor, Tensor]:
     r"""Compute the single iteration of quadratic interpolation of the extremum (max or min).
 
     Args:
@@ -609,7 +574,7 @@ def conv_quad_interp3d(input: Tensor, strict_maxima_bonus: float = 10.0, eps: fl
     dxs = 0.25 * A[..., 5]  # normalization to match OpenCV implementation
 
     Hes = stack([dxx, dxy, dxs, dxy, dyy, dys, dxs, dys, dss], -1).view(-1, 3, 3)
-    if not torch_version_geq(1, 10):
+    if not torch_version_ge(1, 10):
         # The following is needed to avoid singular cases
         Hes += torch.rand(Hes[0].size(), device=Hes.device).abs()[None] * eps
 
@@ -620,7 +585,8 @@ def conv_quad_interp3d(input: Tensor, strict_maxima_bonus: float = 10.0, eps: fl
     #  Kill those points, where we cannot solve
     new_nms_mask = nms_mask.masked_scatter(nms_mask, solved_correctly)
 
-    x_solved.masked_scatter_(new_nms_mask.view(-1, 1, 1), x_solved_masked[solved_correctly])
+    x_solved[where(new_nms_mask.view(-1, 1, 1))[0]] = x_solved_masked[solved_correctly]
+
     dx: Tensor = -x_solved
 
     # Ignore ones, which are far from window center
@@ -632,6 +598,8 @@ def conv_quad_interp3d(input: Tensor, strict_maxima_bonus: float = 10.0, eps: fl
         y_max += strict_maxima_bonus * new_nms_mask.to(input.dtype)
 
     dx_res: Tensor = dx.flip(1).reshape(B, CH, D, H, W, 3).permute(0, 1, 5, 2, 3, 4)
+    dx_res[:, :, (1, 2)] = dx_res[:, :, (2, 1)]
+
     coords_max: Tensor = grid_global.repeat(B, 1, 1, 1, 1).unsqueeze(1)
     coords_max = coords_max + dx_res
 
@@ -641,17 +609,17 @@ def conv_quad_interp3d(input: Tensor, strict_maxima_bonus: float = 10.0, eps: fl
 class ConvQuadInterp3d(Module):
     r"""Calculate soft argmax 3d per window.
 
-    See :func:`~kornia.geometry.subpix.conv_quad_interp3d` for details.
+    See
+    :func: `~kornia.geometry.subpix.conv_quad_interp3d` for details.
     """
 
     def __init__(self, strict_maxima_bonus: float = 10.0, eps: float = 1e-7) -> None:
         super().__init__()
         self.strict_maxima_bonus = strict_maxima_bonus
         self.eps = eps
-        return
 
     def __repr__(self) -> str:
-        return self.__class__.__name__ + '(' + 'strict_maxima_bonus=' + str(self.strict_maxima_bonus) + ')'
+        return f"{self.__class__.__name__}(strict_maxima_bonus={self.strict_maxima_bonus})"
 
-    def forward(self, x: Tensor):
+    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
         return conv_quad_interp3d(x, self.strict_maxima_bonus, self.eps)

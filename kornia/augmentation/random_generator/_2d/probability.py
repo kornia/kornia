@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, Tuple
 
 import torch
 from torch.distributions import Bernoulli
@@ -6,6 +6,8 @@ from torch.distributions import Bernoulli
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _adapted_sampling, _common_param_check
 from kornia.core import Tensor, tensor
+
+__all__ = ["ProbabilityGenerator"]
 
 
 class ProbabilityGenerator(RandomGeneratorBase):
@@ -36,10 +38,10 @@ class ProbabilityGenerator(RandomGeneratorBase):
         p = torch.tensor(float(self.p), device=device, dtype=dtype)
         self.sampler = Bernoulli(p)
 
-    def forward(self, batch_shape: torch.Size, same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         probs_mask: Tensor = _adapted_sampling((batch_size,), self.sampler, same_on_batch).bool()
-        return dict(probs=probs_mask)
+        return {"probs": probs_mask}
 
 
 def random_prob_generator(

@@ -1,14 +1,18 @@
+from __future__ import annotations
+
+from typing import Any
+
 import torch
 
+from kornia.core import Tensor
 from kornia.utils import create_meshgrid
 
 from .geometry import warp_kpts
 
+
 #  Coarse-Level supervision
-
-
 @torch.no_grad()
-def mask_pts_at_padded_regions(grid_pt, mask):
+def mask_pts_at_padded_regions(grid_pt: Tensor, mask: Tensor) -> Tensor:
     """For megadepth dataset, zero-padding exists in images."""
     n, h, w = mask.shape
     mask = mask.reshape(n, h * w).unsqueeze(-1).repeat(1, 1, 2)
@@ -19,7 +23,7 @@ def mask_pts_at_padded_regions(grid_pt, mask):
 
 
 @torch.no_grad()
-def spvs_coarse(data, config):
+def spvs_coarse(data: dict[str, Any], config: dict[str, Any]) -> None:
     """
     Update:
         data (dict): {
@@ -42,7 +46,7 @@ def spvs_coarse(data, config):
     scale = config['LOFTR']['RESOLUTION'][0]
     scale0 = scale * data['scale0'][:, None] if 'scale0' in data else scale
     scale1 = scale * data['scale1'][:, None] if 'scale0' in data else scale
-    h0, w0, h1, w1 = map(lambda x: x // scale, [H0, W0, H1, W1])
+    h0, w0, h1, w1 = (x // scale for x in [H0, W0, H1, W1])
 
     # 2. warp grids
     # create kpts in meshgrid and resize them to image resolution
@@ -71,7 +75,7 @@ def spvs_coarse(data, config):
     nearest_index0 = w_pt1_c_round[..., 0] + w_pt1_c_round[..., 1] * w0
 
     # corner case: out of boundary
-    def out_bound_mask(pt, w, h):
+    def out_bound_mask(pt: Tensor, w: Tensor, h: Tensor) -> Tensor:
         return (pt[..., 0] < 0) + (pt[..., 0] >= w) + (pt[..., 1] < 0) + (pt[..., 1] >= h)
 
     nearest_index1[out_bound_mask(w_pt0_c_round, w1, h1)] = 0
@@ -102,7 +106,7 @@ def spvs_coarse(data, config):
     data.update({'spv_w_pt0_i': w_pt0_i, 'spv_pt1_i': grid_pt1_i})
 
 
-def compute_supervision_coarse(data, config):
+def compute_supervision_coarse(data: dict[str, Any], config: dict[str, Any]) -> None:
     if len(set(data['dataset_name'])) != 1:
         raise ValueError("Do not support mixed datasets training!")
     data_source = data['dataset_name'][0]
@@ -113,10 +117,8 @@ def compute_supervision_coarse(data, config):
 
 
 #  Fine-Level supervision
-
-
 @torch.no_grad()
-def spvs_fine(data, config):
+def spvs_fine(data: dict[str, Any], config: dict[str, Any]) -> None:
     """
     Update:
         data (dict):{
@@ -138,7 +140,7 @@ def spvs_fine(data, config):
     data.update({"expec_f_gt": expec_f_gt})
 
 
-def compute_supervision_fine(data, config):
+def compute_supervision_fine(data: dict[str, Any], config: dict[str, Any]) -> None:
     data_source = data['dataset_name'][0]
     if data_source.lower() in ['scannet', 'megadepth']:
         spvs_fine(data, config)

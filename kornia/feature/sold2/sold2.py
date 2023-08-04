@@ -4,8 +4,8 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core import Module, Tensor, concatenate, pad, stack
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.conversions import normalize_pixel_coordinates
-from kornia.testing import KORNIA_CHECK_SHAPE
 from kornia.utils import map_location_to_cpu
 
 from .backbones import SOLD2Net
@@ -75,7 +75,7 @@ class SOLD2(Module):
         >>> matches = sold2.match(line_seg1, line_seg2, desc1[None], desc2[None])
     """
 
-    def __init__(self, pretrained: bool = True, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, pretrained: bool = True, config: Optional[Dict[str, Any]] = None) -> None:
         super().__init__()
         # Initialize some parameters
         self.config = default_cfg if config is None else config
@@ -143,7 +143,7 @@ class SOLD2(Module):
         """
         return self.line_matcher(line_seg1, line_seg2, desc1, desc2)
 
-    def adapt_state_dict(self, state_dict):
+    def adapt_state_dict(self, state_dict: Dict[str, Any]) -> Dict[str, Any]:
         del state_dict["w_junc"]
         del state_dict["w_heatmap"]
         del state_dict["w_desc"]
@@ -168,7 +168,7 @@ class WunschLineMatcher(Module):
         top_k_candidates: int = 10,
         grid_size: int = 8,
         line_score: bool = False,
-    ):
+    ) -> None:
         super().__init__()
         self.cross_check = cross_check
         self.num_samples = num_samples
@@ -238,14 +238,14 @@ class WunschLineMatcher(Module):
         KORNIA_CHECK_SHAPE(line_seg, ["N", "2", "2"])
         num_lines = len(line_seg)
         line_lengths = torch.norm(line_seg[:, 0] - line_seg[:, 1], dim=1)
-
+        dev = line_seg.device
         # Sample the points separated by at least min_dist_pts along each line
         # The number of samples depends on the length of the line
         num_samples_lst = torch.clamp(
             torch.div(line_lengths, self.min_dist_pts, rounding_mode='floor'), 2, self.num_samples
         ).int()
-        line_points = torch.empty((num_lines, self.num_samples, 2), dtype=torch.float)
-        valid_points = torch.empty((num_lines, self.num_samples), dtype=torch.bool)
+        line_points = torch.empty((num_lines, self.num_samples, 2), dtype=torch.float, device=dev)
+        valid_points = torch.empty((num_lines, self.num_samples), dtype=torch.bool, device=dev)
         for n_samp in range(2, self.num_samples + 1):
             # Consider all lines where we can fit up to n_samp points
             cur_mask = num_samples_lst == n_samp
@@ -256,7 +256,7 @@ class WunschLineMatcher(Module):
 
             # Pad
             cur_line_points = pad(cur_line_points, (0, 0, 0, self.num_samples - n_samp))
-            cur_valid_points = torch.ones(len(cur_line_seg), self.num_samples, dtype=torch.bool)
+            cur_valid_points = torch.ones(len(cur_line_seg), self.num_samples, dtype=torch.bool, device=dev)
             cur_valid_points[:, n_samp:] = False
 
             line_points[cur_mask] = cur_line_points
@@ -317,9 +317,9 @@ class WunschLineMatcher(Module):
         # Recalibrate the scores to get a gap score of 0
         gap = 0.1
         nw_scores = scores - gap
-
+        dev = scores.device
         # Run the dynamic programming algorithm
-        nw_grid = torch.zeros(b, n + 1, m + 1, dtype=torch.float)
+        nw_grid = torch.zeros(b, n + 1, m + 1, dtype=torch.float, device=dev)
         for i in range(n):
             for j in range(m):
                 nw_grid[:, i + 1, j + 1] = torch.maximum(
@@ -343,7 +343,7 @@ def keypoints_to_grid(keypoints: Tensor, img_size: Tuple[int, int]) -> Tensor:
     return grid_points
 
 
-def batched_linspace(start, end, step, dim):
+def batched_linspace(start: Tensor, end: Tensor, step: int, dim: int) -> Tensor:
     """Batch version of torch.normalize (similar to the numpy one)."""
     intervals = ((end - start) / (step - 1)).unsqueeze(dim)
     broadcast_size = [1] * len(intervals.shape)

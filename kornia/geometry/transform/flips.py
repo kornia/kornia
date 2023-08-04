@@ -32,7 +32,7 @@ class Vflip(Module):
     def forward(self, input: Tensor) -> Tensor:
         return vflip(input)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return self.__class__.__name__
 
 
@@ -63,7 +63,7 @@ class Hflip(Module):
     def forward(self, input: Tensor) -> Tensor:
         return hflip(input)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return self.__class__.__name__
 
 
@@ -91,7 +91,7 @@ class Rot180(Module):
     def forward(self, input: Tensor) -> Tensor:
         return rot180(input)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return self.__class__.__name__
 
 
@@ -108,7 +108,6 @@ def rot180(input: Tensor) -> Tensor:
     Returns:
         The rotated image tensor.
     """
-
     return torch.flip(input, [-2, -1])
 
 
@@ -125,8 +124,7 @@ def hflip(input: Tensor) -> Tensor:
     Returns:
         The horizontally flipped image tensor.
     """
-    w = input.shape[-1]
-    return input[..., torch.arange(w - 1, -1, -1, device=input.device)]
+    return input.flip(-1).contiguous()
 
 
 def vflip(input: Tensor) -> Tensor:
@@ -142,6 +140,4 @@ def vflip(input: Tensor) -> Tensor:
     Returns:
         The vertically flipped image tensor.
     """
-
-    h = input.shape[-2]
-    return input[..., torch.arange(h - 1, -1, -1, device=input.device), :]
+    return input.flip(-2).contiguous()

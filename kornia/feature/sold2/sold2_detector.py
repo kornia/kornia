@@ -4,8 +4,8 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 
 from kornia.core import Module, Tensor, concatenate, stack, tensor, where, zeros
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.bbox import nms
-from kornia.testing import KORNIA_CHECK_SHAPE
 from kornia.utils import map_location_to_cpu, torch_meshgrid
 
 from .backbones import SOLD2Net
@@ -61,7 +61,7 @@ class SOLD2_detector(Module):
         >>> line_segments = sold2_detector(img)["line_segments"]
     """
 
-    def __init__(self, pretrained: bool = True, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, pretrained: bool = True, config: Optional[Dict[str, Any]] = None) -> None:
         super().__init__()
         # Initialize some parameters
         self.config = default_detector_cfg if config is None else config
@@ -81,7 +81,7 @@ class SOLD2_detector(Module):
         self.line_detector_cfg = self.config["line_detector_cfg"]
         self.line_detector = LineSegmentDetectionModule(**self.config["line_detector_cfg"])
 
-    def adapt_state_dict(self, state_dict):
+    def adapt_state_dict(self, state_dict: Dict[str, Any]) -> Dict[str, Any]:
         del state_dict["w_junc"]
         del state_dict["w_heatmap"]
         del state_dict["w_desc"]
@@ -154,10 +154,10 @@ class LineSegmentDetectionModule:
         use_candidate_suppression: bool = False,
         nms_dist_tolerance: float = 3.0,
         use_heatmap_refinement: bool = False,
-        heatmap_refine_cfg=None,
+        heatmap_refine_cfg: Optional[Dict[str, Any]] = None,
         use_junction_refinement: bool = False,
-        junction_refine_cfg=None,
-    ):
+        junction_refine_cfg: Optional[Dict[str, Any]] = None,
+    ) -> None:
         # Line detection parameters
         self.detect_thresh = detect_thresh
 
@@ -197,7 +197,7 @@ class LineSegmentDetectionModule:
         device = junctions.device
 
         # Perform the heatmap refinement
-        if self.use_heatmap_refinement:
+        if self.use_heatmap_refinement and isinstance(self.heatmap_refine_cfg, dict):
             if self.heatmap_refine_cfg["mode"] == "global":
                 heatmap = self.refine_heatmap(
                     heatmap, self.heatmap_refine_cfg["ratio"], self.heatmap_refine_cfg["valid_thresh"]
@@ -393,6 +393,8 @@ class LineSegmentDetectionModule:
     ) -> Tuple[Tensor, Tensor]:
         """Refine the line endpoints in a similar way as in LSD."""
         # Fetch refinement parameters
+        if not isinstance(self.junction_refine_cfg, dict):
+            raise TypeError(f'Expected to have a dict of config for junction. Gotcha {type(self.junction_refine_cfg)}')
         num_perturbs = self.junction_refine_cfg["num_perturbs"]
         perturb_interval = self.junction_refine_cfg["perturb_interval"]
         side_perturbs = (num_perturbs - 1) // 2

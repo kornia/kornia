@@ -1,4 +1,4 @@
-from typing import Tuple
+from __future__ import annotations
 
 import torch
 import torch.nn.functional as F
@@ -25,23 +25,27 @@ def _get_nms_kernel3d(kd: int, ky: int, kx: int) -> Tensor:
 
 
 class NonMaximaSuppression2d(Module):
-    r"""Apply non maxima suppression to filter."""
+    r"""Apply non maxima suppression to filter.
+
+    Flag `minima_are_also_good` is useful, when you want to detect both maxima and minima, e.g. for DoG
+    """
     kernel: Tensor
 
-    def __init__(self, kernel_size: Tuple[int, int]):
+    def __init__(self, kernel_size: tuple[int, int]) -> None:
         super().__init__()
-        self.kernel_size: Tuple[int, int] = kernel_size
-        self.padding: Tuple[int, int, int, int] = self._compute_zero_padding2d(kernel_size)
+        self.kernel_size: tuple[int, int] = kernel_size
+        self.padding: tuple[int, int, int, int] = self._compute_zero_padding2d(kernel_size)
         self.register_buffer('kernel', _get_nms_kernel2d(*kernel_size))
 
     @staticmethod
-    def _compute_zero_padding2d(kernel_size: Tuple[int, int]) -> Tuple[int, int, int, int]:
+    def _compute_zero_padding2d(kernel_size: tuple[int, int]) -> tuple[int, int, int, int]:
+        # TODO: This method is duplicated with some utility function on kornia.filters
         if not isinstance(kernel_size, tuple):
             raise AssertionError(type(kernel_size))
         if len(kernel_size) != 2:
             raise AssertionError(kernel_size)
 
-        def pad(x):
+        def pad(x: int) -> int:
             return (x - 1) // 2  # zero padding function
 
         ky, kx = kernel_size  # we assume a cubic kernel
@@ -55,11 +59,10 @@ class NonMaximaSuppression2d(Module):
         x_padded = pad(x, list(self.padding)[::-1], mode='replicate')
         B, CH, HP, WP = x_padded.size()
 
-        max_non_center = (
-            F.conv2d(x_padded.view(B * CH, 1, HP, WP), self.kernel.to(x.device, x.dtype), stride=1)
-            .view(B, CH, -1, H, W)
-            .max(dim=2)[0]
+        neighborhood = F.conv2d(x_padded.view(B * CH, 1, HP, WP), self.kernel.to(x.device, x.dtype), stride=1).view(
+            B, CH, -1, H, W
         )
+        max_non_center = neighborhood.max(dim=2)[0]
         mask = x > max_non_center
         if mask_only:
             return mask
@@ -69,20 +72,21 @@ class NonMaximaSuppression2d(Module):
 class NonMaximaSuppression3d(Module):
     r"""Apply non maxima suppression to filter."""
 
-    def __init__(self, kernel_size: Tuple[int, int, int]):
+    def __init__(self, kernel_size: tuple[int, int, int]) -> None:
         super().__init__()
-        self.kernel_size: Tuple[int, int, int] = kernel_size
-        self.padding: Tuple[int, int, int, int, int, int] = self._compute_zero_padding3d(kernel_size)
+        self.kernel_size: tuple[int, int, int] = kernel_size
+        self.padding: tuple[int, int, int, int, int, int] = self._compute_zero_padding3d(kernel_size)
         self.kernel = _get_nms_kernel3d(*kernel_size)
 
     @staticmethod
-    def _compute_zero_padding3d(kernel_size: Tuple[int, int, int]) -> Tuple[int, int, int, int, int, int]:
+    def _compute_zero_padding3d(kernel_size: tuple[int, int, int]) -> tuple[int, int, int, int, int, int]:
+        # TODO: This method is duplicated with some utility function on kornia.filters
         if not isinstance(kernel_size, tuple):
             raise AssertionError(type(kernel_size))
         if len(kernel_size) != 3:
             raise AssertionError(kernel_size)
 
-        def pad(x):
+        def pad(x: int) -> int:
             return (x - 1) // 2  # zero padding function
 
         kd, ky, kx = kernel_size  # we assume a cubic kernel
@@ -147,7 +151,7 @@ class NonMaximaSuppression3d(Module):
 # functional api
 
 
-def nms2d(input: Tensor, kernel_size: Tuple[int, int], mask_only: bool = False) -> Tensor:
+def nms2d(input: Tensor, kernel_size: tuple[int, int], mask_only: bool = False) -> Tensor:
     r"""Apply non maxima suppression to filter.
 
     See :class:`~kornia.geometry.subpix.NonMaximaSuppression2d` for details.
@@ -155,9 +159,10 @@ def nms2d(input: Tensor, kernel_size: Tuple[int, int], mask_only: bool = False) 
     return NonMaximaSuppression2d(kernel_size)(input, mask_only)
 
 
-def nms3d(input: Tensor, kernel_size: Tuple[int, int, int], mask_only: bool = False) -> Tensor:
+def nms3d(input: Tensor, kernel_size: tuple[int, int, int], mask_only: bool = False) -> Tensor:
     r"""Apply non maxima suppression to filter.
 
-    See :class:`~kornia.feature.NonMaximaSuppression3d` for details.
+    See
+    :class: `~kornia.feature.NonMaximaSuppression3d` for details.
     """
     return NonMaximaSuppression3d(kernel_size)(input, mask_only)

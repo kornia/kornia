@@ -3,11 +3,11 @@ import warnings
 from typing import Dict, Optional
 
 import torch
-import torch.nn as nn
+from torch import nn
 
+from kornia.core.check import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 from kornia.filters.kernels import get_gaussian_kernel2d
 from kornia.filters.sobel import SpatialGradient
-from kornia.testing import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 from kornia.utils.helpers import map_location_to_cpu
 
 from .laf import (
@@ -34,7 +34,7 @@ class PatchAffineShapeEstimator(nn.Module):
         eps: for safe division.
     """
 
-    def __init__(self, patch_size: int = 19, eps: float = 1e-10):
+    def __init__(self, patch_size: int = 19, eps: float = 1e-10) -> None:
         super().__init__()
         self.patch_size: int = patch_size
         self.gradient: nn.Module = SpatialGradient('sobel', 1)
@@ -42,14 +42,18 @@ class PatchAffineShapeEstimator(nn.Module):
         sigma: float = float(self.patch_size) / math.sqrt(2.0)
         self.weighting: torch.Tensor = get_gaussian_kernel2d((self.patch_size, self.patch_size), (sigma, sigma), True)
 
-    def __repr__(self):
-        return self.__class__.__name__ + '(' 'patch_size=' + str(self.patch_size) + ', ' + 'eps=' + str(self.eps) + ')'
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(patch_size={self.patch_size}, eps={self.eps})"
 
     def forward(self, patch: torch.Tensor) -> torch.Tensor:
-        """Args:
-            patch: (torch.Tensor) shape [Bx1xHxW]
+        """
+        Args:
+            patch: :math:`(B, 1, H, W)`
+
         Returns:
-            torch.Tensor: ellipse_shape shape [Bx1x3]"""
+            torch.Tensor: ellipse_shape :math:`(B, 1, 3)`
+
+        """
         KORNIA_CHECK_SHAPE(patch, ["B", "1", "H", "W"])
         self.weighting = self.weighting.to(patch.dtype).to(patch.device)
         grads: torch.Tensor = self.gradient(patch) * self.weighting
@@ -107,28 +111,23 @@ class LAFAffineShapeEstimator(nn.Module):
                 stacklevel=2,
             )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (
-            self.__class__.__name__ + '('
-            'patch_size='
-            + str(self.patch_size)
-            + ', '
-            + 'affine_shape_detector='
-            + str(self.affine_shape_detector)
-            + ', '
-            + 'preserve_orientation='
-            + str(self.preserve_orientation)
-            + ')'
+            f'{self.__class__.__name__}'
+            f'(patch_size={self.patch_size}, '
+            f'affine_shape_detector={self.affine_shape_detector}, '
+            f'preserve_orientation={self.preserve_orientation})'
         )
 
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            laf: (torch.Tensor) shape [BxNx2x3]
-            img: (torch.Tensor) shape [Bx1xHxW]
+            LAF: :math:`(B, N, 2, 3)`
+            img: :math:`(B, 1, H, W)`
 
         Returns:
-            torch.Tensor: laf_out shape [BxNx2x3]"""
+            LAF_out: :math:`(B, N, 2, 3)`
+        """
         KORNIA_CHECK_LAF(laf)
         KORNIA_CHECK_SHAPE(img, ["B", "1", "H", "W"])
         B, N = laf.shape[:2]
@@ -161,7 +160,7 @@ class LAFAffNetShapeEstimator(nn.Module):
         pretrained: Download and set pretrained weights to the model.
     """
 
-    def __init__(self, pretrained: bool = False, preserve_orientation: bool = True):
+    def __init__(self, pretrained: bool = False, preserve_orientation: bool = True) -> None:
         super().__init__()
         self.features = nn.Sequential(
             nn.Conv2d(1, 16, kernel_size=3, padding=1, bias=False),
@@ -215,11 +214,11 @@ class LAFAffNetShapeEstimator(nn.Module):
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            laf: shape [BxNx2x3]
-            img: shape [Bx1xHxW]
+            LAF: :math:`(B, N, 2, 3)`
+            img: :math:`(B, 1, H, W)`
 
         Returns:
-            laf_out shape [BxNx2x3]
+            LAF_out: :math:`(B, N, 2, 3)`
         """
         KORNIA_CHECK_LAF(laf)
         KORNIA_CHECK_SHAPE(img, ["B", "1", "H", "W"])

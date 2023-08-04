@@ -1,16 +1,15 @@
 from typing import List, Tuple, Union
 
-import torch.nn as nn
-from torch import Tensor
+from torch import Tensor, nn
 
-from kornia.augmentation.container.augment import AugmentationSequential
+from .augment import AugmentationSequential
 
 
 class ManyToManyAugmentationDispather(nn.Module):
-    """Dispatches different augmentations to different inputs element-wisely.
+    r"""Dispatches different augmentations to different inputs element-wisely.
 
     Args:
-        augmentations: *args: a list of kornia AugmentationSequential modules.
+        augmentations: a list or a sequence of kornia AugmentationSequential modules.
 
     Examples:
         >>> import torch
@@ -47,20 +46,20 @@ class ManyToManyAugmentationDispather(nn.Module):
 
 
 class ManyToOneAugmentationDispather(nn.Module):
-    """Dispatches different augmentations to a single input and returns a list.
+    r"""Dispatches different augmentations to a single input and returns a list.
 
     Same `datakeys` must be applied across different augmentations. By default, with input
     (image, mask), the augmentations must not mess it as (mask, image) to avoid unexpected
     errors. This check can be cancelled with `strict=False` if needed.
 
     Args:
-        augmentations: *args: a list of kornia AugmentationSequential modules.
+        augmentations: a list or a sequence of kornia AugmentationSequential modules.
 
     Examples:
         >>> import torch
         >>> input = torch.randn(2, 3, 5, 6)
         >>> mask = torch.ones(2, 3, 5, 6)
-        >>> aug_list = ManyToManyAugmentationDispather(
+        >>> aug_list = ManyToOneAugmentationDispather(
         ...     AugmentationSequential(
         ...         kornia.augmentation.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
         ...         kornia.augmentation.RandomAffine(360, p=1.0),
@@ -72,7 +71,7 @@ class ManyToOneAugmentationDispather(nn.Module):
         ...         data_keys=["input", "mask",],
         ...     )
         ... )
-        >>> output = aug_list((input, mask))
+        >>> output = aug_list(input, mask)
     """
 
     def __init__(self, *augmentations: AugmentationSequential, strict: bool = True) -> None:

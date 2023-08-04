@@ -1,11 +1,11 @@
 import pytest
 import torch
+from packaging import version
 from torch.autograd import gradcheck
 
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.testing import assert_close
-from packaging import version
 
 
 class TestImageHistogram2d:
@@ -13,31 +13,34 @@ class TestImageHistogram2d:
 
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_shape(self, device, dtype, kernel):
-        input = torch.ones(32, 32, device=device, dtype=dtype)
-        hist, pdf = TestImageHistogram2d.fcn(input, 0.0, 1.0, 256, kernel=kernel)
-        assert hist.shape == (256,) and pdf.shape == (256,)
+        sample = torch.ones(32, 32, device=device, dtype=dtype)
+        hist, pdf = TestImageHistogram2d.fcn(sample, 0.0, 1.0, 256, kernel=kernel)
+        assert hist.shape == (256,)
+        assert pdf.shape == (256,)
 
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_shape_channels(self, device, dtype, kernel):
-        input = torch.ones(3, 32, 32, device=device, dtype=dtype)
-        hist, pdf = TestImageHistogram2d.fcn(input, 0.0, 1.0, 256, kernel=kernel)
-        assert hist.shape == (3, 256) and pdf.shape == (3, 256)
+        sample = torch.ones(3, 32, 32, device=device, dtype=dtype)
+        hist, pdf = TestImageHistogram2d.fcn(sample, 0.0, 1.0, 256, kernel=kernel)
+        assert hist.shape == (3, 256)
+        assert pdf.shape == (3, 256)
 
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_shape_batch(self, device, dtype, kernel):
-        input = torch.ones(8, 3, 32, 32, device=device, dtype=dtype)
-        hist, pdf = TestImageHistogram2d.fcn(input, 0.0, 1.0, 256, kernel=kernel)
-        assert hist.shape == (8, 3, 256) and pdf.shape == (8, 3, 256)
+        sample = torch.ones(8, 3, 32, 32, device=device, dtype=dtype)
+        hist, pdf = TestImageHistogram2d.fcn(sample, 0.0, 1.0, 256, kernel=kernel)
+        assert hist.shape == (8, 3, 256)
+        assert pdf.shape == (8, 3, 256)
 
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_gradcheck(self, device, dtype, kernel):
-        input = torch.ones(32, 32, device=device, dtype=dtype)
-        input = utils.tensor_to_gradcheck_var(input)  # to var
+        sample = torch.ones(32, 32, device=device, dtype=dtype)
+        sample = utils.tensor_to_gradcheck_var(sample)  # to var
         centers = torch.linspace(0, 255, 8, device=device, dtype=dtype)
         centers = utils.tensor_to_gradcheck_var(centers)
         assert gradcheck(
             TestImageHistogram2d.fcn,
-            (input, 0.0, 255.0, 256, None, centers, True, kernel),
+            (sample, 0.0, 255.0, 256, None, centers, True, kernel),
             raise_exception=True,
             fast_mode=True,
         )
@@ -47,43 +50,43 @@ class TestImageHistogram2d:
     )
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     def test_jit(self, device, dtype, kernel):
-        input = torch.linspace(0, 255, 10, device=device, dtype=dtype)
-        input_x, _ = torch.meshgrid(input, input)
-        inputs = (input_x, 0.0, 255.0, 10, None, None, False, kernel)
+        sample = torch.linspace(0, 255, 10, device=device, dtype=dtype)
+        sample_x, _ = torch.meshgrid(sample, sample)
+        samples = (sample_x, 0.0, 255.0, 10, None, None, False, kernel)
 
         op = TestImageHistogram2d.fcn
         op_script = torch.jit.script(op)
 
-        out, out_script = op(*inputs), op_script(*inputs)
+        out, out_script = op(*samples), op_script(*samples)
         assert_close(out[0], out_script[0])
         assert_close(out[1], out_script[1])
 
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     @pytest.mark.parametrize("size", [(1, 1), (3, 1, 1), (8, 3, 1, 1)])
     def test_uniform_hist(self, device, dtype, kernel, size):
-        input = torch.linspace(0, 255, 10, device=device, dtype=dtype)
-        input_x, _ = torch.meshgrid(input, input)
-        input_x = input_x.repeat(*size)
+        sample = torch.linspace(0, 255, 10, device=device, dtype=dtype)
+        sample_x, _ = torch.meshgrid(sample, sample)
+        sample_x = sample_x.repeat(*size)
         if kernel == "gaussian":
             bandwidth = 2 * 0.4**2
         else:
             bandwidth = None
-        hist, _ = TestImageHistogram2d.fcn(input_x, 0.0, 255.0, 10, bandwidth=bandwidth, centers=input, kernel=kernel)
+        hist, _ = TestImageHistogram2d.fcn(sample_x, 0.0, 255.0, 10, bandwidth=bandwidth, centers=sample, kernel=kernel)
         ans = 10 * torch.ones_like(hist)
         assert_close(ans, hist)
 
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     @pytest.mark.parametrize("size", [(1, 1), (3, 1, 1), (8, 3, 1, 1)])
     def test_uniform_dist(self, device, dtype, kernel, size):
-        input = torch.linspace(0, 255, 10, device=device, dtype=dtype)
-        input_x, _ = torch.meshgrid(input, input)
-        input_x = input_x.repeat(*size)
+        sample = torch.linspace(0, 255, 10, device=device, dtype=dtype)
+        sample_x, _ = torch.meshgrid(sample, sample)
+        sample_x = sample_x.repeat(*size)
         if kernel == "gaussian":
             bandwidth = 2 * 0.4**2
         else:
             bandwidth = None
         hist, pdf = TestImageHistogram2d.fcn(
-            input_x, 0.0, 255.0, 10, bandwidth=bandwidth, centers=input, kernel=kernel, return_pdf=True
+            sample_x, 0.0, 255.0, 10, bandwidth=bandwidth, centers=sample, kernel=kernel, return_pdf=True
         )
         ans = 0.1 * torch.ones_like(hist)
         assert_close(ans, pdf)
@@ -120,24 +123,24 @@ class TestHistogram2d:
         assert gradcheck(TestHistogram2d.fcn, (inp1, inp2, bins, bandwidth), raise_exception=True, fast_mode=True)
 
     def test_jit(self, device, dtype):
-        input1 = torch.linspace(0, 255, 10, device=device, dtype=dtype).unsqueeze(0)
-        input2 = torch.linspace(0, 255, 10, device=device, dtype=dtype).unsqueeze(0)
+        sample1 = torch.linspace(0, 255, 10, device=device, dtype=dtype).unsqueeze(0)
+        sample2 = torch.linspace(0, 255, 10, device=device, dtype=dtype).unsqueeze(0)
         bins = torch.linspace(0, 255, 10, device=device, dtype=dtype)
         bandwidth = torch.tensor(2 * 0.4**2, device=device, dtype=dtype)
-        inputs = (input1, input2, bins, bandwidth)
+        samples = (sample1, sample2, bins, bandwidth)
 
         op = TestHistogram2d.fcn
         op_script = torch.jit.script(op)
 
-        assert_close(op(*inputs), op_script(*inputs))
+        assert_close(op(*samples), op_script(*samples))
 
     def test_uniform_dist(self, device, dtype):
-        input1 = torch.linspace(0, 255, 10, device=device, dtype=dtype).unsqueeze(0)
-        input2 = torch.linspace(0, 255, 10, device=device, dtype=dtype).unsqueeze(0)
+        sample1 = torch.linspace(0, 255, 10, device=device, dtype=dtype).unsqueeze(0)
+        sample2 = torch.linspace(0, 255, 10, device=device, dtype=dtype).unsqueeze(0)
         bins = torch.linspace(0, 255, 10, device=device, dtype=dtype)
         bandwidth = torch.tensor(2 * 0.4**2, device=device, dtype=dtype)
 
-        pdf = TestHistogram2d.fcn(input1, input2, bins, bandwidth)
+        pdf = TestHistogram2d.fcn(sample1, sample2, bins, bandwidth)
         ans = 0.1 * kornia.eye_like(10, pdf)
         assert_close(ans, pdf)
 
