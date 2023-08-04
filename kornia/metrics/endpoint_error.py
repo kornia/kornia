@@ -37,7 +37,8 @@ def aepe(input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     KORNIA_CHECK(input.shape == target.shape,
                  f"input and target shapes must be the same. Got: {input.shape} and {target.shape}")
 
-    epe: Tensor = ((input[..., 0] - target[..., 0]) ** 2 + (input[..., 1] - target[..., 1]) ** 2).mean()
+    epe: Tensor = ((input[..., 0] - target[..., 0]) ** 2
+                   + (input[..., 1] - target[..., 1]) ** 2).sqrt().mean()
 
     return epe
 

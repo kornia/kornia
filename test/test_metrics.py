@@ -198,7 +198,7 @@ class TestPsnr:
 class TestEpe:
     def test_metric(self, device, dtype):
         sample = torch.ones(4, 4, 2, device=device, dtype=dtype)
-        expected = torch.tensor(0.32, device=device, dtype=dtype)
+        expected = torch.tensor(0.565685424, device=device, dtype=dtype)
         actual = kornia.metrics.aepe(sample, 1.4 * sample)
         assert_close(actual, expected)
 
