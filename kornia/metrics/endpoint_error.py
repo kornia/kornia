@@ -12,7 +12,7 @@ def aepe(input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
 
     .. math::
 
-        \text{AEPE}=\frac{1}{hw}\sum_{i=1, j=1}^{h, w}(I_{i,j,1}-T_{i,j,1})^{2}+(I_{i,j,2}-T_{i,j,2})^{2}
+        \text{AEPE}=\frac{1}{hw}\sum_{i=1, j=1}^{h, w}\sqrt{(I_{i,j,1}-T_{i,j,1})^{2}+(I_{i,j,2}-T_{i,j,2})^{2}}
 
     Args:
         input: the input flow map with shape :math:`(*, 2)`.
@@ -51,7 +51,7 @@ class AEPE(nn.Module):
 
     .. math::
 
-        \text{EPE}=\frac{1}{hw}\sum_{i=1, j=1}^{h, w}(I_{i,j,1}-T_{i,j,1})^{2}+(I_{i,j,2}-T_{i,j,2})^{2}
+        \text{AEPE}=\frac{1}{hw}\sum_{i=1, j=1}^{h, w}\sqrt{(I_{i,j,1}-T_{i,j,1})^{2}+(I_{i,j,2}-T_{i,j,2})^{2}}
 
     Shape:
         - input: :math:`(*, 2)`.
