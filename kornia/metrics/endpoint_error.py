@@ -1,4 +1,5 @@
 import torch
+import torch.nn as nn
 from torch import Tensor
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
@@ -39,3 +40,32 @@ def epe(input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     epe: Tensor = ((input[..., 0] - target[..., 0]) ** 2 + (input[..., 1] - target[..., 1]) ** 2).mean()
 
     return epe
+
+
+class EPE(nn.Module):
+    r"""Computes the endpoint error (EPE) between 2 flow maps.
+
+    EPE is the endpoint error between two 2D vecotrs (e.g., oprical flow).
+    Given a h x w x 2 optical flow map, the EPE is:
+
+    .. math::
+
+        \text{EPE}=\frac{1}{hw}\sum_{i=1, j=1}^{h, w}(I_{i,j,1}-T_{i,j,1})^{2}+(I_{i,j,2}-T_{i,j,2})^{2}
+
+    Shape:
+        - input: :math:`(*, 2)`.
+        - target :math:`(*, 2)`.
+        - output: :math:`(1)`.
+
+    Examples:
+        >>> input1 = torch.rand(1, 4, 5, 2)
+        >>> input2 = torch.rand(1, 4, 5, 2)
+        >>> epe = EPE(5)
+        >>> epe = epe(input1, input2)
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        return epe(input, target)
