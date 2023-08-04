@@ -5,26 +5,26 @@ from torch import Tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 
-def epe(input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-    r"""Create a function that calculates the endpoint error (EPE) between 2 flow maps.
+def aepe(input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    r"""Create a function that calculates the average endpoint error (AEPE) between 2 flow maps.
 
-    EPE is the endpoint error between two 2D vecotrs (e.g., oprical flow).
-    Given a h x w x 2 optical flow map, the EPE is:
+    AEPE is the endpoint error between two 2D vecotrs (e.g., oprical flow).
+    Given a h x w x 2 optical flow map, the AEPE is:
 
     .. math::
 
-        \text{EPE}=\frac{1}{hw}\sum_{i=1, j=1}^{h, w}(I_{i,j,1}-T_{i,j,1})^{2}+(I_{i,j,2}-T_{i,j,2})^{2}
+        \text{AEPE}=\frac{1}{hw}\sum_{i=1, j=1}^{h, w}(I_{i,j,1}-T_{i,j,1})^{2}+(I_{i,j,2}-T_{i,j,2})^{2}
 
     Args:
         input: the input flow map with shape :math:`(*, 2)`.
         target: the target flow map with shape :math:`(*, 2)`.
 
     Return:
-        the computed EPE as a scalar.
+        the computed AEPE as a scalar.
 
     Examples:
         >>> ones = torch.ones(4, 4, 2)
-        >>> epe(ones, 1.2 * ones)
+        >>> aepe(ones, 1.2 * ones)
         tensor(0.0800)
 
     Reference:
@@ -42,11 +42,11 @@ def epe(input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     return epe
 
 
-class EPE(nn.Module):
-    r"""Computes the endpoint error (EPE) between 2 flow maps.
+class AEPE(nn.Module):
+    r"""Computes the average endpoint error (AEPE) between 2 flow maps.
 
     EPE is the endpoint error between two 2D vecotrs (e.g., oprical flow).
-    Given a h x w x 2 optical flow map, the EPE is:
+    Given a h x w x 2 optical flow map, the AEPE is:
 
     .. math::
 
@@ -60,7 +60,7 @@ class EPE(nn.Module):
     Examples:
         >>> input1 = torch.rand(1, 4, 5, 2)
         >>> input2 = torch.rand(1, 4, 5, 2)
-        >>> epe = EPE(5)
+        >>> epe = AEPE(5)
         >>> epe = epe(input1, input2)
     """
 
@@ -68,4 +68,4 @@ class EPE(nn.Module):
         super().__init__()
 
     def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        return epe(input, target)
+        return aepe(input, target)
