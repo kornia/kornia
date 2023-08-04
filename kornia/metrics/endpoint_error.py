@@ -37,8 +37,7 @@ def aepe(input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         input.shape == target.shape, f"input and target shapes must be the same. Got: {input.shape} and {target.shape}"
     )
 
-    epe: Tensor = ((input[..., 0] - target[..., 0]) ** 2
-                   + (input[..., 1] - target[..., 1]) ** 2).sqrt().mean()
+    epe: Tensor = ((input[..., 0] - target[..., 0]) ** 2 + (input[..., 1] - target[..., 1]) ** 2).sqrt().mean()
 
     return epe
 
