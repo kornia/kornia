@@ -45,10 +45,14 @@ class RainGenerator(RandomGeneratorBase):
         drop_coordinates = _range_bound((0, 1), 'drops_coordinate', center=0.5, bounds=(0, 1)).to(
             device=device, dtype=dtype
         )
-        self.number_of_drops_sampler = Uniform(number_of_drops[0].clone(), number_of_drops[1].clone(), validate_args=False)
+        self.number_of_drops_sampler = Uniform(
+            number_of_drops[0].clone(), number_of_drops[1].clone(), validate_args=False
+        )
         self.drop_height_sampler = Uniform(drop_height[0].clone(), drop_height[1].clone(), validate_args=False)
         self.drop_width_sampler = Uniform(drop_width[0].clone(), drop_width[1].clone(), validate_args=False)
-        self.coordinates_sampler = Uniform(drop_coordinates[0].clone(), drop_coordinates[1].clone(), validate_args=False)
+        self.coordinates_sampler = Uniform(
+            drop_coordinates[0].clone(), drop_coordinates[1].clone(), validate_args=False
+        )
 
     def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, Tensor]:
         batch_size = batch_shape[0]

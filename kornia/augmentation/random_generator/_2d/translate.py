@@ -52,14 +52,18 @@ class TranslateGenerator(RandomGeneratorBase):
                 device=device, dtype=dtype
             )
 
-            self.translate_x_sampler = Uniform(_translate_x[..., 0].clone(), _translate_x[..., 1].clone(), validate_args=False)
+            self.translate_x_sampler = Uniform(
+                _translate_x[..., 0].clone(), _translate_x[..., 1].clone(), validate_args=False
+            )
 
         if self.translate_y is not None:
             _translate_y = _range_bound(self.translate_y, 'translate_y', bounds=(-1, 1), check='joint').to(
                 device=device, dtype=dtype
             )
 
-            self.translate_y_sampler = Uniform(_translate_y[..., 0].clone(), _translate_y[..., 1].clone(), validate_args=False)
+            self.translate_y_sampler = Uniform(
+                _translate_y[..., 0].clone(), _translate_y[..., 1].clone(), validate_args=False
+            )
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
