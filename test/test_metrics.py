@@ -195,6 +195,20 @@ class TestPsnr:
         actual = kornia.metrics.psnr(sample, 1.2 * sample, 2.0)
         assert_close(actual, expected)
 
+class TestEpe:
+    def test_metric(self, device, dtype):
+        sample = torch.ones(4, 4, 2, device=device, dtype=dtype)
+        expected = torch.tensor(0.32, device=device, dtype=dtype)
+        actual = kornia.metrics.epe(sample, 1.4 * sample)
+        assert_close(actual, expected)
+
+    def test_smoke(self, device, dtype):
+        input = torch.rand(3, 3, 2, device=device, dtype=dtype)
+        target = torch.rand(3, 3, 2, device=device, dtype=dtype)
+
+        criterion = kornia.metrics.EPE()
+        assert criterion(input, target) is not None
+
 
 class TestMeanAveragePrecision:
     def test_smoke(self, device, dtype):
