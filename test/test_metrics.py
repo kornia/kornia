@@ -195,6 +195,7 @@ class TestPsnr:
         actual = kornia.metrics.psnr(sample, 1.2 * sample, 2.0)
         assert_close(actual, expected)
 
+
 class TestEpe:
     def test_metric(self, device, dtype):
         sample = torch.ones(4, 4, 2, device=device, dtype=dtype)
