@@ -368,24 +368,20 @@ class TestRandomJigsaw:
         )
 
         assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
-    
+
     def test_numerical_non_square(self, device, dtype):
         torch.manual_seed(22)
-        f = RandomJigsaw(grid=(1,4), p=1.0, data_keys=["input"])
+        f = RandomJigsaw(grid=(1, 4), p=1.0, data_keys=["input"])
 
         input = torch.arange(32, device=device, dtype=dtype).reshape(2, 1, 2, 8)
 
         out_image = f(input)
 
         expected = torch.tensor(
-            [[[
-                    [2.0, 3.0, 4.0, 5.0, 0.0, 1.0, 6.0, 7.0],
-                    [10.0, 11.0, 12.0, 13.0, 8.0, 9.0, 14.0, 15.0]
-                ]],
-                [[
-                    [16.0, 17.0, 20.0, 21.0, 18.0, 19.0, 22.0, 23.0],
-                    [24.0, 25.0, 28.0, 29.0, 26.0, 27.0, 30.0, 31.0]
-            ]]],
+            [
+                [[[2.0, 3.0, 4.0, 5.0, 0.0, 1.0, 6.0, 7.0], [10.0, 11.0, 12.0, 13.0, 8.0, 9.0, 14.0, 15.0]]],
+                [[[16.0, 17.0, 20.0, 21.0, 18.0, 19.0, 22.0, 23.0], [24.0, 25.0, 28.0, 29.0, 26.0, 27.0, 30.0, 31.0]]],
+            ],
             device=device,
             dtype=dtype,
         )
@@ -401,7 +397,7 @@ class TestRandomJigsaw:
         input = torch.randn((12, 3, 256, 256), device=device, dtype=dtype)
 
         f(input)
-    
+
     @pytest.mark.parametrize("p", [0.0, 0.5, 1.0])
     @pytest.mark.parametrize("same_on_batch", [True, False])
     def test_non_square(self, p, same_on_batch, device, dtype):
