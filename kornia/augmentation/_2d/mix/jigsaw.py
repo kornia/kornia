@@ -13,7 +13,7 @@ __all__ = ["RandomJigsaw"]
 class RandomJigsaw(MixAugmentationBaseV2):
     r"""RandomJigsaw augmentation.
 
-    .. image:: https://raw.githubusercontent.com/kornia/data/main/random_jigsaw.png
+    .. image:: _static/img/RandomJigsaw.png
 
     Make Jigsaw puzzles for each image individually. To mix with different images in a
     batch, referring to :class:`kornia.augmentation.RandomMosic`.
