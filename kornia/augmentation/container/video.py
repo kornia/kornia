@@ -331,8 +331,7 @@ class VideoSequential(ImageSequential):
             raise AssertionError(f"Input must be a 5-dim tensor. Got {input.shape}.")
 
         if params is None:
-            if self._params is None:
-                self._params = self.forward_parameters(input.shape)
+            self._params = self.forward_parameters(input.shape)
             params = self._params
 
         output = self.transform_inputs(input, params, extra_args=extra_args)
