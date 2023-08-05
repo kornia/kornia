@@ -38,7 +38,6 @@ def reproducibility_test(input, seq):
 
 
 class TestVideoSequential:
-
     def test_smoke(self, device, dtype):
         input_1 = torch.randn(2, 3, 1, 5, 6, device=device, dtype=dtype).repeat(1, 1, 3, 1, 1)
         input_2 = torch.randn(4, 3, 1, 5, 6, device=device, dtype=dtype).repeat(1, 1, 3, 1, 1)
