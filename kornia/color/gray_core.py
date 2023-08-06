@@ -11,6 +11,9 @@ from kornia.core.check import KORNIA_CHECK
 from kornia.image import Image
 from kornia.image.base import ColorSpace, ImageLayout, PixelFormat
 
+# TODO: add once are finished
+__all__ = ["grayscale_to_rgb"]
+
 # def KORNIA_CHECK_IS_TENSOR(x: object, msg: str | None = None, raises: bool = True):
 #    if not isinstance(x, [tf.Tensor, torch.Tensor, np.ndarray, jnp.array]):
 #        if raises:
