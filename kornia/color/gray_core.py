@@ -6,6 +6,7 @@ import keras_core as keras
 # import numpy as np
 # import tensorflow as tf
 # TODO: import from korani.core.ops
+from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK
 from kornia.image import Image
 from kornia.image.base import ColorSpace, ImageLayout, PixelFormat
@@ -31,6 +32,10 @@ def bgr_to_rgb(image):
 
 
 # TODO: figure a way so that we can receive also raw tensors
+
+
+def _grayscale_to_rgb_kernel(image_data: Tensor, axis: int) -> Tensor:
+    return keras.ops.concatenate(3 * [image_data], axis=axis)
 
 
 def grayscale_to_rgb(image: Image) -> Image:
@@ -60,7 +65,7 @@ def grayscale_to_rgb(image: Image) -> Image:
 
     KORNIA_CHECK(image.channels == 1, f"Input size must have a shape of (*, 1, H, W). Got {image.shape}.")
 
-    image_rbg_data = keras.ops.concatenate(3 * [image.data], axis=image.channels_idx)
+    image_rbg_data = _grayscale_to_rgb_kernel(image.data, axis=image.channels_idx)
 
     image_rgb_layout = ImageLayout(
         image_size=image.layout.image_size, channels_order=image.layout.channels_order, channels=3
