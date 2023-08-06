@@ -7,41 +7,93 @@ import keras_core as keras
 # import tensorflow as tf
 # TODO: import from korani.core.ops
 from kornia.core import Tensor
-from kornia.core.check import KORNIA_CHECK
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_TYPE
 from kornia.image import Image
 from kornia.image.base import ColorSpace, ImageLayout, PixelFormat
 
 # TODO: add once are finished
-__all__ = ["grayscale_to_rgb"]
-
-# def KORNIA_CHECK_IS_TENSOR(x: object, msg: str | None = None, raises: bool = True):
-#    if not isinstance(x, [tf.Tensor, torch.Tensor, np.ndarray, jnp.array]):
-#        if raises:
-#            raise TypeError(f"Not a Tensor type. Got: {type(x)}.\n{msg}")
-#        return False
-#    return True
+__all__ = ["bgr_from_rgb", "grayscale_from_rgb", "grayscale_from_bgr", "rgb_from_bgr", "rgb_from_grayscale"]
 
 
-def bgr_to_rgb(image):
-    # if not isinstance(image, [tf.Tensor, torch.Tensor, np.ndarray, jnp.array]):
-    #    raise TypeError(f"Input type is not a Tensor. Got {type(image)}")
+# kernels
 
-    if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError(f"Input size must have a shape of (*, 3, H, W).Got {image.shape}")
+
+def _flip_image_channel_kernel(image_data: Tensor, axis: int) -> Tensor:
+    return keras.ops.flip(image_data, axis=axis)
+
+
+def _replicate_image_channel_kernel(image_data: Tensor, axis: int, num_replicas: int) -> Tensor:
+    return keras.ops.concatenate(num_replicas * [image_data], axis=axis)
+
+
+def _weighted_sum_channels_kernel(r, g, b, w_r, w_g, w_b) -> Tensor:
+    return w_r * r + w_g * g + w_b * b
+
+
+# API
+
+
+def rgb_from_bgr(image: Image) -> Image:
+    """Convert a BGR image to RGB version of image.
+
+    .. image:: _static/img/bgr_to_rgb.png
+
+    The image data is assumed to be in the range of (0, 1).
+
+    Args:
+        image: Image to be converted to RGB.
+
+    Returns:
+        Image: RGB version of the image.
+    """
+    KORNIA_CHECK_TYPE(image, Image, f"Not an Image type. Got {type(image)}")
+
+    KORNIA_CHECK(
+        image.pixel_format.color_space == ColorSpace.BGR,
+        f"Input image must be in RGB. Got {image.pixel_format.color_space}",
+    )
+
+    KORNIA_CHECK(image.channels == 3, f"Input size must have a shape of (*, 3, H, W). Got {image.shape}.")
 
     # flip image channels
-    out = keras.ops.flip(image, axis=-3)
-    return out
+    image_bgr_data = _flip_image_channel_kernel(image.data, axis=image.channels_idx)
+
+    image_bgr_pixel_format = PixelFormat(color_space=ColorSpace.RGB, bit_depth=image.pixel_format.bit_depth)
+
+    return Image(image_bgr_data, image_bgr_pixel_format, image.layout)
 
 
-# TODO: figure a way so that we can receive also raw tensors
+def bgr_from_rgb(image: Image) -> Image:
+    """Convert a RGB image to RGB version of image.
+
+    .. image:: _static/img/bgr_to_rgb.png
+
+    The image data is assumed to be in the range of (0, 1).
+
+    Args:
+        image: Image to be converted to BGR.
+
+    Returns:
+        Image: RGB version of the image.
+    """
+    KORNIA_CHECK_TYPE(image, Image, f"Not an Image type. Got {type(image)}")
+
+    KORNIA_CHECK(
+        image.pixel_format.color_space == ColorSpace.RGB,
+        f"Input image must be in RGB. Got {image.pixel_format.color_space}",
+    )
+
+    KORNIA_CHECK(image.channels == 3, f"Input size must have a shape of (*, 3, H, W). Got {image.shape}.")
+
+    # flip image channels
+    image_bgr_data = _flip_image_channel_kernel(image.data, axis=image.channels_idx)
+
+    image_bgr_pixel_format = PixelFormat(color_space=ColorSpace.BGR, bit_depth=image.pixel_format.bit_depth)
+
+    return Image(image_bgr_data, image_bgr_pixel_format, image.layout)
 
 
-def _grayscale_to_rgb_kernel(image_data: Tensor, axis: int) -> Tensor:
-    return keras.ops.concatenate(3 * [image_data], axis=axis)
-
-
-def grayscale_to_rgb(image: Image) -> Image:
+def rgb_from_grayscale(image: Image) -> Image:
     r"""Convert a grayscale image to RGB version of image.
 
     .. image:: _static/img/grayscale_to_rgb.png
@@ -58,8 +110,7 @@ def grayscale_to_rgb(image: Image) -> Image:
         >>> input = torch.randn(2, 1, 4, 5)
         >>> gray = grayscale_to_rgb(input) # 2x3x4x5
     """
-
-    # KORNIA_CHECK_IS_TENSOR(image)
+    KORNIA_CHECK_TYPE(image, Image, f"Not an Image type. Got {type(image)}")
 
     KORNIA_CHECK(
         image.pixel_format.color_space == ColorSpace.GRAY,
@@ -68,7 +119,7 @@ def grayscale_to_rgb(image: Image) -> Image:
 
     KORNIA_CHECK(image.channels == 1, f"Input size must have a shape of (*, 1, H, W). Got {image.shape}.")
 
-    image_rbg_data = _grayscale_to_rgb_kernel(image.data, axis=image.channels_idx)
+    image_rbg_data = _replicate_image_channel_kernel(image.data, axis=image.channels_idx, num_replicas=3)
 
     image_rgb_layout = ImageLayout(
         image_size=image.layout.image_size, channels_order=image.layout.channels_order, channels=3
@@ -79,7 +130,7 @@ def grayscale_to_rgb(image: Image) -> Image:
     return Image(image_rbg_data, image_rgb_pixel_format, image_rgb_layout)
 
 
-def rgb_to_grayscale(image, rgb_weights=None):
+def grayscale_from_rgb(image: Image, rgb_weights: list[int | float] | None = None) -> Image:
     r"""Convert a RGB image to grayscale version of image.
 
     .. image:: _static/img/rgb_to_grayscale.png
@@ -101,28 +152,42 @@ def rgb_to_grayscale(image, rgb_weights=None):
         >>> input = torch.rand(2, 3, 4, 5)
         >>> gray = rgb_to_grayscale(input) # 2x1x4x5
     """
-    # KORNIA_CHECK_IS_TENSOR(image)
+    KORNIA_CHECK_TYPE(image, Image, f"Not an Image type. Got {type(image)}")
 
-    if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
+    KORNIA_CHECK(
+        image.pixel_format.color_space == ColorSpace.RGB,
+        f"Input image must be in grayscale. Got {image.pixel_format.color_space}",
+    )
+
+    KORNIA_CHECK(image.channels == 3, f"Input size must have a shape of (*, 1, H, W). Got {image.shape}.")
 
     if rgb_weights is None:
         # 8 bit images
-        if str(image.dtype)[-5:] == "uint8":
-            rgb_weights = keras.ops.convert_to_tensor([76, 150, 29], dtype=image.dtype)
-        elif str(image.dtype)[-7:-2] in ["float16", "float32", "float64"]:
-            rgb_weights = keras.ops.convert_to_tensor([0.299, 0.587, 0.114], dtype=image.dtype)
+        if image.pixel_format.bit_depth == 8:
+            rgb_weights = [76, 150, 29]
+        elif image.pixel_format.bit_depth in [16, 32, 64]:
+            rgb_weights = [0.299, 0.587, 0.114]
 
     # unpack the color image channels with RGB order
-    r = image[..., 0:1, :, :]
-    g = image[..., 1:2, :, :]
-    b = image[..., 2:3, :, :]
+    r = image.get_channel(0)
+    g = image.get_channel(1)
+    b = image.get_channel(2)
 
+    # compute the weighted sum of the channels
     w_r, w_g, w_b = keras.ops.split(rgb_weights, 3, axis=0)
-    return w_r * r + w_g * g + w_b * b
+
+    image_grayscale_data = _weighted_sum_channels_kernel(r, g, b, w_r, w_g, w_b)
+
+    image_grayscale_layout = ImageLayout(
+        image_size=image.layout.image_size, channels_order=image.layout.channels_order, channels=1
+    )
+
+    image_grayscale_pixel_format = PixelFormat(ColorSpace.GRAY, image.pixel_format.bit_depth)
+
+    return Image(image_grayscale_data, image_grayscale_pixel_format, image_grayscale_layout)
 
 
-def bgr_to_grayscale(image):
+def grayscale_from_bgr(image):
     r"""Convert a BGR image to grayscale.
 
     The image data is assumed to be in the range of (0, 1). First flips to RGB, then converts.
@@ -137,93 +202,99 @@ def bgr_to_grayscale(image):
         >>> input = torch.rand(2, 3, 4, 5)
         >>> gray = bgr_to_grayscale(input) # 2x1x4x5
     """
-    # KORNIA_CHECK_IS_TENSOR(image)
+    KORNIA_CHECK_TYPE(image, Image, f"Not an Image type. Got {type(image)}")
 
-    if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
+    KORNIA_CHECK(
+        image.pixel_format.color_space == ColorSpace.BGR,
+        f"Input image must be in BRG. Got {image.pixel_format.color_space}",
+    )
 
-    image_rgb = bgr_to_rgb(image)
-    return rgb_to_grayscale(image_rgb)
+    KORNIA_CHECK(image.channels == 3, f"Input size must have a shape of (*, 3, H, W). Got {image.shape}.")
 
-
-class GrayscaleToRgb(keras.layers.Layer):
-    r"""Module to convert a grayscale image to RGB version of image.
-
-    The image data is assumed to be in the range of (0, 1).
-
-    Shape:
-        - image: :math:`(*, 1, H, W)`
-        - output: :math:`(*, 3, H, W)`
-
-    reference:
-        https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
-
-    Example:
-        >>> input = torch.rand(2, 1, 4, 5)
-        >>> rgb = GrayscaleToRgb()
-        >>> output = rgb(input)  # 2x3x4x5
-    """
-
-    def __init__(self):
-        super().__init__()
-
-    def call(self, inputs):
-        return grayscale_to_rgb(inputs)
+    return grayscale_from_rgb(rgb_from_bgr(image))
 
 
-class RgbToGrayscale(keras.layers.Layer):
-    r"""Module to convert a RGB image to grayscale version of image.
+# TODO: Layers should be automatically generated from the functions above.
 
-    The image data is assumed to be in the range of (0, 1).
-
-    Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 1, H, W)`
-
-    reference:
-        https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
-
-    Example:
-        >>> input = torch.rand(2, 3, 4, 5)
-        >>> gray = RgbToGrayscale()
-        >>> output = gray(input)  # 2x1x4x5
-    """
-
-    def __init__(self, rgb_weights=None):
-        super().__init__()
-        # TODO: add support for different weights
-        # if rgb_weights is None:
-        #     # 8 bit images
-        #     if str(image.dtype)[-5:] == "uint8":
-        #         rgb_weights = keras.ops.convert_to_tensor([76, 150, 29], dtype=image.dtype)
-        #     elif str(image.dtype)[-7:-2] in ["float16", "float32", "float64"]:
-        #         rgb_weights = keras.ops.convert_to_tensor([0.299, 0.587, 0.114], dtype=image.dtype)
-        self.rgb_weights = rgb_weights
-
-    def forward(self, image):
-        return rgb_to_grayscale(image, rgb_weights=self.rgb_weights)
-
-
-class BgrToGrayscale(keras.layers.Layer):
-    r"""Module to convert a BGR image to grayscale version of image.
-
-    The image data is assumed to be in the range of (0, 1). First flips to RGB, then converts.
-
-    Shape:
-        - image: :math:`(*, 3, H, W)`
-        - output: :math:`(*, 1, H, W)`
-
-    reference:
-        https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
-
-    Example:
-        >>> input = torch.rand(2, 3, 4, 5)
-        >>> gray = BgrToGrayscale()
-        >>> output = gray(input)  # 2x1x4x5
-    """
-
-    def __init__(self):
-        super().__init__()
-
-    def call(self, inputs):
-        return bgr_to_grayscale(inputs)
+# class GrayscaleToRgb(keras.layers.Layer):
+#    r"""Module to convert a grayscale image to RGB version of image.
+#
+#    The image data is assumed to be in the range of (0, 1).
+#
+#    Shape:
+#        - image: :math:`(*, 1, H, W)`
+#        - output: :math:`(*, 3, H, W)`
+#
+#    reference:
+#        https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
+#
+#    Example:
+#        >>> input = torch.rand(2, 1, 4, 5)
+#        >>> rgb = GrayscaleToRgb()
+#        >>> output = rgb(input)  # 2x3x4x5
+#    """
+#
+#    def __init__(self):
+#        super().__init__()
+#
+#    def call(self, inputs):
+#        return grayscale_to_rgb(inputs)
+#
+#
+# class RgbToGrayscale(keras.layers.Layer):
+#    r"""Module to convert a RGB image to grayscale version of image.
+#
+#    The image data is assumed to be in the range of (0, 1).
+#
+#    Shape:
+#        - image: :math:`(*, 3, H, W)`
+#        - output: :math:`(*, 1, H, W)`
+#
+#    reference:
+#        https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
+#
+#    Example:
+#        >>> input = torch.rand(2, 3, 4, 5)
+#        >>> gray = RgbToGrayscale()
+#        >>> output = gray(input)  # 2x1x4x5
+#    """
+#
+#    def __init__(self, rgb_weights=None):
+#        super().__init__()
+#        # TODO: add support for different weights
+#        # if rgb_weights is None:
+#        #     # 8 bit images
+#        #     if str(image.dtype)[-5:] == "uint8":
+#        #         rgb_weights = keras.ops.convert_to_tensor([76, 150, 29], dtype=image.dtype)
+#        #     elif str(image.dtype)[-7:-2] in ["float16", "float32", "float64"]:
+#        #         rgb_weights = keras.ops.convert_to_tensor([0.299, 0.587, 0.114], dtype=image.dtype)
+#        self.rgb_weights = rgb_weights
+#
+#    def forward(self, image):
+#        return rgb_to_grayscale(image, rgb_weights=self.rgb_weights)
+#
+#
+# class BgrToGrayscale(keras.layers.Layer):
+#    r"""Module to convert a BGR image to grayscale version of image.
+#
+#    The image data is assumed to be in the range of (0, 1). First flips to RGB, then converts.
+#
+#    Shape:
+#        - image: :math:`(*, 3, H, W)`
+#        - output: :math:`(*, 1, H, W)`
+#
+#    reference:
+#        https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
+#
+#    Example:
+#        >>> input = torch.rand(2, 3, 4, 5)
+#        >>> gray = BgrToGrayscale()
+#        >>> output = gray(input)  # 2x1x4x5
+#    """
+#
+#    def __init__(self):
+#        super().__init__()
+#
+#    def call(self, inputs):
+#        return bgr_to_grayscale(inputs)
+#
