@@ -7,7 +7,6 @@ import torch
 from torch.utils.dlpack import from_dlpack, to_dlpack
 
 from kornia.core import Device, Dtype, Tensor
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.image.base import ChannelsOrder, ColorSpace, ImageLayout, ImageSize, PixelFormat
 from kornia.io.io import ImageLoadType, load_image, write_image
 from kornia.utils.image_print import image_to_string
@@ -67,14 +66,14 @@ class Image:
         """
         # TODO: move this to a function KORNIA_CHECK_IMAGE_LAYOUT
         if layout.channels_order == ChannelsOrder.CHANNELS_FIRST:
-            shape = [str(layout.channels), str(layout.image_size.height), str(layout.image_size.width)]
+            [str(layout.channels), str(layout.image_size.height), str(layout.image_size.width)]
         elif layout.channels_order == ChannelsOrder.CHANNELS_LAST:
-            shape = [str(layout.image_size.height), str(layout.image_size.width), str(layout.channels)]
+            [str(layout.image_size.height), str(layout.image_size.width), str(layout.channels)]
         else:
             raise NotImplementedError(f"Layout {layout.channels_order} not implemented.")
 
-        KORNIA_CHECK_SHAPE(data, shape)
-        KORNIA_CHECK(data.element_size() == pixel_format.bit_depth // 8, "Invalid bit depth.")
+        # KORNIA_CHECK_SHAPE(data, shape)
+        # KORNIA_CHECK(data.element_size() == pixel_format.bit_depth // 8, "Invalid bit depth.")
 
         self._data = data
         self._pixel_format = pixel_format
@@ -141,6 +140,11 @@ class Image:
         return self.layout.channels
 
     @property
+    def channels_idx(self) -> int:
+        """Return the index of the channels of the image."""
+        return -1 if self.layout.channels_order == ChannelsOrder.CHANNELS_LAST else -3
+
+    @property
     def image_size(self) -> ImageSize:
         """Return the image size."""
         return self.layout.image_size
@@ -159,6 +163,12 @@ class Image:
     def channels_order(self) -> ChannelsOrder:
         """Return the channels order."""
         return self.layout.channels_order
+
+    def get_channel(self, idx: int):
+        """Return the channel at the given index."""
+        if self.layout.channels_order == ChannelsOrder.CHANNELS_LAST:
+            return self.data[..., idx]
+        return self.data[..., idx, :, :]
 
     # TODO: figure out a better way map this function
     def float(self) -> Image:

@@ -1,23 +1,26 @@
 from __future__ import annotations
 
-import jax.numpy as jnp
+# import jax.numpy as jnp
 import keras_core as keras
-import numpy as np
-import tensorflow as tf
-import torch
 
+# import numpy as np
+# import tensorflow as tf
+# TODO: import from korani.core.ops
+from kornia.core.check import KORNIA_CHECK
+from kornia.image import Image
+from kornia.image.base import ColorSpace, ImageLayout, PixelFormat
 
-def KORNIA_CHECK_IS_TENSOR(x: object, msg: str | None = None, raises: bool = True):
-    if not isinstance(x, [tf.Tensor, torch.Tensor, np.ndarray, jnp.array]):
-        if raises:
-            raise TypeError(f"Not a Tensor type. Got: {type(x)}.\n{msg}")
-        return False
-    return True
+# def KORNIA_CHECK_IS_TENSOR(x: object, msg: str | None = None, raises: bool = True):
+#    if not isinstance(x, [tf.Tensor, torch.Tensor, np.ndarray, jnp.array]):
+#        if raises:
+#            raise TypeError(f"Not a Tensor type. Got: {type(x)}.\n{msg}")
+#        return False
+#    return True
 
 
 def bgr_to_rgb(image):
-    if not isinstance(image, [tf.Tensor, torch.Tensor, np.ndarray, jnp.array]):
-        raise TypeError(f"Input type is not a Tensor. Got {type(image)}")
+    # if not isinstance(image, [tf.Tensor, torch.Tensor, np.ndarray, jnp.array]):
+    #    raise TypeError(f"Input type is not a Tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W).Got {image.shape}")
@@ -27,7 +30,10 @@ def bgr_to_rgb(image):
     return out
 
 
-def grayscale_to_rgb(image):
+# TODO: figure a way so that we can receive also raw tensors
+
+
+def grayscale_to_rgb(image: Image) -> Image:
     r"""Convert a grayscale image to RGB version of image.
 
     .. image:: _static/img/grayscale_to_rgb.png
@@ -45,12 +51,24 @@ def grayscale_to_rgb(image):
         >>> gray = grayscale_to_rgb(input) # 2x3x4x5
     """
 
-    KORNIA_CHECK_IS_TENSOR(image)
+    # KORNIA_CHECK_IS_TENSOR(image)
 
-    if len(image.shape) < 3 or image.shape[-3] != 1:
-        raise ValueError(f"Input size must have a shape of (*, 1, H, W). " f"Got {image.shape}.")
+    KORNIA_CHECK(
+        image.pixel_format.color_space == ColorSpace.GRAY,
+        f"Input image must be in grayscale. Got {image.pixel_format.color_space}",
+    )
 
-    return keras.ops.concatenate([image, image, image], -3)
+    KORNIA_CHECK(image.channels == 1, f"Input size must have a shape of (*, 1, H, W). Got {image.shape}.")
+
+    image_rbg_data = keras.ops.concatenate(3 * [image.data], axis=image.channels_idx)
+
+    image_rgb_layout = ImageLayout(
+        image_size=image.layout.image_size, channels_order=image.layout.channels_order, channels=3
+    )
+
+    image_rgb_pixel_format = PixelFormat(ColorSpace.RGB, image.pixel_format.bit_depth)
+
+    return Image(image_rbg_data, image_rgb_pixel_format, image_rgb_layout)
 
 
 def rgb_to_grayscale(image, rgb_weights=None):
@@ -75,7 +93,7 @@ def rgb_to_grayscale(image, rgb_weights=None):
         >>> input = torch.rand(2, 3, 4, 5)
         >>> gray = rgb_to_grayscale(input) # 2x1x4x5
     """
-    KORNIA_CHECK_IS_TENSOR(image)
+    # KORNIA_CHECK_IS_TENSOR(image)
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
@@ -111,7 +129,7 @@ def bgr_to_grayscale(image):
         >>> input = torch.rand(2, 3, 4, 5)
         >>> gray = bgr_to_grayscale(input) # 2x1x4x5
     """
-    KORNIA_CHECK_IS_TENSOR(image)
+    # KORNIA_CHECK_IS_TENSOR(image)
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
@@ -165,16 +183,13 @@ class RgbToGrayscale(keras.layers.Layer):
 
     def __init__(self, rgb_weights=None):
         super().__init__()
-        if rgb_weights is None:
-            backend = keras.backend.backend()
-            if backend == "numpy":
-                rgb_weights = np.array([0.299, 0.587, 0.114])
-            elif backend == "jax":
-                rgb_weights = jnp.array([0.299, 0.587, 0.114])
-            elif backend == "torch":
-                rgb_weights = torch.tensor([0.299, 0.587, 0.114])
-            elif backend == "tensorflow":
-                rgb_weights = tf.convert_to_tensor([0.299, 0.587, 0.114])
+        # TODO: add support for different weights
+        # if rgb_weights is None:
+        #     # 8 bit images
+        #     if str(image.dtype)[-5:] == "uint8":
+        #         rgb_weights = keras.ops.convert_to_tensor([76, 150, 29], dtype=image.dtype)
+        #     elif str(image.dtype)[-7:-2] in ["float16", "float32", "float64"]:
+        #         rgb_weights = keras.ops.convert_to_tensor([0.299, 0.587, 0.114], dtype=image.dtype)
         self.rgb_weights = rgb_weights
 
     def forward(self, image):
