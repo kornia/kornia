@@ -338,10 +338,19 @@ class TestRandomMosaic:
 
 
 class TestRandomJigsaw:
-    def test_smoke(self):
+    def test_smoke(self, device, dtype):
         f = RandomJigsaw(data_keys=["input"])
         repr = "RandomJigsaw(grid=(4, 4), p=0.5, p_batch=1.0, same_on_batch=False, grid=(4, 4))"
         assert str(f) == repr
+
+        # Test square and non-square images.
+        f = RandomJigsaw(grid=(2, 2), p=1.0, data_keys=["input"])
+        input = torch.arange(64, device=device, dtype=dtype).reshape(2, 1, 4, 8)
+        f(input)
+        input = torch.arange(64, device=device, dtype=dtype).reshape(2, 1, 8, 4)
+        f(input)
+        input = torch.arange(32, device=device, dtype=dtype).reshape(2, 1, 4, 4)
+        f(input)
 
     def test_numerical(self, device, dtype):
         torch.manual_seed(22)
