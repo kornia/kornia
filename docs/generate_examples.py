@@ -157,6 +157,7 @@ def main():
         "RandomSolarize": ((0.2, 0.2), 2, 2019),
         "RandomVerticalFlip": ((), 1, 2020),
         "RandomThinPlateSpline": ((), 1, 2020),
+        "RandomJigsaw": ((), 2, 2020),
     }
 
     # ITERATE OVER THE TRANSFORMS
@@ -171,6 +172,8 @@ def main():
 
         # set seed
         torch.manual_seed(seed)
+        if aug_name == "RandomJigsaw":  # make sure the image is dividable
+            img_in = K.geometry.resize(img_in, (1020, 500))
         # apply the augmentation to the image and concat
         out = aug(img_in)
 
