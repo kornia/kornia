@@ -13,7 +13,7 @@ __all__ = ["RandomJigsaw"]
 class RandomJigsaw(MixAugmentationBaseV2):
     r"""RandomJigsaw augmentation.
 
-    .. image:: https://raw.githubusercontent.com/kornia/data/main/random_jigsaw.png
+    .. image:: _static/img/RandomJigsaw.png
 
     Make Jigsaw puzzles for each image individually. To mix with different images in a
     batch, referring to :class:`kornia.augmentation.RandomMosic`.
@@ -61,11 +61,14 @@ class RandomJigsaw(MixAugmentationBaseV2):
 
         b, c, h, w = input.shape
         perm = params["permutation"]
+        # Note: with a 100x100 image and a grid size of 3x3, it could work if
+        #       we make h = piece_size_h * self.flags["grid"][0] with one pixel loss, then resize to 100 x 100.
+        #       Probably worth to check if we should tolerate such "errorness" or to raise it as an error.
         piece_size_h, piece_size_w = input.shape[-2] // self.flags["grid"][0], input.shape[-1] // self.flags["grid"][1]
         # Convert to C BxN H' W'
         input = (
-            input.unfold(2, piece_size_h, piece_size_w)
-            .unfold(3, piece_size_h, piece_size_w)
+            input.unfold(2, piece_size_h, piece_size_h)
+            .unfold(3, piece_size_w, piece_size_w)
             .reshape(b, c, -1, piece_size_h, piece_size_w)
             .permute(1, 0, 2, 3, 4)
             .reshape(c, -1, piece_size_h, piece_size_w)
@@ -75,7 +78,7 @@ class RandomJigsaw(MixAugmentationBaseV2):
         input = (
             input.reshape(-1, b, self.flags["grid"][1], h, piece_size_w)
             .permute(0, 1, 2, 4, 3)
-            .reshape(-1, b, h, w)
+            .reshape(-1, b, w, h)
             .permute(0, 1, 3, 2)
             .permute(1, 0, 2, 3)
         )
