@@ -2,8 +2,9 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py
 from __future__ import annotations
 
-from kornia.core import Device, Dtype, Module, Tensor, concatenate, stack, tensor, where, zeros, zeros_like
+from kornia.core import Device, Dtype, Module, Tensor, concatenate, eye, stack, tensor, where, zeros, zeros_like
 from kornia.core.check import KORNIA_CHECK_TYPE
+from kornia.geometry.conversions import vector_to_skew_symmetric_matrix
 from kornia.geometry.linalg import batched_dot_product
 from kornia.geometry.quaternion import Quaternion
 from kornia.geometry.vector import Vector3
@@ -92,7 +93,7 @@ class So3(Module):
 
         Example:
             >>> v = torch.zeros((2, 3))
-            >>> s = So3.identity().exp(v)
+            >>> s = So3.exp(v)
             >>> s
             Parameter containing:
             tensor([[1., 0., 0., 0.],
@@ -331,3 +332,63 @@ class So3(Module):
                     [0., 0., 1.]], grad_fn=<StackBackward0>)
         """
         return self.matrix()
+
+    @staticmethod
+    def right_jacobian(vec: Tensor) -> Tensor:
+        """Computes the right Jacobian of So3.
+
+        Args:
+            vec: the input point of shape :math:`(B, 3)`.
+
+        Example:
+            >>> vec = torch.tensor([1., 2., 3.])
+            >>> So3.right_jacobian(vec)
+            tensor([[-0.0687,  0.5556, -0.0141],
+                    [-0.2267,  0.1779,  0.6236],
+                    [ 0.5074,  0.3629,  0.5890]])
+        """
+        # KORNIA_CHECK_SHAPE(vec, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
+        R_skew = vector_to_skew_symmetric_matrix(vec)
+        theta = vec.norm(dim=-1, keepdim=True)[..., None]
+        I = eye(3, device=vec.device, dtype=vec.dtype)
+        Jr = I - ((1 - theta.cos()) / theta**2) * R_skew + ((theta - theta.sin()) / theta**3) * (R_skew @ R_skew)
+        return Jr
+
+    @staticmethod
+    def Jr(vec: Tensor) -> Tensor:
+        """Alias for right jacobian.
+
+        Args:
+            vec: the input point of shape :math:`(B, 3)`.
+        """
+        return So3.right_jacobian(vec)
+
+    @staticmethod
+    def left_jacobian(vec: Tensor) -> Tensor:
+        """Computes the left Jacobian of So3.
+
+        Args:
+            vec: the input point of shape :math:`(B, 3)`.
+
+        Example:
+            >>> vec = torch.tensor([1., 2., 3.])
+            >>> So3.left_jacobian(vec)
+            tensor([[-0.0687, -0.2267,  0.5074],
+                    [ 0.5556,  0.1779,  0.3629],
+                    [-0.0141,  0.6236,  0.5890]])
+        """
+        # KORNIA_CHECK_SHAPE(vec, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
+        R_skew = vector_to_skew_symmetric_matrix(vec)
+        theta = vec.norm(dim=-1, keepdim=True)[..., None]
+        I = eye(3, device=vec.device, dtype=vec.dtype)
+        Jl = I + ((1 - theta.cos()) / theta**2) * R_skew + ((theta - theta.sin()) / theta**3) * (R_skew @ R_skew)
+        return Jl
+
+    @staticmethod
+    def Jl(vec: Tensor) -> Tensor:
+        """Alias for left jacobian.
+
+        Args:
+            vec: the input point of shape :math:`(B, 3)`.
+        """
+        return So3.left_jacobian(vec)

@@ -54,6 +54,7 @@ __all__ = [
     "camtoworld_graphics_to_vision_Rt",
     "camtoworld_vision_to_graphics_Rt",
     "ARKitQTVecs_to_ColmapQTVecs",
+    "vector_to_skew_symmetric_matrix",
 ]
 
 
@@ -1478,3 +1479,35 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: Tensor, tvec: Tensor) -> tuple[Tensor, Ten
     t_colmap = t_colmap.reshape(-1, 3, 1)
     q_colmap = rotation_matrix_to_quaternion(R_colmap.contiguous())
     return q_colmap, t_colmap
+
+
+def vector_to_skew_symmetric_matrix(vec: Tensor) -> Tensor:
+    r"""Converts a vector to a skew symmetric matrix.
+
+    Args:
+        x: tensor of shape :math:`(B, 3)`.
+
+    Returns:
+        tensor of shape :math:`(B, 3, 3)`.
+
+    Example:
+        >>> vec = torch.tensor([1.0, 2.0, 3.0])
+        >>> vector_to_skew_symmetric_matrix(vec)
+        tensor([[ 0., -3.,  2.],
+                [ 3.,  0., -1.],
+                [-2.,  1.,  0.]])
+    """
+    # KORNIA_CHECK_SHAPE(vec, ["B", "3"])
+    if vec.shape[-1] != 3 or len(vec.shape) > 2:
+        raise ValueError(f"Input vector must be of shape (B, 3) or (3,). " f"Got {vec.shape}")
+    x1, x2, x3 = vec[..., 0], vec[..., 1], vec[..., 2]
+    zeros = torch.zeros_like(x1)
+    skew_symmetric_matrix = torch.stack(
+        [
+            torch.stack([zeros, -x3, x2], dim=-1),
+            torch.stack([x3, zeros, -x1], dim=-1),
+            torch.stack([-x2, x1, zeros], dim=-1),
+        ],
+        dim=-2,
+    )
+    return skew_symmetric_matrix
