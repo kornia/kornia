@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.constants import pi
-from kornia.core import Tensor, concatenate, pad, stack, tensor, where
+from kornia.core import Tensor, concatenate, pad, stack, tensor, where, zeros_like
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.utils import deprecated
 from kornia.utils.helpers import _torch_inverse_cast
@@ -1484,6 +1484,13 @@ def ARKitQTVecs_to_ColmapQTVecs(qvec: Tensor, tvec: Tensor) -> tuple[Tensor, Ten
 def vector_to_skew_symmetric_matrix(vec: Tensor) -> Tensor:
     r"""Converts a vector to a skew symmetric matrix.
 
+    A vector :math:`(v1, v2, v3)` has a corresponding skew-symmetric matrix, which is of the form:
+
+    .. math::
+        \begin{bmatrix} 0 & -v3 & v2 \\
+        v3 & 0 & -v1 \\
+        -v2 & v1 & 0\end{bmatrix}
+
     Args:
         x: tensor of shape :math:`(B, 3)`.
 
@@ -1500,13 +1507,13 @@ def vector_to_skew_symmetric_matrix(vec: Tensor) -> Tensor:
     # KORNIA_CHECK_SHAPE(vec, ["B", "3"])
     if vec.shape[-1] != 3 or len(vec.shape) > 2:
         raise ValueError(f"Input vector must be of shape (B, 3) or (3,). " f"Got {vec.shape}")
-    x1, x2, x3 = vec[..., 0], vec[..., 1], vec[..., 2]
-    zeros = torch.zeros_like(x1)
-    skew_symmetric_matrix = torch.stack(
+    v1, v2, v3 = vec[..., 0], vec[..., 1], vec[..., 2]
+    zeros = zeros_like(v1)
+    skew_symmetric_matrix = stack(
         [
-            torch.stack([zeros, -x3, x2], dim=-1),
-            torch.stack([x3, zeros, -x1], dim=-1),
-            torch.stack([-x2, x1, zeros], dim=-1),
+            stack([zeros, -v3, v2], dim=-1),
+            stack([v3, zeros, -v1], dim=-1),
+            stack([-v2, v1, zeros], dim=-1),
         ],
         dim=-2,
     )
