@@ -468,11 +468,8 @@ class TestLightGlueDISK:
         assert idxs.shape[0] == dists.shape[0]
         assert dists.shape[0] <= data_dev['descs1'].shape[0]
         assert dists.shape[0] <= data_dev['descs2'].shape[0]
-        # key doesn't exist in data_dev
-        # expected_idxs = data_dev['lightglue_disk_idxs'].long()
-        data_dev['expected_idxs'].long()
-        # TODO: fix this
-        # assert_close(idxs, expected_idxs, rtol=1e-4, atol=1e-4)
+        expected_idxs = data_dev['lightglue_disk_idxs'].long()
+        assert_close(idxs, expected_idxs, rtol=1e-4, atol=1e-4)
 
     @pytest.mark.parametrize("data", ["lightglue_idxs"], indirect=True)
     def test_single_nocrash(self, device, dtype, data):
