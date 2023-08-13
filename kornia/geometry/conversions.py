@@ -1510,11 +1510,6 @@ def vector_to_skew_symmetric_matrix(vec: Tensor) -> Tensor:
     v1, v2, v3 = vec[..., 0], vec[..., 1], vec[..., 2]
     zeros = zeros_like(v1)
     skew_symmetric_matrix = stack(
-        [
-            stack([zeros, -v3, v2], dim=-1),
-            stack([v3, zeros, -v1], dim=-1),
-            stack([-v2, v1, zeros], dim=-1),
-        ],
-        dim=-2,
+        [stack([zeros, -v3, v2], dim=-1), stack([v3, zeros, -v1], dim=-1), stack([-v2, v1, zeros], dim=-1)], dim=-2
     )
     return skew_symmetric_matrix

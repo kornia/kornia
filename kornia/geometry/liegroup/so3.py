@@ -350,7 +350,7 @@ class So3(Module):
         # KORNIA_CHECK_SHAPE(vec, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
         R_skew = vector_to_skew_symmetric_matrix(vec)
         theta = vec.norm(dim=-1, keepdim=True)[..., None]
-        I = eye(3, device=vec.device, dtype=vec.dtype)
+        I = eye(3, device=vec.device, dtype=vec.dtype)  # noqa: E741
         Jr = I - ((1 - theta.cos()) / theta**2) * R_skew + ((theta - theta.sin()) / theta**3) * (R_skew @ R_skew)
         return Jr
 
@@ -380,7 +380,7 @@ class So3(Module):
         # KORNIA_CHECK_SHAPE(vec, ["B", "3"])  # FIXME: resolve shape bugs. @edgarriba
         R_skew = vector_to_skew_symmetric_matrix(vec)
         theta = vec.norm(dim=-1, keepdim=True)[..., None]
-        I = eye(3, device=vec.device, dtype=vec.dtype)
+        I = eye(3, device=vec.device, dtype=vec.dtype)  # noqa: E741
         Jl = I + ((1 - theta.cos()) / theta**2) * R_skew + ((theta - theta.sin()) / theta**3) * (R_skew @ R_skew)
         return Jl
 
