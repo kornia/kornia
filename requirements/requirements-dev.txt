@@ -7,4 +7,5 @@ pre-commit>=2
 pydocstyle
 pytest==7.4.0
 pytest-cov==4.1.0
+pytest-xdist
 scipy

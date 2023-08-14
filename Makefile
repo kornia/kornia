@@ -3,34 +3,34 @@
 test: mypy lint build-docs test-all
 
 test-all: FORCE
-	pytest -v --device all --dtype all --cov=kornia test/
+	pytest -n auto -v --device all --dtype all --cov=kornia test/
 
 test-cpu: FORCE
-	pytest -v --device cpu --dtype all --cov=kornia test/
+	pytest -n auto -v --device cpu --dtype all --cov=kornia test/
 
 test-cuda: FORCE
-	pytest -v --device cuda --dtype all --cov=kornia test/
+	pytest -n auto -v --device cuda --dtype all --cov=kornia test/
 
 test-mps: FORCE
-	pytest -v --device mps --dtype float32 -k "not (grad or exception or jit or dynamo)"  test/
+	pytest -n auto -v --device mps --dtype float32 -k "not (grad or exception or jit or dynamo)"  test/
 
 test-module: FORCE
-	pytest -v --device all --dtype all  test/$(module)
+	pytest -n auto -v --device all --dtype all  test/$(module)
 
 test-jit: FORCE
-	pytest -v --device all --dtype all -m jit
+	pytest -n auto -v --device all --dtype all -m jit
 
 test-gradcheck: FORCE
-	pytest -v --device all --dtype all -m grad
+	pytest -n auto -v --device all --dtype all -m grad
 
 test-nn: FORCE
-	pytest -v --device all --dtype all -m nn
+	pytest -n auto -v --device all --dtype all -m nn
 
 test-quick: FORCE
-	pytest -v --device all --dtype all -m "not (jit or grad or nn)"
+	pytest -n auto -v --device all --dtype all -m "not (jit or grad or nn)"
 
 test-slow: FORCE
-	pytest -v --device all --dtype all -m "(jit or grad or nn)"
+	pytest -n auto -v --device all --dtype all -m "(jit or grad or nn)"
 
 lint: FORCE
 	pre-commit run ruff --all-files

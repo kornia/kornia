@@ -58,7 +58,7 @@ jobs:
     - name: Run CPU tests ${{ inputs.pytorch-dtype }}
       continue-on-error: ${{ inputs.continue-on-error }}
       shell: bash -l {0}
-      run: pytest -v --device cpu --dtype ${{ inputs.pytorch-dtype }} ${{ inputs.pytest-extra }} --cov=kornia --cov-report xml ./test
+      run: pytest -n auto -v --device cpu --dtype ${{ inputs.pytorch-dtype }} ${{ inputs.pytest-extra }} --cov=kornia --cov-report xml ./test
 
     - if: always()
       name: Upload coverage
