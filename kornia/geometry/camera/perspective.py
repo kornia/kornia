@@ -69,7 +69,7 @@ def unproject_points(
         raise TypeError(f"Input depth type is not a torch.Tensor. Got {type(depth)}")
 
     if not depth.shape[-1] == 1:
-        raise ValueError("Input depth must be in the shape of (*, 1)." " Got {}".format(depth.shape))
+        raise ValueError("Input depth must be in the shape of (*, 1)." f" Got {depth.shape}")
 
     xy: torch.Tensor = normalize_points_with_intrinsics(point_2d, camera_matrix)
     xyz: torch.Tensor = convert_points_to_homogeneous(xy)
