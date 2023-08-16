@@ -3,7 +3,7 @@ kornia_moons
 matplotlib
 opencv-python
 PyYAML>=5.1
-sphinx>=4
+sphinx==7.0.1 # TODO: Unpin after sphinx-doc/sphinx/issues/11543 be solved
 sphinx-autodoc-defaultargs
 sphinx-autodoc-typehints
 sphinx-copybutton>=0.3
