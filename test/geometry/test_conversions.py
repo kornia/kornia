@@ -1338,3 +1338,24 @@ class TestQuaternionFromEuler(BaseTester):
 
         # out = [tf3.euler.quat2euler((qw[i], qx[i], qy[i], qz[i])) for i in range(num_samples)]
         # out = torch.tensor(out, device=device, dtype=dtype)
+
+
+@pytest.mark.parametrize('batch_size', (None, 1, 2, 5))
+def test_vector_to_skew_symmetric_matrix(batch_size, device, dtype):
+    if batch_size is None:
+        vector = torch.rand(3, device=device, dtype=dtype)
+    else:
+        vector = torch.rand((batch_size, 3), device=device, dtype=dtype)
+    skew_symmetric_matrix = kornia.geometry.conversions.vector_to_skew_symmetric_matrix(vector)
+    assert skew_symmetric_matrix.shape[-1] == 3
+    assert skew_symmetric_matrix.shape[-2] == 3
+    z = torch.zeros_like(vector[..., 0])
+    assert_close(skew_symmetric_matrix[..., 0, 0], z)
+    assert_close(skew_symmetric_matrix[..., 1, 1], z)
+    assert_close(skew_symmetric_matrix[..., 2, 2], z)
+    assert_close(skew_symmetric_matrix[..., 0, 1], -vector[..., 2])
+    assert_close(skew_symmetric_matrix[..., 1, 0], vector[..., 2])
+    assert_close(skew_symmetric_matrix[..., 0, 2], vector[..., 1])
+    assert_close(skew_symmetric_matrix[..., 2, 0], -vector[..., 1])
+    assert_close(skew_symmetric_matrix[..., 1, 2], -vector[..., 0])
+    assert_close(skew_symmetric_matrix[..., 2, 1], vector[..., 0])
