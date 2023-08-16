@@ -63,7 +63,7 @@ class RandomRain(IntensityAugmentationBase2D):
             bool(torch.all(torch.abs(params['drop_width_factor']) <= image.shape[3])),
             "Width of drop should be less than image width.",
         )
-
+        modeified_img = image.clone()
         for i in range(image.shape[0]):
             number_of_drops: int = int(params['number_of_drops_factor'][i])
             # We generate tensor with maximum number of drops, and then remove unnecessary drops.
@@ -87,5 +87,5 @@ class RandomRain(IntensityAugmentationBase2D):
             y = torch.linspace(start=0, end=width_of_drop, steps=size_of_line, dtype=torch.long).to(image.device)
             # Draw lines
             for k in range(x.shape[0]):
-                image[i, :, coords[0] + x[k], coords[1] + y[k]] = 200 / 255
-        return image
+                modeified_img[i, :, coords[0] + x[k], coords[1] + y[k]] = 200 / 255
+        return modeified_img
