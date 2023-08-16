@@ -243,3 +243,26 @@ class TestSo3(BaseTester):
         s_in_s = s.inverse() * s
         i = So3.identity(batch_size=batch_size, device=device, dtype=dtype)
         self.assert_close(s_in_s.q.data, i.q.data)
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_right_jacobian(self, device, dtype, batch_size):
+        vec = self._make_rand_data(device, dtype, batch_size, dims=3)
+        Jr = So3.right_jacobian(vec)
+        I = torch.eye(3, device=device, dtype=dtype).expand_as(Jr)  # noqa: E741
+        self.assert_close(vec[..., None], Jr @ vec[..., None])
+        self.assert_close(Jr.transpose(-1, -2) @ Jr, I, atol=0.1, rtol=0.1)
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_left_jacobian(self, device, dtype, batch_size):
+        vec = self._make_rand_data(device, dtype, batch_size, dims=3)
+        Jl = So3.left_jacobian(vec)
+        I = torch.eye(3, device=device, dtype=dtype).expand_as(Jl)  # noqa: E741
+        self.assert_close(vec[..., None], Jl @ vec[..., None])
+        self.assert_close(Jl.transpose(-1, -2) @ Jl, I, atol=0.1, rtol=0.1)
+
+    @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
+    def test_right_left_jacobian(self, device, dtype, batch_size):
+        vec = self._make_rand_data(device, dtype, batch_size, dims=3)
+        Jr = So3.right_jacobian(vec)
+        Jl = So3.left_jacobian(vec)
+        self.assert_close(Jl, Jr.transpose(-1, -2))

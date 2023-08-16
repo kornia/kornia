@@ -42,6 +42,11 @@ Quaternion
 .. autofunction:: quaternion_exp_to_log
 .. autofunction:: normalize_quaternion
 
+Vector
+------
+
+.. autofunction:: vector_to_skew_symmetric_matrix
+
 Rotation Matrix
 ---------------
 
