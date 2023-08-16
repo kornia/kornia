@@ -144,7 +144,7 @@ def solve_pnp_dlt(
             f"of torch.Tensor. Type of weights is {type(weights)}"
         )
 
-    if type(svd_eps) is not float:
+    if not isinstance(svd_eps, float):
         raise AssertionError(f"Type of svd_eps is not float. Got {type(svd_eps)}")
 
     accepted_dtypes = (torch.float32, torch.float64)

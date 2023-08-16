@@ -147,8 +147,8 @@ def scale_laf(laf: Tensor, scale_coef: Union[float, Tensor]) -> Tensor:
         >>> scale = 0.5
         >>> output = scale_laf(input, scale)  # BxNx2x3
     """
-    if (type(scale_coef) is not float) and (type(scale_coef) is not Tensor):
-        raise TypeError("scale_coef should be float or Tensor " "Got {}".format(type(scale_coef)))
+    if not (isinstance(scale_coef, float) and isinstance(scale_coef, Tensor)):
+        raise TypeError("scale_coef should be float or Tensor " f"Got {type(scale_coef)}")
     KORNIA_CHECK_LAF(laf)
     centerless_laf = laf[:, :, :2, :2]
     return concatenate([scale_coef * centerless_laf, laf[:, :, :, 2:]], dim=3)

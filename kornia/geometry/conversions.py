@@ -856,7 +856,7 @@ def normalize_pixel_coordinates(pixel_coordinates: Tensor, height: int, width: i
         tensor([[1.0408, 1.0202]])
     """
     if pixel_coordinates.shape[-1] != 2:
-        raise ValueError("Input pixel_coordinates must be of shape (*, 2). " "Got {}".format(pixel_coordinates.shape))
+        raise ValueError("Input pixel_coordinates must be of shape (*, 2). " f"Got {pixel_coordinates.shape}")
 
     # compute normalization factor
     hw: Tensor = stack(
@@ -891,7 +891,7 @@ def denormalize_pixel_coordinates(pixel_coordinates: Tensor, height: int, width:
         tensor([[0., 0.]])
     """
     if pixel_coordinates.shape[-1] != 2:
-        raise ValueError("Input pixel_coordinates must be of shape (*, 2). " "Got {}".format(pixel_coordinates.shape))
+        raise ValueError("Input pixel_coordinates must be of shape (*, 2). " f"Got {pixel_coordinates.shape}")
     # compute normalization factor
     hw: Tensor = stack([tensor(width), tensor(height)]).to(pixel_coordinates.device).to(pixel_coordinates.dtype)
 
@@ -918,7 +918,7 @@ def normalize_pixel_coordinates3d(
         the normalized pixel coordinates.
     """
     if pixel_coordinates.shape[-1] != 3:
-        raise ValueError("Input pixel_coordinates must be of shape (*, 3). " "Got {}".format(pixel_coordinates.shape))
+        raise ValueError("Input pixel_coordinates must be of shape (*, 3). " f"Got {pixel_coordinates.shape}")
     # compute normalization factor
     dhw: Tensor = (
         stack([tensor(depth), tensor(width), tensor(height)]).to(pixel_coordinates.device).to(pixel_coordinates.dtype)
@@ -947,7 +947,7 @@ def denormalize_pixel_coordinates3d(
         the denormalized pixel coordinates.
     """
     if pixel_coordinates.shape[-1] != 3:
-        raise ValueError("Input pixel_coordinates must be of shape (*, 3). " "Got {}".format(pixel_coordinates.shape))
+        raise ValueError("Input pixel_coordinates must be of shape (*, 3). " f"Got {pixel_coordinates.shape}")
     # compute normalization factor
     dhw: Tensor = (
         stack([tensor(depth), tensor(width), tensor(height)]).to(pixel_coordinates.device).to(pixel_coordinates.dtype)

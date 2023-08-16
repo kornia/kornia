@@ -33,21 +33,17 @@ def confusion_matrix(
                  [0., 0., 0.]]])
     """
     if not torch.is_tensor(input) and input.dtype is not torch.int64:
-        raise TypeError("Input input type is not a torch.Tensor with " "torch.int64 dtype. Got {}".format(type(input)))
+        raise TypeError("Input input type is not a torch.Tensor with " f"torch.int64 dtype. Got {type(input)}")
 
     if not torch.is_tensor(target) and target.dtype is not torch.int64:
-        raise TypeError(
-            "Input target type is not a torch.Tensor with " "torch.int64 dtype. Got {}".format(type(target))
-        )
+        raise TypeError("Input target type is not a torch.Tensor with " f"torch.int64 dtype. Got {type(target)}")
     if not input.shape == target.shape:
-        raise ValueError(
-            "Inputs input and target must have the same shape. " "Got: {} and {}".format(input.shape, target.shape)
-        )
+        raise ValueError("Inputs input and target must have the same shape. " f"Got: {input.shape} and {target.shape}")
     if not input.device == target.device:
-        raise ValueError("Inputs must be in the same device. " "Got: {} - {}".format(input.device, target.device))
+        raise ValueError("Inputs must be in the same device. " f"Got: {input.device} - {target.device}")
 
     if not isinstance(num_classes, int) or num_classes < 2:
-        raise ValueError("The number of classes must be an integer bigger " "than two. Got: {}".format(num_classes))
+        raise ValueError("The number of classes must be an integer bigger " f"than two. Got: {num_classes}")
 
     batch_size: int = input.shape[0]
 

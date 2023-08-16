@@ -9,7 +9,7 @@ from kornia.core import Module, Tensor
 INF = 1e9
 
 
-def mask_border(m: Tensor, b: int, v: Union[Tensor, float, int, bool]) -> None:
+def mask_border(m: Tensor, b: int, v: Union[Tensor, float, bool]) -> None:
     """Mask borders with value
     Args:
         m (torch.Tensor): [N, H0, W0, H1, W1]
@@ -29,9 +29,7 @@ def mask_border(m: Tensor, b: int, v: Union[Tensor, float, int, bool]) -> None:
     m[:, :, :, :, -b:] = v
 
 
-def mask_border_with_padding(
-    m: Tensor, bd: int, v: Union[Tensor, float, int, bool], p_m0: Tensor, p_m1: Tensor
-) -> None:
+def mask_border_with_padding(m: Tensor, bd: int, v: Union[Tensor, float, bool], p_m0: Tensor, p_m1: Tensor) -> None:
     if bd <= 0:
         return
 

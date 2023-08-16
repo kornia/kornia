@@ -46,10 +46,10 @@ def compose_transformations(trans_01: Tensor, trans_12: Tensor) -> Tensor:
     KORNIA_CHECK_IS_TENSOR(trans_12)
 
     if not ((trans_01.dim() in (2, 3)) and (trans_01.shape[-2:] == (4, 4))):
-        raise ValueError("Input trans_01 must be a of the shape Nx4x4 or 4x4." " Got {}".format(trans_01.shape))
+        raise ValueError("Input trans_01 must be a of the shape Nx4x4 or 4x4." f" Got {trans_01.shape}")
 
     if not ((trans_12.dim() in (2, 3)) and (trans_12.shape[-2:] == (4, 4))):
-        raise ValueError("Input trans_12 must be a of the shape Nx4x4 or 4x4." " Got {}".format(trans_12.shape))
+        raise ValueError("Input trans_12 must be a of the shape Nx4x4 or 4x4." f" Got {trans_12.shape}")
 
     if not trans_01.dim() == trans_12.dim():
         raise ValueError(f"Input number of dims must match. Got {trans_01.dim()} and {trans_12.dim()}")
@@ -141,9 +141,9 @@ def relative_transformation(trans_01: Tensor, trans_02: Tensor) -> Tensor:
     KORNIA_CHECK_IS_TENSOR(trans_01)
     KORNIA_CHECK_IS_TENSOR(trans_02)
     if not ((trans_01.dim() in (2, 3)) and (trans_01.shape[-2:] == (4, 4))):
-        raise ValueError("Input must be a of the shape Nx4x4 or 4x4." " Got {}".format(trans_01.shape))
+        raise ValueError("Input must be a of the shape Nx4x4 or 4x4." f" Got {trans_01.shape}")
     if not ((trans_02.dim() in (2, 3)) and (trans_02.shape[-2:] == (4, 4))):
-        raise ValueError("Input must be a of the shape Nx4x4 or 4x4." " Got {}".format(trans_02.shape))
+        raise ValueError("Input must be a of the shape Nx4x4 or 4x4." f" Got {trans_02.shape}")
     if not trans_01.dim() == trans_02.dim():
         raise ValueError(f"Input number of dims must match. Got {trans_01.dim()} and {trans_02.dim()}")
 

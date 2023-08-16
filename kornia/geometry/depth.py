@@ -219,13 +219,10 @@ class DepthWarper(Module):
         r"""Compute the projection matrix from the source to destination frame."""
         if not isinstance(self._pinhole_dst, PinholeCamera):
             raise TypeError(
-                "Member self._pinhole_dst expected to be of class "
-                "PinholeCamera. Got {}".format(type(self._pinhole_dst))
+                "Member self._pinhole_dst expected to be of class " f"PinholeCamera. Got {type(self._pinhole_dst)}"
             )
         if not isinstance(pinhole_src, PinholeCamera):
-            raise TypeError(
-                "Argument pinhole_src expected to be of class " "PinholeCamera. Got {}".format(type(pinhole_src))
-            )
+            raise TypeError("Argument pinhole_src expected to be of class " f"PinholeCamera. Got {type(pinhole_src)}")
         # compute the relative pose between the non reference and the reference
         # camera frames.
         dst_trans_src: Tensor = compose_transformations(
@@ -241,7 +238,7 @@ class DepthWarper(Module):
         self._dst_proj_src = dst_proj_src
         return self
 
-    def _compute_projection(self, x: Union[int, float], y: Union[int, float], invd: Union[int, float]) -> Tensor:
+    def _compute_projection(self, x: float, y: float, invd: float) -> Tensor:
         if self._dst_proj_src is None or self._pinhole_src is None:
             raise ValueError("Please, call compute_projection_matrix.")
 
@@ -279,7 +276,7 @@ class DepthWarper(Module):
             raise ValueError("Please, call compute_projection_matrix.")
 
         if len(depth_src.shape) != 4:
-            raise ValueError("Input depth_src has to be in the shape of " "Bx1xHxW. Got {}".format(depth_src.shape))
+            raise ValueError("Input depth_src has to be in the shape of " f"Bx1xHxW. Got {depth_src.shape}")
 
         # unpack depth attributes
         batch_size, _, _, _ = depth_src.shape
