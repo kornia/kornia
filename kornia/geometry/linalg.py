@@ -46,10 +46,10 @@ def compose_transformations(trans_01: Tensor, trans_12: Tensor) -> Tensor:
     KORNIA_CHECK_IS_TENSOR(trans_12)
 
     if not ((trans_01.dim() in (2, 3)) and (trans_01.shape[-2:] == (4, 4))):
-        raise ValueError("Input trans_01 must be a of the shape Nx4x4 or 4x4." f" Got {trans_01.shape}")
+        raise ValueError(f"Input trans_01 must be a of the shape Nx4x4 or 4x4. Got {trans_01.shape}")
 
     if not ((trans_12.dim() in (2, 3)) and (trans_12.shape[-2:] == (4, 4))):
-        raise ValueError("Input trans_12 must be a of the shape Nx4x4 or 4x4." f" Got {trans_12.shape}")
+        raise ValueError(f"Input trans_12 must be a of the shape Nx4x4 or 4x4. Got {trans_12.shape}")
 
     if not trans_01.dim() == trans_12.dim():
         raise ValueError(f"Input number of dims must match. Got {trans_01.dim()} and {trans_12.dim()}")
@@ -141,9 +141,9 @@ def relative_transformation(trans_01: Tensor, trans_02: Tensor) -> Tensor:
     KORNIA_CHECK_IS_TENSOR(trans_01)
     KORNIA_CHECK_IS_TENSOR(trans_02)
     if not ((trans_01.dim() in (2, 3)) and (trans_01.shape[-2:] == (4, 4))):
-        raise ValueError("Input must be a of the shape Nx4x4 or 4x4." f" Got {trans_01.shape}")
+        raise ValueError(f"Input must be a of the shape Nx4x4 or 4x4. Got {trans_01.shape}")
     if not ((trans_02.dim() in (2, 3)) and (trans_02.shape[-2:] == (4, 4))):
-        raise ValueError("Input must be a of the shape Nx4x4 or 4x4." f" Got {trans_02.shape}")
+        raise ValueError(f"Input must be a of the shape Nx4x4 or 4x4. Got {trans_02.shape}")
     if not trans_01.dim() == trans_02.dim():
         raise ValueError(f"Input number of dims must match. Got {trans_01.dim()} and {trans_02.dim()}")
 
@@ -175,10 +175,10 @@ def transform_points(trans_01: Tensor, points_1: Tensor) -> Tensor:
     KORNIA_CHECK_IS_TENSOR(points_1)
     if not trans_01.shape[0] == points_1.shape[0] and trans_01.shape[0] != 1:
         raise ValueError(
-            "Input batch size must be the same for both tensors or 1." f"Got {trans_01.shape} and {points_1.shape}"
+            f"Input batch size must be the same for both tensors or 1. Got {trans_01.shape} and {points_1.shape}"
         )
     if not trans_01.shape[-1] == (points_1.shape[-1] + 1):
-        raise ValueError("Last input dimensions must differ by one unit" f"Got{trans_01} and {points_1}")
+        raise ValueError(f"Last input dimensions must differ by one unit Got{trans_01} and {points_1}")
 
     # We reshape to BxNxD in case we get more dimensions, e.g., MxBxNxD
     shape_inp = list(points_1.shape)

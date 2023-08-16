@@ -41,10 +41,10 @@ def depth_to_3d(depth: Tensor, camera_matrix: Tensor, normalize_points: bool = F
         raise ValueError(f"Input depth musth have a shape (B, 1, H, W). Got: {depth.shape}")
 
     if not isinstance(camera_matrix, Tensor):
-        raise TypeError(f"Input camera_matrix type is not a Tensor. " f"Got {type(camera_matrix)}.")
+        raise TypeError(f"Input camera_matrix type is not a Tensor. Got {type(camera_matrix)}.")
 
     if not (len(camera_matrix.shape) == 3 and camera_matrix.shape[-2:] == (3, 3)):
-        raise ValueError(f"Input camera_matrix must have a shape (B, 3, 3). " f"Got: {camera_matrix.shape}.")
+        raise ValueError(f"Input camera_matrix must have a shape (B, 3, 3). Got: {camera_matrix.shape}.")
 
     # create base coordinates grid
     _, _, height, width = depth.shape
@@ -88,10 +88,10 @@ def depth_to_normals(depth: Tensor, camera_matrix: Tensor, normalize_points: boo
         raise ValueError(f"Input depth musth have a shape (B, 1, H, W). Got: {depth.shape}")
 
     if not isinstance(camera_matrix, Tensor):
-        raise TypeError(f"Input camera_matrix type is not a Tensor. " f"Got {type(camera_matrix)}.")
+        raise TypeError(f"Input camera_matrix type is not a Tensor. Got {type(camera_matrix)}.")
 
     if not (len(camera_matrix.shape) == 3 and camera_matrix.shape[-2:] == (3, 3)):
-        raise ValueError(f"Input camera_matrix must have a shape (B, 3, 3). " f"Got: {camera_matrix.shape}.")
+        raise ValueError(f"Input camera_matrix must have a shape (B, 3, 3). Got: {camera_matrix.shape}.")
 
     # compute the 3d points from depth
     xyz: Tensor = depth_to_3d(depth, camera_matrix, normalize_points)  # Bx3xHxW
@@ -138,16 +138,16 @@ def warp_frame_depth(
         raise ValueError(f"Input depth_dst musth have a shape (B, 1, H, W). Got: {depth_dst.shape}")
 
     if not isinstance(src_trans_dst, Tensor):
-        raise TypeError(f"Input src_trans_dst type is not a Tensor. " f"Got {type(src_trans_dst)}.")
+        raise TypeError(f"Input src_trans_dst type is not a Tensor. Got {type(src_trans_dst)}.")
 
     if not (len(src_trans_dst.shape) == 3 and src_trans_dst.shape[-2:] == (4, 4)):
-        raise ValueError(f"Input src_trans_dst must have a shape (B, 4, 4). " f"Got: {src_trans_dst.shape}.")
+        raise ValueError(f"Input src_trans_dst must have a shape (B, 4, 4). Got: {src_trans_dst.shape}.")
 
     if not isinstance(camera_matrix, Tensor):
-        raise TypeError(f"Input camera_matrix type is not a Tensor. " f"Got {type(camera_matrix)}.")
+        raise TypeError(f"Input camera_matrix type is not a Tensor. Got {type(camera_matrix)}.")
 
     if not (len(camera_matrix.shape) == 3 and camera_matrix.shape[-2:] == (3, 3)):
-        raise ValueError(f"Input camera_matrix must have a shape (B, 3, 3). " f"Got: {camera_matrix.shape}.")
+        raise ValueError(f"Input camera_matrix must have a shape (B, 3, 3). Got: {camera_matrix.shape}.")
     # unproject source points to camera frame
     points_3d_dst: Tensor = depth_to_3d(depth_dst, camera_matrix, normalize_points)  # Bx3xHxW
 
@@ -219,10 +219,10 @@ class DepthWarper(Module):
         r"""Compute the projection matrix from the source to destination frame."""
         if not isinstance(self._pinhole_dst, PinholeCamera):
             raise TypeError(
-                "Member self._pinhole_dst expected to be of class " f"PinholeCamera. Got {type(self._pinhole_dst)}"
+                f"Member self._pinhole_dst expected to be of class PinholeCamera. Got {type(self._pinhole_dst)}"
             )
         if not isinstance(pinhole_src, PinholeCamera):
-            raise TypeError("Argument pinhole_src expected to be of class " f"PinholeCamera. Got {type(pinhole_src)}")
+            raise TypeError(f"Argument pinhole_src expected to be of class PinholeCamera. Got {type(pinhole_src)}")
         # compute the relative pose between the non reference and the reference
         # camera frames.
         dst_trans_src: Tensor = compose_transformations(
@@ -276,7 +276,7 @@ class DepthWarper(Module):
             raise ValueError("Please, call compute_projection_matrix.")
 
         if len(depth_src.shape) != 4:
-            raise ValueError("Input depth_src has to be in the shape of " f"Bx1xHxW. Got {depth_src.shape}")
+            raise ValueError(f"Input depth_src has to be in the shape of Bx1xHxW. Got {depth_src.shape}")
 
         # unpack depth attributes
         batch_size, _, _, _ = depth_src.shape
@@ -387,10 +387,10 @@ def depth_from_disparity(disparity: Tensor, baseline: Union[float, Tensor], foca
     KORNIA_CHECK_SHAPE(disparity, ["*", "H", "W"])
     KORNIA_CHECK(
         isinstance(baseline, (float, Tensor)),
-        f"Input baseline should be either a float or Tensor. " f"Got {type(baseline)}",
+        f"Input baseline should be either a float or Tensor. Got {type(baseline)}",
     )
     KORNIA_CHECK(
-        isinstance(focal, (float, Tensor)), f"Input focal should be either a float or Tensor. " f"Got {type(focal)}"
+        isinstance(focal, (float, Tensor)), f"Input focal should be either a float or Tensor. Got {type(focal)}"
     )
 
     if isinstance(baseline, Tensor):

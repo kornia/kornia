@@ -184,7 +184,7 @@ def solve_pnp_dlt(
 
     if world_points.shape[1] < 6:
         raise AssertionError(
-            f"At least 6 points are required to use this function. " f"Got {world_points.shape[1]} points."
+            f"At least 6 points are required to use this function. Got {world_points.shape[1]} points."
         )
 
     B, N = world_points.shape[:2]

@@ -856,7 +856,7 @@ def normalize_pixel_coordinates(pixel_coordinates: Tensor, height: int, width: i
         tensor([[1.0408, 1.0202]])
     """
     if pixel_coordinates.shape[-1] != 2:
-        raise ValueError("Input pixel_coordinates must be of shape (*, 2). " f"Got {pixel_coordinates.shape}")
+        raise ValueError(f"Input pixel_coordinates must be of shape (*, 2). Got {pixel_coordinates.shape}")
 
     # compute normalization factor
     hw: Tensor = stack(
@@ -891,7 +891,7 @@ def denormalize_pixel_coordinates(pixel_coordinates: Tensor, height: int, width:
         tensor([[0., 0.]])
     """
     if pixel_coordinates.shape[-1] != 2:
-        raise ValueError("Input pixel_coordinates must be of shape (*, 2). " f"Got {pixel_coordinates.shape}")
+        raise ValueError(f"Input pixel_coordinates must be of shape (*, 2). Got {pixel_coordinates.shape}")
     # compute normalization factor
     hw: Tensor = stack([tensor(width), tensor(height)]).to(pixel_coordinates.device).to(pixel_coordinates.dtype)
 
@@ -918,7 +918,7 @@ def normalize_pixel_coordinates3d(
         the normalized pixel coordinates.
     """
     if pixel_coordinates.shape[-1] != 3:
-        raise ValueError("Input pixel_coordinates must be of shape (*, 3). " f"Got {pixel_coordinates.shape}")
+        raise ValueError(f"Input pixel_coordinates must be of shape (*, 3). Got {pixel_coordinates.shape}")
     # compute normalization factor
     dhw: Tensor = (
         stack([tensor(depth), tensor(width), tensor(height)]).to(pixel_coordinates.device).to(pixel_coordinates.dtype)
@@ -947,7 +947,7 @@ def denormalize_pixel_coordinates3d(
         the denormalized pixel coordinates.
     """
     if pixel_coordinates.shape[-1] != 3:
-        raise ValueError("Input pixel_coordinates must be of shape (*, 3). " f"Got {pixel_coordinates.shape}")
+        raise ValueError(f"Input pixel_coordinates must be of shape (*, 3). Got {pixel_coordinates.shape}")
     # compute normalization factor
     dhw: Tensor = (
         stack([tensor(depth), tensor(width), tensor(height)]).to(pixel_coordinates.device).to(pixel_coordinates.dtype)
@@ -1506,7 +1506,7 @@ def vector_to_skew_symmetric_matrix(vec: Tensor) -> Tensor:
     """
     # KORNIA_CHECK_SHAPE(vec, ["B", "3"])
     if vec.shape[-1] != 3 or len(vec.shape) > 2:
-        raise ValueError(f"Input vector must be of shape (B, 3) or (3,). " f"Got {vec.shape}")
+        raise ValueError(f"Input vector must be of shape (B, 3) or (3,). Got {vec.shape}")
     v1, v2, v3 = vec[..., 0], vec[..., 1], vec[..., 2]
     zeros = zeros_like(v1)
     skew_symmetric_matrix = stack(

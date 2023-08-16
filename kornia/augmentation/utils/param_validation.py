@@ -62,9 +62,7 @@ def _joint_range_check(ranged_factor: Tensor, name: str, bounds: Optional[Tuple[
         if not bounds[0] <= ranged_factor[0] <= ranged_factor[1] <= bounds[1]:
             raise ValueError(f"{name}[0] should be smaller than {name}[1] got {ranged_factor}")
     else:
-        raise TypeError(
-            f"{name} should be a tensor with length 2 whose values between {bounds}. " f"Got {ranged_factor}."
-        )
+        raise TypeError(f"{name} should be a tensor with length 2 whose values between {bounds}. Got {ranged_factor}.")
 
 
 def _singular_range_check(

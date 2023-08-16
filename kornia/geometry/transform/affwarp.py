@@ -271,7 +271,7 @@ def rotate(
         raise TypeError(f"Input center type is not a torch.Tensor. Got {type(center)}")
 
     if len(tensor.shape) not in (3, 4):
-        raise ValueError("Invalid tensor shape, we expect CxHxW or BxCxHxW. " f"Got: {tensor.shape}")
+        raise ValueError(f"Invalid tensor shape, we expect CxHxW or BxCxHxW. Got: {tensor.shape}")
 
     # compute the rotation center
     if center is None:
@@ -335,7 +335,7 @@ def rotate3d(
         raise TypeError(f"Input center type is not a torch.Tensor. Got {type(center)}")
 
     if len(tensor.shape) not in (4, 5):
-        raise ValueError("Invalid tensor shape, we expect CxDxHxW or BxCxDxHxW. " f"Got: {tensor.shape}")
+        raise ValueError(f"Invalid tensor shape, we expect CxDxHxW or BxCxDxHxW. Got: {tensor.shape}")
 
     # compute the rotation center
     if center is None:
@@ -392,7 +392,7 @@ def translate(
         raise TypeError(f"Input translation type is not a torch.Tensor. Got {type(translation)}")
 
     if len(tensor.shape) not in (3, 4):
-        raise ValueError("Invalid tensor shape, we expect CxHxW or BxCxHxW. " f"Got: {tensor.shape}")
+        raise ValueError(f"Invalid tensor shape, we expect CxHxW or BxCxHxW. Got: {tensor.shape}")
 
     # compute the translation matrix
     translation_matrix: torch.Tensor = _compute_translation_matrix(translation)
@@ -501,7 +501,7 @@ def shear(
         raise TypeError(f"Input shear type is not a torch.Tensor. Got {type(shear)}")
 
     if len(tensor.shape) not in (3, 4):
-        raise ValueError("Invalid tensor shape, we expect CxHxW or BxCxHxW. " f"Got: {tensor.shape}")
+        raise ValueError(f"Invalid tensor shape, we expect CxHxW or BxCxHxW. Got: {tensor.shape}")
 
     # compute the translation matrix
     shear_matrix: torch.Tensor = _compute_shear_matrix(shear)
