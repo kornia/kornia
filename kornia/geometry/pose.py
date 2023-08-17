@@ -112,7 +112,7 @@ class NamedPose:
         """Construct NamedPose from rotation and translation.
 
         Args:
-            R : Rotation part of the pose.
+            rotation: Rotation part of the pose.
             T : Translation part of the pose.
             frame_src : Name of the source frame.
             frame_dst : Name of the destination frame.
