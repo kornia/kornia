@@ -49,6 +49,7 @@ from kornia.augmentation._2d import (
     RandomSolarize,
     RandomThinPlateSpline,
     RandomTranslate,
+    RandomTransplantation,
     RandomVerticalFlip,
     Resize,
     SmallestMaxSize,

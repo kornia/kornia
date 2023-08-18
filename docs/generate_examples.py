@@ -31,7 +31,7 @@ def download_tutorials_examples(download_infos: dict[str, str], directory: Path)
             fp.write(response)
 
 
-def read_img_from_url(url: str, resize_to: tuple[int, int] | None = None) -> torch.Tensor:
+def read_img_from_url(url: str, resize_to: tuple[int, int] | None = None, **resize_kwargs) -> torch.Tensor:
     # perform request
     response = requests.get(url, timeout=60).content
     # convert to array of ints
@@ -42,9 +42,9 @@ def read_img_from_url(url: str, resize_to: tuple[int, int] | None = None) -> tor
     img_t: torch.Tensor = K.utils.image_to_tensor(img, keepdim=False)  # 1xCxHXW
     img_t = img_t.float() / 255.0
     if resize_to is None:
-        img_t = K.geometry.resize(img_t, 184)
+        img_t = K.geometry.resize(img_t, 184, **resize_kwargs)
     else:
-        img_t = K.geometry.resize(img_t, resize_to)
+        img_t = K.geometry.resize(img_t, resize_to, **resize_kwargs)
     return img_t
 
 
@@ -102,6 +102,7 @@ def main():
     BASE_IMAGEOUTDOOR_URL8: str = (
         "https://github.com/kornia/data/raw/main/kornia_banner_pixie.png"  # Response functions
     )
+    MASK_IMAGE_URL2: str = "https://files.jansellner.net/simba_mask.png"
 
     OUTPUT_PATH = Path(__file__).absolute().parent / "source/_static/img"
 
@@ -114,6 +115,10 @@ def main():
     img5 = read_img_from_url(BASE_IMAGE_URL5, (234, 320))
     img6 = read_img_from_url(BASE_IMAGE_URL6)
     img_kornia = read_img_from_url(BASE_IMAGEOUTDOOR_URL8)
+
+    # Read the masks as (B, H, W)
+    mask2 = read_img_from_url(MASK_IMAGE_URL2, img1.shape[-2:], interpolation="nearest")
+    mask2 = mask2.median(dim=1)[0]
 
     # TODO: make this more generic for modules out of kornia.augmentation
     # Dictionary containing the transforms to generate the sample images:
@@ -208,6 +213,27 @@ def main():
         img_aug, _ = aug(img_in, torch.tensor([0, 1]))
 
         output = torch.cat([img_in[0], img_in[1], img_aug], dim=-1)
+        # save the output image
+        out_np = K.utils.tensor_to_image((output * 255.0).byte())
+        cv2.imwrite(str(OUTPUT_PATH / f"{aug_name}.png"), out_np)
+        sig = f"{aug_name}({', '.join([str(a) for a in args])}, p=1.0)"
+        print(f"Generated image example for {aug_name}. {sig}")
+
+    mask_augmentations_list = {"RandomTransplantation": (([0],), 0)}
+    # ITERATE OVER THE TRANSFORMS
+    for aug_name, (args, seed) in mask_augmentations_list.items():
+        img_in = torch.cat([img1, img2])
+        mask_in = torch.cat([torch.zeros_like(mask2), mask2])
+
+        # dynamically create the class instance
+        cls = getattr(mod, aug_name)
+        aug = cls(*args, p=1.0)
+        # set seed
+        torch.manual_seed(seed)
+        # apply the augmentation to the image and concat
+        img_aug, _ = aug(img_in, mask_in)
+
+        output = torch.cat([img_in[0], img_in[1], img_aug[0]], dim=-1)
         # save the output image
         out_np = K.utils.tensor_to_image((output * 255.0).byte())
         cv2.imwrite(str(OUTPUT_PATH / f"{aug_name}.png"), out_np)

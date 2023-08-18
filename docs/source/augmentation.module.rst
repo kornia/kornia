@@ -62,6 +62,7 @@ Mix
 .. autoclass:: RandomMixUpV2
 .. autoclass:: RandomMosaic
 .. autoclass:: RandomJigsaw
+.. autoclass:: RandomTransplantation
 
 Transforms3D
 ------------

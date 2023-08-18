@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from kornia.augmentation import RandomCutMixV2, RandomJigsaw, RandomMixUpV2, RandomMosaic
+from kornia.augmentation import RandomCutMixV2, RandomJigsaw, RandomMixUpV2, RandomMosaic, RandomTransplantation
 from kornia.testing import assert_close
 
 
@@ -387,3 +387,113 @@ class TestRandomJigsaw:
         input = torch.randn((12, 3, 256, 256), device=device, dtype=dtype)
 
         f(input)
+
+
+class TestRandomTransplantation:
+    @pytest.mark.parametrize("input_3D", [False, True])
+    def test_apply_all(self, input_3D, device, dtype):
+        torch.manual_seed(22)
+
+        if input_3D:
+            image = torch.rand(4, 3, 2, 10, 10, device=device, dtype=dtype)
+            mask = torch.zeros(4, 2, 10, 10, device=device, dtype=dtype)
+            mask_additional = torch.randint(0, 2, (4, 2, 10, 10), device=device, dtype=dtype)
+
+            selection = torch.zeros(2, 10, 10, device=device, dtype=torch.bool)
+            selection[0:1, 0:5, 0:5] = True
+        else:
+            image = torch.rand(4, 3, 10, 10, device=device, dtype=dtype)
+            mask = torch.zeros(4, 10, 10, device=device, dtype=dtype)
+            mask_additional = torch.randint(0, 2, (4, 10, 10), device=device, dtype=dtype)
+
+            selection = torch.zeros(10, 10, device=device, dtype=torch.bool)
+            selection[0:5, 0:5] = True
+
+        # Transplant rectangle from the (i - 1)-th to the i-th image
+        for i in range(4):
+            mask[i, selection] = i + 1
+
+        image_copy = image.clone()
+        mask_copy = mask.clone()
+        mask_additional_copy = mask_additional.clone()
+
+        f = RandomTransplantation(p=1, excluded_labels=[0])
+        image_out, mask_out, mask_additional_out = f(image, mask, mask_additional, data_keys=["input", "mask", "mask"])
+
+        assert torch.allclose(image, image_copy)
+        assert torch.allclose(mask, mask_copy)
+        assert torch.allclose(mask_additional, mask_additional_copy)
+
+        for i in range(4):
+            assert torch.allclose(mask_out[i, selection], torch.tensor((i - 1) % 4 + 1, device=device, dtype=dtype))
+            assert torch.allclose(mask_out[i, ~selection], torch.tensor(0, device=device, dtype=dtype))
+            assert torch.allclose(image_out[i, :, selection], image[(i - 1) % 4, :, selection])
+            assert torch.allclose(image_out[i, :, ~selection], image[i, :, ~selection])
+            assert torch.allclose(mask_additional_out[i, selection], mask_additional[(i - 1) % 4, selection])
+            assert torch.allclose(mask_additional_out[i, ~selection], mask_additional[i, ~selection])
+
+    def test_apply_none(self, device, dtype):
+        torch.manual_seed(22)
+        image = torch.rand(4, 3, 10, 10, device=device, dtype=dtype)
+        mask = torch.randint(0, 2, (4, 10, 10), device=device, dtype=dtype)
+
+        f = RandomTransplantation(p=0)
+        image_out, mask_out = f(image, mask)
+
+        assert torch.all(f._params["batch_prob"] == 0)
+        assert len(f._params["selected_labels"]) == 0
+
+        assert torch.allclose(image_out, image)
+        assert torch.allclose(mask_out, mask)
+
+    def test_different_objects(self, device, dtype):
+        torch.manual_seed(22)
+
+        mask = torch.zeros(2, 3, 3, device=device, dtype=dtype)
+        mask[0, 0:2, 0:2] = 1
+        mask[1, 1:2, 1:2] = 2
+        image = mask.clone().unsqueeze(dim=1)
+
+        f = RandomTransplantation(p=1, excluded_labels=[0])
+        image_out, mask_out = f(image, mask)
+
+        mask_out_expected = torch.tensor(
+            [[[1, 1, 0], [1, 2, 0], [0, 0, 0]], [[1, 1, 0], [1, 1, 0], [0, 0, 0]]], device=device, dtype=dtype
+        )
+
+        assert torch.allclose(mask_out, mask_out_expected)
+        assert torch.allclose(image_out, mask_out_expected.unsqueeze(dim=1))
+
+    def test_repeating(self, device, dtype):
+        torch.manual_seed(22)
+        image = torch.rand(4, 3, 10, 10, device=device, dtype=dtype)
+        mask = torch.randint(0, 2, (4, 10, 10), device=device, dtype=dtype)
+
+        f = RandomTransplantation(p=0.5)
+        image_out, mask_out = f(image, mask)
+        image_out_same, mask_out_same = f(image, mask, params=f._params)
+        image_out_different, mask_out_different = f(image, mask)
+
+        assert torch.allclose(image_out, image_out_same)
+        assert torch.allclose(mask_out, mask_out_same)
+        assert not torch.allclose(image_out, image_out_different)
+        assert not torch.allclose(mask_out, mask_out_different)
+
+    @pytest.mark.parametrize(
+        "input_shape_image, input_shape_mask, target_shape_image",
+        [
+            [(1, 2, 3, 4), (1, 3, 4), (1, 2, 3, 4)],  # (B, C, H, W)
+            [(1, 2, 5, 3, 4), (1, 5, 3, 4), (1, 2, 5, 3, 4)],  # (B, C, D, H, W)
+            [(1, 1, 1, 1), (1, 1, 1), (1, 1, 1, 1)],  # (B, C, H, W)
+        ],
+    )
+    def test_shapes(self, input_shape_image, input_shape_mask, target_shape_image, device, dtype):
+        torch.manual_seed(22)
+        image = torch.rand(input_shape_image, device=device, dtype=dtype)
+        mask = torch.randint(0, 2, input_shape_mask, device=device, dtype=dtype)
+
+        f = RandomTransplantation(p=1)
+        image_out, mask_out = f(image, mask)
+
+        assert image_out.shape == target_shape_image
+        assert mask_out.shape == torch.Size([s for i, s in enumerate(target_shape_image) if i != 1])
