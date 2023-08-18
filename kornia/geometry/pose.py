@@ -40,7 +40,7 @@ class NamedPose:
         """Constructor for NamedPose.
 
         Args:
-            dst_from_src: Pose from frame 1 to frame 2.
+            dst_from_src: Pose from source frame to destination frame.
             src: Name of frame a.
             dst: Name of frame b.
         """
@@ -49,7 +49,10 @@ class NamedPose:
         self._frame_dst = frame_dst or uuid.uuid4().hex
 
     def __repr__(self) -> str:
-        return f"NamedPose(dst_from_src={self._dst_from_src},\nframe_src: {self._frame_src} -> frame_dst: {self._frame_dst})"
+        return (
+            f"NamedPose(dst_from_src={self._dst_from_src},\n"
+            f"frame_src: {self._frame_src} -> frame_dst: {self._frame_dst})"
+        )
 
     def __mul__(self, other: NamedPose) -> NamedPose:
         """Compose two NamedPoses.
@@ -58,7 +61,7 @@ class NamedPose:
             other: NamedPose to compose with.
 
         Returns:
-            NamedPose: Composed NamedPose.
+            Composed NamedPose.
 
         Example:
             >>> b_from_a = NamedPose(Se3.identity(), frame_src="frame_a", frame_dst="frame_b")
@@ -78,7 +81,7 @@ class NamedPose:
 
     @property
     def pose(self) -> Se2 | Se3:
-        """Pose from frame 1 to frame 2."""
+        """Pose from source frame to destination frame ."""
         return self._dst_from_src
 
     @property
@@ -114,11 +117,11 @@ class NamedPose:
         Args:
             rotation: Rotation part of the pose.
             translation: Translation part of the pose.
-            frame_src : Name of the source frame.
+            frame_src: Name of the source frame.
             frame_dst: Name of the destination frame.
 
         Returns:
-            NamedPose: NamedPose constructed from rotation and translation.
+            NamedPose constructed from rotation and translation.
 
         Example:
             >>> b_from_a_rot = So3.identity()
@@ -156,12 +159,12 @@ class NamedPose:
         """Construct NamedPose from a matrix.
 
         Args:
-            matrix : Matrix representation of the pose.
-            frame_src : Name of the source frame.
-            frame_dst : Name of the destination frame.
+            matrix: Matrix representation of the pose.
+            frame_src: Name of the source frame.
+            frame_dst: Name of the destination frame.
 
         Returns:
-            NamedPose: NamedPose constructed from a matrix.
+            NamedPose constructed from a matrix.
 
         Example:
             >>> b_from_a_matrix = Se3.identity().matrix()
@@ -181,15 +184,11 @@ class NamedPose:
             return cls(Se3.from_matrix(matrix), frame_src, frame_dst)
         return None
 
-    @classmethod
-    def from_colmap() -> NamedPose:
-        raise NotImplementedError
-
     def inverse(self) -> NamedPose:
         """Inverse of the NamedPose.
 
         Returns:
-            NamedPose: Inverse of the NamedPose.
+            Inverse of the NamedPose.
 
         Example:
             >>> b_from_a = NamedPose(Se3.identity(), frame_src="frame_a", frame_dst="frame_b")
@@ -204,13 +203,13 @@ class NamedPose:
         return NamedPose(self._dst_from_src.inverse(), self._frame_dst, self._frame_src)
 
     def transform_points(self, points_in_src: Tensor) -> Tensor:
-        """Transform points from frame 1 to frame 2.
+        """Transform points from source frame to destination frame.
 
         Args:
-            points_in_src: Points in frame 1.
+            points_in_src: Points in source frame.
 
         Returns:
-            Tensor: Points in frame 2.
+            Points in destination frame.
 
         Example:
             >>> b_from_a = NamedPose(Se3.identity(), frame_src="frame_a", frame_dst="frame_b")
