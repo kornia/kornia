@@ -6,7 +6,7 @@ import torch
 
 from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.augmentation.utils import _validate_input_dtype
-from kornia.constants import DataKey, DType
+from kornia.constants import DataKey
 from kornia.core import Tensor, tensor
 from kornia.core.check import KORNIA_CHECK
 
@@ -38,7 +38,8 @@ class RandomTransplantation(MixAugmentationBaseV2):
           receive a transplant.
         p_batch: probability for applying an augmentation to a batch. This param controls the augmentation
           probabilities batch-wise.
-        data_keys: the input type sequential for applying augmentations.
+        data_keys: the input type sequential for applying augmentations. There must be at least one "mask" tensor. If no
+          data keys are given, the first tensor is assumed to be `DataKey.INPUT` and the second tensor `DataKey.MASK`.
           Accepts "input", "mask".
 
     Note:
@@ -47,21 +48,19 @@ class RandomTransplantation(MixAugmentationBaseV2):
         - This implementation works for arbitrary spatial dimensions including 2D and 3D images.
 
     Inputs:
-        - Input image tensors: :math:`(B, C, *)`.
-        - Segmentation mask tensors: :math:`(B, *)`.
-        - (optional) Additional image or mask tensors with are transformed in the same ways as the input image:
-          :math:`(B, C, *)` or :math:`(B, *)`.
+        - Segmentation mask tensor which is used to determine the objects for transplantation: :math:`(B, *)`.
+        - (optional) Additional image or mask tensors where the features are transplanted based on the first
+          segmentation mask: :math:`(B, C, *)` (`DataKey.INPUT`) or :math:`(B, *)` (`DataKey.MASK`).
 
     Returns:
-        tuple[Tensor, Tensor] | list[Tensor]:
+        Tensor | list[Tensor]:
 
-        tuple[Tensor, Tensor]:
-            - Augmented image tensors: :math:`(B, C, *)`.
+        Tensor:
             - Augmented mask tensors: :math:`(B, *)`.
         list[Tensor]:
-            - Augmented image tensors: :math:`(B, C, *)`.
             - Augmented mask tensors: :math:`(B, *)`.
-            - Additional augmented image or mask tensors: :math:`(B, C, *)` or :math:`(B, *)`.
+            - Additional augmented image or mask tensors: :math:`(B, C, *)` (`DataKey.INPUT`) or :math:`(B, *)`
+              (`DataKey.MASK`).
 
     Examples:
         >>> import torch
@@ -122,7 +121,7 @@ class RandomTransplantation(MixAugmentationBaseV2):
 
     def __init__(
         self,
-        excluded_labels: Sequence[int] | None = None,
+        excluded_labels: Sequence[int] | Tensor | None = None,
         p: float = 0.5,
         p_batch: float = 1.0,
         data_keys: list[str | int | DataKey] | None = None,
@@ -131,7 +130,9 @@ class RandomTransplantation(MixAugmentationBaseV2):
 
         if excluded_labels is None:
             excluded_labels = []
-        self.excluded_labels = tensor(excluded_labels)
+        if not isinstance(excluded_labels, Tensor):
+            excluded_labels = tensor(excluded_labels)
+        self.excluded_labels: Tensor = excluded_labels
         KORNIA_CHECK(
             self.excluded_labels.ndim == 1,
             f"excluded_labels must be a 1-dimensional sequence, but got {self.excluded_labels.ndim} dimensions.",
@@ -157,44 +158,25 @@ class RandomTransplantation(MixAugmentationBaseV2):
 
     def forward(  # type: ignore[override]
         self,
-        image: Tensor,
-        mask: Tensor,
-        *additional_inputs: Tensor,
+        *input: Tensor,
         params: dict[str, Tensor] | None = None,
         data_keys: list[str | int | DataKey] | None = None,
-    ) -> tuple[Tensor, Tensor] | list[Tensor]:
+    ) -> Tensor | list[Tensor]:
         keys: list[DataKey]
         if data_keys is None:
             keys = self.data_keys
         else:
             keys = [DataKey.get(inp) for inp in data_keys]
 
-        inputs: list[Tensor] = [image, mask, *additional_inputs]
         KORNIA_CHECK(
-            len(keys) == len(inputs), f"Length of keys ({len(keys)}) does not match number of inputs ({len(inputs)})."
-        )
-        _validate_input_dtype(image, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
-
-        KORNIA_CHECK(
-            keys[:2] == [DataKey.INPUT, DataKey.MASK],
-            f"The first two keys must be {DataKey.INPUT} (image) and {DataKey.MASK} (segmentation mask), but got "
-            f"{keys[:2]}.",
+            len(keys) == len(input), f"Length of keys ({len(keys)}) does not match number of inputs ({len(input)})."
         )
 
-        KORNIA_CHECK(
-            image.ndim == mask.ndim + 1,
-            f"image must have one additional dimension (channel dimension) than mask, but got {image.ndim} and "
-            f"{mask.ndim}.",
-        )
-        KORNIA_CHECK(
-            mask.size() == torch.Size([s for i, s in enumerate(image.size()) if i != self._channel_dim]),
-            f"The dimensions of image and mask must match except for the channel dimension), but got {mask.size()} "
-            f"and {image.size()}.",
-        )
+        # The first mask key will be used for the transplantation
+        mask: Tensor = input[keys.index(DataKey.MASK)]
 
         if params is None:
-            self._params = self.forward_parameters(image.shape)
-            self._params.update({"dtype": tensor(DType.get(image.dtype).value)})
+            self._params = self.forward_parameters(mask.shape)
         else:
             self._params = params
 
@@ -240,12 +222,25 @@ class RandomTransplantation(MixAugmentationBaseV2):
                 selection[d].masked_fill_(current_mask == selected_label, True)
 
         outputs: list[Tensor] = []
-        for dcate, _input in zip(keys, inputs):
+        for dcate, _input in zip(keys, input):
             acceptor = _input[acceptor_indices].clone()
             donor = _input[donor_indices]
 
             output: Tensor
             if dcate == DataKey.INPUT:
+                _validate_input_dtype(_input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
+                KORNIA_CHECK(
+                    _input.ndim == mask.ndim + 1,
+                    f"Every image input must have one additional dimension (channel dimension) than the segmentation"
+                    f" mask, but got {_input.ndim} for the input image and {mask.ndim} for the segmentation mask.",
+                )
+                KORNIA_CHECK(
+                    mask.size() == torch.Size([s for i, s in enumerate(_input.size()) if i != self._channel_dim]),
+                    f"The dimensions of the input image and segmentation mask must match except for the channel"
+                    f" dimension, but got {_input.size()} for the input image and {mask.size()} for the segmentation"
+                    " mask.",
+                )
+
                 applied = self.transform_input(acceptor, donor, selection)
                 output = self.apply_non_transform(_input, self._params, self.flags)
                 output = output.index_put(
@@ -262,7 +257,7 @@ class RandomTransplantation(MixAugmentationBaseV2):
 
             outputs.append(output)
 
-        if len(outputs) == 2:
-            return outputs[0], outputs[1]
+        if len(outputs) == 1:
+            return outputs[0]
         else:
             return outputs
