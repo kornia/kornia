@@ -5,8 +5,6 @@ from typing import Any
 import torch
 
 from kornia.core import Module, Tensor, concatenate
-
-# import kornia.augmentation as aug
 from kornia.geometry import Resize
 
 
