@@ -1,4 +1,6 @@
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from __future__ import annotations
+
+from typing import Any, Sequence
 
 import torch
 
@@ -6,6 +8,7 @@ from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
 from kornia.augmentation.utils import _validate_input_dtype
 from kornia.constants import DataKey, DType
 from kornia.core import Tensor, tensor
+from kornia.core.check import KORNIA_CHECK
 
 __all__ = ["RandomTransplantation"]
 
@@ -50,12 +53,12 @@ class RandomTransplantation(MixAugmentationBaseV2):
           :math:`(B, C, *)` or :math:`(B, *)`.
 
     Returns:
-        Union[Tuple[Tensor, Tensor], List[Tensor]]:
+        tuple[Tensor, Tensor] | list[Tensor]:
 
-        Tuple[Tensor, Tensor]:
+        tuple[Tensor, Tensor]:
             - Augmented image tensors: :math:`(B, C, *)`.
             - Augmented mask tensors: :math:`(B, *)`.
-        List[Tensor]:
+        list[Tensor]:
             - Augmented image tensors: :math:`(B, C, *)`.
             - Augmented mask tensors: :math:`(B, *)`.
             - Additional augmented image or mask tensors: :math:`(B, C, *)` or :math:`(B, *)`.
@@ -100,7 +103,7 @@ class RandomTransplantation(MixAugmentationBaseV2):
     to have an effect:
 
         >>> aug._params["selected_labels"]  # Image 0 received label 2 from image 1 and image 1 label 0 from image 0
-        [tensor(2), tensor(0)]
+        tensor([2, 0])
         >>> mask2 = torch.randint(0, 3, (2, 5, 5))
         >>> image_out2, mask_out2 = aug(image, mask2, params=aug._params)
         >>> mask_out2
@@ -119,36 +122,36 @@ class RandomTransplantation(MixAugmentationBaseV2):
 
     def __init__(
         self,
-        excluded_labels: Optional[Sequence[int]] = None,
+        excluded_labels: Sequence[int] | None = None,
         p: float = 0.5,
         p_batch: float = 1.0,
-        data_keys: Optional[List[Union[str, int, DataKey]]] = None,
+        data_keys: list[str | int | DataKey] | None = None,
     ) -> None:
         super().__init__(p=p, p_batch=p_batch)
 
         if excluded_labels is None:
             excluded_labels = []
         self.excluded_labels = tensor(excluded_labels)
-        if self.excluded_labels.ndim != 1:
-            raise ValueError(
-                f"excluded_labels must be a 1-dimensional sequence, but got {self.excluded_labels.ndim} dimensions."
-            )
+        KORNIA_CHECK(
+            self.excluded_labels.ndim == 1,
+            f"excluded_labels must be a 1-dimensional sequence, but got {self.excluded_labels.ndim} dimensions.",
+        )
 
         if data_keys is None:
             data_keys = [DataKey.INPUT, DataKey.MASK]
         self.data_keys = [DataKey.get(inp) for inp in data_keys]
         self._channel_dim = 1
 
-    def apply_non_transform_mask(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def apply_non_transform_mask(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
         return input
 
-    def transform_input(self, acceptor: Tensor, donor: Tensor, selection: Tensor) -> Tensor:
+    def transform_input(self, acceptor: Tensor, donor: Tensor, selection: Tensor) -> Tensor:  # type: ignore[override]
         # Expand selection to the channel dimension
         selection = selection.unsqueeze(dim=self._channel_dim).expand_as(donor)
         acceptor[selection] = donor[selection]
         return acceptor
 
-    def transform_mask(self, acceptor: Tensor, donor: Tensor, selection: Tensor) -> Tensor:
+    def transform_mask(self, acceptor: Tensor, donor: Tensor, selection: Tensor) -> Tensor:  # type: ignore[override]
         acceptor[selection] = donor[selection]
         return acceptor
 
@@ -157,37 +160,37 @@ class RandomTransplantation(MixAugmentationBaseV2):
         image: Tensor,
         mask: Tensor,
         *additional_inputs: Tensor,
-        params: Optional[Dict[str, Tensor]] = None,
-        data_keys: Optional[List[Union[str, int, DataKey]]] = None,
-    ) -> Union[Tuple[Tensor, Tensor], List[Tensor]]:
-        keys: List[DataKey]
+        params: dict[str, Tensor] | None = None,
+        data_keys: list[str | int | DataKey] | None = None,
+    ) -> tuple[Tensor, Tensor] | list[Tensor]:
+        keys: list[DataKey]
         if data_keys is None:
             keys = self.data_keys
         else:
             keys = [DataKey.get(inp) for inp in data_keys]
 
-        inputs: List[Tensor] = [image, mask, *additional_inputs]
-        if len(keys) != len(inputs):
-            raise RuntimeError(f"Length of keys ({len(keys)}) does not match number of inputs ({len(inputs)}).")
-        if keys[:2] != [DataKey.INPUT, DataKey.MASK]:
-            raise RuntimeError(
-                f"The first two keys must be {DataKey.INPUT} (image) and {DataKey.MASK} (segmentation mask),"
-                f" but got {keys[:2]}."
-            )
-
+        inputs: list[Tensor] = [image, mask, *additional_inputs]
+        KORNIA_CHECK(
+            len(keys) == len(inputs), f"Length of keys ({len(keys)}) does not match number of inputs ({len(inputs)})."
+        )
         _validate_input_dtype(image, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
-        if image.ndim != mask.ndim + 1:
-            raise RuntimeError(
-                "image must have one additional dimension (channel dimension) than mask,"
-                f" but got {image.ndim} and {mask.ndim}."
-            )
+        KORNIA_CHECK(
+            keys[:2] == [DataKey.INPUT, DataKey.MASK],
+            f"The first two keys must be {DataKey.INPUT} (image) and {DataKey.MASK} (segmentation mask), but got "
+            f"{keys[:2]}.",
+        )
 
-        if mask.size() != torch.Size([s for i, s in enumerate(image.size()) if i != self._channel_dim]):
-            raise RuntimeError(
-                "The dimensions of image and mask must match except for the channel dimension),"
-                f" but got {mask.size()} and {image.size()}."
-            )
+        KORNIA_CHECK(
+            image.ndim == mask.ndim + 1,
+            f"image must have one additional dimension (channel dimension) than mask, but got {image.ndim} and "
+            f"{mask.ndim}.",
+        )
+        KORNIA_CHECK(
+            mask.size() == torch.Size([s for i, s in enumerate(image.size()) if i != self._channel_dim]),
+            f"The dimensions of image and mask must match except for the channel dimension), but got {mask.size()} "
+            f"and {image.size()}.",
+        )
 
         if params is None:
             self._params = self.forward_parameters(image.shape)
@@ -204,7 +207,7 @@ class RandomTransplantation(MixAugmentationBaseV2):
         selection = torch.zeros((len(acceptor_indices), *mask.shape[1:]), dtype=torch.bool, device=mask.device)
 
         if "selected_labels" not in self._params:
-            selected_labels: List[Tensor] = []
+            donor_labels: list[Tensor] = []
             for d in range(len(donor_indices)):
                 # Select a random label from the donor image
                 current_mask = mask[donor_indices[d]]
@@ -217,22 +220,26 @@ class RandomTransplantation(MixAugmentationBaseV2):
                     selected_label = labels[torch.randperm(len(labels))[0]]
 
                     selection[d].masked_fill_(current_mask == selected_label, True)
-                    selected_labels.append(selected_label)
+                    donor_labels.append(selected_label)
 
-            self._params["selected_labels"] = selected_labels
+            self._params["selected_labels"] = torch.stack(donor_labels) if len(donor_labels) > 0 else torch.empty(0)
         else:
-            selected_labels = self._params["selected_labels"]
-            if len(selected_labels) != len(acceptor_indices):
-                raise RuntimeError(
-                    f"Length of selected_labels ({len(selected_labels)}) in the parameters does not match the number"
-                    f" of images where this augmentation should be applied ({len(acceptor_indices)})."
-                )
+            selected_labels: Tensor = self._params["selected_labels"]
+            KORNIA_CHECK(
+                selected_labels.ndim == 1,
+                f"selected_labels must be a 1-dimensional tensor, but got {selected_labels.ndim} dimensions.",
+            )
+            KORNIA_CHECK(
+                len(selected_labels) == len(acceptor_indices),
+                f"Length of selected_labels ({len(selected_labels)}) in the parameters does not match the number of "
+                f"images where this augmentation should be applied ({len(acceptor_indices)}).",
+            )
 
             for d, selected_label in zip(range(len(donor_indices)), selected_labels):
                 current_mask = mask[donor_indices[d]]
                 selection[d].masked_fill_(current_mask == selected_label, True)
 
-        outputs: List[Tensor] = []
+        outputs: list[Tensor] = []
         for dcate, _input in zip(keys, inputs):
             acceptor = _input[acceptor_indices].clone()
             donor = _input[donor_indices]
@@ -240,15 +247,15 @@ class RandomTransplantation(MixAugmentationBaseV2):
             output: Tensor
             if dcate == DataKey.INPUT:
                 applied = self.transform_input(acceptor, donor, selection)
-                output = self.apply_non_transform(_input, params, self.flags)
+                output = self.apply_non_transform(_input, self._params, self.flags)
                 output = output.index_put(
-                    (acceptor_indices,), self.apply_non_transform_mask(applied, params, self.flags)
+                    (acceptor_indices,), self.apply_non_transform_mask(applied, self._params, self.flags)
                 )
             elif dcate == DataKey.MASK:
                 applied = self.transform_mask(acceptor, donor, selection)
-                output = self.apply_non_transform_mask(_input, params, self.flags)
+                output = self.apply_non_transform_mask(_input, self._params, self.flags)
                 output = output.index_put(
-                    (acceptor_indices,), self.apply_non_transform_mask(applied, params, self.flags)
+                    (acceptor_indices,), self.apply_non_transform_mask(applied, self._params, self.flags)
                 )
             else:
                 raise NotImplementedError

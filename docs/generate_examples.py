@@ -102,7 +102,7 @@ def main():
     BASE_IMAGEOUTDOOR_URL8: str = (
         "https://github.com/kornia/data/raw/main/kornia_banner_pixie.png"  # Response functions
     )
-    MASK_IMAGE_URL2: str = "https://files.jansellner.net/simba_mask.png"
+    MASK_IMAGE_URL2: str = "https://raw.githubusercontent.com/kornia/data/main/simba_mask.png"
 
     OUTPUT_PATH = Path(__file__).absolute().parent / "source/_static/img"
 
