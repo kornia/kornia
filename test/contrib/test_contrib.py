@@ -749,8 +749,11 @@ class TestObjectDetector:
 
         sizes = torch.randint(5, 10, (batch_size, 2)) * 32
         imgs = [torch.randn(3, h, w, device=device, dtype=dtype) for h, w in sizes]
+        pre_processor_out = pre_processor(imgs)
         detections = detector.predict(imgs)
 
+        assert pre_processor_out[0].shape[-1] == 32
+        assert pre_processor_out[0].shape[-2] == 32
         assert len(detections) == batch_size
         for dets in detections:
             assert dets.shape[1] == 6
