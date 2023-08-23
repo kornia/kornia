@@ -3,7 +3,15 @@ import copy
 import pytest
 import torch
 
-from kornia.augmentation import RandomCutMixV2, RandomJigsaw, RandomMixUpV2, RandomMosaic, RandomTransplantation
+from kornia.augmentation import (
+    AugmentationSequential,
+    RandomCutMixV2,
+    RandomJigsaw,
+    RandomMixUpV2,
+    RandomMosaic,
+    RandomTransplantation,
+    RandomTransplantation3D,
+)
 from kornia.testing import BaseTester, assert_close, tensor_to_gradcheck_var
 
 
@@ -478,15 +486,16 @@ class TestRandomTransplantation(BaseTester):
         self.assert_close(image_out, image)
         self.assert_close(mask_out, mask)
 
-    def test_repeating(self, device, dtype):
+    @pytest.mark.parametrize("wrapper", [AugmentationSequential, lambda x: x])
+    def test_repeating(self, wrapper, device, dtype):
         torch.manual_seed(22)
         image = torch.rand(4, 3, 10, 10, device=device, dtype=dtype)
         mask = torch.randint(0, 2, (4, 10, 10), device=device, dtype=dtype)
 
-        f = RandomTransplantation(p=0.5)
-        image_out, mask_out = f(image, mask)
-        image_out_same, mask_out_same = f(image, mask, params=f._params)
-        image_out_different, mask_out_different = f(image, mask)
+        f = wrapper(RandomTransplantation(p=0.5))
+        image_out, mask_out = f(image, mask, data_keys=["input", "mask"])
+        image_out_same, mask_out_same = f(image, mask, params=f._params, data_keys=["input", "mask"])
+        image_out_different, mask_out_different = f(image, mask, data_keys=["input", "mask"])
 
         self.assert_close(image_out, image_out_same)
         self.assert_close(mask_out, mask_out_same)
@@ -495,16 +504,40 @@ class TestRandomTransplantation(BaseTester):
         with pytest.raises(AssertionError):
             self.assert_close(mask_out, mask_out_different)
 
-    def test_data_keys(self, device, dtype):
+    @pytest.mark.parametrize("wrapper", [AugmentationSequential, lambda x: x])
+    def test_data_keys(self, wrapper, device, dtype):
         torch.manual_seed(22)
         image = torch.rand(4, 3, 10, 10, device=device, dtype=dtype)
         mask = torch.randint(0, 2, (4, 10, 10), device=device, dtype=dtype)
 
-        f = RandomTransplantation(p=1)
+        f = wrapper(RandomTransplantation(p=1))
         torch.manual_seed(22)
         image_out, mask_out = f(image, mask, data_keys=["input", "mask"])
         torch.manual_seed(22)
         mask_out2, image_out2 = f(mask, image, data_keys=["mask", "input"])
+
+        self.assert_close(image_out, image_out2)
+        self.assert_close(mask_out, mask_out2)
+
+    @pytest.mark.parametrize("n_spatial", [2, 3])
+    def test_sequential(self, n_spatial, device, dtype):
+        torch.manual_seed(22)
+        spatial_dimensions = [10] * n_spatial
+        image = torch.rand(4, 3, *spatial_dimensions, device=device, dtype=dtype)
+        mask = torch.randint(0, 2, (4, *spatial_dimensions), device=device, dtype=dtype)
+
+        if n_spatial == 2:
+            f = RandomTransplantation(p=1)
+        elif n_spatial == 3:
+            f = RandomTransplantation3D(p=1)
+        else:
+            raise ValueError("n_spatial must be 2 or 3 since AugmentationSequential only supports 2D and 3D input")
+
+        torch.manual_seed(22)
+        image_out, mask_out = f(image, mask)
+
+        torch.manual_seed(22)
+        image_out2, mask_out2 = AugmentationSequential(f)(image, mask, data_keys=["image", "mask"])
 
         self.assert_close(image_out, image_out2)
         self.assert_close(mask_out, mask_out2)
@@ -556,11 +589,13 @@ class TestRandomTransplantation(BaseTester):
         with pytest.raises(Exception, match="selected_labels must be a 1-dimensional tensor"):
             params_copy = copy.deepcopy(params)
             params_copy["selected_labels"] = torch.tensor([[0, 1]], device=device, dtype=dtype)
+            del params_copy["selection"]
             f(image, mask, params=params_copy)
 
-        with pytest.raises(Exception, match="Length of selected_labels.*does not match the number of images"):
+        with pytest.raises(Exception, match="There cannot be more selected labels"):
             params_copy = copy.deepcopy(params)
             params_copy["selected_labels"] = torch.tensor([0, 1], device=device, dtype=dtype)
+            del params_copy["selection"]
             f(image, mask, params=params_copy)
 
         with pytest.raises(Exception, match="Every image input must have one additional dimension"):

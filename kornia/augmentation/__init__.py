@@ -68,6 +68,7 @@ from kornia.augmentation._3d import (
     RandomMotionBlur3D,
     RandomPerspective3D,
     RandomRotation3D,
+    RandomTransplantation3D,
     RandomVerticalFlip3D,
 )
 from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmentationBase3D

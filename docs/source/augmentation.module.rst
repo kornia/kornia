@@ -86,6 +86,11 @@ Intensity
 .. autoclass:: RandomMotionBlur3D
 .. autoclass:: RandomEqualize3D
 
+Mix
+~~~
+
+.. autoclass:: RandomTransplantation3D
+
 Normalizations
 --------------
 
