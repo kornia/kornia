@@ -55,8 +55,6 @@ def warp_perspective(
 ) -> Tensor:
     r"""Apply a perspective transformation to an image.
 
-    .. image:: https://kornia-tutorials.readthedocs.io/en/latest/_images/warp_perspective_10_1.png
-
     The function warp_perspective transforms the source image using
     the specified matrix:
 
@@ -89,8 +87,7 @@ def warp_perspective(
         This function is often used in conjunction with :func:`get_perspective_transform`.
 
     .. note::
-        See a working example `here <https://kornia-tutorials.readthedocs.io/en/
-        latest/warp_perspective.html>`_.
+        See a working example `here <https://kornia.github.io/tutorials/nbs/warp_perspective.html>`_.
     """
     if not isinstance(src, Tensor):
         raise TypeError(f"Input src type is not a Tensor. Got {type(src)}")
@@ -167,8 +164,7 @@ def warp_affine(
         :func:`get_shear_matrix2d`, :func:`get_affine_matrix2d`, :func:`invert_affine_transform`.
 
     .. note::
-       See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
-       rotate_affine.html>`__.
+       See a working example `here <https://kornia.github.io/tutorials/nbs/rotate_affine.html>`__.
 
     Example:
        >>> img = torch.rand(1, 4, 5, 6)
