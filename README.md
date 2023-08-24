@@ -11,7 +11,7 @@ English | [简体中文](README_zh-CN.md)
 <a href="https://kornia.org">Website</a> •
 <a href="https://kornia.readthedocs.io">Docs</a> •
 <a href="https://colab.research.google.com/github/kornia/tutorials/blob/master/source/hello_world_tutorial.ipynb">Try it Now</a> •
-<a href="https://kornia-tutorials.readthedocs.io">Tutorials</a> •
+<a href="https://kornia.github.io/tutorials/">Tutorials</a> •
 <a href="https://github.com/kornia/kornia-examples">Examples</a> •
 <a href="https://kornia.github.io//kornia-blog">Blog</a> •
 <a href="https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-CnydWe5fmvkcktIeRFGCEQ">Community</a>
@@ -103,7 +103,7 @@ At a granular level, Kornia is a library that consists of the following componen
 
 ## Examples
 
-Run our Jupyter notebooks [tutorials](https://kornia-tutorials.readthedocs.io/en/latest/) to learn to use the library.
+Run our Jupyter notebooks [tutorials](https://kornia.github.io/tutorials) to learn to use the library.
 
 <div align="center">
   <a href="https://colab.research.google.com/github/kornia/tutorials/blob/master/source/hello_world_tutorial.ipynb" target="_blank">

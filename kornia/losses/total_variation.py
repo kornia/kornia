@@ -23,8 +23,7 @@ def total_variation(img: Tensor, reduction: str = "sum") -> Tensor:
         torch.Size([2, 5, 3])
 
     .. note::
-       See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
-       total_variation_denoising.html>`__.
+       See a working example `here <https://kornia.github.io/tutorials/nbs/total_variation_denoising.html>`__.
        Total Variation is formulated with summation, however this is not resolution invariant.
        Thus, `reduction='mean'` was added as an optional reduction method.
 

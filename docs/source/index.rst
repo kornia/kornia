@@ -44,7 +44,7 @@ Join the community
    get-started/highlights
    get-started/installation
    get-started/about
-   Tutorials <https://kornia-tutorials.readthedocs.io/en/latest/>
+   Tutorials <https://kornia.github.io/tutorials/>
    get-started/training
    OpenCV AI Kit <https://docs.luxonis.com/en/latest/pages/tutorials/creating-custom-nn-models/#kornia>
    get-started/governance

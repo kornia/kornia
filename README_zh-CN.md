@@ -12,8 +12,8 @@
 <!-- prettier-ignore -->
 <a href="https://kornia.org">网站</a> •
 <a href="https://kornia.readthedocs.io">文档</a> •
-<a href="https://colab.research.google.com/github/kornia/tutorials/blob/master/source/hello_world_tutorial.ipynb">快速尝试</a> •
-<a href="https://kornia-tutorials.readthedocs.io">教程</a> •
+<a href="https://colab.sandbox.google.com/github/kornia/tutorials/blob/master/nbs/hello_world_tutorial.ipynb">快速尝试</a> •
+<a href="https://kornia.github.io/tutorials/">教程</a> •
 <a href="https://github.com/kornia/kornia-examples">例子</a> •
 <a href="https://kornia.github.io//kornia-blog">博客</a> •
 <a href="https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-CnydWe5fmvkcktIeRFGCEQ">Slack社区</a>
@@ -105,10 +105,10 @@
 
 ## 例子
 
-可以尝试通过这些 [教程](https://kornia-tutorials.readthedocs.io/en/latest/) 来学习和使用这个库。
+可以尝试通过这些 [教程](https://kornia.github.io/tutorials/) 来学习和使用这个库。
 
 <div align="center">
-  <a href="https://colab.research.google.com/github/kornia/tutorials/blob/master/source/hello_world_tutorial.ipynb" target="_blank">
+  <a href="https://colab.sandbox.google.com/github/kornia/tutorials/blob/master/nbs/hello_world_tutorial.ipynb" target="_blank">
     <img src="https://raw.githubusercontent.com/kornia/data/main/hello_world_arturito.png" width="75%" height="75%">
   </a>
 </div>

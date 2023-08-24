@@ -21,4 +21,4 @@ However we recommend to start with high-level API, such as :py:class:`~kornia.fe
 
 .. image:: https://raw.githubusercontent.com/kornia/data/main/matching/matching_loftr.jpg
 
-You also can go through or full tutorial using Colab found `here <https://kornia-tutorials.readthedocs.io/en/latest/image_matching.html>`_.
+You also can go through or full tutorial using Colab found `here <https://kornia.github.io/tutorials/nbs/image_matching.html>`_.

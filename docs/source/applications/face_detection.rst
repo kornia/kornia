@@ -38,4 +38,4 @@ Using our API you easily detect faces in images as shown below:
     dets = [FaceDetectorResult(o) for o in dets[0]]
 
 
-Play yourself with the detector and generate new images with this `tutorial <https://kornia-tutorials.readthedocs.io/en/latest/_nbs/face_detection.html>`_.
+Play yourself with the detector and generate new images with this `tutorial <https://kornia.github.io/tutorials/nbs/face_detection.html>`_.

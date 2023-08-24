@@ -1,7 +1,7 @@
 Visual Prompting
 ================
 
-.. image:: https://kornia-tutorials.readthedocs.io/en/latest/_images/c5ec618b63c6118f00e6f29377cc2b50a1e1df2d247657eec531dfc5454272c7.png
+.. image:: https://kornia.github.io/tutorials/nbs/image_prompter_files/figure-html/cell-34-output-1.png
    :width: 20%
 
 Visual Prompting is the task of streamlining computer vision processes by harnessing the power of prompts,
@@ -50,7 +50,7 @@ How to use with Kornia
       multimask_output=True,
    )
 
-You also can go through or full tutorial using Colab found `here <https://kornia-tutorials.readthedocs.io/en/latest/_nbs/image_prompter.html>`_.
+You also can go through or full tutorial using Colab found `here <https://kornia.github.io/tutorials/nbs/image_prompter.html>`_.
 
 
 Integration with other libraries, fineturning and more examples soon.
