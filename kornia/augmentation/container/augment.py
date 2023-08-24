@@ -64,8 +64,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         It is not clear how to deal with the conversions of masks, bounding boxes and keypoints.
 
     .. note::
-        See a working example `here <https://kornia-tutorials.readthedocs.io/en/
-        latest/data_augmentation_sequential.html>`__.
+        See a working example `here <https://kornia.github.io/tutorials/nbs/data_augmentation_sequential.html>`__.
 
     Examples:
         >>> import kornia
