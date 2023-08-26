@@ -5,25 +5,24 @@ from typing import Any
 import torch
 
 from kornia.core import Module, Tensor, concatenate
-from kornia.geometry import Resize
+from kornia.geometry.transform import Resize
 
 
 class ResizePreProcessor(Module):
     """This module resizes a list of image tensors to the given size, and also returns the original image sizes for
     further post-processing."""
 
-    def __init__(self, size: int | tuple[int, int], interpolation_mode: str = "bilinear") -> None:
+    def __init__(self, size: tuple[int, int], interpolation_mode: str = "bilinear") -> None:
         """
         Args:
             size: images will be resized to this value. If a 2-integer tuple is given, it is interpreted as
-                (height, width). If an integer is given, images will be resized to a square.
+                (height, width).
             interpolation_mode: interpolation mode for image resizing. Supported values: ``nearest``, ``bilinear``,
                 ``bicubic``, ``area``, and ``nearest-exact``.
         """
         super().__init__()
         self.size = size
-        self.resizer = Resize((self.size, self.size))
-        self.interpolation_mode = interpolation_mode
+        self.resizer = Resize(self.size, interpolation=interpolation_mode)
 
     def forward(self, imgs: list[Tensor]) -> tuple[Tensor, dict[str, Any]]:
         # TODO: support other input formats e.g. file path, numpy
