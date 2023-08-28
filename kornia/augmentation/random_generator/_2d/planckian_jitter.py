@@ -1,9 +1,8 @@
 from typing import Dict, List, Tuple
 
 import torch
-from torch.distributions import Uniform
 
-from kornia.augmentation.random_generator.base import RandomGeneratorBase
+from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _joint_range_check, _range_bound
 
 __all__ = ["PlanckianJitterGenerator"]
@@ -20,7 +19,7 @@ class PlanckianJitterGenerator(RandomGeneratorBase):
         idx_range = _range_bound(self.domain, 'idx_range', device=device, dtype=dtype)
 
         _joint_range_check(idx_range, 'idx_range', (0, self.domain[1]))
-        self.pl_idx_dist = Uniform(idx_range[0].clone(), idx_range[1].clone(), validate_args=False)
+        self.pl_idx_dist = UniformDistribution(idx_range[0], idx_range[1], validate_args=False)
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]

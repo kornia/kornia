@@ -1,9 +1,8 @@
 from typing import Dict, Tuple, Union
 
 import torch
-from torch.distributions import Uniform
 
-from kornia.augmentation.random_generator.base import RandomGeneratorBase
+from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _tuple_range_reader
 from kornia.core import Tensor
 from kornia.utils.helpers import _extract_device_dtype
@@ -52,9 +51,9 @@ class RotationGenerator3D(RandomGeneratorBase):
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         degrees = _tuple_range_reader(self.degrees, 3, device, dtype)
-        self.yaw_sampler = Uniform(degrees[0][0].clone(), degrees[0][1].clone(), validate_args=False)
-        self.pitch_sampler = Uniform(degrees[1][0].clone(), degrees[1][1].clone(), validate_args=False)
-        self.roll_sampler = Uniform(degrees[2][0].clone(), degrees[2][1].clone(), validate_args=False)
+        self.yaw_sampler = UniformDistribution(degrees[0][0], degrees[0][1], validate_args=False)
+        self.pitch_sampler = UniformDistribution(degrees[1][0], degrees[1][1], validate_args=False)
+        self.roll_sampler = UniformDistribution(degrees[2][0], degrees[2][1], validate_args=False)
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]

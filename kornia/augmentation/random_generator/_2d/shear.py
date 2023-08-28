@@ -1,9 +1,8 @@
 from typing import Dict, Tuple, Union
 
 import torch
-from torch.distributions import Uniform
 
-from kornia.augmentation.random_generator.base import RandomGeneratorBase
+from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _joint_range_check, _range_bound
 from kornia.core import Tensor, as_tensor, stack, tensor
 from kornia.utils.helpers import _extract_device_dtype
@@ -61,8 +60,8 @@ class ShearGenerator(RandomGeneratorBase):
         self.shear_x = _shear[0].clone()
         self.shear_y = _shear[1].clone()
 
-        shear_x_sampler = Uniform(_shear[0][0].clone(), _shear[0][1].clone(), validate_args=False)
-        shear_y_sampler = Uniform(_shear[1][0].clone(), _shear[1][1].clone(), validate_args=False)
+        shear_x_sampler = UniformDistribution(_shear[0][0], _shear[0][1], validate_args=False)
+        shear_y_sampler = UniformDistribution(_shear[1][0], _shear[1][1], validate_args=False)
 
         self.shear_x_sampler = shear_x_sampler
         self.shear_y_sampler = shear_y_sampler

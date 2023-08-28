@@ -1,9 +1,9 @@
 from typing import Any, Dict, Optional, Tuple
 
 import torch
-from torch.distributions import Distribution, Uniform
+from torch.distributions import Distribution
 
-from kornia.augmentation.random_generator.base import RandomGeneratorBase
+from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
 from kornia.core import Tensor, as_tensor
 from kornia.utils.helpers import _extract_device_dtype
@@ -71,7 +71,7 @@ class PlainUniformGenerator(RandomGeneratorBase):
                 raise ValueError(f"`center` and `bound` should be both None or provided. Got {center} and {bound}.")
             else:
                 factor = _range_bound(factor, name, center=center, bounds=bound, device=device, dtype=dtype)
-            self.sampler_dict.update({name: Uniform(factor[0].clone(), factor[1].clone(), validate_args=False)})
+            self.sampler_dict.update({name: UniformDistribution(factor[0], factor[1], validate_args=False)})
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
