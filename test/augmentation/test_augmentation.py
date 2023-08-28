@@ -1,3 +1,4 @@
+import os
 from typing import Any, Dict, Optional, Tuple, Type
 from unittest.mock import patch
 
@@ -4336,7 +4337,7 @@ class DummyMPDataset(torch.utils.data.Dataset):
 class TestMultiprocessing:
     torch.manual_seed(0)  # for random reproductibility
 
-    @pytest.mark.parametrize('context', ['spawn', 'forkserver', 'fork'])
+    @pytest.mark.parametrize('context', ['spawn', 'forkserver', 'fork'] if os.name != 'nt' else ['spawn'])
     def test_spawn_multiprocessing_context(self, context: str):
         dataset = DummyMPDataset(context=context)
         dataloader = torch.utils.data.DataLoader(
