@@ -67,7 +67,9 @@ class MotionBlurGenerator3D(RandomGeneratorBase):
             # kernel_size is fixed across the batch
             if len(self.kernel_size) != 2:
                 raise AssertionError(f"`kernel_size` must be (2,) if it is a tuple. Got {self.kernel_size}.")
-            self.ksize_sampler = UniformDistribution(self.kernel_size[0] // 2, self.kernel_size[1] // 2, validate_args=False)
+            self.ksize_sampler = UniformDistribution(
+                self.kernel_size[0] // 2, self.kernel_size[1] // 2, validate_args=False
+            )
         else:
             raise TypeError(f"Unsupported type: {type(self.kernel_size)}")
 

@@ -110,9 +110,7 @@ class DistributionWithMapper(Distribution):
 
 
 class UniformDistribution(Uniform):
-    """Wrapper around torch Uniform distribution which makes it work with the
-    'spawn' multiprocessing context.
-    """
+    """Wrapper around torch Uniform distribution which makes it work with the 'spawn' multiprocessing context."""
 
     def __init__(self, low, high, validate_args=None):
         if isinstance(low, torch.Tensor):

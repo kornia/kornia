@@ -4297,8 +4297,7 @@ class DummyMPDataset(torch.utils.data.Dataset):
             ColorJiggle(),
             RandomJigsaw(),
             RandomAffine(degrees=15),
-            RandomMotionBlur3D(kernel_size=3, angle=(0, 360),
-                               direction=(-1, 1)),
+            RandomMotionBlur3D(kernel_size=3, angle=(0, 360), direction=(-1, 1)),
             RandomPerspective3D(),
             RandomAffine3D(degrees=15),
             RandomRotation3D(degrees=15),
@@ -4310,8 +4309,7 @@ class DummyMPDataset(torch.utils.data.Dataset):
         self._crop3d = RandomCrop3D((5, 5, 5))
         self._mixup = RandomMixUpV2()
         self._cutmix = RandomCutMixV2()
-        self._rain = RandomRain(p=1, drop_height=(1, 2),
-                                drop_width=(1, 2), number_of_drops=(1, 1))
+        self._rain = RandomRain(p=1, drop_height=(1, 2), drop_width=(1, 2), number_of_drops=(1, 1))
 
     def __len__(self):
         return 10
