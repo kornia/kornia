@@ -4279,17 +4279,16 @@ class TestRandomRain(BaseTester):
 
 
 class DummyMPDataset(torch.utils.data.Dataset):
-    def __init__(self):
+    def __init__(self, context: str):
         super().__init__()
         # we add all transforms that could potentially fail in
         # multiprocessing with a spawn context below, that is all the
         # transforms that define a RNG
-        self._transform = torch.nn.Sequential(
+        transforms = [
             RandomTranslate(),
             RandomShear(0.1),
             RandomPosterize(),
             RandomErasing(),
-            RandomPlanckianJitter(),
             RandomMotionBlur(kernel_size=3, angle=(0, 360), direction=(-1, 1)),
             RandomGaussianBlur(3, (0.1, 2.0)),
             RandomPerspective(),
@@ -4301,7 +4300,15 @@ class DummyMPDataset(torch.utils.data.Dataset):
             RandomPerspective3D(),
             RandomAffine3D(degrees=15),
             RandomRotation3D(degrees=15),
-        )
+        ]
+
+        if context != 'fork':
+            # random planckian jitter auto selects a GPU. But it is not possible
+            # to init a CUDA context in a forked process.
+            # So we skip it in this case.
+            transforms.append(RandomPlanckianJitter())
+
+        self._transform = torch.nn.Sequential()
 
         self._resize = Resize((10, 10))
         self._mosaic = RandomMosaic((2, 2))
@@ -4331,7 +4338,7 @@ class TestMultiprocessing:
 
     @pytest.mark.parametrize('context', ['spawn', 'forkserver', 'fork'])
     def test_spawn_multiprocessing_context(self, context: str):
-        dataset = DummyMPDataset()
+        dataset = DummyMPDataset(context=context)
         dataloader = torch.utils.data.DataLoader(
             dataset,
             batch_size=4,

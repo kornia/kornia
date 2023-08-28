@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, Optional, Tuple, Type, TypeVar
+from typing import Any, Callable, Dict, Optional, Tuple, Type, TypeVar, Union
 
 import torch
 from torch.distributions import Distribution, Uniform
@@ -112,7 +112,7 @@ class DistributionWithMapper(Distribution):
 class UniformDistribution(Uniform):
     """Wrapper around torch Uniform distribution which makes it work with the 'spawn' multiprocessing context."""
 
-    def __init__(self, low, high, validate_args=None):
+    def __init__(self, low: Union[Tensor, float], high: Union[Tensor, float], validate_args: Optional[bool] = None):
         if isinstance(low, torch.Tensor):
             low = low.clone()
         if isinstance(high, torch.Tensor):

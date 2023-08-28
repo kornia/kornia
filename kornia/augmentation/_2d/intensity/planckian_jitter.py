@@ -174,6 +174,7 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
     ) -> Tensor:
         list_idx = params['idx'].tolist()
 
+        print(f"{input.device=}, {self.pl.device=}, {self.pl=}, {input=}")
         self.pl = self.pl.to(device=input.device)
 
         coeffs = self.pl[list_idx]
