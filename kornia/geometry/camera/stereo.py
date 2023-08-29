@@ -60,12 +60,12 @@ class StereoCamera:
         # Ensure correct shapes
         if len(rectified_left_camera.shape) != 3:
             raise StereoException(
-                f"Expected 'rectified_left_camera' to have 3 dimensions. " f"Got {rectified_left_camera.shape}."
+                f"Expected 'rectified_left_camera' to have 3 dimensions. Got {rectified_left_camera.shape}."
             )
 
         if len(rectified_right_camera.shape) != 3:
             raise StereoException(
-                f"Expected 'rectified_right_camera' to have 3 dimension. " f"Got {rectified_right_camera.shape}."
+                f"Expected 'rectified_right_camera' to have 3 dimension. Got {rectified_right_camera.shape}."
             )
 
         if rectified_left_camera.shape[:1] == (3, 4):
@@ -107,7 +107,7 @@ class StereoCamera:
         # Ensure that tx * fx is negative and exists.
         tx_fx = rectified_right_camera[..., 0, 3]
         if torch.all(torch.gt(tx_fx, 0)):
-            raise StereoException(f"Expected :math:`T_x * f_x` to be negative." f"Got {tx_fx}.")
+            raise StereoException(f"Expected :math:`T_x * f_x` to be negative. Got {tx_fx}.")
 
     @property
     def batch_size(self) -> int:
@@ -235,7 +235,7 @@ def _check_disparity_tensor(disparity_tensor: Tensor) -> None:
         )
 
     if len(disparity_tensor.shape) != 4:
-        raise StereoException(f"Expected 'disparity_tensor' to have 4 dimensions." f"Got {disparity_tensor.shape}.")
+        raise StereoException(f"Expected 'disparity_tensor' to have 4 dimensions. Got {disparity_tensor.shape}.")
 
     if disparity_tensor.shape[-1] != 1:
         raise StereoException(
@@ -260,16 +260,14 @@ def _check_Q_matrix(Q_matrix: Tensor) -> None:
         raise StereoException(f"Expected 'Q_matrix' to be an instance of Tensor but got {type(Q_matrix)}.")
 
     if not len(Q_matrix.shape) == 3:
-        raise StereoException(f"Expected 'Q_matrix' to have 3 dimensions." f"Got {Q_matrix.shape}")
+        raise StereoException(f"Expected 'Q_matrix' to have 3 dimensions. Got {Q_matrix.shape}")
 
     if not Q_matrix.shape[1:] == (4, 4):
-        raise StereoException(
-            f"Expected last two dimensions of 'Q_matrix' to be of shape (4, 4)." f"Got {Q_matrix.shape}"
-        )
+        raise StereoException(f"Expected last two dimensions of 'Q_matrix' to be of shape (4, 4). Got {Q_matrix.shape}")
 
     if Q_matrix.dtype not in (torch.float16, torch.float32, torch.float64):
         raise StereoException(
-            f"Expected 'Q_matrix' to be of type torch.float16, torch.float32 or torch.float64." f"Got {Q_matrix.dtype}"
+            f"Expected 'Q_matrix' to be of type torch.float16, torch.float32 or torch.float64. Got {Q_matrix.dtype}"
         )
 
 

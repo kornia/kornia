@@ -7,9 +7,9 @@ from kornia.core import Tensor, as_tensor, tensor
 
 def _common_param_check(batch_size: int, same_on_batch: Optional[bool] = None) -> None:
     """Valid batch_size and same_on_batch params."""
-    if not (type(batch_size) is int and batch_size >= 0):
+    if not (isinstance(batch_size, int) and batch_size >= 0):
         raise AssertionError(f"`batch_size` shall be a positive integer. Got {batch_size}.")
-    if same_on_batch is not None and type(same_on_batch) is not bool:
+    if same_on_batch is not None and not isinstance(same_on_batch, bool):
         raise AssertionError(f"`same_on_batch` shall be boolean. Got {same_on_batch}.")
 
 
@@ -62,9 +62,7 @@ def _joint_range_check(ranged_factor: Tensor, name: str, bounds: Optional[Tuple[
         if not bounds[0] <= ranged_factor[0] <= ranged_factor[1] <= bounds[1]:
             raise ValueError(f"{name}[0] should be smaller than {name}[1] got {ranged_factor}")
     else:
-        raise TypeError(
-            f"{name} should be a tensor with length 2 whose values between {bounds}. " f"Got {ranged_factor}."
-        )
+        raise TypeError(f"{name} should be a tensor with length 2 whose values between {bounds}. Got {ranged_factor}.")
 
 
 def _singular_range_check(

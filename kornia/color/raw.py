@@ -47,10 +47,10 @@ def raw_to_rgb(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
         >>> rgb = raw_to_rgb(rawinput, CFA.RG) # 2x3x4x6
     """
     if not isinstance(image, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. " f"Got {type(image)}")
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
     if image.dim() < 3 or image.size(-3) != 1:
-        raise ValueError(f"Input size must have a shape of (*, 1, H, W). " f"Got {image.shape}.")
+        raise ValueError(f"Input size must have a shape of (*, 1, H, W). Got {image.shape}.")
 
     if len(image.shape) < 2 or image.shape[-2] % 2 == 1 or image.shape[-1] % 2 == 1:
         raise ValueError(f"Input H&W must be evenly disible by 2. Got {image.shape}")
@@ -82,7 +82,7 @@ def raw_to_rgb(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
         rpad = (0, 1, 1, 0)
         bpad = (1, 0, 0, 1)
     else:
-        raise ValueError(f"Unsupported CFA " f"Got {cfa}.")
+        raise ValueError(f"Unsupported CFA Got {cfa}.")
 
     # upscaling r and b with bi-linear gives reasonable quality
     # Note that depending on where these are sampled we need to pad appropriately
@@ -157,7 +157,7 @@ def raw_to_rgb(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
         g_up[:, :, 1::2, 1::2] = image[:, :, 1::2, 1::2]
         g_up[:, :, ::2, ::2] = image[:, :, ::2, ::2]
     else:
-        raise ValueError(f"Unsupported CFA " f"Got {cfa}.")
+        raise ValueError(f"Unsupported CFA Got {cfa}.")
 
     r_up = r_up.view(imagesize)
     g_up = g_up.view(imagesize)

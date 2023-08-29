@@ -14,9 +14,9 @@ class AverageMeter:
         0.99
     """
 
-    val: Union[int, float, bool, Tensor]
+    val: Union[float, bool, Tensor]
     _avg: Union[float, Tensor]
-    sum: Union[int, float, Tensor]
+    sum: Union[float, Tensor]
     count: int
 
     def __init__(self) -> None:
@@ -28,7 +28,7 @@ class AverageMeter:
         self.sum = 0
         self.count = 0
 
-    def update(self, val: Union[int, float, bool, Tensor], n: int = 1) -> None:
+    def update(self, val: Union[float, bool, Tensor], n: int = 1) -> None:
         self.val = val
         self.sum += val * n
         self.count += n

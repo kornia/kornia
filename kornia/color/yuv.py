@@ -177,7 +177,7 @@ def yuv420_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
         or imagey.shape[-1] / imageuv.shape[-1] != 2
     ):
         raise ValueError(
-            f"Input imageuv H&W must be half the size of the luma plane. " f"Got {imagey.shape} and {imageuv.shape}"
+            f"Input imageuv H&W must be half the size of the luma plane. Got {imagey.shape} and {imageuv.shape}"
         )
 
     # first upsample
@@ -222,7 +222,7 @@ def yuv422_to_rgb(imagey: torch.Tensor, imageuv: torch.Tensor) -> torch.Tensor:
 
     if len(imageuv.shape) < 2 or len(imagey.shape) < 2 or imagey.shape[-1] / imageuv.shape[-1] != 2:
         raise ValueError(
-            f"Input imageuv W must be half the size of the luma plane. " f"Got {imagey.shape} and {imageuv.shape}"
+            f"Input imageuv W must be half the size of the luma plane. Got {imagey.shape} and {imageuv.shape}"
         )
 
     # first upsample

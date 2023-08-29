@@ -26,7 +26,7 @@ class Z1Projection:
         uv = (xy.T @ diag(z).inverse()).T if len(z.shape) else xy.T * 1 / z
         return Vector2(uv)
 
-    def unproject(self, points: Vector2, depth: Tensor | float | int) -> Vector3:
+    def unproject(self, points: Vector2, depth: Tensor | float) -> Vector3:
         """Unproject one or more Vector2 from the canonical z=1 plane into the camera frame.
 
         Args:

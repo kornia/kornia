@@ -27,7 +27,7 @@ def grayscale_to_rgb(image: Tensor) -> Tensor:
     KORNIA_CHECK_IS_TENSOR(image)
 
     if len(image.shape) < 3 or image.shape[-3] != 1:
-        raise ValueError(f"Input size must have a shape of (*, 1, H, W). " f"Got {image.shape}.")
+        raise ValueError(f"Input size must have a shape of (*, 1, H, W). Got {image.shape}.")
 
     return concatenate([image, image, image], -3)
 

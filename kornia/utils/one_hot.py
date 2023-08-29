@@ -35,7 +35,7 @@ def one_hot(labels: Tensor, num_classes: int, device: torch.device, dtype: torch
         raise ValueError(f"labels must be of the same dtype torch.int64. Got: {labels.dtype}")
 
     if num_classes < 1:
-        raise ValueError("The number of classes must be bigger than one." " Got: {}".format(num_classes))
+        raise ValueError(f"The number of classes must be bigger than one. Got: {num_classes}")
 
     shape = labels.shape
     one_hot = zeros((shape[0], num_classes) + shape[1:], device=device, dtype=dtype)

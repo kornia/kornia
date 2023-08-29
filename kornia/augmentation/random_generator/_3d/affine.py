@@ -150,7 +150,12 @@ class AffineGenerator3D(RandomGeneratorBase):
         width = batch_shape[-1]
 
         if not (
-            type(depth) is int and depth > 0 and type(height) is int and height > 0 and type(width) is int and width > 0
+            isinstance(depth, int)
+            and depth > 0
+            and isinstance(height, int)
+            and height > 0
+            and isinstance(width, int)
+            and width > 0
         ):
             raise AssertionError(f"'depth', 'height' and 'width' must be integers. Got {depth}, {height}, {width}.")
 

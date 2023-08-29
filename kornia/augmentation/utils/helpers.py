@@ -228,8 +228,8 @@ def _adapted_sampling(
 
 def _adapted_uniform(
     shape: Union[Tuple[int, ...], torch.Size],
-    low: Union[float, int, Tensor],
-    high: Union[float, int, Tensor],
+    low: Union[float, Tensor],
+    high: Union[float, Tensor],
     same_on_batch: bool = False,
 ) -> Tensor:
     r"""The uniform sampling function that accepts 'same_on_batch'.
@@ -253,8 +253,8 @@ def _adapted_uniform(
 
 def _adapted_beta(
     shape: Union[Tuple[int, ...], torch.Size],
-    a: Union[float, int, Tensor],
-    b: Union[float, int, Tensor],
+    a: Union[float, Tensor],
+    b: Union[float, Tensor],
     same_on_batch: bool = False,
 ) -> Tensor:
     r"""The beta sampling function that accepts 'same_on_batch'.

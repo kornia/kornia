@@ -144,7 +144,7 @@ def solve_pnp_dlt(
             f"of torch.Tensor. Type of weights is {type(weights)}"
         )
 
-    if type(svd_eps) is not float:
+    if not isinstance(svd_eps, float):
         raise AssertionError(f"Type of svd_eps is not float. Got {type(svd_eps)}")
 
     accepted_dtypes = (torch.float32, torch.float64)
@@ -184,7 +184,7 @@ def solve_pnp_dlt(
 
     if world_points.shape[1] < 6:
         raise AssertionError(
-            f"At least 6 points are required to use this function. " f"Got {world_points.shape[1]} points."
+            f"At least 6 points are required to use this function. Got {world_points.shape[1]} points."
         )
 
     B, N = world_points.shape[:2]
