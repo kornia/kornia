@@ -103,12 +103,12 @@ class AugmentationSequentialOps:
     ) -> Union[DataType, List[DataType]]:
         _data_keys = self.preproc_datakeys(data_keys)
 
-        if hasattr(module, "params_from_input"):
+        if isinstance(module, K.RandomTransplantation):
             # For transforms which require the full input to calculate the parameters (e.g. RandomTransplantation)
             param = ParamItem(
                 name=param.name,
-                data=module.params_from_input(  # type: ignore
-                    *arg, data_keys=_data_keys, params=param.data, extra_args=extra_args
+                data=module.params_from_input(
+                    *arg, data_keys=_data_keys, params=param.data, extra_args=extra_args  # type: ignore
                 ),
             )
 
