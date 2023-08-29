@@ -31,13 +31,13 @@ def marginal_pdf(
         raise TypeError(f"Input sigma type is not a torch.Tensor. Got {type(sigma)}")
 
     if not values.dim() == 3:
-        raise ValueError("Input values must be a of the shape BxNx1." " Got {}".format(values.shape))
+        raise ValueError(f"Input values must be a of the shape BxNx1. Got {values.shape}")
 
     if not bins.dim() == 1:
-        raise ValueError("Input bins must be a of the shape NUM_BINS" " Got {}".format(bins.shape))
+        raise ValueError(f"Input bins must be a of the shape NUM_BINS. Got {bins.shape}")
 
     if not sigma.dim() == 0:
-        raise ValueError("Input sigma must be a of the shape 1" " Got {}".format(sigma.shape))
+        raise ValueError(f"Input sigma must be a of the shape 1. Got {sigma.shape}")
 
     residuals = values - bins.unsqueeze(0).unsqueeze(0)
     kernel_values = torch.exp(-0.5 * (residuals / sigma).pow(2))
@@ -68,15 +68,15 @@ def joint_pdf(kernel_values1: torch.Tensor, kernel_values2: torch.Tensor, epsilo
         raise TypeError(f"Input kernel_values2 type is not a torch.Tensor. Got {type(kernel_values2)}")
 
     if not kernel_values1.dim() == 3:
-        raise ValueError("Input kernel_values1 must be a of the shape BxN." " Got {}".format(kernel_values1.shape))
+        raise ValueError(f"Input kernel_values1 must be a of the shape BxN. Got {kernel_values1.shape}")
 
     if not kernel_values2.dim() == 3:
-        raise ValueError("Input kernel_values2 must be a of the shape BxN." " Got {}".format(kernel_values2.shape))
+        raise ValueError(f"Input kernel_values2 must be a of the shape BxN. Got {kernel_values2.shape}")
 
     if kernel_values1.shape != kernel_values2.shape:
         raise ValueError(
             "Inputs kernel_values1 and kernel_values2 must have the same shape."
-            " Got {} and {}".format(kernel_values1.shape, kernel_values2.shape)
+            f" Got {kernel_values1.shape} and {kernel_values2.shape}"
         )
 
     joint_kernel_values = torch.matmul(kernel_values1.transpose(1, 2), kernel_values2)
@@ -231,7 +231,7 @@ def image_histogram2d(
         else:  # kernel == "epanechnikov"
             kernel_values = (1.0 - u**2) * mask
     else:
-        raise ValueError(f"Kernel must be 'triangular', 'gaussian', " f"'uniform' or 'epanechnikov'. Got {kernel}.")
+        raise ValueError(f"Kernel must be 'triangular', 'gaussian', 'uniform' or 'epanechnikov'. Got {kernel}.")
 
     hist = torch.sum(kernel_values, dim=(-2, -1)).permute(1, 2, 0)
 

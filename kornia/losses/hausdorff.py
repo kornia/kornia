@@ -183,7 +183,7 @@ class HausdorffERLoss(_HausdorffERLossBase):
 
         if not (target.max() < pred.size(1) and target.min() >= 0 and target.dtype == torch.long):
             raise ValueError(
-                f"Expect long type target value in range (0, {pred.size(1)})." f"({target.min()}, {target.max()})"
+                f"Expect long type target value in range (0, {pred.size(1)}). ({target.min()}, {target.max()})"
             )
         return super().forward(pred, target)
 
