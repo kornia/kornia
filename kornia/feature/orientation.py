@@ -74,8 +74,7 @@ class PatchDominantGradientOrientation(nn.Module):
         _, CH, W, H = patch.size()
         if (W != self.patch_size) or (H != self.patch_size) or (CH != 1):
             raise TypeError(
-                "input shape should be must be [Bx1x{}x{}]. "
-                "Got {}".format(self.patch_size, self.patch_size, patch.size())
+                f"input shape should be must be [Bx1x{self.patch_size}x{self.patch_size}]. Got {patch.size()}"
             )
         self.weighting = self.weighting.to(patch.dtype).to(patch.device)
         self.angular_smooth = self.angular_smooth.to(patch.dtype).to(patch.device)
