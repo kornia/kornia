@@ -202,8 +202,9 @@ class RandomTransplantation(MixAugmentationBaseV2):
                     `batch_prob`).
             extra_args: Optional dictionary of extra arguments with specific options for different input types.
 
-        Returns: Updated dictionary of parameters with the necessary information to apply the augmentation on all input
-                 tensors separately.
+        Returns:
+             Updated dictionary of parameters with the necessary information to apply the augmentation on all input
+             tensors separately.
         """
         KORNIA_CHECK(
             len(data_keys) == len(input),

@@ -222,7 +222,7 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
                 "The support for 3d mask operations are not yet supported. You are welcome to file a PR in our repo."
             )
 
-        elif isinstance(module, K.MixAugmentationBaseV2):
+        elif isinstance(module, K.RandomTransplantation):
             input = module(input, params=cls.get_instance_module_param(param), data_keys=[DataKey.MASK], **extra_args)
 
         elif isinstance(module, (_AugmentationBase)):
