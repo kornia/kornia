@@ -73,11 +73,7 @@ from kornia.augmentation._3d import (
 from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmentationBase3D
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 from kornia.augmentation._3d.intensity.base import IntensityAugmentationBase3D
-from kornia.augmentation._pc import (
-    RandomJitterPC,
-    RandomRGBJitterPC,
-    RandomRotatePC,
-)
+from kornia.augmentation._pc import RandomJitterPC, RandomRGBJitterPC, RandomRotatePC
 from kornia.augmentation._pc.base import AugmentationBasePC, RigidAffineAugmentationBasePC
 from kornia.augmentation._pc.geometric.base import GeometricAugmentationBasePC
 from kornia.augmentation._pc.intensity.base import IntensityAugmentationBasePC

@@ -2,9 +2,9 @@ from typing import Any, Dict, Optional, Tuple
 
 from torch import Tensor
 
-from kornia.augmentation.utils import _range_bound
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._pc.intensity.base import IntensityAugmentationBasePC
+from kornia.augmentation.utils import _range_bound
 
 
 class RandomScalePC(IntensityAugmentationBasePC):

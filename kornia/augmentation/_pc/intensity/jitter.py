@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, Optional
 
 from torch import Tensor
 
@@ -63,11 +63,7 @@ class RandomRGBJitterPC(IntensityAugmentationBasePC):
     """
 
     def __init__(
-        self,
-        jitter_scale: float = 0.1,
-        same_on_batch: bool = False,
-        p: float = 1.0,
-        keepdim: bool = False,
+        self, jitter_scale: float = 0.1, same_on_batch: bool = False, p: float = 1.0, keepdim: bool = False
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
 
