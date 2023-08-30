@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import torch
 import torch.nn.functional as F
-from torch.nn.functional import grid_sample
 
 from kornia.core import Tensor, concatenate, stack, tensor, zeros
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
@@ -524,7 +523,7 @@ def remap(
     map_xy = map_xy.expand(batch_size, -1, -1, -1)
 
     # warp the image tensor and return
-    return grid_sample(image, map_xy, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
+    return F.grid_sample(image, map_xy, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
 
 
 def invert_affine_transform(matrix: Tensor) -> Tensor:
@@ -875,7 +874,7 @@ def warp_affine3d(
     # compute meshgrid and apply to input
     dsize_out: list[int] = [B, C, *list(size_out)]
     grid = F.affine_grid(P_norm, dsize_out, align_corners=align_corners)
-    return grid_sample(src, grid, align_corners=align_corners, mode=flags, padding_mode=padding_mode)
+    return F.grid_sample(src, grid, align_corners=align_corners, mode=flags, padding_mode=padding_mode)
 
 
 def projection_from_Rt(rmat: Tensor, tvec: Tensor) -> Tensor:
