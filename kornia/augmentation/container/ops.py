@@ -102,6 +102,16 @@ class AugmentationSequentialOps:
         data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None,
     ) -> Union[DataType, List[DataType]]:
         _data_keys = self.preproc_datakeys(data_keys)
+
+        if isinstance(module, K.RandomTransplantation):
+            # For transforms which require the full input to calculate the parameters (e.g. RandomTransplantation)
+            param = ParamItem(
+                name=param.name,
+                data=module.params_from_input(
+                    *arg, data_keys=_data_keys, params=param.data, extra_args=extra_args  # type: ignore
+                ),
+            )
+
         outputs = []
         for inp, dcate in zip(arg, _data_keys):
             op = self._get_op(dcate)
@@ -156,7 +166,7 @@ class InputSequentialOps(SequentialOpsInterface[Tensor]):
     @classmethod
     def transform(cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}) -> Tensor:
         if isinstance(module, (_AugmentationBase, K.MixAugmentationBaseV2)):
-            input = module(input, params=cls.get_instance_module_param(param), **extra_args)
+            input = module(input, params=cls.get_instance_module_param(param), data_keys=[DataKey.INPUT], **extra_args)
         elif isinstance(module, (K.container.ImageSequentialBase,)):
             input = module.transform_inputs(input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
         elif isinstance(module, (K.auto.operations.OperationBase,)):
@@ -211,6 +221,9 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
             raise NotImplementedError(
                 "The support for 3d mask operations are not yet supported. You are welcome to file a PR in our repo."
             )
+
+        elif isinstance(module, K.RandomTransplantation):
+            input = module(input, params=cls.get_instance_module_param(param), data_keys=[DataKey.MASK], **extra_args)
 
         elif isinstance(module, (_AugmentationBase)):
             input = module.transform_masks(
