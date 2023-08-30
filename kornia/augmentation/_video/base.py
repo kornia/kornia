@@ -28,7 +28,7 @@ class AugmentationBaseVideo(_AugmentationBase):
         """Check if the input tensor is formatted as expected."""
         _validate_input_dtype(input, accepted_dtypes=[float16, float32, float64])
         if len(input.shape) != 5:
-            raise RuntimeError(f"Expect (B, C, D, H, W). Got {input.shape}.")
+            raise RuntimeError(f"Expect (B, C, T, H, W). Got {input.shape}.")
 
     def transform_tensor(self, input: Tensor) -> Tensor:
         """Convert any incoming (T, H, W), (C, T, H, W) and (B, C, T, H, W) into (B, C, T, H, W)."""

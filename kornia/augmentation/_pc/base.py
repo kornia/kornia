@@ -5,8 +5,8 @@ from torch import float16, float32, float64
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils import _validate_input_dtype
 from kornia.core import Tensor
-from kornia.geometry.boxes import Boxes
-from kornia.geometry.keypoints import Keypoints
+from kornia.geometry.boxes import Boxes3D
+from kornia.geometry.keypoints import Keypoints3D
 from kornia.utils import eye_like, is_autocast_enabled
 
 
@@ -39,27 +39,8 @@ class AugmentationBasePC(_AugmentationBase):
         if len(input.shape) != 3 or input.size(-1) < 3:
             raise RuntimeError(f"Expect (B, N, C) and C >= 3. Got {input.shape}.")
 
-    def transform_tensor(self, input: Tensor) -> Tuple[Tensor, Optional[Tensor], Optional[Tensor], Optional[Tensor]]:
-        """Split a given tensor to [xyz, normal, rgb, others].
-
-        Of which xyz is required, while the rest are optional.
-        """
-        C = input.size(-1)
-        if C < 3:
-            raise RuntimeError(
-                f"Insufficient input channels. We expect at least (B, N, C) and C >= 3. Got {input.shape}."
-            )
-        if C == 3:
-            return input, None, None, None
-        if C < 6:
-            return input[..., :3], None, None, input[..., 3:]
-        if C == 6:
-            return input[..., :3], input[..., 3:], None, None
-        if C < 9:
-            return input[..., :3], input[..., 3:6], None, input[..., 6:]
-        if C == 9:
-            return input[..., :3], input[..., 3:6], input[..., 6:], None
-        return input[..., :3], input[..., 3:6], input[..., 6:9], input[9:]
+    def transform_tensor(self, input: Tensor) -> Tensor:
+        return input
 
 
 class RigidAffineAugmentationBasePC(AugmentationBasePC):
@@ -125,13 +106,13 @@ class RigidAffineAugmentationBasePC(AugmentationBasePC):
         raise NotImplementedError
 
     def inverse_boxes(
-        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Boxes:
+        self, input: Boxes3D, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Boxes3D:
         raise NotImplementedError
 
     def inverse_keypoints(
-        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
-    ) -> Keypoints:
+        self, input: Keypoints3D, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Keypoints3D:
         raise NotImplementedError
 
     def inverse_classes(
