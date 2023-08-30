@@ -3,32 +3,32 @@ from __future__ import annotations
 from typing import Any
 
 import torch
-import torch.nn.functional as F
 
 from kornia.core import Module, Tensor, concatenate
+from kornia.geometry.transform import Resize
 
 
 class ResizePreProcessor(Module):
     """This module resizes a list of image tensors to the given size, and also returns the original image sizes for
     further post-processing."""
 
-    def __init__(self, size: int | tuple[int, int], interpolation_mode: str = "bilinear") -> None:
+    def __init__(self, size: tuple[int, int], interpolation_mode: str = "bilinear") -> None:
         """
         Args:
             size: images will be resized to this value. If a 2-integer tuple is given, it is interpreted as
-                (height, width). If an integer is given, images will be resized to a square.
+                (height, width).
             interpolation_mode: interpolation mode for image resizing. Supported values: ``nearest``, ``bilinear``,
                 ``bicubic``, ``area``, and ``nearest-exact``.
         """
         super().__init__()
         self.size = size
-        self.interpolation_mode = interpolation_mode
+        self.resizer = Resize(self.size, interpolation=interpolation_mode)
 
     def forward(self, imgs: list[Tensor]) -> tuple[Tensor, dict[str, Any]]:
         # TODO: support other input formats e.g. file path, numpy
         # NOTE: antialias=False is used in F.interpolate()
         original_sizes = [(img.shape[1], img.shape[2]) for img in imgs]
-        resized_imgs = [F.interpolate(img.unsqueeze(0), self.size, mode=self.interpolation_mode) for img in imgs]
+        resized_imgs = [self.resizer(img.unsqueeze(0)) for img in imgs]
         return concatenate(resized_imgs), {"original_size": original_sizes}
 
 
