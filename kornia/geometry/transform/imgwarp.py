@@ -633,8 +633,8 @@ def get_shear_matrix2d(center: Tensor, sx: Tensor | None = None, sy: Tensor | No
 
     Args:
         center: shearing center coordinates of (x, y).
-        sx: shearing degree along x axis.
-        sy: shearing degree along y axis.
+        sx: shearing angle along x axis in radiants.
+        sy: shearing angle along y axis in radiants
 
     Returns:
         params to be passed to the affine transformation with shape :math:`(B, 3, 3)`.
@@ -747,12 +747,12 @@ def get_shear_matrix3d(
 
     Params:
         center: shearing center coordinates of (x, y, z).
-        sxy: shearing degree along x axis, towards y plane.
-        sxz: shearing degree along x axis, towards z plane.
-        syx: shearing degree along y axis, towards x plane.
-        syz: shearing degree along y axis, towards z plane.
-        szx: shearing degree along z axis, towards x plane.
-        szy: shearing degree along z axis, towards y plane.
+        sxy: shearing angle along x axis, towards y plane in radiants.
+        sxz: shearing angle along x axis, towards z plane in radiants.
+        syx: shearing angle along y axis, towards x plane in radiants.
+        syz: shearing angle along y axis, towards z plane in radiants.
+        szx: shearing angle along z axis, towards x plane in radiants.
+        szy: shearing angle along z axis, towards y plane in radiants.
 
     Returns:
         params to be passed to the affine transformation.
