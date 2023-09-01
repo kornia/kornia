@@ -505,6 +505,16 @@ class TestAugmentationSequential:
         for i in range(len(bbox)):
             assert len(bboxes_transformed[i]) == len(bbox[i])
 
+    def test_class(self, device, dtype):
+        img = torch.zeros((5, 1, 5, 5))
+        labels = torch.randint(0, 10, size=(5, 1))
+        aug = K.AugmentationSequential(
+            K.RandomCrop((3,3), pad_if_needed=True),
+            data_keys=['input', 'class'])
+
+        _, out_labels = aug(img, labels)
+        assert labels is out_labels
+
     @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 10, True, False])
     def test_forward_and_inverse(self, random_apply, device, dtype):
         inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)

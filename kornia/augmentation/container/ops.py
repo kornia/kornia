@@ -91,6 +91,8 @@ class AugmentationSequentialOps:
             return BoxSequentialOps
         if data_key == DataKey.KEYPOINTS:
             return KeypointSequentialOps
+        if data_key == DataKey.CLASS:
+            return NoOps
         raise RuntimeError(f"Operation for `{data_key.name}` is not found.")
 
     def transform(
@@ -192,6 +194,18 @@ class InputSequentialOps(SequentialOpsInterface[Tensor]):
             input = module.inverse_inputs(input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
         elif isinstance(module, K.container.ImageSequentialBase):
             input = module.inverse_inputs(input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
+        return input
+
+
+class NoOps(SequentialOpsInterface[Tensor]):
+    """A no-op operation for class labels."""
+
+    @classmethod
+    def transform(cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}) -> Tensor:
+        return input
+
+    @classmethod
+    def inverse(cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}) -> Tensor:
         return input
 
 
