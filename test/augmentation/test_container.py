@@ -508,9 +508,7 @@ class TestAugmentationSequential:
     def test_class(self, device, dtype):
         img = torch.zeros((5, 1, 5, 5))
         labels = torch.randint(0, 10, size=(5, 1))
-        aug = K.AugmentationSequential(
-            K.RandomCrop((3,3), pad_if_needed=True),
-            data_keys=['input', 'class'])
+        aug = K.AugmentationSequential(K.RandomCrop((3, 3), pad_if_needed=True), data_keys=['input', 'class'])
 
         _, out_labels = aug(img, labels)
         assert labels is out_labels
