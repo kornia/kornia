@@ -92,7 +92,7 @@ class AugmentationSequentialOps:
         if data_key == DataKey.KEYPOINTS:
             return KeypointSequentialOps
         if data_key == DataKey.CLASS:
-            return NoOps
+            return ClassSequentialOps
         raise RuntimeError(f"Operation for `{data_key.name}` is not found.")
 
     def transform(
@@ -197,11 +197,15 @@ class InputSequentialOps(SequentialOpsInterface[Tensor]):
         return input
 
 
-class NoOps(SequentialOpsInterface[Tensor]):
+class ClassSequentialOps(SequentialOpsInterface[Tensor]):
     """A no-op operation for class labels."""
 
     @classmethod
     def transform(cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}) -> Tensor:
+        if isinstance(module, K.MixAugmentationBaseV2):
+            raise NotImplementedError(
+                "The support for class labels for mix augmentations that change the class label is not yet supported."
+            )
         return input
 
     @classmethod
