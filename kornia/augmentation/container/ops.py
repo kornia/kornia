@@ -198,7 +198,7 @@ class InputSequentialOps(SequentialOpsInterface[Tensor]):
 
 
 class ClassSequentialOps(SequentialOpsInterface[Tensor]):
-    """A no-op operation for class labels."""
+    """Apply and inverse transformations for class labels if needed."""
 
     @classmethod
     def transform(cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}) -> Tensor:
