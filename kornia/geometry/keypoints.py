@@ -3,11 +3,7 @@ from typing import List, Optional, Tuple, Union, cast
 import torch
 
 from kornia.core import Tensor
-from kornia.geometry import transform_points
-
-
-def _merge_keypoint_list(keypoints: List[Tensor]) -> Tensor:
-    raise NotImplementedError
+from kornia.geometry.pointcloud import _merge_keypoint_list, _transform_points
 
 
 class Keypoints:
@@ -121,15 +117,12 @@ class Keypoints:
         Returns:
             The transformed keypoints.
         """
-        if not 2 <= M.ndim <= 3 or M.shape[-2:] != (3, 3):
-            raise ValueError(f"The transformation matrix shape must be (3, 3) or (B, 3, 3). Got {M.shape}.")
-
-        transformed_boxes = transform_points(M, self._data)
+        transformed_points = _transform_points(self._data, M)
         if inplace:
-            self._data = transformed_boxes
+            self._data = transformed_points
             return self
 
-        return Keypoints(transformed_boxes, False)
+        return Keypoints(transformed_points, False)
 
     def transform_keypoints_(self, M: Tensor) -> "Keypoints":
         """Inplace version of :func:`Keypoints.transform_keypoints`"""
