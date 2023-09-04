@@ -91,6 +91,8 @@ class AugmentationSequentialOps:
             return BoxSequentialOps
         if data_key == DataKey.KEYPOINTS:
             return KeypointSequentialOps
+        if data_key == DataKey.CLASS:
+            return ClassSequentialOps
         raise RuntimeError(f"Operation for `{data_key.name}` is not found.")
 
     def transform(
@@ -192,6 +194,22 @@ class InputSequentialOps(SequentialOpsInterface[Tensor]):
             input = module.inverse_inputs(input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
         elif isinstance(module, K.container.ImageSequentialBase):
             input = module.inverse_inputs(input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
+        return input
+
+
+class ClassSequentialOps(SequentialOpsInterface[Tensor]):
+    """Apply and inverse transformations for class labels if needed."""
+
+    @classmethod
+    def transform(cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}) -> Tensor:
+        if isinstance(module, K.MixAugmentationBaseV2):
+            raise NotImplementedError(
+                "The support for class labels for mix augmentations that change the class label is not yet supported."
+            )
+        return input
+
+    @classmethod
+    def inverse(cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}) -> Tensor:
         return input
 
 
