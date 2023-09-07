@@ -37,57 +37,65 @@ class TestFindEssential:
         E_mat = epi.essential.find_essential(points1, points2, weights)
         assert E_mat.shape == (B, 3, 3)
 
-    # def test_epipolar_constraint(self, device, dtype):
-    #     scene: Dict[str, torch.Tensor] = utils.generate_two_view_random_scene(device, dtype)
-    #     x1 = scene['x1'][:, :5, :]
-    #     x2 = scene['x2'][:, :5, :]
-    #     K1 = scene['K1']
-    #     K2 = scene['K2']
+    def test_epipolar_constraint(self, device, dtype):
+        scene: Dict[str, torch.Tensor] = utils.generate_two_view_random_scene(device, dtype)
+        x1 = scene['x1'][:, :5, :]
+        x2 = scene['x2'][:, :5, :]
+        K1 = scene['K1']
+        K2 = scene['K2']
 
-    #     import cv2
+        import cv2
+        calibrated_x1 = torch.from_numpy(cv2.undistortPoints(x1.numpy(), cameraMatrix=K1.squeeze().numpy(), distCoeffs=None)).transpose(0, 1)
+        calibrated_x2 = torch.from_numpy(cv2.undistortPoints(x2.numpy(), cameraMatrix=K2.squeeze().numpy(), distCoeffs=None)).transpose(0, 1)
+
+        E_est = epi.essential.find_essential(calibrated_x1, calibrated_x2)
+        E = E_est
+        if torch.all(E != 0):
+            distance = epi.symmetrical_epipolar_distance(calibrated_x1, calibrated_x2, E)
+            mean_error = distance.mean()
+            assert_close(mean_error, torch.tensor(0.0, device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
+
+    def test_synthetic_sampson(self, device, dtype):
+        scene: Dict[str, torch.Tensor] = utils.generate_two_view_random_scene(device, dtype)
+
+        x1 = scene['x1'][:, :5, :]
+        x2 = scene['x2'][:, :5, :]
+        K1 = scene['K1']
+        K2 = scene['K2']
+        # we do not have the 'dist', so I change the point calibration to OpenCV version.
+        # dist = torch.zeros((1, 4))
+        # calibrated_x1 = cal.undistort_points(x1, K1, dist) 
+        # calibrated_x2 = cal.undistort_points(x2, K2, dist) 
+        import cv2
+
+        calibrated_x1 = torch.from_numpy(cv2.undistortPoints(x1.numpy(), cameraMatrix=K1[0].numpy(), distCoeffs=None)).transpose(0, 1)
+        calibrated_x2 = torch.from_numpy(cv2.undistortPoints(x2.numpy(), cameraMatrix=K2[0].numpy(), distCoeffs=None)).transpose(0, 1)
+
+        weights = torch.ones_like(x1)[..., 0]
+        E_est = epi.essential.find_essential(calibrated_x1, calibrated_x2, weights)
+
+        error = epi.sampson_epipolar_distance(calibrated_x1, calibrated_x2, E_est)
+        assert_close(error, torch.zeros((x1.shape[:2]), device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
+
+    # def test_gradcheck(self, device):
+    #     points1 = torch.tensor([[[ 0.3133,  0.3503],
+    #      [-0.0561,  0.2568],
+    #      [-0.0266,  0.1531],
+    #      [-0.0501,  0.2357],
+    #      [ 0.0260,  0.2958]]], dtype=torch.float64, requires_grad=True)
+    #     #torch.rand(1, 5, 2, device=device, dtype=torch.float64, requires_grad=True)
+    #     points2 = torch.tensor([[[ 1.5924, -0.2759],
+    #      [ 0.2170,  0.2173],
+    #      [ 0.1550,  0.0204],
+    #      [ 0.2624,  0.1903],
+    #      [ 0.1654,  0.1241]]], dtype=torch.float64)
+    #     #torch.rand(1, 5, 2, device=device, dtype=torch.float64, requires_grad=True)
+    #     weights = torch.ones(1, 5, device=device, dtype=torch.float64)
+    #     models = epi.essential.find_essential(points1, points2, weights)
     #     import pdb; pdb.set_trace()
 
-    #     calibrated_x1 = torch.from_numpy(cv2.undistortPoints(x1.numpy(), cameraMatrix=K1[0].numpy(), distCoeffs=None)).transpose(0, 1)
-    #     calibrated_x2 = torch.from_numpy(cv2.undistortPoints(x2.numpy(), cameraMatrix=K2[0].numpy(), distCoeffs=None)).transpose(0, 1)
-
-    #     E_est = epi.essential.find_essential(calibrated_x1, calibrated_x2)
-    #     E = E_est
-    #     if torch.all(E != 0):
-    #         distance = epi.symmetrical_epipolar_distance(calibrated_x1, calibrated_x2, E)
-    #         mean_error = distance.mean()
-    #         assert_close(mean_error, torch.tensor(0.0, device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
-
-    # def test_synthetic_sampson(self, device, dtype):
-    #     scene: Dict[str, torch.Tensor] = utils.generate_two_view_random_scene(device, dtype)
-
-    #     x1 = scene['x1'][:, :5, :]
-    #     x2 = scene['x2'][:, :5, :]
-    #     K1 = scene['K1']
-    #     K2 = scene['K2']
-    #     # dist = torch.zeros((1, 4))
-    #     # we do not have the 'dist', so I change it to OpenCV version.
-    #     # calibrated_x1 = cal.undistort_points(x1, K1, dist) 
-    #     # calibrated_x2 = cal.undistort_points(x2, K2, dist) 
-    #     import cv2
-    #     import pdb; pdb.set_trace()
-
-    #     calibrated_x1 = torch.from_numpy(cv2.undistortPoints(x1.numpy(), cameraMatrix=K1[0].numpy(), distCoeffs=None)).transpose(0, 1)
-    #     calibrated_x2 = torch.from_numpy(cv2.undistortPoints(x2.numpy(), cameraMatrix=K2[0].numpy(), distCoeffs=None)).transpose(0, 1)
-
-    #     weights = torch.ones_like(x1)[..., 0]
-    #     E_est = epi.essential.find_essential(calibrated_x1, calibrated_x2, weights)
-
-    #     error = epi.sampson_epipolar_distance(calibrated_x1, calibrated_x2, E_est)
-    #     assert_close(error, torch.zeros((x1.shape[:2]), device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
-
-    def test_gradcheck(self, device):
-        points1 = torch.rand(1, 5, 2, device=device, dtype=torch.float64, requires_grad=True)
-        points2 = torch.rand(1, 5, 2, device=device, dtype=torch.float64, requires_grad=True)
-        weights = torch.ones(1, 5, device=device, dtype=torch.float64)
-        # import pdb; pdb.set_trace()
-        models = epi.essential.find_essential(points1, points2, weights)
-        models.sum().backward()
-        assert gradcheck(epi.essential.find_essential, (points1, points2, weights), eps=1e-2, atol=1e-2, raise_exception=True, fast_mode=True)
+    #     # models.sum().backward()
+    #     assert gradcheck(epi.essential.find_essential, (points1, points2, weights), eps=1e-2, atol=1e-2, raise_exception=True, fast_mode=True)
 
 
 

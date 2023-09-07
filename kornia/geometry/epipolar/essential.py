@@ -50,7 +50,7 @@ def o2(a, b):  # 10 4 20
          a[:, 8] * b[:, 3] + a[:, 9] * b[:, 2], a[:, 9] * b[:, 3]], dim=-1)
 
 def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None) -> torch.Tensor:
-    r"""Compute the essential matrix using the 5-point algorithm
+    r"""Compute the essential matrix using the 5-point algorithm from Nister.
 
     The linear system is solved by Nister's 5-point algorithm.
     
@@ -71,10 +71,9 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
         if not (len(weights.shape) == 2 and weights.shape[1] == points1.shape[1]):
             raise AssertionError(weights.shape)
 
-    batch_size, num, _ = points1.shape
+    batch_size, _, _ = points1.shape
     x1, y1 = torch.chunk(points1, dim=-1, chunks=2)  # Bx1xN
     x2, y2 = torch.chunk(points2, dim=-1, chunks=2)  # Bx1xN
-
     ones = torch.ones_like(x1)
 
     # build equations system and solve DLT
@@ -88,11 +87,11 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     else:
         w_diag = torch.diag_embed(weights)
         X = X.transpose(-2, -1) @ w_diag @ X
-    # compute eigevectors and retrieve the one with the smallest eigenvalue
 
+    # compute eigevectors and retrieve the one with the smallest eigenvalue
     _, _, V = _torch_svd_cast(X)
-    null_ = V[:, -4:, :].transpose(-1, -2) # the last four rows
-    nullSpace = V[:, -4:, :]
+    null_ = V.transpose(-1, -2)[:, -4:, :].transpose(-1, -2) # the last four rows
+    nullSpace = V.transpose(-1, -2)[:, -4:, :]
     coeffs = torch.zeros(batch_size, 10, 20, device=null_.device, dtype=null_.dtype)
     d = torch.zeros(batch_size, 60, device=null_.device, dtype=null_.dtype)
     fun = lambda i, j : null_[:, 3 * j + i]
@@ -104,7 +103,7 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
 
     indices = torch.tensor([[0, 10, 20], [10, 40, 30], [20, 30, 50]])
 
-    # Compute EE^T (equation 20 in paper)
+    # Compute EE^T (Eqn. 20 in the paper)
     for i in range(3):
         for j in range(3):
             d[:, indices[i, j]: indices[i, j] + 10] = o1(fun(i, 0), fun(j, 0)) + \
@@ -323,8 +322,6 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
             A[:, 0, 4] * A[:, 1, 8] * A[:, 2, 0] + A[:, 0, 8] * A[:, 1, 0] * A[:, 2, 4] - A[:, 0, 8] * A[:, 1, 4] * A[:, 2, 0]
     
     E_models = []
-    #s = StrumPolynomialSolver(10)
-    #n_solss, rootss = s.bisect_sturm(cs)
 
     # for loop because of different numbers of solutions
     for bi in range(A.shape[0]):
@@ -332,22 +329,19 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
         null_i = nullSpace[bi]
 
         # companion matrix solver
-        # try:
         C = torch.zeros((10, 10), device=cs.device, dtype=cs.dtype)
         C[0:-1, 1:] = torch.eye(C[0:-1, 0:-1].shape[0], device=cs.device, dtype=cs.dtype)
         C[-1, :] = -cs[bi][:-1]/cs[bi][-1]
+
         # check if the companion matrix contains nans or infs
         if torch.isnan(C).any() or torch.isinf(C).any():
             continue
-            #n_sols, roots = s.bisect_sturm(cs[bi])
-            #print("nan in C")
         else:
             roots = torch.real(torch.linalg.eigvals(C))
-        # except ValueError:
-        #n_sols, roots = s.bisect_sturm(cs[bi])
 
         if roots is None:
             continue
+
         n_sols = roots.size()
         if n_sols == 0:
             continue
@@ -380,10 +374,7 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
         return torch.eye(3, device=cs.device, dtype=cs.dtype).unsqueeze(0)
     else:
         return torch.concat(E_models).view(-1,  3,  3).transpose(-1, -2)
-        # be careful of the differences between c++ and python, transpose
-
    
-    # return normalize_transformation(F_est)
 
 def essential_from_fundamental(F_mat: torch.Tensor, K1: torch.Tensor, K2: torch.Tensor) -> torch.Tensor:
     r"""Get Essential matrix from Fundamental and Camera matrices.
