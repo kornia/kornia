@@ -80,12 +80,12 @@ class RigidAffineAugmentationBasePC(AugmentationBasePC):
 
         in_tensor = self.transform_tensor(input)
         if not to_apply.any():
-            trans_matrix = self.identity_matrix(in_tensor[0])
+            trans_matrix = self.identity_matrix(in_tensor)
         elif to_apply.all():
-            trans_matrix = self.compute_transformation(in_tensor[0], params=params, flags=flags)
+            trans_matrix = self.compute_transformation(in_tensor, params=params, flags=flags)
         else:
-            trans_matrix_A = self.identity_matrix(in_tensor[0])
-            trans_matrix_B = self.compute_transformation(in_tensor[to_apply][0], params=params, flags=flags)
+            trans_matrix_A = self.identity_matrix(in_tensor)
+            trans_matrix_B = self.compute_transformation(in_tensor[to_apply], params=params, flags=flags)
 
             if is_autocast_enabled():
                 trans_matrix_A = trans_matrix_A.type(input.dtype)

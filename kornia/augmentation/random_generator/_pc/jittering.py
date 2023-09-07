@@ -30,11 +30,11 @@ class JitteringGeneratorPC(RandomGeneratorBase):
         return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        loc = torch.tensor([0.0], device=device, dtype=dtype)
-        scale = torch.tensor([self.jitter_scale], device=device, dtype=dtype)
+        loc = torch.tensor(0.0, device=device, dtype=dtype)
+        scale = torch.tensor(self.jitter_scale, device=device, dtype=dtype)
         self.sampler = Normal(loc, scale)
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size, N = batch_shape[0], batch_shape[1]
-        jitter: Tensor = _adapted_sampling((batch_size, N, 3), self.sampler, same_on_batch).bool()
+        jitter: Tensor = _adapted_sampling((batch_size, N, 3), self.sampler, same_on_batch)
         return {"jitter": jitter}

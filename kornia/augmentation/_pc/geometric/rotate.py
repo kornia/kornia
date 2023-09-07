@@ -21,12 +21,11 @@ class RandomRotatePC(GeometricAugmentationBasePC):
 
     def __init__(
         self,
-        degrees: Union[Tensor, Tuple[float, float], List[Tuple[float, float]]] = [(-15., 15.), (-15., 15.), (0., 0.)],
+        degrees: Union[Tensor, List[Tuple[float, float]]] = [(-15., 15.), (-15., 15.), (0., 0.)],
         same_on_batch: bool = False,
         p: float = 0.5,
-        keepdim: bool = False,
     ) -> None:
-        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(p=p, same_on_batch=same_on_batch)
         self._param_generator = rg.PlainUniformGenerator(
             (degrees[0], "degrees_x", 0.0, (-360.0, 360.0)),
             (degrees[1], "degrees_y", 0.0, (-360.0, 360.0)),
@@ -46,9 +45,12 @@ class RandomRotatePC(GeometricAugmentationBasePC):
     ) -> Tensor:
         if not isinstance(transform, Tensor):
             raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
+        input = input.clone()
 
-        input[..., :3] = input[..., :3] * transform
-        return input
+        xyz_points, others = input[..., :3], input[..., 3:]
+        xyz_points = xyz_points @ transform
+
+        return torch.cat([xyz_points, others], dim=-1)
 
     def inverse_transform(
         self,
