@@ -87,11 +87,23 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     else:
         w_diag = torch.diag_embed(weights)
         X = X.transpose(-2, -1) @ w_diag @ X
-
+    assert torch.allclose(X[0], X[0].t(), atol=1e-8)
     # compute eigevectors and retrieve the one with the smallest eigenvalue
+    
+    # """
+    # use eigh
+    _, V = torch.linalg.eigh(X)
+    null_ = V.transpose(-1, -2)[:, :4, :].transpose(-1, -2) # the last four rows
+    nullSpace = V.transpose(-1, -2)[:, :4, :]
+
+    #"""
+    """
+    # use svd
     _, _, V = _torch_svd_cast(X)
     null_ = V.transpose(-1, -2)[:, -4:, :].transpose(-1, -2) # the last four rows
     nullSpace = V.transpose(-1, -2)[:, -4:, :]
+    """
+
     coeffs = torch.zeros(batch_size, 10, 20, device=null_.device, dtype=null_.dtype)
     d = torch.zeros(batch_size, 60, device=null_.device, dtype=null_.dtype)
     fun = lambda i, j : null_[:, 3 * j + i]

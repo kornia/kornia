@@ -77,25 +77,23 @@ class TestFindEssential:
         error = epi.sampson_epipolar_distance(calibrated_x1, calibrated_x2, E_est)
         assert_close(error, torch.zeros((x1.shape[:2]), device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
 
-    # def test_gradcheck(self, device):
-    #     points1 = torch.tensor([[[ 0.3133,  0.3503],
-    #      [-0.0561,  0.2568],
-    #      [-0.0266,  0.1531],
-    #      [-0.0501,  0.2357],
-    #      [ 0.0260,  0.2958]]], dtype=torch.float64, requires_grad=True)
-    #     #torch.rand(1, 5, 2, device=device, dtype=torch.float64, requires_grad=True)
-    #     points2 = torch.tensor([[[ 1.5924, -0.2759],
-    #      [ 0.2170,  0.2173],
-    #      [ 0.1550,  0.0204],
-    #      [ 0.2624,  0.1903],
-    #      [ 0.1654,  0.1241]]], dtype=torch.float64)
-    #     #torch.rand(1, 5, 2, device=device, dtype=torch.float64, requires_grad=True)
-    #     weights = torch.ones(1, 5, device=device, dtype=torch.float64)
-    #     models = epi.essential.find_essential(points1, points2, weights)
-    #     import pdb; pdb.set_trace()
-
-    #     # models.sum().backward()
-    #     assert gradcheck(epi.essential.find_essential, (points1, points2, weights), eps=1e-2, atol=1e-2, raise_exception=True, fast_mode=True)
+    def test_gradcheck(self, device):
+        points1 = torch.rand(1, 5, 2, device=device, dtype=torch.float64, requires_grad=True)
+        # torch.tensor([[[ 0.3133,  0.3503],
+        #  [-0.0561,  0.2568],
+        #  [-0.0266,  0.1531],
+        #  [-0.0501,  0.2357],
+        #  [ 0.0260,  0.2958]]], dtype=torch.float64, requires_grad=True)
+        # points2 = torch.tensor([[[ 1.5924, -0.2759],
+        #  [ 0.2170,  0.2173],
+        #  [ 0.1550,  0.0204],
+        #  [ 0.2624,  0.1903],
+        #  [ 0.1654,  0.1241]]], dtype=torch.float64)
+        points2 = torch.rand(1, 5, 2, device=device, dtype=torch.float64, requires_grad=True)
+        weights = torch.ones(1, 5, device=device, dtype=torch.float64)
+        models = epi.essential.find_essential(points1, points2, weights)
+        # models.sum().backward()
+        assert gradcheck(epi.essential.find_essential, (points1, points2, weights), eps=1e-2, atol=1e-2, raise_exception=True, fast_mode=True)
 
 
 
