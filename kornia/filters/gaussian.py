@@ -37,8 +37,7 @@ def gaussian_blur2d(
         the blurred tensor with shape :math:`(B, C, H, W)`.
 
     .. note::
-       See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
-       gaussian_blur.html>`__.
+       See a working example `here <https://kornia.github.io/tutorials/nbs/gaussian_blur.html>`__.
 
     Examples:
         >>> input = torch.rand(2, 4, 5, 5)

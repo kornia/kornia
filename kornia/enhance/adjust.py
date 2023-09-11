@@ -114,8 +114,7 @@ def adjust_saturation(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
         Adjusted image in the shape of :math:`(*, 3, H, W)`.
 
     .. note::
-       See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
-       image_enhancement.html>`__.
+       See a working example `here <https://kornia.github.io/tutorials/nbs/image_enhancement.html>`__.
 
     Example:
         >>> x = torch.ones(1, 3, 3, 3)
@@ -147,7 +146,7 @@ def adjust_hue_raw(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
     KORNIA_CHECK_IS_TENSOR(image, "Expected shape (*, H, W)")
     KORNIA_CHECK(
         isinstance(factor, (float, Tensor)),
-        f"The factor should be a float number or Tensor in the range between" f" [-PI, PI]. Got {type(factor)}",
+        f"The factor should be a float number or Tensor in the range between [-PI, PI]. Got {type(factor)}",
     )
 
     if isinstance(factor, float):
@@ -190,8 +189,7 @@ def adjust_hue(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
         Adjusted image in the shape of :math:`(*, 3, H, W)`.
 
     .. note::
-       See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
-       image_enhancement.html>`__.
+       See a working example `here <https://kornia.github.io/tutorials/nbs/image_enhancement.html>`__.
 
     Example:
         >>> x = torch.ones(1, 3, 2, 2)
@@ -233,8 +231,7 @@ def adjust_gamma(input: Tensor, gamma: Union[float, Tensor], gain: Union[float, 
         Adjusted image in the shape of :math:`(*, H, W)`.
 
     .. note::
-       See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
-       image_enhancement.html>`__.
+       See a working example `here <https://kornia.github.io/tutorials/nbs/image_enhancement.html>`__.
 
     Example:
         >>> x = torch.ones(1, 1, 2, 2)
@@ -315,8 +312,7 @@ def adjust_contrast(image: Tensor, factor: Union[float, Tensor], clip_output: bo
         Adjusted image in the shape of :math:`(*, H, W)`.
 
     .. note::
-       See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
-       image_enhancement.html>`__.
+       See a working example `here <https://kornia.github.io/tutorials/nbs/image_enhancement.html>`__.
 
     Example:
         >>> import torch
@@ -441,8 +437,7 @@ def adjust_brightness(image: Tensor, factor: Union[float, Tensor], clip_output: 
         Adjusted tensor in the shape of :math:`(*, H, W)`.
 
     .. note::
-       See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
-       image_enhancement.html>`__.
+       See a working example `here <https://kornia.github.io/tutorials/nbs/image_enhancement.html>`__.
 
     Example:
         >>> x = torch.ones(1, 1, 2, 2)
@@ -617,7 +612,7 @@ def _solarize(input: Tensor, thresholds: Union[float, Tensor] = 0.5) -> Tensor:
         raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
 
     if not isinstance(thresholds, (float, Tensor)):
-        raise TypeError(f"The factor should be either a float or Tensor. " f"Got {type(thresholds)}")
+        raise TypeError(f"The factor should be either a float or Tensor. Got {type(thresholds)}")
 
     if isinstance(thresholds, Tensor) and len(thresholds.shape) != 0:
         if not (input.size(0) == len(thresholds) and len(thresholds.shape) == 1):
@@ -668,14 +663,14 @@ def solarize(
         raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
 
     if not isinstance(thresholds, (float, Tensor)):
-        raise TypeError(f"The factor should be either a float or Tensor. " f"Got {type(thresholds)}")
+        raise TypeError(f"The factor should be either a float or Tensor. Got {type(thresholds)}")
 
     if isinstance(thresholds, float):
         thresholds = torch.as_tensor(thresholds)
 
     if additions is not None:
         if not isinstance(additions, (float, Tensor)):
-            raise TypeError(f"The factor should be either a float or Tensor. " f"Got {type(additions)}")
+            raise TypeError(f"The factor should be either a float or Tensor. Got {type(additions)}")
 
         if isinstance(additions, float):
             additions = torch.as_tensor(additions)

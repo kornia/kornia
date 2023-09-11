@@ -165,7 +165,12 @@ def center_crop_generator3d(
     if not isinstance(size, (tuple, list)) and len(size) == 3:
         raise ValueError(f"Input size must be a tuple/list of length 3. Got {size}")
     if not (
-        type(depth) is int and depth > 0 and type(height) is int and height > 0 and type(width) is int and width > 0
+        isinstance(depth, int)
+        and depth > 0
+        and isinstance(height, int)
+        and height > 0
+        and isinstance(width, int)
+        and width > 0
     ):
         raise AssertionError(f"'depth', 'height' and 'width' must be integers. Got {depth}, {height}, {width}.")
     if not (depth >= size[0] and height >= size[1] and width >= size[2]):

@@ -64,8 +64,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         It is not clear how to deal with the conversions of masks, bounding boxes and keypoints.
 
     .. note::
-        See a working example `here <https://kornia-tutorials.readthedocs.io/en/
-        latest/data_augmentation_sequential.html>`__.
+        See a working example `here <https://kornia.github.io/tutorials/nbs/data_augmentation_sequential.html>`__.
 
     Examples:
         >>> import kornia
@@ -276,6 +275,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 inp.append(self._preproc_keypoints(arg, dcate))
             elif DataKey.get(dcate) in _BOXES_OPTIONS:
                 inp.append(self._preproc_boxes(arg, dcate))
+            elif DataKey.get(dcate) is DataKey.CLASS:
+                inp.append(arg)
             else:
                 raise NotImplementedError(f"input type of {dcate} is not implemented.")
         return inp
@@ -307,6 +308,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                     else:
                         _out_b = _out_b.type(in_arg.dtype)
                 out.append(_out_b)
+
+            elif DataKey.get(dcate) is DataKey.CLASS:
+                out.append(out_arg)
 
             else:
                 raise NotImplementedError(f"input type of {dcate} is not implemented.")

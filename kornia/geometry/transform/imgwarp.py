@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import torch
 import torch.nn.functional as F
-from torch.nn.functional import grid_sample
 
 from kornia.core import Tensor, concatenate, stack, tensor, zeros
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
@@ -55,8 +54,6 @@ def warp_perspective(
 ) -> Tensor:
     r"""Apply a perspective transformation to an image.
 
-    .. image:: https://kornia-tutorials.readthedocs.io/en/latest/_images/warp_perspective_10_1.png
-
     The function warp_perspective transforms the source image using
     the specified matrix:
 
@@ -89,8 +86,7 @@ def warp_perspective(
         This function is often used in conjunction with :func:`get_perspective_transform`.
 
     .. note::
-        See a working example `here <https://kornia-tutorials.readthedocs.io/en/
-        latest/warp_perspective.html>`_.
+        See a working example `here <https://kornia.github.io/tutorials/nbs/warp_perspective.html>`_.
     """
     if not isinstance(src, Tensor):
         raise TypeError(f"Input src type is not a Tensor. Got {type(src)}")
@@ -167,8 +163,7 @@ def warp_affine(
         :func:`get_shear_matrix2d`, :func:`get_affine_matrix2d`, :func:`invert_affine_transform`.
 
     .. note::
-       See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
-       rotate_affine.html>`__.
+       See a working example `here <https://kornia.github.io/tutorials/nbs/rotate_affine.html>`__.
 
     Example:
        >>> img = torch.rand(1, 4, 5, 6)
@@ -528,7 +523,7 @@ def remap(
     map_xy = map_xy.expand(batch_size, -1, -1, -1)
 
     # warp the image tensor and return
-    return grid_sample(image, map_xy, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
+    return F.grid_sample(image, map_xy, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
 
 
 def invert_affine_transform(matrix: Tensor) -> Tensor:
@@ -638,8 +633,8 @@ def get_shear_matrix2d(center: Tensor, sx: Tensor | None = None, sy: Tensor | No
 
     Args:
         center: shearing center coordinates of (x, y).
-        sx: shearing degree along x axis.
-        sy: shearing degree along y axis.
+        sx: shearing angle along x axis in radiants.
+        sy: shearing angle along y axis in radiants
 
     Returns:
         params to be passed to the affine transformation with shape :math:`(B, 3, 3)`.
@@ -752,12 +747,12 @@ def get_shear_matrix3d(
 
     Params:
         center: shearing center coordinates of (x, y, z).
-        sxy: shearing degree along x axis, towards y plane.
-        sxz: shearing degree along x axis, towards z plane.
-        syx: shearing degree along y axis, towards x plane.
-        syz: shearing degree along y axis, towards z plane.
-        szx: shearing degree along z axis, towards x plane.
-        szy: shearing degree along z axis, towards y plane.
+        sxy: shearing angle along x axis, towards y plane in radiants.
+        sxz: shearing angle along x axis, towards z plane in radiants.
+        syx: shearing angle along y axis, towards x plane in radiants.
+        syz: shearing angle along y axis, towards z plane in radiants.
+        szx: shearing angle along z axis, towards x plane in radiants.
+        szy: shearing angle along z axis, towards y plane in radiants.
 
     Returns:
         params to be passed to the affine transformation.
@@ -879,7 +874,7 @@ def warp_affine3d(
     # compute meshgrid and apply to input
     dsize_out: list[int] = [B, C, *list(size_out)]
     grid = F.affine_grid(P_norm, dsize_out, align_corners=align_corners)
-    return grid_sample(src, grid, align_corners=align_corners, mode=flags, padding_mode=padding_mode)
+    return F.grid_sample(src, grid, align_corners=align_corners, mode=flags, padding_mode=padding_mode)
 
 
 def projection_from_Rt(rmat: Tensor, tvec: Tensor) -> Tensor:

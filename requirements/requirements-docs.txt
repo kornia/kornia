@@ -3,7 +3,7 @@ kornia_moons
 matplotlib
 opencv-python
 PyYAML>=5.1
-sphinx>=4
+sphinx
 sphinx-autodoc-defaultargs
 sphinx-autodoc-typehints
 sphinx-copybutton>=0.3

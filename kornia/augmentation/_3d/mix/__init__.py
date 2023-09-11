@@ -1,0 +1,1 @@
+from kornia.augmentation._3d.mix.transplantation import RandomTransplantation3D

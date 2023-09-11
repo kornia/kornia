@@ -27,7 +27,7 @@ def grayscale_to_rgb(image: Tensor) -> Tensor:
     KORNIA_CHECK_IS_TENSOR(image)
 
     if len(image.shape) < 3 or image.shape[-3] != 1:
-        raise ValueError(f"Input size must have a shape of (*, 1, H, W). " f"Got {image.shape}.")
+        raise ValueError(f"Input size must have a shape of (*, 1, H, W). Got {image.shape}.")
 
     return concatenate([image, image, image], -3)
 
@@ -47,8 +47,7 @@ def rgb_to_grayscale(image: Tensor, rgb_weights: Tensor | None = None) -> Tensor
         grayscale version of the image with shape :math:`(*,1,H,W)`.
 
     .. note::
-       See a working example `here <https://kornia-tutorials.readthedocs.io/en/latest/
-       color_conversions.html>`__.
+       See a working example `here <https://kornia.github.io/tutorials/nbs/color_conversions.html>`__.
 
     Example:
         >>> input = torch.rand(2, 3, 4, 5)

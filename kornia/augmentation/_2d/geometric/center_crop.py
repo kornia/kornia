@@ -77,7 +77,7 @@ class CenterCrop(GeometricAugmentationBase2D):
         elif isinstance(size, int):
             self.size = (size, size)
         else:
-            raise Exception(f"Invalid size type. Expected (int, tuple(int, int). " f"Got: {type(size)}.")
+            raise Exception(f"Invalid size type. Expected (int, tuple(int, int). Got: {type(size)}.")
 
         self.flags = {
             "resample": Resample.get(resample),

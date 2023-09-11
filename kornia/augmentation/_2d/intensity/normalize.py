@@ -41,8 +41,8 @@ class Normalize(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        mean: Tensor | tuple[float | int] | list[float | int] | float | int,
-        std: Tensor | tuple[float | int] | list[float | int] | float | int,
+        mean: Tensor | tuple[float] | list[float] | float,
+        std: Tensor | tuple[float] | list[float] | float,
         p: float = 1.0,
         keepdim: bool = False,
     ) -> None:

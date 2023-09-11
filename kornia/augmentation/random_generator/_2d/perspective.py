@@ -58,7 +58,7 @@ class PerspectiveGenerator(RandomGeneratorBase):
 
         _device, _dtype = _extract_device_dtype([self.distortion_scale])
         _common_param_check(batch_size, same_on_batch)
-        if not (type(height) is int and height > 0 and type(width) is int and width > 0):
+        if not (isinstance(height, int) and height > 0 and isinstance(width, int) and width > 0):
             raise AssertionError(f"'height' and 'width' must be integers. Got {height}, {width}.")
 
         start_points: Tensor = tensor(

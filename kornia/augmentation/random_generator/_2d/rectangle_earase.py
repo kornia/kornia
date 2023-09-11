@@ -75,7 +75,7 @@ class RectangleEraseGenerator(RandomGeneratorBase):
         batch_size = batch_shape[0]
         height = batch_shape[-2]
         width = batch_shape[-1]
-        if not (type(height) is int and height > 0 and type(width) is int and width > 0):
+        if not (isinstance(height, int) and height > 0 and isinstance(width, int) and width > 0):
             raise AssertionError(f"'height' and 'width' must be integers. Got {height}, {width}.")
 
         _common_param_check(batch_size, same_on_batch)
