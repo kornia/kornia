@@ -6,7 +6,7 @@ from typing import Any, Sequence, TypeVar, cast
 from torch import float16, float32, float64
 from typing_extensions import TypeGuard
 
-from kornia.core import Tensor
+from kornia.core import IntegratedTensor
 
 __all__ = [
     "KORNIA_CHECK_SHAPE",
@@ -28,11 +28,11 @@ __all__ = [
 
 
 # TODO: add somehow type check, or enforce to do it before
-def KORNIA_CHECK_SHAPE(x: Tensor, shape: list[str], raises: bool = True) -> bool:
+def KORNIA_CHECK_SHAPE(x: IntegratedTensor, shape: list[str], raises: bool = True) -> bool:
     """Check whether a tensor has a specified shape.
 
     The shape can be specified with a implicit or explicit list of strings.
-    The guard also check whether the variable is a type `Tensor`.
+    The guard also check whether the variable is a type `IntegratedTensor`.
 
     Args:
         x: the tensor to evaluate.
@@ -144,8 +144,8 @@ def KORNIA_CHECK_TYPE(x: object, typ: T | tuple[T, ...], msg: str | None = None,
     return True
 
 
-def KORNIA_CHECK_IS_TENSOR(x: object, msg: str | None = None, raises: bool = True) -> TypeGuard[Tensor]:
-    """Check the input variable is a Tensor.
+def KORNIA_CHECK_IS_TENSOR(x: object, msg: str | None = None, raises: bool = True) -> TypeGuard[IntegratedTensor]:
+    """Check the input variable is a IntegratedTensor.
 
     Args:
         x: any input variable.
@@ -161,15 +161,15 @@ def KORNIA_CHECK_IS_TENSOR(x: object, msg: str | None = None, raises: bool = Tru
         True
     """
     # TODO: Move to use typeguard here dropping support for JIT
-    if not isinstance(x, Tensor):
+    if not isinstance(x, IntegratedTensor):
         if raises:
-            raise TypeError(f"Not a Tensor type. Got: {type(x)}.\n{msg}")
+            raise TypeError(f"Not a IntegratedTensor type. Got: {type(x)}.\n{msg}")
         return False
     return True
 
 
-def KORNIA_CHECK_IS_LIST_OF_TENSOR(x: Sequence[object] | None, raises: bool = True) -> TypeGuard[list[Tensor]]:
-    """Check the input variable is a List of Tensors.
+def KORNIA_CHECK_IS_LIST_OF_TENSOR(x: Sequence[object] | None, raises: bool = True) -> TypeGuard[list[IntegratedTensor]]:
+    """Check the input variable is a List of IntegratedTensors.
 
     Args:
         x: Any sequence of objects
@@ -179,7 +179,7 @@ def KORNIA_CHECK_IS_LIST_OF_TENSOR(x: Sequence[object] | None, raises: bool = Tr
         TypeException: if the input variable does not match with the expected and raises is True.
 
     Return:
-        True if the input is a list of Tensors, otherwise return False.
+        True if the input is a list of IntegratedTensors, otherwise return False.
 
     Example:
         >>> x = torch.rand(2, 3, 3)
@@ -188,7 +188,7 @@ def KORNIA_CHECK_IS_LIST_OF_TENSOR(x: Sequence[object] | None, raises: bool = Tr
         >>> KORNIA_CHECK_IS_LIST_OF_TENSOR([x])
         True
     """
-    are_tensors = isinstance(x, list) and all(isinstance(d, Tensor) for d in x)
+    are_tensors = isinstance(x, list) and all(isinstance(d, IntegratedTensor) for d in x)
     if not are_tensors:
         if raises:
             raise TypeError(f"Provided container of type {type(x)} is not a list of tensors")
@@ -196,7 +196,7 @@ def KORNIA_CHECK_IS_LIST_OF_TENSOR(x: Sequence[object] | None, raises: bool = Tr
     return True
 
 
-def KORNIA_CHECK_SAME_DEVICE(x: Tensor, y: Tensor, raises: bool = True) -> bool:
+def KORNIA_CHECK_SAME_DEVICE(x: IntegratedTensor, y: IntegratedTensor, raises: bool = True) -> bool:
     """Check whether two tensor in the same device.
 
     Args:
@@ -221,7 +221,7 @@ def KORNIA_CHECK_SAME_DEVICE(x: Tensor, y: Tensor, raises: bool = True) -> bool:
     return True
 
 
-def KORNIA_CHECK_SAME_DEVICES(tensors: list[Tensor], msg: str | None = None, raises: bool = True) -> bool:
+def KORNIA_CHECK_SAME_DEVICES(tensors: list[IntegratedTensor], msg: str | None = None, raises: bool = True) -> bool:
     """Check whether a list provided tensors live in the same device.
 
     Args:
@@ -235,7 +235,7 @@ def KORNIA_CHECK_SAME_DEVICES(tensors: list[Tensor], msg: str | None = None, rai
     Example:
         >>> x1 = torch.rand(2, 3, 3)
         >>> x2 = torch.rand(1, 3, 1)
-        >>> KORNIA_CHECK_SAME_DEVICES([x1, x2], "Tensors not in the same device")
+        >>> KORNIA_CHECK_SAME_DEVICES([x1, x2], "IntegratedTensors not in the same device")
         True
     """
     KORNIA_CHECK(isinstance(tensors, list) and len(tensors) >= 1, "Expected a list with at least one element", raises)
@@ -246,7 +246,7 @@ def KORNIA_CHECK_SAME_DEVICES(tensors: list[Tensor], msg: str | None = None, rai
     return True
 
 
-def KORNIA_CHECK_SAME_SHAPE(x: Tensor, y: Tensor, raises: bool = True) -> bool:
+def KORNIA_CHECK_SAME_SHAPE(x: IntegratedTensor, y: IntegratedTensor, raises: bool = True) -> bool:
     """Check whether two tensor have the same shape.
 
     Args:
@@ -271,7 +271,7 @@ def KORNIA_CHECK_SAME_SHAPE(x: Tensor, y: Tensor, raises: bool = True) -> bool:
     return True
 
 
-def KORNIA_CHECK_IS_COLOR(x: Tensor, msg: str | None = None, raises: bool = True) -> bool:
+def KORNIA_CHECK_IS_COLOR(x: IntegratedTensor, msg: str | None = None, raises: bool = True) -> bool:
     """Check whether an image tensor is a color images.
 
     Args:
@@ -294,7 +294,7 @@ def KORNIA_CHECK_IS_COLOR(x: Tensor, msg: str | None = None, raises: bool = True
     return True
 
 
-def KORNIA_CHECK_IS_GRAY(x: Tensor, msg: str | None = None, raises: bool = True) -> bool:
+def KORNIA_CHECK_IS_GRAY(x: IntegratedTensor, msg: str | None = None, raises: bool = True) -> bool:
     """Check whether an image tensor is grayscale.
 
     Args:
@@ -317,7 +317,7 @@ def KORNIA_CHECK_IS_GRAY(x: Tensor, msg: str | None = None, raises: bool = True)
     return True
 
 
-def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: Tensor, msg: str | None = None, raises: bool = True) -> bool:
+def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: IntegratedTensor, msg: str | None = None, raises: bool = True) -> bool:
     """Check whether an image tensor is grayscale or color.
 
     Args:
@@ -340,7 +340,7 @@ def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: Tensor, msg: str | None = None, raises: boo
     return True
 
 
-def KORNIA_CHECK_IS_IMAGE(x: Tensor, msg: str | None = None, raises: bool = True, bits: int = 8) -> bool:
+def KORNIA_CHECK_IS_IMAGE(x: IntegratedTensor, msg: str | None = None, raises: bool = True, bits: int = 8) -> bool:
     """Check whether an image tensor is ranged properly [0, 1] for float or [0, 2 ** bits] for int.
 
     Args:
@@ -379,7 +379,7 @@ def KORNIA_CHECK_IS_IMAGE(x: Tensor, msg: str | None = None, raises: bool = True
     return True
 
 
-def KORNIA_CHECK_DM_DESC(desc1: Tensor, desc2: Tensor, dm: Tensor, raises: bool = True) -> bool:
+def KORNIA_CHECK_DM_DESC(desc1: IntegratedTensor, desc2: IntegratedTensor, dm: IntegratedTensor, raises: bool = True) -> bool:
     """Check whether the provided descriptors match with a distance matrix.
 
     Args:
@@ -408,7 +408,7 @@ def KORNIA_CHECK_DM_DESC(desc1: Tensor, desc2: Tensor, dm: Tensor, raises: bool 
     return True
 
 
-def KORNIA_CHECK_LAF(laf: Tensor, raises: bool = True) -> bool:
+def KORNIA_CHECK_LAF(laf: IntegratedTensor, raises: bool = True) -> bool:
     """Check whether a Local Affine Frame (laf) has a valid shape.
 
     Args:

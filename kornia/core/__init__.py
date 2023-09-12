@@ -26,6 +26,27 @@ from ._backend import (
     zeros_like,
 )
 from .tensor_wrapper import TensorWrapper  # type: ignore
+from .integrated_tensor import IntegratedTensor
+
+from .core_backend import (
+    Module,
+    ModuleList,
+    arange,
+    concatenate,
+    stack,
+    linspace,
+    normalize,
+    pad,
+    eye,
+    einsum,
+    zeros,
+    zeros_like,
+    ones,
+    ones_like,
+    where,
+    diag,
+    softmax
+)
 
 __all__ = [
     "arange",
