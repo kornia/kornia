@@ -21,6 +21,10 @@ class IntegratedTensor:
                 raise ValueError("Supplied `image` is not a valid grayscale image. " f"Check the number of channels.")
             elif self.image_data_format == 'channels_first' and tensor.shape[1] != 1:
                 raise ValueError("Supplied `image` is not a valid grayscale image. " f"Check the number of channels.")
+            
+        # TODO: Find better way to handle nested lists with different dtypes present in single tensor
+        if isinstance(tensor, list):
+            tensor = self.create(tensor)
 
         self._color_space = color_space
         self._tensor = tensor
@@ -64,6 +68,56 @@ class IntegratedTensor:
         result = func(*args, **kwargs)
 
         return IntegratedTensor(result, self._image_data_format, self._color_space)
+    
+    def __add__(self, other):
+        return IntegratedTensor(
+            (self._tensor + other.tensor), 
+            image_data_format=self._image_data_format, 
+            color_space=self._color_space
+        )
+    
+    def __sub__(self, other):
+        return IntegratedTensor(
+            (self._tensor - other.tensor), 
+            image_data_format=self._image_data_format, 
+            color_space=self._color_space
+        )
+    
+    def __mul__(self, other):
+        return IntegratedTensor(
+            (self._tensor * other.tensor), 
+            image_data_format=self._image_data_format, 
+            color_space=self._color_space
+        )
+
+    def __pow__(self, other):
+        return IntegratedTensor(
+            (self._tensor ** other.tensor), 
+            image_data_format=self._image_data_format, 
+            color_space=self._color_space
+        )
+
+    def __truediv__(self, other):
+        return IntegratedTensor(
+            (self._tensor / other.tensor), 
+            image_data_format=self._image_data_format, 
+            color_space=self._color_space
+        )
+    
+    def __getitem__(self, index):
+        return self.tensor[index]
+    
+    def __setitem__(self, index, value):
+        backend = keras.backend.backend()
+
+        if backend == "tensorflow":
+            from tensorflow.compiler.tf2xla.python import xla
+            xla.dynamic_update_slice(self.tensor, update=value, start_indices=index)
+        elif backend == "jax":
+            from jax import numpy as jnp
+            self.tensor = self.tensor.at[index].set(value)
+        else:
+            self.tensor[index] = value
 
     @property
     def tensor(self):
@@ -180,3 +234,39 @@ class IntegratedTensor:
             "color_space": self._color_space,
         }
         return config_dict
+    
+    def create(self, data, dtype='float'):
+        backend = keras.backend.backend()
+
+        if backend == "tensorflow":
+            from tensorflow import convert_to_tensor
+            tensor = convert_to_tensor(data, dtype=dtype)
+        elif backend == "numpy":
+            import numpy as np
+            tensor = np.array(data, dtype=dtype)
+        elif backend == "torch":
+            from torch import tensor
+            tensor = tensor(data, dtype=dtype)
+        elif backend == "jax":
+            from jax.numpy import asarray
+            tensor = asarray(data, dtype=dtype)
+
+        return tensor
+    
+    def erf(self):
+        backend = keras.backend.backend()
+
+        if backend == "tensorflow":
+            from tensorflow import math
+            tensor = math.erf(self._tensor)
+        elif backend == "numpy":
+            from scipy.special import erf
+            tensor = erf(self._tensor)
+        elif backend == "torch":
+            from torch import erf
+            tensor = erf(self._tensor)
+        elif backend == "jax":
+            from jax.lax import erf
+            tensor = erf(self._tensor)
+
+        return tensor
