@@ -31,7 +31,7 @@ def _bilateral_blur(
 
     if isinstance(sigma_color, IntegratedTensor):
         KORNIA_CHECK_SHAPE(sigma_color, ['B'])
-        sigma_color = sigma_color.to(device=input.device, dtype=input.dtype).view(-1, 1, 1, 1, 1)
+        sigma_color = sigma_color(dtype=input.dtype).view(-1, 1, 1, 1, 1)
 
     ky, kx = _unpack_2d_ks(kernel_size)
     pad_y, pad_x = _compute_zero_padding(kernel_size)
@@ -55,7 +55,7 @@ def _bilateral_blur(
         raise ValueError("color_distance_type only acceps l1 or l2")
     color_kernel = (-0.5 / sigma_color**2 * color_distance_sq).exp()  # (B, 1, H, W, Ky x Kx)
 
-    space_kernel = get_gaussian_kernel2d(kernel_size, sigma_space, device=input.device, dtype=input.dtype)
+    space_kernel = get_gaussian_kernel2d(kernel_size, sigma_space, dtype=input.dtype)
     space_kernel = space_kernel.view(-1, 1, 1, 1, kx * ky)
 
     kernel = space_kernel * color_kernel
