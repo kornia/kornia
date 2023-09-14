@@ -48,11 +48,11 @@ def box_blur(
 
     if separable:
         ky, kx = _unpack_2d_ks(kernel_size)
-        kernel_y = get_box_kernel1d(ky, device=input.device, dtype=input.dtype)
-        kernel_x = get_box_kernel1d(kx, device=input.device, dtype=input.dtype)
+        kernel_y = get_box_kernel1d(ky, dtype=input.dtype)
+        kernel_x = get_box_kernel1d(kx, dtype=input.dtype)
         out = filter2d_separable(input, kernel_x, kernel_y, border_type)
     else:
-        kernel = get_box_kernel2d(kernel_size, device=input.device, dtype=input.dtype)
+        kernel = get_box_kernel2d(kernel_size, dtype=input.dtype)
         out = filter2d(input, kernel, border_type)
 
     return out
