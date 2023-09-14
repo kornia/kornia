@@ -52,10 +52,10 @@ def gaussian_blur2d(
     KORNIA_CHECK_IS_TENSOR(input)
 
     if isinstance(sigma, tuple):
-        sigma = tensor([sigma], device=input.device, dtype=input.dtype)
+        sigma = IntegratedTensor([sigma], dtype=input.dtype)
     else:
         KORNIA_CHECK_IS_TENSOR(sigma)
-        sigma = sigma.to(device=input.device, dtype=input.dtype)
+        sigma = sigma(dtype=input.dtype)
 
     if separable:
         ky, kx = _unpack_2d_ks(kernel_size)
