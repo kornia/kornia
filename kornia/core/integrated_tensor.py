@@ -277,6 +277,26 @@ class IntegratedTensor:
             tensor = erf(self._tensor)
 
         return tensor
+    
+    def linalg_solve(self, other):
+        backend = keras.backend.backend()
+        
+        if backend == "tensorflow":
+            import tensorflow as tf
+            tensor = tf.linalg.solve(self._tensor, other)
+
+        elif backend == "numpy":
+            import numpy as np
+            tensor = np.linalg.solve(self._tensor, other)
+        
+        elif backend == "torch":
+            import torch
+            tensor = torch.linalg.solve(self._tensor, other)
+
+        elif backend == "jax":
+            import jax.numpy as jnp
+            tensor = jnp.linalg.solve(self._tensor, other)
+        return tensor    
 
     def __len__(self):
         return len(self._tensor)

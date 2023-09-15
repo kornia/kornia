@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import torch.nn.functional as F
-
 from kornia.core import Module, IntegratedTensor
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
@@ -67,17 +65,17 @@ def median_blur(input: IntegratedTensor, kernel_size: tuple[int, int] | int) -> 
     padding = _compute_zero_padding(kernel_size)
 
     # prepare kernel
-    kernel: IntegratedTensor = get_binary_kernel2d(kernel_size, device=input.device, dtype=input.dtype)
+    kernel: IntegratedTensor = get_binary_kernel2d(kernel_size, dtype=input.dtype)
     b, c, h, w = input.shape
 
     # map the local window to single vector
     features : IntegratedTensor = keras.ops.conv(
-        inputs=input.reshape(b * c, 1, h, w),
+        inputs=keras.ops.reshape(input,(b * c, 1, h, w)),
         kernel=kernel,
         strides=1,
         padding="same"
     )
-    features = features.reshape(b, c, -1, h, w) # BxCx(K_h * K_w)xHxW
+    features = keras.ops.reshape(features,(b, c, -1, h, w)) # BxCx(K_h * K_w)xHxW
 
     # compute the median along the feature axis
     # return features.median(dim=2)[0]
