@@ -1,9 +1,14 @@
 import keras_core as keras
+from kornia.core.integrated_tensor import IntegratedTensor
+
+Dtype = keras.backend.floatx()
 
 # classes
 
 Module = keras.layers.Layer
 ModuleList = keras.Sequential
+Tensor = IntegratedTensor
+tensor = IntegratedTensor
 
 # functions
 # NOTE: ideally we expose what we find in numpy

@@ -140,9 +140,13 @@ class IntegratedTensor:
         return self._backend
 
     @property
-    def clone(self):
-        """Returns a copy of the image."""
-        return IntegratedTensor(self._tensor, self._image_data_format, self._color_space)
+    def clone(self, dtype=keras.config.floatx()):
+        """Returns a copy of the image with the chosen data type."""
+        tensor = self.create(
+            self.tensor,
+            dtype=dtype
+        )
+        return IntegratedTensor(tensor, self._image_data_format, self._color_space)
 
     @property
     def shape(self):
@@ -245,8 +249,11 @@ class IntegratedTensor:
             import numpy as np
             tensor = np.array(data, dtype=dtype)
         elif backend == "torch":
-            from torch import tensor
-            tensor = tensor(data, dtype=dtype)
+            from torch import tensor, Tensor
+            if isinstance(data, Tensor):
+                tensor = data.clone().detach()
+            else:
+                tensor = tensor(data, dtype=dtype)
         elif backend == "jax":
             from jax.numpy import asarray
             tensor = asarray(data, dtype=dtype)
@@ -270,3 +277,30 @@ class IntegratedTensor:
             tensor = erf(self._tensor)
 
         return tensor
+
+    def __len__(self):
+        return len(self._tensor)
+    
+    def __ge__(self, other):
+        return self._tensor >= other.tensor
+    
+    def __gt__(self, other):
+        return self._tensor > other.tensor
+    
+    def __ne__(self, other):
+        return self._tensor != other.tensor
+
+    def __eq__(self, other):
+        return self._tensor == other.tensor
+    
+    def __le__(self, other):
+        return self._tensor <= other.tensor
+    
+    def __lt__(self, other):
+        return self._tensor < other.tensor
+    
+    def __sqrt__(self):
+        return keras.ops.sqrt(self._tensor)
+    
+    def T(self):
+        return self._tensor.T
