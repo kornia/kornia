@@ -41,7 +41,7 @@ runs:
     - if: ${{ inputs.backend == 'jax' }}
       name: Install jax
       shell: bash
-      run: pip install jax==${{ inputs.backend-version }}[cpu]
+      run: pip install jax[cpu]==${{ inputs.backend-version }}
 
     - if: ${{ inputs.backend == 'tensorflow' }}
       name: Install TensorFlow
