@@ -22,13 +22,19 @@ class ResizePreProcessor(Module):
         """
         super().__init__()
         self.size = size
-        self.resizer = Resize(self.size, interpolation=interpolation_mode)
+        self.interpolation_mode = interpolation_mode
 
     def forward(self, imgs: list[Tensor]) -> tuple[Tensor, dict[str, Any]]:
         # TODO: support other input formats e.g. file path, numpy
-        # NOTE: antialias=False is used in F.interpolate()
-        original_sizes = [(img.shape[1], img.shape[2]) for img in imgs]
-        resized_imgs = [self.resizer(img.unsqueeze(0)) for img in imgs]
+        resized_imgs, original_sizes = [], []
+        for i in range(len(imgs)):
+            img = imgs[i]
+            original_sizes.append((img.shape[1], img.shape[2]))
+            resized_imgs.append(
+                torch.nn.functional.interpolate(
+                    img.unsqueeze(0), size=self.size, mode=self.interpolation_mode
+                )
+            )
         return concatenate(resized_imgs), {"original_size": original_sizes}
 
 

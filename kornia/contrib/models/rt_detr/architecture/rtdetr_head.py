@@ -183,7 +183,7 @@ class RTDETRHead(Module):
         enc_out_bboxes = anchors + self.enc_bbox_head(out_memory)
 
         # only consider class with highest score at each spatial location
-        _, topk_indices = enc_out_logits.max(-1)[0].topk(self.num_queries, 1)  # (N, num_queries)
+        _, topk_indices = torch.topk(enc_out_logits.max(-1).values, self.num_queries, dim=1)  # (N, num_queries)
         batch_indices = torch.arange(N, dtype=topk_indices.dtype, device=topk_indices.device).unsqueeze(1)
         ref_points = enc_out_bboxes[batch_indices, topk_indices]
         tgt = out_memory[batch_indices, topk_indices]
@@ -219,18 +219,23 @@ class RTDETRHead(Module):
             logit of anchors and mask
         """
         # TODO: might make this (or some parts of it) into a separate reusable function
-        anchors_list = []
-        for i, (H, W) in enumerate(spatial_shapes):
-            grid_xy = create_meshgrid(H, W, normalized_coordinates=False, device=device, dtype=dtype)
-            grid_xy = (grid_xy + 0.5) / torch.tensor([H, W], device=device, dtype=dtype)
-            wh = torch.ones_like(grid_xy) * grid_size * 2**i
-            anchors_list.append(concatenate([grid_xy, wh], -1).reshape(-1, H * W, 4))
+        anchors_list: list[Tensor] = []
+
+        for i, (h, w) in enumerate(spatial_shapes):
+            # TODO: fix later when create_meshgrid() for toch compile
+            grid_x, grid_y = torch.meshgrid(
+                torch.arange(w, device=device, dtype=dtype),
+                torch.arange(h, device=device, dtype=dtype), indexing="ij")
+            grid_xy = torch.stack([grid_x, grid_y], -1)  # HxWx2
+            hw = torch.tensor([w, h], device=device, dtype=dtype)
+            grid_xy = (grid_xy + 0.5) / hw  # normalize to [0, 1]
+            wh = torch.ones_like(grid_xy) * grid_size * (2.0 ** i)
+            anchors_list.append(concatenate([grid_xy, wh], -1).reshape(-1, h * w, 4))
 
         anchors = concatenate(anchors_list, 1)
-        valid_mask = ((anchors > eps) & (anchors < 1 - eps)).all(-1, keepdim=True)
+        valid_mask = ((anchors > eps) * (anchors < 1 - eps)).all(-1, keepdim=True)
         anchors = torch.log(anchors / (1 - anchors))  # anchors.logit() fails ONNX export
 
         # anchors = torch.where(valid_mask, anchors, float("inf")) fails in PyTorch 1.9.1
-        inf = torch.tensor(float('inf'), device=device, dtype=dtype)
-        anchors = torch.where(valid_mask, anchors, inf)
+        anchors = torch.where(valid_mask, anchors, torch.inf)
         return anchors, valid_mask
