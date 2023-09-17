@@ -51,7 +51,7 @@ runs:
     - name: Install Keras-core
       shell: bash
       # NOTE: In the future, can be possible to only install the specific backend frameworks desired.
-      run: pip install keras-core torch jax tensorflow numpy
+      run: pip install keras-core torch jax[cpu] tensorflow numpy
 
     - name: Install Kornia dev
       shell: bash
