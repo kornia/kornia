@@ -22,7 +22,7 @@ jobs:
     with:
       os: ${{ matrix.os }}
       python-version: '["3.8", "3.10"]'
-      backend: 'torch'
+      backend: '["torch"]'
       backend-version: '["1.9.1", "2.0.1"]'
       backend-dtype: 'float32'
 
@@ -35,7 +35,7 @@ jobs:
     with:
       os: ${{ matrix.os }}
       python-version: '["3.8", "3.10"]'
-      backend: 'jax'
+      backend: '["jax"]'
       backend-version: '["0.4.14"]'
       backend-dtype: 'float32'
 
@@ -48,7 +48,7 @@ jobs:
     with:
       os: ${{ matrix.os }}
       python-version: '["3.8", "3.10"]'
-      backend: 'tensorflow'
+      backend: '["tensorflow"]'
       backend-version: '["2.12.0", "2.13.0"]'
       backend-dtype: 'float32'
 
@@ -61,7 +61,7 @@ jobs:
     with:
       os: ${{ matrix.os }}
       python-version: '["3.8", "3.10"]'
-      backend: 'numpy'
+      backend: '["numpy"]'
       backend-version: '["1.25.0", "1.26.0"]'
       backend-dtype: 'float32'
 

@@ -12,7 +12,7 @@ on:
       backend:
         required: false
         type: string
-        default: 'torch'
+        default: '["torch"]'
       backend-version:
         required: false
         type: string
@@ -43,7 +43,7 @@ jobs:
       matrix:
         python-version: ${{ fromJSON(inputs.python-version) }}
         backend-version: ${{ fromJSON(inputs.backend-version) }}
-        backend: ${{ inputs.backend }}
+        backend: ${{ fromJSON(inputs.backend) }}
         exclude:
           - backend: 'torch'
             backend-version: '1.9.1'
