@@ -61,14 +61,14 @@ jobs:
   #     pytorch-version: '["1.9.1", "2.0.1"]'
   #     pytorch-dtype: 'float64'
 
-  # test-typing:
-  #   uses: ./.github/workflows/test_typing.yml
+  test-typing:
+    uses: ./.github/workflows/test_typing.yml
 
   # test-tutorials:
   #   uses: ./.github/workflows/test_tutorials.yml
 
   collector:
-    needs: [tests-torch, tests-jax, tests-tensorflow] #tests-cpu-fp64, test-tutorials, test-typing]
+    needs: [tests-torch, tests-jax, tests-tensorflow, tests-typing] #tests-cpu-fp64, test-tutorials, test-typing]
     if: always()
     runs-on: ubuntu-latest
     steps:
