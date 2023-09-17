@@ -48,14 +48,10 @@ runs:
       shell: bash
       run: pip install tensorflow==${{ inputs.backend-version }}
 
-    - if: ${{ inputs.backend == 'numpy' }}
-      name: Install Numpy
-      shell: bash
-      run: pip install numpy==${{ inputs.backend-version }}
-
     - name: Install Keras-core
       shell: bash
-      run: pip install keras-core
+      # NOTE: In the future, can be possible to only install the specific backend frameworks desired.
+      run: pip install keras-core torch jax tensorflow numpy
 
     - name: Install Kornia dev
       shell: bash
