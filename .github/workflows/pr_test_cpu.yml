@@ -68,7 +68,7 @@ jobs:
   #   uses: ./.github/workflows/test_tutorials.yml
 
   collector:
-    needs: [tests-torch, tests-jax, tests-tensorflow, tests-typing] #tests-cpu-fp64, test-tutorials, test-typing]
+    needs: [tests-torch, tests-jax, tests-tensorflow, test-typing] #tests-cpu-fp64, test-tutorials, test-typing]
     if: always()
     runs-on: ubuntu-latest
     steps:
