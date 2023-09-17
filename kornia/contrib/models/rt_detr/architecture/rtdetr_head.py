@@ -10,7 +10,6 @@ from torch import nn
 
 from kornia.contrib.models.common import MLP, ConvNormAct
 from kornia.core import Module, Tensor, concatenate
-from kornia.utils import create_meshgrid
 
 
 class MultiScaleDeformableAttention(Module):
@@ -224,12 +223,12 @@ class RTDETRHead(Module):
         for i, (h, w) in enumerate(spatial_shapes):
             # TODO: fix later when create_meshgrid() for toch compile
             grid_x, grid_y = torch.meshgrid(
-                torch.arange(w, device=device, dtype=dtype),
-                torch.arange(h, device=device, dtype=dtype), indexing="ij")
+                torch.arange(w, device=device, dtype=dtype), torch.arange(h, device=device, dtype=dtype), indexing="ij"
+            )
             grid_xy = torch.stack([grid_x, grid_y], -1)  # HxWx2
             hw = torch.tensor([w, h], device=device, dtype=dtype)
             grid_xy = (grid_xy + 0.5) / hw  # normalize to [0, 1]
-            wh = torch.ones_like(grid_xy) * grid_size * (2.0 ** i)
+            wh = torch.ones_like(grid_xy) * grid_size * (2.0**i)
             anchors_list.append(concatenate([grid_xy, wh], -1).reshape(-1, h * w, 4))
 
         anchors = concatenate(anchors_list, 1)

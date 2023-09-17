@@ -5,7 +5,6 @@ from typing import Any
 import torch
 
 from kornia.core import Module, Tensor, concatenate
-from kornia.geometry.transform import Resize
 
 
 class ResizePreProcessor(Module):
@@ -31,9 +30,7 @@ class ResizePreProcessor(Module):
             img = imgs[i]
             original_sizes.append((img.shape[1], img.shape[2]))
             resized_imgs.append(
-                torch.nn.functional.interpolate(
-                    img.unsqueeze(0), size=self.size, mode=self.interpolation_mode
-                )
+                torch.nn.functional.interpolate(img.unsqueeze(0), size=self.size, mode=self.interpolation_mode)
             )
         return concatenate(resized_imgs), {"original_size": original_sizes}
 
