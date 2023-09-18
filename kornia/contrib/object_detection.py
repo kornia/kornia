@@ -5,6 +5,7 @@ from typing import Any
 import torch
 
 from kornia.core import Module, Tensor, concatenate
+from kornia.image.base import ImageSize
 
 
 class ResizePreProcessor(Module):
@@ -28,8 +29,10 @@ class ResizePreProcessor(Module):
         resized_imgs, original_sizes = [], []
         for i in range(len(imgs)):
             img = imgs[i]
-            original_sizes.append((img.shape[1], img.shape[2]))
+            # original_sizes.append((img.shape[1], img.shape[2]))
+            original_sizes.append(ImageSize(height=img.shape[1], width=img.shape[2]))
             resized_imgs.append(
+                # TODO: fix kornia resize to support onnx
                 torch.nn.functional.interpolate(img.unsqueeze(0), size=self.size, mode=self.interpolation_mode)
             )
         return concatenate(resized_imgs), {"original_size": original_sizes}

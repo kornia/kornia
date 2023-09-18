@@ -221,20 +221,24 @@ class RTDETRHead(Module):
         anchors_list: list[Tensor] = []
 
         for i, (h, w) in enumerate(spatial_shapes):
-            # TODO: fix later when create_meshgrid() for toch compile
+            # TODO: fix later kornia.utils.create_meshgrid()
             grid_x, grid_y = torch.meshgrid(
                 torch.arange(w, device=device, dtype=dtype), torch.arange(h, device=device, dtype=dtype), indexing="ij"
             )
             grid_xy = torch.stack([grid_x, grid_y], -1)  # HxWx2
-            hw = torch.tensor([w, h], device=device, dtype=dtype)
-            grid_xy = (grid_xy + 0.5) / hw  # normalize to [0, 1]
-            wh = torch.ones_like(grid_xy) * grid_size * (2.0**i)
-            anchors_list.append(concatenate([grid_xy, wh], -1).reshape(-1, h * w, 4))
+
+            # this satisfies onnx export
+            wh = torch.empty(2, device=device, dtype=dtype)
+            wh[0] = w
+            wh[1] = h
+
+            grid_xy = (grid_xy + 0.5) / wh  # normalize to [0, 1]
+            grid_wh = torch.ones_like(grid_xy) * grid_size * (2.0**i)
+            anchors_list.append(concatenate([grid_xy, grid_wh], -1).reshape(-1, h * w, 4))
 
         anchors = concatenate(anchors_list, 1)
         valid_mask = ((anchors > eps) * (anchors < 1 - eps)).all(-1, keepdim=True)
         anchors = torch.log(anchors / (1 - anchors))  # anchors.logit() fails ONNX export
 
-        # anchors = torch.where(valid_mask, anchors, float("inf")) fails in PyTorch 1.9.1
         anchors = torch.where(valid_mask, anchors, torch.inf)
         return anchors, valid_mask
