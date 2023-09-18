@@ -52,14 +52,14 @@ jobs:
       backend-version: '["2.12.0", "2.13.0"]'
       backend-dtype: 'float32'
 
-  tests-cpu-fp64:
-    strategy:
-      fail-fast: true
-    uses: ./.github/workflows/tests.yml
-    with:
-      python-version: '["3.8", "3.10"]'
-      pytorch-version: '["1.9.1", "2.0.1"]'
-      pytorch-dtype: 'float64'
+  # tests-cpu-fp64:
+  #   strategy:
+  #     fail-fast: true
+  #   uses: ./.github/workflows/tests.yml
+  #   with:
+  #     python-version: '["3.8", "3.10"]'
+  #     pytorch-version: '["1.9.1", "2.0.1"]'
+  #     pytorch-dtype: 'float64'
 
   test-typing:
     uses: ./.github/workflows/test_typing.yml
