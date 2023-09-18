@@ -7,8 +7,8 @@ from kornia.utils._compat import torch_meshgrid
 
 
 def create_meshgrid(
-    height: float,
-    width: float,
+    height: int,
+    width: int,
     normalized_coordinates: bool = True,
     device: Optional[torch.device] = torch.device('cpu'),
     dtype: torch.dtype = torch.float32,
@@ -46,8 +46,8 @@ def create_meshgrid(
                  [[0., 1.],
                   [1., 1.]]]])
     """
-    xs: Tensor = torch.linspace(0.0, float(width - 1), int(width), device=device, dtype=dtype)
-    ys: Tensor = torch.linspace(0.0, float(height - 1), int(height), device=device, dtype=dtype)
+    xs: Tensor = torch.linspace(0.0, float(width - 1), width, device=device, dtype=dtype)
+    ys: Tensor = torch.linspace(0.0, float(height - 1), height, device=device, dtype=dtype)
     # Fix TracerWarning
     # Note: normalize_pixel_coordinates still gots TracerWarning since new width and height
     #       tensors will be generated.
