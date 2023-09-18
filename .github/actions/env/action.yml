@@ -9,8 +9,12 @@ on:
         default: '3.10'
         type: string
 
-      pytorch-version:
-        description: "The pytorch version desired."
+      backend:
+        required: true
+        default: 'torch'
+        type: string
+
+      backend-version:
         required: true
         default: '2.0.1'
         type: string
@@ -23,22 +27,38 @@ runs:
       with:
         python-version: ${{ inputs.python-version }}
 
-    - if: ${{ contains(fromJson('["nightly"]'), inputs.pytorch-version ) }}
-      name: Install PyTorch nightly
-      shell: bash
-      run: pip install numpy --pre torch[dynamo] --force-reinstall --extra-index-url https://download.pytorch.org/whl/nightly/cpu/
+    # - if: ${{ contains(fromJson('["nightly"]'), inputs.pytorch-version ) }}
+    #   name: Install PyTorch nightly
+    #   shell: bash
+    #   run: pip install numpy --pre torch[dynamo] --force-reinstall --extra-index-url https://download.pytorch.org/whl/nightly/cpu/
 
-    - if: ${{ contains(fromJson('["nightly"]'), inputs.pytorch-version ) == false}}
+    # - if: ${{ contains(fromJson('["nightly"]'), inputs.pytorch-version ) == false}}
+    - if: ${{ inputs.backend == 'torch' }}
       name: Install pytorch
       shell: bash
-      run: pip install torch==${{ inputs.pytorch-version }} --index-url https://download.pytorch.org/whl/cpu
+      run: pip install torch==${{ inputs.backend-version }} --index-url https://download.pytorch.org/whl/cpu
+
+    - if: ${{ inputs.backend == 'jax' }}
+      name: Install jax
+      shell: bash
+      run: pip install jax[cpu]==${{ inputs.backend-version }}
+
+    - if: ${{ inputs.backend == 'tensorflow' }}
+      name: Install TensorFlow
+      shell: bash
+      run: pip install tensorflow==${{ inputs.backend-version }}
+
+    - name: Install Keras-core
+      shell: bash
+      # NOTE: In the future, can be possible to only install the specific backend frameworks desired.
+      run: pip install keras-core torch jax[cpu] tensorflow numpy
 
     - name: Install Kornia dev
       shell: bash
       run: pip install .[dev,x]
 
-    - name: Check dependencies and kornia version
-      shell: bash
-      run: |
-        python -c "import torch;print('Pytorch version: ', torch.__version__)"
-        python -c "import kornia;print('Kornia version: ', kornia.__version__)"
+    # - name: Check dependencies and kornia version
+    #   shell: bash
+    #   run: |
+    #     python -c "import torch;print('Pytorch version: ', torch.__version__)"
+    #     python -c "import kornia;print('Kornia version: ', kornia.__version__)"

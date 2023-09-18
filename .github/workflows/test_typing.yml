@@ -5,7 +5,11 @@ on:
         required: false
         type: string
         default: '["3.10"]'
-      pytorch-version:
+      backend:
+        required: false
+        type: string
+        default: '["torch"]'
+      backend-version:
         required: false
         type: string
         default: '["2.0.1"]'
@@ -20,38 +24,33 @@ on:
 
 jobs:
   tests-typing:
-    name: python-${{ matrix.python-version }}, torch-${{ matrix.pytorch-version }}
+    name: python-${{ matrix.python-version }}, ${{ matrix.backend }}-${{ matrix.backend-version }}
     runs-on: ${{ inputs.os }}
     strategy:
       fail-fast: ${{ inputs.fail-fast }}
       matrix:
         python-version: ${{ fromJSON(inputs.python-version) }}
-        pytorch-version: ${{ fromJSON(inputs.pytorch-version) }}
+        backend: ${{ fromJSON(inputs.backend) }}
+        backend-version: ${{ fromJSON(inputs.backend-version) }}
         exclude:
-          - pytorch-version: '1.9.1'
+          - backend: 'torch'
+            backend-version: '1.9.1'
             python-version: '3.10'
-          - pytorch-version: '1.10.2'
+          - backend: 'torch'
+            backend-version: '1.10.2'
             python-version: '3.10'
 
     steps:
     - name: Checkout kornia
       uses: actions/checkout@v3
 
-    - name: Setting environment on ${{ inputs.os }} with python ${{ matrix.python-version }} and pytorch ${{ matrix.pytorch-version }}
+    - name: Setting environment on ${{ inputs.os }} with python ${{ matrix.python-version }} and ${{ matrix.backend }} ${{ matrix.backend-version }}
       uses: ./.github/actions/env
       with:
         python-version: ${{ matrix.python-version }}
-        pytorch-version: ${{ matrix.pytorch-version }}
+        backend: ${{ matrix.backend }}
+        backend-version: ${{ matrix.backend-version }}
 
     - name: Run typing tests
       shell: bash -l {0}
-      run: mypy --cobertura-xml-report ./
-
-    - if: always()
-      name: Upload typing coverage
-      uses: codecov/codecov-action@v3
-      with:
-        file: cobertura.xml
-        token: ${{ secrets.CODECOV_TOKEN }} # to not depend on build via GH API
-        flags: typing,${{ inputs.os }}_py-${{ matrix.python-version }}_pt-${{ matrix.pytorch-version }}_${{ inputs.pytorch-dtype }}
-        name: cpu-coverage-types
+      run: mypy kornia/

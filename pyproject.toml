@@ -142,7 +142,7 @@ requires = [
   ]
 
   [tool.ruff.isort]
-    known-first-party = ["examples", "kornia", "test"]
+    known-first-party = ["kornia", "test", "tests", "testing"]
 
   [tool.ruff.mccabe]
     max-complexity = 20
@@ -160,15 +160,10 @@ requires = [
     "docs/generate_examples.py" = ["C901"] # Allow too complex function
     "kornia/__init__.py" = ["I001"] # Allow unsorted imports
     "test/*" = ["S101", "S311", "BLE", "RUF012"] # allow assert, random, ignore BLE, mutable class attr
+    "tests/*" = ["S101", "S311", "BLE", "RUF012"] # allow assert, random, ignore BLE, mutable class attr
 
 [tool.pytest.ini_options]
   addopts = "--color=yes"
-  testpaths = ["test"]
-  markers =[
-    "grad: mark a test as gradcheck test",
-    "jit: mark a test as torchscript test",
-    "nn: mark a test as module test"
-]
 
 [tool.coverage.report]
 exclude_lines = [
@@ -182,16 +177,36 @@ exclude_lines = [
 
 [tool.mypy]
   check_untyped_defs = true
-  disallow_any_generics = true
-  disallow_incomplete_defs = true
-  disallow_untyped_defs = true
-  files = ["kornia/"]
-  ignore_missing_imports = true
   no_implicit_optional = true
   pretty = true
   show_error_codes = true
   warn_redundant_casts = true
   warn_unused_ignores = true
+  exclude = [
+    'venv', '.venv',
+    'test', # TODO: remove the old tests
+    'docs', # TODO: fix docs typos
+]
+
+[[tool.mypy.overrides]]
+  module = "kornia.*"
+  disallow_any_generics = true
+  disallow_incomplete_defs = true
+  disallow_untyped_defs = true
+  # warn_return_any = true
+
+[[tool.mypy.overrides]]
+  module = ["tests.*", "testing.*"]
+  disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+  module = [
+    "kornia_rs.*",
+    "flash_attn.*",
+    "accelerate.*",
+    "kornia.feature.loftr.utils.superglue"
+]
+  ignore_missing_imports = true
 
 [tool.distutils.bdist_wheel]
   universal = true
