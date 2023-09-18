@@ -4,7 +4,7 @@ on:
   push:
     branches: [test-me-*, keras-core*]
   pull_request:
-    branches: [master]
+    branches: [master, keras-core*]
     types: [opened, reopened, synchronize, ready_for_review, labeled]
   workflow_dispatch:
 
