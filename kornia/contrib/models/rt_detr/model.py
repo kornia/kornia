@@ -143,11 +143,11 @@ class RTDETR(ModelBase[RTDETRConfig]):
             backbone,
             HybridEncoder(backbone.out_channels, neck_hidden_dim, neck_dim_feedforward, neck_expansion),
             RTDETRHead(
-                config.num_classes,
-                config.head_hidden_dim,
-                config.head_num_queries,
-                [neck_hidden_dim] * 3,
-                head_num_decoder_layers,
+                num_classes=config.num_classes,
+                hidden_dim=config.head_hidden_dim,
+                num_queries=config.head_num_queries,
+                in_channels=[neck_hidden_dim] * 3,
+                num_decoder_layers=head_num_decoder_layers,
             ),
         )
 
@@ -169,6 +169,6 @@ class RTDETR(ModelBase[RTDETRConfig]):
             raise RuntimeError("Only evaluation mode is supported. Please call model.eval().")
 
         fmaps = self.backbone(images)
-        fmaps = self.neck(fmaps)
-        logits, boxes = self.head(fmaps)
+        fmaps_buf = self.neck(fmaps)
+        logits, boxes = self.head(fmaps_buf)
         return {"logits": logits, "boxes": boxes}
