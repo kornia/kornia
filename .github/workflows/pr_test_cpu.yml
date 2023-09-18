@@ -13,53 +13,53 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-#   tests-torch:
-#     strategy:
-#       fail-fast: false
-#       matrix:
-#         os: ['Ubuntu-latest', 'Windows-latest', 'MacOS-latest']
-#     uses: ./.github/workflows/tests.yml
-#     with:
-#       os: ${{ matrix.os }}
-#       python-version: '["3.8", "3.10"]'
-#       backend: '["torch"]'
-#       backend-version: '["1.9.1", "2.0.1"]'
-#       backend-dtype: 'float32'
-#
-#   tests-jax:
-#     strategy:
-#       fail-fast: false
-#       matrix:
-#         os: ['Ubuntu-latest', 'Windows-latest', 'MacOS-latest']
-#     uses: ./.github/workflows/tests.yml
-#     with:
-#       os: ${{ matrix.os }}
-#       python-version: '["3.8", "3.10"]'
-#       backend: '["jax"]'
-#       backend-version: '["0.4.14"]'
-#       backend-dtype: 'float32'
-#
-#   tests-tensorflow:
-#     strategy:
-#       fail-fast: false
-#       matrix:
-#         os: ['Ubuntu-latest', 'Windows-latest', 'MacOS-latest']
-#     uses: ./.github/workflows/tests.yml
-#     with:
-#       os: ${{ matrix.os }}
-#       python-version: '["3.8", "3.10"]'
-#       backend: '["tensorflow"]'
-#       backend-version: '["2.12.0", "2.13.0"]'
-#       backend-dtype: 'float32'
+  tests-torch:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ['Ubuntu-latest', 'Windows-latest', 'MacOS-latest']
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: ${{ matrix.os }}
+      python-version: '["3.8", "3.10"]'
+      backend: '["torch"]'
+      backend-version: '["1.9.1", "2.0.1"]'
+      backend-dtype: 'float32'
 
-  # tests-cpu-fp64:
-  #   strategy:
-  #     fail-fast: true
-  #   uses: ./.github/workflows/tests.yml
-  #   with:
-  #     python-version: '["3.8", "3.10"]'
-  #     pytorch-version: '["1.9.1", "2.0.1"]'
-  #     pytorch-dtype: 'float64'
+  tests-jax:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ['Ubuntu-latest', 'Windows-latest', 'MacOS-latest']
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: ${{ matrix.os }}
+      python-version: '["3.8", "3.10"]'
+      backend: '["jax"]'
+      backend-version: '["0.4.14"]'
+      backend-dtype: 'float32'
+
+  tests-tensorflow:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ['Ubuntu-latest', 'Windows-latest', 'MacOS-latest']
+    uses: ./.github/workflows/tests.yml
+    with:
+      os: ${{ matrix.os }}
+      python-version: '["3.8", "3.10"]'
+      backend: '["tensorflow"]'
+      backend-version: '["2.12.0", "2.13.0"]'
+      backend-dtype: 'float32'
+
+  tests-cpu-fp64:
+    strategy:
+      fail-fast: true
+    uses: ./.github/workflows/tests.yml
+    with:
+      python-version: '["3.8", "3.10"]'
+      pytorch-version: '["1.9.1", "2.0.1"]'
+      pytorch-dtype: 'float64'
 
   test-typing:
     uses: ./.github/workflows/test_typing.yml
@@ -68,7 +68,7 @@ jobs:
   #   uses: ./.github/workflows/test_tutorials.yml
 
   collector:
-    needs: [test-typing]# [tests-torch, tests-jax, tests-tensorflow, test-typing] #tests-cpu-fp64, test-tutorials, test-typing]
+    needs: [tests-torch, tests-jax, tests-tensorflow, test-typing] #tests-cpu-fp64, test-tutorials, test-typing]
     if: always()
     runs-on: ubuntu-latest
     steps:
