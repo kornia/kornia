@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import PropertyMock, patch
 
 import pytest
@@ -759,3 +760,16 @@ class TestObjectDetector:
             assert dets.shape[1] == 6
             assert torch.all(dets[:, 0].int() == dets[:, 0])
             assert torch.all(dets[:, 1] >= 0.3)
+
+    def test_onnx(self, tmp_path: Path):
+        config = RTDETRConfig("resnet18d", 80)
+        model = RTDETR.from_config(config).eval()
+        data = torch.rand(1, 3, 640, 640)
+
+        model_path = tmp_path / "rtdetr.onnx"
+
+        torch.onnx.export(
+            model, data, model_path, input_names=["images"], output_names=["detections"], opset_version=16
+        )
+
+        assert model_path.is_file()
