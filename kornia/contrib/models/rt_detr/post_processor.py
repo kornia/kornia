@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 # TODO:
 import torch
 
@@ -14,28 +12,22 @@ class DETRPostProcessor(Module):
         super().__init__()
         self.confidence_threshold = confidence_threshold
 
-    def forward(self, data: dict[str, Tensor], meta: dict[str, Any]) -> list[Tensor]:
+    def forward(self, logits: Tensor, boxes: Tensor, original_sizes: list[ImageSize]) -> list[Tensor]:
         """Post-process outputs from DETR.
 
         Args:
-            data: dictionary with keys ``logits`` and ``boxes``. ``logits`` has shape :math:`(N, Q, K)` and
-                ``boxes`` has shape :math:`(N, Q, 4)`, where :math:`Q` is the number of queries, :math:`K`
-                is the number of classes.
-            meta: dictionary containing meta information. It must have key ``original_size``, which is the
-                original image size of input images. Each tuple represent (img_height, img_width).
+            logits: tensor with shape :math:`(N, Q, K)`, where :math:`N` is the batch size, :math:`Q` is the number of
+                queries, :math:`K` is the number of classes.
+            boxes: tensor with shape :math:`(N, Q, 4)`, where :math:`N` is the batch size, :math:`Q` is the number of
+                queries.
+            original_sizes: list of tuples, each tuple represent (img_height, img_width).
 
         Returns:
             Processed detections. For each image, the detections have shape (D, 6), where D is the number of detections
             in that image, 6 represent (class_id, confidence_score, x, y, w, h).
         """
         # NOTE: consider using kornia BoundingBox
-        # NOTE: consider passing the parameters as separate arguments instead of a dict
-        # to make it more torch.compile()-friendly
         # NOTE: consider having a separate function to convert the detections to a list of bounding boxes
-        logits, boxes = data["logits"], data["boxes"]
-        original_sizes: list[ImageSize] = meta["original_size"]
-
-        # NOTE: boxes are not clipped to image dimensions
 
         # https://github.com/PaddlePaddle/PaddleDetection/blob/5d1f888362241790000950e2b63115dc8d1c6019/ppdet/modeling/post_process.py#L446
         # box format is cxcywh
@@ -55,9 +47,9 @@ class DETRPostProcessor(Module):
 
         # the original code is slightly different
         # it allows 1 bounding box to have multiple classes (multi-label)
-        # TODO: explore using gather
         scores, labels = scores.max(-1)
-        detections = []
+
+        detections: list[Tensor] = []
         for i in range(scores.shape[0]):
             mask = scores[i] >= self.confidence_threshold
             labels_i = labels[i, mask].unsqueeze(-1)
@@ -65,5 +57,4 @@ class DETRPostProcessor(Module):
             boxes_i = boxes_xy[i, mask]
             detections.append(concatenate([labels_i, scores_i, boxes_i], -1))
 
-        # NOTE: consider returning a DetectionResult object instead of a list of tensors
         return detections

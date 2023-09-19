@@ -243,7 +243,6 @@ class TransformerDecoder:
             #        dec_out_bboxes.append(inter_ref_bbox)
             #    else:
             #        dec_out_bboxes.append(torch.sigmoid(bbox_head[i](output) + _inverse_sigmoid(ref_points)))
-
             # elif i == self.eval_idx:
             #    dec_out_logits.append(score_head[i](output))
             #    dec_out_bboxes.append(inter_ref_bbox)
@@ -376,7 +375,7 @@ class RTDETRHead(Module):
         feat_flatten: Tensor = torch.concat(feat_flatten_list, 1)
 
         level_start_index.pop()
-        return (feat_flatten, spatial_shapes, level_start_index)
+        return feat_flatten, spatial_shapes, level_start_index
 
     def _get_decoder_input(
         self,
@@ -444,8 +443,8 @@ class RTDETRHead(Module):
 
         for i, (h, w) in enumerate(spatial_shapes):
             # TODO: fix later kornia.utils.create_meshgrid()
-            grid_x, grid_y = torch.meshgrid(
-                torch.arange(w, device=device, dtype=dtype), torch.arange(h, device=device, dtype=dtype), indexing="ij"
+            grid_y, grid_x = torch.meshgrid(
+                torch.arange(h, device=device, dtype=dtype), torch.arange(w, device=device, dtype=dtype), indexing="ij"
             )
             grid_xy = torch.stack([grid_x, grid_y], -1)  # HxWx2
 
@@ -458,7 +457,7 @@ class RTDETRHead(Module):
             grid_wh = torch.ones_like(grid_xy) * grid_size * (2.0**i)
             anchors_list.append(concatenate([grid_xy, grid_wh], -1).reshape(-1, h * w, 4))
 
-        anchors = concatenate(anchors_list, 1).to(device)
+        anchors = concatenate(anchors_list, 1)
         valid_mask = ((anchors > eps) * (anchors < 1 - eps)).all(-1, keepdim=True)
         anchors = torch.log(anchors / (1 - anchors))  # anchors.logit() fails ONNX export
 
