@@ -168,10 +168,10 @@ class TransformerDecoderLayer(Module):
         ref_points: Tensor,
         memory: Tensor,
         memory_spatial_shapes: list[tuple[int, int]],
-        memory_level_start_index=None,
-        attn_mask=None,
-        memory_mask=None,
-        query_pos_embed=None,
+        memory_level_start_index: list[int] | None = None,
+        attn_mask: Tensor | None = None,
+        memory_mask: Tensor | None = None,
+        query_pos_embed: Tensor | None = None,
     ) -> Tensor:
         # TODO: rename variables because is confusing
         # self attention
@@ -190,7 +190,7 @@ class TransformerDecoderLayer(Module):
 
 
 class TransformerDecoder:
-    def __init__(self, hidden_dim: int, decoder_layers: nn.ModuleList, num_layers, eval_idx: int = -1) -> None:
+    def __init__(self, hidden_dim: int, decoder_layers: nn.ModuleList, num_layers: int, eval_idx: int = -1) -> None:
         super().__init__()
         self.layers = decoder_layers
         # TODO: come back to this later
@@ -203,27 +203,27 @@ class TransformerDecoder:
 
     def forward(
         self,
-        tgt,
+        tgt: Tensor,
         ref_points_unact: Tensor,
         memory: Tensor,
         memory_spatial_shapes: list[tuple[int, int]],
-        memory_level_start_index: int,
+        memory_level_start_index: list[int],
         bbox_head: nn.ModuleList,
         score_head: nn.ModuleList,
         query_pos_head: nn.Module,
-        attn_mask=None,
-        memory_mask=None,
+        attn_mask: Tensor | None = None,
+        memory_mask: Tensor | None = None,
     ) -> tuple[Tensor, Tensor]:
-        output = tgt
-        dec_out_bboxes: Tensor = []
-        dec_out_logits: Tensor = []
+        output: Tensor = tgt
+        dec_out_bboxes: list[Tensor] = []
+        dec_out_logits: list[Tensor] = []
         ref_points_detach = torch.sigmoid(ref_points_unact)
 
         for i, layer in enumerate(self.layers):
             ref_points_input = ref_points_detach.unsqueeze(2)
             query_pos_embed: Tensor = query_pos_head(ref_points_detach)
 
-            output: Tensor = layer(
+            output = layer(
                 output,
                 ref_points_input,
                 memory,
@@ -359,7 +359,7 @@ class RTDETRHead(Module):
 
         # get encoder inputs
         feat_flatten_list: list[Tensor] = []
-        spatial_shapes: list[Tensor] = []
+        spatial_shapes: list[tuple[int, int]] = []
         level_start_index: list[int] = [0]
 
         for i, feat in enumerate(proj_feats):
@@ -367,7 +367,7 @@ class RTDETRHead(Module):
             # [b, c, h, w] -> [b, h*w, c]
             feat_flatten_list.append(feat.flatten(2).permute(0, 2, 1))
             # [num_levels, 2]
-            spatial_shapes.append([h, w])
+            spatial_shapes.append((h, w))
             # [l], start index of each level
             level_start_index.append(h * w + level_start_index[-1])
 
