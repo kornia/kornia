@@ -12,10 +12,10 @@ from kornia.image.base import ImageSize
 __all__ = [
     "BoundingBoxDataFormat",
     "BoundingBox",
-    "ObjectDetectionResult",
     "results_from_detections",
     "ResizePreProcessor",
     "ObjectDetector",
+    "ObjectDetectorResult",
 ]
 
 
@@ -45,7 +45,7 @@ class BoundingBox:
 
 
 @dataclass(frozen=True)
-class ObjectDetectionResult:
+class ObjectDetectorResult:
     """Object detection result.
 
     Args:
@@ -59,25 +59,25 @@ class ObjectDetectionResult:
     bbox: BoundingBox
 
 
-def results_from_detections(detections: Tensor) -> list[ObjectDetectionResult]:
-    """Convert a detection tensor to a list of :py:class:`ObjectDetectionResult`.
+def results_from_detections(detections: Tensor) -> list[ObjectDetectorResult]:
+    """Convert a detection tensor to a list of :py:class:`ObjectDetectorResult`.
 
     Args:
         detections: tensor with shape :math:`(D, 6)`, where :math:`D` is the number of detections in the given image,
             :math:`6` represents class id, score, and `xywh` bounding box.
 
     Returns:
-        list of :py:class:`ObjectDetectionResult`.
+        list of :py:class:`ObjectDetectorResult`.
     """
     KORNIA_CHECK_SHAPE(detections, ["D", "6"])
 
-    results: list[ObjectDetectionResult] = []
+    results: list[ObjectDetectorResult] = []
     for det in detections:
         det = det.squeeze().tolist()
         if len(det) != 6:
             continue
         results.append(
-            ObjectDetectionResult(
+            ObjectDetectorResult(
                 class_id=int(det[0]),
                 score=det[1],
                 bbox=BoundingBox(
