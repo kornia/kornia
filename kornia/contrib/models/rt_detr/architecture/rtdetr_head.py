@@ -11,8 +11,17 @@ from kornia.core import Module, Tensor, concatenate
 
 
 def _inverse_sigmoid(x: torch.Tensor, eps: float = 1e-5) -> torch.Tensor:
-    x = x.clip(min=0.0, max=1.0)
-    return torch.log(x.clip(min=eps) / (1 - x).clip(min=eps))
+    """Inverse sigmoid function.
+
+    Args:
+        x: input tensor
+        eps: epsilon value for numerical stability
+
+    Returns:
+        output tensor
+    """
+    out = x.clip(min=0.0, max=1.0)
+    return torch.log(out.clip(min=eps) / (1.0 - out).clip(min=eps))
 
 
 def _deformable_attention_kernel(
@@ -132,7 +141,6 @@ class TransformerDecoderLayer(Module):
 
     def __init__(self, embed_dim: int, num_heads: int, dropout: float, num_levels: int, num_points: int) -> None:
         super().__init__()
-        # NOTE: this might not be supported yet in ONNX export for pt < 2.0.0
         # self attn
         self.self_attn = nn.MultiheadAttention(embed_dim, num_heads, dropout, batch_first=True)
         self.dropout1 = nn.Dropout(dropout)
@@ -160,11 +168,12 @@ class TransformerDecoderLayer(Module):
         ref_points: Tensor,
         memory: Tensor,
         memory_spatial_shapes: list[tuple[int, int]],
-        memory_level_start_index,
+        memory_level_start_index=None,
         attn_mask=None,
         memory_mask=None,
         query_pos_embed=None,
     ) -> Tensor:
+        # TODO: rename variables because is confusing
         # self attention
         q = k = tgt + query_pos_embed
         out, _ = self.self_attn(q, k, value=tgt)
@@ -181,9 +190,10 @@ class TransformerDecoderLayer(Module):
 
 
 class TransformerDecoder:
-    def __init__(self, hidden_dim, decoder_layers, num_layers, eval_idx=-1):
+    def __init__(self, hidden_dim: int, decoder_layers: nn.ModuleList, num_layers, eval_idx: int = -1) -> None:
         super().__init__()
         self.layers = decoder_layers
+        # TODO: come back to this later
         # self.layers = nn.ModuleList([
         #    copy.deepcopy(decoder_layer) for _ in range(num_layers)
         # ])
@@ -194,26 +204,26 @@ class TransformerDecoder:
     def forward(
         self,
         tgt,
-        ref_points_unact,
-        memory,
-        memory_spatial_shapes,
-        memory_level_start_index,
-        bbox_head,
-        score_head,
-        query_pos_head,
+        ref_points_unact: Tensor,
+        memory: Tensor,
+        memory_spatial_shapes: list[tuple[int, int]],
+        memory_level_start_index: int,
+        bbox_head: nn.ModuleList,
+        score_head: nn.ModuleList,
+        query_pos_head: nn.Module,
         attn_mask=None,
         memory_mask=None,
-    ):
+    ) -> tuple[Tensor, Tensor]:
         output = tgt
-        dec_out_bboxes = []
-        dec_out_logits = []
+        dec_out_bboxes: Tensor = []
+        dec_out_logits: Tensor = []
         ref_points_detach = torch.sigmoid(ref_points_unact)
 
         for i, layer in enumerate(self.layers):
             ref_points_input = ref_points_detach.unsqueeze(2)
-            query_pos_embed = query_pos_head(ref_points_detach)
+            query_pos_embed: Tensor = query_pos_head(ref_points_detach)
 
-            output = layer(
+            output: Tensor = layer(
                 output,
                 ref_points_input,
                 memory,
@@ -226,6 +236,7 @@ class TransformerDecoder:
 
             inter_ref_bbox = torch.sigmoid(bbox_head[i](output) + _inverse_sigmoid(ref_points_detach))
 
+            # TODO: will be supported later
             # if self.training:
             #    dec_out_logits.append(score_head[i](output))
             #    if i == 0:
@@ -309,7 +320,7 @@ class RTDETRHead(Module):
             [MLP(hidden_dim, hidden_dim, 4, num_layers=3) for _ in range(num_decoder_layers)]
         )
 
-    def forward(self, feats):
+    def forward(self, feats: Tensor) -> tuple[Tensor, Tensor]:
         # input projection and embedding
         memory, spatial_shapes, level_start_index = self._get_encoder_input(feats)
 
@@ -335,9 +346,10 @@ class RTDETRHead(Module):
 
         return out_logits[-1], out_bboxes[-1]
 
-    def _get_encoder_input(self, feats):
+    def _get_encoder_input(self, feats: Tensor) -> tuple[Tensor, list[tuple[int, int]], list[int]]:
         # get projection features
-        proj_feats = [self.input_proj[i](feat) for i, feat in enumerate(feats)]
+        proj_feats: list[Tensor] = [self.input_proj[i](feat) for i, feat in enumerate(feats)]
+
         if self.num_levels > len(proj_feats):
             len_srcs = len(proj_feats)
             for i in range(len_srcs, self.num_levels):
@@ -347,20 +359,22 @@ class RTDETRHead(Module):
                     proj_feats.append(self.input_proj[i](proj_feats[-1]))
 
         # get encoder inputs
-        feat_flatten = []
-        spatial_shapes = []
-        level_start_index = [0]
+        feat_flatten_list: list[Tensor] = []
+        spatial_shapes: list[Tensor] = []
+        level_start_index: list[int] = [0]
+
         for i, feat in enumerate(proj_feats):
             _, _, h, w = feat.shape
             # [b, c, h, w] -> [b, h*w, c]
-            feat_flatten.append(feat.flatten(2).permute(0, 2, 1))
+            feat_flatten_list.append(feat.flatten(2).permute(0, 2, 1))
             # [num_levels, 2]
             spatial_shapes.append([h, w])
             # [l], start index of each level
             level_start_index.append(h * w + level_start_index[-1])
 
         # [b, l, c]
-        feat_flatten = torch.concat(feat_flatten, 1)
+        feat_flatten: Tensor = torch.concat(feat_flatten_list, 1)
+
         level_start_index.pop()
         return (feat_flatten, spatial_shapes, level_start_index)
 
