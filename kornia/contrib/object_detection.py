@@ -29,13 +29,14 @@ class BoundingBoxDataFormat(Enum):
 
 @dataclass(frozen=True)
 class BoundingBox:
-    """Bounding box.
+    """Bounding box data class.
+
+    Useful for representing bounding boxes in different formats for object detection.
 
     Args:
-        x: x coordinate of the top-left corner.
-        y: y coordinate of the top-left corner.
-        width: width of the bounding box.
-        height: height of the bounding box.
+        data: tuple of bounding box data. The length of the tuple depends on the data format.
+        data_format: bounding box data format.
+        is_normalized: whether the bounding box data is normalized or not.
     """
 
     data: tuple[float, float, float, float]
