@@ -82,7 +82,7 @@ Object Detection
     :members:
     :undoc-members:
 
-.. autofunction:: detection_to_result
+.. autofunction:: results_from_detections
 
 Real-Time Detection Transformer (RT-DETR)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

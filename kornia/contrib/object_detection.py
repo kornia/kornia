@@ -13,7 +13,7 @@ __all__ = [
     "BoundingBoxDataFormat",
     "BoundingBox",
     "ObjectDetectionResult",
-    "detection_to_result",
+    "results_from_detections",
     "ResizePreProcessor",
     "ObjectDetector",
 ]
@@ -58,11 +58,11 @@ class ObjectDetectionResult:
     bbox: BoundingBox
 
 
-def detection_to_result(detections: Tensor) -> list[ObjectDetectionResult]:
+def results_from_detections(detections: Tensor) -> list[ObjectDetectionResult]:
     """Convert a detection tensor to a list of :py:class:`ObjectDetectionResult`.
 
     Args:
-        detection: tensor with shape :math:`(D, 6)`, where :math:`D` is the number of detections in the given image,
+        detections: tensor with shape :math:`(D, 6)`, where :math:`D` is the number of detections in the given image,
             :math:`6` represents class id, score, and `xywh` bounding box.
 
     Returns:
