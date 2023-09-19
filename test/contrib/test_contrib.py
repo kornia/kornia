@@ -751,7 +751,7 @@ class TestObjectDetector:
         sizes = torch.randint(5, 10, (batch_size, 2)) * 32
         imgs = [torch.randn(3, h, w, device=device, dtype=dtype) for h, w in sizes]
         pre_processor_out = pre_processor(imgs)
-        detections = detector.predict(imgs)
+        detections = detector(imgs)
 
         assert pre_processor_out[0].shape[-1] == 32
         assert pre_processor_out[0].shape[-2] == 32
@@ -763,13 +763,24 @@ class TestObjectDetector:
 
     def test_onnx(self, tmp_path: Path):
         config = RTDETRConfig("resnet18d", 80)
-        model = RTDETR.from_config(config).eval()
-        data = torch.rand(1, 3, 640, 640)
+        model = RTDETR.from_config(config)
+        pre_processor = kornia.contrib.object_detection.ResizePreProcessor(640)
+        post_processor = DETRPostProcessor(0.3)
+        detector = kornia.contrib.ObjectDetector(model, pre_processor, post_processor)
+
+        data = torch.rand(3, 400, 640)
 
         model_path = tmp_path / "rtdetr.onnx"
 
+        dynamic_axes = {"images": {0: "N"}}
         torch.onnx.export(
-            model, data, model_path, input_names=["images"], output_names=["detections"], opset_version=16
+            detector,
+            [data],
+            model_path,
+            input_names=["images"],
+            output_names=["detections"],
+            dynamic_axes=dynamic_axes,
+            opset_version=16,
         )
 
         assert model_path.is_file()
