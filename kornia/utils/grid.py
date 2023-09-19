@@ -46,8 +46,8 @@ def create_meshgrid(
                  [[0., 1.],
                   [1., 1.]]]])
     """
-    xs: Tensor = torch.linspace(0.0, float(width - 1), width, device=device, dtype=dtype)
-    ys: Tensor = torch.linspace(0.0, float(height - 1), height, device=device, dtype=dtype)
+    xs: Tensor = torch.linspace(0, width - 1, width, device=device, dtype=dtype)
+    ys: Tensor = torch.linspace(0, height - 1, height, device=device, dtype=dtype)
     # Fix TracerWarning
     # Note: normalize_pixel_coordinates still gots TracerWarning since new width and height
     #       tensors will be generated.
