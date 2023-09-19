@@ -68,7 +68,7 @@ def results_from_detections(detections: Tensor) -> list[ObjectDetectionResult]:
     Returns:
         list of :py:class:`ObjectDetectionResult`.
     """
-    KORNIA_CHECK_SHAPE(detections, ["D", 6])
+    KORNIA_CHECK_SHAPE(detections, ["D", "6"])
 
     results: list[ObjectDetectionResult] = []
     for det in detections:
