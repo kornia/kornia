@@ -43,21 +43,22 @@ class TestEqualization(BaseTester):
         assert res.shape == img.shape
 
     @pytest.mark.parametrize(
-        "B, clip, grid, exception_type",
+        "B, clip, grid, exception_type, expected_error_msg",
         [
-            (0, 1.0, (2, 2), ValueError),
-            (1, 1, (2, 2), TypeError),
-            (1, 2.0, 2, TypeError),
-            (1, 2.0, (2, 2, 2), TypeError),
-            (1, 2.0, (2, 2.0), TypeError),
-            (1, 2.0, (2.0, 0.0), ValueError),
+            (0, 1.0, (2, 2), ValueError, 'Invalid input tensor, it is empty.'),  # from perform_keep_shape_image
+            (1, 1, (2, 2), TypeError, 'Input clip_limit type is not float. Got'),
+            (1, 2.0, 2, TypeError, 'Input grid_size type is not Tuple. Got'),
+            (1, 2.0, (2, 2, 2), TypeError, 'Input grid_size is not a Tuple with 2 elements. Got 3'),
+            (1, 2.0, (2, 2.0), TypeError, 'Input grid_size type is not valid, must be a Tuple[int, int]'),
+            (1, 2.0, (2, 0), ValueError, 'Input grid_size elements must be positive. Got'),
         ],
     )
-    def test_exception(self, B, clip, grid, exception_type):
+    def test_exception(self, B, clip, grid, exception_type, expected_error_msg):
         C, H, W = 1, 10, 20
         img = torch.rand(B, C, H, W)
-        with pytest.raises(exception_type):
+        with pytest.raises(exception_type) as errinfo:
             enhance.equalize_clahe(img, clip, grid)
+        assert expected_error_msg in str(errinfo)
 
     @pytest.mark.parametrize("dims", [(1, 1, 1, 1, 1), (1, 1)])
     def test_exception_tensor_dims(self, dims):
