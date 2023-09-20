@@ -77,8 +77,8 @@ class TestRTDETR(BaseTester):
         images = torch.randn(2, 3, 224, 256, device=device, dtype=dtype)
         out = model(images)
 
-        assert isinstance(out, dict)
-        assert set(out.keys()) == {"logits", "boxes"}
+        assert isinstance(out, tuple)
+        assert len(out) == 2
 
     @pytest.mark.parametrize("shape", ((1, 3, 96, 128), (2, 3, 224, 256)))
     def test_cardinality(self, shape, device, dtype):
@@ -88,10 +88,10 @@ class TestRTDETR(BaseTester):
         model = RTDETR.from_config(config).to(device, dtype).eval()
 
         images = torch.randn(shape, device=device, dtype=dtype)
-        out = model(images)
+        logits, boxes = model(images)
 
-        assert out["logits"].shape == (shape[0], num_queries, num_classes)
-        assert out["boxes"].shape == (shape[0], num_queries, 4)
+        assert logits.shape == (shape[0], num_queries, num_classes)
+        assert boxes.shape == (shape[0], num_queries, 4)
 
     @pytest.mark.skip("Unnecessary")
     def test_exception(self):
