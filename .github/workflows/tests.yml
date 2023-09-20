@@ -36,7 +36,6 @@ on:
 
 jobs:
   tests:
-    if: ${{ inputs.coverage == false}}
     name: python-${{ matrix.python-version }}, torch-${{ matrix.pytorch-version }}
     runs-on: ${{ inputs.os }}
     strategy:
@@ -60,52 +59,32 @@ jobs:
         python-version: ${{ matrix.python-version }}
         pytorch-version: ${{ matrix.pytorch-version }}
 
-    - name: Run CPU tests ${{ inputs.pytorch-dtype }}
+    - if: ${{ inputs.coverage == false}}
+      name: Run CPU tests ${{ inputs.pytorch-dtype }}
       continue-on-error: ${{ inputs.continue-on-error }}
       shell: bash -l {0}
-      run: pytest -v --device cpu --dtype ${{ inputs.pytorch-dtype }} ${{ inputs.pytest-extra }} ./test # --cov=kornia --cov-report xml ./test
+      run: pytest -v --device cpu --dtype ${{ inputs.pytorch-dtype }} ${{ inputs.pytest-extra }} ./test
 
-    # - if: always()
-    #   name: Upload coverage
-    #   uses: codecov/codecov-action@v3
-    #   with:
-    #     file: coverage.xml
-    #     token: ${{ secrets.CODECOV_TOKEN }} # to not depend on build via GH API
-    #     flags: cpu,${{ inputs.os }}_py-${{ matrix.python-version }}_pt-${{ matrix.pytorch-version }}_${{ inputs.pytorch-dtype }}
-    #     name: cpu-coverage
-
-  tests-coverage:
-    if: ${{ inputs.coverage}}
-    name: python-${{ matrix.python-version }}, torch-${{ matrix.pytorch-version }}
-    runs-on: ${{ inputs.os }}
-    strategy:
-      fail-fast: ${{ inputs.fail-fast }}
-      matrix:
-        python-version: ${{ fromJSON(inputs.python-version) }}
-        pytorch-version: ${{ fromJSON(inputs.pytorch-version) }}
-        exclude:
-          - pytorch-version: '1.9.1'
-            python-version: '3.10'
-          - pytorch-version: '1.10.2'
-            python-version: '3.10'
-
-    steps:
-    - name: Checkout kornia
-      uses: actions/checkout@v3
-
-    - name: Setting environment on ${{ inputs.os }} with python ${{ matrix.python-version }} and pytorch ${{ matrix.pytorch-version }}
-      uses: ./.github/actions/env
-      with:
-        python-version: ${{ matrix.python-version }}
-        pytorch-version: ${{ matrix.pytorch-version }}
-
-    - name: Run CPU tests coverage ${{ inputs.pytorch-dtype }}
+    - if: ${{ inputs.coverage }}
+      name: Run CPU tests coverage ${{ inputs.pytorch-dtype }}
       continue-on-error: ${{ inputs.continue-on-error }}
       shell: bash -l {0}
       run: |
         coverage erase
-        coverage run --source kornia/ -m pytest -v --device cpu --dtype ${{ inputs.pytorch-dtype }} ${{ inputs.pytest-extra }} ./test
+        coverage run -m pytest -v --device cpu --dtype ${{ inputs.pytorch-dtype }} ${{ inputs.pytest-extra }} ./test
 
-    - name: Coverage report
+    - if: ${{ inputs.coverage }}
+      name: Coverage report
       shell: bash -l {0}
-      run: coverage report
+      run: |
+        coverage xml -o coverage.xml  # Generate the xml for the codecov
+        coverage report # Print the report
+
+    - if: ${{ inputs.coverage }}
+      name: Upload coverage
+      uses: codecov/codecov-action@v3
+      with:
+        file: coverage.xml
+        token: ${{ secrets.CODECOV_TOKEN }} # to not depend on build via GH API
+        flags: cpu,${{ inputs.os }}_py-${{ matrix.python-version }}_pt-${{ matrix.pytorch-version }}_${{ inputs.pytorch-dtype }}
+        name: cpu-coverage
