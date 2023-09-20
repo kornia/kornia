@@ -172,7 +172,9 @@ requires = [
 
 [tool.coverage.run]
 branch = true
-source = 'kornia/'
+source = [
+    'kornia/',
+]
 omit = [
     '*/__main__.py',
     '*/setup.py',
