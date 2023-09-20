@@ -1,5 +1,6 @@
 # Lazy loading auto module
 from kornia.augmentation import auto, container
+from kornia.augmentation._multiprocessing import MultiprocessWrapper
 from kornia.augmentation._2d import (
     CenterCrop,
     ColorJiggle,
