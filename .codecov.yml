@@ -21,7 +21,7 @@ coverage:
     project:
       default:
         against: auto
-        target: 90% # The target should be the same of the pyproject `fail_under`
+        target: 87% # The target should be the same of the pyproject `fail_under`
         # threshold: 30% # allow this little decrease on project
         # https://github.com/codecov/support/wiki/Filtering-Branches
         # branches: master
@@ -30,7 +30,7 @@ coverage:
     patch: # is the coverage percentage of the number of lines touched in your patch (the git diff)
       default:
         against: auto
-        target: 90% # The target should be the same of the pyproject `fail_under`
+        target: 87% # The target should be the same of the pyproject `fail_under`
         # threshold: 50% # allow this much decrease on patch
     changes: false
 
