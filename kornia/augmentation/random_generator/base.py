@@ -1,7 +1,7 @@
-from typing import Any, Callable, Dict, Optional, Tuple, Type, TypeVar
+from typing import Any, Callable, Dict, Optional, Tuple, Type, TypeVar, Union
 
 import torch
-from torch.distributions import Distribution
+from torch.distributions import Distribution, Uniform
 
 from kornia.core import Device, Module, Tensor
 
@@ -107,3 +107,17 @@ class DistributionWithMapper(Distribution):
             return getattr(self, attr)
         except AttributeError:
             return getattr(self.dist, attr)
+
+
+class UniformDistribution(Uniform):
+    """Wrapper around torch Uniform distribution which makes it work with the 'spawn' multiprocessing context."""
+
+    def __init__(self, low: Union[Tensor, float], high: Union[Tensor, float], validate_args: Optional[bool] = None):
+        if isinstance(low, torch.Tensor):
+            low = low.clone()
+        if isinstance(high, torch.Tensor):
+            high = high.clone()
+        # we could clone self.low and self.high after the init but given the
+        # tensors are broadcast in the init this would mean copying more data
+        # which would be slower
+        super().__init__(low, high, validate_args)
