@@ -1,6 +1,5 @@
 # Lazy loading auto module
 from kornia.augmentation import auto, container
-from kornia.augmentation._multiprocessing import MultiprocessWrapper
 from kornia.augmentation._2d import (
     CenterCrop,
     ColorJiggle,
@@ -75,6 +74,7 @@ from kornia.augmentation._3d import (
 from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmentationBase3D
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
 from kornia.augmentation._3d.intensity.base import IntensityAugmentationBase3D
+from kornia.augmentation._multiprocessing import MultiprocessWrapper
 from kornia.augmentation.container import (
     AugmentationSequential,
     ImageSequential,
