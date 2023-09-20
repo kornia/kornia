@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import torch
-from torch.distributions import Uniform
 
-from kornia.augmentation.random_generator.base import RandomGeneratorBase
+from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
 from kornia.core import Tensor
 from kornia.utils import _extract_device_dtype
@@ -45,10 +44,10 @@ class RainGenerator(RandomGeneratorBase):
         drop_coordinates = _range_bound((0, 1), 'drops_coordinate', center=0.5, bounds=(0, 1)).to(
             device=device, dtype=dtype
         )
-        self.number_of_drops_sampler = Uniform(number_of_drops[0], number_of_drops[1], validate_args=False)
-        self.drop_height_sampler = Uniform(drop_height[0], drop_height[1], validate_args=False)
-        self.drop_width_sampler = Uniform(drop_width[0], drop_width[1], validate_args=False)
-        self.coordinates_sampler = Uniform(drop_coordinates[0], drop_coordinates[1], validate_args=False)
+        self.number_of_drops_sampler = UniformDistribution(number_of_drops[0], number_of_drops[1], validate_args=False)
+        self.drop_height_sampler = UniformDistribution(drop_height[0], drop_height[1], validate_args=False)
+        self.drop_width_sampler = UniformDistribution(drop_width[0], drop_width[1], validate_args=False)
+        self.coordinates_sampler = UniformDistribution(drop_coordinates[0], drop_coordinates[1], validate_args=False)
 
     def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, Tensor]:
         batch_size = batch_shape[0]

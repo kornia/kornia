@@ -1,9 +1,8 @@
 from typing import Dict, Optional, Tuple, Union
 
 import torch
-from torch.distributions import Uniform
 
-from kornia.augmentation.random_generator.base import RandomGeneratorBase
+from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
 from kornia.core import Tensor
 from kornia.utils.helpers import _extract_device_dtype
@@ -52,14 +51,18 @@ class TranslateGenerator(RandomGeneratorBase):
                 device=device, dtype=dtype
             )
 
-            self.translate_x_sampler = Uniform(_translate_x[..., 0], _translate_x[..., 1], validate_args=False)
+            self.translate_x_sampler = UniformDistribution(
+                _translate_x[..., 0], _translate_x[..., 1], validate_args=False
+            )
 
         if self.translate_y is not None:
             _translate_y = _range_bound(self.translate_y, 'translate_y', bounds=(-1, 1), check='joint').to(
                 device=device, dtype=dtype
             )
 
-            self.translate_y_sampler = Uniform(_translate_y[..., 0], _translate_y[..., 1], validate_args=False)
+            self.translate_y_sampler = UniformDistribution(
+                _translate_y[..., 0], _translate_y[..., 1], validate_args=False
+            )
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
