@@ -45,6 +45,7 @@ class TestEqualization(BaseTester):
     @pytest.mark.parametrize(
         "B, clip, grid, exception_type",
         [
+            (0, 1.0, (2, 2), ValueError),
             (1, 1, (2, 2), TypeError),
             (1, 2.0, 2, TypeError),
             (1, 2.0, (2, 2, 2), TypeError),
