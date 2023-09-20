@@ -784,3 +784,24 @@ class TestObjectDetector:
         )
 
         assert model_path.is_file()
+
+    def test_results_from_detections(self, device, dtype):
+        # label_id, confidence, data
+        detections = torch.tensor(
+            [
+                [0, 0.9, 0.0, 0.0, 1.0, 1.0],
+                [1, 0.8, 0.0, 0.0, 1.0, 1.0],
+                [2, 0.7, 0.0, 0.0, 1.0, 1.0],
+                [3, 0.6, 0.0, 0.0, 1.0, 1.0],
+                [4, 0.5, 0.0, 0.0, 1.0, 1.0],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        detector_results: list = kornia.contrib.object_detection.results_from_detections(detections, format="xywh")
+
+        assert len(detector_results) == 5
+        for j, det in enumerate(detector_results):
+            for i in range(4):
+                assert det.bbox.data[i] == float(detections[j, i + 2])

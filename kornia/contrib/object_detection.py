@@ -24,7 +24,14 @@ class BoundingBoxDataFormat(Enum):
 
     XYWH = 0
     XYXY = 1
-    CXCYCWH = 2
+    CXCYWH = 2
+    CENTER_XYWH = 2
+
+
+# NOTE: probably we should use a more generic name like BoundingBox2D
+# and add a BoundingBox3D class for 3D bounding boxes. Also for serialization
+# we should have an explicit class for each format to make it more production ready
+# specially to serialize to protobuf and not saturate at a high rates.
 
 
 @dataclass(frozen=True)
@@ -36,12 +43,10 @@ class BoundingBox:
     Args:
         data: tuple of bounding box data. The length of the tuple depends on the data format.
         data_format: bounding box data format.
-        is_normalized: whether the bounding box data is normalized or not.
     """
 
     data: tuple[float, float, float, float]
     data_format: BoundingBoxDataFormat
-    is_normalized: bool
 
 
 @dataclass(frozen=True)
@@ -50,16 +55,16 @@ class ObjectDetectorResult:
 
     Args:
         class_id: class id of the detected object.
-        score: confidence score of the detection.
+        confidence: confidence score of the detected object.
         bbox: bounding box of the detected object in xywh format.
     """
 
     class_id: int
-    score: float
+    confidence: float
     bbox: BoundingBox
 
 
-def results_from_detections(detections: Tensor) -> list[ObjectDetectorResult]:
+def results_from_detections(detections: Tensor, format: str | BoundingBoxDataFormat) -> list[ObjectDetectorResult]:
     """Convert a detection tensor to a list of :py:class:`ObjectDetectorResult`.
 
     Args:
@@ -71,6 +76,9 @@ def results_from_detections(detections: Tensor) -> list[ObjectDetectorResult]:
     """
     KORNIA_CHECK_SHAPE(detections, ["D", "6"])
 
+    if isinstance(format, str):
+        format = BoundingBoxDataFormat[format.upper()]
+
     results: list[ObjectDetectorResult] = []
     for det in detections:
         det = det.squeeze().tolist()
@@ -79,10 +87,8 @@ def results_from_detections(detections: Tensor) -> list[ObjectDetectorResult]:
         results.append(
             ObjectDetectorResult(
                 class_id=int(det[0]),
-                score=det[1],
-                bbox=BoundingBox(
-                    data=(det[2], det[3], det[4], det[5]), data_format=BoundingBoxDataFormat.XYWH, is_normalized=False
-                ),
+                confidence=det[1],
+                bbox=BoundingBox(data=(det[2], det[3], det[4], det[5]), data_format=format),
             )
         )
     return results
@@ -120,6 +126,7 @@ class ResizePreProcessor(Module):
         return concatenate(resized_imgs), original_sizes
 
 
+# TODO: move this to kornia.models as AlgorithmicModel api
 class ObjectDetector(Module):
     """This class wraps an object detection model and performs pre-processing and post-processing."""
 
