@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import PropertyMock, patch
 
 import pytest
@@ -750,7 +751,7 @@ class TestObjectDetector:
         sizes = torch.randint(5, 10, (batch_size, 2)) * 32
         imgs = [torch.randn(3, h, w, device=device, dtype=dtype) for h, w in sizes]
         pre_processor_out = pre_processor(imgs)
-        detections = detector.predict(imgs)
+        detections = detector(imgs)
 
         assert pre_processor_out[0].shape[-1] == 32
         assert pre_processor_out[0].shape[-2] == 32
@@ -759,3 +760,48 @@ class TestObjectDetector:
             assert dets.shape[1] == 6
             assert torch.all(dets[:, 0].int() == dets[:, 0])
             assert torch.all(dets[:, 1] >= 0.3)
+
+    def test_onnx(self, tmp_path: Path):
+        config = RTDETRConfig("resnet18d", 80)
+        model = RTDETR.from_config(config)
+        pre_processor = kornia.contrib.object_detection.ResizePreProcessor(640)
+        post_processor = DETRPostProcessor(0.3)
+        detector = kornia.contrib.ObjectDetector(model, pre_processor, post_processor)
+
+        data = torch.rand(3, 400, 640)
+
+        model_path = tmp_path / "rtdetr.onnx"
+
+        dynamic_axes = {"images": {0: "N"}}
+        torch.onnx.export(
+            detector,
+            [data],
+            model_path,
+            input_names=["images"],
+            output_names=["detections"],
+            dynamic_axes=dynamic_axes,
+            opset_version=16,
+        )
+
+        assert model_path.is_file()
+
+    def test_results_from_detections(self, device, dtype):
+        # label_id, confidence, data
+        detections = torch.tensor(
+            [
+                [0, 0.9, 0.0, 0.0, 1.0, 1.0],
+                [1, 0.8, 0.0, 0.0, 1.0, 1.0],
+                [2, 0.7, 0.0, 0.0, 1.0, 1.0],
+                [3, 0.6, 0.0, 0.0, 1.0, 1.0],
+                [4, 0.5, 0.0, 0.0, 1.0, 1.0],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        detector_results: list = kornia.contrib.object_detection.results_from_detections(detections, format="xywh")
+
+        assert len(detector_results) == 5
+        for j, det in enumerate(detector_results):
+            for i in range(4):
+                assert det.bbox.data[i] == float(detections[j, i + 2])
