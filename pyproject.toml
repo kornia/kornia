@@ -185,6 +185,7 @@ show_missing = true
 skip_covered = true
 fail_under = 87
 exclude_lines =[
+    # Based into the covdefaults plugin config
     # a more strict default pragma
     '\# pragma: no cover\b',
 
