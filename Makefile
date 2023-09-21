@@ -32,6 +32,9 @@ test-quick: FORCE
 test-slow: FORCE
 	pytest -v --device all --dtype all -m "(jit or grad or nn)"
 
+test-coverage: FORCE
+	coverage erase && coverage run --source kornia/ -m pytest --device=all --dtype float32,float64 test/ && coverage report
+
 lint: FORCE
 	pre-commit run ruff --all-files
 
