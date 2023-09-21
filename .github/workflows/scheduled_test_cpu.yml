@@ -54,3 +54,12 @@ jobs:
 
   test-typing:
     uses: ./.github/workflows/test_typing.yml
+
+  tests-coverage:
+    uses: ./.github/workflows/tests.yml
+    with:
+      python-version: '["3.10"]'
+      pytorch-version: '["2.0.1"]'
+      pytorch-dtype: 'float32,float64'
+      coverage: true
+      continue-on-error: true

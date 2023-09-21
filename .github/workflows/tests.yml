@@ -29,6 +29,10 @@ on:
         required: false
         type: boolean
         default: false
+      coverage:
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   tests:
@@ -55,12 +59,28 @@ jobs:
         python-version: ${{ matrix.python-version }}
         pytorch-version: ${{ matrix.pytorch-version }}
 
-    - name: Run CPU tests ${{ inputs.pytorch-dtype }}
+    - if: ${{ inputs.coverage == false}}
+      name: Run CPU tests ${{ inputs.pytorch-dtype }}
       continue-on-error: ${{ inputs.continue-on-error }}
       shell: bash -l {0}
-      run: pytest -v --device cpu --dtype ${{ inputs.pytorch-dtype }} ${{ inputs.pytest-extra }} --cov=kornia --cov-report xml ./test
+      run: pytest -v --device cpu --dtype ${{ inputs.pytorch-dtype }} ${{ inputs.pytest-extra }} ./test
 
-    - if: always()
+    - if: ${{ inputs.coverage }}
+      name: Run CPU tests coverage ${{ inputs.pytorch-dtype }}
+      continue-on-error: ${{ inputs.continue-on-error }}
+      shell: bash -l {0}
+      run: |
+        coverage erase
+        coverage run -m pytest -v --device cpu --dtype ${{ inputs.pytorch-dtype }} ${{ inputs.pytest-extra }} ./test
+
+    - if: ${{ inputs.coverage }}
+      name: Coverage report
+      shell: bash -l {0}
+      run: |
+        coverage xml -o coverage.xml  # Generate the xml for the codecov
+        coverage report # Print the report
+
+    - if: ${{ inputs.coverage }}
       name: Upload coverage
       uses: codecov/codecov-action@v3
       with:
