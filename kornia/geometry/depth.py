@@ -1,5 +1,5 @@
 """Module containing operators to work on RGB-Depth images."""
-from typing import Union
+from __future__ import annotations
 
 import torch
 import torch.nn.functional as F
@@ -13,7 +13,7 @@ from .camera import PinholeCamera, cam2pixel, pixel2cam, project_points, unproje
 from .conversions import normalize_pixel_coordinates
 from .linalg import compose_transformations, convert_points_to_homogeneous, inverse_transformation, transform_points
 
-__all__ = ["depth_to_3d", "depth_to_normals", "warp_frame_depth", "depth_warp", "DepthWarper"]
+__all__ = ["depth_to_3d", "depth_to_normals", "warp_frame_depth", "DepthWarper", "depth_warp", "depth_from_disparity"]
 
 
 def depth_to_3d(depth: Tensor, camera_matrix: Tensor, normalize_points: bool = False) -> Tensor:
@@ -205,8 +205,8 @@ class DepthWarper(Module):
 
         # state members
         self._pinhole_dst: PinholeCamera = pinhole_dst
-        self._pinhole_src: Union[None, PinholeCamera] = None
-        self._dst_proj_src: Union[None, Tensor] = None
+        self._pinhole_src: None | PinholeCamera = None
+        self._dst_proj_src: None | Tensor = None
 
         self.grid: Tensor = self._create_meshgrid(height, width)
 
@@ -215,7 +215,7 @@ class DepthWarper(Module):
         grid: Tensor = create_meshgrid(height, width, normalized_coordinates=False)  # 1xHxWx2
         return convert_points_to_homogeneous(grid)  # append ones to last dim
 
-    def compute_projection_matrix(self, pinhole_src: PinholeCamera) -> 'DepthWarper':
+    def compute_projection_matrix(self, pinhole_src: PinholeCamera) -> DepthWarper:
         r"""Compute the projection matrix from the source to destination frame."""
         if not isinstance(self._pinhole_dst, PinholeCamera):
             raise TypeError(
@@ -365,7 +365,7 @@ def depth_warp(
     return warper(depth_src, patch_dst)
 
 
-def depth_from_disparity(disparity: Tensor, baseline: Union[float, Tensor], focal: Union[float, Tensor]) -> Tensor:
+def depth_from_disparity(disparity: Tensor, baseline: float | Tensor, focal: float | Tensor) -> Tensor:
     """Computes depth from disparity.
 
     Args:
@@ -399,4 +399,4 @@ def depth_from_disparity(disparity: Tensor, baseline: Union[float, Tensor], foca
     if isinstance(focal, Tensor):
         KORNIA_CHECK_SHAPE(focal, ["1"])
 
-    return baseline * focal / disparity
+    return baseline * focal / (disparity + 1e-8)
