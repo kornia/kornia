@@ -492,4 +492,4 @@ def depth_from_disparity(disparity: Tensor, baseline: float | Tensor, focal: flo
     if isinstance(focal, Tensor):
         KORNIA_CHECK_SHAPE(focal, ["1"])
 
-    return baseline * focal / disparity
+    return baseline * focal / (disparity + 1e-8)
