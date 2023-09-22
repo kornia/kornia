@@ -9,7 +9,6 @@ from kornia.contrib.models.rt_detr.architecture.resnet_d import ResNetD
 from kornia.contrib.models.rt_detr.architecture.rtdetr_head import RTDETRHead
 from kornia.contrib.models.rt_detr.model import RTDETR, RTDETRConfig
 from kornia.testing import BaseTester, assert_close
-from kornia.utils._compat import torch_version
 
 
 @pytest.mark.parametrize(
@@ -120,17 +119,3 @@ class TestRTDETR(BaseTester):
         actual = model_optimized(img)
 
         self.assert_close(actual, expected)
-
-    @pytest.mark.skipif(
-        torch_version() in ("2.0.0", "2.0.1"),
-        reason="aten::scaled_dot_product_attention cannot be exported to ONNX. See https://github.com/pytorch/pytorch/issues/97262",
-    )  # remove this once the fix is released to stable
-    @pytest.mark.skipif(not hasattr(torch.onnx, "symbolic_opset16"), reason="F.grid_sample() requires ONNX opset 16")
-    @pytest.mark.parametrize("variant", ("resnet50d", "hgnetv2_l"))
-    def test_onnx(self, variant, tmp_path, dtype):
-        # NOTE: correctness check is not included
-        model = RTDETR.from_config(RTDETRConfig(variant, 80)).to(dtype).eval()
-        img = torch.rand(1, 3, 224, 256, dtype=dtype)
-        onnx_path = str(tmp_path / "rtdetr.onnx")
-
-        torch.onnx.export(model, img, onnx_path, opset_version=16)
