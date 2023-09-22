@@ -1,4 +1,4 @@
-from typing import Optional
+from __future__ import annotations
 
 import torch
 
@@ -10,8 +10,8 @@ def create_meshgrid(
     height: int,
     width: int,
     normalized_coordinates: bool = True,
-    device: Optional[torch.device] = torch.device('cpu'),
-    dtype: torch.dtype = torch.float32,
+    device: torch.device | None = None,
+    dtype: torch.dtype | None = None,
 ) -> Tensor:
     """Generate a coordinate grid for an image.
 
@@ -74,8 +74,8 @@ def create_meshgrid3d(
     height: int,
     width: int,
     normalized_coordinates: bool = True,
-    device: Optional[torch.device] = torch.device('cpu'),
-    dtype: torch.dtype = torch.float32,
+    device: torch.device | None = None,
+    dtype: torch.dtype | None = None,
 ) -> Tensor:
     """Generate a coordinate grid for an image.
 
