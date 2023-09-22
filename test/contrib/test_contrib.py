@@ -763,8 +763,9 @@ class TestObjectDetector:
             assert torch.all(dets[:, 1] >= 0.3)
 
     @pytest.mark.skipif(torch_version_lt(2, 0, 0), reason="Unsupported ONNX opset version: 16")
-    def test_onnx(self, device, dtype, tmp_path: Path):
-        config = RTDETRConfig("resnet18d", 10)
+    @pytest.mark.parametrize("variant", ("resnet50d", "hgnetv2_l"))
+    def test_onnx(self, device, dtype, tmp_path: Path, variant: str):
+        config = RTDETRConfig(variant, 1)
         model = RTDETR.from_config(config).to(device=device, dtype=dtype).eval()
         pre_processor = kornia.contrib.object_detection.ResizePreProcessor(640)
         post_processor = DETRPostProcessor(0.3)
