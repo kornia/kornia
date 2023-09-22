@@ -13,6 +13,7 @@ from ._backend import (
     einsum,
     eye,
     linspace,
+    map_coordinates,
     normalize,
     ones,
     ones_like,
@@ -54,4 +55,5 @@ __all__ = [
     "linspace",
     "diag",
     "TensorWrapper",
+    "map_coordinates",
 ]
