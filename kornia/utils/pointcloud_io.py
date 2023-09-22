@@ -18,7 +18,7 @@ def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
     if not torch.is_tensor(pointcloud):
         raise TypeError(f"Input pointcloud type is not a torch.Tensor. Got {type(pointcloud)}")
 
-    if not len(pointcloud.shape) == 3 and pointcloud.shape[-1] == 3:
+    if not len(pointcloud.shape) >= 2 and pointcloud.shape[-1] == 3:
         raise TypeError(f"Input pointcloud must be in the following shape HxWx3. Got {pointcloud.shape}.")
 
     # flatten the input pointcloud in a vector to iterate points
@@ -32,9 +32,9 @@ def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
             if not bool(torch.isfinite(xyz).any()):
                 num_points -= 1
                 continue
-            x: float = xyz[0].item()
-            y: float = xyz[1].item()
-            z: float = xyz[2].item()
+            x: float = float(xyz[0])
+            y: float = float(xyz[1])
+            z: float = float(xyz[2])
             data_str += f'{x} {y} {z}\n'
 
         f.write("ply\n")
