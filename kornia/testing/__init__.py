@@ -1,5 +1,5 @@
 """The testing package contains testing-specific utilities."""
-import importlib
+import importlib.util
 import math
 from abc import ABC, abstractmethod
 from copy import deepcopy
