@@ -10,6 +10,7 @@ import kornia.testing as utils  # test utils
 from kornia.contrib.face_detection import FaceKeypoint
 from kornia.contrib.models.rt_detr import RTDETR, DETRPostProcessor, RTDETRConfig
 from kornia.testing import assert_close
+from kornia.utils._compat import torch_version_lt
 
 
 class TestDiamondSquare:
@@ -761,14 +762,16 @@ class TestObjectDetector:
             assert torch.all(dets[:, 0].int() == dets[:, 0])
             assert torch.all(dets[:, 1] >= 0.3)
 
-    def test_onnx(self, tmp_path: Path):
-        config = RTDETRConfig("resnet18d", 80)
-        model = RTDETR.from_config(config)
+    @pytest.mark.skipif(torch_version_lt(2, 0, 0), reason="Unsupported ONNX opset version: 16")
+    @pytest.mark.parametrize("variant", ("resnet50d", "hgnetv2_l"))
+    def test_onnx(self, device, dtype, tmp_path: Path, variant: str):
+        config = RTDETRConfig(variant, 1)
+        model = RTDETR.from_config(config).to(device=device, dtype=dtype).eval()
         pre_processor = kornia.contrib.object_detection.ResizePreProcessor(640)
         post_processor = DETRPostProcessor(0.3)
         detector = kornia.contrib.ObjectDetector(model, pre_processor, post_processor)
 
-        data = torch.rand(3, 400, 640)
+        data = torch.rand(3, 400, 640, device=device, dtype=dtype)
 
         model_path = tmp_path / "rtdetr.onnx"
 
