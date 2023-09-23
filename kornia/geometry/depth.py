@@ -26,7 +26,12 @@ __all__ = [
 
 
 def unproject_meshgrid(
-    height: int, width: int, camera_matrix: Tensor, normalize_points: bool = False, device=None, dtype=None
+    height: int,
+    width: int,
+    camera_matrix: Tensor,
+    normalize_points: bool = False,
+    device: torch.device | None = None,
+    dtype: torch.dtype | None = None,
 ) -> Tensor:
     """Compute a 3d point per pixel given its depth value and the camera intrinsics.
 
@@ -90,10 +95,10 @@ def depth_to_3d_v2(
     KORNIA_CHECK_SHAPE(camera_matrix, ["*", "3", "3"])
 
     # create base grid if not provided
-    points_xyz = xyz_grid
-    if xyz_grid is None:
-        height, width = depth.shape[-2:]
-        points_xyz = unproject_meshgrid(height, width, camera_matrix, normalize_points, depth.device, depth.dtype)
+    height, width = depth.shape[-2:]
+    points_xyz: Tensor = xyz_grid or unproject_meshgrid(
+        height, width, camera_matrix, normalize_points, depth.device, depth.dtype
+    )
 
     KORNIA_CHECK_SHAPE(points_xyz, ["*", "H", "W", "3"])
 

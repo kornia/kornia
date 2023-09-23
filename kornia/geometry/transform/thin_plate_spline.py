@@ -1,4 +1,4 @@
-from typing import Tuple
+from __future__ import annotations
 
 import torch
 from torch import nn
@@ -34,7 +34,7 @@ def _kernel_distance(squared_distances: torch.Tensor, eps: float = 1e-8) -> torc
     return 0.5 * squared_distances * squared_distances.add(eps).log()
 
 
-def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Compute the TPS transform parameters that warp source points to target points.
 
     The input to this function is a tensor of :math:`(x, y)` source points :math:`(B, N, 2)` and a corresponding
@@ -224,9 +224,8 @@ def warp_image_tps(
     if not len(affine_weights.shape) == 3:
         raise ValueError(f"Invalid shape for affine_weights, expected BxNx2. Got {affine_weights.shape}")
 
-    device, dtype = image.device, image.dtype
     batch_size, _, h, w = image.shape
-    coords: torch.Tensor = create_meshgrid(h, w, device=device).to(dtype=dtype)
+    coords: torch.Tensor = create_meshgrid(h, w, device=image.device, dtype=image.dtype)
     coords = coords.reshape(-1, 2).expand(batch_size, -1, -1)
     warped: torch.Tensor = warp_points_tps(coords, kernel_centers, kernel_weights, affine_weights)
     warped = warped.view(-1, h, w, 2)
