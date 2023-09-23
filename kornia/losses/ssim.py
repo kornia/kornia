@@ -58,6 +58,9 @@ def ssim_loss(
         loss = torch.sum(loss)
     elif reduction == "none":
         pass
+    else:
+        raise NotImplementedError('Invalid reduction option.')
+
     return loss
 
 
