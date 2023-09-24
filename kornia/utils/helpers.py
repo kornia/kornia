@@ -309,3 +309,21 @@ def is_autocast_enabled(both: bool = True) -> bool:
         return torch.is_autocast_enabled() or torch.is_autocast_cpu_enabled()
 
     return torch.is_autocast_enabled()
+
+
+def _torch_diff_where(x: Tensor, condition: Union[float, Tensor], a: Union[float, Tensor], b: Union[float, Tensor], alpha: Union[float, Tensor] = 1000) -> Tensor:
+    """Helper function to implement a differentiable approximation of `torch.where(x < condition, a, b)`
+    based on a sigmoid.
+
+    Args:
+        x: tensor to be used as input for torch.where
+        condition: defines the threshold for the operation
+        a: value to return where x < condition 
+        b: value to return where x > condition 
+        alpha: defines the slope of the sigmoid
+
+    Returns:
+        Tensor
+    """
+
+    return a + (b - a) * torch.special.expit((x - condition) * alpha)
