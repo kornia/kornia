@@ -1,8 +1,9 @@
+import jax
 import keras_core as keras
 import numpy as np
 import pytest
+import tensorflow as tf
 import torch
-from jax import random
 
 from kornia.color.gray import grayscale_from_rgb
 
@@ -22,8 +23,10 @@ def genrate_image_data(channel_first: bool = False):
         key = np.random.RandomState(42)
         return key.uniform(size=shape).astype(np.float32)
     if backend == "jax":
-        key = random.PRNGKey(42)
-        return random.uniform(key, shape)
+        key = jax.random.PRNGKey(42)
+        return jax.random.uniform(key, shape).astype(jax.numpy.float32)
+    if backend == "tensorflow":
+        return tf.random.uniform(shape, dtype=tf.float32)
 
     return None
 
