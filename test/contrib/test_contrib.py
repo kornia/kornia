@@ -112,15 +112,22 @@ class TestConnectedComponents:
     def test_exception(self, device, dtype):
         img = torch.rand(1, 1, 3, 4, device=device, dtype=dtype)
 
-        with pytest.raises(TypeError):
+        with pytest.raises(TypeError) as errinf:
             assert kornia.contrib.connected_components(img, 1.0)
+        assert 'Input num_iterations must be a positive integer.' in str(errinf)
 
-        with pytest.raises(TypeError):
+        with pytest.raises(TypeError) as errinf:
+            assert kornia.contrib.connected_components('not a tensor', 0)
+        assert 'Input imagetype is not a Tensor. Got:' in str(errinf)
+
+        with pytest.raises(TypeError) as errinf:
             assert kornia.contrib.connected_components(img, 0)
+        assert 'Input num_iterations must be a positive integer.' in str(errinf)
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError) as errinf:
             img = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
             assert kornia.contrib.connected_components(img, 2)
+        assert 'Input image shape must be (*,1,H,W). Got:' in str(errinf)
 
     def test_value(self, device, dtype):
         img = torch.tensor(

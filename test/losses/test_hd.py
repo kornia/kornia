@@ -114,6 +114,32 @@ class TestHausdorffLoss:
 
         loss(logits, labels)
 
+    def test_exception_2d(self):
+        with pytest.raises(ValueError) as errinf:
+            kornia.losses.HausdorffERLoss()((torch.rand(1, 2, 1) > 0.5) * 1, (torch.rand(1, 1, 1, 2) > 0.5) * 1)
+        assert 'Only 2D images supported. Got ' in str(errinf)
+
+        with pytest.raises(ValueError) as errinf:
+            kornia.losses.HausdorffERLoss()(
+                (torch.rand(1, 2, 1, 1) > 0.5) * 1, torch.tensor([[[[1]]]], dtype=torch.float32)
+            )
+        assert 'Expect long type target value in range' in str(errinf)
+
+        with pytest.raises(ValueError) as errinf:
+            kornia.losses.HausdorffERLoss()((torch.rand(1, 2, 1, 1) > 0.5) * 1, (torch.rand(1, 1, 1, 2) > 0.5) * 1)
+        assert 'Prediction and target need to be of same size, and target should not be one-hot.' in str(errinf)
+
+    def test_exception_3d(self):
+        with pytest.raises(ValueError) as errinf:
+            kornia.losses.HausdorffERLoss3D()((torch.rand(1, 2, 1) > 0.5) * 1, (torch.rand(1, 1, 1, 2) > 0.5) * 1)
+        assert 'Only 3D images supported. Got ' in str(errinf)
+
+        with pytest.raises(ValueError) as errinf:
+            kornia.losses.HausdorffERLoss3D()(
+                (torch.rand(1, 2, 1, 1, 1) > 0.5) * 1, torch.tensor([[[[[5]]]]], dtype=torch.float32)
+            )
+        assert 'Invalid target value' in str(errinf)
+
     @pytest.mark.parametrize(
         "hd,shape", [[kornia.losses.HausdorffERLoss, (50, 50)], [kornia.losses.HausdorffERLoss3D, (50, 50, 50)]]
     )

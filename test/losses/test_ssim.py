@@ -21,7 +21,7 @@ class TestSSIMLoss:
         assert_close(ssim2, torch.zeros_like(img2), rtol=tol_val, atol=tol_val)
 
     @pytest.mark.parametrize("window_size", [5, 11])
-    @pytest.mark.parametrize("reduction_type", ["mean", "sum"])
+    @pytest.mark.parametrize("reduction_type", ["mean", "sum", 'none'])
     @pytest.mark.parametrize("batch_shape", [(1, 1, 10, 16), (2, 4, 8, 15)])
     def test_ssim(self, device, dtype, batch_shape, window_size, reduction_type):
         if device.type == 'xla':
@@ -33,7 +33,12 @@ class TestSSIMLoss:
         loss = kornia.losses.ssim_loss(img, img, window_size, reduction=reduction_type)
 
         tol_val: float = utils._get_precision_by_name(device, 'xla', 1e-1, 1e-4)
-        assert_close(loss.item(), 0.0, rtol=tol_val, atol=tol_val)
+        if reduction_type == 'none':
+            expected = torch.zeros_like(img)
+        else:
+            expected = torch.tensor(0.0, device=device, dtype=dtype)
+
+        assert_close(loss, expected, rtol=tol_val, atol=tol_val)
 
     def test_module(self, device, dtype):
         img1 = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
@@ -75,8 +80,23 @@ class TestMS_SSIMLoss:
         assert_close(msssim1.item(), 0.0)
         assert_close(msssim2.item(), 0.0)
 
+    def test_exception(self):
+        criterion = kornia.losses.MS_SSIMLoss()
+
+        with pytest.raises(TypeError) as errinfo:
+            criterion(1, 2)
+        assert 'Input type is not a torch.Tensor. Got' in str(errinfo)
+
+        with pytest.raises(TypeError) as errinfo:
+            criterion(torch.rand(1), 2)
+        assert 'Output type is not a torch.Tensor. Got' in str(errinfo)
+
+        with pytest.raises(ValueError) as errinfo:
+            criterion(torch.rand(1), torch.rand(1, 2))
+        assert 'Input shapes should be same. Got' in str(errinfo)
+
     # TODO: implement for single channel image
-    @pytest.mark.parametrize("reduction_type", ["mean", "sum"])
+    @pytest.mark.parametrize("reduction_type", ["mean", "sum", 'none'])
     @pytest.mark.parametrize("batch_shape", [(2, 1, 2, 3), (1, 3, 10, 16)])
     def test_msssim(self, device, dtype, batch_shape, reduction_type):
         img = torch.rand(batch_shape, device=device, dtype=dtype)
@@ -84,7 +104,7 @@ class TestMS_SSIMLoss:
         msssiml1 = kornia.losses.MS_SSIMLoss(reduction=reduction_type).to(device, dtype)
         loss = msssiml1(img, img)
 
-        assert_close(loss.item(), 0.0)
+        assert_close(loss.sum().item(), 0.0)
 
     def test_gradcheck(self, device):
         # input data
@@ -125,7 +145,7 @@ class TestSSIM3DLoss(BaseTester):
         self.assert_close(ssim2, torch.zeros_like(img2))
 
     @pytest.mark.parametrize("window_size", [5, 11])
-    @pytest.mark.parametrize("reduction_type", ["mean", "sum"])
+    @pytest.mark.parametrize("reduction_type", ["mean", "sum", 'none'])
     @pytest.mark.parametrize("shape", [(1, 1, 2, 16, 16), (2, 4, 2, 15, 20)])
     def test_ssim(self, device, dtype, shape, window_size, reduction_type):
         if device.type == 'xla':
@@ -134,7 +154,11 @@ class TestSSIM3DLoss(BaseTester):
         # Sanity test
         img = torch.rand(shape, device=device, dtype=dtype)
         actual = kornia.losses.ssim3d_loss(img, img, window_size, reduction=reduction_type)
-        expected = torch.tensor(0.0, device=device, dtype=dtype)
+        if reduction_type == 'none':
+            expected = torch.zeros_like(img)
+        else:
+            expected = torch.tensor(0.0, device=device, dtype=dtype)
+
         self.assert_close(actual, expected)
 
         # Check loss computation
@@ -147,6 +171,8 @@ class TestSSIM3DLoss(BaseTester):
             expected = torch.tensor(0.9999, device=device, dtype=dtype)
         elif reduction_type == 'sum':
             expected = (torch.ones_like(img1, device=device, dtype=dtype) * 0.9999).sum()
+        elif reduction_type == 'none':
+            expected = torch.ones_like(img1, device=device, dtype=dtype) * 0.9999
 
         self.assert_close(actual, expected)
 

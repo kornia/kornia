@@ -54,6 +54,8 @@ def total_variation(img: Tensor, reduction: str = "sum") -> Tensor:
     elif reduction == "sum":
         res1 = res1.sum(dim=reduce_axes)
         res2 = res2.sum(dim=reduce_axes)
+    else:
+        raise NotImplementedError('Invalid reduction option.')
 
     return res1 + res2
 
