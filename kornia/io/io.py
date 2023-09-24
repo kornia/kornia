@@ -2,7 +2,7 @@ from __future__ import annotations
 
 try:
     import kornia_rs
-except ImportError:
+except ImportError:  # pragma: no cover
     kornia_rs = None
 
 import os
@@ -66,7 +66,7 @@ def load_image(path_file: str | Path, desired_type: ImageLoadType, device: Devic
     Return:
         Image tensor with shape :math:`(3,H,W)`.
     """
-    if kornia_rs is None:
+    if kornia_rs is None:  # pragma: no cover
         raise ModuleNotFoundError("The io API is not available: `pip install kornia_rs` in a Linux system.")
 
     if isinstance(path_file, Path):
@@ -86,16 +86,19 @@ def load_image(path_file: str | Path, desired_type: ImageLoadType, device: Devic
         elif image.shape[0] == 4 and image.dtype == torch.uint8:
             gray32 = rgb_to_grayscale(rgba_to_rgb(to_float32(image)))
             return to_uint8(gray32)
+
     elif desired_type == ImageLoadType.RGB8:
         if image.shape[0] == 3 and image.dtype == torch.uint8:
             return image
         elif image.shape[0] == 1 and image.dtype == torch.uint8:
             rgb8 = grayscale_to_rgb(image)
             return rgb8
+
     elif desired_type == ImageLoadType.RGBA8:
         if image.shape[0] == 3 and image.dtype == torch.uint8:
             rgba32 = rgb_to_rgba(to_float32(image), 0.0)
             return to_uint8(rgba32)
+
     elif desired_type == ImageLoadType.GRAY32:
         if image.shape[0] == 1 and image.dtype == torch.uint8:
             return to_float32(image)
@@ -105,15 +108,15 @@ def load_image(path_file: str | Path, desired_type: ImageLoadType, device: Devic
         elif image.shape[0] == 4 and image.dtype == torch.uint8:
             gray32 = rgb_to_grayscale(rgba_to_rgb(to_float32(image)))
             return gray32
+
     elif desired_type == ImageLoadType.RGB32:
         if image.shape[0] == 3 and image.dtype == torch.uint8:
             return to_float32(image)
         elif image.shape[0] == 1 and image.dtype == torch.uint8:
             rgb32 = grayscale_to_rgb(to_float32(image))
             return rgb32
-    else:
-        raise NotImplementedError(f"Unknown type: {desired_type}")
-    return Tensor([])
+
+    raise NotImplementedError(f"Unknown type: {desired_type}")
 
 
 def write_image(path_file: str | Path, image: Tensor) -> None:
@@ -128,7 +131,7 @@ def write_image(path_file: str | Path, image: Tensor) -> None:
     Return:
         None.
     """
-    if kornia_rs is None:
+    if kornia_rs is None:  # pragma: no cover
         raise ModuleNotFoundError("The io API is not available: `pip install kornia_rs` in a Linux system.")
 
     if isinstance(path_file, Path):
