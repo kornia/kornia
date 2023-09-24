@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-import keras_core as keras
+import keras_core as keras  # type: ignore
+from keras_core import KerasTensor as kTensor
 
 from kornia.color.rgb import bgr_to_rgb
 from kornia.core import Module, Tensor, concatenate
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR
 
 
-def _weighted_sum_channels_kernel(r, g, b, w_r, w_g, w_b) -> Tensor:
+def _weighted_sum_channels_kernel(r: kTensor, g: kTensor, b: kTensor, w_r: float, w_g: float, w_b: float) -> kTensor:
     return w_r * r + w_g * g + w_b * b
 
 
@@ -36,7 +37,9 @@ def grayscale_to_rgb(image: Tensor) -> Tensor:
     return concatenate([image, image, image], -3)
 
 
-def grayscale_from_rgb(image: Tensor, rgb_weights: Tensor | None = None, channels_axis: int = -3) -> Tensor:
+def grayscale_from_rgb(
+    image: Tensor, rgb_weights: tuple[float, float, float] | None = None, channels_axis: int = -3
+) -> Tensor:
     r"""Convert a RGB image to grayscale version of image.
 
     .. image:: _static/img/rgb_to_grayscale.png
@@ -62,10 +65,10 @@ def grayscale_from_rgb(image: Tensor, rgb_weights: Tensor | None = None, channel
     if rgb_weights is None:
         # floating point images
         if "float32" in str(image.dtype):
-            rgb_weights = [0.299, 0.587, 0.114]
+            rgb_weights = (0.299, 0.587, 0.114)
         # 8 bit images
         elif "uint8" in str(image.dtype):
-            rgb_weights = [76, 150, 29]
+            rgb_weights = (76, 150, 29)
         else:
             raise TypeError(f"Unknown data type: {image.dtype}")
 
@@ -142,11 +145,9 @@ class RgbToGrayscale(Module):
         >>> output = gray(input)  # 2x1x4x5
     """
 
-    def __init__(self, rgb_weights: Tensor | None = None) -> None:
+    def __init__(self, rgb_weights: tuple[float, float, float] | None = None) -> None:
         super().__init__()
-        if rgb_weights is None:
-            rgb_weights = Tensor([0.299, 0.587, 0.114])
-        self.rgb_weights = rgb_weights
+        self.rgb_weights = rgb_weights or (0.299, 0.587, 0.114)
 
     def forward(self, image: Tensor) -> Tensor:
         return rgb_to_grayscale(image, rgb_weights=self.rgb_weights)
