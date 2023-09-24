@@ -4,7 +4,7 @@ from torch import Tensor, nn
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 
-def aepe(input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+def aepe(input: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> torch.Tensor:
     r"""Create a function that calculates the average endpoint error (AEPE) between 2 flow maps.
 
     AEPE is the endpoint error between two 2D vecotrs (e.g., oprical flow).
@@ -17,6 +17,10 @@ def aepe(input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     Args:
         input: the input flow map with shape :math:`(*, 2)`.
         target: the target flow map with shape :math:`(*, 2)`.
+        reduction : Specifies the reduction to apply to the
+         output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
+         ``'mean'``: the sum of the output will be divided by the number of elements
+         in the output, ``'sum'``: the output will be summed.
 
     Return:
         the computed AEPE as a scalar.
@@ -39,6 +43,15 @@ def aepe(input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
 
     epe: Tensor = ((input[..., 0] - target[..., 0]) ** 2 + (input[..., 1] - target[..., 1]) ** 2).sqrt().mean()
 
+    if reduction == "mean":
+        epe = epe.mean()
+    elif reduction == "sum":
+        epe = epe.sum()
+    elif reduction == "none":
+        pass
+    else:
+        raise NotImplementedError('Invalid reduction option.')
+
     return epe
 
 
@@ -52,6 +65,12 @@ class AEPE(nn.Module):
 
         \text{AEPE}=\frac{1}{hw}\sum_{i=1, j=1}^{h, w}\sqrt{(I_{i,j,1}-T_{i,j,1})^{2}+(I_{i,j,2}-T_{i,j,2})^{2}}
 
+    Args:
+        reduction : Specifies the reduction to apply to the
+         output: ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
+         ``'mean'``: the sum of the output will be divided by the number of elements
+         in the output, ``'sum'``: the output will be summed.
+
     Shape:
         - input: :math:`(*, 2)`.
         - target :math:`(*, 2)`.
@@ -64,8 +83,9 @@ class AEPE(nn.Module):
         >>> epe = epe(input1, input2)
     """
 
-    def __init__(self) -> None:
+    def __init__(self, reduction: str = 'mean') -> None:
         super().__init__()
+        self.reduction: str = reduction
 
     def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        return aepe(input, target)
+        return aepe(input, target, self.reduction)
