@@ -253,6 +253,21 @@ class TestWarpAffine:
         assert_close(top_row_mean, fill_value)
         assert_close(first_col_mean, fill_value)
 
+    @pytest.mark.parametrize("num_channels", [1, 3, 5])
+    def test_fill_padding_channels(self, device, dtype, num_channels):
+        offset = 1.0
+        h, w = 3, 4
+        aff_ab = torch.eye(2, 3, device=device, dtype=dtype)[None]
+        aff_ab[..., -1] += offset
+
+        img_b = torch.arange(float(num_channels * h * w), device=device, dtype=dtype).view(1, num_channels, h, w)
+
+        fill_value = torch.zeros(num_channels, device=device, dtype=dtype)
+
+        img_a = kornia.geometry.warp_affine(img_b, aff_ab, (h, w), padding_mode="fill", fill_value=fill_value)
+
+        assert_close(img_a[:, :, :1, :1].squeeze(), fill_value.squeeze())
+
 
 class TestWarpPerspective:
     def test_smoke(self, device, dtype):
