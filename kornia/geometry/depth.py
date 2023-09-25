@@ -88,7 +88,7 @@ def depth_to_3d_v2(
     Example:
         >>> depth = torch.rand(4, 4)
         >>> K = torch.eye(3)
-        >>> depth_to_3d(depth, K).shape
+        >>> depth_to_3d_v2(depth, K).shape
         torch.Size([4, 4, 3])
     """
     KORNIA_CHECK_SHAPE(depth, ["*", "H", "W"])
