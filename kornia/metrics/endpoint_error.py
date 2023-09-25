@@ -7,7 +7,7 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK
 def aepe(input: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> torch.Tensor:
     r"""Create a function that calculates the average endpoint error (AEPE) between 2 flow maps.
 
-    AEPE is the endpoint error between two 2D vecotrs (e.g., oprical flow).
+    AEPE is the endpoint error between two 2D vectors (e.g., optical flow).
     Given a h x w x 2 optical flow map, the AEPE is:
 
     .. math::
