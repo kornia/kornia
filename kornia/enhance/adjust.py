@@ -7,7 +7,7 @@ from torch.nn import Module, Parameter
 
 from kornia.color import hsv_to_rgb, rgb_to_grayscale, rgb_to_hsv
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_COLOR_OR_GRAY, KORNIA_CHECK_IS_TENSOR
-from kornia.utils.helpers import _torch_histc_cast, _torch_diff_where
+from kornia.utils.helpers import _torch_diff_where, _torch_histc_cast
 from kornia.utils.image import perform_keep_shape_image, perform_keep_shape_video
 
 
@@ -604,7 +604,7 @@ def _solarize(input: Tensor, thresholds: Union[float, Tensor] = 0.5, relaxation:
         thresholds: solarize thresholds.
             If float or one element tensor, input will be solarized across the whole batch.
             If 1-d tensor, input will be solarized element-wise, len(thresholds) == len(input).
-        relaxation: 
+        relaxation:
             If None, no relaxation will be performed.
             If 'sigmoid', the threshold will be approximated by a differentiable sigmoid.
 
@@ -616,7 +616,7 @@ def _solarize(input: Tensor, thresholds: Union[float, Tensor] = 0.5, relaxation:
 
     if not isinstance(thresholds, (float, Tensor)):
         raise TypeError(f"The factor should be either a float or Tensor. Got {type(thresholds)}")
-    
+
     if relaxation is not None and relaxation not in ['sigmoid']:
         raise TypeError(f"Relaxation should be either None or 'sigmoid'. Got {relaxation}")
 
@@ -631,7 +631,7 @@ def _solarize(input: Tensor, thresholds: Union[float, Tensor] = 0.5, relaxation:
         img_adjust = torch.where(input < thresholds, input, 1.0 - input)
     elif relaxation == 'sigmoid':
         img_adjust = _torch_diff_where(input, thresholds, input, 1.0 - input)
-    
+
     return img_adjust
 
 
