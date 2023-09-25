@@ -69,7 +69,7 @@ def grayscale_from_rgb(
 
     if rgb_weights is None:
         # floating point images
-        if "float32" in str(image.dtype):
+        if "float" in str(image.dtype):
             rgb_weights = (0.299, 0.587, 0.114)
         # 8 bit images
         elif "uint8" in str(image.dtype):
