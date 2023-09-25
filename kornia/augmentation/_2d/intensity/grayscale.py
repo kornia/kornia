@@ -1,4 +1,6 @@
-from typing import Any, Dict, Optional
+from __future__ import annotations
+
+from typing import Any
 
 import torch
 from torch import Tensor
@@ -52,13 +54,17 @@ class RandomGrayscale(IntensityAugmentationBase2D):
     """
 
     def __init__(
-        self, rgb_weights: Optional[Tensor] = None, same_on_batch: bool = False, p: float = 0.1, keepdim: bool = False
+        self,
+        rgb_weights: tuple[float, float, float] | None = None,
+        same_on_batch: bool = False,
+        p: float = 0.1,
+        keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self.rgb_weights = rgb_weights
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
     ) -> Tensor:
         # Make sure it returns (*, 3, H, W)
         grayscale = torch.ones_like(input)

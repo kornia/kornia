@@ -1,10 +1,14 @@
+"""Module for grayscale conversions and utilities."""
 from __future__ import annotations
 
-import torch
-
+import kornia.core as kornia_core
 from kornia.color.rgb import bgr_to_rgb
 from kornia.core import Module, Tensor, concatenate
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR
+
+
+def _weighted_sum_channels_kernel(r: Tensor, g: Tensor, b: Tensor, w_r: float, w_g: float, w_b: float) -> Tensor:
+    return w_r * r + w_g * g + w_b * b
 
 
 def grayscale_to_rgb(image: Tensor) -> Tensor:
@@ -32,52 +36,54 @@ def grayscale_to_rgb(image: Tensor) -> Tensor:
     return concatenate([image, image, image], -3)
 
 
-def rgb_to_grayscale(image: Tensor, rgb_weights: Tensor | None = None) -> Tensor:
+def grayscale_from_rgb(
+    image: Tensor, rgb_weights: tuple[float, float, float] | None = None, channels_axis: int = -3
+) -> Tensor:
     r"""Convert a RGB image to grayscale version of image.
 
     .. image:: _static/img/rgb_to_grayscale.png
 
-    The image data is assumed to be in the range of (0, 1).
+    The image data is assumed to be in the range of (0, 1) in float or (0, 255) in uint8.
 
     Args:
-        image: RGB image to be converted to grayscale with shape :math:`(*,3,H,W)`.
+        image: RGB image to be converted to grayscale with shape :math:`(*,3,H,W)` or :math:`(*, H, W, 3)`.
+            You need to specify the channel axis using `channels_axis` if the image shape is :math:`(*, H, W, 3)`.
         rgb_weights: Weights that will be applied on each channel (RGB).
             The sum of the weights should add up to one.
+            If None, the standard weights are used (0.299, 0.587, 0.114).
+        channels_axis: The axis corresponding to the channels dimension.
+
     Returns:
-        grayscale version of the image with shape :math:`(*,1,H,W)`.
+        grayscale version of the image with shape :math:`(*,1,H,W)` or :math:`(*, H, W, 1)`.
 
     .. note::
        See a working example `here <https://kornia.github.io/tutorials/nbs/color_conversions.html>`__.
 
     Example:
-        >>> input = torch.rand(2, 3, 4, 5)
-        >>> gray = rgb_to_grayscale(input) # 2x1x4x5
+        >>> rgb = torch.rand(3, 4, 5)  # try also with jax, numpy, or tensorflow
+        >>> gray = grayscale_from_rgb(rgb) # 1x4x5
+        >>> tuple(gray.shape)
+        (1, 4, 5)
     """
-    KORNIA_CHECK_IS_TENSOR(image)
-
-    if len(image.shape) < 3 or image.shape[-3] != 3:
-        raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
+    # KORNIA_CHECK_NUM_CHANNELS(image, 3, axis=channels_axis)
 
     if rgb_weights is None:
-        # 8 bit images
-        if image.dtype == torch.uint8:
-            rgb_weights = torch.tensor([76, 150, 29], device=image.device, dtype=torch.uint8)
         # floating point images
-        elif image.dtype in (torch.float16, torch.float32, torch.float64):
-            rgb_weights = torch.tensor([0.299, 0.587, 0.114], device=image.device, dtype=image.dtype)
+        if "float" in str(image.dtype):
+            rgb_weights = (0.299, 0.587, 0.114)
+        # 8 bit images
+        elif "uint8" in str(image.dtype):
+            rgb_weights = (76, 150, 29)
         else:
             raise TypeError(f"Unknown data type: {image.dtype}")
-    else:
-        # is tensor that we make sure is in the same device/dtype
-        rgb_weights = rgb_weights.to(image)
 
     # unpack the color image channels with RGB order
-    r: Tensor = image[..., 0:1, :, :]
-    g: Tensor = image[..., 1:2, :, :]
-    b: Tensor = image[..., 2:3, :, :]
+    rgb: tuple[Tensor, Tensor, Tensor] = kornia_core.ops.split(image, 3, axis=channels_axis)
 
-    w_r, w_g, w_b = rgb_weights.unbind()
-    return w_r * r + w_g * g + w_b * b
+    # compute the weighted sum of the channels
+    image_grayscale = _weighted_sum_channels_kernel(*rgb, *rgb_weights)
+
+    return image_grayscale
 
 
 def bgr_to_grayscale(image: Tensor) -> Tensor:
@@ -144,11 +150,9 @@ class RgbToGrayscale(Module):
         >>> output = gray(input)  # 2x1x4x5
     """
 
-    def __init__(self, rgb_weights: Tensor | None = None) -> None:
+    def __init__(self, rgb_weights: tuple[float, float, float] | None = None) -> None:
         super().__init__()
-        if rgb_weights is None:
-            rgb_weights = Tensor([0.299, 0.587, 0.114])
-        self.rgb_weights = rgb_weights
+        self.rgb_weights = rgb_weights or (0.299, 0.587, 0.114)
 
     def forward(self, image: Tensor) -> Tensor:
         return rgb_to_grayscale(image, rgb_weights=self.rgb_weights)
@@ -174,3 +178,8 @@ class BgrToGrayscale(Module):
 
     def forward(self, image: Tensor) -> Tensor:
         return bgr_to_grayscale(image)
+
+
+# aliases
+
+rgb_to_grayscale = grayscale_from_rgb

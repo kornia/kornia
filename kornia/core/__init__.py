@@ -25,6 +25,7 @@ from ._backend import (
     zeros,
     zeros_like,
 )
+from .ops import *
 from .tensor_wrapper import TensorWrapper  # type: ignore
 
 __all__ = [
