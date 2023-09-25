@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from math import pi
-from typing import Optional, Union
 
 import torch
 from torch import Tensor
@@ -13,7 +12,7 @@ from kornia.utils.helpers import _torch_diff_where, _torch_histc_cast
 from kornia.utils.image import perform_keep_shape_image, perform_keep_shape_video
 
 
-def adjust_saturation_raw(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
+def adjust_saturation_raw(image: Tensor, factor: float | Tensor) -> Tensor:
     r"""Adjust color saturation of an image.
 
     Expecting image to be in hsv format already.
@@ -43,7 +42,7 @@ def adjust_saturation_raw(image: Tensor, factor: Union[float, Tensor]) -> Tensor
     return out
 
 
-def adjust_saturation_with_gray_subtraction(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
+def adjust_saturation_with_gray_subtraction(image: Tensor, factor: float | Tensor) -> Tensor:
     r"""Adjust color saturation of an image by blending the image with its grayscaled version.
 
     The image is expected to be an RGB image or a gray image in the range of [0, 1].
@@ -99,7 +98,7 @@ def adjust_saturation_with_gray_subtraction(image: Tensor, factor: Union[float, 
     return out
 
 
-def adjust_saturation(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
+def adjust_saturation(image: Tensor, factor: float | Tensor) -> Tensor:
     r"""Adjust color saturation of an image.
 
     .. image:: _static/img/adjust_saturation.png
@@ -140,7 +139,7 @@ def adjust_saturation(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
     return out
 
 
-def adjust_hue_raw(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
+def adjust_hue_raw(image: Tensor, factor: float | Tensor) -> Tensor:
     r"""Adjust hue of an image.
 
     Expecting image to be in hsv format already.
@@ -173,7 +172,7 @@ def adjust_hue_raw(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
     return out
 
 
-def adjust_hue(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
+def adjust_hue(image: Tensor, factor: float | Tensor) -> Tensor:
     r"""Adjust hue of an image.
 
     .. image:: _static/img/adjust_hue.png
@@ -215,7 +214,7 @@ def adjust_hue(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
     return out
 
 
-def adjust_gamma(input: Tensor, gamma: Union[float, Tensor], gain: Union[float, Tensor] = 1.0) -> Tensor:
+def adjust_gamma(input: Tensor, gamma: float | Tensor, gain: float | Tensor = 1.0) -> Tensor:
     r"""Perform gamma correction on an image.
 
     .. image:: _static/img/adjust_contrast.png
@@ -286,7 +285,7 @@ def adjust_gamma(input: Tensor, gamma: Union[float, Tensor], gain: Union[float, 
     return out
 
 
-def adjust_contrast(image: Tensor, factor: Union[float, Tensor], clip_output: bool = True) -> Tensor:
+def adjust_contrast(image: Tensor, factor: float | Tensor, clip_output: bool = True) -> Tensor:
     r"""Adjust the contrast of an image tensor.
 
     .. image:: _static/img/adjust_contrast.png
@@ -353,7 +352,7 @@ def adjust_contrast(image: Tensor, factor: Union[float, Tensor], clip_output: bo
     return img_adjust
 
 
-def adjust_contrast_with_mean_subtraction(image: Tensor, factor: Union[float, Tensor]) -> Tensor:
+def adjust_contrast_with_mean_subtraction(image: Tensor, factor: float | Tensor) -> Tensor:
     r"""Adjust the contrast of an image tensor by subtracting the mean over channels.
 
     .. note::
@@ -410,7 +409,7 @@ def adjust_contrast_with_mean_subtraction(image: Tensor, factor: Union[float, Te
     return img_adjust
 
 
-def adjust_brightness(image: Tensor, factor: Union[float, Tensor], clip_output: bool = True) -> Tensor:
+def adjust_brightness(image: Tensor, factor: float | Tensor, clip_output: bool = True) -> Tensor:
     r"""Adjust the brightness of an image tensor.
 
     .. image:: _static/img/adjust_brightness.png
@@ -476,7 +475,7 @@ def adjust_brightness(image: Tensor, factor: Union[float, Tensor], clip_output: 
     return img_adjust
 
 
-def adjust_brightness_accumulative(image: Tensor, factor: Union[float, Tensor], clip_output: bool = True) -> Tensor:
+def adjust_brightness_accumulative(image: Tensor, factor: float | Tensor, clip_output: bool = True) -> Tensor:
     r"""Adjust the brightness accumulatively of an image tensor.
 
     This implementation follows PIL convention.
@@ -597,7 +596,7 @@ def adjust_log(image: Tensor, gain: float = 1, inv: bool = False, clip_output: b
     return img_adjust
 
 
-def _solarize(input: Tensor, thresholds: Union[float, Tensor] = 0.5, relaxation: str | None = None) -> Tensor:
+def _solarize(input: Tensor, thresholds: float | Tensor = 0.5, relaxation: str | None = None) -> Tensor:
     r"""For each pixel in the image, select the pixel if the value is less than the threshold. Otherwise, subtract
     1.0 from the pixel.
 
@@ -637,9 +636,7 @@ def _solarize(input: Tensor, thresholds: Union[float, Tensor] = 0.5, relaxation:
     return img_adjust
 
 
-def solarize(
-    input: Tensor, thresholds: Union[float, Tensor] = 0.5, additions: Optional[Union[float, Tensor]] = None
-) -> Tensor:
+def solarize(input: Tensor, thresholds: float | Tensor = 0.5, additions: float | Tensor | None = None) -> Tensor:
     r"""For each pixel in the image less than threshold.
 
     .. image:: _static/img/solarize.png
@@ -704,7 +701,7 @@ def solarize(
 
 
 @perform_keep_shape_image
-def posterize(input: Tensor, bits: Union[int, Tensor]) -> Tensor:
+def posterize(input: Tensor, bits: int | Tensor) -> Tensor:
     r"""Reduce the number of bits for each color channel.
 
     .. image:: _static/img/posterize.png
@@ -792,7 +789,7 @@ def posterize(input: Tensor, bits: Union[int, Tensor]) -> Tensor:
 
 
 @perform_keep_shape_image
-def sharpness(input: Tensor, factor: Union[float, Tensor]) -> Tensor:
+def sharpness(input: Tensor, factor: float | Tensor) -> Tensor:
     r"""Apply sharpness to the input tensor.
 
     .. image:: _static/img/sharpness.png
@@ -1049,9 +1046,9 @@ class AdjustSaturation(Module):
         tensor(0.)
     """
 
-    def __init__(self, saturation_factor: Union[float, Tensor]) -> None:
+    def __init__(self, saturation_factor: float | Tensor) -> None:
         super().__init__()
-        self.saturation_factor: Union[float, Tensor] = saturation_factor
+        self.saturation_factor: float | Tensor = saturation_factor
 
     def forward(self, input: Tensor) -> Tensor:
         return adjust_saturation(input, self.saturation_factor)
@@ -1096,9 +1093,9 @@ class AdjustSaturationWithGraySubtraction(Module):
         tensor(0.)
     """
 
-    def __init__(self, saturation_factor: Union[float, Tensor]) -> None:
+    def __init__(self, saturation_factor: float | Tensor) -> None:
         super().__init__()
-        self.saturation_factor: Union[float, Tensor] = saturation_factor
+        self.saturation_factor: float | Tensor = saturation_factor
 
     def forward(self, input: Tensor) -> Tensor:
         return adjust_saturation_with_gray_subtraction(input, self.saturation_factor)
@@ -1143,9 +1140,9 @@ class AdjustHue(Module):
         torch.Size([2, 3, 3, 3])
     """
 
-    def __init__(self, hue_factor: Union[float, Tensor]) -> None:
+    def __init__(self, hue_factor: float | Tensor) -> None:
         super().__init__()
-        self.hue_factor: Union[float, Tensor] = hue_factor
+        self.hue_factor: float | Tensor = hue_factor
 
     def forward(self, input: Tensor) -> Tensor:
         return adjust_hue(input, self.hue_factor)
@@ -1180,10 +1177,10 @@ class AdjustGamma(Module):
         torch.Size([2, 5, 3, 3])
     """
 
-    def __init__(self, gamma: Union[float, Tensor], gain: Union[float, Tensor] = 1.0) -> None:
+    def __init__(self, gamma: float | Tensor, gain: float | Tensor = 1.0) -> None:
         super().__init__()
-        self.gamma: Union[float, Tensor] = gamma
-        self.gain: Union[float, Tensor] = gain
+        self.gamma: float | Tensor = gamma
+        self.gain: float | Tensor = gain
 
     def forward(self, input: Tensor) -> Tensor:
         return adjust_gamma(input, self.gamma, self.gain)
@@ -1218,9 +1215,9 @@ class AdjustContrast(Module):
         torch.Size([2, 5, 3, 3])
     """
 
-    def __init__(self, contrast_factor: Union[float, Tensor]) -> None:
+    def __init__(self, contrast_factor: float | Tensor) -> None:
         super().__init__()
-        self.contrast_factor: Union[float, Tensor] = contrast_factor
+        self.contrast_factor: float | Tensor = contrast_factor
 
     def forward(self, input: Tensor) -> Tensor:
         return adjust_contrast(input, self.contrast_factor)
@@ -1256,9 +1253,9 @@ class AdjustContrastWithMeanSubtraction(Module):
         torch.Size([2, 5, 3, 3])
     """
 
-    def __init__(self, contrast_factor: Union[float, Tensor]) -> None:
+    def __init__(self, contrast_factor: float | Tensor) -> None:
         super().__init__()
-        self.contrast_factor: Union[float, Tensor] = contrast_factor
+        self.contrast_factor: float | Tensor = contrast_factor
 
     def forward(self, input: Tensor) -> Tensor:
         return adjust_contrast_with_mean_subtraction(input, self.contrast_factor)
@@ -1292,9 +1289,9 @@ class AdjustBrightness(Module):
         torch.Size([2, 5, 3, 3])
     """
 
-    def __init__(self, brightness_factor: Union[float, Tensor]) -> None:
+    def __init__(self, brightness_factor: float | Tensor) -> None:
         super().__init__()
-        self.brightness_factor: Union[float, Tensor] = brightness_factor
+        self.brightness_factor: float | Tensor = brightness_factor
 
     def forward(self, input: Tensor) -> Tensor:
         return adjust_brightness(input, self.brightness_factor)
@@ -1391,9 +1388,9 @@ class AdjustBrightnessAccumulative(Module):
         torch.Size([2, 5, 3, 3])
     """
 
-    def __init__(self, brightness_factor: Union[float, Tensor]) -> None:
+    def __init__(self, brightness_factor: float | Tensor) -> None:
         super().__init__()
-        self.brightness_factor: Union[float, Tensor] = brightness_factor
+        self.brightness_factor: float | Tensor = brightness_factor
 
     def forward(self, input: Tensor) -> Tensor:
         return adjust_brightness_accumulative(input, self.brightness_factor)
