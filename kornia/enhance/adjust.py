@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from math import pi
 from typing import Optional, Union
 
@@ -595,7 +597,7 @@ def adjust_log(image: Tensor, gain: float = 1, inv: bool = False, clip_output: b
     return img_adjust
 
 
-def _solarize(input: Tensor, thresholds: Union[float, Tensor] = 0.5, relaxation: Optional[str] = None) -> Tensor:
+def _solarize(input: Tensor, thresholds: Union[float, Tensor] = 0.5, relaxation: str | None = None) -> Tensor:
     r"""For each pixel in the image, select the pixel if the value is less than the threshold. Otherwise, subtract
     1.0 from the pixel.
 
