@@ -1,8 +1,11 @@
 from itertools import product
 
 import keras_core as keras
+import numpy as np
 import pytest
+import torch
 
+import kornia
 from testing.dtypes import DTYPES, load_dtype
 
 
@@ -53,3 +56,10 @@ def pytest_generate_tests(metafunc):
 def pytest_addoption(parser):
     parser.addoption('--dtype', action="store", default="float32")
     parser.addoption('--channels_order', action="store", default="all")
+
+
+@pytest.fixture(autouse=True)
+def add_doctest_deps(doctest_namespace):
+    doctest_namespace["np"] = np
+    doctest_namespace["torch"] = torch
+    doctest_namespace["kornia"] = kornia
