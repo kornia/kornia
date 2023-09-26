@@ -31,6 +31,12 @@ Image Quality
 .. autoclass:: SSIM
 .. autoclass:: SSIM3D
 
+Optical Flow
+-------------
+
+.. autofunction:: aepe
+.. autoclass:: AEPE
+
 Monitoring
 ----------
 
