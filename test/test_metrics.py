@@ -196,12 +196,38 @@ class TestPsnr:
         assert_close(actual, expected)
 
 
-class TestEpe:
-    def test_metric(self, device, dtype):
+class TestAepe:
+    def test_metric_mean_reduction(self, device, dtype):
         sample = torch.ones(4, 4, 2, device=device, dtype=dtype)
         expected = torch.tensor(0.565685424, device=device, dtype=dtype)
-        actual = kornia.metrics.aepe(sample, 1.4 * sample)
+        actual = kornia.metrics.aepe(sample, 1.4 * sample, reduction="mean")
         assert_close(actual, expected)
+
+    def test_metric_sum_reduction(self, device, dtype):
+        sample = torch.ones(4, 4, 2, device=device, dtype=dtype)
+        expected = torch.tensor(1.4142, device=device, dtype=dtype) * 4 ** 2
+        actual = kornia.metrics.aepe(sample, 2.0 * sample, reduction="sum")
+        assert_close(actual, expected)
+
+    def test_metric_no_reduction(self, device, dtype):
+        sample = torch.ones(4, 4, 2, device=device, dtype=dtype)
+        expected = torch.zeros(4, 4, device=device, dtype=dtype) + 1.4142
+        actual = kornia.metrics.aepe(sample, 2.0 * sample, reduction="none")
+        assert_close(actual, expected)
+
+    def test_metric_wrong_reduction(self, device, dtype):
+        with pytest.raises(NotImplementedError):
+            sample = torch.ones(4, 4, 2, device=device, dtype=dtype)
+            expected = torch.zeros(4, 4, device=device, dtype=dtype) + 1.4142
+            actual = kornia.metrics.aepe(sample, 2.0 * sample, reduction="foo")
+            assert_close(actual, expected)
+
+    def test_metric_wrong_shape(self, device, dtype):
+        with pytest.raises(Exception):
+            sample = torch.ones(4, 4, 2, device=device, dtype=dtype)
+            expected = torch.zeros(4, 4, device=device, dtype=dtype) + 1.4142
+            actual = kornia.metrics.aepe(sample, 2.0 * sample[..., 0], reduction="mean")
+            assert_close(actual, expected)
 
     def test_smoke(self, device, dtype):
         input = torch.rand(3, 3, 2, device=device, dtype=dtype)
