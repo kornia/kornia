@@ -205,7 +205,7 @@ class TestAepe:
 
     def test_metric_sum_reduction(self, device, dtype):
         sample = torch.ones(4, 4, 2, device=device, dtype=dtype)
-        expected = torch.tensor(1.4142, device=device, dtype=dtype) * 4 ** 2
+        expected = torch.tensor(1.4142, device=device, dtype=dtype) * 4**2
         actual = kornia.metrics.aepe(sample, 2.0 * sample, reduction="sum")
         assert_close(actual, expected)
 
