@@ -10,189 +10,24 @@ from .numeric import cross_product_matrix
 from .projection import depth_from_point, projection_from_KRt
 from .triangulation import triangulate_points
 import kornia.geometry.epipolar as epi
-from kornia.geometry.solvers import solve_cubic, solve_polynomial
 from torch.nn.parameter import Parameter
 
 __all__ = [
+    "find_essential"
     "essential_from_fundamental",
     "decompose_essential_matrix",
     "essential_from_Rt",
     "motion_from_essential",
     "motion_from_essential_choose_solution",
-    "relative_camera_motion",
-    "find_essential"
+    "relative_camera_motion"
 ]
-class power_iteration_once(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, M, v_k, num_iter=19):
-        '''
-        :param ctx: used to save meterials for backward.
-        :param M: n by n matrix.
-        :param v_k: initial guess of leading vector.
-        :return: v_k1 leading vector.
-        '''
-        ctx.num_iter = num_iter
-        ctx.save_for_backward(M, v_k)
-        return v_k
 
-    @staticmethod
-    def backward(ctx, grad_output):
-        M, v_k = ctx.saved_tensors
-        dL_dvk = grad_output
-        I = torch.eye(M.shape[-1], out=torch.empty_like(M))
-        numerator = I - v_k.mm(torch.t(v_k))
-        denominator = torch.norm(M.mm(v_k)).clamp(min=1.e-5)
-        ak = numerator / denominator
-        term1 = ak
-        q = M / denominator
-        for i in range(1, ctx.num_iter + 1):
-            ak = q.mm(ak)
-            term1 += ak
-        dL_dM = torch.mm(term1.mm(dL_dvk), v_k.t())
-        return dL_dM, ak
+# Reference
+# Nistér, David. An efficient solution to the five-point relative pose problem. IEEE transactions on pattern analysis and machine intelligence 26.6 (2004): 756-770.
+# https://github.com/danini/graph-cut-ransac/blob/master/src/pygcransac/include/estimators/solver_essential_matrix_five_point_nister.h
+# Wei T, Patel Y, Matas J, Barath D. Generalized differentiable RANSAC[J]. arXiv preprint arXiv:2212.13185, 2023.
+# https://github.com/weitong8591/differentiable_ransac/blob/main/estimators/essential_matrix_estimator_nister.py
 
-
-class PowerIteration(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, M, v, n_iter=19):
-        ctx.n_iter = n_iter
-        ctx.save_for_backward(M, v)
-
-        return v
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        M, v = ctx.saved_tensors
-        dL_dv = grad_output
-        I = torch.eye(M.shape[-1], out=torch.empty_like(M)).reshape(1, M.shape[-1], M.shape[-1]).repeat(M.shape[0], 1, 1)
-        num = I - torch.bmm(v, torch.transpose(v, 2, 1))
-        denom = torch.norm(torch.bmm(M, v), dim=(1, 2), keepdim=True).clamp(min=1e-5)
-        ak = torch.div(num, denom)
-        term1 = ak.clone()
-        q = torch.div(M, denom)
-        for _ in range(1, ctx.n_iter + 1):
-            ak = torch.bmm(q, ak)
-            term1 += ak
-        
-        dL_dM = torch.bmm(torch.bmm(term1, dL_dv), torch.transpose(v, 2, 1))
-
-        return dL_dM, ak
-    
-def o1(a, b):
-        """
-        a, b are first order polys [x,y,z,1]
-          c is degree 2 poly with order
-          [ x^2, x*y, x*z, x, y^2, y*z, y, z^2, z, 1]
-        """
-        # print(a[0] * b[2] + a[2] * b[0])
-        return torch.stack([a[:, 0] * b[:, 0], a[:, 0] * b[:, 1] + a[:, 1] * b[:, 0], a[:, 0] * b[:, 2] + a[:, 2] * b[:, 0],
-                            a[:, 0] * b[:, 3] + a[:, 3] * b[:, 0], a[:, 1] * b[:, 1], a[:, 1] * b[:, 2] + a[:, 2] * b[:, 1],
-                            a[:, 1] * b[:, 3] + a[:, 3] * b[:, 1], a[:, 2] * b[:, 2], a[:, 2] * b[:, 3] + a[:, 3] * b[:, 2],
-                            a[:, 3] * b[:, 3]], dim=-1)
-
-def o2(a, b):  # 10 4 20
-    """
-      a is second degree poly with order [ x^2, x*y, x*z, x, y^2, y*z, y, z^2, z, 1]
-      b is first degree with order [x y z 1]
-      c is third degree with order (same as nister's paper)
-      [ x^3, y^3, x^2*y, x*y^2, x^2*z, x^2, y^2*z, y^2, x*y*z, x*y, x*z^2, x*z, x, y*z^2, y*z, y, z^3, z^2, z, 1]
-    """
-    return torch.stack(
-        [a[:, 0] * b[:, 0], a[:, 4] * b[:, 1], a[:, 0] * b[:, 1] + a[:, 1] * b[:, 0], a[:, 1] * b[:, 1] + a[:, 4] * b[:, 0], a[:, 0] * b[:, 2] + a[:, 2] * b[:, 0],
-         a[:, 0] * b[:, 3] + a[:, 3] * b[:, 0], a[:, 4] * b[:, 2] + a[:, 5] * b[:, 1], a[:, 4] * b[:, 3] + a[:, 6] * b[:, 1],
-         a[:, 1] * b[:, 2] + a[:, 2] * b[:, 1] + a[:, 5] * b[:, 0], a[:, 1] * b[:, 3] + a[:, 3] * b[:, 1] + a[:, 6] * b[:, 0],
-         a[:, 2] * b[:, 2] + a[:, 7] * b[:, 0], a[:, 2] * b[:, 3] + a[:, 3] * b[:, 2] + a[:, 8] * b[:, 0], a[:, 3] * b[:, 3] + a[:, 9] * b[:, 0],
-         a[:, 5] * b[:, 2] + a[:, 7] * b[:, 1], a[:, 5] * b[:, 3] + a[:, 6] * b[:, 2] + a[:, 8] * b[:, 1],
-         a[:, 6] * b[:, 3] + a[:, 9] * b[:, 1], a[:, 7] * b[:, 2], a[:, 7] * b[:, 3] + a[:, 8] * b[:, 2],
-         a[:, 8] * b[:, 3] + a[:, 9] * b[:, 2], a[:, 9] * b[:, 3]], dim=-1)
-
-
-class myPCANormSVDPI(torch.nn.Module):
-    def __init__(self, num_features = 9, eps=1e-4, momentum=0.1, affine=True, n_power_iterations=19):
-        super(myPCANormSVDPI, self).__init__()
-        self.num_features = num_features
-        self.eps = eps
-        self.momentum = momentum
-        self.affine = affine
-        self.n_power_iterations = n_power_iterations
-        self.n_eigens = 9  # num_features  # int(num_features/2)
-
-        self.weight = Parameter(torch.Tensor(num_features, 1))
-        self.bias = Parameter(torch.Tensor(num_features, 1))
-        self.power_layer = power_iteration_once.apply
-        self.register_buffer('running_mean', torch.zeros(num_features, 1))
-        self.register_buffer('running_var', torch.ones(num_features, 1))
-        self.register_buffer('running_subspace', torch.eye(num_features, num_features))
-
-        self.reset_parameters()
-        self.create_dictionary()
-
-    def reset_running_stats(self):
-            self.running_mean.zero_()
-            self.running_var.fill_(1)
-            self.running_subspace.zero_()
-
-    def reset_parameters(self):
-        self.reset_running_stats()
-        if self.affine:
-            self.weight.data.uniform_()
-            self.bias.data.zero_()
-
-    def _check_input_dim(self, input):
-        if input.dim() != 4:
-            raise ValueError('expected 4D input (got {}D input)'
-                             .format(input.dim()))
-
-    def create_dictionary(self):
-        for i in range(self.n_eigens):
-            self.register_buffer("{}".format(i), torch.ones(self.num_features, 1, requires_grad=True))
-
-        self.eig_dict = self.state_dict()
-
-    def forward(self, xxt):
-        self.eig_dict = self.state_dict()
-
-        if self.training:
-
-            # import pdb; pdb.set_trace()
-            counter = 0
-            lambda_sum_gt = 0
-            with torch.no_grad():
-                u, e, v = torch.svd(xxt)
-                for i in range(self.n_eigens):
-                    self.eig_dict[str(i)] = v[:, i][..., None]
-            
-            # import pdb; pdb.set_trace()
-            for i in range(self.n_eigens):
-                self.eig_dict[str(i)] = self.power_layer(xxt, self.eig_dict[str(i)])
-                counter += 1
-                xxt = xxt - torch.mm(torch.mm(xxt, self.eig_dict[str(i)]), self.eig_dict[str(i)].t())
-
-            #??
-            xxt = xxt.t() * self.weight + self.bias
-            return torch.stack([self.eig_dict[str(i)] for i in range(self.n_eigens)]).transpose(0, -1)
-
-        else:
-            N, C, H, W = x.size()
-            x = x.transpose(0, 1).contiguous().view(C, -1)
-            x = (x - self.running_mean) / (self.running_var + self.eps).sqrt()
-            x = torch.mm(x.t(), self.running_subspace).t()
-            x = x * self.weight + self.bias
-            x = x.view(C, N, H, W).transpose(0, 1)
-            return x
-
-    def extra_repr(self):
-        return '{num_features}, eps={eps}, momentum={momentum}, affine={affine}, ' \
-               'track_running_stats={track_running_stats}'.format(**self.__dict__)
-
-    def _load_from_state_dict(self, state_dict, prefix, metadata, strict,
-                              missing_keys, unexpected_keys, error_msgs):
-
-        super(myPCANormSVDPI, self)._load_from_state_dict(
-            state_dict, prefix, metadata, strict,
-            missing_keys, unexpected_keys, error_msgs)
-
-    
 def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None) -> torch.Tensor:
     r"""Compute the essential matrix using the 5-point algorithm from Nister.
 
@@ -206,9 +41,7 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     Returns:
         the computed fundamental matrix with shape :math:`(B, 3, 3)`.
     """
-    power_layer = PowerIteration.apply
 
-    # diff_svd = myPCANormSVDPI()
     if points1.shape != points2.shape:
         raise AssertionError(points1.shape, points2.shape)
     if points1.shape[1] < 5:
@@ -235,47 +68,40 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
         X = X.transpose(-2, -1) @ w_diag @ X
     # assert torch.allclose(X[0], X[0].t(), atol=1e-8)
     # compute eigevectors and retrieve the one with the smallest eigenvalue
-    
+    # _torch_svd_cast is transpose of torch.linalg.svd
+    # use svd
+    _, _, V = _torch_svd_cast(X)#torch.svd
+    null_ = V[:, :, -4:] # the last four rows
+    nullSpace = V.transpose(-1, -2)[:, -4:, :]
     # use PI
+    # _, _, V = _torch_svd_cast(X)#torch.svd
+    # power_layer = PowerIteration.apply
+    # V = power_layer(X, V)
+    # diff_svd = myPCANormSVDPI()
 
-
-    # """
     # use eigh
     # _, V = torch.linalg.eigh(X)
     # null_ = V.transpose(-1, -2)[:, :4, :].transpose(-1, -2) # the last four rows
     # nullSpace = V.transpose(-1, -2)[:, :4, :]
     # V = diff_svd(X.unsqueeze(-1).transpose(1, 2))#.squeeze())
-    #"""
-    #"""
-    # use svd
-    _, _, V = _torch_svd_cast(X)#torch.svd
-    V = power_layer(X, V)
-    #torch.autograd.gradcheck.GradcheckError: Jacobian mismatch for output 0 with respect to input 0,
-    #numerical:tensor(-6.3237, dtype=torch.float64)
-    #analytical:tensor(8.2318e-17, dtype=torch.float64)
-    # import pdb; pdb.set_trace()
-
-    null_ = V.transpose(-1, -2)[:, -4:, :].transpose(-1, -2) # the last four rows
-    nullSpace = V.transpose(-1, -2)[:, -4:, :]
-    #"""
 
     coeffs = torch.zeros(batch_size, 10, 20, device=null_.device, dtype=null_.dtype)
     d = torch.zeros(batch_size, 60, device=null_.device, dtype=null_.dtype)
     fun = lambda i, j : null_[:, 3 * j + i]
 
     # Determinant constraint
-    coeffs[:, 9] = o2(o1(fun(0, 1), fun(1, 2)) - o1(fun(0, 2), fun(1, 1)), fun(2, 0)) +\
-        o2(o1(fun(0, 2), fun(1, 0)) - o1(fun(0, 0), fun(1, 2)), fun(2, 1)) +\
-        o2(o1(fun(0, 0), fun(1, 1)) - o1(fun(0, 1), fun(1, 0)), fun(2, 2))
+    coeffs[:, 9] = epi.numeric.o2(epi.numeric.o1(fun(0, 1), fun(1, 2)) - epi.numeric.o1(fun(0, 2), fun(1, 1)), fun(2, 0)) +\
+        epi.numeric.o2(epi.numeric.o1(fun(0, 2), fun(1, 0)) - epi.numeric.o1(fun(0, 0), fun(1, 2)), fun(2, 1)) +\
+        epi.numeric.o2(epi.numeric.o1(fun(0, 0), fun(1, 1)) - epi.numeric.o1(fun(0, 1), fun(1, 0)), fun(2, 2))
 
     indices = torch.tensor([[0, 10, 20], [10, 40, 30], [20, 30, 50]])
 
     # Compute EE^T (Eqn. 20 in the paper)
     for i in range(3):
         for j in range(3):
-            d[:, indices[i, j]: indices[i, j] + 10] = o1(fun(i, 0), fun(j, 0)) + \
-                                                   o1(fun(i, 1), fun(j, 1)) + \
-                                                   o1(fun(i, 2), fun(j, 2))
+            d[:, indices[i, j]: indices[i, j] + 10] = epi.numeric.o1(fun(i, 0), fun(j, 0)) + \
+                                                   epi.numeric.o1(fun(i, 1), fun(j, 1)) + \
+                                                   epi.numeric.o1(fun(i, 2), fun(j, 2))
 
     for i in range(10):
         t = 0.5 * (d[:, indices[0, 0] + i] + d[:, indices[1, 1] + i] + d[:, indices[2, 2] + i])
@@ -286,9 +112,9 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     cnt = 0
     for i in range(3):
         for j in range(3):
-            row = o2(d[:, indices[i, 0]: indices[i, 0] + 10], fun(0, j)) + \
-                o2(d[:, indices[i, 1]: indices[i, 1] + 10], fun(1, j)) + \
-                o2(d[:, indices[i, 2]: indices[i, 2] + 10], fun(2, j))
+            row = epi.numeric.o2(d[:, indices[i, 0]: indices[i, 0] + 10], fun(0, j)) + \
+                epi.numeric.o2(d[:, indices[i, 1]: indices[i, 1] + 10], fun(1, j)) + \
+                epi.numeric.o2(d[:, indices[i, 2]: indices[i, 2] + 10], fun(2, j))
             coeffs[:, cnt] = row
             cnt += 1
 
@@ -296,10 +122,8 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     singular_filter = torch.linalg.matrix_rank(coeffs[:, :, :10]) >= torch.max(
         torch.linalg.matrix_rank(coeffs),
         torch.ones_like(torch.linalg.matrix_rank(coeffs[:, :, :10]))*10)
-    try:
-        eliminated_mat = torch.linalg.solve(coeffs[singular_filter, :, :10], b[singular_filter])
-    except Exception as e:
-        print(e)
+    
+    eliminated_mat = torch.linalg.solve(coeffs[singular_filter, :, :10], b[singular_filter])
 
     coeffs_ = torch.concat((coeffs[singular_filter, :, :10], eliminated_mat), dim=-1)
 
@@ -489,27 +313,26 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
             A[:, 0, 4] * A[:, 1, 8] * A[:, 2, 0] + A[:, 0, 8] * A[:, 1, 0] * A[:, 2, 4] - A[:, 0, 8] * A[:, 1, 4] * A[:, 2, 0]
     
     E_models = []
-    roots_all = torch.real(solve_polynomial(cs))
+    # torch.real(solve_polynomial(cs.flip(1))) # flip the coefficient matrix if using sturm 
+    # torch.real(np.roots(cs.squeeze().flip(0)))
     # for loop because of different numbers of solutions
     for bi in range(A.shape[0]):
         A_i = A[bi]
         null_i = nullSpace[bi]
 
-        # companion matrix solver
-        # C = torch.zeros((10, 10), device=cs.device, dtype=cs.dtype)
-        # C[0:-1, 1:] = torch.eye(C[0:-1, 0:-1].shape[0], device=cs.device, dtype=cs.dtype)
-        # C[-1, :] = -cs[bi][:-1]/cs[bi][-1]
+        # companion matrix solver for ploynomial
+        C = torch.zeros((10, 10), device=cs.device, dtype=cs.dtype)
+        C[0:-1, 1:] = torch.eye(C[0:-1, 0:-1].shape[0], device=cs.device, dtype=cs.dtype)
+        C[-1, :] = -cs[bi][:-1]/cs[bi][-1]
 
-        # # check if the companion matrix contains nans or infs
-        # if torch.isnan(C).any() or torch.isinf(C).any():
-        #     continue
-        # else:
-        #     roots = torch.real(torch.linalg.eigvals(C))
-        # import pdb; pdb.set_trace()
-        roots = roots_all[bi]
+        # check if the companion matrix contains nans or infs
+        if torch.isnan(C).any() or torch.isinf(C).any():
+            continue
+        else:
+            roots = torch.real(torch.linalg.eigvals(C))
+
         if roots is None:
             continue
-
         n_sols = roots.size()
         if n_sols == 0:
             continue
@@ -523,6 +346,7 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
             xzs = Bs[:, 0:2, 0:2].inverse() @ (bs[:, 0:2])
         except:
             continue
+
         mask = (abs(Bs[:, 2].unsqueeze(1) @ xzs - bs[:, 2].unsqueeze(1)) > 1e-3).flatten()
         if torch.sum(mask) != 0:
             q, r = torch.linalg.qr(Bs[mask].clone())#
@@ -828,10 +652,7 @@ def find_essential(
         weights: Tensor containing the weights per point correspondence with a shape of :math:`(5, N)`.
 
     Returns:
-        the computed essential matrix with shape :math:`(B, 3*m, 3)`, where `m` number of essential matrix.
-
-    Raises:
-        ValueError: If an invalid method is provided.
+        the computed essential matrix with shape :math:`(B, 3, 3)`, one model for each batch selceted out of ten solutions by Sampson distances.
 
     """
     E = run_5point(points1, points2, weights).to(points1.dtype)

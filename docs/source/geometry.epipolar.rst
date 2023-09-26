@@ -10,8 +10,8 @@ Module with useful functionalities for epipolar geometry used by Structure from 
 
 Essential
 ---------
-
-.. autofunction:: essential_from_fundamental
+.. autofunction:: find_essential
+.. autofusnction:: essential_from_fundamental
 .. autofunction:: essential_from_Rt
 .. autofunction:: decompose_essential_matrix
 .. autofunction:: motion_from_essential
@@ -52,6 +52,9 @@ Numeric
 -------
 
 .. autofunction:: cross_product_matrix
+.. autofunction:: o1
+.. autofunction:: o2
+
 
 Triangulation
 -------------
