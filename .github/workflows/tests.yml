@@ -75,9 +75,7 @@ jobs:
     - name: Run CPU tests
       continue-on-error: ${{ inputs.continue-on-error }}
       shell: bash -l {0}
-      # TODO: Setup dtype and device fixture as arguments
-      # run: pytest -v --device cpu --dtype ${{ inputs.backend-dtype }} ${{ inputs.pytest-extra }} --cov=kornia --cov-report xml ./tests/
-      run: KERAS_BACKEND=${{ matrix.backend }} pytest -v ${{ inputs.pytest-extra }} --cov=kornia --cov-report xml ./tests/
+      run: KERAS_BACKEND=${{ matrix.backend }} pytest -vv --dtype ${{ inputs.backend-dtype }} ${{ inputs.pytest-extra }} --cov=kornia --cov-report xml ./tests/
 
     - if: always()
       name: Upload coverage
