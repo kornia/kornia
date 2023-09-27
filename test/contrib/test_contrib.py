@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import PropertyMock, patch
 
 import pytest
@@ -9,6 +10,7 @@ import kornia.testing as utils  # test utils
 from kornia.contrib.face_detection import FaceKeypoint
 from kornia.contrib.models.rt_detr import RTDETR, DETRPostProcessor, RTDETRConfig
 from kornia.testing import assert_close
+from kornia.utils._compat import torch_version_lt
 
 
 class TestDiamondSquare:
@@ -110,15 +112,22 @@ class TestConnectedComponents:
     def test_exception(self, device, dtype):
         img = torch.rand(1, 1, 3, 4, device=device, dtype=dtype)
 
-        with pytest.raises(TypeError):
+        with pytest.raises(TypeError) as errinf:
             assert kornia.contrib.connected_components(img, 1.0)
+        assert 'Input num_iterations must be a positive integer.' in str(errinf)
 
-        with pytest.raises(TypeError):
+        with pytest.raises(TypeError) as errinf:
+            assert kornia.contrib.connected_components('not a tensor', 0)
+        assert 'Input imagetype is not a Tensor. Got:' in str(errinf)
+
+        with pytest.raises(TypeError) as errinf:
             assert kornia.contrib.connected_components(img, 0)
+        assert 'Input num_iterations must be a positive integer.' in str(errinf)
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError) as errinf:
             img = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
             assert kornia.contrib.connected_components(img, 2)
+        assert 'Input image shape must be (*,1,H,W). Got:' in str(errinf)
 
     def test_value(self, device, dtype):
         img = torch.tensor(
@@ -750,7 +759,7 @@ class TestObjectDetector:
         sizes = torch.randint(5, 10, (batch_size, 2)) * 32
         imgs = [torch.randn(3, h, w, device=device, dtype=dtype) for h, w in sizes]
         pre_processor_out = pre_processor(imgs)
-        detections = detector.predict(imgs)
+        detections = detector(imgs)
 
         assert pre_processor_out[0].shape[-1] == 32
         assert pre_processor_out[0].shape[-2] == 32
@@ -759,3 +768,50 @@ class TestObjectDetector:
             assert dets.shape[1] == 6
             assert torch.all(dets[:, 0].int() == dets[:, 0])
             assert torch.all(dets[:, 1] >= 0.3)
+
+    @pytest.mark.skipif(torch_version_lt(2, 0, 0), reason="Unsupported ONNX opset version: 16")
+    @pytest.mark.parametrize("variant", ("resnet50d", "hgnetv2_l"))
+    def test_onnx(self, device, dtype, tmp_path: Path, variant: str):
+        config = RTDETRConfig(variant, 1)
+        model = RTDETR.from_config(config).to(device=device, dtype=dtype).eval()
+        pre_processor = kornia.contrib.object_detection.ResizePreProcessor(640)
+        post_processor = DETRPostProcessor(0.3)
+        detector = kornia.contrib.ObjectDetector(model, pre_processor, post_processor)
+
+        data = torch.rand(3, 400, 640, device=device, dtype=dtype)
+
+        model_path = tmp_path / "rtdetr.onnx"
+
+        dynamic_axes = {"images": {0: "N"}}
+        torch.onnx.export(
+            detector,
+            [data],
+            model_path,
+            input_names=["images"],
+            output_names=["detections"],
+            dynamic_axes=dynamic_axes,
+            opset_version=16,
+        )
+
+        assert model_path.is_file()
+
+    def test_results_from_detections(self, device, dtype):
+        # label_id, confidence, data
+        detections = torch.tensor(
+            [
+                [0, 0.9, 0.0, 0.0, 1.0, 1.0],
+                [1, 0.8, 0.0, 0.0, 1.0, 1.0],
+                [2, 0.7, 0.0, 0.0, 1.0, 1.0],
+                [3, 0.6, 0.0, 0.0, 1.0, 1.0],
+                [4, 0.5, 0.0, 0.0, 1.0, 1.0],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        detector_results: list = kornia.contrib.object_detection.results_from_detections(detections, format="xywh")
+
+        assert len(detector_results) == 5
+        for j, det in enumerate(detector_results):
+            for i in range(4):
+                assert det.bbox.data[i] == float(detections[j, i + 2])

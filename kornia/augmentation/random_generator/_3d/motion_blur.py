@@ -1,9 +1,8 @@
 from typing import Dict, Tuple, Union
 
 import torch
-from torch.distributions import Uniform
 
-from kornia.augmentation.random_generator.base import RandomGeneratorBase
+from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound, _tuple_range_reader
 from kornia.core import Tensor, stack
 from kornia.utils.helpers import _extract_device_dtype
@@ -63,19 +62,21 @@ class MotionBlurGenerator3D(RandomGeneratorBase):
         if isinstance(self.kernel_size, int):
             if not (self.kernel_size >= 3 and self.kernel_size % 2 == 1):
                 raise AssertionError(f"`kernel_size` must be odd and greater than 3. Got {self.kernel_size}.")
-            self.ksize_sampler = Uniform(self.kernel_size // 2, self.kernel_size // 2, validate_args=False)
+            self.ksize_sampler = UniformDistribution(self.kernel_size // 2, self.kernel_size // 2, validate_args=False)
         elif isinstance(self.kernel_size, tuple):
             # kernel_size is fixed across the batch
             if len(self.kernel_size) != 2:
                 raise AssertionError(f"`kernel_size` must be (2,) if it is a tuple. Got {self.kernel_size}.")
-            self.ksize_sampler = Uniform(self.kernel_size[0] // 2, self.kernel_size[1] // 2, validate_args=False)
+            self.ksize_sampler = UniformDistribution(
+                self.kernel_size[0] // 2, self.kernel_size[1] // 2, validate_args=False
+            )
         else:
             raise TypeError(f"Unsupported type: {type(self.kernel_size)}")
 
-        self.yaw_sampler = Uniform(angle[0][0], angle[0][1], validate_args=False)
-        self.pitch_sampler = Uniform(angle[1][0], angle[1][1], validate_args=False)
-        self.roll_sampler = Uniform(angle[2][0], angle[2][1], validate_args=False)
-        self.direction_sampler = Uniform(direction[0], direction[1], validate_args=False)
+        self.yaw_sampler = UniformDistribution(angle[0][0], angle[0][1], validate_args=False)
+        self.pitch_sampler = UniformDistribution(angle[1][0], angle[1][1], validate_args=False)
+        self.roll_sampler = UniformDistribution(angle[2][0], angle[2][1], validate_args=False)
+        self.direction_sampler = UniformDistribution(direction[0], direction[1], validate_args=False)
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]

@@ -56,6 +56,9 @@ def ssim3d_loss(
         loss = loss.sum()
     elif reduction == "none":
         pass
+    else:
+        raise NotImplementedError('Invalid reduction option.')
+
     return loss
 
 
