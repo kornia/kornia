@@ -1,16 +1,16 @@
-.. code:: 
+.. code::
 
     %%capture
     !pip install kornia
     !pip install kornia-rs
 
-.. code:: 
+.. code::
 
     import io
-    
+
     import requests
-    
-    
+
+
     def download_image(url: str, filename: str = "") -> str:
         filename = url.split("/")[-1] if len(filename) == 0 else filename
         # Download
@@ -18,10 +18,10 @@
         # Save file
         with open(filename, "wb") as outfile:
             outfile.write(bytesio.getbuffer())
-    
+
         return filename
-    
-    
+
+
     url = "https://github.com/kornia/data/raw/main/doraemon.png"
     download_image(url)
 
@@ -34,14 +34,14 @@
 
 
 
-.. code:: 
+.. code::
 
     import kornia as K
     import matplotlib.pyplot as plt
     import torch
     import torchvision
 
-.. code:: 
+.. code::
 
     def imshow(input: torch.Tensor):
         out = torchvision.utils.make_grid(input, nrow=2, padding=5)
@@ -50,11 +50,11 @@
         plt.axis("off")
         plt.show()
 
-.. code:: 
+.. code::
 
     # read the image with kornia and add a random noise to it
     img = K.io.load_image("doraemon.png", K.io.ImageLoadType.RGB32)  # CxHxW
-    
+
     noisy_image = (img + torch.normal(torch.zeros_like(img), 0.1)).clamp(0, 1)
     imshow(noisy_image)
 
@@ -65,7 +65,7 @@
 
 We define the total variation denoising network and the optimizer
 
-.. code:: 
+.. code::
 
     # define the total variation denoising network
     class TVDenoise(torch.nn.Module):
@@ -76,22 +76,22 @@ We define the total variation denoising network and the optimizer
             # create the variable which will be optimized to produce the noise free image
             self.clean_image = torch.nn.Parameter(data=noisy_image.clone(), requires_grad=True)
             self.noisy_image = noisy_image
-    
+
         def forward(self):
             return self.l2_term(self.clean_image, self.noisy_image) + 0.0001 * self.regularization_term(self.clean_image)
-    
+
         def get_clean_image(self):
             return self.clean_image
-    
-    
+
+
     tv_denoiser = TVDenoise(noisy_image)
-    
+
     # define the optimizer to optimize the 1 parameter of tv_denoiser
     optimizer = torch.optim.SGD(tv_denoiser.parameters(), lr=0.1, momentum=0.9)
 
 Run the the optimization loop
 
-.. code:: 
+.. code::
 
     num_iters: int = 500
     for i in range(num_iters):
@@ -119,23 +119,23 @@ Run the the optimization loop
 
 Visualize the noisy and resulting cleaned image
 
-.. code:: 
+.. code::
 
     # convert back to numpy
     img_clean = K.utils.tensor_to_image(tv_denoiser.get_clean_image())
-    
+
     # Create the plot
     fig, axs = plt.subplots(1, 2, figsize=(16, 10))
     axs = axs.ravel()
-    
+
     axs[0].axis("off")
     axs[0].set_title("Noisy image")
     axs[0].imshow(K.tensor_to_image(noisy_image))
-    
+
     axs[1].axis("off")
     axs[1].set_title("Cleaned image")
     axs[1].imshow(img_clean)
-    
+
     plt.show()
 
 
