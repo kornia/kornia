@@ -165,14 +165,46 @@ requires = [
 [tool.pytest.ini_options]
   addopts = "--color=yes"
 
+[tool.coverage.run]
+branch = true
+source = [
+    'kornia/',
+]
+omit = [
+    '*/__main__.py',
+    '*/setup.py',
+]
+
 [tool.coverage.report]
-exclude_lines = [
-  "def __repr__",
-  "if __name__ == .__main__.:",
-  "if 0:",
-  "if self.debug:",
-  "pragma: no cover",
-  "raise",
+show_missing = true
+skip_covered = true
+fail_under = 87
+exclude_lines =[
+    # Based into the covdefaults plugin config
+    # a more strict default pragma
+    '\# pragma: no cover\b',
+
+    # allow defensive code
+    '^\s*raise AssertionError\b',
+    '^\s*raise NotImplementedError\b',
+    '^\s*return NotImplemented\b',
+    '^\s*raise$',
+
+    # typing-related code
+    '^\s*if (False|TYPE_CHECKING):',
+    ': \.\.\.(\s*#.*)?$',
+    '^ +\.\.\.$',
+
+    # ----------------------------
+      "def __repr__",
+      "if __name__ == .__main__.:",
+      "if 0:",
+      "if self.debug:",
+]
+
+partial_branches = [
+    # a more strict default pragma
+    '\# pragma: no cover\b',
 ]
 
 [tool.mypy]

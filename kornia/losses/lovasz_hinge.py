@@ -56,9 +56,6 @@ def lovasz_hinge_loss(pred: Tensor, target: Tensor) -> Tensor:
 
     KORNIA_CHECK_SHAPE(target, ["B", "H", "W"])
 
-    if not pred.shape[1] == 1:
-        raise ValueError(f"Invalid pred shape, we expect Bx1xHxW. Got: {pred.shape}")
-
     if not pred.shape[-2:] == target.shape[-2:]:
         raise ValueError(f"pred and target shapes must be the same. Got: {pred.shape} and {target.shape}")
 

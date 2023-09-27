@@ -33,6 +33,10 @@ on:
         required: false
         type: boolean
         default: false
+      coverage:
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   tests:
@@ -72,14 +76,31 @@ jobs:
         backend: ${{ matrix.backend }}
         backend-version: ${{ matrix.backend-version }}
 
-    - name: Run CPU tests
+    - if: ${{ inputs.coverage == false}}
+      name: Run CPU tests
       continue-on-error: ${{ inputs.continue-on-error }}
       shell: bash -l {0}
       # TODO: Setup dtype and device fixture as arguments
       # run: pytest -v --device cpu --dtype ${{ inputs.backend-dtype }} ${{ inputs.pytest-extra }} --cov=kornia --cov-report xml ./tests/
-      run: KERAS_BACKEND=${{ matrix.backend }} pytest -v ${{ inputs.pytest-extra }} --cov=kornia --cov-report xml ./tests/
+      run: KERAS_BACKEND=${{ matrix.backend }} pytest -v ${{ inputs.pytest-extra }} ./tests/
 
-    - if: always()
+    - if: ${{ inputs.coverage }}
+      name: Run CPU tests coverage ${{ inputs.pytorch-dtype }}
+      continue-on-error: ${{ inputs.continue-on-error }}
+      shell: bash -l {0}
+      run: |
+        coverage erase
+        # run: pytest -v --device cpu --dtype ${{ inputs.backend-dtype }} ${{ inputs.pytest-extra }} --cov=kornia --cov-report xml ./tests/
+        KERAS_BACKEND=${{ matrix.backend }} coverage run -m pytest -v ${{ inputs.pytest-extra }} ./test
+
+    - if: ${{ inputs.coverage }}
+      name: Coverage report
+      shell: bash -l {0}
+      run: |
+        coverage xml -o coverage.xml  # Generate the xml for the codecov
+        coverage report # Print the report
+
+    - if: ${{ inputs.coverage }}
       name: Upload coverage
       uses: codecov/codecov-action@v3
       with:

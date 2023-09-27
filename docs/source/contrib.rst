@@ -60,10 +60,29 @@ Visit the `Kornia face detection demo on the Hugging Face Spaces
 Object Detection
 ----------------
 
-.. autoclass:: ObjectDetector
+.. autoclass:: kornia.contrib.object_detection.BoundingBoxDataFormat
+    :members:
+    :undoc-members:
+    :member-order: bysource
+
+.. autoclass:: kornia.contrib.object_detection.BoundingBox
+    :members:
+    :undoc-members:
+
+.. autoclass:: kornia.contrib.object_detection.ObjectDetectorResult
+    :members:
+    :undoc-members:
+
+.. autoclass:: kornia.contrib.object_detection.ObjectDetector
     :members:
     :undoc-members:
     :special-members: __init__,
+
+.. autoclass:: kornia.contrib.object_detection.ResizePreProcessor
+    :members:
+    :undoc-members:
+
+.. autofunction:: kornia.contrib.object_detection.results_from_detections
 
 Real-Time Detection Transformer (RT-DETR)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

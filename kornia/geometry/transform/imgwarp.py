@@ -184,11 +184,6 @@ def warp_affine(
     if not (len(M.shape) == 3 or M.shape[-2:] == (2, 3)):
         raise ValueError(f"Input M must be a Bx2x3 tensor. Got {M.shape}")
 
-    # fill padding is only supported for 3 channels because we can't set fill_value default
-    # to None as this gives jit issues.
-    if padding_mode == "fill" and fill_value.shape != torch.Size([3]):
-        raise ValueError(f"Padding_tensor only supported for 3 channels. Got {fill_value.shape}")
-
     B, C, H, W = src.size()
 
     # we generate a 3x3 transformation matrix from 2x3 affine
@@ -202,6 +197,7 @@ def warp_affine(
 
     if padding_mode == "fill":
         return _fill_and_warp(src, grid, align_corners=align_corners, mode=mode, fill_value=fill_value)
+
     return F.grid_sample(src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode)
 
 
