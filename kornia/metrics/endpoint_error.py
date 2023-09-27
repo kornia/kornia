@@ -58,7 +58,7 @@ def aepe(input: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> 
 class AEPE(nn.Module):
     r"""Computes the average endpoint error (AEPE) between 2 flow maps.
 
-    EPE is the endpoint error between two 2D vecotrs (e.g., oprical flow).
+    EPE is the endpoint error between two 2D vectors (e.g., optical flow).
     Given a h x w x 2 optical flow map, the AEPE is:
 
     .. math::
