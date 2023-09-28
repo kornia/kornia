@@ -49,8 +49,8 @@ class TestFindEssential:
             import cv2
             calibrated_x1 = torch.from_numpy(cv2.undistortPoints(x1.numpy(), cameraMatrix=K1.squeeze().numpy(), distCoeffs=None)).transpose(0, 1)
             calibrated_x2 = torch.from_numpy(cv2.undistortPoints(x2.numpy(), cameraMatrix=K2.squeeze().numpy(), distCoeffs=None)).transpose(0, 1)
-            
-        except:
+    
+        except Exception as e:
             calibrated_x1 = torch.tensor(
                 [[[ 0.0640,  0.7799],
                 [-0.2011,  0.2836],
@@ -89,7 +89,8 @@ class TestFindEssential:
             import cv2
             calibrated_x1 = torch.from_numpy(cv2.undistortPoints(x1.numpy(), cameraMatrix=K1[0].numpy(), distCoeffs=None)).transpose(0, 1)
             calibrated_x2 = torch.from_numpy(cv2.undistortPoints(x2.numpy(), cameraMatrix=K2[0].numpy(), distCoeffs=None)).transpose(0, 1)
-        except:
+        
+        except Exception as e:
             calibrated_x1 = torch.tensor(
                 [[[ 0.0640,  0.7799],
                 [-0.2011,  0.2836],

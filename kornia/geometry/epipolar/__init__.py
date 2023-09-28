@@ -5,6 +5,7 @@ from ._metrics import (
     symmetrical_epipolar_distance,
 )
 from .essential import (
+    find_essential,
     decompose_essential_matrix,
     essential_from_fundamental,
     essential_from_Rt,
@@ -22,7 +23,7 @@ from .fundamental import (
     normalize_points,
     normalize_transformation,
 )
-from .numeric import cross_product_matrix
+from .numeric import cross_product_matrix, o1, o2, det_to_poly
 from .projection import (
     KRt_from_projection,
     depth_from_point,
@@ -64,4 +65,8 @@ __all__ = [
     "triangulate_points",
     "get_perpendicular",
     "get_closest_point_on_epipolar_line",
+    "find_essential",
+    "o1",
+    "o2",
+    "det_to_poly"
 ]

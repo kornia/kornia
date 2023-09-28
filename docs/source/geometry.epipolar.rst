@@ -54,7 +54,7 @@ Numeric
 .. autofunction:: cross_product_matrix
 .. autofunction:: o1
 .. autofunction:: o2
-
+.. autofunction:: det_to_poly
 
 Triangulation
 -------------

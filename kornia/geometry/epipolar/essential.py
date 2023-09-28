@@ -1,5 +1,5 @@
 """Module containing functionalities for the Essential matrix."""
-from typing import Optional, Tuple, Literal
+from typing import Optional, Tuple, Literal, Callable
 
 import torch
 
@@ -13,7 +13,7 @@ import kornia.geometry.epipolar as epi
 from torch.nn.parameter import Parameter
 
 __all__ = [
-    "find_essential"
+    "find_essential",
     "essential_from_fundamental",
     "decompose_essential_matrix",
     "essential_from_Rt",
@@ -23,7 +23,7 @@ __all__ = [
 ]
 
 # Reference
-# Nistér, David. An efficient solution to the five-point relative pose problem. IEEE transactions on pattern analysis and machine intelligence 26.6 (2004): 756-770.
+# Nistér, David. An efficient solution to the five-point relative pose problem. 2004.
 # https://github.com/danini/graph-cut-ransac/blob/master/src/pygcransac/include/estimators/solver_essential_matrix_five_point_nister.h
 # Wei T, Patel Y, Matas J, Barath D. Generalized differentiable RANSAC[J]. arXiv preprint arXiv:2212.13185, 2023.
 # https://github.com/weitong8591/differentiable_ransac/blob/main/estimators/essential_matrix_estimator_nister.py
@@ -41,14 +41,10 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     Returns:
         the computed fundamental matrix with shape :math:`(B, 3, 3)`.
     """
-
-    if points1.shape != points2.shape:
-        raise AssertionError(points1.shape, points2.shape)
-    if points1.shape[1] < 5:
-        raise AssertionError(points1.shape)
-    if weights is not None:
-        if not (len(weights.shape) == 2 and weights.shape[1] == points1.shape[1]):
-            raise AssertionError(weights.shape)
+    if points1.shape != points2.shape or points1.shape[1] < 5 or (
+            weights is not None and weights.shape != (points1.shape[0], points1.shape[1])
+        ):
+        raise AssertionError("Invalid input shapes", points1.shape, points2.shape, weights.shape)
 
     batch_size, _, _ = points1.shape
     x1, y1 = torch.chunk(points1, dim=-1, chunks=2)  # Bx1xN
@@ -58,7 +54,8 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     # build equations system and solve DLT
     # https://www.cc.gatech.edu/~afb/classes/CS4495-Fall2013/slides/CS4495-09-TwoViews-2.pdf
     # [x * x', x * y', x, y * x', y * y', y, x', y', 1]
-    X = torch.cat([x1 * x2, x1 * y2, x1, y1 * x2, y1 * y2, y1, x2, y2, ones], dim=-1)  # BxNx9
+    # BxNx9
+    X = torch.cat([x1 * x2, x1 * y2, x1, y1 * x2, y1 * y2, y1, x2, y2, ones], dim=-1) 
 
     # apply the weights to the linear system
     if weights is None:
@@ -75,7 +72,8 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
 
     coeffs = torch.zeros(batch_size, 10, 20, device=null_.device, dtype=null_.dtype)
     d = torch.zeros(batch_size, 60, device=null_.device, dtype=null_.dtype)
-    fun = lambda i, j : null_[:, 3 * j + i]
+    # fun = lambda i, j : null_[:, 3 * j + i]
+    fun: Callable[[int, int], torch.Tensor] = lambda i, j: null_[:, 3 * j + i]
 
     # Determinant constraint
     coeffs[:, 9] = epi.numeric.o2(epi.numeric.o1(fun(0, 1), fun(1, 2)) - epi.numeric.o1(fun(0, 2), fun(1, 1)), fun(2, 0)) +\
@@ -113,7 +111,7 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     
     eliminated_mat = torch.linalg.solve(coeffs[singular_filter, :, :10], b[singular_filter])
 
-    coeffs_ = torch.concat((coeffs[singular_filter, :, :10], eliminated_mat), dim=-1)
+    coeffs_ = torch.cat((coeffs[singular_filter, :, :10], eliminated_mat), dim=-1)
 
     A = torch.zeros(coeffs_.shape[0], 3, 13, device=coeffs_.device, dtype=coeffs_.dtype)
 
@@ -136,7 +134,7 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
         A_i = A[bi]
         null_i = nullSpace[bi]
 
-        # companion matrix solver for ploynomial
+        # companion matrix solver for polynomial
         C = torch.zeros((10, 10), device=cs.device, dtype=cs.dtype)
         C[0:-1, 1:] = torch.eye(C[0:-1, 0:-1].shape[0], device=cs.device, dtype=cs.dtype)
         C[-1, :] = -cs[bi][:-1]/cs[bi][-1]
@@ -157,11 +155,8 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
 
         bs = (A_i[0:3, 8:9] * (roots ** 4) + A_i[0:3, 9:10] * (roots ** 3) + A_i[0:3, 10:11] * roots.square() + A_i[0:3, 11:12] * roots + A_i[0:3, 12:13]).T.unsqueeze(-1)
 
-        # We try to solve using top two rows, if fails, will use matrix decomposition to solve Ax=b.
-        try:
-            xzs = Bs[:, 0:2, 0:2].inverse() @ (bs[:, 0:2])
-        except:
-            continue
+        # We try to solve using top two rows, 
+        xzs = Bs[:, 0:2, 0:2].inverse() @ (bs[:, 0:2])
 
         mask = (abs(Bs[:, 2].unsqueeze(1) @ xzs - bs[:, 2].unsqueeze(1)) > 1e-3).flatten()
         if torch.sum(mask) != 0:
@@ -175,13 +170,13 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
         inv = 1.0 / torch.sqrt((-xzs[:, 0]) ** 2 + (-xzs[:, 1]) ** 2 + roots.unsqueeze(-1) ** 2 + 1.0)
         Es *= inv
         if Es.shape[0] < 10:
-            Es = torch.concat((Es.clone(), torch.eye(3, device=Es.device, dtype=Es.dtype).repeat(10-Es.shape[0], 1).reshape(-1, 9)))
+            Es = torch.cat((Es.clone(), torch.eye(3, device=Es.device, dtype=Es.dtype).repeat(10-Es.shape[0], 1).reshape(-1, 9)))
         E_models.append(Es)
 
     if not E_models:
         return torch.eye(3, device=cs.device, dtype=cs.dtype).unsqueeze(0)
     else:
-        return torch.concat(E_models).view(-1,  3,  3).transpose(-1, -2)
+        return torch.cat(E_models).view(-1,  3,  3).transpose(-1, -2)
    
 
 def essential_from_fundamental(F_mat: torch.Tensor, K1: torch.Tensor, K2: torch.Tensor) -> torch.Tensor:
@@ -468,7 +463,8 @@ def find_essential(
         weights: Tensor containing the weights per point correspondence with a shape of :math:`(5, N)`.
 
     Returns:
-        the computed essential matrix with shape :math:`(B, 3, 3)`, one model for each batch selceted out of ten solutions by Sampson distances.
+        the computed essential matrix with shape :math:`(B, 3, 3)`, 
+        one model for each batch selceted out of ten solutions by Sampson distances.
 
     """
     E = run_5point(points1, points2, weights).to(points1.dtype)
@@ -485,10 +481,12 @@ def find_essential(
         for b in range(batch_size):
             error[b] = torch.norm(E.view(batch_size, solution_num, 3, 3)[b] - gt_model[b], dim=(1, 2)).view(solution_num, -1)
     
-    assert batch_size == error.shape[0]
-    assert solution_num == error.shape[1]
+    if not (batch_size == error.shape[0]):
+        raise AssertionError(error.shape)
+    if not (solution_num == error.shape[1]):
+        raise AssertionError(error.shape)
 
     chosen_indices = torch.argmin(error, dim=-1)
-    result = torch.stack([(E.view(-1, solution_num, 3, 3))[i, chosen_indices[i], :] for i in range(batch_size)])#int(E.shape[0] / solution_num)
+    result = torch.stack([(E.view(-1, solution_num, 3, 3))[i, chosen_indices[i], :] for i in range(batch_size)])
 
     return result
