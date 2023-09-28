@@ -216,7 +216,6 @@ class TestAepe:
         assert_close(actual, expected)
 
     def test_exception(self, device, dtype):
-
         with pytest.raises(TypeError) as errinfo:
             criterion = kornia.metrics.AEPE()
             criterion(None, torch.ones(4, 4, 2, device=device, dtype=dtype))
