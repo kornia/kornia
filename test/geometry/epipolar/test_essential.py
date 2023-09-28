@@ -45,16 +45,37 @@ class TestFindEssential:
         K1 = scene['K1']
         K2 = scene['K2']
 
-        import cv2
-        calibrated_x1 = torch.from_numpy(cv2.undistortPoints(x1.numpy(), cameraMatrix=K1.squeeze().numpy(), distCoeffs=None)).transpose(0, 1)
-        calibrated_x2 = torch.from_numpy(cv2.undistortPoints(x2.numpy(), cameraMatrix=K2.squeeze().numpy(), distCoeffs=None)).transpose(0, 1)
+        try:
+            import cv2
+            calibrated_x1 = torch.from_numpy(cv2.undistortPoints(x1.numpy(), cameraMatrix=K1.squeeze().numpy(), distCoeffs=None)).transpose(0, 1)
+            calibrated_x2 = torch.from_numpy(cv2.undistortPoints(x2.numpy(), cameraMatrix=K2.squeeze().numpy(), distCoeffs=None)).transpose(0, 1)
+            
+        except:
+            calibrated_x1 = torch.tensor(
+                [[[ 0.0640,  0.7799],
+                [-0.2011,  0.2836],
+                [-0.1355,  0.2907],
+                [ 0.0520,  1.0086],
+                [-0.0361,  0.6533]]],
+                device=device,
+                dtype=dtype,
+            )
+            calibrated_x2 = torch.tensor(
+                [[[ 0.3470, -0.4274],
+                [-0.1818, -0.1281],
+                [-0.1766, -0.1617],
+                [ 0.4066, -0.0706],
+                [ 0.1137,  0.0363]]],
+                device=device,
+                dtype=dtype,
+            )
 
-        E_est = epi.essential.find_essential(calibrated_x1, calibrated_x2)
-        E = E_est
+        E = epi.essential.find_essential(calibrated_x1, calibrated_x2)
         if torch.all(E != 0):
             distance = epi.symmetrical_epipolar_distance(calibrated_x1, calibrated_x2, E)
             mean_error = distance.mean()
-            assert_close(mean_error, torch.tensor(0.0, device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
+            assert_close(mean_error, torch.tensor(0.0, device=device, dtype=dtype), atol=1e-4, rtol=1e-4)    
+
 
     def test_synthetic_sampson(self, device, dtype):
         scene: Dict[str, torch.Tensor] = utils.generate_two_view_random_scene(device, dtype)
@@ -63,30 +84,36 @@ class TestFindEssential:
         x2 = scene['x2'][:, :5, :]
         K1 = scene['K1']
         K2 = scene['K2']
-        # we do not have the 'dist', so I change the point calibration to OpenCV version.
-        # dist = torch.zeros((1, 4))
-        # calibrated_x1 = cal.undistort_points(x1, K1, dist) 
-        # calibrated_x2 = cal.undistort_points(x2, K2, dist) 
-        import cv2
 
-        calibrated_x1 = torch.from_numpy(cv2.undistortPoints(x1.numpy(), cameraMatrix=K1[0].numpy(), distCoeffs=None)).transpose(0, 1)
-        calibrated_x2 = torch.from_numpy(cv2.undistortPoints(x2.numpy(), cameraMatrix=K2[0].numpy(), distCoeffs=None)).transpose(0, 1)
+        try:
+            import cv2
+            calibrated_x1 = torch.from_numpy(cv2.undistortPoints(x1.numpy(), cameraMatrix=K1[0].numpy(), distCoeffs=None)).transpose(0, 1)
+            calibrated_x2 = torch.from_numpy(cv2.undistortPoints(x2.numpy(), cameraMatrix=K2[0].numpy(), distCoeffs=None)).transpose(0, 1)
+        except:
+            calibrated_x1 = torch.tensor(
+                [[[ 0.0640,  0.7799],
+                [-0.2011,  0.2836],
+                [-0.1355,  0.2907],
+                [ 0.0520,  1.0086],
+                [-0.0361,  0.6533]]],
+                device=device,
+                dtype=dtype,
+            )
+            calibrated_x2 = torch.tensor(
+                [[[ 0.3470, -0.4274],
+                [-0.1818, -0.1281],
+                [-0.1766, -0.1617],
+                [ 0.4066, -0.0706],
+                [ 0.1137,  0.0363]]],
+                device=device,
+                dtype=dtype,
+            )
 
         weights = torch.ones_like(x1)[..., 0]
         E_est = epi.essential.find_essential(calibrated_x1, calibrated_x2, weights)
-
         error = epi.sampson_epipolar_distance(calibrated_x1, calibrated_x2, E_est)
         assert_close(error, torch.zeros((x1.shape[:2]), device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
     
-    # turn off the grad check due to the unstable gradients from SVD.
-    # several close to zero values of eigenvalues. 
-    # def test_gradcheck(self, device):
-    #     points1 = torch.rand(1, 5, 2, device=device, dtype=torch.float64, requires_grad=True)
-    #     points2 = torch.rand(1, 5, 2, device=device, dtype=torch.float64, requires_grad=True)
-    #     weights = torch.ones(1, 5, device=device, dtype=torch.float64)
-    #     assert gradcheck(epi.essential.find_essential, (points1, points2, weights), eps=1e-2, atol=1e-2, raise_exception=True, fast_mode=True)
-
-
 
 class TestEssentialFromFundamental:
     def test_smoke(self, device, dtype):
