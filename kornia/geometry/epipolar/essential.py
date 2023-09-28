@@ -1,16 +1,15 @@
 """Module containing functionalities for the Essential matrix."""
-from typing import Optional, Tuple, Literal, Callable
+from typing import Optional, Tuple
 
 import torch
 
+import kornia.geometry.epipolar as epi
 from kornia.utils import eye_like, vec_like
 from kornia.utils.helpers import _torch_svd_cast
 
 from .numeric import cross_product_matrix
 from .projection import depth_from_point, projection_from_KRt
 from .triangulation import triangulate_points
-import kornia.geometry.epipolar as epi
-from torch.nn.parameter import Parameter
 
 __all__ = [
     "find_essential",
@@ -19,7 +18,7 @@ __all__ = [
     "essential_from_Rt",
     "motion_from_essential",
     "motion_from_essential_choose_solution",
-    "relative_camera_motion"
+    "relative_camera_motion",
 ]
 
 # Reference
@@ -28,11 +27,12 @@ __all__ = [
 # Wei T, Patel Y, Matas J, Barath D. Generalized differentiable RANSAC[J]. arXiv preprint arXiv:2212.13185, 2023.
 # https://github.com/weitong8591/differentiable_ransac/blob/main/estimators/essential_matrix_estimator_nister.py
 
+
 def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None) -> torch.Tensor:
     r"""Compute the essential matrix using the 5-point algorithm from Nister.
 
     The linear system is solved by Nister's 5-point algorithm.
-    
+
     Args:
         points1: A set of carlibrated points in the first image with a tensor shape :math:`(B, N, 2), N>=8`.
         points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=8`.
@@ -42,9 +42,11 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
         the computed fundamental matrix with shape :math:`(B, 3, 3)`.
     """
 
-    if points1.shape != points2.shape or points1.shape[1] < 5 or (
-            weights is not None and weights.shape != (points1.shape[0], points1.shape[1])
-        ):
+    if (
+        points1.shape != points2.shape
+        or points1.shape[1] < 5
+        or (weights is not None and weights.shape != (points1.shape[0], points1.shape[1]))
+    ):
         raise AssertionError("Invalid input shapes", points1.shape, points2.shape)
 
     batch_size, _, _ = points1.shape
@@ -56,7 +58,7 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     # https://www.cc.gatech.edu/~afb/classes/CS4495-Fall2013/slides/CS4495-09-TwoViews-2.pdf
     # [x * x', x * y', x, y * x', y * y', y, x', y', 1]
     # BxNx9
-    X = torch.cat([x1 * x2, x1 * y2, x1, y1 * x2, y1 * y2, y1, x2, y2, ones], dim=-1) 
+    X = torch.cat([x1 * x2, x1 * y2, x1, y1 * x2, y1 * y2, y1, x2, y2, ones], dim=-1)
 
     # apply the weights to the linear system
     if weights is None:
@@ -64,31 +66,37 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     else:
         w_diag = torch.diag_embed(weights)
         X = X.transpose(-2, -1) @ w_diag @ X
-    # compute eigevectors and retrieve the one with the smallest eigenvalue, using SVD    
+    # compute eigevectors and retrieve the one with the smallest eigenvalue, using SVD
     # turn off the grad check due to the unstable gradients from SVD.
-    # several close to zero values of eigenvalues. 
-    _, _, V = _torch_svd_cast(X)#torch.svd
-    null_ = V[:, :, -4:] # the last four rows
+    # several close to zero values of eigenvalues.
+    _, _, V = _torch_svd_cast(X)  # torch.svd
+    null_ = V[:, :, -4:]  # the last four rows
     nullSpace = V.transpose(-1, -2)[:, -4:, :]
 
     coeffs = torch.zeros(batch_size, 10, 20, device=null_.device, dtype=null_.dtype)
     d = torch.zeros(batch_size, 60, device=null_.device, dtype=null_.dtype)
+
     # fun = lambda i, j : null_[:, 3 * j + i]
-    fun: Callable[[int, int], torch.Tensor] = lambda i, j: null_[:, 3 * j + i]
+    def fun(i: int, j: int) -> torch.Tensor:
+        return null_[:, 3 * j + i]
 
     # Determinant constraint
-    coeffs[:, 9] = epi.numeric.o2(epi.numeric.o1(fun(0, 1), fun(1, 2)) - epi.numeric.o1(fun(0, 2), fun(1, 1)), fun(2, 0)) +\
-        epi.numeric.o2(epi.numeric.o1(fun(0, 2), fun(1, 0)) - epi.numeric.o1(fun(0, 0), fun(1, 2)), fun(2, 1)) +\
-        epi.numeric.o2(epi.numeric.o1(fun(0, 0), fun(1, 1)) - epi.numeric.o1(fun(0, 1), fun(1, 0)), fun(2, 2))
+    coeffs[:, 9] = (
+        epi.numeric.o2(epi.numeric.o1(fun(0, 1), fun(1, 2)) - epi.numeric.o1(fun(0, 2), fun(1, 1)), fun(2, 0))
+        + epi.numeric.o2(epi.numeric.o1(fun(0, 2), fun(1, 0)) - epi.numeric.o1(fun(0, 0), fun(1, 2)), fun(2, 1))
+        + epi.numeric.o2(epi.numeric.o1(fun(0, 0), fun(1, 1)) - epi.numeric.o1(fun(0, 1), fun(1, 0)), fun(2, 2))
+    )
 
     indices = torch.tensor([[0, 10, 20], [10, 40, 30], [20, 30, 50]])
 
     # Compute EE^T (Eqn. 20 in the paper)
     for i in range(3):
         for j in range(3):
-            d[:, indices[i, j]: indices[i, j] + 10] = epi.numeric.o1(fun(i, 0), fun(j, 0)) + \
-                                                   epi.numeric.o1(fun(i, 1), fun(j, 1)) + \
-                                                   epi.numeric.o1(fun(i, 2), fun(j, 2))
+            d[:, indices[i, j] : indices[i, j] + 10] = (
+                epi.numeric.o1(fun(i, 0), fun(j, 0))
+                + epi.numeric.o1(fun(i, 1), fun(j, 1))
+                + epi.numeric.o1(fun(i, 2), fun(j, 2))
+            )
 
     for i in range(10):
         t = 0.5 * (d[:, indices[0, 0] + i] + d[:, indices[1, 1] + i] + d[:, indices[2, 2] + i])
@@ -99,17 +107,19 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     cnt = 0
     for i in range(3):
         for j in range(3):
-            row = epi.numeric.o2(d[:, indices[i, 0]: indices[i, 0] + 10], fun(0, j)) + \
-                epi.numeric.o2(d[:, indices[i, 1]: indices[i, 1] + 10], fun(1, j)) + \
-                epi.numeric.o2(d[:, indices[i, 2]: indices[i, 2] + 10], fun(2, j))
+            row = (
+                epi.numeric.o2(d[:, indices[i, 0] : indices[i, 0] + 10], fun(0, j))
+                + epi.numeric.o2(d[:, indices[i, 1] : indices[i, 1] + 10], fun(1, j))
+                + epi.numeric.o2(d[:, indices[i, 2] : indices[i, 2] + 10], fun(2, j))
+            )
             coeffs[:, cnt] = row
             cnt += 1
 
     b = coeffs[:, :, 10:]
     singular_filter = torch.linalg.matrix_rank(coeffs[:, :, :10]) >= torch.max(
-        torch.linalg.matrix_rank(coeffs),
-        torch.ones_like(torch.linalg.matrix_rank(coeffs[:, :, :10]))*10)
-    
+        torch.linalg.matrix_rank(coeffs), torch.ones_like(torch.linalg.matrix_rank(coeffs[:, :, :10])) * 10
+    )
+
     eliminated_mat = torch.linalg.solve(coeffs[singular_filter, :, :10], b[singular_filter])
 
     coeffs_ = torch.cat((coeffs[singular_filter, :, :10], eliminated_mat), dim=-1)
@@ -118,14 +128,14 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
 
     for i in range(3):
         A[:, i, 0] = 0.0
-        A[:, i:i + 1, 1:4] = coeffs_[:, 4 + 2 * i: 5 + 2 * i, 10:13]
-        A[:, i:i + 1, 0:3] -= coeffs_[:, 5 + 2 * i: 6 + 2 * i, 10:13]
+        A[:, i : i + 1, 1:4] = coeffs_[:, 4 + 2 * i : 5 + 2 * i, 10:13]
+        A[:, i : i + 1, 0:3] -= coeffs_[:, 5 + 2 * i : 6 + 2 * i, 10:13]
         A[:, i, 4] = 0.0
-        A[:, i:i + 1, 5:8] = coeffs_[:, 4 + 2 * i: 5 + 2 * i, 13:16]
-        A[:, i:i + 1, 4:7] -= coeffs_[:, 5 + 2 * i: 6 + 2 * i, 13:16]
+        A[:, i : i + 1, 5:8] = coeffs_[:, 4 + 2 * i : 5 + 2 * i, 13:16]
+        A[:, i : i + 1, 4:7] -= coeffs_[:, 5 + 2 * i : 6 + 2 * i, 13:16]
         A[:, i, 8] = 0.0
-        A[:, i:i + 1, 9:13] = coeffs_[:, 4 + 2 * i: 5 + 2 * i, 16:20]
-        A[:, i:i + 1, 8:12] -= coeffs_[:, 5 + 2 * i: 6 + 2 * i, 16:20]
+        A[:, i : i + 1, 9:13] = coeffs_[:, 4 + 2 * i : 5 + 2 * i, 16:20]
+        A[:, i : i + 1, 8:12] -= coeffs_[:, 5 + 2 * i : 6 + 2 * i, 16:20]
 
     cs = epi.numeric.det_to_poly(A)
     E_models = []
@@ -138,7 +148,7 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
         # companion matrix solver for polynomial
         C = torch.zeros((10, 10), device=cs.device, dtype=cs.dtype)
         C[0:-1, 1:] = torch.eye(C[0:-1, 0:-1].shape[0], device=cs.device, dtype=cs.dtype)
-        C[-1, :] = -cs[bi][:-1]/cs[bi][-1]
+        C[-1, :] = -cs[bi][:-1] / cs[bi][-1]
 
         roots = torch.real(torch.linalg.eigvals(C))
 
@@ -147,18 +157,29 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
         n_sols = roots.size()
         if n_sols == 0:
             continue
-        Bs = torch.stack((A_i[:3, :1] * (roots ** 3) + A_i[:3, 1:2] * roots.square() + A_i[0:3, 2:3] * (roots) + A_i[0:3, 3:4],
-                        A_i[0:3, 4:5] * (roots ** 3) + A_i[0:3, 5:6] * roots.square() + A_i[0:3, 6:7] * (roots) + A_i[0:3, 7:8]), dim=0).transpose(0 ,-1)
+        Bs = torch.stack(
+            (
+                A_i[:3, :1] * (roots**3) + A_i[:3, 1:2] * roots.square() + A_i[0:3, 2:3] * (roots) + A_i[0:3, 3:4],
+                A_i[0:3, 4:5] * (roots**3) + A_i[0:3, 5:6] * roots.square() + A_i[0:3, 6:7] * (roots) + A_i[0:3, 7:8],
+            ),
+            dim=0,
+        ).transpose(0, -1)
 
-        bs = (A_i[0:3, 8:9] * (roots ** 4) + A_i[0:3, 9:10] * (roots ** 3) + A_i[0:3, 10:11] * roots.square() + A_i[0:3, 11:12] * roots + A_i[0:3, 12:13]).T.unsqueeze(-1)
+        bs = (
+            A_i[0:3, 8:9] * (roots**4)
+            + A_i[0:3, 9:10] * (roots**3)
+            + A_i[0:3, 10:11] * roots.square()
+            + A_i[0:3, 11:12] * roots
+            + A_i[0:3, 12:13]
+        ).T.unsqueeze(-1)
 
-        # We try to solve using top two rows, 
+        # We try to solve using top two rows,
         xzs = Bs[:, 0:2, 0:2].inverse() @ (bs[:, 0:2])
 
         mask = (abs(Bs[:, 2].unsqueeze(1) @ xzs - bs[:, 2].unsqueeze(1)) > 1e-3).flatten()
         if torch.sum(mask) != 0:
-            q, r = torch.linalg.qr(Bs[mask].clone())#
-            xzs[mask] = torch.linalg.solve(r, q.transpose(-1, -2) @ bs[mask])#[mask]
+            q, r = torch.linalg.qr(Bs[mask].clone())  #
+            xzs[mask] = torch.linalg.solve(r, q.transpose(-1, -2) @ bs[mask])  # [mask]
 
         # models
         Es = null_i[0] * (-xzs[:, 0]) + null_i[1] * (-xzs[:, 1]) + null_i[2] * roots.unsqueeze(-1) + null_i[3]
@@ -167,14 +188,16 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
         inv = 1.0 / torch.sqrt((-xzs[:, 0]) ** 2 + (-xzs[:, 1]) ** 2 + roots.unsqueeze(-1) ** 2 + 1.0)
         Es *= inv
         if Es.shape[0] < 10:
-            Es = torch.cat((Es.clone(), torch.eye(3, device=Es.device, dtype=Es.dtype).repeat(10-Es.shape[0], 1).reshape(-1, 9)))
+            Es = torch.cat(
+                (Es.clone(), torch.eye(3, device=Es.device, dtype=Es.dtype).repeat(10 - Es.shape[0], 1).reshape(-1, 9))
+            )
         E_models.append(Es)
 
     # if not E_models:
     #     return torch.eye(3, device=cs.device, dtype=cs.dtype).unsqueeze(0)
     # else:
-    return torch.cat(E_models).view(-1,  3,  3).transpose(-1, -2)
-   
+    return torch.cat(E_models).view(-1, 3, 3).transpose(-1, -2)
+
 
 def essential_from_fundamental(F_mat: torch.Tensor, K1: torch.Tensor, K2: torch.Tensor) -> torch.Tensor:
     r"""Get Essential matrix from Fundamental and Camera matrices.
@@ -451,7 +474,7 @@ def relative_camera_motion(
 
 
 def find_essential(
-    points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None, 
+    points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
     r"""
     Args:
@@ -460,7 +483,7 @@ def find_essential(
         weights: Tensor containing the weights per point correspondence with a shape of :math:`(5, N)`.
 
     Returns:
-        the computed essential matrix with shape :math:`(B, 3, 3)`, 
+        the computed essential matrix with shape :math:`(B, 3, 3)`,
         one model for each batch selceted out of ten solutions by Sampson distances.
 
     """
@@ -473,8 +496,10 @@ def find_essential(
     error = torch.zeros((batch_size, solution_num))
 
     for b in range(batch_size):
-            error[b] = epi.sampson_epipolar_distance(points1[b], points2[b], E.view(batch_size, solution_num, 3, 3)[b]).sum(-1)
-    
+        error[b] = epi.sampson_epipolar_distance(points1[b], points2[b], E.view(batch_size, solution_num, 3, 3)[b]).sum(
+            -1
+        )
+
     if not (batch_size == error.shape[0]):
         raise AssertionError(error.shape)
     if not (solution_num == error.shape[1]):

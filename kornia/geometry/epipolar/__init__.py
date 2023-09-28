@@ -5,10 +5,10 @@ from ._metrics import (
     symmetrical_epipolar_distance,
 )
 from .essential import (
-    find_essential,
     decompose_essential_matrix,
     essential_from_fundamental,
     essential_from_Rt,
+    find_essential,
     motion_from_essential,
     motion_from_essential_choose_solution,
     relative_camera_motion,
@@ -23,7 +23,7 @@ from .fundamental import (
     normalize_points,
     normalize_transformation,
 )
-from .numeric import cross_product_matrix, o1, o2, det_to_poly
+from .numeric import cross_product_matrix, det_to_poly, o1, o2
 from .projection import (
     KRt_from_projection,
     depth_from_point,

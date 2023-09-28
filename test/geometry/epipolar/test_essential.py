@@ -1,3 +1,4 @@
+from typing import Dict
 
 import pytest
 import test_common as utils
@@ -6,10 +7,7 @@ from torch.autograd import gradcheck
 
 import kornia
 import kornia.geometry.epipolar as epi
-import kornia.geometry.calibration as cal
-
 from kornia.testing import assert_close
-from typing import Dict
 
 
 class TestFindEssential:
@@ -47,25 +45,22 @@ class TestFindEssential:
 
         try:
             import cv2
-            calibrated_x1 = torch.from_numpy(cv2.undistortPoints(x1.numpy(), cameraMatrix=K1.squeeze().numpy(), distCoeffs=None)).transpose(0, 1)
-            calibrated_x2 = torch.from_numpy(cv2.undistortPoints(x2.numpy(), cameraMatrix=K2.squeeze().numpy(), distCoeffs=None)).transpose(0, 1)
-    
-        except Exception as e:
+
+            calibrated_x1 = torch.from_numpy(
+                cv2.undistortPoints(x1.numpy(), cameraMatrix=K1.squeeze().numpy(), distCoeffs=None)
+            ).transpose(0, 1)
+            calibrated_x2 = torch.from_numpy(
+                cv2.undistortPoints(x2.numpy(), cameraMatrix=K2.squeeze().numpy(), distCoeffs=None)
+            ).transpose(0, 1)
+
+        except Exception:
             calibrated_x1 = torch.tensor(
-                [[[ 0.0640,  0.7799],
-                [-0.2011,  0.2836],
-                [-0.1355,  0.2907],
-                [ 0.0520,  1.0086],
-                [-0.0361,  0.6533]]],
+                [[[0.0640, 0.7799], [-0.2011, 0.2836], [-0.1355, 0.2907], [0.0520, 1.0086], [-0.0361, 0.6533]]],
                 device=device,
                 dtype=dtype,
             )
             calibrated_x2 = torch.tensor(
-                [[[ 0.3470, -0.4274],
-                [-0.1818, -0.1281],
-                [-0.1766, -0.1617],
-                [ 0.4066, -0.0706],
-                [ 0.1137,  0.0363]]],
+                [[[0.3470, -0.4274], [-0.1818, -0.1281], [-0.1766, -0.1617], [0.4066, -0.0706], [0.1137, 0.0363]]],
                 device=device,
                 dtype=dtype,
             )
@@ -74,8 +69,7 @@ class TestFindEssential:
         if torch.all(E != 0):
             distance = epi.symmetrical_epipolar_distance(calibrated_x1, calibrated_x2, E)
             mean_error = distance.mean()
-            assert_close(mean_error, torch.tensor(0.0, device=device, dtype=dtype), atol=1e-4, rtol=1e-4)    
-
+            assert_close(mean_error, torch.tensor(0.0, device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
 
     def test_synthetic_sampson(self, device, dtype):
         scene: Dict[str, torch.Tensor] = utils.generate_two_view_random_scene(device, dtype)
@@ -87,25 +81,22 @@ class TestFindEssential:
 
         try:
             import cv2
-            calibrated_x1 = torch.from_numpy(cv2.undistortPoints(x1.numpy(), cameraMatrix=K1[0].numpy(), distCoeffs=None)).transpose(0, 1)
-            calibrated_x2 = torch.from_numpy(cv2.undistortPoints(x2.numpy(), cameraMatrix=K2[0].numpy(), distCoeffs=None)).transpose(0, 1)
-        
-        except Exception as e:
+
+            calibrated_x1 = torch.from_numpy(
+                cv2.undistortPoints(x1.numpy(), cameraMatrix=K1[0].numpy(), distCoeffs=None)
+            ).transpose(0, 1)
+            calibrated_x2 = torch.from_numpy(
+                cv2.undistortPoints(x2.numpy(), cameraMatrix=K2[0].numpy(), distCoeffs=None)
+            ).transpose(0, 1)
+
+        except Exception:
             calibrated_x1 = torch.tensor(
-                [[[ 0.0640,  0.7799],
-                [-0.2011,  0.2836],
-                [-0.1355,  0.2907],
-                [ 0.0520,  1.0086],
-                [-0.0361,  0.6533]]],
+                [[[0.0640, 0.7799], [-0.2011, 0.2836], [-0.1355, 0.2907], [0.0520, 1.0086], [-0.0361, 0.6533]]],
                 device=device,
                 dtype=dtype,
             )
             calibrated_x2 = torch.tensor(
-                [[[ 0.3470, -0.4274],
-                [-0.1818, -0.1281],
-                [-0.1766, -0.1617],
-                [ 0.4066, -0.0706],
-                [ 0.1137,  0.0363]]],
+                [[[0.3470, -0.4274], [-0.1818, -0.1281], [-0.1766, -0.1617], [0.4066, -0.0706], [0.1137, 0.0363]]],
                 device=device,
                 dtype=dtype,
             )
@@ -114,7 +105,7 @@ class TestFindEssential:
         E_est = epi.essential.find_essential(calibrated_x1, calibrated_x2, weights)
         error = epi.sampson_epipolar_distance(calibrated_x1, calibrated_x2, E_est)
         assert_close(error, torch.zeros((x1.shape[:2]), device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
-    
+
 
 class TestEssentialFromFundamental:
     def test_smoke(self, device, dtype):
