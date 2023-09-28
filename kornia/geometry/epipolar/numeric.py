@@ -33,10 +33,10 @@ def o1(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     r"""Multiply two polynomials of degree one in x, y, z.    
 
     Args:
-        a, b are first order polys [x,y,z,1].
+        a, b are first order polys :math:`[x,y,z,1]`.
 
     Returns:      
-        degree 2 poly with the order [ x^2, x*y, x*z, x, y^2, y*z, y, z^2, z, 1].
+        degree 2 poly with the order :math:`[ x^2, x*y, x*z, x, y^2, y*z, y, z^2, z, 1]`.
     """
     return torch.stack([a[:, 0] * b[:, 0], a[:, 0] * b[:, 1] + a[:, 1] * b[:, 0], a[:, 0] * b[:, 2] + a[:, 2] * b[:, 0],
                         a[:, 0] * b[:, 3] + a[:, 3] * b[:, 0], a[:, 1] * b[:, 1], a[:, 1] * b[:, 2] + a[:, 2] * b[:, 1],
@@ -51,11 +51,11 @@ def o2(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     r"""Multiply two polynomials a and b of degrees two and one.
 
     Args:
-      a is second degree poly with order [ x^2, x*y, x*z, x, y^2, y*z, y, z^2, z, 1].
-      b is first degree with order [x y z 1].
+      a is second degree poly with order :math:`[ x^2, x*y, x*z, x, y^2, y*z, y, z^2, z, 1]`.
+      b is first degree with order :math:`[x y z 1]`.
     Returns:
       a third degree poly with order,
-      [ x^3, y^3, x^2*y, x*y^2, x^2*z, x^2, y^2*z, y^2, x*y*z, x*y, x*z^2, x*z, x, y*z^2, y*z, y, z^3, z^2, z, 1].
+      :math:`[ x^3, y^3, x^2*y, x*y^2, x^2*z, x^2, y^2*z, y^2, x*y*z, x*y, x*z^2, x*z, x, y*z^2, y*z, y, z^3, z^2, z, 1]`.
     """
     return torch.stack([a[:, 0] * b[:, 0], a[:, 4] * b[:, 1], a[:, 0] * b[:, 1] + a[:, 1] * b[:, 0], a[:, 1] * b[:, 1] + a[:, 4] * b[:, 0], a[:, 0] * b[:, 2] + a[:, 2] * b[:, 0],
                         a[:, 0] * b[:, 3] + a[:, 3] * b[:, 0], a[:, 4] * b[:, 2] + a[:, 5] * b[:, 1], a[:, 4] * b[:, 3] + a[:, 6] * b[:, 1],
@@ -72,7 +72,7 @@ def det_to_poly(A: torch.Tensor) -> torch.Tensor:
     r"""represent the determinant by the 10th polynomial, used for 5PC solver.
 
     Args:
-        A is in the shape of `(*, 3, 13)`.
+        A is in the shape of :math:`(*, 3, 13)`.
     Returns:
         a degree 10 poly, representing determinant (equation 14 in the paper).    
     """

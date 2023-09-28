@@ -471,9 +471,9 @@ def find_essential(
     batch_size = points1.shape[0]
 
     error = torch.zeros((batch_size, solution_num))
-    
+
     for b in range(batch_size):
-        error[b] = torch.norm(E.view(batch_size, solution_num, 3, 3)[b] - gt_model[b], dim=(1, 2)).view(solution_num, -1)
+            error[b] = epi.sampson_epipolar_distance(points1[b], points2[b], E.view(batch_size, solution_num, 3, 3)[b]).sum(-1)
     
     if not (batch_size == error.shape[0]):
         raise AssertionError(error.shape)
