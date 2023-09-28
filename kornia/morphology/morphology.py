@@ -3,7 +3,7 @@ from typing import List, Optional
 import torch
 import torch.nn.functional as F
 
-__all__ = ["dilation", "erosion", "opening", "closing", "gradient", "top_hat", "bottom_hat"]
+__all__ = ["dilation", "erosion", "opening", "closing", "gradient", "top_hat", "bottom_hat", "skeletonize"]
 
 
 def _neight2channels_like_kernel(kernel: torch.Tensor) -> torch.Tensor:
@@ -563,3 +563,56 @@ def bottom_hat(
         )
         - tensor
     )
+
+def skeletonize(
+    tensor: torch.Tensor,
+    kernel: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    r"""Return the skeleton of a binary image. In morphological terms, it involves reducing foreground regions in a binary 
+    image while preserving the extent and connectivity of the original region and throwing away most of the foreground pixels.
+
+    The kernel must have 2 dimensions.
+
+    Args:
+        tensor: Image with shape :math:`(B, 1, H, W)`. [C = 1]
+        kernel: Positions of non-infinite elements of a flat structuring element. Non-zero values give
+            the set of neighbors of the center over which the operation is applied. Its shape is :math:`(k_x, k_y)`.
+            For full structural elements use torch.ones_like(structural_element).
+    Returns:
+        Skeleton of the image with shape :math:`(B, 1, H, W)`. [C = 1]
+
+    Example:
+        >>> tensor = torch.rand(1, 1, 20, 20)
+        >>> kernel = torch.ones(3, 3)
+        >>> skeleton_img = skeletonize(tensor, kernel)
+    """
+
+    if not isinstance(tensor, torch.Tensor):
+        raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
+
+    if len(tensor.shape) != 4:
+        raise ValueError(f"Input size must have 4 dimensions. Got {tensor.dim()}")
+
+    if not isinstance(kernel, torch.Tensor):
+        raise TypeError(f"Kernel type is not a torch.Tensor. Got {type(kernel)}")
+
+    if len(kernel.shape) != 2:
+        raise ValueError(f"Kernel size must have 2 dimensions. Got {kernel.dim()}")
+
+    tensor = tensor.int()
+    output = torch.zeros(tensor.shape).int()
+
+    if kernel is None:
+        kernel = torch.Tensor([[0, 1, 0], [1, 1, 1], [0, 1, 0]]).int()
+
+    while True:
+        opened_img = opening(tensor, kernel)
+        subtracted_img = torch.sub(tensor, opened_img)
+        subtracted_img[subtracted_img < 0] = 0
+        eroded_img = erosion(tensor, kernel)
+        output = torch.bitwise_or(output, subtracted_img)
+        tensor = eroded_img.clone()
+        if torch.count_nonzero(tensor) == 0:
+            break
+            
+    return output.view_as(tensor)
