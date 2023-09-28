@@ -68,5 +68,5 @@ __all__ = [
     "find_essential",
     "o1",
     "o2",
-    "det_to_poly"
+    "det_to_poly",
 ]

@@ -41,10 +41,11 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     Returns:
         the computed fundamental matrix with shape :math:`(B, 3, 3)`.
     """
+
     if points1.shape != points2.shape or points1.shape[1] < 5 or (
             weights is not None and weights.shape != (points1.shape[0], points1.shape[1])
         ):
-        raise AssertionError("Invalid input shapes", points1.shape, points2.shape, weights.shape)
+        raise AssertionError("Invalid input shapes", points1.shape, points2.shape)
 
     batch_size, _, _ = points1.shape
     x1, y1 = torch.chunk(points1, dim=-1, chunks=2)  # Bx1xN
@@ -139,11 +140,7 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
         C[0:-1, 1:] = torch.eye(C[0:-1, 0:-1].shape[0], device=cs.device, dtype=cs.dtype)
         C[-1, :] = -cs[bi][:-1]/cs[bi][-1]
 
-        # check if the companion matrix contains nans or infs
-        if torch.isnan(C).any() or torch.isinf(C).any():
-            continue
-        else:
-            roots = torch.real(torch.linalg.eigvals(C))
+        roots = torch.real(torch.linalg.eigvals(C))
 
         if roots is None:
             continue
@@ -173,10 +170,10 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
             Es = torch.cat((Es.clone(), torch.eye(3, device=Es.device, dtype=Es.dtype).repeat(10-Es.shape[0], 1).reshape(-1, 9)))
         E_models.append(Es)
 
-    if not E_models:
-        return torch.eye(3, device=cs.device, dtype=cs.dtype).unsqueeze(0)
-    else:
-        return torch.cat(E_models).view(-1,  3,  3).transpose(-1, -2)
+    # if not E_models:
+    #     return torch.eye(3, device=cs.device, dtype=cs.dtype).unsqueeze(0)
+    # else:
+    return torch.cat(E_models).view(-1,  3,  3).transpose(-1, -2)
    
 
 def essential_from_fundamental(F_mat: torch.Tensor, K1: torch.Tensor, K2: torch.Tensor) -> torch.Tensor:
@@ -454,7 +451,7 @@ def relative_camera_motion(
 
 
 def find_essential(
-    points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None, gt_model: Optional[torch.Tensor] = None
+    points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None, 
 ) -> torch.Tensor:
     r"""
     Args:
@@ -474,12 +471,9 @@ def find_essential(
     batch_size = points1.shape[0]
 
     error = torch.zeros((batch_size, solution_num))
-    if gt_model is None:
-        for b in range(batch_size):
-            error[b] = epi.sampson_epipolar_distance(points1[b], points2[b], E.view(batch_size, solution_num, 3, 3)[b]).sum(-1)
-    else:
-        for b in range(batch_size):
-            error[b] = torch.norm(E.view(batch_size, solution_num, 3, 3)[b] - gt_model[b], dim=(1, 2)).view(solution_num, -1)
+    
+    for b in range(batch_size):
+        error[b] = torch.norm(E.view(batch_size, solution_num, 3, 3)[b] - gt_model[b], dim=(1, 2)).view(solution_num, -1)
     
     if not (batch_size == error.shape[0]):
         raise AssertionError(error.shape)

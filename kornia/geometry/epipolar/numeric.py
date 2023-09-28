@@ -72,9 +72,9 @@ def det_to_poly(A: torch.Tensor) -> torch.Tensor:
     r"""represent the determinant by the 10th polynomial, used for 5PC solver.
 
     Args:
-      A is in  the shape of (*, 3, 13)
+        A is in the shape of `(*, 3, 13)`.
     Returns:
-        a degree 10 poly, representing determinant (equation 14 in the paper)    
+        a degree 10 poly, representing determinant (equation 14 in the paper).    
     """
 
     cs = torch.zeros(A.shape[0], 11, device=A.device, dtype=A.dtype)
