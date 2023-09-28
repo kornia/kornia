@@ -215,19 +215,22 @@ class TestAepe:
         actual = kornia.metrics.aepe(sample, 2.0 * sample, reduction="none")
         assert_close(actual, expected)
 
-    def test_metric_wrong_reduction(self, device, dtype):
-        with pytest.raises(NotImplementedError):
-            sample = torch.ones(4, 4, 2, device=device, dtype=dtype)
-            expected = torch.zeros(4, 4, device=device, dtype=dtype) + 1.4142
-            actual = kornia.metrics.aepe(sample, 2.0 * sample, reduction="foo")
-            assert_close(actual, expected)
+    def test_exception(self, device, dtype):
 
-    def test_metric_wrong_shape(self, device, dtype):
-        with pytest.raises(Exception):
+        with pytest.raises(TypeError) as errinfo:
+            criterion = kornia.metrics.AEPE()
+            criterion(None, torch.ones(4, 4, 2, device=device, dtype=dtype))
+        assert "Not a Tensor type. Got" in str(errinfo)
+
+        with pytest.raises(NotImplementedError) as errinfo:
             sample = torch.ones(4, 4, 2, device=device, dtype=dtype)
-            expected = torch.zeros(4, 4, device=device, dtype=dtype) + 1.4142
-            actual = kornia.metrics.aepe(sample, 2.0 * sample[..., 0], reduction="mean")
-            assert_close(actual, expected)
+            _ = kornia.metrics.aepe(sample, 2.0 * sample, reduction="foo")
+        assert "Invalid reduction option." in str(errinfo)
+
+        with pytest.raises(Exception) as errinfo:
+            sample = torch.ones(4, 4, 2, device=device, dtype=dtype)
+            _ = kornia.metrics.aepe(sample, 2.0 * sample[..., 0], reduction="mean")
+        assert "shape must be [['*', '2']]. Got" in str(errinfo)
 
     def test_smoke(self, device, dtype):
         input = torch.rand(3, 3, 2, device=device, dtype=dtype)
