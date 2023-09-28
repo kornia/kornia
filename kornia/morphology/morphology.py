@@ -564,12 +564,11 @@ def bottom_hat(
         - tensor
     )
 
-def skeletonize(
-    tensor: torch.Tensor,
-    kernel: Optional[torch.Tensor] = None,
-) -> torch.Tensor:
-    r"""Return the skeleton of a binary image. In morphological terms, it involves reducing foreground regions in a binary 
-    image while preserving the extent and connectivity of the original region and throwing away most of the foreground pixels.
+
+def skeletonize(tensor: torch.Tensor, kernel: Optional[torch.Tensor] = None) -> torch.Tensor:
+    r"""Return the skeleton of a binary image. In morphological terms, it involves reducing foreground regions in a
+    binary image while preserving the extent and connectivity of the original region and throwing away most of the
+    foreground pixels.
 
     The kernel must have 2 dimensions.
 
@@ -614,5 +613,5 @@ def skeletonize(
         tensor = eroded_img.clone()
         if torch.count_nonzero(tensor) == 0:
             break
-            
+
     return output.view_as(tensor)
