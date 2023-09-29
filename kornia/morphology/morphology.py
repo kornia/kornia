@@ -1,7 +1,12 @@
+from __future__ import annotations
+
 from typing import List, Optional
 
 import torch
 import torch.nn.functional as F
+
+from kornia.core import Tensor
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
 
 __all__ = ["dilation", "erosion", "opening", "closing", "gradient", "top_hat", "bottom_hat", "skeletonize"]
 
@@ -10,7 +15,6 @@ def _neight2channels_like_kernel(kernel: torch.Tensor) -> torch.Tensor:
     h, w = kernel.size()
     kernel = torch.eye(h * w, dtype=kernel.dtype, device=kernel.device)
     return kernel.view(h * w, 1, h, w)
-
 
 def dilation(
     tensor: torch.Tensor,
@@ -565,53 +569,50 @@ def bottom_hat(
     )
 
 
-def skeletonize(tensor: torch.Tensor, kernel: Optional[torch.Tensor] = None) -> torch.Tensor:
-    r"""Return the skeleton of a binary image. In morphological terms, it involves reducing foreground regions in a
-    binary image while preserving the extent and connectivity of the original region and throwing away most of the
-    foreground pixels.
+def skeletonize(data: Tensor, kernel: Tensor | None = None) -> Tensor:
+    r"""Return the skeleton of a binary image. 
+    
+    In morphological terms, it involves reducing foreground regions in a
+    binary image while preserving the extent and connectivity of the original 
+    region and throwing away most of the foreground pixels.
 
     The kernel must have 2 dimensions.
 
     Args:
-        tensor: Image with shape :math:`(B, 1, H, W)`. [C = 1]
-        kernel: Positions of non-infinite elements of a flat structuring element. Non-zero values give
-            the set of neighbors of the center over which the operation is applied. Its shape is :math:`(k_x, k_y)`.
-            For full structural elements use torch.ones_like(structural_element).
+        data: Image with shape :math:`(B, 1, H, W)`. [C = 1]
+        kernel: Positions of non-infinite elements of a flat structuring element. 
+                Non-zero values give the set of neighbors of the center over which 
+                the operation is applied. Its shape is :math:`(k_x, k_y)`.
+                For full structural elements use torch.ones_like(structural_element).
     Returns:
         Skeleton of the image with shape :math:`(B, 1, H, W)`. [C = 1]
 
     Example:
-        >>> tensor = torch.rand(1, 1, 20, 20)
+        >>> data = torch.rand(1, 1, 20, 20)
         >>> kernel = torch.ones(3, 3)
-        >>> skeleton_img = skeletonize(tensor, kernel)
+        >>> skeleton_img = skeletonize(data, kernel)
     """
 
-    if not isinstance(tensor, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(tensor)}")
+    KORNIA_CHECK_IS_TENSOR(data)
+    KORNIA_CHECK(len(data.shape) == 4, "Input size must have 4 dimensions.")
 
-    if len(tensor.shape) != 4:
-        raise ValueError(f"Input size must have 4 dimensions. Got {tensor.dim()}")
-
-    if not isinstance(kernel, torch.Tensor):
-        raise TypeError(f"Kernel type is not a torch.Tensor. Got {type(kernel)}")
-
-    if len(kernel.shape) != 2:
-        raise ValueError(f"Kernel size must have 2 dimensions. Got {kernel.dim()}")
-
-    tensor = tensor.int()
-    output = torch.zeros(tensor.shape).int()
+    data = data.int()
+    output = torch.zeros(data.shape, device=data.device, dtype=torch.int64)
 
     if kernel is None:
-        kernel = torch.Tensor([[0, 1, 0], [1, 1, 1], [0, 1, 0]]).int()
+        kernel = torch.tensor([[0, 1, 0], [1, 1, 1], [0, 1, 0]], device=data.device, dtype=torch.int64)
+    
+    KORNIA_CHECK_IS_TENSOR(kernel)
+    KORNIA_CHECK(len(kernel.shape) == 2, "Kernel size must have 2 dimensions.")
 
     while True:
-        opened_img = opening(tensor, kernel)
-        subtracted_img = torch.sub(tensor, opened_img)
+        opened_img = opening(data, kernel)
+        subtracted_img = torch.sub(data, opened_img)
         subtracted_img[subtracted_img < 0] = 0
-        eroded_img = erosion(tensor, kernel)
+        eroded_img = erosion(data, kernel)
         output = torch.bitwise_or(output, subtracted_img)
-        tensor = eroded_img.clone()
-        if torch.count_nonzero(tensor) == 0:
+        data = eroded_img.clone()
+        if torch.count_nonzero(data) == 0:
             break
 
-    return output.view_as(tensor)
+    return output.view_as(data)
