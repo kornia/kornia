@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import List, Optional
-
 import torch
 import torch.nn.functional as F
 
@@ -16,11 +14,12 @@ def _neight2channels_like_kernel(kernel: torch.Tensor) -> torch.Tensor:
     kernel = torch.eye(h * w, dtype=kernel.dtype, device=kernel.device)
     return kernel.view(h * w, 1, h, w)
 
+
 def dilation(
     tensor: torch.Tensor,
     kernel: torch.Tensor,
-    structuring_element: Optional[torch.Tensor] = None,
-    origin: Optional[List[int]] = None,
+    structuring_element: torch.Tensor | None = None,
+    origin: list[int] | None = None,
     border_type: str = 'geodesic',
     border_value: float = 0.0,
     max_val: float = 1e4,
@@ -78,7 +77,7 @@ def dilation(
         origin = [se_h // 2, se_w // 2]
 
     # pad
-    pad_e: List[int] = [origin[1], se_w - origin[1] - 1, origin[0], se_h - origin[0] - 1]
+    pad_e: list[int] = [origin[1], se_w - origin[1] - 1, origin[0], se_h - origin[0] - 1]
     if border_type == 'geodesic':
         border_value = -max_val
         border_type = 'constant'
@@ -112,8 +111,8 @@ def dilation(
 def erosion(
     tensor: torch.Tensor,
     kernel: torch.Tensor,
-    structuring_element: Optional[torch.Tensor] = None,
-    origin: Optional[List[int]] = None,
+    structuring_element: torch.Tensor | None = None,
+    origin: list[int] | None = None,
     border_type: str = 'geodesic',
     border_value: float = 0.0,
     max_val: float = 1e4,
@@ -171,7 +170,7 @@ def erosion(
         origin = [se_h // 2, se_w // 2]
 
     # pad
-    pad_e: List[int] = [origin[1], se_w - origin[1] - 1, origin[0], se_h - origin[0] - 1]
+    pad_e: list[int] = [origin[1], se_w - origin[1] - 1, origin[0], se_h - origin[0] - 1]
     if border_type == 'geodesic':
         border_value = max_val
         border_type = 'constant'
@@ -206,8 +205,8 @@ def erosion(
 def opening(
     tensor: torch.Tensor,
     kernel: torch.Tensor,
-    structuring_element: Optional[torch.Tensor] = None,
-    origin: Optional[List[int]] = None,
+    structuring_element: torch.Tensor | None = None,
+    origin: list[int] | None = None,
     border_type: str = 'geodesic',
     border_value: float = 0.0,
     max_val: float = 1e4,
@@ -283,8 +282,8 @@ def opening(
 def closing(
     tensor: torch.Tensor,
     kernel: torch.Tensor,
-    structuring_element: Optional[torch.Tensor] = None,
-    origin: Optional[List[int]] = None,
+    structuring_element: torch.Tensor | None = None,
+    origin: list[int] | None = None,
     border_type: str = 'geodesic',
     border_value: float = 0.0,
     max_val: float = 1e4,
@@ -361,8 +360,8 @@ def closing(
 def gradient(
     tensor: torch.Tensor,
     kernel: torch.Tensor,
-    structuring_element: Optional[torch.Tensor] = None,
-    origin: Optional[List[int]] = None,
+    structuring_element: torch.Tensor | None = None,
+    origin: list[int] | None = None,
     border_type: str = 'geodesic',
     border_value: float = 0.0,
     max_val: float = 1e4,
@@ -427,8 +426,8 @@ def gradient(
 def top_hat(
     tensor: torch.Tensor,
     kernel: torch.Tensor,
-    structuring_element: Optional[torch.Tensor] = None,
-    origin: Optional[List[int]] = None,
+    structuring_element: torch.Tensor | None = None,
+    origin: list[int] | None = None,
     border_type: str = 'geodesic',
     border_value: float = 0.0,
     max_val: float = 1e4,
@@ -498,8 +497,8 @@ def top_hat(
 def bottom_hat(
     tensor: torch.Tensor,
     kernel: torch.Tensor,
-    structuring_element: Optional[torch.Tensor] = None,
-    origin: Optional[List[int]] = None,
+    structuring_element: torch.Tensor | None = None,
+    origin: list[int] | None = None,
     border_type: str = 'geodesic',
     border_value: float = 0.0,
     max_val: float = 1e4,
@@ -570,18 +569,18 @@ def bottom_hat(
 
 
 def skeletonize(data: Tensor, kernel: Tensor | None = None) -> Tensor:
-    r"""Return the skeleton of a binary image. 
-    
+    r"""Return the skeleton of a binary image.
+
     In morphological terms, it involves reducing foreground regions in a
-    binary image while preserving the extent and connectivity of the original 
+    binary image while preserving the extent and connectivity of the original
     region and throwing away most of the foreground pixels.
 
     The kernel must have 2 dimensions.
 
     Args:
         data: Image with shape :math:`(B, 1, H, W)`. [C = 1]
-        kernel: Positions of non-infinite elements of a flat structuring element. 
-                Non-zero values give the set of neighbors of the center over which 
+        kernel: Positions of non-infinite elements of a flat structuring element.
+                Non-zero values give the set of neighbors of the center over which
                 the operation is applied. Its shape is :math:`(k_x, k_y)`.
                 For full structural elements use torch.ones_like(structural_element).
     Returns:
@@ -601,7 +600,7 @@ def skeletonize(data: Tensor, kernel: Tensor | None = None) -> Tensor:
 
     if kernel is None:
         kernel = torch.tensor([[0, 1, 0], [1, 1, 1], [0, 1, 0]], device=data.device, dtype=torch.int64)
-    
+
     KORNIA_CHECK_IS_TENSOR(kernel)
     KORNIA_CHECK(len(kernel.shape) == 2, "Kernel size must have 2 dimensions.")
 
