@@ -33,10 +33,11 @@ def cross_product_matrix(x: torch.Tensor) -> torch.Tensor:
 
 
 def o1(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-    r"""Multiply two polynomials of degree one in x, y, z.
+    r"""Multiply two polynomials of the first order.
 
     Args:
-        a, b are first order polys :math:`(x,y,z,1)`.
+        a: a first order polynomial for variables :math:`(x,y,z,1)`.
+		b: a first order polynomial for variables :math:`(x,y,z,1)`.
 
     Returns:
         degree 2 poly with the order :math:`(x^2, x*y, x*z, x, y^2, y*z, y, z^2, z, 1)`.
@@ -69,11 +70,11 @@ def o2(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     r"""Multiply two polynomials a and b of degrees two and one.
 
     Args:
-        a is second degree poly with order :math:`(x^2, x*y, x*z, x, y^2, y*z, y, z^2, z, 1)`.
-        b is first degree with order :math:`(x y z 1)`.
+        a: a second degree poly for variables :math:`(x^2, x*y, x*z, x, y^2, y*z, y, z^2, z, 1)`.
+        b: a first degree poly for variables :math:`(x y z 1)`.
 
     Returns:
-        a third degree poly with order,
+        a third degree poly for variables,
         :math:`(x^3, y^3, x^2*y, x*y^2, x^2*z, x^2, y^2*z, y^2,
         x*y*z, x*y, x*z^2, x*z, x, y*z^2, y*z, y, z^3, z^2, z, 1)`.
     """
@@ -112,7 +113,7 @@ def det_to_poly(A: torch.Tensor) -> torch.Tensor:
     r"""Represent the determinant by the 10th polynomial, used for 5PC solver.
 
     Args:
-        A is in the shape of :math:`(*, 3, 13)`.
+        A: Tensor :math:`(*, 3, 13)`.
 
     Returns:
         a degree 10 poly, representing determinant (Eqn. 14 in the paper).
