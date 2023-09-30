@@ -36,7 +36,9 @@ def grayscale_to_rgb(image: Tensor) -> Tensor:
     return concatenate([image, image, image], -3)
 
 
-def grayscale_from_rgb(image: Tensor, rgb_weights: tuple[float, float, float] | None = None) -> Tensor:
+def grayscale_from_rgb(
+    image: Tensor, rgb_weights: tuple[float, float, float] | None = None, channels_axis: int | None = None
+) -> Tensor:
     r"""Convert a RGB image to grayscale version of image.
 
     .. image:: _static/img/rgb_to_grayscale.png
@@ -49,6 +51,8 @@ def grayscale_from_rgb(image: Tensor, rgb_weights: tuple[float, float, float] | 
         rgb_weights: Weights that will be applied on each channel (RGB).
             The sum of the weights should add up to one.
             If None, the standard weights are used (0.299, 0.587, 0.114).
+        channels_axis: The axis corresponding to the channels dimension. If `None` is used, the channel will be defined
+            by `kornia_core.channels_axis()`, which relies into keras `keras.backend.image_data_format()` flag.
 
     Returns:
         grayscale version of the image with shape :math:`(*,1,H,W)` or :math:`(*, H, W, 1)`.
@@ -64,7 +68,7 @@ def grayscale_from_rgb(image: Tensor, rgb_weights: tuple[float, float, float] | 
     """
     # KORNIA_CHECK_NUM_CHANNELS(image, 3, axis=channels_axis)
 
-    channels_axis = kornia_core.channels_axis()
+    channels_axis = kornia_core.channels_axis() if channels_axis is None else channels_axis
 
     if rgb_weights is None:
         # floating point images
