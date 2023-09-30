@@ -19,6 +19,7 @@ class TestHomographyTracker:
         tracker = HomographyTracker().to(device)
         assert tracker is not None
 
+    @pytest.mark.slow
     def test_nomatch(self, device, dtype, data):
         # This is not unit test, but that is quite good integration test
         matcher = LocalFeatureMatcher(SIFTFeature(100), DescriptorMatcher('smnn', 0.95)).to(device, dtype)
@@ -31,6 +32,7 @@ class TestHomographyTracker:
         _, success = tracker(torch.zeros_like(data["image0"]))
         assert not success
 
+    @pytest.mark.slow
     @pytest.mark.skipif(torch_version_le(1, 9, 1), reason="Fails for bached torch.linalg.solve")
     def test_real(self, device, dtype, data):
         # This is not unit test, but that is quite good integration test

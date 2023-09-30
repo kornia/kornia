@@ -53,6 +53,7 @@ class TestTinyViT(BaseTester):
         model = TinyViT.from_config("5m", img_size=img_size, num_classes=num_classes, pretrained=True)
         assert isinstance(model, TinyViT)
 
+    @pytest.mark.slow
     def test_mobile_sam_backbone(self, device, dtype):
         img_size = 1024
         batch_size = 1

@@ -73,6 +73,7 @@ class TestCropAndResize3D:
             kornia.geometry.transform.crop_and_resize3d, (img, boxes, (4, 3, 2)), raise_exception=True, fast_mode=True
         )
 
+    @pytest.mark.slow
     def test_dynamo(self, device, dtype, torch_optimizer):
         # Define script
         op = kornia.geometry.transform.crop_and_resize3d
@@ -131,6 +132,7 @@ class TestCenterCrop3D:
             kornia.geometry.transform.center_crop3d, (img, (3, 5, 7)), raise_exception=True, fast_mode=True
         )
 
+    @pytest.mark.slow
     def test_dynamo(self, device, dtype, torch_optimizer):
         # Define script
         op = kornia.geometry.transform.center_crop3d
@@ -227,6 +229,7 @@ class TestCropByBoxes3D:
         patches = kornia.geometry.transform.crop_by_boxes3d(inp, src_box, dst_box, align_corners=True)
         assert_close(patches, expected, rtol=1e-4, atol=1e-4)
 
+    @pytest.mark.slow
     def test_dynamo(self, device, dtype, torch_optimizer):
         # Define script
         op = kornia.geometry.transform.crop_by_boxes3d

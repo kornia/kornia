@@ -4337,6 +4337,7 @@ class DummyMPDataset(torch.utils.data.Dataset):
 class TestMultiprocessing:
     torch.manual_seed(0)  # for random reproductibility
 
+    @pytest.mark.slow
     @pytest.mark.parametrize('context', ['spawn', 'forkserver', 'fork'] if os.name != 'nt' else ['spawn'])
     def test_spawn_multiprocessing_context(self, context: str):
         dataset = DummyMPDataset(context=context)

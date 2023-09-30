@@ -90,6 +90,7 @@ class TestApplyColorMap(BaseTester):
 
         assert gradcheck(apply_colormap, (input_tensor, cm), raise_exception=True, fast_mode=True)
 
+    @pytest.mark.slow
     def test_dynamo(self, device, dtype, torch_optimizer):
         op = apply_colormap
         op_script = torch_optimizer(op)

@@ -8,6 +8,7 @@ from kornia.testing import assert_close
 
 
 class TestDeFMO:
+    @pytest.mark.slow
     def test_shape(self, device, dtype):
         inp = torch.ones(1, 6, 128, 160, device=device, dtype=dtype)
         defmo = DeFMO().to(device, dtype)
@@ -15,6 +16,7 @@ class TestDeFMO:
         out = defmo(inp)
         assert out.shape == (1, 24, 4, 128, 160)
 
+    @pytest.mark.slow
     def test_shape_batch(self, device, dtype):
         inp = torch.ones(2, 6, 128, 160, device=device, dtype=dtype)
         defmo = DeFMO().to(device, dtype)
@@ -30,7 +32,8 @@ class TestDeFMO:
         defmo = DeFMO().to(patches.device, patches.dtype)
         assert gradcheck(defmo, (patches,), eps=1e-4, atol=1e-4, nondet_tol=1e-8, raise_exception=True, fast_mode=True)
 
-    @pytest.mark.jit()
+    @pytest.mark.slow
+    @pytest.mark.jit
     def test_jit(self, device, dtype):
         B, C, H, W = 1, 6, 128, 160
         patches = torch.rand(B, C, H, W, device=device, dtype=dtype)

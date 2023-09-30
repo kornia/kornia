@@ -233,6 +233,7 @@ class TestUndistortPoints:
 
         gradcheck(undistort_points, (points, K, distCoeff, new_K))
 
+    @pytest.mark.slow
     def test_dynamo(self, device, dtype, torch_optimizer):
         points = torch.rand(1, 1, 2, device=device, dtype=dtype)
         K = torch.rand(1, 3, 3, device=device, dtype=dtype)

@@ -76,6 +76,7 @@ class TestImageRegistrator:
         model, intermediate = IR.register(img_src, img_dst, output_intermediate_models=True)
         assert len(intermediate) == 2
 
+    @pytest.mark.slow
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     @pytest.mark.skipif(
         torch_version() == '2.0.0' and 'win' in sys.platform, reason='Tensor not matching on win with torch 2.0'

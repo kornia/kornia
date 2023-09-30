@@ -545,6 +545,7 @@ class TestImageStitcher:
             assert out.shape[:-1] == torch.Size([1, 3, 6])
             assert out.shape[-1] <= 12
 
+    @pytest.mark.slow
     def test_exception(self, device, dtype):
         B, C, H, W = 1, 3, 224, 224
         sample1 = torch.rand(B, C, H, W, device=device, dtype=dtype)
