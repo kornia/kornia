@@ -1,3 +1,4 @@
+import pytest
 import torch
 from torch.autograd import gradcheck
 
@@ -92,6 +93,7 @@ class TestCropAndResize:
             kornia.geometry.transform.crop_and_resize, (img, boxes, (4, 2)), raise_exception=True, fast_mode=True
         )
 
+    @pytest.mark.slow
     def test_dynamo(self, device, dtype, torch_optimizer):
         # Define script
         op = kornia.geometry.transform.crop_and_resize

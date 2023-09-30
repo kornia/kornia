@@ -301,6 +301,7 @@ class TestLocalFeatureMatcher:
         # Reprojection error of 5px is OK
         assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)
 
+    @pytest.mark.slow
     @pytest.mark.skipif(torch_version_le(1, 9, 1), reason="Fails for bached torch.linalg.solve")
     @pytest.mark.skipif(sys.platform == "win32", reason="this test takes so much memory in the CI with Windows")
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
@@ -319,6 +320,7 @@ class TestLocalFeatureMatcher:
         # Reprojection error of 5px is OK
         assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)
 
+    @pytest.mark.slow
     @pytest.mark.skipif(torch_version_le(1, 9, 1), reason="Fails for bached torch.linalg.solve")
     @pytest.mark.skipif(sys.platform == "win32", reason="this test takes so much memory in the CI with Windows")
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)

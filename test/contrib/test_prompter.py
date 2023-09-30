@@ -9,6 +9,7 @@ from kornia.testing import BaseTester
 
 
 class TestImagePrompter(BaseTester):
+    @pytest.mark.slow
     def test_smoke(self, device, dtype):
         inpt = torch.rand(3, 77, 128, device=device, dtype=dtype)
         prompter = ImagePrompter(SamConfig('vit_b'), device, dtype)
@@ -19,6 +20,7 @@ class TestImagePrompter(BaseTester):
         prompter.reset_image()
         assert not prompter.is_image_set
 
+    @pytest.mark.slow
     @pytest.mark.parametrize('batch_size', [1, 4])
     @pytest.mark.parametrize('N', [2, 5])
     @pytest.mark.parametrize('multimask_output', [True, False])
@@ -85,6 +87,7 @@ class TestImagePrompter(BaseTester):
     def test_module(self):
         ...
 
+    @pytest.mark.slow
     def test_dynamo(self, device):
         if not (hasattr(torch, 'compile') and sys.platform == "linux"):
             pytest.skip(f"skipped because {torch.__version__} not have `compile` available! Failed to setup dynamo.")

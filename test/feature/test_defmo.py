@@ -22,6 +22,8 @@ class TestDeFMO:
         with torch.no_grad():
             assert out.shape == (2, 24, 4, 128, 160)
 
+    @pytest.mark.slow
+    @pytest.mark.grad
     def test_gradcheck(self, device, dtype):
         patches = torch.rand(2, 6, 64, 64, device=device, dtype=dtype)
         patches = utils.tensor_to_gradcheck_var(patches)  # to var

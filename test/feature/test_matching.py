@@ -454,6 +454,7 @@ class TestAdalam:
 
 
 class TestLightGlueDISK:
+    @pytest.mark.slow
     @pytest.mark.parametrize("data", ["lightglue_idxs"], indirect=True)
     def test_real(self, device, dtype, data):
         torch.random.manual_seed(0)
