@@ -49,6 +49,17 @@ jobs:
       os: 'MacOS-latest'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
 
+  test-slow:
+    uses: ./.github/workflows/tests.yml
+    strategy:
+      matrix:
+        pytorch-dtype: ['float32', 'float64']
+    with:
+      python-version: '["3.10"]'
+      pytorch-version: '["2.0.1"]'
+      pytorch-dtype: ${{ matrix.pytorch-dtype }}
+      pytest-extra: '--runslow'
+
   test-tutorials:
     uses: ./.github/workflows/test_tutorials.yml
 
