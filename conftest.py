@@ -98,9 +98,21 @@ def pytest_generate_tests(metafunc):
         metafunc.parametrize('dtype_name', dtype_names)
 
 
+def pytest_collection_modifyitems(config, items):
+    if config.getoption("--runslow"):
+        # --runslow given in cli: do not skip slow tests
+        return
+
+    skip_slow = pytest.mark.skip(reason="need --runslow option to run")
+    for item in items:
+        if "slow" in item.keywords:
+            item.add_marker(skip_slow)
+
+
 def pytest_addoption(parser):
     parser.addoption('--device', action="store", default="cpu")
     parser.addoption('--dtype', action="store", default="float32")
+    parser.addoption("--runslow", action="store_true", default=False, help="run slow tests")
 
 
 @pytest.fixture(autouse=True)
