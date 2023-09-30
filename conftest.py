@@ -103,6 +103,35 @@ def pytest_addoption(parser):
     parser.addoption('--dtype', action="store", default="float32")
 
 
+def pytest_report_header(config):
+    try:
+        import accelerate
+
+        accelerate_info = f'accelerate-{accelerate.__version__}'
+    except ImportError:
+        accelerate_info = '`accelerate` not found'
+
+    import cv2
+    import kornia_rs
+    import onnx
+    import scipy
+
+    return f"""
+main deps:
+    - kornia-{kornia.__version__}
+    - torch-{torch.__version__}
+        - commit: {torch.version.git_version}
+        - cuda: {torch.version.cuda}
+x deps:
+    - {accelerate_info}
+dev deps:
+    - kornia_rs-{kornia_rs.__version__}
+    - opencv (cv2)-{cv2.__version__}
+    - onnx-{onnx.__version__}
+    - scipy-{scipy.__version__}
+"""
+
+
 @pytest.fixture(autouse=True)
 def add_doctest_deps(doctest_namespace):
     doctest_namespace["np"] = np
