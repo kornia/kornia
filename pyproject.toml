@@ -167,7 +167,8 @@ requires = [
   markers =[
     "grad: mark a test as gradcheck test",
     "jit: mark a test as torchscript test",
-    "nn: mark a test as module test"
+    "nn: mark a test as module test",
+    "slow: mark test as slow to run",
 ]
 
 [tool.coverage.run]

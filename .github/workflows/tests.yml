@@ -20,7 +20,7 @@ on:
       pytest-extra:
         required: false
         type: string
-        default: ''
+        default: '--timeout=5'
       continue-on-error:
         required: false
         type: boolean
