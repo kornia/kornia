@@ -44,6 +44,23 @@ class TestApplyColorMap(BaseTester):
 
         self.assert_close(actual, expected_tensor)
 
+    def test_eye(self, device, dtype):
+        input_tensor = torch.stack(
+            [torch.eye(2, dtype=dtype, device=device) * 255, torch.eye(2, dtype=dtype, device=device) * 150]
+        ).view(2, -1, 2, 2)
+
+        expected_tensor = tensor(
+            [
+                [[[1.0, 1.0], [1.0, 1.0]], [[1.0, 0.0], [0.0, 1.0]], [[0.0, 0.0], [0.0, 0.0]]],
+                [[[1.0, 1.0], [1.0, 1.0]], [[1.0, 0.0], [0.0, 1.0]], [[0.0, 0.0], [0.0, 0.0]]],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+        actual = apply_colormap(input_tensor, AUTUMN(device=device, dtype=dtype))
+        self.assert_close(actual, expected_tensor)
+
     def test_exception(self, device, dtype):
         cm = AUTUMN(device=device, dtype=dtype)
         with pytest.raises(TypeError):
