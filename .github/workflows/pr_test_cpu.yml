@@ -41,7 +41,6 @@ jobs:
       pytorch-version: '["2.0.1"]'
       pytorch-dtype: 'float32,float64'
       coverage: true
-      continue-on-error: true
       pytest-extra: '--runslow'
 
   test-typing:
