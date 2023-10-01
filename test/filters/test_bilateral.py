@@ -77,7 +77,6 @@ class TestBilateralBlur(BaseTester):
         op_module = BilateralBlur(*params)
         self.assert_close(op_module(img), op(img, *params))
 
-    @pytest.mark.slow
     @pytest.mark.parametrize('kernel_size', [5, (5, 7)])
     @pytest.mark.parametrize('color_distance_type', ["l1", "l2"])
     def test_dynamo(self, kernel_size, color_distance_type, device, dtype, torch_optimizer):
@@ -239,7 +238,6 @@ class TestJointBilateralBlur(BaseTester):
         op_module = JointBilateralBlur(*params)
         self.assert_close(op_module(img, guide), op(img, guide, *params))
 
-    @pytest.mark.slow
     @pytest.mark.parametrize('kernel_size', [5, (5, 7)])
     @pytest.mark.parametrize('color_distance_type', ["l1", "l2"])
     def test_dynamo(self, kernel_size, color_distance_type, device, dtype, torch_optimizer):

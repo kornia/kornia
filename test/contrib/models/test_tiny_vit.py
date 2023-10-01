@@ -36,7 +36,6 @@ class TestTinyViT(BaseTester):
     def test_module(self):
         ...
 
-    @pytest.mark.slow
     def test_dynamo(self, device, dtype, torch_optimizer):
         op = TinyViT().to(device=device, dtype=dtype)
         img = torch.rand(1, 3, op.img_size, op.img_size, device=device, dtype=dtype)

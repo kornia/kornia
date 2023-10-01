@@ -128,7 +128,6 @@ class TestBoxBlur(BaseTester):
 
         self.assert_close(actual, expected)
 
-    @pytest.mark.slow
     @pytest.mark.parametrize('separable', [False, True])
     @pytest.mark.parametrize('kernel_size', [5, (5, 7)])
     @pytest.mark.parametrize('batch_size', [1, 2])

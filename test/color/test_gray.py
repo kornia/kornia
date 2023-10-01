@@ -87,7 +87,6 @@ class TestGrayscaleToRgb(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         assert gradcheck(kornia.color.grayscale_to_rgb, (img,), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.slow
     def test_dynamo(self, device, dtype, torch_optimizer):
         B, C, H, W = 2, 1, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)

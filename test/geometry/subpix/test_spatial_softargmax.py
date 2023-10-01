@@ -1,4 +1,3 @@
-import pytest
 import torch
 from torch.autograd import gradcheck
 from torch.nn.functional import mse_loss
@@ -153,7 +152,6 @@ class TestSpatialSoftArgmax2d:
         loss = (loss1 + loss2).mean()
         loss.backward()
 
-    @pytest.mark.slow
     def test_dynamo(self, device, dtype, torch_optimizer):
         inpt = torch.rand((2, 3, 7, 7), dtype=dtype, device=device)
         op = kornia.geometry.subpix.spatial_soft_argmax2d

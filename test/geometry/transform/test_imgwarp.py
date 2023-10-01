@@ -432,7 +432,6 @@ class TestWarpPerspective:
         patch_warped = kornia.geometry.warp_perspective(patch, dst_trans_src, (dst_h, dst_w))
         assert_close(patch_warped, expected)
 
-    @pytest.mark.slow
     def test_dynamo(self, device, dtype, torch_optimizer):
         if dtype == torch.float64 and torch_version() in {'2.0.0', '2.0.1'} and sys.platform == 'linux':
             pytest.xfail('Failling on CI on ubuntu with torch 2.0.0 for float64')

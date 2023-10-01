@@ -87,7 +87,6 @@ class TestImagePrompter(BaseTester):
     def test_module(self):
         ...
 
-    @pytest.mark.slow
     def test_dynamo(self, device):
         if not (hasattr(torch, 'compile') and sys.platform == "linux"):
             pytest.skip(f"skipped because {torch.__version__} not have `compile` available! Failed to setup dynamo.")
