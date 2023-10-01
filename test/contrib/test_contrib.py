@@ -60,18 +60,18 @@ class TestVisionTransformer:
         assert len(feats) == 12
         for f in feats:
             assert f.shape == (B, T, D)
-        
+
     @pytest.mark.parametrize("B", [1, 2])
     @pytest.mark.parametrize("H", [3, 8])
     @pytest.mark.parametrize("D", [245, 1001])
     @pytest.mark.parametrize("image_size", [32, 224])
     def test_exception(self, device, dtype, B, H, D, image_size):
         patch_size = 16
-        T = image_size**2 // patch_size**2 + 1  # tokens size
+        image_size**2 // patch_size**2 + 1  # tokens size
 
-        img = torch.rand(B, 3, image_size, image_size, device=device, dtype=dtype)
+        torch.rand(B, 3, image_size, image_size, device=device, dtype=dtype)
         with pytest.raises(ValueError):
-            vit = kornia.contrib.VisionTransformer(image_size=image_size, num_heads=H, embed_dim=D).to(device, dtype)
+            kornia.contrib.VisionTransformer(image_size=image_size, num_heads=H, embed_dim=D).to(device, dtype)
 
     def test_backbone(self, device, dtype):
         def backbone_mock(x):
