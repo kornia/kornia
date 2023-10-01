@@ -135,6 +135,7 @@ class CommonTests(BaseTester):
     def test_module(self):
         self._test_module_implementation(params=self._default_param_set)
 
+    @pytest.mark.slow
     def test_gradcheck(self):
         self._test_gradcheck_implementation(params=self._default_param_set)
 
@@ -279,6 +280,7 @@ class CommonTests(BaseTester):
 
         self.assert_close(output_values, input_values, low_tolerance=True)
 
+    @pytest.mark.slow
     def _test_gradcheck_implementation(self, params):
         input_tensor = torch.rand((3, 5, 5), device=self.device, dtype=self.dtype)  # 3 x 3
         input_tensor = utils.tensor_to_gradcheck_var(input_tensor)  # to var
@@ -837,6 +839,7 @@ class TestRandomHorizontalFlip:
             input[..., input_coordinates[0, 1, :], input_coordinates[0, 0, :]],
         )
 
+    @pytest.mark.slow
     def test_gradcheck(self, device, dtype):
         input = torch.rand((3, 3), device=device, dtype=dtype)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
@@ -1299,6 +1302,7 @@ class TestColorJiggle(BaseTester):
         self.assert_close(f(input), expected, low_tolerance=True)
         self.assert_close(f.transform_matrix, expected_transform, low_tolerance=True)
 
+    @pytest.mark.slow
     def test_gradcheck(self, device, dtype):
         input = torch.rand((3, 5, 5), device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
@@ -1626,6 +1630,7 @@ class TestColorJitter(BaseTester):
         self.assert_close(f(input), expected)
         self.assert_close(f.transform_matrix, expected_transform)
 
+    @pytest.mark.slow
     def test_gradcheck(self, device, dtype):
         input = torch.rand((3, 5, 5), device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
@@ -1729,6 +1734,7 @@ class TestRandomBrightness(BaseTester):
 
         self.assert_close(f(input), expected, low_tolerance=True)
 
+    @pytest.mark.slow
     def test_gradcheck(self, device, dtype):
         input = torch.rand((3, 5, 5), device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
@@ -1830,6 +1836,7 @@ class TestRandomContrast(BaseTester):
 
         self.assert_close(f(input), expected, low_tolerance=True)
 
+    @pytest.mark.slow
     def test_gradcheck(self, device, dtype):
         input = torch.rand((3, 5, 5), device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
@@ -1939,6 +1946,7 @@ class TestRandomHue(BaseTester):
 
         self.assert_close(f(input), expected, low_tolerance=True)
 
+    @pytest.mark.slow
     def test_gradcheck(self, device, dtype):
         input = torch.rand((3, 5, 5), device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
@@ -2048,6 +2056,7 @@ class TestRandomSaturation(BaseTester):
 
         self.assert_close(f(input), expected, low_tolerance=True)
 
+    @pytest.mark.slow
     def test_gradcheck(self, device, dtype):
         input = torch.rand((3, 5, 5), device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
@@ -2096,6 +2105,7 @@ class TestRectangleRandomErasing(BaseTester):
         res = f(input)
         assert_close(res[0], res[1])
 
+    @pytest.mark.slow
     def test_gradcheck(self, device, dtype):
         # test parameters
         batch_shape = (2, 3, 11, 7)
@@ -2234,6 +2244,7 @@ class TestRandomGamma(BaseTester):
 
         self.assert_close(f(input), expected, low_tolerance=True)
 
+    @pytest.mark.slow
     def test_gradcheck(self, device, dtype):
         input = torch.rand((3, 5, 5), device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
@@ -2491,6 +2502,7 @@ class TestRandomGrayscale(BaseTester):
         self.assert_close(f(input), expected)
         self.assert_close(f.transform_matrix, expected_transform)
 
+    @pytest.mark.slow
     def test_gradcheck(self, device, dtype):
         input = torch.rand((3, 5, 5), device=device, dtype=dtype)  # 3 x 3
         input = utils.tensor_to_gradcheck_var(input)  # to var
@@ -2556,6 +2568,7 @@ class TestCenterCrop(BaseTester):
 
         self.assert_close(out, op2(img, op1._params))
 
+    @pytest.mark.slow
     def test_gradcheck(self, device, dtype):
         input = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
         input = utils.tensor_to_gradcheck_var(input)  # to var
@@ -2724,6 +2737,7 @@ class TestRandomRotation(BaseTester):
         self.assert_close(out, expected, low_tolerance=True)
         self.assert_close(f.transform_matrix, expected_transform, low_tolerance=True)
 
+    @pytest.mark.slow
     def test_gradcheck(self, device, dtype):
         torch.manual_seed(0)  # for random reproductibility
 
@@ -2998,6 +3012,7 @@ class TestRandomCrop(BaseTester):
 
         self.assert_close(out, op2(img, op1._params))
 
+    @pytest.mark.slow
     def test_gradcheck(self, device, dtype):
         torch.manual_seed(0)  # for random reproductibility
         inp = torch.rand((3, 3, 3), device=device, dtype=dtype)  # 3 x 3
@@ -3191,6 +3206,7 @@ class TestRandomResizedCrop(BaseTester):
 
         self.assert_close(out, op2(img, op1._params))
 
+    @pytest.mark.slow
     def test_gradcheck(self, device, dtype):
         torch.manual_seed(0)  # for random reproductibility
         inp = torch.rand((1, 3, 3), device=device, dtype=dtype)  # 3 x 3
@@ -3316,6 +3332,7 @@ class TestRandomEqualize(BaseTester):
         res = f(input)
         assert_close(res[0], res[1])
 
+    @pytest.mark.slow
     def test_gradcheck(self, device, dtype):
         torch.manual_seed(0)  # for random reproductibility
 
@@ -3379,6 +3396,7 @@ class TestRandomGaussianBlur(BaseTester):
         actual = aug(input)
         self.assert_close(actual, actual)
 
+    @pytest.mark.slow
     def test_gradcheck(self, device, dtype):
         torch.manual_seed(0)
 
@@ -3570,6 +3588,7 @@ class TestNormalize(BaseTester):
         self.assert_close(f1(inputs), inputs)
         self.assert_close(f1.transform_matrix, identity)
 
+    @pytest.mark.slow
     def test_gradcheck(self, device, dtype):
         torch.manual_seed(0)  # for random reproductibility
 
@@ -3638,6 +3657,7 @@ class TestDenormalize(BaseTester):
         self.assert_close(f1(inputs), inputs)
         self.assert_close(f1.transform_matrix, identity)
 
+    @pytest.mark.slow
     def test_gradcheck(self, device, dtype):
         torch.manual_seed(0)  # for random reproductibility
 
@@ -4132,6 +4152,7 @@ class TestRandomTranslate:
         assert aug.inverse(out).shape == x_data.shape
         assert aug.inverse(out, aug._params).shape == x_data.shape
 
+    @pytest.mark.slow
     def test_gradcheck(self, device):
         input = torch.rand(1, 2, 5, 7).to(device)
         input = utils.tensor_to_gradcheck_var(input)  # to var
@@ -4150,6 +4171,7 @@ class TestRandomAutoContrast:
         out = aug(x_data)
         assert out.shape == x_data.shape
 
+    @pytest.mark.slow
     def test_gradcheck(self, device):
         input = torch.rand(1, 2, 5, 7).to(device)
         input = utils.tensor_to_gradcheck_var(input)  # to var
@@ -4190,6 +4212,7 @@ class TestRandomSnow(BaseTester):
         output_data = aug(input_data)
         assert output_data.shape == input_data.shape
 
+    @pytest.mark.slow
     def test_gradcheck(self, device):
         input_data = torch.rand(1, 3, 6, 8, device=device)
         grad_input = utils.tensor_to_gradcheck_var(input_data)
