@@ -67,7 +67,7 @@ def dtype(dtype_name) -> torch.dtype:
 @pytest.fixture(scope='session')
 def torch_optimizer():
     if hasattr(torch, 'compile') and sys.platform == "linux":
-        torch.set_float32_matmul_precision('high')
+        # torch.set_float32_matmul_precision('high')
         return torch.compile
 
     pytest.skip(f"skipped because {torch.__version__} not have `compile` available! Failed to setup dynamo.")
@@ -113,6 +113,17 @@ def pytest_addoption(parser):
     parser.addoption('--device', action="store", default="cpu")
     parser.addoption('--dtype', action="store", default="float32")
     parser.addoption("--runslow", action="store_true", default=False, help="run slow tests")
+
+
+def pytest_sessionstart(session):
+    if hasattr(torch, 'compile') and sys.platform == "linux":
+        print('Setting up torch compile...')
+        torch.set_float32_matmul_precision('high')
+
+        def _dummy_function(x, y):
+            return (x + y).sum()
+
+        torch.compile(_dummy_function)
 
 
 @pytest.fixture(autouse=True)
