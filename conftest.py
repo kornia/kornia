@@ -123,7 +123,15 @@ def pytest_sessionstart(session):
         def _dummy_function(x, y):
             return (x + y).sum()
 
+        class _dummy_module(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+
+            def forward(self, x):
+                return (x**2).sum()
+
         torch.compile(_dummy_function)
+        torch.compile(_dummy_module())
 
     # TODO: cache all torch.load weights/states here to not impact on test suite
 
