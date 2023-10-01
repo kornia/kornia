@@ -27,6 +27,7 @@ class TestDisk:
         assert len(output) == 1
         assert all(isinstance(e, DISKFeatures) for e in output)
 
+    @pytest.mark.slow
     def test_smoke_pretrained(self, device):
         disk = DISK.from_pretrained(checkpoint='depth', device=device)
         inp = torch.ones(1, 3, 64, 64, device=device)

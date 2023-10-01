@@ -24,12 +24,15 @@ class TestTinyViT(BaseTester):
         out = model(inpt)
         assert out.shape == (batch_size, num_classes)
 
+    @pytest.mark.skip('not implemented')
     def test_exception(self):
         ...
 
+    @pytest.mark.skip('not implemented')
     def test_gradcheck(self):
         ...
 
+    @pytest.mark.skip('not implemented')
     def test_module(self):
         ...
 
@@ -41,6 +44,7 @@ class TestTinyViT(BaseTester):
         op_optimized = torch_optimizer(op)
         self.assert_close(op(img), op_optimized(img))
 
+    @pytest.mark.slow
     @pytest.mark.parametrize("pretrained", [False, True])
     @pytest.mark.parametrize("variant", ["5m", "11m", "21m"])
     def test_from_config(self, variant, pretrained):

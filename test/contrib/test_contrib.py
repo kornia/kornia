@@ -684,9 +684,11 @@ class TestHistMatch:
 
 
 class TestFaceDetection:
+    @pytest.mark.slow
     def test_smoke(self, device, dtype):
         assert kornia.contrib.FaceDetector().to(device, dtype) is not None
 
+    @pytest.mark.slow
     @pytest.mark.parametrize("batch_size", [1, 2, 4])
     def test_valid(self, batch_size, device, dtype):
         torch.manual_seed(44)
@@ -699,11 +701,13 @@ class TestFaceDetection:
         assert dets[0].shape[0] >= 0  # number of detections
         assert dets[0].shape[1] == 15  # dims of each detection
 
+    @pytest.mark.slow
     def test_jit(self, device, dtype):
         op = kornia.contrib.FaceDetector().to(device, dtype)
         op_jit = torch.jit.script(op)
         assert op_jit is not None
 
+    @pytest.mark.slow
     def test_results(self, device, dtype):
         data = torch.tensor(
             [0.0, 0.0, 100.0, 200.0, 10.0, 10.0, 20.0, 10.0, 10.0, 50.0, 100.0, 50.0, 150.0, 10.0, 0.99],
@@ -728,6 +732,7 @@ class TestFaceDetection:
         assert res.get_keypoint(FaceKeypoint.MOUTH_LEFT).tolist() == [100.0, 50.0]
         assert res.get_keypoint(FaceKeypoint.MOUTH_RIGHT).tolist() == [150.0, 10.0]
 
+    @pytest.mark.slow
     def test_results_raise(self, device, dtype):
         data = torch.zeros(14, device=device, dtype=dtype)
         with pytest.raises(ValueError):
