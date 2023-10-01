@@ -552,6 +552,7 @@ class TestAugmentationSequential:
         if random_apply is False:
             reproducibility_test((inp, mask, bbox, keypoints), aug)
 
+    @pytest.mark.slow
     def test_individual_forward_and_inverse(self, device, dtype):
         inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
         bbox = torch.tensor([[[[355, 10], [660, 10], [660, 250], [355, 250]]]], device=device, dtype=dtype)
