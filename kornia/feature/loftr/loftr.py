@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 import torch
 
@@ -76,7 +76,7 @@ class LoFTR(Module):
         >>> out = loftr(input)
     """
 
-    def __init__(self, pretrained: str | None = 'outdoor', config: dict[str, Any] = default_cfg) -> None:
+    def __init__(self, pretrained: Optional[str] = 'outdoor', config: dict[str, Any] = default_cfg) -> None:
         super().__init__()
         # Misc
         self.config = config

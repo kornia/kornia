@@ -155,13 +155,7 @@ class VonMisesKernel(nn.Module):
         return embedding
 
     def __repr__(self) -> str:
-        return (
-            f"{self.__class__.__name__}("
-            f"patch_size={self.patch_size}, "
-            f"n={self.n}, "
-            f"d={self.d}, "
-            f"coeffs={self.coeffs})"
-        )
+        return f"{self.__class__.__name__}(patch_size={self.patch_size}, n={self.n}, d={self.d}, coeffs={self.coeffs})"
 
 
 class EmbedGradients(nn.Module):
@@ -466,12 +460,7 @@ class Whitening(nn.Module):
         return F.normalize(x, dim=1)
 
     def __repr__(self) -> str:
-        return (
-            f'{self.__class__.__name__}('
-            f'xform={self.xform}, '
-            f'in_dims={self.in_dims}, '
-            f'output_dims={self.output_dims})'
-        )
+        return f'{self.__class__.__name__}(xform={self.xform}, in_dims={self.in_dims}, output_dims={self.output_dims})'
 
 
 class MKDDescriptor(nn.Module):

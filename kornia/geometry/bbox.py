@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import warnings
+from typing import Optional
 
 import torch
 
@@ -439,7 +440,7 @@ def bbox_generator3d(
 
 
 def transform_bbox(
-    trans_mat: torch.Tensor, boxes: torch.Tensor, mode: str = "xyxy", restore_coordinates: bool | None = None
+    trans_mat: torch.Tensor, boxes: torch.Tensor, mode: str = "xyxy", restore_coordinates: Optional[bool] = None
 ) -> torch.Tensor:
     r"""Apply a transformation matrix to a box or batch of boxes.
 

@@ -140,7 +140,7 @@ def solve_pnp_dlt(
 
     if (weights is not None) and (not isinstance(weights, torch.Tensor)):
         raise AssertionError(
-            f"If weights is not None, then weights should be an instance "
+            "If weights is not None, then weights should be an instance "
             f"of torch.Tensor. Type of weights is {type(weights)}"
         )
 
@@ -157,14 +157,12 @@ def solve_pnp_dlt(
 
     if img_points.dtype not in accepted_dtypes:
         raise AssertionError(
-            f"img_points must have one of the following dtypes {accepted_dtypes}. "
-            f"Currently it has {img_points.dtype}."
+            f"img_points must have one of the following dtypes {accepted_dtypes}. Currently it has {img_points.dtype}."
         )
 
     if intrinsics.dtype not in accepted_dtypes:
         raise AssertionError(
-            f"intrinsics must have one of the following dtypes {accepted_dtypes}. "
-            f"Currently it has {intrinsics.dtype}."
+            f"intrinsics must have one of the following dtypes {accepted_dtypes}. Currently it has {intrinsics.dtype}."
         )
 
     if (len(world_points.shape) != 3) or (world_points.shape[2] != 3):
@@ -198,10 +196,10 @@ def solve_pnp_dlt(
     s = _torch_linalg_svdvals(world_points_norm)
     if torch.any(s[:, -1] < svd_eps):
         raise AssertionError(
-            f"The last singular value of one/more of the elements of the batch is smaller "
+            "The last singular value of one/more of the elements of the batch is smaller "
             f"than {svd_eps}. This function cannot be used if all world_points (of any "
-            f"element of the batch) lie on a line or if all world_points (of any "
-            f"element of the batch) lie on a plane."
+            "element of the batch) lie on a line or if all world_points (of any "
+            "element of the batch) lie on a plane."
         )
 
     intrinsics_inv = torch.inverse(intrinsics)

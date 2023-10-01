@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import Optional
 
 from kornia.contrib.models.base import ModelBase
 from kornia.contrib.models.rt_detr.architecture.hgnetv2 import PPHGNetV2
@@ -50,14 +51,14 @@ class RTDETRConfig:
 
     model_type: RTDETRModelType | str | int
     num_classes: int
-    checkpoint: str | None = None
+    checkpoint: Optional[str] = None
 
-    neck_hidden_dim: int | None = None
-    neck_dim_feedforward: int | None = None
-    neck_expansion: float | None = None
+    neck_hidden_dim: Optional[int] = None
+    neck_dim_feedforward: Optional[int] = None
+    neck_expansion: Optional[float] = None
     head_hidden_dim: int = 256
     head_num_queries: int = 300
-    head_num_decoder_layers: int | None = None
+    head_num_decoder_layers: Optional[int] = None
     confidence_threshold: float = 0.3
 
 

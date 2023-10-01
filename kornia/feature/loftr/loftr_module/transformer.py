@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import copy
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 import torch
 from torch import nn
@@ -12,7 +12,7 @@ from .linear_attention import FullAttention, LinearAttention
 
 
 class LoFTREncoderLayer(Module):
-    def __init__(self, d_model: int, nhead: int, attention: Literal['linear'] | None = 'linear') -> None:
+    def __init__(self, d_model: int, nhead: int, attention: Optional[Literal['linear']] = 'linear') -> None:
         super().__init__()
 
         self.dim = d_model // nhead
@@ -35,7 +35,7 @@ class LoFTREncoderLayer(Module):
         self.norm2 = nn.LayerNorm(d_model)
 
     def forward(
-        self, x: Tensor, source: Tensor, x_mask: Tensor | None = None, source_mask: Tensor | None = None
+        self, x: Tensor, source: Tensor, x_mask: Optional[Tensor] = None, source_mask: Optional[Tensor] = None
     ) -> Tensor:
         """
         Args:

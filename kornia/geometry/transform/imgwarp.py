@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 import torch
 import torch.nn.functional as F
 
@@ -459,7 +461,7 @@ def remap(
     map_y: Tensor,
     mode: str = 'bilinear',
     padding_mode: str = 'zeros',
-    align_corners: bool | None = None,
+    align_corners: Optional[bool] = None,
     normalized_coordinates: bool = False,
 ) -> Tensor:
     r"""Apply a generic geometrical transformation to an image tensor.
@@ -563,8 +565,8 @@ def get_affine_matrix2d(
     center: Tensor,
     scale: Tensor,
     angle: Tensor,
-    sx: Tensor | None = None,
-    sy: Tensor | None = None,
+    sx: Optional[Tensor] = None,
+    sy: Optional[Tensor] = None,
 ) -> Tensor:
     r"""Compose affine matrix from the components.
 
@@ -616,7 +618,7 @@ def get_translation_matrix2d(translations: Tensor) -> Tensor:
     return transform_h
 
 
-def get_shear_matrix2d(center: Tensor, sx: Tensor | None = None, sy: Tensor | None = None) -> Tensor:
+def get_shear_matrix2d(center: Tensor, sx: Optional[Tensor] = None, sy: Optional[Tensor] = None) -> Tensor:
     r"""Compose shear matrix Bx4x4 from the components.
 
     Note: Ordered shearing, shear x-axis then y-axis.
@@ -671,12 +673,12 @@ def get_affine_matrix3d(
     center: Tensor,
     scale: Tensor,
     angles: Tensor,
-    sxy: Tensor | None = None,
-    sxz: Tensor | None = None,
-    syx: Tensor | None = None,
-    syz: Tensor | None = None,
-    szx: Tensor | None = None,
-    szy: Tensor | None = None,
+    sxy: Optional[Tensor] = None,
+    sxz: Optional[Tensor] = None,
+    syx: Optional[Tensor] = None,
+    syz: Optional[Tensor] = None,
+    szx: Optional[Tensor] = None,
+    szy: Optional[Tensor] = None,
 ) -> Tensor:
     r"""Compose 3d affine matrix from the components.
 
@@ -714,12 +716,12 @@ def get_affine_matrix3d(
 
 def get_shear_matrix3d(
     center: Tensor,
-    sxy: Tensor | None = None,
-    sxz: Tensor | None = None,
-    syx: Tensor | None = None,
-    syz: Tensor | None = None,
-    szx: Tensor | None = None,
-    szy: Tensor | None = None,
+    sxy: Optional[Tensor] = None,
+    sxz: Optional[Tensor] = None,
+    syx: Optional[Tensor] = None,
+    syz: Optional[Tensor] = None,
+    szx: Optional[Tensor] = None,
+    szy: Optional[Tensor] = None,
 ) -> Tensor:
     r"""Compose shear matrix Bx4x4 from the components.
     Note: Ordered shearing, shear x-axis then y-axis then z-axis.

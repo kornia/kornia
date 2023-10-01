@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 from kornia.core import Module, Tensor, pad
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
@@ -9,7 +11,7 @@ from .median import _compute_zero_padding
 
 def _bilateral_blur(
     input: Tensor,
-    guidance: Tensor | None,
+    guidance: Optional[Tensor],
     kernel_size: tuple[int, int] | int,
     sigma_color: float | Tensor,
     sigma_space: tuple[float, float] | Tensor,

@@ -83,8 +83,7 @@ class Attention(Module):
         super().__init__()
         if allow_flash and not FLASH_AVAILABLE:
             warnings.warn(
-                'FlashAttention is not available. For optimal speed, '
-                'consider installing torch >= 2.0 or flash-attn.',
+                'FlashAttention is not available. For optimal speed, consider installing torch >= 2.0 or flash-attn.',
                 stacklevel=2,
             )
         self.enable_flash = allow_flash and FLASH_AVAILABLE
