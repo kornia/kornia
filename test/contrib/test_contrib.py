@@ -61,15 +61,10 @@ class TestVisionTransformer:
         for f in feats:
             assert f.shape == (B, T, D)
 
-    @pytest.mark.parametrize("B", [1, 2])
     @pytest.mark.parametrize("H", [3, 8])
     @pytest.mark.parametrize("D", [245, 1001])
     @pytest.mark.parametrize("image_size", [32, 224])
-    def test_exception(self, device, dtype, B, H, D, image_size):
-        patch_size = 16
-        image_size**2 // patch_size**2 + 1  # tokens size
-
-        torch.rand(B, 3, image_size, image_size, device=device, dtype=dtype)
+    def test_exception(self, device, dtype, H, D, image_size):
         with pytest.raises(ValueError):
             kornia.contrib.VisionTransformer(image_size=image_size, num_heads=H, embed_dim=D).to(device, dtype)
 
