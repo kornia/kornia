@@ -58,6 +58,7 @@ def configuration():
 
 
 class TestObjectDetectionTrainer:
+    @pytest.mark.slow
     @pytest.mark.skipif(
         torch.__version__ == '1.12.1' and Accelerator is None, reason='accelerate lib problem with torch 1.12.1'
     )

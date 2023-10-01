@@ -166,6 +166,7 @@ class TestCenterCrop:
 
         assert gradcheck(kornia.geometry.transform.center_crop, (img, (4, 2)), raise_exception=True, fast_mode=True)
 
+    @pytest.mark.slow
     def test_dynamo(self, device, dtype, torch_optimizer):
         # Define script
         op = kornia.geometry.transform.center_crop

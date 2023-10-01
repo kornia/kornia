@@ -253,6 +253,7 @@ class TestHomographyWarper:
         # evaluate function gradient
         assert gradcheck(warper, (patch_src, dst_homo_src), nondet_tol=1e-8, raise_exception=True, fast_mode=True)
 
+    @pytest.mark.slow
     @pytest.mark.parametrize("batch_size", [1, 2, 3])
     @pytest.mark.parametrize("align_corners", [True, False])
     @pytest.mark.parametrize("normalized_coordinates", [True, False])

@@ -1,3 +1,4 @@
+import pytest
 import torch
 
 import kornia
@@ -48,6 +49,7 @@ class TestBbox2D:
         boxes = tensor_to_gradcheck_var(boxes)
         gradcheck(infer_bbox_shape, (boxes,))
 
+    @pytest.mark.slow
     def test_dynamo(self, device, dtype, torch_optimizer):
         # Define script
         op = infer_bbox_shape
@@ -237,6 +239,7 @@ class TestBbox3D:
         boxes = tensor_to_gradcheck_var(boxes)
         gradcheck(infer_bbox_shape3d, (boxes,))
 
+    @pytest.mark.slow
     def test_dynamo(self, device, dtype, torch_optimizer):
         # Define script
         op = infer_bbox_shape3d

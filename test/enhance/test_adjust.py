@@ -774,6 +774,7 @@ class TestAdjustSigmoid(BaseTester):
         f = kornia.enhance.AdjustSigmoid()
         self.assert_close(f(data), expected)
 
+    @pytest.mark.slow
     def test_dynamo(self, device, dtype, torch_optimizer):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
@@ -843,6 +844,7 @@ class TestAdjustLog(BaseTester):
         f = kornia.enhance.AdjustLog()
         self.assert_close(f(data), expected)
 
+    @pytest.mark.slow
     def test_dynamo(self, device, dtype, torch_optimizer):
         B, C, H, W = 2, 3, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)

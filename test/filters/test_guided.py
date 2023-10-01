@@ -88,6 +88,7 @@ class TestGuidedBlur(BaseTester):
         op_module = GuidedBlur(kernel_size, eps, subsample=subsample)
         self.assert_close(op_module(guide, img), op(guide, img, kernel_size, eps, subsample=subsample))
 
+    @pytest.mark.slow
     @pytest.mark.parametrize('kernel_size', [5, (5, 7)])
     @pytest.mark.parametrize("subsample", [1, 2])
     def test_dynamo(self, kernel_size, subsample, device, dtype, torch_optimizer):

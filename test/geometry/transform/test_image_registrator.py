@@ -62,6 +62,7 @@ class TestImageRegistrator:
         ir = kornia.geometry.transform.ImageRegistrator(model_type).to(device, dtype)
         assert ir is not None
 
+    @pytest.mark.slow
     def test_registration_toy(self, device, dtype):
         ch, height, width = 3, 16, 18
         homography = torch.eye(3, device=device, dtype=dtype)[None]
