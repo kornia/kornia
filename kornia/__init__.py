@@ -13,4 +13,4 @@ from kornia.testing import xla_is_available
 from kornia.utils import eye_like, vec_like, create_meshgrid, image_to_tensor, tensor_to_image
 
 # Version variable
-__version__ = "0.7.0"
+__version__ = "0.7.1-dev"
