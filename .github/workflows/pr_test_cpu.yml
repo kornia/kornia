@@ -42,6 +42,7 @@ jobs:
       pytorch-dtype: 'float32,float64'
       coverage: true
       continue-on-error: true
+      pytest-extra: '--runslow'
 
   test-slow:
     uses: ./.github/workflows/tests.yml
