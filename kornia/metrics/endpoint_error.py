@@ -28,7 +28,7 @@ def aepe(input: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> 
     Examples:
         >>> ones = torch.ones(4, 4, 2)
         >>> aepe(ones, 1.2 * ones)
-        tensor(0.0800)
+        tensor(0.2828)
 
     Reference:
         https://link.springer.com/content/pdf/10.1007/s11263-010-0390-2.pdf
