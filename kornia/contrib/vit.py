@@ -49,7 +49,8 @@ class MultiHeadAttention(Module):
 
         if self.emb_size % self.num_heads:
             raise ValueError(
-                f"Size of embedding inside the transformer decoder must be visible by number of heads for correct multi-head attention "
+                f"Size of embedding inside the transformer decoder must be visible by number of heads"
+                f"for correct multi-head attention "
                 f"Got: {self.emb_size} embedding size and {self.num_heads} numbers of heads"
             )
 
