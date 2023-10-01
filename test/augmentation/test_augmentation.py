@@ -3475,9 +3475,7 @@ class TestRandomChannelDropout(BaseTester):
         img = torch.arange(1 * 3 * 2 * 2, device=device, dtype=dtype).view(1, 3, 2, 2)
 
         out_expected = torch.tensor(
-            [[[[0., 0.], [0., 0.]], [[0., 0.], [0., 0.]], [[0., 0.], [0., 0.]]]],
-            device=device,
-            dtype=dtype,
+            [[[[0.0, 0.0], [0.0, 0.0]], [[0.0, 0.0], [0.0, 0.0]], [[0.0, 0.0], [0.0, 0.0]]]], device=device, dtype=dtype
         )
 
         aug = RandomChannelDropout(p=1)
@@ -3503,7 +3501,7 @@ class TestRandomChannelDropout(BaseTester):
         pass
 
     def test_module(self, device, dtype):
-        aug = RandomChannelDropout(p=0.)
+        aug = RandomChannelDropout(p=0.0)
         input_tensor = torch.randn(16, 3, 64, 64, device=device, dtype=dtype)
         output_tensor = aug(input_tensor)
         self.assert_close(input_tensor, output_tensor)
