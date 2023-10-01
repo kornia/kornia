@@ -14,27 +14,27 @@ concurrency:
 
 jobs:
   tests-cpu:
+    # This job run just tests not marked as slow, and desselect the dynamo tests
     strategy:
-      fail-fast: false  # TODO: enable it when CI be stable (when drop support to torch 1.9.1)
+      fail-fast: true
       matrix:
         os: ['Ubuntu-latest', 'Windows-latest', 'MacOS-latest']
+        pytorch-dtype: ['float32', 'float64']
+        exclude:
+          - os: 'Windows-latest'
+            pytorch-dtype: 'float64'
+          - os: 'MacOS-latest'
+            pytorch-dtype: 'float64'
+
     uses: ./.github/workflows/tests.yml
     with:
       os: ${{ matrix.os }}
       python-version: '["3.8", "3.10"]'
       pytorch-version: '["1.9.1", "2.0.1"]'
-      pytorch-dtype: 'float32'
-
-  tests-cpu-fp64:
-    strategy:
-      fail-fast: true
-    uses: ./.github/workflows/tests.yml
-    with:
-      python-version: '["3.8", "3.10"]'
-      pytorch-version: '["1.9.1", "2.0.1"]'
-      pytorch-dtype: 'float64'
+      pytorch-dtype: ${{ matrix.pytorch-dtype }}
 
   tests-coverage:
+    # This job run all test suite
     uses: ./.github/workflows/tests.yml
     with:
       python-version: '["3.10"]'
@@ -51,7 +51,7 @@ jobs:
     uses: ./.github/workflows/test_tutorials.yml
 
   collector:
-    needs: [tests-cpu, tests-cpu-fp64, test-tutorials, test-typing, tests-coverage]
+    needs: [tests-cpu, test-tutorials, test-typing, tests-coverage]
     if: always()
     runs-on: ubuntu-latest
     steps:
