@@ -125,6 +125,8 @@ def pytest_sessionstart(session):
 
         torch.compile(_dummy_function)
 
+    # TODO: cache all torch.load weights/states here to not impact on test suite
+
 
 @pytest.fixture(autouse=True)
 def add_doctest_deps(doctest_namespace):

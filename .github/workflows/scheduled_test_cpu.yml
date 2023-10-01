@@ -24,6 +24,9 @@ jobs:
       python-version: '["3.8", "3.9", "3.10"]'
       pytorch-version: '["1.9.1", "1.10.2", "1.11.0", "1.12.1", "1.13.1", "2.0.1"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
+      pytest-extra: '--runslow'
+
+
 
   tests-cpu-windows:
     strategy:
@@ -48,17 +51,6 @@ jobs:
     with:
       os: 'MacOS-latest'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
-
-  test-slow:
-    uses: ./.github/workflows/tests.yml
-    strategy:
-      matrix:
-        pytorch-dtype: ['float32', 'float64']
-    with:
-      python-version: '["3.10"]'
-      pytorch-version: '["2.0.1"]'
-      pytorch-dtype: ${{ matrix.pytorch-dtype }}
-      pytest-extra: '--runslow'
 
   test-tutorials:
     uses: ./.github/workflows/test_tutorials.yml
