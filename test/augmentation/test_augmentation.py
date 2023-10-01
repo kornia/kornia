@@ -21,6 +21,7 @@ from kornia.augmentation import (
     RandomAffine3D,
     RandomBoxBlur,
     RandomBrightness,
+    RandomChannelDropout,
     RandomChannelShuffle,
     RandomContrast,
     RandomCrop,
@@ -3465,6 +3466,47 @@ class TestRandomInvert(BaseTester):
     @pytest.mark.skip(reason="not implemented yet")
     def test_module(self, device, dtype):
         pass
+
+
+class TestRandomChannelDropout(BaseTester):
+    def test_smoke(self, device, dtype):
+        torch.manual_seed(0)
+
+        img = torch.arange(1 * 3 * 2 * 2, device=device, dtype=dtype).view(1, 3, 2, 2)
+
+        out_expected = torch.tensor(
+            [[[[0., 0.], [0., 0.]], [[0., 0.], [0., 0.]], [[0., 0.], [0., 0.]]]],
+            device=device,
+            dtype=dtype,
+        )
+
+        aug = RandomChannelDropout(p=1)
+        output_tensor = aug(img)
+        self.assert_close(output_tensor, out_expected)
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_exception(self, device, dtype):
+        pass
+
+    def test_cardinality(self, device, dtype):
+        aug = RandomChannelDropout(p=0.5)
+        input_tensor = torch.randn(16, 3, 64, 64, device=device, dtype=dtype)
+        output_tensor = aug(input_tensor)
+        assert input_tensor.size() == output_tensor.size()
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_gradcheck(self, device):
+        pass
+
+    def test_module(self, device, dtype):
+        aug = RandomChannelDropout(p=0.)
+        input_tensor = torch.randn(16, 3, 64, 64, device=device, dtype=dtype)
+        output_tensor = aug(input_tensor)
+        self.assert_close(input_tensor, output_tensor)
 
 
 class TestRandomChannelShuffle(BaseTester):
