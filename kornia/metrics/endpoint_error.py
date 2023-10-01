@@ -79,7 +79,7 @@ class AEPE(nn.Module):
     Examples:
         >>> input1 = torch.rand(1, 4, 5, 2)
         >>> input2 = torch.rand(1, 4, 5, 2)
-        >>> epe = AEPE(5)
+        >>> epe = AEPE(reduction="mean")
         >>> epe = epe(input1, input2)
     """
 
