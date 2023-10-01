@@ -121,6 +121,7 @@ class TestBlurPool(BaseTester):
         expected = op(img, kernel_size)
         self.assert_close(actual, expected)
 
+    @pytest.mark.slow
     @pytest.mark.parametrize('kernel_size', [3, (5, 5)])
     @pytest.mark.parametrize('batch_size', [1, 2])
     @pytest.mark.parametrize('stride', [1, 2])

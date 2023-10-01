@@ -15,6 +15,7 @@ def data_url():
 
 
 class TestHomographyTracker:
+    @pytest.mark.slow
     def test_smoke(self, device):
         tracker = HomographyTracker().to(device)
         assert tracker is not None
