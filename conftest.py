@@ -115,7 +115,7 @@ def pytest_addoption(parser):
     parser.addoption("--runslow", action="store_true", default=False, help="run slow tests")
 
 
-def pytest_sessionstart(session):
+def _setup_torch_compile():
     if hasattr(torch, 'compile') and sys.platform == "linux":
         print('Setting up torch compile...')
         torch.set_float32_matmul_precision('high')
@@ -133,6 +133,13 @@ def pytest_sessionstart(session):
         torch.compile(_dummy_function)
         torch.compile(_dummy_module())
 
+
+def pytest_sessionstart(session):
+    try:
+        _setup_torch_compile()
+    except RuntimeError as ex:
+        if 'not yet supported for torch.compile' not in str(ex):
+            raise ex
     # TODO: cache all torch.load weights/states here to not impact on test suite
 
 
