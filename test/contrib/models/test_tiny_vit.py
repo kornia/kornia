@@ -51,6 +51,7 @@ class TestTinyViT(BaseTester):
         model = TinyViT.from_config(variant, pretrained=pretrained)
         assert isinstance(model, TinyViT)
 
+    @pytest.mark.slow
     @pytest.mark.parametrize('num_classes', [1000, 8])
     @pytest.mark.parametrize("img_size", [224, 256])
     def test_pretrained(self, img_size, num_classes):

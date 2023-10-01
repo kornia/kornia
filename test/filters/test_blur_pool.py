@@ -60,6 +60,7 @@ class TestMaxBlurPool(BaseTester):
         expected = op(img, kernel_size)
         self.assert_close(actual, expected)
 
+    @pytest.mark.slow
     @pytest.mark.parametrize('kernel_size', [3, (5, 5)])
     @pytest.mark.parametrize('batch_size', [1, 2])
     @pytest.mark.parametrize('ceil_mode', [True, False])
@@ -187,6 +188,7 @@ class TestEdgeAwareBlurPool(BaseTester):
         blur = edge_aware_blur_pool2d(img, kernel_size=3, edge_threshold=32.0)
         self.assert_close(img, blur)
 
+    @pytest.mark.slow
     @pytest.mark.parametrize('kernel_size', [3, (5, 5)])
     @pytest.mark.parametrize('batch_size', [1, 2])
     def test_dynamo(self, batch_size, kernel_size, device, dtype, torch_optimizer):
