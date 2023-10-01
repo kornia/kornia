@@ -357,6 +357,7 @@ class TestFilter2D(BaseTester):
     def test_module(self):
         ...
 
+    @pytest.mark.slow
     @pytest.mark.parametrize("normalized", [True, False])
     @pytest.mark.parametrize("padding", ["same", "valid"])
     def test_dynamo(self, normalized, padding, device, dtype, torch_optimizer):
@@ -717,6 +718,7 @@ class TestFilter3D(BaseTester):
     def test_module(self):
         ...
 
+    @pytest.mark.slow
     @pytest.mark.parametrize("normalized", [True, False])
     def test_dynamo(self, normalized, device, dtype, torch_optimizer):
         kernel = torch.rand(1, 3, 3, 3, device=device, dtype=dtype)
