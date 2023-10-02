@@ -1,6 +1,7 @@
 """Module containing RANSAC modules."""
 import math
 from typing import Callable, Optional, Tuple
+from functools import partial
 
 import torch
 
@@ -27,7 +28,7 @@ class RANSAC(Module):
     """Module for robust geometry estimation with RANSAC. https://en.wikipedia.org/wiki/Random_sample_consensus.
 
     Args:
-        model_type: type of model to estimate, e.g. "homography" or "fundamental".
+        model_type: type of model to estimate: "homography", "fundamental", "fundamental_7pt", "homography_from_linesegments".
         inliers_threshold: threshold for the correspondence to be an inlier.
         batch_size: number of generated samples at once.
         max_iterations: maximum batches to generate. Actual number of models to try is ``batch_size * max_iterations``.
@@ -45,7 +46,7 @@ class RANSAC(Module):
         max_lo_iters: int = 5,
     ) -> None:
         super().__init__()
-        self.supported_models = ['homography', 'fundamental', 'homography_from_linesegments']
+        self.supported_models = ['homography', 'fundamental', 'fundamental_7pt', 'homography_from_linesegments']
         self.inl_th = inl_th
         self.max_iter = max_iter
         self.batch_size = batch_size
@@ -72,8 +73,11 @@ class RANSAC(Module):
             self.error_fn = symmetrical_epipolar_distance
             self.minimal_solver = find_fundamental
             self.minimal_sample_size = 8
-            # ToDo: implement 7pt solver instead of 8pt minimal_solver
-            # https://github.com/opencv/opencv/blob/master/modules/calib3d/src/fundam.cpp#L498
+            self.polisher_solver = find_fundamental
+        elif model_type == 'fundamental_7pt':
+            self.error_fn = symmetrical_epipolar_distance
+            self.minimal_solver = partial(find_fundamental, method='7POINT')
+            self.minimal_sample_size = 7
             self.polisher_solver = find_fundamental
         else:
             raise NotImplementedError(f"{model_type} is unknown. Try one of {self.supported_models}")
