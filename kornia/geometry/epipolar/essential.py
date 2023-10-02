@@ -42,12 +42,11 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
         the computed fundamental matrix with shape :math:`(B, 3, 3)`.
     """
 
-    if (
-        points1.shape != points2.shape
-        or points1.shape[1] < 5
-        or (weights is not None and weights.shape != (points1.shape[0], points1.shape[1]))
-    ):
-        raise AssertionError("Invalid input shapes", points1.shape, points2.shape)
+    KORNIA_CHECK_SHAPE(points1, ['B', 'N', '2'])
+    KORNIA_CHECK_SAME_SHAPE(points1, points2)
+    KORNIA_CHECK_SHAPE(points1.shape[1] >= 5, "Number of points should be >=5")
+    if weights is not None:
+        KORNIA_CHECK_SAME_SHAPE(points1[:, :, 0], weights)
 
     batch_size, _, _ = points1.shape
     x1, y1 = torch.chunk(points1, dim=-1, chunks=2)  # Bx1xN
