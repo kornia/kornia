@@ -42,10 +42,9 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     Returns:
         the computed fundamental matrix with shape :math:`(B, 3, 3)`.
     """
-
     KORNIA_CHECK_SHAPE(points1, ['B', 'N', '2'])
     KORNIA_CHECK_SAME_SHAPE(points1, points2)
-    KORNIA_CHECK_SHAPE(points1.shape[1] >= 5, "Number of points should be >=5")
+    KORNIA_CHECK(points1.shape[1] >= 5, "Number of points should be >=5")
     if weights is not None:
         KORNIA_CHECK_SAME_SHAPE(points1[:, :, 0], weights)
 
@@ -500,7 +499,7 @@ def find_essential(
             -1
         )
 
-KORNIA_CHECK_SHAPE(error, ['f{batch_size}', '10'])
+    KORNIA_CHECK_SHAPE(error, ['f{batch_size}', '10'])
 
     chosen_indices = torch.argmin(error, dim=-1)
     result = torch.stack([(E.view(-1, solution_num, 3, 3))[i, chosen_indices[i], :] for i in range(batch_size)])
