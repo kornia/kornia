@@ -499,10 +499,7 @@ def find_essential(
             -1
         )
 
-    if not (batch_size == error.shape[0]):
-        raise AssertionError(error.shape)
-    if not (solution_num == error.shape[1]):
-        raise AssertionError(error.shape)
+KORNIA_CHECK_SHAPE(error, ['f{batch_size}', '10'])
 
     chosen_indices = torch.argmin(error, dim=-1)
     result = torch.stack([(E.view(-1, solution_num, 3, 3))[i, chosen_indices[i], :] for i in range(batch_size)])
