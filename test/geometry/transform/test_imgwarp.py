@@ -280,10 +280,18 @@ class TestWarpAffine:
 
     @pytest.mark.parametrize("align_corners", (True, False))
     @pytest.mark.parametrize("padding_mode", ("zeros", "fill"))
-    def test_jit_script(self, align_corners, padding_mode):
+    def test_jit_script(self, device, dtype, align_corners, padding_mode):
+        offset = 1.0
+        h, w = 3, 4
+        aff_ab = torch.eye(2, 3, device=device, dtype=dtype)[None]
+        aff_ab[..., -1] += offset
+
+        img_b = torch.arange(float(3 * h * w), device=device, dtype=dtype).view(1, 3, h, w)
         net = DummyNNModule(3, 4, align_corners, padding_mode)
-        net = torch.jit.script(net)
-        # Assert compilation doesn't fail
+        script_net = torch.jit.script(net)
+
+        assert isinstance(script_net, torch.jit.ScriptModule)
+        assert_close(script_net(img_b, aff_ab), net(img_b, aff_ab))
 
     @pytest.mark.parametrize("align_corners", (True, False))
     @pytest.mark.parametrize("padding_mode", ("zeros", "fill"))
