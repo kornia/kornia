@@ -143,7 +143,7 @@ class TestRANSACFundamental:
 
     @pytest.mark.xfail(reason="might slightly and randomly imprecise due to RANSAC randomness")
     @pytest.mark.parametrize("data", ["loftr_fund"], indirect=True)
-    def test_real_clean(self, device, dtype, data):
+    def test_real_clean_8pt(self, device, dtype, data):
         torch.random.manual_seed(0)
         # generate input data
         data_dev = utils.dict_to(data, device, dtype)
@@ -174,7 +174,7 @@ class TestRANSACFundamental:
 
     @pytest.mark.xfail(reason="might fail, because this F-RANSAC is not 7pt")
     @pytest.mark.parametrize("data", ["loftr_fund"], indirect=True)
-    def test_real_dirty(self, device, dtype, data):
+    def test_real_dirty_8pt(self, device, dtype, data):
         torch.random.manual_seed(0)
         # generate input data
         data_dev = utils.dict_to(data, device, dtype)
@@ -193,7 +193,7 @@ class TestRANSACFundamental:
         assert gross_errors.sum().item() < 2
 
     @pytest.mark.parametrize("data", ["loftr_fund"], indirect=True)
-    def test_real_dirty(self, device, dtype, data):
+    def test_real_dirty_7pt(self, device, dtype, data):
         torch.random.manual_seed(0)
         # generate input data
         data_dev = utils.dict_to(data, device, dtype)
