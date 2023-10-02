@@ -1,7 +1,7 @@
 """Module containing RANSAC modules."""
 import math
-from typing import Callable, Optional, Tuple
 from functools import partial
+from typing import Callable, Optional, Tuple
 
 import torch
 
