@@ -1,5 +1,3 @@
-from typing import Dict
-
 import pytest
 import test_common as utils
 import torch
@@ -37,7 +35,6 @@ class TestFindEssential:
         assert E_mat.shape == (B, 3, 3)
 
     def test_epipolar_constraint(self, device, dtype):
-
         calibrated_x1 = torch.tensor(
             [[[0.0640, 0.7799], [-0.2011, 0.2836], [-0.1355, 0.2907], [0.0520, 1.0086], [-0.0361, 0.6533]]],
             device=device,
@@ -56,7 +53,6 @@ class TestFindEssential:
             assert_close(mean_error, torch.tensor(0.0, device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
 
     def test_synthetic_sampson(self, device, dtype):
-
         calibrated_x1 = torch.tensor(
             [[[0.0640, 0.7799], [-0.2011, 0.2836], [-0.1355, 0.2907], [0.0520, 1.0086], [-0.0361, 0.6533]]],
             device=device,

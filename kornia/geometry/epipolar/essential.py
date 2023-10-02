@@ -4,7 +4,7 @@ from typing import Optional, Tuple
 import torch
 
 import kornia.geometry.epipolar as epi
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, KORNIA_CHECK_SAME_SHAPE
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
 from kornia.utils import eye_like, vec_like
 from kornia.utils.helpers import _torch_svd_cast
 
