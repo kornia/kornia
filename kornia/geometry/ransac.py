@@ -28,7 +28,7 @@ class RANSAC(Module):
     """Module for robust geometry estimation with RANSAC. https://en.wikipedia.org/wiki/Random_sample_consensus.
 
     Args:
-        model_type: type of model to estimate: "homography", "fundamental", "fundamental_7pt", 
+        model_type: type of model to estimate: "homography", "fundamental", "fundamental_7pt",
             "homography_from_linesegments".
         inliers_threshold: threshold for the correspondence to be an inlier.
         batch_size: number of generated samples at once.
