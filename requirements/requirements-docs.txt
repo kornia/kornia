@@ -11,4 +11,3 @@ sphinx-design
 sphinxcontrib-bibtex
 sphinxcontrib-gtagjs
 sphinxcontrib-youtube
-torchvision
