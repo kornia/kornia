@@ -197,7 +197,7 @@ class TestRANSACFundamental:
             sampson_epipolar_distance(pts_src[None], pts_dst[None], fundamental_matrix[None], squared=False) > 10.0
         )
         assert gross_errors.sum().item() < 2
-    
+
     @pytest.mark.slow
     @pytest.mark.parametrize("data", ["loftr_fund"], indirect=True)
     def test_real_dirty_7pt(self, device, dtype, data):
