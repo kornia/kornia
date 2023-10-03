@@ -54,7 +54,7 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     x2, y2 = torch.chunk(points2, dim=-1, chunks=2)  # Bx1xN
     ones = torch.ones_like(x1)
 
-    # build equations system and solve DLT
+    # build equations system and find null space.
     # https://www.cc.gatech.edu/~afb/classes/CS4495-Fall2013/slides/CS4495-09-TwoViews-2.pdf
     # [x * x', x * y', x, y * x', y * y', y, x', y', 1]
     # BxNx9
