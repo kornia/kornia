@@ -44,7 +44,7 @@ Design Principles
 Trainer Usage
 -------------
 
-The entry point to start traning with Kornia is through the :py:class:`~kornia.x.Trainer` class.
+The entry point to start training with Kornia is through the :py:class:`~kornia.x.Trainer` class.
 
 The main API is a self contained module that heavily relies on `accelerate <https://github.com/huggingface/accelerate/>`_
 to easily scale the training over multi-GPUs/TPU/fp16 `(see more) <https://github.com/huggingface/accelerate#supported-integrations/>`_

@@ -195,7 +195,7 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
                  [0., 0., 0., 0., 0.]]])
     """
     validate_bbox(boxes)
-    # zero padding the surroudings
+    # zero padding the surroundings
     mask = torch.zeros((len(boxes), height + 2, width + 2), dtype=boxes.dtype, device=boxes.device)
     # push all points one pixel off
     # in order to zero-out the fully filled rows or columns

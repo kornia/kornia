@@ -12,7 +12,7 @@ from .numeric import cross_product_matrix
 
 
 def intrinsics_like(focal: float, input: Tensor) -> Tensor:
-    r"""Return a 3x3 instrinsics matrix, with same size as the input.
+    r"""Return a 3x3 intrinsics matrix, with same size as the input.
 
     The center of projection will be based in the input image size.
 
@@ -83,7 +83,7 @@ def projection_from_KRt(K: Tensor, R: Tensor, t: Tensor) -> Tensor:
     This function estimate the projection matrix by solving the following equation: :math:`P = K * [R|t]`.
 
     Args:
-       K: the camera matrix with the instrinsics with shape :math:`(B, 3, 3)`.
+       K: the camera matrix with the intrinsics with shape :math:`(B, 3, 3)`.
        R: The rotation matrix with shape :math:`(B, 3, 3)`.
        t: The translation vector with shape :math:`(B, 3, 1)`.
 

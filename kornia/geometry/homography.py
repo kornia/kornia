@@ -84,9 +84,10 @@ def symmetric_transfer_error(pts1: Tensor, pts2: Tensor, H: Tensor, squared: boo
 
 
 def line_segment_transfer_error_one_way(ls1: Tensor, ls2: Tensor, H: Tensor, squared: bool = False) -> Tensor:
-    r"""Return transfer error in image 2 for line segment correspondences given the homography matrix. Line segment
-    end points are reprojected into image 2, and point-to-line error is calculted w.r.t. line, induced by line
-    segment in image 2. See :cite:`homolines2001` for details.
+    r"""Return transfer error in image 2 for line segment correspondences given the homography matrix.
+
+    Line segment end points are reprojected into image 2, and point-to-line error is calculated w.r.t. line,
+    induced by line segment in image 2. See :cite:`homolines2001` for details.
 
     Args:
         ls1: line segment correspondences from the left images with shape
