@@ -254,7 +254,7 @@ class MultiResolutionDetector(Module):
     Args:
         model: response function, such as KeyNet or BlobHessian
         num_features: Number of features to detect.
-        conf: Dict with initiliazation parameters. Do not pass it, unless you know what you are doing`.
+        conf: Dict with initialization parameters. Do not pass it, unless you know what you are doing`.
         ori_module: for local feature orientation estimation. Default: :class:`~kornia.feature.PassLAF`,
            which does nothing. See :class:`~kornia.feature.LAFOrienter` for details.
         aff_module: for local feature affine shape estimation. Default: :class:`~kornia.feature.PassLAF`,

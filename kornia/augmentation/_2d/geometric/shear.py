@@ -20,7 +20,7 @@ class RandomShear(GeometricAugmentationBase2D):
             If (a, b, c, d), then x-axis shear in (shear[0], shear[1]) and y-axis shear in (shear[2], shear[3])
             will be applied. Will not apply shear by default.
         resample: resample mode from "nearest" (0) or "bilinear" (1).
-        padding_mode: padding mode from "zeros" (0), "border" (1) or "refection" (2).
+        padding_mode: padding mode from "zeros" (0), "border" (1) or "reflection" (2).
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
         p: probability of applying the transformation.

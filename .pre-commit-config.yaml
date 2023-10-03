@@ -36,7 +36,7 @@ repos:
       - id: codespell
         args:
           - --ignore-words-list
-          - "ans,hist,laf"
+          - "ans,hist,laf,cofusion"
           - --skip
           - "*.bib,*.ipynb"
 

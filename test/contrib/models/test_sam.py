@@ -66,7 +66,7 @@ class TestSam(BaseTester):
         assert isinstance(model, Sam)
         assert next(model.parameters()).device == device
 
-    @pytest.mark.skip(reason='Unsupport at moment -- the code is not tested for trainning and had `torch.no_grad`')
+    @pytest.mark.skip(reason='Unsupport at moment -- the code is not tested for training and had `torch.no_grad`')
     def test_gradcheck(self, device):
         ...
 

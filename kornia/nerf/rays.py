@@ -405,7 +405,7 @@ def sample_ray_points(
     Args:
         origins: tensor containing ray origins in 3d world coordinates. Tensor shape :math:`(*, 3)`.
         directions: tensor containing ray directions in 3d world coordinates. Tensor shape :math:`(*, 3)`.
-        lengths: tensor cotaining sampled distances along each ray. Tensor shape :math:`(*, num_ray_points)`.
+        lengths: tensor containing sampled distances along each ray. Tensor shape :math:`(*, num_ray_points)`.
 
     Returns:
         points_3d: Points along rays :math:`(*, num_ray_points, 3)`
