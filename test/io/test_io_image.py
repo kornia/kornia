@@ -81,8 +81,6 @@ class TestIoImage:
         assert str(img_th.device) == "cpu"
 
     def test_device(self, device, png_image: Path) -> None:
-        height, width = 4, 5
-
         file_path = Path(png_image)
 
         assert file_path.is_file()
@@ -109,8 +107,6 @@ class TestIoImage:
         ],
     )
     def test_load_image(self, images_fn, ext, channels, load_type, expected_type, expected_channels):
-        height, width = 4, 5
-
         file_path = Path(images_fn[ext])
 
         assert file_path.is_file()
