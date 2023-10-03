@@ -143,7 +143,7 @@ class TestRANSACFundamental:
 
     @pytest.mark.xfail(reason="might slightly and randomly imprecise due to RANSAC randomness")
     @pytest.mark.parametrize("data", ["loftr_fund"], indirect=True)
-    def test_real_clean(self, device, dtype, data):
+    def test_real_clean_8pt(self, device, dtype, data):
         torch.random.manual_seed(0)
         # generate input data
         data_dev = utils.dict_to(data, device, dtype)
@@ -157,9 +157,24 @@ class TestRANSACFundamental:
         )
         assert gross_errors.sum().item() == 0
 
-    @pytest.mark.xfail(reason="might fail, because out F-RANSAC is not yet 7pt")
     @pytest.mark.parametrize("data", ["loftr_fund"], indirect=True)
-    def test_real_dirty(self, device, dtype, data):
+    def test_real_clean_7pt(self, device, dtype, data):
+        torch.random.manual_seed(0)
+        # generate input data
+        data_dev = utils.dict_to(data, device, dtype)
+        pts_src = data_dev['pts0']
+        pts_dst = data_dev['pts1']
+        # compute transform from source to target
+        ransac = RANSAC('fundamental_7pt', inl_th=1.0, max_iter=100, max_lo_iters=10).to(device=device, dtype=dtype)
+        fundamental_matrix, _ = ransac(pts_src, pts_dst)
+        gross_errors = (
+            sampson_epipolar_distance(pts_src[None], pts_dst[None], fundamental_matrix[None], squared=False) > 1.0
+        )
+        assert gross_errors.sum().item() == 0
+
+    @pytest.mark.xfail(reason="might fail, because this F-RANSAC is not 7pt")
+    @pytest.mark.parametrize("data", ["loftr_fund"], indirect=True)
+    def test_real_dirty_8pt(self, device, dtype, data):
         torch.random.manual_seed(0)
         # generate input data
         data_dev = utils.dict_to(data, device, dtype)
@@ -170,6 +185,25 @@ class TestRANSACFundamental:
         kp2 = data_dev['loftr_indoor_tentatives1']
 
         ransac = RANSAC('fundamental', inl_th=1.0, max_iter=20, max_lo_iters=10).to(device=device, dtype=dtype)
+        # compute transform from source to target
+        fundamental_matrix, _ = ransac(kp1, kp2)
+        gross_errors = (
+            sampson_epipolar_distance(pts_src[None], pts_dst[None], fundamental_matrix[None], squared=False) > 10.0
+        )
+        assert gross_errors.sum().item() < 2
+
+    @pytest.mark.parametrize("data", ["loftr_fund"], indirect=True)
+    def test_real_dirty_7pt(self, device, dtype, data):
+        torch.random.manual_seed(0)
+        # generate input data
+        data_dev = utils.dict_to(data, device, dtype)
+        pts_src = data_dev['pts0']
+        pts_dst = data_dev['pts1']
+
+        kp1 = data_dev['loftr_indoor_tentatives0']
+        kp2 = data_dev['loftr_indoor_tentatives1']
+
+        ransac = RANSAC('fundamental_7pt', inl_th=1.0, max_iter=20, max_lo_iters=10).to(device=device, dtype=dtype)
         # compute transform from source to target
         fundamental_matrix, _ = ransac(kp1, kp2)
         gross_errors = (
