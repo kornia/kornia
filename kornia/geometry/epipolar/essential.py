@@ -5,13 +5,13 @@ import torch
 
 import kornia.geometry.epipolar as epi
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
+from kornia.geometry import solvers
 from kornia.utils import eye_like, vec_like
 from kornia.utils.helpers import _torch_svd_cast
 
 from .numeric import cross_product_matrix
 from .projection import depth_from_point, projection_from_KRt
 from .triangulation import triangulate_points
-import kornia.geometry.solvers as solvers
 
 __all__ = [
     "find_essential",
@@ -82,17 +82,17 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     # Determinant constraint
     coeffs[:, 9] = (
         solvers.multiply_deg_two_one_poly(
-            solvers.multiply_deg_one_poly(fun(0, 1), fun(1, 2)) - 
-            solvers.multiply_deg_one_poly(fun(0, 2), fun(1, 1)), fun(2, 0)
-            )
+            solvers.multiply_deg_one_poly(fun(0, 1), fun(1, 2)) - solvers.multiply_deg_one_poly(fun(0, 2), fun(1, 1)),
+            fun(2, 0),
+        )
         + solvers.multiply_deg_two_one_poly(
-            solvers.multiply_deg_one_poly(fun(0, 2), fun(1, 0)) - 
-            solvers.multiply_deg_one_poly(fun(0, 0), fun(1, 2)), fun(2, 1)
-            )
+            solvers.multiply_deg_one_poly(fun(0, 2), fun(1, 0)) - solvers.multiply_deg_one_poly(fun(0, 0), fun(1, 2)),
+            fun(2, 1),
+        )
         + solvers.multiply_deg_two_one_poly(
-            solvers.multiply_deg_one_poly(fun(0, 0), fun(1, 1)) - 
-            solvers.multiply_deg_one_poly(fun(0, 1), fun(1, 0)), fun(2, 2)
-            )
+            solvers.multiply_deg_one_poly(fun(0, 0), fun(1, 1)) - solvers.multiply_deg_one_poly(fun(0, 1), fun(1, 0)),
+            fun(2, 2),
+        )
     )
 
     indices = torch.tensor([[0, 10, 20], [10, 40, 30], [20, 30, 50]])
