@@ -492,7 +492,7 @@ def find_essential(
 
     Returns:
         the computed essential matrix with shape :math:`(B, 3, 3)`,
-        one model for each batch selceted out of ten solutions by Sampson distances.
+        one model for each batch selected out of ten solutions by Sampson distances.
 
     """
     E = run_5point(points1, points2, weights).to(points1.dtype)
