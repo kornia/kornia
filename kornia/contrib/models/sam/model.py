@@ -24,7 +24,6 @@ from kornia.contrib.models.sam.architecture.prompt_encoder import PromptEncoder
 from kornia.contrib.models.sam.architecture.transformer import TwoWayTransformer
 from kornia.contrib.models.tiny_vit import TinyViT
 from kornia.core import Tensor
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 
 class SamModelType(Enum):
@@ -236,11 +235,11 @@ class Sam(ModelBase[SamConfig]):
                 - scores: The model's predictions of mask quality (iou prediction), in shape BxC.
         """
 
-        KORNIA_CHECK_SHAPE(images, ["B", "3", "H", "W"])
-        KORNIA_CHECK(
-            images.shape[0] == len(batched_prompts),
-            "The number of images (`B`) should match with the length of prompts!",
-        )
+        # KORNIA_CHECK_SHAPE(images, ['B', '3', 'H', 'W'])
+        # KORNIA_CHECK(
+        #     images.shape[0] == len(batched_prompts),
+        #     'The number of images (`B`) should match with the length of prompts!',
+        # )
 
         image_embeddings = self.image_encoder(images)
 
@@ -263,7 +262,8 @@ class Sam(ModelBase[SamConfig]):
             )
 
             # Save results
-            outputs.append(SegmentationResults(low_res_logits, iou_predictions, self.mask_threshold))
+            # outputs.append(SegmentationResults(low_res_logits, iou_predictions, self.mask_threshold))
+            outputs.append((low_res_logits, iou_predictions))
 
         return outputs
 

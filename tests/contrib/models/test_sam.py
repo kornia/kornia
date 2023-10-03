@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 import torch
 
@@ -100,3 +102,29 @@ class TestSam(BaseTester):
     @pytest.mark.parametrize("model_type", ["vit_b", "mobile_sam"])
     def test_pretrained(self, model_type):
         Sam.from_config(SamConfig(model_type, pretrained=True))
+
+    def test_onnx(self, device, dtype, tmp_path: Path):
+        model = Sam.from_config(SamConfig("mobile_sam"))
+        model = model.to(device=device, dtype=dtype)
+
+        img_size = model.image_encoder.img_size
+        img = torch.randn(1, 3, img_size, img_size, device=device)
+        keypoints = torch.randint(0, img_size, (1, 2, 2), device=device, dtype=torch.float)
+        labels = torch.randint(0, 1, (1, 2), device=device, dtype=torch.float)
+
+        model_path = tmp_path / "sam.onnx"
+
+        dynamic_axes = {"images": {0: "N"}}
+
+        torch.onnx.export(
+            model,
+            (img, [{"points": (keypoints, labels)}], False),
+            model_path,
+            input_names=["images", "batched_prompts", "multimask_output"],
+            output_names=["outputs"],
+            dynamic_axes=dynamic_axes,
+            export_params=True,
+            opset_version=16,
+            verbose=True,
+            do_constant_folding=True,
+        )

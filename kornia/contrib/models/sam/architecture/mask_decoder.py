@@ -85,12 +85,18 @@ class MaskDecoder(Module):
         )
 
         # Select the correct mask or masks for outptu
+        # if multimask_output:
+        #    mask_slice = slice(1, None)
+        # else:
+        #    mask_slice = slice(0, 1)
+        # masks = masks[:, mask_slice, :, :]
+        # iou_pred = iou_pred[:, mask_slice]
         if multimask_output:
-            mask_slice = slice(1, None)
+            masks = masks[:, 1:, :, :]
+            iou_pred = iou_pred[:, 1:]
         else:
-            mask_slice = slice(0, 1)
-        masks = masks[:, mask_slice, :, :]
-        iou_pred = iou_pred[:, mask_slice]
+            masks = masks[:, :1, :, :]
+            iou_pred = iou_pred[:, :1]
 
         # Prepare output
         return masks, iou_pred
