@@ -110,7 +110,6 @@ class TestIoImage:
     )
     def test_load_image(self, images_fn, ext, channels, load_type, expected_type, expected_channels):
         height, width = 4, 5
-        create_random_img8(height, width, channels)
 
         file_path = Path(images_fn[ext])
 
