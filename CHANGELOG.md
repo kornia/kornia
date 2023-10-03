@@ -60,7 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Replace `assert_allclose` by `assert_close` by @johnnv1 in https://github.com/kornia/kornia/pull/2210
 * Fix random crop for keypoints on CUDA device by @johnnv1 in https://github.com/kornia/kornia/pull/2209
 * Remove outdated augmentation example by @johnnv1 in https://github.com/kornia/kornia/pull/2206
-* Fix CUDA failling tests of same device on `Augmentations` by @johnnv1 in https://github.com/kornia/kornia/pull/2215
+* Fix CUDA failing tests of same device on `Augmentations` by @johnnv1 in https://github.com/kornia/kornia/pull/2215
 
 
 

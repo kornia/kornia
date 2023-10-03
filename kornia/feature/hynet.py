@@ -137,7 +137,7 @@ class HyNet(Module):
         pretrained: Download and set pretrained weights to the model.
         is_bias: use bias in TLU layers
         is_bias_FRN:  use bias in FRN layers
-        dim_desc: descriptor dimentionality,
+        dim_desc: descriptor dimensionality,
         drop_rate: dropout rate,
         eps_l2_norm: to avoid div by zero
 
