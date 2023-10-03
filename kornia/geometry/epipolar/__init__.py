@@ -23,7 +23,7 @@ from .fundamental import (
     normalize_points,
     normalize_transformation,
 )
-from .numeric import cross_product_matrix, det_to_poly, o1, o2
+from .numeric import cross_product_matrix
 from .projection import (
     KRt_from_projection,
     depth_from_point,
@@ -66,7 +66,4 @@ __all__ = [
     "get_perpendicular",
     "get_closest_point_on_epipolar_line",
     "find_essential",
-    "o1",
-    "o2",
-    "det_to_poly",
 ]

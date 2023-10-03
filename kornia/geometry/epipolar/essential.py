@@ -11,6 +11,7 @@ from kornia.utils.helpers import _torch_svd_cast
 from .numeric import cross_product_matrix
 from .projection import depth_from_point, projection_from_KRt
 from .triangulation import triangulate_points
+import kornia.geometry.solvers as solvers
 
 __all__ = [
     "find_essential",
@@ -40,7 +41,7 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
         weights: Tensor containing the weights per point correspondence with a shape of :math:`(B, N)`.
 
     Returns:
-        the computed fundamental matrix with shape :math:`(B, 3, 3)`.
+        the computed essential matrix with shape :math:`(B, 3, 3)`.
     """
     KORNIA_CHECK_SHAPE(points1, ['B', 'N', '2'])
     KORNIA_CHECK_SAME_SHAPE(points1, points2)
@@ -75,15 +76,23 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     coeffs = torch.zeros(batch_size, 10, 20, device=null_.device, dtype=null_.dtype)
     d = torch.zeros(batch_size, 60, device=null_.device, dtype=null_.dtype)
 
-    # fun = lambda i, j : null_[:, 3 * j + i]
     def fun(i: int, j: int) -> torch.Tensor:
         return null_[:, 3 * j + i]
 
     # Determinant constraint
     coeffs[:, 9] = (
-        epi.numeric.o2(epi.numeric.o1(fun(0, 1), fun(1, 2)) - epi.numeric.o1(fun(0, 2), fun(1, 1)), fun(2, 0))
-        + epi.numeric.o2(epi.numeric.o1(fun(0, 2), fun(1, 0)) - epi.numeric.o1(fun(0, 0), fun(1, 2)), fun(2, 1))
-        + epi.numeric.o2(epi.numeric.o1(fun(0, 0), fun(1, 1)) - epi.numeric.o1(fun(0, 1), fun(1, 0)), fun(2, 2))
+        solvers.multiply_deg_two_one_poly(
+            solvers.multiply_deg_one_poly(fun(0, 1), fun(1, 2)) - 
+            solvers.multiply_deg_one_poly(fun(0, 2), fun(1, 1)), fun(2, 0)
+            )
+        + solvers.multiply_deg_two_one_poly(
+            solvers.multiply_deg_one_poly(fun(0, 2), fun(1, 0)) - 
+            solvers.multiply_deg_one_poly(fun(0, 0), fun(1, 2)), fun(2, 1)
+            )
+        + solvers.multiply_deg_two_one_poly(
+            solvers.multiply_deg_one_poly(fun(0, 0), fun(1, 1)) - 
+            solvers.multiply_deg_one_poly(fun(0, 1), fun(1, 0)), fun(2, 2)
+            )
     )
 
     indices = torch.tensor([[0, 10, 20], [10, 40, 30], [20, 30, 50]])
@@ -92,9 +101,9 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     for i in range(3):
         for j in range(3):
             d[:, indices[i, j] : indices[i, j] + 10] = (
-                epi.numeric.o1(fun(i, 0), fun(j, 0))
-                + epi.numeric.o1(fun(i, 1), fun(j, 1))
-                + epi.numeric.o1(fun(i, 2), fun(j, 2))
+                solvers.multiply_deg_one_poly(fun(i, 0), fun(j, 0))
+                + solvers.multiply_deg_one_poly(fun(i, 1), fun(j, 1))
+                + solvers.multiply_deg_one_poly(fun(i, 2), fun(j, 2))
             )
 
     for i in range(10):
@@ -107,9 +116,9 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     for i in range(3):
         for j in range(3):
             row = (
-                epi.numeric.o2(d[:, indices[i, 0] : indices[i, 0] + 10], fun(0, j))
-                + epi.numeric.o2(d[:, indices[i, 1] : indices[i, 1] + 10], fun(1, j))
-                + epi.numeric.o2(d[:, indices[i, 2] : indices[i, 2] + 10], fun(2, j))
+                solvers.multiply_deg_two_one_poly(d[:, indices[i, 0] : indices[i, 0] + 10], fun(0, j))
+                + solvers.multiply_deg_two_one_poly(d[:, indices[i, 1] : indices[i, 1] + 10], fun(1, j))
+                + solvers.multiply_deg_two_one_poly(d[:, indices[i, 2] : indices[i, 2] + 10], fun(2, j))
             )
             coeffs[:, cnt] = row
             cnt += 1
@@ -136,7 +145,7 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
         A[:, i : i + 1, 9:13] = coeffs_[:, 4 + 2 * i : 5 + 2 * i, 16:20]
         A[:, i : i + 1, 8:12] -= coeffs_[:, 5 + 2 * i : 6 + 2 * i, 16:20]
 
-    cs = epi.numeric.det_to_poly(A)
+    cs = solvers.determinant_to_polynomial(A)
     E_models = []
 
     # for loop because of different numbers of solutions
