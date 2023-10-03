@@ -80,7 +80,7 @@ class TestIoImage:
         assert img_th.shape[1:] == (height, width)
         assert str(img_th.device) == "cpu"
 
-    def test_device(self, device, png_image) -> None:
+    def test_device(self, device, png_image: Path) -> None:
         height, width = 4, 5
 
         file_path = Path(png_image)
