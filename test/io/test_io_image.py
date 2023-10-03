@@ -82,7 +82,6 @@ class TestIoImage:
 
     def test_device(self, device, png_image) -> None:
         height, width = 4, 5
-        create_random_img8(height, width, 3)
 
         file_path = Path(png_image)
 
