@@ -220,7 +220,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             input: input keypoints tensor or object.
             params: the corresponding parameters for an operation.
             flags: static parameters.
-            transform: the inverse tansformation matrix
+            transform: the inverse transformation matrix
         """
         output = input.clone()
         batch_prob = params['batch_prob']
