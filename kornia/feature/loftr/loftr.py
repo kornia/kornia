@@ -60,7 +60,7 @@ class LoFTR(Module):
     If the distance matrix dm is not provided, :py:func:`torch.cdist` is used.
 
     Args:
-        config: Dict with initiliazation parameters. Do not pass it, unless you know what you are doing`.
+        config: Dict with initialization parameters. Do not pass it, unless you know what you are doing`.
         pretrained: Download and set pretrained weights to the model. Options: 'outdoor', 'indoor'.
                     'outdoor' is trained on the MegaDepth dataset and 'indoor'
                     on the ScanNet.

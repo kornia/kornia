@@ -407,7 +407,7 @@ class PinholeCamerasList(PinholeCamera):
             width.append(pinhole.width)
             intrinsics.append(pinhole.intrinsics)
             extrinsics.append(pinhole.extrinsics)
-        # contatenate and set members. We will assume BxNx4x4
+        # concatenate and set members. We will assume BxNx4x4
         self.height: Tensor = torch.stack(height, dim=1)
         self.width: Tensor = torch.stack(width, dim=1)
         self._intrinsics: Tensor = torch.stack(intrinsics, dim=1)

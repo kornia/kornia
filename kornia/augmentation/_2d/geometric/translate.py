@@ -18,7 +18,7 @@ class RandomTranslate(GeometricAugmentationBase2D):
             For example translate_y=(a, b), then vertical shift
             is randomly sampled in the range img_height * a < dy < img_height * b.
         resample: resample mode from "nearest" (0) or "bilinear" (1).
-        padding_mode: padding mode from "zeros" (0), "border" (1) or "refection" (2).
+        padding_mode: padding mode from "zeros" (0), "border" (1) or "reflection" (2).
         same_on_batch: apply the same transformation across the batch.
         align_corners: interpolation flag.
         p: probability of applying the transformation.

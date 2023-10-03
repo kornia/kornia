@@ -23,7 +23,7 @@ class MaskDecoder(Module):
         iou_head_depth: int = 3,
         iou_head_hidden_dim: int = 256,
     ) -> None:
-        """Predicts masks given an image and prompt embeddings, using a tranformer architecture.
+        """Predicts masks given an image and prompt embeddings, using a transformer architecture.
 
         Args:
             transformer_dim: the channel dimension of the transformer

@@ -78,7 +78,7 @@ class VisualPrompter:
     def preprocess_image(self, x: Tensor, mean: Tensor | None = None, std: Tensor | None = None) -> Tensor:
         """Normalize and pad a tensor.
 
-        For normalize the tensor: will priorize the `mean` and `std` passed as argument, if None will use the default
+        For normalize the tensor: will prioritize the `mean` and `std` passed as argument, if None will use the default
         Sam Dataset values.
 
         For pad the tensor: Will pad the tensor into the right and bottom to match with the size of

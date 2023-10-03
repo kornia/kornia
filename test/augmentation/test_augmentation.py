@@ -157,7 +157,7 @@ class CommonTests(BaseTester):
             self._augmentation_cls, AugmentationBase2D
         ), f"{self._augmentation_cls} is not a subclass of AugmentationBase2D"
 
-        # Can be instatiated
+        # Can be instantiated
         augmentation = self._create_augmentation_from_params(**params)
         assert issubclass(
             type(augmentation), AugmentationBase2D
