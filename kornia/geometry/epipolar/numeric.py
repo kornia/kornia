@@ -109,7 +109,7 @@ def o2(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 # Compute degree 10 poly representing determinant (equation 14 in the paper)
 # https://github.com/danini/graph-cut-ransac/blob/aae1f40c2e10e31fd2191bac601c53a189673f60/src/pygcransac/
 # include/estimators/solver_essential_matrix_five_point_nister.h#L368C5-L368C82
-def det_to_poly(A: torch.Tensor) -> torch.Tensor:
+def determinant_to_polynomial(A: Tensor) -> Tensor:
     r"""Represent the determinant by the 10th polynomial, used for 5PC solver.
 
     Args:
