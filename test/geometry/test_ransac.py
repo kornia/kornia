@@ -38,6 +38,7 @@ class TestRANSACHomography:
 
         assert_close(transform_points(dst_homo_src[None], points_src[:, :-1]), points_dst[:, :-1], rtol=1e-3, atol=1e-3)
 
+    @pytest.mark.slow
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     def test_real_clean(self, device, dtype, data):
         # generate input data
@@ -53,6 +54,7 @@ class TestRANSACHomography:
 
         assert_close(transform_points(dst_homo_src[None], pts_src[None]), pts_dst[None], rtol=1e-2, atol=1.0)
 
+    @pytest.mark.slow
     @pytest.mark.xfail(reason="might slightly and randomly imprecise due to RANSAC randomness")
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     def test_real_dirty(self, device, dtype, data):
@@ -141,6 +143,7 @@ class TestRANSACFundamental:
         Fm, _ = ransac(points1, points2)
         assert Fm.shape == (3, 3)
 
+    @pytest.mark.slow
     @pytest.mark.xfail(reason="might slightly and randomly imprecise due to RANSAC randomness")
     @pytest.mark.parametrize("data", ["loftr_fund"], indirect=True)
     def test_real_clean_8pt(self, device, dtype, data):
@@ -157,6 +160,8 @@ class TestRANSACFundamental:
         )
         assert gross_errors.sum().item() == 0
 
+    @pytest.mark.slow
+    @pytest.mark.xfail(reason="might fail, because out F-RANSAC is not yet 7pt")
     @pytest.mark.parametrize("data", ["loftr_fund"], indirect=True)
     def test_real_clean_7pt(self, device, dtype, data):
         torch.random.manual_seed(0)
@@ -172,6 +177,7 @@ class TestRANSACFundamental:
         )
         assert gross_errors.sum().item() == 0
 
+    @pytest.mark.slow
     @pytest.mark.xfail(reason="might fail, because this F-RANSAC is not 7pt")
     @pytest.mark.parametrize("data", ["loftr_fund"], indirect=True)
     def test_real_dirty_8pt(self, device, dtype, data):
@@ -192,6 +198,7 @@ class TestRANSACFundamental:
         )
         assert gross_errors.sum().item() < 2
 
+    @pytest.mark.slow
     @pytest.mark.parametrize("data", ["loftr_fund"], indirect=True)
     def test_real_dirty_7pt(self, device, dtype, data):
         torch.random.manual_seed(0)

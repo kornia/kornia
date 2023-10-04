@@ -1,3 +1,4 @@
+import pytest
 import torch
 
 from kornia.nerf.nerf_solver import NerfSolver
@@ -7,6 +8,7 @@ from test.nerf.test_rays import create_four_cameras, create_one_camera
 
 
 class TestNerfSolver:
+    @pytest.mark.slow
     def test_parameter_change_after_one_epoch(self, device, dtype):
         nerf_obj = NerfSolver(device, dtype)
         cameras = create_four_cameras(device, dtype)
