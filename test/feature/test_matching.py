@@ -351,6 +351,7 @@ class TestMatchFGINN:
 
 
 class TestAdalam:
+    @pytest.mark.slow
     @pytest.mark.parametrize("data", ["adalam_idxs"], indirect=True)
     def test_real(self, device, dtype, data):
         torch.random.manual_seed(0)
@@ -366,6 +367,7 @@ class TestAdalam:
         expected_idxs = data_dev['expected_idxs'].long()
         assert_close(idxs, expected_idxs, rtol=1e-4, atol=1e-4)
 
+    @pytest.mark.slow
     @pytest.mark.parametrize("data", ["adalam_idxs"], indirect=True)
     def test_single_nocrash(self, device, dtype, data):
         torch.random.manual_seed(0)
@@ -379,6 +381,7 @@ class TestAdalam:
                 data_dev['descs1'][:1], data_dev['descs2'], data_dev['lafs1'][:, :1], data_dev['lafs2']
             )
 
+    @pytest.mark.slow
     @pytest.mark.parametrize("data", ["adalam_idxs"], indirect=True)
     def test_small_user_conf(self, device, dtype, data):
         torch.random.manual_seed(0)
@@ -394,6 +397,7 @@ class TestAdalam:
                 config=adalam_config,
             )
 
+    @pytest.mark.slow
     @pytest.mark.parametrize("data", ["adalam_idxs"], indirect=True)
     def test_empty_nocrash(self, device, dtype, data):
         torch.random.manual_seed(0)
@@ -413,6 +417,7 @@ class TestAdalam:
                 data_dev['lafs2'],
             )
 
+    @pytest.mark.slow
     @pytest.mark.parametrize("data", ["adalam_idxs"], indirect=True)
     def test_small(self, device, dtype, data):
         torch.random.manual_seed(0)
@@ -423,6 +428,7 @@ class TestAdalam:
                 data_dev['descs1'][:4], data_dev['descs2'][:4], data_dev['lafs1'][:, :4], data_dev['lafs2'][:, :4]
             )
 
+    @pytest.mark.slow
     @pytest.mark.parametrize("data", ["adalam_idxs"], indirect=True)
     def test_seeds_fail(self, device, dtype, data):
         torch.random.manual_seed(0)
@@ -436,6 +442,7 @@ class TestAdalam:
                 data_dev['lafs2'][:, :100],
             )
 
+    @pytest.mark.slow
     @pytest.mark.parametrize("data", ["adalam_idxs"], indirect=True)
     def test_module(self, device, dtype, data):
         torch.random.manual_seed(0)
@@ -454,6 +461,7 @@ class TestAdalam:
 
 
 class TestLightGlueDISK:
+    @pytest.mark.slow
     @pytest.mark.parametrize("data", ["lightglue_idxs"], indirect=True)
     def test_real(self, device, dtype, data):
         torch.random.manual_seed(0)
@@ -471,6 +479,7 @@ class TestLightGlueDISK:
         expected_idxs = data_dev['lightglue_disk_idxs'].long()
         assert_close(idxs, expected_idxs, rtol=1e-4, atol=1e-4)
 
+    @pytest.mark.slow
     @pytest.mark.parametrize("data", ["lightglue_idxs"], indirect=True)
     def test_single_nocrash(self, device, dtype, data):
         torch.random.manual_seed(0)
@@ -481,6 +490,7 @@ class TestLightGlueDISK:
             dists, idxs = lg(data_dev['descs1'], data_dev['descs2'][:1], data_dev['lafs1'], data_dev['lafs2'][:, :1])
             dists, idxs = lg(data_dev['descs1'][:1], data_dev['descs2'], data_dev['lafs1'][:, :1], data_dev['lafs2'])
 
+    @pytest.mark.slow
     @pytest.mark.parametrize("data", ["lightglue_idxs"], indirect=True)
     def test_empty_nocrash(self, device, dtype, data):
         torch.random.manual_seed(0)

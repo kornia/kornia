@@ -42,7 +42,7 @@ class TestDiamondSquare:
 class TestVisionTransformer:
     @pytest.mark.parametrize("B", [1, 2])
     @pytest.mark.parametrize("H", [1, 3, 8])
-    @pytest.mark.parametrize("D", [128, 768])
+    @pytest.mark.parametrize("D", [240, 768])
     @pytest.mark.parametrize("image_size", [32, 224])
     def test_smoke(self, device, dtype, B, H, D, image_size):
         patch_size = 16
@@ -61,12 +61,19 @@ class TestVisionTransformer:
         for f in feats:
             assert f.shape == (B, T, D)
 
+    @pytest.mark.parametrize("H", [3, 8])
+    @pytest.mark.parametrize("D", [245, 1001])
+    @pytest.mark.parametrize("image_size", [32, 224])
+    def test_exception(self, device, dtype, H, D, image_size):
+        with pytest.raises(ValueError):
+            kornia.contrib.VisionTransformer(image_size=image_size, num_heads=H, embed_dim=D).to(device, dtype)
+
     def test_backbone(self, device, dtype):
         def backbone_mock(x):
             return torch.ones(1, 128, 14, 14, device=device, dtype=dtype)
 
         img = torch.rand(1, 3, 32, 32, device=device, dtype=dtype)
-        vit = kornia.contrib.VisionTransformer(backbone=backbone_mock).to(device, dtype)
+        vit = kornia.contrib.VisionTransformer(backbone=backbone_mock, num_heads=8).to(device, dtype)
         out = vit(img)
         assert out.shape == (1, 197, 128)
 
@@ -545,6 +552,7 @@ class TestImageStitcher:
             assert out.shape[:-1] == torch.Size([1, 3, 6])
             assert out.shape[-1] <= 12
 
+    @pytest.mark.slow
     def test_exception(self, device, dtype):
         B, C, H, W = 1, 3, 224, 224
         sample1 = torch.rand(B, C, H, W, device=device, dtype=dtype)
@@ -683,9 +691,11 @@ class TestHistMatch:
 
 
 class TestFaceDetection:
+    @pytest.mark.slow
     def test_smoke(self, device, dtype):
         assert kornia.contrib.FaceDetector().to(device, dtype) is not None
 
+    @pytest.mark.slow
     @pytest.mark.parametrize("batch_size", [1, 2, 4])
     def test_valid(self, batch_size, device, dtype):
         torch.manual_seed(44)
@@ -698,11 +708,13 @@ class TestFaceDetection:
         assert dets[0].shape[0] >= 0  # number of detections
         assert dets[0].shape[1] == 15  # dims of each detection
 
+    @pytest.mark.slow
     def test_jit(self, device, dtype):
         op = kornia.contrib.FaceDetector().to(device, dtype)
         op_jit = torch.jit.script(op)
         assert op_jit is not None
 
+    @pytest.mark.slow
     def test_results(self, device, dtype):
         data = torch.tensor(
             [0.0, 0.0, 100.0, 200.0, 10.0, 10.0, 20.0, 10.0, 10.0, 50.0, 100.0, 50.0, 150.0, 10.0, 0.99],
@@ -727,6 +739,7 @@ class TestFaceDetection:
         assert res.get_keypoint(FaceKeypoint.MOUTH_LEFT).tolist() == [100.0, 50.0]
         assert res.get_keypoint(FaceKeypoint.MOUTH_RIGHT).tolist() == [150.0, 10.0]
 
+    @pytest.mark.slow
     def test_results_raise(self, device, dtype):
         data = torch.zeros(14, device=device, dtype=dtype)
         with pytest.raises(ValueError):
@@ -734,12 +747,14 @@ class TestFaceDetection:
 
 
 class TestEdgeDetector:
+    @pytest.mark.slow
     def test_smoke(self, device, dtype):
         img = torch.rand(2, 3, 64, 64, device=device, dtype=dtype)
         net = kornia.contrib.EdgeDetector().to(device, dtype)
         out = net(img)
         assert out.shape == (2, 1, 64, 64)
 
+    @pytest.mark.slow
     def test_jit(self, device, dtype):
         op = kornia.contrib.EdgeDetector().to(device, dtype)
         op_jit = torch.jit.script(op)
@@ -769,6 +784,7 @@ class TestObjectDetector:
             assert torch.all(dets[:, 0].int() == dets[:, 0])
             assert torch.all(dets[:, 1] >= 0.3)
 
+    @pytest.mark.slow
     @pytest.mark.skipif(torch_version_lt(2, 0, 0), reason="Unsupported ONNX opset version: 16")
     @pytest.mark.parametrize("variant", ("resnet50d", "hgnetv2_l"))
     def test_onnx(self, device, dtype, tmp_path: Path, variant: str):
