@@ -76,7 +76,7 @@ class RainGenerator(RandomGeneratorBase):
         }
 
     def draw_line(self, img: torch.Tensor, intensity: float = 0.3) -> torch.Tensor:
-        """ Draws the drops on the image by changing its pixels' intensity."""
+        """Draws the drops on the image by changing its pixels' intensity."""
         image = img.clone()
         if len(image.shape) != 4:
             raise ValueError("Input image tensor should have shape (B, C, H, W)")
