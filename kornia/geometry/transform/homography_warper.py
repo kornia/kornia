@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import Any
+from typing import Any, Optional
 
 import torch.nn.functional as F
 
@@ -20,7 +20,7 @@ class BaseWarper(Module):
         self.width = width
 
     @abstractmethod
-    def forward(self, patch_src: Tensor, src_homo_dst: Tensor | None = None) -> Tensor:
+    def forward(self, patch_src: Tensor, src_homo_dst: Optional[Tensor] = None) -> Tensor:
         ...
 
     @abstractmethod
@@ -44,7 +44,7 @@ class HomographyWarper(BaseWarper):
         normalized_coordinates: whether to use a grid with normalized coordinates.
         align_corners: interpolation flag.
     """
-    _warped_grid: Tensor | None
+    _warped_grid: Optional[Tensor]
 
     def __init__(
         self,
@@ -80,7 +80,7 @@ class HomographyWarper(BaseWarper):
         """
         self._warped_grid = warp_grid(self.grid, src_homo_dst)
 
-    def forward(self, patch_src: Tensor, src_homo_dst: Tensor | None = None) -> Tensor:
+    def forward(self, patch_src: Tensor, src_homo_dst: Optional[Tensor] = None) -> Tensor:
         r"""Warp a tensor from source into reference frame.
 
         Args:
@@ -120,12 +120,10 @@ class HomographyWarper(BaseWarper):
         elif _warped_grid is not None:
             if not _warped_grid.device == patch_src.device:
                 raise TypeError(
-                    "Patch and warped grid must be on the same device. \
-                                 Got patch.device: {} warped_grid.device: {}. Whether \
-                                 recall precompute_warp_grid() with the correct device \
-                                 for the homograhy or change the patch device.".format(
-                        patch_src.device, _warped_grid.device
-                    )
+                    "Patch and warped grid must be on the same device.                                  Got"
+                    " patch.device: {} warped_grid.device: {}. Whether                                  recall"
+                    " precompute_warp_grid() with the correct device                                  for the homograhy"
+                    " or change the patch device.".format(patch_src.device, _warped_grid.device)
                 )
             warped_patch = F.grid_sample(
                 patch_src,
@@ -136,9 +134,8 @@ class HomographyWarper(BaseWarper):
             )
         else:
             raise RuntimeError(
-                "Unknown warping. If homographies are not provided \
-                                they must be preset using the method: \
-                                precompute_warp_grid()."
+                "Unknown warping. If homographies are not provided                                 they must be preset"
+                " using the method:                                 precompute_warp_grid()."
             )
 
         return warped_patch

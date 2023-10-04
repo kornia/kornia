@@ -2,6 +2,8 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py
 from __future__ import annotations
 
+from typing import Optional
+
 from kornia.core import (
     Device,
     Dtype,
@@ -238,7 +240,7 @@ class Se3(Module):
         return concatenate((head, tail), -1)
 
     @classmethod
-    def identity(cls, batch_size: int | None = None, device: Device | None = None, dtype: Dtype = None) -> Se3:
+    def identity(cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None) -> Se3:
         """Create a Se3 group representing an identity rotation and zero translation.
 
         Args:
@@ -340,7 +342,7 @@ class Se3(Module):
         return Se3(r_inv, r_inv * _t)
 
     @classmethod
-    def random(cls, batch_size: int | None = None, device: Device | None = None, dtype: Dtype = None) -> Se3:
+    def random(cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None) -> Se3:
         """Create a Se3 group representing a random transformation.
 
         Args:

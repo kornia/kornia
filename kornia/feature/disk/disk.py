@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 import torch
 
 from kornia.core import Module, Tensor
@@ -65,7 +67,7 @@ class DISK(Module):
     def forward(
         self,
         images: Tensor,
-        n: int | None = None,
+        n: Optional[int] = None,
         window_size: int = 5,
         score_threshold: float = 0.0,
         pad_if_not_divisible: bool = False,

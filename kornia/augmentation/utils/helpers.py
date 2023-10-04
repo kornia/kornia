@@ -153,7 +153,7 @@ def _transform_output_shape(output: Tensor, shape: Tuple[int, ...]) -> Tensor:
 
     for dim in range(len(out_tensor.shape) - len(shape)):
         if out_tensor.shape[0] != 1:
-            raise AssertionError(f'Dimension {dim} of input is ' f'expected to be 1, got {out_tensor.shape[0]}')
+            raise AssertionError(f'Dimension {dim} of input is expected to be 1, got {out_tensor.shape[0]}')
         out_tensor = out_tensor.squeeze(0)
 
     return out_tensor

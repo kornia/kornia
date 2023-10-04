@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from abc import ABC, abstractmethod
-from typing import Any, Generic, TypeVar, cast
+from typing import Any, Generic, Optional, TypeVar, cast
 
 import torch
 
@@ -14,7 +14,7 @@ ModelConfig = TypeVar('ModelConfig')
 class ModelBase(ABC, Module, Generic[ModelConfig]):
     """Abstract model class with some utilities function."""
 
-    def load_checkpoint(self, checkpoint: str, device: torch.device | None = None) -> None:
+    def load_checkpoint(self, checkpoint: str, device: Optional[torch.device] = None) -> None:
         """Load checkpoint from a given url or file.
 
         Args:
@@ -46,7 +46,7 @@ class ModelBase(ABC, Module, Generic[ModelConfig]):
         fullgraph: bool = False,
         dynamic: bool = False,
         backend: str = 'inductor',
-        mode: str | None = None,
+        mode: Optional[str] = None,
         options: dict[Any, Any] = {},
         disable: bool = False,
     ) -> ModelBase[ModelConfig]:

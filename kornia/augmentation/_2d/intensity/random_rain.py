@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 import torch
 
@@ -47,7 +47,7 @@ class RandomRain(IntensityAugmentationBase2D):
         self._param_generator = RainGenerator(number_of_drops, drop_height, drop_width)
 
     def apply_transform(
-        self, image: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
+        self, image: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         # Check array and drops size
         KORNIA_CHECK(image.shape[1] in {3, 1}, "Number of color channels should be 1 or 3.")
