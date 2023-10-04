@@ -13,7 +13,7 @@ Use the actions:
 Has the inputs:
 - `python-version`: (string, default: `'3.10'`) the python version desired.
   - The version should be supported by `setup-python@v4` action.
-- `pytorch-version`: (string, default: `'2.0.1`') the pytorch version desired.
+- `pytorch-version`: (string, default: `'2.1.0`') the pytorch version desired.
   - This value will be used to install pytorch using conda from pytorch
     channel.
   - If the value passed is `nightly` the nightly version of pytorch with dynamo
@@ -35,7 +35,7 @@ Has the inputs:
 - `os`: (string, default: `ubuntu-latest`) the OS name same as supported by [gha](https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#choosing-github-hosted-runners).
 - `python-version`: (json list of strings, default: `'["3.10"]'`) a string with
   format of a json list within strings for each python version desired.
-- `pytorch-version`: (json list of strings, default: `'["2.0.1"]'`) a string
+- `pytorch-version`: (json list of strings, default: `'["2.1.0"]'`) a string
   with format of a json list within strings for each pytorch version desired.
 - `pytorch-dtype`: (string, default: `float32`) the dtype used to generate
   the tests with pytest.
@@ -60,7 +60,7 @@ Has the inputs:
 - `os`: (string, default: `ubuntu-latest`) the OS name same as supported by [gha](https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#choosing-github-hosted-runners).
 - `python-version`: (json list of strings, default: `'["3.10"]'`) a string with
   format of a json list within strings for each python version desired.
-- `pytorch-version`: (json list of strings, default: `'["2.0.1"]'`) a string
+- `pytorch-version`: (json list of strings, default: `'["2.1.0"]'`) a string
   with format of a json list within strings for each pytorch version desired.
 - `fail-fast`: (boolean, default: `false`) to set the `fail-fast` behavior on
   the matrix strategy.
@@ -80,7 +80,7 @@ Has the inputs:
 - `os`: (string, default: `ubuntu-latest`) the OS name same as supported by [gha](https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#choosing-github-hosted-runners).
 - `python-version`: (json list of strings, default: `'["3.10"]'`) a string with
   format of a json list within strings for each python version desired.
-- `pytorch-version`: (json list of strings, default: `'["2.0.1"]'`) a string
+- `pytorch-version`: (json list of strings, default: `'["2.1.0"]'`) a string
   with format of a json list within strings for each pytorch version desired.
 - `fail-fast`: (boolean, default: `false`) to set the `fail-fast` behavior on
   the matrix strategy.
