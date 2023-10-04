@@ -29,7 +29,7 @@ def create_random_img8_torch(height: int, width: int, channels: int, device=None
     return (torch.rand(channels, height, width, device=device) * 255).to(torch.uint8)
 
 
-def _download_image(url: str, filename: str = "") -> str:
+def _download_image(url: str, filename: str = "") -> Path:
     # TODO: move this to testing
 
     filename = url.split("/")[-1] if len(filename) == 0 else filename
@@ -39,10 +39,10 @@ def _download_image(url: str, filename: str = "") -> str:
     with open(filename, "wb") as outfile:
         outfile.write(bytesio.getbuffer())
 
-    return filename
+    return Path(filename)
 
 
-@pytest.fixture(scope='class')
+@pytest.fixture(scope='session')
 def png_image(tmp_path_factory):
     url = "https://github.com/kornia/data/raw/main/simba.png"
     filename = tmp_path_factory.mktemp("data") / "image.png"
@@ -50,7 +50,7 @@ def png_image(tmp_path_factory):
     return filename
 
 
-@pytest.fixture(scope='class')
+@pytest.fixture(scope='session')
 def jpg_image(tmp_path_factory):
     url = "https://github.com/kornia/data/raw/main/crowd.jpg"
     filename = tmp_path_factory.mktemp("data") / "image.jpg"
@@ -58,7 +58,7 @@ def jpg_image(tmp_path_factory):
     return filename
 
 
-@pytest.fixture
+@pytest.fixture(scope='session')
 def images_fn(png_image, jpg_image):
     return {'png': png_image, 'jpg': jpg_image}
 
@@ -107,7 +107,7 @@ class TestIoImage:
         ],
     )
     def test_load_image(self, images_fn, ext, channels, load_type, expected_type, expected_channels):
-        file_path = Path(images_fn[ext])
+        file_path = images_fn[ext]
 
         assert file_path.is_file()
 
