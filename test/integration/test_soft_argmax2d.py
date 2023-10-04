@@ -1,5 +1,6 @@
 import logging
 
+import pytest
 import torch
 from torch import nn, optim
 
@@ -26,6 +27,7 @@ class TestIntegrationSoftArgmax2d:
         noise = std_val * torch.rand_like(base_target)
         return base_target + noise
 
+    @pytest.mark.slow
     def test_regression_2d(self, device):
         # create the parameters to estimate: the heatmap
         params = nn.Parameter(torch.rand(1, 1, self.height, self.width).to(device))

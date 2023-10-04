@@ -236,6 +236,7 @@ class TestAugmentationSequential:
         with pytest.raises(Exception):  # AssertError and NotImplementedError
             K.AugmentationSequential(augmentation_list, data_keys=data_keys)
 
+    @pytest.mark.slow
     @pytest.mark.parametrize('same_on_batch', [True, False])
     @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 10, True, False])
     @pytest.mark.parametrize('inp', [torch.randn(1, 3, 1000, 500), torch.randn(3, 1000, 500)])
@@ -551,6 +552,7 @@ class TestAugmentationSequential:
         if random_apply is False:
             reproducibility_test((inp, mask, bbox, keypoints), aug)
 
+    @pytest.mark.slow
     def test_individual_forward_and_inverse(self, device, dtype):
         inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
         bbox = torch.tensor([[[[355, 10], [660, 10], [660, 250], [355, 250]]]], device=device, dtype=dtype)
@@ -594,6 +596,7 @@ class TestAugmentationSequential:
         assert aug.inverse(keypoints, data_keys=['keypoints']).shape == keypoints.shape
         assert aug.inverse(mask, data_keys=['mask']).shape == mask.shape
 
+    @pytest.mark.slow
     @pytest.mark.parametrize('random_apply', [2, (1, 1), (2,), 10, True, False])
     def test_forward_and_inverse_return_transform(self, random_apply, device, dtype):
         inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)

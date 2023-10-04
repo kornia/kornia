@@ -67,7 +67,7 @@ def dtype(dtype_name) -> torch.dtype:
 @pytest.fixture(scope='session')
 def torch_optimizer():
     if hasattr(torch, 'compile') and sys.platform == "linux":
-        torch.set_float32_matmul_precision('high')
+        # torch.set_float32_matmul_precision('high')
         return torch.compile
 
     pytest.skip(f"skipped because {torch.__version__} not have `compile` available! Failed to setup dynamo.")
@@ -98,9 +98,49 @@ def pytest_generate_tests(metafunc):
         metafunc.parametrize('dtype_name', dtype_names)
 
 
+def pytest_collection_modifyitems(config, items):
+    if config.getoption("--runslow"):
+        # --runslow given in cli: do not skip slow tests
+        return
+
+    skip_slow = pytest.mark.skip(reason="need --runslow option to run")
+    for item in items:
+        if "slow" in item.keywords:
+            item.add_marker(skip_slow)
+
+
 def pytest_addoption(parser):
     parser.addoption('--device', action="store", default="cpu")
     parser.addoption('--dtype', action="store", default="float32")
+    parser.addoption("--runslow", action="store_true", default=False, help="run slow tests")
+
+
+def _setup_torch_compile():
+    if hasattr(torch, 'compile') and sys.platform == "linux":
+        print('Setting up torch compile...')
+        torch.set_float32_matmul_precision('high')
+
+        def _dummy_function(x, y):
+            return (x + y).sum()
+
+        class _dummy_module(torch.nn.Module):
+            def __init__(self):
+                super().__init__()
+
+            def forward(self, x):
+                return (x**2).sum()
+
+        torch.compile(_dummy_function)
+        torch.compile(_dummy_module())
+
+
+def pytest_sessionstart(session):
+    try:
+        _setup_torch_compile()
+    except RuntimeError as ex:
+        if 'not yet supported for torch.compile' not in str(ex):
+            raise ex
+    # TODO: cache all torch.load weights/states here to not impact on test suite
 
 
 @pytest.fixture(autouse=True)

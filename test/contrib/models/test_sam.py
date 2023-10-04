@@ -14,6 +14,7 @@ def _pad_rb(x, size):
 
 
 class TestSam(BaseTester):
+    @pytest.mark.slow
     @pytest.mark.parametrize('model_type', ['vit_b', 'mobile_sam'])
     def test_smoke(self, device, model_type):
         model = Sam.from_config(SamConfig(model_type)).to(device)
@@ -26,6 +27,7 @@ class TestSam(BaseTester):
 
         model(inpt, [{'points': (keypoints, labels)}], False)
 
+    @pytest.mark.slow
     @pytest.mark.parametrize('batch_size', [1, 3])
     @pytest.mark.parametrize('N', [2, 5])
     @pytest.mark.parametrize('multimask_output', [True, False])
@@ -46,7 +48,7 @@ class TestSam(BaseTester):
         assert out[0].logits.shape == (batch_size, C, 256, 256)
 
     def test_exception(self):
-        model = Sam.from_config(SamConfig('vit_b'))
+        model = Sam.from_config(SamConfig('mobile_sam'))
 
         with pytest.raises(TypeError) as errinfo:
             inpt = torch.rand(3, 1, 2)
@@ -58,6 +60,7 @@ class TestSam(BaseTester):
             model(inpt, [{}], False)
         assert 'The number of images (`B`) should match with the length of prompts!' in str(errinfo)
 
+    @pytest.mark.slow
     @pytest.mark.parametrize('model_type', ['vit_b', 'vit_l', 'vit_h', 'mobile_sam'])
     def test_config(self, device, model_type):
         model = Sam.from_config(SamConfig(model_type))
@@ -92,6 +95,7 @@ class TestSam(BaseTester):
         self.assert_close(expected[0].logits, actual[0].logits)
         self.assert_close(expected[0].scores, actual[0].scores)
 
+    @pytest.mark.slow
     @pytest.mark.parametrize("model_type", ["vit_b", "mobile_sam"])
     def test_pretrained(self, model_type):
         Sam.from_config(SamConfig(model_type, pretrained=True))

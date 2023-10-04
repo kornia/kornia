@@ -57,6 +57,7 @@ class TestRandomMotionBlur:
 
         assert_close(output, expected, rtol=1e-4, atol=1e-4)
 
+    @pytest.mark.slow
     def test_gradcheck(self, device):
         torch.manual_seed(0)  # for random reproductibility
         inp = torch.rand((1, 3, 11, 7)).to(device)
@@ -126,6 +127,7 @@ class TestRandomMotionBlur3D:
 
         assert_close(output, expected, rtol=1e-4, atol=1e-4)
 
+    @pytest.mark.slow
     def test_gradcheck(self, device, dtype):
         torch.manual_seed(0)  # for random reproductibility
         inp = torch.rand((1, 3, 6, 7), device=device, dtype=dtype)

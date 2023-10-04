@@ -9,17 +9,21 @@ from kornia.utils._compat import torch_version_le
 
 
 @pytest.fixture()
-def data():
+def data_url():
     url = 'https://github.com/kornia/data_test/blob/main/loftr_outdoor_and_homography_data.pt?raw=true'
-    return torch.hub.load_state_dict_from_url(url)
+    return url
 
 
 class TestHomographyTracker:
+    @pytest.mark.slow
     def test_smoke(self, device):
         tracker = HomographyTracker().to(device)
         assert tracker is not None
 
-    def test_nomatch(self, device, dtype, data):
+    @pytest.mark.slow
+    def test_nomatch(self, device, dtype, data_url):
+        data = torch.hub.load_state_dict_from_url(data_url)
+
         # This is not unit test, but that is quite good integration test
         matcher = LocalFeatureMatcher(SIFTFeature(100), DescriptorMatcher('smnn', 0.95)).to(device, dtype)
         tracker = HomographyTracker(matcher, matcher, minimum_inliers_num=100)
@@ -31,8 +35,10 @@ class TestHomographyTracker:
         _, success = tracker(torch.zeros_like(data["image0"]))
         assert not success
 
+    @pytest.mark.slow
     @pytest.mark.skipif(torch_version_le(1, 9, 1), reason="Fails for bached torch.linalg.solve")
-    def test_real(self, device, dtype, data):
+    def test_real(self, device, dtype, data_url):
+        data = torch.hub.load_state_dict_from_url(data_url)
         # This is not unit test, but that is quite good integration test
         for k in data.keys():
             if isinstance(data[k], torch.Tensor):

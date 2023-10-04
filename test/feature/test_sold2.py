@@ -9,6 +9,7 @@ from kornia.testing import assert_close
 
 # TODO: add kornia.testing.BaseTester
 class TestSOLD2_detector:
+    @pytest.mark.slow
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_shape(self, device, batch_size, dtype):
         inp = torch.ones(batch_size, 1, 64, 64, device=device, dtype=dtype)
@@ -39,6 +40,7 @@ class TestSOLD2_detector:
 
 # TODO: add kornia.testing.BaseTester
 class TestSOLD2:
+    @pytest.mark.slow
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_shape(self, device, batch_size, dtype):
         inp = torch.ones(batch_size, 1, 64, 64, device=device, dtype=dtype)

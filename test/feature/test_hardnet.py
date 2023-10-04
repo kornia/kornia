@@ -8,6 +8,7 @@ from kornia.testing import assert_close
 
 
 class TestHardNet:
+    @pytest.mark.slow
     def test_shape(self, device):
         inp = torch.ones(1, 1, 32, 32, device=device)
         hardnet = HardNet().to(device)
@@ -15,6 +16,7 @@ class TestHardNet:
         out = hardnet(inp)
         assert out.shape == (1, 128)
 
+    @pytest.mark.slow
     def test_shape_batch(self, device):
         inp = torch.ones(16, 1, 32, 32, device=device)
         hardnet = HardNet().to(device)
