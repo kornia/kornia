@@ -238,7 +238,7 @@ class Quaternion(Module):
             >>> m
             tensor([[1., 0., 0.],
                     [0., 1., 0.],
-                    [0., 0., 1.]], grad_fn=<ReshapeAliasBackward0>)
+                    [0., 0., 1.]], grad_fn=<ViewBackward0>)
         """
         return quaternion_to_rotation_matrix(self.data)
 
