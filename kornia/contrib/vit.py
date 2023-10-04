@@ -47,6 +47,13 @@ class MultiHeadAttention(Module):
         head_size = emb_size // num_heads  # from timm
         self.scale = head_size**-0.5  # from timm
 
+        if self.emb_size % self.num_heads:
+            raise ValueError(
+                f"Size of embedding inside the transformer decoder must be visible by number of heads"
+                f"for correct multi-head attention "
+                f"Got: {self.emb_size} embedding size and {self.num_heads} numbers of heads"
+            )
+
         # fuse the queries, keys and values in one matrix
         self.qkv = nn.Linear(emb_size, emb_size * 3, bias=False)
         self.att_drop = nn.Dropout(att_drop)
@@ -58,7 +65,7 @@ class MultiHeadAttention(Module):
         # split keys, queries and values in num_heads
         # NOTE: the line below differs from timm
         # timm: qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
-        qkv = self.qkv(x).reshape(B, N, 3, -1, C).permute(2, 0, 3, 1, 4)
+        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]
 
         # sum up over the last axis
