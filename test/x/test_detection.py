@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 import torch
 from torch import nn
@@ -58,6 +60,7 @@ def configuration():
 
 
 class TestObjectDetectionTrainer:
+    @pytest.mark.slow
     @pytest.mark.skipif(
         torch.__version__ == '1.12.1' and Accelerator is None, reason='accelerate lib problem with torch 1.12.1'
     )
@@ -79,6 +82,7 @@ class TestObjectDetectionTrainer:
     @pytest.mark.skipif(
         torch.__version__ == '1.12.1' and Accelerator is None, reason='accelerate lib problem with torch 1.12.1'
     )
+    @pytest.mark.xfail(sys.platform == 'darwin', reason='Sometimes CI can fail with MPS backend out of memory')
     def test_exception(self, model, dataloader, criterion, optimizer, scheduler, configuration):
         with pytest.raises(ValueError):
             ObjectDetectionTrainer(

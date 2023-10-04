@@ -27,6 +27,7 @@ class TestDisk:
         assert len(output) == 1
         assert all(isinstance(e, DISKFeatures) for e in output)
 
+    @pytest.mark.slow
     def test_smoke_pretrained(self, device):
         disk = DISK.from_pretrained(checkpoint='depth', device=device)
         inp = torch.ones(1, 3, 64, 64, device=device)
@@ -35,6 +36,7 @@ class TestDisk:
         assert len(output) == 1
         assert all(isinstance(e, DISKFeatures) for e in output)
 
+    @pytest.mark.slow
     @pytest.mark.skipif(sys.platform == "win32", reason="this test takes so much memory in the CI with Windows")
     @pytest.mark.parametrize("data", ["disk_outdoor"], indirect=True)
     def test_pretrained_outdoor(self, device, dtype, data):

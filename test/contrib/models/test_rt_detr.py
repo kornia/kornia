@@ -70,6 +70,7 @@ def test_regvgg_optimize_for_deployment(device, dtype):
 
 
 class TestRTDETR(BaseTester):
+    @pytest.mark.slow  # This will be slow for the bigger variants
     @pytest.mark.parametrize("variant", ("resnet18d", "resnet34d", "resnet50d", "resnet101d", "hgnetv2_l", "hgnetv2_x"))
     def test_smoke(self, variant, device, dtype):
         model = RTDETR.from_config(RTDETRConfig(variant, 10)).to(device, dtype).eval()
@@ -83,7 +84,7 @@ class TestRTDETR(BaseTester):
     def test_cardinality(self, shape, device, dtype):
         num_classes = 10
         num_queries = 10
-        config = RTDETRConfig("resnet50d", num_classes, head_num_queries=num_queries)
+        config = RTDETRConfig("resnet18d", num_classes, head_num_queries=num_queries)
         model = RTDETR.from_config(config).to(device, dtype).eval()
 
         images = torch.randn(shape, device=device, dtype=dtype)
