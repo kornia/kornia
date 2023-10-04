@@ -738,6 +738,7 @@ class TestDexiNed:
         assert len(out) == 7
         assert out[-1].shape == (2, 1, 32, 32)
 
+    @pytest.mark.slow
     @pytest.mark.parametrize("data", ["dexined"], indirect=True)
     def test_inference(self, device, dtype, data):
         model = DexiNed(pretrained=False)

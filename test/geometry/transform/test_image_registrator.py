@@ -62,6 +62,7 @@ class TestImageRegistrator:
         ir = kornia.geometry.transform.ImageRegistrator(model_type).to(device, dtype)
         assert ir is not None
 
+    @pytest.mark.slow
     def test_registration_toy(self, device, dtype):
         ch, height, width = 3, 16, 18
         homography = torch.eye(3, device=device, dtype=dtype)[None]
@@ -76,6 +77,7 @@ class TestImageRegistrator:
         model, intermediate = IR.register(img_src, img_dst, output_intermediate_models=True)
         assert len(intermediate) == 2
 
+    @pytest.mark.slow
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     @pytest.mark.skipif(
         torch_version() == '2.0.0' and 'win' in sys.platform, reason='Tensor not matching on win with torch 2.0'
