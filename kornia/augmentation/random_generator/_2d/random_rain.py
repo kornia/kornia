@@ -74,3 +74,32 @@ class RainGenerator(RandomGeneratorBase):
             'drop_height_factor': drop_height_factor,
             'drop_width_factor': drop_width_factor,
         }
+
+    
+    def draw_line(self, img: torch.Tensor, intensity: float = 0.3) -> torch.Tensor:
+        """
+        Draws the drops on the image by changing its pixels' intensity
+        """
+        image = img.copy()
+        if len(image.shape) != 4:
+            raise ValueError("Input image tensor should have shape (B, C, H, W)")
+        B, C, H, W = image.shape
+        # generate rain parameters
+        rain_params = self.forward((B,), same_on_batch=False)
+        num_drops = rain_params['number_of_drops_factor'].item()
+        drop_heights = rain_params['drop_height_factor']
+        drop_widths = rain_params['drop_width_factor']
+        coordinates = rain_params['coordinates_factor']
+        for b in range(B):
+            for drop in range(num_drops):
+                x_start = int(coordinates[b, drop, 0].item() * W)
+                y_start = int(coordinates[b, drop, 1].item() * H)
+                x_end = x_start + drop_widths[b].item()
+                y_end = y_start + drop_heights[b].item()
+                # ensure the raindrop is within the image boundaries
+                x_end = min(x_end, W)
+                y_end = min(y_end, H)
+                image[b, :, y_start:y_end, x_start:x_end] -= intensity  # darken the image where the raindrop is
+        image = torch.clamp(image, 0, 1)  # clip values to ensure they're within [0, 1]
+        return image
+
