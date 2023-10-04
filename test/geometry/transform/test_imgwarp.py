@@ -293,20 +293,6 @@ class TestWarpAffine:
         assert isinstance(script_net, torch.jit.ScriptModule)
         assert_close(script_net(img_b, aff_ab), net(img_b, aff_ab))
 
-    @pytest.mark.parametrize("align_corners", (True, False))
-    @pytest.mark.parametrize("padding_mode", ("zeros", "fill"))
-    @pytest.mark.xfail(reason="aten::linalg_inv is not yet supported in ONNX opset version 14.")
-    def test_onnx_export(self, device, dtype, align_corners, padding_mode):
-        offset = 1.0
-        h, w = 3, 4
-        aff_ab = torch.eye(2, 3, device=device, dtype=dtype)[None]
-        aff_ab[..., -1] += offset
-
-        img_b = torch.arange(float(3 * h * w), device=device, dtype=dtype).view(1, 3, h, w)
-
-        net = DummyNNModule(h, w, align_corners, padding_mode).to(device)
-        torch.onnx.export(net, (img_b, aff_ab), "temp.onnx", export_params=True)
-
 
 class TestWarpPerspective:
     def test_smoke(self, device, dtype):
