@@ -6,6 +6,7 @@ anything/blob/3518c86b78b3bc9cf4fbe3d18e682fad1c79dc51/segment_anything/modeling
 from __future__ import annotations
 
 from math import pi
+from typing import Optional
 
 import torch
 from torch import nn
@@ -93,7 +94,9 @@ class PromptEncoder(Module):
         mask_embedding = self.mask_downscaling(masks)
         return mask_embedding
 
-    def _get_batch_size(self, points: tuple[Tensor, Tensor] | None, boxes: Tensor | None, masks: Tensor | None) -> int:
+    def _get_batch_size(
+        self, points: Optional[tuple[Tensor, Tensor]], boxes: Optional[Tensor], masks: Optional[Tensor]
+    ) -> int:
         """Gets the batch size of the output given the batch size of the input prompts."""
         if points is not None:
             return points[0].shape[0]
@@ -108,7 +111,7 @@ class PromptEncoder(Module):
         return self.point_embeddings[0].weight.device
 
     def forward(
-        self, points: tuple[Tensor, Tensor] | None, boxes: Tensor | None, masks: Tensor | None
+        self, points: Optional[tuple[Tensor, Tensor]], boxes: Optional[Tensor], masks: Optional[Tensor]
     ) -> tuple[Tensor, Tensor]:
         """Embeds different types of prompts, returning both sparse and dense embeddings.
 
@@ -145,7 +148,7 @@ class PromptEncoder(Module):
 class PositionEmbeddingRandom(Module):
     """Positional encoding using random spatial frequencies."""
 
-    def __init__(self, num_pos_feats: int = 64, scale: float | None = None) -> None:
+    def __init__(self, num_pos_feats: int = 64, scale: Optional[float] = None) -> None:
         super().__init__()
         if scale is None or scale <= 0.0:
             scale = 1.0

@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from typing import Optional
+
 import torch
 from torch import nn
 
@@ -168,10 +170,10 @@ class TransformerDecoderLayer(Module):
         ref_points: Tensor,
         memory: Tensor,
         memory_spatial_shapes: list[tuple[int, int]],
-        memory_level_start_index: list[int] | None = None,
-        attn_mask: Tensor | None = None,
-        memory_mask: Tensor | None = None,
-        query_pos_embed: Tensor | None = None,
+        memory_level_start_index: Optional[list[int]] = None,
+        attn_mask: Optional[Tensor] = None,
+        memory_mask: Optional[Tensor] = None,
+        query_pos_embed: Optional[Tensor] = None,
     ) -> Tensor:
         # TODO: rename variables because is confusing
         # self attention
@@ -211,8 +213,8 @@ class TransformerDecoder:
         bbox_head: nn.ModuleList,
         score_head: nn.ModuleList,
         query_pos_head: nn.Module,
-        attn_mask: Tensor | None = None,
-        memory_mask: Tensor | None = None,
+        attn_mask: Optional[Tensor] = None,
+        memory_mask: Optional[Tensor] = None,
     ) -> tuple[Tensor, Tensor]:
         output: Tensor = tgt
         dec_out_bboxes: list[Tensor] = []
@@ -381,8 +383,8 @@ class RTDETRHead(Module):
         self,
         memory: Tensor,
         spatial_shapes: list[tuple[int, int]],
-        denoising_class: Tensor | None = None,
-        denoising_bbox_unact: Tensor | None = None,
+        denoising_class: Optional[Tensor] = None,
+        denoising_bbox_unact: Optional[Tensor] = None,
     ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
         # prepare input for decoder
         # TODO: cache anchors and valid_mask as buffers
@@ -423,8 +425,8 @@ class RTDETRHead(Module):
         spatial_shapes: list[tuple[int, int]],
         grid_size: float = 0.05,
         eps: float = 0.01,
-        device: torch.device | None = None,
-        dtype: torch.dtype | None = None,
+        device: Optional[torch.device] = None,
+        dtype: Optional[torch.dtype] = None,
     ) -> tuple[Tensor, Tensor]:
         """Generate anchors for RT-DETR.
 

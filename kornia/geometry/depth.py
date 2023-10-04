@@ -1,6 +1,8 @@
 """Module containing operators to work on RGB-Depth images."""
 from __future__ import annotations
 
+from typing import Optional
+
 import torch
 
 import kornia.core as kornia_ops
@@ -30,8 +32,8 @@ def unproject_meshgrid(
     width: int,
     camera_matrix: Tensor,
     normalize_points: bool = False,
-    device: torch.device | None = None,
-    dtype: torch.dtype | None = None,
+    device: Optional[torch.device] = None,
+    dtype: Optional[torch.dtype] = None,
 ) -> Tensor:
     """Compute a 3d point per pixel given its depth value and the camera intrinsics.
 
@@ -67,7 +69,7 @@ def unproject_meshgrid(
 
 
 def depth_to_3d_v2(
-    depth: Tensor, camera_matrix: Tensor, normalize_points: bool = False, xyz_grid: Tensor | None = None
+    depth: Tensor, camera_matrix: Tensor, normalize_points: bool = False, xyz_grid: Optional[Tensor] = None
 ) -> Tensor:
     """Compute a 3d point per pixel given its depth value and the camera intrinsics.
 

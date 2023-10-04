@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 import torch
 
@@ -53,15 +53,15 @@ class VisualPrompter:
     def __init__(
         self,
         config: SamConfig = SamConfig(model_type='vit_h', pretrained=True),
-        device: torch.device | None = None,
-        dtype: torch.dtype | None = None,
+        device: Optional[torch.device] = None,
+        dtype: Optional[torch.dtype] = None,
     ) -> None:
         super().__init__()
         if isinstance(config, SamConfig):
             self.model = Sam.from_config(config)
             transforms = (LongestMaxSize(self.model.image_encoder.img_size, p=1.0),)
-            self.pixel_mean: Tensor | None = tensor([123.675, 116.28, 103.53], device=device, dtype=dtype) / 255
-            self.pixel_std: Tensor | None = tensor([58.395, 57.12, 57.375], device=device, dtype=dtype) / 255
+            self.pixel_mean: Optional[Tensor] = tensor([123.675, 116.28, 103.53], device=device, dtype=dtype) / 255
+            self.pixel_std: Optional[Tensor] = tensor([58.395, 57.12, 57.375], device=device, dtype=dtype) / 255
         else:
             raise NotImplementedError
 
@@ -75,7 +75,7 @@ class VisualPrompter:
         self._input_encoder_size: None | tuple[int, int] = None
         self.reset_image()
 
-    def preprocess_image(self, x: Tensor, mean: Tensor | None = None, std: Tensor | None = None) -> Tensor:
+    def preprocess_image(self, x: Tensor, mean: Optional[Tensor] = None, std: Optional[Tensor] = None) -> Tensor:
         """Normalize and pad a tensor.
 
         For normalize the tensor: will prioritize the `mean` and `std` passed as argument, if None will use the default
@@ -106,7 +106,7 @@ class VisualPrompter:
         return x
 
     @torch.no_grad()
-    def set_image(self, image: Tensor, mean: Tensor | None = None, std: Tensor | None = None) -> None:
+    def set_image(self, image: Tensor, mean: Optional[Tensor] = None, std: Optional[Tensor] = None) -> None:
         """Set the embeddings from the given image with `image_decoder` of the model.
 
         Prepare the given image with the selected transforms and the preprocess method.
@@ -170,10 +170,10 @@ class VisualPrompter:
 
     def preprocess_prompts(
         self,
-        keypoints: Keypoints | Tensor | None = None,
-        keypoints_labels: Tensor | None = None,
-        boxes: Boxes | Tensor | None = None,
-        masks: Tensor | None = None,
+        keypoints: Optional[Keypoints | Tensor] = None,
+        keypoints_labels: Optional[Tensor] = None,
+        boxes: Optional[Boxes | Tensor] = None,
+        masks: Optional[Tensor] = None,
     ) -> Prompts:
         """Validate and preprocess the given prompts to be aligned with the input image."""
         data_keys = []
@@ -213,10 +213,10 @@ class VisualPrompter:
     @torch.no_grad()
     def predict(
         self,
-        keypoints: Keypoints | Tensor | None = None,
-        keypoints_labels: Tensor | None = None,
-        boxes: Boxes | Tensor | None = None,
-        masks: Tensor | None = None,
+        keypoints: Optional[Keypoints | Tensor] = None,
+        keypoints_labels: Optional[Tensor] = None,
+        boxes: Optional[Boxes | Tensor] = None,
+        masks: Optional[Tensor] = None,
         multimask_output: bool = True,
         output_original_size: bool = True,
     ) -> SegmentationResults:
@@ -290,7 +290,7 @@ class VisualPrompter:
         fullgraph: bool = False,
         dynamic: bool = False,
         backend: str = 'inductor',
-        mode: str | None = None,
+        mode: Optional[str] = None,
         options: dict[Any, Any] = {},
         disable: bool = False,
     ) -> None:
