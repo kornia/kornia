@@ -21,7 +21,7 @@ jobs:
     uses: ./.github/workflows/tests.yml
     with:
       os: ${{ matrix.os }}
-      python-version: '["3.8", "3.10"]'
+      python-version: '["3.8", "3.11"]'
       pytorch-version: '["1.9.1", "2.0.1"]'
       pytorch-dtype: 'float32'
 
@@ -30,14 +30,14 @@ jobs:
       fail-fast: true
     uses: ./.github/workflows/tests.yml
     with:
-      python-version: '["3.8", "3.10"]'
+      python-version: '["3.8", "3.11"]'
       pytorch-version: '["1.9.1", "2.0.1"]'
       pytorch-dtype: 'float64'
 
   tests-coverage:
     uses: ./.github/workflows/tests.yml
     with:
-      python-version: '["3.10"]'
+      python-version: '["3.11"]'
       pytorch-version: '["2.0.1"]'
       pytorch-dtype: 'float32,float64'
       coverage: true
