@@ -22,4 +22,4 @@ docs/source/_static/*jpg
 *DS_Store
 
 # onnx tests create temp.onnx file
-temp.onnx
+*.onnx
