@@ -4,6 +4,7 @@ import importlib
 import math
 import os
 from pathlib import Path
+from typing import Optional
 
 import cv2
 import matplotlib as mpl
@@ -31,7 +32,7 @@ def download_tutorials_examples(download_infos: dict[str, str], directory: Path)
             fp.write(response)
 
 
-def read_img_from_url(url: str, resize_to: tuple[int, int] | None = None, **resize_kwargs) -> torch.Tensor:
+def read_img_from_url(url: str, resize_to: Optional[tuple[int, int]] = None, **resize_kwargs) -> torch.Tensor:
     # perform request
     response = requests.get(url, timeout=60).content
     # convert to array of ints
@@ -99,8 +100,8 @@ def main():
     BASE_IMAGE_URL6: str = "https://raw.githubusercontent.com/kornia/data/main/delorean.png"  # geometry
     hash1 = '8b98f44abbe92b7a84631ed06613b08fee7dae14'
     BASE_IMAGEOUTDOOR_URL7: str = f"https://github.com/kornia/data_test/raw/{hash1}/knchurch_disk.pt"  # image matching
-    BASE_IMAGEOUTDOOR_URL8: str = (
-        "https://github.com/kornia/data/raw/main/kornia_banner_pixie.png"  # Response functions
+    BASE_IMAGEOUTDOOR_URL8: str = (  # Response functions
+        "https://github.com/kornia/data/raw/main/kornia_banner_pixie.png"
     )
     MASK_IMAGE_URL2: str = "https://raw.githubusercontent.com/kornia/data/main/simba_mask.png"
 

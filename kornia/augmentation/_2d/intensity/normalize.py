@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 import torch
 from torch import Tensor
@@ -62,6 +62,6 @@ class Normalize(IntensityAugmentationBase2D):
         self.flags = {"mean": mean, "std": std}
 
     def apply_transform(
-        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Tensor | None = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         return normalize(input, flags["mean"], flags["std"])

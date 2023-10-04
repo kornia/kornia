@@ -221,8 +221,7 @@ class VisionTransformer(Module):
 
         if self.image_size not in (*x.shape[-2:],) and x.shape[-3] != self.in_channels:
             raise ValueError(
-                f"Input image shape must be Bx{self.in_channels}x{self.image_size}x{self.image_size}. "
-                f"Got: {x.shape}"
+                f"Input image shape must be Bx{self.in_channels}x{self.image_size}x{self.image_size}. Got: {x.shape}"
             )
 
         out = self.patch_embedding(x)

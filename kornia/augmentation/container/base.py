@@ -62,12 +62,12 @@ class BasicSequentialBase(nn.Sequential):
 
         for item in atoms:
             if not hasattr(mod, item):
-                raise AttributeError(mod._get_name() + " has no " "attribute `" + item + "`")
+                raise AttributeError(mod._get_name() + " has no attribute `" + item + "`")
 
             mod = getattr(mod, item)
 
             if not isinstance(mod, Module):
-                raise AttributeError("`" + item + "` is not " "an Module")
+                raise AttributeError("`" + item + "` is not an Module")
 
         return mod
 

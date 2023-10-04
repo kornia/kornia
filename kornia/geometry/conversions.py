@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 import torch
 import torch.nn.functional as F
 
@@ -1013,7 +1015,11 @@ def normalize_homography(
 
 
 def normal_transform_pixel(
-    height: int, width: int, eps: float = 1e-14, device: torch.device | None = None, dtype: torch.dtype | None = None
+    height: int,
+    width: int,
+    eps: float = 1e-14,
+    device: Optional[torch.device] = None,
+    dtype: Optional[torch.dtype] = None,
 ) -> Tensor:
     r"""Compute the normalization matrix from image size in pixels to [-1, 1].
 
@@ -1042,8 +1048,8 @@ def normal_transform_pixel3d(
     height: int,
     width: int,
     eps: float = 1e-14,
-    device: torch.device | None = None,
-    dtype: torch.dtype | None = None,
+    device: Optional[torch.device] = None,
+    dtype: Optional[torch.dtype] = None,
 ) -> Tensor:
     r"""Compute the normalization matrix from image size in pixels to [-1, 1].
 

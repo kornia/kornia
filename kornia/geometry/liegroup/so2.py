@@ -2,7 +2,7 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so2.py
 from __future__ import annotations
 
-from typing import overload
+from typing import Optional, overload
 
 from kornia.core import Device, Dtype, Module, Parameter, Tensor, complex, rand, stack, tensor, zeros_like
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
@@ -202,7 +202,9 @@ class So2(Module):
         return cls(z)
 
     @classmethod
-    def identity(cls, batch_size: int | None = None, device: Device | None = None, dtype: Dtype = None) -> So2:
+    def identity(
+        cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Optional[Dtype] = None
+    ) -> So2:
         """Create a So2 group representing an identity rotation.
 
         Args:
@@ -234,7 +236,9 @@ class So2(Module):
         return So2(1 / self.z)
 
     @classmethod
-    def random(cls, batch_size: int | None = None, device: Device | None = None, dtype: Dtype = None) -> So2:
+    def random(
+        cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Optional[Dtype] = None
+    ) -> So2:
         """Create a So2 group representing a random rotation.
 
         Args:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from typing import Optional
 
 import torch
 import torch.nn.functional as F
@@ -148,7 +149,7 @@ class DoubleConvBlock(nn.Sequential):
         self,
         in_features: int,
         mid_features: int,
-        out_features: int | None = None,
+        out_features: Optional[int] = None,
         stride: int = 1,
         use_act: bool = True,
     ) -> None:

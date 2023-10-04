@@ -5,6 +5,8 @@ anything/blob/3518c86b78b3bc9cf4fbe3d18e682fad1c79dc51/segment_anything/modeling
 """
 from __future__ import annotations
 
+from typing import Optional
+
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -64,7 +66,7 @@ class ImageEncoderViT(Module):
             embed_dim=embed_dim,
         )
 
-        self.pos_embed: nn.Parameter | None = None
+        self.pos_embed: Optional[nn.Parameter] = None
         if use_abs_pos:
             # Initialize absolute positional embedding with pretrain image size.
             self.pos_embed = nn.Parameter(zeros(1, img_size // patch_size, img_size // patch_size, embed_dim))
@@ -119,7 +121,7 @@ class Block(Module):
         use_rel_pos: bool = False,
         rel_pos_zero_init: bool = True,
         window_size: int = 0,
-        input_size: tuple[int, int] | None = None,
+        input_size: Optional[tuple[int, int]] = None,
     ) -> None:
         """
         Args:
@@ -179,7 +181,7 @@ class Attention(Module):
         qkv_bias: bool = True,
         use_rel_pos: bool = False,
         rel_pos_zero_init: bool = True,
-        input_size: tuple[int, int] | None = None,
+        input_size: Optional[tuple[int, int]] = None,
     ) -> None:
         """
         Args:

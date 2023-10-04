@@ -4,6 +4,8 @@ ppdet/modeling/transformers/hybrid_encoder.py."""
 
 from __future__ import annotations
 
+from typing import Optional
+
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -19,7 +21,7 @@ class RepVggBlock(Module):
         self.conv1 = ConvNormAct(in_channels, out_channels, 3, act="none")
         self.conv2 = ConvNormAct(in_channels, out_channels, 1, act="none")
         self.act = nn.SiLU(inplace=True)
-        self.conv: nn.Conv2d | None = None
+        self.conv: Optional[nn.Conv2d] = None
 
     def forward(self, x: Tensor) -> Tensor:
         if self.conv is not None:
@@ -112,8 +114,8 @@ class AIFI(Module):
         h: int,
         embed_dim: int,
         temp: float = 10_000.0,
-        device: torch.device | None = None,
-        dtype: torch.dtype | None = None,
+        device: Optional[torch.device] = None,
+        dtype: Optional[torch.dtype] = None,
     ) -> Tensor:
         """Construct 2D sin-cos positional embeddings.
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Sequence
+from typing import Any, Optional, Sequence, Union
 
 import torch
 
@@ -148,10 +148,10 @@ class RandomTransplantation(MixAugmentationBaseV2):
 
     def __init__(
         self,
-        excluded_labels: Sequence[int] | Tensor | None = None,
+        excluded_labels: Optional[Union[Sequence[int], Tensor]] = None,
         p: float = 0.5,
         p_batch: float = 1.0,
-        data_keys: list[str | int | DataKey] | None = None,
+        data_keys: Optional[list[str | int | DataKey]] = None,
     ) -> None:
         super().__init__(p=p, p_batch=p_batch)
 
@@ -188,7 +188,7 @@ class RandomTransplantation(MixAugmentationBaseV2):
         *input: Tensor,
         data_keys: list[DataKey],
         params: dict[str, Tensor],
-        extra_args: dict[DataKey, dict[str, Any]] | None = None,
+        extra_args: Optional[dict[DataKey, dict[str, Any]]] = None,
     ) -> dict[str, Tensor]:
         """Compute parameters for the transformation which are based on one or more input tensors.
 
@@ -217,12 +217,12 @@ class RandomTransplantation(MixAugmentationBaseV2):
             if key == DataKey.INPUT:
                 KORNIA_CHECK(
                     _input.ndim == mask.ndim + 1,
-                    f"Every image input must have one additional dimension (channel dimension) than the segmentation "
+                    "Every image input must have one additional dimension (channel dimension) than the segmentation "
                     f"mask, but got {_input.ndim} for the input image and {mask.ndim} for the segmentation mask.",
                 )
                 KORNIA_CHECK(
                     mask.size() == torch.Size([s for i, s in enumerate(_input.size()) if i != self._channel_dim]),
-                    f"The dimensions of the input image and segmentation mask must match except for the channel "
+                    "The dimensions of the input image and segmentation mask must match except for the channel "
                     f"dimension, but got {_input.size()} for the input image and {mask.size()} for the segmentation "
                     "mask.",
                 )
@@ -277,8 +277,8 @@ class RandomTransplantation(MixAugmentationBaseV2):
     def forward(  # type: ignore[override]
         self,
         *input: Tensor,
-        params: dict[str, Tensor] | None = None,
-        data_keys: list[str | int | DataKey] | None = None,
+        params: Optional[dict[str, Tensor]] = None,
+        data_keys: Optional[list[str | int | DataKey]] = None,
         **kwargs: dict[str, Any],
     ) -> Tensor | list[Tensor]:
         keys: list[DataKey]

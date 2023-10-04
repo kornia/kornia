@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 import torch
 
 from kornia.geometry.linalg import transform_points
@@ -11,7 +13,7 @@ from .distort import distort_points, tilt_projection
 
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/undistort.dispatch.cpp#L384
 def undistort_points(
-    points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor, new_K: torch.Tensor | None = None, num_iters: int = 5
+    points: torch.Tensor, K: torch.Tensor, dist: torch.Tensor, new_K: Optional[torch.Tensor] = None, num_iters: int = 5
 ) -> torch.Tensor:
     r"""Compensate for lens distortion a set of 2D image points.
 
@@ -154,7 +156,7 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
         # allowed to avoid a breaking change.
         if not all((image.shape[:-3] == (1,), K.shape[:-2] == (), dist.shape[:-1] == ())):
             raise ValueError(
-                f'Input shape is invalid. Input batch dimensions should match. '
+                'Input shape is invalid. Input batch dimensions should match. '
                 f'Got {image.shape[:-3]}, {K.shape[:-2]}, {dist.shape[:-1]}.'
             )
 

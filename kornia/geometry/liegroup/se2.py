@@ -2,7 +2,7 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se2.py
 from __future__ import annotations
 
-from typing import overload
+from typing import Optional, overload
 
 from kornia.core import (
     Device,
@@ -240,7 +240,7 @@ class Se2(Module):
         return concatenate((upsilon, theta[..., None]), -1)
 
     @classmethod
-    def identity(cls, batch_size: int | None = None, device: Device | None = None, dtype: Dtype = None) -> Se2:
+    def identity(cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None) -> Se2:
         """Create a Se2 group representing an identity rotation and zero translation.
 
         Args:
@@ -319,7 +319,7 @@ class Se2(Module):
         return Se2(r_inv, r_inv * _t)
 
     @classmethod
-    def random(cls, batch_size: int | None = None, device: Device | None = None, dtype: Dtype = None) -> Se2:
+    def random(cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Dtype = None) -> Se2:
         """Create a Se2 group representing a random transformation.
 
         Args:

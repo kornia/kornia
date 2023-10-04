@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 import torch
 import torch.nn.functional as F
 
@@ -25,7 +27,7 @@ def nms(signal: Tensor, window_size: int = 5, cutoff: float = 0.0) -> Tensor:
 
 
 def heatmap_to_keypoints(
-    heatmap: Tensor, n: int | None = None, window_size: int = 5, score_threshold: float = 0.0
+    heatmap: Tensor, n: Optional[int] = None, window_size: int = 5, score_threshold: float = 0.0
 ) -> list[Keypoints]:
     """Inference-time nms-based detection protocol."""
     heatmap = heatmap.squeeze(1)

@@ -1,7 +1,7 @@
 """The testing package contains testing-specific utilities."""
 from __future__ import annotations
 
-from typing import Any, Sequence, TypeVar, cast
+from typing import Any, Optional, Sequence, TypeVar, cast
 
 from torch import float16, float32, float64
 from typing_extensions import TypeGuard
@@ -82,7 +82,7 @@ def KORNIA_CHECK_SHAPE(x: Tensor, shape: list[str], raises: bool = True) -> bool
     return True
 
 
-def KORNIA_CHECK(condition: bool, msg: str | None = None, raises: bool = True) -> bool:
+def KORNIA_CHECK(condition: bool, msg: Optional[str] = None, raises: bool = True) -> bool:
     """Check any arbitrary boolean condition.
 
     Args:
@@ -120,7 +120,9 @@ T = TypeVar('T', bound=type)
 
 
 # TODO: fix mypy typeguard issue
-def KORNIA_CHECK_TYPE(x: object, typ: T | tuple[T, ...], msg: str | None = None, raises: bool = True) -> TypeGuard[T]:
+def KORNIA_CHECK_TYPE(
+    x: object, typ: T | tuple[T, ...], msg: Optional[str] = None, raises: bool = True
+) -> TypeGuard[T]:
     """Check the type of an aribratry variable.
 
     Args:
@@ -144,7 +146,7 @@ def KORNIA_CHECK_TYPE(x: object, typ: T | tuple[T, ...], msg: str | None = None,
     return True
 
 
-def KORNIA_CHECK_IS_TENSOR(x: object, msg: str | None = None, raises: bool = True) -> TypeGuard[Tensor]:
+def KORNIA_CHECK_IS_TENSOR(x: object, msg: Optional[str] = None, raises: bool = True) -> TypeGuard[Tensor]:
     """Check the input variable is a Tensor.
 
     Args:
@@ -168,7 +170,7 @@ def KORNIA_CHECK_IS_TENSOR(x: object, msg: str | None = None, raises: bool = Tru
     return True
 
 
-def KORNIA_CHECK_IS_LIST_OF_TENSOR(x: Sequence[object] | None, raises: bool = True) -> TypeGuard[list[Tensor]]:
+def KORNIA_CHECK_IS_LIST_OF_TENSOR(x: Optional[Sequence[object]], raises: bool = True) -> TypeGuard[list[Tensor]]:
     """Check the input variable is a List of Tensors.
 
     Args:
@@ -221,7 +223,7 @@ def KORNIA_CHECK_SAME_DEVICE(x: Tensor, y: Tensor, raises: bool = True) -> bool:
     return True
 
 
-def KORNIA_CHECK_SAME_DEVICES(tensors: list[Tensor], msg: str | None = None, raises: bool = True) -> bool:
+def KORNIA_CHECK_SAME_DEVICES(tensors: list[Tensor], msg: Optional[str] = None, raises: bool = True) -> bool:
     """Check whether a list provided tensors live in the same device.
 
     Args:
@@ -271,7 +273,7 @@ def KORNIA_CHECK_SAME_SHAPE(x: Tensor, y: Tensor, raises: bool = True) -> bool:
     return True
 
 
-def KORNIA_CHECK_IS_COLOR(x: Tensor, msg: str | None = None, raises: bool = True) -> bool:
+def KORNIA_CHECK_IS_COLOR(x: Tensor, msg: Optional[str] = None, raises: bool = True) -> bool:
     """Check whether an image tensor is a color images.
 
     Args:
@@ -294,7 +296,7 @@ def KORNIA_CHECK_IS_COLOR(x: Tensor, msg: str | None = None, raises: bool = True
     return True
 
 
-def KORNIA_CHECK_IS_GRAY(x: Tensor, msg: str | None = None, raises: bool = True) -> bool:
+def KORNIA_CHECK_IS_GRAY(x: Tensor, msg: Optional[str] = None, raises: bool = True) -> bool:
     """Check whether an image tensor is grayscale.
 
     Args:
@@ -317,7 +319,7 @@ def KORNIA_CHECK_IS_GRAY(x: Tensor, msg: str | None = None, raises: bool = True)
     return True
 
 
-def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: Tensor, msg: str | None = None, raises: bool = True) -> bool:
+def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: Tensor, msg: Optional[str] = None, raises: bool = True) -> bool:
     """Check whether an image tensor is grayscale or color.
 
     Args:
@@ -340,7 +342,7 @@ def KORNIA_CHECK_IS_COLOR_OR_GRAY(x: Tensor, msg: str | None = None, raises: boo
     return True
 
 
-def KORNIA_CHECK_IS_IMAGE(x: Tensor, msg: str | None = None, raises: bool = True, bits: int = 8) -> bool:
+def KORNIA_CHECK_IS_IMAGE(x: Tensor, msg: Optional[str] = None, raises: bool = True, bits: int = 8) -> bool:
     """Check whether an image tensor is ranged properly [0, 1] for float or [0, 2 ** bits] for int.
 
     Args:

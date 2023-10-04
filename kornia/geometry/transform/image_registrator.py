@@ -88,8 +88,9 @@ class Similarity(BaseModel):
         self.reset_model()
 
     def __repr__(self) -> str:
-        return f'{self.__class__.__name__}(angle = {self.rot},\
-               \n shift={self.shift}, \n scale={self.scale})'
+        return (
+            f'{self.__class__.__name__}(angle = {self.rot},               \n shift={self.shift}, \n scale={self.scale})'
+        )
 
     def reset_model(self) -> None:
         """Initialize the model with identity transform."""
@@ -187,8 +188,8 @@ class ImageRegistrator(Module):
         # ToDo: Make possible registration of images of different shape
         if img_src.shape != img_dst.shape:
             raise ValueError(
-                f"Cannot register images of different shapes\
-                              {img_src.shape} {img_dst.shape:} "
+                "Cannot register images of different shapes                             "
+                f" {img_src.shape} {img_dst.shape:} "
             )
         _height, _width = img_dst.shape[-2:]
         warper = self.warper(_height, _width)

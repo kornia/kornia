@@ -11,7 +11,7 @@ from __future__ import annotations
 import warnings
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
+from typing import Any, Optional
 
 import torch
 
@@ -55,14 +55,14 @@ class SamConfig:
         encoder_global_attn_indexes: Encoder indexes for blocks using global attention.
     """
 
-    model_type: str | int | SamModelType | None = None
-    checkpoint: str | None = None
+    model_type: Optional[str | int | SamModelType] = None
+    checkpoint: Optional[str] = None
     pretrained: bool = False
 
-    encoder_embed_dim: int | None = None
-    encoder_depth: int | None = None
-    encoder_num_heads: int | None = None
-    encoder_global_attn_indexes: tuple[int, ...] | None = None
+    encoder_embed_dim: Optional[int] = None
+    encoder_depth: Optional[int] = None
+    encoder_num_heads: Optional[int] = None
+    encoder_global_attn_indexes: Optional[tuple[int, ...]] = None
 
 
 class Sam(ModelBase[SamConfig]):

@@ -2,6 +2,8 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so3.py
 from __future__ import annotations
 
+from typing import Optional
+
 from kornia.core import Device, Dtype, Module, Tensor, concatenate, eye, stack, tensor, where, zeros, zeros_like
 from kornia.core.check import KORNIA_CHECK_TYPE
 from kornia.geometry.conversions import vector_to_skew_symmetric_matrix
@@ -247,7 +249,9 @@ class So3(Module):
         return cls(Quaternion(wxyz))
 
     @classmethod
-    def identity(cls, batch_size: int | None = None, device: Device | None = None, dtype: Dtype = None) -> So3:
+    def identity(
+        cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Optional[Dtype] = None
+    ) -> So3:
         """Create a So3 group representing an identity rotation.
 
         Args:
@@ -279,7 +283,9 @@ class So3(Module):
         return So3(self.q.conj())
 
     @classmethod
-    def random(cls, batch_size: int | None = None, device: Device | None = None, dtype: Dtype = None) -> So3:
+    def random(
+        cls, batch_size: Optional[int] = None, device: Optional[Device] = None, dtype: Optional[Dtype] = None
+    ) -> So3:
         """Create a So3 group representing a random rotation.
 
         Args:

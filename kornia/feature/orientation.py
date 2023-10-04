@@ -56,10 +56,7 @@ class PatchDominantGradientOrientation(nn.Module):
 
     def __repr__(self) -> str:
         return (
-            f'{self.__class__.__name__}('
-            f'patch_size={self.patch_size}, '
-            f'num_ang_bins={self.num_ang_bins}, '
-            f'eps={self.eps})'
+            f'{self.__class__.__name__}(patch_size={self.patch_size}, num_ang_bins={self.num_ang_bins}, eps={self.eps})'
         )
 
     def forward(self, patch: torch.Tensor) -> torch.Tensor:

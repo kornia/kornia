@@ -49,9 +49,11 @@ class ShearGenerator(RandomGeneratorBase):
             _shear = stack(
                 [
                     _range_bound(shear if shear.dim() == 0 else shear[:2], 'shear-x', 0, (-360, 360)),
-                    tensor([0, 0], device=device, dtype=dtype)
-                    if shear.dim() == 0 or len(shear) == 2
-                    else _range_bound(shear[2:], 'shear-y', 0, (-360, 360)),
+                    (
+                        tensor([0, 0], device=device, dtype=dtype)
+                        if shear.dim() == 0 or len(shear) == 2
+                        else _range_bound(shear[2:], 'shear-y', 0, (-360, 360))
+                    ),
                 ]
             )
 

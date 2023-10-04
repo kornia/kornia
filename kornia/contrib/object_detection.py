@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+from typing import Optional
 
 import torch
 
@@ -165,8 +166,8 @@ class ObjectDetector(Module):
         fullgraph: bool = False,
         dynamic: bool = False,
         backend: str = 'inductor',
-        mode: str | None = None,
-        options: dict[str, str | int | bool] | None = None,
+        mode: Optional[str] = None,
+        options: Optional[dict[str, str | int | bool]] = None,
         disable: bool = False,
     ) -> None:
         """Compile the internal object detection model with :py:func:`torch.compile()`."""

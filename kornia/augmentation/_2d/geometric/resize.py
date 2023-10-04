@@ -69,9 +69,9 @@ class Resize(GeometricAugmentationBase2D):
                 input[i : i + 1, :, y1:y2, x1:x2],
                 out_size,
                 interpolation=flags["resample"].name.lower(),
-                align_corners=flags["align_corners"]
-                if flags["resample"] in [Resample.BILINEAR, Resample.BICUBIC]
-                else None,
+                align_corners=(
+                    flags["align_corners"] if flags["resample"] in [Resample.BILINEAR, Resample.BICUBIC] else None
+                ),
                 antialias=flags["antialias"],
             )
         return out

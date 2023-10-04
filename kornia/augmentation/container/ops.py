@@ -185,8 +185,7 @@ class InputSequentialOps(SequentialOpsInterface[Tensor]):
             input = module.inverse(input, params=cls.get_instance_module_param(param), **extra_args)
         elif isinstance(module, (K.GeometricAugmentationBase3D,)):
             raise NotImplementedError(
-                "The support for 3d inverse operations are not yet supported. "
-                "You are welcome to file a PR in our repo."
+                "The support for 3d inverse operations are not yet supported. You are welcome to file a PR in our repo."
             )
         elif isinstance(module, (K.auto.operations.OperationBase,)):
             return InputSequentialOps.inverse(input, module=module.op, param=param, extra_args=extra_args)

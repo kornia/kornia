@@ -140,6 +140,7 @@ requires = [
   ignore = [
     "PLW2901", # Allow overwritten values on loops
     "PLR0915", # Allow condition check in list comprehension
+    "UP007", # Prefer Optional[], Union[] over | due to torch jit scripting
   ]
 
   [tool.ruff.isort]

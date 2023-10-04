@@ -48,10 +48,9 @@ def get_sift_bin_ksize_stride_pad(patch_size: int, num_spatial_bins: int) -> Tup
     out_size: int = (patch_size + 2 * pad - (ksize - 1) - 1) // stride + 1
     if out_size != num_spatial_bins:
         raise ValueError(
-            f"Patch size {patch_size} is incompatible with \
-            requested number of spatial bins {num_spatial_bins} \
-            for SIFT descriptor. Usually it happens when patch size is too small\
-            for num_spatial_bins specified"
+            f"Patch size {patch_size} is incompatible with             requested number of spatial bins"
+            f" {num_spatial_bins}             for SIFT descriptor. Usually it happens when patch size is too small     "
+            "       for num_spatial_bins specified"
         )
     return ksize, stride, pad
 

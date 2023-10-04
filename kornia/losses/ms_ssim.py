@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -83,7 +85,7 @@ class MS_SSIMLoss(nn.Module):
         self.register_buffer('_g_masks', g_masks)
 
     def _fspecial_gauss_1d(
-        self, size: int, sigma: float, device: torch.device | None = None, dtype: torch.dtype | None = None
+        self, size: int, sigma: float, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None
     ) -> torch.Tensor:
         """Create 1-D gauss kernel.
 
@@ -101,7 +103,7 @@ class MS_SSIMLoss(nn.Module):
         return g.reshape(-1)
 
     def _fspecial_gauss_2d(
-        self, size: int, sigma: float, device: torch.device | None = None, dtype: torch.dtype | None = None
+        self, size: int, sigma: float, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None
     ) -> torch.Tensor:
         """Create 2-D gauss kernel.
 
