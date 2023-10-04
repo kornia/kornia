@@ -94,8 +94,8 @@ class RainGenerator(RandomGeneratorBase):
                 x_end = x_start + drop_widths
                 y_end = y_start + drop_heights
                 # ensure the raindrop is within the image boundaries
-                x_end = min(x_end, W)
-                y_end = min(y_end, H)
+                x_end = int(min(x_end, W))
+                y_end = int(min(y_end, H))
                 image[b, :, y_start:y_end, x_start:x_end] -= intensity  # darken the image where the raindrop is
         image = torch.clamp(image, 0, 1)  # clip values to ensure they're within [0, 1]
         return image
