@@ -46,9 +46,9 @@ class RandomShear(GeometricAugmentationBase2D):
                  [-0.1183,  0.9988,  0.1194],
                  [ 0.0000,  0.0000,  1.0000]]]))
         >>> aug.inverse(out)
-        tensor([[[[0.4068, 0.7549, 0.1404],
-                  [0.2051, 0.3111, 0.5562],
-                  [0.3985, 0.8816, 0.4257]]]])
+        tensor([[[[0.4045, 0.7577, 0.1393],
+                  [0.2071, 0.3074, 0.5582],
+                  [0.3958, 0.8868, 0.4265]]]])
 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
         >>> input = torch.randn(1, 3, 32, 32)
