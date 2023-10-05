@@ -1,9 +1,10 @@
+import io
 import sys
 from pathlib import Path
 
-import cv2
 import numpy as np
 import pytest
+import requests
 import torch
 
 from kornia.core import Tensor
@@ -28,6 +29,40 @@ def create_random_img8_torch(height: int, width: int, channels: int, device=None
     return (torch.rand(channels, height, width, device=device) * 255).to(torch.uint8)
 
 
+def _download_image(url: str, filename: str = "") -> Path:
+    # TODO: move this to testing
+
+    filename = url.split("/")[-1] if len(filename) == 0 else filename
+    # Download
+    bytesio = io.BytesIO(requests.get(url, timeout=60).content)
+    # Save file
+    with open(filename, "wb") as outfile:
+        outfile.write(bytesio.getbuffer())
+
+    return Path(filename)
+
+
+@pytest.fixture(scope='session')
+def png_image(tmp_path_factory):
+    url = "https://github.com/kornia/data/raw/main/simba.png"
+    filename = tmp_path_factory.mktemp("data") / "image.png"
+    filename = _download_image(url, str(filename))
+    return filename
+
+
+@pytest.fixture(scope='session')
+def jpg_image(tmp_path_factory):
+    url = "https://github.com/kornia/data/raw/main/crowd.jpg"
+    filename = tmp_path_factory.mktemp("data") / "image.jpg"
+    filename = _download_image(url, str(filename))
+    return filename
+
+
+@pytest.fixture(scope='session')
+def images_fn(png_image, jpg_image):
+    return {'png': png_image, 'jpg': jpg_image}
+
+
 @pytest.mark.skipif(not available_package(), reason="kornia_rs only supports python >=3.7 and pt >= 1.10.0")
 class TestIoImage:
     def test_smoke(self, tmp_path: Path) -> None:
@@ -45,12 +80,8 @@ class TestIoImage:
         assert img_th.shape[1:] == (height, width)
         assert str(img_th.device) == "cpu"
 
-    def test_device(self, device, tmp_path: Path) -> None:
-        height, width = 4, 5
-        img_np: np.ndarray = create_random_img8(height, width, 3)
-
-        file_path = tmp_path / "image.png"
-        cv2.imwrite(str(file_path), img_np)
+    def test_device(self, device, png_image: Path) -> None:
+        file_path = Path(png_image)
 
         assert file_path.is_file()
 
@@ -75,12 +106,8 @@ class TestIoImage:
             (3, ImageLoadType.RGB32, torch.float32, 3),
         ],
     )
-    def test_load_image(self, tmp_path: Path, ext, channels, load_type, expected_type, expected_channels):
-        height, width = 4, 5
-        img_np: np.ndarray = create_random_img8(height, width, channels)
-
-        file_path = tmp_path / f"image.{ext}"
-        cv2.imwrite(str(file_path), img_np)
+    def test_load_image(self, images_fn, ext, channels, load_type, expected_type, expected_channels):
+        file_path = images_fn[ext]
 
         assert file_path.is_file()
 
