@@ -53,6 +53,6 @@ def connected_components(image: Tensor, num_iterations: int = 100) -> Tensor:
 
     for _ in range(num_iterations):
         out = F.max_pool2d(out, kernel_size=3, stride=1, padding=1)
-        out = torch.mul(out, mask)      # mask using element-wise multiplication
+        out = torch.mul(out, mask)  # mask using element-wise multiplication
 
     return out.view_as(image)
