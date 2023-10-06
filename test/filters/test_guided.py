@@ -91,7 +91,10 @@ class TestGuidedBlur(BaseTester):
 
     @pytest.mark.skipif(
         torch_version() == '2.1.0',
-        reason="https://github.com/pytorch/pytorch/issues/110696 - Failing with: Argument of Integer should be of numeric type, got s3 + 3.",
+        reason=(
+            "https://github.com/pytorch/pytorch/issues/110696 "
+            "- Failing with: Argument of Integer should be of numeric type, got s3 + 3."
+        ),
     )
     @pytest.mark.parametrize('kernel_size', [5, (5, 7)])
     @pytest.mark.parametrize("subsample", [1, 2])
