@@ -10,6 +10,7 @@ from kornia.core import Module, Tensor, tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.filters.sobel import spatial_gradient
 from kornia.utils import create_meshgrid
+from kornia.utils.helpers import deprecated
 
 from .camera import PinholeCamera, cam2pixel, pixel2cam, project_points, unproject_points
 from .conversions import normalize_pixel_coordinates, normalize_points_with_intrinsics
@@ -71,6 +72,8 @@ def unproject_meshgrid(
 def depth_to_3d_v2(
     depth: Tensor, camera_matrix: Tensor, normalize_points: bool = False, xyz_grid: Optional[Tensor] = None
 ) -> Tensor:
+    # NOTE: when this replaces the `depth_to_3d` behaviour, a deprecated function should be added here, instead
+    # of just replace the other function.
     """Compute a 3d point per pixel given its depth value and the camera intrinsics.
 
     .. note::
@@ -107,9 +110,14 @@ def depth_to_3d_v2(
     return points_xyz * depth[..., None]  # HxWx3
 
 
-# NOTE: this function should replace the old depth_to_3d
-
-
+@deprecated(
+    replace_with="depth_to_3d_v2",
+    version='0.7.0',
+    extra_reason=(
+        ' This function will be replaced with the `depth_to_3d_v2` behaviour, where the that does not require the'
+        ' creation of a meshgrid. The return shape can be not backward compatible between these implementations.'
+    ),
+)
 def depth_to_3d(depth: Tensor, camera_matrix: Tensor, normalize_points: bool = False) -> Tensor:
     """Compute a 3d point per pixel given its depth value and the camera intrinsics.
 
