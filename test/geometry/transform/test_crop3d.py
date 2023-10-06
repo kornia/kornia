@@ -5,6 +5,7 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.testing import assert_close
+from kornia.utils._compat import torch_version
 
 
 class TestCropAndResize3D:
@@ -131,6 +132,10 @@ class TestCenterCrop3D:
             kornia.geometry.transform.center_crop3d, (img, (3, 5, 7)), raise_exception=True, fast_mode=True
         )
 
+    @pytest.mark.skipif(
+        torch_version() == '2.1.0',
+        reason="unsupported operand type(s) for @: 'FakeTensor' and 'FakeTensor' on `normalize_homography3d`",
+    )
     def test_dynamo(self, device, dtype, torch_optimizer):
         # Define script
         op = kornia.geometry.transform.center_crop3d

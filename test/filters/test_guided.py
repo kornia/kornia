@@ -3,6 +3,7 @@ import torch
 
 from kornia.filters import GuidedBlur, guided_blur
 from kornia.testing import BaseTester, tensor_to_gradcheck_var
+from kornia.utils._compat import torch_version
 
 
 class TestGuidedBlur(BaseTester):
@@ -88,6 +89,9 @@ class TestGuidedBlur(BaseTester):
         op_module = GuidedBlur(kernel_size, eps, subsample=subsample)
         self.assert_close(op_module(guide, img), op(guide, img, kernel_size, eps, subsample=subsample))
 
+    @pytest.mark.skipif(
+        torch_version() == '2.1.0', reason="Failing with: Argument of Integer should be of numeric type, got s3 + 3."
+    )
     @pytest.mark.parametrize('kernel_size', [5, (5, 7)])
     @pytest.mark.parametrize("subsample", [1, 2])
     def test_dynamo(self, kernel_size, subsample, device, dtype, torch_optimizer):
