@@ -98,7 +98,7 @@ def ycbcr_to_rgb(image: Tensor) -> Tensor:
     r: Tensor = y + 1.403 * cr_shifted
     g: Tensor = y - 0.714 * cr_shifted - 0.344 * cb_shifted
     b: Tensor = y + 1.773 * cb_shifted
-    return torch.stack([r, g, b], -3)
+    return torch.stack([r, g, b], -3).clamp(0,1)
 
 
 class RgbToYcbcr(nn.Module):
