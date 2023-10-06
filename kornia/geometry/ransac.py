@@ -97,9 +97,12 @@ class RANSAC(Module):
     def max_samples_by_conf(n_inl: int, num_tc: int, sample_size: int, conf: float) -> float:
         """Formula to update max_iter in order to stop iterations earlier
         https://en.wikipedia.org/wiki/Random_sample_consensus."""
+        eps = 1e-9
+        if num_tc <= sample_size:
+            return 1.0
         if n_inl == num_tc:
             return 1.0
-        return math.log(1.0 - conf) / math.log(1.0 - math.pow(n_inl / num_tc, sample_size))
+        return math.log(1.0 - conf) / math.log(max(eps, 1.0 - math.pow(n_inl / num_tc, sample_size)))
 
     def estimate_model_from_minsample(self, kp1: Tensor, kp2: Tensor) -> Tensor:
         batch_size, sample_size = kp1.shape[:2]
