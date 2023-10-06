@@ -102,7 +102,7 @@ class RANSAC(Module):
             return 1.0
         if n_inl == num_tc:
             return 1.0
-        return math.log(1.0 - conf) / math.log(max(eps, 1.0 - math.pow(n_inl / num_tc, sample_size)))
+        return math.log(1.0 - conf) / max(eps, math.log(max(eps, 1.0 - math.pow(n_inl / num_tc, sample_size))))
 
     def estimate_model_from_minsample(self, kp1: Tensor, kp2: Tensor) -> Tensor:
         batch_size, sample_size = kp1.shape[:2]
