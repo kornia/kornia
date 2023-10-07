@@ -111,7 +111,7 @@ def depth_to_3d_v2(
 # NOTE: this function should replace the old depth_to_3d
 
 
-@deprecated(replace_with="depth_to_3d_v2")
+@deprecated(replace_with="depth_to_3d_v2", version='0.7.0')
 def depth_to_3d(depth: Tensor, camera_matrix: Tensor, normalize_points: bool = False) -> Tensor:
     """Compute a 3d point per pixel given its depth value and the camera intrinsics.
 
