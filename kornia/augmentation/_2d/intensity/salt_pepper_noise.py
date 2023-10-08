@@ -1,7 +1,10 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
+
 import torch
+
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.core import Tensor
+
 
 class SaltAndPepperNoise(IntensityAugmentationBase2D):
     r"""Add salt and pepper noise to a batch of multi-dimensional images.
@@ -22,7 +25,12 @@ class SaltAndPepperNoise(IntensityAugmentationBase2D):
     """
 
     def __init__(
-        self, salt_prob: float = 0.01, pepper_prob: float = 0.01, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False
+        self,
+        salt_prob: float = 0.01,
+        pepper_prob: float = 0.01,
+        same_on_batch: bool = False,
+        p: float = 0.5,
+        keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self.flags = {"salt_prob": salt_prob, "pepper_prob": pepper_prob}
