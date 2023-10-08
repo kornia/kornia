@@ -13,6 +13,7 @@ from kornia.augmentation._2d import (
     RandomBoxBlur,
     RandomBrightness,
     RandomChannelShuffle,
+    RandomClahe,
     RandomContrast,
     RandomCrop,
     RandomCutMixV2,

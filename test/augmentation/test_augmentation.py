@@ -22,6 +22,7 @@ from kornia.augmentation import (
     RandomBoxBlur,
     RandomBrightness,
     RandomChannelShuffle,
+    RandomClahe,
     RandomContrast,
     RandomCrop,
     RandomCrop3D,
@@ -3503,6 +3504,37 @@ class TestRandomChannelShuffle(BaseTester):
     @pytest.mark.skip(reason="not implemented yet")
     def test_cardinality(self, device, dtype):
         pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_exception(self, device, dtype):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_gradcheck(self, device, dtype):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_jit(self, device, dtype):
+        pass
+
+    @pytest.mark.skip(reason="not implemented yet")
+    def test_module(self, device, dtype):
+        pass
+
+
+class TestRandomClahe(BaseTester):
+    def test_smoke(self, device, dtype):
+        img = (torch.arange(36).reshape(2, 2, 3, 3) / 36).to(device=device, dtype=dtype)
+        self.assert_close(
+            RandomClahe(p=1.0, grid_size=(2, 2))(img).sum(),
+            torch.tensor(22.4588, dtype=dtype)
+        )
+
+    @pytest.mark.parametrize("batch_shape", [(1, 3, 5, 7), (3, 1, 5, 7)])
+    def test_cardinality(self, batch_shape, device, dtype):
+        input_data = (torch.arange(105).reshape(*batch_shape) / 105).to(device=device, dtype=dtype)
+        output_data = RandomClahe(p=1.0, grid_size=(2, 2))(input_data)
+        assert output_data.shape == batch_shape
 
     @pytest.mark.skip(reason="not implemented yet")
     def test_exception(self, device, dtype):
