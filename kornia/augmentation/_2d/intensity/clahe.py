@@ -1,9 +1,7 @@
-from typing import Any, Dict, Optional, Union, Tuple
+from typing import Any, Dict, Optional, Tuple
 
-import torch
 from torch import Tensor
 
-from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.enhance import equalize_clahe
 
@@ -63,6 +61,4 @@ class RandomClahe(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        return equalize_clahe(
-            input, flags["clip_limit"], flags["grid_size"], flags["slow_and_differentiable"],
-        )
+        return equalize_clahe(input, flags["clip_limit"], flags["grid_size"], flags["slow_and_differentiable"])

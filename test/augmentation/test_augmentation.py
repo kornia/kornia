@@ -3525,10 +3525,7 @@ class TestRandomChannelShuffle(BaseTester):
 class TestRandomClahe(BaseTester):
     def test_smoke(self, device, dtype):
         img = (torch.arange(36).reshape(2, 2, 3, 3) / 36).to(device=device, dtype=dtype)
-        self.assert_close(
-            RandomClahe(p=1.0, grid_size=(2, 2))(img).sum(),
-            torch.tensor(22.4588, dtype=dtype)
-        )
+        self.assert_close(RandomClahe(p=1.0, grid_size=(2, 2))(img).sum(), torch.tensor(22.4588, dtype=dtype))
 
     @pytest.mark.parametrize("batch_shape", [(1, 3, 5, 7), (3, 1, 5, 7)])
     def test_cardinality(self, batch_shape, device, dtype):
