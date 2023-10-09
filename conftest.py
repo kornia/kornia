@@ -111,7 +111,6 @@ def pytest_report_header(config):
     except ImportError:
         accelerate_info = '`accelerate` not found'
 
-    import cv2
     import kornia_rs
     import onnx
     import scipy
@@ -126,7 +125,6 @@ x deps:
     - {accelerate_info}
 dev deps:
     - kornia_rs-{kornia_rs.__version__}
-    - opencv (cv2)-{cv2.__version__}
     - onnx-{onnx.__version__}
     - scipy-{scipy.__version__}
 """
