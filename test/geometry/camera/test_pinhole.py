@@ -198,6 +198,7 @@ class TestPixel2Cam:
         assert_close(pixel_coords_concat, pixel_coords_input, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", (1,))
+    @pytest.mark.slow
     def test_gradcheck(self, batch_size, device, dtype):
         H, W = 10, 20
         fx, fy = W, H
