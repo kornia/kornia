@@ -23,17 +23,11 @@ __all__ = [
     "relative_camera_motion",
 ]
 
-# Reference
-# Nistér, David. An efficient solution to the five-point relative pose problem. 2004.
-# https://github.com/danini/graph-cut-ransac/blob/master/src/pygcransac/include/estimators/solver_essential_matrix_five_point_nister.h
-# Wei T, Patel Y, Matas J, Barath D. Generalized differentiable RANSAC[J]. arXiv preprint arXiv:2212.13185, 2023.
-# https://github.com/weitong8591/differentiable_ransac/blob/main/estimators/essential_matrix_estimator_nister.py
-
 
 def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None) -> torch.Tensor:
     r"""Compute the essential matrix using the 5-point algorithm from Nister.
 
-    The linear system is solved by Nister's 5-point algorithm.
+    The linear system is solved by Nister's 5-point algorithm [@nister2004efficient], and the solver implemented referred to [@barath2020magsac++][@wei2023generalized].
 
     Args:
         points1: A set of carlibrated points in the first image with a tensor shape :math:`(B, N, 2), N>=8`.

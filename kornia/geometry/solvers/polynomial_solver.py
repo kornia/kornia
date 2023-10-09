@@ -201,13 +201,12 @@ def solve_cubic(coeffs: Tensor) -> Tensor:
 
 
 # Reference
-# Nistér, David. An efficient solution to the five-point relative pose problem. 2004.
 # https://github.com/danini/graph-cut-ransac/blob/master/src/pygcransac/include/
 # estimators/solver_essential_matrix_five_point_nister.h#L108
 
 
 def multiply_deg_one_poly(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-    r"""Multiply two polynomials of the first order.
+    r"""Multiply two polynomials of the first order [@nister2004efficient].
 
     Args:
         a: a first order polynomial for variables :math:`(x,y,z,1)`.
@@ -235,13 +234,12 @@ def multiply_deg_one_poly(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 
 
 # Reference
-# Nistér, David. An efficient solution to the five-point relative pose problem. 2004.
 # https://github.com/danini/graph-cut-ransac/blob/aae1f40c2e10e31fd2191bac601c53a189673f60/src/pygcransac/
 # include/estimators/solver_essential_matrix_five_point_nister.h#L156
 
 
 def multiply_deg_two_one_poly(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-    r"""Multiply two polynomials a and b of degrees two and one.
+    r"""Multiply two polynomials a and b of degrees two and one [@nister2004efficient].
 
     Args:
         a: a second degree poly for variables :math:`(x^2, x*y, x*z, x, y^2, y*z, y, z^2, z, 1)`.
@@ -284,7 +282,7 @@ def multiply_deg_two_one_poly(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 # https://github.com/danini/graph-cut-ransac/blob/aae1f40c2e10e31fd2191bac601c53a189673f60/src/pygcransac/
 # include/estimators/solver_essential_matrix_five_point_nister.h#L368C5-L368C82
 def determinant_to_polynomial(A: Tensor) -> Tensor:
-    r"""Represent the determinant by the 10th polynomial, used for 5PC solver.
+    r"""Represent the determinant by the 10th polynomial, used for 5PC solver [@nister2004efficient].
 
     Args:
         A: Tensor :math:`(*, 3, 13)`.
