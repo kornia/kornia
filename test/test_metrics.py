@@ -220,8 +220,7 @@ class TestAepe:
         expected = torch.zeros(4, 4, device=device, dtype=dtype)
         actual = kornia.metrics.aepe(sample, sample, reduction="none")
         assert_close(actual, expected)
-        
-        
+
     def test_aepe_alias(self, device, dtype):
         sample = torch.ones(4, 4, 2, device=device, dtype=dtype)
         expected = torch.zeros(4, 4, device=device, dtype=dtype)

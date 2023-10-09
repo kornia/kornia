@@ -90,4 +90,5 @@ class AEPE(nn.Module):
     def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         return aepe(input, target, self.reduction)
 
+
 average_endpoint_error = aepe
