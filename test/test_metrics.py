@@ -220,6 +220,16 @@ class TestAepe:
         expected = torch.zeros(4, 4, device=device, dtype=dtype)
         actual = kornia.metrics.aepe(sample, sample, reduction="none")
         assert_close(actual, expected)
+        
+        
+    def test_aepe_alias(self, device, dtype):
+        sample = torch.ones(4, 4, 2, device=device, dtype=dtype)
+        expected = torch.zeros(4, 4, device=device, dtype=dtype)
+        actual_aepe = kornia.metrics.aepe(sample, sample, reduction="none")
+        actual_alias = kornia.metrics.endpoint_error.average_endpoint_error(sample, sample, reduction="none")
+        assert_close(actual_aepe, expected)
+        assert_close(actual_alias, expected)
+        assert_close(actual_aepe, actual_alias)
 
     def test_exception(self, device, dtype):
         with pytest.raises(TypeError) as errinfo:
