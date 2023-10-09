@@ -15,6 +15,7 @@ class TestTinyViT(BaseTester):
         out = model(inpt)
         assert isinstance(out, Tensor)
 
+    @pytest.mark.slow
     @pytest.mark.parametrize('num_classes', [10, 100])
     @pytest.mark.parametrize('batch_size', [1, 3])
     def test_cardinality(self, device, dtype, batch_size, num_classes):
