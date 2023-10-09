@@ -54,6 +54,9 @@ def aepe(input: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> 
 
     return epe
 
+def average_endpoint_error(input: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> torch.Tensor:
+    return aepe(input, target, reduction)
+
 
 class AEPE(nn.Module):
     r"""Computes the average endpoint error (AEPE) between 2 flow maps.
