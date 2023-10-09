@@ -1,6 +1,6 @@
 from typing import Any, Dict, Optional, Tuple
 
-from torch import Tensor
+from kornia.core import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.enhance import equalize_clahe
