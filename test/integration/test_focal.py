@@ -31,6 +31,7 @@ class TestIntegrationFocalLoss:
         if isinstance(m, nn.Conv2d):
             torch.nn.init.xavier_uniform_(m.weight)
 
+    @pytest.mark.slow
     def test_conv2d_relu(self, device):
         # we generate base sample
         target = torch.LongTensor(1, 6, 5).fill_(0).to(device)

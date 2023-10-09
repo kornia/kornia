@@ -97,12 +97,12 @@ class Attention(Module):
                 m = self.flash_(q.half(), stack([k, v], 2).half())
                 return m.transpose(-2, -3).to(q.dtype)
             else:  # use torch 2.0 scaled_dot_product_attention with flash
-                args = [x.half().contiguous() for x in [q, k, v]]
                 with torch.backends.cuda.sdp_kernel(enable_flash=True):
-                    return F.scaled_dot_product_attention(*args).to(q.dtype)
+                    return F.scaled_dot_product_attention(
+                        q.half().contiguous(), k.half().contiguous(), v.half().contiguous()
+                    ).to(q.dtype)
         elif hasattr(F, 'scaled_dot_product_attention'):
-            args = [x.contiguous() for x in [q, k, v]]
-            return F.scaled_dot_product_attention(*args).to(q.dtype)
+            return F.scaled_dot_product_attention(q.contiguous(), k.contiguous(), v.contiguous()).to(q.dtype)
         else:
             s = q.shape[-1] ** -0.5
             attn = softmax(einsum('...id,...jd->...ij', q, k) * s, -1)

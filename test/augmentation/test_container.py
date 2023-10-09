@@ -514,6 +514,7 @@ class TestAugmentationSequential:
         _, out_labels = aug(img, labels)
         assert labels is out_labels
 
+    @pytest.mark.slow
     @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 10, True, False])
     def test_forward_and_inverse(self, random_apply, device, dtype):
         inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
@@ -628,6 +629,7 @@ class TestAugmentationSequential:
         assert out_inv[2].shape == bbox.shape
         assert out_inv[3].shape == keypoints.shape
 
+    @pytest.mark.slow
     @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 10, True, False])
     def test_inverse_and_forward_return_transform(self, random_apply, device, dtype):
         inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
