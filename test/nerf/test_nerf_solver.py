@@ -26,6 +26,7 @@ class TestNerfSolver:
             for param_before_update, param_after_update in zip(params_before_update, params_after_update)
         )
 
+    @pytest.mark.slow
     def test_only_red_uniform_sampling(self, device, dtype):
         torch.manual_seed(1)  # For reproducibility of random processes
         camera = create_one_camera(5, 9, device, dtype)
