@@ -27,7 +27,8 @@ __all__ = [
 def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None) -> torch.Tensor:
     r"""Compute the essential matrix using the 5-point algorithm from Nister.
 
-    The linear system is solved by Nister's 5-point algorithm [@nister2004efficient], and the solver implemented referred to [@barath2020magsac++][@wei2023generalized].
+    The linear system is solved by Nister's 5-point algorithm [@nister2004efficient], 
+    and the solver implemented referred to [@barath2020magsac++][@wei2023generalized].
 
     Args:
         points1: A set of carlibrated points in the first image with a tensor shape :math:`(B, N, 2), N>=8`.
