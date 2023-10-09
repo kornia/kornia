@@ -25,7 +25,7 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
         self._valid_ops_for_transform_computation: Tuple[Any, ...] = (OperationBase,)
 
     def _update_transform_matrix_for_valid_op(self, module: Module) -> None:
-        self._transform_matrices.append(module.transform_matrix)  # type: ignore
+        self._transform_matrices.append(module.transform_matrix)
 
     def clear_state(self) -> None:
         self._reset_transform_matrix_state()
