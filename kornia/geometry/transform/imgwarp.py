@@ -660,9 +660,9 @@ def get_shear_matrix2d(center: Tensor, sx: Optional[Tensor] = None, sy: Optional
     sx_tan = torch.tan(sx)
     sy_tan = torch.tan(sy)
     ones = torch.ones_like(sx)
-    shear_mat = stack([ones, -sx_tan, sx_tan * y, -sy_tan, ones + sx_tan * sy_tan, sy_tan * (sx_tan * y + x)], -1).view(
-        -1, 2, 3
-    )
+    shear_mat = stack(
+        [ones, -sx_tan, sx_tan * y, -sy_tan, ones + sx_tan * sy_tan, sy_tan * (x - sx_tan * y)], dim=-1
+    ).view(-1, 2, 3)
 
     shear_mat = convert_affinematrix_to_homography(shear_mat)
     return shear_mat
