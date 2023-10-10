@@ -6,7 +6,7 @@ on:
       python-version:
         description: "The python version desired."
         required: true
-        default: '3.10'
+        default: '3.11'
         type: string
 
       pytorch-version:

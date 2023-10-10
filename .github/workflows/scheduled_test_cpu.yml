@@ -21,7 +21,8 @@ jobs:
     uses: ./.github/workflows/tests.yml
     with:
       os: 'Ubuntu-latest'
-      python-version: '["3.8", "3.9", "3.10"]'
+
+      python-version: '["3.8", "3.9", "3.10", "3.11"]'
       pytorch-version: '["1.9.1", "1.10.2", "1.11.0", "1.12.1", "1.13.1", "2.0.1", "2.1.0"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
       pytest-extra: '--runslow'
@@ -37,7 +38,7 @@ jobs:
     uses: ./.github/workflows/tests.yml
     with:
       os: 'Windows-latest'
-      python-version: '["3.10"]'
+      python-version: '["3.11"]'
       pytorch-version: '["1.9.1", "2.1.0"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
 
@@ -61,7 +62,7 @@ jobs:
   tests-coverage:
     uses: ./.github/workflows/tests.yml
     with:
-      python-version: '["3.10"]'
+      python-version: '["3.11"]'
       pytorch-version: '["2.1.0"]'
       pytorch-dtype: 'float32,float64'
       coverage: true

@@ -11,7 +11,7 @@ Use the actions:
 - `setup-python@v4`
 
 Has the inputs:
-- `python-version`: (string, default: `'3.10'`) the python version desired.
+- `python-version`: (string, default: `'3.11'`) the python version desired.
   - The version should be supported by `setup-python@v4` action.
 - `pytorch-version`: (string, default: `'2.1.0`') the pytorch version desired.
   - This value will be used to install pytorch using conda from pytorch
@@ -33,7 +33,7 @@ Use the actions:
 
 Has the inputs:
 - `os`: (string, default: `ubuntu-latest`) the OS name same as supported by [gha](https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#choosing-github-hosted-runners).
-- `python-version`: (json list of strings, default: `'["3.10"]'`) a string with
+- `python-version`: (json list of strings, default: `'["3.11"]'`) a string with
   format of a json list within strings for each python version desired.
 - `pytorch-version`: (json list of strings, default: `'["2.1.0"]'`) a string
   with format of a json list within strings for each pytorch version desired.
@@ -58,7 +58,7 @@ Use the actions:
 
 Has the inputs:
 - `os`: (string, default: `ubuntu-latest`) the OS name same as supported by [gha](https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#choosing-github-hosted-runners).
-- `python-version`: (json list of strings, default: `'["3.10"]'`) a string with
+- `python-version`: (json list of strings, default: `'["3.11"]'`) a string with
   format of a json list within strings for each python version desired.
 - `pytorch-version`: (json list of strings, default: `'["2.1.0"]'`) a string
   with format of a json list within strings for each pytorch version desired.
@@ -78,7 +78,7 @@ Use the actions:
 
 Has the inputs:
 - `os`: (string, default: `ubuntu-latest`) the OS name same as supported by [gha](https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#choosing-github-hosted-runners).
-- `python-version`: (json list of strings, default: `'["3.10"]'`) a string with
+- `python-version`: (json list of strings, default: `'["3.11"]'`) a string with
   format of a json list within strings for each python version desired.
 - `pytorch-version`: (json list of strings, default: `'["2.1.0"]'`) a string
   with format of a json list within strings for each pytorch version desired.
