@@ -698,7 +698,7 @@ class TestAffine2d:
         batch_size, _, height, width = 1, 1, 96, 96
         angle, translations = 6.971339922894188, (0.0, -4.0)
         scale, shear = [0.7785685905190581, 0.7785685905190581], [11.8235607082617, 7.06797949691645]
-        matrix_expected = T([[1.27536969, 4.26828945e-01, -3.2876e01], [2.18297196e-03, 1.29424165e00, -1.1717e01]])
+        matrix_expected = T([[1.27536969, 4.26828945e-01, -3.2349e01], [2.18297196e-03, 1.29424165e00, -9.1996e00]])
         center = T([float(width), float(height)]).view(1, 2) / 2.0 + 0.5
         center = center.expand(batch_size, -1)
         matrix_kornia = kornia.geometry.transform.get_affine_matrix2d(
@@ -731,3 +731,21 @@ class TestGetAffineMatrix:
 
         out = kornia.geometry.transform.warp_affine(img, affine_mat[:, :2], (H, W))
         assert_close(out, expected)
+
+
+class TestGetShearMatrix:
+    def test_get_shear_matrix2d_with_controlled_values(self, device, dtype):
+        # Define controlled values for shear angles and center
+        sx = torch.tensor([0.5], device=device, dtype=dtype)
+        sy = torch.tensor([0.25], device=device, dtype=dtype)
+        center = torch.tensor([[0.0, 0.0]], device=device, dtype=dtype)
+
+        # Calculate the shear matrix using your function
+        out = kornia.geometry.transform.get_shear_matrix2d(center, sx=sx, sy=sy)
+
+        # Define the expected shear matrix with controlled numbers
+        expected = torch.tensor(
+            [[[1.0, -0.5463, 0.0], [-0.2553, 1.1395, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
+        )
+
+        assert_close(out, expected, atol=1e-4, rtol=1e-4)
