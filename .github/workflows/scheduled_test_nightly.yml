@@ -21,6 +21,6 @@ jobs:
     uses: ./.github/workflows/tests.yml
     with:
       os: ${{ matrix.os }}
-      python-version: '["3.10"]' # "3.8", "3.9",
+      python-version: '["3.11"]' # "3.8", "3.9",
       pytorch-version: '["nightly"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}

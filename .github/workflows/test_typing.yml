@@ -4,7 +4,7 @@ on:
       python-version:
         required: false
         type: string
-        default: '["3.10"]'
+        default: '["3.11"]'
       pytorch-version:
         required: false
         type: string
@@ -32,6 +32,16 @@ jobs:
             python-version: '3.10'
           - pytorch-version: '1.10.2'
             python-version: '3.10'
+          - pytorch-version: '1.9.1'
+            python-version: '3.11'
+          - pytorch-version: '1.10.2'
+            python-version: '3.11'
+          - pytorch-version: '1.11.0'
+            python-version: '3.11'
+          - pytorch-version: '1.12.1'
+            python-version: '3.11'
+          - pytorch-version: '1.13.1'
+            python-version: '3.11'
 
     steps:
     - name: Checkout kornia
