@@ -40,15 +40,15 @@ class RandomShear(GeometricAugmentationBase2D):
         >>> aug = RandomShear((-5., 2., 5., 10.), p=1.)
         >>> out = aug(input)
         >>> out, aug.transform_matrix
-        (tensor([[[[0.4420, 0.7598, 0.1536],
-                  [0.1740, 0.3095, 0.6121],
-                  [0.4450, 0.8892, 0.4045]]]]), tensor([[[ 1.0000,  0.0100, -0.0100],
-                 [-0.1183,  0.9988,  0.1171],
+        (tensor([[[[0.4403, 0.7614, 0.1516],
+                  [0.1753, 0.3074, 0.6127],
+                  [0.4438, 0.8924, 0.4061]]]]), tensor([[[ 1.0000,  0.0100, -0.0100],
+                 [-0.1183,  0.9988,  0.1194],
                  [ 0.0000,  0.0000,  1.0000]]]))
         >>> aug.inverse(out)
-        tensor([[[[0.4068, 0.7549, 0.1404],
-                  [0.2051, 0.3111, 0.5562],
-                  [0.3985, 0.8816, 0.4257]]]])
+        tensor([[[[0.4045, 0.7577, 0.1393],
+                  [0.2071, 0.3074, 0.5582],
+                  [0.3958, 0.8868, 0.4265]]]])
 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
         >>> input = torch.randn(1, 3, 32, 32)
