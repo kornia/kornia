@@ -7,6 +7,7 @@ import pytest
 import torch
 
 import kornia
+from kornia.utils._compat import torch_version
 
 
 def get_test_devices() -> Dict[str, torch.device]:
@@ -67,8 +68,9 @@ def dtype(dtype_name) -> torch.dtype:
 @pytest.fixture(scope='session')
 def torch_optimizer():
     if hasattr(torch, 'compile') and sys.platform == "linux":
-        # torch.set_float32_matmul_precision('high')
-        return torch.compile
+        if not (sys.version_info[:2] == (3, 11) and torch_version() in {'2.0.0', '2.0.1'}):
+            # torch compile just have support for python 3.11 after torch 2.1.0
+            return torch.compile
 
     pytest.skip(f"skipped because {torch.__version__} not have `compile` available! Failed to setup dynamo.")
 
