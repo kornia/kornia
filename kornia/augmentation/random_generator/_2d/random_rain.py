@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import torch
-import randint
-from kornia.utils import draw_line
+
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
 from kornia.core import Tensor
-from kornia.utils import _extract_device_dtype
+from kornia.utils import _extract_device_dtype, draw_line
 
 
 class RainGenerator(RandomGeneratorBase):
@@ -77,10 +76,19 @@ class RainGenerator(RandomGeneratorBase):
         }
 
     import torch
-import random
-import math
 
-def random_rain_augmentation(image: torch.Tensor, num_raindrops: int = 100, min_length: int = 5, max_length: int = 15, color: torch.Tensor = torch.tensor([255])) -> torch.Tensor:
+
+import math
+import random
+
+
+def random_rain_augmentation(
+    image: torch.Tensor,
+    num_raindrops: int = 100,
+    min_length: int = 5,
+    max_length: int = 15,
+    color: torch.Tensor = torch.tensor([255]),
+) -> torch.Tensor:
     r"""Apply random rain augmentation to the input image.
 
     Args:
@@ -97,20 +105,20 @@ def random_rain_augmentation(image: torch.Tensor, num_raindrops: int = 100, min_
 
     for _ in range(num_raindrops):
         # Randomly select the starting point
-        start_x = random.randint(0, W-1)
-        start_y = random.randint(0, H-1)
+        start_x = random.randint(0, W - 1)
+        start_y = random.randint(0, H - 1)
 
         # Randomly select the length and angle of the raindrop
         length = random.uniform(min_length, max_length)
-        angle = random.uniform(math.pi/4, 3*math.pi/4)  # Rain typically falls at angles between 45 to 135 degrees
+        angle = random.uniform(math.pi / 4, 3 * math.pi / 4)  # Rain typically falls at angles between 45 to 135 degrees
 
         # Compute end point using trigonometry
         end_x = start_x + length * math.cos(angle)
         end_y = start_y + length * math.sin(angle)
 
         # Clip the coordinates to be within the image boundaries
-        end_x = min(max(0, end_x), W-1)
-        end_y = min(max(0, end_y), H-1)
+        end_x = min(max(0, end_x), W - 1)
+        end_y = min(max(0, end_y), H - 1)
 
         # Convert the start and end points to torch tensors
         p1 = torch.tensor([start_x, start_y])
@@ -120,4 +128,3 @@ def random_rain_augmentation(image: torch.Tensor, num_raindrops: int = 100, min_
         image = draw_line(image, p1, p2, color)
 
     return image
-
