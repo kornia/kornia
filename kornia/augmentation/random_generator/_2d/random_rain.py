@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import torch
-
+import randint
+from kornia.utils import draw_line
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
 from kornia.core import Tensor
@@ -75,27 +76,48 @@ class RainGenerator(RandomGeneratorBase):
             'drop_width_factor': drop_width_factor,
         }
 
-    def draw_line(self, img: torch.Tensor, intensity: float = 0.3) -> torch.Tensor:
-        """Draws the drops on the image by changing its pixels' intensity."""
-        image = img.clone()
-        if len(image.shape) != 4:
-            raise ValueError("Input image tensor should have shape (B, C, H, W)")
-        B, C, H, W = image.shape
-        # generate rain parameters
-        rain_params = self.forward((B,), same_on_batch=False)
-        num_drops = rain_params['number_of_drops_factor'].item()
-        drop_heights = rain_params['drop_height_factor'].item()
-        drop_widths = rain_params['drop_width_factor'].item()
-        coordinates = rain_params['coordinates_factor']
-        for b in range(B):
-            for drop in range(int(num_drops)):
-                x_start = int(coordinates[b, drop, 0].item() * W)
-                y_start = int(coordinates[b, drop, 1].item() * H)
-                x_end = x_start + drop_widths
-                y_end = y_start + drop_heights
-                # ensure the raindrop is within the image boundaries
-                x_end = int(min(x_end, W))
-                y_end = int(min(y_end, H))
-                image[b, :, y_start:y_end, x_start:x_end] -= intensity  # darken the image where the raindrop is
-        image = torch.clamp(image, 0, 1)  # clip values to ensure they're within [0, 1]
-        return image
+    import torch
+import random
+import math
+
+def random_rain_augmentation(image: torch.Tensor, num_raindrops: int = 100, min_length: int = 5, max_length: int = 15, color: torch.Tensor = torch.tensor([255])) -> torch.Tensor:
+    r"""Apply random rain augmentation to the input image.
+
+    Args:
+        image: the input image with shape :math`(C,H,W)`.
+        num_raindrops: number of raindrops to draw.
+        min_length: minimum length of a raindrop.
+        max_length: maximum length of a raindrop.
+        color: the color of the raindrops.
+
+    Return:
+        the image with raindrops.
+    """
+    H, W = image.shape[1], image.shape[2]
+
+    for _ in range(num_raindrops):
+        # Randomly select the starting point
+        start_x = random.randint(0, W-1)
+        start_y = random.randint(0, H-1)
+
+        # Randomly select the length and angle of the raindrop
+        length = random.uniform(min_length, max_length)
+        angle = random.uniform(math.pi/4, 3*math.pi/4)  # Rain typically falls at angles between 45 to 135 degrees
+
+        # Compute end point using trigonometry
+        end_x = start_x + length * math.cos(angle)
+        end_y = start_y + length * math.sin(angle)
+
+        # Clip the coordinates to be within the image boundaries
+        end_x = min(max(0, end_x), W-1)
+        end_y = min(max(0, end_y), H-1)
+
+        # Convert the start and end points to torch tensors
+        p1 = torch.tensor([start_x, start_y])
+        p2 = torch.tensor([end_x, end_y])
+
+        # Draw the raindrop
+        image = draw_line(image, p1, p2, color)
+
+    return image
+
