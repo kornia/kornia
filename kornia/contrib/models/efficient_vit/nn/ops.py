@@ -10,11 +10,10 @@ from torch.cuda.amp import autocast
 
 from kornia.contrib.models.efficient_vit.nn.act import build_act
 from kornia.contrib.models.efficient_vit.nn.norm import build_norm
-from kornia.contrib.models.efficient_vit.utils import get_same_padding, list_sum, resize, val2list, val2tuple
+from kornia.contrib.models.efficient_vit.utils import get_same_padding, list_sum, val2tuple
 
 __all__ = [
     "ConvLayer",
-    "UpSampleLayer",
     "LinearLayer",
     "IdentityLayer",
     "DSConv",
@@ -76,22 +75,6 @@ class ConvLayer(nn.Module):
         if self.act:
             x = self.act(x)
         return x
-
-
-class UpSampleLayer(nn.Module):
-    def __init__(
-        self, mode="bicubic", size: int or tuple[int, int] or list[int] or None = None, factor=2, align_corners=False
-    ):
-        super().__init__()
-        self.mode = mode
-        self.size = val2list(size, 2) if size is not None else None
-        self.factor = None if self.size is not None else factor
-        self.align_corners = align_corners
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if (self.size is not None and tuple(x.shape[-2:]) == self.size) or self.factor == 1:
-            return x
-        return resize(x, self.size, self.factor, self.mode, self.align_corners)
 
 
 class LinearLayer(nn.Module):
