@@ -76,62 +76,58 @@ class RainGenerator(RandomGeneratorBase):
         }
 
 
-def random_rain_augmentation(
-    image: torch.Tensor,
-    num_raindrops: int = 100,
-    min_length: int = 5,
-    max_length: int = 15,
-    color: torch.Tensor = torch.tensor([255]),
-) -> torch.Tensor:
+    def random_rain_augmentation(
+        image: torch.Tensor,
+        num_raindrops: int = 100,
+        min_length: int = 5,
+        max_length: int = 15,
+        color: torch.Tensor = torch.tensor([255]),
+    ) -> torch.Tensor:
+        """Apply random rain augmentation to the input image.
+        Args:
+            image (torch.Tensor): the input image with shape :math:`(C,H,W)`.
+            num_raindrops (int, optional): number of raindrops to draw. Defaults to 100.
+            min_length (int, optional): minimum length of a raindrop. Defaults to 5.
+            max_length (int, optional): maximum length of a raindrop. Defaults to 15.
+            color (torch.Tensor, optional): the color of the raindrops. Defaults to torch.tensor([255]).
+    
+        Returns:
+            torch.Tensor: The image with raindrops.
+        Doctests:
+        >>> import torch
+        >>> image = torch.zeros(3, 10, 10)  # A 10x10 black image with 3 channels
+        >>> no_rain = random_rain_augmentation(image, 0)  # Applying augmentation with 0 raindrops
+        >>> torch.equal(no_rain, image)
+        True
+    
+        >>> rain_img = random_rain_augmentation(image, 1000)  # Applying augmentation with 1000 raindrops
+        >>> torch.equal(rain_img, image)
+        False
+    
+        >>> # Applying augmentation with custom raindrop color
+        >>> custom_color = torch.tensor([50, 50, 50])
+        >>> colored_rain_img = random_rain_augmentation(image, 1000, color=custom_color)
+        >>> torch.any(colored_rain_img == 50)
+        True
         """
-    Apply random rain augmentation to the input image.
-    Args:
-        image (torch.Tensor): the input image with shape :math:`(C,H,W)`.
-        num_raindrops (int, optional): number of raindrops to draw. Defaults to 100.
-        min_length (int, optional): minimum length of a raindrop. Defaults to 5.
-        max_length (int, optional): maximum length of a raindrop. Defaults to 15.
-        color (torch.Tensor, optional): the color of the raindrops. Defaults to torch.tensor([255]).
-
-    Returns:
-        torch.Tensor: The image with raindrops.
-
-    Doctests:
-    >>> import torch
-    >>> image = torch.zeros(3, 10, 10)  # A 10x10 black image with 3 channels
-    >>> no_rain = random_rain_augmentation(image, 0)  # Applying augmentation with 0 raindrops
-    >>> torch.equal(no_rain, image)
-    True
-
-    >>> rain_img = random_rain_augmentation(image, 1000)  # Applying augmentation with 1000 raindrops
-    >>> torch.equal(rain_img, image)
-    False
-
-    >>> # Applying augmentation with custom raindrop color
-    >>> custom_color = torch.tensor([50])
-    >>> colored_rain_img = random_rain_augmentation(image, 1000, color=custom_color)
-    >>> torch.any(colored_rain_img == 50)
-    True
-    """
-
-    H, W = image.shape[1], image.shape[2]
-
-    for _ in range(num_raindrops):
-        # Randomly select the starting point
-        start_x = random.randint(0, W - 1)
-        start_y = random.randint(0, H - 1)
-        # Randomly select the length and angle of the raindrop
-        length = random.uniform(min_length, max_length)
-        angle = random.uniform(math.pi / 4, 3 * math.pi / 4)  # Rain typically falls at angles between 45 to 135 degrees
-        # Compute end point using trigonometry
-        end_x = start_x + length * math.cos(angle)
-        end_y = start_y + length * math.sin(angle)
-        # Clip the coordinates to be within the image boundaries
-        end_x = min(max(0, end_x), W - 1)
-        end_y = min(max(0, end_y), H - 1)
-        # Convert the start and end points to torch tensors
-        p1 = torch.tensor([start_x, start_y])
-        p2 = torch.tensor([end_x, end_y])
-        # Draw the raindrop
-        image = draw_line(image, p1, p2, color)
-
-    return image
+        H, W = image.shape[1], image.shape[2]
+        for _ in range(num_raindrops):
+            # Randomly select the starting point
+            start_x = random.randint(0, W - 1)
+            start_y = random.randint(0, H - 1)
+            # Randomly select the length and angle of the raindrop
+            length = random.uniform(min_length, max_length)
+            angle = random.uniform(math.pi / 4, 3 * math.pi / 4)  # Rain typically falls at angles between 45 to 135 degrees
+            # Compute end point using trigonometry
+            end_x = start_x + length * math.cos(angle)
+            end_y = start_y + length * math.sin(angle)
+            # Clip the coordinates to be within the image boundaries
+            end_x = min(max(0, end_x), W - 1)
+            end_y = min(max(0, end_y), H - 1)
+            # Convert the start and end points to torch tensors
+            p1 = torch.tensor([start_x, start_y])
+            p2 = torch.tensor([end_x, end_y])
+            # Draw the raindrop
+            image = draw_line(image, p1, p2, color)
+    
+        return image
