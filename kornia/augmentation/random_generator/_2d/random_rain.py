@@ -1,10 +1,7 @@
 from __future__ import annotations
-
 import math
 import random
-
 import torch
-
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
 from kornia.core import Tensor
@@ -86,34 +83,36 @@ def random_rain_augmentation(
     max_length: int = 15,
     color: torch.Tensor = torch.tensor([255]),
 ) -> torch.Tensor:
-    r"""Apply random rain augmentation to the input image.
-
+        """
+    Apply random rain augmentation to the input image.
     Args:
-        image: the input image with shape :math`(C,H,W)`.
-        num_raindrops: number of raindrops to draw.
-        min_length: minimum length of a raindrop.
-        max_length: maximum length of a raindrop.
-        color: the color of the raindrops.
+        image (torch.Tensor): the input image with shape :math:`(C,H,W)`.
+        num_raindrops (int, optional): number of raindrops to draw. Defaults to 100.
+        min_length (int, optional): minimum length of a raindrop. Defaults to 5.
+        max_length (int, optional): maximum length of a raindrop. Defaults to 15.
+        color (torch.Tensor, optional): the color of the raindrops. Defaults to torch.tensor([255]).
 
-    Return:
-        The image with raindrops.
+    Returns:
+        torch.Tensor: The image with raindrops.
+
     Doctests:
     >>> import torch
-    >>> image = torch.zeros(3, 10, 10) # A black 10x10 image with 3 channels
-    >>> output = random_rain_augmentation(image, 0) # No raindrops
-    >>> torch.equal(output, image) # Expect True since no raindrops were added
+    >>> image = torch.zeros(3, 10, 10)  # A 10x10 black image with 3 channels
+    >>> no_rain = random_rain_augmentation(image, 0)  # Applying augmentation with 0 raindrops
+    >>> torch.equal(no_rain, image)  
     True
 
-    >>> output_with_rain = random_rain_augmentation(image, 1000) # Lots of raindrops
-    >>> torch.equal(output_with_rain, image) # Expect False since raindrops were added
+    >>> rain_img = random_rain_augmentation(image, 1000)  # Applying augmentation with 1000 raindrops
+    >>> torch.equal(rain_img, image)
     False
 
-    >>> # Test with custom color
+    >>> # Applying augmentation with custom raindrop color
     >>> custom_color = torch.tensor([50])
-    >>> output_custom_color = random_rain_augmentation(image, 1000, color=custom_color)
-    >>> torch.any(output_custom_color == 50) # Expect True since raindrops of color 50 were added
+    >>> colored_rain_img = random_rain_augmentation(image, 1000, color=custom_color)
+    >>> torch.any(colored_rain_img == 50)
     True
     """
+
     H, W = image.shape[1], image.shape[2]
 
     for _ in range(num_raindrops):
