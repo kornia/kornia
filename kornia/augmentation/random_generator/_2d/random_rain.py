@@ -1,7 +1,10 @@
 from __future__ import annotations
+
 import math
 import random
+
 import torch
+
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
 from kornia.core import Tensor
@@ -75,7 +78,6 @@ class RainGenerator(RandomGeneratorBase):
             'drop_width_factor': drop_width_factor,
         }
 
-
     def random_rain_augmentation(
         image: torch.Tensor,
         num_raindrops: int = 100,
@@ -90,7 +92,7 @@ class RainGenerator(RandomGeneratorBase):
             min_length (int, optional): minimum length of a raindrop. Defaults to 5.
             max_length (int, optional): maximum length of a raindrop. Defaults to 15.
             color (torch.Tensor, optional): the color of the raindrops. Defaults to torch.tensor([255]).
-    
+
         Returns:
             torch.Tensor: The image with raindrops.
         Doctests:
@@ -99,11 +101,11 @@ class RainGenerator(RandomGeneratorBase):
         >>> no_rain = random_rain_augmentation(image, 0)  # Applying augmentation with 0 raindrops
         >>> torch.equal(no_rain, image)
         True
-    
+
         >>> rain_img = random_rain_augmentation(image, 1000)  # Applying augmentation with 1000 raindrops
         >>> torch.equal(rain_img, image)
         False
-    
+
         >>> # Applying augmentation with custom raindrop color
         >>> custom_color = torch.tensor([50, 50, 50])
         >>> colored_rain_img = random_rain_augmentation(image, 1000, color=custom_color)
@@ -117,7 +119,9 @@ class RainGenerator(RandomGeneratorBase):
             start_y = random.randint(0, H - 1)
             # Randomly select the length and angle of the raindrop
             length = random.uniform(min_length, max_length)
-            angle = random.uniform(math.pi / 4, 3 * math.pi / 4)  # Rain typically falls at angles between 45 to 135 degrees
+            angle = random.uniform(
+                math.pi / 4, 3 * math.pi / 4
+            )  # Rain typically falls at angles between 45 to 135 degrees
             # Compute end point using trigonometry
             end_x = start_x + length * math.cos(angle)
             end_y = start_y + length * math.sin(angle)
@@ -129,5 +133,5 @@ class RainGenerator(RandomGeneratorBase):
             p2 = torch.tensor([end_x, end_y])
             # Draw the raindrop
             image = draw_line(image, p1, p2, color)
-    
+
         return image
