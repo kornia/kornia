@@ -99,7 +99,7 @@ def random_rain_augmentation(
     >>> import torch
     >>> image = torch.zeros(3, 10, 10)  # A 10x10 black image with 3 channels
     >>> no_rain = random_rain_augmentation(image, 0)  # Applying augmentation with 0 raindrops
-    >>> torch.equal(no_rain, image)  
+    >>> torch.equal(no_rain, image)
     True
 
     >>> rain_img = random_rain_augmentation(image, 1000)  # Applying augmentation with 1000 raindrops
