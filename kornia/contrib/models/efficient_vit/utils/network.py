@@ -3,13 +3,12 @@
 # International Conference on Computer Vision (ICCV), 2023
 from __future__ import annotations
 
-import os
 from inspect import signature
 
 import torch
 from torch import nn
 
-__all__ = ["is_parallel", "get_device", "get_same_padding", "build_kwargs_from_config", "load_state_dict_from_file"]
+__all__ = ["is_parallel", "get_device", "get_same_padding", "build_kwargs_from_config"]
 
 
 def is_parallel(model: nn.Module) -> bool:
@@ -35,11 +34,3 @@ def build_kwargs_from_config(config: dict, target_func: callable) -> dict[str, a
         if key in valid_keys:
             kwargs[key] = config[key]
     return kwargs
-
-
-def load_state_dict_from_file(file: str, only_state_dict=True) -> dict[str, torch.Tensor]:
-    file = os.path.realpath(os.path.expanduser(file))
-    checkpoint = torch.load(file, map_location="cpu")
-    if only_state_dict and "state_dict" in checkpoint:
-        checkpoint = checkpoint["state_dict"]
-    return checkpoint
