@@ -79,13 +79,7 @@ class RainGenerator(RandomGeneratorBase):
         }
 
     def random_rain_augmentation(
-        self,
-        image: torch.Tensor,
-        num_raindrops: int = 100,
-        min_length: int = 5,
-        max_length: int = 15,
-        color: torch.Tensor = torch.tensor([255]),
-    ) -> torch.Tensor:
+        self, image: torch.Tensor, num_raindrops: int = 100, min_length: int = 5, max_length: int = 15, color: torch.Tensor = torch.tensor([255]))) -> torch.Tensor:
         """Apply random rain augmentation to the input image.
         Args:
             image (torch.Tensor): the input image with shape :math:`(C,H,W)`.
@@ -98,15 +92,16 @@ class RainGenerator(RandomGeneratorBase):
             torch.Tensor: The image with raindrops.
         Doctests:
         >>> import torch
-        >>> aug = RainGenerator(100, 5, 15)
-        >>> image = torch.zeros(3, 10, 10)
-        >>> no_rain = aug.random_rain_augmentation(image, 0)
+        >>> aug = RainGenerator((50, 150), (3, 7), (1, 3))  # Initialize the RainGenerator
+        >>> image = torch.zeros(3, 10, 10)  # A 10x10 black image with 3 channels
+        >>> no_rain = aug.random_rain_augmentation(image, 0)  # Applying augmentation with 0 raindrops
         >>> torch.equal(no_rain, image)
         True
         >>> rain_img = aug.random_rain_augmentation(image, 1000)
         >>> torch.equal(rain_img, image)
         False
-        >>> custom_color = torch.tensor([50, 50, 50])
+
+        >>> custom_color = torch.tensor([50, 50, 50])  # Custom color for the raindrops
         >>> colored_rain_img = aug.random_rain_augmentation(image, 1000, color=custom_color)
         >>> torch.any(colored_rain_img == 50)
         True
