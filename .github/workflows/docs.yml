@@ -52,11 +52,14 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
         pytorch-version: ${{ matrix.pytorch-version }}
-        extra-dependencies: 'docs'
 
     - name: Run doctest
       shell: bash -l {0}
       run: make doctest
+
+    - name: Install docs deps
+      shell: bash -l {0}
+      run: pip install -e .[docs]
 
     - name: Build Documentation
       shell: bash -l {0}
