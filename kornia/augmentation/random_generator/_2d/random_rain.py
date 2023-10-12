@@ -79,7 +79,7 @@ class RainGenerator(RandomGeneratorBase):
         }
 
     def random_rain_augmentation(
-        self, image: torch.Tensor, num_raindrops: int = 100, min_length: int = 5, max_length: int = 15, color: torch.Tensor = torch.tensor([255]))) -> torch.Tensor:
+        self, image: torch.Tensor, num_raindrops: int = 100, min_length: int = 5, max_length: int = 15, color: torch.Tensor = torch.tensor([255])) -> torch.Tensor:
         """Apply random rain augmentation to the input image.
         Args:
             image (torch.Tensor): the input image with shape :math:`(C,H,W)`.
