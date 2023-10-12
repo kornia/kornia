@@ -1,7 +1,10 @@
 from __future__ import annotations
+
 import math
 import random
+
 import torch
+
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
 from kornia.core import Tensor
@@ -76,7 +79,13 @@ class RainGenerator(RandomGeneratorBase):
         }
 
     def random_rain_augmentation(
-        self,image_val: torch.Tensor,num_raindrops: int = 100,min_length: int = 5,max_length: int = 15, color: torch.Tensor = None)-> torch.Tensor:
+        self,
+        image_val: torch.Tensor,
+        num_raindrops: int = 100,
+        min_length: int = 5,
+        max_length: int = 15,
+        color: torch.Tensor = None,
+    ) -> torch.Tensor:
         """Apply random rain augmentation to the input image.
         Args:
             image (torch.Tensor): the input image with shape :math:`(C,H,W)`.
