@@ -13,7 +13,7 @@ on:
         required: false
         type: string
         default: ubuntu-latest
-      continue-on-error:
+      fail-fast:
         required: false
         type: boolean
         default: false
