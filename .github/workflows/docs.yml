@@ -20,7 +20,7 @@ on:
 
 jobs:
   tests:
-    name: docstrings & doc builds - python-${{ matrix.python-version }}, torch-${{ matrix.pytorch-version }}
+    name: docstests & sphinx-build - python-${{ matrix.python-version }}, torch-${{ matrix.pytorch-version }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: ${{ inputs.fail-fast }}
