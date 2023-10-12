@@ -14,7 +14,11 @@ on:
         required: true
         default: '2.1.0'
         type: string
-
+      extra-dependencies:
+        description: "Kornia extra dependencies to be installed"
+        required: false
+        default: 'dev,x'
+        type: string
 runs:
   using: "composite"
   steps:
@@ -33,9 +37,9 @@ runs:
       shell: bash
       run: pip install torch==${{ inputs.pytorch-version }} --index-url https://download.pytorch.org/whl/cpu
 
-    - name: Install Kornia dev
+    - name: Install Kornia ${{ inputs.extra-dependencies }}
       shell: bash
-      run: pip install .[dev,x]
+      run: pip install .[${{ inputs.extra-dependencies }}]
 
     - name: Check dependencies and kornia version
       shell: bash
