@@ -51,7 +51,7 @@ class RainGenerator(RandomGeneratorBase):
         self.drop_height_sampler = UniformDistribution(drop_height[0], drop_height[1], validate_args=False)
         self.drop_width_sampler = UniformDistribution(drop_width[0], drop_width[1], validate_args=False)
         self.coordinates_sampler = UniformDistribution(drop_coordinates[0], drop_coordinates[1], validate_args=False)
-
+        
     def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
@@ -78,14 +78,8 @@ class RainGenerator(RandomGeneratorBase):
             'drop_width_factor': drop_width_factor,
         }
 
-
-     def random_rain_augmentation(
-        self,
-        image_val: torch.Tensor,
-        num_raindrops: int = 100,
-        min_length: int = 5,
-        max_length: int = 15,
-        color: torch.Tensor = None)-> torch.Tensor:
+   def random_rain_augmentation(
+        self,image_val: torch.Tensor,num_raindrops: int = 100,min_length: int = 5,max_length: int = 15, color: torch.Tensor = None)-> torch.Tensor:
         """Apply random rain augmentation to the input image.
         Args:
             image (torch.Tensor): the input image with shape :math:`(C,H,W)`.
