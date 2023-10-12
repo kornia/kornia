@@ -84,7 +84,7 @@ class RainGenerator(RandomGeneratorBase):
         num_raindrops: int = 100,
         min_length: int = 5,
         max_length: int = 15,
-        color: torch.Tensor = torch.tensor([255]),
+        color: torch.Tensor = None),
     ) -> torch.Tensor:
         """Apply random rain augmentation to the input image.
         Args:
@@ -112,6 +112,9 @@ class RainGenerator(RandomGeneratorBase):
         >>> torch.any(colored_rain_img == 50)
         True
         """
+        if color is None:
+            num_channels = image.shape[0]
+            color = torch.tensor([255] * num_channels).to(image.device)
         H, W = image.shape[1], image.shape[2]
         for _ in range(num_raindrops):
             # Randomly select the starting point
