@@ -19,8 +19,8 @@ on:
         default: false
 
 jobs:
-  docstrings-test:
-    name: python-${{ matrix.python-version }}, torch-${{ matrix.pytorch-version }}
+  tests:
+    name: docstrings & doc builds - python-${{ matrix.python-version }}, torch-${{ matrix.pytorch-version }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: ${{ inputs.fail-fast }}
@@ -47,7 +47,7 @@ jobs:
     - name: Checkout kornia
       uses: actions/checkout@v3
 
-    - name: Setting environment on ${{ inputs.os }} with python ${{ matrix.python-version }} and pytorch ${{ matrix.pytorch-ver»
+    - name: Setting environment on ${{ inputs.os }} with python ${{ matrix.python-version }} and pytorch ${{ matrix.pytorch-version }}
       uses: ./.github/actions/env
       with:
         python-version: ${{ matrix.python-version }}
