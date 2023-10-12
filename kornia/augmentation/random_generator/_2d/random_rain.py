@@ -1,10 +1,7 @@
 from __future__ import annotations
-
 import math
 import random
-
 import torch
-
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
 from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
 from kornia.core import Tensor
@@ -78,7 +75,8 @@ class RainGenerator(RandomGeneratorBase):
             'drop_width_factor': drop_width_factor,
         }
 
-    def random_rain_augmentation(
+    
+    def random_rain_augmentation(self,
         image: torch.Tensor,
         num_raindrops: int = 100,
         min_length: int = 5,
@@ -97,18 +95,16 @@ class RainGenerator(RandomGeneratorBase):
             torch.Tensor: The image with raindrops.
         Doctests:
         >>> import torch
-        >>> image = torch.zeros(3, 10, 10)  # A 10x10 black image with 3 channels
-        >>> no_rain = random_rain_augmentation(image, 0)  # Applying augmentation with 0 raindrops
+        >>> aug = RainGenerator(100, 5, 15)
+        >>> image = torch.zeros(3, 10, 10)
+        >>> no_rain = aug.random_rain_augmentation(image, 0)
         >>> torch.equal(no_rain, image)
         True
-
-        >>> rain_img = random_rain_augmentation(image, 1000)  # Applying augmentation with 1000 raindrops
+        >>> rain_img = aug.random_rain_augmentation(image, 1000)
         >>> torch.equal(rain_img, image)
         False
-
-        >>> # Applying augmentation with custom raindrop color
         >>> custom_color = torch.tensor([50, 50, 50])
-        >>> colored_rain_img = random_rain_augmentation(image, 1000, color=custom_color)
+        >>> colored_rain_img = aug.random_rain_augmentation(image, 1000, color=custom_color)
         >>> torch.any(colored_rain_img == 50)
         True
         """
