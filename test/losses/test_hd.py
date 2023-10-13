@@ -46,8 +46,7 @@ class HausdorffERLossNumpy(nn.Module):
             for k in range(self.erosions):
                 # compute convolution with kernel
                 dilation = torch.conv2d(
-                    torch.tensor(bound[batch], dtype=torch.float32),
-                    torch.tensor(kernel, dtype=torch.float32),
+                    torch.tensor(bound[batch], dtype=torch.float32), torch.tensor(kernel, dtype=torch.float32)
                 )[0].numpy()
                 # apply soft thresholding at 0.5 and normalize
                 erosion = dilation - 0.5
