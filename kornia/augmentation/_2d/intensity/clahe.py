@@ -1,6 +1,5 @@
 from typing import Any, Dict, Optional, Tuple
 
-import torch
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.core import Tensor
@@ -45,7 +44,7 @@ class RandomClahe(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        clip_limit: Tuple[float, float] = (40., 40.),
+        clip_limit: Tuple[float, float] = (40.0, 40.0),
         grid_size: Tuple[int, int] = (8, 8),
         slow_and_differentiable: bool = False,
         same_on_batch: bool = False,
@@ -55,10 +54,7 @@ class RandomClahe(IntensityAugmentationBase2D):
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
         self.clip_limit = clip_limit
         self._param_generator = rg.PlainUniformGenerator((self.clip_limit, "clip_limit_factor", None, None))
-        self.flags = {
-            "grid_size": grid_size,
-            "slow_and_differentiable": slow_and_differentiable,
-        }
+        self.flags = {"grid_size": grid_size, "slow_and_differentiable": slow_and_differentiable}
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
