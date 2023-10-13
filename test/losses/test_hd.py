@@ -1,7 +1,6 @@
 import numpy as np
 import pytest
 import torch
-from scipy.ndimage import convolve
 from torch import nn
 from torch.autograd import gradcheck
 
@@ -46,8 +45,10 @@ class HausdorffERLossNumpy(nn.Module):
         for batch in range(len(bound)):
             for k in range(self.erosions):
                 # compute convolution with kernel
-                dilation = convolve(bound[batch], kernel, mode="constant", cval=0.0)
-
+                dilation = torch.conv2d(
+                    torch.tensor(bound[batch], dtype=torch.float32),
+                    torch.tensor(kernel, dtype=torch.float32),
+                )[0].numpy()
                 # apply soft thresholding at 0.5 and normalize
                 erosion = dilation - 0.5
                 erosion[erosion < 0] = 0
