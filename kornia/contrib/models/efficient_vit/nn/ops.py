@@ -1,7 +1,8 @@
 # EfficientViT: Multi-Scale Linear Attention for High-Resolution Dense Prediction
 # Han Cai, Junyan Li, Muyan Hu, Chuang Gan, Song Han
 # International Conference on Computer Vision (ICCV), 2023
-from __future__ import annotations
+
+# type: ignore
 
 import torch
 import torch.nn.functional as F
@@ -10,23 +11,19 @@ from torch.cuda.amp import autocast
 
 from kornia.contrib.models.efficient_vit.nn.act import build_act
 from kornia.contrib.models.efficient_vit.nn.norm import build_norm
-from kornia.contrib.models.efficient_vit.utils import get_same_padding, list_sum, val2tuple
+from kornia.contrib.models.efficient_vit.utils import get_same_padding, val2tuple
 
 __all__ = [
     "ConvLayer",
-    "LinearLayer",
-    "IdentityLayer",
     "DSConv",
-    "MBConv",
-    "FusedMBConv",
-    "ResBlock",
-    "LiteMLA",
     "EfficientViTBlock",
-    "ResidualBlock",
-    "DAGBlock",
+    "FusedMBConv",
+    "IdentityLayer",
+    "MBConv",
     "OpSequential",
+    "ResBlock",
+    "ResidualBlock",
 ]
-
 
 #################################################################################
 #                             Basic Layers                                      #
@@ -425,43 +422,6 @@ class ResidualBlock(nn.Module):
             if self.post_act:
                 res = self.post_act(res)
         return res
-
-
-class DAGBlock(nn.Module):
-    def __init__(
-        self,
-        inputs: dict[str, nn.Module],
-        merge: str,
-        post_input: nn.Module or None,
-        middle: nn.Module,
-        outputs: dict[str, nn.Module],
-    ):
-        super().__init__()
-
-        self.input_keys = list(inputs.keys())
-        self.input_ops = nn.ModuleList(list(inputs.values()))
-        self.merge = merge
-        self.post_input = post_input
-
-        self.middle = middle
-
-        self.output_keys = list(outputs.keys())
-        self.output_ops = nn.ModuleList(list(outputs.values()))
-
-    def forward(self, feature_dict: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
-        feat = [op(feature_dict[key]) for key, op in zip(self.input_keys, self.input_ops)]
-        if self.merge == "add":
-            feat = list_sum(feat)
-        elif self.merge == "cat":
-            feat = torch.concat(feat, dim=1)
-        else:
-            raise NotImplementedError
-        if self.post_input is not None:
-            feat = self.post_input(feat)
-        feat = self.middle(feat)
-        for key, op in zip(self.output_keys, self.output_ops):
-            feature_dict[key] = op(feat)
-        return feature_dict
 
 
 class OpSequential(nn.Module):

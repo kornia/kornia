@@ -3,13 +3,12 @@
 # International Conference on Computer Vision (ICCV), 2023
 from __future__ import annotations
 
+from typing import Any, Optional
+
 import torch
 from torch import nn
-from torch.nn.modules.batchnorm import _BatchNorm
 
 from kornia.contrib.models.efficient_vit.utils import build_kwargs_from_config
-
-__all__ = ["LayerNorm2d", "build_norm", "set_norm_eps"]
 
 
 class LayerNorm2d(nn.LayerNorm):
@@ -25,7 +24,7 @@ class LayerNorm2d(nn.LayerNorm):
 REGISTERED_NORM_DICT: dict[str, type] = {"bn2d": nn.BatchNorm2d, "ln": nn.LayerNorm, "ln2d": LayerNorm2d}
 
 
-def build_norm(name="bn2d", num_features=None, **kwargs) -> nn.Module or None:
+def build_norm(name: str = "bn2d", num_features: Optional[int] = None, **kwargs: Any) -> Optional[nn.Module]:
     if name in ["ln", "ln2d"]:
         kwargs["normalized_shape"] = num_features
     else:
@@ -36,10 +35,3 @@ def build_norm(name="bn2d", num_features=None, **kwargs) -> nn.Module or None:
         return norm_cls(**args)
     else:
         return None
-
-
-def set_norm_eps(model: nn.Module, eps: float or None = None) -> None:
-    for m in model.modules():
-        if isinstance(m, (nn.GroupNorm, nn.LayerNorm, _BatchNorm)):
-            if eps is not None:
-                m.eps = eps

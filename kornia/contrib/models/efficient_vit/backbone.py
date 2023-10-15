@@ -3,12 +3,12 @@
 # International Conference on Computer Vision (ICCV), 2023
 from __future__ import annotations
 
+from typing import Any
+
 import torch
 from torch import nn
 
-from kornia.contrib.models.efficient_vit.utils import build_kwargs_from_config
-
-from .nn import (
+from kornia.contrib.models.efficient_vit.nn.ops import (  # type: ignore
     ConvLayer,
     DSConv,
     EfficientViTBlock,
@@ -19,19 +19,7 @@ from .nn import (
     ResBlock,
     ResidualBlock,
 )
-
-__all__ = [
-    "EfficientViTBackbone",
-    "efficientvit_backbone_b0",
-    "efficientvit_backbone_b1",
-    "efficientvit_backbone_b2",
-    "efficientvit_backbone_b3",
-    "EfficientViTLargeBackbone",
-    "efficientvit_backbone_l0",
-    "efficientvit_backbone_l1",
-    "efficientvit_backbone_l2",
-    "efficientvit_backbone_l3",
-]
+from kornia.contrib.models.efficient_vit.utils import build_kwargs_from_config
 
 
 class EfficientViTBackbone(nn.Module):
@@ -39,17 +27,19 @@ class EfficientViTBackbone(nn.Module):
         self,
         width_list: list[int],
         depth_list: list[int],
-        in_channels=3,
-        dim=32,
-        expand_ratio=4,
-        norm="bn2d",
-        act_func="hswish",
+        in_channels: int = 3,
+        dim: int = 32,
+        expand_ratio: float = 4.0,
+        norm: str = "bn2d",
+        act_func: str = "hswish",
     ) -> None:
         super().__init__()
 
         self.width_list = []
         # input stem
-        self.input_stem = [ConvLayer(in_channels=3, out_channels=width_list[0], stride=2, norm=norm, act_func=act_func)]
+        input_stem = [
+            ConvLayer(in_channels=in_channels, out_channels=width_list[0], stride=2, norm=norm, act_func=act_func)
+        ]
         for _ in range(depth_list[0]):
             block = self.build_local_block(
                 in_channels=width_list[0],
@@ -59,13 +49,13 @@ class EfficientViTBackbone(nn.Module):
                 norm=norm,
                 act_func=act_func,
             )
-            self.input_stem.append(ResidualBlock(block, IdentityLayer()))
+            input_stem.append(ResidualBlock(block, IdentityLayer()))
         in_channels = width_list[0]
-        self.input_stem = OpSequential(self.input_stem)
+        self.input_stem = OpSequential(input_stem)
         self.width_list.append(in_channels)
 
         # stages
-        self.stages = []
+        stages = []
         for w, d in zip(width_list[1:3], depth_list[1:3]):
             stage = []
             for i in range(d):
@@ -81,7 +71,7 @@ class EfficientViTBackbone(nn.Module):
                 block = ResidualBlock(block, IdentityLayer() if stride == 1 else None)
                 stage.append(block)
                 in_channels = w
-            self.stages.append(OpSequential(stage))
+            stages.append(OpSequential(stage))
             self.width_list.append(in_channels)
 
         for w, d in zip(width_list[3:], depth_list[3:]):
@@ -104,9 +94,9 @@ class EfficientViTBackbone(nn.Module):
                         in_channels=in_channels, dim=dim, expand_ratio=expand_ratio, norm=norm, act_func=act_func
                     )
                 )
-            self.stages.append(OpSequential(stage))
+            stages.append(OpSequential(stage))
             self.width_list.append(in_channels)
-        self.stages = nn.ModuleList(self.stages)
+        self.stages = nn.ModuleList(stages)
 
     @staticmethod
     def build_local_block(
@@ -148,7 +138,7 @@ class EfficientViTBackbone(nn.Module):
         return output_dict
 
 
-def efficientvit_backbone_b0(**kwargs) -> EfficientViTBackbone:
+def efficientvit_backbone_b0(**kwargs: dict[str, Any]) -> EfficientViTBackbone:
     backbone = EfficientViTBackbone(
         width_list=[8, 16, 32, 64, 128],
         depth_list=[1, 2, 2, 2, 2],
@@ -158,7 +148,7 @@ def efficientvit_backbone_b0(**kwargs) -> EfficientViTBackbone:
     return backbone
 
 
-def efficientvit_backbone_b1(**kwargs) -> EfficientViTBackbone:
+def efficientvit_backbone_b1(**kwargs: dict[str, Any]) -> EfficientViTBackbone:
     backbone = EfficientViTBackbone(
         width_list=[16, 32, 64, 128, 256],
         depth_list=[1, 2, 3, 3, 4],
@@ -168,7 +158,7 @@ def efficientvit_backbone_b1(**kwargs) -> EfficientViTBackbone:
     return backbone
 
 
-def efficientvit_backbone_b2(**kwargs) -> EfficientViTBackbone:
+def efficientvit_backbone_b2(**kwargs: dict[str, Any]) -> EfficientViTBackbone:
     backbone = EfficientViTBackbone(
         width_list=[24, 48, 96, 192, 384],
         depth_list=[1, 3, 4, 4, 6],
@@ -178,7 +168,7 @@ def efficientvit_backbone_b2(**kwargs) -> EfficientViTBackbone:
     return backbone
 
 
-def efficientvit_backbone_b3(**kwargs) -> EfficientViTBackbone:
+def efficientvit_backbone_b3(**kwargs: dict[str, Any]) -> EfficientViTBackbone:
     backbone = EfficientViTBackbone(
         width_list=[32, 64, 128, 256, 512],
         depth_list=[1, 4, 6, 6, 9],
@@ -190,12 +180,18 @@ def efficientvit_backbone_b3(**kwargs) -> EfficientViTBackbone:
 
 class EfficientViTLargeBackbone(nn.Module):
     def __init__(
-        self, width_list: list[int], depth_list: list[int], in_channels=3, qkv_dim=32, norm="bn2d", act_func="gelu"
+        self,
+        width_list: list[int],
+        depth_list: list[int],
+        in_channels: int = 3,
+        qkv_dim: int = 32,
+        norm: str = "bn2d",
+        act_func: str = "gelu",
     ) -> None:
         super().__init__()
 
         self.width_list = []
-        self.stages = []
+        stages = []
         # stage 0
         stage0 = [ConvLayer(in_channels=3, out_channels=width_list[0], stride=2, norm=norm, act_func=act_func)]
         for _ in range(depth_list[0]):
@@ -210,7 +206,7 @@ class EfficientViTLargeBackbone(nn.Module):
             )
             stage0.append(ResidualBlock(block, IdentityLayer()))
         in_channels = width_list[0]
-        self.stages.append(OpSequential(stage0))
+        stages.append(OpSequential(stage0))
         self.width_list.append(in_channels)
 
         for stage_id, (w, d) in enumerate(zip(width_list[1:4], depth_list[1:4]), start=1):
@@ -230,7 +226,7 @@ class EfficientViTLargeBackbone(nn.Module):
                 block = ResidualBlock(block, IdentityLayer() if stride == 1 else None)
                 stage.append(block)
                 in_channels = w
-            self.stages.append(OpSequential(stage))
+            stages.append(OpSequential(stage))
             self.width_list.append(in_channels)
 
         for stage_id, (w, d) in enumerate(zip(width_list[4:], depth_list[4:]), start=4):
@@ -254,9 +250,9 @@ class EfficientViTLargeBackbone(nn.Module):
                         in_channels=in_channels, dim=qkv_dim, expand_ratio=6, norm=norm, act_func=act_func
                     )
                 )
-            self.stages.append(OpSequential(stage))
+            stages.append(OpSequential(stage))
             self.width_list.append(in_channels)
-        self.stages = nn.ModuleList(self.stages)
+        self.stages = nn.ModuleList(stages)
 
     @staticmethod
     def build_local_block(
@@ -308,7 +304,7 @@ class EfficientViTLargeBackbone(nn.Module):
         return output_dict
 
 
-def efficientvit_backbone_l0(**kwargs) -> EfficientViTLargeBackbone:
+def efficientvit_backbone_l0(**kwargs: dict[str, Any]) -> EfficientViTLargeBackbone:
     backbone = EfficientViTLargeBackbone(
         width_list=[32, 64, 128, 256, 512],
         depth_list=[1, 1, 1, 4, 4],
@@ -317,7 +313,7 @@ def efficientvit_backbone_l0(**kwargs) -> EfficientViTLargeBackbone:
     return backbone
 
 
-def efficientvit_backbone_l1(**kwargs) -> EfficientViTLargeBackbone:
+def efficientvit_backbone_l1(**kwargs: dict[str, Any]) -> EfficientViTLargeBackbone:
     backbone = EfficientViTLargeBackbone(
         width_list=[32, 64, 128, 256, 512],
         depth_list=[1, 1, 1, 6, 6],
@@ -326,7 +322,7 @@ def efficientvit_backbone_l1(**kwargs) -> EfficientViTLargeBackbone:
     return backbone
 
 
-def efficientvit_backbone_l2(**kwargs) -> EfficientViTLargeBackbone:
+def efficientvit_backbone_l2(**kwargs: dict[str, Any]) -> EfficientViTLargeBackbone:
     backbone = EfficientViTLargeBackbone(
         width_list=[32, 64, 128, 256, 512],
         depth_list=[1, 2, 2, 8, 8],
@@ -335,7 +331,7 @@ def efficientvit_backbone_l2(**kwargs) -> EfficientViTLargeBackbone:
     return backbone
 
 
-def efficientvit_backbone_l3(**kwargs) -> EfficientViTLargeBackbone:
+def efficientvit_backbone_l3(**kwargs: dict[str, Any]) -> EfficientViTLargeBackbone:
     backbone = EfficientViTLargeBackbone(
         width_list=[64, 128, 256, 512, 1024],
         depth_list=[1, 2, 2, 8, 8],

@@ -4,30 +4,18 @@
 from __future__ import annotations
 
 from inspect import signature
-
-import torch
-from torch import nn
-
-__all__ = ["is_parallel", "get_device", "get_same_padding", "build_kwargs_from_config"]
+from typing import Any, Union
 
 
-def is_parallel(model: nn.Module) -> bool:
-    return isinstance(model, (nn.parallel.DataParallel, nn.parallel.DistributedDataParallel))
-
-
-def get_device(model: nn.Module) -> torch.device:
-    return model.parameters().__next__().device
-
-
-def get_same_padding(kernel_size: int or tuple[int, ...]) -> int or tuple[int, ...]:
-    if isinstance(kernel_size, tuple):
-        return tuple([get_same_padding(ks) for ks in kernel_size])
+def get_same_padding(kernel_size: Union[int, tuple[int, ...]]) -> Union[int, tuple[int, ...]]:
+    if isinstance(kernel_size, (tuple,)):
+        return tuple([get_same_padding(ks) for ks in kernel_size])  # type: ignore
 
     # assert kernel_size % 2 > 0, "kernel size should be odd number"
     return kernel_size // 2
 
 
-def build_kwargs_from_config(config: dict, target_func: callable) -> dict[str, any]:
+def build_kwargs_from_config(config: dict[str, Any], target_func: Any) -> dict[str, Any]:
     valid_keys = list(signature(target_func).parameters)
     kwargs = {}
     for key in config:

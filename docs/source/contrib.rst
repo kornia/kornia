@@ -20,19 +20,19 @@ Backbones
     :members:
     :undoc-members:
 
-.. autofunction:: kornia.contrib.models.efficient_vit.efficient_vit_backbone_b0
-.. autofunction:: kornia.contrib.models.efficient_vit.efficient_vit_backbone_b1
-.. autofunction:: kornia.contrib.models.efficient_vit.efficient_vit_backbone_b2
-.. autofunction:: kornia.contrib.models.efficient_vit.efficient_vit_backbone_b3
+.. autofunction:: kornia.contrib.models.efficient_vit.efficientvit_backbone_b0
+.. autofunction:: kornia.contrib.models.efficient_vit.efficientvit_backbone_b1
+.. autofunction:: kornia.contrib.models.efficient_vit.efficientvit_backbone_b2
+.. autofunction:: kornia.contrib.models.efficient_vit.efficientvit_backbone_b3
 
 .. autoclass:: kornia.contrib.models.efficient_vit.EfficientViTLargeBackbone
     :members:
     :undoc-members:
 
-.. autofunction:: kornia.contrib.models.efficient_vit.efficient_vit_backbone_l0
-.. autofunction:: kornia.contrib.models.efficient_vit.efficient_vit_backbone_l1
-.. autofunction:: kornia.contrib.models.efficient_vit.efficient_vit_backbone_l2
-.. autofunction:: kornia.contrib.models.efficient_vit.efficient_vit_backbone_l3
+.. autofunction:: kornia.contrib.models.efficient_vit.efficientvit_backbone_l0
+.. autofunction:: kornia.contrib.models.efficient_vit.efficientvit_backbone_l1
+.. autofunction:: kornia.contrib.models.efficient_vit.efficientvit_backbone_l2
+.. autofunction:: kornia.contrib.models.efficient_vit.efficientvit_backbone_l3
 
 Structures
 ^^^^^^^^^^
