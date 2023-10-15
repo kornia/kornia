@@ -27,11 +27,11 @@ class RandomClahe(IntensityAugmentationBase2D):
         >>> inv = RandomClahe()
         >>> res = inv(img)
         >>> res.shape
-        torch.Size([1, 10, 20])
+        torch.Size([1, 1, 10, 20])
 
         >>> img = torch.rand(2, 3, 10, 20)
-        >>> inv = RandomClahe()
-        >>> res = inv(img)
+        >>> aug = RandomClahe()
+        >>> res = aug(img)
         >>> res.shape
         torch.Size([2, 3, 10, 20])
 
