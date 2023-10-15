@@ -11,7 +11,7 @@ from torch import nn
 from kornia.contrib.models.efficient_vit.utils import build_kwargs_from_config
 
 # register activation function here
-REGISTERED_ACT_DICT: dict[str, type] = {  # type: ignore
+REGISTERED_ACT_DICT: dict[str, type[nn.Module]] = {
     "relu": nn.ReLU,
     "relu6": nn.ReLU6,
     "hswish": nn.Hardswish,
