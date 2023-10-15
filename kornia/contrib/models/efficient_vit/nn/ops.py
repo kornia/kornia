@@ -3,6 +3,7 @@
 # International Conference on Computer Vision (ICCV), 2023
 
 # type: ignore
+from __future__ import annotations
 
 import torch
 import torch.nn.functional as F
