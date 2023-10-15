@@ -6,13 +6,13 @@ on:
       python-version:
         description: "The python version desired."
         required: true
-        default: '3.11'
+        default: "3.11"
         type: string
 
       pytorch-version:
         description: "The pytorch version desired."
         required: true
-        default: '2.1.0'
+        default: "2.1.0"
         type: string
 
 runs:
