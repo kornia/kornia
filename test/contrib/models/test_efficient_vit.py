@@ -9,7 +9,9 @@ from kornia.contrib.models.efficient_vit import EfficientViTBackbone, efficientv
 class TestEfficientViT:
     @pytest.mark.parametrize("img_size,expected_resolution", [(224, 7), (256, 8)])
     def test_smoke(self, device, dtype, img_size: int, expected_resolution: int):
-        model: EfficientViTBackbone = efficientvit_backbone_b0(device=device, dtype=dtype)
+        model: EfficientViTBackbone = efficientvit_backbone_b0()
+        model = model.to(device=device, dtype=dtype)
+
         image = torch.randn(1, 3, img_size, img_size, device=device, dtype=dtype)
 
         out = model(image)
@@ -21,7 +23,9 @@ class TestEfficientViT:
         assert out["stage_final"].shape == torch.Size([1, 128, expected_resolution, expected_resolution])
 
     def test_onnx(self, device, dtype, tmp_path: Path):
-        model: EfficientViTBackbone = efficientvit_backbone_b0(device=device, dtype=dtype)
+        model: EfficientViTBackbone = efficientvit_backbone_b0()
+        model = model.to(device=device, dtype=dtype)
+
         image = torch.randn(1, 3, 224, 224, device=device, dtype=dtype)
 
         model_path = tmp_path / "efficientvit_backbone_b0.onnx"

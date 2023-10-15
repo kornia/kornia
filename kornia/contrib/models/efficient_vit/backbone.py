@@ -29,7 +29,7 @@ class EfficientViTBackbone(nn.Module):
         depth_list: list[int],
         in_channels: int = 3,
         dim: int = 32,
-        expand_ratio: float = 4.0,
+        expand_ratio: float = 4,
         norm: str = "bn2d",
         act_func: str = "hswish",
     ) -> None:
@@ -193,7 +193,9 @@ class EfficientViTLargeBackbone(nn.Module):
         self.width_list = []
         stages = []
         # stage 0
-        stage0 = [ConvLayer(in_channels=3, out_channels=width_list[0], stride=2, norm=norm, act_func=act_func)]
+        stage0 = [
+            ConvLayer(in_channels=in_channels, out_channels=width_list[0], stride=2, norm=norm, act_func=act_func)
+        ]
         for _ in range(depth_list[0]):
             block = self.build_local_block(
                 stage_id=0,
