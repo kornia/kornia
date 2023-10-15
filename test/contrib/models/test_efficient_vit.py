@@ -2,8 +2,9 @@ from pathlib import Path
 
 import pytest
 import torch
+from torch import nn
 
-from kornia.contrib.models.efficient_vit import EfficientViTBackbone, efficientvit_backbone_b0
+from kornia.contrib.models.efficient_vit import EfficientViTBackbone, efficientvit_backbone_b0, efficientvit_backbone_b1
 
 
 class TestEfficientViT:
@@ -33,3 +34,19 @@ class TestEfficientViT:
         torch.onnx.export(model, image, model_path, opset_version=16)
 
         assert model_path.is_file()
+
+    @pytest.mark.skip(reason="Not implemented yet")
+    def test_load_pretrained(self, device, dtype):
+        class EfficientViT(nn.Module):
+            def __init__(self, backbone: EfficientViTBackbone):
+                super().__init__()
+                self.backbone = backbone
+
+        backbone: EfficientViTBackbone = efficientvit_backbone_b1()
+        model = EfficientViT(backbone)
+        model = model.to(device=device, dtype=dtype)
+
+        model_path = "/home/edgar/Downloads/b1-r224.pt"
+
+        model_file = torch.load(model_path, map_location=device)
+        model.load_state_dict(model_file["state_dict"] if "state_dict" in model_file else model_file, strict=False)
