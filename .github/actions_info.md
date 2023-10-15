@@ -45,6 +45,8 @@ Has the inputs:
   `continue-on-error` behavior on the test step.
 - `fail-fast`: (boolean, default: `false`) to set the `fail-fast` behavior on
   the matrix strategy.
+- `coverage`: (boolean, default: `false`) to run the tests suite using the
+  coverage mode, and report the results and upload it on codecov.
 
 A matrix strategy will be adopted from the list of python and pytorch version.
 
@@ -69,8 +71,25 @@ A matrix strategy will be adopted from the list of python and pytorch version.
 
 ### Tests typing
 This workflow ([.github/workflows/test_typing.yml](workflows/test_typing.yml)) will setup
-an environment using the [env](#Env) action, run the typing tests using mypy and
-uploading the coverage report to codecov.
+an environment using the [env](#Env) action, run the typing tests using mypy.
+
+Use the actions:
+- `actions/checkout`
+- `.github/actions/env`
+
+Has the inputs:
+- `os`: (string, default: `ubuntu-latest`) the OS name same as supported by [gha](https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#choosing-github-hosted-runners).
+- `python-version`: (json list of strings, default: `'["3.11"]'`) a string with
+  format of a json list within strings for each python version desired.
+- `pytorch-version`: (json list of strings, default: `'["2.1.0"]'`) a string
+  with format of a json list within strings for each pytorch version desired.
+- `fail-fast`: (boolean, default: `false`) to set the `fail-fast` behavior on
+  the matrix strategy.
+
+### Docs
+This workflow ([.github/workflows/docs.yml](workflows/docs.yml)) will setup
+an environment using the [env](#Env) action, run the docstrings tests using pytest,
+install the docs dependencies and build the html docs within sphinxs.
 
 Use the actions:
 - `actions/checkout`

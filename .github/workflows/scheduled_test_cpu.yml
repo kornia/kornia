@@ -21,7 +21,6 @@ jobs:
     uses: ./.github/workflows/tests.yml
     with:
       os: 'Ubuntu-latest'
-
       python-version: '["3.8", "3.9", "3.10", "3.11"]'
       pytorch-version: '["1.9.1", "1.10.2", "1.11.0", "1.12.1", "1.13.1", "2.0.1", "2.1.0"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
@@ -58,6 +57,9 @@ jobs:
 
   test-typing:
     uses: ./.github/workflows/test_typing.yml
+
+  docs:
+    uses: ./.github/workflows/docs.yml
 
   tests-coverage:
     uses: ./.github/workflows/tests.yml

@@ -50,8 +50,11 @@ jobs:
   test-tutorials:
     uses: ./.github/workflows/test_tutorials.yml
 
+  docs:
+    uses: ./.github/workflows/docs.yml
+
   collector:
-    needs: [tests-cpu, test-tutorials, test-typing, tests-coverage]
+    needs: [tests-cpu, test-tutorials, test-typing, tests-coverage, docs]
     if: always()
     runs-on: ubuntu-latest
     steps:
