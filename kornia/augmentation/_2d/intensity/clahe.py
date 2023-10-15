@@ -44,7 +44,7 @@ class RandomClahe(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        clip_limit: Tuple[float, float] = (40.0, 40.0),
+        clip_limit: tuple[float, float] = (40.0, 40.0),
         grid_size: Tuple[int, int] = (8, 8),
         slow_and_differentiable: bool = False,
         same_on_batch: bool = False,
