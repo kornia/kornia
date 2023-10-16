@@ -8,6 +8,68 @@ import kornia.geometry.epipolar as epi
 from kornia.testing import assert_close
 
 
+class TestFindEssential:
+    def test_smoke(self, device, dtype):
+        points1 = torch.rand(1, 5, 2, device=device, dtype=dtype)
+        points2 = torch.rand(1, 5, 2, device=device, dtype=dtype)
+        weights = torch.ones(1, 5, device=device, dtype=dtype)
+        E_mat = epi.essential.find_essential(points1, points2, weights)
+        assert E_mat.shape == (1, 3, 3)
+
+    @pytest.mark.parametrize("batch_size, num_points", [(1, 5), (2, 6), (3, 7)])
+    def test_shape(self, batch_size, num_points, device, dtype):
+        B, N = batch_size, num_points
+        points1 = torch.rand(B, N, 2, device=device, dtype=dtype)
+        points2 = torch.rand(B, N, 2, device=device, dtype=dtype)
+        weights = torch.ones(B, N, device=device, dtype=dtype)
+        E_mat = epi.essential.find_essential(points1, points2, weights)
+        assert E_mat.shape == (B, 3, 3)
+
+    @pytest.mark.parametrize("batch_size, num_points", [(1, 5), (2, 6), (3, 7)])
+    def test_shape_noweights(self, batch_size, num_points, device, dtype):
+        B, N = batch_size, num_points
+        points1 = torch.rand(B, N, 2, device=device, dtype=dtype)
+        points2 = torch.rand(B, N, 2, device=device, dtype=dtype)
+        weights = None
+        E_mat = epi.essential.find_essential(points1, points2, weights)
+        assert E_mat.shape == (B, 3, 3)
+
+    def test_epipolar_constraint(self, device, dtype):
+        calibrated_x1 = torch.tensor(
+            [[[0.0640, 0.7799], [-0.2011, 0.2836], [-0.1355, 0.2907], [0.0520, 1.0086], [-0.0361, 0.6533]]],
+            device=device,
+            dtype=dtype,
+        )
+        calibrated_x2 = torch.tensor(
+            [[[0.3470, -0.4274], [-0.1818, -0.1281], [-0.1766, -0.1617], [0.4066, -0.0706], [0.1137, 0.0363]]],
+            device=device,
+            dtype=dtype,
+        )
+
+        E = epi.essential.find_essential(calibrated_x1, calibrated_x2)
+        if torch.all(E != 0):
+            distance = epi.symmetrical_epipolar_distance(calibrated_x1, calibrated_x2, E)
+            mean_error = distance.mean()
+            assert_close(mean_error, torch.tensor(0.0, device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
+
+    def test_synthetic_sampson(self, device, dtype):
+        calibrated_x1 = torch.tensor(
+            [[[0.0640, 0.7799], [-0.2011, 0.2836], [-0.1355, 0.2907], [0.0520, 1.0086], [-0.0361, 0.6533]]],
+            device=device,
+            dtype=dtype,
+        )
+        calibrated_x2 = torch.tensor(
+            [[[0.3470, -0.4274], [-0.1818, -0.1281], [-0.1766, -0.1617], [0.4066, -0.0706], [0.1137, 0.0363]]],
+            device=device,
+            dtype=dtype,
+        )
+
+        weights = torch.ones_like(calibrated_x2)[..., 0]
+        E_est = epi.essential.find_essential(calibrated_x1, calibrated_x2, weights)
+        error = epi.sampson_epipolar_distance(calibrated_x1, calibrated_x2, E_est)
+        assert_close(error, torch.zeros((calibrated_x1.shape[:2]), device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
+
+
 class TestEssentialFromFundamental:
     def test_smoke(self, device, dtype):
         F_mat = torch.rand(1, 3, 3, device=device, dtype=dtype)

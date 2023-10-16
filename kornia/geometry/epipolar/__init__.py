@@ -8,6 +8,7 @@ from .essential import (
     decompose_essential_matrix,
     essential_from_fundamental,
     essential_from_Rt,
+    find_essential,
     motion_from_essential,
     motion_from_essential_choose_solution,
     relative_camera_motion,
@@ -64,4 +65,5 @@ __all__ = [
     "triangulate_points",
     "get_perpendicular",
     "get_closest_point_on_epipolar_line",
+    "find_essential",
 ]
