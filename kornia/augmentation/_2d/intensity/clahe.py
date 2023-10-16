@@ -1,4 +1,6 @@
-from typing import Any, Dict, Optional, Tuple
+from __future__ import annotations
+
+from typing import Any, Dict, Optional
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
@@ -45,7 +47,7 @@ class RandomClahe(IntensityAugmentationBase2D):
     def __init__(
         self,
         clip_limit: tuple[float, float] = (40.0, 40.0),
-        grid_size: Tuple[int, int] = (8, 8),
+        grid_size: tuple[int, int] = (8, 8),
         slow_and_differentiable: bool = False,
         same_on_batch: bool = False,
         p: float = 0.5,
