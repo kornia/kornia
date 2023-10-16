@@ -26,8 +26,8 @@ class RandomClahe(IntensityAugmentationBase2D):
 
     Examples:
         >>> img = torch.rand(1, 10, 20)
-        >>> inv = RandomClahe()
-        >>> res = inv(img)
+        >>> aug = RandomClahe()
+        >>> res = aug(img)
         >>> res.shape
         torch.Size([1, 1, 10, 20])
 
@@ -38,7 +38,7 @@ class RandomClahe(IntensityAugmentationBase2D):
         torch.Size([2, 3, 10, 20])
 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
-        >>> input = torch.randn(1, 3, 32, 32)
+        >>> input = torch.rand(1, 3, 32, 32)
         >>> aug = RandomClahe(p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
