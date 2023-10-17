@@ -27,6 +27,7 @@ class TestEfficientViT:
     def test_smoke(self, device, dtype, img_size: int, expected_resolution: int, model_name: str):
         self._test_smoke(device, dtype, img_size, expected_resolution, model_name)
 
+    @pytest.mark.slow
     @pytest.mark.parametrize("model_name", ["l0", "l1", "l2", "l3"])
     @pytest.mark.parametrize("img_size,expected_resolution", [(224, 7), (256, 8), (288, 9), (320, 10), (384, 12)])
     def test_smoke_large(self, device, dtype, img_size: int, expected_resolution: int, model_name: str):
