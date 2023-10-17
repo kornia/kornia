@@ -17,7 +17,7 @@ class EfficientViTConfig:
         checkpoint: URL or local path of model weights.
     """
 
-    checkpoint: str = "https://huggingface.co/kornia/efficientvit_imagenet_b1_r224.pt/resolve/main/b1-r224.pt"
+    checkpoint: str = "https://huggingface.co/kornia/efficientvit_imagenet_b1_r224/resolve/main/b1-r224.pt"
 
 
 class EfficientViT(ModelBase[EfficientViTConfig]):
