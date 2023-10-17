@@ -4,13 +4,12 @@ import pytest
 import torch
 from torch import nn
 
-from kornia.contrib.models.efficient_vit import EfficientViTBackbone, efficientvit_backbone_b0, efficientvit_backbone_b1
+from kornia.contrib.models import efficient_vit as vit
 
 
 class TestEfficientViT:
-    @pytest.mark.parametrize("img_size,expected_resolution", [(224, 7), (256, 8)])
-    def test_smoke(self, device, dtype, img_size: int, expected_resolution: int):
-        model: EfficientViTBackbone = efficientvit_backbone_b0()
+    def _test_smoke(self, device, dtype, img_size: int, expected_resolution: int, model_name: str):
+        model = getattr(vit, f"efficientvit_backbone_{model_name}")()
         model = model.to(device=device, dtype=dtype)
 
         image = torch.randn(1, 3, img_size, img_size, device=device, dtype=dtype)
@@ -21,10 +20,20 @@ class TestEfficientViT:
         assert out["input"].shape == image.shape
 
         assert "stage_final" in out
-        assert out["stage_final"].shape == torch.Size([1, 128, expected_resolution, expected_resolution])
+        assert out["stage_final"].shape[-2:] == torch.Size([expected_resolution, expected_resolution])
+
+    @pytest.mark.parametrize("model_name", ["b0", "b1", "b2", "b3"])
+    @pytest.mark.parametrize("img_size,expected_resolution", [(224, 7), (256, 8), (288, 9)])
+    def test_smoke(self, device, dtype, img_size: int, expected_resolution: int, model_name: str):
+        self._test_smoke(device, dtype, img_size, expected_resolution, model_name)
+
+    @pytest.mark.parametrize("model_name", ["l0", "l1", "l2", "l3"])
+    @pytest.mark.parametrize("img_size,expected_resolution", [(224, 7), (256, 8), (288, 9), (320, 10), (384, 12)])
+    def test_smoke_large(self, device, dtype, img_size: int, expected_resolution: int, model_name: str):
+        self._test_smoke(device, dtype, img_size, expected_resolution, model_name)
 
     def test_onnx(self, device, dtype, tmp_path: Path):
-        model: EfficientViTBackbone = efficientvit_backbone_b0()
+        model: vit.EfficientViTBackbone = vit.efficientvit_backbone_b0()
         model = model.to(device=device, dtype=dtype)
 
         image = torch.randn(1, 3, 224, 224, device=device, dtype=dtype)
@@ -38,11 +47,11 @@ class TestEfficientViT:
     @pytest.mark.skip(reason="Not implemented yet")
     def test_load_pretrained(self, device, dtype):
         class EfficientViT(nn.Module):
-            def __init__(self, backbone: EfficientViTBackbone):
+            def __init__(self, backbone: vit.EfficientViTBackbone):
                 super().__init__()
                 self.backbone = backbone
 
-        backbone: EfficientViTBackbone = efficientvit_backbone_b1()
+        backbone: vit.EfficientViTBackbone = vit.efficientvit_backbone_b1()
         model = EfficientViT(backbone)
         model = model.to(device=device, dtype=dtype)
 
