@@ -166,6 +166,10 @@ class VisualPrompter:
         self, *prompts: Tensor | Boxes | Keypoints, data_keys: list[str] = []
     ) -> dict[str, Tensor | Boxes | Keypoints]:
         transformed_prompts = self.transforms(*prompts, data_keys=data_keys, params=self._tfs_params)
+
+        # prevent unpacking tensor when creating the output dict (issue #2627)
+        if not isinstance(transformed_prompts, (list, tuple)):
+            transformed_prompts = [transformed_prompts]
         return {key: transformed_prompts[idx] for idx, key in enumerate(data_keys)}
 
     def preprocess_prompts(
@@ -197,7 +201,7 @@ class VisualPrompter:
         if 'keypoints' in data and isinstance(data['keypoints'], Keypoints):
             kpts_tensor = data['keypoints'].to_tensor()
             if KORNIA_CHECK_IS_TENSOR(kpts_tensor) and KORNIA_CHECK_IS_TENSOR(keypoints_labels):
-                points = (kpts_tensor[None, ...], keypoints_labels)
+                points = (kpts_tensor, keypoints_labels)
         else:
             points = None
 
