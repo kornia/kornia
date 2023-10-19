@@ -262,7 +262,7 @@ def _get_precision_by_name(
 
 
 def _default_tolerances(*inputs: Any) -> Tuple[float, float]:
-    rtols, atols = zip(*[_DTYPE_PRECISIONS.get(torch.as_tensor(input).dtype, (0.0, 0.0)) for input in inputs])
+    rtols, atols = zip(*[_DTYPE_PRECISIONS.get(torch.as_tensor(input_).dtype, (0.0, 0.0)) for input_ in inputs])
     return max(rtols), max(atols)
 
 
