@@ -226,20 +226,21 @@ class TestRawToRgb2x2Downscaled(BaseTester):
             assert kornia.color.raw_to_rgb_2x2_downscaled(img, kornia.color.CFA.GB)
 
         with pytest.raises(ValueError):
-            img = torch.ones(2, 1, 1, device=device, dtype=dtype)
+            img = torch.ones(2, 2, 2, device=device, dtype=dtype)
             assert kornia.color.raw_to_rgb_2x2_downscaled(img, kornia.color.CFA.RG)
 
         with pytest.raises(ValueError):
-            img = torch.ones(1, 3, 1, 1, device=device, dtype=dtype)
+            img = torch.ones(1, 3, 2, device=device, dtype=dtype)
             assert kornia.color.raw_to_rgb_2x2_downscaled(img, kornia.color.CFA.GR)
 
         with pytest.raises(ValueError):
-            img = torch.ones(3, 2, 1, device=device, dtype=dtype)
+            img = torch.ones(1, 2, 3, device=device, dtype=dtype)
             assert kornia.color.raw_to_rgb_2x2_downscaled(img, kornia.color.CFA.GR)
 
         with pytest.raises(ValueError):
-            img = torch.ones(3, 1, 2, device=device, dtype=dtype)
-            assert kornia.color.raw_to_rgb_2x2_downscaled(img, kornia.color.CFA.GR)
+            img = torch.ones(1, 4, 8, device=device, dtype=dtype)
+            nonexistent_cfa = 195162495283
+            assert kornia.color.raw_to_rgb_2x2_downscaled(img, nonexistent_cfa)
 
     def test_functional(self, device, dtype):
         data = torch.tensor([[[0.12, 0.43, 0.46, 0.58], [0.23, 0.00, 0.43, 0.89]]], device=device, dtype=dtype)
