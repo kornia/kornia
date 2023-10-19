@@ -483,7 +483,9 @@ class TestDivergenceLoss:
         ],
     )
     def test_kl_div_loss_2d_without_reduction(self, device, dtype, input_tensor, target, expected):
-        actual = kornia.losses.kl_div_loss_2d(input_tensor.to(device, dtype), target.to(device, dtype), reduction="none")
+        actual = kornia.losses.kl_div_loss_2d(
+            input_tensor.to(device, dtype), target.to(device, dtype), reduction="none"
+        )
         assert_close(actual, expected.to(device, dtype))
 
     @pytest.mark.parametrize(

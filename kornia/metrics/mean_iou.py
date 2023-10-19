@@ -29,12 +29,16 @@ def mean_iou(input_tensor: torch.Tensor, target: torch.Tensor, num_classes: int,
         tensor([[1., 1., 1.]])
     """
     if not torch.is_tensor(input_tensor) and input_tensor.dtype is not torch.int64:
-        raise TypeError(f"Input input_tensor type is not a torch.Tensor with torch.int64 dtype. Got {type(input_tensor)}")
+        raise TypeError(
+            f"Input input_tensor type is not a torch.Tensor with torch.int64 dtype. Got {type(input_tensor)}"
+        )
 
     if not torch.is_tensor(target) and target.dtype is not torch.int64:
         raise TypeError(f"Input target type is not a torch.Tensor with torch.int64 dtype. Got {type(target)}")
     if not input_tensor.shape == target.shape:
-        raise ValueError(f"Inputs input_tensor and target must have the same shape. Got: {input_tensor.shape} and {target.shape}")
+        raise ValueError(
+            f"Inputs input_tensor and target must have the same shape. Got: {input_tensor.shape} and {target.shape}"
+        )
     if not input_tensor.device == target.device:
         raise ValueError(f"Inputs must be in the same device. Got: {input_tensor.device} - {target.device}")
 
