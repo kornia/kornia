@@ -5,12 +5,12 @@ import torch
 
 
 def confusion_matrix(
-    input: torch.Tensor, target: torch.Tensor, num_classes: int, normalized: bool = False
+    input_tensor: torch.Tensor, target: torch.Tensor, num_classes: int, normalized: bool = False
 ) -> torch.Tensor:
     r"""Compute confusion matrix to evaluate the accuracy of a classification.
 
     Args:
-        input: tensor with estimated targets returned by a
+        input_tensor: tensor with estimated targets returned by a
           classifier. The shape can be :math:`(B, *)` and must contain integer
           values between 0 and K-1.
         target: tensor with ground truth (correct) target
@@ -32,24 +32,24 @@ def confusion_matrix(
                  [0., 1., 0.],
                  [0., 0., 0.]]])
     """
-    if not torch.is_tensor(input) and input.dtype is not torch.int64:
-        raise TypeError(f"Input input type is not a torch.Tensor with torch.int64 dtype. Got {type(input)}")
+    if not torch.is_tensor(input_tensor) and input_tensor.dtype is not torch.int64:
+        raise TypeError(f"Input input_tensor type is not a torch.Tensor with torch.int64 dtype. Got {type(input_tensor)}")
 
     if not torch.is_tensor(target) and target.dtype is not torch.int64:
         raise TypeError(f"Input target type is not a torch.Tensor with torch.int64 dtype. Got {type(target)}")
-    if not input.shape == target.shape:
-        raise ValueError(f"Inputs input and target must have the same shape. Got: {input.shape} and {target.shape}")
-    if not input.device == target.device:
-        raise ValueError(f"Inputs must be in the same device. Got: {input.device} - {target.device}")
+    if not input_tensor.shape == target.shape:
+        raise ValueError(f"Inputs input_tensor and target must have the same shape. Got: {input_tensor.shape} and {target.shape}")
+    if not input_tensor.device == target.device:
+        raise ValueError(f"Inputs must be in the same device. Got: {input_tensor.device} - {target.device}")
 
     if not isinstance(num_classes, int) or num_classes < 2:
         raise ValueError(f"The number of classes must be an integer bigger than two. Got: {num_classes}")
 
-    batch_size: int = input.shape[0]
+    batch_size: int = input_tensor.shape[0]
 
     # hack for bitcounting 2 arrays together
     # NOTE: torch.bincount does not implement batched version
-    pre_bincount: torch.Tensor = input + target * num_classes
+    pre_bincount: torch.Tensor = input_tensor + target * num_classes
     pre_bincount_vec: torch.Tensor = pre_bincount.view(batch_size, -1)
 
     confusion_list = []

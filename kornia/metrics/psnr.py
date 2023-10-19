@@ -2,7 +2,7 @@ import torch
 from torch.nn.functional import mse_loss as mse
 
 
-def psnr(input: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Tensor:
+def psnr(input_tensor: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Tensor:
     r"""Create a function that calculates the PSNR between 2 images.
 
     PSNR is Peek Signal to Noise Ratio, which is similar to mean squared error.
@@ -22,7 +22,7 @@ def psnr(input: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Ten
     (e.g for floating point images :math:`\text{MAX}_I=1`).
 
     Args:
-        input: the input image with arbitrary shape :math:`(*)`.
+        input_tensor: the input image with arbitrary shape :math:`(*)`.
         labels: the labels image with arbitrary shape :math:`(*)`.
         max_val: The maximum value in the input tensor.
 
@@ -37,13 +37,13 @@ def psnr(input: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Ten
     Reference:
         https://en.wikipedia.org/wiki/Peak_signal-to-noise_ratio#Definition
     """
-    if not isinstance(input, torch.Tensor):
-        raise TypeError(f"Expected torch.Tensor but got {type(input)}.")
+    if not isinstance(input_tensor, torch.Tensor):
+        raise TypeError(f"Expected torch.Tensor but got {type(input_tensor)}.")
 
     if not isinstance(target, torch.Tensor):
         raise TypeError(f"Expected torch.Tensor but got {type(target)}.")
 
-    if input.shape != target.shape:
-        raise TypeError(f"Expected tensors of equal shapes, but got {input.shape} and {target.shape}")
+    if input_tensor.shape != target.shape:
+        raise TypeError(f"Expected tensors of equal shapes, but got {input_tensor.shape} and {target.shape}")
 
-    return 10.0 * torch.log10(max_val**2 / mse(input, target, reduction='mean'))
+    return 10.0 * torch.log10(max_val**2 / mse(input_tensor, target, reduction='mean'))
