@@ -33,11 +33,11 @@ class TestVisualPrompter(BaseTester):
 
         prompter.set_image(inpt)
 
-        out = prompter.predict((keypoints, labels), multimask_output=multimask_output)
+        out = prompter.predict(keypoints, labels, multimask_output=multimask_output)
 
         C = 3 if multimask_output else 1
-        assert out.logits.shape == (1, C, 256, 256)
-        assert out.scores.shape == (1, C)
+        assert out.logits.shape == (batch_size, C, 256, 256)
+        assert out.scores.shape == (batch_size, C)
 
     def test_exception(self):
         prompter = VisualPrompter(SamConfig('vit_b'))
