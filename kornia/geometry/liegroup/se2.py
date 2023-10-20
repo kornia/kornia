@@ -91,6 +91,13 @@ class Se2(Module):
     def __getitem__(self, idx: int | slice) -> Se2:
         return Se2(self._rotation[idx], self._translation[idx])
 
+    def _mul_se2(self, right: Se2) -> Se2:
+        so2 = self.so2
+        t = self.t
+        _r = so2 * right.so2
+        _t = t + so2 * right.t
+        return Se2(_r, _t)
+
     @overload
     def __mul__(self, right: Se2) -> Se2:
         ...
@@ -112,9 +119,7 @@ class Se2(Module):
         t = self.t
         if isinstance(right, Se2):
             KORNIA_CHECK_TYPE(right, Se2)
-            _r = so2 * right.so2
-            _t = t + so2 * right.t
-            return Se2(_r, _t)
+            return self._mul_se2(right)
         elif isinstance(right, (Vector2, Tensor)):
             # TODO change to KORNIA_CHECK_SHAPE once there is multiple shape support
             # _check_se2_r_t_shape(so2, risght)

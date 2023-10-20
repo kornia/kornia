@@ -88,6 +88,11 @@ class Se3(Module):
     def __getitem__(self, idx: int | slice) -> Se3:
         return Se3(self._rotation[idx], self._translation[idx])
 
+    def _mul_se3(self, right: Se3) -> Se3:
+        _r = self.r * right.r
+        _t = self.t + self.r * right.t
+        return Se3(_r, _t)
+
     def __mul__(self, right: Se3) -> Se3 | Vector3 | Tensor:
         """Compose two Se3 transformations.
 
@@ -101,9 +106,7 @@ class Se3(Module):
         t = self.t
         if isinstance(right, Se3):
             # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/se3.py#L97
-            _r = so3 * right.so3
-            _t = t + so3 * right.t
-            return Se3(_r, _t)
+            return self._mul_se3(right)
         elif isinstance(right, (Vector3, Tensor)):
             # KORNIA_CHECK_SHAPE(right, ["B", "N"])  # FIXME: resolve shape bugs. @edgarriba
             return so3 * right + t.data
