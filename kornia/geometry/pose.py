@@ -76,8 +76,12 @@ class NamedPose:
         """
         if self._frame_src != other._frame_dst:
             raise ValueError(f"Cannot compose {self} with {other}")
-        # TODO: fix mypy error
-        return NamedPose(other.pose * self.pose, other._frame_src, self._frame_dst)
+        if isinstance(other.pose, Se2):
+            return NamedPose(self._dst_from_src._mul_se2(other.pose), other._frame_src, self._frame_dst)
+        elif isinstance(other.pose, Se3):
+            return NamedPose(self._dst_from_src._mul_se3(other.pose), other._frame_src, self._frame_dst)
+        else:
+            raise ValueError(f"Pose must be either Se2 or Se3, got {type(self._dst_from_src)}")
 
     @property
     def pose(self) -> Se2 | Se3:
