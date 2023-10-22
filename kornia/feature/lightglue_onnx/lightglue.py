@@ -60,10 +60,10 @@ class OnnxLightGlue:
 
         self.session = ort.InferenceSession(weights, providers=providers)
 
-    def __call__(self, data: dict[str, Tensor]) -> dict[str, Tensor]:
+    def __call__(self, data: dict[str, dict[str, Tensor]]) -> dict[str, Tensor]:
         return self.forward(data)
 
-    def forward(self, data: dict[str, Tensor]) -> dict[str, Tensor]:
+    def forward(self, data: dict[str, dict[str, Tensor]]) -> dict[str, Tensor]:
         r"""Match keypoints and descriptors between two images.
 
         The output contains the matches (i.e., indices of the matching keypoint pairs between the first and second image) and the corresponding confidence scores.

@@ -39,7 +39,7 @@ def download_onnx_from_url(
         file_name (str, optional): name for the downloaded file. Filename from ``url`` will be used if not set.
 
     Example:
-        >>> model = load_onnx_from_url('https://github.com/fabio-sim/LightGlue-ONNX/releases/download/v1.0.0/disk_lightglue_fused_fp16.onnx')
+        >>> model = download_onnx_from_url('https://github.com/fabio-sim/LightGlue-ONNX/releases/download/v1.0.0/disk_lightglue_fused_fp16.onnx')
     """
     if model_dir is None:
         hub_dir = get_dir()
