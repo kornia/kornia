@@ -70,18 +70,22 @@ class OnnxLightGlue:
         Only a batch size of 1 is supported.
 
         Args:
-            data: Dictionary containing the following keys:
-                image0: dict
-                    keypoints (`float32`): [1 x M x 2]
-                    descriptors (`float32`): [1 x M x D]
-                    image: [1 x C x H x W] or image_size: [1 x 2]
-                image1: dict
-                    keypoints (`float32`): [1 x N x 2]
-                    descriptors (`float32`): [1 x N x D]
-                    image: [1 x C x H x W] or image_size: [1 x 2]
+            data: Dictionary containing both images and the keypoints and descriptors thereof.
 
         Returns:
-            output: Dictionary containing the following keys:
+            output: Dictionary containing the following matches and scores.
+
+        `data`:
+            image0: dict
+                keypoints (`float32`): [1 x M x 2]
+                descriptors (`float32`): [1 x M x D]
+                image: [1 x C x H x W] or image_size: [1 x 2]
+            image1: dict
+                keypoints (`float32`): [1 x N x 2]
+                descriptors (`float32`): [1 x N x D]
+                image: [1 x C x H x W] or image_size: [1 x 2]
+
+        `output`:
                 matches (`int64`): [S x 2]
                 scores (`float32`): [S]
         """
