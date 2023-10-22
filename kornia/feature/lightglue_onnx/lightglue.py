@@ -107,8 +107,8 @@ class OnnxLightGlue:
         size0 = size0 if size0 is not None else data0['image'].shape[-2:][::-1]  # type: ignore
         size1 = size1 if size1 is not None else data1['image'].shape[-2:][::-1]  # type: ignore
 
-        kpts0 = normalize_keypoints(kpts0_, size=size0)
-        kpts1 = normalize_keypoints(kpts1_, size=size1)
+        kpts0 = normalize_keypoints(kpts0_, size=size0)  # type: ignore
+        kpts1 = normalize_keypoints(kpts1_, size=size1)  # type: ignore
 
         KORNIA_CHECK(torch.all(kpts0 >= -1).item() and torch.all(kpts0 <= 1).item(), "")  # type: ignore
         KORNIA_CHECK(torch.all(kpts1 >= -1).item() and torch.all(kpts1 <= 1).item(), "")  # type: ignore
