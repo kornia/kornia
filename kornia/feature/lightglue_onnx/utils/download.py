@@ -4,7 +4,7 @@ import errno
 import os
 import sys
 from typing import Optional
-from urllib.parse import urlparse  # noqa: F401
+from urllib.parse import urlparse
 
 from torch.hub import HASH_REGEX, download_url_to_file, get_dir
 
@@ -40,7 +40,6 @@ def download_onnx_from_url(
 
     Example:
         >>> model = load_onnx_from_url('https://github.com/fabio-sim/LightGlue-ONNX/releases/download/v1.0.0/disk_lightglue_fused_fp16.onnx')
-
     """
     if model_dir is None:
         hub_dir = get_dir()

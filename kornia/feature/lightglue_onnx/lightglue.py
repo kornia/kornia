@@ -18,7 +18,7 @@ except ImportError:
 __all__ = ["OnnxLightGlue"]
 
 
-class OnnxLightGlue(object):
+class OnnxLightGlue:
     r"""Wrapper for loading LightGlue-ONNX models and running inference via ONNXRuntime.
 
     LightGlue :cite:`LightGlue2023` performs fast descriptor-based deep keypoint matching.
