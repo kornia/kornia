@@ -112,6 +112,9 @@ Matching
 .. autoclass:: LoFTR
    :members: forward
 
+.. autoclass:: OnnxLightGlue
+   :members: forward
+
 
 Local Affine Frames (LAF)
 -------------------------

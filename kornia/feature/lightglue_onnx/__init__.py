@@ -1,0 +1,1 @@
+from .lightglue import OnnxLightGlue
