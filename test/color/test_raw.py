@@ -284,3 +284,10 @@ class TestRawToRgb2x2Downscaled(BaseTester):
         raw_ops = kornia.color.RawToRgb2x2Downscaled(kornia.color.raw.CFA.BG).to(device, dtype)
         raw_fcn = kornia.color.raw_to_rgb_2x2_downscaled
         self.assert_close(raw_ops(img), raw_fcn(img, kornia.color.raw.CFA.BG))
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        B, C, H, W = 2, 1, 4, 4
+        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        op = kornia.color.raw_to_rgb_2x2_downscaled
+        op_optimized = torch_optimizer(op)
+        self.assert_close(op(img), op_optimized(img))
