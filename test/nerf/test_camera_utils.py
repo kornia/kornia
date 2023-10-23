@@ -24,10 +24,9 @@ def _get_data(url: str, sha256: str) -> str:
     if not url.startswith(("http:", "https:")):
         raise ValueError("URL must start with 'http:' or 'https:'")
 
-    req = urllib.request.Request(url) # noqa: S310
-    with urllib.request.urlopen(req) as response: # noqa: S310
+    req = urllib.request.Request(url)  # noqa: S310
+    with urllib.request.urlopen(req) as response:  # noqa: S310
         data = response.read()
-
 
     assert hashlib.sha256(data).hexdigest() == sha256
 
