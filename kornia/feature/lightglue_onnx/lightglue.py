@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import ClassVar
 
-import numpy as np
 import torch
 
 from kornia.core import Device, Tensor
@@ -11,8 +10,10 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CH
 from .utils import download_onnx_from_url, normalize_keypoints
 
 try:
+    import numpy as np
     import onnxruntime as ort
 except ImportError:
+    np = None
     ort = None
 
 __all__ = ["OnnxLightGlue"]
@@ -41,6 +42,7 @@ class OnnxLightGlue:
 
     def __init__(self, weights: str = "disk_fp16", device: Device = None) -> None:
         KORNIA_CHECK(ort is not None, "onnxruntime is not installed.")
+        KORNIA_CHECK(np is not None, "numpy is not installed.")
 
         if device is None:
             device = torch.device("cuda")
@@ -95,16 +97,16 @@ class OnnxLightGlue:
         data0, data1 = data['image0'], data['image1']
         kpts0_, kpts1_ = data0['keypoints'].contiguous(), data1['keypoints'].contiguous()
         desc0, desc1 = data0['descriptors'].contiguous(), data1['descriptors'].contiguous()
-        KORNIA_CHECK_SAME_DEVICES([kpts0_, desc0, kpts1_, desc1])
-        KORNIA_CHECK(kpts0_.device.type == self.device.type)
-        KORNIA_CHECK(torch.float32 == kpts0_.dtype == kpts1_.dtype == desc0.dtype == desc1.dtype)
+        KORNIA_CHECK_SAME_DEVICES([kpts0_, desc0, kpts1_, desc1], "Wrong device")
+        KORNIA_CHECK(kpts0_.device.type == self.device.type, "Wrong device")
+        KORNIA_CHECK(torch.float32 == kpts0_.dtype == kpts1_.dtype == desc0.dtype == desc1.dtype, "Wrong dtype")
         KORNIA_CHECK_SHAPE(kpts0_, ["1", "M", "2"])
         KORNIA_CHECK_SHAPE(kpts1_, ["1", "N", "2"])
         KORNIA_CHECK_SHAPE(desc0, ["1", "M", "D"])
         KORNIA_CHECK_SHAPE(desc1, ["1", "N", "D"])
-        KORNIA_CHECK(kpts0_.shape[1] == desc0.shape[1])
-        KORNIA_CHECK(kpts1_.shape[1] == desc1.shape[1])
-        KORNIA_CHECK(desc0.shape[2] == desc1.shape[2])
+        KORNIA_CHECK(kpts0_.shape[1] == desc0.shape[1], "Number of keypoints does not match number of descriptors")
+        KORNIA_CHECK(kpts1_.shape[1] == desc1.shape[1], "Number of keypoints does not match number of descriptors")
+        KORNIA_CHECK(desc0.shape[2] == desc1.shape[2], "Descriptors' dimensions do not match")
 
         # Normalize keypoints.
         size0, size1 = data0.get('image_size'), data1.get('image_size')

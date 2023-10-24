@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import errno
 import os
 import sys
 from typing import Optional
@@ -45,15 +44,7 @@ def download_onnx_from_url(
         hub_dir = get_dir()
         model_dir = os.path.join(hub_dir, 'checkpoints')
 
-    try:
-        os.makedirs(model_dir)
-    except OSError as e:
-        if e.errno == errno.EEXIST:
-            # Directory already exists, ignore.
-            pass
-        else:
-            # Unexpected OSError, re-raise.
-            raise
+    os.makedirs(model_dir, exist_ok=True)
 
     parts = urlparse(url)
     filename = os.path.basename(parts.path)
