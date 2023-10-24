@@ -14,7 +14,7 @@ try:
     import onnxruntime as ort
 except ImportError:
     np = None  # type: ignore
-    ort = None  # type: ignore
+    ort = None
 
 __all__ = ["OnnxLightGlue"]
 
