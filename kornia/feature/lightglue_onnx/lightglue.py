@@ -13,8 +13,8 @@ try:
     import numpy as np
     import onnxruntime as ort
 except ImportError:
-    np = None
-    ort = None
+    np = None  # type: ignore
+    ort = None  # type: ignore
 
 __all__ = ["OnnxLightGlue"]
 
