@@ -3,6 +3,8 @@ from enum import Enum
 import torch
 from torch import nn
 
+from kornia.core import Module, Tensor, concatenate
+
 
 class CFA(Enum):
     r"""Define the configuration of the color filter array.
@@ -211,7 +213,7 @@ def rgb_to_raw(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
     return output
 
 
-def raw_to_rgb_2x2_downscaled(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
+def raw_to_rgb_2x2_downscaled(image: Tensor, cfa: CFA) -> Tensor:
     r"""Convert the raw bayer image to RGB version of it and resize width and height by half.
 
     This is done efficiently by converting each superpixel of bayer image to the corresponding rgb triplet.
@@ -232,7 +234,7 @@ def raw_to_rgb_2x2_downscaled(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
         >>> rawinput = torch.randn(2, 1, 4, 6)
         >>> rgb = raw_to_rgb_2x2_downscaled(rawinput, CFA.RG) # 2x3x2x3
     """
-    if not isinstance(image, torch.Tensor):
+    if not isinstance(image, Tensor):
         raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
 
     if image.dim() < 3 or image.size(-3) != 1:
@@ -264,7 +266,7 @@ def raw_to_rgb_2x2_downscaled(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
     else:
         raise ValueError(f"Unsupported CFA Got {cfa}.")
 
-    rgb: torch.Tensor = torch.cat([r, (g1 + g2) / 2, b], dim=-3)
+    rgb: Tensor = concatenate([r, (g1 + g2) / 2, b], dim=-3)
 
     return rgb
 
@@ -318,7 +320,7 @@ class RgbToRaw(nn.Module):
         return rgb_to_raw(image, cfa=self.cfa)
 
 
-class RawToRgb2x2Downscaled(nn.Module):
+class RawToRgb2x2Downscaled(Module):
     r"""Module version of the :func:`raw_to_rgb_2x2_downscaled()` function.
 
     The image width and height have to be divisible by two. The image
@@ -338,5 +340,5 @@ class RawToRgb2x2Downscaled(nn.Module):
         super().__init__()
         self.cfa = cfa
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
+    def forward(self, image: Tensor) -> Tensor:
         return raw_to_rgb_2x2_downscaled(image, cfa=self.cfa)
