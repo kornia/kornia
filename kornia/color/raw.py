@@ -3,6 +3,9 @@ from enum import Enum
 import torch
 from torch import nn
 
+from kornia.core import Module, Tensor, concatenate
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+
 
 class CFA(Enum):
     r"""Define the configuration of the color filter array.
@@ -211,6 +214,65 @@ def rgb_to_raw(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
     return output
 
 
+def raw_to_rgb_2x2_downscaled(image: Tensor, cfa: CFA) -> Tensor:
+    r"""Convert the raw bayer image to RGB version of it and resize width and height by half.
+
+    This is done efficiently by converting each superpixel of bayer image to the corresponding rgb triplet.
+    R and B channels of the raw image are left as are, while two G channels of raw image are averaged to obtain the
+    output G channel.
+
+    We are assuming a CFA with 2 green, 1 red, 1 blue.
+    The image data is assumed to be in the range of (0, 1). Image H/W is assumed to be evenly divisible by 2
+    for simplicity reasons.
+
+    Args:
+        image: raw image to be converted to RGB and downscaled with shape :math:`(*,1,H,W)`.
+        cfa: The configuration of the color filter.
+
+    Returns:
+        downscaled RGB version of the image with shape :math:`(*,3,\frac{H}{2},\frac{W}{2})`.
+
+    Example:
+        >>> rawinput = torch.randn(2, 1, 4, 6)
+        >>> rgb = raw_to_rgb_2x2_downscaled(rawinput, CFA.RG) # 2x3x2x3
+    """
+    KORNIA_CHECK(isinstance(image, Tensor), "Input type is not a torch.Tensor")
+
+    KORNIA_CHECK_SHAPE(image, ["*", "1", "H", "W"])
+
+    KORNIA_CHECK(
+        image.shape[-2] % 2 == 0 and image.shape[-1] % 2 == 0,
+        f"Input H&W must be evenly disible by 2. Got {image.shape}",
+    )
+
+    if cfa == CFA.BG:
+        r = image[..., :, ::2, ::2]
+        b = image[..., :, 1::2, 1::2]
+        g1 = image[..., :, ::2, 1::2]
+        g2 = image[..., :, 1::2, ::2]
+    elif cfa == CFA.GB:
+        r = image[..., :, ::2, 1::2]
+        b = image[..., :, 1::2, ::2]
+        g1 = image[..., :, ::2, ::2]
+        g2 = image[..., :, 1::2, 1::2]
+    elif cfa == CFA.RG:
+        r = image[..., :, 1::2, 1::2]
+        b = image[..., :, ::2, ::2]
+        g1 = image[..., :, 1::2, ::2]
+        g2 = image[..., :, ::2, 1::2]
+    elif cfa == CFA.GR:
+        r = image[..., :, 1::2, ::2]
+        b = image[..., :, ::2, 1::2]
+        g1 = image[..., :, 1::2, 1::2]
+        g2 = image[..., :, ::2, ::2]
+    else:
+        raise ValueError(f"Unsupported CFA Got {cfa}.")
+
+    rgb: Tensor = concatenate([r, (g1 + g2) / 2, b], dim=-3)
+
+    return rgb
+
+
 class RawToRgb(nn.Module):
     r"""Module to convert a bayer raw image to RGB version of image.
 
@@ -258,3 +320,27 @@ class RgbToRaw(nn.Module):
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return rgb_to_raw(image, cfa=self.cfa)
+
+
+class RawToRgb2x2Downscaled(Module):
+    r"""Module version of the :func:`raw_to_rgb_2x2_downscaled()` function.
+
+    The image width and height have to be divisible by two. The image
+    data is assumed to be in the range of (0, 1).
+
+    Shape:
+        - image: :math:`(*, 1, H, W)`
+        - output: :math:`(*, 3, \frac{H}{2}, \frac{W}{2})`
+
+    Example:
+        >>> rawinput = torch.rand(2, 1, 4, 6)
+        >>> rgb_downscale = RawToRgb2x2Downscaled(CFA.RG)
+        >>> output = rgb_downscale(rawinput)  # 2x3x2x3
+    """
+
+    def __init__(self, cfa: CFA) -> None:
+        super().__init__()
+        self.cfa = cfa
+
+    def forward(self, image: Tensor) -> Tensor:
+        return raw_to_rgb_2x2_downscaled(image, cfa=self.cfa)

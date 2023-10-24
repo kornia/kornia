@@ -196,3 +196,98 @@ class TestRgbToRaw(BaseTester):
         raw_ops = kornia.color.RgbToRaw(kornia.color.raw.CFA.BG).to(device, dtype)
         raw_fcn = kornia.color.rgb_to_raw
         assert_close(raw_ops(img), raw_fcn(img, kornia.color.raw.CFA.BG))
+
+
+class TestRawToRgb2x2Downscaled(BaseTester):
+    def test_smoke(self, device, dtype) -> None:
+        C, H, W = 1, 4, 6
+        img = torch.rand(C, H, W, device=device, dtype=dtype)
+        assert isinstance(kornia.color.raw_to_rgb_2x2_downscaled(img, kornia.color.CFA.BG), torch.Tensor)
+
+    @pytest.mark.parametrize(
+        "batch_size, height, width",
+        [((1,), 6, 4), ((), 6, 4), ((), 0, 0), ((4, 5), 0, 0), ((2,), 2, 4), ((3,), 4, 2), ((4, 2, 1), 4, 2)],
+    )
+    def test_cardinality(self, device, dtype, batch_size, height, width):
+        img = torch.ones(*batch_size, 1, height, width, device=device, dtype=dtype)
+        assert kornia.color.raw_to_rgb_2x2_downscaled(img, kornia.color.CFA.BG).shape == (
+            *batch_size,
+            3,
+            height // 2,
+            width // 2,
+        )
+
+    def test_exception(self, device, dtype):
+        with pytest.raises(Exception) as errinf:
+            kornia.color.raw_to_rgb_2x2_downscaled([0.0], kornia.color.CFA.BG)
+        assert 'Input type is not a torch.Tensor' in str(errinf)
+
+        with pytest.raises(TypeError) as errinf:
+            img = torch.ones(1, 1, device=device, dtype=dtype)
+            kornia.color.raw_to_rgb_2x2_downscaled(img, kornia.color.CFA.GB)
+        assert "shape must be" in str(errinf)
+
+        with pytest.raises(TypeError) as errinf:
+            img = torch.ones(2, 2, 2, device=device, dtype=dtype)
+            kornia.color.raw_to_rgb_2x2_downscaled(img, kornia.color.CFA.RG)
+        assert "shape must be" in str(errinf)
+
+        with pytest.raises(Exception) as errinf:
+            img = torch.ones(1, 3, 2, device=device, dtype=dtype)
+            kornia.color.raw_to_rgb_2x2_downscaled(img, kornia.color.CFA.GR)
+        assert 'Input H&W must be evenly disible by 2. Got' in str(errinf)
+
+        with pytest.raises(Exception) as errinf:
+            img = torch.ones(1, 2, 3, device=device, dtype=dtype)
+            kornia.color.raw_to_rgb_2x2_downscaled(img, kornia.color.CFA.GR)
+        assert 'Input H&W must be evenly disible by 2. Got' in str(errinf)
+
+        with pytest.raises(ValueError) as errinf:
+            img = torch.ones(1, 4, 8, device=device, dtype=dtype)
+            nonexistent_cfa = 195162495283
+            kornia.color.raw_to_rgb_2x2_downscaled(img, nonexistent_cfa)
+        assert 'Unsupported CFA Got' in str(errinf)
+
+    @pytest.mark.parametrize(
+        "cfa, expected_rgb",
+        [
+            (kornia.color.raw.CFA.BG, [[[0.12, 0.46]], [[0.33, 0.505]], [[0.00, 0.89]]]),
+            (kornia.color.raw.CFA.GB, [[[0.43, 0.58]], [[0.06, 0.675]], [[0.23, 0.43]]]),
+            (kornia.color.raw.CFA.RG, [[[0.0, 0.89]], [[0.33, 0.505]], [[0.12, 0.46]]]),
+            (kornia.color.raw.CFA.GR, [[[0.23, 0.43]], [[0.06, 0.675]], [[0.43, 0.58]]]),
+        ],
+    )
+    def test_functional(self, device, dtype, cfa, expected_rgb):
+        data = torch.tensor([[[0.12, 0.43, 0.46, 0.58], [0.23, 0.00, 0.43, 0.89]]], device=device, dtype=dtype)
+        expected_rgb = torch.tensor(expected_rgb, device=device, dtype=dtype)
+
+        img_rgb = kornia.color.raw_to_rgb_2x2_downscaled(data, cfa)
+        self.assert_close(img_rgb, expected_rgb)
+
+    def test_gradcheck(self, device, dtype):
+        B, C, H, W = 2, 1, 8, 8
+        img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
+        self.gradcheck(
+            kornia.color.raw_to_rgb_2x2_downscaled, (img, kornia.color.raw.CFA.BG), raise_exception=True, fast_mode=True
+        )
+
+    def test_jit(self, device, dtype):
+        B, C, H, W = 2, 1, 4, 4
+        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        op = kornia.color.raw_to_rgb_2x2_downscaled
+        op_jit = torch.jit.script(op)
+        self.assert_close(op(img, kornia.color.raw.CFA.BG), op_jit(img, kornia.color.raw.CFA.BG))
+
+    def test_module(self, device, dtype):
+        B, C, H, W = 2, 1, 4, 4
+        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        raw_ops = kornia.color.RawToRgb2x2Downscaled(kornia.color.raw.CFA.BG).to(device, dtype)
+        raw_fcn = kornia.color.raw_to_rgb_2x2_downscaled
+        self.assert_close(raw_ops(img), raw_fcn(img, kornia.color.raw.CFA.BG))
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        B, C, H, W = 2, 1, 4, 4
+        img = torch.ones(B, C, H, W, device=device, dtype=dtype)
+        op = kornia.color.raw_to_rgb_2x2_downscaled
+        op_optimized = torch_optimizer(op)
+        self.assert_close(op(img, kornia.color.CFA.BG), op_optimized(img, kornia.color.CFA.BG))
