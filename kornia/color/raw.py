@@ -4,6 +4,7 @@ import torch
 from torch import nn
 
 from kornia.core import Module, Tensor, concatenate
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 
 class CFA(Enum):
@@ -227,6 +228,7 @@ def raw_to_rgb_2x2_downscaled(image: Tensor, cfa: CFA) -> Tensor:
     Args:
         image: raw image to be converted to RGB and downscaled with shape :math:`(*,1,H,W)`.
         cfa: The configuration of the color filter.
+
     Returns:
         downscaled RGB version of the image with shape :math:`(*,3,\frac{H}{2},\frac{W}{2})`.
 
@@ -234,14 +236,14 @@ def raw_to_rgb_2x2_downscaled(image: Tensor, cfa: CFA) -> Tensor:
         >>> rawinput = torch.randn(2, 1, 4, 6)
         >>> rgb = raw_to_rgb_2x2_downscaled(rawinput, CFA.RG) # 2x3x2x3
     """
-    if not isinstance(image, Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
+    KORNIA_CHECK(isinstance(image, Tensor), "Input type is not a torch.Tensor")
 
-    if image.dim() < 3 or image.size(-3) != 1:
-        raise ValueError(f"Input size must have a shape of (*, 1, H, W). Got {image.shape}.")
+    KORNIA_CHECK_SHAPE(image, ["*", "1", "H", "W"])
 
-    if image.shape[-2] % 2 == 1 or image.shape[-1] % 2 == 1:
-        raise ValueError(f"Input H&W must be evenly disible by 2. Got {image.shape}")
+    KORNIA_CHECK(
+        image.shape[-2] % 2 == 0 and image.shape[-1] % 2 == 0,
+        f"Input H&W must be evenly disible by 2. Got {image.shape}",
+    )
 
     if cfa == CFA.BG:
         r = image[..., :, ::2, ::2]

@@ -218,26 +218,26 @@ class TestRawToRgb2x2Downscaled(BaseTester):
         )
 
     def test_exception(self, device, dtype):
-        with pytest.raises(TypeError) as errinf:
+        with pytest.raises(Exception) as errinf:
             kornia.color.raw_to_rgb_2x2_downscaled([0.0], kornia.color.CFA.BG)
-        assert 'Input type is not a torch.Tensor. Got' in str(errinf)
+        assert 'Input type is not a torch.Tensor' in str(errinf)
 
-        with pytest.raises(ValueError) as errinf:
+        with pytest.raises(TypeError) as errinf:
             img = torch.ones(1, 1, device=device, dtype=dtype)
             kornia.color.raw_to_rgb_2x2_downscaled(img, kornia.color.CFA.GB)
-        assert 'Input size must have a shape of (*, 1, H, W). Got' in str(errinf)
+        assert "shape must be" in str(errinf)
 
-        with pytest.raises(ValueError) as errinf:
+        with pytest.raises(TypeError) as errinf:
             img = torch.ones(2, 2, 2, device=device, dtype=dtype)
             kornia.color.raw_to_rgb_2x2_downscaled(img, kornia.color.CFA.RG)
-        assert 'Input size must have a shape of (*, 1, H, W). Got' in str(errinf)
+        assert "shape must be" in str(errinf)
 
-        with pytest.raises(ValueError) as errinf:
+        with pytest.raises(Exception) as errinf:
             img = torch.ones(1, 3, 2, device=device, dtype=dtype)
             kornia.color.raw_to_rgb_2x2_downscaled(img, kornia.color.CFA.GR)
         assert 'Input H&W must be evenly disible by 2. Got' in str(errinf)
 
-        with pytest.raises(ValueError) as errinf:
+        with pytest.raises(Exception) as errinf:
             img = torch.ones(1, 2, 3, device=device, dtype=dtype)
             kornia.color.raw_to_rgb_2x2_downscaled(img, kornia.color.CFA.GR)
         assert 'Input H&W must be evenly disible by 2. Got' in str(errinf)
