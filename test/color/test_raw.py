@@ -290,4 +290,4 @@ class TestRawToRgb2x2Downscaled(BaseTester):
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.color.raw_to_rgb_2x2_downscaled
         op_optimized = torch_optimizer(op)
-        self.assert_close(op(img), op_optimized(img))
+        self.assert_close(op(img, kornia.color.CFA.BG), op_optimized(img, kornia.color.CFA.BG))
