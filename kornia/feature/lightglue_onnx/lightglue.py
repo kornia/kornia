@@ -25,10 +25,12 @@ class OnnxLightGlue:
     LightGlue :cite:`LightGlue2023` performs fast descriptor-based deep keypoint matching.
     This module requires `onnxruntime` to be installed.
 
-    If you have trained your own LightGlue model, see https://github.com/fabio-sim/LightGlue-ONNX for how to export the model to ONNX and optimize it.
+    If you have trained your own LightGlue model, see https://github.com/fabio-sim/LightGlue-ONNX
+    for how to export the model to ONNX and optimize it.
 
     Args:
-        weights: Pretrained weights, or a path to your own exported ONNX model. Available pretrained weights are: `disk`, `superpoint`, `disk_fp16`, and `superpoint_fp16`. Defaults to `disk_fp16`.
+        weights: Pretrained weights, or a path to your own exported ONNX model. Available pretrained weights are:
+        `disk`, `superpoint`, `disk_fp16`, and `superpoint_fp16`. Defaults to `disk_fp16`.
         device: Device to run inference on. Currently, only `cuda` is supported. Defaults to `cuda`.
     """
     MODEL_URLS: ClassVar[dict[str, str]] = {
@@ -68,7 +70,8 @@ class OnnxLightGlue:
     def forward(self, data: dict[str, dict[str, Tensor]]) -> dict[str, Tensor]:
         r"""Match keypoints and descriptors between two images.
 
-        The output contains the matches (i.e., indices of the matching keypoint pairs between the first and second image) and the corresponding confidence scores.
+        The output contains the matches (the indices of the matching keypoint pairs between the first and second image)
+        and the corresponding confidence scores.
         Only a batch size of 1 is supported.
 
         Args:
