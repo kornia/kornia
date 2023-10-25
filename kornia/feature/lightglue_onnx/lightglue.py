@@ -148,7 +148,7 @@ class OnnxLightGlue:
         # constructing a tensor from a data pointer, or when ORT supports converting to torch tensor.
         # https://github.com/microsoft/onnxruntime/issues/15963
         outputs = {
-            "matches": torch.from_numpy(matches.numpy()).to(self.device),
-            "scores": torch.from_numpy(mscores.numpy()).to(self.device),
+            "matches": torch.from_dlpack(matches.numpy()).to(self.device),
+            "scores": torch.from_dlpack(mscores.numpy()).to(self.device),
         }
         return outputs
