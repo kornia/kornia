@@ -3,6 +3,7 @@ kornia-rs==0.0.8
 mypy[reports]
 numpy
 onnx
+onnxruntime-gpu>=1.16; sys_platform != 'darwin'
 pre-commit>=2
 pydocstyle
 pytest==7.4.2

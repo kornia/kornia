@@ -39,6 +39,7 @@ from .laf import (
     set_laf_orientation,
 )
 from .lightglue import LightGlue
+from .lightglue_onnx import OnnxLightGlue
 from .loftr import LoFTR
 from .matching import (
     DescriptorMatcher,
@@ -159,4 +160,5 @@ __all__ = [
     "DISKFeatures",
     "LightGlue",
     "LightGlueMatcher",
+    "OnnxLightGlue",
 ]
