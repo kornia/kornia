@@ -155,7 +155,6 @@ def pytest_report_header(config):
 
     import kornia_rs
     import onnx
-    import onnxruntime as ort
 
     return f"""
 main deps:
@@ -168,7 +167,6 @@ x deps:
 dev deps:
     - kornia_rs-{kornia_rs.__version__}
     - onnx-{onnx.__version__}
-    - onnxruntime-{ort.__version__}
 """
 
 
