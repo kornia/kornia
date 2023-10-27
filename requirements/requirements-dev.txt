@@ -8,4 +8,3 @@ pre-commit>=2
 pydocstyle
 pytest==7.4.2
 pytest-timeout
-scipy
