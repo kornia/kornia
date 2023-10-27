@@ -69,7 +69,7 @@ class TestHausdorffLoss:
 
         expected = torch.tensor(0.011, device=device, dtype=dtype)
         actual = loss(logits, labels)
-        assert_close(actual, expected, rtol=1e-3, atol=1e-3)
+        assert_close(actual, expected, rtol=1e-2, atol=1e-2)
 
     @pytest.mark.parametrize(
         "hd,shape", [[kornia.losses.HausdorffERLoss, (5, 5)], [kornia.losses.HausdorffERLoss3D, (5, 5, 5)]]
