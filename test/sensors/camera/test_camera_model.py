@@ -16,12 +16,14 @@ class TestPinholeCamera(BaseTester):
     def test_smoke(self, device, dtype):
         params, image_size = self._make_rand_data(1, device, dtype)
         # test for params = None
-        cam = CameraModel(image_size, CameraModelType.PINHOLE)
+        cam = CameraModel(image_size, CameraModelType.PINHOLE, device=device, dtype=dtype)
         assert isinstance(cam, CameraModel)
         self.assert_close(
             cam.params,
             torch.tensor(
-                [0.5 * image_size.width, 0.5 * image_size.height, 0.5 * image_size.width, 0.5 * image_size.height]
+                [0.5 * image_size.width, 0.5 * image_size.height, 0.5 * image_size.width, 0.5 * image_size.height],
+                device=device,
+                dtype=dtype,
             ),
         )
         cam = CameraModel(image_size, CameraModelType.PINHOLE, params)
