@@ -61,7 +61,7 @@ class MS_SSIMLoss(nn.Module):
         K: tuple[float, float] = (0.01, 0.03),
         alpha: float = 0.025,
         compensation: float = 200.0,
-        reduction: str = 'mean',
+        reduction: str = "mean",
     ) -> None:
         super().__init__()
         self.DR: float = data_range
@@ -82,7 +82,7 @@ class MS_SSIMLoss(nn.Module):
             g_masks[3 * idx + 1, 0, :, :] = self._fspecial_gauss_2d(filter_size, sigma)
             g_masks[3 * idx + 2, 0, :, :] = self._fspecial_gauss_2d(filter_size, sigma)
 
-        self.register_buffer('_g_masks', g_masks)
+        self.register_buffer("_g_masks", g_masks)
 
     def _fspecial_gauss_1d(
         self, size: int, sigma: float, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None
@@ -159,7 +159,7 @@ class MS_SSIMLoss(nn.Module):
 
         # TODO: pass pointer to function e.g. to make more custom with mse, cosine, etc.
         # Compute L1 loss
-        loss_l1 = F.l1_loss(img1, img2, reduction='none')
+        loss_l1 = F.l1_loss(img1, img2, reduction="none")
 
         # Compute average l1 loss in 3 channels
         gaussian_l1 = F.conv2d(loss_l1, g_masks[-CH:], groups=CH, padding=self.pad).mean(1)

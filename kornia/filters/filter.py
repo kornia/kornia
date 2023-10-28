@@ -7,9 +7,9 @@ from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK
 
 from .kernels import normalize_kernel2d
 
-_VALID_BORDERS = {'constant', 'reflect', 'replicate', 'circular'}
-_VALID_PADDING = {'valid', 'same'}
-_VALID_BEHAVIOUR = {'conv', 'corr'}
+_VALID_BORDERS = {"constant", "reflect", "replicate", "circular"}
+_VALID_PADDING = {"valid", "same"}
+_VALID_BEHAVIOUR = {"conv", "corr"}
 
 
 def _compute_padding(kernel_size: list[int]) -> list[int]:
@@ -38,10 +38,10 @@ def _compute_padding(kernel_size: list[int]) -> list[int]:
 def filter2d(
     input: Tensor,
     kernel: Tensor,
-    border_type: str = 'reflect',
+    border_type: str = "reflect",
     normalized: bool = False,
-    padding: str = 'same',
-    behaviour: str = 'corr',
+    padding: str = "same",
+    behaviour: str = "corr",
 ) -> Tensor:
     r"""Convolve a tensor with a 2d kernel.
 
@@ -85,25 +85,25 @@ def filter2d(
                   [0., 0., 0., 0., 0.]]]])
     """
     KORNIA_CHECK_IS_TENSOR(input)
-    KORNIA_CHECK_SHAPE(input, ['B', 'C', 'H', 'W'])
+    KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
     KORNIA_CHECK_IS_TENSOR(kernel)
-    KORNIA_CHECK_SHAPE(kernel, ['B', 'H', 'W'])
+    KORNIA_CHECK_SHAPE(kernel, ["B", "H", "W"])
 
     KORNIA_CHECK(
         str(border_type).lower() in _VALID_BORDERS,
-        f'Invalid border, gotcha {border_type}. Expected one of {_VALID_BORDERS}',
+        f"Invalid border, gotcha {border_type}. Expected one of {_VALID_BORDERS}",
     )
     KORNIA_CHECK(
         str(padding).lower() in _VALID_PADDING,
-        f'Invalid padding mode, gotcha {padding}. Expected one of {_VALID_PADDING}',
+        f"Invalid padding mode, gotcha {padding}. Expected one of {_VALID_PADDING}",
     )
     KORNIA_CHECK(
         str(behaviour).lower() in _VALID_BEHAVIOUR,
-        f'Invalid padding mode, gotcha {behaviour}. Expected one of {_VALID_BEHAVIOUR}',
+        f"Invalid padding mode, gotcha {behaviour}. Expected one of {_VALID_BEHAVIOUR}",
     )
     # prepare kernel
     b, c, h, w = input.shape
-    if str(behaviour).lower() == 'conv':
+    if str(behaviour).lower() == "conv":
         tmp_kernel = kernel.flip((-2, -1))[:, None, ...].to(device=input.device, dtype=input.dtype)
     else:
         tmp_kernel = kernel[:, None, ...].to(device=input.device, dtype=input.dtype)
@@ -117,7 +117,7 @@ def filter2d(
     height, width = tmp_kernel.shape[-2:]
 
     # pad the input tensor
-    if padding == 'same':
+    if padding == "same":
         padding_shape: list[int] = _compute_padding([height, width])
         input = pad(input, padding_shape, mode=border_type)
 
@@ -128,7 +128,7 @@ def filter2d(
     # convolve the tensor with the kernel.
     output = F.conv2d(input, tmp_kernel, groups=tmp_kernel.size(0), padding=0, stride=1)
 
-    if padding == 'same':
+    if padding == "same":
         out = output.view(b, c, h, w)
     else:
         out = output.view(b, c, h - height + 1, w - width + 1)
@@ -140,9 +140,9 @@ def filter2d_separable(
     input: Tensor,
     kernel_x: Tensor,
     kernel_y: Tensor,
-    border_type: str = 'reflect',
+    border_type: str = "reflect",
     normalized: bool = False,
-    padding: str = 'same',
+    padding: str = "same",
 ) -> Tensor:
     r"""Convolve a tensor with two 1d kernels, in x and y directions.
 
@@ -190,7 +190,7 @@ def filter2d_separable(
     return out
 
 
-def filter3d(input: Tensor, kernel: Tensor, border_type: str = 'replicate', normalized: bool = False) -> Tensor:
+def filter3d(input: Tensor, kernel: Tensor, border_type: str = "replicate", normalized: bool = False) -> Tensor:
     r"""Convolve a tensor with a 3d kernel.
 
     The function applies a given kernel to a tensor. The kernel is applied
@@ -251,13 +251,13 @@ def filter3d(input: Tensor, kernel: Tensor, border_type: str = 'replicate', norm
                    [0., 0., 0., 0., 0.]]]]])
     """
     KORNIA_CHECK_IS_TENSOR(input)
-    KORNIA_CHECK_SHAPE(input, ['B', 'C', 'D', 'H', 'W'])
+    KORNIA_CHECK_SHAPE(input, ["B", "C", "D", "H", "W"])
     KORNIA_CHECK_IS_TENSOR(kernel)
-    KORNIA_CHECK_SHAPE(kernel, ['B', 'D', 'H', 'W'])
+    KORNIA_CHECK_SHAPE(kernel, ["B", "D", "H", "W"])
 
     KORNIA_CHECK(
         str(border_type).lower() in _VALID_BORDERS,
-        f'Invalid border, gotcha {border_type}. Expected one of {_VALID_BORDERS}',
+        f"Invalid border, gotcha {border_type}. Expected one of {_VALID_BORDERS}",
     )
 
     # prepare kernel

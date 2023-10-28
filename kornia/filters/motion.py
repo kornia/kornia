@@ -37,7 +37,7 @@ class MotionBlur(Module):
     """
 
     def __init__(
-        self, kernel_size: int, angle: float, direction: float, border_type: str = 'constant', mode: str = 'nearest'
+        self, kernel_size: int, angle: float, direction: float, border_type: str = "constant", mode: str = "nearest"
     ) -> None:
         super().__init__()
         self.kernel_size = kernel_size
@@ -48,8 +48,8 @@ class MotionBlur(Module):
 
     def __repr__(self) -> str:
         return (
-            f'{self.__class__.__name__} (kernel_size={self.kernel_size}, '
-            f'angle={self.angle}, direction={self.direction}, border_type={self.border_type})'
+            f"{self.__class__.__name__} (kernel_size={self.kernel_size}, "
+            f"angle={self.angle}, direction={self.direction}, border_type={self.border_type})"
         )
 
     def forward(self, x: Tensor) -> Tensor:
@@ -88,14 +88,14 @@ class MotionBlur3D(Module):
         kernel_size: int,
         angle: float | tuple[float, float, float] | Tensor,
         direction: float | Tensor,
-        border_type: str = 'constant',
-        mode: str = 'nearest',
+        border_type: str = "constant",
+        mode: str = "nearest",
     ) -> None:
         super().__init__()
         self.kernel_size = kernel_size
         KORNIA_CHECK(
             isinstance(angle, (Tensor, float, list, tuple)),
-            f'Angle should be a Tensor, float or a sequence of floats. Got {angle}',
+            f"Angle should be a Tensor, float or a sequence of floats. Got {angle}",
         )
         if isinstance(angle, float):
             self.angle = (angle, angle, angle)
@@ -108,8 +108,8 @@ class MotionBlur3D(Module):
 
     def __repr__(self) -> str:
         return (
-            f'{self.__class__.__name__} (kernel_size={self.kernel_size}, '
-            f'angle={self.angle}, direction={self.direction}, border_type={self.border_type})'
+            f"{self.__class__.__name__} (kernel_size={self.kernel_size}, "
+            f"angle={self.angle}, direction={self.direction}, border_type={self.border_type})"
         )
 
     def forward(self, x: Tensor) -> Tensor:
@@ -121,8 +121,8 @@ def motion_blur(
     kernel_size: int,
     angle: float | Tensor,
     direction: float | Tensor,
-    border_type: str = 'constant',
-    mode: str = 'nearest',
+    border_type: str = "constant",
+    mode: str = "nearest",
 ) -> Tensor:
     r"""Perform motion blur on tensor images.
 
@@ -165,8 +165,8 @@ def motion_blur3d(
     kernel_size: int,
     angle: tuple[float, float, float] | Tensor,
     direction: float | Tensor,
-    border_type: str = 'constant',
-    mode: str = 'nearest',
+    border_type: str = "constant",
+    mode: str = "nearest",
 ) -> Tensor:
     r"""Perform motion blur on 3D volumes (5D tensor).
 

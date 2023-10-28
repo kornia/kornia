@@ -30,7 +30,7 @@ def _guided_blur_grayscale_guidance(
     input: Tensor,
     kernel_size: tuple[int, int] | int,
     eps: float | Tensor,
-    border_type: str = 'reflect',
+    border_type: str = "reflect",
     subsample: int = 1,
 ) -> Tensor:
     guidance_sub, input_sub, kernel_size = _preprocess_fast_guided_blur(guidance, input, kernel_size, subsample)
@@ -69,7 +69,7 @@ def _guided_blur_multichannel_guidance(
     input: Tensor,
     kernel_size: tuple[int, int] | int,
     eps: float | Tensor,
-    border_type: str = 'reflect',
+    border_type: str = "reflect",
     subsample: int = 1,
 ) -> Tensor:
     guidance_sub, input_sub, kernel_size = _preprocess_fast_guided_blur(guidance, input, kernel_size, subsample)
@@ -114,7 +114,7 @@ def guided_blur(
     input: Tensor,
     kernel_size: tuple[int, int] | int,
     eps: float | Tensor,
-    border_type: str = 'reflect',
+    border_type: str = "reflect",
     subsample: int = 1,
 ) -> Tensor:
     r"""Blur a tensor using a Guided filter.
@@ -146,10 +146,10 @@ def guided_blur(
     """
 
     KORNIA_CHECK_IS_TENSOR(guidance)
-    KORNIA_CHECK_SHAPE(guidance, ['B', 'C', 'H', 'W'])
+    KORNIA_CHECK_SHAPE(guidance, ["B", "C", "H", "W"])
     if input is not guidance:
         KORNIA_CHECK_IS_TENSOR(input)
-        KORNIA_CHECK_SHAPE(input, ['B', 'C', 'H', 'W'])
+        KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
         KORNIA_CHECK(
             (guidance.shape[0] == input.shape[0]) and (guidance.shape[-2:] == input.shape[-2:]),
             "guidance and input should have the same batch size and spatial dimensions",
@@ -192,7 +192,7 @@ class GuidedBlur(Module):
     """
 
     def __init__(
-        self, kernel_size: tuple[int, int] | int, eps: float, border_type: str = 'reflect', subsample: int = 1
+        self, kernel_size: tuple[int, int] | int, eps: float, border_type: str = "reflect", subsample: int = 1
     ) -> None:
         super().__init__()
         self.kernel_size = kernel_size

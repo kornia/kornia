@@ -865,8 +865,8 @@ def _blend_one(input1: Tensor, input2: Tensor, factor: Tensor) -> Tensor:
 def _build_lut(histo: Tensor, step: Tensor) -> Tensor:
     # Compute the cumulative sum, shifting by step // 2
     # and then normalization by step.
-    step_trunc = torch.div(step, 2, rounding_mode='trunc')
-    lut = torch.div(torch.cumsum(histo, 0) + step_trunc, step, rounding_mode='trunc')
+    step_trunc = torch.div(step, 2, rounding_mode="trunc")
+    lut = torch.div(torch.cumsum(histo, 0) + step_trunc, step, rounding_mode="trunc")
     # Shift lut, prepending with 0.
     lut = torch.cat([torch.zeros(1, device=lut.device, dtype=lut.dtype), lut[:-1]])
     # Clip the counts to be in range.  This is done
@@ -902,7 +902,7 @@ def _scale_channel(im: Tensor) -> Tensor:
     histo = _torch_histc_cast(im, bins=256, min=0, max=255)
     # For the purposes of computing the step, filter out the nonzeros.
     nonzero_histo = torch.reshape(histo[histo != 0], [-1])
-    step = torch.div(torch.sum(nonzero_histo) - nonzero_histo[-1], 255, rounding_mode='trunc')
+    step = torch.div(torch.sum(nonzero_histo) - nonzero_histo[-1], 255, rounding_mode="trunc")
 
     # If step is zero, return the original image.  Otherwise, build
     # lut from the full histogram and step and then index from it.

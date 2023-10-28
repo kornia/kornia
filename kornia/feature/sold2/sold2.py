@@ -16,35 +16,35 @@ urls["wireframe"] = "http://cmp.felk.cvut.cz/~mishkdmy/models/sold2_wireframe.pt
 
 
 default_cfg: Dict[str, Any] = {
-    'backbone_cfg': {'input_channel': 1, 'depth': 4, 'num_stacks': 2, 'num_blocks': 1, 'num_classes': 5},
-    'use_descriptor': True,
-    'grid_size': 8,
-    'keep_border_valid': True,
-    'detection_thresh': 0.0153846,  # = 1/65: threshold of junction detection
-    'max_num_junctions': 500,  # maximum number of junctions per image
-    'line_detector_cfg': {
-        'detect_thresh': 0.5,
-        'num_samples': 64,
-        'inlier_thresh': 0.99,
-        'use_candidate_suppression': True,
-        'nms_dist_tolerance': 3.0,
-        'use_heatmap_refinement': True,
-        'heatmap_refine_cfg': {
-            'mode': "local",
-            'ratio': 0.2,
-            'valid_thresh': 0.001,
-            'num_blocks': 20,
-            'overlap_ratio': 0.5,
+    "backbone_cfg": {"input_channel": 1, "depth": 4, "num_stacks": 2, "num_blocks": 1, "num_classes": 5},
+    "use_descriptor": True,
+    "grid_size": 8,
+    "keep_border_valid": True,
+    "detection_thresh": 0.0153846,  # = 1/65: threshold of junction detection
+    "max_num_junctions": 500,  # maximum number of junctions per image
+    "line_detector_cfg": {
+        "detect_thresh": 0.5,
+        "num_samples": 64,
+        "inlier_thresh": 0.99,
+        "use_candidate_suppression": True,
+        "nms_dist_tolerance": 3.0,
+        "use_heatmap_refinement": True,
+        "heatmap_refine_cfg": {
+            "mode": "local",
+            "ratio": 0.2,
+            "valid_thresh": 0.001,
+            "num_blocks": 20,
+            "overlap_ratio": 0.5,
         },
-        'use_junction_refinement': True,
-        'junction_refine_cfg': {'num_perturbs': 9, 'perturb_interval': 0.25},
+        "use_junction_refinement": True,
+        "junction_refine_cfg": {"num_perturbs": 9, "perturb_interval": 0.25},
     },
-    'line_matcher_cfg': {
-        'cross_check': True,
-        'num_samples': 5,
-        'min_dist_pts': 8,
-        'top_k_candidates': 10,
-        'grid_size': 4,
+    "line_matcher_cfg": {
+        "cross_check": True,
+        "num_samples": 5,
+        "min_dist_pts": 8,
+        "top_k_candidates": 10,
+        "grid_size": 4,
     },
 }
 
@@ -87,7 +87,7 @@ class SOLD2(Module):
         self.model = SOLD2Net(self.config)
         if pretrained:
             pretrained_dict = torch.hub.load_state_dict_from_url(urls["wireframe"], map_location=map_location_to_cpu)
-            state_dict = self.adapt_state_dict(pretrained_dict['model_state_dict'])
+            state_dict = self.adapt_state_dict(pretrained_dict["model_state_dict"])
             self.model.load_state_dict(state_dict)
         self.eval()
 
@@ -242,7 +242,7 @@ class WunschLineMatcher(Module):
         # Sample the points separated by at least min_dist_pts along each line
         # The number of samples depends on the length of the line
         num_samples_lst = torch.clamp(
-            torch.div(line_lengths, self.min_dist_pts, rounding_mode='floor'), 2, self.num_samples
+            torch.div(line_lengths, self.min_dist_pts, rounding_mode="floor"), 2, self.num_samples
         ).int()
         line_points = torch.empty((num_lines, self.num_samples, 2), dtype=torch.float, device=dev)
         valid_points = torch.empty((num_lines, self.num_samples), dtype=torch.bool, device=dev)

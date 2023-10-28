@@ -17,10 +17,10 @@ def dilation(
     kernel: torch.Tensor,
     structuring_element: Optional[torch.Tensor] = None,
     origin: Optional[List[int]] = None,
-    border_type: str = 'geodesic',
+    border_type: str = "geodesic",
     border_value: float = 0.0,
     max_val: float = 1e4,
-    engine: str = 'unfold',
+    engine: str = "unfold",
 ) -> torch.Tensor:
     r"""Return the dilated image applying the same kernel in each channel.
 
@@ -75,9 +75,9 @@ def dilation(
 
     # pad
     pad_e: List[int] = [origin[1], se_w - origin[1] - 1, origin[0], se_h - origin[0] - 1]
-    if border_type == 'geodesic':
+    if border_type == "geodesic":
         border_value = -max_val
-        border_type = 'constant'
+        border_type = "constant"
     output: torch.Tensor = F.pad(tensor, pad_e, mode=border_type, value=border_value)
 
     # computation
@@ -88,11 +88,11 @@ def dilation(
         neighborhood = structuring_element.clone()
         neighborhood[kernel == 0] = -max_val
 
-    if engine == 'unfold':
+    if engine == "unfold":
         output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
         output, _ = torch.max(output + neighborhood.flip((0, 1)), 4)
         output, _ = torch.max(output, 4)
-    elif engine == 'convolution':
+    elif engine == "convolution":
         B, C, H, W = tensor.size()
         h_pad, w_pad = output.shape[-2:]
         reshape_kernel = _neight2channels_like_kernel(kernel)
@@ -110,10 +110,10 @@ def erosion(
     kernel: torch.Tensor,
     structuring_element: Optional[torch.Tensor] = None,
     origin: Optional[List[int]] = None,
-    border_type: str = 'geodesic',
+    border_type: str = "geodesic",
     border_value: float = 0.0,
     max_val: float = 1e4,
-    engine: str = 'unfold',
+    engine: str = "unfold",
 ) -> torch.Tensor:
     r"""Return the eroded image applying the same kernel in each channel.
 
@@ -168,9 +168,9 @@ def erosion(
 
     # pad
     pad_e: List[int] = [origin[1], se_w - origin[1] - 1, origin[0], se_h - origin[0] - 1]
-    if border_type == 'geodesic':
+    if border_type == "geodesic":
         border_value = max_val
-        border_type = 'constant'
+        border_type = "constant"
     output: torch.Tensor = F.pad(tensor, pad_e, mode=border_type, value=border_value)
 
     # computation
@@ -181,11 +181,11 @@ def erosion(
         neighborhood = structuring_element.clone()
         neighborhood[kernel == 0] = -max_val
 
-    if engine == 'unfold':
+    if engine == "unfold":
         output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
         output, _ = torch.min(output - neighborhood, 4)
         output, _ = torch.min(output, 4)
-    elif engine == 'convolution':
+    elif engine == "convolution":
         B, C, H, W = tensor.size()
         Hpad, Wpad = output.shape[-2:]
         reshape_kernel = _neight2channels_like_kernel(kernel)
@@ -204,10 +204,10 @@ def opening(
     kernel: torch.Tensor,
     structuring_element: Optional[torch.Tensor] = None,
     origin: Optional[List[int]] = None,
-    border_type: str = 'geodesic',
+    border_type: str = "geodesic",
     border_value: float = 0.0,
     max_val: float = 1e4,
-    engine: str = 'unfold',
+    engine: str = "unfold",
 ) -> torch.Tensor:
     r"""Return the opened image, (that means, dilation after an erosion) applying the same kernel in each channel.
 
@@ -281,10 +281,10 @@ def closing(
     kernel: torch.Tensor,
     structuring_element: Optional[torch.Tensor] = None,
     origin: Optional[List[int]] = None,
-    border_type: str = 'geodesic',
+    border_type: str = "geodesic",
     border_value: float = 0.0,
     max_val: float = 1e4,
-    engine: str = 'unfold',
+    engine: str = "unfold",
 ) -> torch.Tensor:
     r"""Return the closed image, (that means, erosion after a dilation) applying the same kernel in each channel.
 
@@ -359,10 +359,10 @@ def gradient(
     kernel: torch.Tensor,
     structuring_element: Optional[torch.Tensor] = None,
     origin: Optional[List[int]] = None,
-    border_type: str = 'geodesic',
+    border_type: str = "geodesic",
     border_value: float = 0.0,
     max_val: float = 1e4,
-    engine: str = 'unfold',
+    engine: str = "unfold",
 ) -> torch.Tensor:
     r"""Return the morphological gradient of an image.
 
@@ -425,10 +425,10 @@ def top_hat(
     kernel: torch.Tensor,
     structuring_element: Optional[torch.Tensor] = None,
     origin: Optional[List[int]] = None,
-    border_type: str = 'geodesic',
+    border_type: str = "geodesic",
     border_value: float = 0.0,
     max_val: float = 1e4,
-    engine: str = 'unfold',
+    engine: str = "unfold",
 ) -> torch.Tensor:
     r"""Return the top hat transformation of an image.
 
@@ -496,10 +496,10 @@ def bottom_hat(
     kernel: torch.Tensor,
     structuring_element: Optional[torch.Tensor] = None,
     origin: Optional[List[int]] = None,
-    border_type: str = 'geodesic',
+    border_type: str = "geodesic",
     border_value: float = 0.0,
     max_val: float = 1e4,
-    engine: str = 'unfold',
+    engine: str = "unfold",
 ) -> torch.Tensor:
     r"""Return the bottom hat transformation of an image.
 

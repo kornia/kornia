@@ -30,7 +30,7 @@ class _HausdorffERLossBase(Module):
     conv: Callable[..., Tensor]
     max_pool: Callable[..., Tensor]
 
-    def __init__(self, alpha: float = 2.0, k: int = 10, reduction: str = 'mean') -> None:
+    def __init__(self, alpha: float = 2.0, k: int = 10, reduction: str = "mean") -> None:
         super().__init__()
         self.alpha = alpha
         self.k = k
@@ -110,11 +110,11 @@ class _HausdorffERLossBase(Module):
             ]
         )
 
-        if self.reduction == 'mean':
+        if self.reduction == "mean":
             out = out.mean()
-        elif self.reduction == 'sum':
+        elif self.reduction == "sum":
             out = out.sum()
-        elif self.reduction == 'none':
+        elif self.reduction == "none":
             pass
         else:
             raise NotImplementedError(f"reduction `{self.reduction}` has not been implemented yet.")

@@ -120,17 +120,17 @@ def raw_to_rgb(image: torch.Tensor, cfa: CFA) -> torch.Tensor:
     # evenly spaced between them while the B/R samples will be missing in the corners were they are assumed to exist
     # Further we need to do align_corners to start the interpolation from the middle of the samples in the corners, that
     # way we get to keep the known blue samples across the whole image
-    rpadded = torch.nn.functional.pad(r, list(rpad), 'replicate')
-    bpadded = torch.nn.functional.pad(b, list(bpad), 'replicate')
+    rpadded = torch.nn.functional.pad(r, list(rpad), "replicate")
+    bpadded = torch.nn.functional.pad(b, list(bpad), "replicate")
     # use explicit padding instead of conv2d padding to be able to use reflect which mirror the correct colors
     # for a 2x2 bayer filter
-    gpadded = torch.nn.functional.pad(image, [1, 1, 1, 1], 'reflect')
+    gpadded = torch.nn.functional.pad(image, [1, 1, 1, 1], "reflect")
 
     r_up = torch.nn.functional.interpolate(
-        rpadded, size=(image.shape[-2] + 1, image.shape[-1] + 1), mode='bilinear', align_corners=True
+        rpadded, size=(image.shape[-2] + 1, image.shape[-1] + 1), mode="bilinear", align_corners=True
     )
     b_up = torch.nn.functional.interpolate(
-        bpadded, size=(image.shape[-2] + 1, image.shape[-1] + 1), mode='bilinear', align_corners=True
+        bpadded, size=(image.shape[-2] + 1, image.shape[-1] + 1), mode="bilinear", align_corners=True
     )
 
     # remove the extra padding

@@ -48,13 +48,13 @@ class TestBasicAugmentationBase:
         augmentation = _BasicAugmentationBase(p, p_batch, same_on_batch)
         with patch.object(augmentation, "generate_parameters", autospec=True) as generate_parameters:
             generate_parameters.side_effect = lambda shape: {
-                'degrees': torch.arange(0, shape[0], device=device, dtype=dtype)
+                "degrees": torch.arange(0, shape[0], device=device, dtype=dtype)
             }
             output = augmentation.forward_parameters(input_shape)
             assert "batch_prob" in output
-            assert len(output['degrees']) == output['batch_prob'].sum().item() == num
+            assert len(output["degrees"]) == output["batch_prob"].sum().item() == num
 
-    @pytest.mark.parametrize('keepdim', (True, False))
+    @pytest.mark.parametrize("keepdim", (True, False))
     def test_forward(self, device, dtype, keepdim):
         torch.manual_seed(42)
         input = torch.rand((12, 3, 4, 5), device=device, dtype=dtype)
@@ -68,7 +68,7 @@ class TestBasicAugmentationBase:
             augmentation, "transform_output_tensor", autospec=True
         ) as transform_output_tensor:
             generate_parameters.side_effect = lambda shape: {
-                'degrees': torch.arange(0, shape[0], device=device, dtype=dtype)
+                "degrees": torch.arange(0, shape[0], device=device, dtype=dtype)
             }
             transform_tensor.side_effect = lambda x: x.unsqueeze(dim=0)
             transform_output_tensor.side_effect = lambda x, y: x.squeeze()
@@ -91,7 +91,7 @@ class TestAugmentationBase2D:
             augmentation, "generate_parameters", autospec=True
         ) as generate_parameters:
             # Calling the augmentation with a single tensor shall return the expected tensor using the generated params.
-            params = {'params': {}, 'flags': {'foo': 0}}
+            params = {"params": {}, "flags": {"foo": 0}}
             generate_parameters.return_value = params
             apply_transform.return_value = expected_output
             output = augmentation(input)
@@ -107,7 +107,7 @@ class TestAugmentationBase2D:
             assert output is expected_output
 
             # Calling the augmentation with a tensor and params shall return the expected tensor using the given params.
-            params = {'params': {}, 'flags': {'bar': 1}}
+            params = {"params": {}, "flags": {"bar": 1}}
             apply_transform.reset_mock()
             generate_parameters.return_value = None
             output = augmentation(input, params=params)
@@ -137,7 +137,7 @@ class TestAugmentationBase2D:
         output = utils.tensor_to_gradcheck_var(output)  # to var
         other_transform = utils.tensor_to_gradcheck_var(other_transform)  # to var
 
-        input_param = {'batch_prob': torch.tensor([True]), 'x': input_transform, 'y': {}}
+        input_param = {"batch_prob": torch.tensor([True]), "x": input_transform, "y": {}}
 
         augmentation = AugmentationBase2D(p=1.0)
 
@@ -158,7 +158,7 @@ class TestGeometricAugmentationBase2D:
         x = torch.rand(len(batch_prob), 5, 10, 7, dtype=dtype, device=device)
 
         to_apply = torch.tensor(batch_prob, device=device)
-        with patch.object(aug, '__batch_prob_generator__', return_value=to_apply):
+        with patch.object(aug, "__batch_prob_generator__", return_value=to_apply):
             params = aug.forward_parameters(x.shape)
 
         with torch.autocast(device.type):
@@ -179,7 +179,7 @@ class TestIntensityAugmentationBase2D:
         x = torch.rand(len(batch_prob), 5, 10, 7, dtype=dtype, device=device)
 
         to_apply = torch.tensor(batch_prob, device=device)
-        with patch.object(aug, '__batch_prob_generator__', return_value=to_apply):
+        with patch.object(aug, "__batch_prob_generator__", return_value=to_apply):
             params = aug.forward_parameters(x.shape)
 
         with torch.autocast(device.type):
@@ -200,7 +200,7 @@ class TestIntensityAugmentationBase3D:
         x = torch.rand(len(batch_prob), 1, 3, 10, 7, dtype=dtype, device=device)
 
         to_apply = torch.tensor(batch_prob, device=device)
-        with patch.object(aug, '__batch_prob_generator__', return_value=to_apply):
+        with patch.object(aug, "__batch_prob_generator__", return_value=to_apply):
             params = aug.forward_parameters(x.shape)
 
         with torch.autocast(device.type):
@@ -221,7 +221,7 @@ class TestGeometricAugmentationBase3D:
         x = torch.rand(len(batch_prob), 1, 3, 10, 7, dtype=dtype, device=device)
 
         to_apply = torch.tensor(batch_prob, device=device)
-        with patch.object(aug, '__batch_prob_generator__', return_value=to_apply):
+        with patch.object(aug, "__batch_prob_generator__", return_value=to_apply):
             params = aug.forward_parameters(x.shape)
 
         with torch.autocast(device.type):

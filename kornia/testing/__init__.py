@@ -24,7 +24,7 @@ def xla_is_available() -> bool:
 
 def is_mps_tensor_safe(x: Tensor) -> bool:
     """Return whether tensor is on MPS device."""
-    return 'mps' in str(x.device)
+    return "mps" in str(x.device)
 
 
 # TODO: Isn't this function duplicated with eye_like?
@@ -52,7 +52,7 @@ def tensor_to_gradcheck_var(
     return tensor.requires_grad_(requires_grad).type(dtype)
 
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 def dict_to(data: Dict[T, Any], device: Device, dtype: Dtype) -> Dict[T, Any]:
@@ -141,7 +141,7 @@ class BaseTester(ABC):
         if hasattr(expected, "data"):
             expected = expected.data
 
-        if 'xla' in actual.device.type or 'xla' in expected.device.type:
+        if "xla" in actual.device.type or "xla" in expected.device.type:
             rtol, atol = 1e-2, 1e-2
 
         if rtol is None and atol is None:
@@ -178,20 +178,20 @@ def generate_two_view_random_scene(
     scene: Dict[str, Tensor] = epi.generate_scene(num_views, num_points)
 
     # internal parameters (same K)
-    K1 = scene['K'].to(device, dtype)
+    K1 = scene["K"].to(device, dtype)
     K2 = K1.clone()
 
     # rotation
-    R1 = scene['R'][0:1].to(device, dtype)
-    R2 = scene['R'][1:2].to(device, dtype)
+    R1 = scene["R"][0:1].to(device, dtype)
+    R2 = scene["R"][1:2].to(device, dtype)
 
     # translation
-    t1 = scene['t'][0:1].to(device, dtype)
-    t2 = scene['t'][1:2].to(device, dtype)
+    t1 = scene["t"][0:1].to(device, dtype)
+    t2 = scene["t"][1:2].to(device, dtype)
 
     # projection matrix, P = K(R|t)
-    P1 = scene['P'][0:1].to(device, dtype)
-    P2 = scene['P'][1:2].to(device, dtype)
+    P1 = scene["P"][0:1].to(device, dtype)
+    P2 = scene["P"][1:2].to(device, dtype)
 
     # fundamental matrix
     F_mat = epi.fundamental_from_projections(P1[..., :3, :], P2[..., :3, :])
@@ -199,11 +199,11 @@ def generate_two_view_random_scene(
     F_mat = epi.normalize_transformation(F_mat)
 
     # points 3d
-    X = scene['points3d'].to(device, dtype)
+    X = scene["points3d"].to(device, dtype)
 
     # projected points
-    x1 = scene['points2d'][0:1].to(device, dtype)
-    x2 = scene['points2d'][1:2].to(device, dtype)
+    x1 = scene["points2d"][0:1].to(device, dtype)
+    x2 = scene["points2d"][1:2].to(device, dtype)
 
     return {
         "K1": K1,
@@ -242,7 +242,7 @@ def default_with_one_parameter_changed(*, default: Dict[str, Any] = {}, **possib
 
 
 def _get_precision(device: torch.device, dtype: Dtype) -> float:
-    if 'xla' in device.type:
+    if "xla" in device.type:
         return 1e-2
     if dtype == torch.float16:
         return 1e-3
@@ -252,7 +252,7 @@ def _get_precision(device: torch.device, dtype: Dtype) -> float:
 def _get_precision_by_name(
     device: torch.device, device_target: str, tol_val: float, tol_val_default: float = 1e-4
 ) -> float:
-    if device_target not in ['cpu', 'cuda', 'xla', 'mps']:
+    if device_target not in ["cpu", "cuda", "xla", "mps"]:
         raise ValueError(f"Invalid device name: {device_target}.")
 
     if device_target in device.type:

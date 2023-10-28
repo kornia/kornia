@@ -60,7 +60,7 @@ class RandomSaturation(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self.saturation: Tensor = _range_bound(saturation, 'saturation', center=1.0)
+        self.saturation: Tensor = _range_bound(saturation, "saturation", center=1.0)
         self._param_generator = rg.PlainUniformGenerator((self.saturation, "saturation_factor", None, None))
 
     def apply_transform(

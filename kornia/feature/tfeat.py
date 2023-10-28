@@ -8,12 +8,8 @@ from kornia.utils.helpers import map_location_to_cpu
 
 urls: Dict[str, str] = {}
 urls["liberty"] = "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-liberty.params"  # pylint: disable
-urls[
-    "notredame"
-] = "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-notredame.params"  # pylint: disable
-urls[
-    "yosemite"
-] = "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-yosemite.params"  # pylint: disable
+urls["notredame"] = "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-notredame.params"  # pylint: disable
+urls["yosemite"] = "https://github.com/vbalnt/tfeat/raw/master/pretrained-models/tfeat-yosemite.params"  # pylint: disable
 
 
 class TFeat(nn.Module):
@@ -38,6 +34,7 @@ class TFeat(nn.Module):
         >>> tfeat = TFeat()
         >>> descs = tfeat(input) # 16x128
     """
+
     patch_size = 32
 
     def __init__(self, pretrained: bool = False) -> None:
@@ -53,7 +50,7 @@ class TFeat(nn.Module):
         self.descr = nn.Sequential(nn.Linear(64 * 8 * 8, 128), nn.Tanh())
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls['liberty'], map_location=map_location_to_cpu)
+            pretrained_dict = torch.hub.load_state_dict_from_url(urls["liberty"], map_location=map_location_to_cpu)
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 

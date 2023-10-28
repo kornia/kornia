@@ -18,13 +18,13 @@ def load_timg(file_name):
     return K.color.bgr_to_rgb(tensor)
 
 
-registrator = KG.ImageRegistrator('similarity')
+registrator = KG.ImageRegistrator("similarity")
 
-img1 = K.resize(load_timg('/Users/oldufo/datasets/stewart/MR-CT/CT.png'), (400, 600))
-img2 = K.resize(load_timg('/Users/oldufo/datasets/stewart/MR-CT/MR.png'), (400, 600))
+img1 = K.resize(load_timg("/Users/oldufo/datasets/stewart/MR-CT/CT.png"), (400, 600))
+img2 = K.resize(load_timg("/Users/oldufo/datasets/stewart/MR-CT/MR.png"), (400, 600))
 model, intermediate = registrator.register(img1, img2, output_intermediate_models=True)
 
-video_writer = imageio.get_writer('medical_registration.gif', fps=2)
+video_writer = imageio.get_writer("medical_registration.gif", fps=2)
 
 timg_dst_first = img1.clone()
 timg_dst_first[0, 0, :, :] = img2[0, 0, :, :]

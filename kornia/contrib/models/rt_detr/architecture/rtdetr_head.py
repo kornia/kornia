@@ -57,7 +57,7 @@ def _deformable_attention_kernel(
         sampling_grid_l_ = sampling_grids[:, :, :, level].permute(0, 2, 1, 3, 4).flatten(0, 1)
         # N_*M_, D_, Lq_, P_
         sampling_value_l_ = torch.nn.functional.grid_sample(
-            value_l_, sampling_grid_l_, mode='bilinear', padding_mode='zeros', align_corners=False
+            value_l_, sampling_grid_l_, mode="bilinear", padding_mode="zeros", align_corners=False
         )
         sampling_value_list.append(sampling_value_l_)
 

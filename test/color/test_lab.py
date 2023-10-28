@@ -31,7 +31,7 @@ class TestRgbToLab(BaseTester):
 
     def test_unit(self, device, dtype):
         if dtype == torch.float16:
-            pytest.skip('not work for half-precision')
+            pytest.skip("not work for half-precision")
 
         data = torch.tensor(
             [
@@ -88,7 +88,7 @@ class TestRgbToLab(BaseTester):
 
     def test_forth_and_back(self, device, dtype):
         if dtype == torch.float16:
-            pytest.skip('not work for half-precision')
+            pytest.skip("not work for half-precision")
 
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)
         lab = kornia.color.rgb_to_lab
@@ -144,7 +144,7 @@ class TestLabToRgb(BaseTester):
 
     def test_unit(self, device, dtype):
         if dtype == torch.float16:
-            pytest.skip('not work for half-precision')
+            pytest.skip("not work for half-precision")
 
         data = torch.tensor(
             [
@@ -233,7 +233,7 @@ class TestLabToRgb(BaseTester):
 
     def test_forth_and_back(self, device, dtype):
         if dtype == torch.float16:
-            pytest.skip('not work for half-precision')
+            pytest.skip("not work for half-precision")
 
         data = torch.rand(3, 4, 5, device=device, dtype=dtype)
         lab = kornia.color.rgb_to_lab

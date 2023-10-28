@@ -12,7 +12,7 @@ from .structs import Keypoints
 
 def nms(signal: Tensor, window_size: int = 5, cutoff: float = 0.0) -> Tensor:
     if window_size % 2 != 1:
-        raise ValueError(f'window_size has to be odd, got {window_size}')
+        raise ValueError(f"window_size has to be odd, got {window_size}")
 
     _, ixs = F.max_pool2d(signal, kernel_size=window_size, stride=1, padding=window_size // 2, return_indices=True)
 

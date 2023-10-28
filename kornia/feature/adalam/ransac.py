@@ -63,7 +63,7 @@ def confidence_based_inlier_selection(
 
     balanced_rdims, weights_cumsums = group_sum_and_cumsum(inlier_weights, end_rans_indexing, ransidx)
     if not isinstance(weights_cumsums, Tensor):
-        raise TypeError('Expected the `weights_cumsums` to be a Tensor!')
+        raise TypeError("Expected the `weights_cumsums` to be a Tensor!")
 
     progressive_inl_rates = weights_cumsums.float() / (balanced_rdims.repeat_interleave(rdims, dim=1)).float()
 
@@ -107,9 +107,9 @@ def sample_padded_inliers(
 def ransac(
     xsamples: Tensor, ysamples: Tensor, rdims: Tensor, config: Dict[str, Any], iters: int = 128, refit: bool = True
 ) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
-    DET_THR = config['detected_scale_rate_threshold']
-    MIN_CONFIDENCE = config['min_confidence']
-    dv: torch.device = config['device']
+    DET_THR = config["detected_scale_rate_threshold"]
+    MIN_CONFIDENCE = config["min_confidence"]
+    dv: torch.device = config["device"]
 
     numransacs = rdims.shape[0]
     ransidx = torch.arange(numransacs, device=dv).repeat_interleave(rdims)

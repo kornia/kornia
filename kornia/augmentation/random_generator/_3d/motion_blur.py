@@ -58,7 +58,7 @@ class MotionBlurGenerator3D(RandomGeneratorBase):
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         angle: Tensor = _tuple_range_reader(self.angle, 3, device=device, dtype=dtype)
-        direction = _range_bound(self.direction, 'direction', center=0.0, bounds=(-1, 1)).to(device=device, dtype=dtype)
+        direction = _range_bound(self.direction, "direction", center=0.0, bounds=(-1, 1)).to(device=device, dtype=dtype)
         if isinstance(self.kernel_size, int):
             if not (self.kernel_size >= 3 and self.kernel_size % 2 == 1):
                 raise AssertionError(f"`kernel_size` must be odd and greater than 3. Got {self.kernel_size}.")
@@ -92,7 +92,7 @@ class MotionBlurGenerator3D(RandomGeneratorBase):
         ksize_factor = _adapted_rsampling((batch_size,), self.ksize_sampler, same_on_batch).int() * 2 + 1
 
         return {
-            'ksize_factor': ksize_factor.to(device=_device, dtype=torch.int32),
-            'angle_factor': angle_factor.to(device=_device, dtype=_dtype),
-            'direction_factor': direction_factor.to(device=_device, dtype=_dtype),
+            "ksize_factor": ksize_factor.to(device=_device, dtype=torch.int32),
+            "angle_factor": angle_factor.to(device=_device, dtype=_dtype),
+            "direction_factor": direction_factor.to(device=_device, dtype=_dtype),
         }

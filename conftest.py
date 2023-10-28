@@ -25,7 +25,7 @@ def get_test_devices() -> Dict[str, torch.device]:
         import torch_xla.core.xla_model as xm
 
         devices["tpu"] = xm.xla_device()
-    if hasattr(torch.backends, 'mps'):
+    if hasattr(torch.backends, "mps"):
         if torch.backends.mps.is_available():
             devices["mps"] = torch.device("mps")
     return devices
@@ -65,10 +65,10 @@ def dtype(dtype_name) -> torch.dtype:
     return TEST_DTYPES[dtype_name]
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope="session")
 def torch_optimizer():
-    if hasattr(torch, 'compile') and sys.platform == "linux":
-        if not (sys.version_info[:2] == (3, 11) and torch_version() in {'2.0.0', '2.0.1'}):
+    if hasattr(torch, "compile") and sys.platform == "linux":
+        if not (sys.version_info[:2] == (3, 11) and torch_version() in {"2.0.0", "2.0.1"}):
             # torch compile just have support for python 3.11 after torch 2.1.0
             return torch.compile
 
@@ -78,26 +78,26 @@ def torch_optimizer():
 def pytest_generate_tests(metafunc):
     device_names = None
     dtype_names = None
-    if 'device_name' in metafunc.fixturenames:
-        raw_value = metafunc.config.getoption('--device')
-        if raw_value == 'all':
+    if "device_name" in metafunc.fixturenames:
+        raw_value = metafunc.config.getoption("--device")
+        if raw_value == "all":
             device_names = list(TEST_DEVICES.keys())
         else:
-            device_names = raw_value.split(',')
-    if 'dtype_name' in metafunc.fixturenames:
-        raw_value = metafunc.config.getoption('--dtype')
-        if raw_value == 'all':
+            device_names = raw_value.split(",")
+    if "dtype_name" in metafunc.fixturenames:
+        raw_value = metafunc.config.getoption("--dtype")
+        if raw_value == "all":
             dtype_names = list(TEST_DTYPES.keys())
         else:
-            dtype_names = raw_value.split(',')
+            dtype_names = raw_value.split(",")
     if device_names is not None and dtype_names is not None:
         # Exclude any blacklisted device/dtype combinations.
         params = [combo for combo in product(device_names, dtype_names) if combo not in DEVICE_DTYPE_BLACKLIST]
-        metafunc.parametrize('device_name,dtype_name', params)
+        metafunc.parametrize("device_name,dtype_name", params)
     elif device_names is not None:
-        metafunc.parametrize('device_name', device_names)
+        metafunc.parametrize("device_name", device_names)
     elif dtype_names is not None:
-        metafunc.parametrize('dtype_name', dtype_names)
+        metafunc.parametrize("dtype_name", dtype_names)
 
 
 def pytest_collection_modifyitems(config, items):
@@ -112,15 +112,15 @@ def pytest_collection_modifyitems(config, items):
 
 
 def pytest_addoption(parser):
-    parser.addoption('--device', action="store", default="cpu")
-    parser.addoption('--dtype', action="store", default="float32")
+    parser.addoption("--device", action="store", default="cpu")
+    parser.addoption("--dtype", action="store", default="float32")
     parser.addoption("--runslow", action="store_true", default=False, help="run slow tests")
 
 
 def _setup_torch_compile():
-    if hasattr(torch, 'compile') and sys.platform == "linux":
-        print('Setting up torch compile...')
-        torch.set_float32_matmul_precision('high')
+    if hasattr(torch, "compile") and sys.platform == "linux":
+        print("Setting up torch compile...")
+        torch.set_float32_matmul_precision("high")
 
         def _dummy_function(x, y):
             return (x + y).sum()
@@ -140,7 +140,7 @@ def pytest_sessionstart(session):
     try:
         _setup_torch_compile()
     except RuntimeError as ex:
-        if 'not yet supported for torch.compile' not in str(ex):
+        if "not yet supported for torch.compile" not in str(ex):
             raise ex
     # TODO: cache all torch.load weights/states here to not impact on test suite
 
@@ -149,9 +149,9 @@ def pytest_report_header(config):
     try:
         import accelerate
 
-        accelerate_info = f'accelerate-{accelerate.__version__}'
+        accelerate_info = f"accelerate-{accelerate.__version__}"
     except ImportError:
-        accelerate_info = '`accelerate` not found'
+        accelerate_info = "`accelerate` not found"
 
     import kornia_rs
     import onnx
@@ -178,19 +178,19 @@ def add_doctest_deps(doctest_namespace):
 
 
 # the commit hash for the data version
-sha: str = 'cb8f42bf28b9f347df6afba5558738f62a11f28a'
-sha2: str = 'f7d8da661701424babb64850e03c5e8faec7ea62'
-sha3: str = '8b98f44abbe92b7a84631ed06613b08fee7dae14'
+sha: str = "cb8f42bf28b9f347df6afba5558738f62a11f28a"
+sha2: str = "f7d8da661701424babb64850e03c5e8faec7ea62"
+sha3: str = "8b98f44abbe92b7a84631ed06613b08fee7dae14"
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope="session")
 def data(request):
     url = {
-        'loftr_homo': f'https://github.com/kornia/data_test/blob/{sha}/loftr_outdoor_and_homography_data.pt?raw=true',
-        'loftr_fund': f'https://github.com/kornia/data_test/blob/{sha}/loftr_indoor_and_fundamental_data.pt?raw=true',
-        'adalam_idxs': f'https://github.com/kornia/data_test/blob/{sha2}/adalam_test.pt?raw=true',
-        'lightglue_idxs': f'https://github.com/kornia/data_test/blob/{sha2}/adalam_test.pt?raw=true',
-        'disk_outdoor': f'https://github.com/kornia/data_test/blob/{sha3}/knchurch_disk.pt?raw=true',
-        'dexined': 'https://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth',
+        "loftr_homo": f"https://github.com/kornia/data_test/blob/{sha}/loftr_outdoor_and_homography_data.pt?raw=true",
+        "loftr_fund": f"https://github.com/kornia/data_test/blob/{sha}/loftr_indoor_and_fundamental_data.pt?raw=true",
+        "adalam_idxs": f"https://github.com/kornia/data_test/blob/{sha2}/adalam_test.pt?raw=true",
+        "lightglue_idxs": f"https://github.com/kornia/data_test/blob/{sha2}/adalam_test.pt?raw=true",
+        "disk_outdoor": f"https://github.com/kornia/data_test/blob/{sha3}/knchurch_disk.pt?raw=true",
+        "dexined": "https://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth",
     }
-    return torch.hub.load_state_dict_from_url(url[request.param], map_location=torch.device('cpu'))
+    return torch.hub.load_state_dict_from_url(url[request.param], map_location=torch.device("cpu"))

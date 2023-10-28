@@ -282,10 +282,10 @@ class TestNormalizeMinMax(BaseTester):
             assert kornia.enhance.normalize_min_max(0.0)
 
         with pytest.raises(TypeError):
-            assert kornia.enhance.normalize_min_max(x, '', '')
+            assert kornia.enhance.normalize_min_max(x, "", "")
 
         with pytest.raises(TypeError):
-            assert kornia.enhance.normalize_min_max(x, 2.0, '')
+            assert kornia.enhance.normalize_min_max(x, 2.0, "")
 
     @pytest.mark.parametrize("input_shape", [(1, 2, 3, 4), (2, 1, 4, 3), (1, 3, 2, 1)])
     def test_cardinality(self, device, dtype, input_shape):

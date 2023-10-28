@@ -18,8 +18,8 @@ def elastic_transform2d(
     sigma: Union[Tuple[float, float], Tensor] = (32.0, 32.0),
     alpha: Union[Tuple[float, float], Tensor] = (1.0, 1.0),
     align_corners: bool = False,
-    mode: str = 'bilinear',
-    padding_mode: str = 'zeros',
+    mode: str = "bilinear",
+    padding_mode: str = "zeros",
 ) -> Tensor:
     r"""Apply elastic transform of images as described in :cite:`Simard2003BestPF`.
 
@@ -62,8 +62,8 @@ def elastic_transform2d(
     """
     KORNIA_CHECK_IS_TENSOR(image)
     KORNIA_CHECK_IS_TENSOR(noise)
-    KORNIA_CHECK_SHAPE(image, ['B', 'C', 'H', 'W'])
-    KORNIA_CHECK_SHAPE(noise, ['B', 'C', 'H', 'W'])
+    KORNIA_CHECK_SHAPE(image, ["B", "C", "H", "W"])
+    KORNIA_CHECK_SHAPE(noise, ["B", "C", "H", "W"])
 
     device, dtype = image.device, image.dtype
     # if isinstance(sigma, tuple):
@@ -87,8 +87,8 @@ def elastic_transform2d(
     disp_x = noise[:, :1]
     disp_y = noise[:, 1:]
 
-    disp_x = filter2d(disp_x, kernel=kernel_y, border_type='constant') * alpha_x
-    disp_y = filter2d(disp_y, kernel=kernel_x, border_type='constant') * alpha_y
+    disp_x = filter2d(disp_x, kernel=kernel_y, border_type="constant") * alpha_x
+    disp_y = filter2d(disp_y, kernel=kernel_x, border_type="constant") * alpha_y
 
     # stack and normalize displacement
     disp = concatenate([disp_x, disp_y], 1).permute(0, 2, 3, 1)

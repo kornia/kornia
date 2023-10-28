@@ -42,7 +42,7 @@ def download_onnx_from_url(
     """
     if model_dir is None:
         hub_dir = get_dir()
-        model_dir = os.path.join(hub_dir, 'checkpoints')
+        model_dir = os.path.join(hub_dir, "checkpoints")
 
     os.makedirs(model_dir, exist_ok=True)
 

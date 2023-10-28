@@ -169,7 +169,7 @@ class Attention(Module):
 
         indices, attn_offset_size = self.build_attention_bias(resolution)
         self.attention_biases = nn.Parameter(torch.zeros(num_heads, attn_offset_size))
-        self.register_buffer('attention_bias_idxs', indices, persistent=False)
+        self.register_buffer("attention_bias_idxs", indices, persistent=False)
         self.attention_bias_idxs: Tensor
         self.ab: Optional[Tensor] = None
 
@@ -470,7 +470,7 @@ def _load_pretrained(model: TinyViT, url: str) -> TinyViT:
             S1 = int(L1**0.5)
             S2 = int(L2**0.5)
             attention_biases = state_dict[k].view(1, n_heads1, S1, S1)
-            attention_biases = F.interpolate(attention_biases, size=(S2, S2), mode='bicubic')
+            attention_biases = F.interpolate(attention_biases, size=(S2, S2), mode="bicubic")
             state_dict[k] = attention_biases.view(n_heads2, L2)
 
     if state_dict["head.weight"].shape[0] != model.head.out_features:

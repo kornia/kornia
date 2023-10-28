@@ -27,11 +27,11 @@ class TestZCA(BaseTester):
 
     @pytest.mark.parametrize("dim", [0, 1])
     def test_dim_args(self, dim, device, dtype):
-        if 'xla' in device.type:
+        if "xla" in device.type:
             pytest.skip("buggy with XLA devices.")
 
         if dtype == torch.float16:
-            pytest.skip('not work for half-precision')
+            pytest.skip("not work for half-precision")
 
         data = torch.tensor([[0, 1], [1, 0], [-1, 0], [0, -1]], device=device, dtype=dtype)
 

@@ -46,10 +46,10 @@ def _compute_tiles(
 
     # add the padding in the last coluns and rows
     if pad_vert > batch.shape[-2] or pad_horz > batch.shape[-1]:
-        raise ValueError('Cannot compute tiles on the image according to the given grid size')
+        raise ValueError("Cannot compute tiles on the image according to the given grid size")
 
     if pad_vert > 0 or pad_horz > 0:
-        batch = F.pad(batch, [0, pad_horz, 0, pad_vert], mode='reflect')  # B x C x H' x W'
+        batch = F.pad(batch, [0, pad_horz, 0, pad_vert], mode="reflect")  # B x C x H' x W'
 
     # compute tiles
     c: int = batch.shape[-3]

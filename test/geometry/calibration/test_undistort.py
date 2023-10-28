@@ -342,7 +342,7 @@ class TestUndistortImage:
 
         gradcheck(undistort_image, (im, K, distCoeff))
 
-    @pytest.mark.xfail(reason='Some times this seems to random fail')
+    @pytest.mark.xfail(reason="Some times this seems to random fail")
     def test_dynamo(self, device, dtype, torch_optimizer):
         # TODO: check if `undistort_image` fully support dynamo
         im = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)

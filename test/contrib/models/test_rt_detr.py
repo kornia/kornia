@@ -12,7 +12,7 @@ from kornia.testing import BaseTester, assert_close
 
 
 @pytest.mark.parametrize(
-    'backbone_factory',
+    "backbone_factory",
     (partial(ResNetD.from_config, 18), partial(ResNetD.from_config, 50), partial(PPHGNetV2.from_config, "L")),
 )
 def test_backbone(backbone_factory, device, dtype):

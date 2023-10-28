@@ -54,8 +54,8 @@ class MotionBlurGenerator(RandomGeneratorBase):
         return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        angle = _range_bound(self.angle, 'angle', center=0.0, bounds=(-360, 360)).to(device=device, dtype=dtype)
-        direction = _range_bound(self.direction, 'direction', center=0.0, bounds=(-1, 1)).to(device=device, dtype=dtype)
+        angle = _range_bound(self.angle, "angle", center=0.0, bounds=(-360, 360)).to(device=device, dtype=dtype)
+        direction = _range_bound(self.direction, "direction", center=0.0, bounds=(-1, 1)).to(device=device, dtype=dtype)
         if isinstance(self.kernel_size, int):
             if not (self.kernel_size >= 3 and self.kernel_size % 2 == 1):
                 raise AssertionError(f"`kernel_size` must be odd and greater than 3. Got {self.kernel_size}.")

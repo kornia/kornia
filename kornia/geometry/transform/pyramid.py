@@ -61,7 +61,7 @@ class PyrDown(Module):
         >>> output = PyrDown()(input)  # 1x2x2x2
     """
 
-    def __init__(self, border_type: str = 'reflect', align_corners: bool = False, factor: float = 2.0) -> None:
+    def __init__(self, border_type: str = "reflect", align_corners: bool = False, factor: float = 2.0) -> None:
         super().__init__()
         self.border_type: str = border_type
         self.align_corners: bool = align_corners
@@ -92,7 +92,7 @@ class PyrUp(Module):
         >>> output = PyrUp()(input)  # 1x2x8x8
     """
 
-    def __init__(self, border_type: str = 'reflect', align_corners: bool = False) -> None:
+    def __init__(self, border_type: str = "reflect", align_corners: bool = False) -> None:
         super().__init__()
         self.border_type: str = border_type
         self.align_corners: bool = align_corners
@@ -143,14 +143,14 @@ class ScalePyramid(Module):
 
     def __repr__(self) -> str:
         return (
-            f'{self.__class__.__name__}('
-            f'n_levels={self.n_levels}, '
-            f'init_sigma={self.init_sigma}, '
-            f'min_size={self.min_size}, '
-            f'extra_levels={self.extra_levels}, '
-            f'border={self.border}, '
-            f'sigma_step={self.sigma_step}, '
-            f'double_image={self.double_image})'
+            f"{self.__class__.__name__}("
+            f"n_levels={self.n_levels}, "
+            f"init_sigma={self.init_sigma}, "
+            f"min_size={self.min_size}, "
+            f"extra_levels={self.extra_levels}, "
+            f"border={self.border}, "
+            f"sigma_step={self.sigma_step}, "
+            f"double_image={self.double_image})"
         )
 
     def get_kernel_size(self, sigma: float) -> int:
@@ -227,7 +227,7 @@ class ScalePyramid(Module):
         return output_pyr, sigmas, pixel_dists
 
 
-def pyrdown(input: Tensor, border_type: str = 'reflect', align_corners: bool = False, factor: float = 2.0) -> Tensor:
+def pyrdown(input: Tensor, border_type: str = "reflect", align_corners: bool = False, factor: float = 2.0) -> Tensor:
     r"""Blur a tensor and downsamples it.
 
     .. image:: _static/img/pyrdown.png
@@ -261,13 +261,13 @@ def pyrdown(input: Tensor, border_type: str = 'reflect', align_corners: bool = F
     out: Tensor = F.interpolate(
         x_blur,
         size=(int(float(height) / factor), int(float(width) // factor)),
-        mode='bilinear',
+        mode="bilinear",
         align_corners=align_corners,
     )
     return out
 
 
-def pyrup(input: Tensor, border_type: str = 'reflect', align_corners: bool = False) -> Tensor:
+def pyrup(input: Tensor, border_type: str = "reflect", align_corners: bool = False) -> Tensor:
     r"""Upsample a tensor and then blurs it.
 
     .. image:: _static/img/pyrup.png
@@ -295,7 +295,7 @@ def pyrup(input: Tensor, border_type: str = 'reflect', align_corners: bool = Fal
     # upsample tensor
     _, _, height, width = input.shape
     # TODO: use kornia.geometry.resize/rescale
-    x_up: Tensor = F.interpolate(input, size=(height * 2, width * 2), mode='bilinear', align_corners=align_corners)
+    x_up: Tensor = F.interpolate(input, size=(height * 2, width * 2), mode="bilinear", align_corners=align_corners)
 
     # blurs upsampled tensor
     x_blur: Tensor = filter2d(x_up, kernel, border_type)
@@ -303,7 +303,7 @@ def pyrup(input: Tensor, border_type: str = 'reflect', align_corners: bool = Fal
 
 
 def build_pyramid(
-    input: Tensor, max_level: int, border_type: str = 'reflect', align_corners: bool = False
+    input: Tensor, max_level: int, border_type: str = "reflect", align_corners: bool = False
 ) -> list[Tensor]:
     r"""Construct the Gaussian pyramid for a tensor image.
 
@@ -356,7 +356,7 @@ def find_next_powerof_two(x: int) -> int:
 
 
 def build_laplacian_pyramid(
-    input: Tensor, max_level: int, border_type: str = 'reflect', align_corners: bool = False
+    input: Tensor, max_level: int, border_type: str = "reflect", align_corners: bool = False
 ) -> list[Tensor]:
     r"""Construct the Laplacian pyramid for a tensor image.
 

@@ -81,11 +81,11 @@ class TestVisionTransformer:
 class TestMobileViT:
     @pytest.mark.parametrize("B", [1, 2])
     @pytest.mark.parametrize("image_size", [(256, 256)])
-    @pytest.mark.parametrize("mode", ['xxs', 'xs', 's'])
+    @pytest.mark.parametrize("mode", ["xxs", "xs", "s"])
     @pytest.mark.parametrize("patch_size", [(2, 2)])
     def test_smoke(self, device, dtype, B, image_size, mode, patch_size):
         ih, iw = image_size
-        channel = {'xxs': 320, 'xs': 384, 's': 640}
+        channel = {"xxs": 320, "xs": 384, "s": 640}
 
         img = torch.rand(B, 3, ih, iw, device=device, dtype=dtype)
         mvit = kornia.contrib.MobileViT(mode=mode, patch_size=patch_size).to(device, dtype)
@@ -121,20 +121,20 @@ class TestConnectedComponents:
 
         with pytest.raises(TypeError) as errinf:
             assert kornia.contrib.connected_components(img, 1.0)
-        assert 'Input num_iterations must be a positive integer.' in str(errinf)
+        assert "Input num_iterations must be a positive integer." in str(errinf)
 
         with pytest.raises(TypeError) as errinf:
-            assert kornia.contrib.connected_components('not a tensor', 0)
-        assert 'Input imagetype is not a Tensor. Got:' in str(errinf)
+            assert kornia.contrib.connected_components("not a tensor", 0)
+        assert "Input imagetype is not a Tensor. Got:" in str(errinf)
 
         with pytest.raises(TypeError) as errinf:
             assert kornia.contrib.connected_components(img, 0)
-        assert 'Input num_iterations must be a positive integer.' in str(errinf)
+        assert "Input num_iterations must be a positive integer." in str(errinf)
 
         with pytest.raises(ValueError) as errinf:
             img = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
             assert kornia.contrib.connected_components(img, 2)
-        assert 'Input image shape must be (*,1,H,W). Got:' in str(errinf)
+        assert "Input image shape must be (*,1,H,W). Got:" in str(errinf)
 
     def test_value(self, device, dtype):
         img = torch.tensor(
@@ -445,7 +445,7 @@ class TestLambdaModule:
 
 
 class TestImageStitcher:
-    @pytest.mark.parametrize("estimator", ['ransac', 'vanilla'])
+    @pytest.mark.parametrize("estimator", ["ransac", "vanilla"])
     def test_smoke(self, estimator, device, dtype):
         B, C, H, W = 1, 3, 6, 6
         sample1 = torch.tensor(
@@ -541,7 +541,7 @@ class TestImageStitcher:
             "batch_indexes": torch.zeros((15,), device=device, dtype=dtype),
         }
         with patch(
-            'kornia.contrib.ImageStitcher.on_matcher', new_callable=PropertyMock, return_value=lambda x: return_value
+            "kornia.contrib.ImageStitcher.on_matcher", new_callable=PropertyMock, return_value=lambda x: return_value
         ):
             # NOTE: This will need to download the pretrained weights.
             # To avoid that, we mock as below
@@ -561,7 +561,7 @@ class TestImageStitcher:
         matcher = kornia.feature.LoFTR(None)
 
         with pytest.raises(NotImplementedError):
-            stitcher = kornia.contrib.ImageStitcher(matcher, estimator='random').to(device=device, dtype=dtype)
+            stitcher = kornia.contrib.ImageStitcher(matcher, estimator="random").to(device=device, dtype=dtype)
 
         stitcher = kornia.contrib.ImageStitcher(matcher).to(device=device, dtype=dtype)
         with pytest.raises(RuntimeError):

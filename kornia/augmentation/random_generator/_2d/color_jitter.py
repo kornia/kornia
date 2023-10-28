@@ -57,15 +57,15 @@ class ColorJitterGenerator(RandomGeneratorBase):
         return f"brightness={self.brightness}, contrast={self.contrast}, saturation={self.saturation}, hue={self.hue}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        brightness: Tensor = _range_bound(self.brightness, 'brightness', center=1.0, device=device, dtype=dtype)
-        contrast: Tensor = _range_bound(self.contrast, 'contrast', center=1.0, device=device, dtype=dtype)
-        saturation: Tensor = _range_bound(self.saturation, 'saturation', center=1.0, device=device, dtype=dtype)
-        hue: Tensor = _range_bound(self.hue, 'hue', bounds=(-0.5, 0.5), device=device, dtype=dtype)
+        brightness: Tensor = _range_bound(self.brightness, "brightness", center=1.0, device=device, dtype=dtype)
+        contrast: Tensor = _range_bound(self.contrast, "contrast", center=1.0, device=device, dtype=dtype)
+        saturation: Tensor = _range_bound(self.saturation, "saturation", center=1.0, device=device, dtype=dtype)
+        hue: Tensor = _range_bound(self.hue, "hue", bounds=(-0.5, 0.5), device=device, dtype=dtype)
 
-        _joint_range_check(brightness, "brightness", (0, float('inf')))
-        _joint_range_check(contrast, "contrast", (0, float('inf')))
+        _joint_range_check(brightness, "brightness", (0, float("inf")))
+        _joint_range_check(contrast, "contrast", (0, float("inf")))
         _joint_range_check(hue, "hue", (-0.5, 0.5))
-        _joint_range_check(saturation, "saturation", (0, float('inf')))
+        _joint_range_check(saturation, "saturation", (0, float("inf")))
 
         self.brightness_sampler = UniformDistribution(brightness[0], brightness[1], validate_args=False)
         self.contrast_sampler = UniformDistribution(contrast[0], contrast[1], validate_args=False)

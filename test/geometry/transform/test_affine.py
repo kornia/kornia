@@ -312,7 +312,7 @@ class TestRotate:
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(kornia.geometry.transform.rotate, (input, angle), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.skip('Need deep look into it since crashes everywhere.')
+    @pytest.mark.skip("Need deep look into it since crashes everywhere.")
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
         angle = torch.tensor([90.0], device=device, dtype=dtype)
@@ -375,7 +375,7 @@ class TestTranslate:
             kornia.geometry.transform.translate, (input, translation), raise_exception=True, fast_mode=True
         )
 
-    @pytest.mark.skip('Need deep look into it since crashes everywhere.')
+    @pytest.mark.skip("Need deep look into it since crashes everywhere.")
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
         translation = torch.tensor([[1.0, 0.0]], device=device, dtype=dtype)
@@ -460,7 +460,7 @@ class TestScale:
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(kornia.geometry.transform.scale, (input, scale_factor), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.skip('Need deep look into it since crashes everywhere.')
+    @pytest.mark.skip("Need deep look into it since crashes everywhere.")
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
         scale_factor = torch.tensor([[0.5, 0.5]], device=device, dtype=dtype)
@@ -559,7 +559,7 @@ class TestShear:
         input = utils.tensor_to_gradcheck_var(input)  # to var
         assert gradcheck(kornia.geometry.transform.shear, (input, shear), raise_exception=True, fast_mode=True)
 
-    @pytest.mark.skip('Need deep look into it since crashes everywhere.')
+    @pytest.mark.skip("Need deep look into it since crashes everywhere.")
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
         shear = torch.tensor([[0.5, 0.0]], device=device, dtype=dtype)
@@ -583,7 +583,7 @@ class TestAffine2d:
 
     def test_affine_rotate(self, device, dtype):
         # TODO: Remove when #666 is implemented
-        if device.type == 'cuda':
+        if device.type == "cuda":
             pytest.skip("Currently breaks in CUDA." "See https://github.com/kornia/kornia/issues/666")
         torch.manual_seed(0)
         angle = torch.rand(1, device=device, dtype=dtype) * 90.0
@@ -596,7 +596,7 @@ class TestAffine2d:
 
     def test_affine_translate(self, device, dtype):
         # TODO: Remove when #666 is implemented
-        if device.type == 'cuda':
+        if device.type == "cuda":
             pytest.skip("Currently breaks in CUDA." "See https://github.com/kornia/kornia/issues/666")
         torch.manual_seed(0)
         translation = torch.rand(1, 2, device=device, dtype=dtype) * 2.0
@@ -609,7 +609,7 @@ class TestAffine2d:
 
     def test_affine_scale(self, device, dtype):
         # TODO: Remove when #666 is implemented
-        if device.type == 'cuda':
+        if device.type == "cuda":
             pytest.skip("Currently breaks in CUDA." "See https://github.com/kornia/kornia/issues/666")
         torch.manual_seed(0)
         _scale_factor = torch.rand(1, device=device, dtype=dtype) * 2.0
@@ -637,7 +637,7 @@ class TestAffine2d:
 
     def test_affine_rotate_translate(self, device, dtype):
         # TODO: Remove when #666 is implemented
-        if device.type == 'cuda':
+        if device.type == "cuda":
             pytest.skip("Currently breaks in CUDA." "See https://github.com/kornia/kornia/issues/666")
         batch_size = 2
 

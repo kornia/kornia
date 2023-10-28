@@ -42,7 +42,7 @@ class TestRandomAffine3DBackward:
             torch.tensor([(-10.0, 10.0), (-10.0, 10.0), (-10.0, 10.0), (-10.0, 10.0), (-10.0, 10.0), (-10.0, 10.0)]),
         ],
     )
-    @pytest.mark.parametrize("resample", ['bilinear'])  # TODO: Ignore nearest for now.
+    @pytest.mark.parametrize("resample", ["bilinear"])  # TODO: Ignore nearest for now.
     @pytest.mark.parametrize("align_corners", [True, False])
     @pytest.mark.parametrize("same_on_batch", [True, False])
     def test_param(self, degrees, translate, scale, shear, resample, align_corners, same_on_batch, device, dtype):
@@ -92,10 +92,10 @@ class TestRandomAffine3DBackward:
         if not isinstance(degrees, (int, float, list, tuple)):
             assert isinstance(aug.degrees, torch.Tensor)
             # Assert if param not updated
-            if resample == 'nearest' and aug.degrees.is_cuda:
+            if resample == "nearest" and aug.degrees.is_cuda:
                 # grid_sample in nearest mode and cuda device returns nan than 0
                 pass
-            elif resample == 'nearest' or torch.all(aug.degrees._grad == 0.0):
+            elif resample == "nearest" or torch.all(aug.degrees._grad == 0.0):
                 # grid_sample will return grad = 0 for resample nearest
                 # https://discuss.pytorch.org/t/autograd-issue-with-f-grid-sample/76894
                 assert (degrees.to(device=device, dtype=dtype) - aug.degrees.data).sum() == 0
@@ -104,10 +104,10 @@ class TestRandomAffine3DBackward:
         if not isinstance(translate, (int, float, list, tuple)):
             assert isinstance(aug.translate, torch.Tensor)
             # Assert if param not updated
-            if resample == 'nearest' and aug.translate.is_cuda:
+            if resample == "nearest" and aug.translate.is_cuda:
                 # grid_sample in nearest mode and cuda device returns nan than 0
                 pass
-            elif resample == 'nearest' or torch.all(aug.translate._grad == 0.0):
+            elif resample == "nearest" or torch.all(aug.translate._grad == 0.0):
                 # grid_sample will return grad = 0 for resample nearest
                 # https://discuss.pytorch.org/t/autograd-issue-with-f-grid-sample/76894
                 assert (translate.to(device=device, dtype=dtype) - aug.translate.data).sum() == 0
@@ -116,10 +116,10 @@ class TestRandomAffine3DBackward:
         if not isinstance(scale, (int, float, list, tuple)):
             assert isinstance(aug.scale, torch.Tensor)
             # Assert if param not updated
-            if resample == 'nearest' and aug.scale.is_cuda:
+            if resample == "nearest" and aug.scale.is_cuda:
                 # grid_sample in nearest mode and cuda device returns nan than 0
                 pass
-            elif resample == 'nearest' or torch.all(aug.scale._grad == 0.0):
+            elif resample == "nearest" or torch.all(aug.scale._grad == 0.0):
                 # grid_sample will return grad = 0 for resample nearest
                 # https://discuss.pytorch.org/t/autograd-issue-with-f-grid-sample/76894
                 assert (scale.to(device=device, dtype=dtype) - aug.scale.data).sum() == 0
@@ -128,10 +128,10 @@ class TestRandomAffine3DBackward:
         if not isinstance(shear, (int, float, list, tuple)):
             assert isinstance(aug.shears, torch.Tensor)
             # Assert if param not updated
-            if resample == 'nearest' and aug.shears.is_cuda:
+            if resample == "nearest" and aug.shears.is_cuda:
                 # grid_sample in nearest mode and cuda device returns nan than 0
                 pass
-            elif resample == 'nearest' or torch.all(aug.shears._grad == 0.0):
+            elif resample == "nearest" or torch.all(aug.shears._grad == 0.0):
                 # grid_sample will return grad = 0 for resample nearest
                 # https://discuss.pytorch.org/t/autograd-issue-with-f-grid-sample/76894
                 assert (shear.to(device=device, dtype=dtype) - aug.shears.data).sum() == 0
@@ -153,7 +153,7 @@ class TestRandomRotation3DBackward:
             torch.tensor([(10, 20), (10, 20), (10, 20)]),
         ],
     )
-    @pytest.mark.parametrize("resample", ['bilinear'])  # TODO: Ignore nearest for now.
+    @pytest.mark.parametrize("resample", ["bilinear"])  # TODO: Ignore nearest for now.
     @pytest.mark.parametrize("align_corners", [True, False])
     @pytest.mark.parametrize("same_on_batch", [True, False])
     def test_param(self, degrees, resample, align_corners, same_on_batch, device, dtype):
@@ -179,10 +179,10 @@ class TestRandomRotation3DBackward:
         if not isinstance(degrees, (int, float, list, tuple)):
             assert isinstance(aug._param_generator.degrees, torch.Tensor)
             # Assert if param not updated
-            if resample == 'nearest' and aug._param_generator.degrees.is_cuda:
+            if resample == "nearest" and aug._param_generator.degrees.is_cuda:
                 # grid_sample in nearest mode and cuda device returns nan than 0
                 pass
-            elif resample == 'nearest' or torch.all(aug._param_generator.degrees._grad == 0.0):
+            elif resample == "nearest" or torch.all(aug._param_generator.degrees._grad == 0.0):
                 # grid_sample will return grad = 0 for resample nearest
                 # https://discuss.pytorch.org/t/autograd-issue-with-f-grid-sample/76894
                 assert (degrees.to(device=device, dtype=dtype) - aug._param_generator.degrees.data).sum() == 0
@@ -192,7 +192,7 @@ class TestRandomRotation3DBackward:
 
 class TestRandomPerspective3DBackward:
     @pytest.mark.parametrize("distortion_scale", [0.5, torch.tensor(0.5)])
-    @pytest.mark.parametrize("resample", ['bilinear'])  # TODO: Ignore nearest for now.
+    @pytest.mark.parametrize("resample", ["bilinear"])  # TODO: Ignore nearest for now.
     @pytest.mark.parametrize("align_corners", [True, False])
     @pytest.mark.parametrize("same_on_batch", [True, False])
     def test_param(self, distortion_scale, resample, align_corners, same_on_batch, device, dtype):
@@ -220,10 +220,10 @@ class TestRandomPerspective3DBackward:
         if not isinstance(distortion_scale, (float, int)):
             assert isinstance(aug._param_generator.distortion_scale, torch.Tensor)
             # Assert if param not updated
-            if resample == 'nearest' and aug._param_generator.distortion_scale.is_cuda:
+            if resample == "nearest" and aug._param_generator.distortion_scale.is_cuda:
                 # grid_sample in nearest mode and cuda device returns nan than 0
                 pass
-            elif resample == 'nearest' or torch.all(aug._param_generator.distortion_scale._grad == 0.0):
+            elif resample == "nearest" or torch.all(aug._param_generator.distortion_scale._grad == 0.0):
                 # grid_sample will return grad = 0 for resample nearest
                 # https://discuss.pytorch.org/t/autograd-issue-with-f-grid-sample/76894
                 assert (
@@ -239,8 +239,8 @@ class TestRandomMotionBlur3DBackward:
     @pytest.mark.parametrize("angle", [20.0, torch.tensor(20.0), torch.tensor([20.0])])
     @pytest.mark.parametrize("direction", [[-0.5, 0.5], torch.tensor([-0.5, 0.5])])
     # 'reflect' is not implemented by torch.
-    @pytest.mark.parametrize("border_type", ['constant', 'replicate', 'circular'])
-    @pytest.mark.parametrize("resample", ['bilinear'])  # TODO: Ignore nearest for now.
+    @pytest.mark.parametrize("border_type", ["constant", "replicate", "circular"])
+    @pytest.mark.parametrize("resample", ["bilinear"])  # TODO: Ignore nearest for now.
     @pytest.mark.parametrize("same_on_batch", [True, False])
     def test_param(self, angle, direction, border_type, resample, same_on_batch, device, dtype):
         _angle = (
@@ -269,10 +269,10 @@ class TestRandomMotionBlur3DBackward:
 
         if not isinstance(angle, (float, int, list, tuple)):
             assert isinstance(aug._param_generator.angle, torch.Tensor)
-            if resample == 'nearest' and aug._param_generator.angle.is_cuda:
+            if resample == "nearest" and aug._param_generator.angle.is_cuda:
                 # grid_sample in nearest mode and cuda device returns nan than 0
                 pass
-            elif resample == 'nearest' or torch.all(aug._param_generator.angle._grad == 0.0):
+            elif resample == "nearest" or torch.all(aug._param_generator.angle._grad == 0.0):
                 # grid_sample will return grad = 0 for resample nearest
                 # https://discuss.pytorch.org/t/autograd-issue-with-f-grid-sample/76894
                 assert (angle.to(device=device, dtype=dtype) - aug._param_generator.angle.data).sum() == 0

@@ -7,7 +7,7 @@ __all__ = ["ParamItem", "PatchParamItem"]
 
 class ParamItem(NamedTuple):
     name: str
-    data: Optional[Union[Dict[str, Tensor], List['ParamItem']]]
+    data: Optional[Union[Dict[str, Tensor], List["ParamItem"]]]
 
 
 class PatchParamItem(NamedTuple):

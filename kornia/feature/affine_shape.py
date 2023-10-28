@@ -37,7 +37,7 @@ class PatchAffineShapeEstimator(nn.Module):
     def __init__(self, patch_size: int = 19, eps: float = 1e-10) -> None:
         super().__init__()
         self.patch_size: int = patch_size
-        self.gradient: nn.Module = SpatialGradient('sobel', 1)
+        self.gradient: nn.Module = SpatialGradient("sobel", 1)
         self.eps: float = eps
         sigma: float = float(self.patch_size) / math.sqrt(2.0)
         self.weighting: torch.Tensor = get_gaussian_kernel2d((self.patch_size, self.patch_size), (sigma, sigma), True)
@@ -113,10 +113,10 @@ class LAFAffineShapeEstimator(nn.Module):
 
     def __repr__(self) -> str:
         return (
-            f'{self.__class__.__name__}'
-            f'(patch_size={self.patch_size}, '
-            f'affine_shape_detector={self.affine_shape_detector}, '
-            f'preserve_orientation={self.preserve_orientation})'
+            f"{self.__class__.__name__}"
+            f"(patch_size={self.patch_size}, "
+            f"affine_shape_detector={self.affine_shape_detector}, "
+            f"preserve_orientation={self.preserve_orientation})"
         )
 
     def forward(self, laf: torch.Tensor, img: torch.Tensor) -> torch.Tensor:
@@ -189,8 +189,8 @@ class LAFAffNetShapeEstimator(nn.Module):
         self.patch_size = 32
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls['affnet'], map_location=map_location_to_cpu)
-            self.load_state_dict(pretrained_dict['state_dict'], strict=False)
+            pretrained_dict = torch.hub.load_state_dict_from_url(urls["affnet"], map_location=map_location_to_cpu)
+            self.load_state_dict(pretrained_dict["state_dict"], strict=False)
         self.preserve_orientation = preserve_orientation
         if preserve_orientation:
             warnings.warn(

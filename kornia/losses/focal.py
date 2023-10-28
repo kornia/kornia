@@ -18,7 +18,7 @@ def focal_loss(
     target: Tensor,
     alpha: Optional[float],
     gamma: float = 2.0,
-    reduction: str = 'none',
+    reduction: str = "none",
     weight: Optional[Tensor] = None,
 ) -> Tensor:
     r"""Criterion that computes Focal loss.
@@ -61,7 +61,7 @@ def focal_loss(
     out_size = (input.shape[0],) + input.shape[2:]
     KORNIA_CHECK(
         (input.shape[0] == target.shape[0] and target.shape[1:] == input.shape[2:]),
-        f'Expected target size {out_size}, got {target.shape}',
+        f"Expected target size {out_size}, got {target.shape}",
     )
     KORNIA_CHECK(
         input.device == target.device,
@@ -88,7 +88,7 @@ def focal_loss(
         KORNIA_CHECK_IS_TENSOR(weight, "weight must be Tensor or None.")
         KORNIA_CHECK(
             (weight.shape[0] == num_of_classes and weight.numel() == num_of_classes),
-            f'weight shape must be (num_of_classes,): ({num_of_classes},), got {weight.shape}',
+            f"weight shape must be (num_of_classes,): ({num_of_classes},), got {weight.shape}",
         )
         KORNIA_CHECK(
             weight.device == input.device,
@@ -98,11 +98,11 @@ def focal_loss(
         weight = weight.view(boradcast_dims)
         loss_tmp = weight * loss_tmp
 
-    if reduction == 'none':
+    if reduction == "none":
         loss = loss_tmp
-    elif reduction == 'mean':
+    elif reduction == "mean":
         loss = torch.mean(loss_tmp)
-    elif reduction == 'sum':
+    elif reduction == "sum":
         loss = torch.sum(loss_tmp)
     else:
         raise NotImplementedError(f"Invalid reduction mode: {reduction}")
@@ -147,7 +147,7 @@ class FocalLoss(nn.Module):
     """
 
     def __init__(
-        self, alpha: Optional[float], gamma: float = 2.0, reduction: str = 'none', weight: Optional[Tensor] = None
+        self, alpha: Optional[float], gamma: float = 2.0, reduction: str = "none", weight: Optional[Tensor] = None
     ) -> None:
         super().__init__()
         self.alpha: Optional[float] = alpha
@@ -164,7 +164,7 @@ def binary_focal_loss_with_logits(
     target: Tensor,
     alpha: Optional[float] = 0.25,
     gamma: float = 2.0,
-    reduction: str = 'none',
+    reduction: str = "none",
     pos_weight: Optional[Tensor] = None,
     weight: Optional[Tensor] = None,
 ) -> Tensor:
@@ -207,7 +207,7 @@ def binary_focal_loss_with_logits(
     """
 
     KORNIA_CHECK_SHAPE(input, ["B", "C", "*"])
-    KORNIA_CHECK(input.shape == target.shape, f'Expected target size {input.shape}, got {target.shape}')
+    KORNIA_CHECK(input.shape == target.shape, f"Expected target size {input.shape}, got {target.shape}")
     KORNIA_CHECK(
         input.device == target.device,
         f"input and target must be in the same device. Got: {input.device} and {target.device}",
@@ -228,7 +228,7 @@ def binary_focal_loss_with_logits(
         KORNIA_CHECK_IS_TENSOR(pos_weight, "pos_weight must be Tensor or None.")
         KORNIA_CHECK(
             (pos_weight.shape[0] == num_of_classes and pos_weight.numel() == num_of_classes),
-            f'pos_weight shape must be (num_of_classes,): ({num_of_classes},), got {pos_weight.shape}',
+            f"pos_weight shape must be (num_of_classes,): ({num_of_classes},), got {pos_weight.shape}",
         )
         KORNIA_CHECK(
             pos_weight.device == input.device,
@@ -243,7 +243,7 @@ def binary_focal_loss_with_logits(
         KORNIA_CHECK_IS_TENSOR(weight, "weight must be Tensor or None.")
         KORNIA_CHECK(
             (weight.shape[0] == num_of_classes and weight.numel() == num_of_classes),
-            f'weight shape must be (num_of_classes,): ({num_of_classes},), got {weight.shape}',
+            f"weight shape must be (num_of_classes,): ({num_of_classes},), got {weight.shape}",
         )
         KORNIA_CHECK(
             weight.device == input.device,
@@ -253,11 +253,11 @@ def binary_focal_loss_with_logits(
         weight = weight.view(boradcast_dims)
         loss_tmp = weight * loss_tmp
 
-    if reduction == 'none':
+    if reduction == "none":
         loss = loss_tmp
-    elif reduction == 'mean':
+    elif reduction == "mean":
         loss = torch.mean(loss_tmp)
-    elif reduction == 'sum':
+    elif reduction == "sum":
         loss = torch.sum(loss_tmp)
     else:
         raise NotImplementedError(f"Invalid reduction mode: {reduction}")
@@ -307,7 +307,7 @@ class BinaryFocalLossWithLogits(nn.Module):
         self,
         alpha: Optional[float],
         gamma: float = 2.0,
-        reduction: str = 'none',
+        reduction: str = "none",
         pos_weight: Optional[Tensor] = None,
         weight: Optional[Tensor] = None,
     ) -> None:

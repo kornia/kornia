@@ -14,7 +14,7 @@ from kornia.utils.grid import create_meshgrid
 
 def _validate_batched_image_tensor_input(tensor: Tensor) -> None:
     KORNIA_CHECK_IS_TENSOR(tensor)
-    KORNIA_CHECK_SHAPE(tensor, ['B', 'C', 'H', 'W'])
+    KORNIA_CHECK_SHAPE(tensor, ["B", "C", "H", "W"])
 
 
 def spatial_softmax2d(input: Tensor, temperature: Tensor = torch.tensor(1.0)) -> Tensor:

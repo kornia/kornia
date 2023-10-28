@@ -119,7 +119,7 @@ class TestRgbToRgba(BaseTester):
 
         with pytest.raises(TypeError):
             img = torch.ones(3, 1, 1, device=device, dtype=dtype)
-            assert kornia.color.rgb_to_rgba(img, 'alpha_str')
+            assert kornia.color.rgb_to_rgba(img, "alpha_str")
 
         # rgba to rgb
         with pytest.raises(TypeError):

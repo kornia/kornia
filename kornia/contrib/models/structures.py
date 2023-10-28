@@ -60,10 +60,10 @@ class SegmentationResults:
         x = self.logits
 
         if isinstance(image_size_encoder, tuple):
-            x = resize(x, size=image_size_encoder, interpolation='bilinear', align_corners=False, antialias=False)
+            x = resize(x, size=image_size_encoder, interpolation="bilinear", align_corners=False, antialias=False)
         x = x[..., : input_size[0], : input_size[1]]
 
-        x = resize(x, size=original_size, interpolation='bilinear', align_corners=False, antialias=False)
+        x = resize(x, size=original_size, interpolation="bilinear", align_corners=False, antialias=False)
 
         self._original_res_logits = x
         return self._original_res_logits
@@ -95,7 +95,7 @@ class Prompts:
 
     def __post_init__(self) -> None:
         if isinstance(self.keypoints, Tensor) and isinstance(self.boxes, Tensor):
-            KORNIA_CHECK(self.keypoints.shape[0] == self.boxes.shape[0], 'The prompts should have the same batch size!')
+            KORNIA_CHECK(self.keypoints.shape[0] == self.boxes.shape[0], "The prompts should have the same batch size!")
 
     @property
     def keypoints(self) -> Optional[Tensor]:

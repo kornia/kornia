@@ -49,8 +49,8 @@ def warp_perspective(
     src: Tensor,
     M: Tensor,
     dsize: tuple[int, int],
-    mode: str = 'bilinear',
-    padding_mode: str = 'zeros',
+    mode: str = "bilinear",
+    padding_mode: str = "zeros",
     align_corners: bool = True,
     fill_value: Tensor = zeros(3),  # needed for jit
 ) -> Tensor:
@@ -132,8 +132,8 @@ def warp_affine(
     src: Tensor,
     M: Tensor,
     dsize: tuple[int, int],
-    mode: str = 'bilinear',
-    padding_mode: str = 'zeros',
+    mode: str = "bilinear",
+    padding_mode: str = "zeros",
     align_corners: bool = True,
     fill_value: Tensor = zeros(3),  # needed for jit
 ) -> Tensor:
@@ -459,8 +459,8 @@ def remap(
     image: Tensor,
     map_x: Tensor,
     map_y: Tensor,
-    mode: str = 'bilinear',
-    padding_mode: str = 'zeros',
+    mode: str = "bilinear",
+    padding_mode: str = "zeros",
     align_corners: Optional[bool] = None,
     normalized_coordinates: bool = False,
 ) -> Tensor:
@@ -825,8 +825,8 @@ def warp_affine3d(
     src: Tensor,
     M: Tensor,
     dsize: tuple[int, int, int],
-    flags: str = 'bilinear',
-    padding_mode: str = 'zeros',
+    flags: str = "bilinear",
+    padding_mode: str = "zeros",
     align_corners: bool = True,
 ) -> Tensor:
     r"""Apply a projective transformation a to 3d tensor.
@@ -1049,9 +1049,9 @@ def get_perspective_transform3d(src: Tensor, dst: Tensor) -> Tensor:
 
     # 000, 100, 110, 101, 011
     for i in [0, 1, 2, 5, 7]:
-        p.append(_build_perspective_param3d(src[:, i], dst[:, i], 'x'))
-        p.append(_build_perspective_param3d(src[:, i], dst[:, i], 'y'))
-        p.append(_build_perspective_param3d(src[:, i], dst[:, i], 'z'))
+        p.append(_build_perspective_param3d(src[:, i], dst[:, i], "x"))
+        p.append(_build_perspective_param3d(src[:, i], dst[:, i], "y"))
+        p.append(_build_perspective_param3d(src[:, i], dst[:, i], "z"))
 
     # A is Bx15x15
     A = stack(p, 1)
@@ -1097,7 +1097,7 @@ def _build_perspective_param3d(p: Tensor, q: Tensor, axis: str) -> Tensor:
     ones = torch.ones_like(p)[..., 0:1]
     zeros = torch.zeros_like(p)[..., 0:1]
 
-    if axis == 'x':
+    if axis == "x":
         return concatenate(
             [
                 p[:, 0:1],
@@ -1119,7 +1119,7 @@ def _build_perspective_param3d(p: Tensor, q: Tensor, axis: str) -> Tensor:
             1,
         )
 
-    if axis == 'y':
+    if axis == "y":
         return concatenate(
             [
                 zeros,
@@ -1141,7 +1141,7 @@ def _build_perspective_param3d(p: Tensor, q: Tensor, axis: str) -> Tensor:
             1,
         )
 
-    if axis == 'z':
+    if axis == "z":
         return concatenate(
             [
                 zeros,
@@ -1170,8 +1170,8 @@ def warp_perspective3d(
     src: Tensor,
     M: Tensor,
     dsize: tuple[int, int, int],
-    flags: str = 'bilinear',
-    border_mode: str = 'zeros',
+    flags: str = "bilinear",
+    border_mode: str = "zeros",
     align_corners: bool = False,
 ) -> Tensor:
     r"""Apply a perspective transformation to an image.
@@ -1222,8 +1222,8 @@ def homography_warp(
     patch_src: Tensor,
     src_homo_dst: Tensor,
     dsize: tuple[int, int],
-    mode: str = 'bilinear',
-    padding_mode: str = 'zeros',
+    mode: str = "bilinear",
+    padding_mode: str = "zeros",
     align_corners: bool = False,
     normalized_coordinates: bool = True,
     normalized_homography: bool = True,
@@ -1273,7 +1273,7 @@ def homography_warp(
 
         return F.grid_sample(patch_src, warped_grid, mode=mode, padding_mode=padding_mode, align_corners=align_corners)
     return warp_perspective(
-        patch_src, src_homo_dst, dsize, mode='bilinear', padding_mode=padding_mode, align_corners=True
+        patch_src, src_homo_dst, dsize, mode="bilinear", padding_mode=padding_mode, align_corners=True
     )
 
 
@@ -1297,8 +1297,8 @@ def homography_warp3d(
     patch_src: Tensor,
     src_homo_dst: Tensor,
     dsize: tuple[int, int, int],
-    mode: str = 'bilinear',
-    padding_mode: str = 'zeros',
+    mode: str = "bilinear",
+    padding_mode: str = "zeros",
     align_corners: bool = False,
     normalized_coordinates: bool = True,
 ) -> Tensor:

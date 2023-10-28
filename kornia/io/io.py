@@ -21,6 +21,7 @@ from kornia.core.check import KORNIA_CHECK
 
 class ImageLoadType(Enum):
     r"""Enum to specify the desired image type."""
+
     UNCHANGED = 0
     GRAY8 = 1
     RGB8 = 2

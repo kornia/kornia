@@ -57,7 +57,7 @@ class RandomHue(IntensityAugmentationBase2D):
         self, hue: Tuple[float, float] = (0.0, 0.0), same_on_batch: bool = False, p: float = 1.0, keepdim: bool = False
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self.hue: Tensor = _range_bound(hue, 'hue', bounds=(-0.5, 0.5))
+        self.hue: Tensor = _range_bound(hue, "hue", bounds=(-0.5, 0.5))
         self._param_generator = rg.PlainUniformGenerator((self.hue, "hue_factor", None, None))
 
     def apply_transform(

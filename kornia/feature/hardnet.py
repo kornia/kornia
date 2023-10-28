@@ -37,6 +37,7 @@ class HardNet(nn.Module):
         >>> hardnet = HardNet()
         >>> descs = hardnet(input) # 16x128
     """
+
     patch_size = 32
 
     def __init__(self, pretrained: bool = False) -> None:
@@ -67,8 +68,8 @@ class HardNet(nn.Module):
 
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls['liberty_aug'], map_location=map_location_to_cpu)
-            self.load_state_dict(pretrained_dict['state_dict'], strict=True)
+            pretrained_dict = torch.hub.load_state_dict_from_url(urls["liberty_aug"], map_location=map_location_to_cpu)
+            self.load_state_dict(pretrained_dict["state_dict"], strict=True)
         self.eval()
 
     @staticmethod
@@ -113,6 +114,7 @@ class HardNet8(nn.Module):
         >>> hardnet = HardNet8()
         >>> descs = hardnet(input) # 16x128
     """
+
     patch_size = 32
 
     def __init__(self, pretrained: bool = False) -> None:
@@ -144,12 +146,12 @@ class HardNet8(nn.Module):
             nn.BatchNorm2d(512, affine=False),
         )
         self.features.apply(self.weights_init)
-        self.register_buffer('components', torch.ones(512, 128, dtype=torch.float))
-        self.register_buffer('mean', torch.zeros(512, dtype=torch.float))
+        self.register_buffer("components", torch.ones(512, 128, dtype=torch.float))
+        self.register_buffer("mean", torch.zeros(512, dtype=torch.float))
 
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls['hardnet8v2'], map_location=map_location_to_cpu)
+            pretrained_dict = torch.hub.load_state_dict_from_url(urls["hardnet8v2"], map_location=map_location_to_cpu)
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 

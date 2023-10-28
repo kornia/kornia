@@ -290,8 +290,8 @@ class DepthWarper(Module):
         pinhole_dst: PinholeCamera,
         height: int,
         width: int,
-        mode: str = 'bilinear',
-        padding_mode: str = 'zeros',
+        mode: str = "bilinear",
+        padding_mode: str = "zeros",
         align_corners: bool = True,
     ) -> None:
         super().__init__()

@@ -69,12 +69,12 @@ class MultiHeadAttention(Module):
         q, k, v = qkv[0], qkv[1], qkv[2]
 
         # sum up over the last axis
-        att = torch.einsum('bhqd, bhkd -> bhqk', q, k) * self.scale
+        att = torch.einsum("bhqd, bhkd -> bhqk", q, k) * self.scale
         att = att.softmax(dim=-1)
         att = self.att_drop(att)
 
         # sum up over the third axis
-        out = torch.einsum('bhal, bhlv -> bhav ', att, v)
+        out = torch.einsum("bhal, bhlv -> bhav ", att, v)
         out = out.permute(0, 2, 1, 3).contiguous().view(B, N, -1)
         out = self.projection(out)
         out = self.projection_drop(out)

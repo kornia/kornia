@@ -7,15 +7,9 @@ from kornia.core import Module, Parameter, Tensor, tensor, zeros
 from kornia.utils.helpers import map_location_to_cpu
 
 urls: Dict[str, str] = {}
-urls[
-    "liberty"
-] = "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_LIB.pth"  # pylint: disable
-urls[
-    "notredame"
-] = "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_ND.pth"  # pylint: disable
-urls[
-    "yosemite"
-] = "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_YOS.pth"  # pylint: disable
+urls["liberty"] = "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_LIB.pth"  # pylint: disable
+urls["notredame"] = "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_ND.pth"  # pylint: disable
+urls["yosemite"] = "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_YOS.pth"  # pylint: disable
 
 
 class FilterResponseNorm2d(Module):
@@ -63,7 +57,7 @@ class FilterResponseNorm2d(Module):
         if is_eps_leanable:
             self.eps = Parameter(tensor(1), requires_grad=True)
         else:
-            self.register_buffer('eps', tensor([eps]))
+            self.register_buffer("eps", tensor([eps]))
         self.reset_parameters()
 
     def reset_parameters(self) -> None:
@@ -73,7 +67,7 @@ class FilterResponseNorm2d(Module):
             nn.init.constant_(self.eps, self.init_eps)
 
     def extra_repr(self) -> str:
-        return 'num_features={num_features}, eps={init_eps}'.format(**self.__dict__)
+        return "num_features={num_features}, eps={init_eps}".format(**self.__dict__)
 
     def forward(self, x: Tensor) -> Tensor:
         # Compute the mean norm of activations per channel.
@@ -120,7 +114,7 @@ class TLU(Module):
         nn.init.constant_(self.tau, -1)
 
     def extra_repr(self) -> str:
-        return 'num_features={num_features}'.format(**self.__dict__)
+        return "num_features={num_features}".format(**self.__dict__)
 
     def forward(self, x: Tensor) -> Tensor:
         return torch.max(x, self.tau)
@@ -153,6 +147,7 @@ class HyNet(Module):
         >>> hynet = HyNet()
         >>> descs = hynet(input) # 16x128
     """
+
     patch_size = 32
 
     def __init__(
@@ -214,7 +209,7 @@ class HyNet(Module):
         self.desc_norm = nn.LocalResponseNorm(2 * self.dim_desc, 2.0 * self.dim_desc, 0.5, 0.0)
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls['liberty'], map_location=map_location_to_cpu)
+            pretrained_dict = torch.hub.load_state_dict_from_url(urls["liberty"], map_location=map_location_to_cpu)
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 

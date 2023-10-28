@@ -62,7 +62,7 @@ class RandomContrast(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self.contrast: Tensor = _range_bound(contrast, 'contrast', center=1.0)
+        self.contrast: Tensor = _range_bound(contrast, "contrast", center=1.0)
         self._param_generator = rg.PlainUniformGenerator((self.contrast, "contrast_factor", None, None))
 
         self.clip_output = clip_output

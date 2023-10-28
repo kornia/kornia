@@ -33,6 +33,7 @@ class OnnxLightGlue:
           are ``'disk'``, ``'superpoint'``, ``'disk_fp16'``, and ``'superpoint_fp16'``.
         device: Device to run inference on. Currently, only ``'cuda'`` is supported. Defaults to ``'cuda'``.
     """
+
     MODEL_URLS: ClassVar[dict[str, str]] = {
         "disk": "https://github.com/fabio-sim/LightGlue-ONNX/releases/download/v1.0.0/disk_lightglue_fused.onnx",
         "superpoint": "https://github.com/fabio-sim/LightGlue-ONNX/releases/download/v1.0.0/superpoint_lightglue_fused.onnx",
@@ -102,10 +103,10 @@ class OnnxLightGlue:
         """
         # Input validation.
         for key in self.required_data_keys:
-            KORNIA_CHECK(key in data, f'Missing key {key} in data')
-        data0, data1 = data['image0'], data['image1']
-        kpts0_, kpts1_ = data0['keypoints'].contiguous(), data1['keypoints'].contiguous()
-        desc0, desc1 = data0['descriptors'].contiguous(), data1['descriptors'].contiguous()
+            KORNIA_CHECK(key in data, f"Missing key {key} in data")
+        data0, data1 = data["image0"], data["image1"]
+        kpts0_, kpts1_ = data0["keypoints"].contiguous(), data1["keypoints"].contiguous()
+        desc0, desc1 = data0["descriptors"].contiguous(), data1["descriptors"].contiguous()
         KORNIA_CHECK_SAME_DEVICES([kpts0_, desc0, kpts1_, desc1], "Wrong device")
         KORNIA_CHECK(kpts0_.device.type == self.device.type, "Wrong device")
         KORNIA_CHECK(torch.float32 == kpts0_.dtype == kpts1_.dtype == desc0.dtype == desc1.dtype, "Wrong dtype")
@@ -118,9 +119,9 @@ class OnnxLightGlue:
         KORNIA_CHECK(desc0.shape[2] == desc1.shape[2], "Descriptors' dimensions do not match")
 
         # Normalize keypoints.
-        size0, size1 = data0.get('image_size'), data1.get('image_size')
-        size0 = size0 if size0 is not None else data0['image'].shape[-2:][::-1]  # type: ignore
-        size1 = size1 if size1 is not None else data1['image'].shape[-2:][::-1]  # type: ignore
+        size0, size1 = data0.get("image_size"), data1.get("image_size")
+        size0 = size0 if size0 is not None else data0["image"].shape[-2:][::-1]  # type: ignore
+        size1 = size1 if size1 is not None else data1["image"].shape[-2:][::-1]  # type: ignore
 
         kpts0 = normalize_keypoints(kpts0_, size=size0)  # type: ignore
         kpts1 = normalize_keypoints(kpts1_, size=size1)  # type: ignore

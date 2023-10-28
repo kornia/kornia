@@ -45,8 +45,8 @@ class TestVideoSequential:
         aug_list(input_1)
         aug_list(input_2)
 
-    @pytest.mark.parametrize('shape', [(3, 4), (2, 3, 4), (2, 3, 5, 6), (2, 3, 4, 5, 6, 7)])
-    @pytest.mark.parametrize('data_format', ["BCTHW", "BTCHW"])
+    @pytest.mark.parametrize("shape", [(3, 4), (2, 3, 4), (2, 3, 5, 6), (2, 3, 4, 5, 6, 7)])
+    @pytest.mark.parametrize("data_format", ["BCTHW", "BTCHW"])
     def test_exception(self, shape, data_format, device, dtype):
         aug_list = K.VideoSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1), data_format=data_format, same_on_frame=True)
         with pytest.raises(AssertionError):
@@ -54,7 +54,7 @@ class TestVideoSequential:
             aug_list(img)
 
     @pytest.mark.parametrize(
-        'augmentation',
+        "augmentation",
         [
             K.RandomAffine(360, p=1.0),
             K.CenterCrop((3, 3), p=1.0),
@@ -79,7 +79,7 @@ class TestVideoSequential:
             K.RandomTranslate((0.5, 0.5), p=1.0),
         ],
     )
-    @pytest.mark.parametrize('data_format', ["BCTHW", "BTCHW"])
+    @pytest.mark.parametrize("data_format", ["BCTHW", "BTCHW"])
     def test_augmentation(self, augmentation, data_format, device, dtype):
         input = torch.randint(255, (1, 3, 3, 5, 6), device=device, dtype=dtype).repeat(2, 1, 1, 1, 1) / 255.0
         torch.manual_seed(21)
@@ -87,7 +87,7 @@ class TestVideoSequential:
         reproducibility_test(input, aug_list)
 
     @pytest.mark.parametrize(
-        'augmentations',
+        "augmentations",
         [
             [K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)],
             [K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0)],
@@ -99,20 +99,20 @@ class TestVideoSequential:
             # [K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0), K.RandomMixUpV2(p=1.0)],
         ],
     )
-    @pytest.mark.parametrize('data_format', ["BCTHW", "BTCHW"])
-    @pytest.mark.parametrize('random_apply', [1, (1, 1), (1,), 10, True, False])
+    @pytest.mark.parametrize("data_format", ["BCTHW", "BTCHW"])
+    @pytest.mark.parametrize("random_apply", [1, (1, 1), (1,), 10, True, False])
     def test_same_on_frame(self, augmentations, data_format, random_apply, device, dtype):
         aug_list = K.VideoSequential(
             *augmentations, data_format=data_format, same_on_frame=True, random_apply=random_apply
         )
 
-        if data_format == 'BCTHW':
+        if data_format == "BCTHW":
             input = torch.randn(2, 3, 1, 5, 6, device=device, dtype=dtype).repeat(1, 1, 4, 1, 1)
             output = aug_list(input)
             assert_close(output[:, :, 0], output[:, :, 1])
             assert_close(output[:, :, 1], output[:, :, 2])
             assert_close(output[:, :, 2], output[:, :, 3])
-        if data_format == 'BTCHW':
+        if data_format == "BTCHW":
             input = torch.randn(2, 1, 3, 5, 6, device=device, dtype=dtype).repeat(1, 4, 1, 1, 1)
             output = aug_list(input)
             assert_close(output[:, 0], output[:, 1])
@@ -121,7 +121,7 @@ class TestVideoSequential:
         reproducibility_test(input, aug_list)
 
     @pytest.mark.parametrize(
-        'augmentations',
+        "augmentations",
         [
             [K.RandomAffine(360, p=1.0)],
             [K.RandomCrop((2, 2), padding=2)],
@@ -129,28 +129,28 @@ class TestVideoSequential:
             [K.RandomAffine(360, p=0.0), K.ImageSequential(K.RandomAffine(360, p=0.0))],
         ],
     )
-    @pytest.mark.parametrize('data_format', ["BCTHW", "BTCHW"])
+    @pytest.mark.parametrize("data_format", ["BCTHW", "BTCHW"])
     def test_against_sequential(self, augmentations, data_format, device, dtype):
         aug_list_1 = K.VideoSequential(*augmentations, data_format=data_format, same_on_frame=False)
         aug_list_2 = torch.nn.Sequential(*augmentations)
 
-        if data_format == 'BCTHW':
+        if data_format == "BCTHW":
             input = torch.randn(2, 3, 1, 5, 6, device=device, dtype=dtype).repeat(1, 1, 4, 1, 1)
-        if data_format == 'BTCHW':
+        if data_format == "BTCHW":
             input = torch.randn(2, 1, 3, 5, 6, device=device, dtype=dtype).repeat(1, 4, 1, 1, 1)
 
         torch.manual_seed(0)
         output_1 = aug_list_1(input)
 
         torch.manual_seed(0)
-        if data_format == 'BCTHW':
+        if data_format == "BCTHW":
             input = input.transpose(1, 2)
         output_2 = aug_list_2(input.reshape(-1, 3, 5, 6))
         if any(isinstance(a, K.RandomCrop) for a in augmentations):
             output_2 = output_2.view(2, 4, 3, 2, 2)
         else:
             output_2 = output_2.view(2, 4, 3, 5, 6)
-        if data_format == 'BCTHW':
+        if data_format == "BCTHW":
             output_2 = output_2.transpose(1, 2)
         assert_close(output_1, output_2)
 
@@ -163,26 +163,26 @@ class TestVideoSequential:
         op_jit = torch.jit.script(op)
         assert_close(op(img), op_jit(img))
 
-    @pytest.mark.parametrize('data_format', ["BCTHW", "BTCHW"])
+    @pytest.mark.parametrize("data_format", ["BCTHW", "BTCHW"])
     def test_autocast(self, data_format, device, dtype):
         if not hasattr(torch, "autocast"):
             pytest.skip("PyTorch version without autocast support")
 
         tfs = (K.RandomAffine(0.5, (0.1, 0.5), (0.5, 1.5), 1.2, p=1.0), K.RandomGaussianBlur((3, 3), (0.1, 3), p=1))
         aug = K.VideoSequential(*tfs, data_format=data_format, random_apply=True)
-        if data_format == 'BCTHW':
+        if data_format == "BCTHW":
             imgs = torch.randn(2, 3, 1, 5, 6, device=device, dtype=dtype).repeat(1, 1, 4, 1, 1)
-        elif data_format == 'BTCHW':
+        elif data_format == "BTCHW":
             imgs = torch.randn(2, 1, 3, 5, 6, device=device, dtype=dtype).repeat(1, 4, 1, 1, 1)
 
         with torch.autocast(device.type):
             output = aug(imgs)
 
-        assert output.dtype == dtype, 'Output image dtype should match the input dtype'
+        assert output.dtype == dtype, "Output image dtype should match the input dtype"
 
 
 class TestSequential:
-    @pytest.mark.parametrize('random_apply_weights', [None, [0.8, 0.9]])
+    @pytest.mark.parametrize("random_apply_weights", [None, [0.8, 0.9]])
     def test_exception(self, random_apply_weights, device, dtype):
         inp = torch.randn(1, 3, 30, 30, device=device, dtype=dtype)
         with pytest.raises(Exception):  # AssertError and NotImplementedError
@@ -190,9 +190,9 @@ class TestSequential:
                 K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), random_apply_weights=random_apply_weights
             ).inverse(inp)
 
-    @pytest.mark.parametrize('same_on_batch', [True, False, None])
+    @pytest.mark.parametrize("same_on_batch", [True, False, None])
     @pytest.mark.parametrize("keepdim", [True, False, None])
-    @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 20, True, False])
+    @pytest.mark.parametrize("random_apply", [1, (2, 2), (1, 2), (2,), 20, True, False])
     def test_construction(self, same_on_batch, keepdim, random_apply):
         aug = K.ImageSequential(
             K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
@@ -208,7 +208,7 @@ class TestSequential:
             assert m.same_on_batch is True, m.same_on_batch
             assert m.keepdim is True, m.keepdim
 
-    @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 10, True, False])
+    @pytest.mark.parametrize("random_apply", [1, (2, 2), (1, 2), (2,), 10, True, False])
     def test_forward(self, random_apply, device, dtype):
         inp = torch.randn(1, 3, 30, 30, device=device, dtype=dtype)
         aug = K.ImageSequential(
@@ -229,7 +229,7 @@ class TestSequential:
 
 class TestAugmentationSequential:
     @pytest.mark.parametrize(
-        'data_keys', ["input", "image", ["mask", "input"], ["input", "bbox_yxyx"], [0, 10], [BorderType.REFLECT]]
+        "data_keys", ["input", "image", ["mask", "input"], ["input", "bbox_yxyx"], [0, 10], [BorderType.REFLECT]]
     )
     @pytest.mark.parametrize("augmentation_list", [K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0)])
     def test_exception(self, augmentation_list, data_keys, device, dtype):
@@ -237,9 +237,9 @@ class TestAugmentationSequential:
             K.AugmentationSequential(augmentation_list, data_keys=data_keys)
 
     @pytest.mark.slow
-    @pytest.mark.parametrize('same_on_batch', [True, False])
-    @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 10, True, False])
-    @pytest.mark.parametrize('inp', [torch.randn(1, 3, 1000, 500), torch.randn(3, 1000, 500)])
+    @pytest.mark.parametrize("same_on_batch", [True, False])
+    @pytest.mark.parametrize("random_apply", [1, (2, 2), (1, 2), (2,), 10, True, False])
+    @pytest.mark.parametrize("inp", [torch.randn(1, 3, 1000, 500), torch.randn(3, 1000, 500)])
     def test_mixup(self, inp, random_apply, same_on_batch, device, dtype):
         inp = torch.as_tensor(inp, device=device, dtype=dtype)
         aug = K.AugmentationSequential(
@@ -320,7 +320,7 @@ class TestAugmentationSequential:
             [[[1.0, 1.0, 2.0, 2.0], [0.0, 0.0, 1.0, 2.0], [0.0, 0.0, 2.0, 1.0]]], device=device, dtype=dtype
         ).expand(3, -1, -1)
         aug = K.AugmentationSequential(
-            K.RandomCrop((crop_width, crop_height), padding=1, cropping_mode='resample', fill=0),
+            K.RandomCrop((crop_width, crop_height), padding=1, cropping_mode="resample", fill=0),
             K.RandomHorizontalFlip(p=1.0),
             K.RandomMosaic(p=1.0),
             data_keys=["input", "bbox_xyxy"],
@@ -336,7 +336,7 @@ class TestAugmentationSequential:
             [[[1.0, 1.0, 2.0, 2.0], [0.0, 0.0, 1.0, 2.0], [0.0, 0.0, 2.0, 1.0]]], device=device, dtype=dtype
         ).expand(3, -1, -1)
         aug = K.AugmentationSequential(
-            K.RandomCrop((crop_width, crop_height), padding=1, cropping_mode='resample', fill=0),
+            K.RandomCrop((crop_width, crop_height), padding=1, cropping_mode="resample", fill=0),
             K.RandomHorizontalFlip(p=1.0),
             data_keys=["input", "bbox_xyxy"],
         )
@@ -347,13 +347,13 @@ class TestAugmentationSequential:
         # specifying the crop locations allows us to compute by hand the expected outputs
         crop_locations = torch.tensor(
             [[1.0, 2.0], [1.0, 1.0], [2.0, 0.0]],
-            device=_params[0].data['src'].device,
-            dtype=_params[0].data['src'].dtype,
+            device=_params[0].data["src"].device,
+            dtype=_params[0].data["src"].dtype,
         )
         crops = crop_locations.expand(4, -1, -1).permute(1, 0, 2).clone()
         crops[:, 1:3, 0] += crop_width - 1
         crops[:, 2:4, 1] += crop_height - 1
-        _params[0].data['src'] = crops
+        _params[0].data["src"] = crops
 
         # expected output bboxes after crop for specified crop locations and crop size (3,3)
         expected_out_bbox = torch.tensor(
@@ -409,7 +409,7 @@ class TestAugmentationSequential:
         ).expand(3, -1, -1)
         points = torch.tensor([[[0.0, 0.0], [1.0, 1.0]]], device=device, dtype=dtype).expand(3, -1, -1)
         aug = K.AugmentationSequential(
-            K.RandomCrop((3, 3), padding=1, cropping_mode='resample', fill=0),
+            K.RandomCrop((3, 3), padding=1, cropping_mode="resample", fill=0),
             K.RandomAffine((360.0, 360.0), p=1.0),
             data_keys=["input", "mask", "bbox_xyxy", "keypoints"],
             extra_args={},
@@ -419,14 +419,14 @@ class TestAugmentationSequential:
 
         _params = aug.forward_parameters(input.shape)
         # specifying the crops allows us to compute by hand the expected outputs
-        _params[0].data['src'] = torch.tensor(
+        _params[0].data["src"] = torch.tensor(
             [
                 [[1.0, 2.0], [3.0, 2.0], [3.0, 4.0], [1.0, 4.0]],
                 [[1.0, 1.0], [3.0, 1.0], [3.0, 3.0], [1.0, 3.0]],
                 [[2.0, 0.0], [4.0, 0.0], [4.0, 2.0], [2.0, 2.0]],
             ],
-            device=_params[0].data['src'].device,
-            dtype=_params[0].data['src'].dtype,
+            device=_params[0].data["src"].device,
+            dtype=_params[0].data["src"].dtype,
         )
 
         expected_out_bbox = torch.tensor(
@@ -471,7 +471,7 @@ class TestAugmentationSequential:
         assert out[1].shape == (3, 1, size, size)
 
     @pytest.mark.parametrize(
-        'bbox',
+        "bbox",
         [
             [
                 torch.tensor([[1, 5, 2, 7], [0, 3, 9, 9]]),
@@ -483,7 +483,7 @@ class TestAugmentationSequential:
         ],
     )
     @pytest.mark.parametrize(
-        'augmentation', [K.RandomCrop((30, 30), padding=1, cropping_mode='resample', fill=0), K.Resize((30, 30))]
+        "augmentation", [K.RandomCrop((30, 30), padding=1, cropping_mode="resample", fill=0), K.Resize((30, 30))]
     )
     def test_bbox(self, bbox, augmentation, device, dtype):
         img = torch.rand((3, 3, 10, 10), device=device, dtype=dtype)
@@ -495,7 +495,7 @@ class TestAugmentationSequential:
 
         inputs = [img, bbox]
 
-        aug = K.AugmentationSequential(augmentation, data_keys=['input', 'bbox_xyxy'])
+        aug = K.AugmentationSequential(augmentation, data_keys=["input", "bbox_xyxy"])
 
         transformed = aug(*inputs)
 
@@ -509,13 +509,13 @@ class TestAugmentationSequential:
     def test_class(self, device, dtype):
         img = torch.zeros((5, 1, 5, 5))
         labels = torch.randint(0, 10, size=(5, 1))
-        aug = K.AugmentationSequential(K.RandomCrop((3, 3), pad_if_needed=True), data_keys=['input', 'class'])
+        aug = K.AugmentationSequential(K.RandomCrop((3, 3), pad_if_needed=True), data_keys=["input", "class"])
 
         _, out_labels = aug(img, labels)
         assert labels is out_labels
 
     @pytest.mark.slow
-    @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 10, True, False])
+    @pytest.mark.parametrize("random_apply", [1, (2, 2), (1, 2), (2,), 10, True, False])
     def test_forward_and_inverse(self, random_apply, device, dtype):
         inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
         bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
@@ -567,8 +567,8 @@ class TestAugmentationSequential:
             K.ImageSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)),
             K.AugmentationSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)),
             K.RandomAffine(360, p=1.0),
-            K.RandomCrop(crop_size, padding=1, cropping_mode='resample', fill=0),
-            data_keys=['input', 'mask', 'bbox', 'keypoints'],
+            K.RandomCrop(crop_size, padding=1, cropping_mode="resample", fill=0),
+            data_keys=["input", "mask", "bbox", "keypoints"],
             extra_args={},
         )
         # NOTE: Mask data with nearest not passing reproducibility check under float64.
@@ -587,18 +587,18 @@ class TestAugmentationSequential:
         assert out_inv[3].shape == keypoints.shape
 
         aug = K.AugmentationSequential(K.RandomAffine(360, p=1.0))
-        assert aug(inp, data_keys=['input']).shape == inp.shape
+        assert aug(inp, data_keys=["input"]).shape == inp.shape
         aug = K.AugmentationSequential(K.RandomAffine(360, p=1.0))
-        assert aug(inp, data_keys=['input']).shape == inp.shape
-        assert aug(mask, data_keys=['mask'], params=aug._params).shape == mask.shape
+        assert aug(inp, data_keys=["input"]).shape == inp.shape
+        assert aug(mask, data_keys=["mask"], params=aug._params).shape == mask.shape
 
-        assert aug.inverse(inp, data_keys=['input']).shape == inp.shape
-        assert aug.inverse(bbox, data_keys=['bbox']).shape == bbox.shape
-        assert aug.inverse(keypoints, data_keys=['keypoints']).shape == keypoints.shape
-        assert aug.inverse(mask, data_keys=['mask']).shape == mask.shape
+        assert aug.inverse(inp, data_keys=["input"]).shape == inp.shape
+        assert aug.inverse(bbox, data_keys=["bbox"]).shape == bbox.shape
+        assert aug.inverse(keypoints, data_keys=["keypoints"]).shape == keypoints.shape
+        assert aug.inverse(mask, data_keys=["mask"]).shape == mask.shape
 
     @pytest.mark.slow
-    @pytest.mark.parametrize('random_apply', [2, (1, 1), (2,), 10, True, False])
+    @pytest.mark.parametrize("random_apply", [2, (1, 1), (2,), 10, True, False])
     def test_forward_and_inverse_return_transform(self, random_apply, device, dtype):
         inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
         bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
@@ -630,7 +630,7 @@ class TestAugmentationSequential:
         assert out_inv[3].shape == keypoints.shape
 
     @pytest.mark.slow
-    @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 10, True, False])
+    @pytest.mark.parametrize("random_apply", [1, (2, 2), (1, 2), (2,), 10, True, False])
     def test_inverse_and_forward_return_transform(self, random_apply, device, dtype):
         inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
         bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
@@ -683,7 +683,7 @@ class TestAugmentationSequential:
         assert_close(op(img), op_jit(img))
 
     @pytest.mark.parametrize("batch_prob", [[True, True], [False, True], [False, False]])
-    @pytest.mark.parametrize("box", ['bbox', 'bbox_xyxy', 'bbox_xywh'])
+    @pytest.mark.parametrize("box", ["bbox", "bbox_xyxy", "bbox_xywh"])
     def test_autocast(self, batch_prob, box, device, dtype):
         if not hasattr(torch, "autocast"):
             pytest.skip("PyTorch version without autocast support")
@@ -693,7 +693,7 @@ class TestAugmentationSequential:
             params = []
             for name, module in named_modules:
                 if isinstance(module, (K.base._AugmentationBase, K.MixAugmentationBaseV2, K.ImageSequential)):
-                    with patch.object(module, '__batch_prob_generator__', return_value=batch_prob):
+                    with patch.object(module, "__batch_prob_generator__", return_value=batch_prob):
                         mod_param = module.forward_parameters(batch_shape)
 
                     param = ParamItem(name, mod_param)
@@ -704,11 +704,11 @@ class TestAugmentationSequential:
             return params
 
         tfs = (K.RandomAffine(0.5, (0.1, 0.5), (0.5, 1.5), 1.2, p=1.0), K.RandomGaussianBlur((3, 3), (0.1, 3), p=1))
-        data_keys = ['input', 'mask', box, 'keypoints']
+        data_keys = ["input", "mask", box, "keypoints"]
         aug = K.AugmentationSequential(*tfs, data_keys=data_keys, random_apply=True)
         bs = len(batch_prob)
         imgs = torch.rand(bs, 3, 7, 4, dtype=dtype, device=device)
-        if box == 'bbox':
+        if box == "bbox":
             bb = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]], dtype=dtype, device=device).expand(
                 bs, 1, -1, -1
             )
@@ -722,21 +722,21 @@ class TestAugmentationSequential:
         to_apply = torch.tensor(batch_prob, device=device)
 
         fwd_params = partial(mock_forward_parameters_sequential, cls=aug, batch_prob=to_apply)
-        with patch.object(aug, 'forward_parameters', fwd_params):
+        with patch.object(aug, "forward_parameters", fwd_params):
             params = aug.forward_parameters(imgs.shape)
 
         with torch.autocast(device.type):
             outputs = aug(imgs, msk, bb, points, params=params)
 
-        assert outputs[0].dtype == dtype, 'Output image dtype should match the input dtype'
-        assert outputs[1].dtype == dtype, 'Output mask dtype should match the input dtype'
-        assert outputs[2].dtype == dtype, 'Output box dtype should match the input dtype'
-        assert outputs[3].dtype == dtype, 'Output keypoints dtype should match the input dtype'
+        assert outputs[0].dtype == dtype, "Output image dtype should match the input dtype"
+        assert outputs[1].dtype == dtype, "Output mask dtype should match the input dtype"
+        assert outputs[2].dtype == dtype, "Output box dtype should match the input dtype"
+        assert outputs[3].dtype == dtype, "Output keypoints dtype should match the input dtype"
 
 
 class TestPatchSequential:
     @pytest.mark.parametrize(
-        'error_param',
+        "error_param",
         [
             {"random_apply": False, "patchwise_apply": True, "grid_size": (2, 3)},
             {"random_apply": 2, "patchwise_apply": True},
@@ -761,12 +761,12 @@ class TestPatchSequential:
                 **error_param,
             )
 
-    @pytest.mark.parametrize('shape', [(2, 3, 24, 24)])
-    @pytest.mark.parametrize('padding', ["same", "valid"])
-    @pytest.mark.parametrize('patchwise_apply', [True, False])
-    @pytest.mark.parametrize('same_on_batch', [True, False, None])
-    @pytest.mark.parametrize('keepdim', [True, False, None])
-    @pytest.mark.parametrize('random_apply', [1, (2, 2), (1, 2), (2,), 10, True, False])
+    @pytest.mark.parametrize("shape", [(2, 3, 24, 24)])
+    @pytest.mark.parametrize("padding", ["same", "valid"])
+    @pytest.mark.parametrize("patchwise_apply", [True, False])
+    @pytest.mark.parametrize("same_on_batch", [True, False, None])
+    @pytest.mark.parametrize("keepdim", [True, False, None])
+    @pytest.mark.parametrize("random_apply", [1, (2, 2), (1, 2), (2,), 10, True, False])
     def test_forward(self, shape, padding, patchwise_apply, same_on_batch, keepdim, random_apply, device, dtype):
         torch.manual_seed(11)
         try:  # skip wrong param settings.
@@ -834,7 +834,7 @@ class TestPatchSequential:
         with torch.autocast(device.type):
             output = aug(imgs)
 
-        assert output.dtype == dtype, 'Output image dtype should match the input dtype'
+        assert output.dtype == dtype, "Output image dtype should match the input dtype"
 
 
 class TestDispatcher:
@@ -862,7 +862,7 @@ class TestDispatcher:
         assert output[0][1].shape == mask_1.shape
         assert output[1][1].shape == mask_2.shape
 
-    @pytest.mark.parametrize('strict', [True, False])
+    @pytest.mark.parametrize("strict", [True, False])
     def test_many_to_one(self, strict, device, dtype):
         input = torch.randn(2, 3, 5, 6, device=device, dtype=dtype)
         mask = torch.ones(2, 1, 5, 6, device=device, dtype=dtype)
@@ -886,7 +886,7 @@ class TestDispatcher:
         assert output[0][1].shape == mask.shape
         assert output[1][1].shape == mask.shape
 
-    @pytest.mark.parametrize('strict', [True, False])
+    @pytest.mark.parametrize("strict", [True, False])
     def test_many_to_one_strict_mode(self, strict):
         def _init_many_to_one(strict):
             K.ManyToOneAugmentationDispather(

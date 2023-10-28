@@ -13,7 +13,7 @@ def crop_and_resize3d(
     tensor: torch.Tensor,
     boxes: torch.Tensor,
     size: Tuple[int, int, int],
-    interpolation: str = 'bilinear',
+    interpolation: str = "bilinear",
     align_corners: bool = False,
 ) -> torch.Tensor:
     r"""Extract crops from 3D volumes (5D tensor) and resize them.
@@ -111,7 +111,7 @@ def crop_and_resize3d(
 
 
 def center_crop3d(
-    tensor: torch.Tensor, size: Tuple[int, int, int], interpolation: str = 'bilinear', align_corners: bool = True
+    tensor: torch.Tensor, size: Tuple[int, int, int], interpolation: str = "bilinear", align_corners: bool = True
 ) -> torch.Tensor:
     r"""Crop the 3D volumes (5D tensor) at the center.
 
@@ -229,7 +229,7 @@ def crop_by_boxes3d(
     tensor: torch.Tensor,
     src_box: torch.Tensor,
     dst_box: torch.Tensor,
-    interpolation: str = 'bilinear',
+    interpolation: str = "bilinear",
     align_corners: bool = False,
 ) -> torch.Tensor:
     """Perform crop transform on 3D volumes (5D tensor) by bounding boxes.
@@ -332,8 +332,8 @@ def crop_by_transform_mat3d(
     tensor: torch.Tensor,
     transform: torch.Tensor,
     out_size: Tuple[int, int, int],
-    mode: str = 'bilinear',
-    padding_mode: str = 'zeros',
+    mode: str = "bilinear",
+    padding_mode: str = "zeros",
     align_corners: bool = True,
 ) -> torch.Tensor:
     """Perform crop transform on 3D volumes (5D tensor) given a perspective transformation matrix.

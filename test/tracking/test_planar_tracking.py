@@ -10,7 +10,7 @@ from kornia.utils._compat import torch_version_le
 
 @pytest.fixture()
 def data_url():
-    url = 'https://github.com/kornia/data_test/blob/main/loftr_outdoor_and_homography_data.pt?raw=true'
+    url = "https://github.com/kornia/data_test/blob/main/loftr_outdoor_and_homography_data.pt?raw=true"
     return url
 
 
@@ -25,7 +25,7 @@ class TestHomographyTracker:
         data = torch.hub.load_state_dict_from_url(data_url)
 
         # This is not unit test, but that is quite good integration test
-        matcher = LocalFeatureMatcher(SIFTFeature(100), DescriptorMatcher('smnn', 0.95)).to(device, dtype)
+        matcher = LocalFeatureMatcher(SIFTFeature(100), DescriptorMatcher("smnn", 0.95)).to(device, dtype)
         tracker = HomographyTracker(matcher, matcher, minimum_inliers_num=100)
         for k in data.keys():
             if isinstance(data[k], torch.Tensor):
@@ -44,10 +44,10 @@ class TestHomographyTracker:
             if isinstance(data[k], torch.Tensor):
                 data[k] = data[k].to(device, dtype)
 
-        data["image0"] = rescale(data["image0"], 0.5, interpolation='bilinear', align_corners=False)
-        data["image1"] = rescale(data["image1"], 0.5, interpolation='bilinear', align_corners=False)
+        data["image0"] = rescale(data["image0"], 0.5, interpolation="bilinear", align_corners=False)
+        data["image1"] = rescale(data["image1"], 0.5, interpolation="bilinear", align_corners=False)
 
-        matcher = LocalFeatureMatcher(GFTTAffNetHardNet(1000), DescriptorMatcher('snn', 0.8)).to(device, dtype)
+        matcher = LocalFeatureMatcher(GFTTAffNetHardNet(1000), DescriptorMatcher("snn", 0.8)).to(device, dtype)
         torch.manual_seed(8)  # issue kornia#2027
         tracker = HomographyTracker(matcher, matcher).to(device, dtype)
 
@@ -56,8 +56,8 @@ class TestHomographyTracker:
             torch.manual_seed(8)  # issue kornia#2027
             homography, success = tracker(data["image1"])
         assert success
-        pts_src = data['pts0'].to(device, dtype) / 2.0
-        pts_dst = data['pts1'].to(device, dtype) / 2.0
+        pts_src = data["pts0"].to(device, dtype) / 2.0
+        pts_dst = data["pts1"].to(device, dtype) / 2.0
         # Reprojection error of 5px is OK
         assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)
 

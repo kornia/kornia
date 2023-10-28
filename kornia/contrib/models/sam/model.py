@@ -105,10 +105,10 @@ class Sam(ModelBase[SamConfig]):
             model_type = SamModelType(model_type)
         elif isinstance(model_type, str):
             _map_sam_type = {
-                'vit_h': SamModelType.vit_h,
-                'vit_l': SamModelType.vit_l,
-                'vit_b': SamModelType.vit_b,
-                'mobile_sam': SamModelType.mobile_sam,
+                "vit_h": SamModelType.vit_h,
+                "vit_l": SamModelType.vit_l,
+                "vit_b": SamModelType.vit_b,
+                "mobile_sam": SamModelType.mobile_sam,
             }
             model_type = _map_sam_type[model_type]
 
@@ -173,7 +173,7 @@ class Sam(ModelBase[SamConfig]):
             )
 
         else:
-            raise NotImplementedError('Unexpected config. The model_type should be provide or the encoder configs.')
+            raise NotImplementedError("Unexpected config. The model_type should be provide or the encoder configs.")
 
         checkpoint = config.checkpoint
         if config.pretrained:
@@ -236,10 +236,10 @@ class Sam(ModelBase[SamConfig]):
                 - scores: The model's predictions of mask quality (iou prediction), in shape BxC.
         """
 
-        KORNIA_CHECK_SHAPE(images, ['B', '3', 'H', 'W'])
+        KORNIA_CHECK_SHAPE(images, ["B", "3", "H", "W"])
         KORNIA_CHECK(
             images.shape[0] == len(batched_prompts),
-            'The number of images (`B`) should match with the length of prompts!',
+            "The number of images (`B`) should match with the length of prompts!",
         )
 
         image_embeddings = self.image_encoder(images)

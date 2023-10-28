@@ -150,7 +150,7 @@ class TestFindHomographyDLT:
         points1 = torch.rand(1, 4, 2, device=device, dtype=dtype)
         points2 = torch.rand(1, 4, 2, device=device, dtype=dtype)
         weights = torch.ones(1, 4, device=device, dtype=dtype)
-        points1[0, 0, 0] = float('nan')
+        points1[0, 0, 0] = float("nan")
         H = find_homography_dlt(points1, points2, weights)
         assert H.shape == (1, 3, 3)
 
@@ -158,8 +158,8 @@ class TestFindHomographyDLT:
         points1 = torch.rand(1, 4, 2, device=device, dtype=dtype)
         points2 = torch.rand(1, 4, 2, device=device, dtype=dtype)
         weights = torch.ones(1, 4, device=device, dtype=dtype)
-        points1[0, 0, 0] = float('nan')
-        H = find_homography_dlt(points1, points2, weights, 'lu')
+        points1[0, 0, 0] = float("nan")
+        H = find_homography_dlt(points1, points2, weights, "lu")
         assert H.shape == (1, 3, 3)
 
     @pytest.mark.parametrize("batch_size, num_points", [(1, 4), (2, 5), (3, 6)])
@@ -203,7 +203,7 @@ class TestFindHomographyDLT:
         weights = torch.ones(batch_size, 10, device=device, dtype=dtype)
 
         # compute transform from source to target
-        dst_homo_src = find_homography_dlt(points_src, points_dst, weights, 'svd')
+        dst_homo_src = find_homography_dlt(points_src, points_dst, weights, "svd")
 
         assert_close(kornia.geometry.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-3, atol=1e-4)
 
@@ -219,7 +219,7 @@ class TestFindHomographyDLT:
         weights = torch.ones(batch_size, 10, device=device, dtype=dtype)
 
         # compute transform from source to target
-        dst_homo_src = find_homography_dlt(points_src, points_dst, weights, 'lu')
+        dst_homo_src = find_homography_dlt(points_src, points_dst, weights, "lu")
 
         assert_close(kornia.geometry.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-3, atol=1e-4)
 
@@ -250,7 +250,7 @@ class TestFindHomographyDLT:
 
         assert gradcheck(
             find_homography_dlt,
-            (points_src, points_dst, weights, 'lu'),
+            (points_src, points_dst, weights, "lu"),
             rtol=1e-6,
             atol=1e-6,
             raise_exception=True,
@@ -286,7 +286,7 @@ class TestFindHomographyFromLinesDLT:
         points2st = torch.rand(1, 4, 2, device=device, dtype=dtype)
         points2end = torch.rand(1, 4, 2, device=device, dtype=dtype)
         weights = torch.ones(1, 4, device=device, dtype=dtype)
-        points1st[0, 0, 0] = float('nan')
+        points1st[0, 0, 0] = float("nan")
         ls1 = torch.stack([points1st, points1end], dim=2)
         ls2 = torch.stack([points2st, points2end], dim=2)
         H = find_homography_lines_dlt(ls1, ls2, weights)

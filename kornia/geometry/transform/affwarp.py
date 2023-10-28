@@ -119,8 +119,8 @@ def _compute_shear_matrix(shear: torch.Tensor) -> torch.Tensor:
 def affine(
     tensor: torch.Tensor,
     matrix: torch.Tensor,
-    mode: str = 'bilinear',
-    padding_mode: str = 'zeros',
+    mode: str = "bilinear",
+    padding_mode: str = "zeros",
     align_corners: bool = True,
 ) -> torch.Tensor:
     r"""Apply an affine transformation to the image.
@@ -170,8 +170,8 @@ def affine(
 def affine3d(
     tensor: torch.Tensor,
     matrix: torch.Tensor,
-    mode: str = 'bilinear',
-    padding_mode: str = 'zeros',
+    mode: str = "bilinear",
+    padding_mode: str = "zeros",
     align_corners: bool = False,
 ) -> torch.Tensor:
     r"""Apply an affine transformation to the 3d volume.
@@ -226,8 +226,8 @@ def rotate(
     tensor: torch.Tensor,
     angle: torch.Tensor,
     center: Union[None, torch.Tensor] = None,
-    mode: str = 'bilinear',
-    padding_mode: str = 'zeros',
+    mode: str = "bilinear",
+    padding_mode: str = "zeros",
     align_corners: bool = True,
 ) -> torch.Tensor:
     r"""Rotate the tensor anti-clockwise about the center.
@@ -292,8 +292,8 @@ def rotate3d(
     pitch: torch.Tensor,
     roll: torch.Tensor,
     center: Union[None, torch.Tensor] = None,
-    mode: str = 'bilinear',
-    padding_mode: str = 'zeros',
+    mode: str = "bilinear",
+    padding_mode: str = "zeros",
     align_corners: bool = False,
 ) -> torch.Tensor:
     r"""Rotate 3D the tensor anti-clockwise about the centre.
@@ -355,8 +355,8 @@ def rotate3d(
 def translate(
     tensor: torch.Tensor,
     translation: torch.Tensor,
-    mode: str = 'bilinear',
-    padding_mode: str = 'zeros',
+    mode: str = "bilinear",
+    padding_mode: str = "zeros",
     align_corners: bool = True,
 ) -> torch.Tensor:
     r"""Translate the tensor in pixel units.
@@ -404,8 +404,8 @@ def scale(
     tensor: torch.Tensor,
     scale_factor: torch.Tensor,
     center: Union[None, torch.Tensor] = None,
-    mode: str = 'bilinear',
-    padding_mode: str = 'zeros',
+    mode: str = "bilinear",
+    padding_mode: str = "zeros",
     align_corners: bool = True,
 ) -> torch.Tensor:
     r"""Scale the tensor by a factor.
@@ -464,8 +464,8 @@ def scale(
 def shear(
     tensor: torch.Tensor,
     shear: torch.Tensor,
-    mode: str = 'bilinear',
-    padding_mode: str = 'zeros',
+    mode: str = "bilinear",
+    padding_mode: str = "zeros",
     align_corners: bool = False,
 ) -> torch.Tensor:
     r"""Shear the tensor.
@@ -525,7 +525,7 @@ def _side_to_image_size(side_size: int, aspect_ratio: float, side: str = "short"
 def resize(
     input: torch.Tensor,
     size: Union[int, Tuple[int, int]],
-    interpolation: str = 'bilinear',
+    interpolation: str = "bilinear",
     align_corners: Optional[bool] = None,
     side: str = "short",
     antialias: bool = False,
@@ -562,7 +562,7 @@ def resize(
         raise TypeError(f"Input tensor type is not a torch.Tensor. Got {type(input)}")
 
     if len(input.shape) < 2:
-        raise ValueError(f'Input tensor must have at least two dimensions. Got {len(input.shape)}')
+        raise ValueError(f"Input tensor must have at least two dimensions. Got {len(input.shape)}")
 
     input_size = h, w = input.shape[-2:]
     if isinstance(size, int):
@@ -675,7 +675,7 @@ class Resize(nn.Module):
     def __init__(
         self,
         size: Union[int, Tuple[int, int]],
-        interpolation: str = 'bilinear',
+        interpolation: str = "bilinear",
         align_corners: Optional[bool] = None,
         side: str = "short",
         antialias: bool = False,
@@ -740,8 +740,8 @@ class Affine(nn.Module):
         scale_factor: Optional[torch.Tensor] = None,
         shear: Optional[torch.Tensor] = None,
         center: Optional[torch.Tensor] = None,
-        mode: str = 'bilinear',
-        padding_mode: str = 'zeros',
+        mode: str = "bilinear",
+        padding_mode: str = "zeros",
         align_corners: bool = True,
     ) -> None:
         batch_sizes = [arg.size()[0] for arg in (angle, translation, scale_factor, shear) if arg is not None]
@@ -867,8 +867,8 @@ class Rotate(nn.Module):
         self,
         angle: torch.Tensor,
         center: Union[None, torch.Tensor] = None,
-        mode: str = 'bilinear',
-        padding_mode: str = 'zeros',
+        mode: str = "bilinear",
+        padding_mode: str = "zeros",
         align_corners: bool = True,
     ) -> None:
         super().__init__()
@@ -907,7 +907,7 @@ class Translate(nn.Module):
     """
 
     def __init__(
-        self, translation: torch.Tensor, mode: str = 'bilinear', padding_mode: str = 'zeros', align_corners: bool = True
+        self, translation: torch.Tensor, mode: str = "bilinear", padding_mode: str = "zeros", align_corners: bool = True
     ) -> None:
         super().__init__()
         self.translation: torch.Tensor = translation
@@ -951,8 +951,8 @@ class Scale(nn.Module):
         self,
         scale_factor: torch.Tensor,
         center: Union[None, torch.Tensor] = None,
-        mode: str = 'bilinear',
-        padding_mode: str = 'zeros',
+        mode: str = "bilinear",
+        padding_mode: str = "zeros",
         align_corners: bool = True,
     ) -> None:
         super().__init__()
@@ -991,7 +991,7 @@ class Shear(nn.Module):
     """
 
     def __init__(
-        self, shear: torch.Tensor, mode: str = 'bilinear', padding_mode: str = 'zeros', align_corners: bool = True
+        self, shear: torch.Tensor, mode: str = "bilinear", padding_mode: str = "zeros", align_corners: bool = True
     ) -> None:
         super().__init__()
         self.shear: torch.Tensor = shear

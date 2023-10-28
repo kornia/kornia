@@ -9,7 +9,7 @@ from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from .kernels import get_spatial_gradient_kernel2d, get_spatial_gradient_kernel3d, normalize_kernel2d
 
 
-def spatial_gradient(input: Tensor, mode: str = 'sobel', order: int = 1, normalized: bool = True) -> Tensor:
+def spatial_gradient(input: Tensor, mode: str = "sobel", order: int = 1, normalized: bool = True) -> Tensor:
     r"""Compute the first order image derivative in both x and y using a Sobel operator.
 
     .. image:: _static/img/spatial_gradient.png
@@ -33,7 +33,7 @@ def spatial_gradient(input: Tensor, mode: str = 'sobel', order: int = 1, normali
         torch.Size([1, 3, 2, 4, 4])
     """
     KORNIA_CHECK_IS_TENSOR(input)
-    KORNIA_CHECK_SHAPE(input, ['B', 'C', 'H', 'W'])
+    KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
 
     # allocate kernel
     kernel = get_spatial_gradient_kernel2d(mode, order, device=input.device, dtype=input.dtype)
@@ -47,12 +47,12 @@ def spatial_gradient(input: Tensor, mode: str = 'sobel', order: int = 1, normali
     # Pad with "replicate for spatial dims, but with zeros for channel
     spatial_pad = [kernel.size(1) // 2, kernel.size(1) // 2, kernel.size(2) // 2, kernel.size(2) // 2]
     out_channels: int = 3 if order == 2 else 2
-    padded_inp: Tensor = pad(input.reshape(b * c, 1, h, w), spatial_pad, 'replicate')
+    padded_inp: Tensor = pad(input.reshape(b * c, 1, h, w), spatial_pad, "replicate")
     out = F.conv2d(padded_inp, tmp_kernel, groups=1, padding=0, stride=1)
     return out.reshape(b, c, out_channels, h, w)
 
 
-def spatial_gradient3d(input: Tensor, mode: str = 'diff', order: int = 1) -> Tensor:
+def spatial_gradient3d(input: Tensor, mode: str = "diff", order: int = 1) -> Tensor:
     r"""Compute the first and second order volume derivative in x, y and d using a diff operator.
 
     Args:
@@ -71,14 +71,14 @@ def spatial_gradient3d(input: Tensor, mode: str = 'diff', order: int = 1) -> Ten
         torch.Size([1, 4, 3, 2, 4, 4])
     """
     KORNIA_CHECK_IS_TENSOR(input)
-    KORNIA_CHECK_SHAPE(input, ['B', 'C', 'D', 'H', 'W'])
+    KORNIA_CHECK_SHAPE(input, ["B", "C", "D", "H", "W"])
 
     b, c, d, h, w = input.shape
     dev = input.device
     dtype = input.dtype
-    if (mode == 'diff') and (order == 1):
+    if (mode == "diff") and (order == 1):
         # we go for the special case implementation due to conv3d bad speed
-        x: Tensor = pad(input, 6 * [1], 'replicate')
+        x: Tensor = pad(input, 6 * [1], "replicate")
         center = slice(1, -1)
         left = slice(0, -2)
         right = slice(2, None)
@@ -107,7 +107,7 @@ def spatial_gradient3d(input: Tensor, mode: str = 'diff', order: int = 1) -> Ten
             kernel.size(4) // 2,
         ]
         out_ch: int = 6 if order == 2 else 3
-        out = F.conv3d(pad(input, spatial_pad, 'replicate'), kernel_flip, padding=0, groups=c).view(
+        out = F.conv3d(pad(input, spatial_pad, "replicate"), kernel_flip, padding=0, groups=c).view(
             b, c, out_ch, d, h, w
         )
     return out
@@ -136,7 +136,7 @@ def sobel(input: Tensor, normalized: bool = True, eps: float = 1e-6) -> Tensor:
         torch.Size([1, 3, 4, 4])
     """
     KORNIA_CHECK_IS_TENSOR(input)
-    KORNIA_CHECK_SHAPE(input, ['B', 'C', 'H', 'W'])
+    KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
 
     # comput the x/y gradients
     edges: Tensor = spatial_gradient(input, normalized=normalized)
@@ -171,7 +171,7 @@ class SpatialGradient(Module):
         >>> output = SpatialGradient()(input)  # 1x3x2x4x4
     """
 
-    def __init__(self, mode: str = 'sobel', order: int = 1, normalized: bool = True) -> None:
+    def __init__(self, mode: str = "sobel", order: int = 1, normalized: bool = True) -> None:
         super().__init__()
         self.normalized: bool = normalized
         self.order: int = order
@@ -205,7 +205,7 @@ class SpatialGradient3d(Module):
         torch.Size([1, 4, 3, 2, 4, 4])
     """
 
-    def __init__(self, mode: str = 'diff', order: int = 1) -> None:
+    def __init__(self, mode: str = "diff", order: int = 1) -> None:
         super().__init__()
         self.order: int = order
         self.mode: str = mode

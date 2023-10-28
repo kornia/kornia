@@ -47,7 +47,7 @@ class TranslateGenerator(RandomGeneratorBase):
         self.translate_y_sampler = None
 
         if self.translate_x is not None:
-            _translate_x = _range_bound(self.translate_x, 'translate_x', bounds=(-1, 1), check='joint').to(
+            _translate_x = _range_bound(self.translate_x, "translate_x", bounds=(-1, 1), check="joint").to(
                 device=device, dtype=dtype
             )
 
@@ -56,7 +56,7 @@ class TranslateGenerator(RandomGeneratorBase):
             )
 
         if self.translate_y is not None:
-            _translate_y = _range_bound(self.translate_y, 'translate_y', bounds=(-1, 1), check='joint').to(
+            _translate_y = _range_bound(self.translate_y, "translate_y", bounds=(-1, 1), check="joint").to(
                 device=device, dtype=dtype
             )
 

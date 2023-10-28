@@ -17,7 +17,7 @@ try:
 except ModuleNotFoundError:
     FlashCrossAttention = None
 
-if FlashCrossAttention or hasattr(F, 'scaled_dot_product_attention'):
+if FlashCrossAttention or hasattr(F, "scaled_dot_product_attention"):
     FLASH_AVAILABLE = True
 else:
     FLASH_AVAILABLE = False
@@ -83,7 +83,7 @@ class Attention(Module):
         super().__init__()
         if allow_flash and not FLASH_AVAILABLE:
             warnings.warn(
-                'FlashAttention is not available. For optimal speed, consider installing torch >= 2.0 or flash-attn.',
+                "FlashAttention is not available. For optimal speed, consider installing torch >= 2.0 or flash-attn.",
                 stacklevel=2,
             )
         self.enable_flash = allow_flash and FLASH_AVAILABLE
@@ -91,7 +91,7 @@ class Attention(Module):
             self.flash_ = FlashCrossAttention()
 
     def forward(self, q: Tensor, k: Tensor, v: Tensor) -> Tensor:
-        if self.enable_flash and q.device.type == 'cuda':
+        if self.enable_flash and q.device.type == "cuda":
             if FlashCrossAttention:
                 q, k, v = (x.transpose(-2, -3) for x in [q, k, v])
                 m = self.flash_(q.half(), stack([k, v], 2).half())
@@ -101,12 +101,12 @@ class Attention(Module):
                     return F.scaled_dot_product_attention(
                         q.half().contiguous(), k.half().contiguous(), v.half().contiguous()
                     ).to(q.dtype)
-        elif hasattr(F, 'scaled_dot_product_attention'):
+        elif hasattr(F, "scaled_dot_product_attention"):
             return F.scaled_dot_product_attention(q.contiguous(), k.contiguous(), v.contiguous()).to(q.dtype)
         else:
             s = q.shape[-1] ** -0.5
-            attn = softmax(einsum('...id,...jd->...ij', q, k) * s, -1)
-            return einsum('...ij,...jd->...id', attn, v)
+            attn = softmax(einsum("...id,...jd->...ij", q, k) * s, -1)
+            return einsum("...ij,...jd->...id", attn, v)
 
 
 class Transformer(Module):
@@ -177,11 +177,11 @@ class CrossTransformer(Module):
             m1 = self.flash(qk1, qk0, v0)
         else:
             qk0, qk1 = qk0 * self.scale**0.5, qk1 * self.scale**0.5
-            sim = einsum('b h i d, b h j d -> b h i j', qk0, qk1)
+            sim = einsum("b h i d, b h j d -> b h i j", qk0, qk1)
             attn01 = softmax(sim, dim=-1)
             attn10 = softmax(sim.transpose(-2, -1).contiguous(), dim=-1)
-            m0 = einsum('bhij, bhjd -> bhid', attn01, v1)
-            m1 = einsum('bhji, bhjd -> bhid', attn10.transpose(-2, -1), v0)
+            m0 = einsum("bhij, bhjd -> bhid", attn01, v1)
+            m1 = einsum("bhji, bhjd -> bhid", attn10.transpose(-2, -1), v0)
         m0, m1 = self.map_(lambda t: t.transpose(1, 2).flatten(start_dim=-2), m0, m1)
         m0, m1 = self.map_(self.to_out, m0, m1)
         x0 = x0 + self.ffn(concatenate([x0, m0], -1))
@@ -214,7 +214,7 @@ class MatchAssignment(Module):
         mdesc0, mdesc1 = self.final_proj(desc0), self.final_proj(desc1)
         _, _, d = mdesc0.shape
         mdesc0, mdesc1 = mdesc0 / d**0.25, mdesc1 / d**0.25
-        sim = einsum('bmd,bnd->bmn', mdesc0, mdesc1)
+        sim = einsum("bmd,bnd->bmn", mdesc0, mdesc1)
         z0 = self.matchability(desc0)
         z1 = self.matchability(desc1)
         scores = sigmoid_log_double_softmax(sim, z0, z1)
@@ -248,32 +248,32 @@ def filter_matches(scores: Tensor, th: float) -> Tuple[Tensor, Tensor, Tensor, T
 
 class LightGlue(Module):
     default_conf: ClassVar[Dict[str, Any]] = {
-        'name': 'lightglue',  # just for interfacing
-        'input_dim': 256,  # input descriptor dimension (autoselected from weights)
-        'descriptor_dim': 256,
-        'n_layers': 9,
-        'num_heads': 4,
-        'flash': True,  # enable FlashAttention if available.
-        'mp': False,  # enable mixed precision
-        'depth_confidence': 0.95,  # early stopping, disable with -1
-        'width_confidence': 0.99,  # point pruning, disable with -1
-        'filter_threshold': 0.1,  # match threshold
-        'weights': None,
+        "name": "lightglue",  # just for interfacing
+        "input_dim": 256,  # input descriptor dimension (autoselected from weights)
+        "descriptor_dim": 256,
+        "n_layers": 9,
+        "num_heads": 4,
+        "flash": True,  # enable FlashAttention if available.
+        "mp": False,  # enable mixed precision
+        "depth_confidence": 0.95,  # early stopping, disable with -1
+        "width_confidence": 0.99,  # point pruning, disable with -1
+        "filter_threshold": 0.1,  # match threshold
+        "weights": None,
     }
 
-    required_data_keys: ClassVar[List[str]] = ['image0', 'image1']
+    required_data_keys: ClassVar[List[str]] = ["image0", "image1"]
 
     version: ClassVar[str] = "v0.1_arxiv"
     url: ClassVar[str] = "https://github.com/cvg/LightGlue/releases/download/{}/{}_lightglue.pth"
 
-    features: ClassVar[Dict[str, Any]] = {'superpoint': ('superpoint_lightglue', 256), 'disk': ('disk_lightglue', 128)}
+    features: ClassVar[Dict[str, Any]] = {"superpoint": ("superpoint_lightglue", 256), "disk": ("disk_lightglue", 128)}
 
-    def __init__(self, features: str = 'superpoint', **conf) -> None:  # type: ignore
+    def __init__(self, features: str = "superpoint", **conf) -> None:  # type: ignore
         super().__init__()
         temp_conf = {**self.default_conf, **conf}
         if features is not None:
             KORNIA_CHECK(features in list(self.features.keys()), "Features keys are wrong")
-            temp_conf['weights'], temp_conf['input_dim'] = self.features[features]
+            temp_conf["weights"], temp_conf["input_dim"] = self.features[features]
         self.conf = conf_ = SimpleNamespace(**temp_conf)
 
         if conf_.input_dim != conf_.descriptor_dim:
@@ -291,16 +291,16 @@ class LightGlue(Module):
         self.token_confidence = ModuleList([TokenConfidence(d) for _ in range(n - 1)])
 
         if features is not None:
-            fname = f'{conf_.weights}_{self.version}.pth'.replace('.', '-')
+            fname = f"{conf_.weights}_{self.version}.pth".replace(".", "-")
             state_dict = torch.hub.load_state_dict_from_url(self.url.format(self.version, features), file_name=fname)
             self.load_state_dict(state_dict, strict=False)
         elif conf_.weights is not None:
             path = Path(__file__).parent
-            path = path / f'weights/{self.conf.weights}.pth'
-            state_dict = torch.load(str(path), map_location='cpu')
+            path = path / f"weights/{self.conf.weights}.pth"
+            state_dict = torch.load(str(path), map_location="cpu")
             self.load_state_dict(state_dict, strict=False)
 
-        print('Loaded LightGlue model')
+        print("Loaded LightGlue model")
 
     def forward(self, data: Dict) -> Dict:  # type: ignore
         """Match keypoints and descriptors between two images.
@@ -327,29 +327,29 @@ class LightGlue(Module):
 
     def _forward(self, data: Dict[str, Dict[str, Tensor]]) -> Dict[str, Any]:
         for key in self.required_data_keys:
-            KORNIA_CHECK(key in data, f'Missing key {key} in data')
-        data0, data1 = data['image0'], data['image1']
-        kpts0_, kpts1_ = data0['keypoints'], data1['keypoints']
+            KORNIA_CHECK(key in data, f"Missing key {key} in data")
+        data0, data1 = data["image0"], data["image1"]
+        kpts0_, kpts1_ = data0["keypoints"], data1["keypoints"]
 
         # torch 1.9.0 compatibility
-        if hasattr(torch, 'inf'):
+        if hasattr(torch, "inf"):
             inf = torch.inf
         else:
             inf = math.inf
 
         b, m, _ = kpts0_.shape
         b, n, _ = kpts1_.shape
-        size0, size1 = data0.get('image_size'), data1.get('image_size')
-        size0 = size0 if size0 is not None else data0['image'].shape[-2:][::-1]  # type: ignore
-        size1 = size1 if size1 is not None else data1['image'].shape[-2:][::-1]  # type: ignore
+        size0, size1 = data0.get("image_size"), data1.get("image_size")
+        size0 = size0 if size0 is not None else data0["image"].shape[-2:][::-1]  # type: ignore
+        size1 = size1 if size1 is not None else data1["image"].shape[-2:][::-1]  # type: ignore
         kpts0 = normalize_keypoints(kpts0_, size=size0)
         kpts1 = normalize_keypoints(kpts1_, size=size1)
 
         KORNIA_CHECK(torch.all(kpts0 >= -1).item() and torch.all(kpts0 <= 1).item(), "")  # type: ignore
         KORNIA_CHECK(torch.all(kpts1 >= -1).item() and torch.all(kpts1 <= 1).item(), "")  # type: ignore
 
-        desc0 = data0['descriptors'].detach()
-        desc1 = data1['descriptors'].detach()
+        desc0 = data0["descriptors"].detach()
+        desc1 = data1["descriptors"].detach()
         KORNIA_CHECK(desc0.shape[-1] == self.conf.input_dim, "Descriptor dimension does not match input dim in config")
         KORNIA_CHECK(desc1.shape[-1] == self.conf.input_dim, "Descriptor dimension does not match input dim in config")
 
@@ -401,7 +401,7 @@ class LightGlue(Module):
             scores[:, :-1, :-1] = -inf
             scores[:, ind0[0], -1] = scores_[:, :-1, -1]
             scores[:, -1, ind1[0]] = scores_[:, -1, :-1]
-            x, y = torch_meshgrid([ind0[0], ind1[0]], 'ij')
+            x, y = torch_meshgrid([ind0[0], ind1[0]], "ij")
             scores[:, x, y] = scores_[:, :-1, :-1]
         else:
             scores, _ = self.log_assignment[i](desc0, desc1)
@@ -415,16 +415,16 @@ class LightGlue(Module):
             mscores.append(mscores0[k][valid])
 
         return {
-            'log_assignment': scores,
-            'matches0': m0,
-            'matches1': m1,
-            'matching_scores0': mscores0,
-            'matching_scores1': mscores1,
-            'stop': i + 1,
-            'prune0': prune0,
-            'prune1': prune1,
-            'matches': matches,
-            'scores': mscores,
+            "log_assignment": scores,
+            "matches0": m0,
+            "matches1": m1,
+            "matching_scores0": mscores0,
+            "matching_scores1": mscores1,
+            "stop": i + 1,
+            "prune0": prune0,
+            "prune1": prune1,
+            "matches": matches,
+            "scores": mscores,
         }
 
     def conf_th(self, i: int) -> float:

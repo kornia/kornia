@@ -32,10 +32,10 @@ class HomographyTracker(Module):
     ) -> None:
         super().__init__()
         self.initial_matcher = initial_matcher or (
-            LocalFeatureMatcher(GFTTAffNetHardNet(3000), DescriptorMatcher('smnn', 0.95))
+            LocalFeatureMatcher(GFTTAffNetHardNet(3000), DescriptorMatcher("smnn", 0.95))
         )
-        self.fast_matcher = fast_matcher or LoFTR('outdoor')
-        self.ransac = ransac or RANSAC('homography', inl_th=5.0, batch_size=4096, max_iter=10, max_lo_iters=10)
+        self.fast_matcher = fast_matcher or LoFTR("outdoor")
+        self.ransac = ransac or RANSAC("homography", inl_th=5.0, batch_size=4096, max_iter=10, max_lo_iters=10)
         self.minimum_inliers_num = minimum_inliers_num
 
         # placeholders
@@ -63,11 +63,11 @@ class HomographyTracker(Module):
         self.target = target
         self.target_initial_representation = {}
         self.target_fast_representation = {}
-        if hasattr(self.initial_matcher, 'extract_features') and isinstance(
+        if hasattr(self.initial_matcher, "extract_features") and isinstance(
             self.initial_matcher.extract_features, Module
         ):
             self.target_initial_representation = self.initial_matcher.extract_features(target)
-        if hasattr(self.fast_matcher, 'extract_features') and isinstance(self.fast_matcher.extract_features, Module):
+        if hasattr(self.fast_matcher, "extract_features") and isinstance(self.fast_matcher.extract_features, Module):
             self.target_fast_representation = self.fast_matcher.extract_features(target)
 
     def reset_tracking(self) -> None:
@@ -84,11 +84,11 @@ class HomographyTracker(Module):
         input_dict: Dict[str, Tensor] = {"image0": self.target, "image1": x}
 
         for k, v in self.target_initial_representation.items():
-            input_dict[f'{k}0'] = v
+            input_dict[f"{k}0"] = v
 
         match_dict: Dict[str, Tensor] = self.initial_matcher(input_dict)
-        keypoints0 = match_dict['keypoints0'][match_dict['batch_indexes'] == 0]
-        keypoints1 = match_dict['keypoints1'][match_dict['batch_indexes'] == 0]
+        keypoints0 = match_dict["keypoints0"][match_dict["batch_indexes"] == 0]
+        keypoints1 = match_dict["keypoints1"][match_dict["batch_indexes"] == 0]
 
         self.keypoints0_num = len(keypoints0)
         self.keypoints1_num = len(keypoints1)
@@ -118,11 +118,11 @@ class HomographyTracker(Module):
         frame_warped = warp_perspective(x, Hinv, (h, w))
         input_dict: Dict[str, Tensor] = {"image0": self.target, "image1": frame_warped}
         for k, v in self.target_fast_representation.items():
-            input_dict[f'{k}0'] = v
+            input_dict[f"{k}0"] = v
 
         match_dict = self.fast_matcher(input_dict)
-        keypoints0 = match_dict['keypoints0'][match_dict['batch_indexes'] == 0]
-        keypoints1 = match_dict['keypoints1'][match_dict['batch_indexes'] == 0]
+        keypoints0 = match_dict["keypoints0"][match_dict["batch_indexes"] == 0]
+        keypoints1 = match_dict["keypoints1"][match_dict["batch_indexes"] == 0]
         keypoints1 = transform_points(Hwarp, keypoints1)
 
         self.keypoints0_num = len(keypoints0)

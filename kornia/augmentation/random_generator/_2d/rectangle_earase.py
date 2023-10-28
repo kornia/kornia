@@ -53,8 +53,8 @@ class RectangleEraseGenerator(RandomGeneratorBase):
 
         if not (isinstance(self.value, (int, float)) and self.value >= 0 and self.value <= 1):
             raise AssertionError(f"'value' must be a number between 0 - 1. Got {self.value}.")
-        _joint_range_check(scale, 'scale', bounds=(0, float('inf')))
-        _joint_range_check(ratio, 'ratio', bounds=(0, float('inf')))
+        _joint_range_check(scale, "scale", bounds=(0, float("inf")))
+        _joint_range_check(ratio, "ratio", bounds=(0, float("inf")))
 
         self.scale_sampler = UniformDistribution(scale[0], scale[1], validate_args=False)
 

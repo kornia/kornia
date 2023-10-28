@@ -43,7 +43,7 @@ class MixupGenerator(RandomGeneratorBase):
         else:
             lambda_val = torch.as_tensor(self.lambda_val, device=device, dtype=dtype)
 
-        _joint_range_check(lambda_val, 'lambda_val', bounds=(0, 1))
+        _joint_range_check(lambda_val, "lambda_val", bounds=(0, 1))
         self.lambda_sampler = UniformDistribution(lambda_val[0], lambda_val[1], validate_args=False)
         self.prob_sampler = Bernoulli(torch.tensor(float(self.p), device=device, dtype=dtype))
 

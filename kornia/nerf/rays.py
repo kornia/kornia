@@ -19,6 +19,7 @@ class RaySampler:
         ndc: convert ray parameters to normalized device coordinates: bool
         device: device for ray tensors: Union[str, torch.device]
     """
+
     _origins: Tensor  # Ray origins in world coordinates (*, 3)
     _directions: Tensor  # Ray directions in world coordinates (*, 3)
     _directions_cam: Tensor  # Ray directions in camera coordinates (*, 3)
@@ -283,8 +284,8 @@ class RandomRaySampler(RaySampler):
         num_cams = cameras.batch_size
         if num_cams != num_img_rays.shape[0]:
             raise ValueError(
-                f'Number of cameras {num_cams} does not match size of tensor to define number of rays to march from '
-                f'each camera {num_img_rays.shape[0]}'
+                f"Number of cameras {num_cams} does not match size of tensor to define number of rays to march from "
+                f"each camera {num_img_rays.shape[0]}"
             )
         points_2d_camera = self.sample_points_2d(cameras.height, cameras.width, num_img_rays)
         self._calc_ray_params(cameras, points_2d_camera)
@@ -325,7 +326,7 @@ class RandomGridRaySampler(RandomRaySampler):
             n_sqrt = int(math.sqrt(n))
             y_rand = torch.randperm(int(height), device=self._device, dtype=self._dtype)[: min(int(height), n_sqrt)]
             x_rand = torch.randperm(int(width), device=self._device, dtype=self._dtype)[: min(int(width), n_sqrt)]
-            y_grid, x_grid = torch_meshgrid([y_rand, x_rand], indexing='ij')
+            y_grid, x_grid = torch_meshgrid([y_rand, x_rand], indexing="ij")
             RaySampler._add_points2d_as_flat_tensors_to_num_ray_dict(
                 n_sqrt * n_sqrt, x_grid, y_grid, camera_id, points2d_as_flat_tensors
             )
@@ -369,7 +370,7 @@ class UniformRaySampler(RaySampler):
                     torch.arange(0, height, sampling_step, device=self._device, dtype=self._dtype),
                     torch.arange(0, width, sampling_step, device=self._device, dtype=self._dtype),
                 ],
-                indexing='ij',
+                indexing="ij",
             )
             RaySampler._add_points2d_as_flat_tensors_to_num_ray_dict(
                 n, x_grid, y_grid, camera_id, points2d_as_flat_tensors
@@ -385,7 +386,7 @@ def sample_lengths(
     num_rays: int, num_ray_points: int, device: Device, dtype: torch.dtype, irregular: bool = False
 ) -> Tensor:
     if num_ray_points <= 1:
-        raise ValueError('Number of ray points must be greater than 1')
+        raise ValueError("Number of ray points must be greater than 1")
     if not irregular:
         zero_to_one = torch.linspace(0.0, 1.0, num_ray_points, device=device, dtype=dtype)
         lengths = zero_to_one.repeat(num_rays, 1)  # FIXME: Expand instead of repeat maybe?
