@@ -29,9 +29,9 @@ class OnnxLightGlue:
     for how to export the model to ONNX and optimize it.
 
     Args:
-        weights: Pretrained weights, or a path to your own exported ONNX model. Available pretrained weights are:
-        `disk`, `superpoint`, `disk_fp16`, and `superpoint_fp16`. Defaults to `disk_fp16`.
-        device: Device to run inference on. Currently, only `cuda` is supported. Defaults to `cuda`.
+        weights: Pretrained weights, or a path to your own exported ONNX model. Available pretrained weights
+          are ``'disk'``, ``'superpoint'``, ``'disk_fp16'``, and ``'superpoint_fp16'``.
+        device: Device to run inference on. Currently, only ``'cuda'`` is supported. Defaults to ``'cuda'``.
     """
     MODEL_URLS: ClassVar[dict[str, str]] = {
         "disk": "https://github.com/fabio-sim/LightGlue-ONNX/releases/download/v1.0.0/disk_lightglue_fused.onnx",
@@ -78,21 +78,27 @@ class OnnxLightGlue:
             data: Dictionary containing both images and the keypoints and descriptors thereof.
 
         Returns:
-            output: Dictionary containing the following matches and scores.
+            Dictionary containing the matches and scores.
 
-        `data`:
-            image0: dict
-                keypoints (`float32`): [1 x M x 2]
-                descriptors (`float32`): [1 x M x D]
-                image: [1 x C x H x W] or image_size: [1 x 2]
-            image1: dict
-                keypoints (`float32`): [1 x N x 2]
-                descriptors (`float32`): [1 x N x D]
-                image: [1 x C x H x W] or image_size: [1 x 2]
+        ``data`` (``dict``):
+            ``image0`` (``dict``):
+                ``keypoints`` (`float32`): :math:`(1, M, 2)`
 
-        `output`:
-                matches (`int64`): [S x 2]
-                scores (`float32`): [S]
+                ``descriptors`` (`float32`): :math:`(1, M, D)`
+
+                ``image``: :math:`(1, C, H, W)` or ``image_size``: :math:`(1, 2)`
+
+            ``image1`` (``dict``):
+                ``keypoints`` (`float32`): :math:`(1, N, 2)`
+
+                ``descriptors`` (`float32`): :math:`(1, N, D)`
+
+                ``image``: :math:`(1, C, H, W)` or ``image_size``: :math:`(1, 2)`
+
+        ``output`` (``dict``):
+            ``matches`` (`int64`): :math:`(S, 2)`
+
+            ``scores`` (`float32`): :math:`(S)`
         """
         # Input validation.
         for key in self.required_data_keys:
