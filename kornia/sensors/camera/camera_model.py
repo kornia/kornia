@@ -244,7 +244,7 @@ class PinholeModel(CameraModelBase):
 class BrownConradyModel(CameraModelBase):
     """Brown Conrady Camera Model."""
 
-    def __init__(self, image_size: ImageSize, params: Tensor) -> None:
+    def __init__(self, image_size: ImageSize, params: Tensor | None = None) -> None:
         """Constructor method for BrownConradyModel class.
 
         Args:
@@ -252,7 +252,20 @@ class BrownConradyModel(CameraModelBase):
             params: Camera parameters of shape :math:`(B, 12)` of the form :math:`(fx, fy, cx, cy, kb0, kb1, kb2, kb3,
                     k1, k2, k3, k4)`.
         """
-        if params.shape[-1] != 12 or len(params.shape) > 2:
+        if params is None:
+            params = Tensor(
+                [
+                    image_size.width / 2,
+                    image_size.height / 2,
+                    image_size.width / 2,
+                    image_size.height / 2,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                ]
+            )
+        elif params.shape[-1] != 12 or len(params.shape) > 2:
             raise ValueError("params must be of shape (B, 12) for BROWN_CONRADY Camera")
         super().__init__(BrownConradyTransform(), Z1Projection(), image_size, params)
 
@@ -260,14 +273,27 @@ class BrownConradyModel(CameraModelBase):
 class KannalaBrandtK3(CameraModelBase):
     """Kannala Brandt K3 Camera Model."""
 
-    def __init__(self, image_size: ImageSize, params: Tensor) -> None:
+    def __init__(self, image_size: ImageSize, params: Tensor | None = None) -> None:
         """Constructor method for KannalaBrandtK3 class.
 
         Args:
             image_size: Image size
             params: Camera parameters of shape :math:`(B, 8)` of the form :math:`(fx, fy, cx, cy, kb0, kb1, kb2, kb3)`.
         """
-        if params.shape[-1] != 8 or len(params.shape) > 2:
+        if params is None:
+            params = Tensor(
+                [
+                    image_size.width / 2,
+                    image_size.height / 2,
+                    image_size.width / 2,
+                    image_size.height / 2,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                ]
+            )
+        elif params.shape[-1] != 8 or len(params.shape) > 2:
             raise ValueError("params must be of shape B, 8 for KANNALA_BRANDT_K3 Camera")
         super().__init__(KannalaBrandtK3Transform(), Z1Projection(), image_size, params)
 
@@ -275,16 +301,18 @@ class KannalaBrandtK3(CameraModelBase):
 class Orthographic(CameraModelBase):
     """Orthographic Camera Model."""
 
-    def __init__(self, image_size: ImageSize, params: Tensor) -> None:
+    def __init__(self, image_size: ImageSize, params: Tensor | None = None) -> None:
         """Constructor method for Orthographic class.
 
         Args:
             image_size: Image size
             params: Camera parameters of shape :math:`(B, 4)` of the form :math:`(fx, fy, cx, cy)`.
         """
-        super().__init__(AffineTransform(), OrthographicProjection(), image_size, params)
-        if params.shape[-1] != 4 or len(params.shape) > 2:
+        if params is None:
+            params = Tensor([image_size.width / 2, image_size.height / 2, image_size.width / 2, image_size.height / 2])
+        elif params.shape[-1] != 4 or len(params.shape) > 2:
             raise ValueError("params must be of shape B, 4 for ORTHOGRAPHIC Camera")
+        super().__init__(AffineTransform(), OrthographicProjection(), image_size, params)
 
 
 CameraModelVariants = Union[PinholeModel, BrownConradyModel, KannalaBrandtK3, Orthographic]
@@ -321,6 +349,7 @@ class CameraModel:
             image_size: Image size
             model_type: Camera model type
             params: Camera parameters of shape :math:`(B, N)`.
+            pose: Pose of the camera.
         """
         self._model = get_model_from_type(model_type, image_size, params)
         if pose is None:
