@@ -5,6 +5,7 @@ from enum import Enum
 from typing import Any, Union
 
 from kornia.core import Tensor, stack, zeros_like
+from kornia.geometry.pose import NamedPose
 from kornia.geometry.vector import Vector2, Vector3
 from kornia.image import ImageSize
 from kornia.sensors.camera.distortion_model import AffineTransform, BrownConradyTransform, KannalaBrandtK3Transform
@@ -18,7 +19,9 @@ class CameraModelType(Enum):
     ORTHOGRAPHIC = 3
 
 
-def get_model_from_type(model_type: CameraModelType, image_size: ImageSize, params: Tensor) -> CameraModelVariants:
+def get_model_from_type(
+    model_type: CameraModelType, image_size: ImageSize, params: Tensor | None = None
+) -> CameraModelVariants:
     if model_type == CameraModelType.PINHOLE:
         return PinholeModel(image_size, params)
     elif model_type == CameraModelType.BROWN_CONRADY:
@@ -176,14 +179,16 @@ class PinholeModel(CameraModelBase):
         CameraModel(ImageSize(height=480, width=640), PinholeModel, tensor([328., 328., 320., 240.]))
     """
 
-    def __init__(self, image_size: ImageSize, params: Tensor) -> None:
+    def __init__(self, image_size: ImageSize, params: Tensor | None = None) -> None:
         """Constructor method for PinholeModel class.
 
         Args:
             image_size: Image size
             params: Camera parameters of shape :math:`(B, 4)` of the form :math:`(fx, fy, cx, cy)`.
         """
-        if params.shape[-1] != 4 or len(params.shape) > 2:
+        if params is None:
+            params = Tensor([image_size.width / 2, image_size.height / 2, image_size.width / 2, image_size.height / 2])
+        elif params.shape[-1] != 4 or len(params.shape) > 2:
             raise ValueError("params must be of shape (B, 4) for PINHOLE Camera")
         super().__init__(AffineTransform(), Z1Projection(), image_size, params)
 
@@ -303,7 +308,13 @@ class CameraModel:
         tensor([328., 328., 320., 240.])
     """
 
-    def __init__(self, image_size: ImageSize, model_type: CameraModelType, params: Tensor) -> None:
+    def __init__(
+        self,
+        image_size: ImageSize,
+        model_type: CameraModelType,
+        params: Tensor | None = None,
+        pose: NamedPose | None = None,
+    ) -> None:
         """Constructor method for CameraModel class.
 
         Args:
@@ -312,9 +323,17 @@ class CameraModel:
             params: Camera parameters of shape :math:`(B, N)`.
         """
         self._model = get_model_from_type(model_type, image_size, params)
+        if pose is None:
+            pose = NamedPose.identity(dim=3)
+        self._pose = pose
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._model, name)
 
     def __repr__(self) -> str:
         return f"CameraModel({self.image_size}, {self._model.__class__.__name__}, {self.params})"
+
+    @property
+    def pose(self) -> NamedPose:
+        """Returns the pose of the camera."""
+        return self._pose

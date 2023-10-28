@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from kornia.core import Tensor, eye
+from kornia.core import Device, Dtype, Tensor, eye
 from kornia.geometry.liegroup import Se2, Se3, So2, So3
 from kornia.geometry.quaternion import Quaternion
 
@@ -81,7 +81,7 @@ class NamedPose:
         elif isinstance(other.pose, Se3):
             return NamedPose(self._dst_from_src._mul_se3(other.pose), other._frame_src, self._frame_dst)
         else:
-            raise ValueError(f"Pose must be either Se2 or Se3, got {type(self._dst_from_src)}")
+            raise ValueError(f"Pose must be either Se2 or Se3, got {type(other._dst_from_src)}")
 
     @property
     def pose(self) -> Se2 | Se3:
@@ -221,3 +221,37 @@ class NamedPose:
             tensor([1., 2., 3.], grad_fn=<AddBackward0>)
         """
         return self._dst_from_src * points_in_src
+
+    @classmethod
+    def identity(
+        cls,
+        dim: int = 3,
+        frame_src: str | None = None,
+        frame_dst: str | None = None,
+        device: Device | None = None,
+        dtype: Dtype | None = None,
+    ) -> NamedPose:
+        """Construct identity NamedPose.
+
+        Args:
+            frame_src: Name of the source frame.
+            frame_dst: Name of the destination frame.
+
+        Returns:
+            Identity NamedPose.
+
+        Example:
+            >>> NamedPose.identity(frame_src="frame_a", frame_dst="frame_b")
+            NamedPose(dst_from_src=rotation: Parameter containing:
+            tensor([1., 0., 0., 0.], requires_grad=True)
+            translation: x: 0.0
+            y: 0.0
+            z: 0.0,
+            frame_src: frame_a -> frame_dst: frame_b)
+        """
+        if dim == 2:
+            return cls(Se2.identity(device=device, dtype=dtype), frame_src, frame_dst)
+        elif dim == 3:
+            return cls(Se3.identity(device=device, dtype=dtype), frame_src, frame_dst)
+        else:
+            raise ValueError(f"dim must be either 2 or 3, got {dim}")

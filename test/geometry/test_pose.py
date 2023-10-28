@@ -111,3 +111,14 @@ class TestNamedPose(BaseTester):
         points_in_b = b_from_a.transform_points(points_in_a)
         assert points_in_b.shape == points_in_a.shape
         self.assert_close(a_from_b.transform_points(points_in_b), points_in_a)
+
+    @pytest.mark.parametrize("dim", (2, 3))
+    def test_identity(self, device, dtype, dim):
+        a_from_b = NamedPose.identity(dim=dim, device=device, dtype=dtype)
+        assert isinstance(a_from_b, NamedPose)
+        if dim == 2:
+            assert isinstance(a_from_b.pose, Se2)
+        elif dim == 3:
+            assert isinstance(a_from_b.pose, Se3)
+        self.assert_close(a_from_b.pose.rotation.matrix(), torch.eye(dim, device=device, dtype=dtype))
+        self.assert_close(a_from_b.pose.translation.data, torch.zeros(dim, device=device, dtype=dtype))
