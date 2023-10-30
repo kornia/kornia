@@ -11,19 +11,24 @@ except ImportError:
 
 
 @pytest.mark.skipif(ort is None, reason="OnnxLightGlue requires onnxruntime-gpu")
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="OnnxLightGlue requires CUDA")
 class TestOnnxLightGlue:
     @pytest.mark.slow
-    @pytest.mark.parametrize("weights", OnnxLightGlue.MODEL_URLS.keys())
-    def test_pretrained_weights(self, weights):
-        model = OnnxLightGlue(weights)
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="Test requires CUDA")
+    @pytest.mark.parametrize("weights", ["disk", "superpoint", "disk_fp16", "superpoint_fp16"])
+    def test_pretrained_weights_cuda(self, weights):
+        model = OnnxLightGlue(weights, "cuda")
         assert model is not None
 
     @pytest.mark.slow
-    def test_forward(self):
-        model = OnnxLightGlue()
+    @pytest.mark.parametrize("weights", ["disk", "superpoint"])
+    def test_pretrained_weights_cpu(self, weights):
+        model = OnnxLightGlue(weights, "cpu")
+        assert model is not None
 
-        device = torch.device("cuda")
+    @pytest.mark.slow
+    def test_forward(self, device):
+        model = OnnxLightGlue(device=device)
+
         kpts = torch.zeros(1, 5, 2, device=device)
         desc = torch.zeros(1, 5, 128, device=device)
         image = torch.zeros(1, 3, 10, 10)
@@ -44,14 +49,18 @@ class TestOnnxLightGlue:
         assert torch.all(torch.abs(kpts) <= 1).item()
 
     @pytest.mark.slow
-    def test_exception(self):
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="Test requires CUDA")
+    def test_exception(self, device):
         with pytest.raises(RuntimeError) as e:
             OnnxLightGlue(device="invalid device")
         assert "Invalid device string: 'invalid device'" in str(e)
 
-        model = OnnxLightGlue()
+        with pytest.raises(Exception) as e:
+            OnnxLightGlue("disk_fp16", "cpu")
+        assert "FP16 requires CUDA." in str(e)
 
-        device = torch.device("cuda")
+        model = OnnxLightGlue(device=device)
+
         kpts = torch.zeros(1, 5, 2, device=device)
         desc = torch.zeros(1, 5, 128, device=device)
         image = torch.zeros(1, 3, 10, 10)
@@ -76,10 +85,15 @@ class TestOnnxLightGlue:
         assert "Wrong dtype" in str(e)
 
         # Wrong device
+        wrong_device = torch.device("cpu" if device.type == "cuda" else "cuda")
         with pytest.raises(Exception) as e:
             model(
                 {
-                    "image0": {"keypoints": torch.zeros(1, 5, 2, device="cpu"), "descriptors": desc, "image": image},
+                    "image0": {
+                        "keypoints": torch.zeros(1, 5, 2, device=wrong_device),
+                        "descriptors": desc,
+                        "image": image,
+                    },
                     "image1": {"keypoints": kpts, "descriptors": desc, "image": image},
                 }
             )

@@ -30,8 +30,9 @@ class OnnxLightGlue:
 
     Args:
         weights: Pretrained weights, or a path to your own exported ONNX model. Available pretrained weights
-          are ``'disk'``, ``'superpoint'``, ``'disk_fp16'``, and ``'superpoint_fp16'``.
-        device: Device to run inference on. Currently, only ``'cuda'`` is supported. Defaults to ``'cuda'``.
+          are ``'disk'``, ``'superpoint'``, ``'disk_fp16'``, and ``'superpoint_fp16'``. `Note that FP16 requires CUDA.`
+          Defaults to ``'disk_fp16'`` if ``device`` is CUDA, and ``'disk'`` if CPU.
+        device: Device to run inference on. Defaults to ``'cuda'`` if available, and ``'cpu'`` otherwise.
     """
 
     MODEL_URLS: ClassVar[dict[str, str]] = {
@@ -43,25 +44,35 @@ class OnnxLightGlue:
 
     required_data_keys: ClassVar[list[str]] = ["image0", "image1"]
 
-    def __init__(self, weights: str = "disk_fp16", device: Device = None) -> None:
+    def __init__(self, weights: str | None = None, device: Device = None) -> None:
         KORNIA_CHECK(ort is not None, "onnxruntime is not installed.")
         KORNIA_CHECK(np is not None, "numpy is not installed.")
 
         if device is None:
-            device = torch.device("cuda")
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         elif isinstance(device, str):
             device = torch.device(device)
         self.device = device
 
         if device.type == "cpu":
-            raise NotImplementedError("CPUExecutionProvider is not supported yet for Multihead-Attention op.")
+            providers = ["CPUExecutionProvider"]
         elif device.type == "cuda":
             providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
         else:
             raise ValueError(f"Unsupported device {device}")
 
+        if weights is None:
+            weights = "disk_fp16" if device.type == "cuda" else "disk"
+
         if weights in self.MODEL_URLS:
-            weights = download_onnx_from_url(self.MODEL_URLS[weights])
+            if "fp16" in weights:
+                KORNIA_CHECK(device.type == "cuda", "FP16 requires CUDA.")
+
+            url = self.MODEL_URLS[weights]
+            if device.type == "cpu":
+                url = url.replace(".onnx", "_cpu.onnx")
+
+            weights = download_onnx_from_url(url)
 
         self.session = ort.InferenceSession(weights, providers=providers)
 
