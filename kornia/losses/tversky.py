@@ -11,7 +11,7 @@ from kornia.utils.one_hot import one_hot
 
 
 def tversky_loss(
-    input: torch.Tensor, target: torch.Tensor, alpha: float, beta: float, eps: float = 1e-8
+    pred: torch.Tensor, target: torch.Tensor, alpha: float, beta: float, eps: float = 1e-8
 ) -> torch.Tensor:
     r"""Criterion that computes Tversky Coefficient loss.
 
@@ -34,7 +34,7 @@ def tversky_loss(
        - :math:`\alpha + \beta = 1` => F beta coeff
 
     Args:
-        input: logits tensor with shape :math:`(N, C, H, W)` where C = number of classes.
+        pred: logits tensor with shape :math:`(N, C, H, W)` where C = number of classes.
         target: labels tensor with shape :math:`(N, H, W)` where each value
           is :math:`0 ≤ targets[i] ≤ C-1`.
         alpha: the first coefficient in the denominator.
@@ -46,34 +46,34 @@ def tversky_loss(
 
     Example:
         >>> N = 5  # num_classes
-        >>> input = torch.randn(1, N, 3, 5, requires_grad=True)
+        >>> pred = torch.randn(1, N, 3, 5, requires_grad=True)
         >>> target = torch.empty(1, 3, 5, dtype=torch.long).random_(N)
-        >>> output = tversky_loss(input, target, alpha=0.5, beta=0.5)
+        >>> output = tversky_loss(pred, target, alpha=0.5, beta=0.5)
         >>> output.backward()
     """
-    if not isinstance(input, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(input)}")
+    if not isinstance(pred, torch.Tensor):
+        raise TypeError(f"pred type is not a torch.Tensor. Got {type(pred)}")
 
-    if not len(input.shape) == 4:
-        raise ValueError(f"Invalid input shape, we expect BxNxHxW. Got: {input.shape}")
+    if not len(pred.shape) == 4:
+        raise ValueError(f"Invalid pred shape, we expect BxNxHxW. Got: {pred.shape}")
 
-    if not input.shape[-2:] == target.shape[-2:]:
-        raise ValueError(f"input and target shapes must be the same. Got: {input.shape} and {input.shape}")
+    if not pred.shape[-2:] == target.shape[-2:]:
+        raise ValueError(f"pred and target shapes must be the same. Got: {pred.shape} and {pred.shape}")
 
-    if not input.device == target.device:
-        raise ValueError(f"input and target must be in the same device. Got: {input.device} and {target.device}")
+    if not pred.device == target.device:
+        raise ValueError(f"pred and target must be in the same device. Got: {pred.device} and {target.device}")
 
     # compute softmax over the classes axis
-    input_soft: torch.Tensor = F.softmax(input, dim=1)
+    pred_soft: torch.Tensor = F.softmax(pred, dim=1)
 
     # create the labels one hot tensor
-    target_one_hot: torch.Tensor = one_hot(target, num_classes=input.shape[1], device=input.device, dtype=input.dtype)
+    target_one_hot: torch.Tensor = one_hot(target, num_classes=pred.shape[1], device=pred.device, dtype=pred.dtype)
 
     # compute the actual dice score
     dims = (1, 2, 3)
-    intersection = torch.sum(input_soft * target_one_hot, dims)
-    fps = torch.sum(input_soft * (-target_one_hot + 1.0), dims)
-    fns = torch.sum((-input_soft + 1.0) * target_one_hot, dims)
+    intersection = torch.sum(pred_soft * target_one_hot, dims)
+    fps = torch.sum(pred_soft * (-target_one_hot + 1.0), dims)
+    fns = torch.sum((-pred_soft + 1.0) * target_one_hot, dims)
 
     numerator = intersection
     denominator = intersection + alpha * fps + beta * fns
@@ -109,16 +109,16 @@ class TverskyLoss(nn.Module):
         eps: scalar for numerical stability.
 
     Shape:
-        - Input: :math:`(N, C, H, W)` where C = number of classes.
+        - Pred: :math:`(N, C, H, W)` where C = number of classes.
         - Target: :math:`(N, H, W)` where each value is
           :math:`0 ≤ targets[i] ≤ C-1`.
 
     Examples:
         >>> N = 5  # num_classes
         >>> criterion = TverskyLoss(alpha=0.5, beta=0.5)
-        >>> input = torch.randn(1, N, 3, 5, requires_grad=True)
+        >>> pred = torch.randn(1, N, 3, 5, requires_grad=True)
         >>> target = torch.empty(1, 3, 5, dtype=torch.long).random_(N)
-        >>> output = criterion(input, target)
+        >>> output = criterion(pred, target)
         >>> output.backward()
     """
 
@@ -128,5 +128,5 @@ class TverskyLoss(nn.Module):
         self.beta: float = beta
         self.eps: float = eps
 
-    def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        return tversky_loss(input, target, self.alpha, self.beta, self.eps)
+    def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        return tversky_loss(pred, target, self.alpha, self.beta, self.eps)
