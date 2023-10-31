@@ -6,5 +6,5 @@ onnx
 onnxruntime-gpu>=1.16; sys_platform != 'darwin'
 pre-commit>=2
 pydocstyle
-pytest==7.4.2
+pytest==7.4.3
 pytest-timeout
