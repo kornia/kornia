@@ -32,7 +32,7 @@ class OnnxLightGlue:
         weights: Pretrained weights, or a path to your own exported ONNX model. Available pretrained weights
           are ``'disk'``, ``'superpoint'``, ``'disk_fp16'``, and ``'superpoint_fp16'``. `Note that FP16 requires CUDA.`
           Defaults to ``'disk_fp16'`` if ``device`` is CUDA, and ``'disk'`` if CPU.
-        device: Device to run inference on. Defaults to ``'cuda'`` if available, and ``'cpu'`` otherwise.
+        device: Device to run inference on.
     """
 
     MODEL_URLS: ClassVar[dict[str, str]] = {
@@ -44,12 +44,12 @@ class OnnxLightGlue:
 
     required_data_keys: ClassVar[list[str]] = ["image0", "image1"]
 
-    def __init__(self, weights: str | None = None, device: Device = None) -> None:
+    def __init__(self, weights: str | None = None, device: Device = "cpu") -> None:
         KORNIA_CHECK(ort is not None, "onnxruntime is not installed.")
         KORNIA_CHECK(np is not None, "numpy is not installed.")
 
         if device is None:
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            device = torch.device("cpu")
         elif isinstance(device, str):
             device = torch.device(device)
         self.device = device
