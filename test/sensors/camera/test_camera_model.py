@@ -1,6 +1,7 @@
 import pytest
 import torch
 
+from kornia.geometry.pose import NamedPose
 from kornia.geometry.vector import Vector3
 from kornia.image import ImageSize
 from kornia.sensors.camera import CameraModel, CameraModelType
@@ -15,6 +16,11 @@ class TestPinholeCamera(BaseTester):
 
     def test_smoke(self, device, dtype):
         params, image_size = self._make_rand_data(1, device, dtype)
+        cam = CameraModel(image_size, CameraModelType.PINHOLE, params)
+        assert isinstance(cam, CameraModel)
+        self.assert_close(cam.params, params)
+        self.assert_close(image_size.height, cam.height)
+        self.assert_close(image_size.width, cam.width)
         # test for params = None
         cam = CameraModel(image_size, CameraModelType.PINHOLE, device=device, dtype=dtype)
         assert isinstance(cam, CameraModel)
@@ -26,11 +32,13 @@ class TestPinholeCamera(BaseTester):
                 dtype=dtype,
             ),
         )
-        cam = CameraModel(image_size, CameraModelType.PINHOLE, params)
+
+    @pytest.mark.parametrize("dim", [2, 3])
+    def test_namedpose_init(self, device, dtype, dim):
+        pose = NamedPose.identity(dim=dim, device=device, dtype=dtype)
+        cam = CameraModel(ImageSize(100, 100), CameraModelType.PINHOLE, pose=pose)
         assert isinstance(cam, CameraModel)
-        self.assert_close(cam.params, params)
-        self.assert_close(image_size.height, cam.height)
-        self.assert_close(image_size.width, cam.width)
+        assert cam.pose == pose
 
     @pytest.mark.skip(reason='Unnecessary test')
     def test_cardinality(self, device, dtype):
