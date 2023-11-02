@@ -61,7 +61,7 @@ def focal_loss(
     out_size = (pred.shape[0],) + pred.shape[2:]
     KORNIA_CHECK(
         (pred.shape[0] == target.shape[0] and target.shape[1:] == pred.shape[2:]),
-        f'Expected target size {out_size}, got {target.shape}',
+        f"Expected target size {out_size}, got {target.shape}",
     )
     KORNIA_CHECK(
         pred.device == target.device,
@@ -207,7 +207,7 @@ def binary_focal_loss_with_logits(
     """
 
     KORNIA_CHECK_SHAPE(pred, ["B", "C", "*"])
-    KORNIA_CHECK(pred.shape == target.shape, f'Expected target size {pred.shape}, got {target.shape}')
+    KORNIA_CHECK(pred.shape == target.shape, f"Expected target size {pred.shape}, got {target.shape}")
     KORNIA_CHECK(
         pred.device == target.device,
         f"pred and target must be in the same device. Got: {pred.device} and {target.device}",

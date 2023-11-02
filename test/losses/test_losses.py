@@ -188,21 +188,20 @@ class TestTverskyLoss:
         criterion = kornia.losses.TverskyLoss(alpha=0.5, beta=0.5)
 
         with pytest.raises(TypeError) as errinfo:
-            criterion('not a tensor', torch.rand(1))
-        assert 'pred type is not a torch.Tensor. Got' in str(errinfo)
+            criterion("not a tensor", torch.rand(1))
+        assert "pred type is not a torch.Tensor. Got" in str(errinfo)
 
         with pytest.raises(ValueError) as errinfo:
             criterion(torch.rand(1), torch.rand(1))
-        assert 'Invalid pred shape, we expect BxNxHxW. Got:' in str(errinfo)
+        assert "Invalid pred shape, we expect BxNxHxW. Got:" in str(errinfo)
 
         with pytest.raises(ValueError) as errinfo:
             criterion(torch.rand(1, 1, 1, 1), torch.rand(1, 1, 1, 2))
-        assert 'pred and target shapes must be the same. Got:' in str(errinfo)
+        assert "pred and target shapes must be the same. Got:" in str(errinfo)
 
         with pytest.raises(ValueError) as errinfo:
-            criterion(torch.rand(1, 1, 1, 1), torch.rand(1, 1, 1, 1, device='meta'))
-        assert 'pred and target must be in the same device. Got:' in str(errinfo)
-
+            criterion(torch.rand(1, 1, 1, 1), torch.rand(1, 1, 1, 1, device="meta"))
+        assert "pred and target must be in the same device. Got:" in str(errinfo)
 
     def test_all_zeros(self, device, dtype):
         num_classes = 3
@@ -282,15 +281,15 @@ class TestDiceLoss:
     def test_exception(self):
         with pytest.raises(ValueError) as errinf:
             kornia.losses.DiceLoss()(torch.rand(1, 1, 1), torch.rand(1, 1, 1))
-        assert 'Invalid pred shape, we expect BxNxHxW. Got:' in str(errinf)
+        assert "Invalid pred shape, we expect BxNxHxW. Got:" in str(errinf)
 
         with pytest.raises(ValueError) as errinf:
             kornia.losses.DiceLoss()(torch.rand(1, 1, 1, 1), torch.rand(1, 1, 1, 2))
-        assert 'pred and target shapes must be the same. Got: ' in str(errinf)
+        assert "pred and target shapes must be the same. Got: " in str(errinf)
 
         with pytest.raises(ValueError) as errinf:
-            kornia.losses.DiceLoss()(torch.rand(1, 1, 1, 1), torch.rand(1, 1, 1, 1, device='meta'))
-        assert 'pred and target must be in the same device. Got:' in str(errinf)
+            kornia.losses.DiceLoss()(torch.rand(1, 1, 1, 1), torch.rand(1, 1, 1, 1, device="meta"))
+        assert "pred and target must be in the same device. Got:" in str(errinf)
 
     def test_averaging_micro(self, device, dtype):
         num_classes = 2
@@ -575,9 +574,8 @@ class TestTotalVariation:
             (2 * torch.ones(2, 3, 4, 5), torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])),
         ],
     )
-
     def test_tv_on_constant_int(self, device, pred, expected):
-        actual = kornia.losses.total_variation(pred.to(device, dtype=torch.int32), reduction='mean')
+        actual = kornia.losses.total_variation(pred.to(device, dtype=torch.int32), reduction="mean")
         assert_close(actual, expected.to(device))
 
     # Total variation for 3D tensors

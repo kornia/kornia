@@ -24,7 +24,6 @@ def _js_div_2d(p: Tensor, q: Tensor) -> Tensor:
     return 0.5 * _kl_div_2d(p, m) + 0.5 * _kl_div_2d(q, m)
 
 
-  
 # TODO: add this to the main module
 def _reduce_loss(losses: Tensor, reduction: str) -> Tensor:
     if reduction == "none":
