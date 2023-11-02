@@ -19,6 +19,9 @@ def _get_base_url(model_type: Literal["b1", "b2", "b3"] = "b1", resolution: Lite
 class EfficientViTConfig:
     """Configuration to construct EfficientViT model.
 
+    Model weights can be loaded from a checkpoint URL or local path.
+    The model weights are hosted on HuggingFace's model hub: https://huggingface.co/kornia.
+
     Args:
         checkpoint: URL or local path of model weights.
     """
