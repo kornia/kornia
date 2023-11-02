@@ -75,32 +75,6 @@ class ConvLayer(nn.Module):
         return x
 
 
-class LinearLayer(nn.Module):
-    def __init__(self, in_features: int, out_features: int, use_bias=True, dropout=0, norm=None, act_func=None):
-        super().__init__()
-
-        self.dropout = nn.Dropout(dropout, inplace=False) if dropout > 0 else None
-        self.linear = nn.Linear(in_features, out_features, use_bias)
-        self.norm = build_norm(norm, num_features=out_features)
-        self.act = build_act(act_func)
-
-    def _try_squeeze(self, x: torch.Tensor) -> torch.Tensor:
-        if x.dim() > 2:
-            x = torch.flatten(x, start_dim=1)
-        return x
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self._try_squeeze(x)
-        if self.dropout:
-            x = self.dropout(x)
-        x = self.linear(x)
-        if self.norm:
-            x = self.norm(x)
-        if self.act:
-            x = self.act(x)
-        return x
-
-
 class IdentityLayer(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return x
