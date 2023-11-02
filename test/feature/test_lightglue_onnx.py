@@ -26,12 +26,12 @@ class TestOnnxLightGlue:
         assert model is not None
 
     @pytest.mark.slow
-    def test_forward(self, device):
+    def test_forward(self, dtype, device):
         model = OnnxLightGlue(device=device)
 
-        kpts = torch.zeros(1, 5, 2, device=device)
-        desc = torch.zeros(1, 5, 128, device=device)
-        image = torch.zeros(1, 3, 10, 10)
+        kpts = torch.zeros(1, 5, 2, dtype=dtype, device=device)
+        desc = torch.zeros(1, 5, 128, dtype=dtype, device=device)
+        image = torch.zeros(1, 3, 10, 10, dtype=dtype)
         outputs = model(
             {
                 "image0": {"keypoints": kpts, "descriptors": desc, "image": image},
