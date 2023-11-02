@@ -302,15 +302,11 @@ def extract_tensor_patches(
     if padding:
         padding = cast(Tuple[int, int], _pair(padding))
 
-        if len(padding) not in [2, 4]:
-            raise AssertionError("Padding must be either an int, tuple of two ints or tuple of four ints")
+        if len(padding) != 2:
+            raise AssertionError("Padding must be either an int or a tuple of two ints")
 
-        if len(padding) == 2:
-            pad_vert = _pair(padding[0])
-            pad_horz = _pair(padding[1])
-        else:
-            pad_vert = padding[:2]
-            pad_horz = padding[2:]
+        pad_vert = _pair(padding[0])
+        pad_horz = _pair(padding[1])
         padding = cast(Tuple[int, int, int, int], pad_horz + pad_vert)
         input = pad(input, padding)
 
