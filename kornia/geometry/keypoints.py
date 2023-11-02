@@ -6,7 +6,7 @@ from torch import Size
 from kornia.core import Tensor
 from kornia.geometry import transform_points
 
-__all__ = ['Keypoints', 'Keypoints3D']
+__all__ = ["Keypoints", "Keypoints3D"]
 
 
 def _merge_keypoint_list(keypoints: List[Tensor]) -> Tensor:

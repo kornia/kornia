@@ -16,7 +16,7 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
         torch.Tensor: Inverse tilt projection matrix with shape :math:`(*, 3, 3)`.
     """
     if taux.shape != tauy.shape:
-        raise ValueError(f'Shape of taux {taux.shape} and tauy {tauy.shape} do not match.')
+        raise ValueError(f"Shape of taux {taux.shape} and tauy {tauy.shape} do not match.")
 
     ndim: int = taux.dim()
     taux = taux.reshape(-1)
@@ -84,18 +84,18 @@ def distort_points(
         >>> points_dist = distort_points(points, K, dist_coeff)
     """
     if points.dim() < 2 and points.shape[-1] != 2:
-        raise ValueError(f'points shape is invalid. Got {points.shape}.')
+        raise ValueError(f"points shape is invalid. Got {points.shape}.")
 
     if K.shape[-2:] != (3, 3):
-        raise ValueError(f'K matrix shape is invalid. Got {K.shape}.')
+        raise ValueError(f"K matrix shape is invalid. Got {K.shape}.")
 
     if new_K is None:
         new_K = K
     elif new_K.shape[-2:] != (3, 3):
-        raise ValueError(f'new_K matrix shape is invalid. Got {new_K.shape}.')
+        raise ValueError(f"new_K matrix shape is invalid. Got {new_K.shape}.")
 
     if dist.shape[-1] not in [4, 5, 8, 12, 14]:
-        raise ValueError(f'Invalid number of distortion coefficients. Got {dist.shape[-1]}')
+        raise ValueError(f"Invalid number of distortion coefficients. Got {dist.shape[-1]}")
 
     # Adding zeros to obtain vector with 14 coeffs.
     if dist.shape[-1] < 14:

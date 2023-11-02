@@ -83,8 +83,8 @@ def run_7point(points1: Tensor, points2: Tensor) -> Tensor:
     Returns:
         the computed fundamental matrix with shape :math:`(B, 3*m, 3), Valid values of m are 1, 2 or 3`
     """
-    KORNIA_CHECK_SHAPE(points1, ['B', '7', '2'])
-    KORNIA_CHECK_SHAPE(points2, ['B', '7', '2'])
+    KORNIA_CHECK_SHAPE(points1, ["B", "7", "2"])
+    KORNIA_CHECK_SHAPE(points2, ["B", "7", "2"])
 
     batch_size = points1.shape[0]
 
@@ -120,8 +120,8 @@ def run_7point(points1: Tensor, points2: Tensor) -> Tensor:
     f1_det = torch.linalg.det(f1)
     f2_det = torch.linalg.det(f2)
     coeffs[:, 0] = f1_det
-    coeffs[:, 1] = torch.einsum('bii->b', f2 @ torch.inverse(f1)) * f1_det
-    coeffs[:, 2] = torch.einsum('bii->b', f1 @ torch.inverse(f2)) * f2_det
+    coeffs[:, 1] = torch.einsum("bii->b", f2 @ torch.inverse(f1)) * f1_det
+    coeffs[:, 2] = torch.einsum("bii->b", f1 @ torch.inverse(f2)) * f2_det
     coeffs[:, 3] = f2_det
 
     # solve the cubic equation, there can be 1 to 3 roots
@@ -223,7 +223,7 @@ def run_8point(points1: Tensor, points2: Tensor, weights: Optional[Tensor] = Non
 
 
 def find_fundamental(
-    points1: Tensor, points2: Tensor, weights: Optional[Tensor] = None, method: Literal['8POINT', '7POINT'] = '8POINT'
+    points1: Tensor, points2: Tensor, weights: Optional[Tensor] = None, method: Literal["8POINT", "7POINT"] = "8POINT"
 ) -> Tensor:
     r"""
     Args:

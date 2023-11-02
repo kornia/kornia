@@ -5,12 +5,12 @@ import torch
 
 from kornia.core import Tensor
 
-__all__ = ['pi', 'DType', 'Resample', 'BorderType', 'SamplePadding', 'TKEnum']
+__all__ = ["pi", "DType", "Resample", "BorderType", "SamplePadding", "TKEnum"]
 
 pi = torch.tensor(3.14159265358979323846)
 
 
-T = TypeVar('T', bound=Enum)
+T = TypeVar("T", bound=Enum)
 TKEnum = Union[str, int, T]
 
 
@@ -28,7 +28,7 @@ class _KORNIA_EnumMeta(EnumMeta):
         return any(val == other for val in self)
 
     def __repr__(self) -> str:
-        return ' | '.join(f"{self.__name__}.{val.name}" for val in self)
+        return " | ".join(f"{self.__name__}.{val.name}" for val in self)
 
 
 def _get(cls: Type[T], value: TKEnum[T]) -> T:
@@ -42,7 +42,7 @@ def _get(cls: Type[T], value: TKEnum[T]) -> T:
         return value
 
     raise TypeError(
-        f'The `.get` method from `{cls}` expects a value with type `str`, `int` or `{cls}`. Gotcha {type(value)}'
+        f"The `.get` method from `{cls}` expects a value with type `str`, `int` or `{cls}`. Gotcha {type(value)}"
     )
 
 
@@ -52,7 +52,7 @@ class Resample(Enum, metaclass=_KORNIA_EnumMeta):
     BICUBIC = 2
 
     @classmethod
-    def get(cls, value: TKEnum['Resample']) -> 'Resample':
+    def get(cls, value: TKEnum["Resample"]) -> "Resample":
         return _get(cls, value)
 
 
@@ -63,7 +63,7 @@ class BorderType(Enum, metaclass=_KORNIA_EnumMeta):
     CIRCULAR = 3
 
     @classmethod
-    def get(cls, value: TKEnum['BorderType']) -> 'BorderType':
+    def get(cls, value: TKEnum["BorderType"]) -> "BorderType":
         return _get(cls, value)
 
 
@@ -73,7 +73,7 @@ class SamplePadding(Enum, metaclass=_KORNIA_EnumMeta):
     REFLECTION = 2
 
     @classmethod
-    def get(cls, value: TKEnum['SamplePadding']) -> 'SamplePadding':
+    def get(cls, value: TKEnum["SamplePadding"]) -> "SamplePadding":
         return _get(cls, value)
 
 
@@ -84,7 +84,7 @@ class DType(Enum, metaclass=_KORNIA_EnumMeta):
     FLOAT64 = 3
 
     @classmethod
-    def get(cls, value: Union[str, int, torch.dtype, Tensor, 'DType']) -> 'DType':
+    def get(cls, value: Union[str, int, torch.dtype, Tensor, "DType"]) -> "DType":
         if isinstance(value, torch.dtype):
             return cls[str(value).upper()[6:]]
 
@@ -103,7 +103,7 @@ class DType(Enum, metaclass=_KORNIA_EnumMeta):
         raise TypeError(f"Invalid identifier {value} with type {type(value)}.")
 
     @classmethod
-    def to_torch(cls, value: TKEnum['DType']) -> torch.dtype:
+    def to_torch(cls, value: TKEnum["DType"]) -> torch.dtype:
         data = cls.get(value=value)
 
         if data == DType.INT64:
@@ -133,5 +133,5 @@ class DataKey(Enum, metaclass=_KORNIA_EnumMeta):
     CLASS = 6
 
     @classmethod
-    def get(cls, value: TKEnum['DataKey']) -> 'DataKey':
+    def get(cls, value: TKEnum["DataKey"]) -> "DataKey":
         return _get(cls, value)

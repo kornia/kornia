@@ -31,11 +31,11 @@ class TestSaveLoadPointCloud:
 
         # add nans or infinite values
         # point data (inf, inf, inf) skipped
-        xyz_save[0, 0, :] = float('inf')
+        xyz_save[0, 0, :] = float("inf")
         # point data (inf, number, number) counted
-        xyz_save[0, 1, 0] = float('inf')
+        xyz_save[0, 1, 0] = float("inf")
         # point data (inf, inf, number) counted
-        xyz_save[1, 0, :-1] = float('inf')
+        xyz_save[1, 0, :-1] = float("inf")
 
         # save to file
         filename = "pointcloud.ply"

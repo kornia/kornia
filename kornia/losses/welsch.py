@@ -63,7 +63,7 @@ def welsch_loss(img1: Tensor, img2: Tensor, reduction: str = "none") -> Tensor:
     elif reduction == "none":
         pass
     else:
-        raise NotImplementedError('Invalid reduction option.')
+        raise NotImplementedError("Invalid reduction option.")
 
     return loss
 

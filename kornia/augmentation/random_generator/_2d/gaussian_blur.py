@@ -43,7 +43,7 @@ class RandomGaussianBlurGenerator(RandomGeneratorBase):
         else:
             sigma = self.sigma.to(device=device, dtype=dtype)
 
-        _joint_range_check(sigma, "sigma", (0, float('inf')))
+        _joint_range_check(sigma, "sigma", (0, float("inf")))
 
         self.sigma_sampler = UniformDistribution(sigma[0], sigma[1], validate_args=False)
 

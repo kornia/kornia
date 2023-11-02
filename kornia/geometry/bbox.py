@@ -491,7 +491,7 @@ def transform_bbox(
         restored_boxes[..., 3] = torch.max(transformed_boxes[..., [1, 3]], dim=-1)[0]
         transformed_boxes = restored_boxes
 
-    if mode == 'xywh':
+    if mode == "xywh":
         transformed_boxes[..., 2] = transformed_boxes[..., 2] - transformed_boxes[..., 0]
         transformed_boxes[..., 3] = transformed_boxes[..., 3] - transformed_boxes[..., 1]
 

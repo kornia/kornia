@@ -26,7 +26,7 @@ def get_adalam_default_config() -> AdalamConfig:
         detected_scale_rate_threshold=5,
         refit=True,
         force_seed_mnn=True,
-        device=torch.device('cpu'),
+        device=torch.device("cpu"),
     )
 
 
@@ -65,7 +65,7 @@ def match_adalam(
     KORNIA_CHECK_LAF(lafs2)
     config_ = get_adalam_default_config()
     if config is None:
-        config_['device'] = desc1.device
+        config_["device"] = desc1.device
     else:
         config_ = get_adalam_default_config()
         for key, val in config.items():
@@ -225,29 +225,29 @@ class AdalamFilter:
             A long tensor with shape (num_filtered_matches, 2) with indices of corresponding keypoints in k1 and k2.
         """
         if s1 is None or s2 is None:
-            if self.config['scale_rate_threshold'] is not None:
+            if self.config["scale_rate_threshold"] is not None:
                 raise AttributeError(
                     "Current configuration considers keypoint scales for filtering, but scales have not been provided.\n"  # noqa: E501
                     "Please either provide scales or set 'scale_rate_threshold' to None to disable scale filtering"
                 )
         if o1 is None or o2 is None:
-            if self.config['orientation_difference_threshold'] is not None:
+            if self.config["orientation_difference_threshold"] is not None:
                 raise AttributeError(
                     "Current configuration considers keypoint orientations for filtering, but orientations have not been provided.\n"  # noqa: E501
                     "Please either provide orientations or set 'orientation_difference_threshold' to None to disable orientations filtering"  # noqa: E501
                 )
-        _k1 = as_tensor(k1, device=self.config['device'], dtype=torch.float32)
-        _k2 = as_tensor(k2, device=self.config['device'], dtype=torch.float32)
-        _d1 = as_tensor(d1, device=self.config['device'], dtype=torch.float32)
-        _d2 = as_tensor(d2, device=self.config['device'], dtype=torch.float32)
+        _k1 = as_tensor(k1, device=self.config["device"], dtype=torch.float32)
+        _k2 = as_tensor(k2, device=self.config["device"], dtype=torch.float32)
+        _d1 = as_tensor(d1, device=self.config["device"], dtype=torch.float32)
+        _d2 = as_tensor(d2, device=self.config["device"], dtype=torch.float32)
         if o1 is not None:
-            _o1 = as_tensor(o1, device=self.config['device'], dtype=torch.float32)
-            _o2 = as_tensor(o2, device=self.config['device'], dtype=torch.float32)
+            _o1 = as_tensor(o1, device=self.config["device"], dtype=torch.float32)
+            _o2 = as_tensor(o2, device=self.config["device"], dtype=torch.float32)
         else:
             _o1, _o2 = o1, o2
         if s1 is not None:
-            _s1 = as_tensor(s1, device=self.config['device'], dtype=torch.float32)
-            _s2 = as_tensor(s2, device=self.config['device'], dtype=torch.float32)
+            _s1 = as_tensor(s1, device=self.config["device"], dtype=torch.float32)
+            _s2 = as_tensor(s2, device=self.config["device"], dtype=torch.float32)
         else:
             _s1, _s2 = s1, s2
 
@@ -263,9 +263,9 @@ class AdalamFilter:
         putative_matches = nn12[:, 0]
         scores = dd12[:, 0] / dd12[:, 1].clamp_min_(1e-3)
 
-        if self.config['force_seed_mnn']:
+        if self.config["force_seed_mnn"]:
             dd21, nn21 = torch.min(distmat, dim=0)  # (n2,)
-            mnn = nn21[putative_matches] == torch.arange(_k1.shape[0], device=self.config['device'])
+            mnn = nn21[putative_matches] == torch.arange(_k1.shape[0], device=self.config["device"])
         else:
             mnn = None
 

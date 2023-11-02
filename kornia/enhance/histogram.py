@@ -196,7 +196,7 @@ def image_histogram2d(
         raise ValueError(f"Bins' centers must be a torch.Tensor of the shape (n_bins,). Got {centers.shape}.")
 
     if not isinstance(min, float):
-        raise TypeError(f'Type of lower end of the range is not a float. Got {type(min)}.')
+        raise TypeError(f"Type of lower end of the range is not a float. Got {type(min)}.")
 
     if not isinstance(max, float):
         raise TypeError(f"Type of upper end of the range is not a float. Got {type(min)}.")

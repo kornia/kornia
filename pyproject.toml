@@ -71,11 +71,6 @@ requires = [
   [tool.setuptools.package-data]
     kornia = ["py.typed"]
 
-[tool.black]
-  line-length = 120
-  skip-magic-trailing-comma = true
-  skip-string-normalization = true
-
 [tool.ruff]
   line-length = 120
   target-version = "py38"
@@ -143,8 +138,12 @@ requires = [
     "UP007", # Prefer Optional[], Union[] over | due to torch jit scripting
   ]
 
+  [tool.ruff.format]
+    skip-magic-trailing-comma = false
+
   [tool.ruff.isort]
     known-first-party = ["examples", "kornia", "test"]
+    split-on-trailing-comma = true
 
   [tool.ruff.mccabe]
     max-complexity = 20

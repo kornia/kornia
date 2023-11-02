@@ -106,10 +106,10 @@ class TestEssentialFromFundamental:
     def test_from_fundamental(self, device, dtype):
         scene = utils.generate_two_view_random_scene(device, dtype)
 
-        F_mat = scene['F']
+        F_mat = scene["F"]
 
-        K1 = scene['K1']
-        K2 = scene['K2']
+        K1 = scene["K1"]
+        K2 = scene["K2"]
 
         E_mat = epi.essential_from_fundamental(F_mat, K1, K2)
         F_hat = epi.fundamental_from_essential(E_mat, K1, K2)
@@ -207,9 +207,9 @@ class TestEssentalFromRt:
     def test_from_fundamental_Rt(self, device, dtype):
         scene = utils.generate_two_view_random_scene(device, dtype)
 
-        E_from_Rt = epi.essential_from_Rt(scene['R1'], scene['t1'], scene['R2'], scene['t2'])
+        E_from_Rt = epi.essential_from_Rt(scene["R1"], scene["t1"], scene["R2"], scene["t2"])
 
-        E_from_F = epi.essential_from_fundamental(scene['F'], scene['K1'], scene['K2'])
+        E_from_F = epi.essential_from_fundamental(scene["F"], scene["K1"], scene["K2"])
 
         E_from_Rt_norm = epi.normalize_transformation(E_from_Rt)
         E_from_F_norm = epi.normalize_transformation(E_from_F)
@@ -274,8 +274,8 @@ class TestMotionFromEssential:
     def test_two_view(self, device, dtype):
         scene = utils.generate_two_view_random_scene(device, dtype)
 
-        R1, t1 = scene['R1'], scene['t1']
-        R2, t2 = scene['R2'], scene['t2']
+        R1, t1 = scene["R1"], scene["t1"]
+        R2, t2 = scene["R2"], scene["t2"]
 
         E_mat = epi.essential_from_Rt(R1, t1, R2, t2)
 
@@ -370,13 +370,13 @@ class TestMotionFromEssentialChooseSolution:
     def test_two_view(self, device, dtype):
         scene = utils.generate_two_view_random_scene(device, dtype)
 
-        E_mat = epi.essential_from_Rt(scene['R1'], scene['t1'], scene['R2'], scene['t2'])
+        E_mat = epi.essential_from_Rt(scene["R1"], scene["t1"], scene["R2"], scene["t2"])
 
-        R, t = epi.relative_camera_motion(scene['R1'], scene['t1'], scene['R2'], scene['t2'])
+        R, t = epi.relative_camera_motion(scene["R1"], scene["t1"], scene["R2"], scene["t2"])
         t = torch.nn.functional.normalize(t, dim=1)
 
         R_hat, t_hat, _ = epi.motion_from_essential_choose_solution(
-            E_mat, scene['K1'], scene['K2'], scene['x1'], scene['x2']
+            E_mat, scene["K1"], scene["K2"], scene["x1"], scene["x2"]
         )
 
         assert_close(t, t_hat)

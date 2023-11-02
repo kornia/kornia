@@ -21,12 +21,14 @@ class ImageSize:
         >>> size.width
         4
     """
+
     height: int | Tensor
     width: int | Tensor
 
 
 class ColorSpace(Enum):
     r"""Enum that represents the color space of an image."""
+
     UNKNOWN = 0  # for now, in case of multi band images
     GRAY = 1
     RGB = 2
@@ -55,6 +57,7 @@ class PixelFormat:
 
 class ChannelsOrder(Enum):
     r"""Enum that represents the channels order of an image."""
+
     CHANNELS_FIRST = 0
     CHANNELS_LAST = 1
 

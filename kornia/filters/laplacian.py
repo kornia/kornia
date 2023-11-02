@@ -7,7 +7,7 @@ from .kernels import get_laplacian_kernel2d, normalize_kernel2d
 
 
 def laplacian(
-    input: Tensor, kernel_size: tuple[int, int] | int, border_type: str = 'reflect', normalized: bool = True
+    input: Tensor, kernel_size: tuple[int, int] | int, border_type: str = "reflect", normalized: bool = True
 ) -> Tensor:
     r"""Create an operator that returns a tensor using a Laplacian filter.
 
@@ -70,7 +70,7 @@ class Laplacian(Module):
     """
 
     def __init__(
-        self, kernel_size: tuple[int, int] | int, border_type: str = 'reflect', normalized: bool = True
+        self, kernel_size: tuple[int, int] | int, border_type: str = "reflect", normalized: bool = True
     ) -> None:
         super().__init__()
         self.kernel_size = kernel_size

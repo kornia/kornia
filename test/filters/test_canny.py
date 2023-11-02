@@ -7,11 +7,11 @@ from kornia.utils._compat import torch_version
 
 
 class TestCanny(BaseTester):
-    @pytest.mark.parametrize('batch_size', [1, 2])
-    @pytest.mark.parametrize('kernel_size', [3, (5, 7)])
-    @pytest.mark.parametrize('sigma', [(1.5, 1.0), (2.5, 0.5)])
-    @pytest.mark.parametrize('hysteresis', [False, True])
-    @pytest.mark.parametrize('low_threshold,high_threshold', [(0.1, 0.2), (0.3, 0.5)])
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    @pytest.mark.parametrize("kernel_size", [3, (5, 7)])
+    @pytest.mark.parametrize("sigma", [(1.5, 1.0), (2.5, 0.5)])
+    @pytest.mark.parametrize("hysteresis", [False, True])
+    @pytest.mark.parametrize("low_threshold,high_threshold", [(0.1, 0.2), (0.3, 0.5)])
     def test_smoke(self, batch_size, kernel_size, sigma, hysteresis, low_threshold, high_threshold, device, dtype):
         inp = torch.zeros(batch_size, 3, 4, 4, device=device, dtype=dtype)
 
@@ -21,7 +21,7 @@ class TestCanny(BaseTester):
         assert actual[0].shape == (batch_size, 1, 4, 4)
         assert actual[1].shape == (batch_size, 1, 4, 4)
 
-    @pytest.mark.parametrize('batch_size', [1, 2])
+    @pytest.mark.parametrize("batch_size", [1, 2])
     def test_cardinality(self, batch_size, device, dtype):
         inp = torch.zeros(batch_size, 3, 4, 4, device=device, dtype=dtype)
 
@@ -34,26 +34,26 @@ class TestCanny(BaseTester):
     def test_exception(self, device, dtype):
         with pytest.raises(Exception) as errinfo:
             Canny(0.3, 0.2)
-        assert 'low_threshold should be smaller than the high_threshold' in str(errinfo)
+        assert "low_threshold should be smaller than the high_threshold" in str(errinfo)
 
         with pytest.raises(Exception) as errinfo:
             Canny(-2, 0.3)
-        assert 'Invalid low threshold.' in str(errinfo)
+        assert "Invalid low threshold." in str(errinfo)
 
         with pytest.raises(Exception) as errinfo:
             Canny(0.1, 3)
-        assert 'Invalid high threshold.' in str(errinfo)
+        assert "Invalid high threshold." in str(errinfo)
 
         with pytest.raises(Exception) as errinfo:
             canny(1)
-        assert 'Not a Tensor type' in str(errinfo)
+        assert "Not a Tensor type" in str(errinfo)
 
         inp = torch.zeros(3, 4, 4, device=device, dtype=dtype)
         with pytest.raises(Exception) as errinfo:
             canny(inp)
-        assert 'shape must be [[\'B\', \'C\', \'H\', \'W\']]' in str(errinfo)
+        assert "shape must be [['B', 'C', 'H', 'W']]" in str(errinfo)
 
-    @pytest.mark.parametrize('batch_size', [1, 2])
+    @pytest.mark.parametrize("batch_size", [1, 2])
     def test_noncontiguous(self, batch_size, device, dtype):
         inp = torch.rand(batch_size, 3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
 
@@ -295,9 +295,9 @@ class TestCanny(BaseTester):
         self.assert_close(actual_magnitude, expected_magnitude)
         self.assert_close(actual_edges, expected_edges)
 
-    @pytest.mark.parametrize('kernel_size', [5, (5, 7)])
-    @pytest.mark.parametrize('batch_size', [1, 2])
-    @pytest.mark.skipif(torch_version() in {'2.0.0', '2.0.1'}, reason='Not working on 2.0')
+    @pytest.mark.parametrize("kernel_size", [5, (5, 7)])
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    @pytest.mark.skipif(torch_version() in {"2.0.0", "2.0.1"}, reason="Not working on 2.0")
     def test_dynamo(self, batch_size, kernel_size, device, dtype, torch_optimizer):
         inpt = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
         op = Canny(kernel_size=kernel_size)

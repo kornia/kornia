@@ -9,7 +9,7 @@ from kornia.testing import assert_close
 @pytest.fixture()
 def atol(device, dtype):
     """Lower tolerance for cuda-float16 only."""
-    if 'cuda' in device.type and dtype == torch.float16:
+    if "cuda" in device.type and dtype == torch.float16:
         return 1.0e-3
     return 1.0e-4
 
@@ -17,7 +17,7 @@ def atol(device, dtype):
 @pytest.fixture()
 def rtol(device, dtype):
     """Lower tolerance for cuda-float16 only."""
-    if 'cuda' in device.type and dtype == torch.float16:
+    if "cuda" in device.type and dtype == torch.float16:
         return 1.0e-3
     return 1.0e-4
 
@@ -164,26 +164,26 @@ class TestAngleOfRotations:
     def axis_and_angle_to_rotation_matrix(axis_name: str, angle: torch.Tensor, device, dtype):
         """See also: https://en.wikipedia.org/wiki/Rotation_matrix#Basic_rotations."""
         axis_name = axis_name.lower()
-        assert axis_name in ('x', 'y', 'z')
+        assert axis_name in ("x", "y", "z")
         sn = torch.sin(angle)
         cs = torch.cos(angle)
         ones = torch.ones_like(sn)
         zeros = torch.zeros_like(sn)
-        if axis_name == 'x':
+        if axis_name == "x":
             axis = torch.tensor((1.0, 0.0, 0.0), device=device, dtype=dtype).repeat(angle.size())
             rot_m = torch.stack((ones, zeros, zeros, zeros, cs, -sn, zeros, sn, cs), dim=2).view(-1, 3, 3)
-        elif axis_name == 'y':
+        elif axis_name == "y":
             axis = torch.tensor((0.0, 1.0, 0.0), device=device, dtype=dtype).repeat(angle.size())
             rot_m = torch.stack((cs, zeros, sn, zeros, ones, zeros, -sn, zeros, cs), dim=2).view(-1, 3, 3)
-        elif axis_name == 'z':
+        elif axis_name == "z":
             axis = torch.tensor((0.0, 0.0, 1.0), device=device, dtype=dtype).repeat(angle.size())
             rot_m = torch.stack((cs, -sn, zeros, sn, cs, zeros, zeros, zeros, ones), dim=2).view(-1, 3, 3)
         else:
-            raise NotImplementedError(f'Not prepared for axis with name {axis_name}')
+            raise NotImplementedError(f"Not prepared for axis with name {axis_name}")
 
         return rot_m, axis
 
-    @pytest.mark.parametrize('axis_name', ('x', 'y', 'z'))
+    @pytest.mark.parametrize("axis_name", ("x", "y", "z"))
     def test_axis_angle_to_rotation_matrix(self, axis_name, device, dtype, atol, rtol):
         # Random angle in [-pi..pi]
         angle = torch.tensor((np.random.random(size=(2, 1)) * 2.0 * np.pi - np.pi), device=device, dtype=dtype)
@@ -198,17 +198,17 @@ class TestAngleOfRotations:
         assert axis.shape[-2] == angle.numel()
 
         # Make sure the returned axis matches the named one, and the appropriate column
-        if axis_name == 'x':
+        if axis_name == "x":
             assert_close(axis, torch.tensor(((1.0, 0.0, 0.0),) * angle.numel(), device=device, dtype=dtype))
             assert_close(axis, rot_m[..., :3, 0])
-        elif axis_name == 'y':
+        elif axis_name == "y":
             assert_close(axis, torch.tensor(((0.0, 1.0, 0.0),) * angle.numel(), device=device, dtype=dtype))
             assert_close(axis, rot_m[..., :3, 1])
-        elif axis_name == 'z':
+        elif axis_name == "z":
             assert_close(axis, torch.tensor(((0.0, 0.0, 1.0),) * angle.numel(), device=device, dtype=dtype))
             assert_close(axis, rot_m[..., :3, 2])
         else:
-            raise NotImplementedError(f'Not prepared for axis_name {axis_name}')
+            raise NotImplementedError(f"Not prepared for axis_name {axis_name}")
 
         # Make sure axes are perpendicular
         zero = torch.zeros_like(angle).unsqueeze(-1)
@@ -222,7 +222,7 @@ class TestAngleOfRotations:
         assert_close(rot_m[..., :3, 1].norm(p=2, dim=-1, keepdim=True), one, atol=atol, rtol=rtol)
         assert_close(rot_m[..., :3, 2].norm(p=2, dim=-1, keepdim=True), one, atol=atol, rtol=rtol)
 
-    @pytest.mark.parametrize('axis_name', ('x', 'y', 'z'))
+    @pytest.mark.parametrize("axis_name", ("x", "y", "z"))
     @pytest.mark.parametrize("angle_deg", (-179.9, -135.0, -90.0, -45.0, 0.0, 45, 90, 135, 179.9))
     def test_matrix_angle(self, axis_name, angle_deg, device, dtype):
         angle = (angle_deg * kornia.pi / 180.0).to(dtype).to(device).view(1, 1)
@@ -232,7 +232,7 @@ class TestAngleOfRotations:
         matrix_angle_abs = TestAngleOfRotations.matrix_angle_abs(rot_m)
         assert_close(torch.abs(angle), matrix_angle_abs)
 
-    @pytest.mark.parametrize('axis_name', ('x', 'y', 'z'))
+    @pytest.mark.parametrize("axis_name", ("x", "y", "z"))
     @pytest.mark.parametrize("angle_deg", (-179.9, -90.0, -45.0, 0.0, 45, 90, 179.9))
     def test_quaternion(self, axis_name, angle_deg, device, dtype, atol, rtol):
         eps = torch.finfo(dtype).eps
@@ -260,7 +260,7 @@ class TestAngleOfRotations:
         matrix_angle_abs = TestAngleOfRotations.matrix_angle_abs(rot_m)
         assert_close(torch.abs(angle_hat), matrix_angle_abs, atol=atol, rtol=rtol)
 
-    @pytest.mark.parametrize('axis_name', ('x', 'y', 'z'))
+    @pytest.mark.parametrize("axis_name", ("x", "y", "z"))
     @pytest.mark.parametrize("angle_deg", (-179.9, -90.0, -45.0, 0, 45, 90, 179.9))
     def test_axis_angle(self, axis_name, angle_deg, device, dtype, atol, rtol):
         angle = (angle_deg * kornia.pi / 180.0).to(dtype).to(device).repeat(2, 1)
@@ -279,7 +279,7 @@ class TestAngleOfRotations:
         matrix_angle_abs = TestAngleOfRotations.matrix_angle_abs(rot_m)
         assert_close(torch.abs(angle_hat), matrix_angle_abs, atol=atol, rtol=rtol)
 
-    @pytest.mark.parametrize('axis_name', ('x', 'y', 'z'))
+    @pytest.mark.parametrize("axis_name", ("x", "y", "z"))
     @pytest.mark.parametrize("angle_deg", (-179.9, -90.0, -45.0, 0, 45, 90, 179.9))
     def test_log_quaternion(self, axis_name, angle_deg, device, dtype, atol, rtol):
         eps = torch.finfo(dtype).eps

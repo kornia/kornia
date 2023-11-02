@@ -252,7 +252,7 @@ class ResizedCropGenerator(CropGenerator):
 
 
 def center_crop_generator(
-    batch_size: int, height: int, width: int, size: Tuple[int, int], device: Device = torch.device('cpu')
+    batch_size: int, height: int, width: int, size: Tuple[int, int], device: Device = torch.device("cpu")
 ) -> Dict[str, Tensor]:
     r"""Get parameters for ```center_crop``` transformation for center crop transform.
 

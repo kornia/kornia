@@ -106,13 +106,13 @@ class ObjectDetectionTrainer(Trainer):
             and "labels" in args[1]
         ):
             mAP, _ = mean_average_precision(
-                [a['boxes'] for a in args[0]],
-                [a['labels'] for a in args[0]],
-                [a['scores'] for a in args[0]],
-                [a['boxes'] for a in args[1]],
-                [a['labels'] for a in args[1]],
+                [a["boxes"] for a in args[0]],
+                [a["labels"] for a in args[0]],
+                [a["scores"] for a in args[0]],
+                [a["boxes"] for a in args[1]],
+                [a["labels"] for a in args[1]],
                 n_classes=self.num_classes,
                 threshold=0.000001,
             )
-            return {'mAP': mAP.item()}
+            return {"mAP": mAP.item()}
         return super().compute_metrics(*args)

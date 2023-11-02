@@ -39,7 +39,7 @@ class RANSAC(Module):
 
     def __init__(
         self,
-        model_type: str = 'homography',
+        model_type: str = "homography",
         inl_th: float = 2.0,
         batch_size: int = 2048,
         max_iter: int = 10,
@@ -47,7 +47,7 @@ class RANSAC(Module):
         max_lo_iters: int = 5,
     ) -> None:
         super().__init__()
-        self.supported_models = ['homography', 'fundamental', 'fundamental_7pt', 'homography_from_linesegments']
+        self.supported_models = ["homography", "fundamental", "fundamental_7pt", "homography_from_linesegments"]
         self.inl_th = inl_th
         self.max_iter = max_iter
         self.batch_size = batch_size
@@ -60,30 +60,30 @@ class RANSAC(Module):
         self.minimal_solver: Callable[..., Tensor]
         self.polisher_solver: Callable[..., Tensor]
 
-        if model_type == 'homography':
+        if model_type == "homography":
             self.error_fn = oneway_transfer_error
             self.minimal_solver = find_homography_dlt
             self.polisher_solver = find_homography_dlt_iterated
             self.minimal_sample_size = 4
-        elif model_type == 'homography_from_linesegments':
+        elif model_type == "homography_from_linesegments":
             self.error_fn = line_segment_transfer_error_one_way
             self.minimal_solver = find_homography_lines_dlt
             self.polisher_solver = find_homography_lines_dlt_iterated
             self.minimal_sample_size = 4
-        elif model_type == 'fundamental':
+        elif model_type == "fundamental":
             self.error_fn = symmetrical_epipolar_distance
             self.minimal_solver = find_fundamental
             self.minimal_sample_size = 8
             self.polisher_solver = find_fundamental
-        elif model_type == 'fundamental_7pt':
+        elif model_type == "fundamental_7pt":
             self.error_fn = symmetrical_epipolar_distance
-            self.minimal_solver = partial(find_fundamental, method='7POINT')
+            self.minimal_solver = partial(find_fundamental, method="7POINT")
             self.minimal_sample_size = 7
             self.polisher_solver = find_fundamental
         else:
             raise NotImplementedError(f"{model_type} is unknown. Try one of {self.supported_models}")
 
-    def sample(self, sample_size: int, pop_size: int, batch_size: int, device: Device = torch.device('cpu')) -> Tensor:
+    def sample(self, sample_size: int, pop_size: int, batch_size: int, device: Device = torch.device("cpu")) -> Tensor:
         """Minimal sampler, but unlike traditional RANSAC we sample in batches to get benefit of the parallel
         processing, esp.
 
@@ -115,7 +115,7 @@ class RANSAC(Module):
         if len(kp2.shape) == 2:
             kp2 = kp2[None]
         batch_size = models.shape[0]
-        if self.model_type == 'homography_from_linesegments':
+        if self.model_type == "homography_from_linesegments":
             errors = self.error_fn(kp1.expand(batch_size, -1, 2, 2), kp2.expand(batch_size, -1, 2, 2), models)
         else:
             errors = self.error_fn(kp1.expand(batch_size, -1, 2), kp2.expand(batch_size, -1, 2), models)
@@ -131,7 +131,7 @@ class RANSAC(Module):
         """"""
         # ToDo: add (model-specific) verification of the samples,
         # E.g. constraints on not to be a degenerate sample
-        if self.model_type == 'homography':
+        if self.model_type == "homography":
             mask = sample_is_valid_for_homography(kp1, kp2)
             return kp1[mask], kp2[mask]
         return kp1, kp2
@@ -154,7 +154,7 @@ class RANSAC(Module):
         return model
 
     def validate_inputs(self, kp1: Tensor, kp2: Tensor, weights: Optional[Tensor] = None) -> None:
-        if self.model_type in ['homography', 'fundamental']:
+        if self.model_type in ["homography", "fundamental"]:
             KORNIA_CHECK_SHAPE(kp1, ["N", "2"])
             KORNIA_CHECK_SHAPE(kp2, ["N", "2"])
             if not (kp1.shape[0] == kp2.shape[0]) or (kp1.shape[0] < self.minimal_sample_size):
@@ -162,7 +162,7 @@ class RANSAC(Module):
                     "kp1 and kp2 should be                                  equal shape at at least"
                     f" [{self.minimal_sample_size}, 2],                                  got {kp1.shape}, {kp2.shape}"
                 )
-        if self.model_type == 'homography_from_linesegments':
+        if self.model_type == "homography_from_linesegments":
             KORNIA_CHECK_SHAPE(kp1, ["N", "2", "2"])
             KORNIA_CHECK_SHAPE(kp2, ["N", "2", "2"])
             if not (kp1.shape[0] == kp2.shape[0]) or (kp1.shape[0] < self.minimal_sample_size):

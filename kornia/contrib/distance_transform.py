@@ -54,7 +54,7 @@ def distance_transform(image: torch.Tensor, kernel_size: int = 3, h: float = 0.3
     signal_ones = torch.ones_like(boundary)
 
     for i in range(n_iters):
-        cdt = filter2d(boundary, kernel, border_type='replicate')
+        cdt = filter2d(boundary, kernel, border_type="replicate")
         cdt = -h * torch.log(cdt)
 
         # We are calculating log(0) above.

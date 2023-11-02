@@ -94,7 +94,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
     ) -> Tensor:
         if flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
             if not isinstance(transform, Tensor):
-                raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
+                raise TypeError(f"Expected the `transform` be a Tensor. Got {type(transform)}.")
 
             return crop_by_transform_mat(
                 input,
@@ -126,10 +126,10 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
                 f"`inverse` is only applicable for resample cropping mode. Got {flags['cropping_mode']}."
             )
         if not isinstance(size, tuple):
-            raise TypeError(f'Expected the size be a tuple. Gotcha {type(size)}')
+            raise TypeError(f"Expected the size be a tuple. Gotcha {type(size)}")
 
         if not isinstance(transform, Tensor):
-            raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
+            raise TypeError(f"Expected the `transform` be a Tensor. Got {type(transform)}.")
 
         return crop_by_transform_mat(
             input,

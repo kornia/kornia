@@ -21,6 +21,7 @@ class FaceKeypoint(Enum):
 
     The left/right convention is based on the screen viewer.
     """
+
     EYE_LEFT = 0
     EYE_RIGHT = 1
     NOSE = 2
@@ -154,24 +155,24 @@ class FaceDetector(nn.Module):
         self.nms_threshold = nms_threshold
         self.keep_top_k = keep_top_k
         self.config = {
-            'name': 'YuFaceDetectNet',
-            'min_sizes': [[10, 16, 24], [32, 48], [64, 96], [128, 192, 256]],
-            'steps': [8, 16, 32, 64],
-            'variance': [0.1, 0.2],
-            'clip': False,
+            "name": "YuFaceDetectNet",
+            "min_sizes": [[10, 16, 24], [32, 48], [64, 96], [128, 192, 256]],
+            "steps": [8, 16, 32, 64],
+            "variance": [0.1, 0.2],
+            "clip": False,
         }
         self.min_sizes = [[10, 16, 24], [32, 48], [64, 96], [128, 192, 256]]
         self.steps = [8, 16, 32, 64]
         self.variance = [0.1, 0.2]
         self.clip = False
-        self.model = YuFaceDetectNet('test', pretrained=True)
+        self.model = YuFaceDetectNet("test", pretrained=True)
         self.nms = nms_kornia
 
     def preprocess(self, image: torch.Tensor) -> torch.Tensor:
         return image
 
     def postprocess(self, data: Dict[str, torch.Tensor], height: int, width: int) -> List[torch.Tensor]:
-        loc, conf, iou = data['loc'], data['conf'], data['iou']
+        loc, conf, iou = data["loc"], data["conf"], data["iou"]
 
         scale = torch.tensor(
             [width, height, width, height, width, height, width, height, width, height, width, height, width, height],
@@ -274,7 +275,7 @@ class YuFaceDetectNet(nn.Module):
             Conv4layerBlock(64, 3 * (14 + 2 + 1), False),
         )
 
-        if self.phase == 'train':
+        if self.phase == "train":
             for m in self.modules():
                 if isinstance(m, nn.Conv2d):
                     if m.bias is not None:
@@ -374,7 +375,7 @@ class _PriorBox:
         self.clip = clip
         self.image_size = image_size
 
-        self.device: torch.device = torch.device('cpu')
+        self.device: torch.device = torch.device("cpu")
         self.dtype: torch.dtype = torch.float32
 
         for i in range(4):
@@ -389,7 +390,7 @@ class _PriorBox:
 
         self.feature_maps = [self.feature_map_3th, self.feature_map_4th, self.feature_map_5th, self.feature_map_6th]
 
-    def to(self, device: torch.device, dtype: torch.dtype) -> '_PriorBox':
+    def to(self, device: torch.device, dtype: torch.dtype) -> "_PriorBox":
         self.device = device
         self.dtype = dtype
         return self

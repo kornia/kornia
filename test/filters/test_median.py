@@ -11,8 +11,8 @@ class TestMedianBlur(BaseTester):
         actual = median_blur(inp, 3)
         assert isinstance(actual, torch.Tensor)
 
-    @pytest.mark.parametrize('batch_size', [1, 2])
-    @pytest.mark.parametrize('kernel_size', [3, (5, 7)])
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    @pytest.mark.parametrize("kernel_size", [3, (5, 7)])
     def test_cardinality(self, batch_size, kernel_size, device, dtype):
         inp = torch.zeros(batch_size, 3, 4, 4, device=device, dtype=dtype)
         actual = median_blur(inp, kernel_size)
@@ -21,11 +21,11 @@ class TestMedianBlur(BaseTester):
     def test_exception(self, device, dtype):
         with pytest.raises(TypeError) as errinfo:
             median_blur(1, 1)
-        assert 'Not a Tensor type.' in str(errinfo)
+        assert "Not a Tensor type." in str(errinfo)
 
         with pytest.raises(TypeError) as errinfo:
             median_blur(torch.ones(1, 1, device=device, dtype=dtype), 1)
-        assert 'shape must be [[\'B\', \'C\', \'H\', \'W\']].' in str(errinfo)
+        assert "shape must be [['B', 'C', 'H', 'W']]." in str(errinfo)
 
     def test_kernel_3x3(self, device, dtype):
         inp = torch.tensor(
@@ -96,8 +96,8 @@ class TestMedianBlur(BaseTester):
         expected = op(img, kernel_size)
         self.assert_close(actual, expected)
 
-    @pytest.mark.parametrize('kernel_size', [5, (5, 7)])
-    @pytest.mark.parametrize('batch_size', [1, 2])
+    @pytest.mark.parametrize("kernel_size", [5, (5, 7)])
+    @pytest.mark.parametrize("batch_size", [1, 2])
     def test_dynamo(self, batch_size, kernel_size, device, dtype, torch_optimizer):
         inpt = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
         op = MedianBlur(kernel_size)

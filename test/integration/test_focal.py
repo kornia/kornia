@@ -47,7 +47,7 @@ class TestIntegrationFocalLoss:
 
         optimizer = optim.Adam(m.parameters(), lr=self.lr)
 
-        criterion = kornia.losses.FocalLoss(alpha=self.alpha, gamma=self.gamma, reduction='mean')
+        criterion = kornia.losses.FocalLoss(alpha=self.alpha, gamma=self.gamma, reduction="mean")
         # NOTE: uncomment to compare against vanilla cross entropy
         # criterion = nn.CrossEntropyLoss()
 

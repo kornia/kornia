@@ -16,8 +16,8 @@ class TestTinyViT(BaseTester):
         assert isinstance(out, Tensor)
 
     @pytest.mark.slow
-    @pytest.mark.parametrize('num_classes', [10, 100])
-    @pytest.mark.parametrize('batch_size', [1, 3])
+    @pytest.mark.parametrize("num_classes", [10, 100])
+    @pytest.mark.parametrize("batch_size", [1, 3])
     def test_cardinality(self, device, dtype, batch_size, num_classes):
         model = TinyViT(num_classes=num_classes).to(device=device, dtype=dtype)
         inpt = torch.rand(batch_size, 3, model.img_size, model.img_size, device=device, dtype=dtype)
@@ -25,15 +25,15 @@ class TestTinyViT(BaseTester):
         out = model(inpt)
         assert out.shape == (batch_size, num_classes)
 
-    @pytest.mark.skip('not implemented')
+    @pytest.mark.skip("not implemented")
     def test_exception(self):
         ...
 
-    @pytest.mark.skip('not implemented')
+    @pytest.mark.skip("not implemented")
     def test_gradcheck(self):
         ...
 
-    @pytest.mark.skip('not implemented')
+    @pytest.mark.skip("not implemented")
     def test_module(self):
         ...
 
@@ -52,7 +52,7 @@ class TestTinyViT(BaseTester):
         assert isinstance(model, TinyViT)
 
     @pytest.mark.slow
-    @pytest.mark.parametrize('num_classes', [1000, 8])
+    @pytest.mark.parametrize("num_classes", [1000, 8])
     @pytest.mark.parametrize("img_size", [224, 256])
     def test_pretrained(self, img_size, num_classes):
         model = TinyViT.from_config("5m", img_size=img_size, num_classes=num_classes, pretrained=True)

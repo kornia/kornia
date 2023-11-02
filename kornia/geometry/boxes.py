@@ -510,7 +510,7 @@ class Boxes:
             offset = torch.as_tensor([0, 0, 1, 1], device=boxes.device, dtype=boxes.dtype)
             boxes = boxes + offset
 
-        if mode.startswith('vertices'):
+        if mode.startswith("vertices"):
             boxes = _boxes_to_polygons(boxes[..., 0], boxes[..., 1], boxes[..., 2], boxes[..., 3])
 
         if self._N is not None and not as_padded_sequence:
@@ -761,7 +761,7 @@ class Boxes3D:
             >>> boxes3d.get_boxes_shape()
             (tensor([30., 60.]), tensor([20., 50.]), tensor([10., 40.]))
         """
-        boxes_xyzwhd = self.to_tensor(mode='xyzwhd')
+        boxes_xyzwhd = self.to_tensor(mode="xyzwhd")
         widths, heights, depths = boxes_xyzwhd[..., 3], boxes_xyzwhd[..., 4], boxes_xyzwhd[..., 5]
         return depths, heights, widths
 
@@ -910,7 +910,7 @@ class Boxes3D:
             offset = torch.as_tensor([0, 0, 0, 1, 1, 1], device=boxes.device, dtype=boxes.dtype)
             boxes = boxes + offset
 
-        if mode.startswith('vertices'):
+        if mode.startswith("vertices"):
             xmin, ymin, zmin = boxes[..., 0], boxes[..., 1], boxes[..., 2]
             width, height, depth = boxes[..., 3], boxes[..., 4], boxes[..., 5]
 

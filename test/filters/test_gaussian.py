@@ -170,12 +170,12 @@ class TestGaussianBlur2d(BaseTester):
         inpt = torch.rand(B, C, H, W, device=device, dtype=dtype)
         sigma_tensor = torch.rand(B, 2, device=device, dtype=dtype)
 
-        actual_A = gaussian_blur2d(inpt, kernel_size, sigma_tensor, 'reflect', separable)
+        actual_A = gaussian_blur2d(inpt, kernel_size, sigma_tensor, "reflect", separable)
         assert isinstance(actual_A, torch.Tensor)
         assert actual_A.shape == shape
 
         sigma = tuple(sigma_tensor[0, ...].cpu().numpy().tolist())
-        actual_B = gaussian_blur2d(inpt, kernel_size, sigma, 'reflect', separable)
+        actual_B = gaussian_blur2d(inpt, kernel_size, sigma, "reflect", separable)
         assert isinstance(actual_B, torch.Tensor)
         assert actual_B.shape == shape
 
@@ -194,12 +194,12 @@ class TestGaussianBlur2d(BaseTester):
         # input should be a tensor
         with pytest.raises(Exception) as errinfo:
             gaussian_blur2d(1, 3, (1.0, 1.0))
-        assert 'Not a Tensor type. Go' in str(errinfo)
+        assert "Not a Tensor type. Go" in str(errinfo)
 
         # Sigma should be a tuple or a tensor
         with pytest.raises(Exception) as errinfo:
             gaussian_blur2d(torch.rand(1, 1, 1, 1), 3, 1.0)
-        assert 'Not a Tensor type. Go' in str(errinfo)
+        assert "Not a Tensor type. Go" in str(errinfo)
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3

@@ -6,7 +6,7 @@ from torch.distributions import Distribution, Uniform
 from kornia.augmentation.utils.helpers import MultiprocessWrapper
 from kornia.core import Device, Module, Tensor
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 class _PostInitInjectionMetaClass(type):
@@ -31,7 +31,7 @@ class RandomGeneratorBase(Module, metaclass=_PostInitInjectionMetaClass):
         self.set_rng_device_and_dtype()
 
     def set_rng_device_and_dtype(
-        self, device: torch.device = torch.device('cpu'), dtype: torch.dtype = torch.float32
+        self, device: torch.device = torch.device("cpu"), dtype: torch.dtype = torch.float32
     ) -> None:
         """Change the random generation device and dtype.
 
@@ -44,7 +44,7 @@ class RandomGeneratorBase(Module, metaclass=_PostInitInjectionMetaClass):
             self.dtype = dtype
 
     # TODO: refine the logic with module.to()
-    def to(self, *args: Any, **kwargs: Any) -> 'RandomGeneratorBase':
+    def to(self, *args: Any, **kwargs: Any) -> "RandomGeneratorBase":
         device, dtype, non_blocking, convert_to_format = torch._C._nn._parse_to(*args, **kwargs)
         self.set_rng_device_and_dtype(device=device, dtype=dtype)
         return self

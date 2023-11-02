@@ -340,7 +340,7 @@ class Se3(Module):
         r_inv = self.r.inverse()
         _t = -1 * self.t
         if isinstance(_t, int):
-            raise TypeError('Unexpected integer from `-1 * translation`')
+            raise TypeError("Unexpected integer from `-1 * translation`")
 
         return Se3(r_inv, r_inv * _t)
 

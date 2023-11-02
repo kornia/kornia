@@ -22,7 +22,7 @@ def test_create_meshgrid(device, dtype):
 
 
 def test_normalize_pixel_grid(device, dtype):
-    if device.type == 'cuda' and dtype == torch.float16:
+    if device.type == "cuda" and dtype == torch.float16:
         pytest.skip('"inverse_cuda" not implemented for "Half"')
 
     # generate input data

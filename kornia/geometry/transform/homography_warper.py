@@ -44,14 +44,15 @@ class HomographyWarper(BaseWarper):
         normalized_coordinates: whether to use a grid with normalized coordinates.
         align_corners: interpolation flag.
     """
+
     _warped_grid: Optional[Tensor]
 
     def __init__(
         self,
         height: int,
         width: int,
-        mode: str = 'bilinear',
-        padding_mode: str = 'zeros',
+        mode: str = "bilinear",
+        padding_mode: str = "zeros",
         normalized_coordinates: bool = True,
         align_corners: bool = False,
     ) -> None:

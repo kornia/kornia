@@ -44,7 +44,7 @@ def _scale_index_to_scale(max_coords: Tensor, sigmas: Tensor, num_levels: int) -
 def _create_octave_mask(mask: Tensor, octave_shape: List[int]) -> Tensor:
     r"""Downsample a mask based on the given octave shape."""
     mask_shape = octave_shape[-2:]
-    mask_octave = F.interpolate(mask, mask_shape, mode='bilinear', align_corners=False)
+    mask_octave = F.interpolate(mask, mask_shape, mode="bilinear", align_corners=False)
     return mask_octave.unsqueeze(1)
 
 
@@ -172,8 +172,8 @@ class ScaleSpaceDetector(Module):
                 num_levels = self.scale_pyr.n_levels
             else:
                 raise TypeError(
-                    'Expected the scale pyramid module to have `n_levels` as a Tensor or int.'
-                    f'Gotcha {type(self.scale_pyr.n_levels)}'
+                    "Expected the scale pyramid module to have `n_levels` as a Tensor or int."
+                    f"Gotcha {type(self.scale_pyr.n_levels)}"
                 )
 
             max_coords_best = _scale_index_to_scale(max_coords_best, sigmas_oct, num_levels)
@@ -236,11 +236,11 @@ class Detector_config(TypedDict):
 def get_default_detector_config() -> Detector_config:
     return {
         # Extraction Parameters
-        'nms_size': 15,
-        'pyramid_levels': 4,
-        'up_levels': 1,
-        'scale_factor_levels': math.sqrt(2),
-        's_mult': 22.0,
+        "nms_size": 15,
+        "pyramid_levels": 4,
+        "up_levels": 1,
+        "scale_factor_levels": math.sqrt(2),
+        "s_mult": 22.0,
     }
 
 
@@ -272,11 +272,11 @@ class MultiResolutionDetector(Module):
         super().__init__()
         self.model = model
         # Load extraction configuration
-        self.num_pyramid_levels = config['pyramid_levels']
-        self.num_upscale_levels = config['up_levels']
-        self.scale_factor_levels = config['scale_factor_levels']
-        self.mr_size = config['s_mult']
-        self.nms_size = config['nms_size']
+        self.num_pyramid_levels = config["pyramid_levels"]
+        self.num_upscale_levels = config["up_levels"]
+        self.scale_factor_levels = config["scale_factor_levels"]
+        self.mr_size = config["s_mult"]
+        self.nms_size = config["nms_size"]
         self.nms = NonMaximaSuppression2d((self.nms_size, self.nms_size))
         self.num_features = num_features
 
@@ -342,7 +342,7 @@ class MultiResolutionDetector(Module):
             up_factor = self.scale_factor_levels ** (1 + idx_level)
             nh, nw = int(h * up_factor), int(w * up_factor)
             up_factor_kpts = (float(w) / float(nw), float(h) / float(nh))
-            img_up = resize(img_up, (nh, nw), interpolation='bilinear', align_corners=False)
+            img_up = resize(img_up, (nh, nw), interpolation="bilinear", align_corners=False)
 
             cur_scores, cur_lafs = self.detect_features_on_single_level(img_up, num_points_level, up_factor_kpts)
 

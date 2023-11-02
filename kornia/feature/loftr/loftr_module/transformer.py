@@ -12,7 +12,7 @@ from .linear_attention import FullAttention, LinearAttention
 
 
 class LoFTREncoderLayer(Module):
-    def __init__(self, d_model: int, nhead: int, attention: Optional[Literal['linear']] = 'linear') -> None:
+    def __init__(self, d_model: int, nhead: int, attention: Optional[Literal["linear"]] = "linear") -> None:
         super().__init__()
 
         self.dim = d_model // nhead
@@ -22,7 +22,7 @@ class LoFTREncoderLayer(Module):
         self.q_proj = nn.Linear(d_model, d_model, bias=False)
         self.k_proj = nn.Linear(d_model, d_model, bias=False)
         self.v_proj = nn.Linear(d_model, d_model, bias=False)
-        self.attention = LinearAttention() if attention == 'linear' else FullAttention()
+        self.attention = LinearAttention() if attention == "linear" else FullAttention()
         self.merge = nn.Linear(d_model, d_model, bias=False)
 
         # feed-forward network
@@ -69,10 +69,10 @@ class LocalFeatureTransformer(Module):
         super().__init__()
 
         self.config = config
-        self.d_model = config['d_model']
-        self.nhead = config['nhead']
-        self.layer_names = config['layer_names']
-        encoder_layer = LoFTREncoderLayer(config['d_model'], config['nhead'], config['attention'])
+        self.d_model = config["d_model"]
+        self.nhead = config["nhead"]
+        self.layer_names = config["layer_names"]
+        encoder_layer = LoFTREncoderLayer(config["d_model"], config["nhead"], config["attention"])
         self.layers = nn.ModuleList([copy.deepcopy(encoder_layer) for _ in range(len(self.layer_names))])
         self._reset_parameters()
 
@@ -96,10 +96,10 @@ class LocalFeatureTransformer(Module):
             raise ValueError(msg)
 
         for layer, name in zip(self.layers, self.layer_names):
-            if name == 'self':
+            if name == "self":
                 feat0 = layer(feat0, feat0, mask0, mask0)
                 feat1 = layer(feat1, feat1, mask1, mask1)
-            elif name == 'cross':
+            elif name == "cross":
                 feat0 = layer(feat0, feat1, mask0, mask1)
                 feat1 = layer(feat1, feat0, mask1, mask0)
             else:

@@ -86,9 +86,7 @@ def select_seeds(
     im1scorescomp = scores1.unsqueeze(1) > scores1.unsqueeze(0)  # (n1, n1)
     # find out who scores higher than all of its neighbors: seed points
     if mnn is not None:
-        im1bs = (
-            (~torch.any(im1neighmap & im1scorescomp & mnn.unsqueeze(0), dim=1)) & mnn & (scores1 < 0.8**2)
-        )  # (n1,)
+        im1bs = (~torch.any(im1neighmap & im1scorescomp & mnn.unsqueeze(0), dim=1)) & mnn & (scores1 < 0.8**2)  # (n1,)
     else:
         im1bs = (~torch.any(im1neighmap & im1scorescomp, dim=1)) & (scores1 < 0.8**2)
 
@@ -290,14 +288,14 @@ def adalam_core(
         idxs: A long tensor with shape (num_filtered_matches, 2) with indices of corresponding keypoints in k1 and k2.
         dists: inverse confidence ratio.
     """
-    AREA_RATIO = config['area_ratio']
-    SEARCH_EXP = config['search_expansion']
-    RANSAC_ITERS = config['ransac_iters']
-    MIN_INLIERS = config['min_inliers']
-    MIN_CONF = config['min_confidence']
-    ORIENTATION_THR = config['orientation_difference_threshold']
-    SCALE_RATE_THR = config['scale_rate_threshold']
-    REFIT = config['refit']
+    AREA_RATIO = config["area_ratio"]
+    SEARCH_EXP = config["search_expansion"]
+    RANSAC_ITERS = config["ransac_iters"]
+    MIN_INLIERS = config["min_inliers"]
+    MIN_CONF = config["min_confidence"]
+    ORIENTATION_THR = config["orientation_difference_threshold"]
+    SCALE_RATE_THR = config["scale_rate_threshold"]
+    REFIT = config["refit"]
 
     if isinstance(im1shape, tuple):
         _im1shape = tensor(im1shape, device=k1.device, dtype=k1.dtype)

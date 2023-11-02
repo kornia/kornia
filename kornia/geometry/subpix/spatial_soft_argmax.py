@@ -14,7 +14,7 @@ from .dsnt import spatial_expectation2d, spatial_softmax2d
 from .nms import nms3d
 
 
-def _get_window_grid_kernel2d(h: int, w: int, device: torch.device = torch.device('cpu')) -> Tensor:
+def _get_window_grid_kernel2d(h: int, w: int, device: torch.device = torch.device("cpu")) -> Tensor:
     r"""Helper function, which generates a kernel to with window coordinates, residual to window center.
 
     Args:
@@ -31,7 +31,7 @@ def _get_window_grid_kernel2d(h: int, w: int, device: torch.device = torch.devic
     return conv_kernel
 
 
-def _get_center_kernel2d(h: int, w: int, device: torch.device = torch.device('cpu')) -> Tensor:
+def _get_center_kernel2d(h: int, w: int, device: torch.device = torch.device("cpu")) -> Tensor:
     r"""Helper function, which generates a kernel to return center coordinates, when applied with F.conv2d to 2d
     coordinates grid.
 
@@ -62,7 +62,7 @@ def _get_center_kernel2d(h: int, w: int, device: torch.device = torch.device('cp
     return center_kernel
 
 
-def _get_center_kernel3d(d: int, h: int, w: int, device: torch.device = torch.device('cpu')) -> Tensor:
+def _get_center_kernel3d(d: int, h: int, w: int, device: torch.device = torch.device("cpu")) -> Tensor:
     r"""Helper function, which generates a kernel to return center coordinates, when applied with F.conv2d to 3d
     coordinates grid.
 
@@ -100,7 +100,7 @@ def _get_center_kernel3d(d: int, h: int, w: int, device: torch.device = torch.de
     return center_kernel
 
 
-def _get_window_grid_kernel3d(d: int, h: int, w: int, device: torch.device = torch.device('cpu')) -> Tensor:
+def _get_window_grid_kernel3d(d: int, h: int, w: int, device: torch.device = torch.device("cpu")) -> Tensor:
     r"""Helper function, which generates a kernel to return coordinates, residual to window center.
 
     Args:
@@ -562,9 +562,9 @@ def conv_quad_interp3d(input: Tensor, strict_maxima_bonus: float = 10.0, eps: fl
 
     # to determine the location we are solving system of linear equations Ax = b, where b is 1st order gradient
     # and A is Hessian matrix
-    b: Tensor = spatial_gradient3d(input, order=1, mode='diff')  #
+    b: Tensor = spatial_gradient3d(input, order=1, mode="diff")  #
     b = b.permute(0, 1, 3, 4, 5, 2).reshape(-1, 3, 1)
-    A: Tensor = spatial_gradient3d(input, order=2, mode='diff')
+    A: Tensor = spatial_gradient3d(input, order=2, mode="diff")
     A = A.permute(0, 1, 3, 4, 5, 2).reshape(-1, 6)
     dxx = A[..., 0]
     dyy = A[..., 1]

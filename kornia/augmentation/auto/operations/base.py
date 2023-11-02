@@ -8,7 +8,7 @@ from torch.distributions import Bernoulli, RelaxedBernoulli
 from kornia.augmentation.base import _AugmentationBase
 from kornia.core import Module, Tensor
 
-T = TypeVar('T', bound='OperationBase')
+T = TypeVar("T", bound="OperationBase")
 
 
 class OperationBase(Module):

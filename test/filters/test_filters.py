@@ -7,7 +7,7 @@ from kornia.utils._compat import torch_version_le
 
 
 class TestFilter2D(BaseTester):
-    @pytest.mark.parametrize("border_type", ['constant', 'reflect', 'replicate', 'circular'])
+    @pytest.mark.parametrize("border_type", ["constant", "reflect", "replicate", "circular"])
     @pytest.mark.parametrize("normalized", [True, False])
     @pytest.mark.parametrize("padding", ["same", "valid"])
     def test_smoke(self, border_type, normalized, padding, device, dtype):
@@ -29,7 +29,7 @@ class TestFilter2D(BaseTester):
         sample = torch.ones(B, 3, 7, 8, device=device, dtype=dtype)
         b, c, h, w = sample.shape
         out = filter2d(sample, kernel, padding=padding)
-        if padding == 'same':
+        if padding == "same":
             assert out.shape == (b, c, h, w)
         else:
             assert out.shape == (b, c, h - height + 1, w - width + 1)
@@ -68,9 +68,9 @@ class TestFilter2D(BaseTester):
             device=device,
             dtype=dtype,
         )
-        out_corr = filter2d(inp, kernel, behaviour='corr')
+        out_corr = filter2d(inp, kernel, behaviour="corr")
         assert_close(out_corr, corr_expected)
-        out_conv = filter2d(inp, kernel, behaviour='conv')
+        out_conv = filter2d(inp, kernel, behaviour="conv")
         assert_close(out_conv, conv_expected)
 
     def test_exception(self):
@@ -78,27 +78,27 @@ class TestFilter2D(BaseTester):
         inpt = torch.ones(1, 1, 1, 1)
         with pytest.raises(TypeError) as errinfo:
             filter2d(1, k)
-        assert 'Not a Tensor type.' in str(errinfo)
+        assert "Not a Tensor type." in str(errinfo)
 
         with pytest.raises(TypeError) as errinfo:
             filter2d(inpt, 1)
-        assert 'Not a Tensor type.' in str(errinfo)
+        assert "Not a Tensor type." in str(errinfo)
 
         with pytest.raises(TypeError) as errinfo:
             filter2d(torch.ones(1), k)
-        assert 'shape must be [[\'B\', \'C\', \'H\', \'W\']]' in str(errinfo)
+        assert "shape must be [['B', 'C', 'H', 'W']]" in str(errinfo)
 
         with pytest.raises(TypeError) as errinfo:
             filter2d(inpt, torch.ones(1))
-        assert 'shape must be [[\'B\', \'H\', \'W\']]' in str(errinfo)
+        assert "shape must be [['B', 'H', 'W']]" in str(errinfo)
 
         with pytest.raises(Exception) as errinfo:
-            filter2d(inpt, k, border_type='a')
-        assert 'Invalid border, gotcha a. Ex' in str(errinfo)
+            filter2d(inpt, k, border_type="a")
+        assert "Invalid border, gotcha a. Ex" in str(errinfo)
 
         with pytest.raises(Exception) as errinfo:
-            filter2d(inpt, k, padding='a')
-        assert 'Invalid padding mode, gotcha a. Ex' in str(errinfo)
+            filter2d(inpt, k, padding="a")
+        assert "Invalid padding mode, gotcha a. Ex" in str(errinfo)
 
     @pytest.mark.parametrize("padding", ["same", "valid"])
     def test_mean_filter(self, padding, device, dtype):
@@ -121,7 +121,7 @@ class TestFilter2D(BaseTester):
 
         actual = filter2d(sample, kernel, padding=padding)
 
-        if padding == 'same':
+        if padding == "same":
             expected_same = torch.tensor(
                 [
                     [
@@ -167,7 +167,7 @@ class TestFilter2D(BaseTester):
 
         actual = filter2d(sample, kernel, padding=padding)
 
-        if padding == 'same':
+        if padding == "same":
             expected_same = torch.tensor(
                 [
                     [
@@ -213,7 +213,7 @@ class TestFilter2D(BaseTester):
         nv: float = 5.0 / 9  # normalization value
         actual = filter2d(sample, kernel, normalized=True, padding=padding)
 
-        if padding == 'same':
+        if padding == "same":
             expected_same = torch.tensor(
                 [
                     [
@@ -259,7 +259,7 @@ class TestFilter2D(BaseTester):
 
         actual = filter2d(sample, kernel, padding=padding)
 
-        if padding == 'same':
+        if padding == "same":
             expected_same = torch.tensor(
                 [
                     [
@@ -321,7 +321,7 @@ class TestFilter2D(BaseTester):
             dtype=dtype,
         )
 
-        actual = filter2d(sample_, kernel, padding='same', border_type='constant')
+        actual = filter2d(sample_, kernel, padding="same", border_type="constant")
         self.assert_close(actual, expected_same)
 
     @pytest.mark.parametrize("padding", ["same", "valid"])
@@ -353,7 +353,7 @@ class TestFilter2D(BaseTester):
         kernel = tensor_to_gradcheck_var(kernel)  # to var
         self.gradcheck(filter2d, (sample, kernel), nondet_tol=1e-8)
 
-    @pytest.mark.skip(reason='filter2d do not have a module')
+    @pytest.mark.skip(reason="filter2d do not have a module")
     def test_module(self):
         ...
 
@@ -372,11 +372,11 @@ class TestFilter2D(BaseTester):
 
 
 class TestFilter3D(BaseTester):
-    @pytest.mark.parametrize("border_type", ['constant', 'reflect', 'replicate', 'circular'])
+    @pytest.mark.parametrize("border_type", ["constant", "reflect", "replicate", "circular"])
     @pytest.mark.parametrize("normalized", [True, False])
     def test_smoke(self, border_type, normalized, device, dtype):
-        if torch_version_le(1, 9, 1) and border_type == 'reflect':
-            pytest.skip(reason='Reflect border is not implemented for 3D on torch < 1.9.1')
+        if torch_version_le(1, 9, 1) and border_type == "reflect":
+            pytest.skip(reason="Reflect border is not implemented for 3D on torch < 1.9.1")
 
         kernel = torch.rand(1, 3, 3, 3, device=device, dtype=dtype)
         inpt = torch.ones(1, 1, 6, 7, 8, device=device, dtype=dtype)
@@ -396,23 +396,23 @@ class TestFilter3D(BaseTester):
         inpt = torch.ones(1, 1, 1, 1, 1)
         with pytest.raises(TypeError) as errinfo:
             filter3d(1, k)
-        assert 'Not a Tensor type.' in str(errinfo)
+        assert "Not a Tensor type." in str(errinfo)
 
         with pytest.raises(TypeError) as errinfo:
             filter3d(inpt, 1)
-        assert 'Not a Tensor type.' in str(errinfo)
+        assert "Not a Tensor type." in str(errinfo)
 
         with pytest.raises(TypeError) as errinfo:
             filter3d(torch.ones(1), k)
-        assert 'shape must be [[\'B\', \'C\', \'D\', \'H\', \'W\']]' in str(errinfo)
+        assert "shape must be [['B', 'C', 'D', 'H', 'W']]" in str(errinfo)
 
         with pytest.raises(TypeError) as errinfo:
             filter3d(inpt, torch.ones(1))
-        assert 'shape must be [[\'B\', \'D\', \'H\', \'W\']]' in str(errinfo)
+        assert "shape must be [['B', 'D', 'H', 'W']]" in str(errinfo)
 
         with pytest.raises(Exception) as errinfo:
-            filter3d(inpt, k, border_type='a')
-        assert 'Invalid border, gotcha a. Ex' in str(errinfo)
+            filter3d(inpt, k, border_type="a")
+        assert "Invalid border, gotcha a. Ex" in str(errinfo)
 
     def test_mean_filter(self, device, dtype):
         kernel = torch.ones(1, 3, 3, 3, device=device, dtype=dtype)
@@ -713,7 +713,7 @@ class TestFilter3D(BaseTester):
         kernel = tensor_to_gradcheck_var(kernel)  # to var
         self.gradcheck(filter3d, (sample, kernel), nondet_tol=1e-8)
 
-    @pytest.mark.skip(reason='filter3d do not have a module')
+    @pytest.mark.skip(reason="filter3d do not have a module")
     def test_module(self):
         ...
 
@@ -758,7 +758,7 @@ class TestDexiNed:
         out = model(img)[-1]
         assert_close(out, expect, atol=3e-4, rtol=3e-4)
 
-    @pytest.mark.skip(reason='DexiNed do not compile with dynamo.')
+    @pytest.mark.skip(reason="DexiNed do not compile with dynamo.")
     def test_dynamo(self, device, dtype, torch_optimizer):
         # TODO: update the dexined to be possible to use with dynamo
         inpt = torch.rand(2, 3, 32, 32, device=device, dtype=dtype)

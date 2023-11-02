@@ -45,15 +45,15 @@ def undistort_points(
                  [-0.1843, -0.1606]]])
     """
     if points.dim() < 2 and points.shape[-1] != 2:
-        raise ValueError(f'points shape is invalid. Got {points.shape}.')
+        raise ValueError(f"points shape is invalid. Got {points.shape}.")
 
     if K.shape[-2:] != (3, 3):
-        raise ValueError(f'K matrix shape is invalid. Got {K.shape}.')
+        raise ValueError(f"K matrix shape is invalid. Got {K.shape}.")
 
     if new_K is None:
         new_K = K
     elif new_K.shape[-2:] != (3, 3):
-        raise ValueError(f'new_K matrix shape is invalid. Got {new_K.shape}.')
+        raise ValueError(f"new_K matrix shape is invalid. Got {new_K.shape}.")
 
     if dist.shape[-1] not in [4, 5, 8, 12, 14]:
         raise ValueError(f"Invalid number of distortion coefficients. Got {dist.shape[-1]}")
@@ -143,21 +143,21 @@ def undistort_image(image: torch.Tensor, K: torch.Tensor, dist: torch.Tensor) ->
         raise ValueError(f"Image shape is invalid. Got: {image.shape}.")
 
     if K.shape[-2:] != (3, 3):
-        raise ValueError(f'K matrix shape is invalid. Got {K.shape}.')
+        raise ValueError(f"K matrix shape is invalid. Got {K.shape}.")
 
     if dist.shape[-1] not in [4, 5, 8, 12, 14]:
-        raise ValueError(f'Invalid number of distortion coefficients. Got {dist.shape[-1]}.')
+        raise ValueError(f"Invalid number of distortion coefficients. Got {dist.shape[-1]}.")
 
     if not image.is_floating_point():
-        raise ValueError(f'Invalid input image data type. Input should be float. Got {image.dtype}.')
+        raise ValueError(f"Invalid input image data type. Input should be float. Got {image.dtype}.")
 
     if image.shape[:-3] != K.shape[:-2] or image.shape[:-3] != dist.shape[:-1]:
         # Input with image shape (1, C, H, W), K shape (3, 3), dist shape (4)
         # allowed to avoid a breaking change.
         if not all((image.shape[:-3] == (1,), K.shape[:-2] == (), dist.shape[:-1] == ())):
             raise ValueError(
-                'Input shape is invalid. Input batch dimensions should match. '
-                f'Got {image.shape[:-3]}, {K.shape[:-2]}, {dist.shape[:-1]}.'
+                "Input shape is invalid. Input batch dimensions should match. "
+                f"Got {image.shape[:-3]}, {K.shape[:-2]}, {dist.shape[:-1]}."
             )
 
     channels, rows, cols = image.shape[-3:]

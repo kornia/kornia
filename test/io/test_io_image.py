@@ -42,7 +42,7 @@ def _download_image(url: str, filename: str = "") -> Path:
     return Path(filename)
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope="session")
 def png_image(tmp_path_factory):
     url = "https://github.com/kornia/data/raw/main/simba.png"
     filename = tmp_path_factory.mktemp("data") / "image.png"
@@ -50,7 +50,7 @@ def png_image(tmp_path_factory):
     return filename
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope="session")
 def jpg_image(tmp_path_factory):
     url = "https://github.com/kornia/data/raw/main/crowd.jpg"
     filename = tmp_path_factory.mktemp("data") / "image.jpg"
@@ -58,9 +58,9 @@ def jpg_image(tmp_path_factory):
     return filename
 
 
-@pytest.fixture(scope='session')
+@pytest.fixture(scope="session")
 def images_fn(png_image, jpg_image):
-    return {'png': png_image, 'jpg': jpg_image}
+    return {"png": png_image, "jpg": jpg_image}
 
 
 @pytest.mark.skipif(not available_package(), reason="kornia_rs only supports python >=3.7 and pt >= 1.10.0")

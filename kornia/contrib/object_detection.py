@@ -165,7 +165,7 @@ class ObjectDetector(Module):
         *,
         fullgraph: bool = False,
         dynamic: bool = False,
-        backend: str = 'inductor',
+        backend: str = "inductor",
         mode: Optional[str] = None,
         options: Optional[dict[str, str | int | bool]] = None,
         disable: bool = False,

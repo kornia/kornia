@@ -55,7 +55,7 @@ class RandomJigsaw(MixAugmentationBaseV2):
         self, input: Tensor, params: Dict[str, Tensor], maybe_flags: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         # different from the Base class routine. This function will not refer to any non-transformation images.
-        batch_prob = params['batch_prob']
+        batch_prob = params["batch_prob"]
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         input = input[to_apply].clone()
 

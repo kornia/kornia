@@ -64,12 +64,12 @@ class _DenseLayer(nn.Sequential):
         super().__init__(
             OrderedDict(
                 [
-                    ('relu1', nn.ReLU(inplace=True)),
-                    ('conv1', nn.Conv2d(input_features, out_features, kernel_size=3, stride=1, padding=2, bias=True)),
-                    ('norm1', nn.BatchNorm2d(out_features)),
-                    ('relu2', nn.ReLU(inplace=True)),
-                    ('conv2', nn.Conv2d(out_features, out_features, kernel_size=3, stride=1, bias=True)),
-                    ('norm2', nn.BatchNorm2d(out_features)),
+                    ("relu1", nn.ReLU(inplace=True)),
+                    ("conv1", nn.Conv2d(input_features, out_features, kernel_size=3, stride=1, padding=2, bias=True)),
+                    ("norm1", nn.BatchNorm2d(out_features)),
+                    ("relu2", nn.ReLU(inplace=True)),
+                    ("conv2", nn.Conv2d(out_features, out_features, kernel_size=3, stride=1, bias=True)),
+                    ("norm2", nn.BatchNorm2d(out_features)),
                 ]
             )
         )
@@ -87,7 +87,7 @@ class _DenseBlock(nn.Sequential):
         super().__init__()
         for i in range(num_layers):
             layer = _DenseLayer(input_features, out_features)
-            self.add_module('denselayer%d' % (i + 1), layer)
+            self.add_module("denselayer%d" % (i + 1), layer)
             input_features = out_features
 
     def forward(self, x: list[Tensor]) -> list[Tensor]:
@@ -126,7 +126,7 @@ class UpConvBlock(Module):
     def forward(self, x: Tensor, out_shape: list[int]) -> Tensor:
         out = self.features(x)
         if out.shape[-2:] != out_shape:
-            out = F.interpolate(out, out_shape, mode='bilinear')
+            out = F.interpolate(out, out_shape, mode="bilinear")
         return out
 
 

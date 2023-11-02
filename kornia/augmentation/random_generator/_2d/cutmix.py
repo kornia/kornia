@@ -64,7 +64,7 @@ class CutmixGenerator(RandomGeneratorBase):
         else:
             self._cut_size = as_tensor(self.cut_size, device=device, dtype=dtype)
 
-        _joint_range_check(self._cut_size, 'cut_size', bounds=(0, 1))
+        _joint_range_check(self._cut_size, "cut_size", bounds=(0, 1))
 
         self.beta_sampler = Beta(self._beta, self._beta)
         self.prob_sampler = Bernoulli(tensor(float(self.p), device=device, dtype=dtype))

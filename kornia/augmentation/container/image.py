@@ -139,7 +139,7 @@ class ImageSequential(ImageSequentialBase):
         if isinstance(self.random_apply, tuple):
             num_samples = int(torch.randint(*self.random_apply, (1,)).item())
         else:
-            raise TypeError(f'random apply should be a tuple. Gotcha {type(self.random_apply)}')
+            raise TypeError(f"random apply should be a tuple. Gotcha {type(self.random_apply)}")
 
         multinomial_weights = self.random_apply_weights.clone()
         # Mix augmentation can only be applied once per forward
@@ -298,12 +298,12 @@ def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size) -> torch.Siz
     if isinstance(param.data, list):
         for p in param.data:
             batch_shape = _get_new_batch_shape(p, batch_shape)
-    elif 'output_size' in param.data:
-        if not (param.data['batch_prob'] > 0.5)[0]:
+    elif "output_size" in param.data:
+        if not (param.data["batch_prob"] > 0.5)[0]:
             # Augmentations that change the image size must be applied equally to all elements in batch.
             # If the augmentation is not applied, return the same batch shape.
             return batch_shape
         new_batch_shape = list(batch_shape)
-        new_batch_shape[-2:] = param.data['output_size'][0]
+        new_batch_shape[-2:] = param.data["output_size"][0]
         batch_shape = torch.Size(new_batch_shape)
     return batch_shape

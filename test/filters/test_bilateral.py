@@ -38,11 +38,11 @@ class TestBilateralBlur(BaseTester):
     def test_exception(self):
         with pytest.raises(Exception) as errinfo:
             bilateral_blur(torch.rand(1, 1, 5, 5), 3, 1, 1)
-        assert 'Not a Tensor type. Go' in str(errinfo)
+        assert "Not a Tensor type. Go" in str(errinfo)
 
         with pytest.raises(ValueError) as errinfo:
             bilateral_blur(torch.rand(1, 1, 5, 5), 3, 0.1, (1, 1), color_distance_type="l3")
-        assert 'color_distance_type only acceps l1 or l2' in str(errinfo)
+        assert "color_distance_type only acceps l1 or l2" in str(errinfo)
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
@@ -77,8 +77,8 @@ class TestBilateralBlur(BaseTester):
         op_module = BilateralBlur(*params)
         self.assert_close(op_module(img), op(img, *params))
 
-    @pytest.mark.parametrize('kernel_size', [5, (5, 7)])
-    @pytest.mark.parametrize('color_distance_type', ["l1", "l2"])
+    @pytest.mark.parametrize("kernel_size", [5, (5, 7)])
+    @pytest.mark.parametrize("color_distance_type", ["l1", "l2"])
     def test_dynamo(self, kernel_size, color_distance_type, device, dtype, torch_optimizer):
         inpt = torch.ones(2, 3, 8, 8, device=device, dtype=dtype)
         op = BilateralBlur(kernel_size, 1, (1, 1), color_distance_type=color_distance_type)
@@ -196,19 +196,19 @@ class TestJointBilateralBlur(BaseTester):
 
         with pytest.raises(Exception) as errinfo:
             joint_bilateral_blur(inp, guide, 3, 1, 1)
-        assert 'Not a Tensor type. Go' in str(errinfo)
+        assert "Not a Tensor type. Go" in str(errinfo)
 
         with pytest.raises(Exception) as errinfo:
             joint_bilateral_blur(inp, torch.randn(1, 1, 2, 4), 3, 1, (1, 1))
-        assert 'guidance and input should have the same' in str(errinfo)
+        assert "guidance and input should have the same" in str(errinfo)
 
         with pytest.raises(Exception) as errinfo:
             joint_bilateral_blur(inp, torch.randn(2, 1, 5, 5), 3, 1, (1, 1))
-        assert 'guidance and input should have the same' in str(errinfo)
+        assert "guidance and input should have the same" in str(errinfo)
 
         with pytest.raises(ValueError) as errinfo:
             joint_bilateral_blur(inp, guide, 3, 0.1, (1, 1), color_distance_type="l3")
-        assert 'color_distance_type only acceps l1 or l2' in str(errinfo)
+        assert "color_distance_type only acceps l1 or l2" in str(errinfo)
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
@@ -238,8 +238,8 @@ class TestJointBilateralBlur(BaseTester):
         op_module = JointBilateralBlur(*params)
         self.assert_close(op_module(img, guide), op(img, guide, *params))
 
-    @pytest.mark.parametrize('kernel_size', [5, (5, 7)])
-    @pytest.mark.parametrize('color_distance_type', ["l1", "l2"])
+    @pytest.mark.parametrize("kernel_size", [5, (5, 7)])
+    @pytest.mark.parametrize("color_distance_type", ["l1", "l2"])
     def test_dynamo(self, kernel_size, color_distance_type, device, dtype, torch_optimizer):
         inpt = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
         guide = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)

@@ -25,7 +25,7 @@ class PositionEncodingSine(Module):
         self.temp_bug_fix = temp_bug_fix
 
         pe = self._create_position_encoding(max_shape)
-        self.register_buffer('pe', pe, persistent=False)  # [1, C, H, W]
+        self.register_buffer("pe", pe, persistent=False)  # [1, C, H, W]
 
     def _create_position_encoding(self, max_shape: Tuple[int, int]) -> Tensor:
         """Creates a position encoding from scratch.

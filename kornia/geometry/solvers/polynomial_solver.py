@@ -31,7 +31,7 @@ def solve_quadratic(coeffs: Tensor) -> Tensor:
        a consistent output shape for all cases.
     """
 
-    KORNIA_CHECK_SHAPE(coeffs, ['B', '3'])
+    KORNIA_CHECK_SHAPE(coeffs, ["B", "3"])
 
     # Coefficients of quadratic equation
     a = coeffs[:, 0]  # coefficient of x^2
@@ -92,7 +92,7 @@ def solve_cubic(coeffs: Tensor) -> Tensor:
        roots should be represented as 0. Thus, the output for a single real root should be in the
        format [real_root, 0, 0], and for two real roots, it should be [real_root_1, real_root_2, 0].
     """
-    KORNIA_CHECK_SHAPE(coeffs, ['B', '4'])
+    KORNIA_CHECK_SHAPE(coeffs, ["B", "4"])
 
     _PI = torch.tensor(math.pi, device=coeffs.device, dtype=coeffs.dtype)
 

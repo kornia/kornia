@@ -28,7 +28,7 @@ def _apply_transform_unimplemented(self: Module, *input: Any) -> Tensor:
 
     Should be overridden by all subclasses.
     """
-    raise NotImplementedError(f"Module [{type(self).__name__}] is missing the required \"apply_tranform\" function")
+    raise NotImplementedError(f'Module [{type(self).__name__}] is missing the required "apply_tranform" function')
 
 
 class _BasicAugmentationBase(Module):
@@ -69,7 +69,7 @@ class _BasicAugmentationBase(Module):
             self._p_batch_gen = Bernoulli(self.p_batch)
         self._param_generator: Optional[RandomGeneratorBase] = None
         self.flags: Dict[str, Any] = {}
-        self.set_rng_device_and_dtype(torch.device('cpu'), torch.get_default_dtype())
+        self.set_rng_device_and_dtype(torch.device("cpu"), torch.get_default_dtype())
 
     apply_transform: Callable[..., Tensor] = _apply_transform_unimplemented
 
@@ -171,11 +171,11 @@ class _BasicAugmentationBase(Module):
         _params = self.generate_parameters(torch.Size((int(to_apply.sum().item()), *batch_shape[1:])))
         if _params is None:
             _params = {}
-        _params['batch_prob'] = batch_prob
+        _params["batch_prob"] = batch_prob
         # Added another input_size parameter for geometric transformations
         # This might be needed for correctly inversing.
         input_size = tensor(batch_shape, dtype=torch.long)
-        _params.update({'forward_input_shape': input_size})
+        _params.update({"forward_input_shape": input_size})
         return _params
 
     def apply_func(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
@@ -202,8 +202,8 @@ class _BasicAugmentationBase(Module):
         if params is None:
             params = self.forward_parameters(batch_shape)
 
-        if 'batch_prob' not in params:
-            params['batch_prob'] = tensor([True] * batch_shape[0])
+        if "batch_prob" not in params:
+            params["batch_prob"] = tensor([True] * batch_shape[0])
 
         params, flags = self._process_kwargs_to_params_and_flags(params, self.flags, **kwargs)
 
@@ -253,7 +253,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             self._params if params is None else params, flags, **kwargs
         )
 
-        batch_prob = params['batch_prob']
+        batch_prob = params["batch_prob"]
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         ori_shape = input.shape
         in_tensor = self.transform_tensor(input)
@@ -291,7 +291,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             self._params if params is None else params, flags, **kwargs
         )
 
-        batch_prob = params['batch_prob']
+        batch_prob = params["batch_prob"]
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         ori_shape = input.shape
         in_tensor = self.transform_tensor(input)
@@ -323,7 +323,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             self._params if params is None else params, flags, **kwargs
         )
 
-        batch_prob = params['batch_prob']
+        batch_prob = params["batch_prob"]
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         output: Boxes
         if to_apply.bool().all():
@@ -357,7 +357,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             self._params if params is None else params, flags, **kwargs
         )
 
-        batch_prob = params['batch_prob']
+        batch_prob = params["batch_prob"]
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         if to_apply.all():
             output = self.apply_transform_keypoint(input, params, flags, transform=transform)
@@ -386,7 +386,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             self._params if params is None else params, flags, **kwargs
         )
 
-        batch_prob = params['batch_prob']
+        batch_prob = params["batch_prob"]
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         if to_apply.all():
             output = self.apply_transform_class(input, params, flags, transform=transform)

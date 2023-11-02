@@ -48,7 +48,7 @@ def random_prob_generator(
     batch_size: int,
     p: float = 0.5,
     same_on_batch: bool = False,
-    device: torch.device = torch.device('cpu'),
+    device: torch.device = torch.device("cpu"),
     dtype: torch.dtype = torch.float32,
 ) -> Tensor:
     r"""Generate random probabilities for a batch of inputs.

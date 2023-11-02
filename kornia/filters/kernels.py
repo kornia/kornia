@@ -15,11 +15,11 @@ def _check_kernel_size(kernel_size: tuple[int, ...] | int, min_value: int = 0, a
     if isinstance(kernel_size, int):
         kernel_size = (kernel_size,)
 
-    fmt = 'even or odd' if allow_even else 'odd'
+    fmt = "even or odd" if allow_even else "odd"
     for size in kernel_size:
         KORNIA_CHECK(
             isinstance(size, int) and (((size % 2 == 1) or allow_even) and size > min_value),
-            f'Kernel size must be an {fmt} integer bigger than {min_value}. Gotcha {size} on {kernel_size}',
+            f"Kernel size must be an {fmt} integer bigger than {min_value}. Gotcha {size} on {kernel_size}",
         )
 
 
@@ -27,7 +27,7 @@ def _unpack_2d_ks(kernel_size: tuple[int, int] | int) -> tuple[int, int]:
     if isinstance(kernel_size, int):
         ky = kx = kernel_size
     else:
-        KORNIA_CHECK(len(kernel_size) == 2, '2D Kernel size should have a length of 2.')
+        KORNIA_CHECK(len(kernel_size) == 2, "2D Kernel size should have a length of 2.")
         ky, kx = kernel_size
 
     ky = int(ky)
@@ -40,7 +40,7 @@ def _unpack_3d_ks(kernel_size: tuple[int, int, int] | int) -> tuple[int, int, in
     if isinstance(kernel_size, int):
         kz = ky = kx = kernel_size
     else:
-        KORNIA_CHECK(len(kernel_size) == 3, '3D Kernel size should have a length of 3.')
+        KORNIA_CHECK(len(kernel_size) == 3, "3D Kernel size should have a length of 3.")
         kz, ky, kx = kernel_size
 
     kz = int(kz)
@@ -52,7 +52,7 @@ def _unpack_3d_ks(kernel_size: tuple[int, int, int] | int) -> tuple[int, int, in
 
 def normalize_kernel2d(input: Tensor) -> Tensor:
     r"""Normalize both derivative and smoothing kernel."""
-    KORNIA_CHECK_SHAPE(input, ['*', 'H', 'W'])
+    KORNIA_CHECK_SHAPE(input, ["*", "H", "W"])
 
     norm = input.abs().sum(dim=-1).sum(dim=-1)
 
@@ -452,16 +452,16 @@ def get_spatial_gradient_kernel2d(
 
     sobel, diff.
     """
-    KORNIA_CHECK(mode.lower() in {'sobel', 'diff'}, f'Mode should be `sobel` or `diff`. Got {mode}')
-    KORNIA_CHECK(order in {1, 2}, f'Order should be 1 or 2. Got {order}')
+    KORNIA_CHECK(mode.lower() in {"sobel", "diff"}, f"Mode should be `sobel` or `diff`. Got {mode}")
+    KORNIA_CHECK(order in {1, 2}, f"Order should be 1 or 2. Got {order}")
 
-    if mode == 'sobel' and order == 1:
+    if mode == "sobel" and order == 1:
         kernel: Tensor = get_sobel_kernel2d(device=device, dtype=dtype)
-    elif mode == 'sobel' and order == 2:
+    elif mode == "sobel" and order == 2:
         kernel = get_sobel_kernel2d_2nd_order(device=device, dtype=dtype)
-    elif mode == 'diff' and order == 1:
+    elif mode == "diff" and order == 1:
         kernel = get_diff_kernel2d(device=device, dtype=dtype)
-    elif mode == 'diff' and order == 2:
+    elif mode == "diff" and order == 2:
         kernel = get_diff_kernel2d_2nd_order(device=device, dtype=dtype)
     else:
         raise NotImplementedError(f"Not implemented for order {order} on mode {mode}")
@@ -474,12 +474,12 @@ def get_spatial_gradient_kernel3d(
 ) -> Tensor:
     r"""Function that returns kernel for 1st or 2nd order scale pyramid gradients, using one of the following
     operators: sobel, diff."""
-    KORNIA_CHECK(mode.lower() in {'sobel', 'diff'}, f'Mode should be `sobel` or `diff`. Got {mode}')
-    KORNIA_CHECK(order in {1, 2}, f'Order should be 1 or 2. Got {order}')
+    KORNIA_CHECK(mode.lower() in {"sobel", "diff"}, f"Mode should be `sobel` or `diff`. Got {mode}")
+    KORNIA_CHECK(order in {1, 2}, f"Order should be 1 or 2. Got {order}")
 
-    if mode == 'diff' and order == 1:
+    if mode == "diff" and order == 1:
         kernel = get_diff_kernel3d(device=device, dtype=dtype)
-    elif mode == 'diff' and order == 2:
+    elif mode == "diff" and order == 2:
         kernel = get_diff_kernel3d_2nd_order(device=device, dtype=dtype)
     else:
         raise NotImplementedError(f"Not implemented 3d gradient kernel for order {order} on mode {mode}")
@@ -957,16 +957,16 @@ def get_hanning_kernel2d(
     return kernel2d
 
 
-@deprecated(replace_with='get_gaussian_kernel1d', version='6.9.10')
+@deprecated(replace_with="get_gaussian_kernel1d", version="6.9.10")
 def get_gaussian_kernel1d_t(*args: Any, **kwargs: Any) -> Tensor:
     return get_gaussian_kernel1d(*args, **kwargs)
 
 
-@deprecated(replace_with='get_gaussian_kernel2d', version='6.9.10')
+@deprecated(replace_with="get_gaussian_kernel2d", version="6.9.10")
 def get_gaussian_kernel2d_t(*args: Any, **kwargs: Any) -> Tensor:
     return get_gaussian_kernel2d(*args, **kwargs)
 
 
-@deprecated(replace_with='get_gaussian_kernel3d', version='6.9.10')
+@deprecated(replace_with="get_gaussian_kernel3d", version="6.9.10")
 def get_gaussian_kernel3d_t(*args: Any, **kwargs: Any) -> Tensor:
     return get_gaussian_kernel3d(*args, **kwargs)

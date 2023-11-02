@@ -71,7 +71,7 @@ class RayDataset(Dataset[RayGroup]):
         elif _is_list_of_tensors(imgs):
             images = imgs  # Take images provided on input
         else:
-            raise TypeError(f'Expected a list of image tensors or image paths. Gotcha {type(imgs)}.')
+            raise TypeError(f"Expected a list of image tensors or image paths. Gotcha {type(imgs)}.")
 
         self._check_dimensions(images)
 
@@ -98,20 +98,20 @@ class RayDataset(Dataset[RayGroup]):
 
     def _check_image_type_consistency(self, imgs: Images) -> None:
         if not all(isinstance(img, str) for img in imgs) and not all(isinstance(img, Tensor) for img in imgs):
-            raise ValueError('The list of input images can only be all paths or tensors')
+            raise ValueError("The list of input images can only be all paths or tensors")
 
     def _check_dimensions(self, imgs: ImageTensors) -> None:
         if len(imgs) != self._cameras.batch_size:
             raise ValueError(
-                f'Number of images {len(imgs)} does not match number of cameras {self._cameras.batch_size}'
+                f"Number of images {len(imgs)} does not match number of cameras {self._cameras.batch_size}"
             )
         if not all(img.shape[0] == 3 for img in imgs):
-            raise ValueError('Not all input images have 3 channels')
+            raise ValueError("Not all input images have 3 channels")
         for i, (img, height, width) in enumerate(zip(imgs, self._cameras.height, self._cameras.width)):
             if img.shape[1:] != (height, width):
                 raise ValueError(
-                    f'Image index {i} dimensions {(img.shape[1], img.shape[2])} are inconsistent with equivalent '
-                    f'camera dimensions {(height.item(), width.item())}'
+                    f"Image index {i} dimensions {(img.shape[1], img.shape[2])} are inconsistent with equivalent "
+                    f"camera dimensions {(height.item(), width.item())}"
                 )
 
     @staticmethod
@@ -137,7 +137,7 @@ class RayDataset(Dataset[RayGroup]):
             coordinates: RayGroup
         """
         if not isinstance(self._ray_sampler, RaySampler):
-            raise TypeError('Ray sampler is not initiate yet, please run self.init_ray_dataset() before use it.')
+            raise TypeError("Ray sampler is not initiate yet, please run self.init_ray_dataset() before use it.")
 
         origins = self._ray_sampler.origins[idxs]
         directions = self._ray_sampler.directions[idxs]

@@ -20,7 +20,7 @@ def _get_kernel_size(sigma: float) -> int:
 
 
 def harris_response(
-    input: Tensor, k: Union[Tensor, float] = 0.04, grads_mode: str = 'sobel', sigmas: Optional[Tensor] = None
+    input: Tensor, k: Union[Tensor, float] = 0.04, grads_mode: str = "sobel", sigmas: Optional[Tensor] = None
 ) -> Tensor:
     r"""Compute the Harris cornerness function.
 
@@ -105,7 +105,7 @@ def harris_response(
     return scores
 
 
-def gftt_response(input: Tensor, grads_mode: str = 'sobel', sigmas: Optional[Tensor] = None) -> Tensor:
+def gftt_response(input: Tensor, grads_mode: str = "sobel", sigmas: Optional[Tensor] = None) -> Tensor:
     r"""Compute the Shi-Tomasi cornerness function.
 
     .. image:: _static/img/gftt_response.png
@@ -179,7 +179,7 @@ def gftt_response(input: Tensor, grads_mode: str = 'sobel', sigmas: Optional[Ten
     return scores
 
 
-def hessian_response(input: Tensor, grads_mode: str = 'sobel', sigmas: Optional[Tensor] = None) -> Tensor:
+def hessian_response(input: Tensor, grads_mode: str = "sobel", sigmas: Optional[Tensor] = None) -> Tensor:
     r"""Compute the absolute of determinant of the Hessian matrix.
 
     .. image:: _static/img/hessian_response.png
@@ -321,7 +321,7 @@ class BlobDoGSingle(Module):
         self.sigma2 = sigma2
 
     def __repr__(self) -> str:
-        return f'{self.__class__.__name__}, sigma1={self.sigma1}, sigma2={self.sigma2})'
+        return f"{self.__class__.__name__}, sigma1={self.sigma1}, sigma2={self.sigma2})"
 
     def forward(self, input: Tensor, sigmas: Optional[Tensor] = None) -> Tensor:
         return dog_response_single(input, self.sigma1, self.sigma2)
@@ -334,18 +334,19 @@ class CornerHarris(Module):
 
     See :func:`~kornia.feature.harris_response` for details.
     """
+
     k: Tensor
 
-    def __init__(self, k: Union[float, Tensor], grads_mode: str = 'sobel') -> None:
+    def __init__(self, k: Union[float, Tensor], grads_mode: str = "sobel") -> None:
         super().__init__()
         if isinstance(k, float):
-            self.register_buffer('k', tensor(k))
+            self.register_buffer("k", tensor(k))
         else:
-            self.register_buffer('k', k)
+            self.register_buffer("k", k)
         self.grads_mode: str = grads_mode
 
     def __repr__(self) -> str:
-        return f'{self.__class__.__name__}(k={self.k}, grads_mode={self.grads_mode})'
+        return f"{self.__class__.__name__}(k={self.k}, grads_mode={self.grads_mode})"
 
     def forward(self, input: Tensor, sigmas: Optional[Tensor] = None) -> Tensor:
         return harris_response(input, self.k, self.grads_mode, sigmas)
@@ -359,12 +360,12 @@ class CornerGFTT(Module):
     See :func:`~kornia.feature.gftt_response` for details.
     """
 
-    def __init__(self, grads_mode: str = 'sobel') -> None:
+    def __init__(self, grads_mode: str = "sobel") -> None:
         super().__init__()
         self.grads_mode: str = grads_mode
 
     def __repr__(self) -> str:
-        return f'{self.__class__.__name__}(grads_mode={self.grads_mode})'
+        return f"{self.__class__.__name__}(grads_mode={self.grads_mode})"
 
     def forward(self, input: Tensor, sigmas: Optional[Tensor] = None) -> Tensor:
         return gftt_response(input, self.grads_mode, sigmas)
@@ -378,12 +379,12 @@ class BlobHessian(Module):
     See :func:`~kornia.feature.hessian_response` for details.
     """
 
-    def __init__(self, grads_mode: str = 'sobel') -> None:
+    def __init__(self, grads_mode: str = "sobel") -> None:
         super().__init__()
         self.grads_mode: str = grads_mode
 
     def __repr__(self) -> str:
-        return f'{self.__class__.__name__}(grads_mode={self.grads_mode})'
+        return f"{self.__class__.__name__}(grads_mode={self.grads_mode})"
 
     def forward(self, input: Tensor, sigmas: Optional[Tensor] = None) -> Tensor:
         return hessian_response(input, self.grads_mode, sigmas)

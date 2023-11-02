@@ -49,7 +49,7 @@ class TestSpatialSoftmax2d:
 
     def test_forward(self, input):
         actual = kornia.geometry.subpix.spatial_softmax2d(input)
-        assert actual.lt(0).sum().item() == 0, 'expected no negative values'
+        assert actual.lt(0).sum().item() == 0, "expected no negative values"
         sums = actual.sum(-1).sum(-1)
         assert_close(sums, torch.ones_like(sums))
 
@@ -81,7 +81,7 @@ class TestSpatialExpectation2d:
         actual_px = kornia.geometry.subpix.spatial_expectation2d(input, False)
         assert_close(actual_px, expected_px)
 
-    @pytest.mark.skip('After the op be optimized the results are not the same')
+    @pytest.mark.skip("After the op be optimized the results are not the same")
     def test_dynamo(self, dtype, device, torch_optimizer):
         inpt = torch.tensor([[[[0.0, 0.0, 1.0], [0.0, 0.0, 0.0]]]], device=device, dtype=dtype)
         op = kornia.geometry.subpix.spatial_expectation2d

@@ -284,11 +284,11 @@ class TestSSIM3d(BaseTester):
     @pytest.mark.parametrize(
         "shape,padding,window_size,max_value",
         [
-            ((1, 1, 3, 3, 3), 'same', 5, 1.0),
-            ((1, 1, 3, 3, 3), 'same', 3, 2.0),
-            ((1, 1, 3, 3, 3), 'same', 3, 0.5),
-            ((1, 1, 3, 3, 3), 'valid', 3, 1.0),
-            ((2, 4, 3, 3, 3), 'same', 3, 1.0),
+            ((1, 1, 3, 3, 3), "same", 5, 1.0),
+            ((1, 1, 3, 3, 3), "same", 3, 2.0),
+            ((1, 1, 3, 3, 3), "same", 3, 0.5),
+            ((1, 1, 3, 3, 3), "valid", 3, 1.0),
+            ((2, 4, 3, 3, 3), "same", 3, 1.0),
         ],
     )
     def test_smoke(self, shape, padding, window_size, max_value, device, dtype):
@@ -306,10 +306,10 @@ class TestSSIM3d(BaseTester):
     @pytest.mark.parametrize(
         "shape,padding,window_size,expected",
         [
-            ((1, 1, 2, 2, 3), 'same', 3, (1, 1, 2, 2, 3)),
-            ((1, 1, 3, 3, 3), 'same', 5, (1, 1, 3, 3, 3)),
-            ((1, 1, 3, 3, 3), 'valid', 3, (1, 1, 1, 1, 1)),
-            ((2, 4, 3, 3, 3), 'same', 3, (2, 4, 3, 3, 3)),
+            ((1, 1, 2, 2, 3), "same", 3, (1, 1, 2, 2, 3)),
+            ((1, 1, 3, 3, 3), "same", 5, (1, 1, 3, 3, 3)),
+            ((1, 1, 3, 3, 3), "valid", 3, (1, 1, 1, 1, 1)),
+            ((2, 4, 3, 3, 3), "same", 3, (2, 4, 3, 3, 3)),
         ],
     )
     def test_cardinality(self, shape, padding, window_size, expected, device, dtype):
@@ -325,27 +325,27 @@ class TestSSIM3d(BaseTester):
         # Check if both are tensors
         with pytest.raises(TypeError) as errinfo:
             kornia.metrics.ssim3d(1.0, img, 3)
-        assert 'Not a Tensor type. Got:' in str(errinfo)
+        assert "Not a Tensor type. Got:" in str(errinfo)
 
         with pytest.raises(TypeError) as errinfo:
             kornia.metrics.ssim3d(img, 1.0, 3)
-        assert 'Not a Tensor type. Got:' in str(errinfo)
+        assert "Not a Tensor type. Got:" in str(errinfo)
 
         # Check both shapes
         img_wrong_shape = torch.rand(3, 3, device=device, dtype=dtype)
         with pytest.raises(TypeError) as errinfo:
             kornia.metrics.ssim3d(img, img_wrong_shape, 3)
-        assert 'shape must be [' in str(errinfo)
+        assert "shape must be [" in str(errinfo)
 
         with pytest.raises(TypeError) as errinfo:
             kornia.metrics.ssim3d(img_wrong_shape, img, 3)
-        assert 'shape must be [' in str(errinfo)
+        assert "shape must be [" in str(errinfo)
 
         # Check if same shape
         img_b = torch.rand(1, 1, 3, 3, 4, device=device, dtype=dtype)
         with pytest.raises(Exception) as errinfo:
             kornia.metrics.ssim3d(img, img_b, 3)
-        assert 'img1 and img2 shapes must be the same. Got:' in str(errinfo)
+        assert "img1 and img2 shapes must be the same. Got:" in str(errinfo)
 
     def test_unit(self, device, dtype):
         img_a = torch.tensor(
@@ -364,7 +364,7 @@ class TestSSIM3d(BaseTester):
 
         img_b = torch.ones(1, 1, 3, 3, 3, device=device, dtype=dtype) * 0.5
 
-        actual = kornia.metrics.ssim3d(img_a, img_b, 3, padding='same')
+        actual = kornia.metrics.ssim3d(img_a, img_b, 3, padding="same")
 
         expected = torch.tensor(
             [
@@ -385,10 +385,10 @@ class TestSSIM3d(BaseTester):
     @pytest.mark.parametrize(
         "shape,padding,window_size,max_value",
         [
-            ((1, 1, 3, 3, 3), 'same', 5, 1.0),
-            ((1, 1, 3, 3, 3), 'same', 3, 2.0),
-            ((1, 1, 3, 3, 3), 'same', 3, 0.5),
-            ((1, 1, 3, 3, 3), 'valid', 3, 1.0),
+            ((1, 1, 3, 3, 3), "same", 5, 1.0),
+            ((1, 1, 3, 3, 3), "same", 3, 2.0),
+            ((1, 1, 3, 3, 3), "same", 3, 0.5),
+            ((1, 1, 3, 3, 3), "valid", 3, 1.0),
         ],
     )
     def test_module(self, shape, padding, window_size, max_value, device, dtype):

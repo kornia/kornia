@@ -154,7 +154,7 @@ class SIFTFeature(LocalFeature):
         num_features: int = 8000,
         upright: bool = False,
         rootsift: bool = True,
-        device: Device = torch.device('cpu'),
+        device: Device = torch.device("cpu"),
         config: Detector_config = get_default_detector_config(),
     ) -> None:
         patch_size: int = 41
@@ -183,7 +183,7 @@ class SIFTFeatureScaleSpace(LocalFeature):
         num_features: int = 8000,
         upright: bool = False,
         rootsift: bool = True,
-        device: Device = torch.device('cpu'),
+        device: Device = torch.device("cpu"),
     ) -> None:
         patch_size: int = 41
         detector = ScaleSpaceDetector(
@@ -209,7 +209,7 @@ class GFTTAffNetHardNet(LocalFeature):
         self,
         num_features: int = 8000,
         upright: bool = False,
-        device: Device = torch.device('cpu'),
+        device: Device = torch.device("cpu"),
         config: Detector_config = get_default_detector_config(),
     ) -> None:
         detector = MultiResolutionDetector(
@@ -230,7 +230,7 @@ class HesAffNetHardNet(LocalFeature):
         self,
         num_features: int = 2048,
         upright: bool = False,
-        device: Device = torch.device('cpu'),
+        device: Device = torch.device("cpu"),
         config: Detector_config = get_default_detector_config(),
     ) -> None:
         detector = MultiResolutionDetector(
@@ -251,7 +251,7 @@ class KeyNetHardNet(LocalFeature):
         self,
         num_features: int = 8000,
         upright: bool = False,
-        device: Device = torch.device('cpu'),
+        device: Device = torch.device("cpu"),
         scale_laf: float = 1.0,
     ) -> None:
         ori_module = PassLAF() if upright else LAFOrienter(angle_detector=OriNet(True))
@@ -270,7 +270,7 @@ class KeyNetAffNetHardNet(LocalFeature):
         self,
         num_features: int = 8000,
         upright: bool = False,
-        device: Device = torch.device('cpu'),
+        device: Device = torch.device("cpu"),
         scale_laf: float = 1.0,
     ) -> None:
         ori_module = PassLAF() if upright else LAFOrienter(angle_detector=OriNet(True))
@@ -314,12 +314,12 @@ class LocalFeatureMatcher(Module):
 
     def no_match_output(self, device: Device, dtype: torch.dtype) -> Dict[str, Tensor]:
         return {
-            'keypoints0': torch.empty(0, 2, device=device, dtype=dtype),
-            'keypoints1': torch.empty(0, 2, device=device, dtype=dtype),
-            'lafs0': torch.empty(0, 0, 2, 3, device=device, dtype=dtype),
-            'lafs1': torch.empty(0, 0, 2, 3, device=device, dtype=dtype),
-            'confidence': torch.empty(0, device=device, dtype=dtype),
-            'batch_indexes': torch.empty(0, device=device, dtype=torch.long),
+            "keypoints0": torch.empty(0, 2, device=device, dtype=dtype),
+            "keypoints1": torch.empty(0, 2, device=device, dtype=dtype),
+            "lafs0": torch.empty(0, 0, 2, 3, device=device, dtype=dtype),
+            "lafs1": torch.empty(0, 0, 2, 3, device=device, dtype=dtype),
+            "confidence": torch.empty(0, device=device, dtype=dtype),
+            "batch_indexes": torch.empty(0, device=device, dtype=torch.long),
         }
 
     def forward(self, data: Dict[str, Tensor]) -> Dict[str, Tensor]:
@@ -341,20 +341,20 @@ class LocalFeatureMatcher(Module):
             - ``lafs1``, matching LAFs from image1 :math:`(1, NC, 2, 3)`.
             - ``batch_indexes``, batch indexes for the keypoints and lafs :math:`(NC)`.
         """
-        num_image_pairs: int = data['image0'].shape[0]
+        num_image_pairs: int = data["image0"].shape[0]
 
-        if ('lafs0' not in data.keys()) or ('descriptors0' not in data.keys()):
+        if ("lafs0" not in data.keys()) or ("descriptors0" not in data.keys()):
             # One can supply pre-extracted local features
-            feats_dict0: Dict[str, Tensor] = self.extract_features(data['image0'])
-            lafs0, descs0 = feats_dict0['lafs'], feats_dict0['descriptors']
+            feats_dict0: Dict[str, Tensor] = self.extract_features(data["image0"])
+            lafs0, descs0 = feats_dict0["lafs"], feats_dict0["descriptors"]
         else:
-            lafs0, descs0 = data['lafs0'], data['descriptors0']
+            lafs0, descs0 = data["lafs0"], data["descriptors0"]
 
-        if ('lafs1' not in data.keys()) or ('descriptors1' not in data.keys()):
-            feats_dict1: Dict[str, Tensor] = self.extract_features(data['image1'])
-            lafs1, descs1 = feats_dict1['lafs'], feats_dict1['descriptors']
+        if ("lafs1" not in data.keys()) or ("descriptors1" not in data.keys()):
+            feats_dict1: Dict[str, Tensor] = self.extract_features(data["image1"])
+            lafs1, descs1 = feats_dict1["lafs"], feats_dict1["descriptors"]
         else:
-            lafs1, descs1 = data['lafs1'], data['descriptors1']
+            lafs1, descs1 = data["lafs1"], data["descriptors1"]
 
         keypoints0: Tensor = get_laf_center(lafs0)
         keypoints1: Tensor = get_laf_center(lafs1)
@@ -385,15 +385,15 @@ class LocalFeatureMatcher(Module):
             out_batch_indexes.append(batch_idxs)
 
         if len(out_batch_indexes) == 0:
-            return self.no_match_output(data['image0'].device, data['image0'].dtype)
+            return self.no_match_output(data["image0"].device, data["image0"].dtype)
 
         return {
-            'keypoints0': concatenate(out_keypoints0, dim=0).view(-1, 2),
-            'keypoints1': concatenate(out_keypoints1, dim=0).view(-1, 2),
-            'lafs0': concatenate(out_lafs0, dim=0).view(1, -1, 2, 3),
-            'lafs1': concatenate(out_lafs1, dim=0).view(1, -1, 2, 3),
-            'confidence': concatenate(out_confidence, dim=0).view(-1),
-            'batch_indexes': concatenate(out_batch_indexes, dim=0).view(-1),
+            "keypoints0": concatenate(out_keypoints0, dim=0).view(-1, 2),
+            "keypoints1": concatenate(out_keypoints1, dim=0).view(-1, 2),
+            "lafs0": concatenate(out_lafs0, dim=0).view(1, -1, 2, 3),
+            "lafs1": concatenate(out_lafs1, dim=0).view(1, -1, 2, 3),
+            "confidence": concatenate(out_confidence, dim=0).view(-1),
+            "batch_indexes": concatenate(out_batch_indexes, dim=0).view(-1),
         }
 
 
@@ -408,9 +408,9 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
         params: LightGlue params.
     """
 
-    known_modes: ClassVar[List[str]] = ['superpoint', 'disk']
+    known_modes: ClassVar[List[str]] = ["superpoint", "disk"]
 
-    def __init__(self, feature_name: str = 'disk', params: Dict = {}) -> None:  # type: ignore
+    def __init__(self, feature_name: str = "disk", params: Dict = {}) -> None:  # type: ignore
         feature_name_: str = feature_name.lower()
         super().__init__(feature_name_)
         self.feature_name = feature_name_
@@ -465,7 +465,7 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
             },
         }
         pred = self.matcher(input_dict)
-        matches0, mscores0 = pred['matches0'], pred['matching_scores0']
+        matches0, mscores0 = pred["matches0"], pred["matching_scores0"]
         valid = matches0 > -1
         matches = torch.stack([torch.where(valid)[1], matches0[valid]], -1)
         return mscores0[valid].reshape(-1, 1), matches

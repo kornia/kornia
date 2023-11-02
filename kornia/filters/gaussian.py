@@ -14,7 +14,7 @@ def gaussian_blur2d(
     input: Tensor,
     kernel_size: tuple[int, int] | int,
     sigma: tuple[float, float] | Tensor,
-    border_type: str = 'reflect',
+    border_type: str = "reflect",
     separable: bool = True,
 ) -> Tensor:
     r"""Create an operator that blurs a tensor using a Gaussian filter.
@@ -104,7 +104,7 @@ class GaussianBlur2d(Module):
         self,
         kernel_size: tuple[int, int] | int,
         sigma: tuple[float, float] | Tensor,
-        border_type: str = 'reflect',
+        border_type: str = "reflect",
         separable: bool = True,
     ) -> None:
         super().__init__()
@@ -126,6 +126,6 @@ class GaussianBlur2d(Module):
         return gaussian_blur2d(input, self.kernel_size, self.sigma, self.border_type, self.separable)
 
 
-@deprecated(replace_with='gaussian_blur2d', version='6.9.10')
+@deprecated(replace_with="gaussian_blur2d", version="6.9.10")
 def gaussian_blur2d_t(*args: Any, **kwargs: Any) -> Tensor:
     return gaussian_blur2d(*args, **kwargs)

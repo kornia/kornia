@@ -288,8 +288,8 @@ test that:
 - Typing with [mypy](http://mypy-lang.org) type checks the Python code.
 - If the docs can be generated successfully
 - [pre-commit ci](https://pre-commit.ci)
-  - [ruff](https://pypi.org/project/ruff/) accepts the code style (our guidelines are based on PEP8).
-  - [black](https://black.readthedocs.io/en/stable/) checks if the code is well formatted
+  - [ruff](https://pypi.org/project/ruff/) accepts the code style (our guidelines are based on PEP8) and checks if the code
+    is well formatted
   - [docformatter](https://pypi.org/project/docformatter/) checks if the code docstrings are well formatted
   - and some other checks. Check our [pre-commit config](./.pre-commit-config.yaml)
 
