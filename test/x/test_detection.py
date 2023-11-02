@@ -62,7 +62,7 @@ def configuration():
 class TestObjectDetectionTrainer:
     @pytest.mark.slow
     @pytest.mark.skipif(
-        torch.__version__ == '1.12.1' and Accelerator is None, reason='accelerate lib problem with torch 1.12.1'
+        torch.__version__ == "1.12.1" and Accelerator is None, reason="accelerate lib problem with torch 1.12.1"
     )
     @pytest.mark.parametrize("loss_computed_by_model", [True, False])
     def test_fit(self, model, dataloader, criterion, optimizer, scheduler, configuration, loss_computed_by_model):
@@ -80,9 +80,9 @@ class TestObjectDetectionTrainer:
         trainer.fit()
 
     @pytest.mark.skipif(
-        torch.__version__ == '1.12.1' and Accelerator is None, reason='accelerate lib problem with torch 1.12.1'
+        torch.__version__ == "1.12.1" and Accelerator is None, reason="accelerate lib problem with torch 1.12.1"
     )
-    @pytest.mark.xfail(sys.platform == 'darwin', reason='Sometimes CI can fail with MPS backend out of memory')
+    @pytest.mark.xfail(sys.platform == "darwin", reason="Sometimes CI can fail with MPS backend out of memory")
     def test_exception(self, model, dataloader, criterion, optimizer, scheduler, configuration):
         with pytest.raises(ValueError):
             ObjectDetectionTrainer(
@@ -94,5 +94,5 @@ class TestObjectDetectionTrainer:
                 scheduler,
                 configuration,
                 num_classes=3,
-                callbacks={'frodo': None},
+                callbacks={"frodo": None},
             )

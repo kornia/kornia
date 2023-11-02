@@ -52,11 +52,11 @@ class TestGuidedBlur(BaseTester):
     def test_exception(self):
         with pytest.raises(Exception) as errinfo:
             guided_blur(torch.rand(1, 1, 5, 5), 3, 3, 0.1)
-        assert 'Not a Tensor type. Go' in str(errinfo)
+        assert "Not a Tensor type. Go" in str(errinfo)
 
         with pytest.raises(Exception) as errinfo:
             guided_blur(torch.rand(1, 1, 5, 5), torch.rand(2, 1, 5, 5), 3, 0.1)
-        assert 'same batch size and spatial dimensions' in str(errinfo)
+        assert "same batch size and spatial dimensions" in str(errinfo)
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
@@ -90,13 +90,13 @@ class TestGuidedBlur(BaseTester):
         self.assert_close(op_module(guide, img), op(guide, img, kernel_size, eps, subsample=subsample))
 
     @pytest.mark.skipif(
-        torch_version() == '2.1.0',
+        torch_version() == "2.1.0",
         reason=(
             "https://github.com/pytorch/pytorch/issues/110696 "
             "- Failing with: Argument of Integer should be of numeric type, got s3 + 3."
         ),
     )
-    @pytest.mark.parametrize('kernel_size', [5, (5, 7)])
+    @pytest.mark.parametrize("kernel_size", [5, (5, 7)])
     @pytest.mark.parametrize("subsample", [1, 2])
     def test_dynamo(self, kernel_size, subsample, device, dtype, torch_optimizer):
         guide = torch.ones(2, 3, 8, 8, device=device, dtype=dtype)

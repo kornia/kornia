@@ -64,25 +64,25 @@ class CoarseMatching(Module):
         super().__init__()
         self.config = config
         # general config
-        self.thr = config['thr']
-        self.border_rm = config['border_rm']
+        self.thr = config["thr"]
+        self.border_rm = config["border_rm"]
         # -- # for training fine-level LoFTR
-        self.train_coarse_percent = config['train_coarse_percent']
-        self.train_pad_num_gt_min = config['train_pad_num_gt_min']
+        self.train_coarse_percent = config["train_coarse_percent"]
+        self.train_pad_num_gt_min = config["train_pad_num_gt_min"]
 
         # we provide 2 options for differentiable matching
-        self.match_type = config['match_type']
-        if self.match_type == 'dual_softmax':
-            self.temperature = config['dsmax_temperature']
-        elif self.match_type == 'sinkhorn':
+        self.match_type = config["match_type"]
+        if self.match_type == "dual_softmax":
+            self.temperature = config["dsmax_temperature"]
+        elif self.match_type == "sinkhorn":
             try:
                 from .superglue import log_optimal_transport
             except ImportError:
                 raise ImportError("download superglue.py first!")
             self.log_optimal_transport = log_optimal_transport
-            self.bin_score = nn.Parameter(torch.tensor(config['skh_init_bin_score'], requires_grad=True))
-            self.skh_iters = config['skh_iters']
-            self.skh_prefilter = config['skh_prefilter']
+            self.bin_score = nn.Parameter(torch.tensor(config["skh_init_bin_score"], requires_grad=True))
+            self.skh_iters = config["skh_iters"]
+            self.skh_prefilter = config["skh_prefilter"]
         else:
             raise NotImplementedError
 
@@ -117,13 +117,13 @@ class CoarseMatching(Module):
         # normalize
         feat_c0, feat_c1 = (feat / feat.shape[-1] ** 0.5 for feat in [feat_c0, feat_c1])
 
-        if self.match_type == 'dual_softmax':
+        if self.match_type == "dual_softmax":
             sim_matrix = torch.einsum("nlc,nsc->nls", feat_c0, feat_c1) / self.temperature
             if mask_c0 is not None and mask_c1 is not None:
                 sim_matrix.masked_fill_(~(mask_c0[..., None] * mask_c1[:, None]).bool(), -INF)
             conf_matrix = F.softmax(sim_matrix, 1) * F.softmax(sim_matrix, 2)
 
-        elif self.match_type == 'sinkhorn':
+        elif self.match_type == "sinkhorn":
             # sinkhorn, dustbin included
             sim_matrix = torch.einsum("nlc,nsc->nls", feat_c0, feat_c1)
             if mask_c0 is not None and mask_c1 is not None:
@@ -141,10 +141,10 @@ class CoarseMatching(Module):
                 conf_matrix[filter0[..., None].repeat(1, 1, S)] = 0
                 conf_matrix[filter1[:, None].repeat(1, L, 1)] = 0
 
-            if self.config['sparse_spvs']:
-                data.update({'conf_matrix_with_bin': assign_matrix.clone()})
+            if self.config["sparse_spvs"]:
+                data.update({"conf_matrix_with_bin": assign_matrix.clone()})
 
-        data.update({'conf_matrix': conf_matrix})
+        data.update({"conf_matrix": conf_matrix})
 
         # predict coarse matches from conf_matrix
         data.update(**self.get_coarse_match(conf_matrix, data))
@@ -167,23 +167,23 @@ class CoarseMatching(Module):
                 'mconf' (torch.Tensor): [M]}
         """
         axes_lengths = {
-            'h0c': data['hw0_c'][0],
-            'w0c': data['hw0_c'][1],
-            'h1c': data['hw1_c'][0],
-            'w1c': data['hw1_c'][1],
+            "h0c": data["hw0_c"][0],
+            "w0c": data["hw0_c"][1],
+            "h1c": data["hw1_c"][0],
+            "w1c": data["hw1_c"][1],
         }
         _device = conf_matrix.device
         # 1. confidence thresholding
         mask = conf_matrix > self.thr
         N = conf_matrix.shape[0]
-        mask = mask.reshape(N, axes_lengths['h0c'], axes_lengths['w0c'], axes_lengths['h1c'], axes_lengths['w1c'])
+        mask = mask.reshape(N, axes_lengths["h0c"], axes_lengths["w0c"], axes_lengths["h1c"], axes_lengths["w1c"])
         # mask = rearrange(mask, 'b (h0c w0c) (h1c w1c) -> b h0c w0c h1c w1c',
         #                 **axes_lengths)
-        if 'mask0' not in data:
+        if "mask0" not in data:
             mask_border(mask, self.border_rm, False)
         else:
-            mask_border_with_padding(mask, self.border_rm, False, data['mask0'], data['mask1'])
-        mask = mask.reshape(N, axes_lengths['h0c'] * axes_lengths['w0c'], axes_lengths['h1c'] * axes_lengths['w1c'])
+            mask_border_with_padding(mask, self.border_rm, False, data["mask0"], data["mask1"])
+        mask = mask.reshape(N, axes_lengths["h0c"] * axes_lengths["w0c"], axes_lengths["h1c"] * axes_lengths["w1c"])
         # rearrange(mask, 'b h0c w0c h1c w1c -> b (h0c w0c) (h1c w1c)',
         #                 **axes_lengths)
 
@@ -207,10 +207,10 @@ class CoarseMatching(Module):
             # NOTE:
             # The sampling is performed across all pairs in a batch without manually balancing
             # #samples for fine-level increases w.r.t. batch_size
-            if 'mask0' not in data:
+            if "mask0" not in data:
                 num_candidates_max = mask.size(0) * max(mask.size(1), mask.size(2))
             else:
-                num_candidates_max = compute_max_candidates(data['mask0'], data['mask1'])
+                num_candidates_max = compute_max_candidates(data["mask0"], data["mask1"])
             num_matches_train = num_candidates_max * self.train_coarse_percent
             num_matches_train = int(num_matches_train)
             num_matches_pred = len(b_ids)
@@ -228,40 +228,40 @@ class CoarseMatching(Module):
 
             # gt_pad_indices is to select from gt padding. e.g. max(3787-4800, 200)
             gt_pad_indices = torch.randint(
-                len(data['spv_b_ids']),
+                len(data["spv_b_ids"]),
                 (max(num_matches_train - num_matches_pred, self.train_pad_num_gt_min),),
                 device=_device,
             )
-            mconf_gt = torch.zeros(len(data['spv_b_ids']), device=_device)  # set conf of gt paddings to all zero
+            mconf_gt = torch.zeros(len(data["spv_b_ids"]), device=_device)  # set conf of gt paddings to all zero
 
             b_ids, i_ids, j_ids, mconf = (  # type: ignore
                 torch.cat([x[pred_indices], y[gt_pad_indices]], dim=0)  # type: ignore[has-type]
                 for x, y in zip(
-                    [b_ids, data['spv_b_ids']],
-                    [i_ids, data['spv_i_ids']],
-                    [j_ids, data['spv_j_ids']],
+                    [b_ids, data["spv_b_ids"]],
+                    [i_ids, data["spv_i_ids"]],
+                    [j_ids, data["spv_j_ids"]],
                     [mconf, mconf_gt],
                 )
             )
 
         # These matches select patches that feed into fine-level network
-        coarse_matches = {'b_ids': b_ids, 'i_ids': i_ids, 'j_ids': j_ids}
+        coarse_matches = {"b_ids": b_ids, "i_ids": i_ids, "j_ids": j_ids}
 
         # 4. Update with matches in original image resolution
-        scale = data['hw0_i'][0] / data['hw0_c'][0]
-        scale0 = scale * data['scale0'][b_ids] if 'scale0' in data else scale
-        scale1 = scale * data['scale1'][b_ids] if 'scale1' in data else scale
-        mkpts0_c = torch.stack([i_ids % data['hw0_c'][1], i_ids // data['hw0_c'][1]], dim=1) * scale0
-        mkpts1_c = torch.stack([j_ids % data['hw1_c'][1], j_ids // data['hw1_c'][1]], dim=1) * scale1
+        scale = data["hw0_i"][0] / data["hw0_c"][0]
+        scale0 = scale * data["scale0"][b_ids] if "scale0" in data else scale
+        scale1 = scale * data["scale1"][b_ids] if "scale1" in data else scale
+        mkpts0_c = torch.stack([i_ids % data["hw0_c"][1], i_ids // data["hw0_c"][1]], dim=1) * scale0
+        mkpts1_c = torch.stack([j_ids % data["hw1_c"][1], j_ids // data["hw1_c"][1]], dim=1) * scale1
 
         # These matches is the current prediction (for visualization)
         coarse_matches.update(
             {
-                'gt_mask': mconf == 0,
-                'm_bids': b_ids[mconf != 0],  # mconf == 0 => gt matches
-                'mkpts0_c': mkpts0_c[mconf != 0].to(dtype=conf_matrix.dtype),
-                'mkpts1_c': mkpts1_c[mconf != 0].to(dtype=conf_matrix.dtype),
-                'mconf': mconf[mconf != 0],
+                "gt_mask": mconf == 0,
+                "m_bids": b_ids[mconf != 0],  # mconf == 0 => gt matches
+                "mkpts0_c": mkpts0_c[mconf != 0].to(dtype=conf_matrix.dtype),
+                "mkpts1_c": mkpts1_c[mconf != 0].to(dtype=conf_matrix.dtype),
+                "mconf": mconf[mconf != 0],
             }
         )
 

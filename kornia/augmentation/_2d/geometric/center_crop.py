@@ -102,7 +102,7 @@ class CenterCrop(GeometricAugmentationBase2D):
     ) -> Tensor:
         if flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
             if not isinstance(transform, Tensor):
-                raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
+                raise TypeError(f"Expected the `transform` be a Tensor. Got {type(transform)}.")
 
             return crop_by_transform_mat(
                 input, transform[:, :2, :], self.size, flags["resample"].name.lower(), "zeros", flags["align_corners"]
@@ -125,7 +125,7 @@ class CenterCrop(GeometricAugmentationBase2D):
         if size is None:
             size = self.size
         if not isinstance(transform, Tensor):
-            raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
+            raise TypeError(f"Expected the `transform` be a Tensor. Got {type(transform)}.")
         return crop_by_transform_mat(
             input,
             transform[:, :2, :],

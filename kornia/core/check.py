@@ -51,10 +51,10 @@ def KORNIA_CHECK_SHAPE(x: Tensor, shape: list[str], raises: bool = True) -> bool
         >>> KORNIA_CHECK_SHAPE(x, ["2", "3", "H", "W"])  # explicit
         True
     """
-    if '*' == shape[0]:
+    if "*" == shape[0]:
         shape_to_check = shape[1:]
         x_shape_to_check = x.shape[-len(shape) + 1 :]
-    elif '*' == shape[-1]:
+    elif "*" == shape[-1]:
         shape_to_check = shape[:-1]
         x_shape_to_check = x.shape[: len(shape) - 1]
     else:
@@ -116,7 +116,7 @@ def KORNIA_UNWRAP(maybe_obj: object, typ: Any) -> Any:
     return cast(typ, maybe_obj)
 
 
-T = TypeVar('T', bound=type)
+T = TypeVar("T", bound=type)
 
 
 # TODO: fix mypy typeguard issue

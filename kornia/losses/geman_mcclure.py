@@ -64,7 +64,7 @@ def geman_mcclure_loss(img1: Tensor, img2: Tensor, reduction: str = "none") -> T
     elif reduction == "none" or reduction is None:
         pass
     else:
-        raise NotImplementedError('Invalid reduction option.')
+        raise NotImplementedError("Invalid reduction option.")
 
     return loss
 

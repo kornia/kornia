@@ -17,7 +17,7 @@ class TestMotionBlur(BaseTester):
     @pytest.mark.parametrize("kernel_size", [3, 5])
     @pytest.mark.parametrize("angle", [36.0, 200.0])
     @pytest.mark.parametrize("direction", [-0.9, 0.0, 0.9])
-    @pytest.mark.parametrize("mode", ['bilinear', 'nearest'])
+    @pytest.mark.parametrize("mode", ["bilinear", "nearest"])
     @pytest.mark.parametrize("params_as_tensor", [True, False])
     def test_smoke(self, shape, kernel_size, angle, direction, mode, params_as_tensor, device, dtype):
         B, C, H, W = shape
@@ -26,7 +26,7 @@ class TestMotionBlur(BaseTester):
         if params_as_tensor is True:
             angle = torch.tensor([angle], device=device, dtype=dtype).repeat(B)
             direction = torch.tensor([direction], device=device, dtype=dtype).repeat(B)
-        actual = motion_blur(inpt, kernel_size, angle, direction, 'constant', mode)
+        actual = motion_blur(inpt, kernel_size, angle, direction, "constant", mode)
 
         assert isinstance(actual, torch.Tensor)
         assert actual.shape == shape
@@ -41,7 +41,7 @@ class TestMotionBlur(BaseTester):
         motion = MotionBlur(ksize, angle, direction)
         assert motion(sample).shape == shape
 
-    @pytest.mark.skip(reason='nothing to test')
+    @pytest.mark.skip(reason="nothing to test")
     def test_exception(self):
         ...
 
@@ -92,8 +92,8 @@ class TestMotionBlur(BaseTester):
 
         self.assert_close(op(img, *params), op_module(img))
 
-    @pytest.mark.skip(reason='After the op be optimized the results are not the same')
-    @pytest.mark.parametrize('batch_size', [1, 2])
+    @pytest.mark.skip(reason="After the op be optimized the results are not the same")
+    @pytest.mark.parametrize("batch_size", [1, 2])
     def test_dynamo(self, batch_size, device, dtype, torch_optimizer):
         # TODO: FIX op
         inpt = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
@@ -108,7 +108,7 @@ class TestMotionBlur3D(BaseTester):
     @pytest.mark.parametrize("kernel_size", [3, 5])
     @pytest.mark.parametrize("angle", [(36.0, 15.0, 200.0), (200.0, 10.0, 150.0)])
     @pytest.mark.parametrize("direction", [-0.9, 0.0, 0.9])
-    @pytest.mark.parametrize("mode", ['bilinear', 'nearest'])
+    @pytest.mark.parametrize("mode", ["bilinear", "nearest"])
     @pytest.mark.parametrize("params_as_tensor", [True, False])
     def test_smoke(self, shape, kernel_size, angle, direction, mode, params_as_tensor, device, dtype):
         B, C, D, H, W = shape
@@ -117,7 +117,7 @@ class TestMotionBlur3D(BaseTester):
         if params_as_tensor is True:
             angle = torch.tensor([angle], device=device, dtype=dtype).expand(B, 3)
             direction = torch.tensor([direction], device=device, dtype=dtype).repeat(B)
-        actual = motion_blur3d(inpt, kernel_size, angle, direction, 'constant', mode)
+        actual = motion_blur3d(inpt, kernel_size, angle, direction, "constant", mode)
 
         assert isinstance(actual, torch.Tensor)
         assert actual.shape == shape
@@ -132,7 +132,7 @@ class TestMotionBlur3D(BaseTester):
         motion = MotionBlur3D(ksize, angle, direction)
         assert motion(sample).shape == shape
 
-    @pytest.mark.skip(reason='nothing to test')
+    @pytest.mark.skip(reason="nothing to test")
     def test_exception(self):
         ...
 
@@ -183,8 +183,8 @@ class TestMotionBlur3D(BaseTester):
 
         self.assert_close(op(img, *params), op_module(img))
 
-    @pytest.mark.skip(reason='After the op be optimized the results are not the same')
-    @pytest.mark.parametrize('batch_size', [1, 2])
+    @pytest.mark.skip(reason="After the op be optimized the results are not the same")
+    @pytest.mark.parametrize("batch_size", [1, 2])
     def test_dynamo(self, batch_size, device, dtype, torch_optimizer):
         # TODO: Fix the operation to works after dynamo optimize
         inpt = torch.ones(batch_size, 3, 1, 10, 10, device=device, dtype=dtype)

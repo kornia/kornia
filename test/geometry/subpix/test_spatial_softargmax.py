@@ -139,13 +139,13 @@ class TestSpatialSoftArgmax2d:
             pred, torch.as_tensor([[[0.0, 0.0], [0.0, 0.0]]], device=device, dtype=dtype), atol=1e-4, rtol=1e-4
         )
 
-        loss1 = mse_loss(pred, target, size_average=None, reduce=None, reduction='none').mean(-1, keepdim=False)
+        loss1 = mse_loss(pred, target, size_average=None, reduce=None, reduction="none").mean(-1, keepdim=False)
         expected_loss1 = torch.as_tensor([[0.0, 1.0]], device=device, dtype=dtype)
         assert_close(loss1, expected_loss1, atol=1e-4, rtol=1e-4)
 
         target_hm = kornia.geometry.subpix.render_gaussian2d(target, std, sample.shape[-2:]).contiguous()
 
-        loss2 = kornia.losses.js_div_loss_2d(hm, target_hm, reduction='none')
+        loss2 = kornia.losses.js_div_loss_2d(hm, target_hm, reduction="none")
         expected_loss2 = torch.as_tensor([[0.0087, 0.0818]], device=device, dtype=dtype)
         assert_close(loss2, expected_loss2, rtol=0, atol=1e-3)
 

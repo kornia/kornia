@@ -46,7 +46,7 @@ class PatchDominantGradientOrientation(nn.Module):
         super().__init__()
         self.patch_size = patch_size
         self.num_ang_bins = num_angular_bins
-        self.gradient = SpatialGradient('sobel', 1)
+        self.gradient = SpatialGradient("sobel", 1)
         self.eps = eps
         self.angular_smooth = nn.Conv1d(1, 1, kernel_size=5, padding=2, bias=False, padding_mode="circular")
         with torch.no_grad():
@@ -56,7 +56,7 @@ class PatchDominantGradientOrientation(nn.Module):
 
     def __repr__(self) -> str:
         return (
-            f'{self.__class__.__name__}(patch_size={self.patch_size}, num_ang_bins={self.num_ang_bins}, eps={self.eps})'
+            f"{self.__class__.__name__}(patch_size={self.patch_size}, num_ang_bins={self.num_ang_bins}, eps={self.eps})"
         )
 
     def forward(self, patch: torch.Tensor) -> torch.Tensor:
@@ -162,8 +162,8 @@ class OriNet(nn.Module):
         self.eps = eps
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls['orinet'], map_location=map_location_to_cpu)
-            self.load_state_dict(pretrained_dict['state_dict'], strict=False)
+            pretrained_dict = torch.hub.load_state_dict_from_url(urls["orinet"], map_location=map_location_to_cpu)
+            self.load_state_dict(pretrained_dict["state_dict"], strict=False)
         self.eval()
 
     @staticmethod

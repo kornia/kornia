@@ -11,7 +11,7 @@ from kornia.core import Module, Tensor
 
 class TrivialUpsample(Module):
     def forward(self, x: Tensor) -> Tensor:
-        return F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=False)
+        return F.interpolate(x, scale_factor=2, mode="bilinear", align_corners=False)
 
 
 class TrivialDownsample(Module):
@@ -32,7 +32,7 @@ class Conv(nn.Sequential):
             nonl = nn.PReLU(in_)
 
         dropout = nn.Sequential()
-        conv = nn.Conv2d(in_, out_, size, padding='same', bias=True)
+        conv = nn.Conv2d(in_, out_, size, padding="same", bias=True)
 
         super().__init__(norm, nonl, dropout, conv)
 

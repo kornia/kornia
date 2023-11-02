@@ -87,7 +87,7 @@ class RandomShear(GeometricAugmentationBase2D):
     ) -> Tensor:
         _, _, height, width = input.shape
         if not isinstance(transform, Tensor):
-            raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
+            raise TypeError(f"Expected the `transform` be a Tensor. Got {type(transform)}.")
 
         return warp_affine(
             input,
@@ -106,7 +106,7 @@ class RandomShear(GeometricAugmentationBase2D):
         size: Optional[Tuple[int, int]] = None,
     ) -> Tensor:
         if not isinstance(transform, Tensor):
-            raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
+            raise TypeError(f"Expected the `transform` be a Tensor. Got {type(transform)}.")
         return self.apply_transform(
             input,
             params=self._params,

@@ -15,7 +15,7 @@ def _pad_rb(x, size):
 
 class TestSam(BaseTester):
     @pytest.mark.slow
-    @pytest.mark.parametrize('model_type', ['vit_b', 'mobile_sam'])
+    @pytest.mark.parametrize("model_type", ["vit_b", "mobile_sam"])
     def test_smoke(self, device, model_type):
         model = Sam.from_config(SamConfig(model_type)).to(device)
         assert isinstance(model, Sam)
@@ -25,43 +25,43 @@ class TestSam(BaseTester):
         keypoints = torch.randint(0, img_size, (1, 2, 2), device=device, dtype=torch.float)
         labels = torch.randint(0, 1, (1, 2), device=device, dtype=torch.float)
 
-        model(inpt, [{'points': (keypoints, labels)}], False)
+        model(inpt, [{"points": (keypoints, labels)}], False)
 
     @pytest.mark.slow
-    @pytest.mark.parametrize('batch_size', [1, 3])
-    @pytest.mark.parametrize('N', [2, 5])
-    @pytest.mark.parametrize('multimask_output', [True, False])
+    @pytest.mark.parametrize("batch_size", [1, 3])
+    @pytest.mark.parametrize("N", [2, 5])
+    @pytest.mark.parametrize("multimask_output", [True, False])
     def test_cardinality(self, device, batch_size, N, multimask_output):
         # SAM: don't supports float64
         dtype = torch.float32
         inpt = torch.rand(1, 3, 77, 128, device=device, dtype=dtype)
-        model = Sam.from_config(SamConfig('vit_b'))
+        model = Sam.from_config(SamConfig("vit_b"))
         model = model.to(device=device, dtype=dtype)
         inpt = _pad_rb(inpt, model.image_encoder.img_size)
         keypoints = torch.randint(0, min(inpt.shape[-2:]), (batch_size, N, 2), device=device).to(dtype=dtype)
         labels = torch.randint(0, 1, (batch_size, N), device=device).to(dtype=dtype)
 
-        out = model(inpt, [{'points': (keypoints, labels)}], multimask_output)
+        out = model(inpt, [{"points": (keypoints, labels)}], multimask_output)
 
         C = 3 if multimask_output else 1
         assert len(out) == inpt.size(0)
         assert out[0].logits.shape == (batch_size, C, 256, 256)
 
     def test_exception(self):
-        model = Sam.from_config(SamConfig('mobile_sam'))
+        model = Sam.from_config(SamConfig("mobile_sam"))
 
         with pytest.raises(TypeError) as errinfo:
             inpt = torch.rand(3, 1, 2)
             model(inpt, [], False)
-        assert 'shape must be [[\'B\', \'3\', \'H\', \'W\']]. Got torch.Size([3, 1, 2])' in str(errinfo)
+        assert "shape must be [['B', '3', 'H', 'W']]. Got torch.Size([3, 1, 2])" in str(errinfo)
 
         with pytest.raises(Exception) as errinfo:
             inpt = torch.rand(2, 3, 1, 2)
             model(inpt, [{}], False)
-        assert 'The number of images (`B`) should match with the length of prompts!' in str(errinfo)
+        assert "The number of images (`B`) should match with the length of prompts!" in str(errinfo)
 
     @pytest.mark.slow
-    @pytest.mark.parametrize('model_type', ['vit_b', 'vit_l', 'vit_h', 'mobile_sam'])
+    @pytest.mark.parametrize("model_type", ["vit_b", "vit_l", "vit_h", "mobile_sam"])
     def test_config(self, device, model_type):
         model = Sam.from_config(SamConfig(model_type))
         model = model.to(device=device)
@@ -69,20 +69,20 @@ class TestSam(BaseTester):
         assert isinstance(model, Sam)
         assert next(model.parameters()).device == device
 
-    @pytest.mark.skip(reason='Unsupport at moment -- the code is not tested for training and had `torch.no_grad`')
+    @pytest.mark.skip(reason="Unsupported at moment -- the code is not tested for training and had `torch.no_grad`")
     def test_gradcheck(self, device):
         ...
 
-    @pytest.mark.skip(reason='Unecessary test')
+    @pytest.mark.skip(reason="Unnecessary test")
     def test_module(self):
         ...
 
-    @pytest.mark.skip(reason='Needs to be reviewed.')
+    @pytest.mark.skip(reason="Needs to be reviewed.")
     def test_dynamo(self, device, torch_optimizer):
         dtype = torch.float32
         img = torch.rand(1, 3, 128, 75, device=device, dtype=dtype)
 
-        op = Sam.from_config(SamConfig('vit_b'))
+        op = Sam.from_config(SamConfig("vit_b"))
         op = op.to(device=device, dtype=dtype)
 
         op_optimized = torch_optimizer(op)

@@ -142,7 +142,7 @@ def center_crop_generator3d(
     height: int,
     width: int,
     size: Tuple[int, int, int],
-    device: Device = torch.device('cpu'),
+    device: Device = torch.device("cpu"),
 ) -> Dict[str, Tensor]:
     r"""Get parameters for ```center_crop3d``` transformation for center crop transform.
 

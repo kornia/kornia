@@ -125,7 +125,7 @@ class TestRawToRgb(BaseTester):
 
     @pytest.mark.jit()
     def test_jit(self, device, dtype):
-        if version.parse(torch.__version__) < version.parse('1.7.0'):
+        if version.parse(torch.__version__) < version.parse("1.7.0"):
             warnings.warn(
                 "This test is not compatible with pytorch < 1.7.0. This message will be removed as soon as we do not "
                 "support pytorch 1.6.0. `rgb_to_hls()` method for pytorch < 1.7.0 version cannot be compiled with JIT.",
@@ -176,7 +176,7 @@ class TestRgbToRaw(BaseTester):
 
     @pytest.mark.jit()
     def test_jit(self, device, dtype):
-        if version.parse(torch.__version__) < version.parse('1.7.0'):
+        if version.parse(torch.__version__) < version.parse("1.7.0"):
             warnings.warn(
                 "This test is not compatible with pytorch < 1.7.0. This message will be removed as soon as we do not "
                 "support pytorch 1.6.0. `rgb_to_hls()` method for pytorch < 1.7.0 version cannot be compiled with JIT.",
@@ -220,7 +220,7 @@ class TestRawToRgb2x2Downscaled(BaseTester):
     def test_exception(self, device, dtype):
         with pytest.raises(Exception) as errinf:
             kornia.color.raw_to_rgb_2x2_downscaled([0.0], kornia.color.CFA.BG)
-        assert 'Input type is not a torch.Tensor' in str(errinf)
+        assert "Input type is not a torch.Tensor" in str(errinf)
 
         with pytest.raises(TypeError) as errinf:
             img = torch.ones(1, 1, device=device, dtype=dtype)
@@ -235,18 +235,18 @@ class TestRawToRgb2x2Downscaled(BaseTester):
         with pytest.raises(Exception) as errinf:
             img = torch.ones(1, 3, 2, device=device, dtype=dtype)
             kornia.color.raw_to_rgb_2x2_downscaled(img, kornia.color.CFA.GR)
-        assert 'Input H&W must be evenly disible by 2. Got' in str(errinf)
+        assert "Input H&W must be evenly disible by 2. Got" in str(errinf)
 
         with pytest.raises(Exception) as errinf:
             img = torch.ones(1, 2, 3, device=device, dtype=dtype)
             kornia.color.raw_to_rgb_2x2_downscaled(img, kornia.color.CFA.GR)
-        assert 'Input H&W must be evenly disible by 2. Got' in str(errinf)
+        assert "Input H&W must be evenly disible by 2. Got" in str(errinf)
 
         with pytest.raises(ValueError) as errinf:
             img = torch.ones(1, 4, 8, device=device, dtype=dtype)
             nonexistent_cfa = 195162495283
             kornia.color.raw_to_rgb_2x2_downscaled(img, nonexistent_cfa)
-        assert 'Unsupported CFA Got' in str(errinf)
+        assert "Unsupported CFA Got" in str(errinf)
 
     @pytest.mark.parametrize(
         "cfa, expected_rgb",

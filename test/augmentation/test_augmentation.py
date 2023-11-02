@@ -171,7 +171,7 @@ class CommonTests(BaseTester):
         assert isinstance(generated_params, dict)
 
         # compute_transformation can be called and returns the correct shaped transformation matrix
-        to_apply = generated_params['batch_prob'] > 0.5
+        to_apply = generated_params["batch_prob"] > 0.5
         expected_transformation_shape = torch.Size((to_apply.sum(), 3, 3))
         test_input = torch.ones(batch_shape, device=self.device, dtype=self.dtype)
         transformation = augmentation.compute_transformation(test_input[to_apply], generated_params, augmentation.flags)
@@ -593,7 +593,7 @@ class TestRandomRotationAlternative(CommonTests):
 
     def test_batch(self):
         if self.dtype == torch.float16:
-            pytest.skip('not work for half-precision')
+            pytest.skip("not work for half-precision")
 
         torch.manual_seed(12)
 
@@ -1275,7 +1275,7 @@ class TestColorJiggle(BaseTester):
 
     def test_sequential(self, device, dtype):
         if dtype == torch.float16:
-            pytest.skip('not work for half-precision')
+            pytest.skip("not work for half-precision")
 
         f = AugmentationSequential(ColorJiggle(), ColorJiggle())
 
@@ -1290,7 +1290,7 @@ class TestColorJiggle(BaseTester):
 
     def test_color_jitter_batch_sequential(self, device, dtype):
         if dtype == torch.float16:
-            pytest.skip('not work for half-precision')
+            pytest.skip("not work for half-precision")
 
         f = AugmentationSequential(ColorJiggle(), ColorJiggle())
 
@@ -1341,7 +1341,7 @@ class TestColorJitter(BaseTester):
 
     def test_color_jitter(self, device, dtype):
         if dtype == torch.float16:
-            pytest.skip('not work for half-precision')
+            pytest.skip("not work for half-precision")
 
         f = ColorJitter()
 
@@ -1355,7 +1355,7 @@ class TestColorJitter(BaseTester):
 
     def test_color_jitter_batch(self, device, dtype):
         if dtype == torch.float16:
-            pytest.skip('not work for half-precision')
+            pytest.skip("not work for half-precision")
 
         f = ColorJitter()
 
@@ -1603,7 +1603,7 @@ class TestColorJitter(BaseTester):
 
     def test_sequential(self, device, dtype):
         if dtype == torch.float16:
-            pytest.skip('not work for half-precision')
+            pytest.skip("not work for half-precision")
 
         f = AugmentationSequential(ColorJiggle(), ColorJiggle())
 
@@ -1618,7 +1618,7 @@ class TestColorJitter(BaseTester):
 
     def test_color_jitter_batch_sequential(self, device, dtype):
         if dtype == torch.float16:
-            pytest.skip('not work for half-precision')
+            pytest.skip("not work for half-precision")
 
         f = AugmentationSequential(ColorJitter(), ColorJitter())
 
@@ -1713,7 +1713,7 @@ class TestRandomBrightness(BaseTester):
 
     def test_sequential(self, device, dtype):
         if dtype == torch.float16:
-            pytest.skip('not work for half-precision')
+            pytest.skip("not work for half-precision")
         torch.manual_seed(27)
 
         f = AugmentationSequential(RandomBrightness())
@@ -1726,7 +1726,7 @@ class TestRandomBrightness(BaseTester):
 
     def test_random_brightness_batch_sequential(self, device, dtype):
         if dtype == torch.float16:
-            pytest.skip('not work for half-precision')
+            pytest.skip("not work for half-precision")
 
         f = AugmentationSequential(RandomBrightness(), RandomBrightness())
 
@@ -1815,7 +1815,7 @@ class TestRandomContrast(BaseTester):
 
     def test_sequential(self, device, dtype):
         if dtype == torch.float16:
-            pytest.skip('not work for half-precision')
+            pytest.skip("not work for half-precision")
         torch.manual_seed(27)
 
         f = AugmentationSequential(RandomContrast())
@@ -1828,7 +1828,7 @@ class TestRandomContrast(BaseTester):
 
     def test_random_contrast_batch_sequential(self, device, dtype):
         if dtype == torch.float16:
-            pytest.skip('not work for half-precision')
+            pytest.skip("not work for half-precision")
 
         f = AugmentationSequential(RandomContrast(), RandomContrast())
 
@@ -1925,7 +1925,7 @@ class TestRandomHue(BaseTester):
 
     def test_sequential(self, device, dtype):
         if dtype == torch.float16:
-            pytest.skip('not work for half-precision')
+            pytest.skip("not work for half-precision")
         torch.manual_seed(27)
 
         f = AugmentationSequential(RandomHue())
@@ -1938,7 +1938,7 @@ class TestRandomHue(BaseTester):
 
     def test_random_hue_batch_sequential(self, device, dtype):
         if dtype == torch.float16:
-            pytest.skip('not work for half-precision')
+            pytest.skip("not work for half-precision")
 
         f = AugmentationSequential(RandomHue(), RandomHue())
 
@@ -2035,7 +2035,7 @@ class TestRandomSaturation(BaseTester):
 
     def test_sequential(self, device, dtype):
         if dtype == torch.float16:
-            pytest.skip('not work for half-precision')
+            pytest.skip("not work for half-precision")
         torch.manual_seed(27)
 
         f = AugmentationSequential(RandomSaturation())
@@ -2048,7 +2048,7 @@ class TestRandomSaturation(BaseTester):
 
     def test_random_saturation_batch_sequential(self, device, dtype):
         if dtype == torch.float16:
-            pytest.skip('not work for half-precision')
+            pytest.skip("not work for half-precision")
 
         f = AugmentationSequential(RandomSaturation(), RandomSaturation())
 
@@ -2223,7 +2223,7 @@ class TestRandomGamma(BaseTester):
 
     def test_sequential(self, device, dtype):
         if dtype == torch.float16:
-            pytest.skip('not work for half-precision')
+            pytest.skip("not work for half-precision")
         torch.manual_seed(27)
 
         f = AugmentationSequential(RandomGamma(gamma=(0.5, 0.5)), RandomGamma(gamma=(2.0, 2.0)))
@@ -2236,7 +2236,7 @@ class TestRandomGamma(BaseTester):
 
     def test_random_gamma_batch_sequential(self, device, dtype):
         if dtype == torch.float16:
-            pytest.skip('not work for half-precision')
+            pytest.skip("not work for half-precision")
 
         f = AugmentationSequential(RandomGamma(gamma=(0.5, 0.5)), RandomGamma(gamma=(2.0, 2.0)))
 
@@ -2562,10 +2562,10 @@ class TestCenterCrop(BaseTester):
         torch.manual_seed(0)
         img = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
 
-        op1 = CenterCrop(size=(2, 2), cropping_mode='resample')
+        op1 = CenterCrop(size=(2, 2), cropping_mode="resample")
         out = op1(img)
 
-        op2 = CenterCrop(size=(2, 2), cropping_mode='slice')
+        op2 = CenterCrop(size=(2, 2), cropping_mode="slice")
 
         self.assert_close(out, op2(img, op1._params))
 
@@ -2831,7 +2831,7 @@ class TestRandomCrop(BaseTester):
         torch.manual_seed(42)
         inp = torch.tensor([[[[0.0, 1.0, 2.0], [3.0, 4.0, 5.0], [6.0, 7.0, 8.0]]]], device=device, dtype=dtype)
         expected = torch.tensor([[[[7.0, 8.0, 7.0], [4.0, 5.0, 4.0]]]], device=device, dtype=dtype)
-        rc = RandomCrop(size=(2, 3), padding=1, padding_mode='reflect', align_corners=True, p=1.0)
+        rc = RandomCrop(size=(2, 3), padding=1, padding_mode="reflect", align_corners=True, p=1.0)
         out = rc(inp)
 
         torch.manual_seed(42)
@@ -2842,7 +2842,7 @@ class TestRandomCrop(BaseTester):
         torch.manual_seed(42)
         inversed = torch.tensor([[[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 7.0, 8.0]]]], device=device, dtype=dtype)
         aug = RandomCrop(
-            size=(2, 3), padding=1, padding_mode='reflect', align_corners=True, p=1.0, cropping_mode="resample"
+            size=(2, 3), padding=1, padding_mode="reflect", align_corners=True, p=1.0, cropping_mode="resample"
         )
         out = aug(inp)
         self.assert_close(out, expected)
@@ -2889,8 +2889,8 @@ class TestRandomCrop(BaseTester):
         rc = RandomCrop(size=(2, 3), padding=padding, fill=10, align_corners=True, p=1.0)
         out = rc(inp)
 
-        assert rc._params['input_size'][0][0] == (inp.shape[-2] + 2 * padding[1])  # height + top + bottom
-        assert rc._params['input_size'][0][1] == (inp.shape[-1] + 2 * padding[0])  # height + left + right
+        assert rc._params["input_size"][0][0] == (inp.shape[-2] + 2 * padding[1])  # height + top + bottom
+        assert rc._params["input_size"][0][1] == (inp.shape[-1] + 2 * padding[0])  # height + left + right
         self.assert_close(out, expected)
         torch.manual_seed(42)
         inversed = torch.tensor(
@@ -2919,8 +2919,8 @@ class TestRandomCrop(BaseTester):
         rc = RandomCrop(size=(2, 3), padding=padding, fill=8, align_corners=True, p=1.0)
         out = rc(inp)
 
-        assert rc._params['input_size'][0][0] == (inp.shape[-2] + padding[1] + padding[3])  # height + top + bottom
-        assert rc._params['input_size'][0][1] == (inp.shape[-1] + padding[0] + padding[2])  # height + left + right
+        assert rc._params["input_size"][0][0] == (inp.shape[-2] + padding[1] + padding[3])  # height + top + bottom
+        assert rc._params["input_size"][0][1] == (inp.shape[-1] + padding[0] + padding[2])  # height + left + right
         self.assert_close(out, expected, low_tolerance=True)
 
         torch.manual_seed(0)
@@ -3006,10 +3006,10 @@ class TestRandomCrop(BaseTester):
         torch.manual_seed(0)
         img = torch.tensor([[[0.0, 1.0, 2.0], [3.0, 4.0, 5.0], [6.0, 7.0, 8.0]]], device=device, dtype=dtype)
 
-        op1 = RandomCrop(size=(2, 2), cropping_mode='resample')
+        op1 = RandomCrop(size=(2, 2), cropping_mode="resample")
         out = op1(img)
 
-        op2 = RandomCrop(size=(2, 2), cropping_mode='slice')
+        op2 = RandomCrop(size=(2, 2), cropping_mode="slice")
 
         self.assert_close(out, op2(img, op1._params))
 
@@ -3200,10 +3200,10 @@ class TestRandomResizedCrop(BaseTester):
         torch.manual_seed(0)
         img = torch.tensor([[[0.0, 1.0, 2.0], [3.0, 4.0, 5.0], [6.0, 7.0, 8.0]]], device=device, dtype=dtype)
 
-        op1 = RandomResizedCrop(size=(4, 4), cropping_mode='resample')
+        op1 = RandomResizedCrop(size=(4, 4), cropping_mode="resample")
         out = op1(img)
 
-        op2 = RandomResizedCrop(size=(4, 4), cropping_mode='slice')
+        op2 = RandomResizedCrop(size=(4, 4), cropping_mode="slice")
 
         self.assert_close(out, op2(img, op1._params))
 
@@ -3342,7 +3342,7 @@ class TestRandomEqualize(BaseTester):
         assert gradcheck(RandomEqualize(p=0.5), (input,), raise_exception=True, fast_mode=True)
 
     @staticmethod
-    def build_input(channels, height, width, bs=1, row=None, device='cpu', dtype=torch.float32):
+    def build_input(channels, height, width, bs=1, row=None, device="cpu", dtype=torch.float32):
         if row is None:
             row = torch.arange(width, device=device, dtype=dtype) / float(width)
 
@@ -3779,7 +3779,7 @@ class TestRandomElasticTransform:
 
         # Make sure the transformation works correctly even if only applied to some images in the batch
         to_apply = torch.tensor(batch_prob, device=device)
-        with patch.object(aug_list[0], '__batch_prob_generator__', return_value=to_apply):
+        with patch.object(aug_list[0], "__batch_prob_generator__", return_value=to_apply):
             features_transformed, labels_transformed = aug_list(features, labels, data_keys=["input", "mask"])
             assert_close(aug_list._params[0].data["batch_prob"], to_apply)
 
@@ -4071,7 +4071,7 @@ class TestPlanckianJitter(BaseTester):
 
     def test_planckian_jitter_cied(self, device, dtype):
         torch.manual_seed(0)
-        f = RandomPlanckianJitter(mode='CIED', select_from=1)
+        f = RandomPlanckianJitter(mode="CIED", select_from=1)
         input = self._get_input(device, dtype)
         expected = self._get_expected_output_cied(device, dtype)
         self.assert_close(f(input), expected, low_tolerance=True)
@@ -4212,10 +4212,10 @@ class TestRandomSnow(BaseTester):
     torch.manual_seed(0)  # for random reproductibility
 
     def _get_exception_test_data(self, device, dtype):
-        err_msg_sw_coef = 'Snow coefficient values must be between 0 and 1.'
-        err_msg_brght_coef = 'Brightness values must be greater than 1.'
-        err_msg_wrong_ch = 'Number of color channels should be 3.'
-        err_msg_wrong_sh = 'Input size must have a shape of either (H, W), (C, H, W) or (*, C, H, W).'
+        err_msg_sw_coef = "Snow coefficient values must be between 0 and 1."
+        err_msg_brght_coef = "Brightness values must be greater than 1."
+        err_msg_wrong_ch = "Number of color channels should be 3."
+        err_msg_wrong_sh = "Input size must have a shape of either (H, W), (C, H, W) or (*, C, H, W)."
 
         return [
             (err_msg_sw_coef, (-0.3, 0.6), (1.2, 3.4), torch.rand(1, 3, 3, device=device, dtype=dtype)),
@@ -4287,8 +4287,8 @@ class TestRandomRain(BaseTester):
 
     def _get_exception_test_data(self, device, dtype):
         err_msg_height_bigger = "Height of drop should be greater than zero and less than image height."
-        err_msg_width_bigger = 'Width of drop should be less than image width'
-        err_msg_wrong_ch = 'Number of color channels should be 1 or 3.'
+        err_msg_width_bigger = "Width of drop should be less than image width"
+        err_msg_wrong_ch = "Number of color channels should be 1 or 3."
 
         return [
             (err_msg_height_bigger, (-2, 0), (2, 3), torch.rand(1, 5, 5, device=device, dtype=dtype)),
@@ -4355,7 +4355,7 @@ class DummyMPDataset(torch.utils.data.Dataset):
             RandomRotation3D(degrees=15),
         ]
 
-        if context != 'fork':
+        if context != "fork":
             # random planckian jitter auto selects a GPU. But it is not possible
             # to init a CUDA context in a forked process.
             # So we skip it in this case.
@@ -4390,7 +4390,7 @@ class TestMultiprocessing:
     torch.manual_seed(0)  # for random reproductibility
 
     @pytest.mark.slow
-    @pytest.mark.parametrize('context', ['spawn', 'forkserver', 'fork'] if os.name != 'nt' else ['spawn'])
+    @pytest.mark.parametrize("context", ["spawn", "forkserver", "fork"] if os.name != "nt" else ["spawn"])
     def test_spawn_multiprocessing_context(self, context: str):
         dataset = DummyMPDataset(context=context)
         dataloader = torch.utils.data.DataLoader(

@@ -17,9 +17,9 @@ def _range_bound(
     factor: Union[Tensor, float, Tuple[float, float], List[float]],
     name: str,
     center: Optional[float] = 0.0,
-    bounds: Optional[Tuple[float, float]] = (0, float('inf')),
-    check: Optional[str] = 'joint',
-    device: torch.device = torch.device('cpu'),
+    bounds: Optional[Tuple[float, float]] = (0, float("inf")),
+    check: Optional[str] = "joint",
+    device: torch.device = torch.device("cpu"),
     dtype: torch.dtype = torch.get_default_dtype(),
 ) -> Tensor:
     r"""Check inputs and compute the corresponding factor bounds."""
@@ -41,9 +41,9 @@ def _range_bound(
         factor_bound = as_tensor(factor, device=device, dtype=dtype)
 
     if check is not None:
-        if check == 'joint':
+        if check == "joint":
             _joint_range_check(factor_bound, name, bounds)
-        elif check == 'singular':
+        elif check == "singular":
             _singular_range_check(factor_bound, name, bounds)
         else:
             raise NotImplementedError(f"methods '{check}' not implemented.")
@@ -54,7 +54,7 @@ def _range_bound(
 def _joint_range_check(ranged_factor: Tensor, name: str, bounds: Optional[Tuple[float, float]] = None) -> None:
     """Check if bounds[0] <= ranged_factor[0] <= ranged_factor[1] <= bounds[1]"""
     if bounds is None:
-        bounds = (float('-inf'), float('inf'))
+        bounds = (float("-inf"), float("inf"))
     if ranged_factor.dim() == 1 and len(ranged_factor) == 2:
         if not bounds[0] <= ranged_factor[0] or not bounds[1] >= ranged_factor[1]:
             raise ValueError(f"{name} out of bounds. Expected inside {bounds}, got {ranged_factor}.")
@@ -70,12 +70,12 @@ def _singular_range_check(
     name: str,
     bounds: Optional[Tuple[float, float]] = None,
     skip_none: bool = False,
-    mode: str = '2d',
+    mode: str = "2d",
 ) -> None:
     """Check if bounds[0] <= ranged_factor[0] <= bounds[1] and bounds[0] <= ranged_factor[1] <= bounds[1]"""
-    if mode == '2d':
+    if mode == "2d":
         dim_size = 2
-    elif mode == '3d':
+    elif mode == "3d":
         dim_size = 3
     else:
         raise ValueError(f"'mode' shall be either 2d or 3d. Got {mode}")
@@ -83,7 +83,7 @@ def _singular_range_check(
     if skip_none and ranged_factor is None:
         return
     if bounds is None:
-        bounds = (float('-inf'), float('inf'))
+        bounds = (float("-inf"), float("inf"))
     if ranged_factor.dim() == 1 and len(ranged_factor) == dim_size:
         for f in ranged_factor:
             if not bounds[0] <= f <= bounds[1]:

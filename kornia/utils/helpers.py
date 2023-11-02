@@ -22,9 +22,9 @@ def get_cuda_device_if_available(index: int = 0) -> torch.device:
         torch.device
     """
     if torch.cuda.is_available():
-        return torch.device(f'cuda:{index}')
+        return torch.device(f"cuda:{index}")
 
-    return torch.device('cpu')
+    return torch.device("cpu")
 
 
 def get_mps_device_if_available() -> torch.device:
@@ -33,10 +33,10 @@ def get_mps_device_if_available() -> torch.device:
     Returns:
         torch.device
     """
-    dev = 'cpu'
-    if hasattr(torch.backends, 'mps'):
+    dev = "cpu"
+    if hasattr(torch.backends, "mps"):
         if torch.backends.mps.is_available():
-            dev = 'mps'
+            dev = "mps"
     return torch.device(dev)
 
 
@@ -74,13 +74,13 @@ def deprecated(
         @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             name = ""
-            beginning = f'Since kornia {version} the ' if version is not None else ''
+            beginning = f"Since kornia {version} the " if version is not None else ""
 
             if isclass(func):
                 name = func.__class__.__name__
             if isfunction(func):
                 name = func.__name__
-            warnings.simplefilter('always', DeprecationWarning)
+            warnings.simplefilter("always", DeprecationWarning)
             if replace_with is not None:
                 warnings.warn(
                     f"{beginning}`{name}` is deprecated in favor of `{replace_with}`.{extra_reason}",
@@ -93,7 +93,7 @@ def deprecated(
                     category=DeprecationWarning,
                     stacklevel=2,
                 )
-            warnings.simplefilter('default', DeprecationWarning)
+            warnings.simplefilter("default", DeprecationWarning)
             return func(*args, **kwargs)
 
         return wrapper
@@ -126,7 +126,7 @@ def _extract_device_dtype(tensor_list: List[Optional[Any]]) -> Tuple[torch.devic
                 )
     if device is None:
         # TODO: update this when having torch.get_default_device()
-        device = torch.device('cpu')
+        device = torch.device("cpu")
     if dtype is None:
         dtype = torch.get_default_dtype()
     return (device, dtype)
@@ -230,7 +230,7 @@ def safe_solve_with_mask(B: Tensor, A: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
     solution."""
     if not torch_version_ge(1, 10):
         sol = _torch_solve_cast(A, B)
-        warnings.warn('PyTorch version < 1.10, solve validness mask maybe not correct', RuntimeWarning)
+        warnings.warn("PyTorch version < 1.10, solve validness mask maybe not correct", RuntimeWarning)
         return sol, sol, torch.ones(len(A), dtype=torch.bool, device=A.device)
     # Based on https://github.com/pytorch/pytorch/issues/31546#issuecomment-694135622
     if not isinstance(B, Tensor):

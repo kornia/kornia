@@ -233,18 +233,18 @@ class MobileViT(Module):
     """
 
     def __init__(
-        self, mode: str = 'xxs', in_channels: int = 3, patch_size: Tuple[int, int] = (2, 2), dropout: float = 0.0
+        self, mode: str = "xxs", in_channels: int = 3, patch_size: Tuple[int, int] = (2, 2), dropout: float = 0.0
     ) -> None:
         super().__init__()
-        if mode == 'xxs':
+        if mode == "xxs":
             expansion = 2
             dims = [64, 80, 96]
             channels = [16, 16, 24, 24, 48, 48, 64, 64, 80, 80, 320]
-        elif mode == 'xs':
+        elif mode == "xs":
             expansion = 4
             dims = [96, 120, 144]
             channels = [16, 32, 48, 48, 64, 64, 80, 80, 96, 96, 384]
-        elif mode == 's':
+        elif mode == "s":
             expansion = 4
             dims = [144, 192, 240]
             channels = [16, 32, 64, 64, 96, 96, 128, 128, 160, 160, 640]

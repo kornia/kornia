@@ -131,7 +131,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
     ) -> Tensor:
         in_tensor = self.transform_tensor(input)
         output = in_tensor.clone()
-        batch_prob = params['batch_prob']
+        batch_prob = params["batch_prob"]
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
 
         params, flags = self._process_kwargs_to_params_and_flags(
@@ -141,7 +141,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         size: Optional[Tuple[int, int]] = None
         if "forward_input_shape" in params:
             # Majorly for cropping functions
-            _size = params['forward_input_shape'].tolist()
+            _size = params["forward_input_shape"].tolist()
             size = (_size[-2], _size[-1])
 
         # if no augmentation needed
@@ -185,7 +185,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         **kwargs: Any,
     ) -> Boxes:
         output = input.clone()
-        batch_prob = params['batch_prob']
+        batch_prob = params["batch_prob"]
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
 
         if transform is None:
@@ -223,7 +223,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             transform: the inverse transformation matrix
         """
         output = input.clone()
-        batch_prob = params['batch_prob']
+        batch_prob = params["batch_prob"]
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
 
         if transform is None:

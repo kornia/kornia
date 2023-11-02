@@ -22,7 +22,7 @@ def _crop(img: Tensor, cropping_shape: List[int]) -> Tensor:
 
 
 def ssim3d(
-    img1: Tensor, img2: Tensor, window_size: int, max_val: float = 1.0, eps: float = 1e-12, padding: str = 'same'
+    img1: Tensor, img2: Tensor, window_size: int, max_val: float = 1.0, eps: float = 1e-12, padding: str = "same"
 ) -> Tensor:
     r"""Function that computes the Structural Similarity (SSIM) index map between two images.
 
@@ -79,12 +79,12 @@ def ssim3d(
     mu2: Tensor = filter3d(img2, kernel)
 
     cropping_shape: List[int] = []
-    if padding == 'valid':
+    if padding == "valid":
         depth, height, width = kernel.shape[-3:]
         cropping_shape = _compute_padding([depth, height, width])
         mu1 = _crop(mu1, cropping_shape)
         mu2 = _crop(mu2, cropping_shape)
-    elif padding == 'same':
+    elif padding == "same":
         pass
 
     mu1_sq = mu1**2
@@ -95,11 +95,11 @@ def ssim3d(
     mu_img2_sq = filter3d(img2**2, kernel)
     mu_img1_img2 = filter3d(img1 * img2, kernel)
 
-    if padding == 'valid':
+    if padding == "valid":
         mu_img1_sq = _crop(mu_img1_sq, cropping_shape)
         mu_img2_sq = _crop(mu_img2_sq, cropping_shape)
         mu_img1_img2 = _crop(mu_img1_img2, cropping_shape)
-    elif padding == 'same':
+    elif padding == "same":
         pass
 
     # compute local sigma per channel
@@ -151,7 +151,7 @@ class SSIM3D(Module):
         >>> ssim_map = ssim(input1, input2)  # 1x4x5x5x5
     """
 
-    def __init__(self, window_size: int, max_val: float = 1.0, eps: float = 1e-12, padding: str = 'same') -> None:
+    def __init__(self, window_size: int, max_val: float = 1.0, eps: float = 1e-12, padding: str = "same") -> None:
         super().__init__()
         self.window_size: int = window_size
         self.max_val: float = max_val

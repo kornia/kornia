@@ -14,7 +14,7 @@ from .params import ParamItem
 
 DataType = Union[Tensor, List[Tensor], Boxes, Keypoints]
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
@@ -25,7 +25,7 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
         if isinstance(param, ParamItem) and isinstance(param.data, dict):
             _params = param.data
         else:
-            raise TypeError(f'Expected param (ParamItem.data) be a dictionary. Gotcha {param}.')
+            raise TypeError(f"Expected param (ParamItem.data) be a dictionary. Gotcha {param}.")
         return _params
 
     @classmethod
@@ -33,7 +33,7 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
         if isinstance(param, ParamItem) and isinstance(param.data, list):
             _params = param.data
         else:
-            raise TypeError(f'Expected param (ParamItem.data) be a list. Gotcha {param}.')
+            raise TypeError(f"Expected param (ParamItem.data) be a list. Gotcha {param}.")
         return _params
 
     @classmethod
@@ -110,7 +110,10 @@ class AugmentationSequentialOps:
             param = ParamItem(
                 name=param.name,
                 data=module.params_from_input(
-                    *arg, data_keys=_data_keys, params=param.data, extra_args=extra_args  # type: ignore
+                    *arg,  # type: ignore[arg-type]
+                    data_keys=_data_keys,
+                    params=param.data,  # type: ignore[arg-type]
+                    extra_args=extra_args,
                 ),
             )
 
@@ -142,10 +145,10 @@ class AugmentationSequentialOps:
         return outputs
 
 
-P = ParamSpec('P')
+P = ParamSpec("P")
 
 
-def make_input_only_sequential(module: 'K.container.ImageSequentialBase') -> Callable[P, Tensor]:
+def make_input_only_sequential(module: "K.container.ImageSequentialBase") -> Callable[P, Tensor]:
     """Disable all other additional inputs (e.g. ) for ImageSequential."""
 
     def f(*args: P.args, **kwargs: P.kwargs) -> Tensor:
@@ -154,7 +157,7 @@ def make_input_only_sequential(module: 'K.container.ImageSequentialBase') -> Cal
     return f
 
 
-def get_geometric_only_param(module: 'K.container.ImageSequentialBase', param: List[ParamItem]) -> List[ParamItem]:
+def get_geometric_only_param(module: "K.container.ImageSequentialBase", param: List[ParamItem]) -> List[ParamItem]:
     named_modules = module.get_forward_sequence(param)
 
     res: List[ParamItem] = []
@@ -357,7 +360,11 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
                 raise ValueError(f"No valid transformation matrix found in {module.__class__}.")
             transform = module.compute_inverse_transformation(module.transform_matrix)
             _input = module.inverse_boxes(
-                _input, param.data, module.flags, transform=transform, **extra_args  # type: ignore
+                _input,
+                param.data,  # type: ignore[arg-type]
+                module.flags,
+                transform=transform,
+                **extra_args,
             )
 
         elif isinstance(module, (K.GeometricAugmentationBase3D,)):

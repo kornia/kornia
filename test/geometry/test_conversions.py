@@ -26,7 +26,7 @@ from kornia.testing import BaseTester, assert_close, create_eye_batch, tensor_to
 @pytest.fixture()
 def atol(device, dtype):
     """Lower tolerance for cuda-float16 only."""
-    if 'cuda' in device.type and dtype == torch.float16:
+    if "cuda" in device.type and dtype == torch.float16:
         return 1.0e-3
     return 1.0e-4
 
@@ -34,7 +34,7 @@ def atol(device, dtype):
 @pytest.fixture()
 def rtol(device, dtype):
     """Lower tolerance for cuda-float16 only."""
-    if 'cuda' in device.type and dtype == torch.float16:
+    if "cuda" in device.type and dtype == torch.float16:
         return 1.0e-3
     return 1.0e-4
 
@@ -845,8 +845,8 @@ class TestNormalizePixelCoordinates:
         assert_close(grid_norm, expected, atol=atol, rtol=rtol)
 
     def test_dynamo(self, device, dtype, torch_optimizer):
-        if device == torch.device('cpu'):
-            pytest.skip('NormalizePixelCoordinates not working on CPU with dynamo!')
+        if device == torch.device("cpu"):
+            pytest.skip("NormalizePixelCoordinates not working on CPU with dynamo!")
 
         op = kornia.geometry.conversions.normalize_pixel_coordinates
         op_optimized = torch_optimizer(op)
@@ -888,8 +888,8 @@ class TestDenormalizePixelCoordinates:
         assert_close(grid_norm, expected, atol=1e-4, rtol=1e-4)
 
     def test_dynamo(self, device, dtype, torch_optimizer):
-        if device == torch.device('cpu'):
-            pytest.xfail('DenormalizePixelCoordinates not working on CPU with dynamo!')
+        if device == torch.device("cpu"):
+            pytest.xfail("DenormalizePixelCoordinates not working on CPU with dynamo!")
 
         op = kornia.geometry.conversions.denormalize_pixel_coordinates
         op_optimized = torch_optimizer(op)
@@ -1340,7 +1340,7 @@ class TestQuaternionFromEuler(BaseTester):
         # out = torch.tensor(out, device=device, dtype=dtype)
 
 
-@pytest.mark.parametrize('batch_size', (None, 1, 2, 5))
+@pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
 def test_vector_to_skew_symmetric_matrix(batch_size, device, dtype):
     if batch_size is None:
         vector = torch.rand(3, device=device, dtype=dtype)

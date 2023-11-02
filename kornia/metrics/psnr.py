@@ -46,4 +46,4 @@ def psnr(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Ten
     if image.shape != target.shape:
         raise TypeError(f"Expected tensors of equal shapes, but got {image.shape} and {target.shape}")
 
-    return 10.0 * torch.log10(max_val**2 / mse(image, target, reduction='mean'))
+    return 10.0 * torch.log10(max_val**2 / mse(image, target, reduction="mean"))

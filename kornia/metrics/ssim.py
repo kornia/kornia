@@ -20,7 +20,7 @@ def ssim(
     window_size: int,
     max_val: float = 1.0,
     eps: float = 1e-12,
-    padding: str = 'same',
+    padding: str = "same",
 ) -> torch.Tensor:
     r"""Function that computes the Structural Similarity (SSIM) index map between two images.
 
@@ -86,12 +86,12 @@ def ssim(
     mu2: torch.Tensor = filter2d_separable(img2, kernel, kernel)
 
     cropping_shape: List[int] = []
-    if padding == 'valid':
+    if padding == "valid":
         height = width = kernel.shape[-1]
         cropping_shape = _compute_padding([height, width])
         mu1 = _crop(mu1, cropping_shape)
         mu2 = _crop(mu2, cropping_shape)
-    elif padding == 'same':
+    elif padding == "same":
         pass
 
     mu1_sq = mu1**2
@@ -102,11 +102,11 @@ def ssim(
     mu_img2_sq = filter2d_separable(img2**2, kernel, kernel)
     mu_img1_img2 = filter2d_separable(img1 * img2, kernel, kernel)
 
-    if padding == 'valid':
+    if padding == "valid":
         mu_img1_sq = _crop(mu_img1_sq, cropping_shape)
         mu_img2_sq = _crop(mu_img2_sq, cropping_shape)
         mu_img1_img2 = _crop(mu_img1_img2, cropping_shape)
-    elif padding == 'same':
+    elif padding == "same":
         pass
 
     # compute local sigma per channel
@@ -158,7 +158,7 @@ class SSIM(nn.Module):
         >>> ssim_map = ssim(input1, input2)  # 1x4x5x5
     """
 
-    def __init__(self, window_size: int, max_val: float = 1.0, eps: float = 1e-12, padding: str = 'same') -> None:
+    def __init__(self, window_size: int, max_val: float = 1.0, eps: float = 1e-12, padding: str = "same") -> None:
         super().__init__()
         self.window_size: int = window_size
         self.max_val: float = max_val

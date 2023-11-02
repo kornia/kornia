@@ -14,7 +14,7 @@ __all__ = [
     "EdgeAwareBlurPool2D",
     "blur_pool2d",
     "max_blur_pool2d",
-    'edge_aware_blur_pool2d',
+    "edge_aware_blur_pool2d",
 ]
 
 
@@ -200,7 +200,7 @@ def max_blur_pool2d(
         tensor([[[[0.5625, 0.3125],
                   [0.3125, 0.8750]]]])
     """
-    KORNIA_CHECK_SHAPE(input, ['B', 'C', 'H', 'W'])
+    KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
 
     kernel = get_pascal_kernel_2d(kernel_size, norm=True, device=input.device, dtype=input.dtype).repeat(
         (input.shape[1], 1, 1, 1)

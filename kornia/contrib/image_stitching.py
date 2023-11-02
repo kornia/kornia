@@ -33,15 +33,15 @@ class ImageStitcher(Module):
         plt.imshow(K.tensor_to_image(out))
     """
 
-    def __init__(self, matcher: Module, estimator: str = 'ransac', blending_method: str = "naive") -> None:
+    def __init__(self, matcher: Module, estimator: str = "ransac", blending_method: str = "naive") -> None:
         super().__init__()
         self.matcher = matcher
         self.estimator = estimator
         self.blending_method = blending_method
-        if estimator not in ['ransac', 'vanilla']:
+        if estimator not in ["ransac", "vanilla"]:
             raise NotImplementedError(f"Unsupported estimator {estimator}. Use `ransac` or `vanilla` instead.")
         if estimator == "ransac":
-            self.ransac = RANSAC('homography')
+            self.ransac = RANSAC("homography")
 
     def _estimate_homography(self, keypoints1: Tensor, keypoints2: Tensor) -> Tensor:
         """Estimate homography by the matched keypoints.
@@ -63,7 +63,7 @@ class ImageStitcher(Module):
 
     def estimate_transform(self, *args: Tensor, **kwargs: Tensor) -> Tensor:
         """Compute the corresponding homography."""
-        kp1, kp2, idx = kwargs['keypoints0'], kwargs['keypoints1'], kwargs['batch_indexes']
+        kp1, kp2, idx = kwargs["keypoints0"], kwargs["keypoints1"], kwargs["batch_indexes"]
         homos = [self._estimate_homography(kp1[idx == i], kp2[idx == i]) for i in range(len(idx.unique()))]
 
         if len(homos) == 0:
@@ -124,7 +124,7 @@ class ImageStitcher(Module):
         if mask_right is None:
             mask_right = torch.ones_like(images_right)
         # 'nearest' to ensure no floating points in the mask
-        src_mask = warp_perspective(mask_right, homo, out_shape, mode='nearest')
+        src_mask = warp_perspective(mask_right, homo, out_shape, mode="nearest")
         dst_mask = concatenate([mask_left, zeros_like(mask_right)], -1)
         return self.blend_image(src_img, dst_img, src_mask), (dst_mask + src_mask).bool().to(src_mask.dtype)
 

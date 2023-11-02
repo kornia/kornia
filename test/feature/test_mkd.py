@@ -24,7 +24,7 @@ from kornia.testing import assert_close
 @pytest.mark.parametrize("ps", [5, 13, 25])
 def test_get_grid_dict(ps):
     grid_dict = get_grid_dict(ps)
-    param_keys = ['x', 'y', 'phi', 'rho']
+    param_keys = ["x", "y", "phi", "rho"]
     assert set(grid_dict.keys()) == set(param_keys)
     for k in param_keys:
         assert grid_dict[k].shape == (ps, ps)
@@ -198,7 +198,7 @@ class TestEmbedGradients:
         assert_close(model(patches), model_jit(patches))
 
 
-@pytest.mark.parametrize("kernel_type,d,ps", [('cart', 9, 9), ('polar', 25, 9), ('cart', 9, 16), ('polar', 25, 16)])
+@pytest.mark.parametrize("kernel_type,d,ps", [("cart", 9, 9), ("polar", 25, 9), ("cart", 9, 16), ("polar", 25, 16)])
 def test_spatial_kernel_embedding(kernel_type, ps, d):
     grids = get_grid_dict(ps)
     spatial_kernel = spatial_kernel_embedding(kernel_type, grids)
@@ -207,26 +207,26 @@ def test_spatial_kernel_embedding(kernel_type, ps, d):
 
 class TestExplicitSpacialEncoding:
     @pytest.mark.parametrize(
-        "kernel_type,ps,in_dims", [('cart', 9, 3), ('polar', 9, 3), ('cart', 13, 7), ('polar', 13, 7)]
+        "kernel_type,ps,in_dims", [("cart", 9, 3), ("polar", 9, 3), ("cart", 13, 7), ("polar", 13, 7)]
     )
     def test_shape(self, kernel_type, ps, in_dims, device):
         inp = torch.ones(1, in_dims, ps, ps).to(device)
         ese = ExplicitSpacialEncoding(kernel_type=kernel_type, fmap_size=ps, in_dims=in_dims).to(device)
         out = ese(inp)
-        d_ = 9 if kernel_type == 'cart' else 25
+        d_ = 9 if kernel_type == "cart" else 25
         assert out.shape == (1, d_ * in_dims)
 
     @pytest.mark.parametrize(
-        "kernel_type,bs", [('cart', 1), ('cart', 5), ('cart', 13), ('polar', 1), ('polar', 5), ('polar', 13)]
+        "kernel_type,bs", [("cart", 1), ("cart", 5), ("cart", 13), ("polar", 1), ("polar", 5), ("polar", 13)]
     )
     def test_batch_shape(self, kernel_type, bs, device):
         inp = torch.ones(bs, 7, 15, 15).to(device)
         ese = ExplicitSpacialEncoding(kernel_type=kernel_type, fmap_size=15, in_dims=7).to(device)
         out = ese(inp)
-        d_ = 9 if kernel_type == 'cart' else 25
+        d_ = 9 if kernel_type == "cart" else 25
         assert out.shape == (bs, d_ * 7)
 
-    @pytest.mark.parametrize("kernel_type", ['cart', 'polar'])
+    @pytest.mark.parametrize("kernel_type", ["cart", "polar"])
     def test_print(self, kernel_type, device):
         ese = ExplicitSpacialEncoding(kernel_type=kernel_type, fmap_size=15, in_dims=7).to(device)
         ese.__repr__()
@@ -234,19 +234,19 @@ class TestExplicitSpacialEncoding:
     def test_toy(self, device):
         inp = torch.ones(1, 2, 6, 6).to(device).float()
         inp[0, 0, :, :] = 0
-        cart_ese = ExplicitSpacialEncoding(kernel_type='cart', fmap_size=6, in_dims=2).to(device)
+        cart_ese = ExplicitSpacialEncoding(kernel_type="cart", fmap_size=6, in_dims=2).to(device)
         out = cart_ese(inp)
         out_part = out[:, :9]
         expected = torch.zeros_like(out_part).to(device)
         assert_close(out_part, expected, atol=1e-3, rtol=1e-3)
 
-        polar_ese = ExplicitSpacialEncoding(kernel_type='polar', fmap_size=6, in_dims=2).to(device)
+        polar_ese = ExplicitSpacialEncoding(kernel_type="polar", fmap_size=6, in_dims=2).to(device)
         out = polar_ese(inp)
         out_part = out[:, :25]
         expected = torch.zeros_like(out_part).to(device)
         assert_close(out_part, expected, atol=1e-3, rtol=1e-3)
 
-    @pytest.mark.parametrize("kernel_type", ['cart', 'polar'])
+    @pytest.mark.parametrize("kernel_type", ["cart", "polar"])
     def test_gradcheck(self, kernel_type, device):
         batch_size, channels, ps = 1, 2, 13
         patches = torch.rand(batch_size, channels, ps, ps).to(device)
@@ -266,10 +266,10 @@ class TestExplicitSpacialEncoding:
         B, C, H, W = 2, 2, 13, 13
         patches = torch.rand(B, C, H, W, device=device, dtype=dtype)
         model = (
-            ExplicitSpacialEncoding(kernel_type='cart', fmap_size=W, in_dims=2).to(patches.device, patches.dtype).eval()
+            ExplicitSpacialEncoding(kernel_type="cart", fmap_size=W, in_dims=2).to(patches.device, patches.dtype).eval()
         )
         model_jit = torch.jit.script(
-            ExplicitSpacialEncoding(kernel_type='cart', fmap_size=W, in_dims=2).to(patches.device, patches.dtype).eval()
+            ExplicitSpacialEncoding(kernel_type="cart", fmap_size=W, in_dims=2).to(patches.device, patches.dtype).eval()
         )
         assert_close(model(patches), model_jit(patches))
 
@@ -278,16 +278,16 @@ class TestWhitening:
     @pytest.mark.parametrize(
         "kernel_type,xform,output_dims",
         [
-            ('cart', None, 3),
-            ('polar', None, 3),
-            ('cart', 'lw', 7),
-            ('polar', 'lw', 7),
-            ('cart', 'pca', 9),
-            ('polar', 'pca', 9),
+            ("cart", None, 3),
+            ("polar", None, 3),
+            ("cart", "lw", 7),
+            ("polar", "lw", 7),
+            ("cart", "pca", 9),
+            ("polar", "pca", 9),
         ],
     )
     def test_shape(self, kernel_type, xform, output_dims, device):
-        in_dims = 63 if kernel_type == 'cart' else 175
+        in_dims = 63 if kernel_type == "cart" else 175
         wh = Whitening(xform=xform, whitening_model=None, in_dims=in_dims, output_dims=output_dims).to(device)
         inp = torch.ones(1, in_dims).to(device)
         out = wh(inp)
@@ -295,17 +295,17 @@ class TestWhitening:
 
     @pytest.mark.parametrize("bs", [1, 3, 7])
     def test_batch_shape(self, bs, device):
-        wh = Whitening(xform='lw', whitening_model=None, in_dims=175, output_dims=128).to(device)
+        wh = Whitening(xform="lw", whitening_model=None, in_dims=175, output_dims=128).to(device)
         inp = torch.ones(bs, 175).to(device)
         out = wh(inp)
         assert out.shape == (bs, 128)
 
     def test_print(self, device):
-        wh = Whitening(xform='lw', whitening_model=None, in_dims=175, output_dims=128).to(device)
+        wh = Whitening(xform="lw", whitening_model=None, in_dims=175, output_dims=128).to(device)
         wh.__repr__()
 
     def test_toy(self, device):
-        wh = Whitening(xform='lw', whitening_model=None, in_dims=175, output_dims=175).to(device)
+        wh = Whitening(xform="lw", whitening_model=None, in_dims=175, output_dims=175).to(device)
         inp = torch.ones(1, 175).to(device).float()
         out = wh(inp)
         expected = torch.ones_like(inp).to(device) * 0.0756
@@ -317,7 +317,7 @@ class TestWhitening:
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
 
         def whitening_describe(patches, in_dims=175):
-            wh = Whitening(xform='lw', whitening_model=None, in_dims=in_dims).double()
+            wh = Whitening(xform="lw", whitening_model=None, in_dims=in_dims).double()
             wh.to(device)
             return wh(patches.double())
 
@@ -327,18 +327,18 @@ class TestWhitening:
     def test_jit(self, device, dtype):
         batch_size, in_dims = 1, 175
         patches = torch.rand(batch_size, in_dims).to(device)
-        model = Whitening(xform='lw', whitening_model=None, in_dims=in_dims).to(patches.device, patches.dtype).eval()
+        model = Whitening(xform="lw", whitening_model=None, in_dims=in_dims).to(patches.device, patches.dtype).eval()
         model_jit = torch.jit.script(
-            Whitening(xform='lw', whitening_model=None, in_dims=in_dims).to(patches.device, patches.dtype).eval()
+            Whitening(xform="lw", whitening_model=None, in_dims=in_dims).to(patches.device, patches.dtype).eval()
         )
         assert_close(model(patches), model_jit(patches))
 
 
 class TestMKDDescriptor:
-    dims = {'cart': 63, 'polar': 175, 'concat': 238}
+    dims = {"cart": 63, "polar": 175, "concat": 238}
 
     @pytest.mark.parametrize(
-        "ps,kernel_type", [(9, 'concat'), (9, 'cart'), (9, 'polar'), (32, 'concat'), (32, 'cart'), (32, 'polar')]
+        "ps,kernel_type", [(9, "concat"), (9, "cart"), (9, "polar"), (32, "concat"), (32, "cart"), (32, "polar")]
     )
     def test_shape(self, ps, kernel_type, device):
         mkd = MKDDescriptor(patch_size=ps, kernel_type=kernel_type, whitening=None).to(device)
@@ -349,12 +349,12 @@ class TestMKDDescriptor:
     @pytest.mark.parametrize(
         "ps,kernel_type,whitening",
         [
-            (9, 'concat', 'lw'),
-            (9, 'cart', 'lw'),
-            (9, 'polar', 'lw'),
-            (9, 'concat', 'pcawt'),
-            (9, 'cart', 'pcawt'),
-            (9, 'polar', 'pcawt'),
+            (9, "concat", "lw"),
+            (9, "cart", "lw"),
+            (9, "polar", "lw"),
+            (9, "concat", "pcawt"),
+            (9, "cart", "pcawt"),
+            (9, "polar", "pcawt"),
         ],
     )
     def test_whitened_shape(self, ps, kernel_type, whitening, device):
@@ -366,32 +366,32 @@ class TestMKDDescriptor:
 
     @pytest.mark.parametrize("bs", [1, 3, 7])
     def test_batch_shape(self, bs, device):
-        mkd = MKDDescriptor(patch_size=19, kernel_type='concat', whitening=None).to(device)
+        mkd = MKDDescriptor(patch_size=19, kernel_type="concat", whitening=None).to(device)
         inp = torch.ones(bs, 1, 19, 19).to(device)
         out = mkd(inp)
         assert out.shape == (bs, 238)
 
     def test_print(self, device):
-        mkd = MKDDescriptor(patch_size=32, whitening='lw', training_set='liberty', output_dims=128).to(device)
+        mkd = MKDDescriptor(patch_size=32, whitening="lw", training_set="liberty", output_dims=128).to(device)
         mkd.__repr__()
 
     def test_toy(self, device):
         inp = torch.ones(1, 1, 6, 6).to(device).float()
         inp[0, 0, :, :] = 0
-        mkd = MKDDescriptor(patch_size=6, kernel_type='concat', whitening=None).to(device)
+        mkd = MKDDescriptor(patch_size=6, kernel_type="concat", whitening=None).to(device)
         out = mkd(inp)
         out_part = out[0, -28:]
         expected = torch.zeros_like(out_part).to(device)
         assert_close(out_part, expected, atol=1e-3, rtol=1e-3)
 
-    @pytest.mark.parametrize("whitening", [None, 'lw', 'pca'])
+    @pytest.mark.parametrize("whitening", [None, "lw", "pca"])
     def test_gradcheck(self, whitening, device):
         batch_size, channels, ps = 1, 1, 19
         patches = torch.rand(batch_size, channels, ps, ps).to(device)
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
 
         def mkd_describe(patches, patch_size=19):
-            mkd = MKDDescriptor(patch_size=patch_size, kernel_type='concat', whitening=whitening).double()
+            mkd = MKDDescriptor(patch_size=patch_size, kernel_type="concat", whitening=whitening).double()
             mkd.to(device)
             return mkd(patches.double())
 
@@ -402,8 +402,8 @@ class TestMKDDescriptor:
     def test_jit(self, device, dtype):
         batch_size, channels, ps = 1, 1, 19
         patches = torch.rand(batch_size, channels, ps, ps).to(device)
-        kt = 'concat'
-        wt = 'lw'
+        kt = "concat"
+        wt = "lw"
         model = MKDDescriptor(patch_size=ps, kernel_type=kt, whitening=wt).to(patches.device, patches.dtype).eval()
         model_jit = torch.jit.script(
             MKDDescriptor(patch_size=ps, kernel_type=kt, whitening=wt).to(patches.device, patches.dtype).eval()
@@ -412,9 +412,9 @@ class TestMKDDescriptor:
 
 
 class TestSimpleKD:
-    dims = {'cart': 63, 'polar': 175}
+    dims = {"cart": 63, "polar": 175}
 
-    @pytest.mark.parametrize("ps,kernel_type", [(9, 'cart'), (9, 'polar'), (32, 'cart'), (32, 'polar')])
+    @pytest.mark.parametrize("ps,kernel_type", [(9, "cart"), (9, "polar"), (32, "cart"), (32, "polar")])
     def test_shape(self, ps, kernel_type, device):
         skd = SimpleKD(patch_size=ps, kernel_type=kernel_type).to(device)
         inp = torch.ones(1, 1, ps, ps).to(device)
@@ -423,13 +423,13 @@ class TestSimpleKD:
 
     @pytest.mark.parametrize("bs", [1, 3, 7])
     def test_batch_shape(self, bs, device):
-        skd = SimpleKD(patch_size=19, kernel_type='polar').to(device)
+        skd = SimpleKD(patch_size=19, kernel_type="polar").to(device)
         inp = torch.ones(bs, 1, 19, 19).to(device)
         out = skd(inp)
         assert out.shape == (bs, 128)
 
     def test_print(self, device):
-        skd = SimpleKD(patch_size=19, kernel_type='polar').to(device)
+        skd = SimpleKD(patch_size=19, kernel_type="polar").to(device)
         skd.__repr__()
 
     def test_gradcheck(self, device):
@@ -438,7 +438,7 @@ class TestSimpleKD:
         patches = utils.tensor_to_gradcheck_var(patches)  # to var
 
         def skd_describe(patches, patch_size=19):
-            skd = SimpleKD(patch_size=ps, kernel_type='polar', whitening='lw').double()
+            skd = SimpleKD(patch_size=ps, kernel_type="polar", whitening="lw").double()
             skd.to(device)
             return skd(patches.double())
 

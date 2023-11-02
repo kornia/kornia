@@ -8,7 +8,7 @@ from kornia.utils import get_cuda_or_mps_device_if_available
 
 def get_planckian_coeffs(mode: str) -> Tensor:
     default_device = get_cuda_or_mps_device_if_available()
-    if mode.lower() == 'blackbody':
+    if mode.lower() == "blackbody":
         coefs = tensor(
             [
                 [0.6743, 0.4029, 0.0013],
@@ -40,7 +40,7 @@ def get_planckian_coeffs(mode: str) -> Tensor:
             device=default_device,
         )
 
-    elif mode.upper() == 'CIED':
+    elif mode.upper() == "CIED":
         coefs = tensor(
             [
                 [0.5829, 0.4421, 0.2288],
@@ -70,7 +70,7 @@ def get_planckian_coeffs(mode: str) -> Tensor:
             device=default_device,
         )
     else:
-        raise RuntimeError(f'Unexpected mode. Gotcha {mode}')
+        raise RuntimeError(f"Unexpected mode. Gotcha {mode}")
 
     return stack((coefs[:, 0] / coefs[:, 1], coefs[:, 2] / coefs[:, 1]), 1)
 
@@ -172,7 +172,7 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        list_idx = params['idx'].tolist()
+        list_idx = params["idx"].tolist()
 
         self.pl = self.pl.to(device=input.device)
 

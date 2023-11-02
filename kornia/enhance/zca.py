@@ -84,7 +84,7 @@ class ZCAWhitening(Module):
         self.transform_matrix: Tensor
         self.transform_inv: Optional[Tensor]
 
-    def fit(self, x: Tensor) -> 'ZCAWhitening':
+    def fit(self, x: Tensor) -> "ZCAWhitening":
         r"""Fit ZCA whitening matrices to the data.
 
         Args:
@@ -148,7 +148,7 @@ class ZCAWhitening(Module):
             raise RuntimeError("Did not compute inverse ZCA. Please set compute_inv to True")
 
         if self.transform_inv is None:
-            raise TypeError('The transform inverse should be a Tensor. Gotcha None.')
+            raise TypeError("The transform inverse should be a Tensor. Gotcha None.")
 
         mean_inv: Tensor = -self.mean_vector.mm(self.transform_matrix)
 

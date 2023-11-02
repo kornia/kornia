@@ -180,16 +180,16 @@ class RandomCrop(GeometricAugmentationBase2D):
         flags = self.flags if flags is None else flags
         if flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
             if not isinstance(transform, Tensor):
-                raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
+                raise TypeError(f"Expected the `transform` be a Tensor. Got {type(transform)}.")
             # Fit the arg to F.pad
-            if flags['padding_mode'] == "constant":
+            if flags["padding_mode"] == "constant":
                 padding_mode = "zeros"
-            elif flags['padding_mode'] == "replicate":
+            elif flags["padding_mode"] == "replicate":
                 padding_mode = "border"
-            elif flags['padding_mode'] == "reflect":
+            elif flags["padding_mode"] == "reflect":
                 padding_mode = "reflection"
             else:
-                padding_mode = flags['padding_mode']
+                padding_mode = flags["padding_mode"]
 
             return crop_by_transform_mat(
                 input,
@@ -217,16 +217,16 @@ class RandomCrop(GeometricAugmentationBase2D):
         if size is None:
             raise RuntimeError("`size` has to be a tuple. Got None.")
         if not isinstance(transform, Tensor):
-            raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
+            raise TypeError(f"Expected the `transform` be a Tensor. Got {type(transform)}.")
         # Fit the arg to F.pad
-        if flags['padding_mode'] == "constant":
+        if flags["padding_mode"] == "constant":
             padding_mode = "zeros"
-        elif flags['padding_mode'] == "replicate":
+        elif flags["padding_mode"] == "replicate":
             padding_mode = "border"
-        elif flags['padding_mode'] == "reflect":
+        elif flags["padding_mode"] == "reflect":
             padding_mode = "reflection"
         else:
-            padding_mode = flags['padding_mode']
+            padding_mode = flags["padding_mode"]
         return crop_by_transform_mat(
             input,
             transform[:, :2, :],

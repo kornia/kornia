@@ -36,7 +36,7 @@ def median_blur(input: Tensor, kernel_size: tuple[int, int] | int) -> Tensor:
         torch.Size([2, 4, 5, 7])
     """
     KORNIA_CHECK_IS_TENSOR(input)
-    KORNIA_CHECK_SHAPE(input, ['B', 'C', 'H', 'W'])
+    KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
 
     padding = _compute_zero_padding(kernel_size)
 

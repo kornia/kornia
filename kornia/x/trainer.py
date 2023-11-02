@@ -96,7 +96,7 @@ class Trainer:
 
         self.state = TrainerState.STARTING
 
-        self._logger = logging.getLogger('train')
+        self._logger = logging.getLogger("train")
 
     @property
     def device(self) -> torch.device:
@@ -177,8 +177,8 @@ class Trainer:
             # Loss computation
             if self.criterion is not None:
                 val_loss = self.compute_loss(out, sample["target"])
-                stats.update('losses', val_loss.item(), batch_size)
-            stats.update_from_dict(self.compute_metrics(out, sample['target']), batch_size)
+                stats.update("losses", val_loss.item(), batch_size)
+            stats.update_from_dict(self.compute_metrics(out, sample["target"]), batch_size)
 
             if sample_id % 10 == 0:
                 self._logger.info(f"Test: {sample_id}/{len(self.valid_dataloader)} {stats}")

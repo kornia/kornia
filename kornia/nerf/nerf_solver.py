@@ -21,6 +21,7 @@ class NerfSolver:
         device: device for class tensors: Union[str, Device]
         dtype: type for all floating point calculations: torch.dtype
     """
+
     _nerf_model: Module
     _opt_nerf: optim.Optimizer
 
@@ -87,7 +88,7 @@ class NerfSolver:
         elif torch.is_tensor(num_img_rays):
             self._num_img_rays = num_img_rays
         else:
-            raise TypeError('num_img_rays can be either an int or a Tensor')
+            raise TypeError("num_img_rays can be either an int or a Tensor")
 
         self._batch_size = batch_size
 
@@ -139,7 +140,7 @@ class NerfSolver:
             Average psnr over all epoch rays
         """
         if self._cameras is None:
-            raise TypeError('The camera should be a PinholeCamera. Gotcha None. You init the training before train?')
+            raise TypeError("The camera should be a PinholeCamera. Gotcha None. You init the training before train?")
 
         ray_dataset = RayDataset(
             self._cameras, self._min_depth, self._max_depth, self._ndc, device=self._device, dtype=self._dtype
@@ -147,12 +148,12 @@ class NerfSolver:
 
         if isinstance(self._num_img_rays, int):
             raise TypeError(
-                'The number of images of Ray should be a tensor. Gotcha an integer. You init the training before train?'
+                "The number of images of Ray should be a tensor. Gotcha an integer. You init the training before train?"
             )
         ray_dataset.init_ray_dataset(self._num_img_rays)
 
         if self._imgs is None:
-            raise TypeError('Invalid image list object')
+            raise TypeError("Invalid image list object")
         ray_dataset.init_images_for_training(self._imgs)  # FIXME: Do we need to load the same images on each Epoch?
 
         ray_data_loader = instantiate_ray_dataloader(ray_dataset, self._batch_size, shuffle=True)
@@ -179,7 +180,7 @@ class NerfSolver:
 
             if i_epoch % 10 == 0:
                 current_time = datetime.now().strftime("%H:%M:%S")  # noqa: DTZ005
-                print(f'Epoch: {i_epoch}: epoch_psnr = {epoch_psnr}; time: {current_time}')
+                print(f"Epoch: {i_epoch}: epoch_psnr = {epoch_psnr}; time: {current_time}")
 
     def render_views(self, cameras: PinholeCamera) -> ImageTensors:
         r"""Renders a novel synthesis view of a trained NeRF model for given cameras.

@@ -20,6 +20,7 @@ class DISKFeatures:
                           the log-probability of keeping a keypoint after it has been proposed (see the paper
                           section *Method → Feature distribution* for details).
     """
+
     keypoints: Tensor
     descriptors: Tensor
     detection_scores: Tensor

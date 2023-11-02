@@ -22,11 +22,11 @@ class KeyNet_conf(TypedDict):
 
 keynet_default_config: KeyNet_conf = {
     # Key.Net Model
-    'num_filters': 8,
-    'num_levels': 3,
-    'kernel_size': 5,
+    "num_filters": 8,
+    "num_levels": 3,
+    "kernel_size": 5,
     # Extraction Parameters
-    'Detector_conf': get_default_detector_config(),
+    "Detector_conf": get_default_detector_config(),
 }
 
 KeyNet_URL = "https://github.com/axelBarroso/Key.Net-Pytorch/raw/main/model/weights/keynet_pytorch.pth"
@@ -55,7 +55,7 @@ class _HandcraftedBlock(Module):
 
     def __init__(self) -> None:
         super().__init__()
-        self.spatial_gradient = SpatialGradient('sobel', 1)
+        self.spatial_gradient = SpatialGradient("sobel", 1)
 
     def forward(self, x: Tensor) -> Tensor:
         sobel = self.spatial_gradient(x)
@@ -131,9 +131,9 @@ class KeyNet(Module):
     def __init__(self, pretrained: bool = False, keynet_conf: KeyNet_conf = keynet_default_config) -> None:
         super().__init__()
 
-        num_filters = keynet_conf['num_filters']
-        self.num_levels = keynet_conf['num_levels']
-        kernel_size = keynet_conf['kernel_size']
+        num_filters = keynet_conf["num_filters"]
+        self.num_levels = keynet_conf["num_levels"]
+        kernel_size = keynet_conf["kernel_size"]
         padding = kernel_size // 2
 
         self.feature_extractor = _FeatureExtractor()
@@ -146,7 +146,7 @@ class KeyNet(Module):
         # use torch.hub to load pretrained model
         if pretrained:
             pretrained_dict = torch.hub.load_state_dict_from_url(KeyNet_URL, map_location=map_location_to_cpu)
-            self.load_state_dict(pretrained_dict['state_dict'], strict=True)
+            self.load_state_dict(pretrained_dict["state_dict"], strict=True)
         self.eval()
 
     def forward(self, x: Tensor) -> Tensor:
@@ -158,7 +158,7 @@ class KeyNet(Module):
         for i in range(1, self.num_levels):
             x = pyrdown(x, factor=1.2)
             feats_i = self.feature_extractor(x)
-            feats_i = F.interpolate(feats_i, size=(shape_im[2], shape_im[3]), mode='bilinear')
+            feats_i = F.interpolate(feats_i, size=(shape_im[2], shape_im[3]), mode="bilinear")
             feats.append(feats_i)
         scores = self.last_conv(concatenate(feats, 1))
         return scores
@@ -192,4 +192,4 @@ class KeyNetDetector(MultiResolutionDetector):
         aff_module: Optional[Module] = None,
     ) -> None:
         model = KeyNet(pretrained, keynet_conf)
-        super().__init__(model, num_features, keynet_conf['Detector_conf'], ori_module, aff_module)
+        super().__init__(model, num_features, keynet_conf["Detector_conf"], ori_module, aff_module)

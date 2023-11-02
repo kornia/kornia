@@ -15,7 +15,7 @@ class Testunsharp(BaseTester):
             sigma = torch.tensor([sigma], device=device, dtype=dtype).repeat(shape[0], 1)
 
         inpt = torch.ones(shape, device=device, dtype=dtype)
-        actual = unsharp_mask(inpt, kernel_size, sigma, 'replicate')
+        actual = unsharp_mask(inpt, kernel_size, sigma, "replicate")
         assert isinstance(actual, torch.Tensor)
         assert actual.shape == shape
 
@@ -28,7 +28,7 @@ class Testunsharp(BaseTester):
         actual = unsharp_mask(inpt, kernel_size, sigma, "replicate")
         assert actual.shape == shape
 
-    @pytest.mark.skip(reason='nothing to test')
+    @pytest.mark.skip(reason="nothing to test")
     def test_exception(self):
         ...
 

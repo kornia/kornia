@@ -113,7 +113,7 @@ class AffineGenerator3D(RandomGeneratorBase):
         self._translate: Optional[torch.Tensor] = None
         if self.translate is not None:
             self._translate = torch.as_tensor(self.translate, device=device, dtype=dtype)
-            _singular_range_check(self._translate, 'translate', bounds=(0, 1), mode='3d')
+            _singular_range_check(self._translate, "translate", bounds=(0, 1), mode="3d")
 
         # check scale range
         self._scale: Optional[torch.Tensor] = None
@@ -125,9 +125,9 @@ class AffineGenerator3D(RandomGeneratorBase):
                 raise ValueError(f"'scale' shall be either shape (2) or (3, 2). Got {self.scale}.")
             else:
                 self._scale = _scale
-            _singular_range_check(self._scale[0], 'scale-x', bounds=(0, float('inf')), mode='2d')
-            _singular_range_check(self._scale[1], 'scale-y', bounds=(0, float('inf')), mode='2d')
-            _singular_range_check(self._scale[2], 'scale-z', bounds=(0, float('inf')), mode='2d')
+            _singular_range_check(self._scale[0], "scale-x", bounds=(0, float("inf")), mode="2d")
+            _singular_range_check(self._scale[1], "scale-y", bounds=(0, float("inf")), mode="2d")
+            _singular_range_check(self._scale[2], "scale-z", bounds=(0, float("inf")), mode="2d")
             self.scale_1_sampler = UniformDistribution(self._scale[0, 0], self._scale[0, 1], validate_args=False)
             self.scale_2_sampler = UniformDistribution(self._scale[1, 0], self._scale[1, 1], validate_args=False)
             self.scale_3_sampler = UniformDistribution(self._scale[2, 0], self._scale[2, 1], validate_args=False)
@@ -210,14 +210,14 @@ class AffineGenerator3D(RandomGeneratorBase):
             sxy = sxz = syx = syz = szx = szy = torch.tensor([0] * batch_size, device=_device, dtype=_dtype)
 
         return {
-            'translations': torch.as_tensor(translations, device=_device, dtype=_dtype),
-            'center': torch.as_tensor(center, device=_device, dtype=_dtype),
-            'scale': torch.as_tensor(scale, device=_device, dtype=_dtype),
-            'angles': torch.as_tensor(angles, device=_device, dtype=_dtype),
-            'sxy': torch.as_tensor(sxy, device=_device, dtype=_dtype),
-            'sxz': torch.as_tensor(sxz, device=_device, dtype=_dtype),
-            'syx': torch.as_tensor(syx, device=_device, dtype=_dtype),
-            'syz': torch.as_tensor(syz, device=_device, dtype=_dtype),
-            'szx': torch.as_tensor(szx, device=_device, dtype=_dtype),
-            'szy': torch.as_tensor(szy, device=_device, dtype=_dtype),
+            "translations": torch.as_tensor(translations, device=_device, dtype=_dtype),
+            "center": torch.as_tensor(center, device=_device, dtype=_dtype),
+            "scale": torch.as_tensor(scale, device=_device, dtype=_dtype),
+            "angles": torch.as_tensor(angles, device=_device, dtype=_dtype),
+            "sxy": torch.as_tensor(sxy, device=_device, dtype=_dtype),
+            "sxz": torch.as_tensor(sxz, device=_device, dtype=_dtype),
+            "syx": torch.as_tensor(syx, device=_device, dtype=_dtype),
+            "syz": torch.as_tensor(syz, device=_device, dtype=_dtype),
+            "szx": torch.as_tensor(szx, device=_device, dtype=_dtype),
+            "szy": torch.as_tensor(szy, device=_device, dtype=_dtype),
         }

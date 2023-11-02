@@ -12,7 +12,7 @@ def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
           The tensor must be in the shape of :math:`(*, 3)` where the last
           component is assumed to be a 3d point coordinate :math:`(X, Y, Z)`.
     """
-    if not isinstance(filename, str) and filename[-3:] == '.ply':
+    if not isinstance(filename, str) and filename[-3:] == ".ply":
         raise TypeError(f"Input filename must be a string in with the .ply  extension. Got {filename}")
 
     if not torch.is_tensor(pointcloud):
@@ -24,8 +24,8 @@ def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
     # flatten the input pointcloud in a vector to iterate points
     xyz_vec: torch.Tensor = pointcloud.reshape(-1, 3)
 
-    with open(filename, 'w') as f:
-        data_str: str = ''
+    with open(filename, "w") as f:
+        data_str: str = ""
         num_points: int = xyz_vec.shape[0]
         for idx in range(num_points):
             xyz = xyz_vec[idx]
@@ -35,7 +35,7 @@ def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
             x: float = float(xyz[0])
             y: float = float(xyz[1])
             z: float = float(xyz[2])
-            data_str += f'{x} {y} {z}\n'
+            data_str += f"{x} {y} {z}\n"
 
         f.write("ply\n")
         f.write("format ascii 1.0\n")
@@ -60,7 +60,7 @@ def load_pointcloud_ply(filename: str, header_size: int = 8) -> torch.Tensor:
         tensor containing the loaded point with shape :math:`(*, 3)` where
         :math:`*` represents the number of points.
     """
-    if not isinstance(filename, str) and filename[-3:] == '.ply':
+    if not isinstance(filename, str) and filename[-3:] == ".ply":
         raise TypeError(f"Input filename must be a string in with the .ply  extension. Got {filename}")
     if not os.path.isfile(filename):
         raise ValueError("Input filename is not an existing file.")

@@ -45,12 +45,12 @@ class TestEqualization(BaseTester):
     @pytest.mark.parametrize(
         "B, clip, grid, exception_type, expected_error_msg",
         [
-            (0, 1.0, (2, 2), ValueError, 'Invalid input tensor, it is empty.'),  # from perform_keep_shape_image
-            (1, 1, (2, 2), TypeError, 'Input clip_limit type is not float. Got'),
-            (1, 2.0, 2, TypeError, 'Input grid_size type is not Tuple. Got'),
-            (1, 2.0, (2, 2, 2), TypeError, 'Input grid_size is not a Tuple with 2 elements. Got 3'),
-            (1, 2.0, (2, 2.0), TypeError, 'Input grid_size type is not valid, must be a Tuple[int, int]'),
-            (1, 2.0, (2, 0), ValueError, 'Input grid_size elements must be positive. Got'),
+            (0, 1.0, (2, 2), ValueError, "Invalid input tensor, it is empty."),  # from perform_keep_shape_image
+            (1, 1, (2, 2), TypeError, "Input clip_limit type is not float. Got"),
+            (1, 2.0, 2, TypeError, "Input grid_size type is not Tuple. Got"),
+            (1, 2.0, (2, 2, 2), TypeError, "Input grid_size is not a Tuple with 2 elements. Got 3"),
+            (1, 2.0, (2, 2.0), TypeError, "Input grid_size type is not valid, must be a Tuple[int, int]"),
+            (1, 2.0, (2, 0), ValueError, "Input grid_size elements must be positive. Got"),
         ],
     )
     def test_exception(self, B, clip, grid, exception_type, expected_error_msg):

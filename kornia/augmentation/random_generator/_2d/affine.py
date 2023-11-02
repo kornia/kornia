@@ -62,25 +62,25 @@ class AffineGenerator(RandomGeneratorBase):
         return repr
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
-        _degrees = _range_bound(self.degrees, 'degrees', 0, (-360, 360)).to(device=device, dtype=dtype)
+        _degrees = _range_bound(self.degrees, "degrees", 0, (-360, 360)).to(device=device, dtype=dtype)
         _translate = (
             self.translate
             if self.translate is None
-            else _range_bound(self.translate, 'translate', bounds=(0, 1), check='singular').to(
+            else _range_bound(self.translate, "translate", bounds=(0, 1), check="singular").to(
                 device=device, dtype=dtype
             )
         )
         _scale: Optional[Tensor] = None
         if self.scale is not None:
             if len(self.scale) == 2:
-                _scale = _range_bound(self.scale[:2], 'scale', bounds=(0, float('inf')), check='singular').to(
+                _scale = _range_bound(self.scale[:2], "scale", bounds=(0, float("inf")), check="singular").to(
                     device=device, dtype=dtype
                 )
             elif len(self.scale) == 4:
                 _scale = concatenate(
                     [
-                        _range_bound(self.scale[:2], 'scale_x', bounds=(0, float('inf')), check='singular'),
-                        _range_bound(self.scale[-2:], 'scale_y', bounds=(0, float('inf')), check='singular'),
+                        _range_bound(self.scale[:2], "scale_x", bounds=(0, float("inf")), check="singular"),
+                        _range_bound(self.scale[-2:], "scale_y", bounds=(0, float("inf")), check="singular"),
                     ]
                 ).to(device=device, dtype=dtype)
             else:
@@ -93,11 +93,11 @@ class AffineGenerator(RandomGeneratorBase):
             else:
                 _shear = stack(
                     [
-                        _range_bound(shear if shear.dim() == 0 else shear[:2], 'shear-x', 0, (-360, 360)),
+                        _range_bound(shear if shear.dim() == 0 else shear[:2], "shear-x", 0, (-360, 360)),
                         (
                             tensor([0, 0], device=device, dtype=dtype)
                             if shear.dim() == 0 or len(shear) == 2
-                            else _range_bound(shear[2:], 'shear-y', 0, (-360, 360))
+                            else _range_bound(shear[2:], "shear-y", 0, (-360, 360))
                         ),
                     ]
                 )

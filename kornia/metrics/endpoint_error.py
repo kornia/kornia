@@ -50,7 +50,7 @@ def aepe(input: torch.Tensor, target: torch.Tensor, reduction: str = "mean") -> 
     elif reduction == "none":
         pass
     else:
-        raise NotImplementedError('Invalid reduction option.')
+        raise NotImplementedError("Invalid reduction option.")
 
     return epe
 
@@ -83,7 +83,7 @@ class AEPE(nn.Module):
         >>> epe = epe(input1, input2)
     """
 
-    def __init__(self, reduction: str = 'mean') -> None:
+    def __init__(self, reduction: str = "mean") -> None:
         super().__init__()
         self.reduction: str = reduction
 

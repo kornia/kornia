@@ -239,8 +239,8 @@ class TestFindFundamental:
 
     def test_synthetic_sampson_7point(self, device, dtype):
         scene: Dict[str, torch.Tensor] = utils.generate_two_view_random_scene(device, dtype)
-        x1 = scene['x1'][:, :7, :]
-        x2 = scene['x2'][:, :7, :]
+        x1 = scene["x1"][:, :7, :]
+        x2 = scene["x2"][:, :7, :]
         F_est = epi.find_fundamental(x1, x2, None, "7POINT")
         for i in range(3):
             F = F_est[0][i].unsqueeze(0)
@@ -250,8 +250,8 @@ class TestFindFundamental:
 
     def test_epipolar_constraint_7point(self, device, dtype):
         scene: Dict[str, torch.Tensor] = utils.generate_two_view_random_scene(device, dtype)
-        x1 = scene['x1'][:, :7, :]
-        x2 = scene['x2'][:, :7, :]
+        x1 = scene["x1"][:, :7, :]
+        x2 = scene["x2"][:, :7, :]
         F_est = epi.find_fundamental(x1, x2, None, "7POINT")
         for i in range(3):
             F = F_est[0][i].unsqueeze(0)
@@ -263,8 +263,8 @@ class TestFindFundamental:
     def test_synthetic_sampson(self, device, dtype):
         scene: Dict[str, torch.Tensor] = utils.generate_two_view_random_scene(device, dtype)
 
-        x1 = scene['x1']
-        x2 = scene['x2']
+        x1 = scene["x1"]
+        x2 = scene["x2"]
 
         weights = torch.ones_like(x1)[..., 0]
         F_est = epi.find_fundamental(x1, x2, weights)
@@ -366,9 +366,9 @@ class TestFundamentlFromEssential:
     def test_from_to_essential(self, device, dtype):
         scene = utils.generate_two_view_random_scene(device, dtype)
 
-        F_mat = scene['F']
-        E_mat = epi.essential_from_fundamental(F_mat, scene['K1'], scene['K2'])
-        F_hat = epi.fundamental_from_essential(E_mat, scene['K1'], scene['K2'])
+        F_mat = scene["F"]
+        E_mat = epi.essential_from_fundamental(F_mat, scene["K1"], scene["K2"])
+        F_hat = epi.fundamental_from_essential(E_mat, scene["K1"], scene["K2"])
 
         F_mat_norm = epi.normalize_transformation(F_mat)
         F_hat_norm = epi.normalize_transformation(F_hat)

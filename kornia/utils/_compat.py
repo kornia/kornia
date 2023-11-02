@@ -7,7 +7,7 @@ from torch import Tensor
 
 def torch_version() -> str:
     """Parse the `torch.__version__` variable and removes +cu*/cpu."""
-    return torch.__version__.split('+')[0]
+    return torch.__version__.split("+")[0]
 
 
 def torch_version_lt(major: int, minor: int, patch: int) -> bool:
@@ -46,7 +46,7 @@ else:
 
 if TYPE_CHECKING:
     # TODO: remove this branch when kornia relies on torch >= 1.10.0
-    _T = TypeVar('_T')
+    _T = TypeVar("_T")
     torch_inference_mode: Callable[..., ContextManager[_T]]
 elif torch_version_ge(1, 10, 0):
     torch_inference_mode = torch.inference_mode

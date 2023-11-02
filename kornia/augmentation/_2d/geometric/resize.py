@@ -84,10 +84,10 @@ class Resize(GeometricAugmentationBase2D):
         size: Optional[Tuple[int, int]] = None,
     ) -> Tensor:
         if not isinstance(size, tuple):
-            raise TypeError(f'Expected the size be a tuple. Gotcha {type(size)}')
+            raise TypeError(f"Expected the size be a tuple. Gotcha {type(size)}")
 
         if not isinstance(transform, Tensor):
-            raise TypeError(f'Expected the `transform` be a Tensor. Got {type(transform)}.')
+            raise TypeError(f"Expected the `transform` be a Tensor. Got {type(transform)}.")
 
         return crop_by_transform_mat(
             input, transform[:, :2, :], size, flags["resample"].name.lower(), "zeros", flags["align_corners"]

@@ -79,7 +79,7 @@ class TestApplyColorMap(BaseTester):
 
         assert actual.shape == expected_shape
 
-    @pytest.mark.skip(reason='jacobian mismatch')
+    @pytest.mark.skip(reason="jacobian mismatch")
     def test_gradcheck(self, device, dtype):
         # TODO: implement differentiability
         cm = AUTUMN(device=device, dtype=dtype)

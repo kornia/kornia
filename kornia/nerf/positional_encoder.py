@@ -56,10 +56,10 @@ class PositionalEncoder(nn.Module):
             Tensor with encoded position/direction: Tensor
         """
         if x.ndim < 1:
-            raise ValueError('Input tensor represents a scalar')
+            raise ValueError("Input tensor represents a scalar")
         if x.shape[-1] != self._num_dims:
             raise ValueError(
-                f'Input tensor number of dimensions {x.shape[-1]} does not match instantiated dimensionality '
-                f'{self._num_dims}'
+                f"Input tensor number of dimensions {x.shape[-1]} does not match instantiated dimensionality "
+                f"{self._num_dims}"
             )
         return torch.cat([fn(x) for fn in self._embed_fns], dim=-1)

@@ -89,7 +89,7 @@ class Hyperplane(Module):
         norm = normal.norm(-1)
 
         # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Hyperplane.h#L108
-        def compute_normal_svd(v0: Tensor, v1: Tensor) -> 'Vector3':
+        def compute_normal_svd(v0: Tensor, v1: Tensor) -> "Vector3":
             # NOTE: for reason TensorWrapper does not stack well
             m = stack((unwrap(v0), unwrap(v1)), -2)  # Bx2x3
             _, _, V = _torch_svd_cast(m)  # kornia solution lies in the last row

@@ -27,7 +27,7 @@ class TestIntegralTensor(BaseTester):
             integral_tensor(tensor, dim)
         with pytest.raises(Exception) as errinfo:
             integral_tensor(tensor, ())
-        assert 'dim must be a non-empty tuple.' in str(errinfo)
+        assert "dim must be a non-empty tuple." in str(errinfo)
 
     def test_module(self, device, dtype):
         mod = IntegralTensor()

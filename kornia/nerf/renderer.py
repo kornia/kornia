@@ -11,6 +11,7 @@ class VolumeRenderer(torch.nn.Module):
     Args:
         shift: Size of far-field layer: int
     """
+
     _huge = 1.0e10
     _eps = 1.0e-10
 

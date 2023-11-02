@@ -29,7 +29,7 @@ class TestDisk:
 
     @pytest.mark.slow
     def test_smoke_pretrained(self, device):
-        disk = DISK.from_pretrained(checkpoint='depth', device=device)
+        disk = DISK.from_pretrained(checkpoint="depth", device=device)
         inp = torch.ones(1, 3, 64, 64, device=device)
         output = disk(inp)
         assert isinstance(output, list)
@@ -40,11 +40,11 @@ class TestDisk:
     @pytest.mark.skipif(sys.platform == "win32", reason="this test takes so much memory in the CI with Windows")
     @pytest.mark.parametrize("data", ["disk_outdoor"], indirect=True)
     def test_pretrained_outdoor(self, device, dtype, data):
-        disk = DISK.from_pretrained(checkpoint='depth', device=device).to(dtype)
+        disk = DISK.from_pretrained(checkpoint="depth", device=device).to(dtype)
         data_dev = utils.dict_to(data, device, dtype)
         num_feat = 256
         with torch.no_grad():
-            out = disk(data_dev['img1'], num_feat)
+            out = disk(data_dev["img1"], num_feat)
         assert_close(out[0].keypoints, data_dev["disk1"][0].keypoints.to(dtype))
         assert_close(out[0].descriptors, data_dev["disk1"][0].descriptors.to(dtype))
 

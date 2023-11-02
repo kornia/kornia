@@ -133,7 +133,7 @@ class TestCenterCrop3D:
         )
 
     @pytest.mark.skipif(
-        torch_version() == '2.1.0',
+        torch_version() == "2.1.0",
         reason=(
             "https://github.com/pytorch/pytorch/issues/110680"
             " -  unsupported operand type(s) for @: 'FakeTensor' and 'FakeTensor' on `normalize_homography3d`"

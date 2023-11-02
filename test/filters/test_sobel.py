@@ -6,16 +6,16 @@ from kornia.testing import BaseTester, tensor_to_gradcheck_var
 
 
 class TestSpatialGradient(BaseTester):
-    @pytest.mark.parametrize('batch_size', [1, 2])
-    @pytest.mark.parametrize('mode', ['sobel', 'diff'])
-    @pytest.mark.parametrize('order', [1, 2])
-    @pytest.mark.parametrize('normalized', [True, False])
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    @pytest.mark.parametrize("mode", ["sobel", "diff"])
+    @pytest.mark.parametrize("order", [1, 2])
+    @pytest.mark.parametrize("normalized", [True, False])
     def test_smoke(self, batch_size, mode, order, normalized, device, dtype):
         inpt = torch.zeros(batch_size, 3, 4, 4, device=device, dtype=dtype)
         actual = SpatialGradient(mode, order, normalized)(inpt)
         assert isinstance(actual, torch.Tensor)
 
-    @pytest.mark.parametrize('batch_size', [1, 2])
+    @pytest.mark.parametrize("batch_size", [1, 2])
     def test_cardinality(self, batch_size, device, dtype):
         inp = torch.zeros(batch_size, 3, 4, 4, device=device, dtype=dtype)
         assert SpatialGradient()(inp).shape == (batch_size, 3, 2, 4, 4)
@@ -23,11 +23,11 @@ class TestSpatialGradient(BaseTester):
     def test_exception(self):
         with pytest.raises(TypeError) as errinfo:
             spatial_gradient(1)
-        assert 'Not a Tensor type' in str(errinfo)
+        assert "Not a Tensor type" in str(errinfo)
 
         with pytest.raises(TypeError) as errinfo:
             spatial_gradient(torch.zeros(1))
-        assert 'shape must be [[\'B\', \'C\', \'H\', \'W\']]' in str(errinfo)
+        assert "shape must be [['B', 'C', 'H', 'W']]" in str(errinfo)
 
     def test_edges(self, device, dtype):
         inp = torch.tensor(
@@ -164,7 +164,7 @@ class TestSpatialGradient(BaseTester):
             dtype=dtype,
         )
 
-        edges = spatial_gradient(inp, 'diff', normalized=False)
+        edges = spatial_gradient(inp, "diff", normalized=False)
         self.assert_close(edges, expected)
 
     def test_edges_sep_norm(self, device, dtype):
@@ -212,7 +212,7 @@ class TestSpatialGradient(BaseTester):
             / 2.0
         )
 
-        edges = spatial_gradient(inp, 'diff', normalized=True)
+        edges = spatial_gradient(inp, "diff", normalized=True)
         self.assert_close(edges, expected)
 
     def test_noncontiguous(self, device, dtype):
@@ -239,14 +239,14 @@ class TestSpatialGradient(BaseTester):
         actual = op_module(img)
         self.assert_close(actual, expected)
 
-    @pytest.mark.parametrize('mode', ['sobel', 'diff'])
-    @pytest.mark.parametrize('order', [1, 2])
-    @pytest.mark.parametrize('batch_size', [1, 2])
+    @pytest.mark.parametrize("mode", ["sobel", "diff"])
+    @pytest.mark.parametrize("order", [1, 2])
+    @pytest.mark.parametrize("batch_size", [1, 2])
     def test_dynamo(self, batch_size, order, mode, device, dtype, torch_optimizer):
         inpt = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
         if order == 1 and dtype == torch.float64:
             # TODO: FIX order 1 spatial gradient with fp64 on dynamo
-            pytest.xfail(reason='Order 1 on spatial gradient may be wrong computed for float64 on dynamo')
+            pytest.xfail(reason="Order 1 on spatial gradient may be wrong computed for float64 on dynamo")
         op = SpatialGradient(mode, order)
         op_optimized = torch_optimizer(op)
 
@@ -254,15 +254,15 @@ class TestSpatialGradient(BaseTester):
 
 
 class TestSpatialGradient3d(BaseTester):
-    @pytest.mark.parametrize('batch_size', [1, 2])
-    @pytest.mark.parametrize('mode', ['diff'])  # TODO: add support to 'sobel'
-    @pytest.mark.parametrize('order', [1, 2])
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    @pytest.mark.parametrize("mode", ["diff"])  # TODO: add support to 'sobel'
+    @pytest.mark.parametrize("order", [1, 2])
     def test_smoke(self, batch_size, mode, order, device, dtype):
         inpt = torch.ones(batch_size, 3, 2, 7, 4, device=device, dtype=dtype)
         actual = SpatialGradient3d(mode, order)(inpt)
         assert isinstance(actual, torch.Tensor)
 
-    @pytest.mark.parametrize('batch_size', [1, 2])
+    @pytest.mark.parametrize("batch_size", [1, 2])
     def test_cardinality(self, batch_size, device, dtype):
         inp = torch.zeros(batch_size, 2, 4, 5, 6, device=device, dtype=dtype)
         sobel = SpatialGradient3d()
@@ -271,11 +271,11 @@ class TestSpatialGradient3d(BaseTester):
     def test_exception(self):
         with pytest.raises(TypeError) as errinfo:
             spatial_gradient3d(1)
-        assert 'Not a Tensor type' in str(errinfo)
+        assert "Not a Tensor type" in str(errinfo)
 
         with pytest.raises(TypeError) as errinfo:
             spatial_gradient3d(torch.zeros(1))
-        assert 'shape must be [[\'B\', \'C\', \'D\', \'H\', \'W\']]' in str(errinfo)
+        assert "shape must be [['B', 'C', 'D', 'H', 'W']]" in str(errinfo)
 
     def test_edges(self, device, dtype):
         inp = torch.tensor(
@@ -396,7 +396,7 @@ class TestSpatialGradient3d(BaseTester):
     def test_gradcheck(self, device):
         img = torch.rand(1, 1, 1, 3, 4, device=device)
         img = tensor_to_gradcheck_var(img)  # to var
-        fast_mode = 'cpu' in str(device)  # disable fast mode on gpu
+        fast_mode = "cpu" in str(device)  # disable fast mode on gpu
         self.gradcheck(spatial_gradient3d, (img,), fast_mode=fast_mode)
 
     def test_module(self, device, dtype):
@@ -407,8 +407,8 @@ class TestSpatialGradient3d(BaseTester):
         actual = op_module(img)
         self.assert_close(actual, expected)
 
-    @pytest.mark.parametrize('mode', ['diff'])
-    @pytest.mark.parametrize('order', [1, 2])
+    @pytest.mark.parametrize("mode", ["diff"])
+    @pytest.mark.parametrize("order", [1, 2])
     def test_dynamo(self, mode, order, device, dtype, torch_optimizer):
         inpt = torch.ones(1, 3, 1, 10, 10, device=device, dtype=dtype)
         op = SpatialGradient3d(mode, order)
@@ -418,8 +418,8 @@ class TestSpatialGradient3d(BaseTester):
 
 
 class TestSobel(BaseTester):
-    @pytest.mark.parametrize('batch_size', [1, 2])
-    @pytest.mark.parametrize('normalized', [True, False])
+    @pytest.mark.parametrize("batch_size", [1, 2])
+    @pytest.mark.parametrize("normalized", [True, False])
     def test_smoke(self, batch_size, normalized, device, dtype):
         inp = torch.zeros(batch_size, 3, 4, 7, device=device, dtype=dtype)
         actual = Sobel()(inp)
@@ -427,7 +427,7 @@ class TestSobel(BaseTester):
         assert isinstance(actual, torch.Tensor)
         assert actual.shape == (batch_size, 3, 4, 7)
 
-    @pytest.mark.parametrize('batch_size', [1, 2])
+    @pytest.mark.parametrize("batch_size", [1, 2])
     def test_cardinality(self, batch_size, device, dtype):
         inp = torch.zeros(batch_size, 3, 4, 7, device=device, dtype=dtype)
         assert Sobel()(inp).shape == (batch_size, 3, 4, 7)
@@ -435,11 +435,11 @@ class TestSobel(BaseTester):
     def test_exception(self):
         with pytest.raises(TypeError) as errinfo:
             sobel(1)
-        assert 'Not a Tensor type' in str(errinfo)
+        assert "Not a Tensor type" in str(errinfo)
 
         with pytest.raises(TypeError) as errinfo:
             sobel(torch.zeros(1))
-        assert 'shape must be [[\'B\', \'C\', \'H\', \'W\']]' in str(errinfo)
+        assert "shape must be [['B', 'C', 'H', 'W']]" in str(errinfo)
 
     def test_magnitude(self, device, dtype):
         inp = torch.tensor(
@@ -488,7 +488,7 @@ class TestSobel(BaseTester):
         assert actual.is_contiguous()
         assert actual.shape == (3, 3, 5, 5)
 
-    @pytest.mark.parametrize('normalized', [True, False])
+    @pytest.mark.parametrize("normalized", [True, False])
     def test_gradcheck(self, normalized, device):
         batch_size, channels, height, width = 1, 1, 3, 4
         img = torch.rand(batch_size, channels, height, width, device=device)
@@ -503,11 +503,11 @@ class TestSobel(BaseTester):
         actual = op_module(img)
         self.assert_close(actual, expected)
 
-    @pytest.mark.parametrize('batch_size', [1, 2])
+    @pytest.mark.parametrize("batch_size", [1, 2])
     def test_dynamo(self, batch_size, device, dtype, torch_optimizer):
         if dtype == torch.float64:
             # TODO: investigate sobel for float64 with dynamo
-            pytest.xfail(reason='The sobel results can be different after dynamo on fp64')
+            pytest.xfail(reason="The sobel results can be different after dynamo on fp64")
         inpt = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
         op = Sobel()
         op_optimized = torch_optimizer(op)

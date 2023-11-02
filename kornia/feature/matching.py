@@ -298,10 +298,10 @@ class DescriptorMatcher(Module):
         th: threshold on distance ratio, or other quality measure.
     """
 
-    def __init__(self, match_mode: str = 'snn', th: float = 0.8) -> None:
+    def __init__(self, match_mode: str = "snn", th: float = 0.8) -> None:
         super().__init__()
         _match_mode: str = match_mode.lower()
-        self.known_modes = ['nn', 'mnn', 'snn', 'smnn']
+        self.known_modes = ["nn", "mnn", "snn", "smnn"]
         if _match_mode not in self.known_modes:
             raise NotImplementedError(f"{match_mode} is not supported. Try one of {self.known_modes}")
         self.match_mode = _match_mode
@@ -320,13 +320,13 @@ class DescriptorMatcher(Module):
             - Long tensor indexes of matching descriptors in desc1 and desc2,
                 shape of :math:`(B3, 2)` where :math:`0 <= B3 <= B1`.
         """
-        if self.match_mode == 'nn':
+        if self.match_mode == "nn":
             out = match_nn(desc1, desc2)
-        elif self.match_mode == 'mnn':
+        elif self.match_mode == "mnn":
             out = match_mnn(desc1, desc2)
-        elif self.match_mode == 'snn':
+        elif self.match_mode == "snn":
             out = match_snn(desc1, desc2, self.th)
-        elif self.match_mode == 'smnn':
+        elif self.match_mode == "smnn":
             out = match_smnn(desc1, desc2, self.th)
         else:
             raise NotImplementedError
@@ -344,9 +344,9 @@ class GeometryAwareDescriptorMatcher(Module):
         th: threshold on distance ratio, or other quality measure.
     """
 
-    known_modes: ClassVar[List[str]] = ['fginn', "adalam"]
+    known_modes: ClassVar[List[str]] = ["fginn", "adalam"]
 
-    def __init__(self, match_mode: str = 'fginn', params: Dict[str, Tensor] = {}) -> None:
+    def __init__(self, match_mode: str = "fginn", params: Dict[str, Tensor] = {}) -> None:
         super().__init__()
         _match_mode: str = match_mode.lower()
         if _match_mode not in self.known_modes:
@@ -367,11 +367,11 @@ class GeometryAwareDescriptorMatcher(Module):
             - Long tensor indexes of matching descriptors in desc1 and desc2,
                 shape of :math:`(B3, 2)` where :math:`0 <= B3 <= B1`.
         """
-        if self.match_mode == 'fginn':
+        if self.match_mode == "fginn":
             params = _get_default_fginn_params()
             params.update(self.params)
-            out = match_fginn(desc1, desc2, lafs1, lafs2, params['th'], params['spatial_th'], params['mutual'])
-        elif self.match_mode == 'adalam':
+            out = match_fginn(desc1, desc2, lafs1, lafs2, params["th"], params["spatial_th"], params["mutual"])
+        elif self.match_mode == "adalam":
             _params = get_adalam_default_config()
             _params.update(self.params)  # type: ignore[typeddict-item]
             out = match_adalam(desc1, desc2, lafs1, lafs2, config=_params)

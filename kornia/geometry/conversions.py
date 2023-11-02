@@ -342,7 +342,7 @@ def axis_angle_to_rotation_matrix(axis_angle: Tensor) -> Tensor:
     return rotation_matrix  # Nx3x3
 
 
-@deprecated(replace_with='axis_angle_to_rotation_matrix', version='0.7.0')
+@deprecated(replace_with="axis_angle_to_rotation_matrix", version="0.7.0")
 def angle_axis_to_rotation_matrix(axis_angle: Tensor) -> Tensor:
     return axis_angle_to_rotation_matrix(axis_angle)
 
@@ -378,7 +378,7 @@ def rotation_matrix_to_axis_angle(rotation_matrix: Tensor) -> Tensor:
     return quaternion_to_axis_angle(quaternion)
 
 
-@deprecated(replace_with='rotation_matrix_to_axis_angle', version='0.7.0')
+@deprecated(replace_with="rotation_matrix_to_axis_angle", version="0.7.0")
 def rotation_matrix_to_angle_axis(rotation_matrix: Tensor) -> Tensor:
     return rotation_matrix_to_axis_angle(rotation_matrix)
 
@@ -616,7 +616,7 @@ def quaternion_to_axis_angle(quaternion: Tensor) -> Tensor:
     return axis_angle
 
 
-@deprecated(replace_with='quaternion_to_axis_angle', version='0.7.0')
+@deprecated(replace_with="quaternion_to_axis_angle", version="0.7.0")
 def quaternion_to_angle_axis(quaternion: Tensor) -> Tensor:
     return quaternion_to_axis_angle(quaternion)
 
@@ -756,7 +756,7 @@ def axis_angle_to_quaternion(axis_angle: Tensor) -> Tensor:
     return quaternion
 
 
-@deprecated(replace_with='axis_angle_to_quaternion', version='0.7.0')
+@deprecated(replace_with="axis_angle_to_quaternion", version="0.7.0")
 def angle_axis_to_quaternion(axis_angle: Tensor) -> Tensor:
     return axis_angle_to_quaternion(axis_angle)
 

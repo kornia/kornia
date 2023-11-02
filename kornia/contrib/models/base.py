@@ -8,7 +8,7 @@ import torch
 
 from kornia.core import Module
 
-ModelConfig = TypeVar('ModelConfig')
+ModelConfig = TypeVar("ModelConfig")
 
 
 class ModelBase(ABC, Module, Generic[ModelConfig]):
@@ -45,7 +45,7 @@ class ModelBase(ABC, Module, Generic[ModelConfig]):
         *,
         fullgraph: bool = False,
         dynamic: bool = False,
-        backend: str = 'inductor',
+        backend: str = "inductor",
         mode: Optional[str] = None,
         options: dict[Any, Any] = {},
         disable: bool = False,

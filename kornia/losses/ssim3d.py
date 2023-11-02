@@ -10,8 +10,8 @@ def ssim3d_loss(
     window_size: int,
     max_val: float = 1.0,
     eps: float = 1e-12,
-    reduction: str = 'mean',
-    padding: str = 'same',
+    reduction: str = "mean",
+    padding: str = "same",
 ) -> Tensor:
     r"""Function that computes a loss based on the SSIM measurement.
 
@@ -57,7 +57,7 @@ def ssim3d_loss(
     elif reduction == "none":
         pass
     else:
-        raise NotImplementedError('Invalid reduction option.')
+        raise NotImplementedError("Invalid reduction option.")
 
     return loss
 
@@ -95,7 +95,7 @@ class SSIM3DLoss(Module):
     """
 
     def __init__(
-        self, window_size: int, max_val: float = 1.0, eps: float = 1e-12, reduction: str = 'mean', padding: str = 'same'
+        self, window_size: int, max_val: float = 1.0, eps: float = 1e-12, reduction: str = "mean", padding: str = "same"
     ) -> None:
         super().__init__()
         self.window_size: int = window_size

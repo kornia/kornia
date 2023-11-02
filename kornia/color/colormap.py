@@ -18,6 +18,7 @@ def _list_color_to_tensor(
 
 class ColorMap(ABC):
     r"""Abstract class to represents a color map."""
+
     colors: Tensor
 
     def __init__(
@@ -33,7 +34,7 @@ class ColorMap(ABC):
         self.colors = interpolate(
             _list_color_to_tensor(base_colormap, dtype=self._dtype, device=self._device)[None, ...],
             size=num_colors,
-            mode='linear',
+            mode="linear",
         )[0, ...]
 
     def __len__(self) -> int:

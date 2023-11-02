@@ -29,6 +29,7 @@ class SOSNet(nn.Module):
         >>> sosnet = SOSNet()
         >>> descs = sosnet(input) # 8x128
     """
+
     patch_size = 32
 
     def __init__(self, pretrained: bool = False) -> None:
@@ -60,7 +61,7 @@ class SOSNet(nn.Module):
         self.desc_norm = nn.Sequential(nn.LocalResponseNorm(256, alpha=256.0, beta=0.5, k=0.0))
         # load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls['lib'], map_location=map_location_to_cpu)
+            pretrained_dict = torch.hub.load_state_dict_from_url(urls["lib"], map_location=map_location_to_cpu)
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 

@@ -63,7 +63,7 @@ class RandomBrightness(IntensityAugmentationBase2D):
         keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
-        self.brightness: Tensor = _range_bound(brightness, 'brightness', center=1.0, bounds=(0.0, 2.0))
+        self.brightness: Tensor = _range_bound(brightness, "brightness", center=1.0, bounds=(0.0, 2.0))
         self._param_generator = rg.PlainUniformGenerator((self.brightness, "brightness_factor", None, None))
 
         self.clip_output = clip_output
