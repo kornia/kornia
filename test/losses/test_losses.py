@@ -189,19 +189,19 @@ class TestTverskyLoss:
 
         with pytest.raises(TypeError) as errinfo:
             criterion('not a tensor', torch.rand(1))
-        assert 'Input type is not a torch.Tensor. Got' in str(errinfo)
+        assert 'pred type is not a torch.Tensor. Got' in str(errinfo)
 
         with pytest.raises(ValueError) as errinfo:
             criterion(torch.rand(1), torch.rand(1))
-        assert 'Invalid input shape, we expect BxNxHxW. Got:' in str(errinfo)
+        assert 'Invalid pred shape, we expect BxNxHxW. Got:' in str(errinfo)
 
         with pytest.raises(ValueError) as errinfo:
             criterion(torch.rand(1, 1, 1, 1), torch.rand(1, 1, 1, 2))
-        assert 'input and target shapes must be the same. Got:' in str(errinfo)
+        assert 'pred and target shapes must be the same. Got:' in str(errinfo)
 
         with pytest.raises(ValueError) as errinfo:
             criterion(torch.rand(1, 1, 1, 1), torch.rand(1, 1, 1, 1, device='meta'))
-        assert 'input and target must be in the same device. Got:' in str(errinfo)
+        assert 'pred and target must be in the same device. Got:' in str(errinfo)
 
     def test_all_zeros(self, device, dtype):
         num_classes = 3
@@ -281,15 +281,15 @@ class TestDiceLoss:
     def test_exception(self):
         with pytest.raises(ValueError) as errinf:
             kornia.losses.DiceLoss()(torch.rand(1, 1, 1), torch.rand(1, 1, 1))
-        assert 'Invalid input shape, we expect BxNxHxW. Got:' in str(errinf)
+        assert 'Invalid pred shape, we expect BxNxHxW. Got:' in str(errinf)
 
         with pytest.raises(ValueError) as errinf:
             kornia.losses.DiceLoss()(torch.rand(1, 1, 1, 1), torch.rand(1, 1, 1, 2))
-        assert 'input and target shapes must be the same. Got: ' in str(errinf)
+        assert 'pred and target shapes must be the same. Got: ' in str(errinf)
 
         with pytest.raises(ValueError) as errinf:
             kornia.losses.DiceLoss()(torch.rand(1, 1, 1, 1), torch.rand(1, 1, 1, 1, device='meta'))
-        assert 'input and target must be in the same device. Got:' in str(errinf)
+        assert 'pred and target must be in the same device. Got:' in str(errinf)
 
     def test_averaging_micro(self, device, dtype):
         num_classes = 2

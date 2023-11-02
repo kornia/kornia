@@ -58,7 +58,7 @@ def tversky_loss(
         raise ValueError(f"Invalid pred shape, we expect BxNxHxW. Got: {pred.shape}")
 
     if not pred.shape[-2:] == target.shape[-2:]:
-        raise ValueError(f"pred and target shapes must be the same. Got: {pred.shape} and {pred.shape}")
+        raise ValueError(f"pred and target shapes must be the same. Got: {pred.shape} and {target.shape}")
 
     if not pred.device == target.device:
         raise ValueError(f"pred and target must be in the same device. Got: {pred.device} and {target.device}")
