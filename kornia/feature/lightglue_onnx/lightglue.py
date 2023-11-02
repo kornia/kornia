@@ -48,7 +48,7 @@ class OnnxLightGlue:
         KORNIA_CHECK(ort is not None, "onnxruntime is not installed.")
         KORNIA_CHECK(np is not None, "numpy is not installed.")
 
-        device = torch.device(device)
+        device = torch.device(device)  # type: ignore
         self.device = device
 
         if device.type == "cpu":
