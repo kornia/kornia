@@ -6,7 +6,7 @@ from torch import nn
 from kornia import metrics
 
 
-def psnr_loss(input: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Tensor:
+def psnr_loss(image: torch.Tensor, target: torch.Tensor, max_val: float) -> torch.Tensor:
     r"""Function that computes the PSNR loss.
 
     The loss is computed as follows:
@@ -18,9 +18,9 @@ def psnr_loss(input: torch.Tensor, target: torch.Tensor, max_val: float) -> torc
     See :meth:`~kornia.losses.psnr` for details abut PSNR.
 
     Args:
-        input: the input image with shape :math:`(*)`.
+        image: the input image with shape :math:`(*)`.
         labels : the labels image with shape :math:`(*)`.
-        max_val: The maximum value in the input tensor.
+        max_val: The maximum value in the image tensor.
 
     Return:
         the computed loss as a scalar.
@@ -30,7 +30,7 @@ def psnr_loss(input: torch.Tensor, target: torch.Tensor, max_val: float) -> torc
         >>> psnr_loss(ones, 1.2 * ones, 2.) # 10 * log(4/((1.2-1)**2)) / log(10)
         tensor(-20.0000)
     """
-    return -1.0 * metrics.psnr(input, target, max_val)
+    return -1.0 * metrics.psnr(image, target, max_val)
 
 
 class PSNRLoss(nn.Module):
@@ -45,11 +45,11 @@ class PSNRLoss(nn.Module):
     See :meth:`~kornia.losses.psnr` for details abut PSNR.
 
     Args:
-        max_val: The maximum value in the input tensor.
+        max_val: The maximum value in the image tensor.
 
     Shape:
-        - Input: arbitrary dimensional tensor :math:`(*)`.
-        - Target: arbitrary dimensional tensor :math:`(*)` same shape as input.
+        - Image: arbitrary dimensional tensor :math:`(*)`.
+        - Target: arbitrary dimensional tensor :math:`(*)` same shape as image.
         - Output: a scalar.
 
     Examples:
@@ -63,5 +63,5 @@ class PSNRLoss(nn.Module):
         super().__init__()
         self.max_val: float = max_val
 
-    def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        return psnr_loss(input, target, self.max_val)
+    def forward(self, image: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        return psnr_loss(image, target, self.max_val)
