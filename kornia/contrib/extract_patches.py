@@ -38,8 +38,14 @@ def compute_padding(
     original_size = cast(Tuple[int, int], _pair(original_size))
     window_size = cast(Tuple[int, int], _pair(window_size))
 
-    padh = math.ceil((window_size[0] - original_size[0] % window_size[0]) / 2)
-    padw = math.ceil((window_size[1] - original_size[1] % window_size[1]) / 2)
+    if original_size[0] % window_size[0] != 0:
+        padh = math.ceil((window_size[0] - original_size[0] % window_size[0]) / 2)
+    else:
+        padh = 0
+    if original_size[1] % window_size[1] != 0:
+        padw = math.ceil((window_size[1] - original_size[1] % window_size[1]) / 2)
+    else:
+        padw = 0
 
     return (padh, padw)
 

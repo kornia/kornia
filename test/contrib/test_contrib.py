@@ -188,9 +188,9 @@ class TestConnectedComponents:
 
 
 def test_compute_padding():
-    assert kornia.contrib.compute_padding((6, 6), (2, 2)) == (0, 0, 0, 0)
-    assert kornia.contrib.compute_padding((7, 7), (2, 2)) == (1, 0, 1, 0)
-    assert kornia.contrib.compute_padding((8, 7), (4, 4)) == (0, 0, 1, 0)
+    assert kornia.contrib.compute_padding((6, 6), (2, 2)) == (0, 0)
+    assert kornia.contrib.compute_padding((7, 7), (2, 2)) == (1, 1)
+    assert kornia.contrib.compute_padding((8, 7), (4, 4)) == (0, 1)
 
 
 class TestExtractTensorPatches:
@@ -314,7 +314,7 @@ class TestExtractTensorPatches:
 class TestCombineTensorPatches:
     def test_smoke(self, device, dtype):
         img = torch.arange(16, device=device, dtype=dtype).view(1, 1, 4, 4)
-        m = kornia.contrib.CombineTensorPatches((4, 4), (2, 2))
+        m = kornia.contrib.CombineTensorPatches((4, 4), (2, 2), (2, 2))
         patches = kornia.contrib.extract_tensor_patches(img, window_size=(2, 2), stride=(2, 2))
         assert m(patches).shape == (1, 1, 4, 4)
         assert_close(img, m(patches))
@@ -323,14 +323,14 @@ class TestCombineTensorPatches:
         patches = kornia.contrib.extract_tensor_patches(
             torch.arange(16, device=device, dtype=dtype).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2), padding=1
         )
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(RuntimeError):
             kornia.contrib.combine_tensor_patches(patches, original_size=(4, 4), window_size=(2, 2), stride=(3, 2))
 
     def test_rect_odd_dim(self, device, dtype):
         img = torch.arange(12, device=device, dtype=dtype).view(1, 1, 4, 3)
-        patches = kornia.contrib.extract_tensor_patches(img, window_size=(2, 2), stride=(2, 2), padding=(0, 0, 0, 1))
+        patches = kornia.contrib.extract_tensor_patches(img, window_size=(2, 2), stride=(2, 2), padding=(0, 2))
         m = kornia.contrib.combine_tensor_patches(
-            patches, original_size=(4, 3), window_size=(2, 2), stride=(2, 2), unpadding=(0, 0, 0, 1)
+            patches, original_size=(4, 3), window_size=(2, 2), stride=(2, 2), unpadding=(0, 2)
         )
         assert m.shape == (1, 1, 4, 3)
         assert_close(img, m)
@@ -339,7 +339,7 @@ class TestCombineTensorPatches:
         patches = kornia.contrib.extract_tensor_patches(
             torch.arange(64, device=device, dtype=dtype).view(1, 1, 8, 8), window_size=(4, 4), stride=(4, 4), padding=1
         )
-        with pytest.raises(NotImplementedError):
+        with pytest.raises(AssertionError):
             kornia.contrib.combine_tensor_patches(
                 patches, original_size=(8, 8), window_size=(4, 4), stride=(4, 4), unpadding=(1, 1, 1, 1)
             )
@@ -358,28 +358,28 @@ class TestCombineTensorPatches:
         patches = kornia.contrib.extract_tensor_patches(img, window_size=(4, 4), stride=(4, 4), padding=1)
 
         merged = kornia.contrib.combine_tensor_patches(
-            patches, original_size=(6, 6), window_size=(4, 4), stride=(4, 4), unpadding=(1, 1, 1, 1)
+            patches, original_size=(6, 6), window_size=(4, 4), stride=(4, 4), unpadding=(1, 1)
         )
         assert merged.shape == (1, 1, 6, 6)
 
     def test_rectangle_array(self, device, dtype):
         img = torch.arange(24, device=device, dtype=dtype).view(1, 1, 4, 6)
         patches = kornia.contrib.extract_tensor_patches(img, window_size=(2, 2), stride=(2, 2), padding=1)
-        m = kornia.contrib.CombineTensorPatches((4, 6), (2, 2), unpadding=1)
+        m = kornia.contrib.CombineTensorPatches((4, 6), (2, 2), (2, 2), unpadding=1)
         assert m(patches).shape == (1, 1, 4, 6)
         assert_close(img, m(patches))
 
     def test_padding1(self, device, dtype):
         img = torch.arange(16, device=device, dtype=dtype).view(1, 1, 4, 4)
         patches = kornia.contrib.extract_tensor_patches(img, window_size=(2, 2), stride=(2, 2), padding=1)
-        m = kornia.contrib.CombineTensorPatches((4, 4), (2, 2), unpadding=1)
+        m = kornia.contrib.CombineTensorPatches((4, 4), (2, 2), stride=(2, 2), unpadding=1)
         assert m(patches).shape == (1, 1, 4, 4)
         assert_close(img, m(patches))
 
     def test_padding2(self, device, dtype):
         img = torch.arange(64, device=device, dtype=dtype).view(1, 1, 8, 8)
         patches = kornia.contrib.extract_tensor_patches(img, window_size=(2, 2), stride=(2, 2), padding=1)
-        m = kornia.contrib.CombineTensorPatches((8, 8), (2, 2), unpadding=1)
+        m = kornia.contrib.CombineTensorPatches((8, 8), (2, 2), stride=(2, 2), unpadding=1)
         assert m(patches).shape == (1, 1, 8, 8)
         assert_close(img, m(patches))
 
@@ -390,7 +390,7 @@ class TestCombineTensorPatches:
         patches = kornia.contrib.extract_tensor_patches(
             img, window_size=window_size, stride=window_size, padding=padding
         )
-        m = kornia.contrib.CombineTensorPatches((8, 13), (3, 3), unpadding=padding)
+        m = kornia.contrib.CombineTensorPatches((8, 13), (3, 3), stride=window_size, unpadding=padding)
         assert m(patches).shape == (1, 1, 8, 13)
         assert_close(img, m(patches))
 
