@@ -110,10 +110,10 @@ class AugmentationSequentialOps:
             param = ParamItem(
                 name=param.name,
                 data=module.params_from_input(
-                    *arg,
+                    *arg,  # type: ignore[arg-type]
                     data_keys=_data_keys,
-                    params=param.data,
-                    extra_args=extra_args,  # type: ignore
+                    params=param.data,  # type: ignore[arg-type]
+                    extra_args=extra_args,
                 ),
             )
 
@@ -361,10 +361,10 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
             transform = module.compute_inverse_transformation(module.transform_matrix)
             _input = module.inverse_boxes(
                 _input,
-                param.data,
+                param.data,  # type: ignore[arg-type]
                 module.flags,
                 transform=transform,
-                **extra_args,  # type: ignore
+                **extra_args,
             )
 
         elif isinstance(module, (K.GeometricAugmentationBase3D,)):
