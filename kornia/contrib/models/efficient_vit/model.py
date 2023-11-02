@@ -1,12 +1,18 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Literal
 
 import torch
 
 from kornia.contrib.models.base import ModelBase
 from kornia.contrib.models.efficient_vit import backbone as vit
 from kornia.core import Tensor
+
+
+def _get_base_url(model_type: Literal["b1", "b2", "b3"] = "b1", resolution: Literal[224, 256, 288] = 224) -> str:
+    """Return the base URL of the model weights."""
+    return f"https://huggingface.co/kornia/efficientvit_imagenet_{model_type}_r{resolution}/resolve/main/{model_type}-r{resolution}.pt"
 
 
 @dataclass
@@ -17,7 +23,19 @@ class EfficientViTConfig:
         checkpoint: URL or local path of model weights.
     """
 
-    checkpoint: str = "https://huggingface.co/kornia/efficientvit_imagenet_b1_r224/resolve/main/b1-r224.pt"
+    checkpoint: str = field(default_factory=_get_base_url)
+
+    @classmethod
+    def from_pretrained(
+        cls, model_type: Literal["b1", "b2", "b3"], resolution: Literal[224, 256, 288]
+    ) -> EfficientViTConfig:
+        """Return a configuration object from a pre-trained model.
+
+        Args:
+            model_type: model type, one of :obj:`"b1"`, :obj:`"b2"`, :obj:`"b3"`.
+            resolution: input resolution, one of :obj:`224`, :obj:`256`, :obj:`288`.
+        """
+        return cls(checkpoint=_get_base_url(model_type=model_type, resolution=resolution))
 
 
 class EfficientViT(ModelBase[EfficientViTConfig]):
@@ -32,7 +50,7 @@ class EfficientViT(ModelBase[EfficientViTConfig]):
         """Build the EfficientViT model from a configuration object.
 
         Args:
-            config: EfficientViT configuration object.
+            config: EfficientViT configuration object. See :class:`EfficientViTConfig`.
 
         Returns:
             EfficientViT: the EfficientViT model.

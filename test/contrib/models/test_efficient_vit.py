@@ -52,3 +52,10 @@ class TestEfficientViT:
         image = torch.randn(1, 3, 224, 224, device=device, dtype=dtype)
         feats = model(image)
         assert feats["stage_final"].shape == torch.Size([1, 256, 7, 7])
+
+    @pytest.mark.parametrize("model_type", ["b1", "b2", "b3"])
+    @pytest.mark.parametrize("resolution", [224, 256, 288])
+    def test_config(self, model_type, resolution):
+        config = EfficientViTConfig.from_pretrained(model_type, resolution)
+        assert model_type in config.checkpoint
+        assert str(resolution) in config.checkpoint
