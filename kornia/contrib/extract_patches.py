@@ -1,16 +1,16 @@
+import math
 from typing import Optional, Tuple, Union, cast
 
 import torch
+from torch import nn
 from torch.nn.modules.utils import _pair
 
-from kornia.core import Module, Tensor, concatenate, pad
-
-PadType = Union[Tuple[int, int], Tuple[int, int, int, int]]
+from kornia.core import Module, Tensor, pad
 
 
 def compute_padding(
     original_size: Union[int, Tuple[int, int]], window_size: Union[int, Tuple[int, int]]
-) -> Tuple[int, int, int, int]:
+) -> Tuple[int, int]:
     r"""Compute required padding to ensure chaining of :func:`extract_tensor_patches` and
     :func:`combine_tensor_patches` produces expected result.
 
@@ -19,7 +19,7 @@ def compute_padding(
         window_size: the size of the sliding window used while extracting patches.
 
     Return:
-        The required padding for `(top, bottom, left, right)` as a tuple of 4 ints.
+        The required padding for `(vertical, horizontal)` as a tuple of 2 ints.
 
     Example:
         >>> image = torch.arange(12).view(1, 1, 4, 3)
@@ -38,23 +38,10 @@ def compute_padding(
     original_size = cast(Tuple[int, int], _pair(original_size))
     window_size = cast(Tuple[int, int], _pair(window_size))
 
-    def paddim(dim1: int, dim2: int) -> Tuple[int, int]:
-        if dim1 % dim2 == 0:
-            p1 = 0
-            p2 = 0
-        else:
-            tmp = dim2 - (dim1 % dim2)
-            if tmp % 2 == 0:
-                p1 = p2 = tmp // 2
-            else:
-                p1 = tmp
-                p2 = 0
-        return p1, p2
+    padh = math.ceil((window_size[0] - original_size[0] % window_size[0]) / 2)
+    padw = math.ceil((window_size[1] - original_size[1] % window_size[1]) / 2)
 
-    padt, padb = paddim(original_size[0], window_size[0])
-    padl, padr = paddim(original_size[1], window_size[1])
-
-    return (padt, padb, padl, padr)
+    return (padh, padw)
 
 
 class ExtractTensorPatches(Module):
@@ -119,12 +106,12 @@ class ExtractTensorPatches(Module):
         self,
         window_size: Union[int, Tuple[int, int]],
         stride: Optional[Union[int, Tuple[int, int]]] = 1,
-        padding: Optional[Union[int, PadType]] = 0,
+        padding: Optional[Union[int, Tuple[int, int]]] = 0,
     ) -> None:
         super().__init__()
         self.window_size: Tuple[int, int] = _pair(window_size)
         self.stride: Tuple[int, int] = _pair(stride)
-        self.padding: PadType = _pair(padding)
+        self.padding: Tuple[int, int] = _pair(padding)
 
     def forward(self, input: Tensor) -> Tensor:
         return extract_tensor_patches(input, self.window_size, stride=self.stride, padding=self.padding)
@@ -149,10 +136,12 @@ class CombineTensorPatches(Module):
       extracting tensor patches and defines the shape of the output patch.
     * :attr:`window_size` is the size of the sliding window used while
       extracting tensor patches.
+    * :attr:`stride` controls the stride to apply to the sliding window and
+      regulates the overlapping between the extracted patches.
     * :attr:`unpadding` is the amount of padding to be removed. This value
       must be the same as padding used while extracting tensor patches.
 
-    The parameters :attr:`original_size`, :attr:`window_size`, and :attr:`unpadding` can
+    The parameters :attr:`original_size`, :attr:`window_size`, :attr:`stride`, and :attr:`unpadding` can
     be either:
 
         - a single ``int`` -- in which case the same value is used for the
@@ -168,6 +157,7 @@ class CombineTensorPatches(Module):
         patches: patched tensor.
         original_size: the size of the original tensor and the output patch size.
         window_size: the size of the sliding window used.
+        stride: stride of the sliding window.
         unpadding: remove the padding added to both side of the input.
 
     Shape:
@@ -190,16 +180,18 @@ class CombineTensorPatches(Module):
         self,
         original_size: Union[int, Tuple[int, int]],
         window_size: Union[int, Tuple[int, int]],
-        unpadding: Union[int, PadType] = 0,
+        stride: Union[int, Tuple[int, int]],
+        unpadding: Union[int, Tuple[int, int]] = 0,
     ) -> None:
         super().__init__()
         self.original_size: Tuple[int, int] = _pair(original_size)
         self.window_size: Tuple[int, int] = _pair(window_size)
-        self.unpadding: PadType = _pair(unpadding)
+        self.stride: Tuple[int, int] = _pair(stride)
+        self.unpadding: Tuple[int, int] = _pair(unpadding)
 
     def forward(self, input: Tensor) -> Tensor:
         return combine_tensor_patches(
-            input, self.original_size, self.window_size, stride=self.window_size, unpadding=self.unpadding
+            input, self.original_size, self.window_size, stride=self.stride, unpadding=self.unpadding
         )
 
 
@@ -208,7 +200,7 @@ def combine_tensor_patches(
     original_size: Union[int, Tuple[int, int]],
     window_size: Union[int, Tuple[int, int]],
     stride: Union[int, Tuple[int, int]],
-    unpadding: Union[int, PadType] = 0,
+    unpadding: Union[int, Tuple[int, int]] = 0,
 ) -> Tensor:
     r"""Restore input from patches.
 
@@ -242,45 +234,23 @@ def combine_tensor_patches(
     original_size = cast(Tuple[int, int], _pair(original_size))
     window_size = cast(Tuple[int, int], _pair(window_size))
     stride = cast(Tuple[int, int], _pair(stride))
+    unpadding = cast(Tuple[int, int], _pair(unpadding))
 
-    if stride[0] != window_size[0] or stride[1] != window_size[1]:
-        raise NotImplementedError(
-            f"Only stride == window_size is supported. Got {stride} and {window_size}."
-            "Please feel free to drop a PR to Kornia Github."
-        )
+    if len(unpadding) != 2:
+        raise AssertionError("Unpadding must be either an int or a tuple of two ints")
 
-    if unpadding:
-        unpadding = cast(PadType, _pair(unpadding))
+    fold = nn.Fold(output_size=original_size, kernel_size=window_size, stride=stride, padding=unpadding)
+    unfold = nn.Unfold(kernel_size=window_size, stride=stride, padding=unpadding)
+    ones = torch.ones(patches.shape[0], patches.shape[2], original_size[0], original_size[1])
+    # Assuming BNCHW
+    patches = patches.permute(0, 2, 3, 4, 1)
+    patches = patches.reshape(patches.shape[0], -1, patches.shape[-1])
 
-        if len(unpadding) not in [2, 4]:
-            raise AssertionError("Unpadding must be either an int, tuple of two ints or tuple of four ints")
-
-        if len(unpadding) == 2:
-            pad_vert = _pair(unpadding[0])
-            pad_horz = _pair(unpadding[1])
-        else:
-            pad_vert = unpadding[:2]
-            pad_horz = unpadding[2:]
-        unpadding = cast(Tuple[int, int, int, int], pad_horz + pad_vert)
-
-        hpad_check = (original_size[0] + unpadding[2] + unpadding[3]) % window_size[0] == 0
-        wpad_check = (original_size[1] + unpadding[0] + unpadding[1]) % window_size[1] == 0
-
-        if not hpad_check or not wpad_check:
-            raise NotImplementedError("Insufficient padding")
-
-        window_size = (
-            (original_size[0] + (unpadding[2] + unpadding[3])) // window_size[0],
-            (original_size[1] + (unpadding[0] + unpadding[1])) // window_size[1],
-        )
-
-    patches_tensor = patches.view(-1, window_size[0], window_size[1], *patches.shape[-3:])
-    restored_tensor = concatenate(torch.chunk(patches_tensor, window_size[0], 1), -2).squeeze(1)
-    restored_tensor = concatenate(torch.chunk(restored_tensor, window_size[1], 1), -1).squeeze(1)
-
-    if unpadding:
-        unpadding = cast(Tuple[int, int, int, int], unpadding)
-        restored_tensor = pad(restored_tensor, [-i for i in unpadding])
+    # Calculate normalization map
+    norm_map = fold(unfold(ones))
+    saturated_restored_tensor = fold(patches)
+    # Remove satuation effect due to multiple summations
+    restored_tensor = saturated_restored_tensor / (norm_map)
     return restored_tensor
 
 
@@ -297,7 +267,7 @@ def extract_tensor_patches(
     input: Tensor,
     window_size: Union[int, Tuple[int, int]],
     stride: Union[int, Tuple[int, int]] = 1,
-    padding: Union[int, PadType] = 0,
+    padding: Union[int, Tuple[int, int]] = 0,
 ) -> Tensor:
     r"""Function that extract patches from tensors and stack them.
 
@@ -330,7 +300,7 @@ def extract_tensor_patches(
         raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
 
     if padding:
-        padding = cast(PadType, _pair(padding))
+        padding = cast(Tuple[int, int], _pair(padding))
 
         if len(padding) not in [2, 4]:
             raise AssertionError("Padding must be either an int, tuple of two ints or tuple of four ints")
