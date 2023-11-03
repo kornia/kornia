@@ -93,6 +93,7 @@ Join the community
    :caption: KORNIA MODELS
    :hidden:
 
+   models/efficient_vit
    models/rt_detr
    models/segment_anything
    models/mobile_sam
