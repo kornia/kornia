@@ -12,6 +12,40 @@ Base
     :members:
     :undoc-members:
 
+EfficientViT
+^^^^^^^^^^^^
+
+.. autoclass:: kornia.contrib.models.efficient_vit.EfficientViT
+    :members: from_config, forward, load_checkpoint
+    :undoc-members:
+    :special-members: __init__,
+
+
+.. autoclass:: kornia.contrib.models.efficient_vit.EfficientViTConfig
+    :members:
+    :undoc-members:
+
+Backbones
+^^^^^^^^^
+
+.. autoclass:: kornia.contrib.models.efficient_vit.backbone.EfficientViTBackbone
+    :members:
+    :undoc-members:
+
+.. autofunction:: kornia.contrib.models.efficient_vit.backbone.efficientvit_backbone_b0
+.. autofunction:: kornia.contrib.models.efficient_vit.backbone.efficientvit_backbone_b1
+.. autofunction:: kornia.contrib.models.efficient_vit.backbone.efficientvit_backbone_b2
+.. autofunction:: kornia.contrib.models.efficient_vit.backbone.efficientvit_backbone_b3
+
+.. autoclass:: kornia.contrib.models.efficient_vit.backbone.EfficientViTLargeBackbone
+    :members:
+    :undoc-members:
+
+.. autofunction:: kornia.contrib.models.efficient_vit.backbone.efficientvit_backbone_l0
+.. autofunction:: kornia.contrib.models.efficient_vit.backbone.efficientvit_backbone_l1
+.. autofunction:: kornia.contrib.models.efficient_vit.backbone.efficientvit_backbone_l2
+.. autofunction:: kornia.contrib.models.efficient_vit.backbone.efficientvit_backbone_l3
+
 Structures
 ^^^^^^^^^^
 
