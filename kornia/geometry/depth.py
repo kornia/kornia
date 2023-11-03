@@ -112,10 +112,10 @@ def depth_to_3d_v2(
 
 @deprecated(
     replace_with="depth_to_3d_v2",
-    version='0.7.0',
+    version="0.7.0",
     extra_reason=(
-        ' This function will be replaced with the `depth_to_3d_v2` behaviour, where the that does not require the'
-        ' creation of a meshgrid. The return shape can be not backward compatible between these implementations.'
+        " This function will be replaced with the `depth_to_3d_v2` behaviour, where the that does not require the"
+        " creation of a meshgrid. The return shape can be not backward compatible between these implementations."
     ),
 )
 def depth_to_3d(depth: Tensor, camera_matrix: Tensor, normalize_points: bool = False) -> Tensor:
