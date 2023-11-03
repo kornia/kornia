@@ -251,12 +251,15 @@ def combine_tensor_patches(
     # Assuming BNCHW
     patches = patches.permute(0, 2, 3, 4, 1)
     patches = patches.reshape(patches.shape[0], -1, patches.shape[-1])
+    dtype = patches.dtype
+    patches = patches.double()
 
     # Calculate normalization map
     norm_map = fold(unfold(ones))
     saturated_restored_tensor = fold(patches)
     # Remove satuation effect due to multiple summations
     restored_tensor = saturated_restored_tensor / (norm_map)
+    restored_tensor = restored_tensor.to(dtype)
     return restored_tensor
 
 
