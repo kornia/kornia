@@ -2,7 +2,7 @@ import math
 from typing import Optional, Tuple, Union, cast
 
 import torch
-from torch import nn
+import torch.nn.functional as F
 from torch.nn.modules.utils import _pair
 
 from kornia.core import Module, Tensor, pad
@@ -234,7 +234,7 @@ def combine_tensor_patches(
         This function is supposed to be used in conjunction with :func:`extract_tensor_patches`.
     """
 
-    if len(patches.shape) != 5:
+    if patches.ndim != 5:
         raise ValueError(f"Invalid input shape, we expect BxNxCxHxW. Got: {patches.shape}")
 
     original_size = cast(Tuple[int, int], _pair(original_size))
@@ -245,18 +245,21 @@ def combine_tensor_patches(
     if len(unpadding) != 2:
         raise AssertionError("Unpadding must be either an int or a tuple of two ints")
 
-    fold = nn.Fold(output_size=original_size, kernel_size=window_size, stride=stride, padding=unpadding)
-    unfold = nn.Unfold(kernel_size=window_size, stride=stride, padding=unpadding)
     ones = torch.ones(patches.shape[0], patches.shape[2], original_size[0], original_size[1])
-    # Assuming BNCHW
     patches = patches.permute(0, 2, 3, 4, 1)
     patches = patches.reshape(patches.shape[0], -1, patches.shape[-1])
     dtype = patches.dtype
     patches = patches.double()
 
     # Calculate normalization map
-    norm_map = fold(unfold(ones))
-    saturated_restored_tensor = fold(patches)
+    unfold_ones = F.unfold(ones, kernel_size=window_size, stride=stride, padding=unpadding)
+    norm_map = F.fold(
+        input=unfold_ones, output_size=original_size, kernel_size=window_size, stride=stride, padding=unpadding
+    )
+    # Restored tensor
+    saturated_restored_tensor = F.fold(
+        input=patches, output_size=original_size, kernel_size=window_size, stride=stride, padding=unpadding
+    )
     # Remove satuation effect due to multiple summations
     restored_tensor = saturated_restored_tensor / (norm_map)
     restored_tensor = restored_tensor.to(dtype)
