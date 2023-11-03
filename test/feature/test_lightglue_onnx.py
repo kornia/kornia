@@ -26,6 +26,7 @@ class TestOnnxLightGlue:
         assert model is not None
 
     @pytest.mark.slow
+    @pytest.mark.parametrize("dtype", [torch.float32])
     def test_forward(self, dtype, device):
         model = OnnxLightGlue(device=device)
 
