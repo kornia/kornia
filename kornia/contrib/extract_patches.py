@@ -313,7 +313,7 @@ def extract_tensor_patches(
 
         pad_vert = _pair(padding[0])
         pad_horz = _pair(padding[1])
-        padding = cast(Tuple[int, int, int, int], pad_horz + pad_vert)
-        input = pad(input, padding)
+        padding4 = cast(Tuple[int, int, int, int], pad_horz + pad_vert)
+        input = pad(input, padding4)
 
     return _extract_tensor_patchesnd(input, _pair(window_size), _pair(stride))
