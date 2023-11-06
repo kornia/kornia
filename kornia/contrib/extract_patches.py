@@ -207,6 +207,7 @@ def combine_tensor_patches(
     window_size: Union[int, Tuple[int, int]],
     stride: Union[int, Tuple[int, int]],
     unpadding: Union[int, Tuple[int, int]] = 0,
+    eps: float = 1e-8
 ) -> Tensor:
     r"""Restore input from patches.
 
@@ -261,7 +262,7 @@ def combine_tensor_patches(
         input=patches, output_size=original_size, kernel_size=window_size, stride=stride, padding=unpadding
     )
     # Remove satuation effect due to multiple summations
-    restored_tensor = saturated_restored_tensor / (norm_map + 1e-8)
+    restored_tensor = saturated_restored_tensor / (norm_map + eps)
     restored_tensor = restored_tensor.to(dtype)
     return restored_tensor
 
