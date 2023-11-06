@@ -248,6 +248,8 @@ def combine_tensor_patches(
     ones = torch.ones(patches.shape[0], patches.shape[2], original_size[0], original_size[1])
     patches = patches.permute(0, 2, 3, 4, 1)
     patches = patches.reshape(patches.shape[0], -1, patches.shape[-1])
+    dtype = patches.dtype
+    patches = patches.double()
 
     # Calculate normalization map
     unfold_ones = F.unfold(ones, kernel_size=window_size, stride=stride, padding=unpadding)
@@ -260,6 +262,7 @@ def combine_tensor_patches(
     )
     # Remove satuation effect due to multiple summations
     restored_tensor = saturated_restored_tensor / (norm_map + 1e-8)
+    restored_tensor = restored_tensor.to(dtype)
     return restored_tensor
 
 
