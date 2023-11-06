@@ -207,7 +207,7 @@ def combine_tensor_patches(
     window_size: Union[int, Tuple[int, int]],
     stride: Union[int, Tuple[int, int]],
     unpadding: Union[int, Tuple[int, int]] = 0,
-    eps: float = 1e-8
+    eps: float = 1e-8,
 ) -> Tensor:
     r"""Restore input from patches.
 
