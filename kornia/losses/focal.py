@@ -78,10 +78,10 @@ def focal_loss(
     loss_tmp: Tensor = -torch.pow(1.0 - log_pred_soft.exp(), gamma) * log_pred_soft * target_one_hot
 
     num_of_classes = pred.shape[1]
-    boradcast_dims = [-1] + [1] * len(pred.shape[2:])
+    broadcast_dims = [-1] + [1] * len(pred.shape[2:])
     if alpha is not None:
         alpha_fac = tensor([1 - alpha] + [alpha] * (num_of_classes - 1), dtype=loss_tmp.dtype, device=loss_tmp.device)
-        alpha_fac = alpha_fac.view(boradcast_dims)
+        alpha_fac = alpha_fac.view(broadcast_dims)
         loss_tmp = alpha_fac * loss_tmp
 
     if weight is not None:
@@ -95,7 +95,7 @@ def focal_loss(
             f"weight and pred must be in the same device. Got: {weight.device} and {pred.device}",
         )
 
-        weight = weight.view(boradcast_dims)
+        weight = weight.view(broadcast_dims)
         loss_tmp = weight * loss_tmp
 
     if reduction == "none":
@@ -223,7 +223,7 @@ def binary_focal_loss_with_logits(
         neg_term = (1.0 - alpha) * neg_term
 
     num_of_classes = pred.shape[1]
-    boradcast_dims = [-1] + [1] * len(pred.shape[2:])
+    broadcast_dims = [-1] + [1] * len(pred.shape[2:])
     if pos_weight is not None:
         KORNIA_CHECK_IS_TENSOR(pos_weight, "pos_weight must be Tensor or None.")
         KORNIA_CHECK(
@@ -235,7 +235,7 @@ def binary_focal_loss_with_logits(
             f"pos_weight and pred must be in the same device. Got: {pos_weight.device} and {pred.device}",
         )
 
-        pos_weight = pos_weight.view(boradcast_dims)
+        pos_weight = pos_weight.view(broadcast_dims)
         pos_term = pos_weight * pos_term
 
     loss_tmp: Tensor = pos_term + neg_term
@@ -250,7 +250,7 @@ def binary_focal_loss_with_logits(
             f"weight and pred must be in the same device. Got: {weight.device} and {pred.device}",
         )
 
-        weight = weight.view(boradcast_dims)
+        weight = weight.view(broadcast_dims)
         loss_tmp = weight * loss_tmp
 
     if reduction == "none":
