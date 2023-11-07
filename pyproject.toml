@@ -71,6 +71,9 @@ requires = [
   [tool.setuptools.package-data]
     kornia = ["py.typed"]
 
+[tool.distutils.bdist_wheel]
+  universal = true
+
 [tool.ruff]
   line-length = 120
   target-version = "py38"
@@ -226,9 +229,6 @@ partial_branches = [
   show_error_codes = true
   warn_redundant_casts = true
   warn_unused_ignores = true
-
-[tool.distutils.bdist_wheel]
-  universal = true
 
 [tool.pydocstyle]
   ignore = ['D105','D107','D203','D204','D213','D406','D407']
