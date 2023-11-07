@@ -95,6 +95,7 @@ class VideoSequential(ImageSequential):
         >>> out.shape
         torch.Size([2, 3, 4, 5, 6])
     """
+
     # TODO: implement transform_matrix
 
     def __init__(
