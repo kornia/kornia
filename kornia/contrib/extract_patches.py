@@ -260,10 +260,12 @@ def combine_tensor_patches(
     norm_map = F.fold(
         input=unfold_ones, output_size=original_size, kernel_size=window_size, stride=stride, padding=unpadding
     )
+
     # Restored tensor
     saturated_restored_tensor = F.fold(
         input=patches, output_size=original_size, kernel_size=window_size, stride=stride, padding=unpadding
     )
+
     # Remove satuation effect due to multiple summations
     restored_tensor = saturated_restored_tensor / (norm_map + eps)
     if int_flag:
