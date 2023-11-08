@@ -275,17 +275,10 @@ def combine_tensor_patches(
             (original_size[1] + (unpadding[0] + unpadding[1])) // window_size[1],
         )
 
-    # the goal here is to concatenate the patches back into the original image
-    # so first we need to determine how many patches are horizontal and how many are vertical
-    # for this we need the original size
-    # this is made fairly easy since we only need to support stride == window_size
-    # so determine how often the window_size fits in the original size
     vertical_patches = original_size[0] // window_size[0]
     horizontal_patches = original_size[1] // window_size[1]
     patches_tensor = patches.view(-1, vertical_patches, horizontal_patches, *patches.shape[-3:])
-    # now glue them together, first vertically
     restored_tensor = concatenate(torch.chunk(patches_tensor, vertical_patches, 1), -2)
-    # then horizontally
     restored_tensor = concatenate(torch.chunk(restored_tensor, window_size[1], 2), -1).squeeze(1).squeeze(1)
 
     if unpadding:
