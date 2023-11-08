@@ -275,11 +275,6 @@ def combine_tensor_patches(
             (original_size[1] + (unpadding[0] + unpadding[1])) // window_size[1],
         )
 
-    ## what is happening here? It's still erroring..
-    # patches_tensor = patches.view(-1, window_size[0], window_size[1], *patches.shape[-3:])
-    # restored_tensor = concatenate(torch.chunk(patches_tensor, window_size[0], 1), -2).squeeze(1)
-    # restored_tensor = concatenate(torch.chunk(restored_tensor, window_size[1], 1), -1).squeeze(1)
-
     # the goal here is to concatenate the patches back into the original image
     # so first we need to determine how many patches are horizontal and how many are vertical
     # for this we need the original size
@@ -292,8 +287,6 @@ def combine_tensor_patches(
     restored_tensor = concatenate(torch.chunk(patches_tensor, vertical_patches, 1), -2)
     # then horizontally
     restored_tensor = concatenate(torch.chunk(restored_tensor, window_size[1], 2), -1).squeeze(1).squeeze(1)
-    # 
-    breakpoint()
 
     if unpadding:
         unpadding = cast(Tuple[int, int, int, int], unpadding)
