@@ -1,4 +1,5 @@
 from typing import Optional, Tuple, Union, cast
+from warnings import warn
 
 import torch
 from torch.nn.modules.utils import _pair
@@ -298,6 +299,7 @@ def extract_tensor_patches(
     window_size: Union[int, Tuple[int, int]],
     stride: Union[int, Tuple[int, int]] = 1,
     padding: Union[int, PadType] = 0,
+    allow_auto_padding: bool = False
 ) -> Tensor:
     r"""Function that extract patches from tensors and stack them.
 
@@ -308,6 +310,7 @@ def extract_tensor_patches(
         window_size: the size of the sliding window and the output patch size.
         stride: stride of the sliding window.
         padding: Zero-padding added to both side of the input.
+        allow_auto_adding: if True, the input will be padded to fit the window and stride.
 
     Returns:
         the tensor with the extracted patches with shape :math:`(B, N, C, H_{out}, W_{out})`.
@@ -330,15 +333,24 @@ def extract_tensor_patches(
         raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
 
     # check if the window sliding over the image will fit into the image
+    # torch's unfold drops the final patches that don't fit
     stride = _pair(stride)
     window_size = _pair(window_size)
     original_size = (input.shape[-2], input.shape[-1])
-    fit_horizontal = (original_size[0] - window_size[0] // 2) % stride[0]
-    fit_vertical = (original_size[1] - window_size[1] // 2) % stride[1]
-    if (fit_horizontal < (window_size[0] // 2)) or ( fit_vertical < (window_size[0] // 2)):
+    fit_vertical = (original_size[0] - window_size[0] // 2) % stride[1]
+    fit_horizontal = (original_size[1] - window_size[1] // 2) % stride[0]
+    if (fit_horizontal < (window_size[1] // 2)) or ( fit_vertical < (window_size[0] // 2)):
         # needs padding to fit
-        raise ValueError(f"The window will not fit into the image. \nWindow size: {window_size}\nStride: {stride}\nImage size: {original_size}")
-
+        if not allow_auto_padding:
+            warn(f"""The window will not fit into the image. \nWindow size: {window_size}\nStride: {stride}\nImage size: {original_size}\n
+                 This means that the final incomplete patches will be dropped. By enabling `allow_auto_padding`, the input will be padded to fit the window and stride.""")
+        else:
+            # it might be best to apply padding only to the far edges (right, bottom), so
+            # that fewer patches are affected by the padding.
+            # For now, just use the default padding
+            vertical_padding = window_size[0] // 2 - fit_vertical
+            horizontal_padding = window_size[1] // 2 - fit_horizontal  # floor division might drop one pixel
+            padding = (vertical_padding, horizontal_padding)
 
     if padding:
         padding = cast(PadType, _pair(padding))
