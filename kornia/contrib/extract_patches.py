@@ -329,6 +329,16 @@ def extract_tensor_patches(
     if len(input.shape) != 4:
         raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
 
+    # check if the window sliding over the image will fit into the image
+    stride = _pair(stride)
+    window_size = _pair(window_size)
+    original_size = (input.shape[-2], input.shape[-1])
+    if (original_size[0] - window_size[0] // 2) % stride[0] < (window_size[0] // 2) or (
+        (original_size[1] - window_size[1] // 2) % stride[1] < (window_size[1] // 2)):
+        # needs padding to fit
+        raise ValueError(f"The window will not fit into the image. \nWindow size: {window_size}\nStride: {stride}\nImage size: {original_size}")
+
+
     if padding:
         padding = cast(PadType, _pair(padding))
 
