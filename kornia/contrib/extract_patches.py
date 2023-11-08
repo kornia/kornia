@@ -342,15 +342,15 @@ def extract_tensor_patches(
     if (fit_horizontal < (window_size[1] // 2)) or ( fit_vertical < (window_size[0] // 2)):
         # needs padding to fit
         if not allow_auto_padding:
-            warn(f"""The window will not fit into the image. \nWindow size: {window_size}\nStride: {stride}\nImage size: {original_size}\n
-                 This means that the final incomplete patches will be dropped. By enabling `allow_auto_padding`, the input will be padded to fit the window and stride.""")
+            warn(f"The window will not fit into the image. \nWindow size: {window_size}\nStride: {stride}\nImage size: {original_size}\n"
+                 "This means that the final incomplete patches will be dropped. By enabling `allow_auto_padding`, the input will be padded to fit the window and stride.")
         else:
             # it might be best to apply padding only to the far edges (right, bottom), so
             # that fewer patches are affected by the padding.
             # For now, just use the default padding
             vertical_padding = window_size[0] // 2 - fit_vertical
             horizontal_padding = window_size[1] // 2 - fit_horizontal  # floor division might drop one pixel
-            padding = (vertical_padding, horizontal_padding)
+            padding = (vertical_padding // 2, horizontal_padding // 2)  # symmetric padding
 
     if padding:
         padding = cast(PadType, _pair(padding))
