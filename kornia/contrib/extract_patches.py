@@ -246,7 +246,14 @@ def combine_tensor_patches(
     if len(unpadding) != 2:
         raise AssertionError("Unpadding must be either an int or a tuple of two ints")
 
-    ones = torch.ones(patches.shape[0], patches.shape[2], original_size[0], original_size[1])
+    ones = torch.ones(
+        patches.shape[0],
+        patches.shape[2],
+        original_size[0],
+        original_size[1],
+        device=patches.device,
+        dtype=patches.dtype,
+    )
     patches = patches.permute(0, 2, 3, 4, 1)
     patches = patches.reshape(patches.shape[0], -1, patches.shape[-1])
     int_flag = 0
@@ -254,6 +261,7 @@ def combine_tensor_patches(
         int_flag = 1
         dtype = patches.dtype
         patches = patches.float()
+        ones = ones.float()
 
     # Calculate normalization map
     unfold_ones = F.unfold(ones, kernel_size=window_size, stride=stride, padding=unpadding)
