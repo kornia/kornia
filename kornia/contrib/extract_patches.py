@@ -210,6 +210,7 @@ def combine_tensor_patches(
     window_size: Union[int, Tuple[int, int]],
     stride: Union[int, Tuple[int, int]],
     unpadding: Union[int, PadType] = 0,
+    allow_auto_unpadding: bool = False,
 ) -> Tensor:
     r"""Restore input from patches.
 
@@ -251,6 +252,31 @@ def combine_tensor_patches(
         )
     
     # now check if we need to do automatic unpadding
+    # compute the same remainder as in extract_patches
+    remainder_vertical = (original_size[0] - window_size[0] // 2) % stride[0]
+    remainder_horizontal = (original_size[1] - window_size[1] // 2) % stride[1]
+    if (remainder_horizontal != (window_size[1] // 2)) or ( remainder_vertical != (window_size[0] // 2)):
+        # needs padding to fit
+        # iif it's half, we can fit a full number of patches in, based on the stride
+        if not allow_auto_unpadding:
+            warn(f"The window will not fit into the image. \nWindow size: {window_size}\nStride: {stride}\nImage size: {original_size}\n"
+                 "This means that the final incomplete patches will be dropped. By enabling `allow_auto_padding`, the input will be padded to fit the window and stride.")
+        else:
+            # it might be best to apply padding only to the far edges (right, bottom), so
+            # that fewer patches are affected by the padding.
+            # For now, just use the default padding
+            if (remainder_vertical != (window_size[0] // 2)):
+                vertical_padding = window_size[0] // 2 - remainder_vertical
+            else:
+                vertical_padding = 0
+            
+            if remainder_vertical != (window_size[1] // 2):
+                horizontal_padding = window_size[1] // 2 - remainder_horizontal  # floor division might drop one pixel
+            else:
+                horizontal_padding = 0
+            # from pdb import set_trace; set_trace()
+            
+            unpadding = (vertical_padding // 2, horizontal_padding // 2)  # symmetric padding
 
     if unpadding:
         unpadding = cast(PadType, _pair(unpadding))
@@ -272,16 +298,23 @@ def combine_tensor_patches(
         if not hpad_check or not wpad_check:
             raise NotImplementedError("Insufficient padding")
 
-        window_size = (
-            (original_size[0] + (unpadding[2] + unpadding[3])) // window_size[0],
-            (original_size[1] + (unpadding[0] + unpadding[1])) // window_size[1],
-        )
+        # window_size = (
+        #     (original_size[0] + (unpadding[2] + unpadding[3])) // window_size[0],
+        #     (original_size[1] + (unpadding[0] + unpadding[1])) // window_size[1],
+        # )  # so first there's a check for if the padding allows the window to fit, and
+        # then the window size is modified?? I think this should be removed..
+        vertical_patches = (original_size[0] + (unpadding[2] + unpadding[3])) // window_size[0]
+        horizontal_patches = (original_size[1] + (unpadding[0] + unpadding[1])) // window_size[1]
+        # from pdb import set_trace; set_trace()
+    else:
+        vertical_patches = original_size[0] // window_size[0]
+        horizontal_patches = original_size[1] // window_size[1]
 
-    vertical_patches = original_size[0] // window_size[0]
-    horizontal_patches = original_size[1] // window_size[1]
+    # from pdb import set_trace; set_trace()
     patches_tensor = patches.view(-1, vertical_patches, horizontal_patches, *patches.shape[-3:])
     restored_tensor = concatenate(torch.chunk(patches_tensor, vertical_patches, 1), -2)
-    restored_tensor = concatenate(torch.chunk(restored_tensor, window_size[1], 2), -1).squeeze(1).squeeze(1)
+    restored_tensor = concatenate(torch.chunk(restored_tensor, horizontal_patches, 2), -1).squeeze(1).squeeze(1)
+    print(f"Unpadding: {unpadding}")
 
     if unpadding:
         unpadding = cast(Tuple[int, int, int, int], unpadding)
@@ -343,7 +376,7 @@ def extract_tensor_patches(
     original_size = (input.shape[-2], input.shape[-1])
     remainder_vertical = (original_size[0] - window_size[0] // 2) % stride[1]
     remainder_horizontal = (original_size[1] - window_size[1] // 2) % stride[0]
-    if (remainder_horizontal < (window_size[1] // 2)) or ( remainder_vertical < (window_size[0] // 2)):
+    if (remainder_horizontal != (window_size[1] // 2)) or ( remainder_vertical != (window_size[0] // 2)):
         # needs padding to fit
         if not allow_auto_padding:
             warn(f"The window will not fit into the image. \nWindow size: {window_size}\nStride: {stride}\nImage size: {original_size}\n"
@@ -352,7 +385,10 @@ def extract_tensor_patches(
             # it might be best to apply padding only to the far edges (right, bottom), so
             # that fewer patches are affected by the padding.
             # For now, just use the default padding
+            # if it's less than half, we just need to fill up till half
             vertical_padding = window_size[0] // 2 - remainder_vertical
+            # if the remainder is more than half, we need to add an extra patch and fill up till its edge
+
             horizontal_padding = window_size[1] // 2 - remainder_horizontal  # floor division might drop one pixel
             padding = (vertical_padding // 2, horizontal_padding // 2)  # symmetric padding
 
