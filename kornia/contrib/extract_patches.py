@@ -267,16 +267,21 @@ def combine_tensor_patches(
             # For now, just use the default padding
             if (remainder_vertical != (window_size[0] // 2)):
                 vertical_padding = window_size[0] // 2 - remainder_vertical
+                if vertical_padding < 0:
+                    vertical_padding = (stride[0] - remainder_vertical) + window_size[0] // 2
             else:
                 vertical_padding = 0
             
-            if remainder_vertical != (window_size[1] // 2):
+            if remainder_horizontal != (window_size[1] // 2):
                 horizontal_padding = window_size[1] // 2 - remainder_horizontal  # floor division might drop one pixel
+                if horizontal_padding < 0:
+                    horizontal_padding = (stride[1] - remainder_horizontal) + window_size[1] // 2
             else:
                 horizontal_padding = 0
             # from pdb import set_trace; set_trace()
             
             unpadding = (vertical_padding // 2, horizontal_padding // 2)  # symmetric padding
+    # from pdb import set_trace; set_trace()
 
     if unpadding:
         unpadding = cast(PadType, _pair(unpadding))
@@ -386,10 +391,21 @@ def extract_tensor_patches(
             # that fewer patches are affected by the padding.
             # For now, just use the default padding
             # if it's less than half, we just need to fill up till half
-            vertical_padding = window_size[0] // 2 - remainder_vertical
-            # if the remainder is more than half, we need to add an extra patch and fill up till its edge
+            if (remainder_vertical != (window_size[0] // 2)):
+                vertical_padding = window_size[0] // 2 - remainder_vertical
+                if vertical_padding < 0:
+                    vertical_padding = (stride[0] - remainder_vertical) + window_size[0] // 2
+                # if the remainder is more than half, we need to add an extra patch and fill up till its edge
+            else:
+                vertical_padding = 0
+            
+            if remainder_horizontal != (window_size[1] // 2):
+                horizontal_padding = window_size[1] // 2 - remainder_horizontal  # floor division might drop one pixel
+                if horizontal_padding < 0:
+                    horizontal_padding = (stride[1] - remainder_horizontal) + window_size[1] // 2
+            else:
+                horizontal_padding = 0
 
-            horizontal_padding = window_size[1] // 2 - remainder_horizontal  # floor division might drop one pixel
             padding = (vertical_padding // 2, horizontal_padding // 2)  # symmetric padding
 
     if padding:
