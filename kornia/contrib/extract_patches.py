@@ -250,28 +250,30 @@ def combine_tensor_patches(
             f"Only stride == window_size is supported. Got {stride} and {window_size}."
             "Please feel free to drop a PR to Kornia Github."
         )
-    
+
     # now check if we need to do automatic unpadding
     # compute the same remainder as in extract_patches
     remainder_vertical = (original_size[0] - window_size[0] // 2) % stride[0]
     remainder_horizontal = (original_size[1] - window_size[1] // 2) % stride[1]
-    if (remainder_horizontal != (window_size[1] // 2)) or ( remainder_vertical != (window_size[0] // 2)):
+    if (remainder_horizontal != (window_size[1] // 2)) or (remainder_vertical != (window_size[0] // 2)):
         # needs padding to fit
         # iif it's half, we can fit a full number of patches in, based on the stride
         if not allow_auto_unpadding:
-            warn(f"The window will not fit into the image. \nWindow size: {window_size}\nStride: {stride}\nImage size: {original_size}\n"
-                 "This means that the final incomplete patches will be dropped. By enabling `allow_auto_padding`, the input will be padded to fit the window and stride.")
+            warn(
+                f"The window will not fit into the image. \nWindow size: {window_size}\nStride: {stride}\nImage size: {original_size}\n"
+                "This means that the final incomplete patches will be dropped. By enabling `allow_auto_padding`, the input will be padded to fit the window and stride."
+            )
         else:
             # it might be best to apply padding only to the far edges (right, bottom), so
             # that fewer patches are affected by the padding.
             # For now, just use the default padding
-            if (remainder_vertical != (window_size[0] // 2)):
+            if remainder_vertical != (window_size[0] // 2):
                 vertical_padding = window_size[0] // 2 - remainder_vertical
                 if vertical_padding < 0:
                     vertical_padding = (stride[0] - remainder_vertical) + window_size[0] // 2
             else:
                 vertical_padding = 0
-            
+
             if remainder_horizontal != (window_size[1] // 2):
                 horizontal_padding = window_size[1] // 2 - remainder_horizontal  # floor division might drop one pixel
                 if horizontal_padding < 0:
@@ -279,7 +281,7 @@ def combine_tensor_patches(
             else:
                 horizontal_padding = 0
             # from pdb import set_trace; set_trace()
-            
+
             unpadding = (vertical_padding // 2, horizontal_padding // 2)  # symmetric padding
     # from pdb import set_trace; set_trace()
 
@@ -341,7 +343,7 @@ def extract_tensor_patches(
     window_size: Union[int, Tuple[int, int]],
     stride: Union[int, Tuple[int, int]] = 1,
     padding: Union[int, PadType] = 0,
-    allow_auto_padding: bool = False
+    allow_auto_padding: bool = False,
 ) -> Tensor:
     r"""Function that extract patches from tensors and stack them.
 
@@ -381,24 +383,26 @@ def extract_tensor_patches(
     original_size = (input.shape[-2], input.shape[-1])
     remainder_vertical = (original_size[0] - window_size[0] // 2) % stride[1]
     remainder_horizontal = (original_size[1] - window_size[1] // 2) % stride[0]
-    if (remainder_horizontal != (window_size[1] // 2)) or ( remainder_vertical != (window_size[0] // 2)):
+    if (remainder_horizontal != (window_size[1] // 2)) or (remainder_vertical != (window_size[0] // 2)):
         # needs padding to fit
         if not allow_auto_padding:
-            warn(f"The window will not fit into the image. \nWindow size: {window_size}\nStride: {stride}\nImage size: {original_size}\n"
-                 "This means that the final incomplete patches will be dropped. By enabling `allow_auto_padding`, the input will be padded to fit the window and stride.")
+            warn(
+                f"The window will not fit into the image. \nWindow size: {window_size}\nStride: {stride}\nImage size: {original_size}\n"
+                "This means that the final incomplete patches will be dropped. By enabling `allow_auto_padding`, the input will be padded to fit the window and stride."
+            )
         else:
             # it might be best to apply padding only to the far edges (right, bottom), so
             # that fewer patches are affected by the padding.
             # For now, just use the default padding
             # if it's less than half, we just need to fill up till half
-            if (remainder_vertical != (window_size[0] // 2)):
+            if remainder_vertical != (window_size[0] // 2):
                 vertical_padding = window_size[0] // 2 - remainder_vertical
                 if vertical_padding < 0:
                     vertical_padding = (stride[0] - remainder_vertical) + window_size[0] // 2
                 # if the remainder is more than half, we need to add an extra patch and fill up till its edge
             else:
                 vertical_padding = 0
-            
+
             if remainder_horizontal != (window_size[1] // 2):
                 horizontal_padding = window_size[1] // 2 - remainder_horizontal  # floor division might drop one pixel
                 if horizontal_padding < 0:
