@@ -286,11 +286,9 @@ def combine_tensor_patches(
             "Please feel free to drop a PR to Kornia Github."
         )
 
-    # now check if we need to do automatic unpadding
-    # compute the same remainder as in extract_patches
     if not unpadding:
-        # TODO: Decouple check from unpadding calc so we can still raise a warning
-        # when it doesn't fit
+        # if padding is specified, we leave it up to the user to ensure it fits
+        # otherwise we check here if it will fit and offer to calculate padding
         unpadding = _check_patch_fit(original_size, window_size, stride, allow_auto_unpadding)
 
     if unpadding:
@@ -384,8 +382,8 @@ def extract_tensor_patches(
     original_size = (input.shape[-2], input.shape[-1])
     
     if not padding:
-        # TODO: Decouple check from padding calc so we can still raise a warning
-        # when it doesn't fit
+        # if padding is specified, we leave it up to the user to ensure it fits
+        # otherwise we check here if it will fit and offer to calculate padding
         padding = _check_patch_fit(original_size, window_size, stride, allow_auto_padding)
 
     if padding:
