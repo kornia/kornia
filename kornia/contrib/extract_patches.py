@@ -204,7 +204,7 @@ class CombineTensorPatches(Module):
         )
 
 
-def check_patch_fit(original_size, window_size, stride, allow_auto_unpadding):
+def _check_patch_fit(original_size, window_size, stride, allow_auto_unpadding):
     remainder_vertical = (original_size[0] - window_size[0] // 2) % stride[0]
     remainder_horizontal = (original_size[1] - window_size[1] // 2) % stride[1]
     if (remainder_horizontal != (window_size[1] // 2)) or (remainder_vertical != (window_size[0] // 2)):
@@ -291,7 +291,7 @@ def combine_tensor_patches(
     if not unpadding:
         # TODO: Decouple check from unpadding calc so we can still raise a warning
         # when it doesn't fit
-        unpadding = check_patch_fit(original_size, window_size, stride, allow_auto_unpadding)
+        unpadding = _check_patch_fit(original_size, window_size, stride, allow_auto_unpadding)
 
     if unpadding:
         unpadding = cast(PadType, _pair(unpadding))
@@ -386,7 +386,7 @@ def extract_tensor_patches(
     if not padding:
         # TODO: Decouple check from padding calc so we can still raise a warning
         # when it doesn't fit
-        padding = check_patch_fit(original_size, window_size, stride, allow_auto_padding)
+        padding = _check_patch_fit(original_size, window_size, stride, allow_auto_padding)
 
     if padding:
         padding = cast(PadType, _pair(padding))
