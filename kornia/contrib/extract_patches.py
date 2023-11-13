@@ -382,15 +382,12 @@ def extract_tensor_patches(
                 "This means that the final incomplete patches will be dropped. By enabling `allow_auto_padding`, the input will be padded to fit the window and stride."
             )
         else:
-            # it might be best to apply padding only to the far edges (right, bottom), so
-            # that fewer patches are affected by the padding.
-            # For now, just use the default padding
             # if it's less than half, we just need to fill up till half
             if remainder_vertical != (window_size[0] // 2):
                 vertical_padding = window_size[0] // 2 - remainder_vertical
                 if vertical_padding < 0:
-                    vertical_padding = (stride[0] - remainder_vertical) + window_size[0] // 2
                 # if the remainder is more than half, we need to add an extra patch and fill up till its edge
+                    vertical_padding = (stride[0] - remainder_vertical) + window_size[0] // 2
             else:
                 vertical_padding = 0
 
