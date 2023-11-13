@@ -204,6 +204,41 @@ class CombineTensorPatches(Module):
         )
 
 
+def check_patch_fit(original_size, window_size, stride, allow_auto_unpadding):
+    remainder_vertical = (original_size[0] - window_size[0] // 2) % stride[0]
+    remainder_horizontal = (original_size[1] - window_size[1] // 2) % stride[1]
+    if (remainder_horizontal != (window_size[1] // 2)) or (remainder_vertical != (window_size[0] // 2)):
+        # needs padding to fit
+        # iif it's half, we can fit a full number of patches in, based on the stride
+        if not allow_auto_unpadding:
+            warn(
+                f"The window will not fit into the image. \nWindow size: {window_size}\nStride: {stride}\nImage size: {original_size}\n"
+                "This means that the final incomplete patches will be dropped. By enabling `allow_auto_padding`, the input will be padded to fit the window and stride."
+            )
+            return 0
+        else:
+            # it might be best to apply padding only to the far edges (right, bottom), so
+            # that fewer patches are affected by the padding.
+            # For now, just use the default padding
+            if remainder_vertical != (window_size[0] // 2):
+                vertical_padding = window_size[0] // 2 - remainder_vertical
+                if vertical_padding < 0:
+                    vertical_padding = (stride[0] - remainder_vertical) + window_size[0] // 2
+            else:
+                vertical_padding = 0
+
+            if remainder_horizontal != (window_size[1] // 2):
+                horizontal_padding = window_size[1] // 2 - remainder_horizontal  # floor division might drop one pixel
+                if horizontal_padding < 0:
+                    horizontal_padding = (stride[1] - remainder_horizontal) + window_size[1] // 2
+            else:
+                horizontal_padding = 0
+
+            unpadding = (vertical_padding // 2, horizontal_padding // 2)  # symmetric padding
+
+            return unpadding
+
+
 def combine_tensor_patches(
     patches: Tensor,
     original_size: Union[int, Tuple[int, int]],
@@ -253,35 +288,10 @@ def combine_tensor_patches(
 
     # now check if we need to do automatic unpadding
     # compute the same remainder as in extract_patches
-    remainder_vertical = (original_size[0] - window_size[0] // 2) % stride[0]
-    remainder_horizontal = (original_size[1] - window_size[1] // 2) % stride[1]
-    if (remainder_horizontal != (window_size[1] // 2)) or (remainder_vertical != (window_size[0] // 2)):
-        # needs padding to fit
-        # iif it's half, we can fit a full number of patches in, based on the stride
-        if not allow_auto_unpadding:
-            warn(
-                f"The window will not fit into the image. \nWindow size: {window_size}\nStride: {stride}\nImage size: {original_size}\n"
-                "This means that the final incomplete patches will be dropped. By enabling `allow_auto_padding`, the input will be padded to fit the window and stride."
-            )
-        else:
-            # it might be best to apply padding only to the far edges (right, bottom), so
-            # that fewer patches are affected by the padding.
-            # For now, just use the default padding
-            if remainder_vertical != (window_size[0] // 2):
-                vertical_padding = window_size[0] // 2 - remainder_vertical
-                if vertical_padding < 0:
-                    vertical_padding = (stride[0] - remainder_vertical) + window_size[0] // 2
-            else:
-                vertical_padding = 0
-
-            if remainder_horizontal != (window_size[1] // 2):
-                horizontal_padding = window_size[1] // 2 - remainder_horizontal  # floor division might drop one pixel
-                if horizontal_padding < 0:
-                    horizontal_padding = (stride[1] - remainder_horizontal) + window_size[1] // 2
-            else:
-                horizontal_padding = 0
-
-            unpadding = (vertical_padding // 2, horizontal_padding // 2)  # symmetric padding
+    if not unpadding:
+        # TODO: Decouple check from unpadding calc so we can still raise a warning
+        # when it doesn't fit
+        unpadding = check_patch_fit(original_size, window_size, stride, allow_auto_unpadding)
 
     if unpadding:
         unpadding = cast(PadType, _pair(unpadding))
@@ -372,33 +382,11 @@ def extract_tensor_patches(
     stride = _pair(stride)
     window_size = _pair(window_size)
     original_size = (input.shape[-2], input.shape[-1])
-    remainder_vertical = (original_size[0] - window_size[0] // 2) % stride[1]
-    remainder_horizontal = (original_size[1] - window_size[1] // 2) % stride[0]
-    if (remainder_horizontal != (window_size[1] // 2)) or (remainder_vertical != (window_size[0] // 2)):
-        # needs padding to fit
-        if not allow_auto_padding:
-            warn(
-                f"The window will not fit into the image. \nWindow size: {window_size}\nStride: {stride}\nImage size: {original_size}\n"
-                "This means that the final incomplete patches will be dropped. By enabling `allow_auto_padding`, the input will be padded to fit the window and stride."
-            )
-        else:
-            # if it's less than half, we just need to fill up till half
-            if remainder_vertical != (window_size[0] // 2):
-                vertical_padding = window_size[0] // 2 - remainder_vertical
-                if vertical_padding < 0:
-                # if the remainder is more than half, we need to add an extra patch and fill up till its edge
-                    vertical_padding = (stride[0] - remainder_vertical) + window_size[0] // 2
-            else:
-                vertical_padding = 0
-
-            if remainder_horizontal != (window_size[1] // 2):
-                horizontal_padding = window_size[1] // 2 - remainder_horizontal  # floor division might drop one pixel
-                if horizontal_padding < 0:
-                    horizontal_padding = (stride[1] - remainder_horizontal) + window_size[1] // 2
-            else:
-                horizontal_padding = 0
-
-            padding = (vertical_padding // 2, horizontal_padding // 2)  # symmetric padding
+    
+    if not padding:
+        # TODO: Decouple check from padding calc so we can still raise a warning
+        # when it doesn't fit
+        padding = check_patch_fit(original_size, window_size, stride, allow_auto_padding)
 
     if padding:
         padding = cast(PadType, _pair(padding))
