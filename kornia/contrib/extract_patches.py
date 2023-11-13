@@ -280,10 +280,8 @@ def combine_tensor_patches(
                     horizontal_padding = (stride[1] - remainder_horizontal) + window_size[1] // 2
             else:
                 horizontal_padding = 0
-            # from pdb import set_trace; set_trace()
 
             unpadding = (vertical_padding // 2, horizontal_padding // 2)  # symmetric padding
-    # from pdb import set_trace; set_trace()
 
     if unpadding:
         unpadding = cast(PadType, _pair(unpadding))
@@ -305,19 +303,12 @@ def combine_tensor_patches(
         if not hpad_check or not wpad_check:
             raise NotImplementedError("Insufficient padding")
 
-        # window_size = (
-        #     (original_size[0] + (unpadding[2] + unpadding[3])) // window_size[0],
-        #     (original_size[1] + (unpadding[0] + unpadding[1])) // window_size[1],
-        # )  # so first there's a check for if the padding allows the window to fit, and
-        # then the window size is modified?? I think this should be removed..
         vertical_patches = (original_size[0] + (unpadding[2] + unpadding[3])) // window_size[0]
         horizontal_patches = (original_size[1] + (unpadding[0] + unpadding[1])) // window_size[1]
-        # from pdb import set_trace; set_trace()
     else:
         vertical_patches = original_size[0] // window_size[0]
         horizontal_patches = original_size[1] // window_size[1]
 
-    # from pdb import set_trace; set_trace()
     patches_tensor = patches.view(-1, vertical_patches, horizontal_patches, *patches.shape[-3:])
     restored_tensor = concatenate(torch.chunk(patches_tensor, vertical_patches, 1), -2)
     restored_tensor = concatenate(torch.chunk(restored_tensor, horizontal_patches, 2), -1).squeeze(1).squeeze(1)
