@@ -15,12 +15,12 @@ repos:
         exclude: ^$|.devcontainer
 
   - repo: https://github.com/tox-dev/pyproject-fmt
-    rev: "1.4.1"
+    rev: "1.5.1"
     hooks:
       - id: pyproject-fmt
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.1.4
+    rev: v0.1.5
     hooks:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]
