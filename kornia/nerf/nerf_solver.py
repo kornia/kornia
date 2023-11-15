@@ -7,6 +7,7 @@ from torch import optim
 
 from kornia.core import Module, Tensor, tensor, zeros
 from kornia.geometry.camera import PinholeCamera
+from kornia.geometry.ray import Ray
 from kornia.metrics import psnr
 from kornia.nerf.core import Images, ImageTensors
 from kornia.nerf.data_utils import RayDataset, instantiate_ray_dataloader
@@ -24,7 +25,7 @@ class NerfSolver:
     """
 
     _nerf_model: Module
-    _opt_nerf: optim.Optimizer
+    _s: optim.Optimizer
 
     def __init__(self, device: torch.device, dtype: torch.dtype) -> None:
         self._cameras: Optional[PinholeCamera] = None
@@ -223,22 +224,21 @@ class NerfSolver:
             imgs.append(img)
         return imgs
 
-    def _create_rays(self, camera: PinholeCamera, image_size: tuple[int, int]) -> tuple[Tensor, Tensor]:
+    def _create_rays(self, camera: PinholeCamera, image_size: tuple[int, int]) -> Ray:
         # create the pixels grid to unproject to plane z=1
         # TODO: this could be cached
         height, width = image_size
         pixels_grid = create_meshgrid(height, width, normalized_coordinates=False, device=camera.device())  # 1xHxWx2
         pixels_grid = pixels_grid.reshape(-1, 2)  # (H*W)x2
-        depth = torch.ones_like(pixels_grid[:, 0:1])  # (H*W)x1
+        ones = torch.ones(pixels_grid.shape[0], 1, device=pixels_grid.device, dtype=pixels_grid.dtype)  # (H*W)x1
 
         # convert to rays
-        rays_d = camera.unproject(pixels_grid, depth)  # (H*W)x3
-        rays_d = torch.nn.functional.normalize(rays_d, dim=-1)  # (H*W)x3
+        origin = camera.extrinsics[:, :3, -1]  # 1x3
+        origin = origin.repeat(height * width, 1)  # (H*W)x3
 
-        rays_o = camera.extrinsics[:, :3, 3]  # 1x3
-        rays_o = rays_o.repeat(height * width, 1)  # (H*W)x3
+        destination = camera.unproject(pixels_grid, ones)  # (H*W)x3
 
-        return rays_o, rays_d
+        return Ray.through(origin, destination)
 
     def render_view(self, camera: PinholeCamera, image_size: tuple[int, int]) -> Tensor:
         r"""Renders a novel synthesis view of a trained NeRF model for given camera.
@@ -250,12 +250,14 @@ class NerfSolver:
             Rendered image: Tensor (H, W, C).
         """
         # create ray for this camera
-        origins, directions = self._create_rays(camera, image_size)
+        rays: Ray = self._create_rays(camera, image_size)
 
         # render the image
         with torch_inference_mode():
-            rgb_model = self._nerf_model(origins, directions)
+            rgb_model = self._nerf_model(rays.origins, rays.directions)
 
         rgb_image = rgb_model.view(image_size[0], image_size[1], 3)
 
         return rgb_image
+
+    # TODO: create a standalone Renderer class
