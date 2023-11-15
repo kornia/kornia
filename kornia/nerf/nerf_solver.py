@@ -12,6 +12,7 @@ from kornia.nerf.core import Images, ImageTensors
 from kornia.nerf.data_utils import RayDataset, instantiate_ray_dataloader
 from kornia.nerf.nerf_model import NerfModel
 from kornia.utils._compat import torch_inference_mode
+from kornia.utils.grid import create_meshgrid
 
 
 class NerfSolver:
@@ -38,7 +39,7 @@ class NerfSolver:
 
         self._num_ray_points: int = 0
 
-        self._nerf_optimizaer: Optional[optim.Optimizer] = None
+        self._nerf_optimizer: Optional[optim.Optimizer] = None
 
         self._device = device
         self._dtype = dtype
@@ -96,7 +97,7 @@ class NerfSolver:
             num_ray_points, irregular_ray_sampling=irregular_ray_sampling, log_space_encoding=log_space_encoding
         )
         self._nerf_model.to(device=self._device, dtype=self._dtype)
-        self._opt_nerf = optim.Adam(self._nerf_model.parameters(), lr=lr)
+        self._nerf_optimizer = optim.Adam(self._nerf_model.parameters(), lr=lr)
 
     @property
     def nerf_model(self) -> Module:
@@ -157,16 +158,19 @@ class NerfSolver:
         ray_dataset.init_images_for_training(self._imgs)  # FIXME: Do we need to load the same images on each Epoch?
 
         ray_data_loader = instantiate_ray_dataloader(ray_dataset, self._batch_size, shuffle=True)
-        total_psnr = tensor(0.0, device=self._device, dtype=self._dtype)
+
+        total_psnr = 0.0
+
         for i_batch, (origins, directions, rgbs) in enumerate(ray_data_loader):
             rgbs_model = self._nerf_model(origins, directions)
             loss = F.mse_loss(rgbs_model, rgbs)
 
-            total_psnr = psnr(rgbs_model, rgbs, 1.0) + total_psnr
+            total_psnr += psnr(rgbs_model, rgbs, 1.0)
 
-            self._opt_nerf.zero_grad()
+            self._nerf_optimizer.zero_grad()
             loss.backward()
-            self._opt_nerf.step()
+            self._nerf_optimizer.step()
+
         return float(total_psnr / (i_batch + 1))
 
     def run(self, num_epochs: int = 1) -> None:
@@ -182,11 +186,15 @@ class NerfSolver:
                 current_time = datetime.now().strftime("%H:%M:%S")  # noqa: DTZ005
                 print(f"Epoch: {i_epoch}: epoch_psnr = {epoch_psnr}; time: {current_time}")
 
-    def render_views(self, cameras: PinholeCamera) -> ImageTensors:
+        # delete data
+        del self._imgs
+
+    def render_views(self, cameras: PinholeCamera, batch_size: int = 4096) -> ImageTensors:
         r"""Renders a novel synthesis view of a trained NeRF model for given cameras.
 
         Args:
-            cameras: cameras for image renderings: PinholeCamera
+            cameras: cameras for image renderings: PinholeCamera.
+            batch_size: number of rays to sample in a batch: int.
 
         Returns:
             Rendered images: ImageTensors (List[(H, W, C)]).
@@ -195,9 +203,10 @@ class NerfSolver:
             cameras, self._min_depth, self._max_depth, self._ndc, device=self._device, dtype=self._dtype
         )
         ray_dataset.init_ray_dataset()
+
         idx0 = 0
         imgs: ImageTensors = []
-        batch_size = 4096  # FIXME: Consider exposing this value to the user
+
         for height, width in zip(cameras.height.int().tolist(), cameras.width.int().tolist()):
             bsz = batch_size if batch_size != -1 else height * width
             img = zeros((height * width, 3), dtype=torch.uint8)
@@ -213,3 +222,40 @@ class NerfSolver:
             img = img.reshape(height, width, -1)  # (H, W, C)
             imgs.append(img)
         return imgs
+
+    def _create_rays(self, camera: PinholeCamera, image_size: tuple[int, int]) -> tuple[Tensor, Tensor]:
+        # create the pixels grid to unproject to plane z=1
+        # TODO: this could be cached
+        height, width = image_size
+        pixels_grid = create_meshgrid(height, width, normalized_coordinates=False, device=camera.device())  # 1xHxWx2
+        pixels_grid = pixels_grid.reshape(-1, 2)  # (H*W)x2
+        depth = torch.ones_like(pixels_grid[:, 0:1])  # (H*W)x1
+
+        # convert to rays
+        rays_d = camera.unproject(pixels_grid, depth)  # (H*W)x3
+        rays_d = torch.nn.functional.normalize(rays_d, dim=-1)  # (H*W)x3
+
+        rays_o = camera.extrinsics[:, :3, 3]  # 1x3
+        rays_o = rays_o.repeat(height * width, 1)  # (H*W)x3
+
+        return rays_o, rays_d
+
+    def render_view(self, camera: PinholeCamera, image_size: tuple[int, int]) -> Tensor:
+        r"""Renders a novel synthesis view of a trained NeRF model for given camera.
+
+        Args:
+            camera: camera for image rendering: PinholeCamera.
+
+        Returns:
+            Rendered image: Tensor (H, W, C).
+        """
+        # create ray for this camera
+        origins, directions = self._create_rays(camera, image_size)
+
+        # render the image
+        with torch_inference_mode():
+            rgb_model = self._nerf_model(origins, directions)
+
+        rgb_image = rgb_model.view(image_size[0], image_size[1], 3)
+
+        return rgb_image
