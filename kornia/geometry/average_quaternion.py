@@ -39,10 +39,3 @@ def averageQuaternions(Q: np.ndarray) -> np.ndarray:
     eigenVectors = eigenVectors[:, eigenValues.argsort()[::-1]]
     return np.real(eigenVectors[:, 0].A1)
 
-# Example usage:
-# quaternions_list = [Quaternion(1, 2, 3, 4), Quaternion(2, 3, 4, 5), ...]
-# result = average_quaternions(quaternions_list)
-
-# Example usage for a batched quaternion:
-# quaternion_batch = Quaternion(1, 2, 3, 4)
-# result = average_quaternions(quaternion_batch)
