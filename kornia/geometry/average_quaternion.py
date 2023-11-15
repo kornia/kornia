@@ -1,7 +1,8 @@
-from __future__ import annotations  
+from __future__ import annotations
 
 import numpy as np
 import numpy.matlib as npm
+
 
 class Quaternion:
     def __init__(self, w, x, y, z):
@@ -9,6 +10,7 @@ class Quaternion:
         self.x = x
         self.y = y
         self.z = z
+
 
 def average_quaternions(quaternions: list[Quaternion] | Quaternion) -> Quaternion:
     # Check if the input is a list of quaternions or a single quaternion
@@ -38,4 +40,3 @@ def averageQuaternions(Q: np.ndarray) -> np.ndarray:
     eigenValues, eigenVectors = np.linalg.eig(A)
     eigenVectors = eigenVectors[:, eigenValues.argsort()[::-1]]
     return np.real(eigenVectors[:, 0].A1)
-
