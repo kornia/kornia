@@ -1,19 +1,20 @@
+from __future__ import annotations
+
 from datetime import datetime
-from typing import Optional, Union
 
 import torch
 import torch.nn.functional as F
 from torch import optim
 
 from kornia.core import Module, Tensor, tensor, zeros
+from kornia.core.check import KORNIA_CHECK
 from kornia.geometry.camera import PinholeCamera
-from kornia.geometry.ray import Ray
 from kornia.metrics import psnr
 from kornia.nerf.core import Images, ImageTensors
 from kornia.nerf.data_utils import RayDataset, instantiate_ray_dataloader
 from kornia.nerf.nerf_model import NerfModel
+from kornia.utils import deprecated
 from kornia.utils._compat import torch_inference_mode
-from kornia.utils.grid import create_meshgrid
 
 
 class NerfSolver:
@@ -24,35 +25,40 @@ class NerfSolver:
         dtype: type for all floating point calculations: torch.dtype
     """
 
-    _nerf_model: Module
-    _s: optim.Optimizer
-
-    def __init__(self, device: torch.device, dtype: torch.dtype) -> None:
-        self._cameras: Optional[PinholeCamera] = None
+    def __init__(self, device: torch.device | str, dtype: torch.dtype) -> None:
+        # NOTE: the following attributes are initialized in setup_solver
+        # cameras used for training
+        self._cameras: PinholeCamera | None = None
+        # rays depth range
         self._min_depth: float = 0.0
         self._max_depth: float = 0.0
+        # whether to convert ray parameters to normalized device coordinates
         self._ndc: bool = True
 
-        self._imgs: Optional[Images] = None
-        self._num_img_rays: Optional[Union[Tensor, int]] = None
-
+        # images used for training
+        self._imgs: Images | None = None
+        # number of rays to randomly cast from each camera
+        self._num_img_rays: Tensor | int | None = None
+        # number of rays to sample in a batch
         self._batch_size: int = 0
-
+        # number of points to sample along rays
         self._num_ray_points: int = 0
 
-        self._nerf_optimizer: Optional[optim.Optimizer] = None
+        # the model and optimizer
+        self._nerf_model: Module = None
+        self._nerf_optimizer: optim.Optimizer = None
 
         self._device = device
         self._dtype = dtype
 
-    def init_training(
+    def setup_solver(
         self,
         cameras: PinholeCamera,
         min_depth: float,
         max_depth: float,
         ndc: bool,
         imgs: Images,
-        num_img_rays: Optional[Union[Tensor, int]],
+        num_img_rays: Tensor | int,
         batch_size: int,
         num_ray_points: int,
         irregular_ray_sampling: bool = True,
@@ -98,10 +104,56 @@ class NerfSolver:
             num_ray_points, irregular_ray_sampling=irregular_ray_sampling, log_space_encoding=log_space_encoding
         )
         self._nerf_model.to(device=self._device, dtype=self._dtype)
+
         self._nerf_optimizer = optim.Adam(self._nerf_model.parameters(), lr=lr)
 
+    @deprecated(replace_with="setup_solver", version="0.7.0")
+    def init_training(
+        self,
+        cameras: PinholeCamera,
+        min_depth: float,
+        max_depth: float,
+        ndc: bool,
+        imgs: Images,
+        num_img_rays: Tensor | int,
+        batch_size: int,
+        num_ray_points: int,
+        irregular_ray_sampling: bool = True,
+        log_space_encoding: bool = True,
+        lr: float = 1.0e-3,
+    ) -> None:
+        r"""Initializes training.
+
+        Args:
+            cameras: Scene cameras in the order of input images: PinholeCamera
+            min_depth: sampled rays minimal depth from cameras: float
+            max_depth: sampled rays maximal depth from cameras: float
+            ndc: convert ray parameters to normalized device coordinates: bool
+            imgs: Scene 2D images (one for each camera): Images
+            num_img_rays: Number of rays to randomly cast from each camera: math: `(B)`
+            batch_size: Number of rays to sample in a batch: int
+            num_ray_points: Number of points to sample along rays: int
+            irregular_ray_sampling: Whether to sample ray points irregularly: bool
+            log_space: Whether frequency sampling should be log spaced: bool
+            lr: Learning rate: float
+        """
+        self.setup_solver(
+            cameras,
+            min_depth,
+            max_depth,
+            ndc,
+            imgs,
+            num_img_rays,
+            batch_size,
+            num_ray_points,
+            irregular_ray_sampling,
+            log_space_encoding,
+            lr,
+        )
+
     @property
-    def nerf_model(self) -> Module:
+    def nerf_model(self) -> Module | None:
+        """Returns the NeRF model."""
         return self._nerf_model
 
     # FIXME: Remove this function - consistency is checked in
@@ -141,28 +193,27 @@ class NerfSolver:
         Returns:
             Average psnr over all epoch rays
         """
-        if self._cameras is None:
-            raise TypeError("The camera should be a PinholeCamera. Gotcha None. You init the training before train?")
+        KORNIA_CHECK(self._nerf_model is not None, "The model should be a NeRF model. Gotcha None.")
+        KORNIA_CHECK(self._nerf_optimizer is not None, "The optimizer should be an Adam optimizer. Gotcha None.")
+        KORNIA_CHECK(self._cameras is not None, "The camera should be a PinholeCamera. Gotcha None.")
+        KORNIA_CHECK(self._imgs is not None, "The images should be a list of tensors. Gotcha None.")
+        KORNIA_CHECK(self._num_img_rays is not None, "The number of images of Ray should be a tensor. Gotcha None.")
 
+        # create the dataset and data loader
         ray_dataset = RayDataset(
             self._cameras, self._min_depth, self._max_depth, self._ndc, device=self._device, dtype=self._dtype
         )
-
-        if isinstance(self._num_img_rays, int):
-            raise TypeError(
-                "The number of images of Ray should be a tensor. Gotcha an integer. You init the training before train?"
-            )
         ray_dataset.init_ray_dataset(self._num_img_rays)
-
-        if self._imgs is None:
-            raise TypeError("Invalid image list object")
         ray_dataset.init_images_for_training(self._imgs)  # FIXME: Do we need to load the same images on each Epoch?
 
+        # data loader
         ray_data_loader = instantiate_ray_dataloader(ray_dataset, self._batch_size, shuffle=True)
 
-        total_psnr = 0.0
+        total_psnr: Tensor = torch.tensor(0.0, device=self._device, dtype=self._dtype)
 
-        for i_batch, (origins, directions, rgbs) in enumerate(ray_data_loader):
+        i_batch: float = 0
+
+        for origins, directions, rgbs in ray_data_loader:
             rgbs_model = self._nerf_model(origins, directions)
             loss = F.mse_loss(rgbs_model, rgbs)
 
@@ -171,6 +222,8 @@ class NerfSolver:
             self._nerf_optimizer.zero_grad()
             loss.backward()
             self._nerf_optimizer.step()
+
+            i_batch += 1
 
         return float(total_psnr / (i_batch + 1))
 
@@ -223,41 +276,3 @@ class NerfSolver:
             img = img.reshape(height, width, -1)  # (H, W, C)
             imgs.append(img)
         return imgs
-
-    def _create_rays(self, camera: PinholeCamera, image_size: tuple[int, int]) -> Ray:
-        # create the pixels grid to unproject to plane z=1
-        # TODO: this could be cached
-        height, width = image_size
-        pixels_grid = create_meshgrid(height, width, normalized_coordinates=False, device=camera.device())  # 1xHxWx2
-        pixels_grid = pixels_grid.reshape(-1, 2)  # (H*W)x2
-        ones = torch.ones(pixels_grid.shape[0], 1, device=pixels_grid.device, dtype=pixels_grid.dtype)  # (H*W)x1
-
-        # convert to rays
-        origin = camera.extrinsics[:, :3, -1]  # 1x3
-        origin = origin.repeat(height * width, 1)  # (H*W)x3
-
-        destination = camera.unproject(pixels_grid, ones)  # (H*W)x3
-
-        return Ray.through(origin, destination)
-
-    def render_view(self, camera: PinholeCamera, image_size: tuple[int, int]) -> Tensor:
-        r"""Renders a novel synthesis view of a trained NeRF model for given camera.
-
-        Args:
-            camera: camera for image rendering: PinholeCamera.
-
-        Returns:
-            Rendered image: Tensor (H, W, C).
-        """
-        # create ray for this camera
-        rays: Ray = self._create_rays(camera, image_size)
-
-        # render the image
-        with torch_inference_mode():
-            rgb_model = self._nerf_model(rays.origins, rays.directions)
-
-        rgb_image = rgb_model.view(image_size[0], image_size[1], 3)
-
-        return rgb_image
-
-    # TODO: create a standalone Renderer class

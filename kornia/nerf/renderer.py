@@ -1,7 +1,12 @@
 import torch
 
 from kornia.core import Tensor
+from kornia.geometry.camera import PinholeCamera
+from kornia.geometry.ray import Ray
+from kornia.nerf.nerf_model import NerfModel
 from kornia.nerf.rays import calc_ray_t_vals
+from kornia.utils._compat import torch_inference_mode
+from kornia.utils.grid import create_meshgrid
 
 
 class VolumeRenderer(torch.nn.Module):
@@ -81,3 +86,77 @@ class RegularRenderer(VolumeRenderer):
         alpha = 1 - torch.exp(-1.0 * densities * delta)  # (*, N)
 
         return self._render(alpha, rgbs)
+
+
+class NerfModelRenderer:
+    r"""Renders a novel synthesis view of a trained NeRF model for given camera.
+
+    Args:
+        nerf_model: NeRF model: NerfModel
+        image_size: image size: tuple[int, int]
+    """
+
+    def __init__(
+        self, nerf_model: NerfModel, image_size: tuple[int, int], device: torch.device | None, dtype: torch.dtype | None
+    ) -> None:
+        self._nerf_model = nerf_model
+        self._image_size = image_size
+        self._device = device
+        self._dtype = dtype
+
+        self._pixels_grid, self._ones = self._create_pixels_grid()  # 1xHxWx2 and (H*W)x1
+
+    def _create_pixels_grid(self) -> Tensor:
+        r"""Creates the pixels grid to unproject to plane z=1.
+
+        Args:
+            image_size: image size: tuple[int, int]
+
+        Returns:
+            Pixels grid: Tensor (1, H, W, 2) and (H*W, 1).
+        """
+        height, width = self._image_size
+        pixels_grid = create_meshgrid(
+            height, width, normalized_coordinates=False, device=self._device, dtype=self._dtype
+        )  # 1xHxWx2
+        pixels_grid = pixels_grid.reshape(-1, 2)  # (H*W)x2
+
+        ones = torch.ones(pixels_grid.shape[0], 1, device=pixels_grid.device, dtype=pixels_grid.dtype)  # (H*W)x1
+
+        return pixels_grid, ones
+
+    def render_view(self, camera: PinholeCamera) -> Tensor:
+        r"""Renders a novel synthesis view of a trained NeRF model for given camera.
+
+        Args:
+            camera: camera for image rendering: PinholeCamera.
+
+        Returns:
+            Rendered image: Tensor (H, W, C).
+        """
+        # create ray for this camera
+        rays: Ray = self._create_rays(camera)
+
+        # render the image
+        with torch_inference_mode():
+            rgb_model = self._nerf_model(rays.origins, rays.directions)
+
+        rgb_image = rgb_model.view(self._image_size[0], self._image_size[1], 3)
+
+        return rgb_image
+
+    def _create_rays(self, camera: PinholeCamera) -> Ray:
+        """Creates rays for a given camera.
+
+        Args:
+            camera: camera for image rendering: PinholeCamera.
+        """
+        height, width = self._image_size
+
+        # convert to rays
+        origin = camera.extrinsics[:, :3, -1]  # 1x3
+        origin = origin.repeat(height * width, 1)  # (H*W)x3
+
+        destination = camera.unproject(self._pixels_grid, self._ones)  # (H*W)x3
+
+        return Ray.through(origin, destination)
