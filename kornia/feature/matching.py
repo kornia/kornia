@@ -232,7 +232,7 @@ def match_fginn(
         desc1: Batch of descriptors of a shape :math:`(B1, D)`.
         desc2: Batch of descriptors of a shape :math:`(B2, D)`.
         lafs1: LAFs of a shape :math:`(1, B1, 2, 3)`.
-        lafs2: LAFs of a shape :math:`(1, B1, 2, 3)`.
+        lafs2: LAFs of a shape :math:`(1, B2, 2, 3)`.
 
         th: distance ratio threshold.
         spatial_th: minimal distance in pixels to 2nd nearest neighbor.
@@ -313,7 +313,7 @@ class DescriptorMatcher(Module):
             desc1: Batch of descriptors of a shape :math:`(B1, D)`.
             desc2: Batch of descriptors of a shape :math:`(B2, D)`.
             lafs1: LAFs of a shape :math:`(1, B1, 2, 3)`.
-            lafs2: LAFs of a shape :math:`(1, B1, 2, 3)`.
+            lafs2: LAFs of a shape :math:`(1, B2, 2, 3)`.
 
         Return:
             - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
@@ -360,7 +360,7 @@ class GeometryAwareDescriptorMatcher(Module):
             desc1: Batch of descriptors of a shape :math:`(B1, D)`.
             desc2: Batch of descriptors of a shape :math:`(B2, D)`.
             lafs1: LAFs of a shape :math:`(1, B1, 2, 3)`.
-            lafs2: LAFs of a shape :math:`(1, B1, 2, 3)`.
+            lafs2: LAFs of a shape :math:`(1, B2, 2, 3)`.
 
         Return:
             - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
