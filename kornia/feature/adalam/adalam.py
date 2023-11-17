@@ -49,7 +49,7 @@ def match_adalam(
         desc1: Batch of descriptors of a shape :math:`(B1, D)`.
         desc2: Batch of descriptors of a shape :math:`(B2, D)`.
         lafs1: LAFs of a shape :math:`(1, B1, 2, 3)`.
-        lafs2: LAFs of a shape :math:`(1, B1, 2, 3)`.
+        lafs2: LAFs of a shape :math:`(1, B2, 2, 3)`.
         config: dict with AdaLAM config
         dm: Tensor containing the distances from each descriptor in desc1
           to each descriptor in desc2, shape of :math:`(B1, B2)`.
