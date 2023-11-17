@@ -235,7 +235,7 @@ class CoarseMatching(Module):
             mconf_gt = torch.zeros(len(data["spv_b_ids"]), device=_device)  # set conf of gt paddings to all zero
 
             b_ids, i_ids, j_ids, mconf = (  # type: ignore
-                torch.cat([x[pred_indices], y[gt_pad_indices]], dim=0)  # type: ignore[has-type]
+                torch.cat([x[pred_indices], y[gt_pad_indices]], dim=0)
                 for x, y in zip(
                     [b_ids, data["spv_b_ids"]],
                     [i_ids, data["spv_i_ids"]],
