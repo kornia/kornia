@@ -3,9 +3,11 @@
 # https://github.com/KieranWynn/pyquaternion/blob/master/pyquaternion/quaternion.py
 # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Quaternion.h
 from math import pi
-from typing import Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
-from kornia.core import Device, Dtype, Module, Parameter, Tensor, concatenate, rand, stack, tensor, where
+import torch
+
+from kornia.core import Device, Dtype, Module, Parameter, Tensor, concatenate, rand, stack, tensor, where, zeros
 from kornia.core.check import KORNIA_CHECK_TYPE
 from kornia.geometry.conversions import (
     axis_angle_to_quaternion,
@@ -356,6 +358,30 @@ class Quaternion(Module):
         q0 = self.normalize()
         q1 = q1.normalize()
         return q0 * (q0.inv() * q1) ** t
+
+    def average_quaternions(quaternions: Union[List["Quaternion"], "Quaternion"]) -> "Quaternion":
+        if isinstance(quaternions, list):
+            Q = stack([quat.data for quat in quaternions])
+        elif isinstance(quaternions, Quaternion):
+            Q = quaternions.data.unsqueeze(0)
+        else:
+            raise ValueError("Input must be a list of quaternions or a single quaternion.")
+
+        result = Quaternion.average_quaternion(Q)
+        return Quaternion(result)
+
+    @staticmethod
+    def average_quaternion(Q: Tensor) -> Tensor:
+        M = Q.shape[0]
+        A = zeros(4, 4)
+
+        for i in range(M):
+            q = Q[i, :]
+            A = torch.outer(q, q) + A
+        A = (1.0 / M) * A
+        eigenValues, eigenVectors = torch.linalg.eig(A)
+        eigenVectors = eigenVectors[:, eigenValues.argsort(descending=True)]
+        return torch.real(eigenVectors[:, 0])
 
     # TODO: add docs
     def norm(self, keepdim: bool = False) -> Tensor:
