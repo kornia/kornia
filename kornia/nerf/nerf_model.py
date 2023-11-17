@@ -182,7 +182,7 @@ class NerfModelRenderer:
 
         # render the image
         with torch_inference_mode():
-            rgb_model = self._nerf_model(rays.origins, rays.directions)
+            rgb_model = self._nerf_model(rays.origin, rays.direction)
 
         rgb_image = rgb_model.view(self._image_size[0], self._image_size[1], 3)
 
@@ -197,7 +197,7 @@ class NerfModelRenderer:
         height, width = self._image_size
 
         # convert to rays
-        origin = camera.extrinsics[:, :3, -1]  # 1x3
+        origin = camera.extrinsics[..., :3, -1]  # 1x3
         origin = origin.repeat(height * width, 1)  # (H*W)x3
 
         destination = camera.unproject(self._pixels_grid, self._ones)  # (H*W)x3
