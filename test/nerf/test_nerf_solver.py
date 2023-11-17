@@ -13,7 +13,7 @@ class TestNerfSolver:
         nerf_obj = NerfSolver(device, dtype)
         cameras = create_four_cameras(device, dtype)
         imgs = create_random_images_for_cameras(cameras)
-        nerf_obj.init_training(cameras, 1.0, 3.0, True, imgs, num_img_rays=45, batch_size=1, num_ray_points=10)
+        nerf_obj.setup_solver(cameras, 1.0, 3.0, True, imgs, num_img_rays=45, batch_size=1, num_ray_points=10)
 
         params_before_update = [torch.clone(param).detach() for param in nerf_obj.nerf_model.parameters()]
 
@@ -33,7 +33,7 @@ class TestNerfSolver:
         img = create_red_images_for_cameras(camera, device)
 
         nerf_obj = NerfSolver(device, dtype)
-        nerf_obj.init_training(camera, 1.0, 3.0, False, img, None, 2, 10)
+        nerf_obj.setup_solver(camera, 1.0, 3.0, False, img, None, 2, 10)
         nerf_obj.run(num_epochs=10)
 
         img_rendered = nerf_obj.render_views(camera)[0].permute(2, 0, 1)
@@ -45,7 +45,7 @@ class TestNerfSolver:
         img = create_red_images_for_cameras(camera, device)
 
         nerf_obj = NerfSolver(device=device, dtype=dtype)
-        nerf_obj.init_training(camera, 1.0, 3.0, True, img, 1, 2, 10)
+        nerf_obj.setup_solver(camera, 1.0, 3.0, True, img, 1, 2, 10)
         nerf_obj.run(num_epochs=20)
 
     def test_only_red(self, device, dtype):
@@ -56,7 +56,7 @@ class TestNerfSolver:
 
         nerf_obj = NerfSolver(device=device, dtype=dtype)
         num_img_rays = 15
-        nerf_obj.init_training(camera, 1.0, 3.0, False, img, num_img_rays, batch_size=5, num_ray_points=10, lr=1e-2)
+        nerf_obj.setup_solver(camera, 1.0, 3.0, False, img, num_img_rays, batch_size=5, num_ray_points=10, lr=1e-2)
         nerf_obj.run(num_epochs=10)
 
         img_rendered = nerf_obj.render_views(camera)[0].permute(2, 0, 1)

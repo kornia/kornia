@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -146,17 +148,18 @@ class NerfModelRenderer:
 
         self._pixels_grid, self._ones = self._create_pixels_grid()  # 1xHxWx2 and (H*W)x1
 
-    def _create_pixels_grid(self) -> Tensor:
+    def _create_pixels_grid(self) -> tuple[Tensor, Tensor]:
         r"""Creates the pixels grid to unproject to plane z=1.
 
         Args:
             image_size: image size: tuple[int, int]
 
         Returns:
-            Pixels grid: Tensor (1, H, W, 2) and (H*W, 1).
+            - Pixels grid: Tensor (1, H, W, 2)
+            - Ones: Tensor (H*W, 1)
         """
         height, width = self._image_size
-        pixels_grid = create_meshgrid(
+        pixels_grid: Tensor = create_meshgrid(
             height, width, normalized_coordinates=False, device=self._device, dtype=self._dtype
         )  # 1xHxWx2
         pixels_grid = pixels_grid.reshape(-1, 2)  # (H*W)x2

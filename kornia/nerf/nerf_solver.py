@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import cast
 
 import torch
 import torch.nn.functional as F
@@ -25,7 +26,7 @@ class NerfSolver:
         dtype: type for all floating point calculations: torch.dtype
     """
 
-    def __init__(self, device: torch.device | str, dtype: torch.dtype) -> None:
+    def __init__(self, device: torch.device, dtype: torch.dtype) -> None:
         # NOTE: the following attributes are initialized in setup_solver
         # cameras used for training
         self._cameras: PinholeCamera | None = None
@@ -45,8 +46,8 @@ class NerfSolver:
         self._num_ray_points: int = 0
 
         # the model and optimizer
-        self._nerf_model: Module = None
-        self._nerf_optimizer: optim.Optimizer = None
+        self._nerf_model: Module | None = None
+        self._nerf_optimizer: optim.Optimizer | None = None
 
         self._device = device
         self._dtype = dtype
@@ -199,12 +200,18 @@ class NerfSolver:
         KORNIA_CHECK(self._imgs is not None, "The images should be a list of tensors. Gotcha None.")
         KORNIA_CHECK(self._num_img_rays is not None, "The number of images of Ray should be a tensor. Gotcha None.")
 
+        cameras: PinholeCamera = cast(PinholeCamera, self._cameras)
+        num_img_rays: Tensor = cast(Tensor, self._num_img_rays)
+        images = cast(Images, self._imgs)
+        nerf_model: NerfModel = cast(NerfModel, self._nerf_model)
+        nerf_optimizer: optim.Optimizer = cast(optim.Optimizer, self._nerf_optimizer)
+
         # create the dataset and data loader
         ray_dataset = RayDataset(
-            self._cameras, self._min_depth, self._max_depth, self._ndc, device=self._device, dtype=self._dtype
+            cameras, self._min_depth, self._max_depth, self._ndc, device=self._device, dtype=self._dtype
         )
-        ray_dataset.init_ray_dataset(self._num_img_rays)
-        ray_dataset.init_images_for_training(self._imgs)  # FIXME: Do we need to load the same images on each Epoch?
+        ray_dataset.init_ray_dataset(num_img_rays)
+        ray_dataset.init_images_for_training(images)  # FIXME: Do we need to load the same images on each Epoch?
 
         # data loader
         ray_data_loader = instantiate_ray_dataloader(ray_dataset, self._batch_size, shuffle=True)
@@ -214,14 +221,14 @@ class NerfSolver:
         i_batch: float = 0
 
         for origins, directions, rgbs in ray_data_loader:
-            rgbs_model = self._nerf_model(origins, directions)
+            rgbs_model = nerf_model(origins, directions)
             loss = F.mse_loss(rgbs_model, rgbs)
 
             total_psnr += psnr(rgbs_model, rgbs, 1.0)
 
-            self._nerf_optimizer.zero_grad()
+            nerf_optimizer.zero_grad()
             loss.backward()
-            self._nerf_optimizer.step()
+            nerf_optimizer.step()
 
             i_batch += 1
 
@@ -258,6 +265,8 @@ class NerfSolver:
         )
         ray_dataset.init_ray_dataset()
 
+        nerf_model: NerfModel = cast(NerfModel, self._nerf_model)
+
         idx0 = 0
         imgs: ImageTensors = []
 
@@ -270,7 +279,7 @@ class NerfSolver:
                 idxs = list(range(idx0, idxe))
                 origins, directions, _ = ray_dataset[idxs]
                 with torch_inference_mode():
-                    rgb_model = self._nerf_model(origins, directions) * 255.0
+                    rgb_model = nerf_model(origins, directions) * 255.0
                     img[idx0 - idx0_camera : idxe - idx0_camera] = rgb_model
             idx0 = idxe
             img = img.reshape(height, width, -1)  # (H, W, C)
