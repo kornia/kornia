@@ -310,6 +310,18 @@ class TestExtractTensorPatches:
         img = utils.tensor_to_gradcheck_var(img)  # to var
         assert gradcheck(kornia.contrib.extract_tensor_patches, (img, 3), raise_exception=True, fast_mode=True)
 
+    def test_auto_padding_stride(self, device, dtype):
+        img_shape = (11, 14)
+        window_size = (3, 3)
+        stride = 2
+        rnge = img_shape[0] * img_shape[1]
+        img = torch.arange(rnge, device=device, dtype=dtype).view(1, 1, *img_shape)
+        patches = kornia.contrib.extract_tensor_patches(
+            img, window_size=window_size, stride=stride, allow_auto_padding=True
+        )
+        # 5 patches vertical, 6 2/3 = 7 horizontal = 35 patches
+        assert patches.shape == (1, 35, *window_size)
+
 
 class TestCombineTensorPatches:
     def test_smoke(self, device, dtype):
