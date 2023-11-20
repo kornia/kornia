@@ -384,24 +384,28 @@ class TestCombineTensorPatches:
         assert_close(img, m(patches))
 
     def test_compute_padding(self, device, dtype):
-        img = torch.arange(104, device=device, dtype=dtype).view(1, 1, 8, 13)
+        img_shape = (8, 13)
+        rnge = img_shape[0] * img_shape[1]
+        img = torch.arange(rnge, device=device, dtype=dtype).view(1, 1, *img_shape)
         window_size = (3, 3)
-        padding = kornia.contrib.compute_padding((8, 13), (3, 3))
+        padding = kornia.contrib.compute_padding(img_shape, window_size)
         patches = kornia.contrib.extract_tensor_patches(
             img, window_size=window_size, stride=window_size, padding=padding
         )
-        m = kornia.contrib.CombineTensorPatches((8, 13), (3, 3), unpadding=padding)
-        assert m(patches).shape == (1, 1, 8, 13)
+        m = kornia.contrib.CombineTensorPatches(img_shape, window_size, unpadding=padding)
+        assert m(patches).shape == (1, 1, *img_shape)
         assert_close(img, m(patches))
 
     def test_auto_padding(self, device, dtype):
-        img = torch.arange(176, device=device, dtype=dtype).view(1, 1, 11, 16)
+        img_shape = (11, 16)
+        rnge = img_shape[0] * img_shape[1]
+        img = torch.arange(rnge, device=device, dtype=dtype).view(1, 1, *img_shape)
         window_size = (3, 3)
         patches = kornia.contrib.extract_tensor_patches(
             img, window_size=window_size, stride=window_size, allow_auto_padding=True
         )
         recomb = kornia.contrib.combine_tensor_patches(
-            patches, img.shape[2:], window_size=window_size, stride=window_size, allow_auto_unpadding=True
+            patches, img_shape, window_size=window_size, stride=window_size, allow_auto_unpadding=True
         )
         assert recomb.shape == img.shape
         assert_close(img, recomb)
