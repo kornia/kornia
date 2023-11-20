@@ -383,7 +383,7 @@ class TestCombineTensorPatches:
         assert m(patches).shape == (1, 1, 8, 8)
         assert_close(img, m(patches))
 
-    def test_autopadding(self, device, dtype):
+    def test_compute_padding(self, device, dtype):
         img = torch.arange(104, device=device, dtype=dtype).view(1, 1, 8, 13)
         window_size = (3, 3)
         padding = kornia.contrib.compute_padding((8, 13), (3, 3))
@@ -393,6 +393,18 @@ class TestCombineTensorPatches:
         m = kornia.contrib.CombineTensorPatches((8, 13), (3, 3), unpadding=padding)
         assert m(patches).shape == (1, 1, 8, 13)
         assert_close(img, m(patches))
+
+    def test_auto_padding(self, device, dtype):
+        img = torch.arange(176, device=device, dtype=dtype).view(1, 1, 11, 16)
+        window_size = (3, 3)
+        patches = kornia.contrib.extract_tensor_patches(
+            img, window_size=window_size, stride=window_size, allow_auto_padding=True
+        )
+        recomb = kornia.contrib.combine_tensor_patches(
+            patches, img.shape[2:], window_size=window_size, stride=window_size, allow_auto_unpadding=True
+        )
+        assert recomb.shape == img.shape
+        assert_close(img, recomb)
 
     def test_gradcheck(self, device, dtype):
         patches = kornia.contrib.extract_tensor_patches(
