@@ -58,7 +58,7 @@ def compute_padding(
         vertical_padding = 0
 
     if remainder_horizontal != (window_size[1] / 2):
-        horizontal_padding = window_size[1] / 2 - remainder_horizontal  # floor division might drop one pixel
+        horizontal_padding = window_size[1] / 2 - remainder_horizontal
         if horizontal_padding < 0:
             horizontal_padding = (stride[1] - remainder_horizontal) + window_size[1] / 2
     else:
