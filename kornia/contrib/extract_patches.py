@@ -220,21 +220,13 @@ class CombineTensorPatches(Module):
         )
 
 
-def _check_patch_fit(original_size, window_size, stride, allow_auto_unpadding):
+def _check_patch_fit(original_size, window_size, stride):
     remainder_vertical = (original_size[0] - window_size[0] // 2) % stride[0]
     remainder_horizontal = (original_size[1] - window_size[1] // 2) % stride[1]
     if (remainder_horizontal != (window_size[1] // 2)) or (remainder_vertical != (window_size[0] // 2)):
         # needs padding to fit
         # iif it's half, we can fit a full number of patches in, based on the stride
-        if not allow_auto_unpadding:
-            warn(
-                f"The window will not fit into the image. \nWindow size: {window_size}\nStride: {stride}\nImage size: {original_size}\n"
-                "This means that the final incomplete patches will be dropped. By enabling `allow_auto_padding`, the input will be padded to fit the window and stride."
-            )
-            return 0
-        else:
-            padding = compute_padding(original_size=original_size, window_size=window_size, stride=stride)
-            return padding
+        return False
 
 
 def combine_tensor_patches(
@@ -288,7 +280,14 @@ def combine_tensor_patches(
     if not unpadding:
         # if padding is specified, we leave it up to the user to ensure it fits
         # otherwise we check here if it will fit and offer to calculate padding
-        unpadding = _check_patch_fit(original_size, window_size, stride, allow_auto_unpadding)
+        if not _check_patch_fit(original_size, window_size, stride):
+            if not allow_auto_unpadding:
+                warn(
+                    f"The window will not fit into the image. \nWindow size: {window_size}\nStride: {stride}\nImage size: {original_size}\n"
+                    "This means that the final incomplete patches will be dropped. By enabling `allow_auto_padding`, the input will be padded to fit the window and stride."
+                )
+            else:
+                unpadding = compute_padding(original_size=original_size, window_size=window_size, stride=stride)
 
     if unpadding:
         unpadding = cast(PadType, _pair(unpadding))
@@ -383,7 +382,14 @@ def extract_tensor_patches(
     if not padding:
         # if padding is specified, we leave it up to the user to ensure it fits
         # otherwise we check here if it will fit and offer to calculate padding
-        padding = _check_patch_fit(original_size, window_size, stride, allow_auto_padding)
+        if not _check_patch_fit(original_size, window_size, stride):
+            if not allow_auto_padding:
+                warn(
+                    f"The window will not fit into the image. \nWindow size: {window_size}\nStride: {stride}\nImage size: {original_size}\n"
+                    "This means that the final incomplete patches will be dropped. By enabling `allow_auto_padding`, the input will be padded to fit the window and stride."
+                )
+            else:
+                padding = compute_padding(original_size=original_size, window_size=window_size, stride=stride)
 
     if padding:
         padding = cast(PadType, _pair(padding))
