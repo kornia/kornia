@@ -121,14 +121,19 @@ class ExtractTensorPatches(Module):
         window_size: Union[int, Tuple[int, int]],
         stride: Optional[Union[int, Tuple[int, int]]] = 1,
         padding: Optional[Union[int, PadType]] = 0,
+        allow_auto_padding: bool = False,
     ) -> None:
         super().__init__()
         self.window_size: Tuple[int, int] = _pair(window_size)
         self.stride: Tuple[int, int] = _pair(stride)
         self.padding: PadType = _pair(padding)
+        self.allow_auto_padding = allow_auto_padding
 
     def forward(self, input: Tensor) -> Tensor:
-        return extract_tensor_patches(input, self.window_size, stride=self.stride, padding=self.padding)
+        return extract_tensor_patches(
+            input, self.window_size, stride=self.stride,
+            padding=self.padding, allow_auto_padding=self.allow_auto_padding
+        )
 
 
 class CombineTensorPatches(Module):
@@ -192,15 +197,18 @@ class CombineTensorPatches(Module):
         original_size: Union[int, Tuple[int, int]],
         window_size: Union[int, Tuple[int, int]],
         unpadding: Union[int, PadType] = 0,
+        allow_auto_unpadding: bool = False,
     ) -> None:
         super().__init__()
         self.original_size: Tuple[int, int] = _pair(original_size)
         self.window_size: Tuple[int, int] = _pair(window_size)
         self.unpadding: PadType = _pair(unpadding)
+        self.allow_auto_unpadding: bool = allow_auto_unpadding
 
     def forward(self, input: Tensor) -> Tensor:
         return combine_tensor_patches(
-            input, self.original_size, self.window_size, stride=self.window_size, unpadding=self.unpadding
+            input, self.original_size, self.window_size, stride=self.window_size,
+            unpadding=self.unpadding, allow_auto_unpadding=self.allow_auto_unpadding
         )
 
 
@@ -257,6 +265,7 @@ def combine_tensor_patches(
         window_size: the size of the sliding window used while extracting patches.
         stride: stride of the sliding window.
         unpadding: remove the padding added to both side of the input.
+        allow_auto_unpadding: whether to allow automatic unpadding of the input if the window does not fit into the image.
 
     Return:
         The combined patches in an image tensor with shape :math:`(B, C, H, W)`.
@@ -353,7 +362,7 @@ def extract_tensor_patches(
         window_size: the size of the sliding window and the output patch size.
         stride: stride of the sliding window.
         padding: Zero-padding added to both side of the input.
-        allow_auto_adding: if True, the input will be padded to fit the window and stride.
+        allow_auto_adding: whether to allow automatic padding if the window and stride do not fit into the image.
 
     Returns:
         the tensor with the extracted patches with shape :math:`(B, N, C, H_{out}, W_{out})`.
