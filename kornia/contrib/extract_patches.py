@@ -10,7 +10,8 @@ PadType = Union[Tuple[int, int], Tuple[int, int, int, int]]
 
 
 def compute_padding(
-    original_size: Union[int, Tuple[int, int]], window_size: Union[int, Tuple[int, int]]
+    original_size: Union[int, Tuple[int, int]], window_size: Union[int, Tuple[int, int]],
+    stride: Union[int, Tuple[int, int]]
 ) -> Tuple[int, int, int, int]:
     r"""Compute required padding to ensure chaining of :func:`extract_tensor_patches` and
     :func:`combine_tensor_patches` produces expected result.
@@ -18,9 +19,10 @@ def compute_padding(
     Args:
         original_size: the size of the original tensor.
         window_size: the size of the sliding window used while extracting patches.
+        stride: The stride of the sliding window.
 
     Return:
-        The required padding for `(top, bottom, left, right)` as a tuple of 4 ints.
+        The required symmetric padding tuple (`vertical`, `horizontal`) as a tuple of 2 ints.
 
     Example:
         >>> image = torch.arange(12).view(1, 1, 4, 3)
@@ -38,24 +40,30 @@ def compute_padding(
     """
     original_size = cast(Tuple[int, int], _pair(original_size))
     window_size = cast(Tuple[int, int], _pair(window_size))
+    stride = cast(Tuple[int, int], _pair(stride))
 
-    def paddim(dim1: int, dim2: int) -> Tuple[int, int]:
-        if dim1 % dim2 == 0:
-            p1 = 0
-            p2 = 0
-        else:
-            tmp = dim2 - (dim1 % dim2)
-            if tmp % 2 == 0:
-                p1 = p2 = tmp // 2
-            else:
-                p1 = tmp
-                p2 = 0
-        return p1, p2
+    remainder_vertical = (original_size[0] - window_size[0] // 2) % stride[0]
+    remainder_horizontal = (original_size[1] - window_size[1] // 2) % stride[1]
+    # it might be best to apply padding only to the far edges (right, bottom), so
+    # that fewer patches are affected by the padding.
+    # For now, just use the default padding
+    if remainder_vertical != (window_size[0] // 2):
+        vertical_padding = window_size[0] // 2 - remainder_vertical
+        if vertical_padding < 0:
+            vertical_padding = (stride[0] - remainder_vertical) + window_size[0] // 2
+    else:
+        vertical_padding = 0
 
-    padt, padb = paddim(original_size[0], window_size[0])
-    padl, padr = paddim(original_size[1], window_size[1])
+    if remainder_horizontal != (window_size[1] // 2):
+        horizontal_padding = window_size[1] // 2 - remainder_horizontal  # floor division might drop one pixel
+        if horizontal_padding < 0:
+            horizontal_padding = (stride[1] - remainder_horizontal) + window_size[1] // 2
+    else:
+        horizontal_padding = 0
 
-    return (padt, padb, padl, padr)
+    padding = (vertical_padding // 2, horizontal_padding // 2)  # symmetric padding
+
+    return padding
 
 
 class ExtractTensorPatches(Module):
@@ -225,26 +233,8 @@ def _check_patch_fit(original_size, window_size, stride, allow_auto_unpadding):
             )
             return 0
         else:
-            # it might be best to apply padding only to the far edges (right, bottom), so
-            # that fewer patches are affected by the padding.
-            # For now, just use the default padding
-            if remainder_vertical != (window_size[0] // 2):
-                vertical_padding = window_size[0] // 2 - remainder_vertical
-                if vertical_padding < 0:
-                    vertical_padding = (stride[0] - remainder_vertical) + window_size[0] // 2
-            else:
-                vertical_padding = 0
-
-            if remainder_horizontal != (window_size[1] // 2):
-                horizontal_padding = window_size[1] // 2 - remainder_horizontal  # floor division might drop one pixel
-                if horizontal_padding < 0:
-                    horizontal_padding = (stride[1] - remainder_horizontal) + window_size[1] // 2
-            else:
-                horizontal_padding = 0
-
-            unpadding = (vertical_padding // 2, horizontal_padding // 2)  # symmetric padding
-
-            return unpadding
+            padding = compute_padding(original_size=original_size, window_size=window_size, stride=stride)
+            return padding
 
 
 def combine_tensor_patches(
