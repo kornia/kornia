@@ -326,8 +326,8 @@ def extract_tensor_patches(
     if len(input.shape) != 4:
         raise ValueError(f"Invalid input shape, we expect BxCxHxW. Got: {input.shape}")
 
-    window_size = _pair(window_size)
-    stride = _pair(stride)
+    window_size = cast(Tuple[int, int], _pair(window_size))
+    stride = cast(Tuple[int, int], _pair(stride))
 
     if (stride[0] > window_size[0]) | (stride[1] > window_size[1]):
         raise AssertionError(f"Stride={stride} should be less than or equal to Window size={window_size}")
