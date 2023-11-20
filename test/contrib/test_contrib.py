@@ -320,7 +320,7 @@ class TestExtractTensorPatches:
             img, window_size=window_size, stride=stride, allow_auto_padding=True
         )
         # 5 patches vertical, 6 2/3 = 7 horizontal = 35 patches
-        assert patches.shape == (1, 35, *window_size)
+        assert patches.shape == (1, 35, 1, *window_size)
 
 
 class TestCombineTensorPatches:
