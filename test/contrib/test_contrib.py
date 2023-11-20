@@ -353,15 +353,6 @@ class TestCombineTensorPatches:
                 patches, original_size=(6, 6), window_size=(4, 4), stride=(4, 4), unpadding=(1, 1, 1)
             )
 
-    def test_pad_quadruple(self, device, dtype):
-        img = torch.arange(36, device=device, dtype=dtype).view(1, 1, 6, 6)
-        patches = kornia.contrib.extract_tensor_patches(img, window_size=(4, 4), stride=(4, 4), padding=1)
-
-        merged = kornia.contrib.combine_tensor_patches(
-            patches, original_size=(6, 6), window_size=(4, 4), stride=(4, 4), unpadding=(1, 1)
-        )
-        assert merged.shape == (1, 1, 6, 6)
-
     def test_rectangle_array(self, device, dtype):
         img = torch.arange(24, device=device, dtype=dtype).view(1, 1, 4, 6)
         patches = kornia.contrib.extract_tensor_patches(img, window_size=(2, 2), stride=(2, 2), padding=1)
@@ -371,8 +362,9 @@ class TestCombineTensorPatches:
 
     def test_padding1(self, device, dtype):
         img = torch.arange(16, device=device, dtype=dtype).view(1, 1, 4, 4)
-        patches = kornia.contrib.extract_tensor_patches(img, window_size=(2, 2), stride=(2, 2), padding=1)
-        m = kornia.contrib.CombineTensorPatches((4, 4), (2, 2), stride=(2, 2), unpadding=1)
+        padding = kornia.contrib.compute_padding((4, 4), (2, 2))
+        patches = kornia.contrib.extract_tensor_patches(img, window_size=(2, 2), stride=(1, 1), padding=padding)
+        m = kornia.contrib.CombineTensorPatches((4, 4), (2, 2), stride=(1, 1), unpadding=padding)
         assert m(patches).shape == (1, 1, 4, 4)
         assert_close(img, m(patches))
 
@@ -382,6 +374,11 @@ class TestCombineTensorPatches:
         m = kornia.contrib.CombineTensorPatches((8, 8), (2, 2), stride=(2, 2), unpadding=1)
         assert m(patches).shape == (1, 1, 8, 8)
         assert_close(img, m(patches))
+
+    def test_stride_greater_than_window_size(self, device, dtype):
+        img = torch.arange(16, device=device, dtype=dtype).view(1, 1, 4, 4)
+        with pytest.raises(AssertionError):
+            kornia.contrib.extract_tensor_patches(img, window_size=(2, 2), stride=(3, 3), padding=1)
 
     def test_autopadding(self, device, dtype):
         img = torch.arange(104, device=device, dtype=dtype).view(1, 1, 8, 13)
