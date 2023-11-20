@@ -75,7 +75,8 @@ def compute_padding(
     else:
         left_padding = horizontal_padding // 2
         right_padding = ceil(horizontal_padding / 2)
-    return top_padding, bottom_padding, left_padding, right_padding
+    padding = int(top_padding), int(bottom_padding), int(left_padding), int(right_padding)
+    return padding
 
 
 class ExtractTensorPatches(Module):
