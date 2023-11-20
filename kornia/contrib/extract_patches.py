@@ -5,13 +5,14 @@ import torch
 from torch.nn.modules.utils import _pair
 
 from kornia.core import Module, Tensor, concatenate, pad
+from math import ceil
 
 PadType = Union[Tuple[int, int], Tuple[int, int, int, int]]
 
 
 def compute_padding(
     original_size: Union[int, Tuple[int, int]], window_size: Union[int, Tuple[int, int]],
-    stride: Union[int, Tuple[int, int]]
+    stride: Optional[Union[int, Tuple[int, int]]] = None
 ) -> Tuple[int, int, int, int]:
     r"""Compute required padding to ensure chaining of :func:`extract_tensor_patches` and
     :func:`combine_tensor_patches` produces expected result.
@@ -19,10 +20,10 @@ def compute_padding(
     Args:
         original_size: the size of the original tensor.
         window_size: the size of the sliding window used while extracting patches.
-        stride: The stride of the sliding window.
+        stride: The stride of the sliding window. Optional, if not specified will use window size as stride.
 
     Return:
-        The required symmetric padding tuple (`vertical`, `horizontal`) as a tuple of 2 ints.
+        The required padding for `(top, bottom, left, right)` as a tuple of 4 ints.
 
     Example:
         >>> image = torch.arange(12).view(1, 1, 4, 3)
@@ -40,30 +41,41 @@ def compute_padding(
     """
     original_size = cast(Tuple[int, int], _pair(original_size))
     window_size = cast(Tuple[int, int], _pair(window_size))
+    if stride is None:
+        stride =  window_size
     stride = cast(Tuple[int, int], _pair(stride))
 
-    remainder_vertical = (original_size[0] - window_size[0] // 2) % stride[0]
-    remainder_horizontal = (original_size[1] - window_size[1] // 2) % stride[1]
+    remainder_vertical = (original_size[0] - window_size[0] / 2) % stride[0]
+    remainder_horizontal = (original_size[1] - window_size[1] / 2) % stride[1]
     # it might be best to apply padding only to the far edges (right, bottom), so
     # that fewer patches are affected by the padding.
     # For now, just use the default padding
-    if remainder_vertical != (window_size[0] // 2):
-        vertical_padding = window_size[0] // 2 - remainder_vertical
+    if remainder_vertical != (window_size[0] / 2):
+        vertical_padding = window_size[0] / 2 - remainder_vertical
         if vertical_padding < 0:
-            vertical_padding = (stride[0] - remainder_vertical) + window_size[0] // 2
+            vertical_padding = (stride[0] - remainder_vertical) + window_size[0] / 2
     else:
         vertical_padding = 0
 
-    if remainder_horizontal != (window_size[1] // 2):
-        horizontal_padding = window_size[1] // 2 - remainder_horizontal  # floor division might drop one pixel
+    if remainder_horizontal != (window_size[1] / 2):
+        horizontal_padding = window_size[1] / 2 - remainder_horizontal  # floor division might drop one pixel
         if horizontal_padding < 0:
-            horizontal_padding = (stride[1] - remainder_horizontal) + window_size[1] // 2
+            horizontal_padding = (stride[1] - remainder_horizontal) + window_size[1] / 2
     else:
         horizontal_padding = 0
 
-    padding = (vertical_padding // 2, horizontal_padding // 2)  # symmetric padding
+    if vertical_padding % 2 == 0:
+        top_padding = bottom_padding = vertical_padding // 2
+    else:
+        top_padding = vertical_padding // 2
+        bottom_padding = ceil(vertical_padding / 2)
 
-    return padding
+    if horizontal_padding % 2 == 0:
+        left_padding = right_padding = horizontal_padding // 2
+    else:
+        left_padding = horizontal_padding // 2
+        right_padding = ceil(horizontal_padding / 2)
+    return top_padding, bottom_padding, left_padding, right_padding
 
 
 class ExtractTensorPatches(Module):
