@@ -189,8 +189,8 @@ class TestConnectedComponents:
 
 def test_compute_padding():
     assert kornia.contrib.compute_padding((6, 6), (2, 2)) == (0, 0, 0, 0)
-    assert kornia.contrib.compute_padding((7, 7), (2, 2)) == (1, 0, 1, 0)
-    assert kornia.contrib.compute_padding((8, 7), (4, 4)) == (0, 0, 1, 0)
+    assert kornia.contrib.compute_padding((7, 7), (2, 2)) == (0, 1, 0, 1)
+    assert kornia.contrib.compute_padding((8, 7), (4, 4)) == (0, 0, 0, 1)
 
 
 class TestExtractTensorPatches:
