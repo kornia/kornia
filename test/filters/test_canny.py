@@ -299,6 +299,12 @@ class TestCanny(BaseTester):
     @pytest.mark.parametrize("batch_size", [1, 2])
     @pytest.mark.skipif(torch_version() in {"2.0.0", "2.0.1"}, reason="Not working on 2.0")
     def test_dynamo(self, batch_size, kernel_size, device, dtype, torch_optimizer):
+        if (
+            torch_version() in {"2.1.1"}
+            and dtype == torch.float64
+            and (isinstance(kernel_size, int) or kernel_size[0] == kernel_size[1])
+        ):
+            pytest.skip("Canny compiled failing into fp64 for kernel sizes where kx and ky are equals")
         inpt = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
         op = Canny(kernel_size=kernel_size)
         op_optimized = torch_optimizer(op)
