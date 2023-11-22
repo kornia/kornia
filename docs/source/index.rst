@@ -68,6 +68,7 @@ Join the community
    losses
    metrics
    morphology
+   nerf
    tracking
    testing
    utils

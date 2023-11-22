@@ -8,16 +8,20 @@ from kornia.core import Module, Tensor
 from kornia.geometry.camera import PinholeCamera
 from kornia.geometry.ray import Ray
 from kornia.nerf.positional_encoder import PositionalEncoder
-from kornia.nerf.rays import sample_lengths, sample_ray_points
-from kornia.nerf.renderer import IrregularRenderer, RegularRenderer
+from kornia.nerf.samplers import sample_lengths, sample_ray_points
+from kornia.nerf.volume_renderer import IrregularRenderer, RegularRenderer
 from kornia.utils._compat import torch_inference_mode
 from kornia.utils.grid import create_meshgrid
 
 
 class MLP(Module):
-    r"""Class to represent a multi-layer perceptron. The MLP represents a deep NN of fully connected layers. The
-    network is build of user defined sub-units, each with a user defined number of layers.  Skip connections span
-    between the sub-units. The model follows: Ben Mildenhall et el. (2020) at https://arxiv.org/abs/2003.08934.
+    r"""Class to represent a multi-layer perceptron.
+
+    The MLP represents a deep NN of fully connected layers.
+    The network is build of user defined sub-units, each with a user defined number of layers.
+
+    Skip connections span between the sub-units.
+    The model follows: Ben Mildenhall et el. (2020) at https://arxiv.org/abs/2003.08934.
 
     Args:
         num_dims: Number of input dimensions (channels)

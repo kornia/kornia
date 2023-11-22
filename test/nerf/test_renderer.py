@@ -3,7 +3,7 @@ import math
 import torch
 
 from kornia.core import Device, Tensor
-from kornia.nerf.renderer import IrregularRenderer, RegularRenderer
+from kornia.nerf.volume_renderer import IrregularRenderer, RegularRenderer
 from kornia.testing import assert_close
 
 
