@@ -3,7 +3,7 @@ import math
 import torch
 
 from kornia.core import Device, Tensor
-from kornia.nerf.renderer import IrregularRenderer, RegularRenderer
+from kornia.nerf.volume_renderer import IrregularRenderer, RegularRenderer
 from kornia.testing import assert_close
 
 
@@ -12,7 +12,7 @@ def _create_regular_point_cloud(
 ) -> Tensor:
     x = torch.linspace(0, width, steps=width, device=device, dtype=dtype)
     y = torch.linspace(0, height, steps=height, device=device, dtype=dtype)
-    xy = torch.meshgrid(y, x)
+    xy = torch.meshgrid(y, x, indexing="ij")
     z = torch.linspace(1, 11, steps=num_ray_points, device=device, dtype=dtype)
     points3d = torch.zeros(height, width, num_ray_points, 3, device=device, dtype=dtype)
     points3d[..., 0] = xy[0].unsqueeze(-1)

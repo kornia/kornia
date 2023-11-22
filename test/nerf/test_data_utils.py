@@ -1,26 +1,31 @@
+from __future__ import annotations
+
 import torch
 
-from kornia.core import Device
+from kornia.core import Device, Tensor
 from kornia.geometry.camera import PinholeCamera
-from kornia.nerf.data_utils import ImageTensors, RayDataset, instantiate_ray_dataloader
+from kornia.nerf.data_utils import RayDataset, instantiate_ray_dataloader
 from kornia.testing import assert_close
 from test.nerf.test_rays import create_four_cameras
 
 
-def create_random_images_for_cameras(cameras: PinholeCamera) -> ImageTensors:
+def create_random_images_for_cameras(cameras: PinholeCamera) -> list[Tensor]:
+    """Creates random images for a given set of cameras."""
     torch.manual_seed(112)
-    imgs: ImageTensors = []
+    imgs: list[Tensor] = []
     for height, width in zip(cameras.height.tolist(), cameras.width.tolist()):
-        imgs.append(torch.randint(0, 255, (3, int(height), int(width)), dtype=torch.uint8))  # (C, H, W)
+        image_data = torch.randint(0, 255, (3, int(height), int(width)), dtype=torch.uint8)  # (C, H, W)
+        imgs.append(image_data)  # (C, H, W)
     return imgs
 
 
-def create_red_images_for_cameras(cameras: PinholeCamera, device: Device) -> ImageTensors:
-    imgs: ImageTensors = []
+def create_red_images_for_cameras(cameras: PinholeCamera, device: Device) -> list[Tensor]:
+    """Creates red images for a given set of cameras."""
+    imgs: list[Tensor] = []
     for height, width in zip(cameras.height.tolist(), cameras.width.tolist()):
-        red_img = torch.zeros(3, int(height), int(width), dtype=torch.uint8)  # (C, H, W)
-        red_img[0, ...] = 255
-        imgs.append(red_img.to(device=device))
+        image_data = torch.zeros(3, int(height), int(width), dtype=torch.uint8)  # (C, H, W)
+        image_data[0, ...] = 255  # Red channel
+        imgs.append(image_data.to(device=device))
     return imgs
 
 
