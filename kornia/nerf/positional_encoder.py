@@ -15,15 +15,16 @@ def _torch_cos(x: Tensor, freq: Tensor) -> Tensor:
 
 
 class PositionalEncoder(nn.Module):
-    r"""Sine-cosine positional encoder for input points.
-
-    Args:
-        num_dims: Number of input dimensions (channels): int
-        num_freqs: Number of frequency bands for encoding span: int
-        log_space: Whether frequency sampling should be log spaced: bool
-    """
+    """Sine-cosine positional encoder for input points."""
 
     def __init__(self, num_dims: int, num_freqs: int, log_space: bool = False) -> None:
+        """Initialize positional encoder.
+
+        Args:
+            num_dims: Number of input dimensions (channels): int
+            num_freqs: Number of frequency bands for encoding span: int
+            log_space: Whether frequency sampling should be log spaced: bool
+        """
         super().__init__()
         self._num_dims = num_dims
         self._embed_fns = [lambda x: x]
@@ -44,10 +45,11 @@ class PositionalEncoder(nn.Module):
 
     @property
     def num_encoded_dims(self) -> int:
+        """Number of encoded dimensions."""
         return self._num_encoded_dims
 
     def forward(self, x: Tensor) -> Tensor:
-        r"""Apply positional encoding to input.
+        """Apply positional encoding to input.
 
         Args:
             x: Positionsl (or directional) tensor to encode: Tensor
