@@ -1,3 +1,4 @@
+from math import ceil
 from typing import Optional, Tuple, Union, cast
 from warnings import warn
 
@@ -5,14 +6,14 @@ import torch
 from torch.nn.modules.utils import _pair
 
 from kornia.core import Module, Tensor, concatenate, pad
-from math import ceil
 
 PadType = Union[Tuple[int, int], Tuple[int, int, int, int]]
 
 
 def compute_padding(
-    original_size: Union[int, Tuple[int, int]], window_size: Union[int, Tuple[int, int]],
-    stride: Optional[Union[int, Tuple[int, int]]] = None
+    original_size: Union[int, Tuple[int, int]],
+    window_size: Union[int, Tuple[int, int]],
+    stride: Optional[Union[int, Tuple[int, int]]] = None,
 ) -> Tuple[int, int, int, int]:
     r"""Compute required padding to ensure chaining of :func:`extract_tensor_patches` and
     :func:`combine_tensor_patches` produces expected result.
@@ -42,7 +43,7 @@ def compute_padding(
     original_size = cast(Tuple[int, int], _pair(original_size))
     window_size = cast(Tuple[int, int], _pair(window_size))
     if stride is None:
-        stride =  window_size
+        stride = window_size
     stride = cast(Tuple[int, int], _pair(stride))
 
     remainder_vertical = (original_size[0] - window_size[0] / 2) % stride[0]
@@ -152,8 +153,11 @@ class ExtractTensorPatches(Module):
 
     def forward(self, input: Tensor) -> Tensor:
         return extract_tensor_patches(
-            input, self.window_size, stride=self.stride,
-            padding=self.padding, allow_auto_padding=self.allow_auto_padding
+            input,
+            self.window_size,
+            stride=self.stride,
+            padding=self.padding,
+            allow_auto_padding=self.allow_auto_padding,
         )
 
 
@@ -228,8 +232,12 @@ class CombineTensorPatches(Module):
 
     def forward(self, input: Tensor) -> Tensor:
         return combine_tensor_patches(
-            input, self.original_size, self.window_size, stride=self.window_size,
-            unpadding=self.unpadding, allow_auto_unpadding=self.allow_auto_unpadding
+            input,
+            self.original_size,
+            self.window_size,
+            stride=self.window_size,
+            unpadding=self.unpadding,
+            allow_auto_unpadding=self.allow_auto_unpadding,
         )
 
 
@@ -238,7 +246,7 @@ def _check_patch_fit(original_size, window_size, stride):
     remainder_horizontal = (original_size[1] - window_size[1] // 2) % stride[1]
     if (remainder_horizontal != (window_size[1] // 2)) or (remainder_vertical != (window_size[0] // 2)):
         # needs padding to fit
-        # iif it's half, we can fit a full number of patches in, based on the stride
+        # if it's half, we can fit a full number of patches in, based on the stride
         return False
 
 
@@ -260,7 +268,8 @@ def combine_tensor_patches(
         window_size: the size of the sliding window used while extracting patches.
         stride: stride of the sliding window.
         unpadding: remove the padding added to both side of the input.
-        allow_auto_unpadding: whether to allow automatic unpadding of the input if the window does not fit into the image.
+        allow_auto_unpadding: whether to allow automatic unpadding of the input
+            if the window does not fit into the image.
 
     Return:
         The combined patches in an image tensor with shape :math:`(B, C, H, W)`.
@@ -296,9 +305,12 @@ def combine_tensor_patches(
         if not _check_patch_fit(original_size, window_size, stride):
             if not allow_auto_unpadding:
                 warn(
-                    f"The window will not fit into the image. \nWindow size: {window_size}\nStride: {stride}\nImage size: {original_size}\n"
-                    "This means we probably cannot correctly recombine patches. By enabling `allow_auto_unpadding`, the input will be unpadded to fit the window and stride.\n"
-                    "If the patches have been obtained through `extract_tensor_patches` with the correct patching or the argument `allow_auto_padding`, this will result in a correct reconstruction."
+                    f"The window will not fit into the image. \nWindow size: {window_size}\nStride: {stride}\n"
+                    "Image size: {original_size}\n"
+                    "This means we probably cannot correctly recombine patches. By enabling `allow_auto_unpadding`, "
+                    "the input will be unpadded to fit the window and stride.\n"
+                    "If the patches have been obtained through `extract_tensor_patches` with the correct patching or "
+                    "the argument `allow_auto_padding`, this will result in a correct reconstruction."
                 )
             else:
                 unpadding = compute_padding(original_size=original_size, window_size=window_size, stride=stride)
@@ -392,15 +404,17 @@ def extract_tensor_patches(
     stride = _pair(stride)
     window_size = _pair(window_size)
     original_size = (input.shape[-2], input.shape[-1])
-    
+
     if not padding:
         # if padding is specified, we leave it up to the user to ensure it fits
         # otherwise we check here if it will fit and offer to calculate padding
         if not _check_patch_fit(original_size, window_size, stride):
             if not allow_auto_padding:
                 warn(
-                    f"The window will not fit into the image. \nWindow size: {window_size}\nStride: {stride}\nImage size: {original_size}\n"
-                    "This means that the final incomplete patches will be dropped. By enabling `allow_auto_padding`, the input will be padded to fit the window and stride."
+                    f"The window will not fit into the image. \nWindow size: {window_size}\nStride: {stride}\n"
+                    "Image size: {original_size}\n"
+                    "This means that the final incomplete patches will be dropped. By enabling `allow_auto_padding`, "
+                    "the input will be padded to fit the window and stride."
                 )
             else:
                 padding = compute_padding(original_size=original_size, window_size=window_size, stride=stride)
