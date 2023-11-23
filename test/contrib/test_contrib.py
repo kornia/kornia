@@ -387,7 +387,6 @@ class TestCombineTensorPatches:
         assert m(patches).shape == (1, 1, 8, 8)
         assert_close(img, m(patches))
 
-
     def test_compute_padding(self, device, dtype):
         img_shape = (8, 13)
         rnge = img_shape[0] * img_shape[1]
