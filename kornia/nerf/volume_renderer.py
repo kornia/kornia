@@ -6,7 +6,7 @@ from kornia.nerf.samplers import calc_ray_t_vals
 
 
 class VolumeRenderer(torch.nn.Module):
-    r"""Volume renderer class.
+    r"""Base class for volume rendering.
 
     Implementation follows Ben Mildenhall et el. (2020) at https://arxiv.org/abs/2003.08934.
     """

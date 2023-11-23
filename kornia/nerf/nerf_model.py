@@ -22,15 +22,17 @@ class MLP(Module):
 
     Skip connections span between the sub-units.
     The model follows: Ben Mildenhall et el. (2020) at https://arxiv.org/abs/2003.08934.
-
-    Args:
-        num_dims: Number of input dimensions (channels)
-        num_units: Number of sub-units: int
-        num_unit_layers: Number of fully connected layers in each sub-unit
-        num_hidden: Layer hidden dimensions: int
     """
 
     def __init__(self, num_dims: int, num_units: int = 2, num_unit_layers: int = 4, num_hidden: int = 128) -> None:
+        """Constructor method.
+
+        Args:
+            num_dims: Number of input dimensions (channels).
+            num_units: Number of sub-units.
+            num_unit_layers: Number of fully connected layers in each sub-unit.
+            num_hidden: Layer hidden dimensions.
+        """
         super().__init__()
         self._num_unit_layers = num_unit_layers
         layers = []
@@ -42,12 +44,12 @@ class MLP(Module):
                 layers.append(nn.Sequential(layer, nn.ReLU()))
         self._mlp = nn.ModuleList(layers)
 
-    def forward(self, inp: Tensor) -> Tensor:
-        out = inp
-        inp_skip = inp
+    def forward(self, x: Tensor) -> Tensor:
+        out = x
+        x_skip = x
         for i, layer in enumerate(self._mlp):
             if i > 0 and i % self._num_unit_layers == 0:
-                out = torch.cat((out, inp_skip), dim=-1)
+                out = torch.cat((out, x_skip), dim=-1)
             out = layer(out)
         return out
 
@@ -56,14 +58,14 @@ class NerfModel(Module):
     r"""Class to represent NeRF model.
 
     Args:
-        num_ray_points: Number of points to sample along rays: int
-        irregular_ray_sampling: Whether to sample ray points irregularly: bool
-        num_pos_freqs: Number of frequencies for positional encoding: int
-        num_dir_freqs: Number of frequencies for directional encoding: int
-        num_units: Number of sub-units: int
-        num_unit_layers: Number of fully connected layers in each sub-unit
-        num_hidden: Layer hidden dimensions: int
-        log_space_encoding: Whether to apply log spacing for encoding: bool
+        num_ray_points: Number of points to sample along rays.
+        irregular_ray_sampling: Whether to sample ray points irregularly.
+        num_pos_freqs: Number of frequencies for positional encoding.
+        num_dir_freqs: Number of frequencies for directional encoding.
+        num_units: Number of sub-units.
+        num_unit_layers: Number of fully connected layers in each sub-unit.
+        num_hidden: Layer hidden dimensions.
+        log_space_encoding: Whether to apply log spacing for encoding.
     """
 
     def __init__(
@@ -98,6 +100,15 @@ class NerfModel(Module):
         self._rgb[0].bias.data = torch.tensor([0.02, 0.02, 0.02]).float()
 
     def forward(self, origins: Tensor, directions: Tensor) -> Tensor:
+        """Forward method.
+
+        Args:
+            origins: Ray origins with shape :math:`(B, 3)`.
+            directions: Ray directions with shape :math:`(B, 3)`.
+
+        Returns:
+            Rendered image pixels :math:`(B, 3)`.
+        """
         # Sample xyz for ray parameters
         batch_size = origins.shape[0]
         lengths = sample_lengths(
@@ -135,16 +146,19 @@ class NerfModel(Module):
 
 
 class NerfModelRenderer:
-    r"""Renders a novel synthesis view of a trained NeRF model for given camera.
-
-    Args:
-        nerf_model: NeRF model: NerfModel
-        image_size: image size: tuple[int, int]
-    """
+    """Renders a novel synthesis view of a trained NeRF model for given camera."""
 
     def __init__(
         self, nerf_model: NerfModel, image_size: tuple[int, int], device: torch.device | None, dtype: torch.dtype | None
     ) -> None:
+        """Constructor method.
+
+        Args:
+            nerf_model: NeRF model.
+            image_size: image size.
+            device: device to run the model on.
+            dtype: dtype to run the model on.
+        """
         self._nerf_model = nerf_model
         self._image_size = image_size
         self._device = device
@@ -153,7 +167,7 @@ class NerfModelRenderer:
         self._pixels_grid, self._ones = self._create_pixels_grid()  # 1xHxWx2 and (H*W)x1
 
     def _create_pixels_grid(self) -> tuple[Tensor, Tensor]:
-        r"""Creates the pixels grid to unproject to plane z=1.
+        """Creates the pixels grid to unproject to plane z=1.
 
         Args:
             image_size: image size: tuple[int, int]
@@ -173,13 +187,13 @@ class NerfModelRenderer:
         return pixels_grid, ones
 
     def render_view(self, camera: PinholeCamera) -> Tensor:
-        r"""Renders a novel synthesis view of a trained NeRF model for given camera.
+        """Renders a novel synthesis view of a trained NeRF model for given camera.
 
         Args:
             camera: camera for image rendering: PinholeCamera.
 
         Returns:
-            Rendered image: Tensor (H, W, C).
+            Rendered image with shape :math:`(H, W, 3)`.
         """
         # create ray for this camera
         rays: Ray = self._create_rays(camera)
