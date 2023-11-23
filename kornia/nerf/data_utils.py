@@ -8,7 +8,7 @@ from kornia.core import Device, Tensor, stack
 from kornia.geometry.camera import PinholeCamera
 from kornia.io import ImageLoadType, load_image
 from kornia.nerf.core import Images, ImageTensors
-from kornia.nerf.rays import RandomRaySampler, RaySampler, UniformRaySampler
+from kornia.nerf.samplers import RandomRaySampler, RaySampler, UniformRaySampler
 
 RayGroup = Tuple[Tensor, Tensor, Optional[Tensor]]
 

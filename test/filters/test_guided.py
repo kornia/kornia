@@ -90,7 +90,7 @@ class TestGuidedBlur(BaseTester):
         self.assert_close(op_module(guide, img), op(guide, img, kernel_size, eps, subsample=subsample))
 
     @pytest.mark.skipif(
-        torch_version() == "2.1.0",
+        torch_version() in {"2.1.0", "2.1.1"},
         reason=(
             "https://github.com/pytorch/pytorch/issues/110696 "
             "- Failing with: Argument of Integer should be of numeric type, got s3 + 3."

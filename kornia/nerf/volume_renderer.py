@@ -1,21 +1,25 @@
 import torch
 
 from kornia.core import Tensor
-from kornia.nerf.rays import calc_ray_t_vals
+from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.nerf.samplers import calc_ray_t_vals
 
 
 class VolumeRenderer(torch.nn.Module):
-    r"""Volume renderer class. Implementation follows Ben Mildenhall et el. (2020) at
-    https://arxiv.org/abs/2003.08934.
+    r"""Base class for volume rendering.
 
-    Args:
-        shift: Size of far-field layer: int
+    Implementation follows Ben Mildenhall et el. (2020) at https://arxiv.org/abs/2003.08934.
     """
 
     _huge = 1.0e10
     _eps = 1.0e-10
 
     def __init__(self, shift: int = 1) -> None:
+        """Initializes the renderer.
+
+        Args:
+            shift: Size of far-field layer: int
+        """
         super().__init__()
         self._shift = shift
 
@@ -35,8 +39,7 @@ class VolumeRenderer(torch.nn.Module):
 
 
 class IrregularRenderer(VolumeRenderer):
-    def __init__(self, shift: int = 1) -> None:
-        super().__init__(shift)
+    """Renders 3D irregularly sampled points along rays."""
 
     def forward(self, rgbs: Tensor, densities: Tensor, points_3d: Tensor) -> Tensor:
         r"""Renders 3D irregularly sampled points along rays.
@@ -44,7 +47,7 @@ class IrregularRenderer(VolumeRenderer):
         Args:
             rgbs: RGB values of points along rays :math:`(*, N, 3)`
             densities: Volume densities of points along rays :math:`(*, N)`
-            t_vals: Sampled point distances along rays :math: `(*, N)`
+            points_3d: 3D points along rays :math:`(*, N, 3)`
 
         Returns:
             Rendered RGB values for each ray :math:`(*, 3)`
@@ -60,8 +63,7 @@ class IrregularRenderer(VolumeRenderer):
 
 
 class RegularRenderer(VolumeRenderer):
-    def __init__(self, shift: int = 1) -> None:
-        super().__init__(shift)
+    """Renders 3D regularly sampled points along rays."""
 
     def forward(self, rgbs: Tensor, densities: Tensor, points_3d: Tensor) -> Tensor:
         r"""Renders 3D regularly sampled points along rays.
@@ -69,13 +71,20 @@ class RegularRenderer(VolumeRenderer):
         Args:
             rgbs: RGB values of points along rays :math:`(*, N, 3)`
             densities: Volume densities of points along rays :math:`(*, N)`
-            deltas: Equispaced distance for point pairs along each ray :math: `(*)`
+            points_3d: 3D points along rays :math:`(*, N, 3)`
 
         Returns:
             Rendered RGB values for each ray :math:`(*, 3)`
         """
-        num_ray_points = points_3d.shape[-2]
-        delta_3d = points_3d.reshape(-1, num_ray_points, 3)[0, 1, :] - points_3d.reshape(-1, num_ray_points, 3)[0, 0, :]
+        KORNIA_CHECK_SHAPE(rgbs, ["*", "N", "3"])
+        KORNIA_CHECK_SHAPE(densities, ["*", "N"])
+        KORNIA_CHECK_SHAPE(points_3d, ["*", "N", "3"])
+
+        num_ray_points: int = points_3d.shape[-2]
+
+        points_3d = points_3d.reshape(-1, num_ray_points, 3)  # (*, N, 3)
+
+        delta_3d = points_3d[0, 1, :] - points_3d[0, 0, :]  # (*, 3)
         delta = torch.linalg.norm(delta_3d, dim=-1)
 
         alpha = 1 - torch.exp(-1.0 * densities * delta)  # (*, N)

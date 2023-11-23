@@ -4,7 +4,7 @@ import torch
 
 from kornia.core import Device
 from kornia.geometry.camera import PinholeCamera
-from kornia.nerf.rays import (
+from kornia.nerf.samplers import (
     RandomGridRaySampler,
     RandomRaySampler,
     UniformRaySampler,

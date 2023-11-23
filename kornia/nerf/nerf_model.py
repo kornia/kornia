@@ -1,26 +1,38 @@
+from __future__ import annotations
+
 import torch
 from torch import nn
 from torch.nn import functional as F
 
 from kornia.core import Module, Tensor
+from kornia.geometry.camera import PinholeCamera
+from kornia.geometry.ray import Ray
 from kornia.nerf.positional_encoder import PositionalEncoder
-from kornia.nerf.rays import sample_lengths, sample_ray_points
-from kornia.nerf.renderer import IrregularRenderer, RegularRenderer
+from kornia.nerf.samplers import sample_lengths, sample_ray_points
+from kornia.nerf.volume_renderer import IrregularRenderer, RegularRenderer
+from kornia.utils._compat import torch_inference_mode
+from kornia.utils.grid import create_meshgrid
 
 
 class MLP(Module):
-    r"""Class to represent a multi-layer perceptron. The MLP represents a deep NN of fully connected layers. The
-    network is build of user defined sub-units, each with a user defined number of layers.  Skip connections span
-    between the sub-units. The model follows: Ben Mildenhall et el. (2020) at https://arxiv.org/abs/2003.08934.
+    r"""Class to represent a multi-layer perceptron.
 
-    Args:
-        num_dims: Number of input dimensions (channels)
-        num_units: Number of sub-units: int
-        num_unit_layers: Number of fully connected layers in each sub-unit
-        num_hidden: Layer hidden dimensions: int
+    The MLP represents a deep NN of fully connected layers.
+    The network is build of user defined sub-units, each with a user defined number of layers.
+
+    Skip connections span between the sub-units.
+    The model follows: Ben Mildenhall et el. (2020) at https://arxiv.org/abs/2003.08934.
     """
 
     def __init__(self, num_dims: int, num_units: int = 2, num_unit_layers: int = 4, num_hidden: int = 128) -> None:
+        """Constructor method.
+
+        Args:
+            num_dims: Number of input dimensions (channels).
+            num_units: Number of sub-units.
+            num_unit_layers: Number of fully connected layers in each sub-unit.
+            num_hidden: Layer hidden dimensions.
+        """
         super().__init__()
         self._num_unit_layers = num_unit_layers
         layers = []
@@ -32,12 +44,12 @@ class MLP(Module):
                 layers.append(nn.Sequential(layer, nn.ReLU()))
         self._mlp = nn.ModuleList(layers)
 
-    def forward(self, inp: Tensor) -> Tensor:
-        out = inp
-        inp_skip = inp
+    def forward(self, x: Tensor) -> Tensor:
+        out = x
+        x_skip = x
         for i, layer in enumerate(self._mlp):
             if i > 0 and i % self._num_unit_layers == 0:
-                out = torch.cat((out, inp_skip), dim=-1)
+                out = torch.cat((out, x_skip), dim=-1)
             out = layer(out)
         return out
 
@@ -46,14 +58,14 @@ class NerfModel(Module):
     r"""Class to represent NeRF model.
 
     Args:
-        num_ray_points: Number of points to sample along rays: int
-        irregular_ray_sampling: Whether to sample ray points irregularly: bool
-        num_pos_freqs: Number of frequencies for positional encoding: int
-        num_dir_freqs: Number of frequencies for directional encoding: int
-        num_units: Number of sub-units: int
-        num_unit_layers: Number of fully connected layers in each sub-unit
-        num_hidden: Layer hidden dimensions: int
-        log_space_encoding: Whether to apply log spacing for encoding: bool
+        num_ray_points: Number of points to sample along rays.
+        irregular_ray_sampling: Whether to sample ray points irregularly.
+        num_pos_freqs: Number of frequencies for positional encoding.
+        num_dir_freqs: Number of frequencies for directional encoding.
+        num_units: Number of sub-units.
+        num_unit_layers: Number of fully connected layers in each sub-unit.
+        num_hidden: Layer hidden dimensions.
+        log_space_encoding: Whether to apply log spacing for encoding.
     """
 
     def __init__(
@@ -88,6 +100,15 @@ class NerfModel(Module):
         self._rgb[0].bias.data = torch.tensor([0.02, 0.02, 0.02]).float()
 
     def forward(self, origins: Tensor, directions: Tensor) -> Tensor:
+        """Forward method.
+
+        Args:
+            origins: Ray origins with shape :math:`(B, 3)`.
+            directions: Ray directions with shape :math:`(B, 3)`.
+
+        Returns:
+            Rendered image pixels :math:`(B, 3)`.
+        """
         # Sample xyz for ray parameters
         batch_size = origins.shape[0]
         lengths = sample_lengths(
@@ -122,3 +143,81 @@ class NerfModel(Module):
 
         # Return pixel point rendered rgb
         return rgbs
+
+
+class NerfModelRenderer:
+    """Renders a novel synthesis view of a trained NeRF model for given camera."""
+
+    def __init__(
+        self, nerf_model: NerfModel, image_size: tuple[int, int], device: torch.device | None, dtype: torch.dtype | None
+    ) -> None:
+        """Constructor method.
+
+        Args:
+            nerf_model: NeRF model.
+            image_size: image size.
+            device: device to run the model on.
+            dtype: dtype to run the model on.
+        """
+        self._nerf_model = nerf_model
+        self._image_size = image_size
+        self._device = device
+        self._dtype = dtype
+
+        self._pixels_grid, self._ones = self._create_pixels_grid()  # 1xHxWx2 and (H*W)x1
+
+    def _create_pixels_grid(self) -> tuple[Tensor, Tensor]:
+        """Creates the pixels grid to unproject to plane z=1.
+
+        Args:
+            image_size: image size: tuple[int, int]
+
+        Returns:
+            - Pixels grid: Tensor (1, H, W, 2)
+            - Ones: Tensor (H*W, 1)
+        """
+        height, width = self._image_size
+        pixels_grid: Tensor = create_meshgrid(
+            height, width, normalized_coordinates=False, device=self._device, dtype=self._dtype
+        )  # 1xHxWx2
+        pixels_grid = pixels_grid.reshape(-1, 2)  # (H*W)x2
+
+        ones = torch.ones(pixels_grid.shape[0], 1, device=pixels_grid.device, dtype=pixels_grid.dtype)  # (H*W)x1
+
+        return pixels_grid, ones
+
+    def render_view(self, camera: PinholeCamera) -> Tensor:
+        """Renders a novel synthesis view of a trained NeRF model for given camera.
+
+        Args:
+            camera: camera for image rendering: PinholeCamera.
+
+        Returns:
+            Rendered image with shape :math:`(H, W, 3)`.
+        """
+        # create ray for this camera
+        rays: Ray = self._create_rays(camera)
+
+        # render the image
+        with torch_inference_mode():
+            rgb_model = self._nerf_model(rays.origin, rays.direction)
+
+        rgb_image = rgb_model.view(self._image_size[0], self._image_size[1], 3)
+
+        return rgb_image
+
+    def _create_rays(self, camera: PinholeCamera) -> Ray:
+        """Creates rays for a given camera.
+
+        Args:
+            camera: camera for image rendering: PinholeCamera.
+        """
+        height, width = self._image_size
+
+        # convert to rays
+        origin = camera.extrinsics[..., :3, -1]  # 1x3
+        origin = origin.repeat(height * width, 1)  # (H*W)x3
+
+        destination = camera.unproject(self._pixels_grid, self._ones)  # (H*W)x3
+
+        return Ray.through(origin, destination)
