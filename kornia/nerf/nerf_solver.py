@@ -73,20 +73,20 @@ class NerfSolver:
         log_space_encoding: bool = True,
         lr: float = 1.0e-3,
     ) -> None:
-        r"""Initializes training.
+        """Initializes training settings and model.
 
         Args:
-            cameras: Scene cameras in the order of input images: PinholeCamera
-            min_depth: sampled rays minimal depth from cameras: float
-            max_depth: sampled rays maximal depth from cameras: float
-            ndc: convert ray parameters to normalized device coordinates: bool
-            imgs: Scene 2D images (one for each camera): Images
-            num_img_rays: Number of rays to randomly cast from each camera: math: `(B)`
-            batch_size: Number of rays to sample in a batch: int
-            num_ray_points: Number of points to sample along rays: int
-            irregular_ray_sampling: Whether to sample ray points irregularly: bool
-            log_space: Whether frequency sampling should be log spaced: bool
-            lr: Learning rate: float
+            cameras: Scene cameras in the order of input images.
+            min_depth: sampled rays minimal depth from cameras.
+            max_depth: sampled rays maximal depth from cameras.
+            ndc: convert ray parameters to normalized device coordinates.
+            imgs: Scene 2D images (one for each camera).
+            num_img_rays: Number of rays to randomly cast from each camera: math: `(B)`.
+            batch_size: Number of rays to sample in a batch.
+            num_ray_points: Number of points to sample along rays.
+            irregular_ray_sampling: Whether to sample ray points irregularly.
+            log_space: Whether frequency sampling should be log spaced.
+            lr: Learning rate.
         """
         self._cameras = cameras
         self._min_depth = min_depth
@@ -138,21 +138,6 @@ class NerfSolver:
         log_space_encoding: bool = True,
         lr: float = 1.0e-3,
     ) -> None:
-        r"""Initializes training.
-
-        Args:
-            cameras: Scene cameras in the order of input images: PinholeCamera
-            min_depth: sampled rays minimal depth from cameras: float
-            max_depth: sampled rays maximal depth from cameras: float
-            ndc: convert ray parameters to normalized device coordinates: bool
-            imgs: Scene 2D images (one for each camera): Images
-            num_img_rays: Number of rays to randomly cast from each camera: math: `(B)`
-            batch_size: Number of rays to sample in a batch: int
-            num_ray_points: Number of points to sample along rays: int
-            irregular_ray_sampling: Whether to sample ray points irregularly: bool
-            log_space: Whether frequency sampling should be log spaced: bool
-            lr: Learning rate: float
-        """
         self.setup_solver(
             cameras,
             min_depth,
