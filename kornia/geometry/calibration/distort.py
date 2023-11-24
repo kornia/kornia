@@ -2,7 +2,8 @@ from typing import Optional
 
 import torch
 
-from kornia.core import zeros_like, ones_like, stack
+from kornia.core import ones_like, stack, zeros_like
+
 
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/distortion_model.hpp#L75
 def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool = False) -> torch.Tensor:
@@ -46,9 +47,9 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
 
         return inv_tilt
 
-    Pz = stack(
-        [R[..., 2, 2], zero, -R[..., 0, 2], zero, R[..., 2, 2], -R[..., 1, 2], zero, zero, one], -1
-    ).reshape(-1, 3, 3)
+    Pz = stack([R[..., 2, 2], zero, -R[..., 0, 2], zero, R[..., 2, 2], -R[..., 1, 2], zero, zero, one], -1).reshape(
+        -1, 3, 3
+    )
 
     tilt = Pz @ R.transpose(-1, -2)
     if ndim == 0:
