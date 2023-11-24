@@ -2,7 +2,7 @@ from typing import Iterable, List, Union
 
 import torch
 
-from kornia.core import Device, Tensor, zeros, eye, stack, rand
+from kornia.core import Device, Tensor, eye, stack, zeros
 from kornia.core.check import KORNIA_CHECK_SAME_DEVICE
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.linalg import inverse_transformation, transform_points
