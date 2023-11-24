@@ -4,6 +4,7 @@ from typing import Optional
 
 import torch
 
+from kornia.core import stack
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.transform import remap
 from kornia.utils import create_meshgrid
@@ -77,7 +78,7 @@ def undistort_points(
         inv_tilt = tilt_projection(dist[..., 12], dist[..., 13], True)
 
         # Transposed untilt points (instead of [x,y,1]^T, we obtain [x,y,1])
-        x, y = transform_points(inv_tilt, torch.stack([x, y], dim=-1)).unbind(-1)
+        x, y = transform_points(inv_tilt, stack([x, y], dim=-1)).unbind(-1)
 
     # Iteratively undistort points
     x0, y0 = x, y

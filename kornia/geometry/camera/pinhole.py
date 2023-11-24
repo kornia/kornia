@@ -2,7 +2,7 @@ from typing import Iterable, List, Union
 
 import torch
 
-from kornia.core import Device, Tensor
+from kornia.core import Device, Tensor, zeros, eye, stack, rand
 from kornia.core.check import KORNIA_CHECK_SAME_DEVICE
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.linalg import inverse_transformation, transform_points
@@ -355,7 +355,7 @@ class PinholeCamera:
         dtype: torch.dtype,
     ) -> "PinholeCamera":
         # create the camera matrix
-        intrinsics = torch.zeros(batch_size, 4, 4, device=device, dtype=dtype)
+        intrinsics = zeros(batch_size, 4, 4, device=device, dtype=dtype)
         intrinsics[..., 0, 0] += fx
         intrinsics[..., 1, 1] += fy
         intrinsics[..., 0, 2] += cx
@@ -363,14 +363,14 @@ class PinholeCamera:
         intrinsics[..., 2, 2] += 1.0
         intrinsics[..., 3, 3] += 1.0
         # create the pose matrix
-        extrinsics = torch.eye(4, device=device, dtype=dtype).repeat(batch_size, 1, 1)
+        extrinsics = eye(4, device=device, dtype=dtype).repeat(batch_size, 1, 1)
         extrinsics[..., 0, -1] += tx
         extrinsics[..., 1, -1] += ty
         extrinsics[..., 2, -1] += tz
         # create image hegith and width
-        height_tmp = torch.zeros(batch_size, device=device, dtype=dtype)
+        height_tmp = zeros(batch_size, device=device, dtype=dtype)
         height_tmp[..., 0] += height
-        width_tmp = torch.zeros(batch_size, device=device, dtype=dtype)
+        width_tmp = zeros(batch_size, device=device, dtype=dtype)
         width_tmp[..., 0] += width
         return self(intrinsics, extrinsics, height_tmp, width_tmp)
 
@@ -408,10 +408,10 @@ class PinholeCamerasList(PinholeCamera):
             intrinsics.append(pinhole.intrinsics)
             extrinsics.append(pinhole.extrinsics)
         # concatenate and set members. We will assume BxNx4x4
-        self.height: Tensor = torch.stack(height, dim=1)
-        self.width: Tensor = torch.stack(width, dim=1)
-        self._intrinsics: Tensor = torch.stack(intrinsics, dim=1)
-        self._extrinsics: Tensor = torch.stack(extrinsics, dim=1)
+        self.height: Tensor = stack(height, dim=1)
+        self.width: Tensor = stack(width, dim=1)
+        self._intrinsics: Tensor = stack(intrinsics, dim=1)
+        self._extrinsics: Tensor = stack(extrinsics, dim=1)
         return self
 
     @property
@@ -465,7 +465,7 @@ def pinhole_matrix(pinholes: Tensor, eps: float = 1e-6) -> Tensor:
     # unpack pinhole values
     fx, fy, cx, cy = torch.chunk(pinholes[..., :4], 4, dim=1)  # Nx1
     # create output container
-    k = torch.eye(4, device=pinholes.device, dtype=pinholes.dtype) + eps
+    k = eye(4, device=pinholes.device, dtype=pinholes.dtype) + eps
     k = k.view(1, 4, 4).repeat(pinholes.shape[0], 1, 1)  # Nx4x4
     # fill output with pinhole values
     k[..., 0, 0:1] = fx
@@ -509,7 +509,7 @@ def inverse_pinhole_matrix(pinhole: Tensor, eps: float = 1e-6) -> Tensor:
     # unpack pinhole values
     fx, fy, cx, cy = torch.chunk(pinhole[..., :4], 4, dim=1)  # Nx1
     # create output container
-    k = torch.eye(4, device=pinhole.device, dtype=pinhole.dtype)
+    k = eye(4, device=pinhole.device, dtype=pinhole.dtype)
     k = k.view(1, 4, 4).repeat(pinhole.shape[0], 1, 1)  # Nx4x4
     # fill output with inverse values
     k[..., 0, 0:1] = 1.0 / (fx + eps)
@@ -610,8 +610,8 @@ def homography_i_H_ref(pinhole_i: Tensor, pinhole_ref: Tensor) -> Tensor:
         - Output: :math:`(N, 4, 4)`
 
     Example:
-        pinhole_i = torch.rand(1, 12)    # Nx12
-        pinhole_ref = torch.rand(1, 12)  # Nx12
+        pinhole_i = rand(1, 12)    # Nx12
+        pinhole_ref = rand(1, 12)  # Nx12
         homography_i_H_ref(pinhole_i, pinhole_ref)  # Nx4x4
     """
     # TODO: Add doctest once having `rtvec_to_pose`.
@@ -681,7 +681,7 @@ def cam2pixel(cam_coords_src: Tensor, dst_proj_src: Tensor, eps: float = 1e-12) 
     v_coord: Tensor = y_coord / (z_coord + eps)
 
     # stack and return the coordinates, that's the actual flow
-    pixel_coords_dst: Tensor = torch.stack([u_coord, v_coord], dim=-1)
+    pixel_coords_dst: Tensor = stack([u_coord, v_coord], dim=-1)
     return pixel_coords_dst  # BxHxWx2
 
 
@@ -700,7 +700,7 @@ def cam2pixel(cam_coords_src: Tensor, dst_proj_src: Tensor, eps: float = 1e-12) 
         - Output: :math:`(N, 4, 4)`
 
     Example:
-        >>> pinhole = torch.rand(1, 12)          # Nx12
+        >>> pinhole = rand(1, 12)          # Nx12
         >>> transform = PinholeMatrix()
         >>> pinhole_matrix = transform(pinhole)  # Nx4x4
     """
@@ -726,7 +726,7 @@ class InversePinholeMatrix(nn.Module):
         - Output: :math:`(N, 4, 4)`
 
     Example:
-        >>> pinhole = torch.rand(1, 12)              # Nx12
+        >>> pinhole = rand(1, 12)              # Nx12
         >>> transform = kornia.InversePinholeMatrix()
         >>> pinhole_matrix_inv = transform(pinhole)  # Nx4x4
     """
