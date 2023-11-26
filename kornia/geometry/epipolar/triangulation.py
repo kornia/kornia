@@ -2,6 +2,7 @@
 
 import torch
 
+from kornia.core import zeros
 from kornia.geometry.conversions import convert_points_from_homogeneous
 from kornia.utils.helpers import _torch_svd_cast
 
