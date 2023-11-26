@@ -5,7 +5,7 @@ from typing import Optional, cast
 import torch
 from torch import Size
 
-from kornia.core import Tensor, zeros, stack
+from kornia.core import Tensor, stack, zeros
 from kornia.geometry.bbox import validate_bbox
 from kornia.geometry.linalg import transform_points
 from kornia.utils import eye_like
@@ -982,9 +982,7 @@ class Boxes3D:
                 device=self._data.device,
             )
         else:  # (N, 8, 3)
-            mask = zeros(
-                (self._data.shape[0], depth, height, width), dtype=self._data.dtype, device=self._data.device
-            )
+            mask = zeros((self._data.shape[0], depth, height, width), dtype=self._data.dtype, device=self._data.device)
 
         # Boxes coordinates can be outside the image size after transforms. Clamp values to the image size
         clipped_boxes_xyzxyz = self.to_tensor("xyzxyz")

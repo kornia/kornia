@@ -2,7 +2,8 @@
 
 import torch
 
-from kornia.core import zeros_like, stack
+from kornia.core import stack, zeros_like
+
 
 def cross_product_matrix(x: torch.Tensor) -> torch.Tensor:
     r"""Return the cross_product_matrix symmetric matrix of a vector.

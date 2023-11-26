@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.constants import pi
-from kornia.core import Tensor, tensor, zeros, sin, cos
+from kornia.core import Tensor, cos, sin, tensor, zeros
 from kornia.filters import GaussianBlur2d, SpatialGradient
 from kornia.geometry.conversions import cart2pol
 from kornia.utils import create_meshgrid

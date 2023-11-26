@@ -8,7 +8,21 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core import Module, ModuleList, Tensor, arange, concatenate, einsum, ones_like, softmax, stack, where, zeros, cos, sin
+from kornia.core import (
+    Module,
+    ModuleList,
+    Tensor,
+    arange,
+    concatenate,
+    cos,
+    einsum,
+    ones_like,
+    sin,
+    softmax,
+    stack,
+    where,
+    zeros,
+)
 from kornia.core.check import KORNIA_CHECK
 from kornia.utils._compat import torch_meshgrid
 
