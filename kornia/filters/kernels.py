@@ -6,7 +6,7 @@ from typing import Any, Optional
 
 import torch
 
-from kornia.core import Device, Dtype, Tensor, concatenate, stack, tensor, where, zeros, zeros_like, cos, sin
+from kornia.core import Device, Dtype, Tensor, concatenate, cos, stack, tensor, where, zeros, zeros_like
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.utils import deprecated
 

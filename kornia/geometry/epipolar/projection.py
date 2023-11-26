@@ -4,7 +4,7 @@ from typing import Tuple, Union
 import torch
 from torch.linalg import qr as linalg_qr
 
-from kornia.core import Tensor, concatenate, pad, stack, zeros_like, ones_like
+from kornia.core import Tensor, concatenate, ones_like, pad, stack, zeros_like
 from kornia.utils import eye_like, vec_like
 from kornia.utils.helpers import _torch_svd_cast
 

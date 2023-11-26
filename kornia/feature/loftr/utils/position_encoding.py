@@ -3,7 +3,7 @@ from typing import Tuple
 
 import torch
 
-from kornia.core import Module, Tensor, zeros, cos, sin
+from kornia.core import Module, Tensor, cos, sin, zeros
 
 
 class PositionEncodingSine(Module):

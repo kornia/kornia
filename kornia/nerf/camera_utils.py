@@ -3,7 +3,7 @@ from typing import List, Tuple, Union
 
 import torch
 
-from kornia.core import Device, Tensor, stack, cos, sin
+from kornia.core import Device, Tensor, cos, sin, stack
 from kornia.geometry.camera import PinholeCamera
 from kornia.geometry.conversions import quaternion_to_rotation_matrix
 
