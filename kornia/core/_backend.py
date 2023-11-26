@@ -30,6 +30,8 @@ complex = torch.complex
 diag = torch.diag
 softmax = torch.nn.functional.softmax
 map_coordinates = torch.nn.functional.grid_sample
+cos = torch.cos
+sin = torch.sin
 
 
 # constructors

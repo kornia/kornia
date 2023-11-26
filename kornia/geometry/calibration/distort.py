@@ -2,7 +2,7 @@ from typing import Optional
 
 import torch
 
-from kornia.core import ones_like, stack, zeros_like
+from kornia.core import zeros_like, ones_like, stack, cos, sin
 
 
 # Based on https://github.com/opencv/opencv/blob/master/modules/calib3d/src/distortion_model.hpp#L75
@@ -24,10 +24,10 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
     taux = taux.reshape(-1)
     tauy = tauy.reshape(-1)
 
-    cTx = torch.cos(taux)
-    sTx = torch.sin(taux)
-    cTy = torch.cos(tauy)
-    sTy = torch.sin(tauy)
+    cTx = cos(taux)
+    sTx = sin(taux)
+    cTy = cos(tauy)
+    sTy = sin(tauy)
     zero = zeros_like(cTx)
     one = ones_like(cTx)
 
