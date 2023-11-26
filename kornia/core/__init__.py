@@ -9,6 +9,7 @@ from ._backend import (
     as_tensor,
     complex,
     concatenate,
+    cos,
     diag,
     einsum,
     eye,
