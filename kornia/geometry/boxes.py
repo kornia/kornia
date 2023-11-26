@@ -5,7 +5,7 @@ from typing import Optional, cast
 import torch
 from torch import Size
 
-from kornia.core import Tensor
+from kornia.core import Tensor, zeros, stack
 from kornia.geometry.bbox import validate_bbox
 from kornia.geometry.linalg import transform_points
 from kornia.utils import eye_like
@@ -67,7 +67,7 @@ def _boxes_to_polygons(
         raise ValueError("We expect to create a batch of 2D boxes (quadrilaterals) in vertices format (B, N, 4, 2)")
 
     # Create (B,N,4,2) with all points in top left position of boxes
-    polygons = torch.zeros((xmin.shape[0], xmin.shape[1], 4, 2), device=xmin.device, dtype=xmin.dtype)
+    polygons = zeros((xmin.shape[0], xmin.shape[1], 4, 2), device=xmin.device, dtype=xmin.dtype)
     polygons[..., 0] = xmin.unsqueeze(-1)
     polygons[..., 1] = ymin.unsqueeze(-1)
     # Shift top-right, bottom-right, bottom-left points to the right coordinates
@@ -149,7 +149,7 @@ def _boxes3d_to_polygons3d(
 
     # Front
     # Create (B,N,4,3) with all points in front top left position of boxes
-    front_vertices = torch.zeros((xmin.shape[0], xmin.shape[1], 4, 3), device=xmin.device, dtype=xmin.dtype)
+    front_vertices = zeros((xmin.shape[0], xmin.shape[1], 4, 3), device=xmin.device, dtype=xmin.dtype)
     front_vertices[..., 0] = xmin.unsqueeze(-1)
     front_vertices[..., 1] = ymin.unsqueeze(-1)
     front_vertices[..., 2] = zmin.unsqueeze(-1)
@@ -442,7 +442,7 @@ class Boxes:
                      [5., 3.]]])
         """
         quadrilaterals: torch.Tensor | list[torch.Tensor]
-        if isinstance(boxes, (torch.Tensor)):
+        if isinstance(boxes, torch.Tensor):
             quadrilaterals = _boxes_to_quadrilaterals(boxes, mode=mode, validate_boxes=validate_boxes)
         else:
             quadrilaterals = [_boxes_to_quadrilaterals(box, mode, validate_boxes) for box in boxes]
@@ -557,7 +557,7 @@ class Boxes:
                 (self._data.shape[0], self._data.shape[1], height, width), dtype=self.dtype, device=self.device
             )
         else:  # (N, 4, 2)
-            mask = torch.zeros((self._data.shape[0], height, width), dtype=self.dtype, device=self.device)
+            mask = zeros((self._data.shape[0], height, width), dtype=self.dtype, device=self.device)
 
         # Boxes coordinates can be outside the image size after transforms. Clamp values to the image size
         clipped_boxes_xyxy = cast(torch.Tensor, self.to_tensor("xyxy", as_padded_sequence=True))
@@ -889,7 +889,7 @@ class Boxes3D:
         batched_boxes = self._data if self._is_batched else self._data.unsqueeze(0)
 
         # Create boxes in xyzxyz_plus format.
-        boxes = torch.stack([batched_boxes.amin(dim=-2), batched_boxes.amax(dim=-2)], dim=-2).view(
+        boxes = stack([batched_boxes.amin(dim=-2), batched_boxes.amax(dim=-2)], dim=-2).view(
             batched_boxes.shape[0], batched_boxes.shape[1], 6
         )
 
@@ -976,13 +976,13 @@ class Boxes3D:
             )
 
         if self._is_batched:  # (B, N, 8, 3)
-            mask = torch.zeros(
+            mask = zeros(
                 (self._data.shape[0], self._data.shape[1], depth, height, width),
                 dtype=self._data.dtype,
                 device=self._data.device,
             )
         else:  # (N, 8, 3)
-            mask = torch.zeros(
+            mask = zeros(
                 (self._data.shape[0], depth, height, width), dtype=self._data.dtype, device=self._data.device
             )
 

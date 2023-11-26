@@ -5,7 +5,7 @@ from typing import Optional
 import torch
 import torch.nn.functional as F
 
-from kornia.core import Tensor, concatenate, stack, tensor, zeros
+from kornia.core import Tensor, concatenate, stack, tensor, zeros, tan, ones_like, ones
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.geometry.conversions import (
     angle_to_rotation_matrix,
@@ -216,7 +216,7 @@ def _fill_and_warp(src: Tensor, grid: Tensor, mode: str, align_corners: bool, fi
     Returns:
         the warped and filled tensor with shape :math:`(B, 3, H, W)`.
     """
-    ones_mask = torch.ones_like(src)
+    ones_mask = ones_like(src)
     fill_value = fill_value.to(ones_mask)[None, :, None, None]  # cast and add dimensions for broadcasting
     inv_ones_mask = 1 - F.grid_sample(ones_mask, grid, align_corners=align_corners, mode=mode, padding_mode="zeros")
     inv_color_mask = inv_ones_mask * fill_value
@@ -339,7 +339,7 @@ def get_perspective_transform(points_src: Tensor, points_dst: Tensor) -> Tensor:
 
     # we need to perform in batch
     _zeros = zeros(B, device=points_src.device, dtype=points_src.dtype)
-    _ones = torch.ones(B, device=points_src.device, dtype=points_src.dtype)
+    _ones = ones(B, device=points_src.device, dtype=points_src.dtype)
 
     for i in range(4):
         x1, y1 = points_src[..., i, 0], points_src[..., i, 1]  # Bx4
@@ -657,9 +657,9 @@ def get_shear_matrix2d(center: Tensor, sx: Optional[Tensor] = None, sy: Optional
     x, y = torch.split(center, 1, dim=-1)
     x, y = x.view(-1), y.view(-1)
 
-    sx_tan = torch.tan(sx)
-    sy_tan = torch.tan(sy)
-    ones = torch.ones_like(sx)
+    sx_tan = tan(sx)
+    sy_tan = tan(sy)
+    ones = ones_like(sx)
     shear_mat = stack(
         [ones, -sx_tan, sx_tan * y, -sy_tan, ones + sx_tan * sy_tan, sy_tan * (x - sx_tan * y)], dim=-1
     ).view(-1, 2, 3)
@@ -780,12 +780,12 @@ def get_shear_matrix3d(
     x, y, z = torch.split(center, 1, dim=-1)
     x, y, z = x.view(-1), y.view(-1), z.view(-1)
     # Prepare parameters
-    sxy_tan = torch.tan(sxy)
-    sxz_tan = torch.tan(sxz)
-    syx_tan = torch.tan(syx)
-    syz_tan = torch.tan(syz)
-    szx_tan = torch.tan(szx)
-    szy_tan = torch.tan(szy)
+    sxy_tan = tan(sxy)
+    sxz_tan = tan(sxz)
+    syx_tan = tan(syx)
+    syz_tan = tan(syz)
+    szx_tan = tan(szx)
+    szy_tan = tan(szy)
 
     # compute translation matrix
     m00, m10, m20, m01, m11, m21, m02, m12, m22 = _compute_shear_matrix_3d(
@@ -811,7 +811,7 @@ def get_shear_matrix3d(
 def _compute_shear_matrix_3d(
     sxy_tan: Tensor, sxz_tan: Tensor, syx_tan: Tensor, syz_tan: Tensor, szx_tan: Tensor, szy_tan: Tensor
 ) -> tuple[Tensor, ...]:
-    ones = torch.ones_like(sxy_tan)
+    ones = ones_like(sxy_tan)
 
     m00, m10, m20 = ones, sxy_tan, sxz_tan
     m01, m11, m21 = syx_tan, sxy_tan * syx_tan + ones, sxz_tan * syx_tan + syz_tan

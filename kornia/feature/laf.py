@@ -4,7 +4,7 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torch.nn.functional as F
 
-from kornia.core import Tensor, concatenate, stack, tensor, zeros
+from kornia.core import Tensor, concatenate, stack, tensor, zeros, cos, sin
 from kornia.core.check import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
 from kornia.geometry.conversions import angle_to_rotation_matrix, convert_points_from_homogeneous, rad2deg
 from kornia.geometry.linalg import transform_points
@@ -243,8 +243,8 @@ def laf_to_boundary_points(LAF: Tensor, n_pts: int = 50) -> Tensor:
     B, N, _, _ = LAF.size()
     pts = concatenate(
         [
-            torch.sin(torch.linspace(0, 2 * math.pi, n_pts - 1)).unsqueeze(-1),
-            torch.cos(torch.linspace(0, 2 * math.pi, n_pts - 1)).unsqueeze(-1),
+            sin(torch.linspace(0, 2 * math.pi, n_pts - 1)).unsqueeze(-1),
+            cos(torch.linspace(0, 2 * math.pi, n_pts - 1)).unsqueeze(-1),
             torch.ones(n_pts - 1, 1),
         ],
         dim=1,

@@ -78,8 +78,8 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tup
     pair_distance: torch.Tensor = _pair_square_euclidean(points_src, points_dst)
     k_matrix: torch.Tensor = _kernel_distance(pair_distance)
 
-    zero_mat: torch.Tensor = torch.zeros(batch_size, 3, 3, device=device, dtype=dtype)
-    one_mat: torch.Tensor = torch.ones(batch_size, num_points, 1, device=device, dtype=dtype)
+    zero_mat: torch.Tensor = zeros(batch_size, 3, 3, device=device, dtype=dtype)
+    one_mat: torch.Tensor = ones(batch_size, num_points, 1, device=device, dtype=dtype)
     dest_with_zeros: torch.Tensor = torch.cat((points_dst, zero_mat[:, :, :2]), 1)
     p_matrix: torch.Tensor = torch.cat((one_mat, points_src), -1)
     p_matrix_t: torch.Tensor = torch.cat((p_matrix, zero_mat), 1).transpose(1, 2)
@@ -90,7 +90,7 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tup
     kernel_weights: torch.Tensor = weights[:, :-3]
     affine_weights: torch.Tensor = weights[:, -3:]
 
-    return (kernel_weights, affine_weights)
+    return kernel_weights, affine_weights
 
 
 def warp_points_tps(

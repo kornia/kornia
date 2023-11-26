@@ -8,7 +8,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core import Module, ModuleList, Tensor, arange, concatenate, einsum, ones_like, softmax, stack, where, zeros
+from kornia.core import Module, ModuleList, Tensor, arange, concatenate, einsum, ones_like, softmax, stack, where, zeros, cos, sin
 from kornia.core.check import KORNIA_CHECK
 from kornia.utils._compat import torch_meshgrid
 
@@ -58,7 +58,7 @@ class LearnableFourierPositionalEncoding(Module):
     def forward(self, x: Tensor) -> Tensor:
         """Encode position vector."""
         projected = self.Wr(x)
-        cosines, sines = torch.cos(projected), torch.sin(projected)
+        cosines, sines = cos(projected), sin(projected)
         emb = stack([cosines, sines], 0).unsqueeze(-3)
         return emb.repeat_interleave(2, dim=-1)
 

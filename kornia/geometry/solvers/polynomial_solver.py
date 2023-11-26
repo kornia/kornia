@@ -3,7 +3,7 @@ import math
 
 import torch
 
-from kornia.core import Tensor
+from kornia.core import Tensor, cos, stack, zeros, ones_like, zeros_like
 from kornia.core.check import KORNIA_CHECK_SHAPE
 
 
@@ -49,7 +49,7 @@ def solve_quadratic(coeffs: Tensor) -> Tensor:
     inv_2a = 0.5 / a
 
     # Initialize solutions tensor
-    solutions = torch.zeros((coeffs.shape[0], 2), device=coeffs.device, dtype=coeffs.dtype)
+    solutions = zeros((coeffs.shape[0], 2), device=coeffs.device, dtype=coeffs.dtype)
 
     # Handle cases with zero discriminant
     if torch.any(mask_zero):
@@ -102,7 +102,7 @@ def solve_cubic(coeffs: Tensor) -> Tensor:
     c = coeffs[:, 2]  # coefficient of x
     d = coeffs[:, 3]  # constant term
 
-    solutions = torch.zeros((len(coeffs), 3), device=a.device, dtype=a.dtype)
+    solutions = zeros((len(coeffs), 3), device=a.device, dtype=a.dtype)
 
     mask_a_zero = a == 0
     mask_b_zero = b == 0
@@ -135,9 +135,9 @@ def solve_cubic(coeffs: Tensor) -> Tensor:
     D = Q3 + R * R
     b_a_3 = (1.0 / 3.0) * b_a
 
-    a_Q_zero = torch.ones_like(a)
-    a_R_zero = torch.ones_like(a)
-    a_D_zero = torch.ones_like(a)
+    a_Q_zero = ones_like(a)
+    a_R_zero = ones_like(a)
+    a_D_zero = ones_like(a)
 
     a_Q_zero[~mask_a_zero] = Q
     a_R_zero[~mask_a_zero] = R
@@ -155,7 +155,7 @@ def solve_cubic(coeffs: Tensor) -> Tensor:
     mask_QR_zero_solutions = (a_Q_zero == 0) & (a_R_zero == 0)
 
     if torch.any(mask_QR_zero):
-        solutions[mask_QR_zero_solutions] = torch.stack(
+        solutions[mask_QR_zero_solutions] = stack(
             [-b_a_3[mask_QR_zero], -b_a_3[mask_QR_zero], -b_a_3[mask_QR_zero]], dim=1
         )
 
@@ -166,19 +166,19 @@ def solve_cubic(coeffs: Tensor) -> Tensor:
     if torch.any(mask_D_zero):
         theta_D_zero = torch.acos(R[mask_D_zero] / torch.sqrt(-Q3[mask_D_zero]))
         sqrt_Q_D_zero = torch.sqrt(-Q[mask_D_zero])
-        x0_D_zero = 2 * sqrt_Q_D_zero * torch.cos(theta_D_zero / 3.0) - b_a_3[mask_D_zero]
-        x1_D_zero = 2 * sqrt_Q_D_zero * torch.cos((theta_D_zero + 2 * _PI) / 3.0) - b_a_3[mask_D_zero]
-        x2_D_zero = 2 * sqrt_Q_D_zero * torch.cos((theta_D_zero + 4 * _PI) / 3.0) - b_a_3[mask_D_zero]
-        solutions[mask_D_zero_solutions] = torch.stack([x0_D_zero, x1_D_zero, x2_D_zero], dim=1)
+        x0_D_zero = 2 * sqrt_Q_D_zero * cos(theta_D_zero / 3.0) - b_a_3[mask_D_zero]
+        x1_D_zero = 2 * sqrt_Q_D_zero * cos((theta_D_zero + 2 * _PI) / 3.0) - b_a_3[mask_D_zero]
+        x2_D_zero = 2 * sqrt_Q_D_zero * cos((theta_D_zero + 4 * _PI) / 3.0) - b_a_3[mask_D_zero]
+        solutions[mask_D_zero_solutions] = stack([x0_D_zero, x1_D_zero, x2_D_zero], dim=1)
 
-    a_D_positive = torch.zeros_like(a)
+    a_D_positive = zeros_like(a)
     a_D_positive[~mask_a_zero] = D
     # D > 0
     mask_D_positive_solution = (a_D_positive > 0) & (a_Q_zero != 0)
     mask_D_positive = (D > 0) & (Q != 0)
     if torch.any(mask_D_positive):
-        AD = torch.zeros_like(R)
-        BD = torch.zeros_like(R)
+        AD = zeros_like(R)
+        BD = zeros_like(R)
         R_abs = torch.abs(R)
         mask_R_positive = R_abs > 1e-16
         if torch.any(mask_R_positive):
@@ -216,7 +216,7 @@ def multiply_deg_one_poly(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         degree 2 poly with the order :math:`(x^2, x*y, x*z, x, y^2, y*z, y, z^2, z, 1)`.
     """
 
-    return torch.stack(
+    return stack(
         [
             a[:, 0] * b[:, 0],
             a[:, 0] * b[:, 1] + a[:, 1] * b[:, 0],
@@ -251,7 +251,7 @@ def multiply_deg_two_one_poly(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         x*y*z, x*y, x*z^2, x*z, x, y*z^2, y*z, y, z^3, z^2, z, 1)`.
     """
 
-    return torch.stack(
+    return stack(
         [
             a[:, 0] * b[:, 0],
             a[:, 4] * b[:, 1],
@@ -291,7 +291,7 @@ def determinant_to_polynomial(A: Tensor) -> Tensor:
         a degree 10 poly, representing determinant (Eqn. 14 in the paper).
     """
 
-    cs = torch.zeros(A.shape[0], 11, device=A.device, dtype=A.dtype)
+    cs = zeros(A.shape[0], 11, device=A.device, dtype=A.dtype)
     cs[:, 0] = (
         A[:, 0, 12] * A[:, 1, 3] * A[:, 2, 7]
         - A[:, 0, 12] * A[:, 1, 7] * A[:, 2, 3]

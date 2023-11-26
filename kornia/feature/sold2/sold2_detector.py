@@ -3,7 +3,7 @@ from typing import Any, Dict, Optional, Tuple
 
 import torch
 
-from kornia.core import Module, Tensor, concatenate, stack, tensor, where, zeros
+from kornia.core import Module, Tensor, concatenate, stack, tensor, where, zeros, sin
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.bbox import nms
 from kornia.utils import map_location_to_cpu, torch_meshgrid
@@ -372,7 +372,7 @@ class LineSegmentDetectionModule:
         cand_angles = torch.acos(
             torch.einsum("bij,bjk->bik", cand_vecs, dir_vecs[..., None]) / cand_vecs_norm[..., None]
         )
-        cand_dists = cand_vecs_norm[..., None] * torch.sin(cand_angles)
+        cand_dists = cand_vecs_norm[..., None] * sin(cand_angles)
         junc_dist_mask = cand_dists <= dist_tolerance
         junc_mask = junc_dist_mask * proj_mask
 

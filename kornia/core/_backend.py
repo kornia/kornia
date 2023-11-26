@@ -32,7 +32,7 @@ softmax = torch.nn.functional.softmax
 map_coordinates = torch.nn.functional.grid_sample
 cos = torch.cos
 sin = torch.sin
-
+tan = torch.tan
 
 # constructors
 as_tensor = torch.as_tensor

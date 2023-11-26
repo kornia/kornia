@@ -6,7 +6,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.constants import pi
-from kornia.core import Tensor, concatenate, pad, stack, tensor, where, zeros_like
+from kornia.core import Tensor, concatenate, pad, stack, tensor, where, zeros_like, cos, sin
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.utils import deprecated
 from kornia.utils.helpers import _torch_inverse_cast
@@ -119,8 +119,8 @@ def pol2cart(rho: Tensor, phi: Tensor) -> tuple[Tensor, Tensor]:
     if not (isinstance(rho, Tensor) & isinstance(phi, Tensor)):
         raise TypeError(f"Input type is not a Tensor. Got {type(rho)}, {type(phi)}")
 
-    x = rho * torch.cos(phi)
-    y = rho * torch.sin(phi)
+    x = rho * cos(phi)
+    y = rho * sin(phi)
     return x, y
 
 
@@ -300,8 +300,8 @@ def axis_angle_to_rotation_matrix(axis_angle: Tensor) -> Tensor:
         theta = torch.sqrt(theta2)
         wxyz = axis_angle / (theta + eps)
         wx, wy, wz = torch.chunk(wxyz, 3, dim=1)
-        cos_theta = torch.cos(theta)
-        sin_theta = torch.sin(theta)
+        cos_theta = cos(theta)
+        sin_theta = sin(theta)
 
         r00 = cos_theta + wx * wx * (k_one - cos_theta)
         r10 = wz * sin_theta + wx * wy * (k_one - cos_theta)
@@ -649,8 +649,8 @@ def quaternion_log_to_exp(quaternion: Tensor, eps: float = 1.0e-8) -> Tensor:
     norm_q: Tensor = torch.norm(quaternion, p=2, dim=-1, keepdim=True).clamp(min=eps)
 
     # compute scalar and vector
-    quaternion_vector: Tensor = quaternion * torch.sin(norm_q) / norm_q
-    quaternion_scalar: Tensor = torch.cos(norm_q)
+    quaternion_vector: Tensor = quaternion * sin(norm_q) / norm_q
+    quaternion_scalar: Tensor = cos(norm_q)
 
     # compose quaternion and return
     quaternion_exp: Tensor = tensor([])
@@ -744,9 +744,9 @@ def axis_angle_to_quaternion(axis_angle: Tensor) -> Tensor:
     ones: Tensor = torch.ones_like(half_theta)
 
     k_neg: Tensor = 0.5 * ones
-    k_pos: Tensor = torch.sin(half_theta) / theta
+    k_pos: Tensor = sin(half_theta) / theta
     k: Tensor = where(mask, k_pos, k_neg)
-    w: Tensor = where(mask, torch.cos(half_theta), ones)
+    w: Tensor = where(mask, cos(half_theta), ones)
 
     quaternion: Tensor = torch.zeros(size=(*axis_angle.shape[:-1], 4), dtype=axis_angle.dtype, device=axis_angle.device)
     quaternion[..., 1:2] = a0 * k
@@ -974,8 +974,8 @@ def angle_to_rotation_matrix(angle: Tensor) -> Tensor:
         >>> output = angle_to_rotation_matrix(input)  # Nx3x2x2
     """
     ang_rad = deg2rad(angle)
-    cos_a: Tensor = torch.cos(ang_rad)
-    sin_a: Tensor = torch.sin(ang_rad)
+    cos_a: Tensor = cos(ang_rad)
+    sin_a: Tensor = sin(ang_rad)
     return stack([cos_a, sin_a, -sin_a, cos_a], dim=-1).view(*angle.shape, 2, 2)
 
 

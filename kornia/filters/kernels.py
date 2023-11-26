@@ -6,7 +6,7 @@ from typing import Any, Optional
 
 import torch
 
-from kornia.core import Device, Dtype, Tensor, concatenate, stack, tensor, where, zeros, zeros_like
+from kornia.core import Device, Dtype, Tensor, concatenate, stack, tensor, where, zeros, zeros_like, cos, sin
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.utils import deprecated
 
@@ -929,7 +929,7 @@ def get_hanning_kernel1d(kernel_size: int, device: Optional[Device] = None, dtyp
     _check_kernel_size(kernel_size, 2, allow_even=True)
 
     x = torch.arange(kernel_size, device=device, dtype=dtype)
-    x = 0.5 - 0.5 * torch.cos(2.0 * math.pi * x / float(kernel_size - 1))
+    x = 0.5 - 0.5 * cos(2.0 * math.pi * x / float(kernel_size - 1))
     return x
 
 

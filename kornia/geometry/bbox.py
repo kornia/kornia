@@ -5,6 +5,8 @@ from typing import Optional
 
 import torch
 
+from kornia.core import zeros, arange, ones_like, stack, where
+
 from .linalg import transform_points
 
 __all__ = [
@@ -197,7 +199,7 @@ def bbox_to_mask(boxes: torch.Tensor, width: int, height: int) -> torch.Tensor:
     """
     validate_bbox(boxes)
     # zero padding the surroundings
-    mask = torch.zeros((len(boxes), height + 2, width + 2), dtype=boxes.dtype, device=boxes.device)
+    mask = zeros((len(boxes), height + 2, width + 2), dtype=boxes.dtype, device=boxes.device)
     # push all points one pixel off
     # in order to zero-out the fully filled rows or columns
     box_i = (boxes + 1).long()
@@ -257,34 +259,34 @@ def bbox_to_mask3d(boxes: torch.Tensor, size: tuple[int, int, int]) -> torch.Ten
                    [0., 0., 0., 0., 0.]]]]])
     """
     validate_bbox3d(boxes)
-    mask = torch.zeros((len(boxes), *size))
+    mask = zeros((len(boxes), *size))
 
     mask_out = []
     # TODO: Looking for a vectorized way
     for m, box in zip(mask, boxes):
         m = m.index_fill(
             0,
-            torch.arange(box[0, 2].item(), box[4, 2].item() + 1, device=box.device, dtype=torch.long),
+            arange(box[0, 2].item(), box[4, 2].item() + 1, device=box.device, dtype=torch.long),
             torch.tensor(1, device=box.device, dtype=box.dtype),
         )
         m = m.index_fill(
             1,
-            torch.arange(box[1, 1].item(), box[2, 1].item() + 1, device=box.device, dtype=torch.long),
+            arange(box[1, 1].item(), box[2, 1].item() + 1, device=box.device, dtype=torch.long),
             torch.tensor(1, device=box.device, dtype=box.dtype),
         )
         m = m.index_fill(
             2,
-            torch.arange(box[0, 0].item(), box[1, 0].item() + 1, device=box.device, dtype=torch.long),
+            arange(box[0, 0].item(), box[1, 0].item() + 1, device=box.device, dtype=torch.long),
             torch.tensor(1, device=box.device, dtype=box.dtype),
         )
         m = m.unsqueeze(dim=0)
-        m_out = torch.ones_like(m)
+        m_out = ones_like(m)
         m_out = m_out * (m == 1).all(dim=2, keepdim=True).all(dim=1, keepdim=True)
         m_out = m_out * (m == 1).all(dim=3, keepdim=True).all(dim=1, keepdim=True)
         m_out = m_out * (m == 1).all(dim=2, keepdim=True).all(dim=3, keepdim=True)
         mask_out.append(m_out)
 
-    return torch.stack(mask_out, dim=0).float()
+    return stack(mask_out, dim=0).float()
 
 
 def bbox_generator(
@@ -548,9 +550,9 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
         inter = w * h
         ovr = inter / (areas[i] + areas[order[1:]] - inter)
 
-        inds = torch.where(ovr <= iou_threshold)[0]
+        inds = where(ovr <= iou_threshold)[0]
         order = order[inds + 1]
 
     if len(keep) > 0:
-        return torch.stack(keep)
+        return stack(keep)
     return torch.tensor(keep)
