@@ -3,7 +3,7 @@ from __future__ import annotations
 import torch
 from torch import nn
 
-from kornia.core import zeros, ones
+from kornia.core import ones, zeros
 from kornia.utils import create_meshgrid
 from kornia.utils.helpers import _torch_solve_cast
 
