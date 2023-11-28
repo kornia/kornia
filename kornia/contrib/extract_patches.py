@@ -8,12 +8,11 @@ from torch.nn.modules.utils import _pair
 
 from kornia.core import Module, Tensor, pad
 
-PadType = Union[Tuple[int, int], Tuple[int, int, int, int]]
+FullPadType = Tuple[int, int, int, int]
+PadType = Union[int, Tuple[int, int], FullPadType]
 
 
-def create_padding_tuple(padding, unpadding=False):
-    padding = cast(PadType, _pair(padding))
-
+def create_padding_tuple(padding: PadType, unpadding: bool = False) -> FullPadType:
     if len(padding) not in [2, 4]:
         raise AssertionError(
             f"{'Unpadding' if unpadding else 'Padding'} must be either an int, tuple of two ints or tuple of four ints"
@@ -25,7 +24,7 @@ def create_padding_tuple(padding, unpadding=False):
     else:
         pad_vert = padding[:2]
         pad_horz = padding[2:]
-    padding = cast(Tuple[int, int, int, int], pad_horz + pad_vert)
+    padding = cast(FullPadType, pad_horz + pad_vert)
 
     return padding
 
@@ -34,7 +33,7 @@ def compute_padding(
     original_size: Union[int, Tuple[int, int]],
     window_size: Union[int, Tuple[int, int]],
     stride: Optional[Union[int, Tuple[int, int]]] = None,
-) -> Tuple[int, int, int, int]:
+) -> FullPadType:
     r"""Compute required padding to ensure chaining of :func:`extract_tensor_patches` and
     :func:`combine_tensor_patches` produces expected result.
 
@@ -98,7 +97,7 @@ def compute_padding(
         right_padding = ceil(horizontal_padding / 2)
     # the new implementation with unfolding requires symmetric padding
     padding = int(top_padding), int(bottom_padding), int(left_padding), int(right_padding)
-    return padding
+    return cast(FullPadType, padding)
 
 
 class ExtractTensorPatches(Module):
@@ -163,7 +162,7 @@ class ExtractTensorPatches(Module):
         self,
         window_size: Union[int, Tuple[int, int]],
         stride: Optional[Union[int, Tuple[int, int]]] = 1,
-        padding: Optional[Union[int]] = 0,
+        padding: PadType = 0,
         allow_auto_padding: bool = False,
     ) -> None:
         super().__init__()
@@ -246,7 +245,7 @@ class CombineTensorPatches(Module):
         original_size: Union[int, Tuple[int, int]],
         window_size: Union[int, Tuple[int, int]],
         stride: Union[int, Tuple[int, int]],
-        unpadding: int = 0,
+        unpadding: PadType = 0,
         allow_auto_unpadding: bool = False,
     ) -> None:
         super().__init__()
@@ -282,7 +281,7 @@ def combine_tensor_patches(
     window_size: Union[int, Tuple[int, int]],
     stride: Union[int, Tuple[int, int]],
     allow_auto_unpadding: bool = False,
-    unpadding: Union[int, Tuple[int, int]] = 0,
+    unpadding: PadType = 0,
     eps: float = 1e-8,
 ) -> Tensor:
     r"""Restore input from patches.
@@ -389,7 +388,7 @@ def extract_tensor_patches(
     input: Tensor,
     window_size: Union[int, Tuple[int, int]],
     stride: Union[int, Tuple[int, int]] = 1,
-    padding: Union[int, Tuple[int, int]] = 0,
+    padding: PadType = 0,
     allow_auto_padding: bool = False,
 ) -> Tensor:
     r"""Function that extract patches from tensors and stack them.
