@@ -169,7 +169,7 @@ class ExtractTensorPatches(Module):
         self.window_size: Tuple[int, int] = _pair(window_size)
         self.stride: Tuple[int, int] = _pair(stride)
         self.padding: PadType = _pair(padding)
-        self.allow_auto_padding = allow_auto_padding
+        self.allow_auto_padding: bool = allow_auto_padding
 
     def forward(self, input: Tensor) -> Tensor:
         return extract_tensor_patches(
@@ -252,7 +252,7 @@ class CombineTensorPatches(Module):
         self.original_size: Tuple[int, int] = _pair(original_size)
         self.window_size: Tuple[int, int] = _pair(window_size)
         self.stride: Tuple[int, int] = _pair(stride)
-        self.unpadding = _pair(unpadding)
+        self.unpadding: PadType = _pair(unpadding)
         self.allow_auto_unpadding: bool = allow_auto_unpadding
 
     def forward(self, input: Tensor) -> Tensor:
@@ -266,13 +266,14 @@ class CombineTensorPatches(Module):
         )
 
 
-def _check_patch_fit(original_size, window_size, stride):
+def _check_patch_fit(original_size: Tuple[int, int], window_size: Tuple[int, int], stride: int) -> bool:
     remainder_vertical = (original_size[0] - window_size[0] // 2) % stride[0]
     remainder_horizontal = (original_size[1] - window_size[1] // 2) % stride[1]
     if (remainder_horizontal != (window_size[1] // 2)) or (remainder_vertical != (window_size[0] // 2)):
         # needs padding to fit
         # if it's half, we can fit a full number of patches in, based on the stride
         return False
+    return True
 
 
 def combine_tensor_patches(
