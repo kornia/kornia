@@ -13,6 +13,8 @@ PadType = Union[int, Tuple[int, int], FullPadType]
 
 
 def create_padding_tuple(padding: PadType, unpadding: bool = False) -> FullPadType:
+    padding = _pair(padding)
+
     if len(padding) not in [2, 4]:
         raise AssertionError(
             f"{'Unpadding' if unpadding else 'Padding'} must be either an int, tuple of two ints or tuple of four ints"
