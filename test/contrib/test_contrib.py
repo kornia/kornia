@@ -387,7 +387,7 @@ class TestCombineTensorPatches:
         patches = kornia.contrib.extract_tensor_patches(
             img, window_size=window_size, stride=window_size, padding=padding
         )
-        m = kornia.contrib.CombineTensorPatches(img_shape, window_size, unpadding=padding)
+        m = kornia.contrib.CombineTensorPatches(img_shape, window_size, stride=window_size, unpadding=padding)
         assert m(patches).shape == (1, 1, *img_shape)
         assert_close(img, m(patches))
 
@@ -406,7 +406,7 @@ class TestCombineTensorPatches:
         patches = kornia.contrib.extract_tensor_patches(
             img, window_size=window_size, stride=window_size, padding=padding
         )
-        m = kornia.contrib.CombineTensorPatches(img_shape, window_size, unpadding=padding)
+        m = kornia.contrib.CombineTensorPatches(img_shape, window_size, stride=window_size, unpadding=padding)
         assert m(patches).shape == (1, 1, *img_shape)
 
         assert_close(img, m(patches))
