@@ -1,5 +1,4 @@
 from math import ceil
-import math
 from typing import Optional, Tuple, Union, cast
 from warnings import warn
 
@@ -8,6 +7,27 @@ import torch.nn.functional as F
 from torch.nn.modules.utils import _pair
 
 from kornia.core import Module, Tensor, pad
+
+PadType = Union[Tuple[int, int], Tuple[int, int, int, int]]
+
+
+def create_padding_tuple(padding, unpadding=False):
+    padding = cast(PadType, _pair(padding))
+
+    if len(padding) not in [2, 4]:
+        raise AssertionError(
+            f"{'Unpadding' if unpadding else 'Padding'} must be either an int, tuple of two ints or tuple of four ints"
+        )
+
+    if len(padding) == 2:
+        pad_vert = _pair(padding[0])
+        pad_horz = _pair(padding[1])
+    else:
+        pad_vert = padding[:2]
+        pad_horz = padding[2:]
+    padding = cast(Tuple[int, int, int, int], pad_horz + pad_vert)
+
+    return padding
 
 
 def compute_padding(
@@ -76,6 +96,7 @@ def compute_padding(
     else:
         left_padding = horizontal_padding // 2
         right_padding = ceil(horizontal_padding / 2)
+    # the new implementation with unfolding requires symmetric padding
     padding = int(top_padding), int(bottom_padding), int(left_padding), int(right_padding)
     return padding
 
@@ -142,7 +163,7 @@ class ExtractTensorPatches(Module):
         self,
         window_size: Union[int, Tuple[int, int]],
         stride: Optional[Union[int, Tuple[int, int]]] = 1,
-        padding: Optional[Union[int, PadType]] = 0,
+        padding: Optional[Union[int]] = 0,
         allow_auto_padding: bool = False,
     ) -> None:
         super().__init__()
@@ -150,7 +171,6 @@ class ExtractTensorPatches(Module):
         self.stride: Tuple[int, int] = _pair(stride)
         self.padding: PadType = _pair(padding)
         self.allow_auto_padding = allow_auto_padding
-
 
     def forward(self, input: Tensor) -> Tensor:
         return extract_tensor_patches(
@@ -225,15 +245,15 @@ class CombineTensorPatches(Module):
         self,
         original_size: Union[int, Tuple[int, int]],
         window_size: Union[int, Tuple[int, int]],
-        unpadding: Union[int, PadType] = 0,
-        allow_auto_unpadding: bool = False,
         stride: Union[int, Tuple[int, int]],
+        unpadding: int = 0,
+        allow_auto_unpadding: bool = False,
     ) -> None:
         super().__init__()
         self.original_size: Tuple[int, int] = _pair(original_size)
         self.window_size: Tuple[int, int] = _pair(window_size)
         self.stride: Tuple[int, int] = _pair(stride)
-        self.unpadding: PadType = _pair(unpadding)
+        self.unpadding = _pair(unpadding)
         self.allow_auto_unpadding: bool = allow_auto_unpadding
 
     def forward(self, input: Tensor) -> Tensor:
@@ -314,14 +334,14 @@ def combine_tensor_patches(
                     "Image size: {original_size}\n"
                     "This means we probably cannot correctly recombine patches. By enabling `allow_auto_unpadding`, "
                     "the input will be unpadded to fit the window and stride.\n"
-                    "If the patches have been obtained through `extract_tensor_patches` with the correct patching or "
+                    "If the patches have been obtained through `extract_tensor_patches` with the correct padding or "
                     "the argument `allow_auto_padding`, this will result in a correct reconstruction."
                 )
             else:
                 unpadding = compute_padding(original_size=original_size, window_size=window_size, stride=stride)
 
     if unpadding:
-        unpadding = cast(PadType, _pair(unpadding))
+        unpadding = create_padding_tuple(unpadding)
 
     ones = torch.ones(
         patches.shape[0],
@@ -331,6 +351,7 @@ def combine_tensor_patches(
         device=patches.device,
         dtype=patches.dtype,
     )
+    ones = pad(ones, pad=unpadding)
     patches = patches.permute(0, 2, 3, 4, 1)
     patches = patches.reshape(patches.shape[0], -1, patches.shape[-1])
     int_flag = 0
@@ -341,15 +362,13 @@ def combine_tensor_patches(
         ones = ones.float()
 
     # Calculate normalization map
-    unfold_ones = F.unfold(ones, kernel_size=window_size, stride=stride, padding=unpadding)
-    norm_map = F.fold(
-        input=unfold_ones, output_size=original_size, kernel_size=window_size, stride=stride, padding=unpadding
-    )
+    unfold_ones = F.unfold(ones, kernel_size=window_size, stride=stride)
+    norm_map = F.fold(input=unfold_ones, output_size=original_size, kernel_size=window_size, stride=stride)
+    norm_map = pad(norm_map, [-i for i in unpadding])
 
     # Restored tensor
-    saturated_restored_tensor = F.fold(
-        input=patches, output_size=original_size, kernel_size=window_size, stride=stride, padding=unpadding
-    )
+    saturated_restored_tensor = F.fold(input=patches, output_size=original_size, kernel_size=window_size, stride=stride)
+    saturated_restored_tensor = pad(saturated_restored_tensor, [-i for i in unpadding])
 
     # Remove satuation effect due to multiple summations
     restored_tensor = saturated_restored_tensor / (norm_map + eps)
@@ -429,14 +448,7 @@ def extract_tensor_patches(
                 padding = compute_padding(original_size=original_size, window_size=window_size, stride=stride)
 
     if padding:
-        padding = cast(Tuple[int, int], _pair(padding))
-
-        if len(padding) != 2:
-            raise AssertionError("Padding must be either an int or a tuple of two ints")
-
-        pad_vert = _pair(padding[0])
-        pad_horz = _pair(padding[1])
-        padding4 = cast(Tuple[int, int, int, int], pad_horz + pad_vert)
-        input = pad(input, padding4)
+        padding = create_padding_tuple(padding)
+        input = pad(input, padding)
 
     return _extract_tensor_patchesnd(input, window_size, stride)
