@@ -319,10 +319,6 @@ def combine_tensor_patches(
     original_size = cast(Tuple[int, int], _pair(original_size))
     window_size = cast(Tuple[int, int], _pair(window_size))
     stride = cast(Tuple[int, int], _pair(stride))
-    unpadding = cast(Tuple[int, int], _pair(unpadding))
-
-    if len(unpadding) != 2:
-        raise AssertionError("Unpadding must be either an int or a tuple of two ints")
 
     if not unpadding:
         # if padding is specified, we leave it up to the user to ensure it fits
@@ -339,6 +335,7 @@ def combine_tensor_patches(
                 )
             else:
                 unpadding = compute_padding(original_size=original_size, window_size=window_size, stride=stride)
+                # TODO: Can't we just do actual size minus original size to get padding?
 
     if unpadding:
         unpadding = create_padding_tuple(unpadding)
@@ -352,6 +349,8 @@ def combine_tensor_patches(
         dtype=patches.dtype,
     )
     ones = pad(ones, pad=unpadding)
+    restored_size = ones.shape[2:]
+
     patches = patches.permute(0, 2, 3, 4, 1)
     patches = patches.reshape(patches.shape[0], -1, patches.shape[-1])
     int_flag = 0
@@ -363,11 +362,11 @@ def combine_tensor_patches(
 
     # Calculate normalization map
     unfold_ones = F.unfold(ones, kernel_size=window_size, stride=stride)
-    norm_map = F.fold(input=unfold_ones, output_size=original_size, kernel_size=window_size, stride=stride)
+    norm_map = F.fold(input=unfold_ones, output_size=restored_size, kernel_size=window_size, stride=stride)
     norm_map = pad(norm_map, [-i for i in unpadding])
 
     # Restored tensor
-    saturated_restored_tensor = F.fold(input=patches, output_size=original_size, kernel_size=window_size, stride=stride)
+    saturated_restored_tensor = F.fold(input=patches, output_size=restored_size, kernel_size=window_size, stride=stride)
     saturated_restored_tensor = pad(saturated_restored_tensor, [-i for i in unpadding])
 
     # Remove satuation effect due to multiple summations
@@ -450,5 +449,7 @@ def extract_tensor_patches(
     if padding:
         padding = create_padding_tuple(padding)
         input = pad(input, padding)
+
+    print(f"ADDED PADDING {padding} for TOTAL SIZE {input.shape}")
 
     return _extract_tensor_patchesnd(input, window_size, stride)
