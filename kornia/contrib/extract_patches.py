@@ -40,10 +40,10 @@ def compute_padding(
     Args:
         original_size: the size of the original tensor.
         window_size: the size of the sliding window used while extracting patches.
-        stride: The stride of the sliding window. Optional, if not specified will use window size as stride.
+        stride: The stride of the sliding window. Optional: if not specified, window_size will be used.
 
     Return:
-        The required padding for `(vertical, horizontal)` as a tuple of 2 ints.
+        The required padding as a tuple of four ints: (top, bottom, left, right)
 
     Example:
         >>> image = torch.arange(12).view(1, 1, 4, 3)
@@ -56,8 +56,8 @@ def compute_padding(
                   [ 9, 10, 11]]]])
 
     .. note::
-        This function is supposed to be used in conjunction with :func:`extract_tensor_patches`
-        and :func:`combine_tensor_patches`.
+        This function will be implicitly used in :func:`extract_tensor_patches` and :func:`combine_tensor_patches` if
+        `allow_auto_(un)padding` is set to True.
     """
     original_size = cast(Tuple[int, int], _pair(original_size))
     window_size = cast(Tuple[int, int], _pair(window_size))
@@ -121,6 +121,8 @@ class ExtractTensorPatches(Module):
       regulates the overlapping between the extracted patches.
     * :attr:`padding` controls the amount of implicit zeros-paddings on both
       sizes at each dimension.
+    * :attr:`allow_auto_padding` allows automatic calculation of the padding required
+      to fit the window and stride into the image.
 
     The parameters :attr:`window_size`, :attr:`stride` and :attr:`padding` can
     be either:
@@ -135,9 +137,11 @@ class ExtractTensorPatches(Module):
     the width dimension.
 
     Args:
+        input: tensor image where to extract the patches with shape :math:`(B, C, H, W)`.
         window_size: the size of the sliding window and the output patch size.
         stride: stride of the sliding window.
         padding: Zero-padding added to both side of the input.
+        allow_auto_adding: whether to allow automatic padding if the window and stride do not fit into the image.
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -182,7 +186,7 @@ class ExtractTensorPatches(Module):
 
 
 class CombineTensorPatches(Module):
-    r"""Module that combine patches from tensors.
+    r"""Module that combines patches back into full tensors.
 
     In the simplest case, the output value of the operator with input size
     :math:`(B, N, C, H_{out}, W_{out})` is :math:`(B, C, H, W)`.
@@ -196,14 +200,19 @@ class CombineTensorPatches(Module):
         defined in the function signature.
         left-right and top-bottom order.
 
+
     * :attr:`original_size` is the size of the original image prior to
       extracting tensor patches and defines the shape of the output patch.
     * :attr:`window_size` is the size of the sliding window used while
       extracting tensor patches.
     * :attr:`stride` controls the stride to apply to the sliding window and
       regulates the overlapping between the extracted patches.
-    * :attr:`unpadding` is the amount of padding to be removed. This value
-      must be the same as padding used while extracting tensor patches.
+    * :attr:`unpadding` is the amount of padding to be removed. If specified,
+      this value must be the same as padding used while extracting tensor patches.
+    * :attr:`allow_auto_unpadding` allows automatic calculation of the padding required
+      to fit the window and stride into the image. This must be used if the
+      `allow_auto_padding` flag was used for extracting the patches.
+
 
     The parameters :attr:`original_size`, :attr:`window_size`, :attr:`stride`, and :attr:`unpadding` can
     be either:
@@ -218,11 +227,14 @@ class CombineTensorPatches(Module):
     the width dimension.
 
     Args:
-        patches: patched tensor.
-        original_size: the size of the original tensor and the output patch size.
-        window_size: the size of the sliding window used.
+        patches: patched tensor with shape :math:`(B, N, C, H_{out}, W_{out})`.
+        original_size: the size of the original tensor and the output size.
+        window_size: the size of the sliding window used while extracting patches.
         stride: stride of the sliding window.
         unpadding: remove the padding added to both side of the input.
+        allow_auto_unpadding: whether to allow automatic unpadding of the input
+            if the window and stride do not fit into the original_size.
+        eps: small value used to prevent division by zero.
 
     Shape:
         - Input: :math:`(B, N, C, H_{out}, W_{out})`
@@ -291,12 +303,13 @@ def combine_tensor_patches(
 
     Args:
         patches: patched tensor with shape :math:`(B, N, C, H_{out}, W_{out})`.
-        original_size: the size of the original tensor and the output patch size.
+        original_size: the size of the original tensor and the output size.
         window_size: the size of the sliding window used while extracting patches.
         stride: stride of the sliding window.
         unpadding: remove the padding added to both side of the input.
         allow_auto_unpadding: whether to allow automatic unpadding of the input
-            if the window does not fit into the image.
+            if the window and stride do not fit into the original_size.
+        eps: small value used to prevent division by zero.
 
     Return:
         The combined patches in an image tensor with shape :math:`(B, C, H, W)`.
@@ -392,7 +405,7 @@ def extract_tensor_patches(
     padding: PadType = 0,
     allow_auto_padding: bool = False,
 ) -> Tensor:
-    r"""Function that extract patches from tensors and stack them.
+    r"""Function that extract patches from tensors and stacks them.
 
     See :class:`~kornia.contrib.ExtractTensorPatches` for details.
 
