@@ -3,6 +3,7 @@ from typing import Optional, Tuple, Union
 import torch
 from torch import nn
 
+from kornia.core import ones, ones_like, zeros
 from kornia.filters import gaussian_blur2d
 from kornia.utils import _extract_device_dtype
 from kornia.utils.image import perform_keep_shape_image
@@ -57,7 +58,7 @@ def _compute_tensor_center3d(tensor: torch.Tensor) -> torch.Tensor:
 
 def _compute_rotation_matrix(angle: torch.Tensor, center: torch.Tensor) -> torch.Tensor:
     """Compute a pure affine rotation matrix."""
-    scale: torch.Tensor = torch.ones_like(center)
+    scale: torch.Tensor = ones_like(center)
     matrix: torch.Tensor = get_rotation_matrix2d(center, angle, scale)
     return matrix
 
@@ -80,7 +81,7 @@ def _compute_rotation_matrix3d(
         raise AssertionError(f"Expected yaw, pitch, roll to be (B, 1). Got {yaw.shape}, {pitch.shape}, {roll.shape}.")
 
     angles: torch.Tensor = torch.cat([yaw, pitch, roll], dim=1)
-    scales: torch.Tensor = torch.ones_like(yaw)
+    scales: torch.Tensor = ones_like(yaw)
     matrix: torch.Tensor = get_projective_transform(center, angles, scales)
     return matrix
 
@@ -97,7 +98,7 @@ def _compute_translation_matrix(translation: torch.Tensor) -> torch.Tensor:
 
 def _compute_scaling_matrix(scale: torch.Tensor, center: torch.Tensor) -> torch.Tensor:
     """Compute affine matrix for scaling."""
-    angle: torch.Tensor = torch.zeros(scale.shape[:1], device=scale.device, dtype=scale.dtype)
+    angle: torch.Tensor = zeros(scale.shape[:1], device=scale.device, dtype=scale.dtype)
     matrix: torch.Tensor = get_rotation_matrix2d(center, angle, scale)
     return matrix
 
@@ -762,15 +763,15 @@ class Affine(nn.Module):
         device, dtype = _extract_device_dtype([angle, translation, scale_factor])
 
         if angle is None:
-            angle = torch.zeros(batch_size, device=device, dtype=dtype)
+            angle = zeros(batch_size, device=device, dtype=dtype)
         self.angle = angle
 
         if translation is None:
-            translation = torch.zeros(batch_size, 2, device=device, dtype=dtype)
+            translation = zeros(batch_size, 2, device=device, dtype=dtype)
         self.translation = translation
 
         if scale_factor is None:
-            scale_factor = torch.ones(batch_size, 2, device=device, dtype=dtype)
+            scale_factor = ones(batch_size, 2, device=device, dtype=dtype)
         self.scale_factor = scale_factor
 
         self.shear = shear

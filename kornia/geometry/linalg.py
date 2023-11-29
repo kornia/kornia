@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import torch
 
-from kornia.core import Tensor
+from kornia.core import Tensor, zeros_like
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 
@@ -65,7 +65,7 @@ def compose_transformations(trans_01: Tensor, trans_12: Tensor) -> Tensor:
     tvec_02: Tensor = torch.matmul(rmat_01, tvec_12) + tvec_01
 
     # pack output tensor
-    trans_02: Tensor = torch.zeros_like(trans_01)
+    trans_02: Tensor = zeros_like(trans_01)
     trans_02[..., :3, 0:3] += rmat_02
     trans_02[..., :3, -1:] += tvec_02
     trans_02[..., -1, -1:] += 1.0
@@ -107,7 +107,7 @@ def inverse_transformation(trans_12: Tensor) -> Tensor:
     tvec_21 = torch.matmul(-rmat_21, tvec_12)
 
     # pack to output tensor
-    trans_21 = torch.zeros_like(trans_12)
+    trans_21 = zeros_like(trans_12)
     trans_21[..., :3, 0:3] += rmat_21
     trans_21[..., :3, -1:] += tvec_21
     trans_21[..., -1, -1:] += 1.0

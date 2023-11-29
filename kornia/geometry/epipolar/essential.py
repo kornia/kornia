@@ -4,6 +4,7 @@ from typing import Optional, Tuple
 import torch
 
 import kornia.geometry.epipolar as epi
+from kornia.core import eye, ones_like, stack, where, zeros
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
 from kornia.geometry import solvers
 from kornia.utils import eye_like, vec_like
@@ -47,7 +48,7 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     batch_size, _, _ = points1.shape
     x1, y1 = torch.chunk(points1, dim=-1, chunks=2)  # Bx1xN
     x2, y2 = torch.chunk(points2, dim=-1, chunks=2)  # Bx1xN
-    ones = torch.ones_like(x1)
+    ones = ones_like(x1)
 
     # build equations system and find null space.
     # https://www.cc.gatech.edu/~afb/classes/CS4495-Fall2013/slides/CS4495-09-TwoViews-2.pdf
@@ -61,15 +62,15 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     else:
         w_diag = torch.diag_embed(weights)
         X = X.transpose(-2, -1) @ w_diag @ X
-    # compute eigevectors and retrieve the one with the smallest eigenvalue, using SVD
+    # compute eigenvectors and retrieve the one with the smallest eigenvalue, using SVD
     # turn off the grad check due to the unstable gradients from SVD.
     # several close to zero values of eigenvalues.
     _, _, V = _torch_svd_cast(X)  # torch.svd
     null_ = V[:, :, -4:]  # the last four rows
     nullSpace = V.transpose(-1, -2)[:, -4:, :]
 
-    coeffs = torch.zeros(batch_size, 10, 20, device=null_.device, dtype=null_.dtype)
-    d = torch.zeros(batch_size, 60, device=null_.device, dtype=null_.dtype)
+    coeffs = zeros(batch_size, 10, 20, device=null_.device, dtype=null_.dtype)
+    d = zeros(batch_size, 60, device=null_.device, dtype=null_.dtype)
 
     def fun(i: int, j: int) -> torch.Tensor:
         return null_[:, 3 * j + i]
@@ -120,14 +121,14 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
 
     b = coeffs[:, :, 10:]
     singular_filter = torch.linalg.matrix_rank(coeffs[:, :, :10]) >= torch.max(
-        torch.linalg.matrix_rank(coeffs), torch.ones_like(torch.linalg.matrix_rank(coeffs[:, :, :10])) * 10
+        torch.linalg.matrix_rank(coeffs), ones_like(torch.linalg.matrix_rank(coeffs[:, :, :10])) * 10
     )
 
     eliminated_mat = torch.linalg.solve(coeffs[singular_filter, :, :10], b[singular_filter])
 
     coeffs_ = torch.cat((coeffs[singular_filter, :, :10], eliminated_mat), dim=-1)
 
-    A = torch.zeros(coeffs_.shape[0], 3, 13, device=coeffs_.device, dtype=coeffs_.dtype)
+    A = zeros(coeffs_.shape[0], 3, 13, device=coeffs_.device, dtype=coeffs_.dtype)
 
     for i in range(3):
         A[:, i, 0] = 0.0
@@ -149,8 +150,8 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
         null_i = nullSpace[bi]
 
         # companion matrix solver for polynomial
-        C = torch.zeros((10, 10), device=cs.device, dtype=cs.dtype)
-        C[0:-1, 1:] = torch.eye(C[0:-1, 0:-1].shape[0], device=cs.device, dtype=cs.dtype)
+        C = zeros((10, 10), device=cs.device, dtype=cs.dtype)
+        C[0:-1, 1:] = eye(C[0:-1, 0:-1].shape[0], device=cs.device, dtype=cs.dtype)
         C[-1, :] = -cs[bi][:-1] / cs[bi][-1]
 
         roots = torch.real(torch.linalg.eigvals(C))
@@ -160,10 +161,10 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
         n_sols = roots.size()
         if n_sols == 0:
             continue
-        Bs = torch.stack(
+        Bs = stack(
             (
-                A_i[:3, :1] * (roots**3) + A_i[:3, 1:2] * roots.square() + A_i[0:3, 2:3] * (roots) + A_i[0:3, 3:4],
-                A_i[0:3, 4:5] * (roots**3) + A_i[0:3, 5:6] * roots.square() + A_i[0:3, 6:7] * (roots) + A_i[0:3, 7:8],
+                A_i[:3, :1] * (roots**3) + A_i[:3, 1:2] * roots.square() + A_i[0:3, 2:3] * roots + A_i[0:3, 3:4],
+                A_i[0:3, 4:5] * (roots**3) + A_i[0:3, 5:6] * roots.square() + A_i[0:3, 6:7] * roots + A_i[0:3, 7:8],
             ),
             dim=0,
         ).transpose(0, -1)
@@ -192,7 +193,7 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
         Es *= inv
         if Es.shape[0] < 10:
             Es = torch.cat(
-                (Es.clone(), torch.eye(3, device=Es.device, dtype=Es.dtype).repeat(10 - Es.shape[0], 1).reshape(-1, 9))
+                (Es.clone(), eye(3, device=Es.device, dtype=Es.dtype).repeat(10 - Es.shape[0], 1).reshape(-1, 9))
             )
         E_models.append(Es)
 
@@ -247,14 +248,14 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
     U, _, V = _torch_svd_cast(E_mat)
     Vt = V.transpose(-2, -1)
 
-    mask = torch.ones_like(E_mat)
+    mask = ones_like(E_mat)
     mask[..., -1:] *= -1.0  # fill last column with negative values
 
     maskt = mask.transpose(-2, -1)
 
     # avoid singularities
-    U = torch.where((torch.det(U) < 0.0)[..., None, None], U * mask, U)
-    Vt = torch.where((torch.det(Vt) < 0.0)[..., None, None], Vt * maskt, Vt)
+    U = where((torch.det(U) < 0.0)[..., None, None], U * mask, U)
+    Vt = where((torch.det(Vt) < 0.0)[..., None, None], Vt * maskt, Vt)
 
     W = cross_product_matrix(torch.tensor([[0.0, 0.0, 1.0]]).type_as(E_mat))
     W[..., 2, 2] += 1.0
@@ -322,10 +323,10 @@ def motion_from_essential(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tens
     R1, R2, t = decompose_essential_matrix(E_mat)
 
     # compbine and returns the four possible solutions
-    Rs = torch.stack([R1, R1, R2, R2], dim=-3)
-    Ts = torch.stack([t, -t, t, -t], dim=-3)
+    Rs = stack([R1, R1, R2, R2], dim=-3)
+    Ts = stack([t, -t, t, -t], dim=-3)
 
-    return (Rs, Ts)
+    return Rs, Ts
 
 
 def motion_from_essential_choose_solution(
@@ -473,7 +474,7 @@ def relative_camera_motion(
     # compute the relative translation vector
     t = t2 - R @ t1
 
-    return (R, t)
+    return R, t
 
 
 def find_essential(
@@ -496,7 +497,7 @@ def find_essential(
     solution_num = 10
     batch_size = points1.shape[0]
 
-    error = torch.zeros((batch_size, solution_num))
+    error = zeros((batch_size, solution_num))
 
     for b in range(batch_size):
         error[b] = epi.sampson_epipolar_distance(points1[b], points2[b], E.view(batch_size, solution_num, 3, 3)[b]).sum(
@@ -506,6 +507,6 @@ def find_essential(
     KORNIA_CHECK_SHAPE(error, ["f{batch_size}", "10"])
 
     chosen_indices = torch.argmin(error, dim=-1)
-    result = torch.stack([(E.view(-1, solution_num, 3, 3))[i, chosen_indices[i], :] for i in range(batch_size)])
+    result = stack([(E.view(-1, solution_num, 3, 3))[i, chosen_indices[i], :] for i in range(batch_size)])
 
     return result

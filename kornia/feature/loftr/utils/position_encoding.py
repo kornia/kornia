@@ -3,7 +3,7 @@ from typing import Tuple
 
 import torch
 
-from kornia.core import Module, Tensor, zeros
+from kornia.core import Module, Tensor, cos, sin, zeros
 
 
 class PositionEncodingSine(Module):
@@ -45,10 +45,10 @@ class PositionEncodingSine(Module):
                 torch.arange(0, self.d_model // 2, 2).float() * (-math.log(10000.0) / self.d_model // 2)
             )
         div_term = div_term[:, None, None]  # [C//4, 1, 1]
-        pe[0::4, :, :] = torch.sin(x_position * div_term)
-        pe[1::4, :, :] = torch.cos(x_position * div_term)
-        pe[2::4, :, :] = torch.sin(y_position * div_term)
-        pe[3::4, :, :] = torch.cos(y_position * div_term)
+        pe[0::4, :, :] = sin(x_position * div_term)
+        pe[1::4, :, :] = cos(x_position * div_term)
+        pe[2::4, :, :] = sin(y_position * div_term)
+        pe[3::4, :, :] = cos(y_position * div_term)
         return pe.unsqueeze(0)
 
     def update_position_encoding_size(self, max_shape: Tuple[int, int]) -> None:

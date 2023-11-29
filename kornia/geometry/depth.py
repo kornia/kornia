@@ -45,7 +45,7 @@ def unproject_meshgrid(
 
     Args:
         camera_matrix: tensor containing the camera intrinsics with shape :math:`(3, 3)`.
-        normalize_points: whether to normalise the pointcloud. This must be set to `True` when the depth is
+        normalize_points: whether to normalize the pointcloud. This must be set to `True` when the depth is
           represented as the Euclidean ray length from the camera position.
 
     Return:
@@ -176,7 +176,7 @@ def depth_to_normals(depth: Tensor, camera_matrix: Tensor, normalize_points: boo
     Args:
         depth: image tensor containing a depth value per pixel with shape :math:`(B, 1, H, W)`.
         camera_matrix: tensor containing the camera intrinsics with shape :math:`(B, 3, 3)`.
-        normalize_points: whether to normalise the pointcloud. This must be set to `True` when the depth is
+        normalize_points: whether to normalize the pointcloud. This must be set to `True` when the depth is
         represented as the Euclidean ray length from the camera position.
 
     Return:
@@ -226,7 +226,7 @@ def warp_frame_depth(
         depth_dst: depth tensor in the destination frame with shape :math:`(B,1,H,W)`.
         src_trans_dst: transformation matrix from destination to source with shape :math:`(B,4,4)`.
         camera_matrix: tensor containing the camera intrinsics with shape :math:`(B,3,3)`.
-        normalize_points: whether to normalise the pointcloud. This must be set to ``True`` when the depth
+        normalize_points: whether to normalize the pointcloud. This must be set to ``True`` when the depth
            is represented as the Euclidean ray length from the camera position.
 
     Return:

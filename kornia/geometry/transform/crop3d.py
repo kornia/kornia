@@ -154,7 +154,7 @@ def center_crop3d(
                   [[37.0000, 38.0000],
                    [41.0000, 42.0000]]]]])
     """
-    if not isinstance(tensor, (torch.Tensor)):
+    if not isinstance(tensor, torch.Tensor):
         raise TypeError(f"Input tensor type is not a torch.Tensor. Got {type(tensor)}")
 
     if len(tensor.shape) != 5:

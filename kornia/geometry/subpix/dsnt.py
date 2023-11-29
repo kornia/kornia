@@ -5,9 +5,8 @@ r"""Implementation of "differentiable spatial to numerical" (soft-argmax) operat
 from __future__ import annotations
 
 import torch
-import torch.nn.functional as F
 
-from kornia.core import Tensor, concatenate
+from kornia.core import Tensor, concatenate, softmax
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.utils.grid import create_meshgrid
 
@@ -46,7 +45,7 @@ def spatial_softmax2d(input: Tensor, temperature: Tensor = torch.tensor(1.0)) ->
     temperature = temperature.to(device=input.device, dtype=input.dtype)
     x = input.view(batch_size, channels, -1)
 
-    x_soft = F.softmax(x * temperature, dim=-1)
+    x_soft = softmax(x * temperature, dim=-1)
 
     return x_soft.view(batch_size, channels, height, width)
 
