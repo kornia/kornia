@@ -12,7 +12,7 @@ import torch
 from torch import nn
 
 from kornia.contrib.models.common import LayerNorm2d
-from kornia.core import Device, Module, Tensor, concatenate, stack, zeros
+from kornia.core import Device, Module, Tensor, concatenate, cos, sin, stack, zeros
 
 
 class PromptEncoder(Module):
@@ -161,7 +161,7 @@ class PositionEmbeddingRandom(Module):
         coords = coords @ self.positional_encoding_gaussian_matrix
         coords = 2 * pi * coords
         # outputs d_1 x ... x d_n x C shape
-        return concatenate([torch.sin(coords), torch.cos(coords)], dim=-1)
+        return concatenate([sin(coords), cos(coords)], dim=-1)
 
     def forward(self, size: tuple[int, int]) -> Tensor:
         """Generate positional encoding for a grid of the specified size."""

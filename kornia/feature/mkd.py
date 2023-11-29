@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.constants import pi
-from kornia.core import Tensor, tensor, zeros
+from kornia.core import Tensor, cos, sin, tensor, zeros
 from kornia.filters import GaussianBlur2d, SpatialGradient
 from kornia.geometry.conversions import cart2pol
 from kornia.utils import create_meshgrid
@@ -148,8 +148,8 @@ class VonMisesKernel(nn.Module):
 
         emb0 = self.emb0.to(x).repeat(x.size(0), 1, 1, 1)
         frange = self.frange.to(x) * x
-        emb1 = torch.cos(frange)
-        emb2 = torch.sin(frange)
+        emb1 = cos(frange)
+        emb2 = sin(frange)
         embedding = torch.cat([emb0, emb1, emb2], dim=1)
         embedding = self.weights * embedding
         return embedding

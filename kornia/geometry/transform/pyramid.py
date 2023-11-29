@@ -5,7 +5,7 @@ import math
 import torch
 import torch.nn.functional as F
 
-from kornia.core import Module, Tensor, pad, stack, tensor
+from kornia.core import Module, Tensor, ones, pad, stack, tensor, zeros
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.filters import filter2d, gaussian_blur2d
 
@@ -188,8 +188,8 @@ class ScalePyramid(Module):
         bs, _, _, _ = x.size()
         cur_level, cur_sigma, pixel_distance = self.get_first_level(x)
 
-        sigmas = [cur_sigma * torch.ones(bs, self.n_levels + self.extra_levels).to(x.device).to(x.dtype)]
-        pixel_dists = [pixel_distance * torch.ones(bs, self.n_levels + self.extra_levels).to(x.device).to(x.dtype)]
+        sigmas = [cur_sigma * ones(bs, self.n_levels + self.extra_levels).to(x.device).to(x.dtype)]
+        pixel_dists = [pixel_distance * ones(bs, self.n_levels + self.extra_levels).to(x.device).to(x.dtype)]
         pyr = [[cur_level]]
         oct_idx = 0
         while True:
@@ -362,7 +362,7 @@ def build_laplacian_pyramid(
 
     The function constructs a vector of images and builds the Laplacian pyramid
     by recursively computing the difference after applying
-    pyrUp to the adjacent layer in it's Gaussian pyramid.
+    pyrUp to the adjacent layer in its Gaussian pyramid.
 
     See :cite:`burt1987laplacian` for more details.
 
@@ -424,7 +424,7 @@ def upscale_double(x: Tensor) -> Tensor:
     KORNIA_CHECK_IS_TENSOR(x)
     KORNIA_CHECK_SHAPE(x, ["*", "H", "W"])
     double_shape = x.shape[:-2] + (x.shape[-2] * 2, x.shape[-1] * 2)
-    upscaled = torch.zeros(double_shape, device=x.device, dtype=x.dtype)
+    upscaled = zeros(double_shape, device=x.device, dtype=x.dtype)
     upscaled[..., ::2, ::2] = x
     upscaled[..., ::2, 1::2][..., :-1] = (upscaled[..., ::2, ::2][..., :-1] + upscaled[..., ::2, 2::2]) / 2
     upscaled[..., ::2, -1] = upscaled[..., ::2, -2]

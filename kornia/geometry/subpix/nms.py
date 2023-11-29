@@ -50,7 +50,7 @@ class NonMaximaSuppression2d(Module):
             return (x - 1) // 2  # zero padding function
 
         ky, kx = kernel_size  # we assume a cubic kernel
-        return (pad(ky), pad(ky), pad(kx), pad(kx))
+        return pad(ky), pad(ky), pad(kx), pad(kx)
 
     def forward(self, x: Tensor, mask_only: bool = False) -> Tensor:
         if len(x.shape) != 4:

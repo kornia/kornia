@@ -4,7 +4,7 @@ from typing import Tuple, Union
 import torch
 from torch.linalg import qr as linalg_qr
 
-from kornia.core import Tensor, concatenate, pad
+from kornia.core import Tensor, concatenate, ones_like, pad, stack, zeros_like
 from kornia.utils import eye_like, vec_like
 from kornia.utils.helpers import _torch_svd_cast
 
@@ -51,7 +51,7 @@ def random_intrinsics(low: Union[float, Tensor], high: Union[float, Tensor]) -> 
     """
     sampler = torch.distributions.Uniform(low, high)
     fx, fy, cx, cy = (sampler.sample(torch.Size((1,))) for _ in range(4))
-    zeros, ones = torch.zeros_like(fx), torch.ones_like(fx)
+    zeros, ones = zeros_like(fx), ones_like(fx)
     camera_matrix = concatenate([fx, zeros, cx, zeros, fy, cy, zeros, zeros, ones])
     return camera_matrix.view(1, 3, 3)
 
@@ -202,4 +202,4 @@ def projections_from_fundamental(F_mat: Tensor) -> Tensor:
     P1 = torch.cat([R1, t1], dim=-1)  # Bx3x4
     P2 = torch.cat([R2, t2], dim=-1)  # Bx3x4
 
-    return torch.stack([P1, P2], dim=-1)
+    return stack([P1, P2], dim=-1)

@@ -4,7 +4,7 @@ from typing import Literal, Optional, Tuple
 
 import torch
 
-from kornia.core import Tensor, concatenate
+from kornia.core import Tensor, concatenate, ones_like, stack, where, zeros
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.linalg import transform_points
@@ -40,16 +40,16 @@ def normalize_points(points: Tensor, eps: float = 1e-8) -> Tuple[Tensor, Tensor]
     scale = (points - x_mean).norm(dim=-1, p=2).mean(dim=-1)  # B
     scale = torch.sqrt(torch.tensor(2.0)) / (scale + eps)  # B
 
-    ones, zeros = torch.ones_like(scale), torch.zeros_like(scale)
+    ones, zeros = ones_like(scale), torch.zeros_like(scale)
 
-    transform = torch.stack(
+    transform = stack(
         [scale, zeros, -scale * x_mean[..., 0, 0], zeros, scale, -scale * x_mean[..., 0, 1], zeros, zeros, ones], dim=-1
     )  # Bx9
 
     transform = transform.view(-1, 3, 3)  # Bx3x3
     points_norm = transform_points(transform, points)  # BxNx2
 
-    return (points_norm, transform)
+    return points_norm, transform
 
 
 def normalize_transformation(M: Tensor, eps: float = 1e-8) -> Tensor:
@@ -68,7 +68,7 @@ def normalize_transformation(M: Tensor, eps: float = 1e-8) -> Tensor:
     if len(M.shape) < 2:
         raise AssertionError(M.shape)
     norm_val: Tensor = M[..., -1:, -1:]
-    return torch.where(norm_val.abs() > eps, M / (norm_val + eps), M)
+    return where(norm_val.abs() > eps, M / (norm_val + eps), M)
 
 
 # Reference: Adapted from the 'run_7point' function in opencv
@@ -94,7 +94,7 @@ def run_7point(points1: Tensor, points2: Tensor) -> Tensor:
     x1, y1 = torch.chunk(points1_norm, dim=-1, chunks=2)  # Bx1xN
     x2, y2 = torch.chunk(points2_norm, dim=-1, chunks=2)  # Bx1xN
 
-    ones = torch.ones_like(x1)
+    ones = ones_like(x1)
     # form a linear system: which represents
     # the equation (x2[i], 1)*F*(x1[i], 1) = 0
     X = concatenate([x2 * x1, x2 * y1, x2, y2 * x1, y2 * y1, y2, x1, y1, ones], -1)  # BxNx9
@@ -115,7 +115,7 @@ def run_7point(points1: Tensor, points2: Tensor) -> Tensor:
     # form a cubic equation
     # finding the coefficients of cubic polynomial (coeffs)
 
-    coeffs = torch.zeros((batch_size, 4), device=v.device, dtype=v.dtype)
+    coeffs = zeros((batch_size, 4), device=v.device, dtype=v.dtype)
 
     f1_det = torch.linalg.det(f1)
     f2_det = torch.linalg.det(f2)
@@ -128,7 +128,7 @@ def run_7point(points1: Tensor, points2: Tensor) -> Tensor:
     # roots = torch.tensor(np.roots(coeffs.numpy()))
     roots = solve_cubic(coeffs)
 
-    fmatrix = torch.zeros((batch_size, 3, 3, 3), device=v.device, dtype=v.dtype)
+    fmatrix = zeros((batch_size, 3, 3, 3), device=v.device, dtype=v.dtype)
     valid_root_mask = (torch.count_nonzero(roots, dim=1) < 3) | (torch.count_nonzero(roots, dim=1) > 1)
 
     _lambda = roots
@@ -151,7 +151,7 @@ def run_7point(points1: Tensor, points2: Tensor) -> Tensor:
         + f2_expanded[valid_root_mask] * _mu[valid_root_mask, :, None, None]
     )
 
-    mat_ind = torch.zeros(3, 3, dtype=torch.bool)
+    mat_ind = zeros(3, 3, dtype=torch.bool)
     mat_ind[2, 2] = True
     fmatrix[_s_non_zero_mask, mat_ind] = 1.0
     fmatrix[~_s_non_zero_mask, mat_ind] = 0.0
@@ -193,7 +193,7 @@ def run_8point(points1: Tensor, points2: Tensor, weights: Optional[Tensor] = Non
     x1, y1 = torch.chunk(points1_norm, dim=-1, chunks=2)  # Bx1xN
     x2, y2 = torch.chunk(points2_norm, dim=-1, chunks=2)  # Bx1xN
 
-    ones = torch.ones_like(x1)
+    ones = ones_like(x1)
 
     # build equations system and solve DLT
     # https://www.cc.gatech.edu/~afb/classes/CS4495-Fall2013/slides/CS4495-09-TwoViews-2.pdf
@@ -274,7 +274,7 @@ def compute_correspond_epilines(points: Tensor, F_mat: Tensor) -> Tensor:
 
     # compute normal and compose equation line
     nu: Tensor = a * a + b * b
-    nu = torch.where(nu > 0.0, 1.0 / torch.sqrt(nu), torch.ones_like(nu))
+    nu = where(nu > 0.0, 1.0 / torch.sqrt(nu), torch.ones_like(nu))
 
     line = torch.cat([a * nu, b * nu, c * nu], dim=-2)  # *x3xN
     return torch.transpose(line, dim0=-2, dim1=-1)  # *xNx3

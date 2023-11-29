@@ -3,7 +3,7 @@ from __future__ import annotations
 import torch
 import torch.nn.functional as F
 
-from kornia.core import Module, Tensor, concatenate, stack, tensor, where, zeros
+from kornia.core import Module, Tensor, concatenate, rand, stack, tensor, where, zeros, zeros_like
 from kornia.filters.sobel import spatial_gradient3d
 from kornia.geometry.conversions import normalize_pixel_coordinates, normalize_pixel_coordinates3d
 from kornia.utils import create_meshgrid, create_meshgrid3d
@@ -576,10 +576,10 @@ def conv_quad_interp3d(input: Tensor, strict_maxima_bonus: float = 10.0, eps: fl
     Hes = stack([dxx, dxy, dxs, dxy, dyy, dys, dxs, dys, dss], -1).view(-1, 3, 3)
     if not torch_version_ge(1, 10):
         # The following is needed to avoid singular cases
-        Hes += torch.rand(Hes[0].size(), device=Hes.device).abs()[None] * eps
+        Hes += rand(Hes[0].size(), device=Hes.device).abs()[None] * eps
 
     nms_mask: Tensor = nms3d(input, (3, 3, 3), True)
-    x_solved: Tensor = torch.zeros_like(b)
+    x_solved: Tensor = zeros_like(b)
     x_solved_masked, _, solved_correctly = safe_solve_with_mask(b[nms_mask.view(-1)], Hes[nms_mask.view(-1)])
 
     #  Kill those points, where we cannot solve
