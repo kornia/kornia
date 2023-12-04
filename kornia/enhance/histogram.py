@@ -227,7 +227,7 @@ def image_histogram2d(
         if kernel == "triangular":
             kernel_values = (1.0 - u) * mask
         elif kernel == "uniform":
-            kernel_values = torch.ones_like(u) * mask
+            kernel_values = mask
         else:  # kernel == "epanechnikov"
             kernel_values = (1.0 - u**2) * mask
     else:
