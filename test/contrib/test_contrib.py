@@ -396,7 +396,7 @@ class TestCombineTensorPatches:
         with pytest.raises(AssertionError):
             kornia.contrib.extract_tensor_patches(img, window_size=(2, 2), stride=(3, 3), padding=1)
 
-    def test_autopadding(self, device, dtype):
+    def test_expl_autopadding(self, device, dtype):
         img_shape = (8, 13)
         img = torch.arange(img_shape[0] * img_shape[1], device=device, dtype=dtype).view(
             1, 1, img_shape[0], img_shape[1]
@@ -411,7 +411,7 @@ class TestCombineTensorPatches:
 
         assert_close(img, m(patches))
 
-    def test_auto_padding(self, device, dtype):
+    def test_impl_autopadding(self, device, dtype):
         img_shape = (11, 16)
         img = torch.arange(img_shape[0] * img_shape[1], device=device, dtype=dtype).view(1, 1, *img_shape)
         window_size = (3, 3)
