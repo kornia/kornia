@@ -289,7 +289,7 @@ def get_perpendicular(lines: Tensor, points: Tensor) -> Tensor:
 
     Returns:
         a tensor with shape :math:`(*, N, 3)` containing a vector of the epipolar
-        perpenducular lines. Each line is described as
+        perpendicular lines. Each line is described as
         :math:`ax + by + c = 0` and encoding the vectors as :math:`(a, b, c)`.
     """
     KORNIA_CHECK_SHAPE(lines, ["*", "N", "3"])
