@@ -12,6 +12,8 @@ from kornia.geometry.conversions import (
     normalize_quaternion,
     quaternion_to_rotation_matrix,
     rotation_matrix_to_quaternion,
+    quaternion_from_euler,
+    euler_from_quaternion
 )
 from kornia.geometry.linalg import batched_dot_product
 
@@ -257,6 +259,37 @@ class Quaternion(Module):
             tensor([[1., 0., 0., 0.]], requires_grad=True)
         """
         return cls(rotation_matrix_to_quaternion(matrix))
+
+    @classmethod
+    def from_euler(cls, roll: Tensor, pitch: Tensor, yaw: Tensor) -> "Quaternion":
+        """Create a quaternion from euler angles.
+
+        Args:
+            matrix: the rotation matrix to convert of shape :math:`(B, 3, 3)`.
+
+        Example:
+            >>> roll, pitch, yaw = 0, 1, 0
+            >>> q = Quaternion.from_euler(roll, pitch, yaw)
+            >>> q.data
+            Parameter containing:
+            tensor([[1., 0., 0., 0.]], requires_grad=True)
+        """
+        return cls(quaternion_from_euler(roll=roll, pitch=pitch, yaw=yaw))
+
+    def to_euler(self) -> Tuple[Tensor, Tensor, Tensor]:
+        """Create a quaternion from euler angles.
+
+        Args:
+            matrix: the rotation matrix to convert of shape :math:`(B, 3, 3)`.
+
+        Example:
+            >>> q = Quaternion.identity()
+            >>> roll, pitch, yaw = q.to_euler()
+            Parameter containing:
+            tensor([[1., 0., 0., 0.]], requires_grad=True)
+        """
+        return euler_from_quaternion(self.w, self.x, self.y, self.z)
+
 
     @classmethod
     def from_axis_angle(cls, axis_angle: Tensor) -> "Quaternion":
