@@ -9,11 +9,12 @@ from torch.nn.modules.utils import _pair
 from kornia.core import Module, Tensor, pad
 
 FullPadType = Tuple[int, int, int, int]
-PadType = Union[int, Tuple[int, int], FullPadType]
+TuplePadType = Union[Tuple[int, int], FullPadType]
+PadType = Union[int, TuplePadType]
 
 
 def create_padding_tuple(padding: PadType, unpadding: bool = False) -> FullPadType:
-    padding = _pair(padding)
+    padding = cast(TuplePadType, _pair(padding))
 
     if len(padding) not in [2, 4]:
         raise AssertionError(
@@ -280,7 +281,7 @@ class CombineTensorPatches(Module):
         )
 
 
-def _check_patch_fit(original_size: Tuple[int, int], window_size: Tuple[int, int], stride: int) -> bool:
+def _check_patch_fit(original_size: Tuple[int, int], window_size: Tuple[int, int], stride: Tuple[int, int]) -> bool:
     remainder_vertical = (original_size[0] - window_size[0] // 2) % stride[0]
     remainder_horizontal = (original_size[1] - window_size[1] // 2) % stride[1]
     if (remainder_horizontal != (window_size[1] // 2)) or (remainder_vertical != (window_size[0] // 2)):
@@ -381,12 +382,12 @@ def combine_tensor_patches(
     unfold_ones = F.unfold(ones, kernel_size=window_size, stride=stride)
     norm_map = F.fold(input=unfold_ones, output_size=restored_size, kernel_size=window_size, stride=stride)
     if unpadding:
-        norm_map = pad(norm_map, [-i for i in unpadding])
+        norm_map = pad(norm_map, [-i for i in unpadding])  # type: ignore
 
     # Restored tensor
     saturated_restored_tensor = F.fold(input=patches, output_size=restored_size, kernel_size=window_size, stride=stride)
     if unpadding:
-        saturated_restored_tensor = pad(saturated_restored_tensor, [-i for i in unpadding])
+        saturated_restored_tensor = pad(saturated_restored_tensor, [-i for i in unpadding])  # type: ignore
 
     # Remove satuation effect due to multiple summations
     restored_tensor = saturated_restored_tensor / (norm_map + eps)
