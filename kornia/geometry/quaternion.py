@@ -9,11 +9,11 @@ from kornia.core import Device, Dtype, Module, Parameter, Tensor, concatenate, r
 from kornia.core.check import KORNIA_CHECK_TYPE
 from kornia.geometry.conversions import (
     axis_angle_to_quaternion,
+    euler_from_quaternion,
     normalize_quaternion,
+    quaternion_from_euler,
     quaternion_to_rotation_matrix,
     rotation_matrix_to_quaternion,
-    quaternion_from_euler,
-    euler_from_quaternion
 )
 from kornia.geometry.linalg import batched_dot_product
 
@@ -293,7 +293,6 @@ class Quaternion(Module):
             tensor([[1., 0., 0., 0.]], requires_grad=True)
         """
         return euler_from_quaternion(self.w, self.x, self.y, self.z)
-
 
     @classmethod
     def from_axis_angle(cls, axis_angle: Tensor) -> "Quaternion":
