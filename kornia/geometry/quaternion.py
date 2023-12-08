@@ -277,8 +277,7 @@ class Quaternion(Module):
             tensor([[1., 0., 0., 0.]], requires_grad=True)
         """
         w, x, y, z = quaternion_from_euler(roll=roll, pitch=pitch, yaw=yaw)
-        q = Quaternion(tensor(w, x, y, z))
-        return cls(q)
+        return cls(tensor([w, x, y, z]))
 
     def to_euler(self) -> Tuple[Tensor, Tensor, Tensor]:
         """Create a quaternion from euler angles.
