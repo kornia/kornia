@@ -47,7 +47,7 @@ class FineMatching(Module):
             )
             return
 
-        feat_f0_picked = feat_f0_picked = feat_f0[:, WW // 2, :]
+        feat_f0_picked = feat_f0[:, WW // 2, :]
         sim_matrix = torch.einsum("mc,mrc->mr", feat_f0_picked, feat_f1)
         softmax_temp = 1.0 / C**0.5
         heatmap = torch.softmax(softmax_temp * sim_matrix, dim=1).view(-1, W, W)
