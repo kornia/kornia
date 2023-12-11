@@ -270,7 +270,7 @@ class Quaternion(Module):
             yaw: the yaw euler angle.
 
         Example:
-            >>> roll, pitch, yaw = 0, 1, 0
+            >>> roll, pitch, yaw = tensor(0), tensor(1), tensor(0)
             >>> q = Quaternion.from_euler(roll, pitch, yaw)
             >>> q.data
             Parameter containing:
@@ -288,6 +288,7 @@ class Quaternion(Module):
         Example:
             >>> q = Quaternion.identity()
             >>> roll, pitch, yaw = q.to_euler()
+            >>> roll, pitch, yaw
             Parameter containing:
             tensor([[1., 0., 0., 0.]], requires_grad=True)
         """
