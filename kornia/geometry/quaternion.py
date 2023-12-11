@@ -274,10 +274,12 @@ class Quaternion(Module):
             >>> q = Quaternion.from_euler(roll, pitch, yaw)
             >>> q.data
             Parameter containing:
-            tensor([[1., 0., 0., 0.]], requires_grad=True)
+            tensor([0.8776, 0.0000, 0.4794, 0.0000], requires_grad=True)
         """
         w, x, y, z = quaternion_from_euler(roll=roll, pitch=pitch, yaw=yaw)
-        return cls(tensor([w, x, y, z]))
+        data = stack([w, x, y, z], axis=1)
+        q = Quaternion(data)
+        return cls(q)
 
     def to_euler(self) -> Tuple[Tensor, Tensor, Tensor]:
         """Create a quaternion from euler angles.
@@ -290,7 +292,7 @@ class Quaternion(Module):
             >>> roll, pitch, yaw = q.to_euler()
             >>> roll, pitch, yaw
             Parameter containing:
-            tensor([[1., 0., 0., 0.]], requires_grad=True)
+            (tensor(0., grad_fn=<Atan2Backward0>), tensor(0., grad_fn=<AsinBackward0>), tensor(0., grad_fn=<Atan2Backward0>))
         """
         return euler_from_quaternion(self.w, self.x, self.y, self.z)
 

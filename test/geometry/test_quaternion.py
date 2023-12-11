@@ -229,7 +229,7 @@ class TestToEuler(BaseTester):
     def test_smoke(self, device, dtype):
         q = Quaternion.random(batch_size=1)
         q = q.to(device, dtype)
-        roll, pitch, yaw = q.to_euler(q.w, q.x, q.y, q.z)
+        roll, pitch, yaw = q.to_euler()
         assert roll.shape == pitch.shape
         assert pitch.shape == yaw.shape
 
