@@ -1,10 +1,8 @@
 import pytest
 import torch
 
-from torch.autograd import gradcheck
-
 from kornia.geometry.quaternion import Quaternion
-from kornia.testing import BaseTester, assert_close
+from kornia.testing import assert_close
 
 
 class TestQuaternion:
