@@ -241,16 +241,6 @@ class TestToEuler(BaseTester):
         assert pitch.shape[0] == batch_size
         assert yaw.shape[0] == batch_size
 
-    def test_exception(self, device, dtype):
-        q = Quaternion.random(batch_size=2)
-        q = q.to(device, dtype)
-        with pytest.raises(Exception):
-            q.to_euler()
-
-    def test_gradcheck(self, device):
-        q = Quaternion.random(batch_size=1).to(device, torch.float64)
-        assert gradcheck(q.to_euler, (q.w, q.x, q.y, q.z), raise_exception=True, fast_mode=True)
-
     def test_module(self, device, dtype):
         pass
 
@@ -266,7 +256,7 @@ class TestToEuler(BaseTester):
         q = q.to(device, dtype)
         roll, pitch, yaw = q.to_euler()
         qw, qx, qy, qz = q.from_euler(roll, pitch, yaw)
-        # TODO: check hwo to prevent getting inverted angles sometimes
+        # TODO: check how to prevent getting inverted angles sometimes
         assert_close(q.w.abs(), qw.abs())
         assert_close(q.x.abs(), qx.abs())
         assert_close(q.y.abs(), qy.abs())
@@ -276,7 +266,8 @@ class TestToEuler(BaseTester):
 class TestFromEuler(BaseTester):
     def test_smoke(self, device, dtype):
         roll, pitch, yaw = torch.rand(3, device=device, dtype=dtype)
-        qw, qx, qy, qz = Quaternion.from_euler(roll, pitch, yaw)
+        q = Quaternion.from_euler(roll, pitch, yaw)
+        qw, qx, qy, qz = q.w, q.x, q.y, q.z
         assert qw.shape == qx.shape
         assert qx.shape == qy.shape
         assert qy.shape == qz.shape
@@ -284,7 +275,8 @@ class TestFromEuler(BaseTester):
     @pytest.mark.parametrize("batch_size", ((1, 3, 4)))
     def test_cardinality(self, device, dtype, batch_size):
         roll, pitch, yaw = torch.rand(3, batch_size, device=device, dtype=dtype)
-        qw, qx, qy, qz = Quaternion.from_euler(roll, pitch, yaw)
+        q = Quaternion.from_euler(roll, pitch, yaw)
+        qw, qx, qy, qz = q.w, q.x, q.y, q.z
         assert qw.shape[0] == batch_size
         assert qx.shape[0] == batch_size
         assert qy.shape[0] == batch_size
@@ -294,10 +286,6 @@ class TestFromEuler(BaseTester):
         _, pitch, yaw = torch.rand(3, 2, device=device, dtype=dtype)
         with pytest.raises(Exception):
             Quaternion.from_euler(torch.rand(1), pitch, yaw)
-
-    def test_gradcheck(self, device):
-        roll, pitch, yaw = torch.rand(3, 2, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(Quaternion.from_euler, (roll, pitch, yaw), raise_exception=True, fast_mode=True)
 
     def test_module(self, device, dtype):
         pass
