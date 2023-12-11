@@ -277,8 +277,7 @@ class Quaternion(Module):
             tensor([0.8776, 0.0000, 0.4794, 0.0000], requires_grad=True)
         """
         w, x, y, z = quaternion_from_euler(roll=roll, pitch=pitch, yaw=yaw)
-        data = stack([w, x, y, z], axis=1)
-        q = Quaternion(data)
+        q = stack([w, x, y, z], axis=1)
         return cls(q)
 
     def to_euler(self) -> Tuple[Tensor, Tensor, Tensor]:
