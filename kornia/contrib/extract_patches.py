@@ -470,6 +470,4 @@ def extract_tensor_patches(
         padding = create_padding_tuple(padding)
         input = pad(input, padding)
 
-    print(f"ADDED PADDING {padding} for TOTAL SIZE {input.shape}")
-
     return _extract_tensor_patchesnd(input, window_size, stride)
