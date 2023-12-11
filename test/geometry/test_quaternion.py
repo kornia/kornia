@@ -236,7 +236,7 @@ class TestToEuler(BaseTester):
     def test_cardinality(self, device, dtype, batch_size):
         q = Quaternion.random(batch_size=batch_size)
         q = q.to(device, dtype)
-        roll, pitch, yaw = q.to_euler(q.w, q.x, q.y, q.z)
+        roll, pitch, yaw = q.to_euler()
         assert roll.shape[0] == batch_size
         assert pitch.shape[0] == batch_size
         assert yaw.shape[0] == batch_size
@@ -245,7 +245,7 @@ class TestToEuler(BaseTester):
         q = Quaternion.random(batch_size=2)
         q = q.to(device, dtype)
         with pytest.raises(Exception):
-            q.to_euler(q.w, torch.rand(1), q.y, q.z)
+            q.to_euler()
 
     def test_gradcheck(self, device):
         q = Quaternion.random(batch_size=1).to(device, torch.float64)
