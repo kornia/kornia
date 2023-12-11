@@ -213,7 +213,7 @@ class RaySampler:
 
     @staticmethod
     def _build_num_ray_dict_of_points2d(
-        points2d_as_flat_tensors: Dict[int, Points2D_FlatTensors]
+        points2d_as_flat_tensors: Dict[int, Points2D_FlatTensors],
     ) -> Dict[int, Points2D]:
         r"""Builds a dictionary of ray pixel points, by total number of rays as key. The dictionary groups rays by
         the total amount of rays, which allows the case of casting different number of rays from each scene camera.
