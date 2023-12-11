@@ -1,6 +1,5 @@
 import pytest
 import torch
-
 from torch.autograd import gradcheck
 
 from kornia.geometry.quaternion import Quaternion
@@ -272,7 +271,6 @@ class TestToEuler(BaseTester):
         assert_close(q.x.abs(), qx.abs())
         assert_close(q.y.abs(), qy.abs())
         assert_close(q.z.abs(), qz.abs())
-
 
 
 class TestFromEuler(BaseTester):
