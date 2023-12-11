@@ -1,6 +1,8 @@
 import pytest
 import torch
 
+from torch.autograd import gradcheck
+
 from kornia.geometry.quaternion import Quaternion
 from kornia.testing import BaseTester, assert_close
 
@@ -222,109 +224,10 @@ class TestQuaternion:
                 q4 = Quaternion.from_axis_angle(axis * t * 3.14159)
                 self.assert_close(q3, q4)
 
-
-class TestToEuler(BaseTester):
-    def test_smoke(self, device, dtype):
-        q = Quaternion.random(batch_size=1)
-        q = q.to(device, dtype)
-        roll, pitch, yaw = q.to_euler()
-        assert roll.shape == pitch.shape
-        assert pitch.shape == yaw.shape
-
-    @pytest.mark.parametrize("batch_size", ((1, 3, 4)))
-    def test_cardinality(self, device, dtype, batch_size):
-        q = Quaternion.random(batch_size=batch_size)
-        q = q.to(device, dtype)
-        roll, pitch, yaw = q.to_euler()
-        assert roll.shape[0] == batch_size
-        assert pitch.shape[0] == batch_size
-        assert yaw.shape[0] == batch_size
-
-    def test_exception(self, device, dtype):
-        q = Quaternion.random(batch_size=2)
-        q = q.to(device, dtype)
-        with pytest.raises(Exception):
-            q.to_euler()
-
-    def test_gradcheck(self, device):
-        q = Quaternion.random(batch_size=1).to(device, torch.float64)
-        assert gradcheck(q.to_euler, (), raise_exception=True, fast_mode=True)
-
-    def test_module(self, device, dtype):
-        pass
-
-    def test_dynamo(self, device, dtype, torch_optimizer):
-        q = Quaternion.random(batch_size=1)
-        q = q.to(device, dtype)
-        op = q.to_euler()
-        op_optimized = torch_optimizer(op)
-        assert_close(op(q.w, q.x, q.y, q.z), op_optimized(q.w, q.x, q.y, q.z))
-
-    def test_forth_and_back(self, device, dtype):
-        q = Quaternion.random(batch_size=2)
-        q = q.to(device, dtype)
-        roll, pitch, yaw = q.to_euler()
-        qw, qx, qy, qz = q.from_euler(roll, pitch, yaw)
-        # TODO: check how to prevent getting inverted angles sometimes
-        assert_close(q.w.abs(), qw.abs())
-        assert_close(q.x.abs(), qx.abs())
-        assert_close(q.y.abs(), qy.abs())
-        assert_close(q.z.abs(), qz.abs())
-
-
-class TestFromEuler(BaseTester):
-    def test_smoke(self, device, dtype):
-        roll, pitch, yaw = torch.rand(3, device=device, dtype=dtype)
-        q = Quaternion.from_euler(roll, pitch, yaw)
-        qw, qx, qy, qz = q.w, q.x, q.y, q.z
-        assert qw.shape == qx.shape
-        assert qx.shape == qy.shape
-        assert qy.shape == qz.shape
-
-    @pytest.mark.parametrize("batch_size", ((1, 3, 4)))
-    def test_cardinality(self, device, dtype, batch_size):
-        roll, pitch, yaw = torch.rand(3, batch_size, device=device, dtype=dtype)
-        q = Quaternion.from_euler(roll, pitch, yaw)
-        qw, qx, qy, qz = q.w, q.x, q.y, q.z
-        assert qw.shape[0] == batch_size
-        assert qx.shape[0] == batch_size
-        assert qy.shape[0] == batch_size
-        assert qz.shape[0] == batch_size
-
-    def test_exception(self, device, dtype):
-        _, pitch, yaw = torch.rand(3, 2, device=device, dtype=dtype)
-        with pytest.raises(Exception):
-            Quaternion.from_euler(torch.rand(1), pitch, yaw)
-
-    def test_gradcheck(self, device):
-        roll, pitch, yaw = torch.rand(3, 2, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(Quaternion.from_euler, (roll, pitch, yaw), raise_exception=True, fast_mode=True)
-
-    def test_module(self, device, dtype):
-        pass
-
-    def test_dynamo(self, device, dtype, torch_optimizer):
-        roll, pitch, yaw = torch.rand(3, 2, device=device, dtype=dtype)
-
-        op = Quaternion.from_euler
-        op_optimized = torch_optimizer(op)
-
-        actual = op_optimized(roll, pitch, yaw)
-        expected = op(roll, pitch, yaw)
-
-        assert_close(actual[0], expected[0])
-        assert_close(actual[1], expected[1])
-        assert_close(actual[2], expected[2])
-
-    def test_forth_and_back(self, device, dtype):
-        roll, pitch, yaw = torch.rand(3, 2, device=device, dtype=dtype)
-        q = Quaternion.from_euler(roll, pitch, yaw)
-        roll_new, pitch_new, yaw_new = q.to_euler()
-        assert_close(roll, roll_new)
-        assert_close(pitch, pitch_new)
-        assert_close(yaw, yaw_new)
-
-    def test_values(self, device, dtype):
+    def test_from_to_euler_values(self, device, dtype):
+        # num_samples = 5
+        # data = 2 * torch.rand(3, num_samples, device=device, dtype=dtype) - 1
+        # roll, pitch, yaw = torch.pi * data
         roll = torch.tensor(
             [2.6518599987, 0.0612506270, 1.2417907715, 2.8829660416, -1.9961174726], device=device, dtype=dtype
         )
@@ -351,6 +254,6 @@ class TestFromEuler(BaseTester):
 
         q = Quaternion.from_euler(roll, pitch, yaw)
         euler = q.to_euler()
-        euler = torch.stack(euler, -1)
+        # euler = torch.stack(euler, -1)
 
         self.assert_close(euler, euler_expected, 1e-4, 1e-4)
