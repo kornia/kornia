@@ -254,6 +254,6 @@ class TestQuaternion:
 
         q = Quaternion.from_euler(roll, pitch, yaw)
         euler = q.to_euler()
-        # euler = torch.stack(euler, -1)
+        euler = torch.stack(euler, -1)
 
         self.assert_close(euler, euler_expected, 1e-4, 1e-4)
