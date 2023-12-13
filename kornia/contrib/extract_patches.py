@@ -117,14 +117,6 @@ class ExtractTensorPatches(GeometricAugmentationBase2D):
         padding: Optional[Union[int, tuple[int, int]]] = 0,
         keepdim: bool = False,
     ) -> None:
-        """Initialize a new _ExtractPatches instance.
-
-        Args:
-            window_size: desired output size (out_h, out_w) of the crop
-            stride: stride of window to extract patches. Defaults to non-overlapping
-                patches (stride=window_size)
-            padding: zero padding added to the height and width dimensions
-        """
         super().__init__()
         self.flags = {
             "window_size": window_size,
