@@ -1,12 +1,12 @@
 import math
-from typing import Optional, Tuple, Union, cast, Dict, Any
+from typing import Any, Dict, Optional, Tuple, Union, cast
 
 import torch
 import torch.nn.functional as F
 from torch.nn.modules.utils import _pair
 
-from kornia.core import Module, Tensor, pad
 from kornia.augmentation import GeometricAugmentationBase2D
+from kornia.core import Module, Tensor, pad
 
 
 def compute_padding(
@@ -125,13 +125,13 @@ class ExtractTensorPatches(GeometricAugmentationBase2D):
             "keepdim": keepdim,
         }
 
-    def compute_transformation(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
-    ) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         transform: Tensor = self.identity_matrix(input)
         return transform
 
-    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None) -> Tensor:
+    def apply_transform(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+    ) -> Tensor:
         out = extract_tensor_patches(
             input,
             window_size=flags["window_size"],
