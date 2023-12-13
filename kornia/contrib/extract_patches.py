@@ -1,11 +1,12 @@
 import math
-from typing import Optional, Tuple, Union, cast
+from typing import Optional, Tuple, Union, cast, Dict, Any
 
 import torch
 import torch.nn.functional as F
 from torch.nn.modules.utils import _pair
 
 from kornia.core import Module, Tensor, pad
+from kornia.augmentation import GeometricAugmentationBase2D
 
 
 def compute_padding(
@@ -50,7 +51,7 @@ def compute_padding(
     return (padh, padw)
 
 
-class ExtractTensorPatches(Module):
+class ExtractTensorPatches(GeometricAugmentationBase2D):
     r"""Module that extract patches from tensors and stack them.
 
     In the simplest case, the output value of the operator with input size
@@ -88,6 +89,7 @@ class ExtractTensorPatches(Module):
         window_size: the size of the sliding window and the output patch size.
         stride: stride of the sliding window.
         padding: Zero-padding added to both side of the input.
+        keepdim: Combine the patch dimension into the batch dimension
 
     Shape:
         - Input: :math:`(B, C, H, W)`
@@ -110,17 +112,46 @@ class ExtractTensorPatches(Module):
 
     def __init__(
         self,
-        window_size: Union[int, Tuple[int, int]],
-        stride: Optional[Union[int, Tuple[int, int]]] = 1,
-        padding: Optional[Union[int, Tuple[int, int]]] = 0,
+        window_size: Union[int, tuple[int, int]],
+        stride: Optional[Union[int, tuple[int, int]]] = None,
+        padding: Optional[Union[int, tuple[int, int]]] = 0,
+        keepdim: bool = True,
     ) -> None:
-        super().__init__()
-        self.window_size: Tuple[int, int] = _pair(window_size)
-        self.stride: Tuple[int, int] = _pair(stride)
-        self.padding: Tuple[int, int] = _pair(padding)
+        """Initialize a new _ExtractPatches instance.
 
-    def forward(self, input: Tensor) -> Tensor:
-        return extract_tensor_patches(input, self.window_size, stride=self.stride, padding=self.padding)
+        Args:
+            window_size: desired output size (out_h, out_w) of the crop
+            stride: stride of window to extract patches. Defaults to non-overlapping
+                patches (stride=window_size)
+            padding: zero padding added to the height and width dimensions
+        """
+        super().__init__()
+        self.flags = {
+            "window_size": window_size,
+            "stride": stride if stride is not None else window_size,
+            "padding": padding,
+            "keepdim": keepdim,
+        }
+
+    def compute_transformation(
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]
+    ) -> Tensor:
+        transform: Tensor = self.identity_matrix(input)
+        return transform
+
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None) -> Tensor:
+        out = extract_tensor_patches(
+            input,
+            window_size=flags["window_size"],
+            stride=flags["stride"],
+            padding=flags["padding"],
+        )
+
+        if flags["keepdim"]:
+            b, t, c, h, w = out.shape
+            out = out.reshape(b * t, c, h, w)
+
+        return out
 
 
 class CombineTensorPatches(Module):
