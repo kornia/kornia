@@ -115,7 +115,7 @@ class ExtractTensorPatches(GeometricAugmentationBase2D):
         window_size: Union[int, tuple[int, int]],
         stride: Optional[Union[int, tuple[int, int]]] = None,
         padding: Optional[Union[int, tuple[int, int]]] = 0,
-        keepdim: bool = True,
+        keepdim: bool = False,
     ) -> None:
         """Initialize a new _ExtractPatches instance.
 
