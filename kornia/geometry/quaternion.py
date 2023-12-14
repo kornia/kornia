@@ -9,7 +9,9 @@ from kornia.core import Device, Dtype, Module, Parameter, Tensor, concatenate, r
 from kornia.core.check import KORNIA_CHECK_TYPE
 from kornia.geometry.conversions import (
     axis_angle_to_quaternion,
+    euler_from_quaternion,
     normalize_quaternion,
+    quaternion_from_euler,
     quaternion_to_rotation_matrix,
     rotation_matrix_to_quaternion,
 )
@@ -257,6 +259,44 @@ class Quaternion(Module):
             tensor([[1., 0., 0., 0.]], requires_grad=True)
         """
         return cls(rotation_matrix_to_quaternion(matrix))
+
+    @classmethod
+    def from_euler(cls, roll: Tensor, pitch: Tensor, yaw: Tensor) -> "Quaternion":
+        """Create a quaternion from euler angles.
+
+        Args:
+            roll: the roll euler angle.
+            pitch: the pitch euler angle.
+            yaw: the yaw euler angle.
+
+        Example:
+            >>> roll, pitch, yaw = tensor(0), tensor(1), tensor(0)
+            >>> q = Quaternion.from_euler(roll, pitch, yaw)
+            >>> q.data
+            Parameter containing:
+            tensor([0.8776, 0.0000, 0.4794, 0.0000], requires_grad=True)
+        """
+        w, x, y, z = quaternion_from_euler(roll=roll, pitch=pitch, yaw=yaw)
+        q = stack((w, x, y, z), -1)
+        return cls(q)
+
+    def to_euler(self) -> Tuple[Tensor, Tensor, Tensor]:
+        """Create a quaternion from euler angles.
+
+        Args:
+            matrix: the rotation matrix to convert of shape :math:`(B, 3, 3)`.
+
+        Example:
+            >>> q = Quaternion(tensor([2., 0., 1., 1.]))
+            >>> roll, pitch, yaw = q.to_euler()
+            >>> roll
+            tensor(2.0344, grad_fn=<Atan2Backward0>)
+            >>> pitch
+            tensor(1.5708, grad_fn=<AsinBackward0>)
+            >>> yaw
+            tensor(2.2143, grad_fn=<Atan2Backward0>)
+        """
+        return euler_from_quaternion(self.w, self.x, self.y, self.z)
 
     @classmethod
     def from_axis_angle(cls, axis_angle: Tensor) -> "Quaternion":
