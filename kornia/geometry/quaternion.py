@@ -289,8 +289,12 @@ class Quaternion(Module):
         Example:
             >>> q = Quaternion(tensor([2., 0., 1., 1.]))
             >>> roll, pitch, yaw = q.to_euler()
-            >>> roll, pitch, yaw
-            (tensor(2.0344, grad_fn=<Atan2Backward0>), tensor(1.5708, grad_fn=<AsinBackward0>), tensor(2.2143, grad_fn=<Atan2Backward0>))
+            >>> roll
+            tensor(2.0344, grad_fn=<Atan2Backward0>)
+            >>> pitch
+            tensor(1.5708, grad_fn=<AsinBackward0>)
+            >>> yaw
+            tensor(2.2143, grad_fn=<Atan2Backward0>)
         """
         return euler_from_quaternion(self.w, self.x, self.y, self.z)
 

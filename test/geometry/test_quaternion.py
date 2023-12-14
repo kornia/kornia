@@ -227,15 +227,15 @@ class TestQuaternion:
         # data = 2 * torch.rand(3, num_samples, device=device, dtype=dtype) - 1
         # roll, pitch, yaw = torch.pi * data
         roll = torch.tensor(
-            [2.6518599987, 0.0612506270, 1.2417907715, 2.8829660416, -1.9961174726], device=device, dtype=dtype
+            [2.6518599987, 0.0612506270, 1.2417907715, 2.8829660416, -1.9961174726, 0], device=device, dtype=dtype
         )
 
         pitch = torch.tensor(
-            [2.3267219067, -2.7309591770, -1.4011553526, -2.1962766647, 2.1454355717], device=device, dtype=dtype
+            [2.3267219067, -2.7309591770, -1.4011553526, -2.1962766647, 2.1454355717, 0], device=device, dtype=dtype
         )
 
         yaw = torch.tensor(
-            [-0.8856627345, 0.2605336905, 0.4579202533, -1.3095731735, 0.6096843481], device=device, dtype=dtype
+            [-0.8856627345, 0.2605336905, 0.4579202533, -1.3095731735, 0.6096843481, 0], device=device, dtype=dtype
         )
 
         euler_expected = torch.tensor(
@@ -245,6 +245,7 @@ class TestQuaternion:
                 [1.2417914867, -1.4011553526, 0.4579201937],
                 [-0.2586266696, -0.9453159571, 1.8320195675],
                 [1.1454752684, 0.9961569905, -2.5319085121],
+                [0, 0, 0]
             ],
             device=device,
             dtype=dtype,
