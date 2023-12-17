@@ -3,7 +3,6 @@ from __future__ import annotations
 import torch
 from torch import nn
 
-from kornia.core import ones, zeros
 from kornia.utils import create_meshgrid
 from kornia.utils.helpers import _torch_solve_cast
 
@@ -35,7 +34,9 @@ def _kernel_distance(squared_distances: torch.Tensor, eps: float = 1e-8) -> torc
     return 0.5 * squared_distances * squared_distances.add(eps).log()
 
 
-def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor, lambda_reg: float = None) -> Tuple[torch.Tensor, torch.Tensor]:
+def get_tps_transform(
+    points_src: torch.Tensor, points_dst: torch.Tensor, lambda_reg: float = None
+) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Compute the TPS transform parameters that warp source points to target points.
 
     The input to this function is a tensor of :math:`(x, y)` source points :math:`(B, N, 2)` and a corresponding
@@ -60,7 +61,7 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor, lambda
         >>> lambda_reg = 0.01
         >>> kernel_weights, affine_weights = get_tps_transform(points_src, points_dst, lambda_reg)
 
-        
+
     Regularization:
         When lambda_reg is not None, Tikhonov regularization (also known as ridge regression) is applied.
         This adds a term lambda_reg * I to the kernel matrix K, where I is the identity matrix. This regularization
@@ -112,7 +113,8 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor, lambda
     affine_weights: torch.Tensor = weights[:, -3:]
 
     return (kernel_weights, affine_weights)
-    
+
+
 def warp_points_tps(
     points_src: torch.Tensor, kernel_centers: torch.Tensor, kernel_weights: torch.Tensor, affine_weights: torch.Tensor
 ) -> torch.Tensor:
