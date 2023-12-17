@@ -107,7 +107,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
                 raise RuntimeError("No valid transformation matrix found. Please either pass one or forward one first.")
             transform = self.transform_matrix
         input = self.apply_non_transform_keypoint(input, params, flags, transform)
-        return input.transform_keypoints_(transform)
+        return input.transform_keypoints_(transform, params)
 
     def apply_non_transform_class(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
@@ -238,9 +238,9 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             output = input
         # if all data needs to be augmented
         elif to_apply.all():
-            output = input.transform_keypoints_(transform)
+            output = input.transform_keypoints_(transform, params)
         else:
-            output[to_apply] = input[to_apply].transform_keypoints_(transform[to_apply])
+            output[to_apply] = input[to_apply].transform_keypoints_(transform[to_apply], params)
 
         return output
 

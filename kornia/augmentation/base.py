@@ -371,7 +371,7 @@ class _AugmentationBase(_BasicAugmentationBase):
             if is_autocast_enabled():
                 output = output.type(input.dtype)
                 applied = applied.type(input.dtype)
-            output = output.index_put((to_apply,), applied)
+            output = output.index_put((to_apply,), applied, params)
         return output
 
     def transform_classes(

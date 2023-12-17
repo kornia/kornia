@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple, Union, cast
+from typing import Dict, List, Optional, Tuple, Union, cast
 
 import torch
 from torch import Size
@@ -12,6 +12,8 @@ __all__ = ["Keypoints", "Keypoints3D"]
 def _merge_keypoint_list(keypoints: List[Tensor]) -> Tensor:
     raise NotImplementedError
 
+def inside_image(coords, image_size):
+    return (coords[..., 0] >= 0) & (coords[..., 0] < image_size[..., None, 0]) & (coords[..., 1] >= 0) & (coords[..., 1] < image_size[..., None, 1])
 
 class Keypoints:
     """2D Keypoints containing Nx2 or BxNx2 points.
@@ -19,10 +21,13 @@ class Keypoints:
     Args:
         keypoints: Raw tensor or a list of Tensors with the Nx2 coordinates
         raise_if_not_floating_point: will raise if the Tensor isn't float
+        image_size: (B, W, H) or (W, H) of the image the keypoints are referring to.
     """
 
-    def __init__(self, keypoints: Union[Tensor, List[Tensor]], raise_if_not_floating_point: bool = True) -> None:
+    def __init__(self, keypoints: Union[Tensor, List[Tensor]], raise_if_not_floating_point: bool = True, image_size: Optional[Tensor] = None, visibility: Optional[Tensor] = None) -> None:
         self._N: Optional[List[int]] = None
+        self._image_size: Optional[Tensor] = image_size
+        self._visibility: Optional[Tensor] = visibility
 
         if isinstance(keypoints, list):
             keypoints, self._N = _merge_keypoint_list(keypoints)
@@ -47,6 +52,10 @@ class Keypoints:
         self._is_batched = False if keypoints.ndim == 2 else True
 
         self._data = keypoints
+        if self._visibility is None:
+            self._visibility = self._data.new_ones((self._data.shape[:-1])).to(torch.bool)
+        if self._image_size is not None:
+            self._update_validity_mask()
 
     def __getitem__(self, key: Union[slice, int, Tensor]) -> "Keypoints":
         new_obj = type(self)(self._data[key], False)
@@ -74,10 +83,18 @@ class Keypoints:
         """Returns keypoints dtype."""
         return self._data.dtype
 
+    @property
+    def visibility(self) -> Tensor:
+        """Returns keypoints visibility."""
+        if self._image_size is None:
+            raise ValueError("Visibility is only available when image_size is provided.")
+        return self._visibility 
+    
     def index_put(
         self,
         indices: Union[Tuple[Tensor, ...], List[Tensor]],
         values: Union[Tensor, "Keypoints"],
+        params: Dict[str, Tensor],
         inplace: bool = False,
     ) -> "Keypoints":
         if inplace:
@@ -89,6 +106,8 @@ class Keypoints:
             _data.index_put_(indices, values.data)
         else:
             _data.index_put_(indices, values)
+
+        self._update_validity_mask(params)
 
         if inplace:
             return self
@@ -121,7 +140,7 @@ class Keypoints:
         self._data[..., 1] -= padding_size[..., 2:3]  # top padding
         return self
 
-    def transform_keypoints(self, M: Tensor, inplace: bool = False) -> "Keypoints":
+    def transform_keypoints(self, M: Tensor, params: Dict[str, Tensor], inplace: bool = False) -> "Keypoints":
         r"""Apply a transformation matrix to the 2D keypoints.
 
         Args:
@@ -135,15 +154,17 @@ class Keypoints:
             raise ValueError(f"The transformation matrix shape must be (3, 3) or (B, 3, 3). Got {M.shape}.")
 
         transformed_boxes = transform_points(M, self._data)
+
         if inplace:
             self._data = transformed_boxes
+            self._update_validity_mask(params)
             return self
 
-        return Keypoints(transformed_boxes, False)
+        return Keypoints(transformed_boxes, False, self._image_size, self._visibility)
 
-    def transform_keypoints_(self, M: Tensor) -> "Keypoints":
+    def transform_keypoints_(self, M: Tensor, params: Dict[str, Tensor]) -> "Keypoints":
         """Inplace version of :func:`Keypoints.transform_keypoints`"""
-        return self.transform_keypoints(M, inplace=True)
+        return self.transform_keypoints(M, params=params, inplace=True)
 
     @classmethod
     def from_tensor(cls, keypoints: Tensor) -> "Keypoints":
@@ -165,11 +186,18 @@ class Keypoints:
         return self._data
 
     def clone(self) -> "Keypoints":
-        return Keypoints(self._data.clone(), False)
+        return Keypoints(self._data.clone(), False, self._image_size.clone(), self._visibility.clone())
 
     def type(self, dtype: torch.dtype) -> "Keypoints":
         self._data = self._data.type(dtype)
         return self
+    
+    def _update_validity_mask(self, params: Optional[Dict[str, Tensor]] = None):
+        if params is not None and "output_size" in params:
+            self._image_size = params["output_size"]
+
+        if self._image_size is not None:
+            self._visibility &= inside_image(self._data, self._image_size)
 
 
 class VideoKeypoints(Keypoints):
