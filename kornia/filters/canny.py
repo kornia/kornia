@@ -83,21 +83,20 @@ def canny(
     magnitude: Tensor = torch.sqrt(gx * gx + gy * gy + eps)
     angle: Tensor = torch.atan2(gy, gx)
 
-    # Radians to Degrees
-    angle = 180.0 * angle / math.pi
-
-    # Round angle to the nearest 45 degree
-    angle = torch.round(angle / 45) * 45
+    # Radians to degrees and round to nearest 45 degree
+    # degrees = angle * (180.0 / math.pi)
+    # angle = torch.round(degrees / 45) * 45
+    angle_45 = (angle * (4 / math.pi)).round()
 
     # Non-maximal suppression
     nms_kernels: Tensor = get_canny_nms_kernel(device, dtype)
     nms_magnitude: Tensor = F.conv2d(magnitude, nms_kernels, padding=nms_kernels.shape[-1] // 2)
 
     # Get the indices for both directions
-    positive_idx: Tensor = (angle / 45) % 8
+    positive_idx: Tensor = angle_45 % 8
     positive_idx = positive_idx.long()
 
-    negative_idx: Tensor = ((angle / 45) + 4) % 8
+    negative_idx: Tensor = (angle_45 + 4) % 8
     negative_idx = negative_idx.long()
 
     # Apply the non-maximum suppression to the different directions
