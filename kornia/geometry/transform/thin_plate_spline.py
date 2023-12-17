@@ -35,15 +35,19 @@ def _kernel_distance(squared_distances: torch.Tensor, eps: float = 1e-8) -> torc
     return 0.5 * squared_distances * squared_distances.add(eps).log()
 
 
-def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor, lambda_reg: float = None) -> Tuple[torch.Tensor, torch.Tensor]:
     r"""Compute the TPS transform parameters that warp source points to target points.
 
     The input to this function is a tensor of :math:`(x, y)` source points :math:`(B, N, 2)` and a corresponding
     tensor of target :math:`(x, y)` points :math:`(B, N, 2)`.
 
+    Regularization is applied to the kernel matrix of the TPS transformation to prevent overfitting and to ensure stability
+    of the solution, especially when the number of points is large or the point configuration is prone to numerical issues.
+
     Args:
         points_src: batch of source points :math:`(B, N, 2)` as :math:`(x, y)` coordinate vectors.
         points_dst: batch of target points :math:`(B, N, 2)` as :math:`(x, y)` coordinate vectors.
+        lambda_reg: regularization parameter, a non-negative float.
 
     Returns:
         :math:`(B, N, 2)` tensor of kernel weights and :math:`(B, 3, 2)`
@@ -53,7 +57,17 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tup
     Example:
         >>> points_src = torch.rand(1, 5, 2)
         >>> points_dst = torch.rand(1, 5, 2)
-        >>> kernel_weights, affine_weights = get_tps_transform(points_src, points_dst)
+        >>> lambda_reg = 0.01
+        >>> kernel_weights, affine_weights = get_tps_transform(points_src, points_dst, lambda_reg)
+
+        
+    Regularization:
+        When lambda_reg is not None, Tikhonov regularization (also known as ridge regression) is applied.
+        This adds a term lambda_reg * I to the kernel matrix K, where I is the identity matrix. This regularization
+        term helps to mitigate issues of numerical instability and overfitting, especially in cases where the number
+        of points is high or the points are in configurations that lead to ill-conditioned matrices. The regularization
+        parameter lambda_reg controls the amount of smoothing: higher values lead to more smoothing, while a value of
+        zero corresponds to no regularization.
 
     .. note::
         This function is often used in conjunction with :func:`warp_points_tps`, :func:`warp_image_tps`.
@@ -79,21 +93,26 @@ def get_tps_transform(points_src: torch.Tensor, points_dst: torch.Tensor) -> tup
     pair_distance: torch.Tensor = _pair_square_euclidean(points_src, points_dst)
     k_matrix: torch.Tensor = _kernel_distance(pair_distance)
 
-    zero_mat: torch.Tensor = zeros(batch_size, 3, 3, device=device, dtype=dtype)
-    one_mat: torch.Tensor = ones(batch_size, num_points, 1, device=device, dtype=dtype)
+    zero_mat: torch.Tensor = torch.zeros(batch_size, 3, 3, device=device, dtype=dtype)
+    one_mat: torch.Tensor = torch.ones(batch_size, num_points, 1, device=device, dtype=dtype)
     dest_with_zeros: torch.Tensor = torch.cat((points_dst, zero_mat[:, :, :2]), 1)
     p_matrix: torch.Tensor = torch.cat((one_mat, points_src), -1)
     p_matrix_t: torch.Tensor = torch.cat((p_matrix, zero_mat), 1).transpose(1, 2)
-    l_matrix: torch.Tensor = torch.cat((k_matrix, p_matrix), -1)
+
+    if lambda_reg is not None and lambda_reg >= 0:
+        identity_matrix = torch.eye(num_points, device=device, dtype=dtype).unsqueeze(0).repeat(batch_size, 1, 1)
+        k_matrix = k_matrix + lambda_reg * identity_matrix
+
+    # Rest of the code remains the same, replace k_matrix with k_matrix_reg in the linear system
+    l_matrix = torch.cat((k_matrix, p_matrix), -1)
     l_matrix = torch.cat((l_matrix, p_matrix_t), 1)
 
     weights = _torch_solve_cast(l_matrix, dest_with_zeros)
     kernel_weights: torch.Tensor = weights[:, :-3]
     affine_weights: torch.Tensor = weights[:, -3:]
 
-    return kernel_weights, affine_weights
-
-
+    return (kernel_weights, affine_weights)
+    
 def warp_points_tps(
     points_src: torch.Tensor, kernel_centers: torch.Tensor, kernel_weights: torch.Tensor, affine_weights: torch.Tensor
 ) -> torch.Tensor:
