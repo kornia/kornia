@@ -173,9 +173,9 @@ class ExtractTensorPatches(Module):
         allow_auto_padding: bool = False,
     ) -> None:
         super().__init__()
-        self.window_size: Tuple[int, int] = _pair(window_size)
-        self.stride: Tuple[int, int] = _pair(stride)
-        self.padding: PadType = _pair(padding)
+        self.window_size: Tuple[int, int] = window_size
+        self.stride: Tuple[int, int] = stride
+        self.padding: PadType = padding
         self.allow_auto_padding: bool = allow_auto_padding
 
     def forward(self, input: Tensor) -> Tensor:
@@ -264,10 +264,10 @@ class CombineTensorPatches(Module):
         allow_auto_unpadding: bool = False,
     ) -> None:
         super().__init__()
-        self.original_size: Tuple[int, int] = _pair(original_size)
-        self.window_size: Tuple[int, int] = _pair(window_size)
-        self.stride: Tuple[int, int] = _pair(stride)
-        self.unpadding: PadType = _pair(unpadding)
+        self.original_size: Tuple[int, int] = original_size
+        self.window_size: Tuple[int, int] = window_size
+        self.stride: Tuple[int, int] = stride
+        self.unpadding: PadType = unpadding
         self.allow_auto_unpadding: bool = allow_auto_unpadding
 
     def forward(self, input: Tensor) -> Tensor:
