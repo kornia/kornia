@@ -105,7 +105,7 @@ def get_tps_transform(
         k_matrix = k_matrix + lambda_reg * identity_matrix
 
     # Rest of the code remains the same, replace k_matrix with k_matrix_reg in the linear system
-    l_matrix = torch.cat((k_matrix, p_matrix), -1)
+    l_matrix = concatenate((k_matrix, p_matrix), -1)
     l_matrix = torch.cat((l_matrix, p_matrix_t), 1)
 
     weights = _torch_solve_cast(l_matrix, dest_with_zeros)
