@@ -33,7 +33,7 @@ class Keypoints:
     Args:
         keypoints: Raw tensor or a list of Tensors with the Nx2 coordinates
         raise_if_not_floating_point: will raise if the Tensor isn't float
-        image_size: (B, W, H) or (W, H) of the image the keypoints are referring to.
+        valid_mask: (B, N) or (N,) bool tensor indicating whether the keypoint is valid or not
     """
 
     def __init__(
