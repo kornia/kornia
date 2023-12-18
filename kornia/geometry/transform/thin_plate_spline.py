@@ -94,7 +94,7 @@ def get_tps_transform(
     pair_distance: torch.Tensor = _pair_square_euclidean(points_src, points_dst)
     k_matrix: torch.Tensor = _kernel_distance(pair_distance)
 
-    zero_mat: torch.Tensor = torch.zeros(batch_size, 3, 3, device=device, dtype=dtype)
+    zero_mat: torch.Tensor = zeros(batch_size, 3, 3, device=device, dtype=dtype)
     one_mat: torch.Tensor = torch.ones(batch_size, num_points, 1, device=device, dtype=dtype)
     dest_with_zeros: torch.Tensor = torch.cat((points_dst, zero_mat[:, :, :2]), 1)
     p_matrix: torch.Tensor = torch.cat((one_mat, points_src), -1)
