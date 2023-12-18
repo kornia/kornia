@@ -164,13 +164,13 @@ class ExtractTensorPatches(Module):
     def __init__(
         self,
         window_size: Union[int, Tuple[int, int]],
-        stride: Optional[Union[int, Tuple[int, int]]] = 1,
+        stride: Optional[Union[int, Tuple[int, int]]] = None,
         padding: PadType = 0,
         allow_auto_padding: bool = False,
     ) -> None:
         super().__init__()
-        self.window_size: Tuple[int, int] = window_size
-        self.stride: Tuple[int, int] = stride
+        self.window_size: Union[int, Tuple[int, int]] = window_size
+        self.stride: Union[int, Tuple[int, int]] = stride if stride is not None else window_size
         self.padding: PadType = padding
         self.allow_auto_padding: bool = allow_auto_padding
 
@@ -253,16 +253,16 @@ class CombineTensorPatches(Module):
 
     def __init__(
         self,
-        original_size: Union[int, Tuple[int, int]],
+        original_size: Tuple[int, int],
         window_size: Union[int, Tuple[int, int]],
-        stride: Union[int, Tuple[int, int]],
+        stride: Optional[Union[int, Tuple[int, int]]] = None,
         unpadding: PadType = 0,
         allow_auto_unpadding: bool = False,
     ) -> None:
         super().__init__()
         self.original_size: Tuple[int, int] = original_size
-        self.window_size: Tuple[int, int] = window_size
-        self.stride: Tuple[int, int] = stride
+        self.window_size: Union[int, Tuple[int, int]] = window_size
+        self.stride: Union[int, Tuple[int, int]] = stride if stride is not None else window_size
         self.unpadding: PadType = unpadding
         self.allow_auto_unpadding: bool = allow_auto_unpadding
 
@@ -359,6 +359,7 @@ def combine_tensor_patches(
 
     if unpadding:
         unpadding = create_padding_tuple(unpadding)
+        unpadding = cast(FullPadType, unpadding)
 
     ones = torch.ones(
         patches.shape[0],
@@ -370,7 +371,7 @@ def combine_tensor_patches(
     )
 
     if unpadding:
-        ones = pad(ones, pad=unpadding)
+        ones = pad(ones, pad=unpadding)  # type: ignore
     restored_size = ones.shape[2:]
 
     patches = patches.permute(0, 2, 3, 4, 1)
