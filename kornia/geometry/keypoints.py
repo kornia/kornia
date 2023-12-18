@@ -12,13 +12,20 @@ __all__ = ["Keypoints", "Keypoints3D"]
 def _merge_keypoint_list(keypoints: List[Tensor]) -> Tensor:
     raise NotImplementedError
 
+
 def inside_image(coords: Tensor, image_size: Tensor):
     """
     Args:
         coords: (B, N, 2) or (N, 2) in WH order
         image_size: (B, 2) or (2,) in WH order
     """
-    return (coords[..., 0] >= 0) & (coords[..., 0] < image_size[..., None, 0]) & (coords[..., 1] >= 0) & (coords[..., 1] < image_size[..., None, 1])
+    return (
+        (coords[..., 0] >= 0)
+        & (coords[..., 0] < image_size[..., None, 0])
+        & (coords[..., 1] >= 0)
+        & (coords[..., 1] < image_size[..., None, 1])
+    )
+
 
 class Keypoints:
     """2D Keypoints containing Nx2 or BxNx2 points.
@@ -29,7 +36,12 @@ class Keypoints:
         image_size: (B, W, H) or (W, H) of the image the keypoints are referring to.
     """
 
-    def __init__(self, keypoints: Union[Tensor, List[Tensor]], raise_if_not_floating_point: bool = True, valid_mask: Optional[Tensor] = None) -> None:
+    def __init__(
+        self,
+        keypoints: Union[Tensor, List[Tensor]],
+        raise_if_not_floating_point: bool = True,
+        valid_mask: Optional[Tensor] = None,
+    ) -> None:
         self._N: Optional[List[int]] = None
         self._valid_mask: Optional[Tensor] = valid_mask
 
@@ -57,7 +69,7 @@ class Keypoints:
 
         self._data = keypoints
         if self._valid_mask is None:
-            self._valid_mask = self._data.new_ones((self._data.shape[:-1])).to(torch.bool)
+            self._valid_mask = self._data.new_ones(self._data.shape[:-1]).to(torch.bool)
 
     def __getitem__(self, key: Union[slice, int, Tensor]) -> "Keypoints":
         new_obj = type(self)(self._data[key], False)
@@ -88,8 +100,8 @@ class Keypoints:
     @property
     def valid_mask(self) -> Tensor:
         """Returns keypoints visibility."""
-        return self._valid_mask 
-    
+        return self._valid_mask
+
     def index_put(
         self,
         indices: Union[Tuple[Tensor, ...], List[Tensor]],
@@ -191,7 +203,7 @@ class Keypoints:
     def type(self, dtype: torch.dtype) -> "Keypoints":
         self._data = self._data.type(dtype)
         return self
-    
+
     def update_valid_mask(self, params: Optional[Dict[str, Tensor]]):
         if params is not None:
             if "output_size" in params:
