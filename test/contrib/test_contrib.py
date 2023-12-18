@@ -333,10 +333,10 @@ class TestCombineTensorPatches:
 
     def test_error(self, device, dtype):
         patches = kornia.contrib.extract_tensor_patches(
-            torch.arange(16, device=device, dtype=dtype).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2), padding=1
+            torch.arange(16, device=device, dtype=dtype).view(1, 1, 4, 4), window_size=(3, 2), stride=(2, 2), padding=1
         )
         with pytest.raises(RuntimeError):
-            kornia.contrib.combine_tensor_patches(patches, original_size=(4, 4), window_size=(2, 2), stride=(3, 2))
+            kornia.contrib.combine_tensor_patches(patches, original_size=(4, 4), window_size=(2, 2), stride=(2, 2))
 
     def test_rect_odd_dim(self, device, dtype):
         img = torch.arange(12, device=device, dtype=dtype).view(1, 1, 4, 3)
@@ -392,9 +392,11 @@ class TestCombineTensorPatches:
         assert_close(img, m(patches))
 
     def test_stride_greater_than_window_size(self, device, dtype):
-        img = torch.arange(16, device=device, dtype=dtype).view(1, 1, 4, 4)
+        patches = kornia.contrib.extract_tensor_patches(
+            torch.arange(16, device=device, dtype=dtype).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2), padding=1
+        )
         with pytest.raises(AssertionError):
-            kornia.contrib.extract_tensor_patches(img, window_size=(2, 2), stride=(3, 3), padding=1)
+            kornia.contrib.combine_tensor_patches(patches, original_size=(4, 4), window_size=(2, 2), stride=(3, 2))
 
     def test_expl_autopadding(self, device, dtype):
         img_shape = (8, 13)
