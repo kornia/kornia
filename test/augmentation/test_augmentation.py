@@ -3730,7 +3730,7 @@ class TestRandomFisheye:
         torch.manual_seed(0)
         center_x = torch.tensor([-0.3, 0.3], device=device, dtype=dtype)
         center_y = torch.tensor([-0.3, 0.3], device=device, dtype=dtype)
-        gamma = torch.tensor([-1.0, 1.0])
+        gamma = torch.tensor([-1.0, 1.0], device=device, dtype=dtype)
         img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
         aug = RandomFisheye(center_x, center_y, gamma, same_on_batch=True, p=1.0)
         assert img.shape == aug(img).shape
