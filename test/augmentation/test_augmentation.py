@@ -3726,6 +3726,15 @@ class TestRandomFisheye:
         aug = RandomFisheye(center_x, center_y, gamma, p=1.0)
         assert img.shape == aug(img).shape
 
+    def test_same_on_batch(self, device, dtype):
+        torch.manual_seed(0)
+        center_x = torch.tensor([-0.3, 0.3], device=device, dtype=dtype)
+        center_y = torch.tensor([-0.3, 0.3], device=device, dtype=dtype)
+        gamma = torch.tensor([-1.0, 1.0], device=device, dtype=dtype)
+        img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
+        aug = RandomFisheye(center_x, center_y, gamma, same_on_batch=True, p=1.0)
+        assert img.shape == aug(img).shape
+
     @pytest.mark.skip(reason="RuntimeError: Jacobian mismatch for output 0 with respect to input 0")
     def test_gradcheck(self, device, dtype):
         img = torch.rand(1, 1, 3, 3, device=device, dtype=dtype)
