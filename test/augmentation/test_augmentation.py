@@ -3728,8 +3728,8 @@ class TestRandomFisheye:
 
     def test_same_on_batch(self, device, dtype):
         torch.manual_seed(0)
-        center_x = torch.tensor([-0.3, 0.3])
-        center_y = torch.tensor([-0.3, 0.3])
+        center_x = torch.tensor([-0.3, 0.3], device=device, dtype=dtype)
+        center_y = torch.tensor([-0.3, 0.3], device=device, dtype=dtype)
         gamma = torch.tensor([-1.0, 1.0])
         img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
         aug = RandomFisheye(center_x, center_y, gamma, same_on_batch=True, p=1.0)
