@@ -204,7 +204,9 @@ def _adapted_rsampling(
         shape = torch.Size(shape)
 
     if same_on_batch:
-        return dist.rsample(torch.Size((1, *shape[1:]))).repeat(shape[0], *[1] * (len(shape) - 1))
+        rsample_size = torch.Size((1, *shape[1:]))
+        rsample = dist.rsample(rsample_size)
+        return rsample.repeat(shape[0], *[1] * (len(rsample.shape) - 1))
     return dist.rsample(shape)
 
 
