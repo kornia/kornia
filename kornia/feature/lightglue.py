@@ -242,7 +242,7 @@ class TransformerLayer(Module):
         encoding1: Tensor,
         mask0: Optional[Tensor] = None,
         mask1: Optional[Tensor] = None,
-    ):
+    ) -> Tensor:
         if mask0 is not None and mask1 is not None:
             return self.masked_forward(desc0, desc1, encoding0, encoding1, mask0, mask1)
         else:
@@ -375,14 +375,14 @@ class LightGlue(Module):
 
     def __init__(self, features: str = "superpoint", **conf_) -> None:  # type: ignore
         super().__init__()
-        self.conf = conf = SimpleNamespace(**{**self.default_conf, **conf_})  # type: ignore
+        self.conf = conf = SimpleNamespace(**{**self.default_conf, **conf_})
         if features is not None:
             KORNIA_CHECK(features in list(self.features.keys()), "Features keys are wrong")
             for k, v in self.features[features].items():
                 setattr(conf, k, v)
         KORNIA_CHECK(not (self.conf.add_scale_ori and self.conf.add_laf))  # we use either scale ori, or LAF
 
-        if conf.input_dim != conf.descriptor_dim:  # type: ignore
+        if conf.input_dim != conf.descriptor_dim:
             self.input_proj = nn.Linear(conf.input_dim, conf.descriptor_dim, bias=True)
         else:
             self.input_proj = nn.Identity()  # type: ignore
@@ -391,7 +391,7 @@ class LightGlue(Module):
         self.posenc = LearnableFourierPositionalEncoding(
             2 + 2 * conf.add_scale_ori + 4 * conf.add_laf,
             head_dim,
-            head_dim,  # type: ignore
+            head_dim,
         )
 
         h, n, d = conf.num_heads, conf.n_layers, conf.descriptor_dim
@@ -427,7 +427,7 @@ class LightGlue(Module):
         # static lengths LightGlue is compiled for (only used with torch.compile)
         self.static_lengths = None
 
-    def compile(self, mode="reduce-overhead", static_lengths=[256, 512, 768, 1024, 1280, 1536]):
+    def compile(self, mode: str = "reduce-overhead", static_lengths: List[int] = [256, 512, 768, 1024, 1280, 1536]):
         if self.conf.width_confidence != -1:
             warnings.warn(
                 "Point pruning is partially disabled for compiled forward.",
@@ -473,8 +473,8 @@ class LightGlue(Module):
         b, n, _ = kpts1.shape
         device = kpts0.device
         size0, size1 = data0.get("image_size"), data1.get("image_size")
-        size0 = size0 if size0 is not None else data0["image"].shape[-2:][::-1]  # type: ignore
-        size1 = size1 if size1 is not None else data1["image"].shape[-2:][::-1]  # type: ignore
+        size0 = size0 if size0 is not None else data0["image"].shape[-2:][::-1]
+        size1 = size1 if size1 is not None else data1["image"].shape[-2:][::-1]
 
         kpts0 = normalize_keypoints(kpts0, size0).clone()
         kpts1 = normalize_keypoints(kpts1, size1).clone()
@@ -552,7 +552,7 @@ class LightGlue(Module):
                     break
             if do_point_pruning and desc0.shape[-2] > pruning_th:
                 scores0 = self.log_assignment[i].get_matchability(desc0)
-                prunemask0 = self.get_pruning_mask(token0, scores0, i)
+                prunemask0 = self.get_pruning_mask(token0, scores0, i)  # type: ignore
                 keep0 = where(prunemask0)[1]
                 ind0 = ind0.index_select(1, keep0)
                 desc0 = desc0.index_select(1, keep0)
@@ -560,7 +560,7 @@ class LightGlue(Module):
                 prune0[:, ind0] += 1
             if do_point_pruning and desc1.shape[-2] > pruning_th:
                 scores1 = self.log_assignment[i].get_matchability(desc1)
-                prunemask1 = self.get_pruning_mask(token1, scores1, i)
+                prunemask1 = self.get_pruning_mask(token1, scores1, i)  # type: ignore
                 keep1 = where(prunemask1)[1]
                 ind1 = ind1.index_select(1, keep1)
                 desc1 = desc1.index_select(1, keep1)
