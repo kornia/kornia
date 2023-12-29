@@ -427,7 +427,9 @@ class LightGlue(Module):
         # static lengths LightGlue is compiled for (only used with torch.compile)
         self.static_lengths = None
 
-    def compile(self, mode: str = "reduce-overhead", static_lengths: List[int] = [256, 512, 768, 1024, 1280, 1536]) -> None:
+    def compile(
+        self, mode: str = "reduce-overhead", static_lengths: List[int] = [256, 512, 768, 1024, 1280, 1536]
+    ) -> None:
         if self.conf.width_confidence != -1:
             warnings.warn(
                 "Point pruning is partially disabled for compiled forward.",
@@ -439,7 +441,7 @@ class LightGlue(Module):
                 self.transformers[i].masked_forward, mode=mode, fullgraph=True
             )
 
-        self.static_lengths = static_lengths   # type: ignore
+        self.static_lengths = static_lengths  # type: ignore
 
     def forward(self, data: dict) -> dict:  # type: ignore
         """Match keypoints and descriptors between two images.
