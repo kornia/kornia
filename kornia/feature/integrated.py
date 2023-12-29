@@ -462,15 +462,12 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
                 "descriptors": desc1,
                 "image_size": hw1_.flip(0).reshape(-1, 2).to(dev),
             },
-
-                
             "image1": {
                 "keypoints": keypoints2,
                 "lafs": lafs2,
                 "descriptors": desc2,
                 "image_size": hw2_.flip(0).reshape(-1, 2).to(dev),
             },
-                
         }
         pred = self.matcher(input_dict)
         matches0, mscores0 = pred["matches0"], pred["matching_scores0"]

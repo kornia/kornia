@@ -16,11 +16,9 @@ from kornia.core import (
     concatenate,
     cos,
     einsum,
-    ones_like,
     ones,
+    ones_like,
     sin,
-    stack,
-    softmax,
     stack,
     where,
     zeros,
@@ -56,9 +54,7 @@ def normalize_keypoints(kpts: Tensor, size: Tensor) -> Tensor:
 def pad_to_length(x: Tensor, length: int) -> Tuple[Tensor]:
     if length <= x.shape[-2]:
         return x, ones_like(x[..., :1], dtype=torch.bool)
-    pad = ones(
-        *x.shape[:-2], length - x.shape[-2], x.shape[-1], device=x.device, dtype=x.dtype
-    )
+    pad = ones(*x.shape[:-2], length - x.shape[-2], x.shape[-1], device=x.device, dtype=x.dtype)
     y = concatenate([x, pad], dim=-2)
     mask = zeros(*y.shape[:-1], 1, dtype=torch.bool, device=x.device)
     mask[..., : x.shape[-2], :] = True
@@ -131,7 +127,7 @@ class Attention(Module):
                 return v if mask is None else v.nan_to_num()
             else:
                 KORNIA_CHECK(mask is None)
-                q, k, v = [x.transpose(-2, -3).contiguous() for x in [q, k, v]]
+                q, k, v = (x.transpose(-2, -3).contiguous() for x in [q, k, v])
                 m = self.flash_(q.half(), stack([k, v], 2).half())
                 return m.transpose(-2, -3).to(q.dtype).clone()
         elif self.has_sdp:
@@ -148,9 +144,7 @@ class Attention(Module):
 
 
 class SelfBlock(Module):
-    def __init__(
-        self, embed_dim: int, num_heads: int, flash: bool = False, bias: bool = True
-    ) -> None:
+    def __init__(self, embed_dim: int, num_heads: int, flash: bool = False, bias: bool = True) -> None:
         super().__init__()
         self.embed_dim = embed_dim
         self.num_heads = num_heads
@@ -183,9 +177,7 @@ class SelfBlock(Module):
 
 
 class CrossBlock(Module):
-    def __init__(
-        self, embed_dim: int, num_heads: int, flash: bool = False, bias: bool = True
-    ) -> None:
+    def __init__(self, embed_dim: int, num_heads: int, flash: bool = False, bias: bool = True) -> None:
         super().__init__()
         self.heads = num_heads
         dim_head = embed_dim // num_heads
@@ -208,9 +200,7 @@ class CrossBlock(Module):
     def map_(self, func: Callable, x0: Tensor, x1: Tensor) -> Tuple[Tensor, Tensor]:  # type: ignore
         return func(x0), func(x1)
 
-    def forward(
-        self, x0: Tensor, x1: Tensor, mask: Optional[Tensor] = None
-    ) -> List[Tensor]:
+    def forward(self, x0: Tensor, x1: Tensor, mask: Optional[Tensor] = None) -> List[Tensor]:
         qk0, qk1 = self.map_(self.to_qk, x0, x1)
         v0, v1 = self.map_(self.to_v, x0, x1)
         qk0, qk1, v0, v1 = map(
@@ -219,9 +209,7 @@ class CrossBlock(Module):
         )
         if self.flash is not None and qk0.device.type == "cuda":
             m0 = self.flash(qk0, qk1, v1, mask)
-            m1 = self.flash(
-                qk1, qk0, v0, mask.transpose(-1, -2) if mask is not None else None
-            )
+            m1 = self.flash(qk1, qk0, v0, mask.transpose(-1, -2) if mask is not None else None)
         else:
             qk0, qk1 = qk0 * self.scale**0.5, qk1 * self.scale**0.5
             sim = einsum("bhid, bhjd -> bhij", qk0, qk1)
@@ -332,7 +320,7 @@ class LightGlue(Module):
         "input_dim": 256,  # input descriptor dimension (autoselected from weights)
         "descriptor_dim": 256,
         "add_scale_ori": False,
-        "add_laf": False, # for KeyNetAffNetHardNet
+        "add_laf": False,  # for KeyNetAffNetHardNet
         "n_layers": 9,
         "num_heads": 4,
         "flash": True,  # enable FlashAttention if available.
@@ -395,7 +383,7 @@ class LightGlue(Module):
         if conf.input_dim != conf.descriptor_dim:
             self.input_proj = nn.Linear(conf.input_dim, conf.descriptor_dim, bias=True)
         else:
-            self.input_proj = nn.Identity() # type: ignore
+            self.input_proj = nn.Identity()  # type: ignore
 
         head_dim = conf.descriptor_dim // conf.num_heads
         self.posenc = LearnableFourierPositionalEncoding(
@@ -403,25 +391,19 @@ class LightGlue(Module):
         )
 
         h, n, d = conf.num_heads, conf.n_layers, conf.descriptor_dim
-        self.transformers = ModuleList(
-            [TransformerLayer(d, h, conf.flash) for _ in range(n)]
-        )
+        self.transformers = ModuleList([TransformerLayer(d, h, conf.flash) for _ in range(n)])
         self.log_assignment = ModuleList([MatchAssignment(d) for _ in range(n)])
-        self.token_confidence = ModuleList(
-            [TokenConfidence(d) for _ in range(n - 1)]
-        )
+        self.token_confidence = ModuleList([TokenConfidence(d) for _ in range(n - 1)])
         self.register_buffer(
             "confidence_thresholds",
-            Tensor(
-                [self.confidence_threshold(i) for i in range(self.conf.n_layers)]
-            ),
+            Tensor([self.confidence_threshold(i) for i in range(self.conf.n_layers)]),
         )
         state_dict = None
         if features is not None:
             fname = f"{conf.weights}_{self.version}.pth".replace(".", "-")
-            if features == 'keynet_affnet_hardnet':
-                fname = f"keynet_affnet_hardnet_lightlue.pth"
-                url = 'http://cmp.felk.cvut.cz/~mishkdmy/models/keynet_affnet_hardnet_lightlue.pth'
+            if features == "keynet_affnet_hardnet":
+                fname = "keynet_affnet_hardnet_lightlue.pth"
+                url = "http://cmp.felk.cvut.cz/~mishkdmy/models/keynet_affnet_hardnet_lightlue.pth"
             else:
                 url = self.url.format(self.version, features)
             state_dict = torch.hub.load_state_dict_from_url(url, file_name=fname)
@@ -441,9 +423,7 @@ class LightGlue(Module):
         # static lengths LightGlue is compiled for (only used with torch.compile)
         self.static_lengths = None
 
-    def compile(
-        self, mode="reduce-overhead", static_lengths=[256, 512, 768, 1024, 1280, 1536]
-    ):
+    def compile(self, mode="reduce-overhead", static_lengths=[256, 512, 768, 1024, 1280, 1536]):
         if self.conf.width_confidence != -1:
             warnings.warn(
                 "Point pruning is partially disabled for compiled forward.",
@@ -458,8 +438,7 @@ class LightGlue(Module):
         self.static_lengths = static_lengths
 
     def forward(self, data: dict) -> dict:
-        """
-        Match keypoints and descriptors between two images
+        """Match keypoints and descriptors between two images.
 
         Input (dict):
             image0: dict
@@ -494,30 +473,26 @@ class LightGlue(Module):
         kpts1 = normalize_keypoints(kpts1, size1).clone()
 
         if self.conf.add_scale_ori:
-            kpts0 = concatenate(
-                [kpts0] + [data0[k].unsqueeze(-1) for k in ("scales", "oris")], -1
-            )
-            kpts1 = concatenate(
-                [kpts1] + [data1[k].unsqueeze(-1) for k in ("scales", "oris")], -1
-            )
+            kpts0 = concatenate([kpts0] + [data0[k].unsqueeze(-1) for k in ("scales", "oris")], -1)
+            kpts1 = concatenate([kpts1] + [data1[k].unsqueeze(-1) for k in ("scales", "oris")], -1)
         elif self.conf.add_laf:
-            laf0 = data0['lafs']
-            laf1 = data1['lafs']
+            laf0 = data0["lafs"]
+            laf1 = data1["lafs"]
             laf0 = laf_to_three_points(laf0)
             laf1 = laf_to_three_points(laf1)
             kpts0 = concatenate(
                 [
                     kpts0,
-                    normalize_keypoints(laf0[...,0], size0).clone().to(kpts0.dtype),
-                    normalize_keypoints(laf0[...,1], size0).clone().to(kpts0.dtype)
+                    normalize_keypoints(laf0[..., 0], size0).clone().to(kpts0.dtype),
+                    normalize_keypoints(laf0[..., 1], size0).clone().to(kpts0.dtype),
                 ],
                 -1,
             )
             kpts1 = concatenate(
                 [
                     kpts1,
-                    normalize_keypoints(laf1[...,0], size1).clone().to(kpts1.dtype),
-                    normalize_keypoints(laf1[...,1], size1).clone().to(kpts1.dtype)
+                    normalize_keypoints(laf1[..., 0], size1).clone().to(kpts1.dtype),
+                    normalize_keypoints(laf1[..., 1], size1).clone().to(kpts1.dtype),
                 ],
                 -1,
             )
@@ -526,7 +501,7 @@ class LightGlue(Module):
         desc1 = data1["descriptors"].detach().contiguous()
 
         KORNIA_CHECK(desc0.shape[-1] == desc1.shape[-1] == self.conf.input_dim)
-        
+
         if torch.is_autocast_enabled():
             desc0 = desc0.half()
             desc1 = desc1.half()
@@ -558,9 +533,7 @@ class LightGlue(Module):
             prune1 = ones_like(ind1)
         token0, token1 = None, None
         for i in range(self.conf.n_layers):
-            desc0, desc1 = self.transformers[i](
-                desc0, desc1, encoding0, encoding1, mask0=mask0, mask1=mask1
-            )
+            desc0, desc1 = self.transformers[i](desc0, desc1, encoding0, encoding1, mask0=mask0, mask1=mask1)
             if i == self.conf.n_layers - 1:
                 continue  # no early stopping or adaptive width at last layer
 
@@ -633,9 +606,7 @@ class LightGlue(Module):
         threshold = 0.8 + 0.1 * math.exp(-4.0 * layer_index / self.conf.n_layers)
         return min(max(threshold, 1), 0)
 
-    def get_pruning_mask(
-        self, confidences: Tensor, scores: Tensor, layer_index: int
-    ) -> Tensor:
+    def get_pruning_mask(self, confidences: Tensor, scores: Tensor, layer_index: int) -> Tensor:
         """Mask points which should be removed."""
         keep = scores > (1 - self.conf.width_confidence)
         if confidences is not None:  # Low-confidence points are never pruned.
