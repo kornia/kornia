@@ -377,6 +377,8 @@ class LightGlue(Module):
         "keynet_affnet_hardnet": {
             "weights": "keynet_affnet_hardnet_lightglue",
             "input_dim": 128,
+            "width_confidence": -1,
+            "depth_confidence": -1,
             "add_laf": True,
         },
     }
