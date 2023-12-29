@@ -471,7 +471,7 @@ class LightGlue(Module):
         size0, size1 = data0.get("image_size"), data1.get("image_size")
         size0 = size0 if size0 is not None else data0["image"].shape[-2:][::-1]  # type: ignore
         size1 = size1 if size1 is not None else data1["image"].shape[-2:][::-1]  # type: ignore
-        
+
         kpts0 = normalize_keypoints(kpts0, size0).clone()
         kpts1 = normalize_keypoints(kpts1, size1).clone()
         KORNIA_CHECK(torch.all(kpts0 >= -1).item() and torch.all(kpts0 <= 1).item(), "")  # type: ignore
