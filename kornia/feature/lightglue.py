@@ -154,7 +154,7 @@ class SelfBlock(Module):
         super().__init__()
         self.embed_dim = embed_dim
         self.num_heads = num_heads
-        assert self.embed_dim % num_heads == 0
+        KORNIA_CHECK(self.embed_dim % num_heads == 0, "Embed dimension should be dividable by num_heads")
         self.head_dim = self.embed_dim // num_heads
         self.Wqkv = nn.Linear(embed_dim, 3 * embed_dim, bias=bias)
         self.inner_attn = Attention(flash)
@@ -483,7 +483,7 @@ class LightGlue(Module):
 
     def _forward(self, data: dict) -> dict:
         for key in self.required_data_keys:
-            assert key in data, f"Missing key {key} in data"
+            KORNIA_CHECK(key in data, f"Missing key {key} in data")
         data0, data1 = data["image0"], data["image1"]
         kpts0, kpts1 = data0["keypoints"], data1["keypoints"]
         b, m, _ = kpts0.shape
@@ -525,9 +525,8 @@ class LightGlue(Module):
         desc0 = data0["descriptors"].detach().contiguous()
         desc1 = data1["descriptors"].detach().contiguous()
 
-        assert desc0.shape[-1] == self.conf.input_dim
-        assert desc1.shape[-1] == self.conf.input_dim
-
+        KORNIA_CHECK(desc0.shape[-1] == desc1.shape[-1] == self.conf.input_dim)
+        
         if torch.is_autocast_enabled():
             desc0 = desc0.half()
             desc1 = desc1.half()
