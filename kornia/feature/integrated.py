@@ -408,7 +408,7 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
         params: LightGlue params.
     """
 
-    known_modes: ClassVar[List[str]] = ["superpoint", "disk"]
+    known_modes: ClassVar[List[str]] = ["superpoint", "disk", "aliked", "keynet_affnet_hardnet"]
 
     def __init__(self, feature_name: str = "disk", params: Dict = {}) -> None:  # type: ignore
         feature_name_: str = feature_name.lower()
@@ -442,7 +442,10 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
             return _no_match(desc1)
         keypoints1 = get_laf_center(lafs1)
         keypoints2 = get_laf_center(lafs2)
-
+        if len(desc1.shape) == 2:
+            desc1 = desc1.unsqueeze(0)
+        if len(desc2.shape) == 2:
+            desc2 = desc2.unsqueeze(0)
         dev = lafs1.device
         if hw1 is None:
             hw1_ = keypoints1.max(dim=1)[0].squeeze().flip(0)
@@ -455,14 +458,19 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
         input_dict = {
             "image0": {
                 "keypoints": keypoints1,
-                "descriptors": desc1[None],
+                "lafs": lafs1,
+                "descriptors": desc1,
                 "image_size": hw1_.flip(0).reshape(-1, 2).to(dev),
             },
+
+                
             "image1": {
                 "keypoints": keypoints2,
-                "descriptors": desc2[None],
+                "lafs": lafs2,
+                "descriptors": desc2,
                 "image_size": hw2_.flip(0).reshape(-1, 2).to(dev),
             },
+                
         }
         pred = self.matcher(input_dict)
         matches0, mscores0 = pred["matches0"], pred["matching_scores0"]
