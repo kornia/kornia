@@ -128,11 +128,11 @@ class Attention(Module):
             else:
                 KORNIA_CHECK(mask is None)
                 q, k, v = (x.transpose(-2, -3).contiguous() for x in [q, k, v])
-                m = self.flash_(q.half(), stack([k, v], 2).half())  
+                m = self.flash_(q.half(), stack([k, v], 2).half())
                 return m.transpose(-2, -3).to(q.dtype).clone()
         elif self.has_sdp:
             args = [x.contiguous() for x in [q, k, v]]
-            v = F.scaled_dot_product_attention(*args, attn_mask=mask)   # type: ignore
+            v = F.scaled_dot_product_attention(*args, attn_mask=mask)  # type: ignore
             return v if mask is None else v.nan_to_num()
         else:
             s = q.shape[-1] ** -0.5
@@ -251,13 +251,9 @@ class TransformerLayer(Module):
             return self.cross_attn(desc0, desc1)
 
     # This part is compiled and allows padding inputs
-    def masked_forward(self,
-                       desc0: Tensor,
-                       desc1: Tensor,
-                       encoding0: Tensor,
-                       encoding1: Tensor,
-                       mask0: Tensor,
-                       mask1: Tensor) -> Tensor:
+    def masked_forward(
+        self, desc0: Tensor, desc1: Tensor, encoding0: Tensor, encoding1: Tensor, mask0: Tensor, mask1: Tensor
+    ) -> Tensor:
         mask = mask0 & mask1.transpose(-1, -2)
         mask0 = mask0 & mask0.transpose(-1, -2)
         mask1 = mask1 & mask1.transpose(-1, -2)
@@ -393,7 +389,9 @@ class LightGlue(Module):
 
         head_dim = conf.descriptor_dim // conf.num_heads
         self.posenc = LearnableFourierPositionalEncoding(
-            2 + 2 * conf.add_scale_ori + 4 * conf.add_laf, head_dim, head_dim  # type: ignore
+            2 + 2 * conf.add_scale_ori + 4 * conf.add_laf,
+            head_dim,
+            head_dim,  # type: ignore
         )
 
         h, n, d = conf.num_heads, conf.n_layers, conf.descriptor_dim
@@ -443,7 +441,7 @@ class LightGlue(Module):
 
         self.static_lengths = static_lengths
 
-    def forward(self, data: dict) -> dict:    # type: ignore
+    def forward(self, data: dict) -> dict:  # type: ignore
         """Match keypoints and descriptors between two images.
 
         Input (dict):
@@ -466,7 +464,7 @@ class LightGlue(Module):
         with torch.autocast(enabled=self.conf.mp, device_type="cuda"):
             return self._forward(data)
 
-    def _forward(self, data: dict) -> dict:    # type: ignore
+    def _forward(self, data: dict) -> dict:  # type: ignore
         for key in self.required_data_keys:
             KORNIA_CHECK(key in data, f"Missing key {key} in data")
         data0, data1 = data["image0"], data["image1"]
