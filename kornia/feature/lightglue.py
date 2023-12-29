@@ -122,7 +122,7 @@ class Attention(Module):
         if self.has_sdp:
             torch.backends.cuda.enable_flash_sdp(allow_flash)
 
-    def forward(self, q, k, v, mask: Optional[Tensor] = None) -> Tensor:
+    def forward(self, q: Tensor, k: Tensor, v: Tensor, mask: Optional[Tensor] = None) -> Tensor:
         if self.enable_flash and q.device.type == "cuda":
             # use torch 2.0 scaled_dot_product_attention with flash
             if self.has_sdp:
@@ -203,9 +203,9 @@ class CrossBlock(Module):
         if flash and FLASH_AVAILABLE:
             self.flash = Attention(True)
         else:
-            self.flash = None
+            self.flash = None  # type: ignore
 
-    def map_(self, func: Callable, x0: Tensor, x1: Tensor):
+    def map_(self, func: Callable, x0: Tensor, x1: Tensor) -> Tuple[Tensor, Tensor]:  # type: ignore
         return func(x0), func(x1)
 
     def forward(
@@ -292,8 +292,8 @@ class MatchAssignment(Module):
         self.matchability = nn.Linear(dim, 1, bias=True)
         self.final_proj = nn.Linear(dim, dim, bias=True)
 
-    def forward(self, desc0: Tensor, desc1: Tensor):
-        """build assignment matrix from descriptors"""
+    def forward(self, desc0: Tensor, desc1: Tensor) -> Tuple[Tensor, Tensor]:
+        """Build assignment matrix from descriptors."""
         mdesc0, mdesc1 = self.final_proj(desc0), self.final_proj(desc1)
         _, _, d = mdesc0.shape
         mdesc0, mdesc1 = mdesc0 / d**0.25, mdesc1 / d**0.25
@@ -303,12 +303,12 @@ class MatchAssignment(Module):
         scores = sigmoid_log_double_softmax(sim, z0, z1)
         return scores, sim
 
-    def get_matchability(self, desc: Tensor):
+    def get_matchability(self, desc: Tensor) -> Tensor:
         return torch.sigmoid(self.matchability(desc)).squeeze(-1)
 
 
-def filter_matches(scores: Tensor, th: float):
-    """obtain matches from a log assignment matrix [Bx M+1 x N+1]"""
+def filter_matches(scores: Tensor, th: float) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+    """Obtain matches from a log assignment matrix [Bx M+1 x N+1]."""
     max0, max1 = scores[:, :-1, :-1].max(2), scores[:, :-1, :-1].max(1)
     m0, m1 = max0.indices, max1.indices
     indices0 = arange(m0.shape[1], device=m0.device)[None]
@@ -629,14 +629,14 @@ class LightGlue(Module):
         return pred
 
     def confidence_threshold(self, layer_index: int) -> float:
-        """scaled confidence threshold"""
+        """Scaled confidence threshold."""
         threshold = 0.8 + 0.1 * math.exp(-4.0 * layer_index / self.conf.n_layers)
         return min(max(threshold, 1), 0)
 
     def get_pruning_mask(
         self, confidences: Tensor, scores: Tensor, layer_index: int
     ) -> Tensor:
-        """mask points which should be removed"""
+        """Mask points which should be removed."""
         keep = scores > (1 - self.conf.width_confidence)
         if confidences is not None:  # Low-confidence points are never pruned.
             keep |= confidences <= self.confidence_thresholds[layer_index]
@@ -649,7 +649,7 @@ class LightGlue(Module):
         layer_index: int,
         num_points: int,
     ) -> Tensor:
-        """evaluate stopping condition"""
+        """Evaluate stopping condition."""
         confidences = concatenate([confidences0, confidences1], -1)
         threshold = self.confidence_thresholds[layer_index]
         ratio_confident = 1.0 - (confidences < threshold).float().sum() / num_points
