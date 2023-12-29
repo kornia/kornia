@@ -51,7 +51,7 @@ def normalize_keypoints(kpts: Tensor, size: Tensor) -> Tensor:
     return kpts
 
 
-def pad_to_length(x: Tensor, length: int) -> Tuple[Tensor]:
+def pad_to_length(x: Tensor, length: int) -> Tuple[Tensor, Tensor]:
     if length <= x.shape[-2]:
         return x, ones_like(x[..., :1], dtype=torch.bool)
     pad = ones(*x.shape[:-2], length - x.shape[-2], x.shape[-1], device=x.device, dtype=x.dtype)
@@ -123,16 +123,16 @@ class Attention(Module):
             # use torch 2.0 scaled_dot_product_attention with flash
             if self.has_sdp:
                 args = [x.half().contiguous() for x in [q, k, v]]
-                v = F.scaled_dot_product_attention(*args, attn_mask=mask).to(q.dtype)
+                v = F.scaled_dot_product_attention(*args, attn_mask=mask).to(q.dtype)  # type: ignore
                 return v if mask is None else v.nan_to_num()
             else:
                 KORNIA_CHECK(mask is None)
                 q, k, v = (x.transpose(-2, -3).contiguous() for x in [q, k, v])
-                m = self.flash_(q.half(), stack([k, v], 2).half())
+                m = self.flash_(q.half(), stack([k, v], 2).half())  
                 return m.transpose(-2, -3).to(q.dtype).clone()
         elif self.has_sdp:
             args = [x.contiguous() for x in [q, k, v]]
-            v = F.scaled_dot_product_attention(*args, attn_mask=mask)
+            v = F.scaled_dot_product_attention(*args, attn_mask=mask)   # type: ignore
             return v if mask is None else v.nan_to_num()
         else:
             s = q.shape[-1] ** -0.5
@@ -200,7 +200,7 @@ class CrossBlock(Module):
     def map_(self, func: Callable, x0: Tensor, x1: Tensor) -> Tuple[Tensor, Tensor]:  # type: ignore
         return func(x0), func(x1)
 
-    def forward(self, x0: Tensor, x1: Tensor, mask: Optional[Tensor] = None) -> List[Tensor]:
+    def forward(self, x0: Tensor, x1: Tensor, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
         qk0, qk1 = self.map_(self.to_qk, x0, x1)
         v0, v1 = self.map_(self.to_v, x0, x1)
         qk0, qk1, v0, v1 = map(
@@ -229,17 +229,17 @@ class CrossBlock(Module):
 
 
 class TransformerLayer(Module):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs):  # type: ignore
         super().__init__()
         self.self_attn = SelfBlock(*args, **kwargs)
         self.cross_attn = CrossBlock(*args, **kwargs)
 
     def forward(
         self,
-        desc0,
-        desc1,
-        encoding0,
-        encoding1,
+        desc0: Tensor,
+        desc1: Tensor,
+        encoding0: Tensor,
+        encoding1: Tensor,
         mask0: Optional[Tensor] = None,
         mask1: Optional[Tensor] = None,
     ):
@@ -251,7 +251,13 @@ class TransformerLayer(Module):
             return self.cross_attn(desc0, desc1)
 
     # This part is compiled and allows padding inputs
-    def masked_forward(self, desc0, desc1, encoding0, encoding1, mask0, mask1):
+    def masked_forward(self,
+                       desc0: Tensor,
+                       desc1: Tensor,
+                       encoding0: Tensor,
+                       encoding1: Tensor,
+                       mask0: Tensor,
+                       mask1: Tensor) -> Tensor:
         mask = mask0 & mask1.transpose(-1, -2)
         mask0 = mask0 & mask0.transpose(-1, -2)
         mask1 = mask1 & mask1.transpose(-1, -2)
@@ -371,23 +377,23 @@ class LightGlue(Module):
         },
     }
 
-    def __init__(self, features: str = "superpoint", **conf) -> None:  # type: ignore
+    def __init__(self, features: str = "superpoint", **conf_) -> None:  # type: ignore
         super().__init__()
-        self.conf = conf = SimpleNamespace(**{**self.default_conf, **conf})
+        self.conf = conf = SimpleNamespace(**{**self.default_conf, **conf_})  # type: ignore
         if features is not None:
             KORNIA_CHECK(features in list(self.features.keys()), "Features keys are wrong")
             for k, v in self.features[features].items():
                 setattr(conf, k, v)
         KORNIA_CHECK(not (self.conf.add_scale_ori and self.conf.add_laf))  # we use either scale ori, or LAF
 
-        if conf.input_dim != conf.descriptor_dim:
+        if conf.input_dim != conf.descriptor_dim:  # type: ignore
             self.input_proj = nn.Linear(conf.input_dim, conf.descriptor_dim, bias=True)
         else:
             self.input_proj = nn.Identity()  # type: ignore
 
         head_dim = conf.descriptor_dim // conf.num_heads
         self.posenc = LearnableFourierPositionalEncoding(
-            2 + 2 * conf.add_scale_ori + 4 * conf.add_laf, head_dim, head_dim
+            2 + 2 * conf.add_scale_ori + 4 * conf.add_laf, head_dim, head_dim  # type: ignore
         )
 
         h, n, d = conf.num_heads, conf.n_layers, conf.descriptor_dim
@@ -437,7 +443,7 @@ class LightGlue(Module):
 
         self.static_lengths = static_lengths
 
-    def forward(self, data: dict) -> dict:
+    def forward(self, data: dict) -> dict:    # type: ignore
         """Match keypoints and descriptors between two images.
 
         Input (dict):
@@ -460,7 +466,7 @@ class LightGlue(Module):
         with torch.autocast(enabled=self.conf.mp, device_type="cuda"):
             return self._forward(data)
 
-    def _forward(self, data: dict) -> dict:
+    def _forward(self, data: dict) -> dict:    # type: ignore
         for key in self.required_data_keys:
             KORNIA_CHECK(key in data, f"Missing key {key} in data")
         data0, data1 = data["image0"], data["image1"]
@@ -631,7 +637,7 @@ class LightGlue(Module):
         ratio_confident = 1.0 - (confidences < threshold).float().sum() / num_points
         return ratio_confident > self.conf.depth_confidence
 
-    def pruning_min_kpts(self, device: torch.device):
+    def pruning_min_kpts(self, device: torch.device) -> int:
         if self.conf.flash and FLASH_AVAILABLE and device.type == "cuda":
             return self.pruning_keypoint_thresholds["flash"]
         else:
