@@ -469,9 +469,13 @@ class LightGlue(Module):
         b, n, _ = kpts1.shape
         device = kpts0.device
         size0, size1 = data0.get("image_size"), data1.get("image_size")
+        size0 = size0 if size0 is not None else data0["image"].shape[-2:][::-1]  # type: ignore
+        size1 = size1 if size1 is not None else data1["image"].shape[-2:][::-1]  # type: ignore
+        
         kpts0 = normalize_keypoints(kpts0, size0).clone()
         kpts1 = normalize_keypoints(kpts1, size1).clone()
-
+        KORNIA_CHECK(torch.all(kpts0 >= -1).item() and torch.all(kpts0 <= 1).item(), "")  # type: ignore
+        KORNIA_CHECK(torch.all(kpts1 >= -1).item() and torch.all(kpts1 <= 1).item(), "")  # type: ignore
         if self.conf.add_scale_ori:
             kpts0 = concatenate([kpts0] + [data0[k].unsqueeze(-1) for k in ("scales", "oris")], -1)
             kpts1 = concatenate([kpts1] + [data1[k].unsqueeze(-1) for k in ("scales", "oris")], -1)
@@ -500,7 +504,8 @@ class LightGlue(Module):
         desc0 = data0["descriptors"].detach().contiguous()
         desc1 = data1["descriptors"].detach().contiguous()
 
-        KORNIA_CHECK(desc0.shape[-1] == desc1.shape[-1] == self.conf.input_dim)
+        KORNIA_CHECK(desc0.shape[-1] == self.conf.input_dim, "Descriptor dimension does not match input dim in config")
+        KORNIA_CHECK(desc1.shape[-1] == self.conf.input_dim, "Descriptor dimension does not match input dim in config")
 
         if torch.is_autocast_enabled():
             desc0 = desc0.half()
