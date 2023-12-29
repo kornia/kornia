@@ -333,7 +333,7 @@ class LightGlue(Module):
 
     # Point pruning involves an overhead (gather).
     # Therefore, we only activate it if there are enough keypoints.
-    pruning_keypoint_thresholds = {
+    pruning_keypoint_thresholds: ClassVar[Dict[str, Any]] = {
         "cpu": -1,
         "mps": -1,
         "cuda": 1024,
