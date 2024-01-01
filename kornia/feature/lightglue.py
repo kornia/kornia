@@ -24,7 +24,7 @@ from kornia.core import (
     zeros,
 )
 from kornia.core.check import KORNIA_CHECK
-from kornia.feature.laf import laf_to_three_points
+from kornia.feature.laf import laf_to_three_points, scale_laf
 
 try:
     from flash_attn.modules.mha import FlashCrossAttention
@@ -323,6 +323,7 @@ class LightGlue(Module):
         "descriptor_dim": 256,
         "add_scale_ori": False,
         "add_laf": False,  # for KeyNetAffNetHardNet
+        "scale_coef": 1.0,  # to compensate for the SIFT scale bigger than KeyNet
         "n_layers": 9,
         "num_heads": 4,
         "flash": True,  # enable FlashAttention if available.
@@ -363,6 +364,14 @@ class LightGlue(Module):
             "weights": "sift_lightglue",
             "input_dim": 128,
             "add_scale_ori": True,
+        },
+        "dog_affnet_hardnet": {
+            "weights": "keynet_affnet_hardnet_lightglue",
+            "input_dim": 128,
+            "width_confidence": -1,
+            "depth_confidence": -1,
+            "add_laf": True,
+            "scale_coef": 0.1
         },
         "keynet_affnet_hardnet": {
             "weights": "keynet_affnet_hardnet_lightglue",
@@ -486,8 +495,8 @@ class LightGlue(Module):
             kpts0 = concatenate([kpts0] + [data0[k].unsqueeze(-1) for k in ("scales", "oris")], -1)
             kpts1 = concatenate([kpts1] + [data1[k].unsqueeze(-1) for k in ("scales", "oris")], -1)
         elif self.conf.add_laf:
-            laf0 = data0["lafs"]
-            laf1 = data1["lafs"]
+            laf0 = scale_laf(data0["lafs"]. self.conf.scale_coef)
+            laf1 = scale_laf(data1["lafs"]. self.conf.scale_coef)
             laf0 = laf_to_three_points(laf0)
             laf1 = laf_to_three_points(laf1)
             kpts0 = concatenate(
