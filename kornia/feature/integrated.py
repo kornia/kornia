@@ -408,7 +408,14 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
         params: LightGlue params.
     """
 
-    known_modes: ClassVar[List[str]] = ["superpoint", "disk", "aliked", "keynet_affnet_hardnet", "dog_affnet_hardnet", "sift"]
+    known_modes: ClassVar[List[str]] = [
+        "superpoint",
+        "disk",
+        "aliked",
+        "keynet_affnet_hardnet",
+        "dog_affnet_hardnet",
+        "sift",
+    ]
 
     def __init__(self, feature_name: str = "disk", params: Dict = {}) -> None:  # type: ignore
         feature_name_: str = feature_name.lower()
