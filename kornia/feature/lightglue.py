@@ -495,8 +495,8 @@ class LightGlue(Module):
             kpts0 = concatenate([kpts0] + [data0[k].unsqueeze(-1) for k in ("scales", "oris")], -1)
             kpts1 = concatenate([kpts1] + [data1[k].unsqueeze(-1) for k in ("scales", "oris")], -1)
         elif self.conf.add_laf:
-            laf0 = scale_laf(data0["lafs"].self.conf.scale_coef)
-            laf1 = scale_laf(data1["lafs"].self.conf.scale_coef)
+            laf0 = scale_laf(data0["lafs"], self.conf.scale_coef)
+            laf1 = scale_laf(data1["lafs"], self.conf.scale_coef)
             laf0 = laf_to_three_points(laf0)
             laf1 = laf_to_three_points(laf1)
             kpts0 = concatenate(
