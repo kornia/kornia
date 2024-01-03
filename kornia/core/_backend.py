@@ -33,6 +33,8 @@ map_coordinates = torch.nn.functional.grid_sample
 cos = torch.cos
 sin = torch.sin
 tan = torch.tan
+deg2rad = torch.deg2rad
+rad2deg = torch.rad2deg
 
 # constructors
 as_tensor = torch.as_tensor
