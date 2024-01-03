@@ -4,7 +4,8 @@ from typing import ClassVar, Dict, List, Optional, Tuple
 import torch
 
 from kornia.color import rgb_to_grayscale
-from kornia.core import Device, Module, Tensor, concatenate
+from kornia.constants import pi
+from kornia.core import Device, Module, Tensor, concatenate, deg2rad
 from kornia.core.check import KORNIA_CHECK_LAF
 from kornia.geometry.subpix import ConvQuadInterp3d
 from kornia.geometry.transform import ScalePyramid
@@ -12,7 +13,7 @@ from kornia.geometry.transform import ScalePyramid
 from .affine_shape import LAFAffNetShapeEstimator
 from .hardnet import HardNet
 from .keynet import KeyNetDetector
-from .laf import extract_patches_from_pyramid, get_laf_center, scale_laf
+from .laf import extract_patches_from_pyramid, get_laf_center, get_laf_orientation, get_laf_scale, scale_laf
 from .lightglue import LightGlue
 from .matching import GeometryAwareDescriptorMatcher, _no_match
 from .orientation import LAFOrienter, OriNet, PassLAF
@@ -408,7 +409,14 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
         params: LightGlue params.
     """
 
-    known_modes: ClassVar[List[str]] = ["superpoint", "disk"]
+    known_modes: ClassVar[List[str]] = [
+        "superpoint",
+        "disk",
+        "aliked",
+        "keynet_affnet_hardnet",
+        "dog_affnet_hardnet",
+        "sift",
+    ]
 
     def __init__(self, feature_name: str = "disk", params: Dict = {}) -> None:  # type: ignore
         feature_name_: str = feature_name.lower()
@@ -442,7 +450,10 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
             return _no_match(desc1)
         keypoints1 = get_laf_center(lafs1)
         keypoints2 = get_laf_center(lafs2)
-
+        if len(desc1.shape) == 2:
+            desc1 = desc1.unsqueeze(0)
+        if len(desc2.shape) == 2:
+            desc2 = desc2.unsqueeze(0)
         dev = lafs1.device
         if hw1 is None:
             hw1_ = keypoints1.max(dim=1)[0].squeeze().flip(0)
@@ -452,15 +463,25 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
             hw2_ = keypoints2.max(dim=1)[0].squeeze().flip(0)
         else:
             hw2_ = torch.tensor(hw2, device=dev)
+        ori0 = deg2rad(get_laf_orientation(lafs1).reshape(1, -1))
+        ori0[ori0 < 0] += 2.0 * pi
+        ori1 = deg2rad(get_laf_orientation(lafs2).reshape(1, -1))
+        ori1[ori1 < 0] += 2.0 * pi
         input_dict = {
             "image0": {
                 "keypoints": keypoints1,
-                "descriptors": desc1[None],
+                "scales": get_laf_scale(lafs1).reshape(1, -1),
+                "oris": ori0,
+                "lafs": lafs1,
+                "descriptors": desc1,
                 "image_size": hw1_.flip(0).reshape(-1, 2).to(dev),
             },
             "image1": {
                 "keypoints": keypoints2,
-                "descriptors": desc2[None],
+                "lafs": lafs2,
+                "scales": get_laf_scale(lafs2).reshape(1, -1),
+                "oris": ori1,
+                "descriptors": desc2,
                 "image_size": hw2_.flip(0).reshape(-1, 2).to(dev),
             },
         }
