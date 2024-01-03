@@ -4,15 +4,16 @@ from typing import ClassVar, Dict, List, Optional, Tuple
 import torch
 
 from kornia.color import rgb_to_grayscale
-from kornia.core import Device, Module, Tensor, concatenate
+from kornia.core import Device, Module, Tensor, concatenate, deg2rad
 from kornia.core.check import KORNIA_CHECK_LAF
 from kornia.geometry.subpix import ConvQuadInterp3d
 from kornia.geometry.transform import ScalePyramid
+from kornia.constants import pi
 
 from .affine_shape import LAFAffNetShapeEstimator
 from .hardnet import HardNet
 from .keynet import KeyNetDetector
-from .laf import extract_patches_from_pyramid, get_laf_center, scale_laf
+from .laf import extract_patches_from_pyramid, get_laf_center, scale_laf, get_laf_scale, get_laf_orientation
 from .lightglue import LightGlue
 from .matching import GeometryAwareDescriptorMatcher, _no_match
 from .orientation import LAFOrienter, OriNet, PassLAF
@@ -462,9 +463,15 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
             hw2_ = keypoints2.max(dim=1)[0].squeeze().flip(0)
         else:
             hw2_ = torch.tensor(hw2, device=dev)
+        ori0 = deg2rad(get_laf_orientation(lafs1).reshape(1, -1))
+        ori0[ori0<0] += 2.0 * pi
+        ori1 = deg2rad(get_laf_orientation(lafs2).reshape(1, -1))
+        ori1[ori1<0] += 2.0 * pi
         input_dict = {
             "image0": {
                 "keypoints": keypoints1,
+                "scales": get_laf_scale(lafs1).reshape(1, -1),
+                "oris": ori0,
                 "lafs": lafs1,
                 "descriptors": desc1,
                 "image_size": hw1_.flip(0).reshape(-1, 2).to(dev),
@@ -472,6 +479,8 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
             "image1": {
                 "keypoints": keypoints2,
                 "lafs": lafs2,
+                "scales": get_laf_scale(lafs2).reshape(1, -1),
+                "oris": ori1,
                 "descriptors": desc2,
                 "image_size": hw2_.flip(0).reshape(-1, 2).to(dev),
             },

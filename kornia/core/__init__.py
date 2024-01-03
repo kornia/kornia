@@ -26,6 +26,8 @@ from ._backend import (
     tan,
     tensor,
     where,
+    rad2deg,
+    deg2rad,
     zeros,
     zeros_like,
 )
@@ -47,6 +49,8 @@ __all__ = [
     "softmax",
     "as_tensor",
     "rand",
+    "deg2rad",
+    "rad2deg",
     "cos",
     "sin",
     "tan",
