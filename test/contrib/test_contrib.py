@@ -121,16 +121,14 @@ class TestConnectedComponents:
 
         with pytest.raises(TypeError) as errinf:
             assert kornia.contrib.connected_components(img, 1.0)
-        assert "Input num_iterations must be a positive integer." in str(errinf)
-
+        assert "Input num_iterations must be integer greater or equal to zero." in str(errinf)
         with pytest.raises(TypeError) as errinf:
             assert kornia.contrib.connected_components("not a tensor", 0)
         assert "Input imagetype is not a Tensor. Got:" in str(errinf)
 
         with pytest.raises(TypeError) as errinf:
-            assert kornia.contrib.connected_components(img, 0)
-        assert "Input num_iterations must be a positive integer." in str(errinf)
-
+            assert kornia.contrib.connected_components(img, -1)
+        assert "Input num_iterations must be integer greater or equal to zero." in str(errinf)
         with pytest.raises(ValueError) as errinf:
             img = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
             assert kornia.contrib.connected_components(img, 2)
@@ -173,6 +171,22 @@ class TestConnectedComponents:
 
         out = kornia.contrib.connected_components(img, num_iterations=10)
         assert_close(out, expected)
+
+        N = 1000
+        img = torch.zeros((1, 1, N, N), device=device, dtype=dtype)
+        img[..., 1:, 1:] = 1.0
+
+        expected = torch.zeros((1, 1, N, N), device=device, dtype=dtype)
+        expected[..., 1:, 1:] = N * N - 1
+
+        out = kornia.contrib.connected_components(img, num_iterations=0)
+        assert_close(out, expected)
+
+        # check that the algorithm does not converge with only 10 iterations
+        with pytest.raises(AssertionError) as errinf:
+            out = kornia.contrib.connected_components(img, num_iterations=10)
+            assert_close(out, expected)
+        assert "Tensor-likes are not close!" in str(errinf)
 
     def test_gradcheck(self, device, dtype):
         B, C, H, W = 2, 1, 4, 4

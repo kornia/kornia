@@ -23,6 +23,7 @@ def connected_components(image: Tensor, num_iterations: int = 100) -> Tensor:
         image: the binarized input image with shape :math:`(*, 1, H, W)`.
           The image must be in floating point with range [0, 1].
         num_iterations: the number of iterations to make the algorithm to converge.
+          If 0, the algorithm will run until convergence.
 
     Return:
         The labels image with the same shape of the input image.
@@ -34,8 +35,8 @@ def connected_components(image: Tensor, num_iterations: int = 100) -> Tensor:
     if not isinstance(image, Tensor):
         raise TypeError(f"Input imagetype is not a Tensor. Got: {type(image)}")
 
-    if not isinstance(num_iterations, int) or num_iterations < 1:
-        raise TypeError("Input num_iterations must be a positive integer.")
+    if not isinstance(num_iterations, int) or num_iterations < 0:
+        raise TypeError("Input num_iterations must be integer greater or equal to zero.")
 
     if len(image.shape) < 3 or image.shape[-3] != 1:
         raise ValueError(f"Input image shape must be (*,1,H,W). Got: {image.shape}")
@@ -51,8 +52,18 @@ def connected_components(image: Tensor, num_iterations: int = 100) -> Tensor:
     out = torch.arange(B * H * W, device=image.device, dtype=image.dtype).view((-1, 1, H, W))
     out[~mask] = 0
 
-    for _ in range(num_iterations):
-        out = F.max_pool2d(out, kernel_size=3, stride=1, padding=1)
-        out = torch.mul(out, mask)  # mask using element-wise multiplication
+    i = 0
+    while True:
+        i += 1
+        out_ = F.max_pool2d(out, kernel_size=3, stride=1, padding=1)
+        # mask using element-wise multiplication
+        out_ = torch.mul(out_, mask)
+        # stop if converged
+        if torch.all(out == out_):
+            break
+        out = out_
+        # reached if reached max iterations
+        if num_iterations > 0 and i == num_iterations:
+            break
 
     return out.view_as(image)
