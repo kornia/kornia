@@ -4,7 +4,7 @@ on:
   push:
     branches: [test-me-*]
   pull_request:
-    branches: [master]
+    branches: [main]
     types: [opened, reopened, synchronize, ready_for_review, labeled]
   workflow_dispatch:
 

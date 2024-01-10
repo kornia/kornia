@@ -12,7 +12,7 @@
 <!-- prettier-ignore -->
 <a href="https://kornia.org">网站</a> •
 <a href="https://kornia.readthedocs.io">文档</a> •
-<a href="https://colab.sandbox.google.com/github/kornia/tutorials/blob/master/nbs/hello_world_tutorial.ipynb">快速尝试</a> •
+<a href="https://colab.sandbox.google.com/github/kornia/tutorials/blob/main/nbs/hello_world_tutorial.ipynb">快速尝试</a> •
 <a href="https://kornia.github.io/tutorials/">教程</a> •
 <a href="https://github.com/kornia/kornia-examples">例子</a> •
 <a href="https://kornia.github.io//kornia-blog">博客</a> •
@@ -27,10 +27,10 @@
 [![Slack](https://img.shields.io/badge/Slack-4A154B?logo=slack&logoColor=white)](https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-2AQRi~X9Uu6PLMuUZdvfjA)
 [![Twitter](https://img.shields.io/twitter/follow/kornia_foss?style=social)](https://twitter.com/kornia_foss)
 
-[![tests-cpu](https://github.com/kornia/kornia/actions/workflows/scheduled_test_cpu.yml/badge.svg?event=schedule&&branch=master)](https://github.com/kornia/kornia/actions/workflows/scheduled_test_cpu.yml)
-[![codecov](https://codecov.io/gh/kornia/kornia/branch/master/graph/badge.svg?token=FzCb7e0Bso)](https://codecov.io/gh/kornia/kornia)
+[![tests-cpu](https://github.com/kornia/kornia/actions/workflows/scheduled_test_cpu.yml/badge.svg?event=schedule&&branch=main)](https://github.com/kornia/kornia/actions/workflows/scheduled_test_cpu.yml)
+[![codecov](https://codecov.io/gh/kornia/kornia/branch/main/graph/badge.svg?token=FzCb7e0Bso)](https://codecov.io/gh/kornia/kornia)
 [![Documentation Status](https://readthedocs.org/projects/kornia/badge/?version=latest)](https://kornia.readthedocs.io/en/latest/?badge=latest)
-[![pre-commit.ci status](https://results.pre-commit.ci/badge/github/kornia/kornia/master.svg)](https://results.pre-commit.ci/latest/github/kornia/kornia/master)
+[![pre-commit.ci status](https://results.pre-commit.ci/badge/github/kornia/kornia/main.svg)](https://results.pre-commit.ci/latest/github/kornia/kornia/main)
 
 <a href="https://www.producthunt.com/posts/kornia?utm_source=badge-featured&utm_medium=badge&utm_souce=badge-kornia" target="_blank"><img src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=306439&theme=light" alt="Kornia - Computer vision library for deep learning | Product Hunt" style="width: 250px; height: 54px;" width="250" height="54" /></a>
 
@@ -42,7 +42,7 @@
 它由一组用于解决通用计算机视觉问题的操作模块和可微分模块组成。其核心使用 *PyTorch* 作为主要后端，以提高效率并利用反向模式自动微分来定义和计算复杂函数的梯度。
 
 <div align="center">
-  <img src="https://github.com/kornia/kornia/raw/master/docs/source/_static/img/hakuna_matata.gif" width="75%" height="75%">
+  <img src="https://github.com/kornia/kornia/raw/main/docs/source/_static/img/hakuna_matata.gif" width="75%" height="75%">
 </div>
 
 <!--<div align="center">
@@ -117,7 +117,7 @@
 
 ## 引用
 
-如果您在与研究相关的文档中使用 Kornia，您可以引用我们的论文。更多信息可以在 [CITATION](https://github.com/kornia/kornia/blob/master/CITATION.md) 看到。
+如果您在与研究相关的文档中使用 Kornia，您可以引用我们的论文。更多信息可以在 [CITATION](https://github.com/kornia/kornia/blob/main/CITATION.md) 看到。
 
   ```bibtex
   @inproceedings{eriba2019kornia,
@@ -130,7 +130,7 @@
   ```
 
 ## 贡献
-我们感谢所有的贡献者为改进和提升 Kornia 所作出的努力。您可以直接修复一个已知的BUG而无需进一步讨论；如果您想要添加一个任何新的或者扩展功能，请务必先通过提交一个Issue来与我们讨论。详情请阅读 [贡献指南](https://github.com/kornia/kornia/blob/master/CONTRIBUTING.md)。开源项目的参与者请务必了解如下 [规范](https://github.com/kornia/kornia/blob/master/CODE_OF_CONDUCT.md)。
+我们感谢所有的贡献者为改进和提升 Kornia 所作出的努力。您可以直接修复一个已知的BUG而无需进一步讨论；如果您想要添加一个任何新的或者扩展功能，请务必先通过提交一个Issue来与我们讨论。详情请阅读 [贡献指南](https://github.com/kornia/kornia/blob/main/CONTRIBUTING.md)。开源项目的参与者请务必了解如下 [规范](https://github.com/kornia/kornia/blob/main/CODE_OF_CONDUCT.md)。
 
 ## 社区
 - **论坛:** 讨论代码实现，学术研究等。[GitHub Forums](https://github.com/kornia/kornia/discussions)
@@ -142,8 +142,8 @@
 扫描下方的二维码可关注 Kornia 的官方交流QQ群（679683070）以及Kornia知乎账号。
 
 <div align="center">
-  <img src="https://github.com/kornia/kornia/raw/master/docs/source/_static/img/cn_community_qq.jpg" height="700px">
-  <img src="https://github.com/kornia/kornia/raw/master/docs/source/_static/img/cn_community_zhihu.jpg" height="700px">
+  <img src="https://github.com/kornia/kornia/raw/main/docs/source/_static/img/cn_community_qq.jpg" height="700px">
+  <img src="https://github.com/kornia/kornia/raw/main/docs/source/_static/img/cn_community_zhihu.jpg" height="700px">
 </div>
 
 我们会在 Kornia 交流社区为大家

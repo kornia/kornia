@@ -38,7 +38,7 @@ Membership
 ----------
 
 The membership is open to anyone who is interested in the mission of the organization and is willing to contribute to its activities.
-The membership is free of charge and is granted by the board of directors and can be revoked at any time if the member is not complying with the organization's rules or [Code of Conduct](https://github.com/kornia/kornia/blob/master/CODE_OF_CONDUCT.md).
+The membership is free of charge and is granted by the board of directors and can be revoked at any time if the member is not complying with the organization's rules or [Code of Conduct](https://github.com/kornia/kornia/blob/main/CODE_OF_CONDUCT.md).
 
 Governance
 ----------
