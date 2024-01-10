@@ -203,10 +203,7 @@ class CrossBlock(Module):
     def forward(self, x0: Tensor, x1: Tensor, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
         qk0, qk1 = self.map_(self.to_qk, x0, x1)
         v0, v1 = self.map_(self.to_v, x0, x1)
-        qk0, qk1, v0, v1 = map(
-            lambda t: t.unflatten(-1, (self.heads, -1)).transpose(1, 2),
-            (qk0, qk1, v0, v1),
-        )
+        qk0, qk1, v0, v1 = (t.unflatten(-1, (self.heads, -1)).transpose(1, 2) for t in (qk0, qk1, v0, v1))
         if self.flash is not None and qk0.device.type == "cuda":
             m0 = self.flash(qk0, qk1, v1, mask)
             m1 = self.flash(qk1, qk0, v0, mask.transpose(-1, -2) if mask is not None else None)
