@@ -2,7 +2,7 @@ name: Tests on CPU (scheduled)
 
 on:
   push:
-    branches: [master, test-me-*]
+    branches: [main, test-me-*]
   schedule:
     - cron: "0 4 * * *"
 

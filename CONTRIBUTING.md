@@ -59,11 +59,11 @@ repository under your GitHub account.
 
 3. Create a new branch with a meaningful name reflecting your contribution. See an example:
     ```bash
-    $ git checkout upstream/master -b feat/foo_feature
+    $ git checkout upstream/main -b feat/foo_feature
     # or
-    $ git checkout upstream/master -b fix/bar_bug
+    $ git checkout upstream/main -b fix/bar_bug
     ```
-    🚨 **Do not** work on the `master` branch!
+    🚨 **Do not** work on the `main` branch!
 
 4. Creating a development environment
 
