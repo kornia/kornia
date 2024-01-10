@@ -21,11 +21,21 @@ def inside_image(coords: Tensor, image_size: Tensor):
     """
     return (
         (coords[..., 0] >= 0)
-        & (coords[..., 0] < image_size[..., None, 0])
+        & (coords[..., 0] <= image_size[..., None, 0] - 1)
         & (coords[..., 1] >= 0)
-        & (coords[..., 1] < image_size[..., None, 1])
+        & (coords[..., 1] <= image_size[..., None, 1] - 1)
     )
 
+def transform_valid_mask(data: Tensor, valid_mask: Tensor, params: Optional[Dict[str, Tensor]]):
+    if params is not None:
+        if "output_size" in params:
+            image_size = params["output_size"]
+        else:
+            image_size = params["forward_input_shape"][-2:]
+            if data.ndim == 3:
+                image_size = image_size[None].repeat(data.shape[0], 1)
+
+    return valid_mask & inside_image(data, image_size)
 
 class Keypoints:
     """2D Keypoints containing Nx2 or BxNx2 points.
@@ -68,8 +78,7 @@ class Keypoints:
         self._is_batched = False if keypoints.ndim == 2 else True
 
         self._data = keypoints
-        if self._valid_mask is None:
-            self._valid_mask = self._data.new_ones(self._data.shape[:-1]).to(torch.bool)
+        self._valid_mask = self._data.new_ones(self._data.shape[:-1]).bool() if valid_mask is None else valid_mask
 
     def __getitem__(self, key: Union[slice, int, Tensor]) -> "Keypoints":
         new_obj = type(self)(self._data[key], False)
@@ -119,13 +128,15 @@ class Keypoints:
         else:
             _data.index_put_(indices, values)
 
-        self.update_valid_mask(params)
+        valid_mask = transform_valid_mask(_data, self._valid_mask, params)
 
         if inplace:
+            self._valid_mask = valid_mask
             return self
-
+        
         obj = self.clone()
         obj._data = _data
+        obj._valid_mask = valid_mask
         return obj
 
     def pad(self, padding_size: Tensor) -> "Keypoints":
@@ -166,13 +177,14 @@ class Keypoints:
             raise ValueError(f"The transformation matrix shape must be (3, 3) or (B, 3, 3). Got {M.shape}.")
 
         transformed_boxes = transform_points(M, self._data)
+        transformed_valid_mask = transform_valid_mask(transformed_boxes, self._valid_mask, params)
 
         if inplace:
             self._data = transformed_boxes
-            self.update_valid_mask(params)
+            self._valid_mask = transformed_valid_mask
             return self
-
-        return Keypoints(transformed_boxes, False, self._valid_mask)
+                
+        return Keypoints(transformed_boxes, False, transformed_valid_mask)
 
     def transform_keypoints_(self, M: Tensor, params: Dict[str, Tensor]) -> "Keypoints":
         """Inplace version of :func:`Keypoints.transform_keypoints`"""
@@ -203,17 +215,6 @@ class Keypoints:
     def type(self, dtype: torch.dtype) -> "Keypoints":
         self._data = self._data.type(dtype)
         return self
-
-    def update_valid_mask(self, params: Optional[Dict[str, Tensor]]):
-        if params is not None:
-            if "output_size" in params:
-                image_size = params["output_size"]
-            else:
-                image_size = params["forward_input_shape"][-2:]
-                if self._data.ndim == 3:
-                    image_size = image_size[None].repeat(self._data.shape[0], 1)
-
-        self._valid_mask &= inside_image(self._data, image_size)
 
 
 class VideoKeypoints(Keypoints):
