@@ -26,6 +26,7 @@ def inside_image(coords: Tensor, image_size: Tensor):
         & (coords[..., 1] <= image_size[..., None, 1] - 1)
     )
 
+
 def transform_valid_mask(data: Tensor, valid_mask: Tensor, params: Optional[Dict[str, Tensor]]):
     if params is not None:
         if "output_size" in params:
@@ -36,6 +37,7 @@ def transform_valid_mask(data: Tensor, valid_mask: Tensor, params: Optional[Dict
                 image_size = image_size[None].repeat(data.shape[0], 1)
 
     return valid_mask & inside_image(data, image_size)
+
 
 class Keypoints:
     """2D Keypoints containing Nx2 or BxNx2 points.
@@ -133,7 +135,7 @@ class Keypoints:
         if inplace:
             self._valid_mask = valid_mask
             return self
-        
+
         obj = self.clone()
         obj._data = _data
         obj._valid_mask = valid_mask
@@ -183,7 +185,7 @@ class Keypoints:
             self._data = transformed_boxes
             self._valid_mask = transformed_valid_mask
             return self
-                
+
         return Keypoints(transformed_boxes, False, transformed_valid_mask)
 
     def transform_keypoints_(self, M: Tensor, params: Dict[str, Tensor]) -> "Keypoints":
