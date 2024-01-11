@@ -32,11 +32,14 @@ def batched_forward(
     model_dev = model.to(device)
     B: int = len(data)
     bs: int = batch_size
+
     if B > batch_size:
         out_list = []
         n_batches = int(B // bs + 1)
+
         for batch_idx in range(n_batches):
             st = batch_idx * bs
+
             if batch_idx == n_batches - 1:
                 if (batch_idx + 1) * bs > B:
                     end = B
@@ -44,9 +47,13 @@ def batched_forward(
                     end = (batch_idx + 1) * bs
             else:
                 end = (batch_idx + 1) * bs
+
             if st >= end:
                 continue
+
             out_list.append(model_dev(data[st:end].to(device), **kwargs))
         out = concatenate(out_list, 0)
+
         return out.to(data.device)
+
     return model(data, **kwargs)
