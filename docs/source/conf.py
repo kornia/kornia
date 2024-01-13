@@ -40,7 +40,6 @@ extensions = [
     "sphinx_autodoc_typehints",
     "sphinx_autodoc_defaultargs",
     "sphinx_copybutton",
-    # "sphinx.ext.viewcode",
     "sphinx.ext.linkcode",
     "sphinx.ext.githubpages",
     "sphinxcontrib.bibtex",
@@ -164,6 +163,7 @@ html_js_files = ["js/custom.js"]
 
 
 # Configure viewcode extension.
+# based on https://github.com/readthedocs/sphinx-autoapi/issues/202
 code_url = "https://github.com/kornia/kornia/blob/main"
 
 
