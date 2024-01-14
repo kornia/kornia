@@ -164,13 +164,13 @@ class ExtractTensorPatches(Module):
     def __init__(
         self,
         window_size: Union[int, Tuple[int, int]],
-        stride: Optional[Union[int, Tuple[int, int]]] = None,
+        stride: Union[int, Tuple[int, int]] = 1,
         padding: PadType = 0,
         allow_auto_padding: bool = False,
     ) -> None:
         super().__init__()
         self.window_size: Union[int, Tuple[int, int]] = window_size
-        self.stride: Union[int, Tuple[int, int]] = stride if stride is not None else window_size
+        self.stride: Union[int, Tuple[int, int]] = stride
         self.padding: PadType = padding
         self.allow_auto_padding: bool = allow_auto_padding
 
