@@ -4,10 +4,14 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Union
 
-from kornia.core import Tensor, stack, zeros_like
+from kornia.core import Tensor, stack
 from kornia.geometry.vector import Vector2, Vector3
 from kornia.image import ImageSize
-from kornia.sensors.camera.distortion_model import AffineTransform, BrownConradyTransform, KannalaBrandtK3Transform
+from kornia.sensors.camera.distortion_model import (
+    AffineTransform,
+    BrownConradyTransform,
+    KannalaBrandtK3Transform,
+)
 from kornia.sensors.camera.projection_model import OrthographicProjection, Z1Projection
 
 
@@ -54,7 +58,11 @@ class CameraModelBase:
     """
 
     def __init__(
-        self, distortion: CameraDistortionType, projection: CameraProjectionType, image_size: ImageSize, params: Tensor
+        self,
+        distortion: CameraDistortionType,
+        projection: CameraProjectionType,
+        image_size: ImageSize,
+        params: Tensor,
     ) -> None:
         """Constructor method for CameraModelBase class.
 
@@ -122,14 +130,14 @@ class CameraModelBase:
         """Returns the camera matrix."""
         return self.matrix()
 
-    def project(self, points: Vector3) -> Vector2:
+    def project(self, points: Vector3 | Tensor) -> Vector2 | Tensor:
         """Projects 3D points to 2D camera plane.
 
         Args:
-            points: Vector3 representing 3D points.
+            points: Vector3 or Tensor representing 3D points.
 
         Returns:
-            Vector2 representing the projected 2D points.
+            Vector2 or Tensor representing the projected 2D points.
 
         Example:
             >>> points = Vector3(torch.Tensor([1.0, 1.0, 1.0]))
@@ -140,12 +148,12 @@ class CameraModelBase:
         """
         return self.distortion.distort(self.params, self.projection.project(points))
 
-    def unproject(self, points: Vector2, depth: Tensor) -> Vector3:
+    def unproject(self, points: Vector2 | Tensor, depth: Tensor) -> Vector3 | Tensor:
         """Unprojects 2D points from camera plane to 3D.
 
         Args:
-            points: Vector2 representing 2D points.
-            depth: Depth of the points.
+            points: Vector2 or Tensor representing 2D points.
+            depth: Tensor Depth of the points.
 
         Returns:
             Vector3 representing the unprojected 3D points.
@@ -181,10 +189,11 @@ class PinholeModel(CameraModelBase):
 
         Args:
             image_size: Image size
-            params: Camera parameters of shape :math:`(B, 4)` of the form :math:`(fx, fy, cx, cy)`.
+            params: Camera parameters of shape :math:`(4, )` of the form :math:`(fx, fy, cx, cy)`.
         """
-        if params.shape[-1] != 4 or len(params.shape) > 2:
-            raise ValueError("params must be of shape (B, 4) for PINHOLE Camera")
+        params = params.squeeze()
+        if params.shape[-1] != 4 or len(params.shape) > 1:
+            raise ValueError("params must be of shape (4,) for PINHOLE Camera")
         super().__init__(AffineTransform(), Z1Projection(), image_size, params)
 
     def matrix(self) -> Tensor:
@@ -204,13 +213,9 @@ class PinholeModel(CameraModelBase):
                     [0., 2., 4.],
                     [0., 0., 1.]])
         """
-        z = zeros_like(self.fx)
-        row1 = stack((self.fx, z, self.cx), -1)
-        row2 = stack((z, self.fy, self.cy), -1)
-        row3 = stack((z, z, z), -1)
-        K = stack((row1, row2, row3), -2)
-        K[..., -1, -1] = 1.0
-        return K
+        return Tensor([[self.fx, 0, self.cx], [0, self.fy, self.cy], [0, 0, 1]]).to(
+            self.params.device, self.params.dtype
+        )
 
     def scale(self, scale_factor: Tensor) -> PinholeModel:
         """Scales the camera model by a scale factor.
