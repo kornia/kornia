@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from kornia.core import Tensor
 from kornia.geometry.vector import Vector2, Vector3
-from kornia.sensors.camera.projection_z1 import project_points_z1, unproject_points_z1
 
 
 class Z1Projection:
@@ -22,10 +21,9 @@ class Z1Projection:
             x: 0.3333333432674408
             y: 0.6666666865348816
         """
-        # xy = points.data[..., :2]
-        # z = points.z
-        # uv = (xy.T @ diag(z).inverse()).T if len(z.shape) else xy.T * 1 / z
-        uv = project_points_z1(points.data)
+        xy = points.data[..., :2]
+        z = points.z
+        uv = (xy.T @ z.diag().inverse()).T if len(z.shape) else xy.T * 1 / z
         return Vector2(uv)
 
     def unproject(self, points: Vector2, depth: Tensor | float) -> Vector3:
@@ -47,9 +45,7 @@ class Z1Projection:
         """
         if isinstance(depth, (float, int)):
             depth = Tensor([depth])
-        xyz = unproject_points_z1(points.data, depth)
-        return Vector3.from_coords(xyz[..., 0], xyz[..., 1], xyz[..., 2])
-        # return Vector3.from_coords(points.x * depth, points.y * depth, depth)
+        return Vector3.from_coords(points.x * depth, points.y * depth, depth)
 
 
 class OrthographicProjection:
