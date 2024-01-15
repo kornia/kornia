@@ -415,6 +415,8 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
         "aliked",
         "keynet_affnet_hardnet",
         "dog_affnet_hardnet",
+        "keynet_hardnet",
+        "dog_hardnet",
         "sift",
     ]
 

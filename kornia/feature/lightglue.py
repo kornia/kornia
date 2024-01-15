@@ -363,12 +363,11 @@ class LightGlue(Module):
             "add_scale_ori": True,
         },
         "dog_affnet_hardnet": {
-            "weights": "keynet_affnet_hardnet_lightglue",
+            "weights": "dog_hardnet_lightglue",
             "input_dim": 128,
             "width_confidence": -1,
             "depth_confidence": -1,
-            "add_laf": True,
-            "scale_coef": 0.1,
+            "add_scale_ori": True,
         },
         "keynet_affnet_hardnet": {
             "weights": "keynet_affnet_hardnet_lightglue",
@@ -377,6 +376,20 @@ class LightGlue(Module):
             "depth_confidence": -1,
             "add_laf": True,
         },
+        "dog_hardnet": {
+            "weights": "dog_hardnet_lightglue",
+            "input_dim": 128,
+            "width_confidence": -1,
+            "depth_confidence": -1,
+            "add_scale_ori": True,
+        },   
+        "keynet_hardnet": {
+            "weights": "dog_hardnet_lightglue",
+            "input_dim": 128,
+            "width_confidence": -1,
+            "depth_confidence": -1,
+            "add_scale_ori": True,
+        },  
     }
 
     def __init__(self, features: str = "superpoint", **conf_) -> None:  # type: ignore
@@ -414,6 +427,9 @@ class LightGlue(Module):
             if features in ["keynet_affnet_hardnet", "dog_affnet_hardnet"]:
                 fname = "keynet_affnet_hardnet_lightlue.pth"
                 url = "http://cmp.felk.cvut.cz/~mishkdmy/models/keynet_affnet_hardnet_lightlue.pth"
+            elif features in ["keynet_hardnet", "dog_hardnet"]:
+                fname = "dog_hardnet_lightlue.pth"
+                url = "http://cmp.felk.cvut.cz/~mishkdmy/models/dog_hardnet_lightlue.pth"
             else:
                 url = self.url.format(self.version, features)
             state_dict = torch.hub.load_state_dict_from_url(url, file_name=fname)
