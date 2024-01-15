@@ -52,13 +52,13 @@ class TestDistortionAffine(BaseTester):
     def test_undistort_points_affine(self, device, dtype):
         points = torch.tensor([601.0, 602.0], device=device, dtype=dtype)
         params = torch.tensor([600.0, 600.0, 319.5, 239.5], device=device, dtype=dtype)
-        expected = torch.tensor([0.4692, 0.6042], device=device, dtype=dtype)
+        expected = torch.tensor([0.4691666, 0.6041666], device=device, dtype=dtype)
         self.assert_close(undistort_points_affine(points, params), expected)
 
     def test_undistort_points_affine_batch(self, device, dtype):
         points = torch.tensor([[601.0, 602.0], [1203.0, 1204.0]], device=device, dtype=dtype)
         params = torch.tensor([[600.0, 600.0, 319.5, 239.5], [600.0, 600.0, 319.5, 239.5]], device=device, dtype=dtype)
-        expected = torch.tensor([[0.4692, 0.6042], [1.4725, 1.6075]], device=device, dtype=dtype)
+        expected = torch.tensor([[0.46916666, 0.60416666], [1.4725, 1.6075]], device=device, dtype=dtype)
         self.assert_close(undistort_points_affine(points, params), expected)
 
     def test_dx_distort_points_affine(self, device, dtype):
@@ -152,7 +152,9 @@ class TestDistortionKannalaBrandt(BaseTester):
             device=device,
             dtype=dtype,
         )
-        expected = torch.tensor([[1369.8710, 2340.2419], [4757.8647, 6157.3198]], device=device, dtype=dtype)
+        expected = torch.tensor(
+            [[1369.87086079, 2340.24172159], [4757.86410475, 6157.31880633]], device=device, dtype=dtype
+        )
         self.assert_close(distort_points_kannala_brandt(points, params), expected)
 
     def test_undistort_points_kannala_brandt(self, device, dtype) -> None:
@@ -168,7 +170,7 @@ class TestDistortionKannalaBrandt(BaseTester):
             device=device,
             dtype=dtype,
         )
-        expected = torch.tensor([[0.181529, 0.363058], [0.2632, 0.3509]], device=device, dtype=dtype)
+        expected = torch.tensor([[0.18152954, 0.36305909], [0.26318852, 0.35091803]], device=device, dtype=dtype)
         self.assert_close(undistort_points_kannala_brandt(points, params), expected)
 
     def test_dx_distort_points_kannala_brandt(self, device, dtype) -> None:

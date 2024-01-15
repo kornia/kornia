@@ -42,18 +42,12 @@ def _distort_points_kannala_brandt_impl(
 
 
 def distort_points_kannala_brandt(projected_points_in_camera_z1_plane: Tensor, params: Tensor) -> Tensor:
-    r"""Distort one or more points from the canonical z=1 plane into the camera frame.
-
-    .. math::
-        \begin{bmatrix} u \\ v \end{bmatrix} =
-        \begin{bmatrix} f_x & 0 \\ 0 & f_y \end{bmatrix}
-        \begin{bmatrix} x \\ y \end{bmatrix} +
-        \begin{bmatrix} c_x \\ c_y \end{bmatrix}
+    r"""Distort one or more points from the canonical z=1 plane into the camera frame using the Kannala-Brandt
+    model.
 
     Args:
         projected_points_in_camera_z1_plane: Tensor representing the points to distort with shape (..., 2).
         params: Tensor representing the parameters of the Kannala-Brandt distortion model with shape (..., 8).
-        eps: Small value to avoid zero division.
 
     Returns:
         Tensor representing the distorted points with shape (..., 2).
@@ -85,13 +79,8 @@ def distort_points_kannala_brandt(projected_points_in_camera_z1_plane: Tensor, p
 
 
 def undistort_points_kannala_brandt(distorted_points_in_camera: Tensor, params: Tensor) -> Tensor:
-    r"""Undistort one or more points from the camera frame into the canonical z=1 plane.
-
-    .. math::
-        \begin{bmatrix} x \\ y \end{bmatrix} =
-        \begin{bmatrix} u \\ v \end{bmatrix} -
-        \begin{bmatrix} c_x \\ c_y \end{bmatrix}
-        \begin{bmatrix} f_x & 0 \\ 0 & f_y \end{bmatrix}^{-1}
+    r"""Undistort one or more points from the camera frame into the canonical z=1 plane using the Kannala-Brandt
+    model.
 
     Args:
         distorted_points_in_camera: Tensor representing the points to undistort with shape (..., 2).
