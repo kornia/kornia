@@ -6,7 +6,7 @@ from kornia.sensors.camera.projection_model import Z1Projection
 from kornia.testing import BaseTester
 
 
-class TestZ1Projection(BaseTester):
+class TestProjection(BaseTester):
     @pytest.mark.skip(reason="Unnecessary test")
     def test_smoke(self, device, dtype):
         pass
