@@ -21,6 +21,10 @@ Distortion
 .. autofunction:: undistort_points_affine
 .. autofunction:: dx_distort_points_affine
 
+.. autofunction:: distort_points_kannala_brandt
+.. autofunction:: undistort_points_kannala_brandt
+.. autofunction:: dx_distort_points_kannala_brandt
+
 .. toctree::
    :maxdepth: 2
 
