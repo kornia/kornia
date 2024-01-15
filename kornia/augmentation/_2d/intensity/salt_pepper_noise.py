@@ -8,7 +8,7 @@ from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK
 
 
-class SaltAndPepperNoise(IntensityAugmentationBase2D):
+class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
     """
     Apply salt-and-pepper noise to the input image.
 
@@ -34,7 +34,7 @@ class SaltAndPepperNoise(IntensityAugmentationBase2D):
         range of the salt vs. pepper ratio.
 
     Example:
-        >>> transform = SaltAndPepperNoise(amount=(0.02, 0.1), salt_vs_pepper=(0.3, 0.7), p=0.8)
+        >>> transform = RandomSaltAndPepperNoise(amount=(0.02, 0.1), salt_vs_pepper=(0.3, 0.7), p=1.0)
         >>> noisy_image = transform(input_image)
     """
 
