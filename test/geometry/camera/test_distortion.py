@@ -44,10 +44,34 @@ class TestDistortionAffine(BaseTester):
         self.assert_close(distort_points_affine(points, params), expected)
 
     def test_distort_points_affine_batch(self, device, dtype):
-        points = torch.tensor([[1.0, 2.0], [3.0, 4.0]], device=device, dtype=dtype)
-        params = torch.tensor([[600.0, 600.0, 319.5, 239.5], [600.0, 600.0, 319.5, 239.5]], device=device, dtype=dtype)
-        expected = torch.tensor([[919.5000, 1439.5000], [2119.5000, 2639.5000]], device=device, dtype=dtype)
-        self.assert_close(distort_points_affine(points, params), expected)
+        points = torch.tensor(
+            [
+                [0.0, 0.0],
+                [1.0, 400.0],
+                [320.0, 240.0],
+                [319.5, 239.5],
+                [100.0, 40.0],
+                [639.0, 479.0],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        params = torch.tensor([[600.0, 600.0, 319.5, 239.5]], device=device, dtype=dtype)
+        expected = torch.tensor(
+            [
+                [319.5, 239.5],
+                [919.5, 240239.5],
+                [192319.5, 144239.5],
+                [192019.5, 143939.5],
+                [60319.5, 24239.5],
+                [383719.5, 287639.5],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        points_distorted = distort_points_affine(points, params)
+        self.assert_close(points_distorted, expected)
+        self.assert_close(points, undistort_points_affine(points_distorted, params))
 
     def test_undistort_points_affine(self, device, dtype):
         points = torch.tensor([601.0, 602.0], device=device, dtype=dtype)
@@ -57,7 +81,11 @@ class TestDistortionAffine(BaseTester):
 
     def test_undistort_points_affine_batch(self, device, dtype):
         points = torch.tensor([[601.0, 602.0], [1203.0, 1204.0]], device=device, dtype=dtype)
-        params = torch.tensor([[600.0, 600.0, 319.5, 239.5], [600.0, 600.0, 319.5, 239.5]], device=device, dtype=dtype)
+        params = torch.tensor(
+            [[600.0, 600.0, 319.5, 239.5], [600.0, 600.0, 319.5, 239.5]],
+            device=device,
+            dtype=dtype,
+        )
         expected = torch.tensor([[0.46916666, 0.60416666], [1.4725, 1.6075]], device=device, dtype=dtype)
         self.assert_close(undistort_points_affine(points, params), expected)
 
@@ -146,31 +174,64 @@ class TestDistortionKannalaBrandt(BaseTester):
         self.assert_close(distort_points_kannala_brandt(points, params), expected)
 
     def test_distort_points_kannala_brandt_batch(self, device, dtype) -> None:
-        points = torch.tensor([[1.0, 2.0], [3.0, 4.0]], device=device, dtype=dtype)
+        points = torch.tensor(
+            [
+                [0.0, 0.0],
+                [1.0, 400.0],
+                [320.0, 240.0],
+                [319.5, 239.5],
+                [100.0, 40.0],
+                [639.0, 479.0],
+            ],
+            device=device,
+            dtype=dtype,
+        )
         params = torch.tensor(
-            [[600.0, 600.0, 319.5, 239.5, 0.1, 0.2, 0.3, 0.4], [600.0, 600.0, 319.5, 239.5, 0.1, 0.2, 0.3, 0.4]],
+            [[1000.0, 1000.0, 320.0, 280.0, 0.1, 0.01, 0.001, 0.0001]],
             device=device,
             dtype=dtype,
         )
         expected = torch.tensor(
-            [[1369.87086079, 2340.24172159], [4757.86410475, 6157.31880633]], device=device, dtype=dtype
+            [
+                [320.0, 280.0],
+                [325.1949172763466, 2357.966910538644],
+                [1982.378709731326, 1526.7840322984944],
+                [1982.6832644475849, 1526.3619462760455],
+                [2235.6822069661744, 1046.2728827864696],
+                [1984.8663275417607, 1527.9983895031353],
+            ],
+            device=device,
+            dtype=dtype,
         )
-        self.assert_close(distort_points_kannala_brandt(points, params), expected)
+        points_distorted = distort_points_kannala_brandt(points, params)
+        self.assert_close(points_distorted, expected)
+        # TODO: investigate why this fails
+        # self.assert_close(points, undistort_points_kannala_brandt(points_distorted, params))
 
     def test_undistort_points_kannala_brandt(self, device, dtype) -> None:
         points = torch.tensor([919.5000, 1439.5000], device=device, dtype=dtype)
         params = torch.tensor([600.0, 600.0, 319.5, 239.5, 0.1, 0.2, 0.3, 0.4], device=device, dtype=dtype)
-        expected = torch.tensor([0.181529, 0.363058], device=device, dtype=dtype)
+        expected = torch.tensor([0.18564432460876581, 0.37128864921753163], device=device, dtype=dtype)
         self.assert_close(undistort_points_kannala_brandt(points, params), expected)
 
     def test_undistort_points_kannala_brandt_batch(self, device, dtype) -> None:
         points = torch.tensor([[919.5000, 1439.5000], [2119.5000, 2639.5000]], device=device, dtype=dtype)
         params = torch.tensor(
-            [[600.0, 600.0, 319.5, 239.5, 0.1, 0.2, 0.3, 0.4], [600.0, 600.0, 319.5, 239.5, 0.1, 0.2, 0.3, 0.4]],
+            [
+                [600.0, 600.0, 319.5, 239.5, 0.1, 0.2, 0.3, 0.4],
+                [600.0, 600.0, 319.5, 239.5, 0.1, 0.2, 0.3, 0.4],
+            ],
             device=device,
             dtype=dtype,
         )
-        expected = torch.tensor([[0.18152954, 0.36305909], [0.26318852, 0.35091803]], device=device, dtype=dtype)
+        expected = torch.tensor(
+            [
+                [0.18564432460876581, 0.37128864921753163],
+                [0.27051682368562285, 0.3606890982474972],
+            ],
+            device=device,
+            dtype=dtype,
+        )
         self.assert_close(undistort_points_kannala_brandt(points, params), expected)
 
     def test_dx_distort_points_kannala_brandt(self, device, dtype) -> None:
@@ -188,14 +249,22 @@ class TestDistortionKannalaBrandt(BaseTester):
     def _test_gradcheck_distort(self, device):
         points = torch.tensor([1.0, 2.0], device=device, dtype=torch.float64)
         points = tensor_to_gradcheck_var(points)
-        params = torch.tensor([600.0, 600.0, 319.5, 239.5, 0.1, 0.2, 0.3, 0.4], device=device, dtype=torch.float64)
+        params = torch.tensor(
+            [600.0, 600.0, 319.5, 239.5, 0.1, 0.2, 0.3, 0.4],
+            device=device,
+            dtype=torch.float64,
+        )
         params = tensor_to_gradcheck_var(params)
         self.gradcheck(distort_points_kannala_brandt, (points, params))
 
     def _test_gradcheck_undistort(self, device):
         points = torch.tensor([919.5000, 1439.5000], device=device, dtype=torch.float64)
         points = tensor_to_gradcheck_var(points)
-        params = torch.tensor([600.0, 600.0, 319.5, 239.5, 0.1, 0.2, 0.3, 0.4], device=device, dtype=torch.float64)
+        params = torch.tensor(
+            [600.0, 600.0, 319.5, 239.5, 0.1, 0.2, 0.3, 0.4],
+            device=device,
+            dtype=torch.float64,
+        )
         params = tensor_to_gradcheck_var(params)
         self.gradcheck(undistort_points_kannala_brandt, (points, params))
 

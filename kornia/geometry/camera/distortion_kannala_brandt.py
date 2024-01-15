@@ -143,7 +143,7 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: Tensor, params: 
         # if th.abs() < 1e-8:
         #     break
 
-        if iters > 20:
+        if iters >= 20:
             break
 
     radius_undistorted = th.tan()
@@ -152,15 +152,15 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: Tensor, params: 
         radius_undistorted[..., None] < 0.0,
         ops.stack(
             [
-                -radius_undistorted * un / rth,
-                -radius_undistorted * vn / rth,
+                -radius_undistorted * un / (rth + 1e-8),
+                -radius_undistorted * vn / (rth + 1e-8),
             ],
             dim=-1,
         ),
         ops.stack(
             [
-                radius_undistorted * un / rth,
-                radius_undistorted * vn / rth,
+                radius_undistorted * un / (rth + 1e-8),
+                radius_undistorted * vn / (rth + 1e-8),
             ],
             dim=-1,
         ),
