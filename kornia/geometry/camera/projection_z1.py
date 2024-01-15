@@ -10,13 +10,12 @@ from kornia.core.check import KORNIA_CHECK_SHAPE
 
 
 def project_points_z1(points_in_camera: Tensor) -> Tensor:
-    """Project one or more points from the camera frame into the canonical z=1 plane through perspective division.
+    r"""Project one or more points from the camera frame into the canonical z=1 plane through perspective division.
 
-    Project one or more 3-points from the camera frame into the canonical
-    z=1 plane through perspective division. For N points, a 3xN matrix must be
-    provided where each column is a point to be transformed. The result will
-    be a 2xN matrix. N may be dynamically sized, but the input columns must be
-    statically determined as 3 at compile time.
+    .. math::
+
+        \begin{bmatrix} u \\ v \\ w \end{bmatrix} =
+        \begin{bmatrix} x \\ y \\ z \end{bmatrix} / z
 
     Args:
         points_in_camera: Tensor representing the points to project with shape (..., 3).
@@ -34,7 +33,11 @@ def project_points_z1(points_in_camera: Tensor) -> Tensor:
 
 
 def unproject_points_z1(points_in_cam_canonical: Tensor, extension: Optional[Tensor] = None) -> Tensor:
-    """Unproject one or more points from the canonical z=1 plane into the camera frame.
+    r"""Unproject one or more points from the canonical z=1 plane into the camera frame.
+
+    .. math::
+        \begin{bmatrix} x \\ y \\ z \end{bmatrix} =
+        \begin{bmatrix} u \\ v \end{bmatrix} \cdot w
 
     Args:
         points_in_cam_canonical: Tensor representing the points to unproject with shape (..., 2).
@@ -60,9 +63,16 @@ def unproject_points_z1(points_in_cam_canonical: Tensor, extension: Optional[Ten
 
 
 def dx_project_points_z1(points_in_camera: Tensor) -> Tensor:
-    """Compute the derivative of the x projection with respect to the x coordinate.
+    r"""Compute the derivative of the x projection with respect to the x coordinate.
 
     Returns point derivative of inverse depth point projection with respect to the x coordinate.
+
+    .. math::
+        \frac{\partial \pi}{\partial x} =
+        \begin{bmatrix}
+            \frac{1}{z} & 0 & -\frac{x}{z^2} \\
+            0 & \frac{1}{z} & -\frac{y}{z^2}
+        \end{bmatrix}
 
     Args:
         points_in_camera: Tensor representing the points to project with shape (..., 3).

@@ -6,7 +6,13 @@ from kornia.core.check import KORNIA_CHECK_SHAPE
 
 
 def distort_points_affine(projected_points_in_camera_z1_plane: Tensor, params: Tensor) -> Tensor:
-    """Distort one or more points from the canonical z=1 plane into the camera frame.
+    r"""Distort one or more points from the canonical z=1 plane into the camera frame.
+
+    .. math::
+        \begin{bmatrix} u \\ v \end{bmatrix} =
+        \begin{bmatrix} f_x & 0 \\ 0 & f_y \end{bmatrix}
+        \begin{bmatrix} x \\ y \end{bmatrix} +
+        \begin{bmatrix} c_x \\ c_y \end{bmatrix}
 
     Args:
         projected_points_in_camera_z1_plane: Tensor representing the points to distort with shape (..., 2).
@@ -19,7 +25,7 @@ def distort_points_affine(projected_points_in_camera_z1_plane: Tensor, params: T
         >>> points = torch.tensor([1., 2.])
         >>> params = torch.tensor([600., 600., 319.5, 239.5])
         >>> distort_points_affine(points, params)
-        tensor([601., 602.])
+        tensor([ 919.5000, 1439.5000])
     """
     KORNIA_CHECK_SHAPE(projected_points_in_camera_z1_plane, ["*", "2"])
     KORNIA_CHECK_SHAPE(params, ["*", "4"])
@@ -37,7 +43,13 @@ def distort_points_affine(projected_points_in_camera_z1_plane: Tensor, params: T
 
 
 def undistort_points_affine(distorted_points_in_camera: Tensor, params: Tensor) -> Tensor:
-    """Undistort one or more points from the camera frame into the canonical z=1 plane.
+    r"""Undistort one or more points from the camera frame into the canonical z=1 plane.
+
+    .. math::
+        \begin{bmatrix} x \\ y \end{bmatrix} =
+        \begin{bmatrix} u \\ v \end{bmatrix} -
+        \begin{bmatrix} c_x \\ c_y \end{bmatrix}
+        \begin{bmatrix} f_x & 0 \\ 0 & f_y \end{bmatrix}^{-1}
 
     Args:
         distorted_points_in_camera: Tensor representing the points to undistort with shape (..., 2).
@@ -50,7 +62,7 @@ def undistort_points_affine(distorted_points_in_camera: Tensor, params: Tensor) 
         >>> points = torch.tensor([1., 2.])
         >>> params = torch.tensor([600., 600., 319.5, 239.5])
         >>> undistort_points_affine(points, params)
-        tensor([0.9983, 1.9967])
+        tensor([-0.5308, -0.3958])
     """
     KORNIA_CHECK_SHAPE(distorted_points_in_camera, ["*", "2"])
     KORNIA_CHECK_SHAPE(params, ["*", "4"])
@@ -68,7 +80,11 @@ def undistort_points_affine(distorted_points_in_camera: Tensor, params: Tensor) 
 
 
 def dx_distort_points_affine(projected_points_in_camera_z1_plane: Tensor, params: Tensor) -> Tensor:
-    """Compute the derivative of the x distortion with respect to the x coordinate.
+    r"""Compute the derivative of the x distortion with respect to the x coordinate.
+
+    .. math::
+        \frac{\partial u}{\partial x} =
+        \begin{bmatrix} f_x & 0 \\ 0 & f_y \end{bmatrix}
 
     Args:
         projected_points_in_camera_z1_plane: Tensor representing the points to distort with shape (..., 2).
@@ -81,7 +97,8 @@ def dx_distort_points_affine(projected_points_in_camera_z1_plane: Tensor, params
         >>> points = torch.tensor([1., 2.])
         >>> params = torch.tensor([600., 600., 319.5, 239.5])
         >>> dx_distort_points_affine(points, params)
-        tensor([600.,   0.])
+        tensor([[600.,   0.],
+                [  0., 600.]])
     """
     KORNIA_CHECK_SHAPE(projected_points_in_camera_z1_plane, ["*", "2"])
     KORNIA_CHECK_SHAPE(params, ["*", "4"])

@@ -6,8 +6,13 @@ from kornia.core.check import KORNIA_CHECK_SHAPE
 
 
 def project_points_orthographic(points_in_camera: Tensor) -> Tensor:
-    """Project one or more points from the camera frame into the canonical z=1 plane through orthographic
+    r"""Project one or more points from the camera frame into the canonical z=1 plane through orthographic
     projection.
+
+    .. math::
+        \begin{bmatrix} u \\ v \end{bmatrix} =
+        \begin{bmatrix} x \\ y \\ z \end{bmatrix}
+
 
     Args:
         points_in_camera: Tensor representing the points to project.
@@ -25,7 +30,11 @@ def project_points_orthographic(points_in_camera: Tensor) -> Tensor:
 
 
 def unproject_points_orthographic(points_in_camera: Tensor, extension: Tensor) -> Tensor:
-    """Unproject one or more points from the canonical z=1 plane into the camera frame.
+    r"""Unproject one or more points from the canonical z=1 plane into the camera frame.
+
+    .. math::
+        \begin{bmatrix} x \\ y \\ z \end{bmatrix} =
+        \begin{bmatrix} u \\ v \\ w \end{bmatrix}
 
     Args:
         points_in_camera: Tensor representing the points to unproject with shape (..., 2).
@@ -49,7 +58,10 @@ def unproject_points_orthographic(points_in_camera: Tensor, extension: Tensor) -
 
 
 def dx_project_points_orthographic(points_in_camera: Tensor) -> Tensor:
-    """Compute the derivative of the x projection with respect to the x coordinate.
+    r"""Compute the derivative of the x projection with respect to the x coordinate.
+
+    .. math::
+        \frac{\partial u}{\partial x} = 1
 
     Args:
         points_in_camera: Tensor representing the points to project.
