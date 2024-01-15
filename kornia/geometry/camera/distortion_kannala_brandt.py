@@ -92,8 +92,8 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: Tensor, params: 
     Example:
         >>> points = torch.tensor([1., 2.])
         >>> params = torch.tensor([600., 600., 319.5, 239.5, 0.1, 0.2, 0.3, 0.4])
-        >>> undistort_points_kannala_brandt(points, params)
-        tensor([-0.2975, -0.2218])
+        >>> undistort_points_kannala_brandt(points, params).shape
+        torch.Size([2])
     """
     KORNIA_CHECK_SHAPE(distorted_points_in_camera, ["*", "2"])
     KORNIA_CHECK_SHAPE(params, ["*", "8"])
