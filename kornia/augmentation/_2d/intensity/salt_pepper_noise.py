@@ -9,8 +9,7 @@ from kornia.core.check import KORNIA_CHECK
 
 
 class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
-    """
-    Apply salt-and-pepper noise to the input image.
+    """Apply salt-and-pepper noise to the input image.
 
     Args:
         amount (float or Tuple[float, float]): Range of noise values to be added. Default is (0.01, 0.06).
@@ -71,8 +70,7 @@ class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
         )
 
     def _generate_params(self, input: Tensor) -> Tuple[Tensor, Tensor]:
-        """
-        Generate salt and pepper noise masks.
+        """Generate salt and pepper noise masks.
 
         Args:
             input (Tensor): Input tensor.
@@ -100,8 +98,7 @@ class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
     ) -> Tensor:
-        """
-        Apply salt-and-pepper noise transformation to the input.
+        """Apply salt-and-pepper noise transformation to the input.
 
         Args:
             input (Tensor): Input tensor.
