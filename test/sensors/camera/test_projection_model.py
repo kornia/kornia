@@ -33,19 +33,32 @@ class TestZ1Projection(BaseTester):
 
     def test_project(self, device, dtype):
         projection = Z1Projection()
+        # batched points
         points = torch.tensor(
             [[0.0, 0.0, 1.0], [1.0, 1.0, 1.0], [6.0, 6.0, 2.0], [9.0, 9.0, 3.0]], device=device, dtype=dtype
         )
         expected = torch.tensor([[0.0, 0.0], [1.0, 1.0], [3.0, 3.0], [3.0, 3.0]], device=device, dtype=dtype)
         self.assert_close(projection.project(Vector3(points)).data, expected)
+        self.assert_close(projection.project(points), expected)
+        # unbatched points
+        points = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype)
+        expected = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
+        self.assert_close(projection.project(Vector3(points)).data, expected)
+        self.assert_close(projection.project(points), expected)
 
     def test_unproject(self, device, dtype):
         projection = Z1Projection()
+        # batched points
+        depth = torch.tensor([1.0, 1.0, 2.0, 3.0], device=device, dtype=dtype)
         points = torch.tensor([[0.0, 0.0], [1.0, 1.0], [3.0, 3.0], [3.0, 3.0]], device=device, dtype=dtype)
         expected = torch.tensor(
             [[0.0, 0.0, 1.0], [1.0, 1.0, 1.0], [6.0, 6.0, 2.0], [9.0, 9.0, 3.0]], device=device, dtype=dtype
         )
-        self.assert_close(
-            projection.unproject(Vector2(points), torch.tensor([1.0, 1.0, 2.0, 3.0], device=device, dtype=dtype)).data,
-            expected,
-        )
+        self.assert_close(projection.unproject(Vector2(points), depth).data, expected)
+        self.assert_close(projection.unproject(points, depth), expected)
+        # unbatched points
+        depth = torch.tensor(1.0, device=device, dtype=dtype)
+        points = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
+        expected = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype)
+        self.assert_close(projection.unproject(Vector2(points), depth).data, expected)
+        self.assert_close(projection.unproject(points, depth), expected)

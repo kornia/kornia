@@ -33,18 +33,32 @@ class TestAffineTransform(BaseTester):
 
     def test_distort(self, device, dtype):
         distortion = AffineTransform()
-        points = torch.tensor([[1.0, 1.0], [1.0, 5.0], [2.0, 4.0], [3.0, 9.0]], device=device, dtype=dtype)
         params = torch.tensor([[328.0, 328.0, 150.0, 150.0]], device=device, dtype=dtype)
+        # batched points
+        points = torch.tensor([[1.0, 1.0], [1.0, 5.0], [2.0, 4.0], [3.0, 9.0]], device=device, dtype=dtype)
         expected = torch.tensor(
             [[478.0, 478.0], [478.0, 1790.0], [806.0, 1462.0], [1134.0, 3102.0]], device=device, dtype=dtype
         )
         self.assert_close(distortion.distort(params, Vector2(points)).data, expected)
+        self.assert_close(distortion.distort(params, points), expected)
+        # unbatched points
+        points = torch.tensor([1.0, 1.0], device=device, dtype=dtype)
+        expected = torch.tensor([478.0, 478.0], device=device, dtype=dtype)
+        self.assert_close(distortion.distort(params, Vector2(points)).data, expected)
+        self.assert_close(distortion.distort(params, points), expected)
 
     def test_undistort(self, device, dtype):
         distortion = AffineTransform()
+        params = torch.tensor([[328.0, 328.0, 150.0, 150.0]], device=device, dtype=dtype)
+        # batched points
         points = torch.tensor(
             [[478.0, 478.0], [478.0, 1790.0], [806.0, 1462.0], [1134.0, 3102.0]], device=device, dtype=dtype
         )
-        params = torch.tensor([[328.0, 328.0, 150.0, 150.0]], device=device, dtype=dtype)
         expected = torch.tensor([[1.0, 1.0], [1.0, 5.0], [2.0, 4.0], [3.0, 9.0]], device=device, dtype=dtype)
         self.assert_close(distortion.undistort(params, Vector2(points)).data, expected)
+        self.assert_close(distortion.undistort(params, points), expected)
+        # unbatched points
+        points = torch.tensor([478.0, 478.0], device=device, dtype=dtype)
+        expected = torch.tensor([1.0, 1.0], device=device, dtype=dtype)
+        self.assert_close(distortion.undistort(params, Vector2(points)).data, expected)
+        self.assert_close(distortion.undistort(params, points), expected)

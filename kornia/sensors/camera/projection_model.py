@@ -1,19 +1,19 @@
 from __future__ import annotations
 
-from kornia.core import Tensor, diag
+from kornia.core import Tensor, diag, stack
 from kornia.geometry.vector import Vector2, Vector3
 
 
 class Z1Projection:
-    def project(self, points: Vector3) -> Vector2:
-        """Project one or more Vector3 from the camera frame into the canonical z=1 plane through perspective
-        division.
+    def project(self, points: Vector3 | Tensor) -> Vector2 | Tensor:
+        """Project one or more Vector3 or Tensor from the camera frame into the canonical z=1 plane through
+        perspective division.
 
         Args:
-            points: Vector3 representing the points to project.
+            points: Vector3 or Tensor representing the points to project.
 
         Returns:
-            Vector2 representing the projected points.
+            Vector2 or Tensor representing the projected points.
 
         Example:
             >>> points = Vector3.from_coords(1., 2., 3.)
@@ -21,12 +21,23 @@ class Z1Projection:
             x: 0.3333333432674408
             y: 0.6666666865348816
         """
-        xy = points.data[..., :2]
-        z = points.z
+        is_vector = isinstance(points, Vector3)
+        if is_vector:
+            points = points.data
+        elif isinstance(points, Tensor):
+            if len(points.shape) > 2 or points.shape[-1] != 3:
+                raise ValueError(f"Expected points to be of shape (B, 3) or (3,), got {points.shape}")
+        else:
+            raise TypeError(f"Expected points to be Vector3 or Tensor, got {type(points)}")
+        xy = points[..., :2]
+        z = points[..., 2]
         uv = (xy.T @ diag(z).inverse()).T if len(z.shape) else xy.T * 1 / z
-        return Vector2(uv)
+        if is_vector:
+            return Vector2(uv)
+        else:
+            return uv
 
-    def unproject(self, points: Vector2, depth: Tensor | float) -> Vector3:
+    def unproject(self, points: Vector2 | Tensor, depth: Tensor | float) -> Vector3 | Tensor:
         """Unproject one or more Vector2 from the canonical z=1 plane into the camera frame.
 
         Args:
@@ -43,14 +54,31 @@ class Z1Projection:
             y: tensor([6.])
             z: tensor([3.])
         """
+        is_vector = isinstance(points, Vector2)
+        if is_vector:
+            points = points.data
+        elif isinstance(points, Tensor):
+            if len(points.shape) > 2 or points.shape[-1] != 2:
+                raise ValueError(f"Expected points to be of shape (B, 2) or (2,), got {points.shape}")
+        else:
+            raise TypeError(f"Expected points to be Vector2 or Tensor, got {type(points)}")
         if isinstance(depth, (float, int)):
             depth = Tensor([depth])
-        return Vector3.from_coords(points.x * depth, points.y * depth, depth)
+        elif isinstance(depth, Tensor):
+            if len(depth.shape) > 1:
+                raise ValueError(f"Expected depth to be of shape (B,), got {depth.shape}")
+        else:
+            raise TypeError(f"Expected depth to be Tensor or float, got {type(depth)}")
+        xyz = stack([points[..., 0] * depth, points[..., 1] * depth, depth], -1)
+        if is_vector:
+            return Vector3(xyz)
+        else:
+            return xyz
 
 
 class OrthographicProjection:
-    def project(self, points: Vector3) -> Vector2:
+    def project(self, points: Vector3 | Tensor) -> Vector2 | Tensor:
         raise NotImplementedError
 
-    def unproject(self, points: Vector2, depth: Tensor) -> Vector3:
+    def unproject(self, points: Vector2 | Tensor, depth: Tensor) -> Vector3 | Tensor:
         raise NotImplementedError

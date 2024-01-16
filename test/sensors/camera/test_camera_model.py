@@ -8,13 +8,19 @@ from kornia.testing import BaseTester
 
 
 class TestPinholeCamera(BaseTester):
-    def _make_rand_data(self, batch_size, device, dtype):
-        params = torch.rand(batch_size, 4).to(dtype).to(device)
-        image_sizes = torch.randint(1, 100, (batch_size, 2)).to(dtype).to(device)
-        return params, ImageSize(image_sizes[:, 0], image_sizes[:, 1])
+    def _make_rand_data(self, device, dtype):
+        image_sizes = torch.randint(1, 100, (2,)).to(dtype).to(device)
+        params = (
+            torch.rand(
+                4,
+            )
+            .to(dtype)
+            .to(device)
+        )
+        return params, ImageSize(image_sizes[0], image_sizes[1])
 
     def test_smoke(self, device, dtype):
-        params, image_size = self._make_rand_data(1, device, dtype)
+        params, image_size = self._make_rand_data(device, dtype)
         cam = CameraModel(image_size, CameraModelType.PINHOLE, params)
         assert isinstance(cam, CameraModel)
         self.assert_close(cam.params, params)
@@ -50,42 +56,50 @@ class TestPinholeCamera(BaseTester):
     def test_module(self, device, dtype):
         pass
 
-    @pytest.mark.parametrize("batch_size", [1, 2, 5])
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 5])
     def test_project_unproject(self, device, dtype, batch_size):
-        params, image_size = self._make_rand_data(batch_size, device, dtype)
+        params, image_size = self._make_rand_data(device, dtype)
         cam = CameraModel(image_size, CameraModelType.PINHOLE, params)
-        points = torch.rand((batch_size, 3), device=device, dtype=dtype)
-        projected = cam.project(Vector3(points))
-        unprojected = cam.unproject(projected, points[..., 2])
-        self.assert_close(points, unprojected.data)
+        if batch_size is None:
+            points = torch.rand((3,), device=device, dtype=dtype)
+        else:
+            points = torch.rand((batch_size, 3), device=device, dtype=dtype)
+        points_vector = Vector3(points)
+        projected_points = cam.project(points)
+        projected_points_vector = cam.project(points_vector)
+        unprojected_points = cam.unproject(projected_points, points[..., 2])
+        unprojected_points_vector = cam.unproject(projected_points_vector, points_vector.z)
+        self.assert_close(points, unprojected_points)
+        self.assert_close(points, unprojected_points_vector.data)
 
-    @pytest.mark.parametrize("batch_size", [1, 2, 5])
-    def test_matrix(self, device, dtype, batch_size):
-        params, image_size = self._make_rand_data(batch_size, device, dtype)
+    def test_matrix(self, device, dtype):
+        params, image_size = self._make_rand_data(device, dtype)
         cam = CameraModel(image_size, CameraModelType.PINHOLE, params)
-        z = torch.zeros(batch_size, dtype=dtype, device=device)
-        o = torch.ones(batch_size, dtype=dtype, device=device)
-        K = torch.stack([params[:, 0], z, params[:, 2], z, params[:, 1], params[:, 3], z, z, o], dim=1).reshape(
-            batch_size, 3, 3
+        K = torch.tensor(
+            [
+                [params[0], 0, params[2]],
+                [0, params[1], params[3]],
+                [0, 0, 1],
+            ],
+            device=device,
+            dtype=dtype,
         )
         self.assert_close(cam.matrix(), K)
 
-    @pytest.mark.parametrize("batch_size", [1, 2, 5])
-    def test_properties(self, device, dtype, batch_size):
-        params, image_size = self._make_rand_data(batch_size, device, dtype)
+    def test_properties(self, device, dtype):
+        params, image_size = self._make_rand_data(device, dtype)
         cam = CameraModel(image_size, CameraModelType.PINHOLE, params)
-        self.assert_close(cam.fx, params[:, 0])
-        self.assert_close(cam.fy, params[:, 1])
-        self.assert_close(cam.cx, params[:, 2])
-        self.assert_close(cam.cy, params[:, 3])
+        self.assert_close(cam.fx, params[0])
+        self.assert_close(cam.fy, params[1])
+        self.assert_close(cam.cx, params[2])
+        self.assert_close(cam.cy, params[3])
         self.assert_close(cam.width, image_size.width)
         self.assert_close(cam.height, image_size.height)
 
-    @pytest.mark.parametrize("batch_size", [1, 2, 5])
-    def test_scale(self, device, dtype, batch_size):
-        params, image_size = self._make_rand_data(batch_size, device, dtype)
+    def test_scale(self, device, dtype):
+        params, image_size = self._make_rand_data(device, dtype)
         cam = CameraModel(image_size, CameraModelType.PINHOLE, params)
-        scale = torch.rand(batch_size, device=device, dtype=dtype)
+        scale = torch.rand(1, device=device, dtype=dtype).squeeze()
         scaled_cam = cam.scale(scale)
         self.assert_close(cam.fx * scale, scaled_cam.fx)
         self.assert_close(cam.fy * scale, scaled_cam.fy)
