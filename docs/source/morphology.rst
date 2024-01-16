@@ -10,6 +10,7 @@ kornia.morphology
 .. autofunction:: gradient
 .. autofunction:: top_hat
 .. autofunction:: bottom_hat
+.. autofunction:: skeletonize
 
 Interactive Demo
 ~~~~~~~~~~~~~~~~
