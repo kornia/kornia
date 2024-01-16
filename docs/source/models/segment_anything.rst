@@ -57,8 +57,8 @@ About the :code:`VisualPrompter`:
    augmentations. Where we use the :class:`kornia.geometry.augmentation.AugmentationSequential` to handle with the different
    data formats (keypoints, boxes, masks, image).
 
-#. When you use :code:`prompter.set_image(...)`, the prompter will preprocess this image, and then pass it to the encoder,
-   and cache the embeddings to query it after.
+#. When you use :code:`prompter.set_image(...)`, the prompter will preprocess this image, then pass it to the encoder,
+   and cache the embeddings to query it after. Note that the image should be scaled within the range [0,1].
 
     * The preprocess steps are: 1) Resize the image to have its longer side the same size as :code:`image_encoder` image size
       input. 2) Cache the information of this transformation to apply into the prompts. 3) normalize the image based on the
