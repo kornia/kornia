@@ -6,6 +6,10 @@ from kornia.geometry.camera.distortion_affine import (
     dx_distort_points_affine,
     undistort_points_affine,
 )
+from kornia.geometry.camera.distortion_brown_conrady import (
+    distort_points_brown_conrady,
+    undistort_points_brown_conrady,
+)
 from kornia.geometry.camera.distortion_kannala_brandt import (
     distort_points_kannala_brandt,
     dx_distort_points_kannala_brandt,
@@ -237,7 +241,12 @@ class TestDistortionKannalaBrandt(BaseTester):
         points = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
         params = torch.tensor([600.0, 600.0, 319.5, 239.5, 0.1, 0.2, 0.3, 0.4], device=device, dtype=dtype)
         expected = torch.tensor(
-            [[1191.5316162109375, 282.3212890625], [282.3212890625, 1615.0135498046875]], device=device, dtype=dtype
+            [
+                [1191.5316162109375, 282.3212890625],
+                [282.3212890625, 1615.0135498046875],
+            ],
+            device=device,
+            dtype=dtype,
         )
         self.assert_close(dx_distort_points_kannala_brandt(points, params), expected)
 
@@ -287,6 +296,137 @@ class TestDistortionKannalaBrandt(BaseTester):
         op_script = torch.jit.script(undistort_points_kannala_brandt)
         actual = op_script(points, params)
         expected = undistort_points_kannala_brandt(points, params)
+        self.assert_close(actual, expected)
+
+    def test_jit(self, device, dtype) -> None:
+        self._test_jit_distort(device, dtype)
+        self._test_jit_undistort(device, dtype)
+
+    @pytest.mark.skip(reason="Unnecessary test")
+    def test_module(self, device, dtype) -> None:
+        pass
+
+
+class TestDistortionBrownConrady(BaseTester):
+    params = [
+        1000.0,
+        1000.0,
+        320.0,
+        280.0,
+        0.726405,
+        -0.0148413,
+        1.38447e-05,
+        0.000419742,
+        -0.00514224,
+        1.06774,
+        0.128429,
+        -0.019901,
+    ]
+
+    def test_smoke(self, device, dtype) -> None:
+        points = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
+        params = torch.tensor(self.params, device=device, dtype=dtype)
+        assert distort_points_brown_conrady(points, params) is not None
+
+    def _test_cardinality_distort_batch(self, device, dtype, batch_size):
+        batch_tuple = (batch_size,) if batch_size is not None else ()
+        points = torch.rand(batch_tuple + (2,), device=device, dtype=dtype)
+        params = torch.rand(batch_tuple + (12,), device=device, dtype=dtype)
+        assert distort_points_brown_conrady(points, params).shape == batch_tuple + (2,)
+
+    def _test_cardinality_undistort_batch(self, device, dtype, batch_size):
+        batch_tuple = (batch_size,) if batch_size is not None else ()
+        points = torch.rand(batch_tuple + (2,), device=device, dtype=dtype)
+        params = torch.rand(batch_tuple + (12,), device=device, dtype=dtype)
+        assert undistort_points_brown_conrady(points, params).shape == batch_tuple + (2,)
+
+    @pytest.mark.parametrize("batch_size", [None, 1, 2, 3])
+    def test_cardinality(self, device, dtype, batch_size):
+        self._test_cardinality_distort_batch(device, dtype, batch_size)
+        self._test_cardinality_undistort_batch(device, dtype, batch_size)
+
+    def test_distort_points_brown_conrady(self, device, dtype) -> None:
+        points = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
+        params = torch.tensor(self.params, device=device, dtype=dtype)
+        expected = torch.tensor([835.3576049804688, 1306.5870361328125], device=device, dtype=dtype)
+        self.assert_close(distort_points_brown_conrady(points, params), expected)
+
+    def test_distort_points_brown_conrady_batch(self, device, dtype) -> None:
+        points = torch.tensor(
+            [
+                [0.0, 0.0],
+                [1.0, 400.0],
+                [320.0, 240.0],
+                [319.5, 239.5],
+                [100.0, 40.0],
+                [639.0, 479.0],
+            ],
+            device=device,
+            dtype=dtype,
+        )
+        params = torch.tensor(self.params, device=device, dtype=dtype)
+        # expected = torch.tensor(
+        #    [
+        #        [319.5, 239.5],
+        #        [919.5, 240239.5],
+        #        [192319.5, 144239.5],
+        #        [192019.5, 143939.5],
+        #        [60319.5, 24239.5],
+        #        [383719.5, 287639.5],
+        #    ],
+        #    device=device,
+        #    dtype=dtype,
+        # )
+        # self.assert_close(points_distorted, expected)
+        points_distorted = distort_points_brown_conrady(points, params)
+        self.assert_close(points[:2], undistort_points_brown_conrady(points_distorted[:2], params))
+
+    # def test_dx_distort_points_brown_conrady(self, device, dtype) -> None:
+    #    points = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
+    #    params = torch.tensor([600., 600., 319.5, 239.5, 0.1], device=device, dtype=dtype)
+    #    expected = torch.tensor(
+    #        [[1191.5316162109375, 282.3212890625], [282.3212890625, 1615.0135498046875]], device=device, dtype=dtype
+    #    )
+    #    self.assert_close(dx_distort_points_brown_conrady(points, params), expected)
+
+    def test_exception(self, device, dtype) -> None:
+        points = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
+        params = torch.tensor([600.0, 600.0, 319.5], device=device, dtype=dtype)
+        with pytest.raises(TypeError):
+            distort_points_brown_conrady(points, params)
+
+    def _test_gradcheck_distort(self, device):
+        points = torch.tensor([1.0, 2.0], device=device, dtype=torch.float64)
+        points = tensor_to_gradcheck_var(points)
+        params = torch.tensor(self.params, device=device, dtype=torch.float64)
+        params = tensor_to_gradcheck_var(params)
+        self.gradcheck(distort_points_brown_conrady, (points, params))
+
+    def _test_gradcheck_undistort(self, device):
+        points = torch.tensor([1369.8710, 2340.2419], device=device, dtype=torch.float64)
+        points = tensor_to_gradcheck_var(points)
+        params = torch.tensor(self.params, device=device, dtype=torch.float64)
+        params = tensor_to_gradcheck_var(params)
+        self.gradcheck(undistort_points_brown_conrady, (points, params))
+
+    def test_gradcheck(self, device) -> None:
+        self._test_gradcheck_distort(device)
+        self._test_gradcheck_undistort(device)
+
+    def _test_jit_distort(self, device, dtype) -> None:
+        points = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
+        params = torch.tensor(self.params, device=device, dtype=torch.float64)
+        op_script = torch.jit.script(distort_points_brown_conrady)
+        actual = op_script(points, params)
+        expected = distort_points_brown_conrady(points, params)
+        self.assert_close(actual, expected)
+
+    def _test_jit_undistort(self, device, dtype) -> None:
+        points = torch.tensor([1369.8710, 2340.2419], device=device, dtype=dtype)
+        params = torch.tensor(self.params, device=device, dtype=torch.float64)
+        op_script = torch.jit.script(undistort_points_brown_conrady)
+        actual = op_script(points, params)
+        expected = undistort_points_brown_conrady(points, params)
         self.assert_close(actual, expected)
 
     def test_jit(self, device, dtype) -> None:
