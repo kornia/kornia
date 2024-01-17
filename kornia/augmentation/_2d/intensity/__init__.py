@@ -24,6 +24,7 @@ from kornia.augmentation._2d.intensity.posterize import RandomPosterize
 from kornia.augmentation._2d.intensity.random_rain import RandomRain
 from kornia.augmentation._2d.intensity.random_rgb_shift import RandomRGBShift
 from kornia.augmentation._2d.intensity.random_snow import RandomSnow
+from kornia.augmentation._2d.intensity.salt_pepper_noise import RandomSaltAndPepperNoise
 from kornia.augmentation._2d.intensity.saturation import RandomSaturation
 from kornia.augmentation._2d.intensity.sharpness import RandomSharpness
 from kornia.augmentation._2d.intensity.solarize import RandomSolarize
