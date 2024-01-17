@@ -51,6 +51,14 @@ class TestProjectionZ1(BaseTester):
         )
         self.assert_close(project_points_z1(points), expected)
 
+    def test_project_points_z1_invalid(self, device, dtype):
+        # NOTE: this is a corner case where the depth is 0.0 and the point is at infinity
+        #      the projection is not defined and the function returns inf. The second point
+        #      is behind the camera which is not a valid point and the user should handle it.
+        points = torch.tensor([[1.0, 2.0, 0.0], [4.0, 5.0, -1.0]], device=device, dtype=dtype)
+        expected = torch.tensor([[torch.inf, torch.inf], [-4.0, -5.0]], device=device, dtype=dtype)
+        self.assert_close(project_points_z1(points), expected)
+
     def test_unproject_points_z1(self, device, dtype):
         points = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
         expected = torch.tensor([1.0, 2.0, 1.0], device=device, dtype=dtype)
@@ -125,10 +133,6 @@ class TestProjectionZ1(BaseTester):
     def test_jit(self, device, dtype) -> None:
         self._test_jit_project(device, dtype)
         self._test_jit_unproject(device, dtype)
-
-    @pytest.mark.skip(reason="Unnecessary test")
-    def test_module(self, device, dtype) -> None:
-        pass
 
 
 class TestProjectionOrthographic(BaseTester):
@@ -219,7 +223,3 @@ class TestProjectionOrthographic(BaseTester):
     def test_jit(self, device, dtype) -> None:
         self._test_jit_project(device, dtype)
         self._test_jit_unproject(device, dtype)
-
-    @pytest.mark.skip(reason="Unnecessary test")
-    def test_module(self, device, dtype) -> None:
-        pass

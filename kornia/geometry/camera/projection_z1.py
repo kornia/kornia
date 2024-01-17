@@ -17,6 +17,12 @@ def project_points_z1(points_in_camera: Tensor) -> Tensor:
         \begin{bmatrix} u \\ v \\ w \end{bmatrix} =
         \begin{bmatrix} x \\ y \\ z \end{bmatrix} / z
 
+    .. note::
+
+        This function has a precondition that the points are in front of the camera, i.e. z > 0.
+        If this is not the case, the points will be projected to the canonical plane, but the resulting
+        points will be behind the camera and causing numerical issues for z == 0.
+
     Args:
         points_in_camera: Tensor representing the points to project with shape (..., 3).
 
@@ -29,7 +35,7 @@ def project_points_z1(points_in_camera: Tensor) -> Tensor:
         tensor([0.3333, 0.6667])
     """
     KORNIA_CHECK_SHAPE(points_in_camera, ["*", "3"])
-    return points_in_camera[..., :2] / (points_in_camera[..., 2:3] + 1e-08)
+    return points_in_camera[..., :2] / points_in_camera[..., 2:3]
 
 
 def unproject_points_z1(points_in_cam_canonical: Tensor, extension: Optional[Tensor] = None) -> Tensor:
@@ -41,7 +47,7 @@ def unproject_points_z1(points_in_cam_canonical: Tensor, extension: Optional[Ten
 
     Args:
         points_in_cam_canonical: Tensor representing the points to unproject with shape (..., 2).
-        extension: Tensor representing the extension of the points to unproject with shape (..., 1).
+        extension: Tensor representing the extension (depth) of the points to unproject with shape (..., 1).
 
     Returns:
         Tensor representing the unprojected points with shape (..., 3).
@@ -55,7 +61,11 @@ def unproject_points_z1(points_in_cam_canonical: Tensor, extension: Optional[Ten
     KORNIA_CHECK_SHAPE(points_in_cam_canonical, ["*", "2"])
 
     if extension is None:
-        extension = ops.ones_like(points_in_cam_canonical[..., :1])
+        extension = ops.ones(
+            points_in_cam_canonical.shape[:-1] + (1,),
+            device=points_in_cam_canonical.device,
+            dtype=points_in_cam_canonical.dtype,
+        )  # (..., 1)
     elif extension.shape[0] > 1:
         extension = extension[..., None]  # (..., 1)
 
@@ -73,6 +83,11 @@ def dx_project_points_z1(points_in_camera: Tensor) -> Tensor:
             \frac{1}{z} & 0 & -\frac{x}{z^2} \\
             0 & \frac{1}{z} & -\frac{y}{z^2}
         \end{bmatrix}
+
+    .. note::
+        This function has a precondition that the points are in front of the camera, i.e. z > 0.
+        If this is not the case, the points will be projected to the canonical plane, but the resulting
+        points will be behind the camera and causing numerical issues for z == 0.
 
     Args:
         points_in_camera: Tensor representing the points to project with shape (..., 3).
@@ -92,7 +107,7 @@ def dx_project_points_z1(points_in_camera: Tensor) -> Tensor:
     y = points_in_camera[..., 1]
     z = points_in_camera[..., 2]
 
-    z_inv = 1.0 / (z + 1e-08)
+    z_inv = 1.0 / z
     z_sq = z_inv * z_inv
     zeros = ops.zeros_like(z_inv)
     return ops.stack(

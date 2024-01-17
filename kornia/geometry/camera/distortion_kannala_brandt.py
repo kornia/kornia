@@ -24,7 +24,7 @@ def _distort_points_kannala_brandt_impl(
     radius_sq = x**2 + y**2
 
     radius = radius_sq.sqrt()
-    radius_inverse = 1.0 / (radius + 1e-8)
+    radius_inverse = 1.0 / radius
     theta = radius.atan2(ops.ones_like(radius))
     theta2 = theta**2
     theta4 = theta2**2
@@ -66,6 +66,7 @@ def distort_points_kannala_brandt(projected_points_in_camera_z1_plane: Tensor, p
 
     radius_sq = x**2 + y**2
 
+    # TODO: we can optimize this by passing the radius_sq to the impl functions. Check if it's worth it.
     distorted_points = ops.where(
         radius_sq[..., None] > 1e-8,
         _distort_points_kannala_brandt_impl(
@@ -113,7 +114,10 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: Tensor, params: 
     vn = (y - cy) / fy
     rth2 = un**2 + vn**2
 
-    # TODO: stop condition (won't work with pytorch)
+    # TODO: explore stop condition (won't work with pytorch with batched inputs)
+    # Additionally, with this stop condition we can avoid adding 1e-8 to the denominator
+    # in the return statement of the function.
+
     # if rth2.abs() < 1e-8:
     #     return distorted_points_in_camera
 
@@ -124,6 +128,7 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: Tensor, params: 
     iters = 0
 
     # gauss-newton
+
     while True:
         th2 = th**2
         th4 = th2**2
@@ -139,9 +144,11 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: Tensor, params: 
 
         iters += 1
 
-        # TODO: stop condition (won't work with pytorch)
-        # if th.abs() < 1e-8:
-        #     break
+        # TODO: improve stop condition by masking only the elements that have converged
+        th_abs_mask = th.abs() < 1e-8
+
+        if th_abs_mask.all():
+            break
 
         if iters >= 20:
             break
