@@ -56,6 +56,7 @@ from kornia.augmentation import (
     RandomRGBShift,
     RandomRotation,
     RandomRotation3D,
+    RandomSaltAndPepperNoise,
     RandomSaturation,
     RandomShear,
     RandomSnow,
@@ -3556,6 +3557,57 @@ class TestRandomGaussianNoise:
         img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
         aug = RandomGaussianNoise(p=1.0)
         assert img.shape == aug(img).shape
+
+
+class TestRandomSaltAndPepperNoise(BaseTester):
+    @pytest.mark.parametrize(
+        "expected",
+        [
+            torch.tensor(
+                [
+                    [
+                        [
+                            [0.0000, 0.0000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000],
+                            [0.5000, 0.5000, 0.0000, 1.0000, 0.5000, 0.5000, 0.5000, 0.5000],
+                            [0.0000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000],
+                            [0.5000, 0.0000, 0.0000, 0.5000, 0.5000, 0.5000, 0.0000, 0.5000],
+                            [1.0000, 1.0000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000],
+                            [0.5000, 1.0000, 1.0000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000],
+                            [0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.0000],
+                            [1.0000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000],
+                        ]
+                    ]
+                ]
+            )
+        ],
+    )
+    def test_smoke(self, expected, device, dtype):
+        torch.manual_seed(0)
+        input_tensor = torch.ones(1, 1, 8, 8, device=device, dtype=dtype) * 0.5
+        aug = RandomSaltAndPepperNoise(amount=0.2, salt_vs_pepper=0.5, p=1.0)
+        res = aug(input_tensor)
+        assert input_tensor.shape == res.shape
+        self.assert_close(expected == res)
+
+    def test_exception(self, device, dtype):
+        with pytest.raises(ValueError, match="salt_vs_pepper must be a tuple or a float"):
+            RandomSaltAndPepperNoise(salt_vs_pepper=[0.4, 0.6])
+        with pytest.raises(ValueError, match="amount must be a tuple or a float"):
+            RandomSaltAndPepperNoise(amount=[0.01, 0.06])
+
+    @pytest.mark.parametrize("batch_shape", [1, 3, 3, 5])
+    @pytest.mark.parametrize("channel_shape", [1, 1, 3, 3])
+    def test_cardinality(self, batch_shape, channel_shape, device, dtype):
+        input_tensor = torch.ones(batch_shape, channel_shape, 16, 16, device=device, dtype=dtype) * 0.5
+        transform = RandomSaltAndPepperNoise(p=1.0)
+        output_tensor = transform(input_tensor)
+        assert input_tensor.shape[0] == output_tensor.shape[0]
+        assert input_tensor.shape[1] == output_tensor.shape[1]
+
+    def test_gradcheck(self, device, dtype):
+        transform = RandomSaltAndPepperNoise(p=1.0)
+        input_tensor = torch.rand(1, 3, 16, 16, device=device, dtype=dtype)
+        self.gradcheck(transform, input_tensor)
 
 
 class TestNormalize(BaseTester):
