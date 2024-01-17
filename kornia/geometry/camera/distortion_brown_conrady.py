@@ -120,7 +120,7 @@ def _unproject_points_brown_conrady_impl(uv_normalized: Tensor, distortion_param
         step_i = j_inv @ f_xy  # (..., 2, 1)
 
         xy -= step_i[..., 0]  # (..., 2)
-        print(xy)
+        # print(xy)
 
     return xy
 
@@ -137,11 +137,10 @@ def distort_points_brown_conrady(projected_points_in_camera_z1_plane: Tensor, pa
         Tensor representing the distorted points with shape (..., 2).
 
     Example:
-        >>> points = torch.tensor([1., 2.])
-        >>> params = torch.tensor([600., 600., 319.5, 239.5, 0.1])
-        >>> distort_points_brown_conrady(points, params)
-        tensor([1369.8710, 2340.2419])
-    """
+        >>> points = torch.tensor([319.5, 239.5])  # center of a 640x480 image
+        >>> params = torch.tensor([1000.0, 1000.0, 320.0, 280.0, 0.726405, -0.0148413, 1.38447e-05, 0.000419742, -0.00514224, 1.06774, 0.128429, -0.019901])
+        >>> distorted = distort_points_brown_conrady(points, params)
+    """  # noqa: E501
     KORNIA_CHECK_SHAPE(projected_points_in_camera_z1_plane, ["*", "2"])
     KORNIA_CHECK_SHAPE(params, ["*", "12"])
 
@@ -165,11 +164,10 @@ def undistort_points_brown_conrady(projected_points_in_camera_z1_plane: Tensor, 
         Tensor representing the undistorted points with shape (..., 2).
 
     Example:
-        >>> points = torch.tensor([1369.8710, 2340.2419])
-        >>> params = torch.tensor([600., 600., 319.5, 239.5, 0.1])
-        >>> undistort_points_brown_conrady(points, params)
-        tensor([1.0000, 2.0000])
-    """
+        >>> points = torch.tensor([319.5, 239.5])  # center of a 640x480 image
+        >>> params = torch.tensor([1000.0, 1000.0, 320.0, 280.0, 0.726405, -0.0148413, 1.38447e-05, 0.000419742, -0.00514224, 1.06774, 0.128429, -0.019901])
+        >>> undistorted = undistort_points_brown_conrady(points, params)
+    """  # noqa: E501
     KORNIA_CHECK_SHAPE(projected_points_in_camera_z1_plane, ["*", "2"])
     KORNIA_CHECK_SHAPE(params, ["*", "12"])
 

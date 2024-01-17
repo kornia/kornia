@@ -22,10 +22,10 @@ def distort_points_affine(projected_points_in_camera_z1_plane: Tensor, params: T
         Tensor representing the distorted points with shape (..., 2).
 
     Example:
-        >>> points = torch.tensor([1., 2.])
+        >>> points = torch.tensor([319.5, 239.5])  # center of a 640x480 image
         >>> params = torch.tensor([600., 600., 319.5, 239.5])
         >>> distort_points_affine(points, params)
-        tensor([ 919.5000, 1439.5000])
+        tensor([192019.5000, 143939.5000])
     """
     KORNIA_CHECK_SHAPE(projected_points_in_camera_z1_plane, ["*", "2"])
     KORNIA_CHECK_SHAPE(params, ["*", "4"])
@@ -59,10 +59,10 @@ def undistort_points_affine(distorted_points_in_camera: Tensor, params: Tensor) 
         Tensor representing the undistorted points with shape (..., 2).
 
     Example:
-        >>> points = torch.tensor([1., 2.])
+        >>> points = torch.tensor([319.5, 239.5])  # center of a 640x480 image
         >>> params = torch.tensor([600., 600., 319.5, 239.5])
         >>> undistort_points_affine(points, params)
-        tensor([-0.5308, -0.3958])
+        tensor([0., 0.])
     """
     KORNIA_CHECK_SHAPE(distorted_points_in_camera, ["*", "2"])
     KORNIA_CHECK_SHAPE(params, ["*", "4"])
@@ -94,7 +94,7 @@ def dx_distort_points_affine(projected_points_in_camera_z1_plane: Tensor, params
         Tensor representing the derivative of the x distortion with respect to the x coordinate with shape (..., 2).
 
     Example:
-        >>> points = torch.tensor([1., 2.])
+        >>> points = torch.tensor([319.5, 239.5])  # center of a 640x480 image
         >>> params = torch.tensor([600., 600., 319.5, 239.5])
         >>> dx_distort_points_affine(points, params)
         tensor([[600.,   0.],

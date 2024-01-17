@@ -53,10 +53,10 @@ def distort_points_kannala_brandt(projected_points_in_camera_z1_plane: Tensor, p
         Tensor representing the distorted points with shape (..., 2).
 
     Example:
-        >>> points = torch.tensor([1., 2.])
-        >>> params = torch.tensor([600., 600., 319.5, 239.5, 0.1, 0.2, 0.3, 0.4])
+        >>> points = torch.tensor([319.5, 239.5])  # center of a 640x480 image
+        >>> params = torch.tensor([1000.0, 1000.0, 320.0, 280.0, 0.1, 0.01, 0.001, 0.0001])
         >>> distort_points_kannala_brandt(points, params)
-        tensor([1369.8710, 2340.2419])
+        tensor([1982.6832, 1526.3619])
     """
     KORNIA_CHECK_SHAPE(projected_points_in_camera_z1_plane, ["*", "2"])
     KORNIA_CHECK_SHAPE(params, ["*", "8"])
@@ -91,8 +91,8 @@ def undistort_points_kannala_brandt(distorted_points_in_camera: Tensor, params: 
         Tensor representing the undistorted points with shape (..., 2).
 
     Example:
-        >>> points = torch.tensor([1., 2.])
-        >>> params = torch.tensor([600., 600., 319.5, 239.5, 0.1, 0.2, 0.3, 0.4])
+        >>> points = torch.tensor([319.5, 239.5])  # center of a 640x480 image
+        >>> params = torch.tensor([1000.0, 1000.0, 320.0, 280.0, 0.1, 0.01, 0.001, 0.0001])
         >>> undistort_points_kannala_brandt(points, params).shape
         torch.Size([2])
     """
@@ -192,10 +192,10 @@ def dx_distort_points_kannala_brandt(projected_points_in_camera_z1_plane: Tensor
 
     Example:
         >>> points = torch.tensor([1., 2.])
-        >>> params = torch.tensor([600., 600., 319.5, 239.5, 0.1, 0.2, 0.3, 0.4])
+        >>> params = torch.tensor([1000.0, 1000.0, 320.0, 280.0, 0.1, 0.01, 0.001, 0.0001])
         >>> dx_distort_points_kannala_brandt(points, params)
-        tensor([[1191.5316,  282.3213],
-                [ 282.3213, 1615.0135]])
+        tensor([[ 486.0507, -213.5573],
+                [-213.5573,  165.7147]])
     """
     KORNIA_CHECK_SHAPE(projected_points_in_camera_z1_plane, ["*", "2"])
     KORNIA_CHECK_SHAPE(params, ["*", "8"])
