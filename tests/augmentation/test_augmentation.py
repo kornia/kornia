@@ -3569,6 +3569,7 @@ class TestRandomSaltAndPepperNoise(BaseTester):
                         [
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 >>>>>>> e6678d4b (Update tests)
                             [1.0000, 1.0000, 0.5000, 0.5000, 0.5000],
@@ -3578,6 +3579,8 @@ class TestRandomSaltAndPepperNoise(BaseTester):
                             [0.5000, 0.5000, 0.5000, 0.5000, 0.5000],
 <<<<<<< HEAD
 =======
+=======
+>>>>>>> 9959b26f (Add TestRandomSaltAndPepperNoise)
                             [0.0000, 0.0000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000],
                             [0.5000, 0.5000, 0.0000, 1.0000, 0.5000, 0.5000, 0.5000, 0.5000],
                             [0.0000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000],
@@ -3586,9 +3589,12 @@ class TestRandomSaltAndPepperNoise(BaseTester):
                             [0.5000, 1.0000, 1.0000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000],
                             [0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.0000],
                             [1.0000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000],
+<<<<<<< HEAD
 >>>>>>> 8f27752d (Add TestRandomSaltAndPepperNoise)
 =======
 >>>>>>> e6678d4b (Update tests)
+=======
+>>>>>>> 9959b26f (Add TestRandomSaltAndPepperNoise)
                         ]
                     ]
                 ]
@@ -3597,6 +3603,7 @@ class TestRandomSaltAndPepperNoise(BaseTester):
     )
     def test_smoke(self, expected, device, dtype):
         torch.manual_seed(0)
+<<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
 =======
@@ -3619,10 +3626,18 @@ class TestRandomSaltAndPepperNoise(BaseTester):
 =======
         self.assert_close(res, expected)
 >>>>>>> 998a44aa (Add more checks to the input data and update tests.)
+=======
+        input_tensor = torch.ones(1, 1, 8, 8, device=device, dtype=dtype) * 0.5
+        aug = RandomSaltAndPepperNoise(amount=0.2, salt_vs_pepper=0.5, p=1.0)
+        res = aug(input_tensor)
+        assert input_tensor.shape == res.shape
+        self.assert_close(expected == res)
+>>>>>>> 9959b26f (Add TestRandomSaltAndPepperNoise)
 
     def test_exception(self, device, dtype):
         with pytest.raises(ValueError, match="salt_vs_pepper must be a tuple or a float"):
             RandomSaltAndPepperNoise(salt_vs_pepper=[0.4, 0.6])
+<<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
 =======
@@ -3660,6 +3675,10 @@ class TestRandomSaltAndPepperNoise(BaseTester):
 >>>>>>> 8f27752d (Add TestRandomSaltAndPepperNoise)
 =======
 >>>>>>> 998a44aa (Add more checks to the input data and update tests.)
+=======
+        with pytest.raises(ValueError, match="amount must be a tuple or a float"):
+            RandomSaltAndPepperNoise(amount=[0.01, 0.06])
+>>>>>>> 9959b26f (Add TestRandomSaltAndPepperNoise)
 
     @pytest.mark.parametrize("batch_shape", [1, 3, 3, 5])
     @pytest.mark.parametrize("channel_shape", [1, 1, 3, 3])
@@ -3670,6 +3689,7 @@ class TestRandomSaltAndPepperNoise(BaseTester):
         assert input_tensor.shape[0] == output_tensor.shape[0]
         assert input_tensor.shape[1] == output_tensor.shape[1]
 
+<<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
@@ -3729,6 +3749,12 @@ class TestRandomSaltAndPepperNoise(BaseTester):
     def test_module(self, device, dtype):
         pass
 >>>>>>> 998a44aa (Add more checks to the input data and update tests.)
+=======
+    def test_gradcheck(self, device, dtype):
+        transform = RandomSaltAndPepperNoise(p=1.0)
+        input_tensor = torch.rand(1, 3, 16, 16, device=device, dtype=dtype)
+        self.gradcheck(transform, input_tensor)
+>>>>>>> 9959b26f (Add TestRandomSaltAndPepperNoise)
 
 
 class TestNormalize(BaseTester):
