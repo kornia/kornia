@@ -9,6 +9,7 @@ import kornia.augmentation as K
 from kornia.augmentation.container.base import ParamItem
 from kornia.constants import BorderType
 from kornia.geometry.bbox import bbox_to_mask
+from kornia.geometry.boxes import Boxes
 
 from testing.base import assert_close
 
@@ -671,6 +672,37 @@ class TestAugmentationSequential:
 
         if random_apply is False:
             reproducibility_test((inp, mask, bbox, keypoints, bbox_2, bbox_wh, bbox_wh_2), aug)
+
+    def test_transform_list_of_masks_and_boxes(self, device, dtype):
+        input = torch.randn(2, 3, 256, 256, device=device, dtype=dtype)
+        mask = [
+            torch.ones(3, 256, 256, device=device, dtype=dtype),
+            torch.ones(2, 256, 256, device=device, dtype=dtype),
+        ]
+
+        bbox = [
+            torch.tensor(
+                [[28.0, 53.0, 143.0, 164.0], [254.0, 158.0, 364.0, 290.0], [307.0, 204.0, 413.0, 350.0]],
+                device=device,
+                dtype=dtype,
+            ),
+            torch.tensor([[254.0, 158.0, 364.0, 290.0], [307.0, 204.0, 413.0, 350.0]], device=device, dtype=dtype),
+        ]
+
+        bbox = [Boxes.from_tensor(i).data for i in bbox]
+
+        aug_list = K.AugmentationSequential(
+            K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
+            K.RandomHorizontalFlip(p=1.0),
+            data_keys=["input", "mask", "bbox"],
+            same_on_batch=False,
+            random_apply=10,
+        )
+        out = aug_list(input, mask, bbox)
+
+        assert out[0].shape == input.shape
+        assert len(out[1]) == len(bbox)
+        assert len(out[2]) == len(mask)
 
     @pytest.mark.jit()
     @pytest.mark.skip(reason="turn off due to Union Type")
