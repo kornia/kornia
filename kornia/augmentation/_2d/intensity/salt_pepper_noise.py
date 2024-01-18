@@ -70,7 +70,10 @@ class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
 
+<<<<<<< HEAD
         # Validation and initialization of amount and salt_vs_pepper parameters.
+=======
+>>>>>>> 998a44aa (Add more checks to the input data and update tests.)
         if isinstance(salt_vs_pepper, (tuple, float)):
             if isinstance(salt_vs_pepper, float):
                 salt_vs_pepper = (salt_vs_pepper, salt_vs_pepper)
