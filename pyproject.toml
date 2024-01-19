@@ -163,7 +163,7 @@ requires = [
     "docs/*" = ["S101", "PLR0912", "PLR0915"] # allow assert, ignore max branches and statements
     "docs/generate_examples.py" = ["C901"] # Allow too complex function
     "kornia/__init__.py" = ["I001"] # Allow unsorted imports
-    "test/*" = ["S101", "S311", "BLE", "RUF012"] # allow assert, random, ignore BLE, mutable class attr
+    "test/*" = ["S101", "S311", "BLE", "RUF012", "RUF005"] # allow assert, random, ignore BLE, mutable class attr
 
 [tool.pytest.ini_options]
   addopts = "--color=yes"

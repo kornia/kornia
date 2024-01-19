@@ -6,7 +6,7 @@ from kornia.sensors.camera.projection_model import Z1Projection
 from kornia.testing import BaseTester
 
 
-class TestZ1Projection(BaseTester):
+class TestProjection(BaseTester):
     @pytest.mark.skip(reason="Unnecessary test")
     def test_smoke(self, device, dtype):
         pass
@@ -34,7 +34,9 @@ class TestZ1Projection(BaseTester):
     def test_project(self, device, dtype):
         projection = Z1Projection()
         points = torch.tensor(
-            [[0.0, 0.0, 1.0], [1.0, 1.0, 1.0], [6.0, 6.0, 2.0], [9.0, 9.0, 3.0]], device=device, dtype=dtype
+            [[0.0, 0.0, 1.0], [1.0, 1.0, 1.0], [6.0, 6.0, 2.0], [9.0, 9.0, 3.0]],
+            device=device,
+            dtype=dtype,
         )
         expected = torch.tensor([[0.0, 0.0], [1.0, 1.0], [3.0, 3.0], [3.0, 3.0]], device=device, dtype=dtype)
         self.assert_close(projection.project(Vector3(points)).data, expected)
@@ -43,9 +45,14 @@ class TestZ1Projection(BaseTester):
         projection = Z1Projection()
         points = torch.tensor([[0.0, 0.0], [1.0, 1.0], [3.0, 3.0], [3.0, 3.0]], device=device, dtype=dtype)
         expected = torch.tensor(
-            [[0.0, 0.0, 1.0], [1.0, 1.0, 1.0], [6.0, 6.0, 2.0], [9.0, 9.0, 3.0]], device=device, dtype=dtype
+            [[0.0, 0.0, 1.0], [1.0, 1.0, 1.0], [6.0, 6.0, 2.0], [9.0, 9.0, 3.0]],
+            device=device,
+            dtype=dtype,
         )
         self.assert_close(
-            projection.unproject(Vector2(points), torch.tensor([1.0, 1.0, 2.0, 3.0], device=device, dtype=dtype)).data,
+            projection.unproject(
+                Vector2(points),
+                torch.tensor([1.0, 1.0, 2.0, 3.0], device=device, dtype=dtype),
+            ).data,
             expected,
         )
