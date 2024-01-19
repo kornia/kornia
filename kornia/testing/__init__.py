@@ -113,12 +113,11 @@ class BaseTester(ABC):
     def test_gradcheck(self, device: Device) -> None:
         raise NotImplementedError("Implement a stupid routine.")
 
-    @abstractmethod
     def test_module(self, device: Device, dtype: Dtype) -> None:
-        raise NotImplementedError("Implement a stupid routine.")
+        pass
 
+    @staticmethod
     def assert_close(
-        self,
         actual: Tensor,
         expected: Tensor,
         rtol: Optional[float] = None,
