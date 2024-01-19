@@ -1,8 +1,4 @@
 from .distortion_affine import distort_points_affine, dx_distort_points_affine, undistort_points_affine
-from .distortion_brown_conrady import (
-    distort_points_brown_conrady,
-    undistort_points_brown_conrady,
-)
 from .distortion_kannala_brandt import (
     distort_points_kannala_brandt,
     dx_distort_points_kannala_brandt,
@@ -34,9 +30,7 @@ __all__ = [
     "unproject_points_orthographic",
     "unproject_points_z1",
     "distort_points_affine",
-    "distort_points_brown_conrady",
     "distort_points_kannala_brandt",
     "undistort_points_affine",
-    "undistort_points_brown_conrady",
     "undistort_points_kannala_brandt",
 ]

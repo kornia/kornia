@@ -69,6 +69,11 @@ class TestProjectionZ1(BaseTester):
         expected = torch.tensor([[1.0, 2.0, 1.0], [3.0, 4.0, 1.0]], device=device, dtype=dtype)
         self.assert_close(unproject_points_z1(points), expected)
 
+    def test_project_unproject(self, device, dtype):
+        points = torch.tensor([1.0, 2.0, 2.0], device=device, dtype=dtype)
+        extension = torch.tensor([2.0], device=device, dtype=dtype)
+        self.assert_close(unproject_points_z1(project_points_z1(points), extension), points)
+
     def test_unproject_points_z1_extension(self, device, dtype):
         points = torch.tensor([1.0, 2.0], device=device, dtype=dtype)
         extension = torch.tensor([2.0], device=device, dtype=dtype)
@@ -177,6 +182,11 @@ class TestProjectionOrthographic(BaseTester):
         extension = torch.tensor([2.0, 3.0], device=device, dtype=dtype)
         expected = torch.tensor([[1.0, 2.0, 2.0], [3.0, 4.0, 3.0]], device=device, dtype=dtype)
         self.assert_close(unproject_points_orthographic(points, extension), expected)
+
+    def test_project_unproject(self, device, dtype):
+        points = torch.tensor([1.0, 2.0, 2.0], device=device, dtype=dtype)
+        extension = torch.tensor([2.0], device=device, dtype=dtype)
+        self.assert_close(unproject_points_orthographic(project_points_orthographic(points), extension), points)
 
     def test_dx_proj_x(self, device, dtype):
         points = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=dtype)
