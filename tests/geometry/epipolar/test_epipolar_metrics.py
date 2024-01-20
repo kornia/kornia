@@ -3,7 +3,7 @@ from torch.autograd import gradcheck
 
 import kornia.geometry.epipolar as epi
 import kornia.testing as utils
-from kornia.testing import assert_close
+from testing.base import assert_close
 
 
 class TestSymmetricalEpipolarDistance:

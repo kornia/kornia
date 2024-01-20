@@ -2,8 +2,8 @@ import pytest
 import torch
 
 from kornia.filters import Laplacian, get_laplacian_kernel1d, get_laplacian_kernel2d, laplacian
-from kornia.testing import assert_close, tensor_to_gradcheck_var
-from testing.base import BaseTester
+from kornia.testing import tensor_to_gradcheck_var
+from testing.base import BaseTester, assert_close
 
 
 @pytest.mark.parametrize("window_size", [5, 11])

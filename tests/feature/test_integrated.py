@@ -24,8 +24,8 @@ from kornia.feature import (
 )
 from kornia.feature.integrated import LocalFeatureMatcher
 from kornia.geometry import RANSAC, resize, transform_points
-from kornia.testing import assert_close
 from kornia.utils._compat import torch_version_le
+from testing.base import assert_close
 
 
 # TODO: add kornia.testing.BaseTester

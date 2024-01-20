@@ -5,7 +5,7 @@ import torch
 from torch import nn, optim
 
 import kornia
-from kornia.testing import assert_close
+from testing.base import assert_close
 
 logger = logging.getLogger(__name__)
 

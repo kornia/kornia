@@ -4,7 +4,8 @@ from torch.autograd import gradcheck
 
 from kornia.augmentation import RandomMotionBlur, RandomMotionBlur3D
 from kornia.filters import motion_blur, motion_blur3d
-from kornia.testing import assert_close, tensor_to_gradcheck_var
+from kornia.testing import tensor_to_gradcheck_var
+from testing.base import assert_close
 
 
 # TODO: add kornia.testing.BaseTester

@@ -11,10 +11,10 @@ from kornia.augmentation._2d.intensity.gaussian_blur import RandomGaussianBlur
 from kornia.augmentation._3d.geometric.affine import RandomAffine3D
 from kornia.augmentation._3d.intensity.motion_blur import RandomMotionBlur3D
 from kornia.augmentation.base import _BasicAugmentationBase
-from kornia.testing import assert_close
+from testing.base import BaseTester
 
 
-class TestBasicAugmentationBase:
+class TestBasicAugmentationBase(BaseTester):
     def test_smoke(self):
         base = _BasicAugmentationBase(p=0.5, p_batch=1.0, same_on_batch=True)
         __repr__ = "_BasicAugmentationBase(p=0.5, p_batch=1.0, same_on_batch=True)"
@@ -27,7 +27,7 @@ class TestBasicAugmentationBase:
             transform_tensor.side_effect = lambda x: x.unsqueeze(dim=2)
             output = augmentation.transform_tensor(input)
             assert output.shape == torch.Size([2, 3, 1, 4, 5])
-            assert_close(input, output[:, :, 0, :, :])
+            self.assert_close(input, output[:, :, 0, :, :])
 
     @pytest.mark.parametrize(
         "p,p_batch,same_on_batch,num,seed",
@@ -76,7 +76,7 @@ class TestBasicAugmentationBase:
             # check_batching.side_effect = lambda input: None
             output = augmentation(input)
             assert output.shape == expected_output.shape
-            assert_close(output, expected_output)
+            self.assert_close(output, expected_output)
 
 
 class TestAugmentationBase2D:

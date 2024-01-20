@@ -6,9 +6,9 @@ from torch.autograd import gradcheck
 
 import kornia
 import kornia.testing as utils  # test utils
-from kornia.testing import assert_close
 from kornia.utils._compat import torch_version, torch_version_lt
 from kornia.utils.helpers import _torch_inverse_cast
+from testing.base import assert_close
 
 
 class DummyNNModule(torch.nn.Module):

@@ -4,8 +4,7 @@ from torch.autograd import gradcheck
 
 from kornia.geometry.line import ParametrizedLine, fit_line
 from kornia.geometry.plane import Hyperplane
-from kornia.testing import assert_close
-from testing.base import BaseTester
+from testing.base import BaseTester, assert_close
 
 
 class TestParametrizedLine(BaseTester):

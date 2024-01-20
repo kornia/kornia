@@ -16,8 +16,8 @@ from kornia.geometry.homography import (
     sample_is_valid_for_homography,
     symmetric_transfer_error,
 )
-from kornia.testing import assert_close
 from kornia.utils._compat import torch_version_le
+from testing.base import assert_close
 
 
 class TestSampleValidation:

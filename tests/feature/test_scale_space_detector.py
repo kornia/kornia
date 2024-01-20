@@ -4,7 +4,7 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.feature.scale_space_detector import ScaleSpaceDetector
-from kornia.testing import assert_close
+from testing.base import assert_close
 
 
 class TestScaleSpaceDetector:

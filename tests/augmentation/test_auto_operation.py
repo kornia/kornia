@@ -11,8 +11,8 @@ from kornia.augmentation.auto.rand_augment.rand_augment import default_policy as
 from kornia.augmentation.auto.trivial_augment import TrivialAugment
 from kornia.augmentation.container import AugmentationSequential
 from kornia.geometry.bbox import bbox_to_mask
-from kornia.testing import assert_close
 from kornia.utils._compat import torch_version
+from testing.base import BaseTester
 from tests.augmentation.test_container import reproducibility_test
 
 
@@ -73,7 +73,7 @@ class TestOperations:
         assert init_prob != op.probability.item()
 
 
-class TestAutoAugment:
+class TestAutoAugment(BaseTester):
     @pytest.mark.parametrize("policy", ["imagenet", "cifar10", "svhn", [[("shear_x", 0.9, 4), ("invert", 0.2, None)]]])
     def test_smoke(self, policy, device, dtype):
         aug = AutoAugment(policy)
@@ -86,20 +86,20 @@ class TestAutoAugment:
         in_tensor = torch.rand(10, 3, 50, 50, device=device, dtype=dtype, requires_grad=True)
         aug(in_tensor)
         trans = aug.get_transformation_matrix(in_tensor, params=aug._params)
-        assert_close(trans, aug.transform_matrix)
+        self.assert_close(trans, aug.transform_matrix)
 
     def test_reproduce(self, device, dtype):
         aug = AutoAugment()
         in_tensor = torch.rand(10, 3, 50, 50, device=device, dtype=dtype, requires_grad=True)
         out_tensor = aug(in_tensor)
         out_tensor_2 = aug(in_tensor, params=aug._params)
-        assert_close(out_tensor, out_tensor_2)
+        self.assert_close(out_tensor, out_tensor_2)
 
     def test_sequential(augment_method, device, dtype):
         _test_sequential(AutoAugment(), device=device, dtype=dtype)
 
 
-class TestRandAugment:
+class TestRandAugment(BaseTester):
     @pytest.mark.parametrize("policy", [None, [[("translate_y", -0.5, 0.5)]]])
     def test_smoke(self, policy):
         if policy is None:
@@ -119,20 +119,20 @@ class TestRandAugment:
         in_tensor = torch.rand(10, 3, 50, 50, device=device, dtype=dtype, requires_grad=True)
         aug(in_tensor)
         trans = aug.get_transformation_matrix(in_tensor, params=aug._params)
-        assert_close(trans, aug.transform_matrix)
+        self.assert_close(trans, aug.transform_matrix)
 
     def test_reproduce(self, device, dtype):
         aug = RandAugment(n=3, m=15)
         in_tensor = torch.rand(10, 3, 50, 50, device=device, dtype=dtype, requires_grad=True)
         out_tensor = aug(in_tensor)
         out_tensor_2 = aug(in_tensor, params=aug._params)
-        assert_close(out_tensor, out_tensor_2)
+        self.assert_close(out_tensor, out_tensor_2)
 
     def test_sequential(augment_method, device, dtype):
         _test_sequential(RandAugment(n=3, m=15), device=device, dtype=dtype)
 
 
-class TestTrivialAugment:
+class TestTrivialAugment(BaseTester):
     @pytest.mark.parametrize("policy", [None, [[("translate_y", -0.5, 0.5)]]])
     def test_smoke(self, policy):
         aug = TrivialAugment(policy=policy)
@@ -145,14 +145,14 @@ class TestTrivialAugment:
         aug(in_tensor)
         aug(in_tensor)
         trans = aug.get_transformation_matrix(in_tensor, params=aug._params)
-        assert_close(trans, aug.transform_matrix)
+        self.assert_close(trans, aug.transform_matrix)
 
     def test_reproduce(self, device, dtype):
         aug = TrivialAugment()
         in_tensor = torch.rand(10, 3, 50, 50, device=device, dtype=dtype, requires_grad=True)
         out_tensor = aug(in_tensor)
         out_tensor_2 = aug(in_tensor, params=aug._params)
-        assert_close(out_tensor, out_tensor_2)
+        self.assert_close(out_tensor, out_tensor_2)
 
     def test_sequential(augment_method, device, dtype):
         _test_sequential(TrivialAugment(), device=device, dtype=dtype)

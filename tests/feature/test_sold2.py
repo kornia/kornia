@@ -4,7 +4,7 @@ from torch.autograd import gradcheck
 
 import kornia.testing as utils
 from kornia.feature.sold2 import SOLD2, SOLD2_detector
-from kornia.testing import assert_close
+from testing.base import assert_close
 
 
 # TODO: add kornia.testing.BaseTester

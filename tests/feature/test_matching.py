@@ -15,7 +15,7 @@ from kornia.feature.matching import (
     match_smnn,
     match_snn,
 )
-from kornia.testing import assert_close
+from testing.base import assert_close
 
 
 class TestMatchNN:

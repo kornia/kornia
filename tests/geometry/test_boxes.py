@@ -4,7 +4,8 @@ import pytest
 import torch
 
 from kornia.geometry.boxes import Boxes, Boxes3D
-from kornia.testing import assert_close, gradcheck, tensor_to_gradcheck_var
+from kornia.testing import gradcheck, tensor_to_gradcheck_var
+from testing.base import assert_close
 
 
 class TestBoxes2D:

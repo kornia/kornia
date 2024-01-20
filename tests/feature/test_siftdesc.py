@@ -9,7 +9,7 @@ from kornia.feature.siftdesc import (
     get_sift_bin_ksize_stride_pad,
     get_sift_pooling_kernel,
 )
-from kornia.testing import assert_close
+from testing.base import assert_close
 
 
 @pytest.mark.parametrize("ksize", [5, 13, 25])

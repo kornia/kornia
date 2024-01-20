@@ -9,7 +9,8 @@ from kornia.geometry.bbox import (
     validate_bbox,
     validate_bbox3d,
 )
-from kornia.testing import assert_close, gradcheck, tensor_to_gradcheck_var
+from kornia.testing import gradcheck, tensor_to_gradcheck_var
+from testing.base import assert_close
 
 
 class TestBbox2D:

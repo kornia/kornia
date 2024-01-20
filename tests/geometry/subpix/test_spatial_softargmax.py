@@ -5,7 +5,7 @@ from torch.nn.functional import mse_loss
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.geometry.subpix.spatial_soft_argmax import _get_center_kernel2d, _get_center_kernel3d
-from kornia.testing import assert_close
+from testing.base import assert_close
 
 
 class TestCenterKernel2d:

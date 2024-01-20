@@ -2,7 +2,8 @@ import pytest
 import torch
 
 from kornia.geometry.calibration.undistort import undistort_image, undistort_points
-from kornia.testing import assert_close, gradcheck
+from kornia.testing import gradcheck
+from testing.base import assert_close
 
 
 class TestUndistortPoints:

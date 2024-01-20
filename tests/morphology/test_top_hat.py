@@ -3,7 +3,7 @@ import torch
 from torch.autograd import gradcheck
 
 from kornia.morphology import top_hat
-from kornia.testing import assert_close
+from testing.base import assert_close
 
 
 class TestTopHat:

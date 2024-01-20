@@ -13,7 +13,7 @@ from kornia.nerf.samplers import (
     sample_lengths,
     sample_ray_points,
 )
-from kornia.testing import assert_close
+from testing.base import assert_close
 
 
 def create_camera_dimensions(device, dtype):

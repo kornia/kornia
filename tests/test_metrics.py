@@ -2,8 +2,8 @@ import pytest
 import torch
 
 import kornia
-from kornia.testing import assert_close, tensor_to_gradcheck_var
-from testing.base import BaseTester
+from kornia.testing import tensor_to_gradcheck_var
+from testing.base import BaseTester, assert_close
 
 
 class TestMeanIoU:

@@ -18,7 +18,7 @@ from kornia.feature.mkd import (
     get_kron_order,
     spatial_kernel_embedding,
 )
-from kornia.testing import assert_close
+from testing.base import assert_close
 
 
 @pytest.mark.parametrize("ps", [5, 13, 25])

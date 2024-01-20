@@ -16,7 +16,7 @@ from kornia.augmentation import (
     RandomVerticalFlip3D,
 )
 from kornia.augmentation.container.augment import AugmentationSequential
-from kornia.testing import assert_close
+from testing.base import assert_close
 
 
 class TestRandomHorizontalFlip3D:

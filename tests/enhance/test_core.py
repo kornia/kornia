@@ -7,7 +7,7 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.testing as utils  # test utils
 from kornia.core import Tensor
-from kornia.testing import assert_close
+from testing.base import assert_close
 
 
 def random_shape(dim, min_elem=1, max_elem=10):

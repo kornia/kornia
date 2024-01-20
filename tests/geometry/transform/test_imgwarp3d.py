@@ -5,8 +5,8 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.geometry.transform as proj
 import kornia.testing as utils  # test utils
-from kornia.testing import assert_close
 from kornia.utils.helpers import _torch_inverse_cast
+from testing.base import assert_close
 
 
 class TestWarpAffine3d:
