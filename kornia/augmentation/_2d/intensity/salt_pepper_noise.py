@@ -2,39 +2,62 @@ from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 
-from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.random_generator._2d import SaltAndPepperGenerator
 from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK
 
 
 class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
-    """Apply salt-and-pepper noise to the input image.
+    r"""Apply random Salt and Pepper noise to input images.
+
+    .. image:: _static/img/RandomSaltAndPepperNoise.png
 
     Args:
-        amount (float or Tuple[float, float]): Range of noise values to be added. Default is (0.01, 0.06).
-            The valid range is [0, 1], where 0 represents no noise and 1 represents full noise.
-        salt_vs_pepper (float or Tuple[float, float]): Range of salt vs. pepper ratio. Default is (0.4, 0.6).
-            The valid range is [0, 1], where 0 represents only pepper noise, 1 represents only salt noise,
-            and 0.5 represents an equal mix.
-        p (float): Probability of applying the transformation. Default is 0.5.
-        same_on_batch (bool): Apply the same transformation across the batch. Default is False.
-        keepdim (bool): Keep the same dimensions after transformation. Default is False.
+        amount: A float or a tuple representing the range for the amount of noise to apply.
+        salt_vs_pepper: A float or a tuple representing the range for the ratio of Salt to Pepper noise.
+        p: The probability of applying the transformation. Default is 0.5.
+        same_on_batch: If True, apply the same transformation across the entire batch. Default is False.
+        keepdim: whether to keep the output shape the same as input (True) or broadcast it
+                to the batch form (False).
 
-    Attributes:
-        _param_generator (PlainUniformGenerator): Parameter generator for random parameter generation.
+    Shape:
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
+        - Output: :math:`(B, C, H, W)`
 
-    Raises:
-        ValueError: If `salt_vs_pepper` or `amount` are not in the valid range.
+    .. note::
+        The `amount` parameter controls the intensity of the noise, while `salt_vs_pepper` controls the ratio
+        of Salt to Pepper noise.
 
-    Note:
-        The `amount` and `salt_vs_pepper` parameters control the intensity of the salt-and-pepper noise.
-        `amount` determines the range of noise values to be added, and `salt_vs_pepper` determines the
-        range of the salt vs. pepper ratio.
+        The values for `amount` and `salt_vs_pepper` should be between 0 and 1. The recommended value for
+        `salt_vs_pepper` is 0.5, and for `amount`, values less than 0.2 are recommended.
 
-    Example:
-        >>> transform = RandomSaltAndPepperNoise(amount=(0.02, 0.1), salt_vs_pepper=(0.3, 0.7), p=1.0)
-        >>> noisy_image = transform(input_image)
+        If `amount` and `salt_vs_pepper` are floats (unique values), the transformation is applied with these
+        exact values, rather than randomly sampling from the specified range. However, the masks are still
+        generated randomly using these exact parameters.
+
+    Examples:
+        >>> rng = torch.manual_seed(5)
+        >>> inputs = torch.rand(1, 3, 3, 3)
+        >>> aug = RandomSaltAndPepperNoise(amount=0.5, salt_vs_pepper=0.5, p=1.)
+        >>> aug(inputs)
+        tensor([[[[1.0000, 0.0000, 0.0000],
+            [1.0000, 1.0000, 0.1166],
+            [0.1644, 0.7379, 0.0000]],
+        <BLANKLINE>
+            [[1.0000, 0.0000, 0.0000],
+            [1.0000, 1.0000, 0.7150],
+            [0.5793, 0.9809, 0.0000]],
+        <BLANKLINE>
+            [[1.0000, 0.0000, 0.0000],
+            [1.0000, 1.0000, 0.7850],
+            [0.9752, 0.0903, 0.0000]]]])
+
+    To apply the exact augmenation again, you may take the advantage of the previous parameter state:
+        >>> input = torch.rand(1, 3, 32, 32)
+        >>> aug = RandomSaltAndPepperNoise(amount=0.05, salt_vs_pepper=0.5, p=1.)
+        >>> (aug(input) == aug(input, params=aug._params)).all()
+        tensor(True)
     """
 
     def __init__(
@@ -47,6 +70,7 @@ class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
 
+        # Validation and initialization of amount and salt_vs_pepper parameters.
         if isinstance(salt_vs_pepper, (tuple, float)):
             if isinstance(salt_vs_pepper, float):
                 salt_vs_pepper = (salt_vs_pepper, salt_vs_pepper)
@@ -83,31 +107,8 @@ class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
                         Recommended values less than 0.2.",
         )
 
-        self._param_generator = rg.PlainUniformGenerator(
-            (amount, "amount", None, None), (salt_vs_pepper, "salt_vs_pepper", None, None)
-        )
-
-    def _generate_params(self, input: Tensor) -> Tuple[Tensor, Tensor]:
-        """Generate salt and pepper noise masks.
-
-        Args:
-            input (Tensor): Input tensor.
-
-        Returns:
-            Tuple of salt and pepper masks.
-        """
-        B, C, H, W = input.size()
-        _dev = input.device
-        mask_noise = torch.rand(B, 1, H, W, device=_dev) < self._params["amount"].view(B, 1, 1, 1).to(_dev)
-        mask_salt = torch.rand(B, 1, H, W, device=_dev) < self._params["salt_vs_pepper"].view(B, 1, 1, 1).to(_dev)
-        if C > 1:
-            mask_noise = mask_noise.repeat(1, C, 1, 1)
-            mask_salt = mask_salt.repeat(1, C, 1, 1)
-        mask_pepper = (~(~mask_salt & mask_noise)).float()
-        mask_salt = (mask_salt & mask_noise).float()
-        self._params["salt_and_pepper_noise"] = [mask_salt, mask_pepper]
-
-        return mask_salt, mask_pepper
+        # Generator of random parameters and masks.
+        self._param_generator = SaltAndPepperGenerator(amount, salt_vs_pepper)
 
     def apply_transform(
         self,
@@ -116,31 +117,17 @@ class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
         flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
     ) -> Tensor:
-        """Apply salt-and-pepper noise transformation to the input.
-
-        Args:
-            input (Tensor): Input tensor.
-            params (Dict[str, Tensor]): Transformation parameters.
-            flags (Dict[str, Any]): Transformation flags.
-            transform (Optional[Tensor]): Additional transformation.
-
-        Returns:
-            Tensor: Transformed input tensor.
-        """
+        r"""Apply random Salt and Pepper noise transformation to the input image."""
+        KORNIA_CHECK(len(input.shape) in (3, 4), "Wrong input dimension.")
+        if len(input.shape) == 3:
+            input = input[None, :, :, :]
+        KORNIA_CHECK(input.shape[1] in {3, 1}, "Number of color channels should be 1 or 3.")
 
         # Create noisy image cloning input.
         noisy_image = input.clone()
 
-        # Generate noisy masks or read from params.
-        if "salt_and_pepper_noise" in params:
-            mask_salt = params["salt_and_pepper_noise"][0]
-            mask_pepper = params["salt_and_pepper_noise"][1]
-        else:
-            mask_salt, mask_pepper = self._generate_params(input)
-            self._params["salt_and_pepper_noise"] = [mask_salt, mask_pepper]
-
         # Apply add and multiply mask.
-        noisy_image += mask_salt
-        noisy_image *= mask_pepper
+        noisy_image += params["mask_salt"]
+        noisy_image *= params["mask_pepper"]
 
         return torch.clamp(noisy_image, 0, 1)
