@@ -3568,11 +3568,15 @@ class TestRandomSaltAndPepperNoise(BaseTester):
                     [
                         [
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> e6678d4b (Update tests)
                             [1.0000, 1.0000, 0.5000, 0.5000, 0.5000],
                             [0.5000, 0.5000, 0.5000, 0.5000, 0.5000],
                             [0.0000, 0.0000, 0.5000, 0.5000, 0.5000],
                             [0.5000, 1.0000, 0.5000, 0.5000, 0.5000],
                             [0.5000, 0.5000, 0.5000, 0.5000, 0.5000],
+<<<<<<< HEAD
 =======
                             [0.0000, 0.0000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000],
                             [0.5000, 0.5000, 0.0000, 1.0000, 0.5000, 0.5000, 0.5000, 0.5000],
@@ -3583,6 +3587,8 @@ class TestRandomSaltAndPepperNoise(BaseTester):
                             [0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.0000],
                             [1.0000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000],
 >>>>>>> 8f27752d (Add TestRandomSaltAndPepperNoise)
+=======
+>>>>>>> e6678d4b (Update tests)
                         ]
                     ]
                 ]
@@ -3592,6 +3598,9 @@ class TestRandomSaltAndPepperNoise(BaseTester):
     def test_smoke(self, expected, device, dtype):
         torch.manual_seed(0)
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> e6678d4b (Update tests)
         input_tensor = torch.ones(1, 1, 5, 5, device=device, dtype=dtype) * 0.5
         expected = expected.to(device, dtype=dtype)
         aug = RandomSaltAndPepperNoise(amount=0.2, salt_vs_pepper=0.5, p=1.0)
@@ -3663,6 +3672,9 @@ class TestRandomSaltAndPepperNoise(BaseTester):
 
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> e6678d4b (Update tests)
     def test_same_on_batch(self, device, dtype):
         input_tensor = torch.ones(2, 1, 5, 5, device=device, dtype=dtype) * 0.5
         transform = RandomSaltAndPepperNoise(p=1.0, same_on_batch=True)
