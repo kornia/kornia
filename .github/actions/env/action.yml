@@ -12,7 +12,7 @@ on:
       pytorch-version:
         description: "The pytorch version desired."
         required: true
-        default: "2.1.1"
+        default: "2.1.2"
         type: string
 
 runs:
