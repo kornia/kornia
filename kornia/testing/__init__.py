@@ -1,6 +1,7 @@
 """The testing package contains testing-specific utilities."""
 import importlib.util
 import math
+import warnings
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from itertools import product
@@ -11,10 +12,28 @@ from torch.autograd import gradcheck
 from torch.testing import assert_close as _assert_close
 
 from kornia.core import Device, Dtype, Tensor, eye, tensor
+from kornia.utils.helpers import deprecated
+
+warnings.simplefilter("always", DeprecationWarning)
+warnings.warn(
+    (
+        "Since kornia 0.7.2 the `kornia.testing` module is deprecated and will be removed in kornia 0.8.0 (dec 2024).",
+        " Most of these functionalities will be removed from kornia package and will be part of the tests of kornia.",
+        " Some functionalities which we think is important to keep will be moved to other kornia module.",
+    ),
+    category=DeprecationWarning,
+    stacklevel=2,
+)
+warnings.simplefilter("default", DeprecationWarning)
 
 __all__ = ["tensor_to_gradcheck_var", "create_eye_batch", "xla_is_available", "assert_close"]
 
 
+@deprecated(
+    "kornia.utils.xla_is_available",
+    "0.7.2",
+    extra_reason="The `kornia.testing` module is deprecated and will be removed in kornia 0.8.0 (dec 2024).",
+)
 def xla_is_available() -> bool:
     """Return whether `torch_xla` is available in the system."""
     if importlib.util.find_spec("torch_xla") is not None:
@@ -22,6 +41,11 @@ def xla_is_available() -> bool:
     return False
 
 
+@deprecated(
+    "kornia.utils.is_mps_tensor_safe",
+    "0.7.2",
+    extra_reason="The `kornia.testing` module is deprecated and will be removed in kornia 0.8.0 (dec 2024).",
+)
 def is_mps_tensor_safe(x: Tensor) -> bool:
     """Return whether tensor is on MPS device."""
     return "mps" in str(x.device)
