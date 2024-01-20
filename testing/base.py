@@ -7,7 +7,7 @@ import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_close as _assert_close
 
-from kornia.core import Tensor
+from kornia.core import Dtype, Tensor
 
 # {dtype: (rtol, atol)}
 _DTYPE_PRECISIONS = {
@@ -45,6 +45,18 @@ def assert_close(
         equal_nan=False,
         **kwargs,
     )
+
+
+def tensor_to_gradcheck_var(
+    tensor: Tensor, dtype: Dtype = torch.float64, requires_grad: bool = True
+) -> Union[Tensor, str]:
+    """Convert the input tensor to a valid variable to check the gradient.
+
+    `gradcheck` needs 64-bit floating point and requires gradient.
+    """
+    if not torch.is_tensor(tensor):
+        raise AssertionError(type(tensor))
+    return tensor.requires_grad_(requires_grad).type(dtype)
 
 
 class BaseTester:
@@ -89,10 +101,15 @@ class BaseTester:
     @staticmethod
     def gradcheck(
         func: Callable[..., Union[torch.Tensor, Sequence[torch.Tensor]]],
-        inputs: Union[torch.Tensor, Sequence[torch.Tensor]],
+        inputs: Union[torch.Tensor, Sequence[Any]],
         *,
         raise_exception: bool = True,
         fast_mode: bool = True,
         **kwargs: Any,
     ) -> bool:
+        if isinstance(inputs, torch.Tensor):
+            inputs = tensor_to_gradcheck_var(inputs)
+        else:
+            inputs = [tensor_to_gradcheck_var(i) if isinstance(i, torch.Tensor) else i for i in inputs]
+
         return gradcheck(func, inputs, raise_exception=raise_exception, fast_mode=fast_mode, **kwargs)
