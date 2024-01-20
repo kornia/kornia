@@ -300,7 +300,7 @@ class TestCanny(BaseTester):
     @pytest.mark.skipif(torch_version() in {"2.0.0", "2.0.1"}, reason="Not working on 2.0")
     def test_dynamo(self, batch_size, kernel_size, device, dtype, torch_optimizer):
         if (
-            torch_version() in {"2.1.1"}
+            torch_version() in {"2.1.1", "2.1.2"}
             and dtype == torch.float64
             and (isinstance(kernel_size, int) or kernel_size[0] == kernel_size[1])
         ):
