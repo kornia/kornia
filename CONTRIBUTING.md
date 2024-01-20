@@ -128,7 +128,7 @@ repository under your GitHub account.
     As you develop your code, you should also create test cases for your code. As well as, In addition to ensuring that
     the other tests continue to pass. You can run the tests with:
     ```bash
-    $ pytest test/<TEST_TO_RUN>.py --dtype=float32,float64 --device=all
+    $ pytest tests/<TEST_TO_RUN>.py --dtype=float32,float64 --device=all
     ```
     With the `dtype` argument, run the tests using tensors with all `dtypes` desired. Options: `bfloat16`, `float16`,
     `float32`, `float64`, and `all`.
