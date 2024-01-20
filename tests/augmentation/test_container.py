@@ -694,6 +694,8 @@ class TestAugmentationSequential:
         aug_list = K.AugmentationSequential(
             K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
             K.RandomHorizontalFlip(p=1.0),
+            K.ImageSequential(K.RandomHorizontalFlip(p=1.0)),
+            K.ImageSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0)),
             data_keys=["input", "mask", "bbox"],
             same_on_batch=False,
             random_apply=10,

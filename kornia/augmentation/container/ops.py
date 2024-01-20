@@ -320,9 +320,13 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
             input = tfm_input
 
         elif isinstance(module, (K.auto.operations.OperationBase,)):
-            return [
-                MaskSequentialOps.transform(inp, module=module.op, param=param, extra_args=extra_args) for inp in input
-            ]
+            raise NotImplementedError(
+                "The support for list of masks under auto operations are not yet supported. You are welcome to file a"
+                " PR in our repo."
+            )
+            # return [
+            # MaskSequentialOps.transform(inp, module=module.op, param=param, extra_args=extra_args) for inp in input
+            # ]
         return input
 
     @classmethod
