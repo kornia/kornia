@@ -2,9 +2,7 @@ from unittest.mock import patch
 
 import pytest
 import torch
-from torch.autograd import gradcheck
 
-import kornia.testing as utils  # test utils
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.augmentation._2d.geometric.affine import RandomAffine
 from kornia.augmentation._2d.intensity.gaussian_blur import RandomGaussianBlur
@@ -132,10 +130,10 @@ class TestAugmentationBase2D:
         input_transform = torch.rand((1, 3, 3), device=device, dtype=dtype)
         other_transform = torch.rand((1, 3, 3), device=device, dtype=dtype)
 
-        input = utils.tensor_to_gradcheck_var(input)  # to var
-        input_transform = utils.tensor_to_gradcheck_var(input_transform)  # to var
-        output = utils.tensor_to_gradcheck_var(output)  # to var
-        other_transform = utils.tensor_to_gradcheck_var(other_transform)  # to var
+        # input = utils.tensor_to_gradcheck_var(input)  # to var
+        # input_transform = utils.tensor_to_gradcheck_var(input_transform)  # to var
+        # output = utils.tensor_to_gradcheck_var(output)  # to var
+        # other_transform = utils.tensor_to_gradcheck_var(other_transform)  # to var
 
         input_param = {"batch_prob": torch.tensor([True]), "x": input_transform, "y": {}}
 
@@ -143,7 +141,7 @@ class TestAugmentationBase2D:
 
         with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform:
             apply_transform.return_value = output
-            assert gradcheck(augmentation, ((input, input_param)), raise_exception=True, fast_mode=True)
+            self.gradcheck(augmentation, ((input, input_param)))
 
 
 class TestGeometricAugmentationBase2D:
