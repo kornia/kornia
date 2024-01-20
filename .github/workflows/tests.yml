@@ -73,7 +73,7 @@ jobs:
       name: Run CPU tests ${{ inputs.pytorch-dtype }}
       continue-on-error: ${{ inputs.continue-on-error }}
       shell: bash -l {0}
-      run: pytest -v --device cpu --dtype ${{ inputs.pytorch-dtype }} ${{ inputs.pytest-extra }} ./test
+      run: pytest -v --device cpu --dtype ${{ inputs.pytorch-dtype }} ${{ inputs.pytest-extra }} ./tests/
 
     - if: ${{ inputs.coverage }}
       name: Run CPU tests coverage ${{ inputs.pytorch-dtype }}
@@ -81,7 +81,7 @@ jobs:
       shell: bash -l {0}
       run: |
         coverage erase
-        coverage run -m pytest -v --device cpu --dtype ${{ inputs.pytorch-dtype }} ${{ inputs.pytest-extra }} ./test
+        coverage run -m pytest -v --device cpu --dtype ${{ inputs.pytorch-dtype }} ${{ inputs.pytest-extra }} ./tests/
 
     - if: ${{ inputs.coverage }}
       name: Coverage report

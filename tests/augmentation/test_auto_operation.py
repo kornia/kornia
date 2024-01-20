@@ -13,7 +13,7 @@ from kornia.augmentation.container import AugmentationSequential
 from kornia.geometry.bbox import bbox_to_mask
 from kornia.testing import assert_close
 from kornia.utils._compat import torch_version
-from test.augmentation.test_container import reproducibility_test
+from tests.augmentation.test_container import reproducibility_test
 
 
 def _find_all_ops() -> List[OperationBase]:
