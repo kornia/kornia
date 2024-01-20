@@ -2,8 +2,9 @@ import pytest
 import torch
 
 from kornia.filters import GuidedBlur, guided_blur
-from kornia.testing import BaseTester, tensor_to_gradcheck_var
+from kornia.testing import tensor_to_gradcheck_var
 from kornia.utils._compat import torch_version
+from testing.base import BaseTester
 
 
 class TestGuidedBlur(BaseTester):

@@ -145,7 +145,7 @@ requires = [
     skip-magic-trailing-comma = false
 
   [tool.ruff.isort]
-    known-first-party = ["examples", "kornia", "test"]
+    known-first-party = ["examples", "kornia", "tests", "testing"]
     split-on-trailing-comma = true
 
   [tool.ruff.mccabe]

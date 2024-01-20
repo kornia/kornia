@@ -3,7 +3,7 @@ import torch
 
 from kornia.contrib.models.sam import Sam, SamConfig
 from kornia.core import pad
-from kornia.testing import BaseTester
+from testing.base import BaseTester
 
 
 def _pad_rb(x, size):

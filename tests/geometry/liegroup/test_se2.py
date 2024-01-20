@@ -3,7 +3,7 @@ import torch
 
 from kornia.geometry.liegroup import Se2, So2
 from kornia.geometry.vector import Vector2
-from kornia.testing import BaseTester
+from testing.base import BaseTester
 
 
 class TestSe2(BaseTester):

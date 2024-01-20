@@ -2,8 +2,9 @@ import pytest
 import torch
 
 from kornia.filters import DexiNed, filter2d, filter2d_separable, filter3d
-from kornia.testing import BaseTester, assert_close, tensor_to_gradcheck_var
+from kornia.testing import assert_close, tensor_to_gradcheck_var
 from kornia.utils._compat import torch_version_le
+from testing.base import BaseTester
 
 
 class TestFilter2D(BaseTester):

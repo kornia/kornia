@@ -3,7 +3,7 @@ import torch
 
 from kornia.geometry import NamedPose
 from kornia.geometry.liegroup import Se2, Se3, So2, So3
-from kornia.testing import BaseTester
+from testing.base import BaseTester
 
 
 class TestNamedPose(BaseTester):

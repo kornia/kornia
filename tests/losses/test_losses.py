@@ -6,8 +6,9 @@ import torch.nn.functional as F
 from torch.autograd import gradcheck
 
 import kornia
-from kornia.testing import BaseTester, assert_close, tensor_to_gradcheck_var
+from kornia.testing import assert_close, tensor_to_gradcheck_var
 from kornia.utils import torch_meshgrid
+from testing.base import BaseTester
 
 
 class TestBinaryFocalLossWithLogits:

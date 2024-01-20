@@ -9,7 +9,8 @@ from kornia.filters import (
     edge_aware_blur_pool2d,
     max_blur_pool2d,
 )
-from kornia.testing import BaseTester, tensor_to_gradcheck_var
+from kornia.testing import tensor_to_gradcheck_var
+from testing.base import BaseTester
 
 
 class TestMaxBlurPool(BaseTester):

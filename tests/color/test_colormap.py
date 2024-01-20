@@ -4,7 +4,8 @@ from torch.autograd import gradcheck
 
 from kornia.color import AUTUMN, ApplyColorMap, apply_colormap
 from kornia.core import tensor
-from kornia.testing import BaseTester, assert_close, tensor_to_gradcheck_var
+from kornia.testing import assert_close, tensor_to_gradcheck_var
+from testing.base import BaseTester
 
 
 def test_autumn(device, dtype):

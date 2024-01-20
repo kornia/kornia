@@ -20,7 +20,8 @@ from kornia.geometry.conversions import (
     worldtocam_to_camtoworld_Rt,
 )
 from kornia.geometry.quaternion import Quaternion
-from kornia.testing import BaseTester, assert_close, create_eye_batch, tensor_to_gradcheck_var
+from kornia.testing import assert_close, create_eye_batch, tensor_to_gradcheck_var
+from testing.base import BaseTester
 
 
 @pytest.fixture()

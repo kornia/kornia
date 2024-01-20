@@ -8,7 +8,8 @@ from kornia.contrib.models.rt_detr.architecture.hybrid_encoder import HybridEnco
 from kornia.contrib.models.rt_detr.architecture.resnet_d import ResNetD
 from kornia.contrib.models.rt_detr.architecture.rtdetr_head import RTDETRHead
 from kornia.contrib.models.rt_detr.model import RTDETR, RTDETRConfig
-from kornia.testing import BaseTester, assert_close
+from kornia.testing import assert_close
+from testing.base import BaseTester
 
 
 @pytest.mark.parametrize(

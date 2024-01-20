@@ -4,7 +4,7 @@ import torch
 from kornia.geometry.vector import Vector3
 from kornia.image import ImageSize
 from kornia.sensors.camera import CameraModel, CameraModelType
-from kornia.testing import BaseTester
+from testing.base import BaseTester
 
 
 class TestPinholeCamera(BaseTester):

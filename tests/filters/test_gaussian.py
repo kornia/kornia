@@ -10,7 +10,8 @@ from kornia.filters import (
     get_gaussian_kernel2d,
     get_gaussian_kernel3d,
 )
-from kornia.testing import BaseTester, assert_close, tensor_to_gradcheck_var
+from kornia.testing import assert_close, tensor_to_gradcheck_var
+from testing.base import BaseTester
 
 
 @pytest.mark.parametrize("window_size", [5, 11])

@@ -9,7 +9,8 @@ from kornia.filters import (
     motion_blur,
     motion_blur3d,
 )
-from kornia.testing import BaseTester, tensor_to_gradcheck_var
+from kornia.testing import tensor_to_gradcheck_var
+from testing.base import BaseTester
 
 
 class TestMotionBlur(BaseTester):

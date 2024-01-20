@@ -4,7 +4,7 @@ from torch.autograd import gradcheck
 
 import kornia
 import kornia.testing as utils  # test utils
-from kornia.testing import BaseTester
+from testing.base import BaseTester
 
 
 class TestZCA(BaseTester):

@@ -6,7 +6,8 @@ from torch.autograd import gradcheck
 
 from kornia import enhance
 from kornia.geometry import rotate
-from kornia.testing import BaseTester, tensor_to_gradcheck_var
+from kornia.testing import tensor_to_gradcheck_var
+from testing.base import BaseTester
 
 
 class TestEqualization(BaseTester):

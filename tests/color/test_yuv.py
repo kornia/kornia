@@ -3,7 +3,7 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia
-from kornia.testing import BaseTester
+from testing.base import BaseTester
 
 
 class TestRgbToYuv(BaseTester):

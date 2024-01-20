@@ -5,7 +5,8 @@ from torch.autograd import gradcheck
 import kornia
 import kornia.geometry.linalg as kgl
 import kornia.testing as utils  # test utils
-from kornia.testing import BaseTester, assert_close
+from kornia.testing import assert_close
+from testing.base import BaseTester
 
 
 def identity_matrix(batch_size, device, dtype):

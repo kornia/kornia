@@ -68,9 +68,10 @@ from kornia.augmentation import (
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.constants import Resample, pi
 from kornia.geometry import transform_points
-from kornia.testing import BaseTester, assert_close, default_with_one_parameter_changed
+from kornia.testing import assert_close, default_with_one_parameter_changed
 from kornia.utils import create_meshgrid
 from kornia.utils.helpers import _torch_inverse_cast
+from testing.base import BaseTester
 
 # TODO same_on_batch tests?
 

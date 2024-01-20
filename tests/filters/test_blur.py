@@ -2,7 +2,8 @@ import pytest
 import torch
 
 from kornia.filters import BoxBlur, box_blur
-from kornia.testing import BaseTester, tensor_to_gradcheck_var
+from kornia.testing import tensor_to_gradcheck_var
+from testing.base import BaseTester
 
 
 class TestBoxBlur(BaseTester):

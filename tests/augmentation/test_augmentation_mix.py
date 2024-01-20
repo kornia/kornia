@@ -12,7 +12,8 @@ from kornia.augmentation import (
     RandomTransplantation,
     RandomTransplantation3D,
 )
-from kornia.testing import BaseTester, assert_close, tensor_to_gradcheck_var
+from kornia.testing import assert_close, tensor_to_gradcheck_var
+from testing.base import BaseTester
 
 
 class TestRandomMixUpV2:
