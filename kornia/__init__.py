@@ -9,8 +9,7 @@ from . import augmentation, color, contrib, core, enhance, feature, io, losses, 
 
 # NOTE: we are going to expose to top level very few things
 from kornia.constants import pi
-from kornia.testing import xla_is_available
-from kornia.utils import eye_like, vec_like, create_meshgrid, image_to_tensor, tensor_to_image
+from kornia.utils import eye_like, vec_like, create_meshgrid, image_to_tensor, tensor_to_image, xla_is_available
 
 # Version variable
 __version__ = "0.7.2-dev"
