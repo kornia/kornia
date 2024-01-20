@@ -30,7 +30,7 @@ jobs:
     with:
       os: ${{ matrix.os }}
       python-version: '["3.8", "3.11"]'
-      pytorch-version: '["1.9.1", "2.1.1"]'
+      pytorch-version: '["1.9.1", "2.1.2"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
 
 
@@ -39,7 +39,7 @@ jobs:
     uses: ./.github/workflows/tests.yml
     with:
       python-version: '["3.11"]'
-      pytorch-version: '["2.1.1"]'
+      pytorch-version: '["2.1.2"]'
       pytorch-dtype: 'float32,float64'
       coverage: true
       pytest-extra: '--runslow'
