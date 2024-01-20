@@ -3567,14 +3567,11 @@ class TestRandomSaltAndPepperNoise(BaseTester):
                 [
                     [
                         [
-                            [0.0000, 0.0000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000],
-                            [0.5000, 0.5000, 0.0000, 1.0000, 0.5000, 0.5000, 0.5000, 0.5000],
-                            [0.0000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000],
-                            [0.5000, 0.0000, 0.0000, 0.5000, 0.5000, 0.5000, 0.0000, 0.5000],
-                            [1.0000, 1.0000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000],
-                            [0.5000, 1.0000, 1.0000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000],
-                            [0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.0000],
-                            [1.0000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000],
+                            [1.0000, 1.0000, 0.5000, 0.5000, 0.5000],
+                            [0.5000, 0.5000, 0.5000, 0.5000, 0.5000],
+                            [0.0000, 0.0000, 0.5000, 0.5000, 0.5000],
+                            [0.5000, 1.0000, 0.5000, 0.5000, 0.5000],
+                            [0.5000, 0.5000, 0.5000, 0.5000, 0.5000],
                         ]
                     ]
                 ]
@@ -3583,7 +3580,7 @@ class TestRandomSaltAndPepperNoise(BaseTester):
     )
     def test_smoke(self, expected, device, dtype):
         torch.manual_seed(0)
-        input_tensor = torch.ones(1, 1, 8, 8, device=device, dtype=dtype) * 0.5
+        input_tensor = torch.ones(1, 1, 5, 5, device=device, dtype=dtype) * 0.5
         expected = expected.to(device, dtype=dtype)
         aug = RandomSaltAndPepperNoise(amount=0.2, salt_vs_pepper=0.5, p=1.0)
         res = aug(input_tensor)
@@ -3628,6 +3625,12 @@ class TestRandomSaltAndPepperNoise(BaseTester):
         output_tensor = transform(input_tensor)
         assert input_tensor.shape[0] == output_tensor.shape[0]
         assert input_tensor.shape[1] == output_tensor.shape[1]
+
+    def test_same_on_batch(self, device, dtype):
+        input_tensor = torch.ones(2, 1, 5, 5, device=device, dtype=dtype) * 0.5
+        transform = RandomSaltAndPepperNoise(p=1.0, same_on_batch=True)
+        output_tensor = transform(input_tensor)
+        assert_close(output_tensor[0], output_tensor[1])
 
     @pytest.mark.slow
     def test_gradcheck(self, device, dtype):
