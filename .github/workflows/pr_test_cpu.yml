@@ -5,7 +5,7 @@ on:
     branches: [test-me-*]
   pull_request:
     branches: [main]
-    types: [opened, reopened, synchronize, ready_for_review, labeled]
+    types: [opened, reopened, synchronize, ready_for_review]
   workflow_dispatch:
 
 concurrency:
