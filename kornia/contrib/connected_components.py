@@ -36,9 +36,7 @@ def connected_components(image: Tensor, num_iterations: int = 100) -> Tensor:
         raise TypeError(f"Input imagetype is not a Tensor. Got: {type(image)}")
 
     if not isinstance(num_iterations, int) or num_iterations < 0:
-        raise TypeError(
-            "Input num_iterations must be an integer greater or equal to zero."
-        )
+        raise TypeError("Input num_iterations must be an integer greater or equal to zero.")
 
     if len(image.shape) < 3 or image.shape[-3] != 1:
         raise ValueError(f"Input image shape must be (*,1,H,W). Got: {image.shape}")

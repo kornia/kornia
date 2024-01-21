@@ -177,7 +177,7 @@ class TestConnectedComponents:
         img[..., 1:, 1:] = 1.0
 
         expected = torch.zeros((1, 1, N, N), device=device, dtype=dtype)
-        expected[..., 1:, 1:] = N * N 
+        expected[..., 1:, 1:] = N * N
 
         out = kornia.contrib.connected_components(img, num_iterations=0)
         assert_close(out, expected)
