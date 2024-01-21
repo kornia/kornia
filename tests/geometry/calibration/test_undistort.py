@@ -2,11 +2,10 @@ import pytest
 import torch
 
 from kornia.geometry.calibration.undistort import undistort_image, undistort_points
-from kornia.testing import gradcheck
-from testing.base import assert_close
+from testing.base import BaseTester
 
 
-class TestUndistortPoints:
+class TestUndistortPoints(BaseTester):
     def test_smoke(self, device, dtype):
         points = torch.rand(1, 2, device=device, dtype=dtype)
         K = torch.rand(3, 3, device=device, dtype=dtype)
@@ -68,7 +67,7 @@ class TestUndistortPoints:
             [[1030.5992, 790.65533], [1027.3059, 718.10020], [1024.0700, 645.90600]], device=device, dtype=dtype
         )
         ptsu = undistort_points(pts, K, dist)
-        assert_close(ptsu, ptsu_expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(ptsu, ptsu_expected, rtol=1e-4, atol=1e-4)
 
         new_K = K * 2
         new_K[2, 2] = 1
@@ -82,7 +81,7 @@ class TestUndistortPoints:
         )
         print(ptsu_expected)
         ptsu = undistort_points(pts, K, dist, new_K)
-        assert_close(ptsu, ptsu_expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(ptsu, ptsu_expected, rtol=1e-4, atol=1e-4)
 
     def test_opencv_all_coeff(self, device, dtype):
         # Test using 14 distortion coefficients
@@ -125,7 +124,7 @@ class TestUndistortPoints:
             [[1030.8245, 786.3807], [1027.5505, 715.0732], [1024.2753, 644.0319]], device=device, dtype=dtype
         )
         ptsu = undistort_points(pts, K, dist)
-        assert_close(ptsu, ptsu_expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(ptsu, ptsu_expected, rtol=1e-4, atol=1e-4)
 
         new_K = K * 2
         new_K[2, 2] = 1
@@ -139,7 +138,7 @@ class TestUndistortPoints:
         )
         print(ptsu_expected)
         ptsu = undistort_points(pts, K, dist, new_K)
-        assert_close(ptsu, ptsu_expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(ptsu, ptsu_expected, rtol=1e-4, atol=1e-4)
 
     def test_opencv_stereo(self, device, dtype):
         # Udistort stereo points with data given in two batches using 14 distortion coefficients
@@ -223,8 +222,8 @@ class TestUndistortPoints:
         )
 
         ptsu = undistort_points(pts, K, dist)
-        assert_close(ptsu[0], ptsu_expected1, rtol=1e-4, atol=1e-4)
-        assert_close(ptsu[1], ptsu_expected2, rtol=1e-4, atol=1e-4)
+        self.assert_close(ptsu[0], ptsu_expected1, rtol=1e-4, atol=1e-4)
+        self.assert_close(ptsu[1], ptsu_expected2, rtol=1e-4, atol=1e-4)
 
     def test_gradcheck(self, device):
         points = torch.rand(1, 8, 2, device=device, dtype=torch.float64, requires_grad=True)
@@ -232,7 +231,7 @@ class TestUndistortPoints:
         new_K = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
         distCoeff = torch.rand(1, 4, device=device, dtype=torch.float64)
 
-        gradcheck(undistort_points, (points, K, distCoeff, new_K))
+        self.gradcheck(undistort_points, (points, K, distCoeff, new_K), requires_grad=(True, False, False, False))
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         points = torch.rand(1, 1, 2, device=device, dtype=dtype)
@@ -243,10 +242,10 @@ class TestUndistortPoints:
 
         op = undistort_points
         op_optimized = torch_optimizer(op)
-        assert_close(op(*inputs), op_optimized(*inputs))
+        self.assert_close(op(*inputs), op_optimized(*inputs))
 
 
-class TestUndistortImage:
+class TestUndistortImage(BaseTester):
     def test_shape(self, device, dtype):
         im = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
         K = torch.rand(3, 3, device=device, dtype=dtype)
@@ -270,7 +269,7 @@ class TestUndistortImage:
 
         imu = undistort_image(im, K, distCoeff)
         assert imu.shape == (3, 2, 3, 5, 5)
-        assert_close(imu[0], imu[1])
+        self.assert_close(imu[0], imu[1])
 
     def test_exception(self, device, dtype):
         with pytest.raises(ValueError):
@@ -334,14 +333,14 @@ class TestUndistortImage:
         )
 
         imu = undistort_image(im / 255.0, K, dist)
-        assert_close(imu, imu_expected / 255.0, rtol=1e-2, atol=1e-2)
+        self.assert_close(imu, imu_expected / 255.0, rtol=1e-2, atol=1e-2)
 
     def test_gradcheck(self, device):
         im = torch.rand(1, 1, 15, 15, device=device, dtype=torch.float64, requires_grad=True)
         K = torch.rand(3, 3, device=device, dtype=torch.float64)
         distCoeff = torch.rand(4, device=device, dtype=torch.float64)
 
-        gradcheck(undistort_image, (im, K, distCoeff))
+        self.gradcheck(undistort_image, (im, K, distCoeff), requires_grad=(True, False, False))
 
     @pytest.mark.xfail(reason="Some times this seems to random fail")
     def test_dynamo(self, device, dtype, torch_optimizer):
@@ -353,4 +352,4 @@ class TestUndistortImage:
 
         op = undistort_image
         op_optimized = torch_optimizer(op)
-        assert_close(op(*inputs), op_optimized(*inputs))
+        self.assert_close(op(*inputs), op_optimized(*inputs))

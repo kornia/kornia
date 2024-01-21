@@ -6,8 +6,6 @@ import pytest
 import torch
 
 import kornia
-
-# import kornia.testing as utils  # test utils
 from kornia.augmentation import (
     AugmentationSequential,
     CenterCrop,

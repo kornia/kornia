@@ -1,16 +1,14 @@
 from typing import Dict
 
 import pytest
-import test_common as utils
 import torch
-from torch.autograd import gradcheck
 
 import kornia.geometry.epipolar as epi
-import kornia.testing as utils2
-from testing.base import assert_close
+from testing.base import BaseTester
+from testing.geometry.epipolar import create_random_fundamental_matrix, generate_two_view_random_scene
 
 
-class TestNormalizePoints:
+class TestNormalizePoints(BaseTester):
     def test_smoke(self, device, dtype):
         points = torch.rand(1, 1, 2, device=device, dtype=dtype)
         output = epi.normalize_points(points)
@@ -32,15 +30,15 @@ class TestNormalizePoints:
         points_norm, _ = epi.normalize_points(points)
         points_std, points_mean = torch.std_mean(points_norm, dim=1)
 
-        assert_close(points_mean, torch.zeros_like(points_mean))
+        self.assert_close(points_mean, torch.zeros_like(points_mean))
         assert (points_std < 2.0).all()
 
     def test_gradcheck(self, device):
         points = torch.rand(2, 3, 2, device=device, requires_grad=True, dtype=torch.float64)
-        assert gradcheck(epi.normalize_points, (points,), raise_exception=True, fast_mode=True)
+        self.gradcheck(epi.normalize_points, (points,))
 
 
-class TestNormalizeTransformation:
+class TestNormalizeTransformation(BaseTester):
     def test_smoke(self, device, dtype):
         trans = torch.rand(2, 2, device=device, dtype=dtype)
         trans_norm = epi.normalize_transformation(trans)
@@ -59,7 +57,7 @@ class TestNormalizeTransformation:
         trans_expected = torch.tensor([[[0.0, 0.0, 2.0], [0.0, 4.0, 0.0], [1.0, 0.0, 1.0]]], device=device, dtype=dtype)
 
         trans_norm = epi.normalize_transformation(trans)
-        assert_close(trans_norm, trans_expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(trans_norm, trans_expected, atol=1e-4, rtol=1e-4)
 
     def test_check_corner_case(self, device, dtype):
         trans = torch.tensor([[[0.0, 0.0, 1.0], [0.0, 2.0, 0.0], [0.5, 0.0, 0.0]]], device=device, dtype=dtype)
@@ -67,14 +65,14 @@ class TestNormalizeTransformation:
         trans_expected = trans.clone()
 
         trans_norm = epi.normalize_transformation(trans)
-        assert_close(trans_norm, trans_expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(trans_norm, trans_expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
         trans = torch.rand(2, 3, 3, device=device, requires_grad=True, dtype=torch.float64)
-        assert gradcheck(epi.normalize_transformation, (trans,), raise_exception=True, fast_mode=True)
+        self.gradcheck(epi.normalize_transformation, (trans,))
 
 
-class TestFindFundamental:
+class TestFindFundamental(BaseTester):
     def test_smoke(self, device, dtype):
         points1 = torch.rand(1, 8, 2, device=device, dtype=dtype)
         points2 = torch.rand(1, 8, 2, device=device, dtype=dtype)
@@ -169,7 +167,7 @@ class TestFindFundamental:
         )
 
         F_mat = epi.find_fundamental(points1, points2, weights)
-        assert_close(F_mat, Fm_expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(F_mat, Fm_expected, rtol=1e-4, atol=1e-4)
 
     def test_7point_opencv(self, device, dtype):
         points1 = torch.tensor(
@@ -235,10 +233,10 @@ class TestFindFundamental:
             dtype=dtype,
         )
         F_mat = epi.find_fundamental(points1, points2, method="7POINT")
-        assert_close(F_mat, Fm_expected, rtol=1e-3, atol=1e-3)
+        self.assert_close(F_mat, Fm_expected, rtol=1e-3, atol=1e-3)
 
     def test_synthetic_sampson_7point(self, device, dtype):
-        scene: Dict[str, torch.Tensor] = utils.generate_two_view_random_scene(device, dtype)
+        scene: Dict[str, torch.Tensor] = generate_two_view_random_scene(device, dtype)
         x1 = scene["x1"][:, :7, :]
         x2 = scene["x2"][:, :7, :]
         F_est = epi.find_fundamental(x1, x2, None, "7POINT")
@@ -246,10 +244,10 @@ class TestFindFundamental:
             F = F_est[0][i].unsqueeze(0)
             if torch.all(F != 0):
                 error = epi.sampson_epipolar_distance(x1, x2, F)
-                assert_close(error, torch.zeros((F.shape[0], 7), device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
+                self.assert_close(error, torch.zeros((F.shape[0], 7), device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
 
     def test_epipolar_constraint_7point(self, device, dtype):
-        scene: Dict[str, torch.Tensor] = utils.generate_two_view_random_scene(device, dtype)
+        scene: Dict[str, torch.Tensor] = generate_two_view_random_scene(device, dtype)
         x1 = scene["x1"][:, :7, :]
         x2 = scene["x2"][:, :7, :]
         F_est = epi.find_fundamental(x1, x2, None, "7POINT")
@@ -258,10 +256,10 @@ class TestFindFundamental:
             if torch.all(F != 0):
                 distance = epi.symmetrical_epipolar_distance(x1, x2, F)
                 mean_error = distance.mean()
-                assert_close(mean_error, torch.tensor(0.0, device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
+                self.assert_close(mean_error, torch.tensor(0.0, device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
 
     def test_synthetic_sampson(self, device, dtype):
-        scene: Dict[str, torch.Tensor] = utils.generate_two_view_random_scene(device, dtype)
+        scene: Dict[str, torch.Tensor] = generate_two_view_random_scene(device, dtype)
 
         x1 = scene["x1"]
         x2 = scene["x2"]
@@ -270,16 +268,16 @@ class TestFindFundamental:
         F_est = epi.find_fundamental(x1, x2, weights)
 
         error = epi.sampson_epipolar_distance(x1, x2, F_est)
-        assert_close(error, torch.zeros((x1.shape[:2]), device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
+        self.assert_close(error, torch.zeros((x1.shape[:2]), device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
         points1 = torch.rand(1, 10, 2, device=device, dtype=torch.float64, requires_grad=True)
         points2 = torch.rand(1, 10, 2, device=device, dtype=torch.float64)
         weights = torch.ones(1, 10, device=device, dtype=torch.float64)
-        assert gradcheck(epi.find_fundamental, (points1, points2, weights), raise_exception=True, fast_mode=True)
+        self.gradcheck(epi.find_fundamental, (points1, points2, weights))
 
 
-class TestComputeCorrespondEpilines:
+class TestComputeCorrespondEpilines(BaseTester):
     def test_smoke(self, device, dtype):
         point = torch.rand(1, 1, 2, device=device, dtype=dtype)
         F_mat = torch.rand(1, 3, 3, device=device, dtype=dtype)
@@ -308,7 +306,7 @@ class TestComputeCorrespondEpilines:
             lines_T_hops[:, i, ...] = epi.compute_correspond_epilines(point[:, i, ...], F_mat[:, i, ...])
         lines_one_hop = epi.compute_correspond_epilines(point, F_mat)
 
-        assert_close(lines_T_hops, lines_one_hop, atol=2e-7, rtol=2e-7)
+        self.assert_close(lines_T_hops, lines_one_hop, atol=2e-7, rtol=2e-7)
 
     def test_opencv(self, device, dtype):
         point = torch.rand(1, 2, 2, device=device, dtype=dtype)
@@ -331,15 +329,15 @@ class TestComputeCorrespondEpilines:
         )
 
         lines_est = epi.compute_correspond_epilines(point, F_mat)
-        assert_close(lines_est, lines_expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(lines_est, lines_expected, rtol=1e-4, atol=1e-4)
 
     def test_gradcheck(self, device):
         point = torch.rand(1, 4, 2, device=device, dtype=torch.float64, requires_grad=True)
         F_mat = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
-        assert gradcheck(epi.compute_correspond_epilines, (point, F_mat), raise_exception=True, fast_mode=True)
+        self.gradcheck(epi.compute_correspond_epilines, (point, F_mat), requires_grad=(True, False))
 
 
-class TestFundamentlFromEssential:
+class TestFundamentlFromEssential(BaseTester):
     def test_smoke(self, device, dtype):
         E_mat = torch.rand(1, 3, 3, device=device, dtype=dtype)
         K1 = torch.rand(1, 3, 3, device=device, dtype=dtype)
@@ -364,7 +362,7 @@ class TestFundamentlFromEssential:
         assert F_mat.shape == (1, 2, 3, 3)
 
     def test_from_to_essential(self, device, dtype):
-        scene = utils.generate_two_view_random_scene(device, dtype)
+        scene = generate_two_view_random_scene(device, dtype)
 
         F_mat = scene["F"]
         E_mat = epi.essential_from_fundamental(F_mat, scene["K1"], scene["K2"])
@@ -372,16 +370,16 @@ class TestFundamentlFromEssential:
 
         F_mat_norm = epi.normalize_transformation(F_mat)
         F_hat_norm = epi.normalize_transformation(F_hat)
-        assert_close(F_mat_norm, F_hat_norm, atol=1e-4, rtol=1e-4)
+        self.assert_close(F_mat_norm, F_hat_norm, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
         E_mat = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
         K1 = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
         K2 = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
-        assert gradcheck(epi.fundamental_from_essential, (E_mat, K1, K2), raise_exception=True, fast_mode=True)
+        self.gradcheck(epi.fundamental_from_essential, (E_mat, K1, K2), requires_grad=(True, False, False))
 
 
-class TestFundamentalFromProjections:
+class TestFundamentalFromProjections(BaseTester):
     def test_smoke(self, device, dtype):
         P1 = torch.rand(1, 3, 4, device=device, dtype=dtype)
         P2 = torch.rand(1, 3, 4, device=device, dtype=dtype)
@@ -417,12 +415,12 @@ class TestFundamentalFromProjections:
 
         F_mat_norm = epi.normalize_transformation(F_mat)
         F_hat_norm = epi.normalize_transformation(F_hat)
-        assert_close(F_mat_norm, F_hat_norm, atol=1e-4, rtol=1e-4)
+        self.assert_close(F_mat_norm, F_hat_norm, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
         P1 = torch.rand(1, 3, 4, device=device, dtype=torch.float64, requires_grad=True)
         P2 = torch.rand(1, 3, 4, device=device, dtype=torch.float64)
-        assert gradcheck(epi.fundamental_from_projections, (P1, P2), raise_exception=True, fast_mode=True)
+        self.gradcheck(epi.fundamental_from_projections, (P1, P2), requires_grad=(True, False))
 
     def test_batch_support_check(self, device, dtype):
         P1_batch = torch.tensor(
@@ -482,10 +480,10 @@ class TestFundamentalFromProjections:
 
         F_batch = epi.fundamental_from_projections(P1_batch, P2_batch)
         F = epi.fundamental_from_projections(P1, P2)
-        assert_close(F_batch[0], F[0])
+        self.assert_close(F_batch[0], F[0])
 
 
-class TestPerpendicular:
+class TestPerpendicular(BaseTester):
     def test_shape(self, device, dtype):
         lines = torch.rand(2, 4, 3, device=device, dtype=dtype)
         points = torch.rand(2, 4, 2, device=device, dtype=dtype)
@@ -498,19 +496,19 @@ class TestPerpendicular:
         lines = torch.tensor([[[1.0, -1.0, 0.0], [0.0, 1.0, 1.0]]], device=device, dtype=dtype)
         perp = epi.get_perpendicular(lines, points)
         expected = torch.tensor([[[1.0, 1.0, -1.0], [-1.0, 0.0, 0.0]]], device=device, dtype=dtype)
-        assert_close(perp, expected)
+        self.assert_close(perp, expected)
 
     def test_gradcheck(self, device):
         pt = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
         line = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
-        assert gradcheck(epi.get_perpendicular, (pt, line), raise_exception=True, fast_mode=True)
+        self.gradcheck(epi.get_perpendicular, (pt, line), requires_grad=(True, False))
 
 
-class TestGetClosestPointOnEpipolarLine:
+class TestGetClosestPointOnEpipolarLine(BaseTester):
     def test_shape(self, device, dtype):
         pts1 = torch.rand(2, 4, 2, device=device, dtype=dtype)
         pts2 = torch.rand(2, 4, 2, device=device, dtype=dtype)
-        Fm = utils2.create_random_fundamental_matrix(1).type_as(pts1)
+        Fm = create_random_fundamental_matrix(1, device=device, dtype=dtype)
         perp = epi.get_closest_point_on_epipolar_line(pts1, pts2, Fm)
         assert perp.shape == (2, 4, 2)
 
@@ -520,10 +518,10 @@ class TestGetClosestPointOnEpipolarLine:
         Fm = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]], dtype=dtype, device=device)[None]
         cp = epi.get_closest_point_on_epipolar_line(pts1, pts2, Fm)
         expected = torch.tensor([[[2.0, 0.0], [2.0, 0.0], [2.0, 0.0]]], device=device, dtype=dtype)
-        assert_close(cp, expected)
+        self.assert_close(cp, expected)
 
     def test_gradcheck(self, device):
         pts1 = torch.rand(2, 4, 2, device=device, dtype=torch.float64, requires_grad=True)
         pts2 = torch.rand(2, 4, 2, device=device, dtype=torch.float64)
-        Fm = utils2.create_random_fundamental_matrix(1).type_as(pts1)
-        assert gradcheck(epi.get_closest_point_on_epipolar_line, (pts1, pts2, Fm), raise_exception=True, fast_mode=True)
+        Fm = create_random_fundamental_matrix(1, dtype=torch.float64, device=device)
+        self.gradcheck(epi.get_closest_point_on_epipolar_line, (pts1, pts2, Fm), requires_grad=(True, False, False))

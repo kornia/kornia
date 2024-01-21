@@ -107,12 +107,7 @@ class TestAngleAxisToQuaternion(BaseTester):
         eps = torch.finfo(dtype).eps
         axis_angle = torch.tensor((0.0, 0.0, 0.0), device=device, dtype=dtype) + eps
         # evaluate function gradient
-        assert gradcheck(
-            partial(kornia.geometry.conversions.axis_angle_to_quaternion),
-            (axis_angle,),
-            raise_exception=True,
-            fast_mode=True,
-        )
+        self.gradcheck(partial(kornia.geometry.conversions.axis_angle_to_quaternion), (axis_angle,))
 
 
 class TestQuaternionToAngleAxis(BaseTester):
@@ -172,17 +167,12 @@ class TestQuaternionToAngleAxis(BaseTester):
         axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
         self.assert_close(axis_angle, expected, atol=atol, rtol=rtol)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
+        dtype = torch.float64
         eps = torch.finfo(dtype).eps
         quaternion = torch.tensor((1.0, 0.0, 0.0, 0.0), device=device, dtype=dtype) + eps
-        quaternion = tensor_to_gradcheck_var(quaternion)
         # evaluate function gradient
-        assert gradcheck(
-            partial(kornia.geometry.conversions.quaternion_to_axis_angle),
-            (quaternion,),
-            raise_exception=True,
-            fast_mode=True,
-        )
+        self.gradcheck(partial(kornia.geometry.conversions.quaternion_to_axis_angle), (quaternion,))
 
 
 class TestRotationMatrixToQuaternion(BaseTester):
@@ -230,17 +220,12 @@ class TestRotationMatrixToQuaternion(BaseTester):
         torch.set_printoptions(precision=10)
         self.assert_close(quaternion_true, quaternion, atol=atol, rtol=rtol)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
+        dtype = torch.float64
         eps = torch.finfo(dtype).eps
         matrix = torch.eye(3, device=device, dtype=dtype)
-        matrix = tensor_to_gradcheck_var(matrix)
         # evaluate function gradient
-        assert gradcheck(
-            partial(kornia.geometry.conversions.rotation_matrix_to_quaternion, eps=eps),
-            (matrix,),
-            raise_exception=True,
-            fast_mode=True,
-        )
+        self.gradcheck(partial(kornia.geometry.conversions.rotation_matrix_to_quaternion, eps=eps), (matrix,))
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         quaternion = torch.tensor((0.0, 0.0, 1.0), device=device, dtype=dtype)
@@ -284,16 +269,10 @@ class TestQuaternionToRotationMatrix(BaseTester):
         matrix = kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternion)
         self.assert_close(matrix, expected, atol=atol, rtol=rtol)
 
-    def test_gradcheck(self, device, dtype):
-        quaternion = torch.tensor((0.0, 0.0, 0.0, 1.0), device=device, dtype=dtype)
-        quaternion = tensor_to_gradcheck_var(quaternion)
+    def test_gradcheck(self, device):
+        quaternion = torch.tensor((0.0, 0.0, 0.0, 1.0), device=device, dtype=torch.float64)
         # evaluate function gradient
-        assert gradcheck(
-            partial(kornia.geometry.conversions.quaternion_to_rotation_matrix),
-            (quaternion,),
-            raise_exception=True,
-            fast_mode=True,
-        )
+        self.gradcheck(partial(kornia.geometry.conversions.quaternion_to_rotation_matrix), (quaternion,))
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         quaternion = torch.tensor((0.0, 0.0, 1.0, 0.0), device=device, dtype=dtype)
@@ -352,17 +331,12 @@ class TestQuaternionLogToExp(BaseTester):
         quaternion_log_hat = kornia.geometry.conversions.quaternion_exp_to_log(quaternion_exp, eps=eps)
         self.assert_close(quaternion_log, quaternion_log_hat, atol=atol, rtol=rtol)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
+        dtype = torch.float64
         eps = torch.finfo(dtype).eps
         quaternion = torch.tensor((0.0, 0.0, 1.0), device=device, dtype=dtype)
-        quaternion = tensor_to_gradcheck_var(quaternion)
         # evaluate function gradient
-        assert gradcheck(
-            partial(kornia.geometry.conversions.quaternion_log_to_exp, eps=eps),
-            (quaternion,),
-            raise_exception=True,
-            fast_mode=True,
-        )
+        self.gradcheck(partial(kornia.geometry.conversions.quaternion_log_to_exp, eps=eps), (quaternion,))
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         quaternion = torch.tensor((0.0, 0.0, 1.0), device=device, dtype=dtype)
@@ -418,17 +392,12 @@ class TestQuaternionExpToLog(BaseTester):
         quaternion_exp_hat = kornia.geometry.conversions.quaternion_log_to_exp(quaternion_log, eps=eps)
         self.assert_close(quaternion_exp, quaternion_exp_hat, atol=atol, rtol=rtol)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
+        dtype = torch.float64
         eps = torch.finfo(dtype).eps
         quaternion = torch.tensor((0.0, 1.0, 0.0, 0.0), device=device, dtype=dtype)
-        quaternion = tensor_to_gradcheck_var(quaternion)
         # evaluate function gradient
-        assert gradcheck(
-            partial(kornia.geometry.conversions.quaternion_exp_to_log, eps=eps),
-            (quaternion,),
-            raise_exception=True,
-            fast_mode=True,
-        )
+        self.gradcheck(partial(kornia.geometry.conversions.quaternion_exp_to_log, eps=eps), (quaternion,))
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         quaternion = torch.tensor((0.0, 0.0, 1.0, 0.0), device=device, dtype=dtype)
@@ -443,7 +412,8 @@ class TestQuaternionExpToLog(BaseTester):
 
 class TestAngleAxisToRotationMatrix(BaseTester):
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
-    def test_rand_axis_angle_gradcheck(self, batch_size, device, dtype, atol, rtol):
+    def test_rand_axis_angle_gradcheck(self, batch_size, device, atol, rtol):
+        dtype = torch.float64
         # generate input data
         axis_angle = torch.rand(batch_size, 3, device=device, dtype=dtype)
         eye_batch = eye_like(3, axis_angle)
@@ -455,13 +425,7 @@ class TestAngleAxisToRotationMatrix(BaseTester):
         self.assert_close(rotation_matrix_eye, eye_batch, atol=atol, rtol=rtol)
 
         # evaluate function gradient
-        axis_angle = tensor_to_gradcheck_var(axis_angle)  # to var
-        assert gradcheck(
-            kornia.geometry.conversions.axis_angle_to_rotation_matrix,
-            (axis_angle,),
-            raise_exception=True,
-            fast_mode=True,
-        )
+        self.gradcheck(kornia.geometry.conversions.axis_angle_to_rotation_matrix, (axis_angle,))
 
     def test_axis_angle_to_rotation_matrix(self, device, dtype, atol, rtol):
         rmat_1 = torch.tensor(
@@ -505,18 +469,13 @@ class TestRotationMatrixToAngleAxis(BaseTester):
         self.assert_close(rotation_matrix_eye, eye_batch, atol=atol * 10.0, rtol=rtol * 10.0)
 
     @pytest.mark.parametrize("batch_size", [4])
-    def test_gradcheck(self, batch_size, device, dtype):
+    def test_gradcheck(self, batch_size, device):
+        dtype = torch.float64
         quaternion = torch.rand(batch_size, 4, device=device, dtype=dtype)
         quaternion = kornia.geometry.conversions.normalize_quaternion(quaternion + 1e-6)
         rotation_matrix = kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternion=quaternion)
         # evaluate function gradient
-        rotation_matrix = tensor_to_gradcheck_var(rotation_matrix)  # to var
-        assert gradcheck(
-            kornia.geometry.conversions.rotation_matrix_to_axis_angle,
-            (rotation_matrix,),
-            raise_exception=True,
-            fast_mode=True,
-        )
+        self.gradcheck(kornia.geometry.conversions.rotation_matrix_to_axis_angle, (rotation_matrix,))
 
     def test_rotation_matrix_to_axis_angle(self, device, dtype, atol, rtol):
         rmat_1 = torch.tensor(
@@ -546,50 +505,44 @@ class TestRotationMatrixToAngleAxis(BaseTester):
         self.assert_close(kornia.geometry.conversions.rotation_matrix_to_axis_angle(rmat), rvec, atol=atol, rtol=rtol)
 
 
-def test_pi():
-    self.assert_close(kornia.constants.pi.item(), 3.141592)
+class TestRadDegConversions(BaseTester):
+    def test_pi(self):
+        self.assert_close(kornia.constants.pi.item(), 3.141592)
 
+    @pytest.mark.parametrize("batch_shape", [(2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3)])
+    def test_rad2deg(self, batch_shape, device, dtype):
+        # generate input data
+        x_rad = kornia.constants.pi * torch.rand(batch_shape, device=device, dtype=dtype)
 
-@pytest.mark.parametrize("batch_shape", [(2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3)])
-def test_rad2deg(batch_shape, device, dtype):
-    # generate input data
-    x_rad = kornia.constants.pi * torch.rand(batch_shape, device=device, dtype=dtype)
+        # convert radians/degrees
+        x_deg = kornia.geometry.conversions.rad2deg(x_rad)
+        x_deg_to_rad = kornia.geometry.conversions.deg2rad(x_deg)
 
-    # convert radians/degrees
-    x_deg = kornia.geometry.conversions.rad2deg(x_rad)
-    x_deg_to_rad = kornia.geometry.conversions.deg2rad(x_deg)
+        # compute error
+        self.assert_close(x_rad, x_deg_to_rad)
 
-    # compute error
-    self.assert_close(x_rad, x_deg_to_rad)
+    @pytest.mark.parametrize("batch_shape", [(2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3)])
+    def test_rad2deg_gradcheck(self, batch_shape, device):
+        dtype = torch.float64
+        x_rad = torch.rand(batch_shape, device=device, dtype=dtype)
+        # evaluate function gradient
+        self.gradcheck(kornia.geometry.conversions.rad2deg, (x_rad,))
 
+    @pytest.mark.parametrize("batch_shape", [(2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3)])
+    def test_deg2rad(self, batch_shape, device, dtype, atol, rtol):
+        # generate input data
+        x_deg = 180.0 * torch.rand(batch_shape, device=device, dtype=dtype)
 
-@pytest.mark.parametrize("batch_shape", [(2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3)])
-def test_rad2deg_gradcheck(batch_shape, device, dtype):
-    x_rad = torch.rand(batch_shape, device=device, dtype=dtype)
-    # evaluate function gradient
-    assert gradcheck(
-        kornia.geometry.conversions.rad2deg, (tensor_to_gradcheck_var(x_rad),), raise_exception=True, fast_mode=True
-    )
+        # convert radians/degrees
+        x_rad = kornia.geometry.conversions.deg2rad(x_deg)
+        x_rad_to_deg = kornia.geometry.conversions.rad2deg(x_rad)
 
+        self.assert_close(x_deg, x_rad_to_deg, atol=atol, rtol=rtol)
 
-@pytest.mark.parametrize("batch_shape", [(2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3)])
-def test_deg2rad(batch_shape, device, dtype, atol, rtol):
-    # generate input data
-    x_deg = 180.0 * torch.rand(batch_shape, device=device, dtype=dtype)
-
-    # convert radians/degrees
-    x_rad = kornia.geometry.conversions.deg2rad(x_deg)
-    x_rad_to_deg = kornia.geometry.conversions.rad2deg(x_rad)
-
-    self.assert_close(x_deg, x_rad_to_deg, atol=atol, rtol=rtol)
-
-
-@pytest.mark.parametrize("batch_shape", [(2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3)])
-def test_deg2rad_gradcheck(batch_shape, device, dtype):
-    x_deg = 180.0 * torch.rand(batch_shape, device=device, dtype=dtype)
-    assert gradcheck(
-        kornia.geometry.conversions.deg2rad, (tensor_to_gradcheck_var(x_deg),), raise_exception=True, fast_mode=True
-    )
+    @pytest.mark.parametrize("batch_shape", [(2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3)])
+    def test_deg2rad_gradcheck(self, batch_shape, device):
+        x_deg = 180.0 * torch.rand(batch_shape, device=device, dtype=torch.float64)
+        self.gradcheck(kornia.geometry.conversions.deg2rad, (x_deg,))
 
 
 class TestPolCartConversions(BaseTester):
@@ -614,21 +567,11 @@ class TestPolCartConversions(BaseTester):
         self.assert_close(phi, phi_pol2cart)
 
     @pytest.mark.parametrize("batch_shape", [(2, 3)])
-    def test_gradcheck(self, batch_shape, device, dtype):
-        rho = torch.rand(batch_shape, dtype=dtype, device=device)
-        phi = kornia.constants.pi * torch.rand(batch_shape, dtype=dtype, device=device)
-        assert gradcheck(
-            kornia.geometry.conversions.pol2cart,
-            (tensor_to_gradcheck_var(rho), tensor_to_gradcheck_var(phi)),
-            raise_exception=True,
-            fast_mode=True,
-        )
-        assert gradcheck(
-            kornia.geometry.conversions.cart2pol,
-            (tensor_to_gradcheck_var(rho), tensor_to_gradcheck_var(phi)),
-            raise_exception=True,
-            fast_mode=True,
-        )
+    def test_gradcheck(self, batch_shape, device):
+        rho = torch.rand(batch_shape, dtype=torch.float64, device=device)
+        phi = kornia.constants.pi * torch.rand(batch_shape, dtype=torch.float64, device=device)
+        self.gradcheck(kornia.geometry.conversions.pol2cart, (rho, phi))
+        self.gradcheck(kornia.geometry.conversions.cart2pol, (rho, phi))
 
     @pytest.mark.parametrize("batch_shape", [(2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3)])
     def test_cart2pol(self, batch_shape, device, dtype):
@@ -684,14 +627,11 @@ class TestConvertPointsToHomogeneous(BaseTester):
         self.assert_close(points, expected, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_shape", [(2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3)])
-    def test_gradcheck(self, batch_shape, device, dtype):
-        points_h = torch.rand(batch_shape, device=device, dtype=dtype)
+    def test_gradcheck(self, batch_shape, device):
+        points_h = torch.rand(batch_shape, device=device, dtype=torch.float64)
 
         # evaluate function gradient
-        points_h = tensor_to_gradcheck_var(points_h)  # to var
-        assert gradcheck(
-            kornia.geometry.conversions.convert_points_to_homogeneous, (points_h,), raise_exception=True, fast_mode=True
-        )
+        self.gradcheck(kornia.geometry.conversions.convert_points_to_homogeneous, (points_h,))
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         points_h = torch.zeros(1, 2, 3, device=device, dtype=dtype)
@@ -719,17 +659,11 @@ class TestConvertAtoH(BaseTester):
         self.assert_close(H, expected)
 
     @pytest.mark.parametrize("batch_shape", [(10, 2, 3), (16, 2, 3)])
-    def test_gradcheck(self, batch_shape, device, dtype):
-        points_h = torch.rand(batch_shape, device=device, dtype=dtype)
+    def test_gradcheck(self, batch_shape, device):
+        points_h = torch.rand(batch_shape, device=device, dtype=torch.float64)
 
         # evaluate function gradient
-        points_h = tensor_to_gradcheck_var(points_h)  # to var
-        assert gradcheck(
-            kornia.geometry.conversions.convert_affinematrix_to_homography,
-            (points_h,),
-            raise_exception=True,
-            fast_mode=True,
-        )
+        self.gradcheck(kornia.geometry.conversions.convert_affinematrix_to_homography, (points_h,))
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         points_h = torch.zeros(1, 2, 3, device=device, dtype=dtype)
@@ -776,31 +710,19 @@ class TestConvertPointsFromHomogeneous(BaseTester):
         points = kornia.geometry.conversions.convert_points_from_homogeneous(points_h)
         self.assert_close(points, expected, atol=1e-4, rtol=1e-4)
 
-    def test_gradcheck(self, device, dtype):
-        points_h = torch.ones(1, 10, 3, device=device, dtype=dtype)
+    def test_gradcheck(self, device):
+        points_h = torch.ones(1, 10, 3, device=device, dtype=torch.float64)
 
         # evaluate function gradient
-        points_h = tensor_to_gradcheck_var(points_h)  # to var
-        assert gradcheck(
-            kornia.geometry.conversions.convert_points_from_homogeneous,
-            (points_h,),
-            raise_exception=True,
-            fast_mode=True,
-        )
+        self.gradcheck(kornia.geometry.conversions.convert_points_from_homogeneous, (points_h,))
 
     @pytest.mark.skip("RuntimeError: Jacobian mismatch for output 0 with respect to input 0,")
-    def test_gradcheck_zvec_zeros(self, device, dtype):
+    def test_gradcheck_zvec_zeros(self, device):
         # generate input data
-        points_h = torch.tensor([[1.0, 2.0, 0.0], [0.0, 1.0, 0.1], [2.0, 1.0, 0.1]], device=device, dtype=dtype)
+        points_h = torch.tensor([[1.0, 2.0, 0.0], [0.0, 1.0, 0.1], [2.0, 1.0, 0.1]], device=device, dtype=torch.float64)
 
         # evaluate function gradient
-        points_h = tensor_to_gradcheck_var(points_h)  # to var
-        assert gradcheck(
-            kornia.geometry.conversions.convert_points_from_homogeneous,
-            (points_h,),
-            raise_exception=True,
-            fast_mode=True,
-        )
+        self.gradcheck(kornia.geometry.conversions.convert_points_from_homogeneous, (points_h,))
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         points_h = torch.zeros(1, 2, 3, device=device, dtype=dtype)
@@ -931,17 +853,13 @@ class TestProjectPoints(BaseTester):
         point_3d_hat = kornia.geometry.camera.unproject_points(point_2d, depth, camera_matrix)
         self.assert_close(point_3d, point_3d_hat, atol=1e-4, rtol=1e-4)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         # TODO: point [0, 0, 0] crashes
-        points_3d = torch.ones(1, 3, device=device, dtype=dtype)
-        camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(1, -1, -1)
+        points_3d = torch.ones(1, 3, device=device, dtype=torch.float64)
+        camera_matrix = torch.eye(3, device=device, dtype=torch.float64).expand(1, -1, -1)
 
         # evaluate function gradient
-        points_3d = tensor_to_gradcheck_var(points_3d)
-        camera_matrix = tensor_to_gradcheck_var(camera_matrix)
-        assert gradcheck(
-            kornia.geometry.camera.project_points, (points_3d, camera_matrix), raise_exception=True, fast_mode=True
-        )
+        self.gradcheck(kornia.geometry.camera.project_points, (points_3d, camera_matrix))
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         points_3d = torch.zeros(1, 3, device=device, dtype=dtype)
@@ -977,19 +895,12 @@ class TestDenormalizePointsWithIntrinsics(BaseTester):
         expected = torch.tensor([[192.0, 192.0]], device=device, dtype=dtype)
         self.assert_close(op(point_2d, camera_matrix), expected, atol=1e-4, rtol=1e-4)
 
-    def test_gradcheck(self, device, dtype):
-        points_2d = torch.zeros(1, 2, device=device, dtype=dtype)
-        camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(1, -1, -1)
+    def test_gradcheck(self, device):
+        points_2d = torch.zeros(1, 2, device=device, dtype=torch.float64)
+        camera_matrix = torch.eye(3, device=device, dtype=torch.float64).expand(1, -1, -1)
 
         # evaluate function gradient
-        points_2d = tensor_to_gradcheck_var(points_2d)
-        camera_matrix = tensor_to_gradcheck_var(camera_matrix)
-        assert gradcheck(
-            kornia.geometry.conversions.denormalize_points_with_intrinsics,
-            (points_2d, camera_matrix),
-            raise_exception=True,
-            fast_mode=True,
-        )
+        self.gradcheck(kornia.geometry.conversions.denormalize_points_with_intrinsics, (points_2d, camera_matrix))
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         points_2d = torch.zeros(1, 2, device=device, dtype=dtype)
@@ -1037,19 +948,12 @@ class TestNormalizePointsWithIntrinsics(BaseTester):
         expected = torch.tensor([[1.0, 1.0]], device=device, dtype=dtype)
         self.assert_close(out, expected, atol=1e-4, rtol=1e-4)
 
-    def test_gradcheck(self, device, dtype):
-        points_2d = torch.zeros(1, 2, device=device, dtype=dtype)
-        camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(1, -1, -1)
+    def test_gradcheck(self, device):
+        points_2d = torch.zeros(1, 2, device=device, dtype=torch.float64)
+        camera_matrix = torch.eye(3, device=device, dtype=torch.float64).expand(1, -1, -1)
 
         # evaluate function gradient
-        points_2d = tensor_to_gradcheck_var(points_2d)
-        camera_matrix = tensor_to_gradcheck_var(camera_matrix)
-        assert gradcheck(
-            kornia.geometry.conversions.normalize_points_with_intrinsics,
-            (points_2d, camera_matrix),
-            raise_exception=True,
-            fast_mode=True,
-        )
+        self.gradcheck(kornia.geometry.conversions.normalize_points_with_intrinsics, (points_2d, camera_matrix))
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         points_2d = torch.zeros(1, 2, device=device, dtype=dtype)
@@ -1081,15 +985,10 @@ class TestRt2Extrinsics(BaseTester):
         self.assert_close(t, t2, rtol=1e-4, atol=1e-5)
 
     @pytest.mark.parametrize("batch_size", [5])
-    def test_gradcheck(self, batch_size, device, dtype):
-        R = torch.rand(batch_size, 3, 3, dtype=dtype, device=device)
-        t = torch.rand(batch_size, 3, 1, dtype=dtype, device=device)
-        assert gradcheck(
-            kornia.geometry.conversions.Rt_to_matrix4x4,
-            (tensor_to_gradcheck_var(R), tensor_to_gradcheck_var(t)),
-            raise_exception=True,
-            fast_mode=True,
-        )
+    def test_gradcheck(self, batch_size, device):
+        R = torch.rand(batch_size, 3, 3, dtype=torch.float64, device=device)
+        t = torch.rand(batch_size, 3, 1, dtype=torch.float64, device=device)
+        self.gradcheck(kornia.geometry.conversions.Rt_to_matrix4x4, (R, t))
 
 
 class TestCamtoworldGraphicsToVision(BaseTester):
@@ -1124,17 +1023,13 @@ class TestCamtoworldGraphicsToVision(BaseTester):
         self.assert_close(t_vis_back, t_vis, rtol=1e-4, atol=1e-5)
 
     @pytest.mark.parametrize("batch_size", [4])
-    def test_gradcheck(self, batch_size, device, dtype):
-        t_vis = torch.tensor([2, 3, 4], device=device, dtype=dtype).view(1, 3, 1).repeat(batch_size, 1, 1)
-        angles = torch.tensor([0, kornia.pi / 2.0, 0.0], device=device, dtype=dtype)[None]
+    def test_gradcheck(self, batch_size, device):
+        t_vis = torch.tensor([2, 3, 4], device=device, dtype=torch.float64).view(1, 3, 1).repeat(batch_size, 1, 1)
+        angles = torch.tensor([0, kornia.pi / 2.0, 0.0], device=device, dtype=torch.float64)[None]
         R_vis = kornia.geometry.axis_angle_to_rotation_matrix(angles).repeat(batch_size, 1, 1)
         K_vis = Rt_to_matrix4x4(R_vis, t_vis)
-        assert gradcheck(
-            camtoworld_graphics_to_vision_4x4, (tensor_to_gradcheck_var(K_vis)), raise_exception=True, fast_mode=True
-        )
-        assert gradcheck(
-            camtoworld_vision_to_graphics_4x4, (tensor_to_gradcheck_var(K_vis)), raise_exception=True, fast_mode=True
-        )
+        self.gradcheck(camtoworld_graphics_to_vision_4x4, (K_vis,))
+        self.gradcheck(camtoworld_vision_to_graphics_4x4, (K_vis,))
 
 
 class TestCamtoworldRtToPoseRt(BaseTester):
@@ -1159,22 +1054,12 @@ class TestCamtoworldRtToPoseRt(BaseTester):
         self.assert_close(tback, t, rtol=1e-4, atol=1e-5)
 
     @pytest.mark.parametrize("batch_size", [4])
-    def test_gradcheck(self, batch_size, device, dtype):
-        t = torch.tensor([2, 3, 4], device=device, dtype=dtype).view(1, 3, 1).repeat(batch_size, 1, 1)
-        angles = torch.tensor([0, kornia.pi / 2.0, 0.0], device=device, dtype=dtype)[None]
+    def test_gradcheck(self, batch_size, device):
+        t = torch.tensor([2, 3, 4], device=device, dtype=torch.float64).view(1, 3, 1).repeat(batch_size, 1, 1)
+        angles = torch.tensor([0, kornia.pi / 2.0, 0.0], device=device, dtype=torch.float64)[None]
         R = kornia.geometry.axis_angle_to_rotation_matrix(angles).repeat(batch_size, 1, 1)
-        assert gradcheck(
-            camtoworld_to_worldtocam_Rt,
-            (tensor_to_gradcheck_var(R), tensor_to_gradcheck_var(t)),
-            raise_exception=True,
-            fast_mode=True,
-        )
-        assert gradcheck(
-            worldtocam_to_camtoworld_Rt,
-            (tensor_to_gradcheck_var(R), tensor_to_gradcheck_var(t)),
-            raise_exception=True,
-            fast_mode=True,
-        )
+        self.gradcheck(camtoworld_to_worldtocam_Rt, (R, t))
+        self.gradcheck(worldtocam_to_camtoworld_Rt, (R, t))
 
 
 class TestCARKitToColmap(BaseTester):
@@ -1221,10 +1106,7 @@ class TestEulerFromQuaternion(BaseTester):
 
     def test_gradcheck(self, device):
         q = Quaternion.random(batch_size=1).to(device, torch.float64)
-        assert gradcheck(euler_from_quaternion, (q.w, q.x, q.y, q.z), raise_exception=True, fast_mode=True)
-
-    def test_module(self, device, dtype):
-        pass
+        self.gradcheck(euler_from_quaternion, (q.w, q.x, q.y, q.z))
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         q = Quaternion.random(batch_size=1)
@@ -1269,10 +1151,7 @@ class TestQuaternionFromEuler(BaseTester):
 
     def test_gradcheck(self, device):
         roll, pitch, yaw = torch.rand(3, 2, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(quaternion_from_euler, (roll, pitch, yaw), raise_exception=True, fast_mode=True)
-
-    def test_module(self, device, dtype):
-        pass
+        self.gradcheck(quaternion_from_euler, (roll, pitch, yaw))
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         roll, pitch, yaw = torch.rand(3, 2, device=device, dtype=dtype)

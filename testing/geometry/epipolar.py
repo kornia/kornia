@@ -1,17 +1,36 @@
-from typing import Dict
+from __future__ import annotations
 
 import torch
 
 import kornia.geometry.epipolar as epi
+from kornia.core import Device, Dtype, Tensor, tensor
+from testing.laf import create_random_homography
+
+
+def create_rectified_fundamental_matrix(batch_size: int, dtype: Dtype = None, device: Device = None) -> Tensor:
+    """Create a batch of rectified fundamental matrices of shape Bx3x3."""
+    F_rect = tensor([[0.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype).view(1, 3, 3)
+    F_repeat = F_rect.expand(batch_size, 3, 3)
+    return F_repeat
+
+
+def create_random_fundamental_matrix(
+    batch_size: int, std_val: float = 1e-3, dtype: Dtype = None, device: Device = None
+) -> Tensor:
+    """Create a batch of random fundamental matrices of shape Bx3x3."""
+    F_rect = create_rectified_fundamental_matrix(batch_size, dtype, device)
+    H_left = create_random_homography(F_rect, 3, std_val)
+    H_right = create_random_homography(F_rect, 3, std_val)
+    return H_left.permute(0, 2, 1) @ F_rect @ H_right
 
 
 def generate_two_view_random_scene(
     device: torch.device = torch.device("cpu"), dtype: torch.dtype = torch.float32
-) -> Dict[str, torch.Tensor]:
+) -> dict[str, torch.Tensor]:
     num_views: int = 2
     num_points: int = 30
 
-    scene: Dict[str, torch.Tensor] = epi.generate_scene(num_views, num_points)
+    scene: dict[str, torch.Tensor] = epi.generate_scene(num_views, num_points)
 
     # internal parameters (same K)
     K1 = scene["K"].to(device, dtype)

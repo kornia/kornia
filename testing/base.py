@@ -56,14 +56,19 @@ def tensor_to_gradcheck_var(
     """
     if not torch.is_tensor(tensor):
         raise AssertionError(type(tensor))
-    return tensor.requires_grad_(requires_grad).type(dtype)
+    t = tensor.type(dtype)
+
+    if t.is_floating_point():
+        return t.requires_grad_(requires_grad)
+
+    return t
 
 
 class BaseTester:
     @staticmethod
     def assert_close(
-        actual: Tensor,
-        expected: Tensor,
+        actual: Tensor | float,
+        expected: Tensor | float,
         rtol: Optional[float] = None,
         atol: Optional[float] = None,
         low_tolerance: bool = False,
@@ -84,10 +89,12 @@ class BaseTester:
         if hasattr(expected, "data"):
             expected = expected.data
 
-        if "xla" in actual.device.type or "xla" in expected.device.type:
+        if (isinstance(actual, Tensor) and "xla" in actual.device.type) or (
+            isinstance(expected, Tensor) and "xla" in expected.device.type
+        ):
             rtol, atol = 1e-2, 1e-2
 
-        if rtol is None and atol is None:
+        if (isinstance(actual, Tensor) and isinstance(expected, Tensor)) and rtol is None and atol is None:
             actual_rtol, actual_atol = _DTYPE_PRECISIONS.get(actual.dtype, (0.0, 0.0))
             expected_rtol, expected_atol = _DTYPE_PRECISIONS.get(expected.dtype, (0.0, 0.0))
             rtol, atol = max(actual_rtol, expected_rtol), max(actual_atol, expected_atol)
@@ -105,13 +112,32 @@ class BaseTester:
         *,
         raise_exception: bool = True,
         fast_mode: bool = True,
+        requires_grad: Sequence[bool] = [],
+        dtypes: Sequence[Dtype] = [],
         **kwargs: Any,
     ) -> bool:
+        """It will gradcheck the function using the `torch.autograd.gradcheck` method.
+
+        By default this method will pass all tensor to `tensor_to_gradcheck_var` which casts the tensor
+        to be float64 dtype, and requires grad as True. You can overwrite which tensors should have requires grad
+        equals True, by using a Sequence of the same length of the sequence of inputs, within the requires_grad
+        per item. You also, can overwrite with the same mechanics the dtype using the `dtypes`
+        parameter.
+        """
+        requires_grad = requires_grad if len(requires_grad) > 0 else [True] * len(inputs)
+        dtypes = dtypes if len(dtypes) > 0 else [torch.float64] * len(inputs)
+
         if isinstance(inputs, torch.Tensor):
             inputs = tensor_to_gradcheck_var(inputs)
         elif isinstance(inputs, dict):
-            inputs = {k: tensor_to_gradcheck_var(v) if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
+            inputs = {
+                k: tensor_to_gradcheck_var(v, d, r) if isinstance(v, torch.Tensor) else v
+                for (k, v), d, r in zip(inputs.items(), dtypes, requires_grad)
+            }
         else:
-            inputs = [tensor_to_gradcheck_var(i) if isinstance(i, torch.Tensor) else i for i in inputs]
+            inputs = [
+                tensor_to_gradcheck_var(i, d, r) if isinstance(i, torch.Tensor) else i
+                for i, r, d in zip(inputs, requires_grad, dtypes)
+            ]
 
         return gradcheck(func, inputs, raise_exception=raise_exception, fast_mode=fast_mode, **kwargs)

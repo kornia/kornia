@@ -1,13 +1,11 @@
 import pytest
 import torch
-from torch.autograd import gradcheck
 
 import kornia
-import kornia.testing as utils
-from testing.base import assert_close
+from testing.base import BaseTester
 
 
-class TestHausdorffLoss:
+class TestHausdorffLoss(BaseTester):
     @pytest.mark.parametrize("reduction", ["mean", "none", "sum"])
     @pytest.mark.parametrize(
         "hd,shape", [[kornia.losses.HausdorffERLoss, (10, 10)], [kornia.losses.HausdorffERLoss3D, (10, 10, 10)]]
@@ -57,7 +55,7 @@ class TestHausdorffLoss:
         expected = torch.tensor(0.025, device=device, dtype=dtype)
 
         actual = loss(logits, labels)
-        assert_close(actual, expected, rtol=0.005, atol=0.005)
+        self.assert_close(actual, expected, rtol=0.005, atol=0.005)
 
     def test_numeric_3d(self, device, dtype):
         num_classes = 3
@@ -69,7 +67,7 @@ class TestHausdorffLoss:
 
         expected = torch.tensor(0.011, device=device, dtype=dtype)
         actual = loss(logits, labels)
-        assert_close(actual, expected, rtol=1e-2, atol=1e-2)
+        self.assert_close(actual, expected, rtol=1e-2, atol=1e-2)
 
     @pytest.mark.parametrize(
         "hd,shape", [[kornia.losses.HausdorffERLoss, (5, 5)], [kornia.losses.HausdorffERLoss3D, (5, 5, 5)]]
@@ -80,5 +78,4 @@ class TestHausdorffLoss:
         labels = (torch.rand(2, 1, *shape, device=device) * (num_classes - 1)).long()
         loss = hd(k=2)
 
-        logits = utils.tensor_to_gradcheck_var(logits)  # to var
-        assert gradcheck(loss, (logits, labels), raise_exception=True, fast_mode=True)
+        self.gradcheck(loss, (logits, labels), dtypes=[torch.float64, torch.int64])

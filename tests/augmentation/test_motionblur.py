@@ -6,7 +6,6 @@ from kornia.filters import motion_blur, motion_blur3d
 from testing.base import BaseTester
 
 
-# TODO: add kornia.testing.BaseTester
 class TestRandomMotionBlur(BaseTester):
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.

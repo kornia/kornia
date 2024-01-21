@@ -162,7 +162,7 @@ maintainable.
     It is also a good idea to group the tests for functionalities
 
     ```python
-    from testing import BaseTester
+    from testing.base import BaseTester
 
     class TestMyFunction(BaseTester):
         # To compare the actual and expected tensors use `self.assert_close(...)`

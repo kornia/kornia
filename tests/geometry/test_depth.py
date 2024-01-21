@@ -1,13 +1,11 @@
 import pytest
 import torch
-from torch.autograd import gradcheck
 
 import kornia
-import kornia.testing as utils  # test utils
-from testing.base import assert_close
+from testing.base import BaseTester
 
 
-class TestDepthTo3d:
+class TestDepthTo3d(BaseTester):
     def test_smoke(self, device, dtype):
         depth = torch.rand(1, 1, 3, 4, device=device, dtype=dtype)
         camera_matrix = torch.rand(1, 3, 3, device=device, dtype=dtype)
@@ -39,7 +37,7 @@ class TestDepthTo3d:
 
         # TODO: implement me with batch
         points3d_v2 = kornia.geometry.depth.depth_to_3d_v2(depth[0, 0], camera_matrix[0])
-        assert_close(points3d[0].permute(1, 2, 0), points3d_v2)
+        self.assert_close(points3d[0].permute(1, 2, 0), points3d_v2)
 
     def test_unproject_meshgrid(self, device, dtype):
         # TODO: implement me with batch
@@ -47,7 +45,7 @@ class TestDepthTo3d:
         grid = kornia.geometry.unproject_meshgrid(3, 4, camera_matrix, device=device, dtype=dtype)
         assert grid.shape == (3, 4, 3)
         # test for now that the grid is correct and have homogeneous coords
-        assert_close(grid[..., 2], torch.ones_like(grid[..., 2]))
+        self.assert_close(grid[..., 2], torch.ones_like(grid[..., 2]))
 
     def test_unproject_denormalized(self, device, dtype):
         # this is for default normalize_points=False
@@ -70,7 +68,7 @@ class TestDepthTo3d:
         )
 
         points3d = kornia.geometry.depth.depth_to_3d(depth, camera_matrix)  # default is normalize_points=False
-        assert_close(points3d, points3d_expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(points3d, points3d_expected, atol=1e-4, rtol=1e-4)
 
     def test_unproject_normalized(self, device, dtype):
         # this is for normalize_points=True
@@ -108,7 +106,7 @@ class TestDepthTo3d:
         )
 
         points3d = kornia.geometry.depth.depth_to_3d(depth, camera_matrix, normalize_points=True)
-        assert_close(points3d, points3d_expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(points3d, points3d_expected, atol=1e-4, rtol=1e-4)
 
     def test_unproject_and_project(self, device, dtype):
         depth = 2 * torch.tensor(
@@ -120,23 +118,19 @@ class TestDepthTo3d:
         points3d = kornia.geometry.depth.depth_to_3d(depth, camera_matrix)
         points2d = kornia.geometry.camera.project_points(points3d.permute(0, 2, 3, 1), camera_matrix[:, None, None])
         points2d_expected = kornia.utils.create_meshgrid(4, 3, False, device=device).to(dtype=dtype)
-        assert_close(points2d, points2d_expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(points2d, points2d_expected, atol=1e-4, rtol=1e-4)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         # generate input data
-        depth = torch.rand(1, 1, 3, 4, device=device, dtype=dtype)
-        depth = utils.tensor_to_gradcheck_var(depth)  # to var
+        depth = torch.rand(1, 1, 3, 4, device=device, dtype=torch.float64)
 
-        camera_matrix = torch.rand(1, 3, 3, device=device, dtype=dtype)
-        camera_matrix = utils.tensor_to_gradcheck_var(camera_matrix)  # to var
+        camera_matrix = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
 
         # evaluate function gradient
-        assert gradcheck(
-            kornia.geometry.depth.depth_to_3d, (depth, camera_matrix), raise_exception=True, fast_mode=True
-        )
+        self.gradcheck(kornia.geometry.depth.depth_to_3d, (depth, camera_matrix))
 
 
-class TestDepthToNormals:
+class TestDepthToNormals(BaseTester):
     def test_smoke(self, device, dtype):
         depth = torch.rand(1, 1, 3, 4, device=device, dtype=dtype)
         camera_matrix = torch.rand(1, 3, 3, device=device, dtype=dtype)
@@ -181,7 +175,7 @@ class TestDepthToNormals:
         )
 
         normals = kornia.geometry.depth.depth_to_normals(depth, camera_matrix)  # default is normalize_points=False
-        assert_close(normals, normals_expected, rtol=1e-3, atol=1e-3)
+        self.assert_close(normals, normals_expected, rtol=1e-3, atol=1e-3)
 
     def test_simple_normalized(self, device, dtype):
         # this is for default normalize_points=False
@@ -219,23 +213,19 @@ class TestDepthToNormals:
         )
 
         normals = kornia.geometry.depth.depth_to_normals(depth, camera_matrix, normalize_points=True)
-        assert_close(normals, normals_expected, rtol=1e-3, atol=1e-3)
+        self.assert_close(normals, normals_expected, rtol=1e-3, atol=1e-3)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         # generate input data
-        depth = torch.rand(1, 1, 3, 4, device=device, dtype=dtype)
-        depth = utils.tensor_to_gradcheck_var(depth)  # to var
+        depth = torch.rand(1, 1, 3, 4, device=device, dtype=torch.float64)
 
-        camera_matrix = torch.rand(1, 3, 3, device=device, dtype=dtype)
-        camera_matrix = utils.tensor_to_gradcheck_var(camera_matrix)  # to var
+        camera_matrix = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
 
         # evaluate function gradient
-        assert gradcheck(
-            kornia.geometry.depth.depth_to_normals, (depth, camera_matrix), raise_exception=True, fast_mode=True
-        )
+        self.gradcheck(kornia.geometry.depth.depth_to_normals, (depth, camera_matrix))
 
 
-class TestWarpFrameDepth:
+class TestWarpFrameDepth(BaseTester):
     def test_smoke(self, device, dtype):
         image_src = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)
         depth_dst = torch.rand(1, 1, 3, 4, device=device, dtype=dtype)
@@ -284,7 +274,7 @@ class TestWarpFrameDepth:
         image_dst = kornia.geometry.depth.warp_frame_depth(
             image_src, depth_dst, src_trans_dst, camera_matrix
         )  # default is normalize_points=False
-        assert_close(image_dst, image_dst_expected, rtol=1e-3, atol=1e-3)
+        self.assert_close(image_dst, image_dst_expected, rtol=1e-3, atol=1e-3)
 
     def test_translation_normalized(self, device, dtype):
         # this is for normalize_points=True
@@ -325,31 +315,23 @@ class TestWarpFrameDepth:
         image_dst = kornia.geometry.depth.warp_frame_depth(
             image_src, depth_dst, src_trans_dst, camera_matrix, normalize_points=True
         )
-        assert_close(image_dst, image_dst_expected, rtol=1e-3, atol=1e-3)
+        self.assert_close(image_dst, image_dst_expected, rtol=1e-3, atol=1e-3)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
+        dtype = torch.float64
         image_src = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)
-        image_src = utils.tensor_to_gradcheck_var(image_src)  # to var
 
         depth_dst = torch.rand(1, 1, 3, 4, device=device, dtype=dtype)
-        depth_dst = utils.tensor_to_gradcheck_var(depth_dst)  # to var
 
         src_trans_dst = torch.rand(1, 4, 4, device=device, dtype=dtype)
-        src_trans_dst = utils.tensor_to_gradcheck_var(src_trans_dst)  # to var
 
         camera_matrix = torch.rand(1, 3, 3, device=device, dtype=dtype)
-        camera_matrix = utils.tensor_to_gradcheck_var(camera_matrix)  # to var
 
         # evaluate function gradient
-        assert gradcheck(
-            kornia.geometry.depth.warp_frame_depth,
-            (image_src, depth_dst, src_trans_dst, camera_matrix),
-            raise_exception=True,
-            fast_mode=True,
-        )
+        self.gradcheck(kornia.geometry.depth.warp_frame_depth, (image_src, depth_dst, src_trans_dst, camera_matrix))
 
 
-class TestDepthFromDisparity:
+class TestDepthFromDisparity(BaseTester):
     def test_smoke(self, device, dtype):
         disparity = 2 * torch.tensor(
             [[[[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]]]], device=device, dtype=dtype
@@ -374,7 +356,7 @@ class TestDepthFromDisparity:
         )
 
         depth = kornia.geometry.depth.depth_from_disparity(disparity, baseline, focal)
-        assert_close(depth, depth_expected, rtol=1e-3, atol=1e-3)
+        self.assert_close(depth, depth_expected, rtol=1e-3, atol=1e-3)
 
     @pytest.mark.parametrize("batch_size", [2, 4, 5])
     def test_cardinality(self, batch_size, device, dtype):
@@ -396,19 +378,11 @@ class TestDepthFromDisparity:
 
     def test_gradcheck(self, device):
         # generate input data
-        disparity = torch.rand(1, 1, 3, 4, device=device)
-        disparity = utils.tensor_to_gradcheck_var(disparity)  # to var
+        disparity = torch.rand(1, 1, 3, 4, device=device, dtype=torch.float64)
 
-        baseline = torch.rand(1, device=device)
-        baseline = utils.tensor_to_gradcheck_var(baseline)  # to var
+        baseline = torch.rand(1, device=device, dtype=torch.float64)
 
-        focal = torch.rand(1, device=device)
-        focal = utils.tensor_to_gradcheck_var(focal)  # to var
+        focal = torch.rand(1, device=device, dtype=torch.float64)
 
         # evaluate function gradient
-        assert gradcheck(
-            kornia.geometry.depth.depth_from_disparity,
-            (disparity, baseline, focal),
-            raise_exception=True,
-            fast_mode=True,
-        )
+        self.gradcheck(kornia.geometry.depth.depth_from_disparity, (disparity, baseline, focal))

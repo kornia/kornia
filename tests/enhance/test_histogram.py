@@ -83,7 +83,7 @@ class TestImageHistogram2d(BaseTester):
         self.assert_close(ans, pdf)
 
 
-class TestHistogram2d:
+class TestHistogram2d(BaseTester):
     fcn = kornia.enhance.histogram2d
 
     def test_shape(self, device, dtype):
