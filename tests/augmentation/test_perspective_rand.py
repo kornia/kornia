@@ -1,13 +1,11 @@
 import pytest
 import torch
-from torch.autograd import gradcheck
 
 import kornia
-import kornia.testing as utils  # test utils
-from testing.base import assert_close
+from testing.base import BaseTester
 
 
-class TestRandomPerspective:
+class TestRandomPerspective(BaseTester):
     torch.manual_seed(0)  # for random reproductibility
 
     def test_smoke_no_transform_float(self, device):
@@ -80,8 +78,8 @@ class TestRandomPerspective:
         out_perspective = aug(x_data)
         assert out_perspective.shape == x_data.shape
         assert aug.transform_matrix.shape == (1, 3, 3)
-        assert_close(out_perspective, x_data)
-        assert_close(aug.transform_matrix, torch.eye(3, device=device, dtype=dtype)[None])
+        self.assert_close(out_perspective, x_data)
+        self.assert_close(aug.transform_matrix, torch.eye(3, device=device, dtype=dtype)[None])
         assert aug.inverse(out_perspective).shape == x_data.shape
 
     def test_transform_module_should_return_expected_transform(self, device, dtype):
@@ -123,23 +121,20 @@ class TestRandomPerspective:
 
         assert out_perspective.shape == x_data.shape
         assert aug.transform_matrix.shape == (1, 3, 3)
-        assert_close(out_perspective, expected_output, atol=1e-4, rtol=1e-4)
-        assert_close(aug.transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
+        self.assert_close(out_perspective, expected_output, atol=1e-4, rtol=1e-4)
+        self.assert_close(aug.transform_matrix, expected_transform, atol=1e-4, rtol=1e-4)
         assert aug.inverse(out_perspective).shape == x_data.shape
 
     def test_gradcheck(self, device, dtype):
-        input = torch.rand(1, 2, 5, 7, dtype=dtype).to(device)
-        input = utils.tensor_to_gradcheck_var(input)  # to var
+        input = torch.rand(1, 2, 5, 7, dtype=torch.float64, device=device)
         # TODO: turned off with p=0
-        assert gradcheck(
+        self.gradcheck(
             kornia.augmentation.RandomPerspective(torch.tensor(0.5, device=device, dtype=dtype), p=0.0),
             (input,),
-            raise_exception=True,
-            fast_mode=True,
         )
 
 
-class TestRandomAffine:
+class TestRandomAffine(BaseTester):
     torch.manual_seed(0)  # for random reproductibility
 
     def test_smoke_no_transform(self, device):
@@ -192,13 +187,12 @@ class TestRandomAffine:
         assert aug.inverse(out).shape == x_data.shape
 
     def test_gradcheck(self, device):
-        input = torch.rand(1, 2, 5, 7).to(device)
-        input = utils.tensor_to_gradcheck_var(input)  # to var
+        input = torch.rand(1, 2, 5, 7, device=device, dtype=torch.float64)
         # TODO: turned off with p=0
-        assert gradcheck(kornia.augmentation.RandomAffine(10, p=0.0), (input,), raise_exception=True, fast_mode=True)
+        self.gradcheck(kornia.augmentation.RandomAffine(10, p=0.0), (input,))
 
 
-class TestRandomShear:
+class TestRandomShear(BaseTester):
     torch.manual_seed(0)  # for random reproductibility
 
     def test_smoke_no_transform(self, device):
@@ -210,9 +204,6 @@ class TestRandomShear:
         assert aug.inverse(out, aug._params).shape == x_data.shape
 
     def test_gradcheck(self, device):
-        input = torch.rand(1, 2, 5, 7).to(device)
-        input = utils.tensor_to_gradcheck_var(input)  # to var
+        input = torch.rand(1, 2, 5, 7, device=device, dtype=torch.float64)
         # TODO: turned off with p=0
-        assert gradcheck(
-            kornia.augmentation.RandomShear((10.0, 10.0), p=1.0), (input,), raise_exception=True, fast_mode=True
-        )
+        self.gradcheck(kornia.augmentation.RandomShear((10.0, 10.0), p=1.0), (input,))

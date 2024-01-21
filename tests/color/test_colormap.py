@@ -1,10 +1,8 @@
 import pytest
 import torch
-from torch.autograd import gradcheck
 
 from kornia.color import AUTUMN, ApplyColorMap, apply_colormap
 from kornia.core import tensor
-from kornia.testing import tensor_to_gradcheck_var
 from testing.base import BaseTester, assert_close
 
 
@@ -81,15 +79,12 @@ class TestApplyColorMap(BaseTester):
         assert actual.shape == expected_shape
 
     @pytest.mark.skip(reason="jacobian mismatch")
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         # TODO: implement differentiability
-        cm = AUTUMN(device=device, dtype=dtype)
-        input_tensor = torch.randint(0, 63, (1, 2, 1), device=device, dtype=dtype)
+        cm = AUTUMN(device=device, dtype=torch.float64)
+        input_tensor = torch.randint(0, 63, (1, 2, 1), device=device, dtype=torch.float64)
 
-        input_tensor = tensor_to_gradcheck_var(input_tensor)
-        cm.colors = tensor_to_gradcheck_var(cm.colors)
-
-        assert gradcheck(apply_colormap, (input_tensor, cm), raise_exception=True, fast_mode=True)
+        self.gradcheck(apply_colormap, (input_tensor, cm))
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         op = apply_colormap

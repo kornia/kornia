@@ -109,6 +109,8 @@ class BaseTester:
     ) -> bool:
         if isinstance(inputs, torch.Tensor):
             inputs = tensor_to_gradcheck_var(inputs)
+        elif isinstance(inputs, dict):
+            inputs = {k: tensor_to_gradcheck_var(v) if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
         else:
             inputs = [tensor_to_gradcheck_var(i) if isinstance(i, torch.Tensor) else i for i in inputs]
 

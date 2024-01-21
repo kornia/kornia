@@ -77,7 +77,7 @@ class TestBasicAugmentationBase(BaseTester):
             self.assert_close(output, expected_output)
 
 
-class TestAugmentationBase2D:
+class TestAugmentationBase2D(BaseTester):
     def test_forward(self, device, dtype):
         torch.manual_seed(42)
         input = torch.rand((2, 3, 4, 5), device=device, dtype=dtype)
@@ -122,18 +122,12 @@ class TestAugmentationBase2D:
             # output = augmentation((input, input_transform))
             # assert output is expected_output
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         torch.manual_seed(42)
 
-        input = torch.rand((1, 1, 3, 3), device=device, dtype=dtype)
-        output = torch.rand((1, 1, 3, 3), device=device, dtype=dtype)
-        input_transform = torch.rand((1, 3, 3), device=device, dtype=dtype)
-        other_transform = torch.rand((1, 3, 3), device=device, dtype=dtype)
-
-        # input = utils.tensor_to_gradcheck_var(input)  # to var
-        # input_transform = utils.tensor_to_gradcheck_var(input_transform)  # to var
-        # output = utils.tensor_to_gradcheck_var(output)  # to var
-        # other_transform = utils.tensor_to_gradcheck_var(other_transform)  # to var
+        input = torch.rand((1, 1, 3, 3), device=device, dtype=torch.float64)
+        output = torch.rand((1, 1, 3, 3), device=device, dtype=torch.float64)
+        input_transform = torch.rand((1, 3, 3), device=device, dtype=torch.float64)
 
         input_param = {"batch_prob": torch.tensor([True]), "x": input_transform, "y": {}}
 

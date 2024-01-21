@@ -1,14 +1,12 @@
 import pytest
 import torch
 from packaging import version
-from torch.autograd import gradcheck
 
 import kornia
-import kornia.testing as utils  # test utils
-from testing.base import assert_close
+from testing.base import BaseTester
 
 
-class TestImageHistogram2d:
+class TestImageHistogram2d(BaseTester):
     fcn = kornia.enhance.image_histogram2d
 
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
@@ -33,17 +31,10 @@ class TestImageHistogram2d:
         assert pdf.shape == (8, 3, 256)
 
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
-    def test_gradcheck(self, device, dtype, kernel):
-        sample = torch.ones(32, 32, device=device, dtype=dtype)
-        sample = utils.tensor_to_gradcheck_var(sample)  # to var
-        centers = torch.linspace(0, 255, 8, device=device, dtype=dtype)
-        centers = utils.tensor_to_gradcheck_var(centers)
-        assert gradcheck(
-            TestImageHistogram2d.fcn,
-            (sample, 0.0, 255.0, 256, None, centers, True, kernel),
-            raise_exception=True,
-            fast_mode=True,
-        )
+    def test_gradcheck(self, device, kernel):
+        sample = torch.ones(32, 32, device=device, dtype=torch.float64)
+        centers = torch.linspace(0, 255, 8, device=device, dtype=torch.float64)
+        self.gradcheck(TestImageHistogram2d.fcn, (sample, 0.0, 255.0, 256, None, centers, True, kernel))
 
     @pytest.mark.skipif(
         version.parse(torch.__version__) < version.parse("1.9"), reason="Tuple cannot be jitted with PyTorch < v1.9"
@@ -58,8 +49,8 @@ class TestImageHistogram2d:
         op_script = torch.jit.script(op)
 
         out, out_script = op(*samples), op_script(*samples)
-        assert_close(out[0], out_script[0])
-        assert_close(out[1], out_script[1])
+        self.assert_close(out[0], out_script[0])
+        self.assert_close(out[1], out_script[1])
 
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     @pytest.mark.parametrize("size", [(1, 1), (3, 1, 1), (8, 3, 1, 1)])
@@ -73,7 +64,7 @@ class TestImageHistogram2d:
             bandwidth = None
         hist, _ = TestImageHistogram2d.fcn(sample_x, 0.0, 255.0, 10, bandwidth=bandwidth, centers=sample, kernel=kernel)
         ans = 10 * torch.ones_like(hist)
-        assert_close(ans, hist)
+        self.assert_close(ans, hist)
 
     @pytest.mark.parametrize("kernel", ["triangular", "gaussian", "uniform", "epanechnikov"])
     @pytest.mark.parametrize("size", [(1, 1), (3, 1, 1), (8, 3, 1, 1)])
@@ -89,7 +80,7 @@ class TestImageHistogram2d:
             sample_x, 0.0, 255.0, 10, bandwidth=bandwidth, centers=sample, kernel=kernel, return_pdf=True
         )
         ans = 0.1 * torch.ones_like(hist)
-        assert_close(ans, pdf)
+        self.assert_close(ans, pdf)
 
 
 class TestHistogram2d:
@@ -111,16 +102,12 @@ class TestHistogram2d:
         pdf = TestHistogram2d.fcn(inp1, inp2, bins, bandwidth)
         assert pdf.shape == (8, 128, 128)
 
-    def test_gradcheck(self, device, dtype):
-        inp1 = torch.ones(1, 8, device=device, dtype=dtype)
-        inp2 = torch.ones(1, 8, device=device, dtype=dtype)
-        inp1 = utils.tensor_to_gradcheck_var(inp1)  # to var
-        inp2 = utils.tensor_to_gradcheck_var(inp2)  # to var
-        bins = torch.linspace(0, 255, 8, device=device, dtype=dtype)
-        bins = utils.tensor_to_gradcheck_var(bins)
-        bandwidth = torch.tensor(0.9, device=device, dtype=dtype)
-        bandwidth = utils.tensor_to_gradcheck_var(bandwidth)
-        assert gradcheck(TestHistogram2d.fcn, (inp1, inp2, bins, bandwidth), raise_exception=True, fast_mode=True)
+    def test_gradcheck(self, device):
+        inp1 = torch.ones(1, 8, device=device, dtype=torch.float64)
+        inp2 = torch.ones(1, 8, device=device, dtype=torch.float64)
+        bins = torch.linspace(0, 255, 8, device=device, dtype=torch.float64)
+        bandwidth = torch.tensor(0.9, device=device, dtype=torch.float64)
+        self.gradcheck(TestHistogram2d.fcn, (inp1, inp2, bins, bandwidth))
 
     def test_jit(self, device, dtype):
         sample1 = torch.linspace(0, 255, 10, device=device, dtype=dtype).unsqueeze(0)
@@ -132,7 +119,7 @@ class TestHistogram2d:
         op = TestHistogram2d.fcn
         op_script = torch.jit.script(op)
 
-        assert_close(op(*samples), op_script(*samples))
+        self.assert_close(op(*samples), op_script(*samples))
 
     def test_uniform_dist(self, device, dtype):
         sample1 = torch.linspace(0, 255, 10, device=device, dtype=dtype).unsqueeze(0)
@@ -142,10 +129,10 @@ class TestHistogram2d:
 
         pdf = TestHistogram2d.fcn(sample1, sample2, bins, bandwidth)
         ans = 0.1 * kornia.eye_like(10, pdf)
-        assert_close(ans, pdf)
+        self.assert_close(ans, pdf)
 
 
-class TestHistogram:
+class TestHistogram(BaseTester):
     fcn = kornia.enhance.histogram
 
     def test_shape(self, device, dtype):
@@ -162,14 +149,11 @@ class TestHistogram:
         pdf = TestHistogram.fcn(inp, bins, bandwidth)
         assert pdf.shape == (8, 128)
 
-    def test_gradcheck(self, device, dtype):
-        inp = torch.ones(1, 8, device=device, dtype=dtype)
-        inp = utils.tensor_to_gradcheck_var(inp)  # to var
-        bins = torch.linspace(0, 255, 8, device=device, dtype=dtype)
-        bins = utils.tensor_to_gradcheck_var(bins)
-        bandwidth = torch.tensor(0.9, device=device, dtype=dtype)
-        bandwidth = utils.tensor_to_gradcheck_var(bandwidth)
-        assert gradcheck(TestHistogram.fcn, (inp, bins, bandwidth), raise_exception=True, fast_mode=True)
+    def test_gradcheck(self, device):
+        inp = torch.ones(1, 8, device=device, dtype=torch.float64)
+        bins = torch.linspace(0, 255, 8, device=device, dtype=torch.float64)
+        bandwidth = torch.tensor(0.9, device=device, dtype=torch.float64)
+        self.gradcheck(TestHistogram.fcn, (inp, bins, bandwidth))
 
     def test_jit(self, device, dtype):
         input1 = torch.linspace(0, 255, 10, device=device, dtype=dtype).unsqueeze(0)
@@ -180,7 +164,7 @@ class TestHistogram:
         op = TestHistogram.fcn
         op_script = torch.jit.script(op)
 
-        assert_close(op(*inputs), op_script(*inputs))
+        self.assert_close(op(*inputs), op_script(*inputs))
 
     def test_uniform_dist(self, device, dtype):
         input1 = torch.linspace(0, 255, 10, device=device, dtype=dtype).unsqueeze(0)
@@ -189,4 +173,4 @@ class TestHistogram:
 
         pdf = TestHistogram.fcn(input1, input2, bandwidth)
         ans = 0.1 * torch.ones(1, 10, device=device, dtype=dtype)
-        assert_close(ans, pdf)
+        self.assert_close(ans, pdf)

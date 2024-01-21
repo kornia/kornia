@@ -2,11 +2,9 @@ from typing import Tuple
 
 import pytest
 import torch
-from torch.autograd import gradcheck
 
 from kornia import enhance
 from kornia.geometry import rotate
-from kornia.testing import tensor_to_gradcheck_var
 from testing.base import BaseTester
 
 
@@ -71,17 +69,16 @@ class TestEqualization(BaseTester):
         with pytest.raises(TypeError):
             enhance.equalize_clahe([1, 2, 3])
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         torch.random.manual_seed(4)
         bs, channels, height, width = 1, 1, 11, 11
-        inputs = torch.rand(bs, channels, height, width, device=device, dtype=dtype)
-        inputs = tensor_to_gradcheck_var(inputs)
+        inputs = torch.rand(bs, channels, height, width, device=device, dtype=torch.float64)
 
         def grad_rot(inpt, a, b, c):
             rot = rotate(inpt, torch.tensor(30.0, dtype=inpt.dtype, device=device))
             return enhance.equalize_clahe(rot, a, b, c)
 
-        assert gradcheck(grad_rot, (inputs, 40.0, (2, 2), True), nondet_tol=1e-4, raise_exception=True, fast_mode=True)
+        self.gradcheck(grad_rot, (inputs, 40.0, (2, 2), True), nondet_tol=1e-4)
 
     @pytest.mark.skip(reason="args and kwargs in decorator")
     def test_jit(self, device, dtype):

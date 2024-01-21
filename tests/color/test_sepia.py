@@ -1,9 +1,7 @@
 import pytest
 import torch
-from torch.autograd import gradcheck
 
 import kornia
-import kornia.testing as utils
 from testing.base import BaseTester
 
 
@@ -59,14 +57,13 @@ class TestSepia(BaseTester):
         assert actual.is_contiguous()
         self.assert_close(actual, actual)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         # test parameters
         batch_shape = (1, 3, 5, 5)
 
         # evaluate function gradient
-        input_tensor = torch.rand(batch_shape, device=device, dtype=dtype)
-        input_tensor = utils.tensor_to_gradcheck_var(input_tensor)
-        assert gradcheck(kornia.color.sepia, (input_tensor,), raise_exception=True, fast_mode=True)
+        input_tensor = torch.rand(batch_shape, device=device, dtype=torch.float64)
+        self.gradcheck(kornia.color.sepia, (input_tensor,))
 
     def test_jit(self, device, dtype):
         op = kornia.color.sepia
