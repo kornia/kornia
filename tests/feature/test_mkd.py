@@ -2,9 +2,7 @@ from math import pi
 
 import pytest
 import torch
-from torch.autograd import gradcheck
 
-import kornia.testing as utils  # test utils
 from kornia.feature.mkd import (
     COEFFS,
     EmbedGradients,
@@ -18,7 +16,7 @@ from kornia.feature.mkd import (
     get_kron_order,
     spatial_kernel_embedding,
 )
-from testing.base import assert_close
+from testing.base import BaseTester
 
 
 @pytest.mark.parametrize("ps", [5, 13, 25])
@@ -36,7 +34,7 @@ def test_get_kron_order(d1, d2):
     assert out.shape == (d1 * d2, 2)
 
 
-class TestMKDGradients:
+class TestMKDGradients(BaseTester):
     @pytest.mark.parametrize("ps", [5, 13, 25])
     def test_shape(self, ps, device):
         inp = torch.ones(1, 1, ps, ps).to(device)
@@ -64,23 +62,22 @@ class TestMKDGradients:
         expected_mags = expected_mags_1.unsqueeze(0).repeat(6, 1)
         expected_oris_1 = torch.Tensor([-pi, -pi, 0, 0, -pi, -pi]).to(device)
         expected_oris = expected_oris_1.unsqueeze(0).repeat(6, 1)
-        assert_close(out[0, 0, :, :], expected_mags, atol=1e-3, rtol=1e-3)
-        assert_close(out[0, 1, :, :], expected_oris, atol=1e-3, rtol=1e-3)
+        self.assert_close(out[0, 0, :, :], expected_mags, atol=1e-3, rtol=1e-3)
+        self.assert_close(out[0, 1, :, :], expected_oris, atol=1e-3, rtol=1e-3)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 1, 13, 13
-        patches = torch.rand(batch_size, channels, height, width).to(device)
-        patches = utils.tensor_to_gradcheck_var(patches)  # to var
+        patches = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
 
         def grad_describe(patches):
             mkd_grads = MKDGradients()
             mkd_grads.to(device)
             return mkd_grads(patches)
 
-        assert gradcheck(grad_describe, (patches), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
+        self.gradcheck(grad_describe, (patches), nondet_tol=1e-4)
 
 
-class TestVonMisesKernel:
+class TestVonMisesKernel(BaseTester):
     @pytest.mark.parametrize("ps", [5, 13, 25])
     def test_shape(self, ps, device):
         inp = torch.ones(1, 1, ps, ps).to(device)
@@ -112,27 +109,26 @@ class TestVonMisesKernel:
         vm = VonMisesKernel(patch_size=6, coeffs=[0.38214156, 0.48090413]).to(device)
         out = vm(patch)
         expected = torch.ones_like(out[0, 0, :, :]).to(device)
-        assert_close(out[0, 0, :, :], expected * 0.6182, atol=1e-3, rtol=1e-3)
+        self.assert_close(out[0, 0, :, :], expected * 0.6182, atol=1e-3, rtol=1e-3)
 
         expected = torch.Tensor([0.3747, 0.3747, 0.3747, 0.6935, 0.6935, 0.6935]).to(device)
         expected = expected.unsqueeze(0).repeat(6, 1)
-        assert_close(out[0, 1, :, :], expected, atol=1e-3, rtol=1e-3)
+        self.assert_close(out[0, 1, :, :], expected, atol=1e-3, rtol=1e-3)
 
         expected = torch.Tensor([0.5835, 0.5835, 0.5835, 0.0000, 0.0000, 0.0000]).to(device)
         expected = expected.unsqueeze(0).repeat(6, 1)
-        assert_close(out[0, 2, :, :], expected, atol=1e-3, rtol=1e-3)
+        self.assert_close(out[0, 2, :, :], expected, atol=1e-3, rtol=1e-3)
 
     def test_gradcheck(self, device):
         batch_size, channels, ps = 1, 1, 13
-        patches = torch.rand(batch_size, channels, ps, ps).to(device)
-        patches = utils.tensor_to_gradcheck_var(patches)  # to var
+        patches = torch.rand(batch_size, channels, ps, ps, device=device, dtype=torch.float64)
 
         def vm_describe(patches, ps=13):
             vmkernel = VonMisesKernel(patch_size=ps, coeffs=[0.38214156, 0.48090413]).double()
             vmkernel.to(device)
             return vmkernel(patches.double())
 
-        assert gradcheck(vm_describe, (patches, ps), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
+        self.gradcheck(vm_describe, (patches, ps), nondet_tol=1e-4)
 
     @pytest.mark.jit()
     def test_jit(self, device, dtype):
@@ -142,10 +138,10 @@ class TestVonMisesKernel:
         model_jit = torch.jit.script(
             VonMisesKernel(patch_size=13, coeffs=[0.38214156, 0.48090413]).to(patches.device, patches.dtype).eval()
         )
-        assert_close(model(patches), model_jit(patches))
+        self.assert_close(model(patches), model_jit(patches))
 
 
-class TestEmbedGradients:
+class TestEmbedGradients(BaseTester):
     @pytest.mark.parametrize("ps,relative", [(5, True), (13, True), (25, True), (5, False), (13, False), (25, False)])
     def test_shape(self, ps, relative, device):
         inp = torch.ones(1, 2, ps, ps).to(device)
@@ -170,22 +166,21 @@ class TestEmbedGradients:
         emb_grads = EmbedGradients(patch_size=6, relative=True).to(device)
         out = emb_grads(grads)
         expected = torch.ones_like(out[0, 0, :, :3]).to(device)
-        assert_close(out[0, 0, :, :3], expected * 0.3787, atol=1e-3, rtol=1e-3)
-        assert_close(out[0, 0, :, 3:], expected * 0, atol=1e-3, rtol=1e-3)
+        self.assert_close(out[0, 0, :, :3], expected * 0.3787, atol=1e-3, rtol=1e-3)
+        self.assert_close(out[0, 0, :, 3:], expected * 0, atol=1e-3, rtol=1e-3)
 
     # TODO: review this test implementation
     # @pytest.mark.xfail(reason="RuntimeError: Jacobian mismatch for output 0 with respect to input 0,")
     def test_gradcheck(self, device):
         batch_size, channels, ps = 1, 2, 13
-        patches = torch.rand(batch_size, channels, ps, ps).to(device)
-        patches = utils.tensor_to_gradcheck_var(patches)  # to var
+        patches = torch.rand(batch_size, channels, ps, ps, device=device, dtype=torch.float64)
 
         def emb_grads_describe(patches, ps=13):
             emb_grads = EmbedGradients(patch_size=ps, relative=True).double()
             emb_grads.to(device)
             return emb_grads(patches.double())
 
-        assert gradcheck(emb_grads_describe, (patches, ps), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
+        self.gradcheck(emb_grads_describe, (patches, ps), nondet_tol=1e-4)
 
     @pytest.mark.jit()
     def test_jit(self, device, dtype):
@@ -195,7 +190,7 @@ class TestEmbedGradients:
         model_jit = torch.jit.script(
             EmbedGradients(patch_size=W, relative=True).to(patches.device, patches.dtype).eval()
         )
-        assert_close(model(patches), model_jit(patches))
+        self.assert_close(model(patches), model_jit(patches))
 
 
 @pytest.mark.parametrize("kernel_type,d,ps", [("cart", 9, 9), ("polar", 25, 9), ("cart", 9, 16), ("polar", 25, 16)])
@@ -205,7 +200,7 @@ def test_spatial_kernel_embedding(kernel_type, ps, d):
     assert spatial_kernel.shape == (d, ps, ps)
 
 
-class TestExplicitSpacialEncoding:
+class TestExplicitSpacialEncoding(BaseTester):
     @pytest.mark.parametrize(
         "kernel_type,ps,in_dims", [("cart", 9, 3), ("polar", 9, 3), ("cart", 13, 7), ("polar", 13, 7)]
     )
@@ -238,28 +233,25 @@ class TestExplicitSpacialEncoding:
         out = cart_ese(inp)
         out_part = out[:, :9]
         expected = torch.zeros_like(out_part).to(device)
-        assert_close(out_part, expected, atol=1e-3, rtol=1e-3)
+        self.assert_close(out_part, expected, atol=1e-3, rtol=1e-3)
 
         polar_ese = ExplicitSpacialEncoding(kernel_type="polar", fmap_size=6, in_dims=2).to(device)
         out = polar_ese(inp)
         out_part = out[:, :25]
         expected = torch.zeros_like(out_part).to(device)
-        assert_close(out_part, expected, atol=1e-3, rtol=1e-3)
+        self.assert_close(out_part, expected, atol=1e-3, rtol=1e-3)
 
     @pytest.mark.parametrize("kernel_type", ["cart", "polar"])
     def test_gradcheck(self, kernel_type, device):
         batch_size, channels, ps = 1, 2, 13
-        patches = torch.rand(batch_size, channels, ps, ps).to(device)
-        patches = utils.tensor_to_gradcheck_var(patches)  # to var
+        patches = torch.rand(batch_size, channels, ps, ps, device=device, dtype=torch.float64)
 
         def explicit_spatial_describe(patches, ps=13):
             ese = ExplicitSpacialEncoding(kernel_type=kernel_type, fmap_size=ps, in_dims=2)
             ese.to(device)
             return ese(patches)
 
-        assert gradcheck(
-            explicit_spatial_describe, (patches, ps), raise_exception=True, nondet_tol=1e-4, fast_mode=True
-        )
+        self.gradcheck(explicit_spatial_describe, (patches, ps), nondet_tol=1e-4)
 
     @pytest.mark.jit()
     def test_jit(self, device, dtype):
@@ -271,10 +263,10 @@ class TestExplicitSpacialEncoding:
         model_jit = torch.jit.script(
             ExplicitSpacialEncoding(kernel_type="cart", fmap_size=W, in_dims=2).to(patches.device, patches.dtype).eval()
         )
-        assert_close(model(patches), model_jit(patches))
+        self.assert_close(model(patches), model_jit(patches))
 
 
-class TestWhitening:
+class TestWhitening(BaseTester):
     @pytest.mark.parametrize(
         "kernel_type,xform,output_dims",
         [
@@ -309,19 +301,18 @@ class TestWhitening:
         inp = torch.ones(1, 175).to(device).float()
         out = wh(inp)
         expected = torch.ones_like(inp).to(device) * 0.0756
-        assert_close(out, expected, atol=1e-3, rtol=1e-3)
+        self.assert_close(out, expected, atol=1e-3, rtol=1e-3)
 
     def test_gradcheck(self, device):
         batch_size, in_dims = 1, 175
-        patches = torch.rand(batch_size, in_dims).to(device)
-        patches = utils.tensor_to_gradcheck_var(patches)  # to var
+        patches = torch.rand(batch_size, in_dims, device=device, dtype=torch.float64)
 
         def whitening_describe(patches, in_dims=175):
             wh = Whitening(xform="lw", whitening_model=None, in_dims=in_dims).double()
             wh.to(device)
             return wh(patches.double())
 
-        assert gradcheck(whitening_describe, (patches, in_dims), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
+        self.gradcheck(whitening_describe, (patches, in_dims), nondet_tol=1e-4)
 
     @pytest.mark.jit()
     def test_jit(self, device, dtype):
@@ -331,10 +322,10 @@ class TestWhitening:
         model_jit = torch.jit.script(
             Whitening(xform="lw", whitening_model=None, in_dims=in_dims).to(patches.device, patches.dtype).eval()
         )
-        assert_close(model(patches), model_jit(patches))
+        self.assert_close(model(patches), model_jit(patches))
 
 
-class TestMKDDescriptor:
+class TestMKDDescriptor(BaseTester):
     dims = {"cart": 63, "polar": 175, "concat": 238}
 
     @pytest.mark.parametrize(
@@ -382,20 +373,19 @@ class TestMKDDescriptor:
         out = mkd(inp)
         out_part = out[0, -28:]
         expected = torch.zeros_like(out_part).to(device)
-        assert_close(out_part, expected, atol=1e-3, rtol=1e-3)
+        self.assert_close(out_part, expected, atol=1e-3, rtol=1e-3)
 
     @pytest.mark.parametrize("whitening", [None, "lw", "pca"])
     def test_gradcheck(self, whitening, device):
         batch_size, channels, ps = 1, 1, 19
-        patches = torch.rand(batch_size, channels, ps, ps).to(device)
-        patches = utils.tensor_to_gradcheck_var(patches)  # to var
+        patches = torch.rand(batch_size, channels, ps, ps, device=device, dtype=torch.float64)
 
         def mkd_describe(patches, patch_size=19):
             mkd = MKDDescriptor(patch_size=patch_size, kernel_type="concat", whitening=whitening).double()
             mkd.to(device)
             return mkd(patches.double())
 
-        assert gradcheck(mkd_describe, (patches, ps), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
+        self.gradcheck(mkd_describe, (patches, ps), nondet_tol=1e-4)
 
     @pytest.mark.skip("neither dict, nor nn.ModuleDict works")
     @pytest.mark.jit()
@@ -408,10 +398,10 @@ class TestMKDDescriptor:
         model_jit = torch.jit.script(
             MKDDescriptor(patch_size=ps, kernel_type=kt, whitening=wt).to(patches.device, patches.dtype).eval()
         )
-        assert_close(model(patches), model_jit(patches))
+        self.assert_close(model(patches), model_jit(patches))
 
 
-class TestSimpleKD:
+class TestSimpleKD(BaseTester):
     dims = {"cart": 63, "polar": 175}
 
     @pytest.mark.parametrize("ps,kernel_type", [(9, "cart"), (9, "polar"), (32, "cart"), (32, "polar")])
@@ -434,12 +424,11 @@ class TestSimpleKD:
 
     def test_gradcheck(self, device):
         batch_size, channels, ps = 1, 1, 19
-        patches = torch.rand(batch_size, channels, ps, ps).to(device)
-        patches = utils.tensor_to_gradcheck_var(patches)  # to var
+        patches = torch.rand(batch_size, channels, ps, ps, device=device, dtype=torch.float64)
 
         def skd_describe(patches, patch_size=19):
             skd = SimpleKD(patch_size=ps, kernel_type="polar", whitening="lw").double()
             skd.to(device)
             return skd(patches.double())
 
-        assert gradcheck(skd_describe, (patches, ps), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
+        self.gradcheck(skd_describe, (patches, ps), nondet_tol=1e-4)

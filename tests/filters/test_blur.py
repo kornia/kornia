@@ -2,7 +2,6 @@ import pytest
 import torch
 
 from kornia.filters import BoxBlur, box_blur
-from kornia.testing import tensor_to_gradcheck_var
 from testing.base import BaseTester
 
 
@@ -110,10 +109,9 @@ class TestBoxBlur(BaseTester):
         assert actual.is_contiguous()
 
     @pytest.mark.parametrize("kernel_size", [(3, 3), 5, (5, 7)])
-    def test_gradcheck(self, kernel_size, device, dtype):
+    def test_gradcheck(self, kernel_size, device):
         batch_size, channels, height, width = 1, 2, 5, 4
-        img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
-        img = tensor_to_gradcheck_var(img)  # to var
+        img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         fast_mode = "cpu" in str(device)  # Disable fast mode for GPU
         self.gradcheck(box_blur, (img, kernel_size), fast_mode=fast_mode)
 

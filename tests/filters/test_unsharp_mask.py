@@ -2,7 +2,6 @@ import pytest
 import torch
 
 from kornia.filters import UnsharpMask, unsharp_mask
-from kornia.testing import tensor_to_gradcheck_var
 from testing.base import BaseTester
 
 
@@ -49,8 +48,7 @@ class Testunsharp(BaseTester):
         sigma = (1.5, 2.1)
 
         # evaluate function gradient
-        inpt = torch.rand(shape, device=device)
-        inpt = tensor_to_gradcheck_var(inpt)  # to var
+        inpt = torch.rand(shape, device=device, dtype=torch.float64)
         self.gradcheck(unsharp_mask, (inpt, kernel_size, sigma, "replicate"))
 
     def test_module(self, device, dtype):

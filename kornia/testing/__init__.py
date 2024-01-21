@@ -17,9 +17,9 @@ from kornia.utils.helpers import deprecated
 warnings.simplefilter("always", DeprecationWarning)
 warnings.warn(
     (
-        "Since kornia 0.7.2 the `kornia.testing` module is deprecated and will be removed in kornia 0.8.0 (dec 2024).",
-        " Most of these functionalities will be removed from kornia package and will be part of the tests of kornia.",
-        " Some functionalities which we think is important to keep will be moved to other kornia module.",
+        "Since kornia 0.7.2 the `kornia.testing` module is deprecated and will be removed in kornia 0.8.0 (dec 2024)."
+        " Most of these functionalities will be removed from kornia package and will be part of the tests of kornia."
+        " Some functionalities which we think is important to keep will be moved to other kornia module."
     ),
     category=DeprecationWarning,
     stacklevel=2,
@@ -51,7 +51,11 @@ def is_mps_tensor_safe(x: Tensor) -> bool:
     return "mps" in str(x.device)
 
 
-# TODO: Isn't this function duplicated with eye_like?
+@deprecated(
+    "kornia.utils.misc.eye_like",
+    "0.7.2",
+    extra_reason="The `kornia.testing` module is deprecated and will be removed in kornia 0.8.0 (dec 2024).",
+)
 def create_eye_batch(batch_size: int, eye_size: int, device: Device = None, dtype: Dtype = None) -> Tensor:
     """Create a batch of identity matrices of shape Bx3x3."""
     return eye(eye_size, device=device, dtype=dtype).view(1, eye_size, eye_size).expand(batch_size, -1, -1)

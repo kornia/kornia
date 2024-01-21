@@ -1,13 +1,11 @@
 import pytest
 import torch
-from torch.autograd import gradcheck
 
-import kornia.testing as utils  # test utils
 from kornia.feature import HardNet, HardNet8
-from testing.base import assert_close
+from testing.base import BaseTester
 
 
-class TestHardNet:
+class TestHardNet(BaseTester):
     @pytest.mark.slow
     def test_shape(self, device):
         inp = torch.ones(1, 1, 32, 32, device=device)
@@ -24,12 +22,9 @@ class TestHardNet:
         assert out.shape == (16, 128)
 
     def test_gradcheck(self, device):
-        patches = torch.rand(2, 1, 32, 32, device=device)
-        patches = utils.tensor_to_gradcheck_var(patches)  # to var
+        patches = torch.rand(2, 1, 32, 32, device=device, dtype=torch.float64)
         hardnet = HardNet().to(patches.device, patches.dtype)
-        assert gradcheck(
-            hardnet, (patches,), eps=1e-4, atol=1e-4, nondet_tol=1e-8, raise_exception=True, fast_mode=True
-        )
+        self.gradcheck(hardnet, (patches,), eps=1e-4, atol=1e-4, nondet_tol=1e-8)
 
     @pytest.mark.jit()
     def test_jit(self, device, dtype):
@@ -37,10 +32,10 @@ class TestHardNet:
         patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
         model = HardNet().to(patches.device, patches.dtype).eval()
         model_jit = torch.jit.script(HardNet().to(patches.device, patches.dtype).eval())
-        assert_close(model(patches), model_jit(patches))
+        self.assert_close(model(patches), model_jit(patches))
 
 
-class TestHardNet8:
+class TestHardNet8(BaseTester):
     def test_shape(self, device):
         inp = torch.ones(1, 1, 32, 32, device=device)
         hardnet = HardNet8().to(device)
@@ -56,10 +51,9 @@ class TestHardNet8:
 
     @pytest.mark.skip("jacobian not well computed")
     def test_gradcheck(self, device):
-        patches = torch.rand(2, 1, 32, 32, device=device)
-        patches = utils.tensor_to_gradcheck_var(patches)  # to var
+        patches = torch.rand(2, 1, 32, 32, device=device, dtype=torch.float64)
         hardnet = HardNet8().to(patches.device, patches.dtype)
-        assert gradcheck(hardnet, (patches,), eps=1e-4, atol=1e-4, raise_exception=True, fast_mode=True)
+        self.gradcheck(hardnet, (patches,), eps=1e-4, atol=1e-4)
 
     @pytest.mark.jit()
     def test_jit(self, device, dtype):
@@ -67,4 +61,4 @@ class TestHardNet8:
         patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
         model = HardNet8().to(patches.device, patches.dtype).eval()
         model_jit = torch.jit.script(HardNet8().to(patches.device, patches.dtype).eval())
-        assert_close(model(patches), model_jit(patches))
+        self.assert_close(model(patches), model_jit(patches))

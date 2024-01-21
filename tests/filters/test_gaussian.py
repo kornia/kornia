@@ -10,7 +10,6 @@ from kornia.filters import (
     get_gaussian_kernel2d,
     get_gaussian_kernel3d,
 )
-from kornia.testing import tensor_to_gradcheck_var
 from testing.base import BaseTester, assert_close
 
 
@@ -218,8 +217,7 @@ class TestGaussianBlur2d(BaseTester):
         sigma = (1.5, 2.1)
 
         # evaluate function gradient
-        sample = torch.rand(batch_shape, device=device)
-        sample = tensor_to_gradcheck_var(sample)  # to var
+        sample = torch.rand(batch_shape, device=device, dtype=torch.float64)
         self.gradcheck(gaussian_blur2d, (sample, kernel_size, sigma, "replicate"))
 
     @pytest.mark.parametrize("kernel_size", [3, (5, 5), (5, 7)])

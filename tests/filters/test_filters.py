@@ -2,9 +2,8 @@ import pytest
 import torch
 
 from kornia.filters import DexiNed, filter2d, filter2d_separable, filter3d
-from kornia.testing import tensor_to_gradcheck_var
 from kornia.utils._compat import torch_version_le
-from testing.base import BaseTester, assert_close
+from testing.base import BaseTester
 
 
 class TestFilter2D(BaseTester):
@@ -70,9 +69,9 @@ class TestFilter2D(BaseTester):
             dtype=dtype,
         )
         out_corr = filter2d(inp, kernel, behaviour="corr")
-        assert_close(out_corr, corr_expected)
+        self.assert_close(out_corr, corr_expected)
         out_conv = filter2d(inp, kernel, behaviour="conv")
-        assert_close(out_conv, conv_expected)
+        self.assert_close(out_conv, conv_expected)
 
     def test_exception(self):
         k = torch.ones(1, 1, 1)
@@ -346,12 +345,10 @@ class TestFilter2D(BaseTester):
         self.assert_close(out, out_sep)
 
     def test_gradcheck(self, device):
-        kernel = torch.rand(1, 3, 3, device=device)
-        sample = torch.ones(1, 1, 7, 8, device=device)
+        kernel = torch.rand(1, 3, 3, device=device, dtype=torch.float64)
+        sample = torch.ones(1, 1, 7, 8, device=device, dtype=torch.float64)
 
         # evaluate function gradient
-        sample = tensor_to_gradcheck_var(sample)  # to var
-        kernel = tensor_to_gradcheck_var(kernel)  # to var
         self.gradcheck(filter2d, (sample, kernel), nondet_tol=1e-8)
 
     @pytest.mark.skip(reason="filter2d do not have a module")
@@ -706,12 +703,10 @@ class TestFilter3D(BaseTester):
         assert actual.is_contiguous()
 
     def test_gradcheck(self, device):
-        kernel = torch.rand(1, 3, 3, 3, device=device)
-        sample = torch.ones(1, 1, 6, 7, 8, device=device)
+        kernel = torch.rand(1, 3, 3, 3, device=device, dtype=torch.float64)
+        sample = torch.ones(1, 1, 6, 7, 8, device=device, dtype=torch.float64)
 
         # evaluate function gradient
-        sample = tensor_to_gradcheck_var(sample)  # to var
-        kernel = tensor_to_gradcheck_var(kernel)  # to var
         self.gradcheck(filter3d, (sample, kernel), nondet_tol=1e-8)
 
     @pytest.mark.skip(reason="filter3d do not have a module")
@@ -731,7 +726,7 @@ class TestFilter3D(BaseTester):
         self.assert_close(actual, expected)
 
 
-class TestDexiNed:
+class TestDexiNed(BaseTester):
     def test_smoke(self, device, dtype):
         img = torch.rand(2, 3, 32, 32, device=device, dtype=dtype)
         net = DexiNed(pretrained=False).to(device, dtype)
@@ -757,7 +752,7 @@ class TestDexiNed:
         )
 
         out = model(img)[-1]
-        assert_close(out, expect, atol=3e-4, rtol=3e-4)
+        self.assert_close(out, expect, atol=3e-4, rtol=3e-4)
 
     @pytest.mark.skip(reason="DexiNed do not compile with dynamo.")
     def test_dynamo(self, device, dtype, torch_optimizer):
@@ -769,4 +764,4 @@ class TestDexiNed:
         expected = op(inpt)
         actual = op_optimized(inpt)
 
-        assert_close(actual, expected)
+        self.assert_close(actual, expected)

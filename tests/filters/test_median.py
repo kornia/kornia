@@ -2,7 +2,6 @@ import pytest
 import torch
 
 from kornia.filters import MedianBlur, median_blur
-from kornia.testing import tensor_to_gradcheck_var
 from testing.base import BaseTester
 
 
@@ -84,8 +83,7 @@ class TestMedianBlur(BaseTester):
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 2, 5, 4
-        img = torch.rand(batch_size, channels, height, width, device=device)
-        img = tensor_to_gradcheck_var(img)  # to var
+        img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(median_blur, (img, (5, 3)))
 
     def test_module(self, device, dtype):

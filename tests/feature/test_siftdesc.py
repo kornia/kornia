@@ -1,15 +1,13 @@
 import pytest
 import torch
-from torch.autograd import gradcheck
 
-import kornia.testing as utils  # test utils
 from kornia.feature.siftdesc import (
     DenseSIFTDescriptor,
     SIFTDescriptor,
     get_sift_bin_ksize_stride_pad,
     get_sift_pooling_kernel,
 )
-from testing.base import assert_close
+from testing.base import BaseTester
 
 
 @pytest.mark.parametrize("ksize", [5, 13, 25])
@@ -24,8 +22,7 @@ def test_get_sift_bin_ksize_stride_pad(ps, n_bins, ksize, stride, pad):
     assert out == (ksize, stride, pad)
 
 
-# TODO: add kornia.testing.BaseTester
-class TestSIFTDescriptor:
+class TestSIFTDescriptor(BaseTester):
     def test_shape(self, device, dtype):
         inp = torch.ones(1, 1, 32, 32, device=device, dtype=dtype)
         sift = SIFTDescriptor(32).to(device, dtype)
@@ -50,15 +47,14 @@ class TestSIFTDescriptor:
         sift = SIFTDescriptor(6, num_ang_bins=4, num_spatial_bins=1, clipval=0.2, rootsift=False).to(device, dtype)
         out = sift(patch)
         expected = torch.tensor([[0, 0, 1.0, 0]], device=device, dtype=dtype)
-        assert_close(out, expected, atol=1e-3, rtol=1e-3)
+        self.assert_close(out, expected, atol=1e-3, rtol=1e-3)
 
     def test_gradcheck(self, device):
         dtype = torch.float64
         batch_size, channels, height, width = 1, 1, 15, 15
         patches = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
-        patches = utils.tensor_to_gradcheck_var(patches)  # to var
         sift = SIFTDescriptor(15).to(device, dtype)
-        assert gradcheck(sift, (patches,), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
+        self.gradcheck(sift, (patches,), nondet_tol=1e-4)
 
     @pytest.mark.skip("Compiled functions can't take variable number")
     def test_jit(self, device, dtype):
@@ -66,11 +62,10 @@ class TestSIFTDescriptor:
         patches = torch.ones(B, C, H, W, device=device, dtype=dtype)
         model = SIFTDescriptor(41).to(patches.device, patches.dtype).eval()
         model_jit = torch.jit.script(SIFTDescriptor(41).to(patches.device, patches.dtype).eval())
-        assert_close(model(patches), model_jit(patches))
+        self.assert_close(model(patches), model_jit(patches))
 
 
-# TODO: add kornia.testing.BaseTester
-class TestDenseSIFTDescriptor:
+class TestDenseSIFTDescriptor(BaseTester):
     def test_shape_default(self, device, dtype):
         bs, h, w = 1, 20, 15
         inp = torch.rand(1, 1, h, w, device=device, dtype=dtype)
@@ -96,8 +91,7 @@ class TestDenseSIFTDescriptor:
         sift = DenseSIFTDescriptor()
         sift.__repr__()
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 1, 16, 16
-        patches = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
-        patches = utils.tensor_to_gradcheck_var(patches)  # to var
-        assert gradcheck(DenseSIFTDescriptor(4, 2, 2), (patches), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
+        patches = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
+        self.gradcheck(DenseSIFTDescriptor(4, 2, 2), (patches), nondet_tol=1e-4)

@@ -3,7 +3,6 @@ from functools import partial
 import numpy as np
 import pytest
 import torch
-from torch.autograd import gradcheck
 
 import kornia
 from kornia.geometry.conversions import (
@@ -20,7 +19,7 @@ from kornia.geometry.conversions import (
     worldtocam_to_camtoworld_Rt,
 )
 from kornia.geometry.quaternion import Quaternion
-from kornia.testing import create_eye_batch, tensor_to_gradcheck_var
+from kornia.utils.misc import eye_like
 from testing.base import BaseTester, assert_close
 
 
@@ -40,11 +39,10 @@ def rtol(device, dtype):
     return 1.0e-4
 
 
-# based on:
-# https://github.com/ceres-solver/ceres-solver/blob/master/internal/ceres/rotation_test.cc#L271
+class TestAngleAxisToQuaternion(BaseTester):
+    # based on:
+    # https://github.com/ceres-solver/ceres-solver/blob/master/internal/ceres/rotation_test.cc#L271
 
-
-class TestAngleAxisToQuaternion:
     def test_smoke(self, device, dtype):
         axis_angle = torch.zeros(3, dtype=dtype, device=device)
         quaternion = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
@@ -60,54 +58,54 @@ class TestAngleAxisToQuaternion:
         axis_angle = torch.tensor((0.0, 0.0, 0.0), device=device, dtype=dtype)
         expected = torch.tensor((1.0, 0.0, 0.0, 0.0), device=device, dtype=dtype)
         quaternion = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
-        assert_close(quaternion, expected, atol=atol, rtol=rtol)
+        self.assert_close(quaternion, expected, atol=atol, rtol=rtol)
 
     def test_small_angle_x(self, device, dtype, atol, rtol):
         theta = 1.0e-2
         axis_angle = torch.tensor((theta, 0.0, 0.0), device=device, dtype=dtype)
         expected = torch.tensor((np.cos(theta / 2.0), np.sin(theta / 2.0), 0.0, 0.0), device=device, dtype=dtype)
         quaternion = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
-        assert_close(quaternion, expected, atol=atol, rtol=rtol)
+        self.assert_close(quaternion, expected, atol=atol, rtol=rtol)
 
     def test_small_angle_y(self, device, dtype, atol, rtol):
         theta = 1.0e-2
         axis_angle = torch.tensor((0.0, theta, 0.0), device=device, dtype=dtype)
         expected = torch.tensor((np.cos(theta / 2.0), 0.0, np.sin(theta / 2.0), 0.0), device=device, dtype=dtype)
         quaternion = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
-        assert_close(quaternion, expected, atol=atol, rtol=rtol)
+        self.assert_close(quaternion, expected, atol=atol, rtol=rtol)
 
     def test_small_angle_z(self, device, dtype, atol, rtol):
         theta = 1.0e-2
         axis_angle = torch.tensor((0.0, 0.0, theta), device=device, dtype=dtype)
         expected = torch.tensor((np.cos(theta / 2.0), 0.0, 0.0, np.sin(theta / 2.0)), device=device, dtype=dtype)
         quaternion = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
-        assert_close(quaternion, expected, atol=atol, rtol=rtol)
+        self.assert_close(quaternion, expected, atol=atol, rtol=rtol)
 
     def test_x_rotation(self, device, dtype, atol, rtol):
         half_sqrt2 = 0.5 * np.sqrt(2.0)
         axis_angle = torch.tensor((kornia.pi / 2.0, 0.0, 0.0), device=device, dtype=dtype)
         expected = torch.tensor((half_sqrt2, half_sqrt2, 0.0, 0.0), device=device, dtype=dtype)
         quaternion = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
-        assert_close(quaternion, expected, atol=atol, rtol=rtol)
+        self.assert_close(quaternion, expected, atol=atol, rtol=rtol)
 
     def test_y_rotation(self, device, dtype, atol, rtol):
         half_sqrt2 = 0.5 * np.sqrt(2.0)
         axis_angle = torch.tensor((0.0, kornia.pi / 2.0, 0.0), device=device, dtype=dtype)
         expected = torch.tensor((half_sqrt2, 0.0, half_sqrt2, 0.0), device=device, dtype=dtype)
         quaternion = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
-        assert_close(quaternion, expected, atol=atol, rtol=rtol)
+        self.assert_close(quaternion, expected, atol=atol, rtol=rtol)
 
     def test_z_rotation(self, device, dtype, atol, rtol):
         half_sqrt2 = 0.5 * np.sqrt(2.0)
         axis_angle = torch.tensor((0.0, 0.0, kornia.pi / 2.0), device=device, dtype=dtype)
         expected = torch.tensor((half_sqrt2, 0.0, 0.0, half_sqrt2), device=device, dtype=dtype)
         quaternion = kornia.geometry.conversions.axis_angle_to_quaternion(axis_angle)
-        assert_close(quaternion, expected, atol=atol, rtol=rtol)
+        self.assert_close(quaternion, expected, atol=atol, rtol=rtol)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
+        dtype = torch.float64
         eps = torch.finfo(dtype).eps
         axis_angle = torch.tensor((0.0, 0.0, 0.0), device=device, dtype=dtype) + eps
-        axis_angle = tensor_to_gradcheck_var(axis_angle)
         # evaluate function gradient
         assert gradcheck(
             partial(kornia.geometry.conversions.axis_angle_to_quaternion),
@@ -117,7 +115,7 @@ class TestAngleAxisToQuaternion:
         )
 
 
-class TestQuaternionToAngleAxis:
+class TestQuaternionToAngleAxis(BaseTester):
     def test_smoke(self, device, dtype):
         quaternion = torch.zeros(4, device=device, dtype=dtype)
         axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
@@ -133,46 +131,46 @@ class TestQuaternionToAngleAxis:
         quaternion = torch.tensor((1.0, 0.0, 0.0, 0.0), device=device, dtype=dtype)
         expected = torch.tensor((0.0, 0.0, 0.0), device=device, dtype=dtype)
         axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
-        assert_close(axis_angle, expected, atol=atol, rtol=rtol)
+        self.assert_close(axis_angle, expected, atol=atol, rtol=rtol)
 
     def test_x_rotation(self, device, dtype, atol, rtol):
         quaternion = torch.tensor((0.0, 1.0, 0.0, 0.0), device=device, dtype=dtype)
         expected = torch.tensor((kornia.pi, 0.0, 0.0), device=device, dtype=dtype)
         axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
-        assert_close(axis_angle, expected, atol=atol, rtol=rtol)
+        self.assert_close(axis_angle, expected, atol=atol, rtol=rtol)
 
     def test_y_rotation(self, device, dtype, atol, rtol):
         quaternion = torch.tensor((0.0, 0.0, 1.0, 0.0), device=device, dtype=dtype)
         expected = torch.tensor((0.0, kornia.pi, 0.0), device=device, dtype=dtype)
         axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
-        assert_close(axis_angle, expected, atol=atol, rtol=rtol)
+        self.assert_close(axis_angle, expected, atol=atol, rtol=rtol)
 
     def test_z_rotation(self, device, dtype, atol, rtol):
         quaternion = torch.tensor((np.sqrt(3.0) / 2.0, 0.0, 0.0, 0.5), device=device, dtype=dtype)
         expected = torch.tensor((0.0, 0.0, kornia.pi / 3.0), device=device, dtype=dtype)
         axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
-        assert_close(axis_angle, expected, atol=atol, rtol=rtol)
+        self.assert_close(axis_angle, expected, atol=atol, rtol=rtol)
 
     def test_small_angle_x(self, device, dtype, atol, rtol):
         theta = 1.0e-2
         quaternion = torch.tensor((np.cos(theta / 2.0), np.sin(theta / 2.0), 0.0, 0.0), device=device, dtype=dtype)
         expected = torch.tensor((theta, 0.0, 0.0), device=device, dtype=dtype)
         axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
-        assert_close(axis_angle, expected, atol=atol, rtol=rtol)
+        self.assert_close(axis_angle, expected, atol=atol, rtol=rtol)
 
     def test_small_angle_y(self, device, dtype, atol, rtol):
         theta = 1.0e-2
         quaternion = torch.tensor((np.cos(theta / 2), 0.0, np.sin(theta / 2), 0.0), device=device, dtype=dtype)
         expected = torch.tensor((0.0, theta, 0.0), device=device, dtype=dtype)
         axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
-        assert_close(axis_angle, expected, atol=atol, rtol=rtol)
+        self.assert_close(axis_angle, expected, atol=atol, rtol=rtol)
 
     def test_small_angle_z(self, device, dtype, atol, rtol):
         theta = 1.0e-2
         quaternion = torch.tensor((np.cos(theta / 2), 0.0, 0.0, np.sin(theta / 2)), device=device, dtype=dtype)
         expected = torch.tensor((0.0, 0.0, theta), device=device, dtype=dtype)
         axis_angle = kornia.geometry.conversions.quaternion_to_axis_angle(quaternion)
-        assert_close(axis_angle, expected, atol=atol, rtol=rtol)
+        self.assert_close(axis_angle, expected, atol=atol, rtol=rtol)
 
     def test_gradcheck(self, device, dtype):
         eps = torch.finfo(dtype).eps
@@ -187,7 +185,7 @@ class TestQuaternionToAngleAxis:
         )
 
 
-class TestRotationMatrixToQuaternion:
+class TestRotationMatrixToQuaternion(BaseTester):
     @pytest.mark.parametrize("batch_size", (1, 3, 8))
     def test_smoke_batch(self, batch_size, device, dtype):
         matrix = torch.zeros(batch_size, 3, 3, device=device, dtype=dtype)
@@ -198,21 +196,21 @@ class TestRotationMatrixToQuaternion:
         matrix = torch.tensor(((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)), device=device, dtype=dtype)
         expected = torch.tensor((1.0, 0.0, 0.0, 0.0), device=device, dtype=dtype)
         quaternion = kornia.geometry.conversions.rotation_matrix_to_quaternion(matrix)
-        assert_close(quaternion, expected, atol=atol, rtol=rtol)
+        self.assert_close(quaternion, expected, atol=atol, rtol=rtol)
 
     def test_rot_x_45(self, device, dtype, atol, rtol):
         matrix = torch.tensor(((1.0, 0.0, 0.0), (0.0, 0.0, -1.0), (0.0, 1.0, 0.0)), device=device, dtype=dtype)
         pi_half2 = torch.cos(kornia.pi / 4.0).to(device=device, dtype=dtype)
         expected = torch.tensor((pi_half2, pi_half2, 0.0, 0.0), device=device, dtype=dtype)
         quaternion = kornia.geometry.conversions.rotation_matrix_to_quaternion(matrix)
-        assert_close(quaternion, expected, atol=atol, rtol=rtol)
+        self.assert_close(quaternion, expected, atol=atol, rtol=rtol)
 
     def test_back_and_forth(self, device, dtype, atol, rtol):
         eps = torch.finfo(dtype).eps
         matrix = torch.tensor(((1.0, 0.0, 0.0), (0.0, 0.0, -1.0), (0.0, 1.0, 0.0)), device=device, dtype=dtype)
         quaternion = kornia.geometry.conversions.rotation_matrix_to_quaternion(matrix, eps=eps)
         matrix_hat = kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternion)
-        assert_close(matrix, matrix_hat, atol=atol, rtol=rtol)
+        self.assert_close(matrix, matrix_hat, atol=atol, rtol=rtol)
 
     def test_corner_case(self, device, dtype, atol, rtol):
         eps = torch.finfo(dtype).eps
@@ -230,7 +228,7 @@ class TestRotationMatrixToQuaternion:
         )
         quaternion = kornia.geometry.conversions.rotation_matrix_to_quaternion(matrix, eps=eps)
         torch.set_printoptions(precision=10)
-        assert_close(quaternion_true, quaternion, atol=atol, rtol=rtol)
+        self.assert_close(quaternion_true, quaternion, atol=atol, rtol=rtol)
 
     def test_gradcheck(self, device, dtype):
         eps = torch.finfo(dtype).eps
@@ -252,10 +250,10 @@ class TestRotationMatrixToQuaternion:
         actual = op_optimized(quaternion)
         expected = op(quaternion)
 
-        assert_close(actual, expected)
+        self.assert_close(actual, expected)
 
 
-class TestQuaternionToRotationMatrix:
+class TestQuaternionToRotationMatrix(BaseTester):
     @pytest.mark.parametrize("batch_dims", ((), (1,), (3,), (8,), (1, 1), (5, 6)))
     def test_smoke_batch(self, batch_dims, device, dtype):
         quaternion = torch.zeros(*batch_dims, 4, device=device, dtype=dtype)
@@ -266,25 +264,25 @@ class TestQuaternionToRotationMatrix:
         quaternion = torch.tensor((1.0, 0.0, 0.0, 0.0), device=device, dtype=dtype)
         expected = torch.tensor(((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)), device=device, dtype=dtype)
         matrix = kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternion)
-        assert_close(matrix, expected, atol=atol, rtol=rtol)
+        self.assert_close(matrix, expected, atol=atol, rtol=rtol)
 
     def test_x_rotation(self, device, dtype, atol, rtol):
         quaternion = torch.tensor((0.0, 1.0, 0.0, 0.0), device=device, dtype=dtype)
         expected = torch.tensor(((1.0, 0.0, 0.0), (0.0, -1.0, 0.0), (0.0, 0.0, -1.0)), device=device, dtype=dtype)
         matrix = kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternion)
-        assert_close(matrix, expected, atol=atol, rtol=rtol)
+        self.assert_close(matrix, expected, atol=atol, rtol=rtol)
 
     def test_y_rotation(self, device, dtype, atol, rtol):
         quaternion = torch.tensor((0.0, 0.0, 1.0, 0.0), device=device, dtype=dtype)
         expected = torch.tensor(((-1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, -1.0)), device=device, dtype=dtype)
         matrix = kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternion)
-        assert_close(matrix, expected, atol=atol, rtol=rtol)
+        self.assert_close(matrix, expected, atol=atol, rtol=rtol)
 
     def test_z_rotation(self, device, dtype, atol, rtol):
         quaternion = torch.tensor((0.0, 0.0, 0.0, 1.0), device=device, dtype=dtype)
         expected = torch.tensor(((-1.0, 0.0, 0.0), (0.0, -1.0, 0.0), (0.0, 0.0, 1.0)), device=device, dtype=dtype)
         matrix = kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternion)
-        assert_close(matrix, expected, atol=atol, rtol=rtol)
+        self.assert_close(matrix, expected, atol=atol, rtol=rtol)
 
     def test_gradcheck(self, device, dtype):
         quaternion = torch.tensor((0.0, 0.0, 0.0, 1.0), device=device, dtype=dtype)
@@ -305,10 +303,10 @@ class TestQuaternionToRotationMatrix:
         actual = op_optimized(quaternion)
         expected = op(quaternion)
 
-        assert_close(actual, expected)
+        self.assert_close(actual, expected)
 
 
-class TestQuaternionLogToExp:
+class TestQuaternionLogToExp(BaseTester):
     @pytest.mark.parametrize("batch_size", (1, 3, 8))
     def test_smoke_batch(self, batch_size, device, dtype):
         quaternion_log = torch.zeros(batch_size, 3, device=device, dtype=dtype)
@@ -320,7 +318,7 @@ class TestQuaternionLogToExp:
         quaternion_log = torch.tensor((0.0, 0.0, 0.0), device=device, dtype=dtype)
         expected = torch.tensor((1.0, 0.0, 0.0, 0.0), device=device, dtype=dtype)
         quaternion_exp = kornia.geometry.conversions.quaternion_log_to_exp(quaternion_log, eps=eps)
-        assert_close(quaternion_exp, expected, atol=atol, rtol=rtol)
+        self.assert_close(quaternion_exp, expected, atol=atol, rtol=rtol)
 
     def test_pi_quaternion_x(self, device, dtype, atol, rtol):
         eps = torch.finfo(dtype).eps
@@ -328,7 +326,7 @@ class TestQuaternionLogToExp:
         quaternion_log = torch.tensor((1.0, 0.0, 0.0), device=device, dtype=dtype)
         expected = torch.tensor((torch.cos(one), torch.sin(one), 0.0, 0.0), device=device, dtype=dtype)
         quaternion_exp = kornia.geometry.conversions.quaternion_log_to_exp(quaternion_log, eps=eps)
-        assert_close(quaternion_exp, expected, atol=atol, rtol=rtol)
+        self.assert_close(quaternion_exp, expected, atol=atol, rtol=rtol)
 
     def test_pi_quaternion_y(self, device, dtype, atol, rtol):
         eps = torch.finfo(dtype).eps
@@ -336,7 +334,7 @@ class TestQuaternionLogToExp:
         quaternion_log = torch.tensor((0.0, 1.0, 0.0), device=device, dtype=dtype)
         expected = torch.tensor((torch.cos(one), 0.0, torch.sin(one), 0.0), device=device, dtype=dtype)
         quaternion_exp = kornia.geometry.conversions.quaternion_log_to_exp(quaternion_log, eps=eps)
-        assert_close(quaternion_exp, expected, atol=atol, rtol=rtol)
+        self.assert_close(quaternion_exp, expected, atol=atol, rtol=rtol)
 
     def test_pi_quaternion_z(self, device, dtype, atol, rtol):
         eps = torch.finfo(dtype).eps
@@ -344,7 +342,7 @@ class TestQuaternionLogToExp:
         quaternion_log = torch.tensor((0.0, 0.0, 1.0), device=device, dtype=dtype)
         expected = torch.tensor((torch.cos(one), 0.0, 0.0, torch.sin(one)), device=device, dtype=dtype)
         quaternion_exp = kornia.geometry.conversions.quaternion_log_to_exp(quaternion_log, eps=eps)
-        assert_close(quaternion_exp, expected, atol=atol, rtol=rtol)
+        self.assert_close(quaternion_exp, expected, atol=atol, rtol=rtol)
 
     def test_back_and_forth(self, device, dtype, atol, rtol):
         eps = torch.finfo(dtype).eps
@@ -352,7 +350,7 @@ class TestQuaternionLogToExp:
 
         quaternion_exp = kornia.geometry.conversions.quaternion_log_to_exp(quaternion_log, eps=eps)
         quaternion_log_hat = kornia.geometry.conversions.quaternion_exp_to_log(quaternion_exp, eps=eps)
-        assert_close(quaternion_log, quaternion_log_hat, atol=atol, rtol=rtol)
+        self.assert_close(quaternion_log, quaternion_log_hat, atol=atol, rtol=rtol)
 
     def test_gradcheck(self, device, dtype):
         eps = torch.finfo(dtype).eps
@@ -374,10 +372,10 @@ class TestQuaternionLogToExp:
         actual = op_optimized(quaternion)
         expected = op(quaternion)
 
-        assert_close(actual, expected)
+        self.assert_close(actual, expected)
 
 
-class TestQuaternionExpToLog:
+class TestQuaternionExpToLog(BaseTester):
     @pytest.mark.parametrize("batch_size", (1, 3, 8))
     def test_smoke_batch(self, batch_size, device, dtype):
         eps = torch.finfo(dtype).eps
@@ -390,35 +388,35 @@ class TestQuaternionExpToLog:
         quaternion_exp = torch.tensor((1.0, 0.0, 0.0, 0.0), device=device, dtype=dtype)
         expected = torch.tensor((0.0, 0.0, 0.0), device=device, dtype=dtype)
         quaternion_log = kornia.geometry.conversions.quaternion_exp_to_log(quaternion_exp, eps=eps)
-        assert_close(quaternion_log, expected, atol=atol, rtol=rtol)
+        self.assert_close(quaternion_log, expected, atol=atol, rtol=rtol)
 
     def test_pi_quaternion_x(self, device, dtype, atol, rtol):
         eps = torch.finfo(dtype).eps
         quaternion_exp = torch.tensor((0.0, 1.0, 0.0, 0.0), device=device, dtype=dtype)
         expected = torch.tensor((kornia.pi / 2.0, 0.0, 0.0), device=device, dtype=dtype)
         quaternion_log = kornia.geometry.conversions.quaternion_exp_to_log(quaternion_exp, eps=eps)
-        assert_close(quaternion_log, expected, atol=atol, rtol=rtol)
+        self.assert_close(quaternion_log, expected, atol=atol, rtol=rtol)
 
     def test_pi_quaternion_y(self, device, dtype, atol, rtol):
         eps = torch.finfo(dtype).eps
         quaternion_exp = torch.tensor((0.0, 0.0, 1.0, 0.0), device=device, dtype=dtype)
         expected = torch.tensor((0.0, kornia.pi / 2.0, 0.0), device=device, dtype=dtype)
         quaternion_log = kornia.geometry.conversions.quaternion_exp_to_log(quaternion_exp, eps=eps)
-        assert_close(quaternion_log, expected, atol=atol, rtol=rtol)
+        self.assert_close(quaternion_log, expected, atol=atol, rtol=rtol)
 
     def test_pi_quaternion_z(self, device, dtype, atol, rtol):
         eps = torch.finfo(dtype).eps
         quaternion_exp = torch.tensor((0.0, 0.0, 0.0, 1.0), device=device, dtype=dtype)
         expected = torch.tensor((0.0, 0.0, kornia.pi / 2.0), device=device, dtype=dtype)
         quaternion_log = kornia.geometry.conversions.quaternion_exp_to_log(quaternion_exp, eps=eps)
-        assert_close(quaternion_log, expected, atol=atol, rtol=rtol)
+        self.assert_close(quaternion_log, expected, atol=atol, rtol=rtol)
 
     def test_back_and_forth(self, device, dtype, atol, rtol):
         eps = torch.finfo(dtype).eps
         quaternion_exp = torch.tensor((0.0, 1.0, 0.0, 0.0), device=device, dtype=dtype)
         quaternion_log = kornia.geometry.conversions.quaternion_exp_to_log(quaternion_exp, eps=eps)
         quaternion_exp_hat = kornia.geometry.conversions.quaternion_log_to_exp(quaternion_log, eps=eps)
-        assert_close(quaternion_exp, quaternion_exp_hat, atol=atol, rtol=rtol)
+        self.assert_close(quaternion_exp, quaternion_exp_hat, atol=atol, rtol=rtol)
 
     def test_gradcheck(self, device, dtype):
         eps = torch.finfo(dtype).eps
@@ -440,21 +438,21 @@ class TestQuaternionExpToLog:
         actual = op_optimized(quaternion)
         expected = op(quaternion)
 
-        assert_close(actual, expected)
+        self.assert_close(actual, expected)
 
 
-class TestAngleAxisToRotationMatrix:
+class TestAngleAxisToRotationMatrix(BaseTester):
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_rand_axis_angle_gradcheck(self, batch_size, device, dtype, atol, rtol):
         # generate input data
         axis_angle = torch.rand(batch_size, 3, device=device, dtype=dtype)
-        eye_batch = create_eye_batch(batch_size, 3, device=device, dtype=dtype)
+        eye_batch = eye_like(3, axis_angle)
 
         # apply transform
         rotation_matrix = kornia.geometry.conversions.axis_angle_to_rotation_matrix(axis_angle)
 
         rotation_matrix_eye = torch.matmul(rotation_matrix, rotation_matrix.transpose(-2, -1))
-        assert_close(rotation_matrix_eye, eye_batch, atol=atol, rtol=rtol)
+        self.assert_close(rotation_matrix_eye, eye_batch, atol=atol, rtol=rtol)
 
         # evaluate function gradient
         axis_angle = tensor_to_gradcheck_var(axis_angle)  # to var
@@ -490,10 +488,10 @@ class TestAngleAxisToRotationMatrix:
         rmat = torch.stack((rmat_2, rmat_1), dim=0)
         rvec = torch.stack((rvec_2, rvec_1), dim=0)
 
-        assert_close(kornia.geometry.conversions.axis_angle_to_rotation_matrix(rvec), rmat, atol=atol, rtol=rtol)
+        self.assert_close(kornia.geometry.conversions.axis_angle_to_rotation_matrix(rvec), rmat, atol=atol, rtol=rtol)
 
 
-class TestRotationMatrixToAngleAxis:
+class TestRotationMatrixToAngleAxis(BaseTester):
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_rand_quaternion_gradcheck(self, batch_size, device, dtype, atol, rtol):
         # generate input data
@@ -501,10 +499,10 @@ class TestRotationMatrixToAngleAxis:
         quaternion = kornia.geometry.conversions.normalize_quaternion(quaternion + 1e-6)
         rotation_matrix = kornia.geometry.conversions.quaternion_to_rotation_matrix(quaternion=quaternion)
 
-        eye_batch = create_eye_batch(batch_size, 3, device=device, dtype=dtype)
+        eye_batch = eye_like(3, rotation_matrix)
         rotation_matrix_eye = torch.matmul(rotation_matrix, rotation_matrix.transpose(-2, -1))
         # This didn't pass with atol=0.001, rtol=0.001 for float16 Cuda 11.2 GeForce 1080 Ti
-        assert_close(rotation_matrix_eye, eye_batch, atol=atol * 10.0, rtol=rtol * 10.0)
+        self.assert_close(rotation_matrix_eye, eye_batch, atol=atol * 10.0, rtol=rtol * 10.0)
 
     @pytest.mark.parametrize("batch_size", [4])
     def test_gradcheck(self, batch_size, device, dtype):
@@ -545,11 +543,11 @@ class TestRotationMatrixToAngleAxis:
         rmat = torch.stack((rmat_2, rmat_1), dim=0)
         rvec = torch.stack((rvec_2, rvec_1), dim=0)
 
-        assert_close(kornia.geometry.conversions.rotation_matrix_to_axis_angle(rmat), rvec, atol=atol, rtol=rtol)
+        self.assert_close(kornia.geometry.conversions.rotation_matrix_to_axis_angle(rmat), rvec, atol=atol, rtol=rtol)
 
 
 def test_pi():
-    assert_close(kornia.constants.pi.item(), 3.141592)
+    self.assert_close(kornia.constants.pi.item(), 3.141592)
 
 
 @pytest.mark.parametrize("batch_shape", [(2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3)])
@@ -562,7 +560,7 @@ def test_rad2deg(batch_shape, device, dtype):
     x_deg_to_rad = kornia.geometry.conversions.deg2rad(x_deg)
 
     # compute error
-    assert_close(x_rad, x_deg_to_rad)
+    self.assert_close(x_rad, x_deg_to_rad)
 
 
 @pytest.mark.parametrize("batch_shape", [(2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3)])
@@ -583,7 +581,7 @@ def test_deg2rad(batch_shape, device, dtype, atol, rtol):
     x_rad = kornia.geometry.conversions.deg2rad(x_deg)
     x_rad_to_deg = kornia.geometry.conversions.rad2deg(x_rad)
 
-    assert_close(x_deg, x_rad_to_deg, atol=atol, rtol=rtol)
+    self.assert_close(x_deg, x_rad_to_deg, atol=atol, rtol=rtol)
 
 
 @pytest.mark.parametrize("batch_shape", [(2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3)])
@@ -594,7 +592,7 @@ def test_deg2rad_gradcheck(batch_shape, device, dtype):
     )
 
 
-class TestPolCartConversions:
+class TestPolCartConversions(BaseTester):
     def test_smoke(self, device, dtype):
         x = torch.ones(1, 1, 1, 1, device=device, dtype=dtype)
         assert kornia.geometry.conversions.pol2cart(x, x) is not None
@@ -612,8 +610,8 @@ class TestPolCartConversions:
         x_pol2cart, y_pol2cart = kornia.geometry.conversions.pol2cart(rho, phi)
         rho_pol2cart, phi_pol2cart = kornia.geometry.conversions.cart2pol(x_pol2cart, y_pol2cart, 0)
 
-        assert_close(rho, rho_pol2cart)
-        assert_close(phi, phi_pol2cart)
+        self.assert_close(rho, rho_pol2cart)
+        self.assert_close(phi, phi_pol2cart)
 
     @pytest.mark.parametrize("batch_shape", [(2, 3)])
     def test_gradcheck(self, batch_shape, device, dtype):
@@ -644,11 +642,11 @@ class TestPolCartConversions:
         rho_cart2pol, phi_cart2pol = kornia.geometry.conversions.cart2pol(x, y, 0)
         x_cart2pol, y_cart2pol = kornia.geometry.conversions.pol2cart(rho_cart2pol, phi_cart2pol)
 
-        assert_close(x, x_cart2pol)
-        assert_close(y, y_cart2pol)
+        self.assert_close(x, x_cart2pol)
+        self.assert_close(y, y_cart2pol)
 
 
-class TestConvertPointsToHomogeneous:
+class TestConvertPointsToHomogeneous(BaseTester):
     def test_convert_points(self, device, dtype):
         # generate input data
         points_h = torch.tensor(
@@ -671,7 +669,7 @@ class TestConvertPointsToHomogeneous:
 
         # to euclidean
         points = kornia.geometry.conversions.convert_points_to_homogeneous(points_h)
-        assert_close(points, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(points, expected, atol=1e-4, rtol=1e-4)
 
     def test_convert_points_batch(self, device, dtype):
         # generate input data
@@ -683,7 +681,7 @@ class TestConvertPointsToHomogeneous:
 
         # to euclidean
         points = kornia.geometry.conversions.convert_points_to_homogeneous(points_h)
-        assert_close(points, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(points, expected, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_shape", [(2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3)])
     def test_gradcheck(self, batch_shape, device, dtype):
@@ -704,10 +702,10 @@ class TestConvertPointsToHomogeneous:
         actual = op_optimized(points_h)
         expected = op(points_h)
 
-        assert_close(actual, expected)
+        self.assert_close(actual, expected)
 
 
-class TestConvertAtoH:
+class TestConvertAtoH(BaseTester):
     def test_convert_points(self, device, dtype):
         # generate input data
         A = torch.tensor([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], device=device, dtype=dtype).view(1, 2, 3)
@@ -718,7 +716,7 @@ class TestConvertAtoH:
 
         # to euclidean
         H = kornia.geometry.conversions.convert_affinematrix_to_homography(A)
-        assert_close(H, expected)
+        self.assert_close(H, expected)
 
     @pytest.mark.parametrize("batch_shape", [(10, 2, 3), (16, 2, 3)])
     def test_gradcheck(self, batch_shape, device, dtype):
@@ -742,10 +740,10 @@ class TestConvertAtoH:
         actual = op_optimized(points_h)
         expected = op(points_h)
 
-        assert_close(actual, expected)
+        self.assert_close(actual, expected)
 
 
-class TestConvertPointsFromHomogeneous:
+class TestConvertPointsFromHomogeneous(BaseTester):
     @pytest.mark.parametrize("batch_shape", [(2, 3), (1, 2, 3), (2, 3, 3), (5, 5, 3)])
     def test_cardinality(self, device, dtype, batch_shape):
         points_h = torch.rand(batch_shape, device=device, dtype=dtype)
@@ -766,7 +764,7 @@ class TestConvertPointsFromHomogeneous:
 
         # to euclidean
         points = kornia.geometry.conversions.convert_points_from_homogeneous(points_h)
-        assert_close(points, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(points, expected, atol=1e-4, rtol=1e-4)
 
     def test_points_batch(self, device, dtype):
         # generate input data
@@ -776,7 +774,7 @@ class TestConvertPointsFromHomogeneous:
 
         # to euclidean
         points = kornia.geometry.conversions.convert_points_from_homogeneous(points_h)
-        assert_close(points, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(points, expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         points_h = torch.ones(1, 10, 3, device=device, dtype=dtype)
@@ -813,10 +811,10 @@ class TestConvertPointsFromHomogeneous:
         actual = op_optimized(points_h)
         expected = op(points_h)
 
-        assert_close(actual, expected)
+        self.assert_close(actual, expected)
 
 
-class TestNormalizePixelCoordinates:
+class TestNormalizePixelCoordinates(BaseTester):
     def test_tensor_bhw2(self, device, dtype, atol, rtol):
         eps = torch.finfo(dtype).eps
         height, width = 3, 4
@@ -828,7 +826,7 @@ class TestNormalizePixelCoordinates:
 
         grid_norm = kornia.geometry.conversions.normalize_pixel_coordinates(grid, height, width, eps=eps)
 
-        assert_close(grid_norm, expected, atol=atol, rtol=rtol)
+        self.assert_close(grid_norm, expected, atol=atol, rtol=rtol)
 
     def test_list(self, device, dtype, atol, rtol):
         eps = torch.finfo(dtype).eps
@@ -843,7 +841,7 @@ class TestNormalizePixelCoordinates:
 
         grid_norm = kornia.geometry.conversions.normalize_pixel_coordinates(grid, height, width, eps=eps)
 
-        assert_close(grid_norm, expected, atol=atol, rtol=rtol)
+        self.assert_close(grid_norm, expected, atol=atol, rtol=rtol)
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         if device == torch.device("cpu"):
@@ -858,10 +856,10 @@ class TestNormalizePixelCoordinates:
         actual = op_optimized(grid, height, width)
         expected = op(grid, height, width)
 
-        assert_close(actual, expected)
+        self.assert_close(actual, expected)
 
 
-class TestDenormalizePixelCoordinates:
+class TestDenormalizePixelCoordinates(BaseTester):
     def test_tensor_bhw2(self, device, dtype):
         height, width = 3, 4
         grid = kornia.utils.create_meshgrid(height, width, normalized_coordinates=True, device=device).to(dtype=dtype)
@@ -872,7 +870,7 @@ class TestDenormalizePixelCoordinates:
 
         grid_norm = kornia.geometry.conversions.denormalize_pixel_coordinates(grid, height, width)
 
-        assert_close(grid_norm, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(grid_norm, expected, atol=1e-4, rtol=1e-4)
 
     def test_list(self, device, dtype):
         height, width = 3, 4
@@ -886,7 +884,7 @@ class TestDenormalizePixelCoordinates:
 
         grid_norm = kornia.geometry.conversions.denormalize_pixel_coordinates(grid, height, width)
 
-        assert_close(grid_norm, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(grid_norm, expected, atol=1e-4, rtol=1e-4)
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         if device == torch.device("cpu"):
@@ -901,10 +899,10 @@ class TestDenormalizePixelCoordinates:
         actual = op_optimized(grid, height, width)
         expected = op(grid, height, width)
 
-        assert_close(actual, expected)
+        self.assert_close(actual, expected)
 
 
-class TestProjectPoints:
+class TestProjectPoints(BaseTester):
     def test_smoke(self, device, dtype):
         point_3d = torch.zeros(1, 3, device=device, dtype=dtype)
         camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(1, -1, -1)
@@ -931,7 +929,7 @@ class TestProjectPoints:
         )
         point_2d = kornia.geometry.camera.project_points(point_3d, camera_matrix)
         point_3d_hat = kornia.geometry.camera.unproject_points(point_2d, depth, camera_matrix)
-        assert_close(point_3d, point_3d_hat, atol=1e-4, rtol=1e-4)
+        self.assert_close(point_3d, point_3d_hat, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         # TODO: point [0, 0, 0] crashes
@@ -954,10 +952,10 @@ class TestProjectPoints:
         actual = op_optimized(points_3d, camera_matrix)
         expected = op(points_3d, camera_matrix)
 
-        assert_close(actual, expected)
+        self.assert_close(actual, expected)
 
 
-class TestDenormalizePointsWithIntrinsics:
+class TestDenormalizePointsWithIntrinsics(BaseTester):
     def test_smoke(self, device, dtype):
         points_2d = torch.zeros(1, 2, device=device, dtype=dtype)
         camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(1, -1, -1)
@@ -977,7 +975,7 @@ class TestDenormalizePointsWithIntrinsics:
         )
         op = kornia.geometry.conversions.denormalize_points_with_intrinsics
         expected = torch.tensor([[192.0, 192.0]], device=device, dtype=dtype)
-        assert_close(op(point_2d, camera_matrix), expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(op(point_2d, camera_matrix), expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         points_2d = torch.zeros(1, 2, device=device, dtype=dtype)
@@ -1002,10 +1000,10 @@ class TestDenormalizePointsWithIntrinsics:
         actual = op_optimized(points_2d, camera_matrix)
         expected = op(points_2d, camera_matrix)
 
-        assert_close(actual, expected)
+        self.assert_close(actual, expected)
 
 
-class TestNormalizePointsWithIntrinsics:
+class TestNormalizePointsWithIntrinsics(BaseTester):
     def test_smoke(self, device, dtype):
         points_2d = torch.zeros(1, 2, device=device, dtype=dtype)
         camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(1, -1, -1)
@@ -1027,7 +1025,7 @@ class TestNormalizePointsWithIntrinsics:
         back = kornia.geometry.conversions.denormalize_points_with_intrinsics
         point_2d_norm = op(point_2d, camera_matrix)
         point_2d_hat = back(point_2d_norm, camera_matrix)
-        assert_close(point_2d, point_2d_hat, atol=1e-4, rtol=1e-4)
+        self.assert_close(point_2d, point_2d_hat, atol=1e-4, rtol=1e-4)
 
     def test_toy(self, device, dtype):
         point_2d = torch.tensor([[192.0, 192.0]], device=device, dtype=dtype)
@@ -1037,7 +1035,7 @@ class TestNormalizePointsWithIntrinsics:
         op = kornia.geometry.conversions.normalize_points_with_intrinsics
         out = op(point_2d, camera_matrix)
         expected = torch.tensor([[1.0, 1.0]], device=device, dtype=dtype)
-        assert_close(out, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(out, expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device, dtype):
         points_2d = torch.zeros(1, 2, device=device, dtype=dtype)
@@ -1062,10 +1060,10 @@ class TestNormalizePointsWithIntrinsics:
         actual = op_optimized(points_2d, camera_matrix)
         expected = op(points_2d, camera_matrix)
 
-        assert_close(actual, expected)
+        self.assert_close(actual, expected)
 
 
-class TestRt2Extrinsics:
+class TestRt2Extrinsics(BaseTester):
     @pytest.mark.parametrize("batch_size", [1, 2, 3])
     def test_everything(self, batch_size, device, dtype):
         # generate input data
@@ -1079,8 +1077,8 @@ class TestRt2Extrinsics:
         assert R2.shape == (batch_size, 3, 3)
         assert t2.shape == (batch_size, 3, 1)
 
-        assert_close(R, R2, rtol=1e-4, atol=1e-5)
-        assert_close(t, t2, rtol=1e-4, atol=1e-5)
+        self.assert_close(R, R2, rtol=1e-4, atol=1e-5)
+        self.assert_close(t, t2, rtol=1e-4, atol=1e-5)
 
     @pytest.mark.parametrize("batch_size", [5])
     def test_gradcheck(self, batch_size, device, dtype):
@@ -1094,7 +1092,7 @@ class TestRt2Extrinsics:
         )
 
 
-class TestCamtoworldGraphicsToVision:
+class TestCamtoworldGraphicsToVision(BaseTester):
     @pytest.mark.parametrize("batch_size", [1, 2, 3])
     def test_everything(self, batch_size, device, dtype):
         # generate input data
@@ -1108,22 +1106,22 @@ class TestCamtoworldGraphicsToVision:
             [[0, 0, -1, 2], [0, -1, 0, 3], [-1, 0, 0, 4], [0, 0, 0, 1]], device=device, dtype=dtype
         )[None].repeat(batch_size, 1, 1)
 
-        assert_close(K_graf, expected, rtol=1e-4, atol=1e-5)
+        self.assert_close(K_graf, expected, rtol=1e-4, atol=1e-5)
         R_graf, t_graf = camtoworld_vision_to_graphics_Rt(R_vis, t_vis)
         expected_R = torch.tensor([[0, 0, -1], [0, -1, 0], [-1, 0, 0]], device=device, dtype=dtype)[None].repeat(
             batch_size, 1, 1
         )
         expected_t = torch.tensor([2, 3, 4], device=device, dtype=dtype).reshape(1, 3, 1).repeat(batch_size, 1, 1)
 
-        assert_close(t_graf, expected_t, rtol=1e-4, atol=1e-5)
-        assert_close(R_graf, expected_R, rtol=1e-4, atol=1e-5)
+        self.assert_close(t_graf, expected_t, rtol=1e-4, atol=1e-5)
+        self.assert_close(R_graf, expected_R, rtol=1e-4, atol=1e-5)
 
         Kvis_back = camtoworld_graphics_to_vision_4x4(K_graf)
-        assert_close(Kvis_back, K_vis, rtol=1e-4, atol=1e-5)
+        self.assert_close(Kvis_back, K_vis, rtol=1e-4, atol=1e-5)
 
         R_vis_back, t_vis_back = camtoworld_graphics_to_vision_Rt(R_graf, t_graf)
-        assert_close(R_vis_back, R_vis, rtol=1e-4, atol=1e-5)
-        assert_close(t_vis_back, t_vis, rtol=1e-4, atol=1e-5)
+        self.assert_close(R_vis_back, R_vis, rtol=1e-4, atol=1e-5)
+        self.assert_close(t_vis_back, t_vis, rtol=1e-4, atol=1e-5)
 
     @pytest.mark.parametrize("batch_size", [4])
     def test_gradcheck(self, batch_size, device, dtype):
@@ -1139,7 +1137,7 @@ class TestCamtoworldGraphicsToVision:
         )
 
 
-class TestCamtoworldRtToPoseRt:
+class TestCamtoworldRtToPoseRt(BaseTester):
     @pytest.mark.parametrize("batch_size", [1, 2, 3])
     def test_everything(self, batch_size, device, dtype):
         # generate input data
@@ -1153,12 +1151,12 @@ class TestCamtoworldRtToPoseRt:
             batch_size, 1, 1
         )
         expected_tp = torch.tensor([4, -3, -2], device=device, dtype=dtype).view(1, 3, 1).repeat(batch_size, 1, 1)
-        assert_close(Rp, expected_Rp, rtol=1e-4, atol=1e-5)
-        assert_close(tp, expected_tp, rtol=1e-4, atol=1e-5)
+        self.assert_close(Rp, expected_Rp, rtol=1e-4, atol=1e-5)
+        self.assert_close(tp, expected_tp, rtol=1e-4, atol=1e-5)
 
         Rback, tback = worldtocam_to_camtoworld_Rt(Rp, tp)
-        assert_close(Rback, R, rtol=1e-4, atol=1e-5)
-        assert_close(tback, t, rtol=1e-4, atol=1e-5)
+        self.assert_close(Rback, R, rtol=1e-4, atol=1e-5)
+        self.assert_close(tback, t, rtol=1e-4, atol=1e-5)
 
     @pytest.mark.parametrize("batch_size", [4])
     def test_gradcheck(self, batch_size, device, dtype):
@@ -1179,7 +1177,7 @@ class TestCamtoworldRtToPoseRt:
         )
 
 
-class TestCARKitToColmap:
+class TestCARKitToColmap(BaseTester):
     def test_everything(self, device, dtype):
         # generate input data
         t = torch.tensor([1, 0, 0], device=device, dtype=dtype).view(1, 3, 1)
@@ -1194,8 +1192,8 @@ class TestCARKitToColmap:
         expected_angles = torch.tensor([[116.8870620728, 0.0, -71.7524719238]], device=device, dtype=dtype)
         expected_t = torch.tensor([[[-0.5256], [0.3558], [0.7727]]], device=device, dtype=dtype)
 
-        assert_close(angles_colmap, expected_angles, rtol=1e-4, atol=1e-5)
-        assert_close(t_colmap, expected_t, rtol=1e-4, atol=1e-5)
+        self.assert_close(angles_colmap, expected_angles, rtol=1e-4, atol=1e-5)
+        self.assert_close(t_colmap, expected_t, rtol=1e-4, atol=1e-5)
 
 
 class TestEulerFromQuaternion(BaseTester):
@@ -1233,7 +1231,7 @@ class TestEulerFromQuaternion(BaseTester):
         q = q.to(device, dtype)
         op = euler_from_quaternion
         op_optimized = torch_optimizer(op)
-        assert_close(op(q.w, q.x, q.y, q.z), op_optimized(q.w, q.x, q.y, q.z))
+        self.assert_close(op(q.w, q.x, q.y, q.z), op_optimized(q.w, q.x, q.y, q.z))
 
     def test_forth_and_back(self, device, dtype):
         q = Quaternion.random(batch_size=2)
@@ -1241,10 +1239,10 @@ class TestEulerFromQuaternion(BaseTester):
         roll, pitch, yaw = euler_from_quaternion(q.w, q.x, q.y, q.z)
         qw, qx, qy, qz = quaternion_from_euler(roll, pitch, yaw)
         # TODO: check hwo to prevent getting inverted angles sometimes
-        assert_close(q.w.abs(), qw.abs())
-        assert_close(q.x.abs(), qx.abs())
-        assert_close(q.y.abs(), qy.abs())
-        assert_close(q.z.abs(), qz.abs())
+        self.assert_close(q.w.abs(), qw.abs())
+        self.assert_close(q.x.abs(), qx.abs())
+        self.assert_close(q.y.abs(), qy.abs())
+        self.assert_close(q.z.abs(), qz.abs())
 
 
 class TestQuaternionFromEuler(BaseTester):
@@ -1285,17 +1283,17 @@ class TestQuaternionFromEuler(BaseTester):
         actual = op_optimized(roll, pitch, yaw)
         expected = op(roll, pitch, yaw)
 
-        assert_close(actual[0], expected[0])
-        assert_close(actual[1], expected[1])
-        assert_close(actual[2], expected[2])
+        self.assert_close(actual[0], expected[0])
+        self.assert_close(actual[1], expected[1])
+        self.assert_close(actual[2], expected[2])
 
     def test_forth_and_back(self, device, dtype):
         roll, pitch, yaw = torch.rand(3, 2, device=device, dtype=dtype)
         qw, qx, qy, qz = quaternion_from_euler(roll, pitch, yaw)
         roll_new, pitch_new, yaw_new = euler_from_quaternion(qw, qx, qy, qz)
-        assert_close(roll, roll_new)
-        assert_close(pitch, pitch_new)
-        assert_close(yaw, yaw_new)
+        self.assert_close(roll, roll_new)
+        self.assert_close(pitch, pitch_new)
+        self.assert_close(yaw, yaw_new)
 
     def test_values(self, device, dtype):
         # num_samples = 5

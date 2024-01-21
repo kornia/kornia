@@ -3,10 +3,8 @@ import sys
 import pytest
 import torch
 from torch import nn
-from torch.autograd import gradcheck
 
 import kornia
-import kornia.testing as utils  # test utils
 from kornia.feature import (
     DescriptorMatcher,
     GFTTAffNetHardNet,
@@ -25,11 +23,11 @@ from kornia.feature import (
 from kornia.feature.integrated import LocalFeatureMatcher
 from kornia.geometry import RANSAC, resize, transform_points
 from kornia.utils._compat import torch_version_le
-from testing.base import assert_close
+from testing.base import BaseTester
+from testing.casts import dict_to
 
 
-# TODO: add kornia.testing.BaseTester
-class TestGetLAFDescriptors:
+class TestGetLAFDescriptors(BaseTester):
     def test_same(self, device, dtype):
         B, C, H, W = 1, 3, 64, 64
         PS = 16
@@ -48,10 +46,11 @@ class TestGetLAFDescriptors:
         # Descriptor accepts standard tensor [B, CH, H, W], while patches are [B, N, CH, H, W] shape
         # So we need to reshape a bit :)
         descs_reference = sift(patches.view(B1 * N1, CH1, H1, W1)).view(B1, N1, -1)
-        assert_close(descs_test_from_rgb, descs_reference)
-        assert_close(descs_test_from_gray, descs_reference)
+        self.assert_close(descs_test_from_rgb, descs_reference)
+        self.assert_close(descs_test_from_gray, descs_reference)
 
-    def test_gradcheck(self, device, dtype=torch.float64):
+    def test_gradcheck(self, device):
+        dtype = torch.float64
         B, C, H, W = 1, 1, 32, 32
         PS = 16
         img = torch.rand(B, C, H, W, device=device)
@@ -59,27 +58,22 @@ class TestGetLAFDescriptors:
         scales = torch.tensor([(H + W) / 5.0, (H + W) / 6.0], device=device, dtype=dtype).view(1, 2, 1, 1)
         ori = torch.tensor([0.0, 30.0], device=device, dtype=dtype).view(1, 2, 1)
         lafs = kornia.feature.laf_from_center_scale_ori(centers, scales, ori)
-        img = utils.tensor_to_gradcheck_var(img)  # to var
-        lafs = utils.tensor_to_gradcheck_var(lafs)  # to var
 
         class _MeanPatch(nn.Module):
             def forward(self, inputs):
                 return inputs.mean(dim=(2, 3))
 
         desc = _MeanPatch()
-        assert gradcheck(
+        self.gradcheck(
             get_laf_descriptors,
             (img, lafs, desc, PS, True),
             eps=1e-3,
             atol=1e-3,
-            raise_exception=True,
             nondet_tol=1e-3,
-            fast_mode=True,
         )
 
 
-# TODO: add kornia.testing.BaseTester
-class TestLAFDescriptor:
+class TestLAFDescriptor(BaseTester):
     def test_same(self, device, dtype):
         B, C, H, W = 1, 3, 64, 64
         PS = 16
@@ -97,7 +91,7 @@ class TestLAFDescriptor:
         # Descriptor accepts standard tensor [B, CH, H, W], while patches are [B, N, CH, H, W] shape
         # So we need to reshape a bit :)
         descs_reference = sift(patches.view(B1 * N1, CH1, H1, W1)).view(B1, N1, -1)
-        assert_close(descs_test, descs_reference)
+        self.assert_close(descs_test, descs_reference)
 
     def test_empty(self, device):
         B, C, H, W = 1, 1, 32, 32
@@ -117,21 +111,16 @@ class TestLAFDescriptor:
         scales = torch.tensor([(H + W) / 5.0, (H + W) / 6.0], device=device).view(1, 2, 1, 1)
         ori = torch.tensor([0.0, 30.0], device=device).view(1, 2, 1)
         lafs = kornia.feature.laf_from_center_scale_ori(centers, scales, ori)
-        img = utils.tensor_to_gradcheck_var(img)  # to var
-        lafs = utils.tensor_to_gradcheck_var(lafs)  # to var
 
         class _MeanPatch(nn.Module):
             def forward(self, inputs):
                 return inputs.mean(dim=(2, 3))
 
         lafdesc = LAFDescriptor(_MeanPatch(), PS)
-        assert gradcheck(
-            lafdesc, (img, lafs), eps=1e-3, atol=1e-3, raise_exception=True, nondet_tol=1e-3, fast_mode=True
-        )
+        self.gradcheck(lafdesc, (img, lafs), eps=1e-3, atol=1e-3, nondet_tol=1e-3)
 
 
-# TODO: add kornia.testing.BaseTester
-class TestLocalFeature:
+class TestLocalFeature(BaseTester):
     def test_smoke(self, device, dtype):
         det = ScaleSpaceDetector(10)
         desc = SIFTDescriptor(32)
@@ -147,14 +136,14 @@ class TestLocalFeature:
         local_feature = LocalFeature(det, LAFDescriptor(desc, PS)).to(device, dtype)
         lafs, responses, descs = local_feature(img)
         lafs1, responses1 = det(img)
-        assert_close(lafs, lafs1)
-        assert_close(responses, responses1)
+        self.assert_close(lafs, lafs1)
+        self.assert_close(responses, responses1)
         patches = extract_patches_from_pyramid(img, lafs1, PS)
         B1, N1, CH1, H1, W1 = patches.size()
         # Descriptor accepts standard tensor [B, CH, H, W], while patches are [B, N, CH, H, W] shape
         # So we need to reshape a bit :)
         descs1 = desc(patches.view(B1 * N1, CH1, H1, W1)).view(B1, N1, -1)
-        assert_close(descs, descs1)
+        self.assert_close(descs, descs1)
 
     def test_scale(self, device, dtype):
         B, C, H, W = 1, 1, 64, 64
@@ -166,21 +155,19 @@ class TestLocalFeature:
         local_feature2 = LocalFeature(det, LAFDescriptor(desc, PS), 2.0).to(device, dtype)
         lafs, responses, descs = local_feature(img)
         lafs2, responses2, descs2 = local_feature2(img)
-        assert_close(get_laf_center(lafs), get_laf_center(lafs2))
-        assert_close(get_laf_orientation(lafs), get_laf_orientation(lafs2))
-        assert_close(2.0 * get_laf_scale(lafs), get_laf_scale(lafs2))
+        self.assert_close(get_laf_center(lafs), get_laf_center(lafs2))
+        self.assert_close(get_laf_orientation(lafs), get_laf_orientation(lafs2))
+        self.assert_close(2.0 * get_laf_scale(lafs), get_laf_scale(lafs2))
 
     def test_gradcheck(self, device):
         B, C, H, W = 1, 1, 32, 32
         PS = 16
-        img = torch.rand(B, C, H, W, device=device)
-        img = utils.tensor_to_gradcheck_var(img)  # to var
+        img = torch.rand(B, C, H, W, device=device, dtype=torch.float64)
         local_feature = LocalFeature(ScaleSpaceDetector(2), LAFDescriptor(SIFTDescriptor(PS), PS)).to(device, img.dtype)
-        assert gradcheck(local_feature, img, eps=1e-4, atol=1e-4, nondet_tol=1e-8, raise_exception=True, fast_mode=True)
+        self.gradcheck(local_feature, img, eps=1e-4, atol=1e-4, nondet_tol=1e-8)
 
 
-# TODO: add kornia.testing.BaseTester
-class TestSIFTFeature:
+class TestSIFTFeature(BaseTester):
     # The real test is in TestLocalFeatureMatcher
     def test_smoke(self, device, dtype):
         sift = SIFTFeature()
@@ -189,14 +176,12 @@ class TestSIFTFeature:
     @pytest.mark.skip("jacobian not well computed")
     def test_gradcheck(self, device):
         B, C, H, W = 1, 1, 32, 32
-        img = torch.rand(B, C, H, W, device=device)
-        local_feature = SIFTFeature(2, True).to(device).to(device)
-        img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(local_feature, img, eps=1e-4, atol=1e-4, raise_exception=True)
+        img = torch.rand(B, C, H, W, device=device, dtype=torch.float64)
+        local_feature = SIFTFeature(2, True).to(device)
+        self.gradcheck(local_feature, img, eps=1e-4, atol=1e-4, fast_mode=False)
 
 
-# TODO: add kornia.testing.BaseTester
-class TestKeyNetHardNetFeature:
+class TestKeyNetHardNetFeature(BaseTester):
     # The real test is in TestLocalFeatureMatcher
     def test_smoke(self, device, dtype):
         sift = KeyNetHardNet(2).to(device, dtype)
@@ -208,14 +193,12 @@ class TestKeyNetHardNetFeature:
     @pytest.mark.skip("jacobian not well computed")
     def test_gradcheck(self, device):
         B, C, H, W = 1, 1, 32, 32
-        img = torch.rand(B, C, H, W, device=device)
+        img = torch.rand(B, C, H, W, device=device, dtype=torch.float64)
         local_feature = KeyNetHardNet(2, True).to(device).to(device)
-        img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(local_feature, img, eps=1e-4, atol=1e-4, raise_exception=True)
+        self.gradcheck(local_feature, img, eps=1e-4, atol=1e-4, fast_mode=False)
 
 
-# TODO: add kornia.testing.BaseTester
-class TestGFTTAffNetHardNet:
+class TestGFTTAffNetHardNet(BaseTester):
     # The real test is in TestLocalFeatureMatcher
     def test_smoke(self, device, dtype):
         feat = GFTTAffNetHardNet().to(device, dtype)
@@ -224,14 +207,12 @@ class TestGFTTAffNetHardNet:
     @pytest.mark.skip("jacobian not well computed")
     def test_gradcheck(self, device):
         B, C, H, W = 1, 1, 32, 32
-        img = torch.rand(B, C, H, W, device=device)
-        img = utils.tensor_to_gradcheck_var(img)  # to var
+        img = torch.rand(B, C, H, W, device=device, dtype=torch.float64)
         local_feature = GFTTAffNetHardNet(2, True).to(device, img.dtype)
-        assert gradcheck(local_feature, img, eps=1e-4, atol=1e-4, raise_exception=True)
+        self.gradcheck(local_feature, img, eps=1e-4, atol=1e-4, fast_mode=False)
 
 
-# TODO: add kornia.testing.BaseTester
-class TestLocalFeatureMatcher:
+class TestLocalFeatureMatcher(BaseTester):
     def test_smoke(self, device):
         matcher = LocalFeatureMatcher(SIFTFeature(5), DescriptorMatcher("snn", 0.8)).to(device)
         assert matcher is not None
@@ -240,7 +221,7 @@ class TestLocalFeatureMatcher:
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     def test_nomatch(self, device, dtype, data):
         matcher = LocalFeatureMatcher(GFTTAffNetHardNet(100), DescriptorMatcher("snn", 0.8)).to(device, dtype)
-        data_dev = utils.dict_to(data, device, dtype)
+        data_dev = dict_to(data, device, dtype)
         with torch.no_grad():
             out = matcher({"image0": data_dev["image0"], "image1": 0 * data_dev["image0"]})
         assert len(out["keypoints0"]) == 0
@@ -248,15 +229,13 @@ class TestLocalFeatureMatcher:
     @pytest.mark.skip("Takes too long time (but works)")
     def test_gradcheck(self, device):
         matcher = LocalFeatureMatcher(SIFTFeature(5), DescriptorMatcher("nn", 1.0)).to(device)
-        patches = torch.rand(1, 1, 32, 32, device=device)
+        patches = torch.rand(1, 1, 32, 32, device=device, dtype=torch.float64)
         patches05 = resize(patches, (48, 48))
-        patches = utils.tensor_to_gradcheck_var(patches)  # to var
-        patches05 = utils.tensor_to_gradcheck_var(patches05)  # to var
 
         def proxy_forward(x, y):
             return matcher({"image0": x, "image1": y})["keypoints0"]
 
-        assert gradcheck(proxy_forward, (patches, patches05), eps=1e-4, atol=1e-4, raise_exception=True, fast_mode=True)
+        self.gradcheck(proxy_forward, (patches, patches05), eps=1e-4, atol=1e-4)
 
     @pytest.mark.slow
     @pytest.mark.skipif(torch_version_le(1, 9, 1), reason="Fails for bached torch.linalg.solve")
@@ -266,7 +245,7 @@ class TestLocalFeatureMatcher:
         # This is not unit test, but that is quite good integration test
         matcher = LocalFeatureMatcher(SIFTFeature(1000), DescriptorMatcher("snn", 0.8)).to(device, dtype)
         ransac = RANSAC("homography", 1.0, 1024, 5).to(device, dtype)
-        data_dev = utils.dict_to(data, device, dtype)
+        data_dev = dict_to(data, device, dtype)
         pts_src = data_dev["pts0"]
         pts_dst = data_dev["pts1"]
         with torch.no_grad():
@@ -274,7 +253,7 @@ class TestLocalFeatureMatcher:
         homography, inliers = ransac(out["keypoints0"], out["keypoints1"])
         assert inliers.sum().item() > 50  # we have enough inliers
         # Reprojection error of 5px is OK
-        assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)
+        self.assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)
 
     @pytest.mark.slow
     @pytest.mark.skipif(torch_version_le(1, 9, 1), reason="Fails for bached torch.linalg.solve")
@@ -285,7 +264,7 @@ class TestLocalFeatureMatcher:
         feat = SIFTFeature(1000).to(device, dtype)
         matcher = LocalFeatureMatcher(feat, DescriptorMatcher("snn", 0.8)).to(device)
         ransac = RANSAC("homography", 1.0, 1024, 5).to(device, dtype)
-        data_dev = utils.dict_to(data, device, dtype)
+        data_dev = dict_to(data, device, dtype)
         pts_src = data_dev["pts0"]
         pts_dst = data_dev["pts1"]
 
@@ -302,7 +281,7 @@ class TestLocalFeatureMatcher:
         homography, inliers = ransac(out["keypoints0"], out["keypoints1"])
         assert inliers.sum().item() > 50  # we have enough inliers
         # Reprojection error of 5px is OK
-        assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)
+        self.assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)
 
     @pytest.mark.slow
     @pytest.mark.skipif(torch_version_le(1, 9, 1), reason="Fails for bached torch.linalg.solve")
@@ -312,7 +291,7 @@ class TestLocalFeatureMatcher:
         # This is not unit test, but that is quite good integration test
         matcher = LocalFeatureMatcher(GFTTAffNetHardNet(1000), DescriptorMatcher("snn", 0.8)).to(device, dtype)
         ransac = RANSAC("homography", 1.0, 1024, 5).to(device, dtype)
-        data_dev = utils.dict_to(data, device, dtype)
+        data_dev = dict_to(data, device, dtype)
         pts_src = data_dev["pts0"]
         pts_dst = data_dev["pts1"]
         with torch.no_grad():
@@ -321,7 +300,7 @@ class TestLocalFeatureMatcher:
         homography, inliers = ransac(out["keypoints0"], out["keypoints1"])
         assert inliers.sum().item() > 50  # we have enough inliers
         # Reprojection error of 5px is OK
-        assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)
+        self.assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)
 
     @pytest.mark.slow
     @pytest.mark.skipif(torch_version_le(1, 9, 1), reason="Fails for bached torch.linalg.solve")
@@ -332,7 +311,7 @@ class TestLocalFeatureMatcher:
         # This is not unit test, but that is quite good integration test
         matcher = LocalFeatureMatcher(KeyNetHardNet(500), DescriptorMatcher("snn", 0.9)).to(device, dtype)
         ransac = RANSAC("homography", 1.0, 1024, 5).to(device, dtype)
-        data_dev = utils.dict_to(data, device, dtype)
+        data_dev = dict_to(data, device, dtype)
         pts_src = data_dev["pts0"]
         pts_dst = data_dev["pts1"]
         with torch.no_grad():
@@ -340,7 +319,7 @@ class TestLocalFeatureMatcher:
         homography, inliers = ransac(out["keypoints0"], out["keypoints1"])
         assert inliers.sum().item() > 50  # we have enough inliers
         # Reprojection error of 5px is OK
-        assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)
+        self.assert_close(transform_points(homography[None], pts_src[None]), pts_dst[None], rtol=5e-2, atol=5)
 
     @pytest.mark.skip("ScaleSpaceDetector now is not jittable")
     def test_jit(self, device, dtype):
@@ -354,4 +333,4 @@ class TestLocalFeatureMatcher:
         out = model(inputs)
         out_jit = model_jit(inputs)
         for k, v in out.items():
-            assert_close(v, out_jit[k])
+            self.assert_close(v, out_jit[k])

@@ -1,13 +1,11 @@
 import pytest
 import torch
-from torch.autograd import gradcheck
 
-import kornia.testing as utils  # test utils
 from kornia.feature import DeFMO
-from testing.base import assert_close
+from testing.base import BaseTester
 
 
-class TestDeFMO:
+class TestDeFMO(BaseTester):
     @pytest.mark.slow
     def test_shape(self, device, dtype):
         inp = torch.ones(1, 6, 128, 160, device=device, dtype=dtype)
@@ -26,11 +24,10 @@ class TestDeFMO:
 
     @pytest.mark.slow
     @pytest.mark.grad
-    def test_gradcheck(self, device, dtype):
-        patches = torch.rand(2, 6, 64, 64, device=device, dtype=dtype)
-        patches = utils.tensor_to_gradcheck_var(patches)  # to var
+    def test_gradcheck(self, device):
+        patches = torch.rand(2, 6, 64, 64, device=device, dtype=torch.float64)
         defmo = DeFMO().to(patches.device, patches.dtype)
-        assert gradcheck(defmo, (patches,), eps=1e-4, atol=1e-4, nondet_tol=1e-8, raise_exception=True, fast_mode=True)
+        self.gradcheck(defmo, (patches,), eps=1e-4, atol=1e-4, nondet_tol=1e-8)
 
     @pytest.mark.slow
     @pytest.mark.jit
@@ -40,4 +37,4 @@ class TestDeFMO:
         model = DeFMO(True).to(patches.device, patches.dtype).eval()
         model_jit = torch.jit.script(DeFMO(True).to(patches.device, patches.dtype).eval())
         with torch.no_grad():
-            assert_close(model(patches), model_jit(patches))
+            self.assert_close(model(patches), model_jit(patches))

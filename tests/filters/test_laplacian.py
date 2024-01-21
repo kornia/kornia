@@ -2,7 +2,6 @@ import pytest
 import torch
 
 from kornia.filters import Laplacian, get_laplacian_kernel1d, get_laplacian_kernel2d, laplacian
-from kornia.testing import tensor_to_gradcheck_var
 from testing.base import BaseTester, assert_close
 
 
@@ -84,8 +83,7 @@ class TestLaplacian(BaseTester):
         kernel_size = 3
 
         # evaluate function gradient
-        sample = torch.rand(batch_shape, device=device)
-        sample = tensor_to_gradcheck_var(sample)
+        sample = torch.rand(batch_shape, device=device, dtype=torch.float64)
         self.gradcheck(laplacian, (sample, kernel_size))
 
     def test_module(self, device, dtype):

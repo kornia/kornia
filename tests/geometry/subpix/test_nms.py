@@ -1,12 +1,10 @@
 import torch
-from torch.autograd import gradcheck
 
 import kornia
-import kornia.testing as utils  # test utils
-from testing.base import assert_close
+from testing.base import BaseTester
 
 
-class TestNMS2d:
+class TestNMS2d(BaseTester):
     def test_shape(self, device):
         inp = torch.ones(1, 3, 4, 4, device=device)
         nms = kornia.geometry.subpix.NonMaximaSuppression2d((3, 3)).to(device)
@@ -47,18 +45,15 @@ class TestNMS2d:
         ).float()
         nms = kornia.geometry.subpix.NonMaximaSuppression2d((3, 3)).to(device)
         scores = nms(inp)
-        assert_close(scores, expected, atol=1e-4, rtol=1e-3)
+        self.assert_close(scores, expected, atol=1e-4, rtol=1e-3)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 2, 5, 4
-        img = torch.rand(batch_size, channels, height, width, device=device)
-        img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(
-            kornia.geometry.subpix.nms2d, (img, (3, 3)), raise_exception=True, nondet_tol=1e-4, fast_mode=True
-        )
+        img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
+        self.gradcheck(kornia.geometry.subpix.nms2d, (img, (3, 3)), nondet_tol=1e-4)
 
 
-class TestNMS3d:
+class TestNMS3d(BaseTester):
     def test_shape(self, device):
         inp = torch.ones(1, 1, 3, 4, 4, device=device)
         nms = kornia.geometry.subpix.NonMaximaSuppression3d((3, 3, 3)).to(device)
@@ -131,12 +126,9 @@ class TestNMS3d:
         ).to(device)
         nms = kornia.geometry.subpix.NonMaximaSuppression3d((3, 3, 3)).to(device)
         scores = nms(inp)
-        assert_close(scores, expected, atol=1e-4, rtol=1e-3)
+        self.assert_close(scores, expected, atol=1e-4, rtol=1e-3)
 
     def test_gradcheck(self, device):
         batch_size, channels, depth, height, width = 1, 1, 4, 5, 4
-        img = torch.rand(batch_size, channels, depth, height, width, device=device)
-        img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(
-            kornia.geometry.subpix.nms3d, (img, (3, 3, 3)), raise_exception=True, nondet_tol=1e-4, fast_mode=True
-        )
+        img = torch.rand(batch_size, channels, depth, height, width, device=device, dtype=torch.float64)
+        self.gradcheck(kornia.geometry.subpix.nms3d, (img, (3, 3, 3)), nondet_tol=1e-4)

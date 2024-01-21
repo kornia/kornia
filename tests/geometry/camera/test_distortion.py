@@ -11,7 +11,6 @@ from kornia.geometry.camera.distortion_kannala_brandt import (
     dx_distort_points_kannala_brandt,
     undistort_points_kannala_brandt,
 )
-from kornia.testing import tensor_to_gradcheck_var
 from testing.base import BaseTester
 
 
@@ -83,16 +82,12 @@ class TestDistortionAffine(BaseTester):
 
     def _test_gradcheck_distort(self, device):
         points = torch.tensor([1.0, 2.0], device=device, dtype=torch.float64)
-        points = tensor_to_gradcheck_var(points)
         params = torch.tensor([600.0, 600.0, 319.5, 239.5], device=device, dtype=torch.float64)
-        params = tensor_to_gradcheck_var(params)
         self.gradcheck(distort_points_affine, (points, params))
 
     def _test_gradcheck_undistort(self, device):
         points = torch.tensor([601.0, 602.0], device=device, dtype=torch.float64)
-        points = tensor_to_gradcheck_var(points)
         params = torch.tensor([600.0, 600.0, 319.5, 239.5], device=device, dtype=torch.float64)
-        params = tensor_to_gradcheck_var(params)
         self.gradcheck(undistort_points_affine, (points, params))
 
     def test_gradcheck(self, device) -> None:
@@ -199,24 +194,20 @@ class TestDistortionKannalaBrandt(BaseTester):
 
     def _test_gradcheck_distort(self, device):
         points = torch.tensor([1.0, 2.0], device=device, dtype=torch.float64)
-        points = tensor_to_gradcheck_var(points)
         params = torch.tensor(
             [600.0, 600.0, 319.5, 239.5, 0.1, 0.2, 0.3, 0.4],
             device=device,
             dtype=torch.float64,
         )
-        params = tensor_to_gradcheck_var(params)
         self.gradcheck(distort_points_kannala_brandt, (points, params))
 
     def _test_gradcheck_undistort(self, device):
         points = torch.tensor([919.5000, 1439.5000], device=device, dtype=torch.float64)
-        points = tensor_to_gradcheck_var(points)
         params = torch.tensor(
             [600.0, 600.0, 319.5, 239.5, 0.1, 0.2, 0.3, 0.4],
             device=device,
             dtype=torch.float64,
         )
-        params = tensor_to_gradcheck_var(params)
         self.gradcheck(undistort_points_kannala_brandt, (points, params))
 
     def test_gradcheck(self, device) -> None:

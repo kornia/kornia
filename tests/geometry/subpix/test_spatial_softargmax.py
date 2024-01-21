@@ -1,14 +1,12 @@
 import torch
-from torch.autograd import gradcheck
 from torch.nn.functional import mse_loss
 
 import kornia
-import kornia.testing as utils  # test utils
 from kornia.geometry.subpix.spatial_soft_argmax import _get_center_kernel2d, _get_center_kernel3d
-from testing.base import assert_close
+from testing.base import BaseTester
 
 
-class TestCenterKernel2d:
+class TestCenterKernel2d(BaseTester):
     def test_smoke(self, device, dtype):
         kernel = _get_center_kernel2d(3, 4, device=device).to(dtype=dtype)
         assert kernel.shape == (2, 2, 3, 4)
@@ -29,17 +27,17 @@ class TestCenterKernel2d:
             device=device,
             dtype=dtype,
         )
-        assert_close(kernel, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(kernel, expected, atol=1e-4, rtol=1e-4)
 
     def test_even(self, device, dtype):
         kernel = _get_center_kernel2d(2, 2, device=device).to(dtype=dtype)
         expected = torch.ones(2, 2, 2, 2, device=device, dtype=dtype) * 0.25
         expected[0, 1] = 0
         expected[1, 0] = 0
-        assert_close(kernel, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(kernel, expected, atol=1e-4, rtol=1e-4)
 
 
-class TestCenterKernel3d:
+class TestCenterKernel3d(BaseTester):
     def test_smoke(self, device, dtype):
         kernel = _get_center_kernel3d(6, 3, 4, device=device).to(dtype=dtype)
         assert kernel.shape == (3, 3, 6, 3, 4)
@@ -50,7 +48,7 @@ class TestCenterKernel3d:
         expected[0, 0, 1, 2, 3] = 1.0
         expected[1, 1, 1, 2, 3] = 1.0
         expected[2, 2, 1, 2, 3] = 1.0
-        assert_close(kernel, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(kernel, expected, atol=1e-4, rtol=1e-4)
 
     def test_even(self, device, dtype):
         kernel = _get_center_kernel3d(2, 4, 3, device=device).to(dtype=dtype)
@@ -58,10 +56,10 @@ class TestCenterKernel3d:
         expected[0, 0, :, 1:3, 1] = 0.25
         expected[1, 1, :, 1:3, 1] = 0.25
         expected[2, 2, :, 1:3, 1] = 0.25
-        assert_close(kernel, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(kernel, expected, atol=1e-4, rtol=1e-4)
 
 
-class TestSpatialSoftArgmax2d:
+class TestSpatialSoftArgmax2d(BaseTester):
     def test_smoke(self, device, dtype):
         sample = torch.zeros(1, 1, 2, 3, device=device, dtype=dtype)
         m = kornia.geometry.subpix.SpatialSoftArgmax2d()
@@ -77,32 +75,32 @@ class TestSpatialSoftArgmax2d:
         sample[..., 0, 0] = 1e16
 
         coord = kornia.geometry.subpix.spatial_soft_argmax2d(sample, normalized_coordinates=True)
-        assert_close(coord[..., 0].item(), -1.0, atol=1e-4, rtol=1e-4)
-        assert_close(coord[..., 1].item(), -1.0, atol=1e-4, rtol=1e-4)
+        self.assert_close(coord[..., 0].item(), -1.0, atol=1e-4, rtol=1e-4)
+        self.assert_close(coord[..., 1].item(), -1.0, atol=1e-4, rtol=1e-4)
 
     def test_top_left(self, device, dtype):
         sample = torch.zeros(1, 1, 2, 3, device=device, dtype=dtype)
         sample[..., 0, 0] = 1e16
 
         coord = kornia.geometry.subpix.spatial_soft_argmax2d(sample, normalized_coordinates=False)
-        assert_close(coord[..., 0].item(), 0.0, atol=1e-4, rtol=1e-4)
-        assert_close(coord[..., 1].item(), 0.0, atol=1e-4, rtol=1e-4)
+        self.assert_close(coord[..., 0].item(), 0.0, atol=1e-4, rtol=1e-4)
+        self.assert_close(coord[..., 1].item(), 0.0, atol=1e-4, rtol=1e-4)
 
     def test_bottom_right_normalized(self, device, dtype):
         sample = torch.zeros(1, 1, 2, 3, device=device, dtype=dtype)
         sample[..., -1, -1] = 1e16
 
         coord = kornia.geometry.subpix.spatial_soft_argmax2d(sample, normalized_coordinates=True)
-        assert_close(coord[..., 0].item(), 1.0, atol=1e-4, rtol=1e-4)
-        assert_close(coord[..., 1].item(), 1.0, atol=1e-4, rtol=1e-4)
+        self.assert_close(coord[..., 0].item(), 1.0, atol=1e-4, rtol=1e-4)
+        self.assert_close(coord[..., 1].item(), 1.0, atol=1e-4, rtol=1e-4)
 
     def test_bottom_right(self, device, dtype):
         sample = torch.zeros(1, 1, 2, 3, device=device, dtype=dtype)
         sample[..., -1, -1] = 1e16
 
         coord = kornia.geometry.subpix.spatial_soft_argmax2d(sample, normalized_coordinates=False)
-        assert_close(coord[..., 0].item(), 2.0, atol=1e-4, rtol=1e-4)
-        assert_close(coord[..., 1].item(), 1.0, atol=1e-4, rtol=1e-4)
+        self.assert_close(coord[..., 0].item(), 2.0, atol=1e-4, rtol=1e-4)
+        self.assert_close(coord[..., 1].item(), 1.0, atol=1e-4, rtol=1e-4)
 
     def test_batch2_n2(self, device, dtype):
         sample = torch.zeros(2, 2, 2, 3, device=device, dtype=dtype)
@@ -112,19 +110,18 @@ class TestSpatialSoftArgmax2d:
         sample[1, 1, -1, -1] = 1e16  # bottom-right
 
         coord = kornia.geometry.subpix.spatial_soft_argmax2d(sample)
-        assert_close(coord[0, 0, 0].item(), -1.0, atol=1e-4, rtol=1e-4)  # top-left
-        assert_close(coord[0, 0, 1].item(), -1.0, atol=1e-4, rtol=1e-4)
-        assert_close(coord[0, 1, 0].item(), 1.0, atol=1e-4, rtol=1e-4)  # top-right
-        assert_close(coord[0, 1, 1].item(), -1.0, atol=1e-4, rtol=1e-4)
-        assert_close(coord[1, 0, 0].item(), -1.0, atol=1e-4, rtol=1e-4)  # bottom-left
-        assert_close(coord[1, 0, 1].item(), 1.0, atol=1e-4, rtol=1e-4)
-        assert_close(coord[1, 1, 0].item(), 1.0, atol=1e-4, rtol=1e-4)  # bottom-right
-        assert_close(coord[1, 1, 1].item(), 1.0, atol=1e-4, rtol=1e-4)
+        self.assert_close(coord[0, 0, 0].item(), -1.0, atol=1e-4, rtol=1e-4)  # top-left
+        self.assert_close(coord[0, 0, 1].item(), -1.0, atol=1e-4, rtol=1e-4)
+        self.assert_close(coord[0, 1, 0].item(), 1.0, atol=1e-4, rtol=1e-4)  # top-right
+        self.assert_close(coord[0, 1, 1].item(), -1.0, atol=1e-4, rtol=1e-4)
+        self.assert_close(coord[1, 0, 0].item(), -1.0, atol=1e-4, rtol=1e-4)  # bottom-left
+        self.assert_close(coord[1, 0, 1].item(), 1.0, atol=1e-4, rtol=1e-4)
+        self.assert_close(coord[1, 1, 0].item(), 1.0, atol=1e-4, rtol=1e-4)  # bottom-right
+        self.assert_close(coord[1, 1, 1].item(), 1.0, atol=1e-4, rtol=1e-4)
 
-    def test_gradcheck(self, device, dtype):
-        sample = torch.rand(2, 3, 3, 2, device=device, dtype=dtype)
-        sample = utils.tensor_to_gradcheck_var(sample)  # to var
-        assert gradcheck(kornia.geometry.subpix.spatial_soft_argmax2d, (sample), raise_exception=True, fast_mode=True)
+    def test_gradcheck(self, device):
+        sample = torch.rand(2, 3, 3, 2, device=device, dtype=torch.float64)
+        self.gradcheck(kornia.geometry.subpix.spatial_soft_argmax2d, (sample))
 
     def test_end_to_end(self, device, dtype):
         sample = torch.full((1, 2, 7, 7), 1.0, requires_grad=True, device=device, dtype=dtype)
@@ -132,22 +129,24 @@ class TestSpatialSoftArgmax2d:
         std = torch.tensor([1.0, 1.0], device=device, dtype=dtype)
 
         hm = kornia.geometry.subpix.spatial_softmax2d(sample)
-        assert_close(hm.sum(-1).sum(-1), torch.tensor([[1.0, 1.0]], device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
+        self.assert_close(
+            hm.sum(-1).sum(-1), torch.tensor([[1.0, 1.0]], device=device, dtype=dtype), atol=1e-4, rtol=1e-4
+        )
 
         pred = kornia.geometry.subpix.spatial_expectation2d(hm)
-        assert_close(
+        self.assert_close(
             pred, torch.as_tensor([[[0.0, 0.0], [0.0, 0.0]]], device=device, dtype=dtype), atol=1e-4, rtol=1e-4
         )
 
         loss1 = mse_loss(pred, target, size_average=None, reduce=None, reduction="none").mean(-1, keepdim=False)
         expected_loss1 = torch.as_tensor([[0.0, 1.0]], device=device, dtype=dtype)
-        assert_close(loss1, expected_loss1, atol=1e-4, rtol=1e-4)
+        self.assert_close(loss1, expected_loss1, atol=1e-4, rtol=1e-4)
 
         target_hm = kornia.geometry.subpix.render_gaussian2d(target, std, sample.shape[-2:]).contiguous()
 
         loss2 = kornia.losses.js_div_loss_2d(hm, target_hm, reduction="none")
         expected_loss2 = torch.as_tensor([[0.0087, 0.0818]], device=device, dtype=dtype)
-        assert_close(loss2, expected_loss2, rtol=0, atol=1e-3)
+        self.assert_close(loss2, expected_loss2, rtol=0, atol=1e-3)
 
         loss = (loss1 + loss2).mean()
         loss.backward()
@@ -157,10 +156,10 @@ class TestSpatialSoftArgmax2d:
         op = kornia.geometry.subpix.spatial_soft_argmax2d
         op_optimized = torch_optimizer(op)
 
-        assert_close(op(inpt), op_optimized(inpt))
+        self.assert_close(op(inpt), op_optimized(inpt))
 
 
-class TestConvSoftArgmax2d:
+class TestConvSoftArgmax2d(BaseTester):
     def test_smoke(self, device, dtype):
         sample = torch.zeros(1, 1, 3, 3, device=device, dtype=dtype)
         m = kornia.geometry.subpix.ConvSoftArgmax2d((3, 3))
@@ -185,12 +184,9 @@ class TestConvSoftArgmax2d:
         assert coords.shape == (2, 5, 2, 3, 3)
         assert val.shape == (2, 5, 3, 3)
 
-    def test_gradcheck(self, device, dtype):
-        sample = torch.rand(2, 3, 5, 5, device=device, dtype=dtype)
-        sample = utils.tensor_to_gradcheck_var(sample)  # to var
-        assert gradcheck(
-            kornia.geometry.subpix.conv_soft_argmax2d, (sample), nondet_tol=1e-8, raise_exception=True, fast_mode=True
-        )
+    def test_gradcheck(self, device):
+        sample = torch.rand(2, 3, 5, 5, device=device, dtype=torch.float64)
+        self.gradcheck(kornia.geometry.subpix.conv_soft_argmax2d, (sample), nondet_tol=1e-8)
 
     def test_cold_diag(self, device, dtype):
         sample = torch.tensor(
@@ -216,8 +212,8 @@ class TestConvSoftArgmax2d:
             [[[[[1.0, 3.0], [1.0, 3.0]], [[1.0, 1.0], [3.0, 3.0]]]]], device=device, dtype=dtype
         )
         coords, val = softargmax(sample)
-        assert_close(val, expected_val, atol=1e-4, rtol=1e-4)
-        assert_close(coords, expected_coord, atol=1e-4, rtol=1e-4)
+        self.assert_close(val, expected_val, atol=1e-4, rtol=1e-4)
+        self.assert_close(coords, expected_coord, atol=1e-4, rtol=1e-4)
 
     def test_hot_diag(self, device, dtype):
         sample = torch.tensor(
@@ -243,8 +239,8 @@ class TestConvSoftArgmax2d:
             [[[[[1.0, 3.0], [1.0, 3.0]], [[1.0, 1.0], [3.0, 3.0]]]]], device=device, dtype=dtype
         )
         coords, val = softargmax(sample)
-        assert_close(val, expected_val, atol=1e-4, rtol=1e-4)
-        assert_close(coords, expected_coord, atol=1e-4, rtol=1e-4)
+        self.assert_close(val, expected_val, atol=1e-4, rtol=1e-4)
+        self.assert_close(coords, expected_coord, atol=1e-4, rtol=1e-4)
 
     def test_cold_diag_norm(self, device, dtype):
         sample = torch.tensor(
@@ -270,8 +266,8 @@ class TestConvSoftArgmax2d:
             [[[[[-0.5, 0.5], [-0.5, 0.5]], [[-0.5, -0.5], [0.5, 0.5]]]]], device=device, dtype=dtype
         )
         coords, val = softargmax(sample)
-        assert_close(val, expected_val, atol=1e-4, rtol=1e-4)
-        assert_close(coords, expected_coord, atol=1e-4, rtol=1e-4)
+        self.assert_close(val, expected_val, atol=1e-4, rtol=1e-4)
+        self.assert_close(coords, expected_coord, atol=1e-4, rtol=1e-4)
 
     def test_hot_diag_norm(self, device, dtype):
         sample = torch.tensor(
@@ -297,11 +293,11 @@ class TestConvSoftArgmax2d:
             [[[[[-0.5, 0.5], [-0.5, 0.5]], [[-0.5, -0.5], [0.5, 0.5]]]]], device=device, dtype=dtype
         )
         coords, val = softargmax(sample)
-        assert_close(val, expected_val, atol=1e-4, rtol=1e-4)
-        assert_close(coords, expected_coord, atol=1e-4, rtol=1e-4)
+        self.assert_close(val, expected_val, atol=1e-4, rtol=1e-4)
+        self.assert_close(coords, expected_coord, atol=1e-4, rtol=1e-4)
 
 
-class TestConvSoftArgmax3d:
+class TestConvSoftArgmax3d(BaseTester):
     def test_smoke(self, device, dtype):
         sample = torch.zeros(1, 1, 3, 3, 3, device=device, dtype=dtype)
         m = kornia.geometry.subpix.ConvSoftArgmax3d((3, 3, 3), output_value=False)
@@ -314,12 +310,9 @@ class TestConvSoftArgmax3d:
         assert coords.shape == (1, 1, 3, 3, 3, 3)
         assert val.shape == (1, 1, 3, 3, 3)
 
-    def test_gradcheck(self, device, dtype):
-        sample = torch.rand(1, 2, 3, 5, 5, device=device, dtype=dtype)
-        sample = utils.tensor_to_gradcheck_var(sample)  # to var
-        assert gradcheck(
-            kornia.geometry.subpix.conv_soft_argmax3d, (sample), nondet_tol=1e-8, raise_exception=True, fast_mode=True
-        )
+    def test_gradcheck(self, device):
+        sample = torch.rand(1, 2, 3, 5, 5, device=device, dtype=torch.float64)
+        self.gradcheck(kornia.geometry.subpix.conv_soft_argmax3d, (sample), nondet_tol=1e-8)
 
     def test_cold_diag(self, device, dtype):
         sample = torch.tensor(
@@ -349,8 +342,8 @@ class TestConvSoftArgmax3d:
             dtype=dtype,
         )
         coords, val = softargmax(sample)
-        assert_close(val, expected_val, atol=1e-4, rtol=1e-4)
-        assert_close(coords, expected_coord, atol=1e-4, rtol=1e-4)
+        self.assert_close(val, expected_val, atol=1e-4, rtol=1e-4)
+        self.assert_close(coords, expected_coord, atol=1e-4, rtol=1e-4)
 
     def test_hot_diag(self, device, dtype):
         sample = torch.tensor(
@@ -380,8 +373,8 @@ class TestConvSoftArgmax3d:
             dtype=dtype,
         )
         coords, val = softargmax(sample)
-        assert_close(val, expected_val, atol=1e-4, rtol=1e-4)
-        assert_close(coords, expected_coord, atol=1e-4, rtol=1e-4)
+        self.assert_close(val, expected_val, atol=1e-4, rtol=1e-4)
+        self.assert_close(coords, expected_coord, atol=1e-4, rtol=1e-4)
 
     def test_cold_diag_norm(self, device, dtype):
         sample = torch.tensor(
@@ -411,8 +404,8 @@ class TestConvSoftArgmax3d:
             dtype=dtype,
         )
         coords, val = softargmax(sample)
-        assert_close(val, expected_val, atol=1e-4, rtol=1e-4)
-        assert_close(coords, expected_coord, atol=1e-4, rtol=1e-4)
+        self.assert_close(val, expected_val, atol=1e-4, rtol=1e-4)
+        self.assert_close(coords, expected_coord, atol=1e-4, rtol=1e-4)
 
     def test_hot_diag_norm(self, device, dtype):
         sample = torch.tensor(
@@ -442,11 +435,11 @@ class TestConvSoftArgmax3d:
             dtype=dtype,
         )
         coords, val = softargmax(sample)
-        assert_close(val, expected_val, atol=1e-4, rtol=1e-4)
-        assert_close(coords, expected_coord, atol=1e-4, rtol=1e-4)
+        self.assert_close(val, expected_val, atol=1e-4, rtol=1e-4)
+        self.assert_close(coords, expected_coord, atol=1e-4, rtol=1e-4)
 
 
-class TestConvQuadInterp3d:
+class TestConvQuadInterp3d(BaseTester):
     def test_smoke(self, device, dtype):
         sample = torch.randn(2, 3, 3, 4, 4, device=device, dtype=dtype)
         nms = kornia.geometry.ConvQuadInterp3d(1)
@@ -454,18 +447,10 @@ class TestConvQuadInterp3d:
         assert coord.shape == (2, 3, 3, 3, 4, 4)
         assert val.shape == (2, 3, 3, 4, 4)
 
-    def test_gradcheck(self, device, dtype):
-        sample = torch.rand(1, 1, 3, 5, 5, device=device, dtype=dtype)
+    def test_gradcheck(self, device):
+        sample = torch.rand(1, 1, 3, 5, 5, device=device, dtype=torch.float64)
         sample[0, 0, 1, 2, 2] += 20.0
-        sample = utils.tensor_to_gradcheck_var(sample)  # to var
-        assert gradcheck(
-            kornia.geometry.ConvQuadInterp3d(strict_maxima_bonus=0),
-            (sample),
-            raise_exception=True,
-            atol=1e-3,
-            rtol=1e-3,
-            fast_mode=True,
-        )
+        self.gradcheck(kornia.geometry.ConvQuadInterp3d(strict_maxima_bonus=0), (sample), atol=1e-3, rtol=1e-3)
 
     def test_diag(self, device, dtype):
         sample = torch.tensor(
@@ -610,5 +595,5 @@ class TestConvQuadInterp3d:
             dtype=dtype,
         )
         coords, val = softargmax(sample)
-        assert_close(val, expected_val, atol=1e-4, rtol=1e-4)
-        assert_close(coords, expected_coord, atol=1e-4, rtol=1e-4)
+        self.assert_close(val, expected_val, atol=1e-4, rtol=1e-4)
+        self.assert_close(coords, expected_coord, atol=1e-4, rtol=1e-4)
