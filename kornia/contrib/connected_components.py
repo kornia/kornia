@@ -36,7 +36,9 @@ def connected_components(image: Tensor, num_iterations: int = 100) -> Tensor:
         raise TypeError(f"Input imagetype is not a Tensor. Got: {type(image)}")
 
     if not isinstance(num_iterations, int) or num_iterations < 0:
-        raise TypeError("Input num_iterations must be integer greater or equal to zero.")
+        raise TypeError(
+            "Input num_iterations must be an integer greater or equal to zero."
+        )
 
     if len(image.shape) < 3 or image.shape[-3] != 1:
         raise ValueError(f"Input image shape must be (*,1,H,W). Got: {image.shape}")
@@ -49,21 +51,22 @@ def connected_components(image: Tensor, num_iterations: int = 100) -> Tensor:
 
     # allocate the output tensors for labels
     B, _, _, _ = image_view.shape
-    out = torch.arange(B * H * W, device=image.device, dtype=image.dtype).view((-1, 1, H, W))
+    out = torch.arange(1, B * H * W + 1, device=image.device, dtype=image.dtype)
+    out = out.view((-1, 1, H, W))
     out[~mask] = 0
 
-    i = 0
+    i = 1
     while True:
-        i += 1
         out_ = F.max_pool2d(out, kernel_size=3, stride=1, padding=1)
         # mask using element-wise multiplication
         out_ = torch.mul(out_, mask)
         # stop if converged
-        if torch.all(out == out_):
+        if torch.allclose(out, out_):
             break
         out = out_
-        # reached if reached max iterations
+        # stop if reached max iterations
         if num_iterations > 0 and i == num_iterations:
             break
+        i += 1
 
     return out.view_as(image)

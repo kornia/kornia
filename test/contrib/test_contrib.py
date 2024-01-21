@@ -121,14 +121,14 @@ class TestConnectedComponents:
 
         with pytest.raises(TypeError) as errinf:
             assert kornia.contrib.connected_components(img, 1.0)
-        assert "Input num_iterations must be integer greater or equal to zero." in str(errinf)
+        assert "Input num_iterations must be an integer greater or equal to zero." in str(errinf)
         with pytest.raises(TypeError) as errinf:
             assert kornia.contrib.connected_components("not a tensor", 0)
         assert "Input imagetype is not a Tensor. Got:" in str(errinf)
 
         with pytest.raises(TypeError) as errinf:
             assert kornia.contrib.connected_components(img, -1)
-        assert "Input num_iterations must be integer greater or equal to zero." in str(errinf)
+        assert "Input num_iterations must be an integer greater or equal to zero." in str(errinf)
         with pytest.raises(ValueError) as errinf:
             img = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
             assert kornia.contrib.connected_components(img, 2)
@@ -139,8 +139,8 @@ class TestConnectedComponents:
             [
                 [
                     [
-                        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                        [0.0, 1.0, 1.0, 0.0, 0.0, 1.0],
+                        [1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
                         [0.0, 1.0, 1.0, 0.0, 0.0, 0.0],
                         [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                         [0.0, 0.0, 0.0, 1.0, 1.0, 0.0],
@@ -156,12 +156,12 @@ class TestConnectedComponents:
             [
                 [
                     [
+                        [1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                        [0.0, 0.0, 15.0, 0.0, 0.0, 12.0],
+                        [0.0, 15.0, 15.0, 0.0, 0.0, 0.0],
                         [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                        [0.0, 14.0, 14.0, 0.0, 0.0, 11.0],
-                        [0.0, 14.0, 14.0, 0.0, 0.0, 0.0],
-                        [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                        [0.0, 0.0, 0.0, 34.0, 34.0, 0.0],
-                        [0.0, 0.0, 0.0, 34.0, 34.0, 0.0],
+                        [0.0, 0.0, 0.0, 35.0, 35.0, 0.0],
+                        [0.0, 0.0, 0.0, 35.0, 35.0, 0.0],
                     ]
                 ]
             ],
@@ -177,7 +177,7 @@ class TestConnectedComponents:
         img[..., 1:, 1:] = 1.0
 
         expected = torch.zeros((1, 1, N, N), device=device, dtype=dtype)
-        expected[..., 1:, 1:] = N * N - 1
+        expected[..., 1:, 1:] = N * N 
 
         out = kornia.contrib.connected_components(img, num_iterations=0)
         assert_close(out, expected)
