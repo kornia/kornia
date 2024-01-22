@@ -1,3 +1,4 @@
+import pytest
 import torch
 
 from kornia.feature.affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, PatchAffineShapeEstimator
@@ -130,6 +131,7 @@ class TestLAFAffNetShapeEstimator(BaseTester):
         expected = torch.tensor([[[[33.2073, 0.0, 16.0], [-1.3766, 12.0456, 16.0]]]], device=device, dtype=dtype)
         self.assert_close(new_laf, expected, atol=1e-4, rtol=1e-4)
 
+    @pytest.mark.slow
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 1, 35, 35
         patches = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
