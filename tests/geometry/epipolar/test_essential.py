@@ -5,7 +5,7 @@ import kornia
 import kornia.geometry.epipolar as epi
 
 from testing.base import BaseTester
-from testing.geometry.epipolar import generate_two_view_random_scene
+from testing.geometry.create import generate_two_view_random_scene
 
 
 class TestFindEssential(BaseTester):

@@ -17,7 +17,7 @@ from kornia.geometry.homography import (
 from kornia.utils._compat import torch_version_le
 
 from testing.base import BaseTester
-from testing.laf import create_random_homography
+from testing.geometry.create import create_random_homography
 
 
 class TestSampleValidation(BaseTester):

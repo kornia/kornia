@@ -3,7 +3,7 @@ import torch
 import kornia.geometry.epipolar as epi
 
 from testing.base import BaseTester
-from testing.geometry.epipolar import create_random_fundamental_matrix
+from testing.geometry.create import create_random_fundamental_matrix
 
 
 class TestSymmetricalEpipolarDistance(BaseTester):

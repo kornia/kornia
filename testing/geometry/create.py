@@ -3,9 +3,15 @@ from __future__ import annotations
 import torch
 
 import kornia.geometry.epipolar as epi
-from kornia.core import Device, Dtype, Tensor, tensor
+from kornia.core import Device, Dtype, Tensor, tensor, zeros
+from kornia.utils.misc import eye_like
 
-from testing.laf import create_random_homography
+
+def create_random_homography(inpt: Tensor, eye_size: int, std_val: float = 1e-3) -> Tensor:
+    """Create a batch of random homographies of shape Bx3x3."""
+    std = zeros(inpt.shape[0], eye_size, eye_size, device=inpt.device, dtype=inpt.dtype)
+    eye = eye_like(eye_size, inpt)
+    return eye + std.uniform_(-std_val, std_val)
 
 
 def create_rectified_fundamental_matrix(batch_size: int, dtype: Dtype = None, device: Device = None) -> Tensor:
