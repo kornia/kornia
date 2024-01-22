@@ -84,7 +84,9 @@ class TestCropAndResize(BaseTester):
 
         boxes = torch.tensor([[[1.0, 1.0], [2.0, 1.0], [2.0, 2.0], [1.0, 2.0]]], device=device, dtype=torch.float64)
 
-        self.gradcheck(kornia.geometry.transform.crop_and_resize, (img, boxes, (4, 2)))
+        self.gradcheck(
+            kornia.geometry.transform.crop_and_resize, (img, boxes, (4, 2)), requires_grad=(True, False, False)
+        )
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         # Define script
@@ -153,7 +155,7 @@ class TestCenterCrop(BaseTester):
         self.assert_close(out_crop, expected, rtol=1e-4, atol=1e-4)
 
     def test_gradcheck(self, device):
-        img = torch.rand(1, 2, 5, 4, device=device, dtype=torch.float63)
+        img = torch.rand(1, 2, 5, 4, device=device, dtype=torch.float64)
 
         self.gradcheck(kornia.geometry.transform.center_crop, (img, (4, 2)))
 
@@ -208,7 +210,7 @@ class TestCropByBoxes(BaseTester):
         src = torch.tensor([[[1.0, 0.0], [2.0, 0.0], [2.0, 1.0], [1.0, 1.0]]], device=device, dtype=dtype)
         dst = torch.tensor([[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]]], device=device, dtype=dtype)
 
-        self.gradcheck(kornia.geometry.transform.crop_by_boxes, (inp, src, dst))
+        self.gradcheck(kornia.geometry.transform.crop_by_boxes, (inp, src, dst), requires_grad=(True, False, False))
 
 
 class TestCropByTransform(BaseTester):
@@ -250,4 +252,8 @@ class TestCropByTransform(BaseTester):
             [[[2.0, 0.0, -2.0], [0.0, 1.0, -1.0], [0.0, 0.0, 1.0]]], device=device, dtype=torch.float64
         )  # 1x3x3
 
-        self.gradcheck(kornia.geometry.transform.crop_by_transform_mat, (inp, transform, (2, 2)))
+        self.gradcheck(
+            kornia.geometry.transform.crop_by_transform_mat,
+            (inp, transform, (2, 2)),
+            requires_grad=(True, False, False),
+        )

@@ -305,4 +305,6 @@ class TestCropByBoxes3D(BaseTester):
             dtype=dtype,
         )  # 1x8x3
 
-        self.gradcheck(kornia.geometry.transform.crop_by_boxes3d, (inp, src_box, dst_box))
+        self.gradcheck(
+            kornia.geometry.transform.crop_by_boxes3d, (inp, src_box, dst_box), requires_grad=(True, False, False)
+        )

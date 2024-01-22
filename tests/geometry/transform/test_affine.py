@@ -352,7 +352,7 @@ class TestTranslate(BaseTester):
 
         # evaluate function gradient
         input = torch.rand(1, 2, 3, 4, device=device, dtype=torch.float64)
-        self.gradcheck(kornia.geometry.transform.translate, (input, translation))
+        self.gradcheck(kornia.geometry.transform.translate, (input, translation), requires_grad=(True, False))
 
     @pytest.mark.skip("Need deep look into it since crashes everywhere.")
     @pytest.mark.skip(reason="turn off all jit for a while")
@@ -435,7 +435,7 @@ class TestScale(BaseTester):
 
         # evaluate function gradient
         input = torch.rand(1, 2, 3, 4, device=device, dtype=torch.float64)
-        self.gradcheck(kornia.geometry.transform.scale, (input, scale_factor))
+        self.gradcheck(kornia.geometry.transform.scale, (input, scale_factor), requires_grad=(True, False))
 
     @pytest.mark.skip("Need deep look into it since crashes everywhere.")
     @pytest.mark.skip(reason="turn off all jit for a while")
@@ -532,7 +532,7 @@ class TestShear(BaseTester):
 
         # evaluate function gradient
         input = torch.rand(1, 2, 3, 4, device=device, dtype=torch.float64)
-        self.gradcheck(kornia.geometry.transform.shear, (input, shear))
+        self.gradcheck(kornia.geometry.transform.shear, (input, shear), requires_grad=(True, False))
 
     @pytest.mark.skip("Need deep look into it since crashes everywhere.")
     @pytest.mark.skip(reason="turn off all jit for a while")
