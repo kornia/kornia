@@ -2,6 +2,7 @@ import pytest
 import torch
 
 from kornia.filters import BilateralBlur, JointBilateralBlur, bilateral_blur, joint_bilateral_blur
+
 from testing.base import BaseTester
 
 

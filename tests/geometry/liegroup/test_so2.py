@@ -3,6 +3,7 @@ import torch
 
 from kornia.geometry.liegroup import So2
 from kornia.geometry.vector import Vector2
+
 from testing.base import BaseTester
 
 

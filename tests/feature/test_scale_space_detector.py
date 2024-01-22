@@ -2,6 +2,7 @@ import torch
 
 import kornia
 from kornia.feature.scale_space_detector import ScaleSpaceDetector
+
 from testing.base import BaseTester
 
 

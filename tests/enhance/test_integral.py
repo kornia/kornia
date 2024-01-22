@@ -2,6 +2,7 @@ import pytest
 import torch
 
 from kornia.enhance.integral import IntegralImage, IntegralTensor, integral_image, integral_tensor
+
 from testing.base import BaseTester
 
 

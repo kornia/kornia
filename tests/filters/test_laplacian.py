@@ -2,6 +2,7 @@ import pytest
 import torch
 
 from kornia.filters import Laplacian, get_laplacian_kernel1d, get_laplacian_kernel2d, laplacian
+
 from testing.base import BaseTester, assert_close
 
 

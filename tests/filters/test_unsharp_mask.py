@@ -2,6 +2,7 @@ import pytest
 import torch
 
 from kornia.filters import UnsharpMask, unsharp_mask
+
 from testing.base import BaseTester
 
 

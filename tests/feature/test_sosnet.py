@@ -2,6 +2,7 @@ import pytest
 import torch
 
 from kornia.feature import SOSNet
+
 from testing.base import BaseTester
 
 

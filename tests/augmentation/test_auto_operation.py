@@ -12,7 +12,9 @@ from kornia.augmentation.auto.trivial_augment import TrivialAugment
 from kornia.augmentation.container import AugmentationSequential
 from kornia.geometry.bbox import bbox_to_mask
 from kornia.utils._compat import torch_version
+
 from testing.base import BaseTester
+
 from tests.augmentation.test_container import reproducibility_test
 
 

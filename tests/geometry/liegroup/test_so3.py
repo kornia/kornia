@@ -5,6 +5,7 @@ from kornia.geometry.conversions import euler_from_quaternion
 from kornia.geometry.liegroup import So3
 from kornia.geometry.quaternion import Quaternion
 from kornia.geometry.vector import Vector3
+
 from testing.base import BaseTester
 
 

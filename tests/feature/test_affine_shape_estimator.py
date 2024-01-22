@@ -2,6 +2,7 @@ import pytest
 import torch
 
 from kornia.feature.affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, PatchAffineShapeEstimator
+
 from testing.base import BaseTester
 
 

@@ -3,6 +3,7 @@ import torch
 
 from kornia.feature.orientation import LAFOrienter, OriNet, PassLAF, PatchDominantGradientOrientation
 from kornia.geometry.conversions import rad2deg
+
 from testing.base import BaseTester
 
 

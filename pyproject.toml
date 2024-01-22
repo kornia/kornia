@@ -145,8 +145,10 @@ requires = [
     skip-magic-trailing-comma = false
 
   [tool.ruff.isort]
-    known-first-party = ["examples", "kornia", "tests", "testing"]
+    known-first-party = ["kornia"]
     split-on-trailing-comma = true
+    forced-separate = ["testing", "tests"]
+
 
   [tool.ruff.mccabe]
     max-complexity = 20

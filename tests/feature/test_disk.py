@@ -4,6 +4,7 @@ import pytest
 import torch
 
 from kornia.feature.disk import DISK, DISKFeatures
+
 from testing.base import BaseTester
 from testing.casts import dict_to
 

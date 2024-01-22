@@ -3,6 +3,7 @@ import torch
 
 from kornia.contrib.models.sam import Sam, SamConfig
 from kornia.core import pad
+
 from testing.base import BaseTester
 
 

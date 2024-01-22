@@ -7,6 +7,7 @@ from kornia.feature.siftdesc import (
     get_sift_bin_ksize_stride_pad,
     get_sift_pooling_kernel,
 )
+
 from testing.base import BaseTester
 
 

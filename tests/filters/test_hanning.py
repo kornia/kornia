@@ -2,6 +2,7 @@ import pytest
 import torch
 
 from kornia.filters import get_hanning_kernel1d, get_hanning_kernel2d
+
 from testing.base import assert_close
 
 

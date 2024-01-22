@@ -3,6 +3,7 @@ import torch
 
 from kornia.color import AUTUMN, ApplyColorMap, apply_colormap
 from kornia.core import tensor
+
 from testing.base import BaseTester, assert_close
 
 

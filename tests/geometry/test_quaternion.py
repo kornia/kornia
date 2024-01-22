@@ -2,6 +2,7 @@ import pytest
 import torch
 
 from kornia.geometry.quaternion import Quaternion
+
 from testing.base import assert_close
 
 
