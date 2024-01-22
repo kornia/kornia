@@ -158,6 +158,7 @@ def main():
         "RandomPosterize": (((1, 4),), 2, 2016),
         "RandomResizedCrop": ((img1.shape[-2:], (1.0, 2.0), (1.0, 2.0)), 2, 2020),
         "RandomRotation": ((45.0,), 2, 2019),
+        "RandomSaltAndPepperNoise": (((0.05, 0.5), (0.1, 0.7)), 2, 2024),
         "RandomSaturation": (((0.5, 5.0),), 2, 2022),
         "RandomSharpness": ((16.0,), 1, 2019),
         "RandomSolarize": ((0.2, 0.2), 2, 2019),
