@@ -160,6 +160,10 @@ maintainable.
 - Add tests:
   - Tests are crucial and we expect you to write unit tests for each of the functionalities that you implement.
     It is also a good idea to group the tests for functionalities
+  - At [testing/](./testing/) directory we have a bunch of functions to help you to produce meaningful tests. Feel free,
+    to add any functionality which you that you think is essential and can be used with the test suite. Under this
+    testing directory should go all code which are needed under the tests and aren't tests or pytest configs (fixtures,
+    etc).
 
     ```python
     from testing.base import BaseTester
