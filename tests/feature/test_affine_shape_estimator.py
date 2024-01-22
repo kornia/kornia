@@ -134,9 +134,10 @@ class TestLAFAffNetShapeEstimator(BaseTester):
 
     @pytest.mark.slow
     def test_gradcheck(self, device):
+        torch.manual_seed(0)
         batch_size, channels, height, width = 1, 1, 35, 35
         patches = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
-        laf = torch.tensor([[[[8.0, 0.0, 16.0], [0.0, 8.0, 16.0]]]], device=device, dtype=torch.float64)
+        laf = torch.tensor([[[[8.0, 0.0, 16.0], [0.0, 8.0, 16.0]]]], device=device)
         self.gradcheck(
             LAFAffNetShapeEstimator(True).to(device, dtype=patches.dtype),
             (laf, patches),
