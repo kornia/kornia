@@ -13,6 +13,8 @@ from kornia.core.check import (
 )
 from kornia.geometry import rescale
 
+__all__ = ["jpeg_encode_decode_differentiable", "JPEGEncodeDecodeDifferentiable"]
+
 
 def _get_default_qt_y(device: Device, dtype: Dtype) -> Tensor:
     """Generates default Quantization table of Y channel."""
