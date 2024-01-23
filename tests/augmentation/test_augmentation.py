@@ -42,7 +42,6 @@ from kornia.augmentation import (
     RandomResizedCrop,
     RandomRGBShift,
     RandomRotation,
-    RandomRotation3D,
     RandomSaltAndPepperNoise,
     RandomSaturation,
     RandomSnow,
