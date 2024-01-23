@@ -1,8 +1,8 @@
 import pytest
 import torch
+from testing.base import BaseTester
 
 import kornia
-from testing.base import BaseTester
 
 
 class TestDiffJPEG(BaseTester):
