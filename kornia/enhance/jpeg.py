@@ -402,7 +402,7 @@ def jpeg_encode_decode_differentiable(
 ) -> Tensor:
     r"""Differentiable JPEG encoding-decoding module.
 
-    Based on [1, 2], we perform differentiable JPEG encoding-decoding as follows:
+    Based on :cite:`reich2024` :cite:`shin2017`, we perform differentiable JPEG encoding-decoding as follows:
 
     .. math::
 
@@ -419,11 +419,8 @@ def jpeg_encode_decode_differentiable(
         The input (and output) pixel range is :math:`[0, 1]`. In case you want to handle normalized images you are
         required to first perform denormalization followed by normalizing the output images again.
         Note, this implementation models the encoding-decoding mapping of JPEG in a differentiable setting,
-        howerver, does not allow to excess the JPEG-coded byte file itself. For more details please refer to [1].
-
-    Reference:
-        [1] https://arxiv.org/abs/2309.06978
-        [2] https://machine-learning-and-security.github.io/papers/mlsec17_paper_54.pdf
+        howerver, does not allow to excess the JPEG-coded byte file itself.
+        For more details please refer to :cite:`reich2024`.
 
     Args:
         image_rgb: the RGB image to be coded.
@@ -508,7 +505,7 @@ def jpeg_encode_decode_differentiable(
 class JPEGEncodeDecodeDifferentiable(Module):
     r"""Differentiable JPEG encoding-decoding module.
 
-    Based on [1, 2], we perform differentiable JPEG encoding-decoding as follows:
+    Based on :cite:`reich2024` :cite:`shin2017`, we perform differentiable JPEG encoding-decoding as follows:
 
     .. math::
 
@@ -525,11 +522,8 @@ class JPEGEncodeDecodeDifferentiable(Module):
         The input (and output) pixel range is :math:`[0, 1]`. In case you want to handle normalized images you are
         required to first perform denormalization followed by normalizing the output images again.
         Note, this implementation models the encoding-decoding mapping of JPEG in a differentiable setting,
-        howerver, does not allow to excess the JPEG-coded byte file itself. For more details please refer to [1].
-
-    Reference:
-        [1] https://arxiv.org/abs/2309.06978
-        [2] https://machine-learning-and-security.github.io/papers/mlsec17_paper_54.pdf
+        howerver, does not allow to excess the JPEG-coded byte file itself.
+        For more details please refer to :cite:`reich2024`.
 
     Args:
         image_rgb: the RGB image to be coded.
