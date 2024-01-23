@@ -969,7 +969,7 @@ class TestDiffJPEG(BaseTester):
             dtype=dtype,
         )
         # We use a slightly higher tolerance since our implementation varies from the reference implementation
-        self.assert_close(img_jpeg[..., :4, :4], img_jpeg_ref[..., :4, :4], rtol=0.01, atol=0.01)
+        self.assert_close(img_jpeg, img_jpeg_ref, rtol=0.01, atol=0.01)
 
     def test_module(self, device, dtype) -> None:
         B, H, W = 4, 16, 16
