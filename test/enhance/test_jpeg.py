@@ -981,6 +981,7 @@ class TestDiffJPEG(BaseTester):
         img_jpeg = diff_jpeg_module(img, jpeg_quality, qt_y, qt_c)
         assert img_jpeg is not None
         assert img_jpeg.shape == img.shape
+
     @pytest.mark.slow
     def test_gradcheck(self, device) -> None:
         """We test that the gradient matches the gradient of the reference implementation."""
