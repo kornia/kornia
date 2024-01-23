@@ -474,8 +474,8 @@ def diff_jpeg(
     dtype: Dtype = image_rgb.dtype
     device: Device = image_rgb.device
     # Quantization tables to same device and dtype as input image
-    quantization_table_y = quantization_table_y.to(dtype).to(device)
-    quantization_table_c = quantization_table_c.to(dtype).to(device)
+    quantization_table_y = quantization_table_y.to(dtype, device)
+    quantization_table_c = quantization_table_c.to(dtype, device)
     # Perform encoding
     y_encoded, cb_encoded, cr_encoded = _jpeg_encode(
         image_rgb=image_rgb,
