@@ -983,5 +983,8 @@ class TestDiffJPEG(BaseTester):
         assert img_jpeg.shape == img.shape
 
     def test_gradcheck(self, device) -> None:
-        """Not applicable since diff. JPEG is not continuous, thus PyTorch's gradcheck will always fail."""
+        """Not applicable since diff.
+
+        JPEG is not continuous, thus PyTorch's gradcheck will always fail.
+        """
         pass
