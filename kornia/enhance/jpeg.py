@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Optional, Tuple
 
 import torch
@@ -393,8 +395,8 @@ def _jpeg_decode(
 def diff_jpeg(
     image_rgb: Tensor,
     jpeg_quality: Tensor,
-    quantization_table_y: Tensor = QUANTIZATION_TABLE_Y,
-    quantization_table_c: Tensor = QUANTIZATION_TABLE_C,
+    quantization_table_y: Tensor | None = None,
+    quantization_table_c: Tensor | None = None,
 ) -> Tensor:
     r"""Differentiable JPEG encoding-decoding module.
 
@@ -442,6 +444,9 @@ def diff_jpeg(
         >>> img_jpeg = diff_jpeg(img, jpeg_quality)
         >>> img_jpeg.sum().backward()
     """
+    # Use default QT if QT is not given
+    quantization_table_y = QUANTIZATION_TABLE_Y if quantization_table_y is None else quantization_table_y
+    quantization_table_c = QUANTIZATION_TABLE_C if quantization_table_c is None else quantization_table_c
     # Check that inputs are tensors
     KORNIA_CHECK_IS_TENSOR(image_rgb)
     KORNIA_CHECK_IS_TENSOR(jpeg_quality)
