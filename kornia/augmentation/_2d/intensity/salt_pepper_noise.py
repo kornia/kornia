@@ -40,16 +40,16 @@ class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
         >>> aug = RandomSaltAndPepperNoise(amount=0.5, salt_vs_pepper=0.5, p=1.)
         >>> aug(inputs)
         tensor([[[[1.0000, 0.0000, 0.0000],
-            [1.0000, 1.0000, 0.1166],
-            [0.1644, 0.7379, 0.0000]],
+                  [1.0000, 1.0000, 0.1166],
+                  [0.1644, 0.7379, 0.0000]],
         <BLANKLINE>
-            [[1.0000, 0.0000, 0.0000],
-            [1.0000, 1.0000, 0.7150],
-            [0.5793, 0.9809, 0.0000]],
+                 [[1.0000, 0.0000, 0.0000],
+                  [1.0000, 1.0000, 0.7150],
+                  [0.5793, 0.9809, 0.0000]],
         <BLANKLINE>
-            [[1.0000, 0.0000, 0.0000],
-            [1.0000, 1.0000, 0.7850],
-            [0.9752, 0.0903, 0.0000]]]])
+                 [[1.0000, 0.0000, 0.0000],
+                  [1.0000, 1.0000, 0.7850],
+                  [0.9752, 0.0903, 0.0000]]]])
 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
         >>> input = torch.rand(1, 3, 32, 32)
