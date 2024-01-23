@@ -22,7 +22,6 @@ QUANTIZATION_TABLE_Y: Tensor = torch.tensor(
         [49, 64, 78, 87, 103, 121, 120, 101],
         [72, 92, 95, 98, 112, 100, 103, 99],
     ],
-    dtype=torch.float,
 )
 
 QUANTIZATION_TABLE_C: Tensor = torch.tensor(
@@ -36,7 +35,6 @@ QUANTIZATION_TABLE_C: Tensor = torch.tensor(
         [99, 99, 99, 99, 99, 99, 99, 99],
         [99, 99, 99, 99, 99, 99, 99, 99],
     ],
-    dtype=torch.float,
 )
 
 
