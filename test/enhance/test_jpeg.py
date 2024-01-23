@@ -2,7 +2,7 @@ import pytest
 import torch
 
 import kornia
-from kornia.testing import BaseTester, assert_close
+from kornia.testing import BaseTester
 
 
 class TestDiffJPEG(BaseTester):
