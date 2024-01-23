@@ -13,31 +13,41 @@ from kornia.core.check import (
 )
 from kornia.geometry import rescale
 
-QUANTIZATION_TABLE_Y: Tensor = torch.tensor(
-    [
-        [16, 11, 10, 16, 24, 40, 51, 61],
-        [12, 12, 14, 19, 26, 58, 60, 55],
-        [14, 13, 16, 24, 40, 57, 69, 56],
-        [14, 17, 22, 29, 51, 87, 80, 62],
-        [18, 22, 37, 56, 68, 109, 103, 77],
-        [24, 35, 55, 64, 81, 104, 113, 92],
-        [49, 64, 78, 87, 103, 121, 120, 101],
-        [72, 92, 95, 98, 112, 100, 103, 99],
-    ],
-)
 
-QUANTIZATION_TABLE_C: Tensor = torch.tensor(
-    [
-        [17, 18, 24, 47, 99, 99, 99, 99],
-        [18, 21, 26, 66, 99, 99, 99, 99],
-        [24, 26, 56, 99, 99, 99, 99, 99],
-        [47, 66, 99, 99, 99, 99, 99, 99],
-        [99, 99, 99, 99, 99, 99, 99, 99],
-        [99, 99, 99, 99, 99, 99, 99, 99],
-        [99, 99, 99, 99, 99, 99, 99, 99],
-        [99, 99, 99, 99, 99, 99, 99, 99],
-    ],
-)
+def _get_default_qt_y(device: Device, dtype: Dtype) -> Tensor:
+    """Generates default Quantization table of Y channel."""
+    return torch.tensor(
+        [
+            [16, 11, 10, 16, 24, 40, 51, 61],
+            [12, 12, 14, 19, 26, 58, 60, 55],
+            [14, 13, 16, 24, 40, 57, 69, 56],
+            [14, 17, 22, 29, 51, 87, 80, 62],
+            [18, 22, 37, 56, 68, 109, 103, 77],
+            [24, 35, 55, 64, 81, 104, 113, 92],
+            [49, 64, 78, 87, 103, 121, 120, 101],
+            [72, 92, 95, 98, 112, 100, 103, 99],
+        ],
+        device=device,
+        dtype=dtype,
+    )
+
+
+def _get_default_qt_c(device: Device, dtype: Dtype) -> Tensor:
+    """Generates default Quantization table of C channels."""
+    return torch.tensor(
+        [
+            [17, 18, 24, 47, 99, 99, 99, 99],
+            [18, 21, 26, 66, 99, 99, 99, 99],
+            [24, 26, 56, 99, 99, 99, 99, 99],
+            [47, 66, 99, 99, 99, 99, 99, 99],
+            [99, 99, 99, 99, 99, 99, 99, 99],
+            [99, 99, 99, 99, 99, 99, 99, 99],
+            [99, 99, 99, 99, 99, 99, 99, 99],
+            [99, 99, 99, 99, 99, 99, 99, 99],
+        ],
+        device=device,
+        dtype=dtype,
+    )
 
 
 def _patchify_8x8(input: Tensor) -> Tensor:
@@ -434,12 +444,15 @@ def diff_jpeg(
         >>> img_jpeg = diff_jpeg(img, jpeg_quality)
         >>> img_jpeg.sum().backward()
     """
-    # Use default QT if QT is not given
-    quantization_table_y = QUANTIZATION_TABLE_Y if quantization_table_y is None else quantization_table_y
-    quantization_table_c = QUANTIZATION_TABLE_C if quantization_table_c is None else quantization_table_c
     # Check that inputs are tensors
     KORNIA_CHECK_IS_TENSOR(image_rgb)
     KORNIA_CHECK_IS_TENSOR(jpeg_quality)
+    # Get device and dtype
+    dtype: Dtype = image_rgb.dtype
+    device: Device = image_rgb.device
+    # Use default QT if QT is not given
+    quantization_table_y = _get_default_qt_y(device, dtype) if quantization_table_y is None else quantization_table_y
+    quantization_table_c = _get_default_qt_c(device, dtype) if quantization_table_c is None else quantization_table_c
     KORNIA_CHECK_IS_TENSOR(quantization_table_y)
     KORNIA_CHECK_IS_TENSOR(quantization_table_c)
     # Check shape of inputs
@@ -465,9 +478,6 @@ def diff_jpeg(
     )
     # Get original shape
     H, W = image_rgb.shape[2:]
-    # Get device and dtype
-    dtype: Dtype = image_rgb.dtype
-    device: Device = image_rgb.device
     # Quantization tables to same device and dtype as input image
     quantization_table_y = quantization_table_y.to(device, dtype)
     quantization_table_c = quantization_table_c.to(device, dtype)
@@ -546,8 +556,8 @@ class DiffJPEG(Module):
         self,
         image_rgb: Tensor,
         jpeg_quality: Tensor,
-        quantization_table_y: Tensor = QUANTIZATION_TABLE_Y,
-        quantization_table_c: Tensor = QUANTIZATION_TABLE_C,
+        quantization_table_y: Tensor | None = None,
+        quantization_table_c: Tensor | None = None,
     ) -> Tensor:
         # Perform encoding-decoding
         image_rgb_jpeg: Tensor = diff_jpeg(
