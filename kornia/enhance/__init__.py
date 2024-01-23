@@ -33,7 +33,7 @@ from .core import AddWeighted, add_weighted
 from .equalization import equalize_clahe
 from .histogram import histogram, histogram2d, image_histogram2d
 from .integral import IntegralImage, IntegralTensor, integral_image, integral_tensor
-from .jpeg import DiffJPEG, diff_jpeg
+from .jpeg import JPEGEncodeDecodeDifferentiable, jpeg_encode_decode_differentiable
 from .normalize import Denormalize, Normalize, denormalize, normalize, normalize_min_max
 from .shift_rgb import shift_rgb
 from .zca import ZCAWhitening, linear_transform, zca_mean, zca_whiten
@@ -51,7 +51,7 @@ __all__ = [
     "adjust_saturation_raw",
     "adjust_sigmoid",
     "adjust_log",
-    "diff_jpeg",
+    "jpeg_encode_decode_differentiable",
     "solarize",
     "equalize",
     "equalize3d",
@@ -69,7 +69,7 @@ __all__ = [
     "AdjustSaturationWithGraySubtraction",
     "AdjustSigmoid",
     "AdjustLog",
-    "DiffJPEG",
+    "JPEGEncodeDecodeDifferentiable",
     "Invert",
     "add_weighted",
     "AddWeighted",

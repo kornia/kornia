@@ -392,7 +392,7 @@ def _jpeg_decode(
     return rgb_decoded
 
 
-def diff_jpeg(
+def jpeg_encode_decode_differentiable(
     image_rgb: Tensor,
     jpeg_quality: Tensor,
     quantization_table_y: Tensor | None = None,
@@ -441,7 +441,7 @@ def diff_jpeg(
     Example:
         >>> img = torch.rand(3, 3, 64, 64, requires_grad=True, dtype=torch.float)
         >>> jpeg_quality = torch.tensor((99.0, 25.0, 1.0), requires_grad=True)
-        >>> img_jpeg = diff_jpeg(img, jpeg_quality)
+        >>> img_jpeg = jpeg_encode_decode_differentiable(img, jpeg_quality)
         >>> img_jpeg.sum().backward()
     """
     # Check that inputs are tensors
@@ -503,7 +503,7 @@ def diff_jpeg(
     return image_rgb_jpeg
 
 
-class DiffJPEG(Module):
+class JPEGEncodeDecodeDifferentiable(Module):
     r"""Differentiable JPEG encoding-decoding module.
 
     Based on [1, 2], we perform differentiable JPEG encoding-decoding as follows:
@@ -542,7 +542,7 @@ class DiffJPEG(Module):
         - quantization_table_c: :math:`(8, 8)` or :math:`(B, 8, 8)`.
 
     Example:
-        >>> diff_jpeg_module = DiffJPEG()
+        >>> diff_jpeg_module = JPEGEncodeDecodeDifferentiable()
         >>> img = torch.rand(2, 3, 32, 32, requires_grad=True, dtype=torch.float)
         >>> jpeg_quality = torch.tensor((99.0, 1.0), requires_grad=True)
         >>> img_jpeg = diff_jpeg_module(img, jpeg_quality)
@@ -560,7 +560,7 @@ class DiffJPEG(Module):
         quantization_table_c: Tensor | None = None,
     ) -> Tensor:
         # Perform encoding-decoding
-        image_rgb_jpeg: Tensor = diff_jpeg(
+        image_rgb_jpeg: Tensor = jpeg_encode_decode_differentiable(
             image_rgb=image_rgb,
             jpeg_quality=jpeg_quality,
             quantization_table_c=quantization_table_c,

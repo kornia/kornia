@@ -11,7 +11,7 @@ class TestDiffJPEG(BaseTester):
         B, H, W = 2, 32, 32
         img = torch.rand(B, 3, H, W, device=device, dtype=dtype)
         jpeg_quality = torch.randint(low=0, high=100, size=(B,), device=device, dtype=dtype)
-        img_jpeg = kornia.enhance.diff_jpeg(img, jpeg_quality)
+        img_jpeg = kornia.enhance.jpeg_encode_decode_differentiable(img, jpeg_quality)
         assert img_jpeg is not None
         assert img_jpeg.shape == img.shape
 
@@ -22,7 +22,7 @@ class TestDiffJPEG(BaseTester):
         jpeg_quality = torch.randint(low=0, high=100, size=(B,), device=device, dtype=dtype)
         qt_y = torch.randint(low=1, high=255, size=(B, 8, 8), device=device, dtype=dtype)
         qt_c = torch.randint(low=1, high=255, size=(B, 8, 8), device=device, dtype=dtype)
-        img_jpeg = kornia.enhance.diff_jpeg(img, jpeg_quality, qt_y, qt_c)
+        img_jpeg = kornia.enhance.jpeg_encode_decode_differentiable(img, jpeg_quality, qt_y, qt_c)
         assert img_jpeg is not None
         assert img_jpeg.shape == img.shape
 
@@ -33,7 +33,7 @@ class TestDiffJPEG(BaseTester):
         jpeg_quality = torch.randint(low=0, high=100, size=(1,), device=device, dtype=dtype)
         qt_y = torch.randint(low=1, high=255, size=(1, 8, 8), device=device, dtype=dtype)
         qt_c = torch.randint(low=1, high=255, size=(1, 8, 8), device=device, dtype=dtype)
-        img_jpeg = kornia.enhance.diff_jpeg(img, jpeg_quality, qt_y, qt_c)
+        img_jpeg = kornia.enhance.jpeg_encode_decode_differentiable(img, jpeg_quality, qt_y, qt_c)
         assert img_jpeg is not None
         assert img_jpeg.shape == img.shape
 
@@ -42,27 +42,27 @@ class TestDiffJPEG(BaseTester):
         with pytest.raises(TypeError) as errinfo:
             B = 2
             jpeg_quality = torch.randint(low=0, high=100, size=(B,), device=device, dtype=dtype)
-            kornia.enhance.diff_jpeg(1904.0, jpeg_quality)
+            kornia.enhance.jpeg_encode_decode_differentiable(1904.0, jpeg_quality)
         assert "Not a Tensor type. Got" in str(errinfo)
 
         with pytest.raises(TypeError) as errinfo:
             B, H, W = 2, 32, 32
             img = torch.rand(B, 3, H, W, device=device, dtype=dtype)
-            kornia.enhance.diff_jpeg(img, None)
+            kornia.enhance.jpeg_encode_decode_differentiable(img, None)
         assert "Not a Tensor type. Got" in str(errinfo)
 
         with pytest.raises(TypeError) as errinfo:
             B, H, W = 2, 32, 32
             img = torch.rand(B, 3, H, W, device=device, dtype=dtype)
             jpeg_quality = torch.randint(low=0, high=100, size=(B, 3, 2, 1), device=device, dtype=dtype)
-            kornia.enhance.diff_jpeg(img, jpeg_quality)
+            kornia.enhance.jpeg_encode_decode_differentiable(img, jpeg_quality)
         assert "shape must be [" in str(errinfo)
 
         with pytest.raises(Exception) as errinfo:
             B, H, W = 2, 31, 31
             img = torch.rand(B, 3, H, W, device=device, dtype=dtype)
             jpeg_quality = torch.randint(low=0, high=100, size=(B,), device=device, dtype=dtype)
-            kornia.enhance.diff_jpeg(img, jpeg_quality)
+            kornia.enhance.jpeg_encode_decode_differentiable(img, jpeg_quality)
         assert "divisible" in str(errinfo)
 
         with pytest.raises(Exception) as errinfo:
@@ -71,7 +71,7 @@ class TestDiffJPEG(BaseTester):
             jpeg_quality = torch.randint(low=0, high=100, size=(B,), device=device, dtype=dtype)
             qt_y = torch.randint(low=1, high=255, size=(B, 7, 8), device=device, dtype=dtype)
             qt_c = torch.randint(low=1, high=255, size=(B, 8, 8), device=device, dtype=dtype)
-            kornia.enhance.diff_jpeg(img, jpeg_quality, qt_y, qt_c)
+            kornia.enhance.jpeg_encode_decode_differentiable(img, jpeg_quality, qt_y, qt_c)
         assert "shape must be [" in str(errinfo)
 
         with pytest.raises(Exception) as errinfo:
@@ -80,7 +80,7 @@ class TestDiffJPEG(BaseTester):
             jpeg_quality = torch.randint(low=0, high=100, size=(B,), device=device, dtype=dtype)
             qt_y = torch.randint(low=1, high=255, size=(B, 8, 8), device=device, dtype=dtype)
             qt_c = torch.randint(low=1, high=255, size=(B, 8, 7), device=device, dtype=dtype)
-            kornia.enhance.diff_jpeg(img, jpeg_quality, qt_y, qt_c)
+            kornia.enhance.jpeg_encode_decode_differentiable(img, jpeg_quality, qt_y, qt_c)
         assert "shape must be [" in str(errinfo)
 
     def test_cardinality(self, device, dtype) -> None:
@@ -88,7 +88,7 @@ class TestDiffJPEG(BaseTester):
         img = torch.zeros(B, 3, H, W, device=device, dtype=dtype)
         img[..., 4:-4, 4:-4] = 1.0
         jpeg_quality = torch.tensor([2.0], device=device, dtype=dtype)
-        img_jpeg = kornia.enhance.diff_jpeg(img, jpeg_quality)
+        img_jpeg = kornia.enhance.jpeg_encode_decode_differentiable(img, jpeg_quality)
         # Numbers generated based on reference implementation
         img_jpeg_ref = torch.tensor(
             [
@@ -977,7 +977,7 @@ class TestDiffJPEG(BaseTester):
         jpeg_quality = torch.randint(low=0, high=100, size=(B,), device=device, dtype=dtype)
         qt_y = torch.randint(low=1, high=255, size=(B, 8, 8), device=device, dtype=dtype)
         qt_c = torch.randint(low=1, high=255, size=(B, 8, 8), device=device, dtype=dtype)
-        diff_jpeg_module = kornia.enhance.DiffJPEG()
+        diff_jpeg_module = kornia.enhance.JPEGEncodeDecodeDifferentiable()
         img_jpeg = diff_jpeg_module(img, jpeg_quality, qt_y, qt_c)
         assert img_jpeg is not None
         assert img_jpeg.shape == img.shape
@@ -991,7 +991,7 @@ class TestDiffJPEG(BaseTester):
         img[..., 2, 4:-4, 4:-4] = 0.5
         img.requires_grad = True
         jpeg_quality = torch.tensor([10.0], device=device, dtype=torch.float, requires_grad=True)
-        img_jpeg = kornia.enhance.diff_jpeg(img, jpeg_quality)
+        img_jpeg = kornia.enhance.jpeg_encode_decode_differentiable(img, jpeg_quality)
         (img_jpeg - torch.zeros_like(img_jpeg)).abs().sum().backward()
         # Numbers generated based on reference implementation
         img_jpeg_mean_grad_ref = torch.tensor([0.1919])
