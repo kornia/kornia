@@ -1,32 +1,31 @@
 import pytest
 import torch
-from torch.autograd import gradcheck
 
 import kornia
-import kornia.testing as utils  # test utils
-from kornia.testing import assert_close
+
+from testing.base import BaseTester
 
 
-class TestResize:
+class TestResize(BaseTester):
     def test_smoke(self, device, dtype):
         inp = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)
         out = kornia.geometry.transform.resize(inp, (3, 4), align_corners=False)
-        assert_close(inp, out, atol=1e-4, rtol=1e-4)
+        self.assert_close(inp, out, atol=1e-4, rtol=1e-4)
 
         # 2D
         inp = torch.rand(3, 4, device=device, dtype=dtype)
         out = kornia.geometry.transform.resize(inp, (3, 4), align_corners=False)
-        assert_close(inp, out, atol=1e-4, rtol=1e-4)
+        self.assert_close(inp, out, atol=1e-4, rtol=1e-4)
 
         # 3D
         inp = torch.rand(3, 3, 4, device=device, dtype=dtype)
         out = kornia.geometry.transform.resize(inp, (3, 4), align_corners=False)
-        assert_close(inp, out, atol=1e-4, rtol=1e-4)
+        self.assert_close(inp, out, atol=1e-4, rtol=1e-4)
 
         # arbitrary dim
         inp = torch.rand(1, 2, 3, 2, 1, 3, 3, 4, device=device, dtype=dtype)
         out = kornia.geometry.transform.resize(inp, (3, 4), align_corners=False)
-        assert_close(inp, out, atol=1e-4, rtol=1e-4)
+        self.assert_close(inp, out, atol=1e-4, rtol=1e-4)
 
     def test_upsize(self, device, dtype):
         inp = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)
@@ -172,24 +171,18 @@ class TestResize:
         out = kornia.geometry.transform.resize(inp, 10, align_corners=False, side="horz")
         assert out.shape == (1, 3, 4, 10)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         # test parameters
         new_size = 4
-        input = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
-        input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(
-            kornia.geometry.transform.Resize(new_size, align_corners=False),
-            (input,),
-            raise_exception=True,
-            fast_mode=True,
-        )
+        input = torch.rand(1, 2, 3, 4, device=device, dtype=torch.float64)
+        self.gradcheck(kornia.geometry.transform.Resize(new_size, align_corners=False), (input,))
 
 
-class TestRescale:
+class TestRescale(BaseTester):
     def test_smoke(self, device, dtype):
         input = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)
         output = kornia.geometry.transform.rescale(input, (1.0, 1.0), align_corners=False)
-        assert_close(input, output, atol=1e-4, rtol=1e-4)
+        self.assert_close(input, output, atol=1e-4, rtol=1e-4)
 
     def test_upsize(self, device, dtype):
         input = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)
@@ -221,7 +214,7 @@ class TestRescale:
             device=device,
             dtype=dtype,
         )
-        assert_close(out, expected, atol=1e-3, rtol=1e-3)
+        self.assert_close(out, expected, atol=1e-3, rtol=1e-3)
 
     def test_downscale_values_AA(self, device, dtype):
         inp_x = torch.arange(20, device=device, dtype=dtype) / 20.0
@@ -243,26 +236,19 @@ class TestRescale:
             device=device,
             dtype=dtype,
         )
-        assert_close(out, expected, atol=1e-3, rtol=1e-3)
+        self.assert_close(out, expected, atol=1e-3, rtol=1e-3)
 
     def test_one_param(self, device, dtype):
         input = torch.rand(1, 3, 3, 4, device=device, dtype=dtype)
         output = kornia.geometry.transform.rescale(input, 2.0, align_corners=False)
         assert output.shape == (1, 3, 6, 8)
 
-    def test_gradcheck(self, device, dtype):
-        input = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
-        input = utils.tensor_to_gradcheck_var(input)
-        assert gradcheck(
-            kornia.geometry.transform.Rescale(2.0, align_corners=False),
-            (input,),
-            nondet_tol=1e-8,
-            raise_exception=True,
-            fast_mode=True,
-        )
+    def test_gradcheck(self, device):
+        input = torch.rand(1, 2, 3, 4, device=device, dtype=torch.float64)
+        self.gradcheck(kornia.geometry.transform.Rescale(2.0, align_corners=False), (input,), nondet_tol=1e-8)
 
 
-class TestRotate:
+class TestRotate(BaseTester):
     def test_angle90(self, device, dtype):
         # prepare input data
         inp = torch.tensor([[[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]]], device=device, dtype=dtype)
@@ -270,7 +256,7 @@ class TestRotate:
         # prepare transformation
         angle = torch.tensor([90.0], device=device, dtype=dtype)
         transform = kornia.geometry.transform.Rotate(angle, align_corners=True)
-        assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
     def test_angle90_batch2(self, device, dtype):
         # prepare input data
@@ -285,7 +271,7 @@ class TestRotate:
         # prepare transformation
         angle = torch.tensor([90.0, -90.0], device=device, dtype=dtype)
         transform = kornia.geometry.transform.Rotate(angle, align_corners=True)
-        assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
     def test_angle90_batch2_broadcast(self, device, dtype):
         # prepare input data
@@ -300,17 +286,15 @@ class TestRotate:
         # prepare transformation
         angle = torch.tensor([90.0], device=device, dtype=dtype)
         transform = kornia.geometry.transform.Rotate(angle, align_corners=True)
-        assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         # test parameters
-        angle = torch.tensor([90.0], device=device, dtype=dtype)
-        angle = utils.tensor_to_gradcheck_var(angle, requires_grad=False)  # to var
+        angle = torch.tensor([90.0], device=device, dtype=torch.float64)
 
         # evaluate function gradient
-        input = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
-        input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(kornia.geometry.transform.rotate, (input, angle), raise_exception=True, fast_mode=True)
+        input = torch.rand(1, 2, 3, 4, device=device, dtype=torch.float64)
+        self.gradcheck(kornia.geometry.transform.rotate, (input, angle))
 
     @pytest.mark.skip("Need deep look into it since crashes everywhere.")
     @pytest.mark.skip(reason="turn off all jit for a while")
@@ -320,10 +304,10 @@ class TestRotate:
         img = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
         rot = kornia.geometry.transform.Rotate(angle)
         rot_traced = torch.jit.trace(kornia.geometry.transform.Rotate(angle), img)
-        assert_close(rot(img), rot_traced(img))
+        self.assert_close(rot(img), rot_traced(img))
 
 
-class TestTranslate:
+class TestTranslate(BaseTester):
     def test_dxdy(self, device, dtype):
         # prepare input data
         inp = torch.tensor([[[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]]], device=device, dtype=dtype)
@@ -331,7 +315,7 @@ class TestTranslate:
         # prepare transformation
         translation = torch.tensor([[1.0, 0.0]], device=device, dtype=dtype)
         transform = kornia.geometry.transform.Translate(translation, align_corners=True)
-        assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
     def test_dxdy_batch(self, device, dtype):
         # prepare input data
@@ -346,7 +330,7 @@ class TestTranslate:
         # prepare transformation
         translation = torch.tensor([[1.0, 0.0], [1.0, 1.0]], device=device, dtype=dtype)
         transform = kornia.geometry.transform.Translate(translation, align_corners=True)
-        assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
     def test_dxdy_batch_broadcast(self, device, dtype):
         # prepare input data
@@ -361,19 +345,15 @@ class TestTranslate:
         # prepare transformation
         translation = torch.tensor([[1.0, 0.0]], device=device, dtype=dtype)
         transform = kornia.geometry.transform.Translate(translation, align_corners=True)
-        assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         # test parameters
-        translation = torch.tensor([[1.0, 0.0]], device=device, dtype=dtype)
-        translation = utils.tensor_to_gradcheck_var(translation, requires_grad=False)  # to var
+        translation = torch.tensor([[1.0, 0.0]], device=device, dtype=torch.float64)
 
         # evaluate function gradient
-        input = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
-        input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(
-            kornia.geometry.transform.translate, (input, translation), raise_exception=True, fast_mode=True
-        )
+        input = torch.rand(1, 2, 3, 4, device=device, dtype=torch.float64)
+        self.gradcheck(kornia.geometry.transform.translate, (input, translation), requires_grad=(True, False))
 
     @pytest.mark.skip("Need deep look into it since crashes everywhere.")
     @pytest.mark.skip(reason="turn off all jit for a while")
@@ -383,10 +363,10 @@ class TestTranslate:
         img = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
         trans = kornia.geometry.transform.Translate(translation)
         trans_traced = torch.jit.trace(kornia.geometry.transform.Translate(translation), img)
-        assert_close(trans(img), trans_traced(img), atol=1e-4, rtol=1e-4)
+        self.assert_close(trans(img), trans_traced(img), atol=1e-4, rtol=1e-4)
 
 
-class TestScale:
+class TestScale(BaseTester):
     def test_scale_factor_2(self, device, dtype):
         # prepare input data
         inp = torch.tensor(
@@ -397,7 +377,7 @@ class TestScale:
         # prepare transformation
         scale_factor = torch.tensor([[2.0, 2.0]], device=device, dtype=dtype)
         transform = kornia.geometry.transform.Scale(scale_factor)
-        assert_close(transform(inp).sum().item(), 12.25, atol=1e-4, rtol=1e-4)
+        self.assert_close(transform(inp).sum().item(), 12.25, atol=1e-4, rtol=1e-4)
 
     def test_scale_factor_05(self, device, dtype):
         # prepare input data
@@ -414,7 +394,7 @@ class TestScale:
         # prepare transformation
         scale_factor = torch.tensor([[0.5, 0.5]], device=device, dtype=dtype)
         transform = kornia.geometry.transform.Scale(scale_factor)
-        assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
     def test_scale_factor_05_batch2(self, device, dtype):
         # prepare input data
@@ -431,7 +411,7 @@ class TestScale:
         # prepare transformation
         scale_factor = torch.tensor([[0.5, 0.5]], device=device, dtype=dtype)
         transform = kornia.geometry.transform.Scale(scale_factor)
-        assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
     def test_scale_factor_05_batch2_broadcast(self, device, dtype):
         # prepare input data
@@ -448,17 +428,15 @@ class TestScale:
         # prepare transformation
         scale_factor = torch.tensor([[0.5, 0.5]], device=device, dtype=dtype)
         transform = kornia.geometry.transform.Scale(scale_factor)
-        assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         # test parameters
-        scale_factor = torch.tensor([[0.5, 0.5]], device=device, dtype=dtype)
-        scale_factor = utils.tensor_to_gradcheck_var(scale_factor, requires_grad=False)  # to var
+        scale_factor = torch.tensor([[0.5, 0.5]], device=device, dtype=torch.float64)
 
         # evaluate function gradient
-        input = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
-        input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(kornia.geometry.transform.scale, (input, scale_factor), raise_exception=True, fast_mode=True)
+        input = torch.rand(1, 2, 3, 4, device=device, dtype=torch.float64)
+        self.gradcheck(kornia.geometry.transform.scale, (input, scale_factor), requires_grad=(True, False))
 
     @pytest.mark.skip("Need deep look into it since crashes everywhere.")
     @pytest.mark.skip(reason="turn off all jit for a while")
@@ -468,10 +446,10 @@ class TestScale:
         img = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
         trans = kornia.geometry.transform.Scale(scale_factor)
         trans_traced = torch.jit.trace(kornia.Scale(scale_factor), img)
-        assert_close(trans(img), trans_traced(img), atol=1e-4, rtol=1e-4)
+        self.assert_close(trans(img), trans_traced(img), atol=1e-4, rtol=1e-4)
 
 
-class TestShear:
+class TestShear(BaseTester):
     def test_shear_x(self, device, dtype):
         # prepare input data
         inp = torch.tensor(
@@ -488,7 +466,7 @@ class TestShear:
         # prepare transformation
         shear = torch.tensor([[0.5, 0.0]], device=device, dtype=dtype)
         transform = kornia.geometry.transform.Shear(shear, align_corners=False)
-        assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
     def test_shear_y(self, device, dtype):
         # prepare input data
@@ -506,7 +484,7 @@ class TestShear:
         # prepare transformation
         shear = torch.tensor([[0.0, 0.5]], device=device, dtype=dtype)
         transform = kornia.geometry.transform.Shear(shear, align_corners=False)
-        assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
     def test_shear_batch2(self, device, dtype):
         # prepare input data
@@ -528,7 +506,7 @@ class TestShear:
         # prepare transformation
         shear = torch.tensor([[0.5, 0.0], [0.0, 0.5]], device=device, dtype=dtype)
         transform = kornia.geometry.transform.Shear(shear, align_corners=False)
-        assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
     def test_shear_batch2_broadcast(self, device, dtype):
         # prepare input data
@@ -547,17 +525,15 @@ class TestShear:
         # prepare transformation
         shear = torch.tensor([[0.5, 0.0]], device=device, dtype=dtype)
         transform = kornia.geometry.transform.Shear(shear, align_corners=False)
-        assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(transform(inp), expected, atol=1e-4, rtol=1e-4)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         # test parameters
-        shear = torch.tensor([[0.5, 0.0]], device=device, dtype=dtype)
-        shear = utils.tensor_to_gradcheck_var(shear, requires_grad=False)  # to var
+        shear = torch.tensor([[0.5, 0.0]], device=device, dtype=torch.float64)
 
         # evaluate function gradient
-        input = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
-        input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(kornia.geometry.transform.shear, (input, shear), raise_exception=True, fast_mode=True)
+        input = torch.rand(1, 2, 3, 4, device=device, dtype=torch.float64)
+        self.gradcheck(kornia.geometry.transform.shear, (input, shear), requires_grad=(True, False))
 
     @pytest.mark.skip("Need deep look into it since crashes everywhere.")
     @pytest.mark.skip(reason="turn off all jit for a while")
@@ -567,10 +543,10 @@ class TestShear:
         img = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
         trans = kornia.geometry.transform.Shear(shear, align_corners=False)
         trans_traced = torch.jit.trace(kornia.geometry.transform.Shear(shear), img)
-        assert_close(trans(img), trans_traced(img), atol=1e-4, rtol=1e-4)
+        self.assert_close(trans(img), trans_traced(img), atol=1e-4, rtol=1e-4)
 
 
-class TestAffine2d:
+class TestAffine2d(BaseTester):
     def test_affine_no_args(self):
         with pytest.raises(RuntimeError):
             kornia.geometry.transform.Affine()
@@ -592,7 +568,7 @@ class TestAffine2d:
         transform = kornia.geometry.transform.Affine(angle=angle).to(device=device, dtype=dtype)
         actual = transform(input)
         expected = kornia.geometry.transform.rotate(input, angle)
-        assert_close(actual, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(actual, expected, atol=1e-4, rtol=1e-4)
 
     def test_affine_translate(self, device, dtype):
         # TODO: Remove when #666 is implemented
@@ -605,7 +581,7 @@ class TestAffine2d:
         transform = kornia.geometry.transform.Affine(translation=translation).to(device=device, dtype=dtype)
         actual = transform(input)
         expected = kornia.geometry.transform.translate(input, translation)
-        assert_close(actual, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(actual, expected, atol=1e-4, rtol=1e-4)
 
     def test_affine_scale(self, device, dtype):
         # TODO: Remove when #666 is implemented
@@ -619,7 +595,7 @@ class TestAffine2d:
         transform = kornia.geometry.transform.Affine(scale_factor=scale_factor).to(device=device, dtype=dtype)
         actual = transform(input)
         expected = kornia.geometry.transform.scale(input, scale_factor)
-        assert_close(actual, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(actual, expected, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.skip(
         "_compute_shear_matrix and get_affine_matrix2d yield different results. "
@@ -633,7 +609,7 @@ class TestAffine2d:
         transform = kornia.geometry.transform.Affine(shear=shear).to(device, dtype)
         actual = transform(input)
         expected = kornia.geometry.transform.shear(input, shear)
-        assert_close(actual, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(actual, expected, atol=1e-4, rtol=1e-4)
 
     def test_affine_rotate_translate(self, device, dtype):
         # TODO: Remove when #666 is implemented
@@ -660,7 +636,7 @@ class TestAffine2d:
             device=device, dtype=dtype
         )
         actual = transform(input)
-        assert_close(actual, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(actual, expected, atol=1e-4, rtol=1e-4)
 
     def test_compose_affine_matrix_3x3(self, device, dtype):
         """To get parameters:
@@ -710,10 +686,10 @@ class TestAffine2d:
             T([math.radians(shear[1])]).view(-1, 1),
         )
         matrix_kornia = matrix_kornia.inverse()[0, :2].detach().cpu()
-        assert_close(matrix_kornia, matrix_expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(matrix_kornia, matrix_expected, atol=1e-4, rtol=1e-4)
 
 
-class TestGetAffineMatrix:
+class TestGetAffineMatrix(BaseTester):
     def test_smoke(self, device, dtype):
         H, W = 5, 5
         translation = torch.tensor([[0.0, 0.0]], device=device, dtype=dtype)
@@ -730,10 +706,10 @@ class TestGetAffineMatrix:
         expected[..., 1:4] = 1.0
 
         out = kornia.geometry.transform.warp_affine(img, affine_mat[:, :2], (H, W))
-        assert_close(out, expected)
+        self.assert_close(out, expected)
 
 
-class TestGetShearMatrix:
+class TestGetShearMatrix(BaseTester):
     def test_get_shear_matrix2d_with_controlled_values(self, device, dtype):
         # Define controlled values for shear angles and center
         sx = torch.tensor([0.5], device=device, dtype=dtype)
@@ -748,4 +724,4 @@ class TestGetShearMatrix:
             [[[1.0, -0.5463, 0.0], [-0.2553, 1.1395, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
         )
 
-        assert_close(out, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(out, expected, atol=1e-4, rtol=1e-4)

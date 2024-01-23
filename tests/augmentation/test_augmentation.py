@@ -4,10 +4,8 @@ from unittest.mock import patch
 
 import pytest
 import torch
-from torch.autograd import gradcheck
 
 import kornia
-import kornia.testing as utils  # test utils
 from kornia.augmentation import (
     AugmentationSequential,
     CenterCrop,
@@ -17,16 +15,12 @@ from kornia.augmentation import (
     LongestMaxSize,
     Normalize,
     PadTo,
-    RandomAffine,
-    RandomAffine3D,
     RandomBoxBlur,
     RandomBrightness,
     RandomChannelShuffle,
     RandomClahe,
     RandomContrast,
     RandomCrop,
-    RandomCrop3D,
-    RandomCutMixV2,
     RandomElasticTransform,
     RandomEqualize,
     RandomErasing,
@@ -38,14 +32,7 @@ from kornia.augmentation import (
     RandomHorizontalFlip,
     RandomHue,
     RandomInvert,
-    RandomJigsaw,
     RandomMedianBlur,
-    RandomMixUpV2,
-    RandomMosaic,
-    RandomMotionBlur,
-    RandomMotionBlur3D,
-    RandomPerspective,
-    RandomPerspective3D,
     RandomPlanckianJitter,
     RandomPlasmaBrightness,
     RandomPlasmaContrast,
@@ -55,12 +42,9 @@ from kornia.augmentation import (
     RandomResizedCrop,
     RandomRGBShift,
     RandomRotation,
-    RandomRotation3D,
     RandomSaturation,
-    RandomShear,
     RandomSnow,
     RandomThinPlateSpline,
-    RandomTranslate,
     RandomVerticalFlip,
     Resize,
     SmallestMaxSize,
@@ -68,15 +52,18 @@ from kornia.augmentation import (
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.constants import Resample, pi
 from kornia.geometry import transform_points
-from kornia.testing import BaseTester, assert_close, default_with_one_parameter_changed
 from kornia.utils import create_meshgrid
 from kornia.utils.helpers import _torch_inverse_cast
 
-# TODO same_on_batch tests?
+from testing.augmentation.datasets import DummyMPDataset
+from testing.base import BaseTester
+from testing.overwrite import default_with_one_parameter_changed
 
 
 @pytest.mark.usefixtures("device", "dtype")
 class CommonTests(BaseTester):
+    # TODO same_on_batch tests?
+
     fixture_names = ("device", "dtype")
 
     ############################################################################################################
@@ -217,7 +204,7 @@ class CommonTests(BaseTester):
         augmentation = self._create_augmentation_from_params(**params, p=0.0)
         test_input = torch.rand((2, 3, 4, 5), device=self.device, dtype=self.dtype)
         output = augmentation(test_input)
-        assert_close(output, test_input)
+        self.assert_close(output, test_input)
 
     def _test_random_p_1_implementation(self, input_tensor, expected_output, params, expected_transformation=None):
         augmentation = self._create_augmentation_from_params(**params, p=1.0)
@@ -284,13 +271,7 @@ class CommonTests(BaseTester):
     @pytest.mark.slow
     def _test_gradcheck_implementation(self, params):
         input_tensor = torch.rand((3, 5, 5), device=self.device, dtype=self.dtype)  # 3 x 3
-        input_tensor = utils.tensor_to_gradcheck_var(input_tensor)  # to var
-        assert gradcheck(
-            self._create_augmentation_from_params(**params, p=1.0),
-            (input_tensor,),
-            raise_exception=True,
-            fast_mode=True,
-        )
+        self.gradcheck(self._create_augmentation_from_params(**params, p=1.0), (input_tensor,))
 
 
 class TestRandomEqualizeAlternative(CommonTests):
@@ -697,7 +678,7 @@ class TestRandomGrayscaleAlternative(CommonTests):
             self._create_augmentation_from_params(p=1.0)(torch.rand((1, 4, 4, 5), device=self.device, dtype=self.dtype))
 
 
-class TestRandomHorizontalFlip:
+class TestRandomHorizontalFlip(BaseTester):
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
@@ -728,12 +709,12 @@ class TestRandomHorizontalFlip:
             [[[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]], device=device, dtype=dtype
         )  # 1 x 3 x 3
 
-        assert_close(f(input), expected)
-        assert_close(f.transform_matrix, expected_transform)
-        assert_close(f1(input), input)
-        assert_close(f1.transform_matrix, identity)
-        assert_close(f.inverse(expected), input)
-        assert_close(f1.inverse(expected), expected)
+        self.assert_close(f(input), expected)
+        self.assert_close(f.transform_matrix, expected_transform)
+        self.assert_close(f1(input), input)
+        self.assert_close(f1.transform_matrix, identity)
+        self.assert_close(f.inverse(expected), input)
+        self.assert_close(f1.inverse(expected), expected)
 
     def test_batch_random_hflip(self, device, dtype):
         f = RandomHorizontalFlip(p=1.0)
@@ -760,19 +741,19 @@ class TestRandomHorizontalFlip:
         expected_transform = expected_transform.repeat(5, 1, 1)  # 5 x 3 x 3
         identity = identity.repeat(5, 1, 1)  # 5 x 3 x 3
 
-        assert_close(f(input), expected)
-        assert_close(f.transform_matrix, expected_transform)
-        assert_close(f1(input), input)
-        assert_close(f1.transform_matrix, identity)
-        assert_close(f.inverse(expected), input)
-        assert_close(f1.inverse(expected), expected)
+        self.assert_close(f(input), expected)
+        self.assert_close(f.transform_matrix, expected_transform)
+        self.assert_close(f1(input), input)
+        self.assert_close(f1.transform_matrix, identity)
+        self.assert_close(f.inverse(expected), input)
+        self.assert_close(f1.inverse(expected), expected)
 
     def test_same_on_batch(self, device, dtype):
         f = RandomHorizontalFlip(p=0.5, same_on_batch=True)
         input = torch.eye(3, device=device, dtype=dtype).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 1, 1, 1)
         res = f(input)
-        assert_close(res[0], res[1])
-        assert_close(f.inverse(res), input)
+        self.assert_close(res[0], res[1])
+        self.assert_close(f.inverse(res), input)
 
     def test_sequential(self, device, dtype):
         f = AugmentationSequential(RandomHorizontalFlip(p=1.0), RandomHorizontalFlip(p=1.0))
@@ -788,9 +769,9 @@ class TestRandomHorizontalFlip:
         expected_transform_1 = expected_transform @ expected_transform
 
         out = f(input)
-        assert_close(out, input)
-        assert_close(f.transform_matrix, expected_transform_1)
-        assert_close(f.inverse(out), input)
+        self.assert_close(out, input)
+        self.assert_close(f.transform_matrix, expected_transform_1)
+        self.assert_close(f.inverse(out), input)
 
     def test_random_hflip_coord_check(self, device, dtype):
         f = RandomHorizontalFlip(p=1.0)
@@ -824,7 +805,7 @@ class TestRandomHorizontalFlip:
 
         # Tensors must have the same shapes and values
         assert output.shape == expected_output.shape
-        assert_close(output, expected_output)
+        self.assert_close(output, expected_output)
         # Transformed indices must not be out of bound
         assert (
             torch.torch.logical_and(result_coordinates[0, 0, :] >= 0, result_coordinates[0, 0, :] < input.shape[-1])
@@ -835,16 +816,15 @@ class TestRandomHorizontalFlip:
         # Values in the output tensor at the places of transformed indices must
         # have the same value as the input tensor has at the corresponding
         # positions
-        assert_close(
+        self.assert_close(
             output[..., result_coordinates[0, 1, :], result_coordinates[0, 0, :]],
             input[..., input_coordinates[0, 1, :], input_coordinates[0, 0, :]],
         )
 
     @pytest.mark.slow
-    def test_gradcheck(self, device, dtype):
-        input = torch.rand((3, 3), device=device, dtype=dtype)  # 3 x 3
-        input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(RandomHorizontalFlip(p=1.0), (input,), raise_exception=True, fast_mode=True)
+    def test_gradcheck(self, device):
+        input = torch.rand((3, 3), device=device, dtype=torch.float64)  # 3 x 3
+        self.gradcheck(RandomHorizontalFlip(p=1.0), (input,))
 
 
 class TestRandomVerticalFlip(BaseTester):
@@ -916,8 +896,8 @@ class TestRandomVerticalFlip(BaseTester):
         f = RandomVerticalFlip(p=0.5, same_on_batch=True)
         input = torch.eye(3, device=device, dtype=dtype).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 1, 1, 1)
         res = f(input)
-        assert_close(res[0], res[1])
-        assert_close(f.inverse(res), input)
+        self.assert_close(res[0], res[1])
+        self.assert_close(f.inverse(res), input)
 
     def test_sequential(self, device, dtype):
         f = AugmentationSequential(RandomVerticalFlip(p=1.0), RandomVerticalFlip(p=1.0))
@@ -967,7 +947,7 @@ class TestRandomVerticalFlip(BaseTester):
 
         # Tensors must have the same shapes and values
         assert output.shape == expected_output.shape
-        assert_close(output, expected_output)
+        self.assert_close(output, expected_output)
         # Transformed indices must not be out of bound
         assert (
             torch.torch.logical_and(result_coordinates[0, 0, :] >= 0, result_coordinates[0, 0, :] < input.shape[-1])
@@ -978,30 +958,10 @@ class TestRandomVerticalFlip(BaseTester):
         # Values in the output tensor at the places of transformed indices must
         # have the same value as the input tensor has at the corresponding
         # positions
-        assert_close(
+        self.assert_close(
             output[..., result_coordinates[0, 1, :], result_coordinates[0, 0, :]],
             input[..., input_coordinates[0, 1, :], input_coordinates[0, 0, :]],
         )
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_gradcheck(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
 
 
 class TestColorJiggle(BaseTester):
@@ -1043,7 +1003,7 @@ class TestColorJiggle(BaseTester):
         f = ColorJiggle(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.1, same_on_batch=True)
         input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
         res = f(input)
-        assert_close(res[0], res[1])
+        self.assert_close(res[0], res[1])
 
     def _get_expected_brightness(self, device, dtype):
         return torch.tensor(
@@ -1304,26 +1264,9 @@ class TestColorJiggle(BaseTester):
         self.assert_close(f.transform_matrix, expected_transform, low_tolerance=True)
 
     @pytest.mark.slow
-    def test_gradcheck(self, device, dtype):
-        input = torch.rand((3, 5, 5), device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
-        input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(ColorJiggle(p=1.0), (input,), raise_exception=True, fast_mode=True)
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
+    def test_gradcheck(self, device):
+        input = torch.rand((3, 5, 5), device=device, dtype=torch.float64).unsqueeze(0)  # 3 x 3
+        self.gradcheck(ColorJiggle(p=1.0), (input,))
 
 
 class TestColorJitter(BaseTester):
@@ -1371,7 +1314,7 @@ class TestColorJitter(BaseTester):
         f = ColorJitter(brightness=0.5, contrast=0.5, saturation=0.5, hue=0.1, same_on_batch=True)
         input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
         res = f(input)
-        assert_close(res[0], res[1])
+        self.assert_close(res[0], res[1])
 
     def _get_expected_brightness(self, device, dtype):
         return torch.tensor(
@@ -1632,26 +1575,9 @@ class TestColorJitter(BaseTester):
         self.assert_close(f.transform_matrix, expected_transform)
 
     @pytest.mark.slow
-    def test_gradcheck(self, device, dtype):
-        input = torch.rand((3, 5, 5), device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
-        input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(ColorJitter(p=1.0), (input,), raise_exception=True, fast_mode=True)
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
+    def test_gradcheck(self, device):
+        input = torch.rand((3, 5, 5), device=device, dtype=torch.float64).unsqueeze(0)  # 3 x 3
+        self.gradcheck(ColorJitter(p=1.0), (input,))
 
 
 class TestRandomBrightness(BaseTester):
@@ -1678,7 +1604,7 @@ class TestRandomBrightness(BaseTester):
         f = RandomBrightness(brightness=(0.5, 1.5), same_on_batch=True)
         input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
         res = f(input)
-        assert_close(res[0], res[1])
+        self.assert_close(res[0], res[1])
 
     def _get_expected_brightness(self, device, dtype):
         return torch.tensor(
@@ -1736,26 +1662,9 @@ class TestRandomBrightness(BaseTester):
         self.assert_close(f(input), expected, low_tolerance=True)
 
     @pytest.mark.slow
-    def test_gradcheck(self, device, dtype):
-        input = torch.rand((3, 5, 5), device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
-        input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(RandomBrightness(p=1.0), (input,), raise_exception=True, fast_mode=True)
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
+    def test_gradcheck(self, device):
+        input = torch.rand((3, 5, 5), device=device, dtype=torch.float64).unsqueeze(0)  # 3 x 3
+        self.gradcheck(RandomBrightness(p=1.0), (input,))
 
 
 class TestRandomContrast(BaseTester):
@@ -1780,7 +1689,7 @@ class TestRandomContrast(BaseTester):
         f = RandomContrast(contrast=(0.5, 1.5), same_on_batch=True)
         input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
         res = f(input)
-        assert_close(res[0], res[1])
+        self.assert_close(res[0], res[1])
 
     def _get_expected_contrast(self, device, dtype):
         return torch.tensor(
@@ -1838,26 +1747,9 @@ class TestRandomContrast(BaseTester):
         self.assert_close(f(input), expected, low_tolerance=True)
 
     @pytest.mark.slow
-    def test_gradcheck(self, device, dtype):
-        input = torch.rand((3, 5, 5), device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
-        input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(RandomContrast(p=1.0), (input,), raise_exception=True, fast_mode=True)
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
+    def test_gradcheck(self, device):
+        input = torch.rand((3, 5, 5), device=device, dtype=torch.float64).unsqueeze(0)  # 3 x 3
+        self.gradcheck(RandomContrast(p=1.0), (input,))
 
 
 class TestRandomHue(BaseTester):
@@ -1882,7 +1774,7 @@ class TestRandomHue(BaseTester):
         f = RandomHue(hue=(-0.5, 0.5), same_on_batch=True)
         input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
         res = f(input)
-        assert_close(res[0], res[1])
+        self.assert_close(res[0], res[1])
 
     def _get_expected_hue(self, device, dtype):
         return torch.tensor(
@@ -1948,26 +1840,9 @@ class TestRandomHue(BaseTester):
         self.assert_close(f(input), expected, low_tolerance=True)
 
     @pytest.mark.slow
-    def test_gradcheck(self, device, dtype):
-        input = torch.rand((3, 5, 5), device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
-        input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(RandomHue(p=1.0), (input,), raise_exception=True, fast_mode=True)
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
+    def test_gradcheck(self, device):
+        input = torch.rand((3, 5, 5), device=device, dtype=torch.float64).unsqueeze(0)  # 3 x 3
+        self.gradcheck(RandomHue(p=1.0), (input,))
 
 
 class TestRandomSaturation(BaseTester):
@@ -1992,7 +1867,7 @@ class TestRandomSaturation(BaseTester):
         f = RandomSaturation(saturation=(0.5, 1.5), same_on_batch=True)
         input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
         res = f(input)
-        assert_close(res[0], res[1])
+        self.assert_close(res[0], res[1])
 
     def _get_expected_saturation(self, device, dtype):
         return torch.tensor(
@@ -2058,26 +1933,9 @@ class TestRandomSaturation(BaseTester):
         self.assert_close(f(input), expected, low_tolerance=True)
 
     @pytest.mark.slow
-    def test_gradcheck(self, device, dtype):
-        input = torch.rand((3, 5, 5), device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
-        input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(RandomSaturation(p=1.0), (input,), raise_exception=True, fast_mode=True)
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
+    def test_gradcheck(self, device):
+        input = torch.rand((3, 5, 5), device=device, dtype=torch.float64).unsqueeze(0)  # 3 x 3
+        self.gradcheck(RandomSaturation(p=1.0), (input,))
 
 
 class TestRectangleRandomErasing(BaseTester):
@@ -2104,10 +1962,10 @@ class TestRectangleRandomErasing(BaseTester):
         f = RandomErasing(erase_scale_range, aspect_ratio_range, same_on_batch=True, p=0.5)
         input = torch.rand(shape).unsqueeze(dim=0).repeat(2, 1, 1, 1)
         res = f(input)
-        assert_close(res[0], res[1])
+        self.assert_close(res[0], res[1])
 
     @pytest.mark.slow
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         # test parameters
         batch_shape = (2, 3, 11, 7)
         erase_scale_range = (0.2, 0.4)
@@ -2117,29 +1975,8 @@ class TestRectangleRandomErasing(BaseTester):
         rect_params = rand_rec.forward_parameters(batch_shape)
 
         # evaluate function gradient
-        input = torch.rand(batch_shape, device=device, dtype=dtype)
-        input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(rand_rec, (input, rect_params), raise_exception=True, fast_mode=True)
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_smoke(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
+        input = torch.rand(batch_shape, device=device, dtype=torch.float64)
+        self.gradcheck(rand_rec, (input, rect_params))
 
 
 class TestRandomGamma(BaseTester):
@@ -2157,7 +1994,7 @@ class TestRandomGamma(BaseTester):
         f = RandomGamma(gamma=(0.5, 2.0), gain=(0.5, 0.5), same_on_batch=True)
         input = torch.eye(3).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
         res = f(input)
-        assert_close(res[0], res[1])
+        self.assert_close(res[0], res[1])
 
     def _get_expected_gamma(self, device, dtype):
         return torch.tensor(
@@ -2246,26 +2083,9 @@ class TestRandomGamma(BaseTester):
         self.assert_close(f(input), expected, low_tolerance=True)
 
     @pytest.mark.slow
-    def test_gradcheck(self, device, dtype):
-        input = torch.rand((3, 5, 5), device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
-        input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(RandomGamma(p=1.0), (input,), raise_exception=True, fast_mode=True)
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
+    def test_gradcheck(self, device):
+        input = torch.rand((3, 5, 5), device=device, dtype=torch.float64).unsqueeze(0)  # 3 x 3
+        self.gradcheck(RandomGamma(p=1.0), (input,))
 
 
 class TestRandomGrayscale(BaseTester):
@@ -2290,7 +2110,7 @@ class TestRandomGrayscale(BaseTester):
         f = RandomGrayscale(p=0.5, same_on_batch=True)
         input = torch.eye(3, device=device, dtype=dtype).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
         res = f(input)
-        assert_close(res[0], res[1])
+        self.assert_close(res[0], res[1])
 
     def test_opencv_true(self, device, dtype):
         data = torch.tensor(
@@ -2504,27 +2324,10 @@ class TestRandomGrayscale(BaseTester):
         self.assert_close(f.transform_matrix, expected_transform)
 
     @pytest.mark.slow
-    def test_gradcheck(self, device, dtype):
-        input = torch.rand((3, 5, 5), device=device, dtype=dtype)  # 3 x 3
-        input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(RandomGrayscale(p=1.0), (input,), raise_exception=True, fast_mode=True)
-        assert gradcheck(RandomGrayscale(p=0.0), (input,), raise_exception=True, fast_mode=True)
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
+    @pytest.mark.parametrize("p", [0.0, 1.0])
+    def test_gradcheck(self, device, p):
+        input = torch.rand((3, 5, 5), device=device, dtype=torch.float64)  # 3 x 3
+        self.gradcheck(RandomGrayscale(p=p), (input,))
 
 
 class TestCenterCrop(BaseTester):
@@ -2570,30 +2373,9 @@ class TestCenterCrop(BaseTester):
         self.assert_close(out, op2(img, op1._params))
 
     @pytest.mark.slow
-    def test_gradcheck(self, device, dtype):
-        input = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
-        input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(CenterCrop(3), (input,), raise_exception=True, fast_mode=True)
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_smoke(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
+    def test_gradcheck(self, device):
+        input = torch.rand(1, 2, 3, 4, device=device, dtype=torch.float64)
+        self.gradcheck(CenterCrop(3), (input,))
 
 
 class TestRandomRotation(BaseTester):
@@ -2700,7 +2482,7 @@ class TestRandomRotation(BaseTester):
         f = RandomRotation(degrees=40, same_on_batch=True)
         input = torch.eye(6, device=device, dtype=dtype).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
         res = f(input)
-        assert_close(res[0], res[1])
+        self.assert_close(res[0], res[1])
 
     def test_sequential(self, device, dtype):
         torch.manual_seed(0)  # for random reproductibility
@@ -2739,28 +2521,11 @@ class TestRandomRotation(BaseTester):
         self.assert_close(f.transform_matrix, expected_transform, low_tolerance=True)
 
     @pytest.mark.slow
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         torch.manual_seed(0)  # for random reproductibility
 
-        input = torch.rand((3, 3), device=device, dtype=dtype)  # 3 x 3
-        input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(RandomRotation(degrees=(15.0, 15.0), p=1.0), (input,), raise_exception=True, fast_mode=True)
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
+        input = torch.rand((3, 3), device=device, dtype=torch.float64)  # 3 x 3
+        self.gradcheck(RandomRotation(degrees=(15.0, 15.0), p=1.0), (input,))
 
 
 class TestRandomCrop(BaseTester):
@@ -2825,7 +2590,7 @@ class TestRandomCrop(BaseTester):
         f = RandomCrop(size=(2, 3), padding=1, same_on_batch=True, align_corners=True, p=1.0)
         input = torch.eye(3, device=device, dtype=dtype).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 3, 1, 1)
         res = f(input)
-        assert_close(res[0], res[1])
+        self.assert_close(res[0], res[1])
 
     def test_padding(self, device, dtype):
         torch.manual_seed(42)
@@ -3014,11 +2779,10 @@ class TestRandomCrop(BaseTester):
         self.assert_close(out, op2(img, op1._params))
 
     @pytest.mark.slow
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         torch.manual_seed(0)  # for random reproductibility
-        inp = torch.rand((3, 3, 3), device=device, dtype=dtype)  # 3 x 3
-        inp = utils.tensor_to_gradcheck_var(inp)  # to var
-        assert gradcheck(RandomCrop(size=(3, 3), p=1.0), (inp,), raise_exception=True, fast_mode=True)
+        inp = torch.rand((3, 3, 3), device=device, dtype=torch.float64)  # 3 x 3
+        self.gradcheck(RandomCrop(size=(3, 3), p=1.0), (inp,))
 
     @pytest.mark.skip("Need to fix Union type")
     def test_jit(self, device, dtype):
@@ -3048,18 +2812,6 @@ class TestRandomCrop(BaseTester):
         actual = op_trace(img)
         expected = op(img)
         self.assert_close(actual, expected)
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
 
 
 class TestRandomResizedCrop(BaseTester):
@@ -3208,32 +2960,10 @@ class TestRandomResizedCrop(BaseTester):
         self.assert_close(out, op2(img, op1._params))
 
     @pytest.mark.slow
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         torch.manual_seed(0)  # for random reproductibility
-        inp = torch.rand((1, 3, 3), device=device, dtype=dtype)  # 3 x 3
-        inp = utils.tensor_to_gradcheck_var(inp)  # to var
-        assert gradcheck(
-            RandomResizedCrop(size=(3, 3), scale=(1.0, 1.0), ratio=(1.0, 1.0)),
-            (inp,),
-            raise_exception=True,
-            fast_mode=True,
-        )
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
+        inp = torch.rand((1, 3, 3), device=device, dtype=torch.float64)  # 3 x 3
+        self.gradcheck(RandomResizedCrop(size=(3, 3), scale=(1.0, 1.0), ratio=(1.0, 1.0)), (inp,))
 
 
 class TestRandomEqualize(BaseTester):
@@ -3331,15 +3061,14 @@ class TestRandomEqualize(BaseTester):
         input = torch.eye(4, device=device, dtype=dtype)
         input = input.unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 1, 1, 1)
         res = f(input)
-        assert_close(res[0], res[1])
+        self.assert_close(res[0], res[1])
 
     @pytest.mark.slow
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         torch.manual_seed(0)  # for random reproductibility
 
-        input = torch.rand((3, 3, 3), device=device, dtype=dtype)  # 3 x 3 x 3
-        input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(RandomEqualize(p=0.5), (input,), raise_exception=True, fast_mode=True)
+        input = torch.rand((3, 3, 3), device=device, dtype=torch.float64)  # 3 x 3 x 3
+        self.gradcheck(RandomEqualize(p=0.5), (input,))
 
     @staticmethod
     def build_input(channels, height, width, bs=1, row=None, device="cpu", dtype=torch.float32):
@@ -3351,22 +3080,6 @@ class TestRandomEqualize(BaseTester):
         batch = torch.stack([image] * bs)
 
         return batch.to(device, dtype)
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
 
 
 class TestRandomGaussianBlur(BaseTester):
@@ -3398,7 +3111,7 @@ class TestRandomGaussianBlur(BaseTester):
         self.assert_close(actual, actual)
 
     @pytest.mark.slow
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         torch.manual_seed(0)
 
         # test parameters
@@ -3407,15 +3120,14 @@ class TestRandomGaussianBlur(BaseTester):
         sigma = (1.5, 1.5)
 
         # evaluate function gradient
-        input = torch.rand(batch_shape, device=device, dtype=dtype)
-        input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(RandomGaussianBlur(kernel_size, sigma, "replicate", p=1.0), (input,), raise_exception=True)
+        input = torch.rand(batch_shape, device=device, dtype=torch.float64)
+        self.gradcheck(RandomGaussianBlur(kernel_size, sigma, "replicate", p=1.0), (input,), fast_mode=False)
 
     @pytest.mark.xfail(
         reason="might fail due to the sampling distribution gradcheck errors. "
         "See: https://github.com/pytorch/pytorch/issues/78346."
     )
-    def test_gradcheck_class_non_deterministic(self, device, dtype):
+    def test_gradcheck_class_non_deterministic(self, device):
         torch.manual_seed(0)
 
         # test parameters
@@ -3424,9 +3136,8 @@ class TestRandomGaussianBlur(BaseTester):
         sigma = (1.5, 2.1)
 
         # evaluate function gradient
-        input = torch.rand(batch_shape, device=device, dtype=dtype)
-        input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(RandomGaussianBlur(kernel_size, sigma, "replicate", p=1.0), (input,), raise_exception=True)
+        input = torch.rand(batch_shape, device=device, dtype=torch.float64)
+        self.gradcheck(RandomGaussianBlur(kernel_size, sigma, "replicate", p=1.0), (input,), fast_mode=False)
 
     def test_module(self, device, dtype):
         func_params = [(3, 3), torch.tensor([1.5, 1.5]).view(1, -1)]
@@ -3455,35 +3166,11 @@ class TestRandomGaussianBlur(BaseTester):
         img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
         self.assert_close(op(img, *func_params), op_module(img))
 
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
 
 class TestRandomInvert(BaseTester):
     def test_smoke(self, device, dtype):
         img = torch.ones(1, 3, 4, 5, device=device, dtype=dtype)
         self.assert_close(RandomInvert(p=1.0)(img), torch.zeros_like(img))
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_gradcheck(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
 
 
 class TestRandomChannelShuffle(BaseTester):
@@ -3501,26 +3188,6 @@ class TestRandomChannelShuffle(BaseTester):
         out = aug(img)
         self.assert_close(out, out_expected)
 
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_gradcheck(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
-
 
 class TestRandomClahe(BaseTester):
     def test_smoke(self, device, dtype):
@@ -3533,24 +3200,8 @@ class TestRandomClahe(BaseTester):
         output_data = RandomClahe(p=1.0, grid_size=(2, 2))(input_data)
         assert output_data.shape == batch_shape
 
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
 
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_gradcheck(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
-
-
-class TestRandomGaussianNoise:
+class TestRandomGaussianNoise(BaseTester):
     def test_smoke(self, device, dtype):
         torch.manual_seed(0)
         img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
@@ -3618,33 +3269,11 @@ class TestNormalize(BaseTester):
         self.assert_close(f1.transform_matrix, identity)
 
     @pytest.mark.slow
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         torch.manual_seed(0)  # for random reproductibility
 
-        input = torch.rand((3, 3, 3), device=device, dtype=dtype)  # 3 x 3 x 3
-        input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(
-            Normalize(mean=torch.tensor([1.0]), std=torch.tensor([1.0]), p=1.0),
-            (input,),
-            raise_exception=True,
-            fast_mode=True,
-        )
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
+        input = torch.rand((3, 3, 3), device=device, dtype=torch.float64)  # 3 x 3 x 3
+        self.gradcheck(Normalize(mean=torch.tensor([1.0]), std=torch.tensor([1.0]), p=1.0), (input,))
 
 
 class TestDenormalize(BaseTester):
@@ -3687,36 +3316,14 @@ class TestDenormalize(BaseTester):
         self.assert_close(f1.transform_matrix, identity)
 
     @pytest.mark.slow
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         torch.manual_seed(0)  # for random reproductibility
 
-        input = torch.rand((3, 3, 3), device=device, dtype=dtype)  # 3 x 3 x 3
-        input = utils.tensor_to_gradcheck_var(input)  # to var
-        assert gradcheck(
-            Denormalize(mean=torch.tensor([1.0]), std=torch.tensor([1.0]), p=1.0),
-            (input,),
-            raise_exception=True,
-            fast_mode=True,
-        )
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
+        input = torch.rand((3, 3, 3), device=device, dtype=torch.float64)  # 3 x 3 x 3
+        self.gradcheck(Denormalize(mean=torch.tensor([1.0]), std=torch.tensor([1.0]), p=1.0), (input,))
 
 
-class TestRandomFisheye:
+class TestRandomFisheye(BaseTester):
     def test_smoke(self, device, dtype):
         torch.manual_seed(0)
         center_x = torch.tensor([-0.3, 0.3])
@@ -3741,14 +3348,10 @@ class TestRandomFisheye:
         center_x = torch.tensor([-0.3, 0.3], device=device, dtype=dtype)
         center_y = torch.tensor([-0.3, 0.3], device=device, dtype=dtype)
         gamma = torch.tensor([-1.0, 1.0], device=device, dtype=dtype)
-        img = utils.tensor_to_gradcheck_var(img)  # to var
-        center_x = utils.tensor_to_gradcheck_var(center_x)  # to var
-        center_y = utils.tensor_to_gradcheck_var(center_y)  # to var
-        gamma = utils.tensor_to_gradcheck_var(gamma)  # to var
-        assert gradcheck(RandomFisheye(center_x, center_y, gamma), (img,), raise_exception=True, fast_mode=True)
+        self.gradcheck(RandomFisheye(center_x, center_y, gamma), (img,))
 
 
-class TestRandomElasticTransform:
+class TestRandomElasticTransform(BaseTester):
     def test_smoke(self, device, dtype):
         img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
         aug = RandomElasticTransform(p=1.0)
@@ -3758,7 +3361,7 @@ class TestRandomElasticTransform:
         f = RandomElasticTransform(p=1.0, same_on_batch=True)
         input = torch.eye(3, device=device, dtype=dtype).unsqueeze(dim=0).unsqueeze(dim=0).repeat(2, 1, 1, 1)
         res = f(input)
-        assert_close(res[0], res[1])
+        self.assert_close(res[0], res[1])
 
     def test_mask_transform(self, device, dtype):
         torch.manual_seed(0)
@@ -3776,7 +3379,7 @@ class TestRandomElasticTransform:
 
         # The transformed values are fine if we use mask input type
         labels_transformed = compose(features, labels, data_keys=["input", "mask"])[1]
-        assert_close(labels_transformed.unique(), torch.tensor([0, 10], dtype=dtype, device=device))
+        self.assert_close(labels_transformed.unique(), torch.tensor([0, 10], dtype=dtype, device=device))
 
     @pytest.mark.parametrize("batch_prob", [[True, True], [False, True], [False, False]])
     def test_apply(self, batch_prob, device, dtype):
@@ -3790,11 +3393,11 @@ class TestRandomElasticTransform:
         to_apply = torch.tensor(batch_prob, device=device)
         with patch.object(aug_list[0], "__batch_prob_generator__", return_value=to_apply):
             features_transformed, labels_transformed = aug_list(features, labels, data_keys=["input", "mask"])
-            assert_close(aug_list._params[0].data["batch_prob"], to_apply)
+            self.assert_close(aug_list._params[0].data["batch_prob"], to_apply)
 
             # Images should remain unchanged if the transformation is not applied
-            assert_close(features_transformed[~to_apply], features[~to_apply])
-            assert_close(labels_transformed[~to_apply], labels[~to_apply])
+            self.assert_close(features_transformed[~to_apply], features[~to_apply])
+            self.assert_close(labels_transformed[~to_apply], labels[~to_apply])
 
             # At least one value in the images should change if the transformation is applied
             if to_apply.any():
@@ -3816,13 +3419,13 @@ class TestRandomBoxBlur:
         assert img.shape == aug(img).shape
 
 
-class TestPadTo:
+class TestPadTo(BaseTester):
     def test_smoke(self, device, dtype):
         img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
         aug = PadTo(size=(4, 5))
         out = aug(img)
         assert out.shape == (1, 1, 4, 5)
-        assert_close(aug.inverse(out), img)
+        self.assert_close(aug.inverse(out), img)
 
 
 class TestResize:
@@ -4103,32 +3706,8 @@ class TestPlanckianJitter(BaseTester):
         expected = self._get_expected_output_same_on_batch(device, dtype)
         self.assert_close(f(input), expected, low_tolerance=True)
 
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_smoke(self, device, dtype):
-        pass
 
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_gradcheck(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_jit(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
-
-
-class TestRandomRGBShift:
+class TestRandomRGBShift(BaseTester):
     def test_smoke(self, device, dtype):
         img = torch.rand(2, 3, 4, 5, device=device, dtype=dtype)
         aug = RandomRGBShift(p=1.0).to(device)
@@ -4157,7 +3736,7 @@ class TestRandomRGBShift:
             device=device,
             dtype=dtype,
         )
-        utils.assert_close(f(input), expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(f(input), expected, rtol=1e-4, atol=1e-4)
 
     def test_random_rgb_shift_same_batch(self, device, dtype):
         torch.manual_seed(0)
@@ -4176,10 +3755,10 @@ class TestRandomRGBShift:
             device=device,
             dtype=dtype,
         )
-        utils.assert_close(f(input), expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(f(input), expected, rtol=1e-4, atol=1e-4)
 
 
-class TestRandomTranslate:
+class TestRandomTranslate(BaseTester):
     torch.manual_seed(0)  # for random reproductibility
 
     def test_smoke_no_transform(self, device):
@@ -4192,15 +3771,11 @@ class TestRandomTranslate:
 
     @pytest.mark.slow
     def test_gradcheck(self, device):
-        input = torch.rand(1, 2, 5, 7).to(device)
-        input = utils.tensor_to_gradcheck_var(input)  # to var
-        # TODO: turned off with p=0
-        assert gradcheck(
-            kornia.augmentation.RandomTranslate((0.5, 0.5), p=1.0), (input,), raise_exception=True, fast_mode=True
-        )
+        input = torch.rand(1, 2, 5, 7, device=device)
+        self.gradcheck(kornia.augmentation.RandomTranslate((0.5, 0.5), p=1.0), (input,))
 
 
-class TestRandomAutoContrast:
+class TestRandomAutoContrast(BaseTester):
     torch.manual_seed(0)  # for random reproductibility
 
     def test_smoke_no_transform(self, device):
@@ -4211,10 +3786,9 @@ class TestRandomAutoContrast:
 
     @pytest.mark.slow
     def test_gradcheck(self, device):
-        input = torch.rand(1, 2, 5, 7).to(device)
-        input = utils.tensor_to_gradcheck_var(input)  # to var
+        input = torch.rand(1, 2, 5, device=device, dtype=torch.float64)
         # TODO: turned off with p=0
-        assert gradcheck(kornia.augmentation.RandomAutoContrast(p=1.0), (input,), raise_exception=True, fast_mode=True)
+        self.gradcheck(kornia.augmentation.RandomAutoContrast(p=1.0), (input,))
 
 
 class TestRandomSnow(BaseTester):
@@ -4252,9 +3826,8 @@ class TestRandomSnow(BaseTester):
 
     @pytest.mark.slow
     def test_gradcheck(self, device):
-        input_data = torch.rand(1, 3, 6, 8, device=device)
-        grad_input = utils.tensor_to_gradcheck_var(input_data)
-        self.gradcheck(RandomSnow(p=1.0), (grad_input,))
+        input_data = torch.rand(1, 3, 6, 8, device=device, dtype=torch.float64)
+        self.gradcheck(RandomSnow(p=1.0), (input_data,))
 
     def test_exception(self, device, dtype):
         exception_test_data = self._get_exception_test_data(device, dtype)
@@ -4265,12 +3838,8 @@ class TestRandomSnow(BaseTester):
 
             assert err_msg in str(errinfo)
 
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
 
-
-class TestRandomMedianBlur:
+class TestRandomMedianBlur(BaseTester):
     def test_smoke(self, device, dtype):
         image = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
         aug = RandomMedianBlur(p=0.8)
@@ -4288,7 +3857,7 @@ class TestRandomMedianBlur:
             dtype=dtype,
         )
 
-        utils.assert_close(out, expected)
+        self.assert_close(out, expected)
 
 
 class TestRandomRain(BaseTester):
@@ -4322,10 +3891,6 @@ class TestRandomRain(BaseTester):
         output_data = aug(input_data)
         assert output_data.shape == input_data.shape
 
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_gradcheck(self, device):
-        pass
-
     def test_exception(self, device, dtype):
         exception_test_data = self._get_exception_test_data(device, dtype)
         for err_msg, drop_height, drop_width, input_data in exception_test_data:
@@ -4334,65 +3899,6 @@ class TestRandomRain(BaseTester):
                 aug(input_data)
 
             assert err_msg in str(errinfo)
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
-
-
-class DummyMPDataset(torch.utils.data.Dataset):
-    def __init__(self, context: str):
-        super().__init__()
-        # we add all transforms that could potentially fail in
-        # multiprocessing with a spawn context below, that is all the
-        # transforms that define a RNG
-        transforms = [
-            RandomTranslate(),
-            RandomShear(0.1),
-            RandomPosterize(),
-            RandomErasing(),
-            RandomMotionBlur(kernel_size=3, angle=(0, 360), direction=(-1, 1)),
-            RandomGaussianBlur(3, (0.1, 2.0)),
-            RandomPerspective(),
-            ColorJitter(),
-            ColorJiggle(),
-            RandomJigsaw(),
-            RandomAffine(degrees=15),
-            RandomMotionBlur3D(kernel_size=3, angle=(0, 360), direction=(-1, 1)),
-            RandomPerspective3D(),
-            RandomAffine3D(degrees=15),
-            RandomRotation3D(degrees=15),
-        ]
-
-        if context != "fork":
-            # random planckian jitter auto selects a GPU. But it is not possible
-            # to init a CUDA context in a forked process.
-            # So we skip it in this case.
-            transforms.append(RandomPlanckianJitter())
-
-        self._transform = torch.nn.Sequential()
-
-        self._resize = Resize((10, 10))
-        self._mosaic = RandomMosaic((2, 2))
-        self._crop = RandomCrop((5, 5))
-        self._crop3d = RandomCrop3D((5, 5, 5))
-        self._mixup = RandomMixUpV2()
-        self._cutmix = RandomCutMixV2()
-        self._rain = RandomRain(p=1, drop_height=(1, 2), drop_width=(1, 2), number_of_drops=(1, 1))
-
-    def __len__(self):
-        return 10
-
-    def __getitem__(self, _):
-        mosaic = self._mosaic(torch.rand(1, 3, 64, 64))
-        rain = self._rain(torch.rand(1, 1, 5, 5))
-        rain = self._resize(rain)
-        cropped = self._crop(torch.rand(3, 3, 64, 64))
-        cropped3d = self._crop3d(torch.rand(3, 64, 64, 64))
-        mixed = self._mixup(torch.rand(3, 3, 64, 64), torch.rand(3, 3, 64, 64))
-        mixed = self._cutmix(torch.rand(3, 3, 64, 64), mixed)
-
-        return (self._transform(mixed), cropped, cropped3d, mixed, mosaic, rain)
 
 
 class TestMultiprocessing:

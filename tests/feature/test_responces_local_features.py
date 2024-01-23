@@ -1,12 +1,11 @@
 import torch
-from torch.autograd import gradcheck
 
 import kornia
-import kornia.testing as utils  # test utils
-from kornia.testing import assert_close
+
+from testing.base import BaseTester
 
 
-class TestCornerHarris:
+class TestCornerHarris(BaseTester):
     def test_shape(self, device):
         inp = torch.ones(1, 3, 4, 4, device=device)
         harris = kornia.feature.CornerHarris(k=0.04).to(device)
@@ -55,7 +54,7 @@ class TestCornerHarris:
         ).float()
         harris = kornia.feature.CornerHarris(k=0.04).to(device)
         scores = harris(inp)
-        assert_close(scores, expected, atol=1e-4, rtol=1e-3)
+        self.assert_close(scores, expected, atol=1e-4, rtol=1e-3)
 
     def test_corners_batch(self, device, dtype):
         inp = torch.tensor(
@@ -110,19 +109,16 @@ class TestCornerHarris:
             / 10.0
         )
         scores = kornia.feature.harris_response(inp, k=0.04)
-        assert_close(scores, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(scores, expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
         k = 0.04
         batch_size, channels, height, width = 1, 2, 5, 4
-        img = torch.rand(batch_size, channels, height, width, device=device)
-        img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(
-            kornia.feature.harris_response, (img, k), raise_exception=True, nondet_tol=1e-4, fast_mode=True
-        )
+        img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
+        self.gradcheck(kornia.feature.harris_response, (img, k), nondet_tol=1e-4)
 
 
-class TestCornerGFTT:
+class TestCornerGFTT(BaseTester):
     def test_shape(self, device):
         inp = torch.ones(1, 3, 4, 4, device=device)
         shi_tomasi = kornia.feature.CornerGFTT().to(device)
@@ -171,7 +167,7 @@ class TestCornerGFTT:
         ).float()
         shi_tomasi = kornia.feature.CornerGFTT().to(device)
         scores = shi_tomasi(inp)
-        assert_close(scores, expected, atol=1e-4, rtol=1e-3)
+        self.assert_close(scores, expected, atol=1e-4, rtol=1e-3)
 
     def test_corners_batch(self, device, dtype):
         inp = torch.tensor(
@@ -224,16 +220,15 @@ class TestCornerGFTT:
         ).repeat(2, 1, 1, 1)
         shi_tomasi = kornia.feature.CornerGFTT().to(device)
         scores = shi_tomasi(inp)
-        assert_close(scores, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(scores, expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 2, 5, 4
-        img = torch.rand(batch_size, channels, height, width, device=device)
-        img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.feature.gftt_response, (img), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
+        img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
+        self.gradcheck(kornia.feature.gftt_response, (img), nondet_tol=1e-4)
 
 
-class TestBlobHessian:
+class TestBlobHessian(BaseTester):
     def test_shape(self, device):
         inp = torch.ones(1, 3, 4, 4, device=device)
         shi_tomasi = kornia.feature.BlobHessian().to(device)
@@ -295,16 +290,15 @@ class TestBlobHessian:
         ).repeat(2, 1, 1, 1)
         shi_tomasi = kornia.feature.BlobHessian().to(device)
         scores = shi_tomasi(inp)
-        assert_close(scores, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(scores, expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 2, 5, 4
-        img = torch.rand(batch_size, channels, height, width, device=device)
-        img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.feature.hessian_response, (img), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
+        img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
+        self.gradcheck(kornia.feature.hessian_response, (img), nondet_tol=1e-4)
 
 
-class TestBlobDoGSingle:
+class TestBlobDoGSingle(BaseTester):
     def test_shape(self, device):
         inp = torch.ones(1, 3, 9, 9, device=device)
         shi_tomasi = kornia.feature.BlobDoGSingle().to(device)
@@ -368,12 +362,9 @@ class TestBlobDoGSingle:
         ).expand(2, 2, 7, 7)
         det = kornia.feature.BlobDoGSingle(1.0, 1.6).to(device)
         scores = det(inp)
-        assert_close(scores, expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(scores, expected, atol=1e-4, rtol=1e-4)
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 2, 9, 11
-        img = torch.rand(batch_size, channels, height, width, device=device)
-        img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(
-            kornia.feature.dog_response_single, (img), raise_exception=True, nondet_tol=1e-4, fast_mode=True
-        )
+        img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
+        self.gradcheck(kornia.feature.dog_response_single, (img), nondet_tol=1e-4)

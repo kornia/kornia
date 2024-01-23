@@ -1,14 +1,13 @@
 import pytest
 import torch
-from torch.autograd import gradcheck
 
 import kornia
-import kornia.testing as utils  # test utils
 from kornia.geometry.conversions import normalize_pixel_coordinates
-from kornia.testing import assert_close
+
+from testing.base import BaseTester
 
 
-class TestDepthWarper:
+class TestDepthWarper(BaseTester):
     eps = 1e-6
 
     def _create_pinhole_pair(self, batch_size, device, dtype):
@@ -47,7 +46,7 @@ class TestDepthWarper:
         dst_proj_src_expected[..., 0, -2] += pinhole_src.cx
         dst_proj_src_expected[..., 1, -2] += pinhole_src.cy
         dst_proj_src_expected[..., 0, -1] += 1.0  # offset to x-axis
-        assert_close(dst_proj_src, dst_proj_src_expected)
+        self.assert_close(dst_proj_src, dst_proj_src_expected)
 
     @pytest.mark.parametrize("batch_size", (1, 2))
     def test_warp_grid_offset_x1_depth1(self, batch_size, device, dtype):
@@ -70,9 +69,9 @@ class TestDepthWarper:
         grid_norm = normalize_pixel_coordinates(grid, height, width)
 
         # check offset in x-axis
-        assert_close(grid_warped[..., -2, 0], grid_norm[..., -1, 0].repeat(batch_size, 1), atol=1e-4, rtol=1e-4)
+        self.assert_close(grid_warped[..., -2, 0], grid_norm[..., -1, 0].repeat(batch_size, 1), atol=1e-4, rtol=1e-4)
         # check that y-axis remain the same
-        assert_close(grid_warped[..., -1, 1], grid_norm[..., -1, 1].repeat(batch_size, 1), rtol=1e-4, atol=1e-4)
+        self.assert_close(grid_warped[..., -1, 1], grid_norm[..., -1, 1].repeat(batch_size, 1), rtol=1e-4, atol=1e-4)
 
     @pytest.mark.parametrize("batch_size", (1, 2))
     def test_warp_grid_offset_x1y1_depth1(self, batch_size, device, dtype):
@@ -96,9 +95,11 @@ class TestDepthWarper:
         grid_norm = normalize_pixel_coordinates(grid, height, width)
 
         # check offset in x-axis
-        assert_close(grid_warped[..., -2, 0], grid_norm[..., -1, 0].repeat(batch_size, 1), atol=1e-4, rtol=1e-4)
+        self.assert_close(grid_warped[..., -2, 0], grid_norm[..., -1, 0].repeat(batch_size, 1), atol=1e-4, rtol=1e-4)
         # check that y-axis remain the same
-        assert_close(grid_warped[..., -2, :, 1], grid_norm[..., -1, :, 1].repeat(batch_size, 1), rtol=1e-4, atol=1e-4)
+        self.assert_close(
+            grid_warped[..., -2, :, 1], grid_norm[..., -1, :, 1].repeat(batch_size, 1), rtol=1e-4, atol=1e-4
+        )
 
     @pytest.mark.parametrize("batch_size", (1, 2))
     def test_warp_tensor_offset_x1y1(self, batch_size, device, dtype):
@@ -125,7 +126,7 @@ class TestDepthWarper:
         patch_src = warper(depth_src, patch_dst)
 
         # compare patches
-        assert_close(patch_dst[..., 1:, 1:], patch_src[..., :2, :4], atol=1e-4, rtol=1e-4)
+        self.assert_close(patch_dst[..., 1:, 1:], patch_src[..., :2, :4], atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", (1, 2))
     def test_compute_projection(self, batch_size, device, dtype):
@@ -151,29 +152,23 @@ class TestDepthWarper:
 
         # test compute_subpixel_step
         subpixel_step = warper.compute_subpixel_step()
-        assert_close(subpixel_step.item(), 0.1715, rtol=1e-3, atol=1e-3)
+        self.assert_close(subpixel_step.item(), 0.1715, rtol=1e-3, atol=1e-3)
 
     @pytest.mark.parametrize("batch_size", (1, 2))
-    def test_gradcheck(self, batch_size, device, dtype):
+    def test_gradcheck(self, batch_size, device):
+        dtype = torch.float64
         # prepare data
         channels, height, width = 3, 3, 5  # output shape
         pinhole_src, pinhole_dst = self._create_pinhole_pair(batch_size, device, dtype)
 
         # initialize depth to one
         depth_src = torch.ones(batch_size, 1, height, width, device=device, dtype=dtype)
-        depth_src = utils.tensor_to_gradcheck_var(depth_src)  # to var
 
         # create patch to warp
         img_dst = torch.ones(batch_size, channels, height, width, device=device, dtype=dtype)
-        img_dst = utils.tensor_to_gradcheck_var(img_dst)  # to var
 
         # evaluate function gradient
-        assert gradcheck(
-            kornia.geometry.depth.depth_warp,
-            (pinhole_dst, pinhole_src, depth_src, img_dst, height, width),
-            raise_exception=True,
-            fast_mode=True,
-        )
+        self.gradcheck(kornia.geometry.depth.depth_warp, (pinhole_dst, pinhole_src, depth_src, img_dst, height, width))
 
     # TODO(edgar): we should include a test showing some kind of occlusion
     # def test_warp_with_occlusion(self):

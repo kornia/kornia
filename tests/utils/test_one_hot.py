@@ -1,7 +1,8 @@
 import torch
 
 import kornia
-from kornia.testing import assert_close
+
+from testing.base import assert_close
 
 
 class TestOneHot:

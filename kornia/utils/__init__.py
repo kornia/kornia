@@ -8,9 +8,11 @@ from .helpers import (
     get_cuda_or_mps_device_if_available,
     get_mps_device_if_available,
     is_autocast_enabled,
+    is_mps_tensor_safe,
     map_location_to_cpu,
     safe_inverse_with_mask,
     safe_solve_with_mask,
+    xla_is_available,
 )
 from .image import ImageToTensor, image_list_to_tensor, image_to_tensor, tensor_to_image
 from .image_print import image_to_string, print_image
@@ -48,4 +50,6 @@ __all__ = [
     "deprecated",
     "image_to_string",
     "print_image",
+    "xla_is_available",
+    "is_mps_tensor_safe",
 ]

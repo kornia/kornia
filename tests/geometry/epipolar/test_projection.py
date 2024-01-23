@@ -3,7 +3,8 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia.geometry.epipolar as epi
-from kornia.testing import assert_close
+
+from testing.base import assert_close
 
 
 class TestIntrinsicsLike:

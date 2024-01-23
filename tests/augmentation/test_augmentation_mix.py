@@ -12,10 +12,11 @@ from kornia.augmentation import (
     RandomTransplantation,
     RandomTransplantation3D,
 )
-from kornia.testing import BaseTester, assert_close, tensor_to_gradcheck_var
+
+from testing.base import BaseTester
 
 
-class TestRandomMixUpV2:
+class TestRandomMixUpV2(BaseTester):
     def test_smoke(self, device, dtype):
         f = RandomMixUpV2()
         repr = "RandomMixUpV2(lambda_val=None, p=1.0, p_batch=1.0, same_on_batch=False)"
@@ -40,10 +41,10 @@ class TestRandomMixUpV2:
 
         out_image, out_label = f(input, label)
 
-        assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
-        assert_close(out_label[:, 0], label)
-        assert_close(out_label[:, 1], torch.tensor([0, 1], device=device, dtype=dtype))
-        assert_close(out_label[:, 2], lam, rtol=1e-4, atol=1e-4)
+        self.assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(out_label[:, 0], label)
+        self.assert_close(out_label[:, 1], torch.tensor([0, 1], device=device, dtype=dtype))
+        self.assert_close(out_label[:, 2], lam, rtol=1e-4, atol=1e-4)
 
     def test_random_mixup_p0(self, device, dtype):
         torch.manual_seed(0)
@@ -59,8 +60,8 @@ class TestRandomMixUpV2:
 
         out_image, out_label = f(input, label)
 
-        assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
-        assert_close(out_label[:, 2], lam, rtol=1e-4, atol=1e-4)
+        self.assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(out_label[:, 2], lam, rtol=1e-4, atol=1e-4)
 
     def test_random_mixup_lam0(self, device, dtype):
         torch.manual_seed(0)
@@ -76,10 +77,10 @@ class TestRandomMixUpV2:
 
         out_image, out_label = f(input, label)
 
-        assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
-        assert_close(out_label[:, 0], label)
-        assert_close(out_label[:, 1], torch.tensor([0, 1], device=device, dtype=dtype))
-        assert_close(out_label[:, 2], lam, rtol=1e-4, atol=1e-4)
+        self.assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(out_label[:, 0], label)
+        self.assert_close(out_label[:, 1], torch.tensor([0, 1], device=device, dtype=dtype))
+        self.assert_close(out_label[:, 2], lam, rtol=1e-4, atol=1e-4)
 
     def test_random_mixup_same_on_batch(self, device, dtype):
         torch.manual_seed(0)
@@ -99,13 +100,13 @@ class TestRandomMixUpV2:
         )
 
         out_image, out_label = f(input, label)
-        assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
-        assert_close(out_label[:, 0], label)
-        assert_close(out_label[:, 1], torch.tensor([0, 1], device=device, dtype=dtype))
-        assert_close(out_label[:, 2], lam, rtol=1e-4, atol=1e-4)
+        self.assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(out_label[:, 0], label)
+        self.assert_close(out_label[:, 1], torch.tensor([0, 1], device=device, dtype=dtype))
+        self.assert_close(out_label[:, 2], lam, rtol=1e-4, atol=1e-4)
 
 
-class TestRandomCutMixV2:
+class TestRandomCutMixV2(BaseTester):
     def test_smoke(self):
         f = RandomCutMixV2(data_keys=["input", "class"])
         repr = "RandomCutMixV2(cut_size=None, beta=None, num_mix=1, p=1.0, p_batch=1.0, same_on_batch=False)"
@@ -131,10 +132,10 @@ class TestRandomCutMixV2:
 
         out_image, out_label = f(input, label)
 
-        assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
-        assert_close(out_label[0, :, 0], label)
-        assert_close(out_label[0, :, 1], torch.tensor([0, 1], device=device, dtype=dtype))
-        assert_close(out_label[0, :, 2], torch.tensor([0.5, 0.5], device=device, dtype=dtype))
+        self.assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(out_label[0, :, 0], label)
+        self.assert_close(out_label[0, :, 1], torch.tensor([0, 1], device=device, dtype=dtype))
+        self.assert_close(out_label[0, :, 2], torch.tensor([0.5, 0.5], device=device, dtype=dtype))
 
     def test_random_mixup_p0(self, device, dtype):
         torch.manual_seed(76)
@@ -150,8 +151,8 @@ class TestRandomCutMixV2:
 
         out_image, out_label = f(input, label)
 
-        assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
-        assert_close(out_label, exp_label)
+        self.assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(out_label, exp_label)
 
     def test_random_mixup_beta0(self, device, dtype):
         torch.manual_seed(76)
@@ -175,11 +176,11 @@ class TestRandomCutMixV2:
 
         out_image, out_label = f(input, label)
 
-        assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
-        assert_close(out_label[0, :, 0], label)
-        assert_close(out_label[0, :, 1], torch.tensor([0, 1], device=device, dtype=dtype))
+        self.assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(out_label[0, :, 0], label)
+        self.assert_close(out_label[0, :, 1], torch.tensor([0, 1], device=device, dtype=dtype))
         # cut area = 4 / 12
-        assert_close(out_label[0, :, 2], torch.tensor([0.33333, 0.33333], device=device, dtype=dtype))
+        self.assert_close(out_label[0, :, 2], torch.tensor([0.33333, 0.33333], device=device, dtype=dtype))
 
     def test_random_mixup_num2(self, device, dtype):
         torch.manual_seed(76)
@@ -201,12 +202,12 @@ class TestRandomCutMixV2:
 
         out_image, out_label = f(input, label)
 
-        assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
-        assert_close(out_label[:, :, 0], label.view(1, -1).expand(5, 2))
-        assert_close(
+        self.assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(out_label[:, :, 0], label.view(1, -1).expand(5, 2))
+        self.assert_close(
             out_label[:, :, 1], torch.tensor([[1, 0], [1, 0], [1, 0], [1, 0], [0, 1]], device=device, dtype=dtype)
         )
-        assert_close(
+        self.assert_close(
             out_label[:, :, 2],
             torch.tensor(
                 [[0.0833, 0.3333], [0.0, 0.1667], [0.5, 0.0833], [0.0833, 0.0], [0.5, 0.3333]],
@@ -237,15 +238,15 @@ class TestRandomCutMixV2:
 
         out_image, out_label = f(input, label)
 
-        assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
-        assert_close(out_label[0, :, 0], label)
-        assert_close(out_label[0, :, 1], torch.tensor([0, 1], device=device, dtype=dtype))
-        assert_close(
+        self.assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(out_label[0, :, 0], label)
+        self.assert_close(out_label[0, :, 1], torch.tensor([0, 1], device=device, dtype=dtype))
+        self.assert_close(
             out_label[0, :, 2], torch.tensor([0.5000, 0.5000], device=device, dtype=dtype), rtol=1e-4, atol=1e-4
         )
 
 
-class TestRandomMosaic:
+class TestRandomMosaic(BaseTester):
     def test_smoke(self):
         f = RandomMosaic(data_keys=["input", "class"])
         repr = (
@@ -324,8 +325,8 @@ class TestRandomMosaic:
             dtype=dtype,
         )
 
-        assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
-        assert_close(out_box, expected_box, rtol=1e-4, atol=1e-4)
+        self.assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(out_box, expected_box, rtol=1e-4, atol=1e-4)
 
     @pytest.mark.parametrize("p", [0.0, 0.5, 1.0])
     def test_p(self, p, device, dtype):
@@ -347,7 +348,7 @@ class TestRandomMosaic:
         f(input, boxes)
 
 
-class TestRandomJigsaw:
+class TestRandomJigsaw(BaseTester):
     def test_smoke(self, device, dtype):
         f = RandomJigsaw(data_keys=["input"])
         repr = "RandomJigsaw(grid=(4, 4), p=0.5, p_batch=1.0, same_on_batch=False, grid=(4, 4))"
@@ -386,7 +387,7 @@ class TestRandomJigsaw:
             dtype=dtype,
         )
 
-        assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(out_image, expected, rtol=1e-4, atol=1e-4)
 
     @pytest.mark.parametrize("p", [0.0, 0.5, 1.0])
     @pytest.mark.parametrize("same_on_batch", [True, False])
@@ -566,10 +567,7 @@ class TestRandomTransplantation(BaseTester):
         image = torch.rand(1, 3, 2, 2, device=device, dtype=torch.float64)
         mask = torch.randint(0, 2, (1, 2, 2), device=device, dtype=torch.float64)
 
-        image = tensor_to_gradcheck_var(image)  # to var
-        mask = tensor_to_gradcheck_var(mask)  # to var
-
-        assert self.gradcheck(RandomTransplantation(p=1.0), (image, mask), raise_exception=True, fast_mode=True)
+        self.gradcheck(RandomTransplantation(p=1.0), (image, mask))
 
     def test_exception(self, device, dtype):
         torch.manual_seed(22)

@@ -4,7 +4,8 @@ import torch
 
 from kornia.core import Device, Tensor
 from kornia.nerf.volume_renderer import IrregularRenderer, RegularRenderer
-from kornia.testing import assert_close
+
+from testing.base import assert_close
 
 
 def _create_regular_point_cloud(

@@ -18,8 +18,9 @@ from kornia.augmentation.random_generator import (
     ResizedCropGenerator,
     center_crop_generator,
 )
-from kornia.testing import assert_close
 from kornia.utils._compat import torch_version_ge
+
+from testing.base import assert_close
 
 
 class RandomGeneratorBaseTests:

@@ -3,12 +3,13 @@ import sys
 import pytest
 import torch
 
-import kornia.testing as utils  # test utils
 from kornia.feature.disk import DISK, DISKFeatures
-from kornia.testing import assert_close
+
+from testing.base import BaseTester
+from testing.casts import dict_to
 
 
-class TestDisk:
+class TestDisk(BaseTester):
     def test_smoke(self, dtype, device):
         disk = DISK().to(device, dtype)
         inp = torch.ones(1, 3, 64, 64, device=device, dtype=dtype)
@@ -41,12 +42,12 @@ class TestDisk:
     @pytest.mark.parametrize("data", ["disk_outdoor"], indirect=True)
     def test_pretrained_outdoor(self, device, dtype, data):
         disk = DISK.from_pretrained(checkpoint="depth", device=device).to(dtype)
-        data_dev = utils.dict_to(data, device, dtype)
+        data_dev = dict_to(data, device, dtype)
         num_feat = 256
         with torch.no_grad():
             out = disk(data_dev["img1"], num_feat)
-        assert_close(out[0].keypoints, data_dev["disk1"][0].keypoints.to(dtype))
-        assert_close(out[0].descriptors, data_dev["disk1"][0].descriptors.to(dtype))
+        self.assert_close(out[0].keypoints, data_dev["disk1"][0].keypoints.to(dtype))
+        self.assert_close(out[0].descriptors, data_dev["disk1"][0].descriptors.to(dtype))
 
     def test_heatmap_and_dense_descriptors(self, dtype, device):
         disk = DISK().to(device, dtype)

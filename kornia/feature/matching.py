@@ -5,7 +5,7 @@ import torch
 from kornia.core import Module, Tensor, concatenate
 from kornia.core.check import KORNIA_CHECK_DM_DESC, KORNIA_CHECK_SHAPE
 from kornia.feature.laf import get_laf_center
-from kornia.testing import is_mps_tensor_safe
+from kornia.utils.helpers import is_mps_tensor_safe
 
 from .adalam import get_adalam_default_config, match_adalam
 

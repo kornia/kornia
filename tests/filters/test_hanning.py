@@ -2,7 +2,8 @@ import pytest
 import torch
 
 from kornia.filters import get_hanning_kernel1d, get_hanning_kernel2d
-from kornia.testing import assert_close
+
+from testing.base import assert_close
 
 
 @pytest.mark.parametrize("window_size", [5, 11])

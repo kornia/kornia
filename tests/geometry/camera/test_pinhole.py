@@ -2,13 +2,13 @@ import math
 
 import pytest
 import torch
-from torch.autograd import gradcheck
 
 import kornia
-from kornia.testing import assert_close, tensor_to_gradcheck_var
+
+from testing.base import BaseTester
 
 
-class TestCam2Pixel:
+class TestCam2Pixel(BaseTester):
     def _create_intrinsics(self, batch_size, fx, fy, cx, cy, device, dtype):
         temp = torch.eye(4, device=device, dtype=dtype)
         temp[0, 0], temp[0, 2] = fx, cx
@@ -81,10 +81,11 @@ class TestCam2Pixel:
             depth=depth, intrinsics_inv=intrinsics_inv, pixel_coords=pixel_coords_concat
         )
 
-        assert_close(cam_coords_output, cam_coords_input, atol=1e-4, rtol=1e-4)
+        self.assert_close(cam_coords_output, cam_coords_input, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", (1,))
-    def test_gradcheck(self, batch_size, device, dtype):
+    def test_gradcheck(self, batch_size, device):
+        dtype = torch.float64
         H, W = 10, 20
         fx, fy = W, H
         cx, cy = W / 2, H / 2
@@ -107,20 +108,10 @@ class TestCam2Pixel:
         torch.manual_seed(seed)
         cam_coords_src = self._get_samples((batch_size, H, W, 3), low, high, device, dtype)
 
-        cam_coords_src = tensor_to_gradcheck_var(cam_coords_src)
-        proj_mat = tensor_to_gradcheck_var(proj_mat)
-
-        assert gradcheck(
-            kornia.geometry.camera.cam2pixel,
-            (cam_coords_src, proj_mat, eps),
-            raise_exception=True,
-            atol=atol,
-            rtol=rtol,
-            fast_mode=True,
-        )
+        self.gradcheck(kornia.geometry.camera.cam2pixel, (cam_coords_src, proj_mat, eps), atol=atol, rtol=rtol)
 
 
-class TestPixel2Cam:
+class TestPixel2Cam(BaseTester):
     def _create_intrinsics(self, batch_size, fx, fy, cx, cy, device, dtype):
         temp = torch.eye(4, device=device, dtype=dtype)
         temp[0, 0], temp[0, 2] = fx, cx
@@ -195,11 +186,12 @@ class TestPixel2Cam:
         )
         pixel_coords_concat = torch.cat([pixel_coords_output, last_ch], axis=-1)
 
-        assert_close(pixel_coords_concat, pixel_coords_input, atol=1e-4, rtol=1e-4)
+        self.assert_close(pixel_coords_concat, pixel_coords_input, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("batch_size", (1,))
     @pytest.mark.slow
-    def test_gradcheck(self, batch_size, device, dtype):
+    def test_gradcheck(self, batch_size, device):
+        dtype = torch.float64
         H, W = 10, 20
         fx, fy = W, H
         cx, cy = W / 2, H / 2
@@ -219,16 +211,10 @@ class TestPixel2Cam:
             batch_size, fx, fy, cx, cy, device=device, dtype=dtype
         ).contiguous()
 
-        depth = tensor_to_gradcheck_var(depth)
-        intrinsics_inv = tensor_to_gradcheck_var(intrinsics_inv)
-        pixel_coords_input = tensor_to_gradcheck_var(pixel_coords_input)
-
-        assert gradcheck(
-            kornia.geometry.camera.pixel2cam, (depth, intrinsics_inv, pixel_coords_input), raise_exception=True
-        )
+        self.gradcheck(kornia.geometry.camera.pixel2cam, (depth, intrinsics_inv, pixel_coords_input), fast_mode=False)
 
 
-class TestPinholeCamera:
+class TestPinholeCamera(BaseTester):
     def _create_intrinsics(self, batch_size, fx, fy, cx, cy, device, dtype):
         intrinsics = torch.eye(4, device=device, dtype=dtype)
         intrinsics[..., 0, 0] = fx
@@ -389,20 +375,20 @@ class TestPinholeCamera:
         pinhole = kornia.geometry.camera.PinholeCamera(intrinsics, extrinsics, height, width)
         pinhole_scale = pinhole.scale(scale_factor)
 
-        assert_close(
+        self.assert_close(
             pinhole_scale.intrinsics[..., 0, 0], pinhole.intrinsics[..., 0, 0] * scale_val, atol=1e-4, rtol=1e-4
         )  # fx
-        assert_close(
+        self.assert_close(
             pinhole_scale.intrinsics[..., 1, 1], pinhole.intrinsics[..., 1, 1] * scale_val, atol=1e-4, rtol=1e-4
         )  # fy
-        assert_close(
+        self.assert_close(
             pinhole_scale.intrinsics[..., 0, 2], pinhole.intrinsics[..., 0, 2] * scale_val, atol=1e-4, rtol=1e-4
         )  # cx
-        assert_close(
+        self.assert_close(
             pinhole_scale.intrinsics[..., 1, 2], pinhole.intrinsics[..., 1, 2] * scale_val, atol=1e-4, rtol=1e-4
         )  # cy
-        assert_close(pinhole_scale.height, pinhole.height * scale_val, atol=1e-4, rtol=1e-4)
-        assert_close(pinhole_scale.width, pinhole.width * scale_val, atol=1e-4, rtol=1e-4)
+        self.assert_close(pinhole_scale.height, pinhole.height * scale_val, atol=1e-4, rtol=1e-4)
+        self.assert_close(pinhole_scale.width, pinhole.width * scale_val, atol=1e-4, rtol=1e-4)
 
     def test_pinhole_camera_scale_inplace(self, device, dtype):
         batch_size = 2
@@ -421,20 +407,20 @@ class TestPinholeCamera:
         pinhole_scale = pinhole.clone()
         pinhole_scale.scale_(scale_factor)
 
-        assert_close(
+        self.assert_close(
             pinhole_scale.intrinsics[..., 0, 0], pinhole.intrinsics[..., 0, 0] * scale_val, atol=1e-4, rtol=1e-4
         )  # fx
-        assert_close(
+        self.assert_close(
             pinhole_scale.intrinsics[..., 1, 1], pinhole.intrinsics[..., 1, 1] * scale_val, atol=1e-4, rtol=1e-4
         )  # fy
-        assert_close(
+        self.assert_close(
             pinhole_scale.intrinsics[..., 0, 2], pinhole.intrinsics[..., 0, 2] * scale_val, atol=1e-4, rtol=1e-4
         )  # cx
-        assert_close(
+        self.assert_close(
             pinhole_scale.intrinsics[..., 1, 2], pinhole.intrinsics[..., 1, 2] * scale_val, atol=1e-4, rtol=1e-4
         )  # cy
-        assert_close(pinhole_scale.height, pinhole.height * scale_val, atol=1e-4, rtol=1e-4)
-        assert_close(pinhole_scale.width, pinhole.width * scale_val, atol=1e-4, rtol=1e-4)
+        self.assert_close(pinhole_scale.height, pinhole.height * scale_val, atol=1e-4, rtol=1e-4)
+        self.assert_close(pinhole_scale.width, pinhole.width * scale_val, atol=1e-4, rtol=1e-4)
 
     def test_pinhole_camera_project_and_unproject(self, device, dtype):
         batch_size = 5
@@ -460,7 +446,7 @@ class TestPinholeCamera:
 
         point_2d = pinhole.project(point_3d)
         point_3d_hat = pinhole.unproject(point_2d, depth)
-        assert_close(point_3d, point_3d_hat, atol=1e-4, rtol=1e-4)
+        self.assert_close(point_3d, point_3d_hat, atol=1e-4, rtol=1e-4)
 
     def test_pinhole_camera_device(self, device, dtype):
         batch_size = 5

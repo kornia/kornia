@@ -1,13 +1,12 @@
 import pytest
 import torch
-from torch.autograd import gradcheck
 
 import kornia
-import kornia.testing as utils  # test utils
-from kornia.testing import BaseTester, assert_close
+
+from testing.base import BaseTester
 
 
-class TestPyrUp:
+class TestPyrUp(BaseTester):
     def test_shape(self, device, dtype):
         inp = torch.zeros(1, 2, 4, 4, device=device, dtype=dtype)
         pyr = kornia.geometry.PyrUp()
@@ -18,13 +17,12 @@ class TestPyrUp:
         pyr = kornia.geometry.PyrUp()
         assert pyr(inp).shape == (2, 2, 8, 8)
 
-    def test_gradcheck(self, device, dtype):
-        img = torch.rand(1, 2, 5, 4, device=device, dtype=dtype)
-        img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.geometry.pyrup, (img,), nondet_tol=1e-8, raise_exception=True, fast_mode=True)
+    def test_gradcheck(self, device):
+        img = torch.rand(1, 2, 5, 4, device=device, dtype=torch.float64)
+        self.gradcheck(kornia.geometry.pyrup, (img,), nondet_tol=1e-8)
 
 
-class TestPyrDown:
+class TestPyrDown(BaseTester):
     def test_shape(self, device, dtype):
         inp = torch.zeros(1, 2, 4, 4, device=device, dtype=dtype)
         pyr = kornia.geometry.PyrDown()
@@ -44,16 +42,15 @@ class TestPyrDown:
         inp = torch.zeros(1, 1, 6, 6, device=device, dtype=dtype)
         inp[:, :, 2:4, 2:4] = 1.0
         pyr_out = kornia.geometry.PyrDown()(inp).squeeze()
-        assert_close(pyr_out, pyr_out.flip(0))
-        assert_close(pyr_out, pyr_out.flip(1))
+        self.assert_close(pyr_out, pyr_out.flip(0))
+        self.assert_close(pyr_out, pyr_out.flip(1))
 
-    def test_gradcheck(self, device, dtype):
-        img = torch.rand(1, 2, 5, 4, device=device, dtype=dtype)
-        img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.geometry.pyrdown, (img,), nondet_tol=1e-8, raise_exception=True, fast_mode=True)
+    def test_gradcheck(self, device):
+        img = torch.rand(1, 2, 5, 4, device=device, dtype=torch.float64)
+        self.gradcheck(kornia.geometry.pyrdown, (img,), nondet_tol=1e-8)
 
 
-class TestScalePyramid:
+class TestScalePyramid(BaseTester):
     def test_shape_tuple(self, device, dtype):
         inp = torch.zeros(3, 2, 41, 41, device=device, dtype=dtype)
         SP = kornia.geometry.ScalePyramid(n_levels=1, min_size=30)
@@ -101,22 +98,21 @@ class TestScalePyramid:
         for _, pyr_level in enumerate(sp):
             for _, img in enumerate(pyr_level):
                 img = img.squeeze()
-                assert_close(img, img.flip(1))
-                assert_close(img, img.flip(2))
+                self.assert_close(img, img.flip(1))
+                self.assert_close(img, img.flip(2))
 
-    def test_gradcheck(self, device, dtype):
-        img = torch.rand(1, 2, 7, 9, device=device, dtype=dtype)
-        img = utils.tensor_to_gradcheck_var(img)  # to var
+    def test_gradcheck(self, device):
+        img = torch.rand(1, 2, 7, 9, device=device, dtype=torch.float64)
         from kornia.geometry import ScalePyramid as SP
 
         def sp_tuple(img):
             sp, _, _ = SP()(img)
             return tuple(sp)
 
-        assert gradcheck(sp_tuple, (img,), raise_exception=True, nondet_tol=1e-4, fast_mode=True)
+        self.gradcheck(sp_tuple, (img,), nondet_tol=1e-4)
 
 
-class TestBuildPyramid:
+class TestBuildPyramid(BaseTester):
     def test_smoke(self, device, dtype):
         sample = torch.ones(1, 2, 4, 5, device=device, dtype=dtype)
         pyramid = kornia.geometry.transform.build_pyramid(sample, max_level=1)
@@ -137,17 +133,14 @@ class TestBuildPyramid:
             expected_shape = (batch_size, channels, height // denom, width // denom)
             assert img.shape == expected_shape
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         max_level = 1
         batch_size, channels, height, width = 1, 2, 7, 9
-        img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
-        img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(
-            kornia.geometry.transform.build_pyramid, (img, max_level), raise_exception=True, fast_mode=True
-        )
+        img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
+        self.gradcheck(kornia.geometry.transform.build_pyramid, (img, max_level))
 
 
-class TestBuildLaplacianPyramid:
+class TestBuildLaplacianPyramid(BaseTester):
     def test_smoke(self, device, dtype):
         sample = torch.ones(1, 2, 4, 5, device=device, dtype=dtype)
         pyramid = kornia.geometry.transform.build_laplacian_pyramid(sample, max_level=1)
@@ -168,18 +161,11 @@ class TestBuildLaplacianPyramid:
             expected_shape = (batch_size, channels, height // denom, width // denom)
             assert img.shape == expected_shape
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         max_level = 1
         batch_size, channels, height, width = 1, 2, 7, 9
-        img = torch.rand(batch_size, channels, height, width, device=device, dtype=dtype)
-        img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(
-            kornia.geometry.transform.build_laplacian_pyramid,
-            (img, max_level),
-            nondet_tol=1e-8,
-            raise_exception=True,
-            fast_mode=True,
-        )
+        img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
+        self.gradcheck(kornia.geometry.transform.build_laplacian_pyramid, (img, max_level), nondet_tol=1e-8)
 
 
 class TestUpscaleDouble(BaseTester):
@@ -211,14 +197,7 @@ class TestUpscaleDouble(BaseTester):
     @pytest.mark.grad()
     def test_gradcheck(self, device):
         x = self.prepare_data((1, 2, 5, 5), device)
-        x = utils.tensor_to_gradcheck_var(x)
-        assert gradcheck(
-            kornia.geometry.transform.upscale_double, (x,), rtol=5e-2, raise_exception=True, fast_mode=True
-        )
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
+        self.gradcheck(kornia.geometry.transform.upscale_double, (x,), rtol=5e-2)
 
     @pytest.mark.parametrize("shape", ((5, 5), (2, 5, 5), (1, 2, 5, 5)))
     def test_upscale_double_and_back(self, shape, device, dtype):

@@ -4,26 +4,27 @@ import pytest
 import torch
 
 import kornia
-import kornia.testing as utils  # test utils
 from kornia.geometry import transform_points
 from kornia.geometry.conversions import denormalize_homography
 from kornia.geometry.transform import ImageRegistrator
-from kornia.testing import assert_close
 from kornia.utils._compat import torch_version
 
+from testing.base import BaseTester
+from testing.casts import dict_to
 
-class TestSimilarity:
+
+class TestSimilarity(BaseTester):
     def test_smoke(self, device, dtype):
         expected = torch.eye(3, device=device, dtype=dtype)[None]
         for r, sc, sh in zip([True, False], [True, False], [True, False]):
             sim = kornia.geometry.transform.Similarity(r, sc, sh).to(device, dtype)
-            assert_close(sim(), expected, atol=1e-4, rtol=1e-4)
+            self.assert_close(sim(), expected, atol=1e-4, rtol=1e-4)
 
     def test_smoke_inverse(self, device, dtype):
         expected = torch.eye(3, device=device, dtype=dtype)[None]
         for r, sc, sh in zip([True, False], [True, False], [True, False]):
             s = kornia.geometry.transform.Similarity(r, sc, sh).to(device, dtype)
-            assert_close(s.forward_inverse(), expected, atol=1e-4, rtol=1e-4)
+            self.assert_close(s.forward_inverse(), expected, atol=1e-4, rtol=1e-4)
 
     def test_scale(self, device, dtype):
         sc = 0.5
@@ -31,8 +32,8 @@ class TestSimilarity:
         sim.scale.data *= sc
         expected = torch.tensor([[0.5, 0, 0.0], [0, 0.5, 0], [0, 0, 1]], device=device, dtype=dtype)[None]
         inv_expected = torch.tensor([[2.0, 0, 0.0], [0, 2.0, 0], [0, 0, 1]], device=device, dtype=dtype)[None]
-        assert_close(sim.forward_inverse(), inv_expected, atol=1e-4, rtol=1e-4)
-        assert_close(sim(), expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(sim.forward_inverse(), inv_expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(sim(), expected, atol=1e-4, rtol=1e-4)
 
     def test_repr(self, device, dtype):
         for r, sc, sh in zip([True, False], [True, False], [True, False]):
@@ -40,23 +41,23 @@ class TestSimilarity:
             assert s is not None
 
 
-class TestHomography:
+class TestHomography(BaseTester):
     def test_smoke(self, device, dtype):
         expected = torch.eye(3, device=device, dtype=dtype)[None]
         h = kornia.geometry.transform.Homography().to(device, dtype)
-        assert_close(h(), expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(h(), expected, atol=1e-4, rtol=1e-4)
 
     def test_smoke_inverse(self, device, dtype):
         expected = torch.eye(3, device=device, dtype=dtype)[None]
         h = kornia.geometry.transform.Homography().to(device, dtype)
-        assert_close(h.forward_inverse(), expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(h.forward_inverse(), expected, atol=1e-4, rtol=1e-4)
 
     def test_repr(self, device, dtype):
         h = kornia.geometry.transform.Homography().to(device, dtype)
         assert h is not None
 
 
-class TestImageRegistrator:
+class TestImageRegistrator(BaseTester):
     @pytest.mark.parametrize("model_type", ["homography", "similarity", "translation", "scale", "rotation"])
     def test_smoke(self, device, dtype, model_type):
         ir = kornia.geometry.transform.ImageRegistrator(model_type).to(device, dtype)
@@ -73,7 +74,7 @@ class TestImageRegistrator:
         img_dst = kornia.geometry.homography_warp(img_src, homography, (height, width), align_corners=False)
         IR = ImageRegistrator("Similarity", num_iterations=500, lr=3e-4, pyramid_levels=2).to(device, dtype)
         model = IR.register(img_src, img_dst)
-        assert_close(model, homography, atol=1e-3, rtol=1e-3)
+        self.assert_close(model, homography, atol=1e-3, rtol=1e-3)
         model, intermediate = IR.register(img_src, img_dst, output_intermediate_models=True)
         assert len(intermediate) == 2
 
@@ -83,7 +84,7 @@ class TestImageRegistrator:
         torch_version() == "2.0.0" and "win" in sys.platform, reason="Tensor not matching on win with torch 2.0"
     )
     def test_registration_real(self, device, dtype, data):
-        data_dev = utils.dict_to(data, device, dtype)
+        data_dev = dict_to(data, device, dtype)
         IR = ImageRegistrator("homography", num_iterations=1200, lr=2e-2, pyramid_levels=5).to(device, dtype)
         model = IR.register(data_dev["image0"], data_dev["image1"])
         homography_gt = torch.inverse(data_dev["H_gt"])
@@ -100,4 +101,4 @@ class TestImageRegistrator:
         # The tolerance is huge, because the error is in pixels
         # and transformation is quite significant, so
         # 15 px  reprojection error is not super huge
-        assert_close(bbox_in_2_gt, bbox_in_2_gt_est, atol=15, rtol=0.1)
+        self.assert_close(bbox_in_2_gt, bbox_in_2_gt_est, atol=15, rtol=0.1)

@@ -7,7 +7,8 @@ from packaging import version
 from torch.autograd import gradcheck
 
 import kornia
-from kornia.testing import BaseTester
+
+from testing.base import BaseTester
 
 
 class TestRgbToHls(BaseTester):

@@ -1,7 +1,6 @@
 import pytest
 import torch
 
-from kornia.testing import assert_close
 from kornia.utils import _extract_device_dtype
 from kornia.utils.helpers import (
     _torch_histc_cast,
@@ -11,6 +10,8 @@ from kornia.utils.helpers import (
     safe_inverse_with_mask,
     safe_solve_with_mask,
 )
+
+from testing.base import assert_close
 
 
 @pytest.mark.parametrize(

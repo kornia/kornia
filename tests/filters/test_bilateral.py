@@ -2,7 +2,8 @@ import pytest
 import torch
 
 from kornia.filters import BilateralBlur, JointBilateralBlur, bilateral_blur, joint_bilateral_blur
-from kornia.testing import BaseTester, tensor_to_gradcheck_var
+
+from testing.base import BaseTester
 
 
 class TestBilateralBlur(BaseTester):
@@ -52,12 +53,9 @@ class TestBilateralBlur(BaseTester):
         assert actual.is_contiguous()
 
     def test_gradcheck(self, device):
-        img = torch.rand(1, 2, 5, 4, device=device)
-        sigma_color = torch.rand(1, device=device)
-        sigma_space = torch.rand(1, 2, device=device)
-        img = tensor_to_gradcheck_var(img)  # to var
-        sigma_color = tensor_to_gradcheck_var(sigma_color)
-        sigma_space = tensor_to_gradcheck_var(sigma_space)
+        img = torch.rand(1, 2, 5, 4, device=device, dtype=torch.float64)
+        sigma_color = torch.rand(1, device=device, dtype=torch.float64)
+        sigma_space = torch.rand(1, 2, device=device, dtype=torch.float64)
 
         self.gradcheck(bilateral_blur, (img, 3, 1, (1, 1)))
         self.gradcheck(bilateral_blur, (img, 3, sigma_color, (1, 1)))
@@ -219,10 +217,8 @@ class TestJointBilateralBlur(BaseTester):
         assert actual.is_contiguous()
 
     def test_gradcheck(self, device):
-        img = torch.rand(1, 2, 5, 4, device=device)
-        guide = torch.rand(1, 2, 5, 4, device=device)
-        img = tensor_to_gradcheck_var(img)  # to var
-        guide = tensor_to_gradcheck_var(guide)
+        img = torch.rand(1, 2, 5, 4, device=device, dtype=torch.float64)
+        guide = torch.rand(1, 2, 5, 4, device=device, dtype=torch.float64)
         self.gradcheck(joint_bilateral_blur, (img, guide, 3, 1, (1, 1)))
 
     def test_module(self, device, dtype):

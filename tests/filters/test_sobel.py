@@ -2,7 +2,8 @@ import pytest
 import torch
 
 from kornia.filters import Sobel, SpatialGradient, SpatialGradient3d, sobel, spatial_gradient, spatial_gradient3d
-from kornia.testing import BaseTester, tensor_to_gradcheck_var
+
+from testing.base import BaseTester
 
 
 class TestSpatialGradient(BaseTester):
@@ -227,8 +228,7 @@ class TestSpatialGradient(BaseTester):
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 1, 3, 4
-        img = torch.rand(batch_size, channels, height, width, device=device)
-        img = tensor_to_gradcheck_var(img)  # to var
+        img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(spatial_gradient, (img,))
 
     def test_module(self, device, dtype):
@@ -394,8 +394,7 @@ class TestSpatialGradient3d(BaseTester):
         self.assert_close(edges, expected)
 
     def test_gradcheck(self, device):
-        img = torch.rand(1, 1, 1, 3, 4, device=device)
-        img = tensor_to_gradcheck_var(img)  # to var
+        img = torch.rand(1, 1, 1, 3, 4, device=device, dtype=torch.float64)
         fast_mode = "cpu" in str(device)  # disable fast mode on gpu
         self.gradcheck(spatial_gradient3d, (img,), fast_mode=fast_mode)
 
@@ -491,8 +490,7 @@ class TestSobel(BaseTester):
     @pytest.mark.parametrize("normalized", [True, False])
     def test_gradcheck(self, normalized, device):
         batch_size, channels, height, width = 1, 1, 3, 4
-        img = torch.rand(batch_size, channels, height, width, device=device)
-        img = tensor_to_gradcheck_var(img)  # to var
+        img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(sobel, (img, normalized))
 
     def test_module(self, device, dtype):

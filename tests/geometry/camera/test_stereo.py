@@ -2,7 +2,8 @@ import pytest
 import torch
 
 from kornia.geometry.camera import StereoCamera
-from kornia.testing import assert_close
+
+from testing.base import assert_close
 
 
 @pytest.fixture(params=[1, 2, 4])
