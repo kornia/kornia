@@ -410,7 +410,7 @@ def jpeg_encode_decode_differentiable(
 
     Where:
        - :math:`I` is the original image to be coded.
-       - :math:`q` is the JPEG quality controling the compression strength.
+       - :math:`q` is the JPEG quality controlling the compression strength.
        - :math:`QT_{y}` is the luma quantization table.
        - :math:`QT_{c}` is the chroma quantization table.
        - :math:`\hat{I}` is the resulting JPEG encoded-decoded image.
@@ -428,7 +428,7 @@ def jpeg_encode_decode_differentiable(
 
     Args:
         image_rgb: the RGB image to be coded.
-        jpeg_quality: JPEG quality in the range :math:`[0, 99]` controling the compression strength.
+        jpeg_quality: JPEG quality in the range :math:`[0, 99]` controlling the compression strength.
         quantization_table_y: quantization table for Y channel. Default: standard quantization table.
         quantization_table_c: quantization table for C channels. Default: standard quantization table.
 
@@ -517,7 +517,7 @@ class JPEGEncodeDecodeDifferentiable(Module):
 
     Where:
        - :math:`I` is the original image to be coded.
-       - :math:`q` is the JPEG quality controling the compression strength.
+       - :math:`q` is the JPEG quality controlling the compression strength.
        - :math:`QT_{y}` is the luma quantization table.
        - :math:`QT_{c}` is the chroma quantization table.
        - :math:`\hat{I}` is the resulting JPEG encoded-decoded image.
@@ -535,7 +535,7 @@ class JPEGEncodeDecodeDifferentiable(Module):
 
     Args:
         image_rgb: the RGB image to be coded.
-        jpeg_quality: JPEG quality in the range :math:`[0, 99]` controling the compression strength.
+        jpeg_quality: JPEG quality in the range :math:`[0, 99]` controlling the compression strength.
         quantization_table_y: quantization table for Y channel. Default: standard quantization table.
         quantization_table_c: quantization table for C channels. Default: standard quantization table.
 
