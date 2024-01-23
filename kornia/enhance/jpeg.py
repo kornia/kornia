@@ -418,9 +418,13 @@ def jpeg_encode_decode_differentiable(
     Notes:
         The input (and output) pixel range is :math:`[0, 1]`. In case you want to handle normalized images you are
         required to first perform denormalization followed by normalizing the output images again.
-        Note, this implementation models the encoding-decoding mapping of JPEG in a differentiable setting,
-        howerver, does not allow to excess the JPEG-coded byte file itself.
+
+        Note, that this implementation models the encoding-decoding mapping of JPEG in a differentiable setting,
+        however, does not allow the excess of the JPEG-coded byte file itself.
         For more details please refer to :cite:`reich2024`.
+
+        This implementation is not meant for data loading. For loading JPEG images please refer to `kornia.io`.
+        There we provide an optimized Rust implementation for fast JPEG loading.
 
     Args:
         image_rgb: the RGB image to be coded.
@@ -521,9 +525,13 @@ class JPEGEncodeDecodeDifferentiable(Module):
     Notes:
         The input (and output) pixel range is :math:`[0, 1]`. In case you want to handle normalized images you are
         required to first perform denormalization followed by normalizing the output images again.
-        Note, this implementation models the encoding-decoding mapping of JPEG in a differentiable setting,
-        howerver, does not allow to excess the JPEG-coded byte file itself.
+
+        Note, that this implementation models the encoding-decoding mapping of JPEG in a differentiable setting,
+        however, does not allow the excess of the JPEG-coded byte file itself.
         For more details please refer to :cite:`reich2024`.
+
+        This implementation is not meant for data loading. For loading JPEG images please refer to `kornia.io`.
+        There we provide an optimized Rust implementation for fast JPEG loading.
 
     Args:
         image_rgb: the RGB image to be coded.
