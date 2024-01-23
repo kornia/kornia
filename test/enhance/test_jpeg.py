@@ -983,8 +983,19 @@ class TestDiffJPEG(BaseTester):
         assert img_jpeg.shape == img.shape
 
     def test_gradcheck(self, device) -> None:
-        """Not applicable since diff.
-
-        JPEG is not continuous, thus PyTorch's gradcheck will always fail.
-        """
-        pass
+        """We test that the gradient matches the gradient of the reference implementation."""
+        B, H, W = 1, 16, 16
+        img = torch.zeros(B, 3, H, W, device=device, dtype=torch.float)
+        img[..., 0, 4:-4, 4:-4] = 1.0
+        img[..., 1, 4:-4, 4:-4] = 0.5
+        img[..., 2, 4:-4, 4:-4] = 0.5
+        img.requires_grad = True
+        jpeg_quality = torch.tensor([10.0], device=device, dtype=torch.float, requires_grad=True)
+        img_jpeg = kornia.enhance.diff_jpeg(img, jpeg_quality)
+        (img_jpeg - torch.zeros_like(img_jpeg)).abs().sum().backward()
+        # Numbers generated based on reference implementation
+        img_jpeg_mean_grad_ref = torch.tensor([0.1919])
+        jpeg_quality_grad_ref = torch.tensor([0.0042])
+        # We use a slightly higher tolerance since our implementation varies from the reference implementation
+        self.assert_close(img.grad.mean().view(-1), img_jpeg_mean_grad_ref, rtol=0.01, atol=0.01)
+        self.assert_close(jpeg_quality.grad, jpeg_quality_grad_ref, rtol=0.01, atol=0.01)
