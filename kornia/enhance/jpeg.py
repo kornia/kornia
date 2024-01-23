@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional, Tuple
+from typing import Optional
 
 import torch
 
@@ -250,7 +250,7 @@ def _dequantize(
     return output
 
 
-def _chroma_subsampling(input_ycbcr: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
+def _chroma_subsampling(input_ycbcr: Tensor) -> tuple[Tensor, Tensor, Tensor]:
     """This function implements chroma subsampling.
 
     Args:
@@ -292,7 +292,7 @@ def _jpeg_encode(
     jpeg_quality: Tensor,
     quantization_table_y: Tensor,
     quantization_table_c: Tensor,
-) -> Tuple[Tensor, Tensor, Tensor]:
+) -> tuple[Tensor, Tensor, Tensor]:
     """Performs JPEG encoding.
 
     Args:
