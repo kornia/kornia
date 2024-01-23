@@ -964,7 +964,8 @@ class TestDiffJPEG(BaseTester):
                         ],
                     ],
                 ]
-            ], dtype=dtype
+            ],
+            dtype=dtype,
         )
         # We use a slightly higher tolerance since our implementation varies from the reference implementation
         assert_close(img_jpeg[..., :4, :4], img_jpeg_ref[..., :4, :4], rtol=0.01, atol=0.01)
@@ -981,5 +982,8 @@ class TestDiffJPEG(BaseTester):
         assert img_jpeg.shape == img.shape
 
     def test_gradcheck(self, device) -> None:
-        """Not applicable since diff. JPEG is not continuous, thus PyTorch's gradcheck will always fail."""
+        """Not applicable since diff.
+
+        JPEG is not continuous, thus PyTorch's gradcheck will always fail.
+        """
         pass

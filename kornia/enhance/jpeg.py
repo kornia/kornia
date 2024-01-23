@@ -3,13 +3,13 @@ from typing import Optional, Tuple
 import torch
 
 from kornia.color import rgb_to_ycbcr, ycbcr_to_rgb
-from kornia.core import Device, Dtype, Tensor, Module
-from kornia.geometry import rescale
+from kornia.core import Device, Dtype, Module, Tensor
 from kornia.core.check import (
     KORNIA_CHECK,
     KORNIA_CHECK_IS_TENSOR,
     KORNIA_CHECK_SHAPE,
 )
+from kornia.geometry import rescale
 
 QUANTIZATION_TABLE_Y: Tensor = torch.tensor(
     [
