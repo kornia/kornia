@@ -314,22 +314,18 @@ def _jpeg_encode(
     input_y, input_cb, input_cr = _chroma_subsampling(image_ycbcr)
     # Patchify, DCT, and rounding
     input_y, input_cb, input_cr = _patchify_8x8(input_y), _patchify_8x8(input_cb), _patchify_8x8(input_cr)
-    dct_y, dct_cb, dct_cr = _dct_8x8(input_y), _dct_8x8(input_cb), _dct_8x8(input_cr)
+    dct_y = _dct_8x8(input_y)
+    dct_cb_cr = _dct_8x8(torch.cat((input_cb, input_cr), dim=1))
     y_encoded: Tensor = _quantize(
         dct_y,
         jpeg_quality,
         quantization_table_y,
     )
-    cb_encoded: Tensor = _quantize(
-        dct_cb,
+    cb_encoded, cr_encoded = _quantize(
+        dct_cb_cr,
         jpeg_quality,
         quantization_table_c,
-    )
-    cr_encoded: Tensor = _quantize(
-        dct_cr,
-        jpeg_quality,
-        quantization_table_c,
-    )
+    ).chunk(2, dim=1)
     return y_encoded, cb_encoded, cr_encoded
 
 
@@ -364,20 +360,14 @@ def _jpeg_decode(
         jpeg_quality,
         quantization_table_y,
     )
-    input_cb = _dequantize(
-        input_cb,
-        jpeg_quality,
-        quantization_table_c,
-    )
-    input_cr = _dequantize(
-        input_cr,
+    input_cb_cr = _dequantize(
+        torch.cat((input_cb, input_cr), dim=1),
         jpeg_quality,
         quantization_table_c,
     )
     # Perform inverse DCT
     idct_y: Tensor = _idct_8x8(input_y)
-    idct_cb: Tensor = _idct_8x8(input_cb)
-    idct_cr: Tensor = _idct_8x8(input_cr)
+    idct_cb, idct_cr = _idct_8x8(input_cb_cr).chunk(2, dim=1)
     # Reverse patching
     image_y: Tensor = _unpatchify_8x8(idct_y, H, W)
     image_cb: Tensor = _unpatchify_8x8(idct_cb, H // 2, W // 2)
