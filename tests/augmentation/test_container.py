@@ -9,7 +9,8 @@ import kornia.augmentation as K
 from kornia.augmentation.container.base import ParamItem
 from kornia.constants import BorderType
 from kornia.geometry.bbox import bbox_to_mask
-from kornia.testing import assert_close
+
+from testing.base import assert_close
 
 
 def reproducibility_test(input, seq):

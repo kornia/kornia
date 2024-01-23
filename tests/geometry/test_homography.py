@@ -2,10 +2,8 @@ import sys
 
 import pytest
 import torch
-from torch.autograd import gradcheck
 
 import kornia
-import kornia.testing as utils
 from kornia.geometry.homography import (
     find_homography_dlt,
     find_homography_dlt_iterated,
@@ -16,11 +14,13 @@ from kornia.geometry.homography import (
     sample_is_valid_for_homography,
     symmetric_transfer_error,
 )
-from kornia.testing import assert_close
 from kornia.utils._compat import torch_version_le
 
+from testing.base import BaseTester
+from testing.geometry.create import create_random_homography
 
-class TestSampleValidation:
+
+class TestSampleValidation(BaseTester):
     def test_good(self, device, dtype):
         pts1 = torch.tensor([[0.0, 0.0], [0.0, 1.0], [1.0, 1.0], [1.0, 0.0]], device=device, dtype=dtype)[None]
         mask = sample_is_valid_for_homography(pts1, pts1)
@@ -43,18 +43,18 @@ class TestSampleValidation:
         assert mask.shape == torch.Size([batch_size])
 
 
-class TestOneWayError:
+class TestOneWayError(BaseTester):
     def test_smoke(self, device, dtype):
         pts1 = torch.rand(1, 6, 2, device=device, dtype=dtype)
         pts2 = torch.rand(1, 6, 2, device=device, dtype=dtype)
-        H = utils.create_random_homography(1, 3).type_as(pts1).to(device)
+        H = create_random_homography(pts1, 3)
         assert oneway_transfer_error(pts1, pts2, H).shape == (1, 6)
 
     def test_batch(self, device, dtype):
         batch_size = 5
         pts1 = torch.rand(batch_size, 3, 2, device=device, dtype=dtype)
         pts2 = torch.rand(batch_size, 3, 2, device=device, dtype=dtype)
-        H = utils.create_random_homography(1, 3).type_as(pts1).to(device)
+        H = create_random_homography(pts1, 3)
         assert oneway_transfer_error(pts1, pts2, H).shape == (batch_size, 3)
 
     def test_gradcheck(self, device):
@@ -62,29 +62,29 @@ class TestOneWayError:
         batch_size, num_points, num_dims = 2, 3, 2
         points1 = torch.rand(batch_size, num_points, num_dims, device=device, dtype=torch.float64, requires_grad=True)
         points2 = torch.rand(batch_size, num_points, num_dims, device=device, dtype=torch.float64)
-        H = utils.create_random_homography(batch_size, 3).type_as(points1).to(device)
-        assert gradcheck(oneway_transfer_error, (points1, points2, H), raise_exception=True, fast_mode=True)
+        H = create_random_homography(points1, 3)
+        self.gradcheck(oneway_transfer_error, (points1, points2, H))
 
     def test_shift(self, device, dtype):
         pts1 = torch.zeros(3, 2, device=device, dtype=dtype)[None]
         pts2 = torch.tensor([[1.0, 0.0], [2.0, 0.0], [2.0, 2.0]], device=device, dtype=dtype)[None]
         H = torch.tensor([[1.0, 0.0, 1.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], dtype=dtype, device=device)[None]
         expected = torch.tensor([0.0, 1.0, 5.0], device=device, dtype=dtype)[None]
-        assert_close(oneway_transfer_error(pts1, pts2, H), expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(oneway_transfer_error(pts1, pts2, H), expected, atol=1e-4, rtol=1e-4)
 
 
-class TestLineSegmentOneWayError:
+class TestLineSegmentOneWayError(BaseTester):
     def test_smoke(self, device, dtype):
         ls1 = torch.rand(1, 6, 2, 2, device=device, dtype=dtype)
         ls2 = torch.rand(1, 6, 2, 2, device=device, dtype=dtype)
-        H = utils.create_random_homography(1, 3).type_as(ls1).to(device)
+        H = create_random_homography(ls1, 3)
         assert line_segment_transfer_error_one_way(ls1, ls2, H).shape == (1, 6)
 
     def test_batch(self, device, dtype):
         batch_size = 5
         ls1 = torch.rand(batch_size, 3, 2, 2, device=device, dtype=dtype)
         ls2 = torch.rand(batch_size, 3, 2, 2, device=device, dtype=dtype)
-        H = utils.create_random_homography(1, 3).type_as(ls1).to(device)
+        H = create_random_homography(ls1, 3)
         assert line_segment_transfer_error_one_way(ls1, ls2, H).shape == (batch_size, 3)
 
     def test_gradcheck(self, device):
@@ -92,8 +92,8 @@ class TestLineSegmentOneWayError:
         batch_size, num_points, num_dims = 2, 3, 2
         ls1 = torch.rand(batch_size, num_points, num_dims, 2, device=device, dtype=torch.float64, requires_grad=True)
         ls2 = torch.rand(batch_size, num_points, num_dims, 2, device=device, dtype=torch.float64)
-        H = utils.create_random_homography(batch_size, 3).type_as(ls1).to(device)
-        assert gradcheck(line_segment_transfer_error_one_way, (ls1, ls2, H), raise_exception=True, fast_mode=True)
+        H = create_random_homography(ls1, 3)
+        self.gradcheck(line_segment_transfer_error_one_way, (ls1, ls2, H))
 
     def test_shift(self, device, dtype):
         pts1 = torch.zeros(3, 2, device=device, dtype=dtype)[None]
@@ -105,21 +105,21 @@ class TestLineSegmentOneWayError:
         ls2 = torch.stack([pts2, pts2_end], dim=2)
         H = torch.tensor([[1.0, 0.0, 1.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], dtype=dtype, device=device)[None]
         expected = torch.tensor([0.0, 1.0, 1.0], device=device, dtype=dtype)[None]
-        assert_close(line_segment_transfer_error_one_way(ls1, ls2, H), expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(line_segment_transfer_error_one_way(ls1, ls2, H), expected, atol=1e-4, rtol=1e-4)
 
 
-class TestSymmetricTransferError:
+class TestSymmetricTransferError(BaseTester):
     def test_smoke(self, device, dtype):
         pts1 = torch.rand(1, 6, 2, device=device, dtype=dtype)
         pts2 = torch.rand(1, 6, 2, device=device, dtype=dtype)
-        H = utils.create_random_homography(1, 3).type_as(pts1).to(device)
+        H = create_random_homography(pts1, 3)
         assert symmetric_transfer_error(pts1, pts2, H).shape == (1, 6)
 
     def test_batch(self, device, dtype):
         batch_size = 5
         pts1 = torch.rand(batch_size, 3, 2, device=device, dtype=dtype)
         pts2 = torch.rand(batch_size, 3, 2, device=device, dtype=dtype)
-        H = utils.create_random_homography(1, 3).type_as(pts1).to(device)
+        H = create_random_homography(pts1, 3)
         assert symmetric_transfer_error(pts1, pts2, H).shape == (batch_size, 3)
 
     def test_gradcheck(self, device):
@@ -127,18 +127,18 @@ class TestSymmetricTransferError:
         batch_size, num_points, num_dims = 2, 3, 2
         points1 = torch.rand(batch_size, num_points, num_dims, device=device, dtype=torch.float64, requires_grad=True)
         points2 = torch.rand(batch_size, num_points, num_dims, device=device, dtype=torch.float64)
-        H = utils.create_random_homography(batch_size, 3).type_as(points1).to(device)
-        assert gradcheck(symmetric_transfer_error, (points1, points2, H), raise_exception=True, fast_mode=True)
+        H = create_random_homography(points1, 3)
+        self.gradcheck(symmetric_transfer_error, (points1, points2, H))
 
     def test_shift(self, device, dtype):
         pts1 = torch.zeros(3, 2, device=device, dtype=dtype)[None]
         pts2 = torch.tensor([[1.0, 0.0], [2.0, 0.0], [2.0, 2.0]], device=device, dtype=dtype)[None]
         H = torch.tensor([[1.0, 0.0, 1.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]], dtype=dtype, device=device)[None]
         expected = torch.tensor([0.0, 2.0, 10.0], device=device, dtype=dtype)[None]
-        assert_close(symmetric_transfer_error(pts1, pts2, H), expected, atol=1e-4, rtol=1e-4)
+        self.assert_close(symmetric_transfer_error(pts1, pts2, H), expected, atol=1e-4, rtol=1e-4)
 
 
-class TestFindHomographyDLT:
+class TestFindHomographyDLT(BaseTester):
     def test_smoke(self, device, dtype):
         points1 = torch.rand(1, 4, 2, device=device, dtype=dtype)
         points2 = torch.rand(1, 4, 2, device=device, dtype=dtype)
@@ -189,7 +189,7 @@ class TestFindHomographyDLT:
         H_withweights = find_homography_dlt(points1, points2, weights)
         assert H_noweights.shape == (B, 3, 3)
         assert H_withweights.shape == (B, 3, 3)
-        assert_close(H_noweights, H_withweights, rtol=1e-3, atol=1e-4)
+        self.assert_close(H_noweights, H_withweights, rtol=1e-3, atol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_clean_points_svd(self, batch_size, device, dtype):
@@ -205,7 +205,7 @@ class TestFindHomographyDLT:
         # compute transform from source to target
         dst_homo_src = find_homography_dlt(points_src, points_dst, weights, "svd")
 
-        assert_close(kornia.geometry.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-3, atol=1e-4)
+        self.assert_close(kornia.geometry.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-3, atol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_clean_points_lu(self, batch_size, device, dtype):
@@ -221,44 +221,26 @@ class TestFindHomographyDLT:
         # compute transform from source to target
         dst_homo_src = find_homography_dlt(points_src, points_dst, weights, "lu")
 
-        assert_close(kornia.geometry.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-3, atol=1e-4)
+        self.assert_close(kornia.geometry.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-3, atol=1e-4)
 
     @pytest.mark.grad()
     def test_gradcheck(self, device):
-        points_src = utils.tensor_to_gradcheck_var(
-            torch.rand(1, 10, 2, device=device, dtype=torch.float64, requires_grad=True)
-        )
-        points_dst = utils.tensor_to_gradcheck_var(torch.rand_like(points_src))
-        weights = utils.tensor_to_gradcheck_var(torch.ones_like(points_src)[..., 0])
+        points_src = torch.rand(1, 10, 2, device=device, dtype=torch.float64, requires_grad=True)
+        points_dst = torch.rand_like(points_src)
+        weights = torch.ones_like(points_src)[..., 0]
 
-        assert gradcheck(
-            find_homography_dlt,
-            (points_src, points_dst, weights),
-            rtol=1e-6,
-            atol=1e-6,
-            raise_exception=True,
-            fast_mode=True,
-        )
+        self.gradcheck(find_homography_dlt, (points_src, points_dst, weights), rtol=1e-6, atol=1e-6)
 
     @pytest.mark.grad()
     def test_gradcheck_lu(self, device):
-        points_src = utils.tensor_to_gradcheck_var(
-            torch.rand(1, 10, 2, device=device, dtype=torch.float64, requires_grad=True)
-        )
-        points_dst = utils.tensor_to_gradcheck_var(torch.rand_like(points_src))
-        weights = utils.tensor_to_gradcheck_var(torch.ones_like(points_src)[..., 0])
+        points_src = torch.rand(1, 10, 2, device=device, dtype=torch.float64, requires_grad=True)
 
-        assert gradcheck(
-            find_homography_dlt,
-            (points_src, points_dst, weights, "lu"),
-            rtol=1e-6,
-            atol=1e-6,
-            raise_exception=True,
-            fast_mode=True,
-        )
+        points_dst = torch.rand_like(points_src)
+        weights = torch.ones_like(points_src)[..., 0]
+        self.gradcheck(find_homography_dlt, (points_src, points_dst, weights, "lu"), rtol=1e-6, atol=1e-6)
 
 
-class TestFindHomographyFromLinesDLT:
+class TestFindHomographyFromLinesDLT(BaseTester):
     def test_smoke(self, device, dtype):
         points1st = torch.rand(1, 4, 2, device=device, dtype=dtype)
         points1end = torch.rand(1, 4, 2, device=device, dtype=dtype)
@@ -331,7 +313,7 @@ class TestFindHomographyFromLinesDLT:
         H_withweights = find_homography_lines_dlt(ls1, ls2, weights)
         assert H_noweights.shape == (B, 3, 3)
         assert H_withweights.shape == (B, 3, 3)
-        assert_close(H_noweights, H_withweights, rtol=1e-3, atol=1e-4)
+        self.assert_close(H_noweights, H_withweights, rtol=1e-3, atol=1e-4)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_clean_points(self, batch_size, device, dtype):
@@ -350,7 +332,9 @@ class TestFindHomographyFromLinesDLT:
         # compute transform from source to target
         dst_homo_src = find_homography_lines_dlt(ls1, ls2, None)
 
-        assert_close(kornia.geometry.transform_points(dst_homo_src, points_src_st), points_dst_st, rtol=1e-3, atol=1e-4)
+        self.assert_close(
+            kornia.geometry.transform_points(dst_homo_src, points_src_st), points_dst_st, rtol=1e-3, atol=1e-4
+        )
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_clean_points_iter(self, batch_size, device, dtype):
@@ -369,7 +353,9 @@ class TestFindHomographyFromLinesDLT:
         # compute transform from source to target
         dst_homo_src = find_homography_lines_dlt_iterated(ls1, ls2, None, 5)
 
-        assert_close(kornia.geometry.transform_points(dst_homo_src, points_src_st), points_dst_st, rtol=1e-3, atol=1e-4)
+        self.assert_close(
+            kornia.geometry.transform_points(dst_homo_src, points_src_st), points_dst_st, rtol=1e-3, atol=1e-4
+        )
 
     @pytest.mark.grad()
     def test_gradcheck(self, device):
@@ -378,16 +364,14 @@ class TestFindHomographyFromLinesDLT:
 
         points_dst_st = torch.rand_like(points_src_st)
         points_dst_end = torch.rand_like(points_src_end)
-        weights = utils.tensor_to_gradcheck_var(torch.ones_like(points_src_st)[..., 0])
-        ls1 = utils.tensor_to_gradcheck_var(torch.stack([points_src_st, points_src_end], axis=2))
-        ls2 = utils.tensor_to_gradcheck_var(torch.stack([points_dst_st, points_dst_end], axis=2))
+        weights = torch.ones_like(points_src_st)[..., 0]
+        ls1 = torch.stack([points_src_st, points_src_end], axis=2)
+        ls2 = torch.stack([points_dst_st, points_dst_end], axis=2)
 
-        assert gradcheck(
-            find_homography_lines_dlt, (ls1, ls2, weights), rtol=1e-6, atol=1e-6, raise_exception=True, fast_mode=True
-        )
+        self.gradcheck(find_homography_lines_dlt, (ls1, ls2, weights), rtol=1e-6, atol=1e-6)
 
 
-class TestFindHomographyDLTIter:
+class TestFindHomographyDLTIter(BaseTester):
     def test_smoke(self, device, dtype):
         points1 = torch.rand(1, 4, 2, device=device, dtype=dtype)
         points2 = torch.rand(1, 4, 2, device=device, dtype=dtype)
@@ -421,24 +405,15 @@ class TestFindHomographyDLTIter:
         # compute transform from source to target
         dst_homo_src = find_homography_dlt_iterated(points_src, points_dst, weights, 10)
 
-        assert_close(kornia.geometry.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-3, atol=1e-4)
+        self.assert_close(kornia.geometry.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-3, atol=1e-4)
 
     @pytest.mark.grad()
     def test_gradcheck(self, device):
         torch.manual_seed(0)
-        points_src = utils.tensor_to_gradcheck_var(
-            torch.rand(1, 10, 2, device=device, dtype=torch.float64, requires_grad=True)
-        )
-        points_dst = utils.tensor_to_gradcheck_var(torch.rand_like(points_src))
-        weights = utils.tensor_to_gradcheck_var(torch.ones_like(points_src)[..., 0])
-        assert gradcheck(
-            find_homography_dlt_iterated,
-            (points_src, points_dst, weights),
-            rtol=1e-6,
-            atol=1e-6,
-            raise_exception=True,
-            fast_mode=True,
-        )
+        points_src = torch.rand(1, 10, 2, device=device, dtype=torch.float64, requires_grad=True)
+        points_dst = torch.rand_like(points_src)
+        weights = torch.ones_like(points_src)[..., 0]
+        self.gradcheck(find_homography_dlt_iterated, (points_src, points_dst, weights), rtol=1e-6, atol=1e-6)
 
     @pytest.mark.grad()
     @pytest.mark.parametrize("batch_size", [1, 2])
@@ -460,6 +435,6 @@ class TestFindHomographyDLTIter:
         # compute transform from source to target
         dst_homo_src = find_homography_dlt_iterated(points_src, points_dst, weights, 0.5, 10)
 
-        assert_close(
+        self.assert_close(
             kornia.geometry.transform_points(dst_homo_src, points_src[:, :-1]), points_dst[:, :-1], rtol=1e-3, atol=1e-3
         )

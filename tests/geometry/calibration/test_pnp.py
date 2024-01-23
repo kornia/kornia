@@ -1,13 +1,13 @@
 import pytest
 import torch
-from torch.autograd import gradcheck
 
 import kornia
 from kornia.geometry.calibration.pnp import _mean_isotropic_scale_normalize
-from kornia.testing import assert_close, tensor_to_gradcheck_var
+
+from testing.base import BaseTester
 
 
-class TestSolvePnpDlt:
+class TestSolvePnpDlt(BaseTester):
     @staticmethod
     def _get_samples(shape, low, high, device, dtype):
         """Return a tensor having the given shape and whose values are in the range [low, high)"""
@@ -97,23 +97,17 @@ class TestSolvePnpDlt:
         assert pred_world_to_cam.shape == (batch_size, 3, 4)
 
     @pytest.mark.parametrize("num_points", (6,))
-    def test_gradcheck(self, num_points, device, dtype):
-        intrinsics, _, world_points, img_points = self._get_test_data(num_points, device, dtype)
+    def test_gradcheck(self, num_points, device):
+        intrinsics, _, world_points, img_points = self._get_test_data(num_points, device, torch.float64)
 
-        world_points = tensor_to_gradcheck_var(world_points)
-        img_points = tensor_to_gradcheck_var(img_points)
-        intrinsics = tensor_to_gradcheck_var(intrinsics)
-
-        assert gradcheck(
-            kornia.geometry.solve_pnp_dlt, (world_points, img_points, intrinsics), raise_exception=True, fast_mode=True
-        )
+        self.gradcheck(kornia.geometry.solve_pnp_dlt, (world_points, img_points, intrinsics))
 
     @pytest.mark.parametrize("num_points", (6, 20))
     def test_pred_world_to_cam(self, num_points, device, dtype):
         intrinsics, gt_world_to_cam, world_points, img_points = self._get_test_data(num_points, device, dtype)
 
         pred_world_to_cam = kornia.geometry.solve_pnp_dlt(world_points, img_points, intrinsics)
-        assert_close(pred_world_to_cam, gt_world_to_cam, atol=1e-4, rtol=1e-4)
+        self.assert_close(pred_world_to_cam, gt_world_to_cam, atol=1e-4, rtol=1e-4)
 
     @pytest.mark.parametrize("num_points", (6, 20))
     def test_project(self, num_points, device, dtype):
@@ -127,10 +121,10 @@ class TestSolvePnpDlt:
         repeated_intrinsics = intrinsics.unsqueeze(1).repeat(1, num_points, 1, 1)
         pred_img_points = self._project_to_image(world_points, pred_world_to_cam_4x4, repeated_intrinsics)
 
-        assert_close(pred_img_points, img_points, atol=1e-3, rtol=1e-3)
+        self.assert_close(pred_img_points, img_points, atol=1e-3, rtol=1e-3)
 
 
-class TestNormalization:
+class TestNormalization(BaseTester):
     @pytest.mark.parametrize("dimension", (2, 3, 5))
     def test_smoke(self, dimension, device, dtype):
         batch_size = 10
@@ -142,10 +136,9 @@ class TestNormalization:
         assert transform.shape == (batch_size, dimension + 1, dimension + 1)
 
     @pytest.mark.parametrize("dimension", (2, 3, 5))
-    def test_gradcheck(self, dimension, device, dtype):
+    def test_gradcheck(self, dimension, device):
         batch_size = 3
         num_points = 5
-        points = torch.rand((batch_size, num_points, dimension), device=device, dtype=dtype)
-        points = tensor_to_gradcheck_var(points)
+        points = torch.rand((batch_size, num_points, dimension), device=device, dtype=torch.float64)
 
-        assert gradcheck(_mean_isotropic_scale_normalize, (points,), raise_exception=True, fast_mode=True)
+        self.gradcheck(_mean_isotropic_scale_normalize, (points,))

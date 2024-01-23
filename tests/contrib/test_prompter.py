@@ -3,7 +3,8 @@ import torch
 
 from kornia.contrib.models.sam import SamConfig
 from kornia.contrib.visual_prompter import VisualPrompter
-from kornia.testing import BaseTester
+
+from testing.base import BaseTester
 
 
 class TestVisualPrompter(BaseTester):

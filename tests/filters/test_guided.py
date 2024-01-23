@@ -2,8 +2,9 @@ import pytest
 import torch
 
 from kornia.filters import GuidedBlur, guided_blur
-from kornia.testing import BaseTester, tensor_to_gradcheck_var
 from kornia.utils._compat import torch_version
+
+from testing.base import BaseTester
 
 
 class TestGuidedBlur(BaseTester):
@@ -67,14 +68,11 @@ class TestGuidedBlur(BaseTester):
         assert actual.is_contiguous()
 
     def test_gradcheck(self, device):
-        guide = torch.rand(1, 2, 5, 4, device=device)
-        img = torch.rand(1, 2, 5, 4, device=device)
-        guide = tensor_to_gradcheck_var(guide)  # to var
-        img = tensor_to_gradcheck_var(img)
+        guide = torch.rand(1, 2, 5, 4, device=device, dtype=torch.float64)
+        img = torch.rand(1, 2, 5, 4, device=device, dtype=torch.float64)
         self.gradcheck(guided_blur, (guide, img, 3, 0.1))
 
-        eps = torch.rand(1, device=device)
-        eps = tensor_to_gradcheck_var(eps)
+        eps = torch.rand(1, device=device, dtype=torch.float64)
         self.gradcheck(guided_blur, (guide, img, 3, eps))
 
     @pytest.mark.parametrize("shape", [(1, 1, 8, 16), (2, 3, 12, 8)])

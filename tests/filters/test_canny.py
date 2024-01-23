@@ -2,8 +2,9 @@ import pytest
 import torch
 
 from kornia.filters import Canny, canny
-from kornia.testing import BaseTester, tensor_to_gradcheck_var
 from kornia.utils._compat import torch_version
+
+from testing.base import BaseTester
 
 
 class TestCanny(BaseTester):
@@ -282,8 +283,7 @@ class TestCanny(BaseTester):
         if "cuda" in str(device):
             pytest.skip("RuntimeError: Backward is not reentrant, i.e., running backward,")
         batch_size, channels, height, width = 1, 1, 3, 4
-        img = torch.rand(batch_size, channels, height, width, device=device)
-        img = tensor_to_gradcheck_var(img)
+        img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(canny, img)
 
     def test_module(self, device, dtype):

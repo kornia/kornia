@@ -9,7 +9,8 @@ from kornia.augmentation.random_generator import (
     RotationGenerator3D,
     center_crop_generator3d,
 )
-from kornia.testing import assert_close
+
+from testing.base import assert_close
 
 
 class RandomGeneratorBaseTests:

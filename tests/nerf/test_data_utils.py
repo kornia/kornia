@@ -5,7 +5,9 @@ import torch
 from kornia.core import Device, Tensor
 from kornia.geometry.camera import PinholeCamera
 from kornia.nerf.data_utils import RayDataset, instantiate_ray_dataloader
-from kornia.testing import assert_close
+
+from testing.base import assert_close
+
 from tests.nerf.test_rays import create_four_cameras
 
 

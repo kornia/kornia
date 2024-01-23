@@ -3,7 +3,8 @@ import torch
 
 from kornia.core import Tensor
 from kornia.core.tensor_wrapper import TensorWrapper, unwrap, wrap
-from kornia.testing import BaseTester
+
+from testing.base import BaseTester
 
 
 class TestTensorWrapper(BaseTester):

@@ -1,10 +1,9 @@
 import pytest
 import torch
-from torch.autograd import gradcheck
 
 import kornia
-import kornia.testing as utils  # test utils
-from kornia.testing import BaseTester
+
+from testing.base import BaseTester
 
 
 class TestZCA(BaseTester):
@@ -69,11 +68,9 @@ class TestZCA(BaseTester):
 
         self.assert_close(data, data_hat, low_tolerance=True)
 
-    def test_grad_zca_individual_transforms(self, device, dtype):
+    def test_grad_zca_individual_transforms(self, device):
         """Check if the gradients of the transforms are correct w.r.t to the input data."""
-        data = torch.tensor([[2, 0], [0, 1], [-2, 0], [0, -1]], device=device, dtype=dtype)
-
-        data = utils.tensor_to_gradcheck_var(data)
+        data = torch.tensor([[2, 0], [0, 1], [-2, 0], [0, -1]], device=device, dtype=torch.float64)
 
         def zca_T(x):
             return kornia.enhance.zca_mean(x)[0]
@@ -84,30 +81,27 @@ class TestZCA(BaseTester):
         def zca_T_inv(x):
             return kornia.enhance.zca_mean(x, return_inverse=True)[2]
 
-        assert gradcheck(zca_T, (data,), raise_exception=True)
-        assert gradcheck(zca_mu, (data,), raise_exception=True)
-        assert gradcheck(zca_T_inv, (data,), raise_exception=True)
+        self.gradcheck(zca_T, (data,))
+        self.gradcheck(zca_mu, (data,))
+        self.gradcheck(zca_T_inv, (data,))
 
-    def test_grad_zca_with_fit(self, device, dtype):
-        data = torch.tensor([[2, 0], [0, 1], [-2, 0], [0, -1]], device=device, dtype=dtype)
-
-        data = utils.tensor_to_gradcheck_var(data)
+    def test_grad_zca_with_fit(self, device):
+        data = torch.tensor([[2, 0], [0, 1], [-2, 0], [0, -1]], device=device, dtype=torch.float64)
 
         def zca_fit(x):
             zca = kornia.enhance.ZCAWhitening(detach_transforms=False)
             return zca(x, include_fit=True)
 
-        assert gradcheck(zca_fit, (data,), raise_exception=True)
+        self.gradcheck(zca_fit, (data,))
 
-    def test_grad_detach_zca(self, device, dtype):
-        data = torch.tensor([[1, 0], [0, 1], [-2, 0], [0, -1]], device=device, dtype=dtype)
+    def test_grad_detach_zca(self, device):
+        data = torch.tensor([[1, 0], [0, 1], [-2, 0], [0, -1]], device=device, dtype=torch.float64)
 
-        data = utils.tensor_to_gradcheck_var(data)
         zca = kornia.enhance.ZCAWhitening()
 
         zca.fit(data)
 
-        assert gradcheck(zca, (data,), raise_exception=True)
+        self.gradcheck(zca, (data,))
 
     def test_not_fitted(self, device, dtype):
         with pytest.raises(RuntimeError):
@@ -144,23 +138,3 @@ class TestZCA(BaseTester):
         actual = kornia.enhance.zca_whiten(data, unbiased=unbiased)
 
         self.assert_close(actual, expected, low_tolerance=True)
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_cardinality(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_exception(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_gradcheck(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_smoke(self, device, dtype):
-        pass
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass

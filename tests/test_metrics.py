@@ -2,10 +2,11 @@ import pytest
 import torch
 
 import kornia
-from kornia.testing import BaseTester, assert_close, tensor_to_gradcheck_var
+
+from testing.base import BaseTester
 
 
-class TestMeanIoU:
+class TestMeanIoU(BaseTester):
     def test_two_classes_perfect(self, device, dtype):
         batch_size = 1
         num_classes = 2
@@ -15,7 +16,7 @@ class TestMeanIoU:
         mean_iou = kornia.metrics.mean_iou(predicted, actual, num_classes)
         mean_iou_real = torch.tensor([[1.0, 1.0]], device=device, dtype=torch.float32)
         assert mean_iou.shape == (batch_size, num_classes)
-        assert_close(mean_iou, mean_iou_real)
+        self.assert_close(mean_iou, mean_iou_real)
 
     def test_two_classes_perfect_batch2(self, device, dtype):
         batch_size = 2
@@ -26,7 +27,7 @@ class TestMeanIoU:
         mean_iou = kornia.metrics.mean_iou(predicted, actual, num_classes)
         mean_iou_real = torch.tensor([[1.0, 1.0], [1.0, 1.0]], device=device, dtype=torch.float32)
         assert mean_iou.shape == (batch_size, num_classes)
-        assert_close(mean_iou, mean_iou_real)
+        self.assert_close(mean_iou, mean_iou_real)
 
     def test_two_classes(self, device, dtype):
         batch_size = 1
@@ -38,7 +39,7 @@ class TestMeanIoU:
         mean_iou = kornia.metrics.mean_iou(predicted, actual, num_classes)
         mean_iou_real = torch.tensor([[0.75, 0.80]], device=device, dtype=torch.float32)
         assert mean_iou.shape == (batch_size, num_classes)
-        assert_close(mean_iou, mean_iou_real)
+        self.assert_close(mean_iou, mean_iou_real)
 
     def test_four_classes_2d_perfect(self, device, dtype):
         batch_size = 1
@@ -53,7 +54,7 @@ class TestMeanIoU:
         mean_iou = kornia.metrics.mean_iou(predicted, actual, num_classes)
         mean_iou_real = torch.tensor([[1.0, 1.0, 1.0, 1.0]], device=device, dtype=torch.float32)
         assert mean_iou.shape == (batch_size, num_classes)
-        assert_close(mean_iou, mean_iou_real)
+        self.assert_close(mean_iou, mean_iou_real)
 
     def test_four_classes_one_missing(self, device, dtype):
         batch_size = 1
@@ -68,10 +69,10 @@ class TestMeanIoU:
         mean_iou = kornia.metrics.mean_iou(predicted, actual, num_classes)
         mean_iou_real = torch.tensor([[0.0, 1.0, 0.5, 0.5]], device=device, dtype=torch.float32)
         assert mean_iou.shape == (batch_size, num_classes)
-        assert_close(mean_iou, mean_iou_real)
+        self.assert_close(mean_iou, mean_iou_real)
 
 
-class TestConfusionMatrix:
+class TestConfusionMatrix(BaseTester):
     def test_two_classes(self, device, dtype):
         num_classes = 2
         actual = torch.tensor([[1, 1, 1, 1, 0, 0, 0, 0]], device=device, dtype=torch.long)
@@ -79,7 +80,7 @@ class TestConfusionMatrix:
 
         conf_mat = kornia.metrics.confusion_matrix(predicted, actual, num_classes)
         conf_mat_real = torch.tensor([[[3, 1], [0, 4]]], device=device, dtype=torch.float32)
-        assert_close(conf_mat, conf_mat_real)
+        self.assert_close(conf_mat, conf_mat_real)
 
     def test_two_classes_batch2(self, device, dtype):
         batch_size = 2
@@ -89,7 +90,7 @@ class TestConfusionMatrix:
 
         conf_mat = kornia.metrics.confusion_matrix(predicted, actual, num_classes)
         conf_mat_real = torch.tensor([[[3, 1], [0, 4]], [[3, 1], [0, 4]]], device=device, dtype=torch.float32)
-        assert_close(conf_mat, conf_mat_real)
+        self.assert_close(conf_mat, conf_mat_real)
 
     def test_three_classes(self, device, dtype):
         num_classes = 3
@@ -98,7 +99,7 @@ class TestConfusionMatrix:
 
         conf_mat = kornia.metrics.confusion_matrix(predicted, actual, num_classes)
         conf_mat_real = torch.tensor([[[4, 1, 2], [3, 0, 2], [1, 2, 1]]], device=device, dtype=torch.float32)
-        assert_close(conf_mat, conf_mat_real)
+        self.assert_close(conf_mat, conf_mat_real)
 
     def test_four_classes_one_missing(self, device, dtype):
         num_classes = 4
@@ -109,7 +110,7 @@ class TestConfusionMatrix:
         conf_mat_real = torch.tensor(
             [[[0, 0, 0, 0], [0, 4, 1, 2], [0, 3, 0, 2], [0, 1, 2, 1]]], device=device, dtype=torch.float32
         )
-        assert_close(conf_mat, conf_mat_real)
+        self.assert_close(conf_mat, conf_mat_real)
 
     def test_three_classes_normalized(self, device, dtype):
         num_classes = 3
@@ -125,7 +126,7 @@ class TestConfusionMatrix:
             dtype=torch.float32,
         )
 
-        assert_close(conf_mat, conf_mat_real)
+        self.assert_close(conf_mat, conf_mat_real)
 
     def test_four_classes_2d_perfect(self, device, dtype):
         num_classes = 4
@@ -140,7 +141,7 @@ class TestConfusionMatrix:
         conf_mat_real = torch.tensor(
             [[[4, 0, 0, 0], [0, 4, 0, 0], [0, 0, 4, 0], [0, 0, 0, 4]]], device=device, dtype=torch.float32
         )
-        assert_close(conf_mat, conf_mat_real)
+        self.assert_close(conf_mat, conf_mat_real)
 
     def test_four_classes_2d_one_class_nonperfect(self, device, dtype):
         num_classes = 4
@@ -155,7 +156,7 @@ class TestConfusionMatrix:
         conf_mat_real = torch.tensor(
             [[[3, 0, 0, 1], [1, 3, 0, 0], [0, 0, 4, 0], [0, 1, 0, 3]]], device=device, dtype=torch.float32
         )
-        assert_close(conf_mat, conf_mat_real)
+        self.assert_close(conf_mat, conf_mat_real)
 
     def test_four_classes_2d_one_class_missing(self, device, dtype):
         num_classes = 4
@@ -170,7 +171,7 @@ class TestConfusionMatrix:
         conf_mat_real = torch.tensor(
             [[[0, 0, 0, 4], [0, 4, 0, 0], [0, 0, 4, 0], [0, 0, 0, 4]]], device=device, dtype=torch.float32
         )
-        assert_close(conf_mat, conf_mat_real)
+        self.assert_close(conf_mat, conf_mat_real)
 
     def test_four_classes_2d_one_class_no_predicted(self, device, dtype):
         num_classes = 4
@@ -185,50 +186,50 @@ class TestConfusionMatrix:
         conf_mat_real = torch.tensor(
             [[[0, 0, 4, 4], [0, 0, 0, 0], [0, 0, 4, 0], [0, 0, 0, 4]]], device=device, dtype=torch.float32
         )
-        assert_close(conf_mat, conf_mat_real)
+        self.assert_close(conf_mat, conf_mat_real)
 
 
-class TestPsnr:
+class TestPsnr(BaseTester):
     def test_metric(self, device, dtype):
         sample = torch.ones(1, device=device, dtype=dtype)
         expected = torch.tensor(20.0, device=device, dtype=dtype)
         actual = kornia.metrics.psnr(sample, 1.2 * sample, 2.0)
-        assert_close(actual, expected)
+        self.assert_close(actual, expected)
 
 
-class TestAepe:
+class TestAepe(BaseTester):
     def test_metric_mean_reduction(self, device, dtype):
         sample = torch.ones(4, 4, 2, device=device, dtype=dtype)
         expected = torch.tensor(0.565685424, device=device, dtype=dtype)
         actual = kornia.metrics.aepe(sample, 1.4 * sample, reduction="mean")
-        assert_close(actual, expected)
+        self.assert_close(actual, expected)
 
     def test_metric_sum_reduction(self, device, dtype):
         sample = torch.ones(4, 4, 2, device=device, dtype=dtype)
         expected = torch.tensor(1.4142, device=device, dtype=dtype) * 4**2
         actual = kornia.metrics.aepe(sample, 2.0 * sample, reduction="sum")
-        assert_close(actual, expected)
+        self.assert_close(actual, expected)
 
     def test_metric_no_reduction(self, device, dtype):
         sample = torch.ones(4, 4, 2, device=device, dtype=dtype)
         expected = torch.zeros(4, 4, device=device, dtype=dtype) + 1.4142
         actual = kornia.metrics.aepe(sample, 2.0 * sample, reduction="none")
-        assert_close(actual, expected)
+        self.assert_close(actual, expected)
 
     def test_perfect_fit(self, device, dtype):
         sample = torch.ones(4, 4, 2, device=device, dtype=dtype)
         expected = torch.zeros(4, 4, device=device, dtype=dtype)
         actual = kornia.metrics.aepe(sample, sample, reduction="none")
-        assert_close(actual, expected)
+        self.assert_close(actual, expected)
 
     def test_aepe_alias(self, device, dtype):
         sample = torch.ones(4, 4, 2, device=device, dtype=dtype)
         expected = torch.zeros(4, 4, device=device, dtype=dtype)
         actual_aepe = kornia.metrics.aepe(sample, sample, reduction="none")
         actual_alias = kornia.metrics.average_endpoint_error(sample, sample, reduction="none")
-        assert_close(actual_aepe, expected)
-        assert_close(actual_alias, expected)
-        assert_close(actual_aepe, actual_alias)
+        self.assert_close(actual_aepe, expected)
+        self.assert_close(actual_alias, expected)
+        self.assert_close(actual_aepe, actual_alias)
 
     def test_exception(self, device, dtype):
         with pytest.raises(TypeError) as errinfo:
@@ -254,7 +255,7 @@ class TestAepe:
         assert criterion(input, target) is not None
 
 
-class TestMeanAveragePrecision:
+class TestMeanAveragePrecision(BaseTester):
     def test_smoke(self, device, dtype):
         boxes = torch.tensor([[100, 50, 150, 100.0]], device=device, dtype=dtype)
         labels = torch.tensor([1], device=device, dtype=torch.long)
@@ -265,8 +266,8 @@ class TestMeanAveragePrecision:
 
         mean_ap = kornia.metrics.mean_average_precision([boxes], [labels], [scores], [gt_boxes], [gt_labels], 2)
 
-        assert_close(mean_ap[0], torch.tensor(1.0, device=device, dtype=dtype))
-        assert_close(mean_ap[1][1], 1.0)
+        self.assert_close(mean_ap[0], torch.tensor(1.0, device=device, dtype=dtype))
+        self.assert_close(mean_ap[1][1], 1.0)
 
     def test_raise(self, device, dtype):
         boxes = torch.tensor([[100, 50, 150, 100.0]], device=device, dtype=dtype)
@@ -404,9 +405,8 @@ class TestSSIM3d(BaseTester):
         self.assert_close(ops_out, mod_out)
 
     def test_gradcheck(self, device):
-        img = torch.rand(1, 1, 3, 3, 3, device=device)
+        img = torch.rand(1, 1, 3, 3, 3, device=device, dtype=torch.float64)
 
         op = kornia.metrics.ssim3d
-        img = tensor_to_gradcheck_var(img)
 
-        assert self.gradcheck(op, (img, img, 3), nondet_tol=1e-8)
+        self.gradcheck(op, (img, img, 3), nondet_tol=1e-8)

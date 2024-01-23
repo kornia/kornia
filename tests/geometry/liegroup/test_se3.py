@@ -5,7 +5,8 @@ from kornia.geometry.conversions import euler_from_quaternion, rotation_matrix_t
 from kornia.geometry.liegroup import Se3, So3
 from kornia.geometry.quaternion import Quaternion
 from kornia.geometry.vector import Vector3
-from kornia.testing import BaseTester
+
+from testing.base import BaseTester
 
 
 class TestSe3(BaseTester):

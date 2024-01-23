@@ -1,3 +1,4 @@
+import importlib.util
 import platform
 import sys
 import warnings
@@ -10,6 +11,18 @@ from torch.linalg import inv_ex
 
 from kornia.core import Tensor
 from kornia.utils._compat import torch_version_ge
+
+
+def xla_is_available() -> bool:
+    """Return whether `torch_xla` is available in the system."""
+    if importlib.util.find_spec("torch_xla") is not None:
+        return True
+    return False
+
+
+def is_mps_tensor_safe(x: Tensor) -> bool:
+    """Return whether tensor is on MPS device."""
+    return "mps" in str(x.device)
 
 
 def get_cuda_device_if_available(index: int = 0) -> torch.device:

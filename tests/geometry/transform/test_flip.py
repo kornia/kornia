@@ -1,13 +1,12 @@
 import pytest
 import torch
-from torch.autograd import gradcheck
 
 import kornia
-import kornia.testing as utils  # test utils
-from kornia.testing import assert_close
+
+from testing.base import BaseTester
 
 
-class TestVflip:
+class TestVflip(BaseTester):
     def smoke_test(self, device, dtype):
         f = kornia.geometry.transform.Vflip()
         repr = "Vflip()"
@@ -21,7 +20,7 @@ class TestVflip:
             [[0.0, 1.0, 1.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]], device=device, dtype=dtype
         )  # 3 x 3
 
-        assert_close(f(input), expected)
+        self.assert_close(f(input), expected)
 
     def test_batch_vflip(self, device, dtype):
         input = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]], device=device, dtype=dtype)  # 3 x 3
@@ -35,7 +34,7 @@ class TestVflip:
 
         expected = expected.repeat(2, 1, 1)  # 2 x 3 x 3
 
-        assert_close(f(input), expected)
+        self.assert_close(f(input), expected)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
@@ -61,17 +60,14 @@ class TestVflip:
 
         actual = op_trace(input)
 
-        assert_close(actual, expected)
+        self.assert_close(actual, expected)
 
-    def test_gradcheck(self, device, dtype):
-        input = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]], device=device, dtype=dtype)  # 3 x 3
-
-        input = utils.tensor_to_gradcheck_var(input)  # to var
-
-        assert gradcheck(kornia.geometry.transform.Vflip(), (input,), raise_exception=True, fast_mode=True)
+    def test_gradcheck(self, device):
+        input = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]], device=device, dtype=torch.float64)
+        self.gradcheck(kornia.geometry.transform.Vflip(), (input,))
 
 
-class TestHflip:
+class TestHflip(BaseTester):
     def smoke_test(self, device, dtype):
         f = kornia.geometry.transform.Hflip()
         repr = "Hflip()"
@@ -85,7 +81,7 @@ class TestHflip:
             [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [1.0, 1.0, 0.0]], device=device, dtype=dtype
         )  # 3 x 3
 
-        assert_close(f(input), expected)
+        self.assert_close(f(input), expected)
 
     def test_batch_hflip(self, device, dtype):
         input = torch.tensor(
@@ -101,7 +97,7 @@ class TestHflip:
 
         expected = expected.repeat(2, 1, 1)  # 2 x 3 x 3
 
-        assert_close(f(input), expected)
+        self.assert_close(f(input), expected)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
@@ -127,17 +123,14 @@ class TestHflip:
 
         actual = op_trace(input)
 
-        assert_close(actual, expected)
+        self.assert_close(actual, expected)
 
-    def test_gradcheck(self, device, dtype):
-        input = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]], device=device, dtype=dtype)  # 3 x 3
-
-        input = utils.tensor_to_gradcheck_var(input)  # to var
-
-        assert gradcheck(kornia.geometry.transform.Hflip(), (input,), raise_exception=True, fast_mode=True)
+    def test_gradcheck(self, device):
+        input = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]], device=device, dtype=torch.float64)
+        self.gradcheck(kornia.geometry.transform.Hflip(), (input,))
 
 
-class TestRot180:
+class TestRot180(BaseTester):
     def smoke_test(self, device, dtype):
         f = kornia.geometry.transform.Rot180()
         repr = "Rot180()"
@@ -151,7 +144,7 @@ class TestRot180:
             [[1.0, 1.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]], device=device, dtype=dtype
         )  # 3 x 3
 
-        assert_close(f(input), expected)
+        self.assert_close(f(input), expected)
 
     def test_batch_rot180(self, device, dtype):
         input = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]], device=device, dtype=dtype)  # 3 x 3
@@ -165,7 +158,7 @@ class TestRot180:
 
         expected = expected.repeat(2, 1, 1)  # 2 x 3 x 3
 
-        assert_close(f(input), expected)
+        self.assert_close(f(input), expected)
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device, dtype):
@@ -191,11 +184,11 @@ class TestRot180:
 
         actual = op_trace(input)
 
-        assert_close(actual, expected)
+        self.assert_close(actual, expected)
 
-    def test_gradcheck(self, device, dtype):
-        input = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]], device=device, dtype=dtype)  # 3 x 3
+    def test_gradcheck(self, device):
+        input = torch.tensor(
+            [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]], device=device, dtype=torch.float64
+        )  # 3 x 3
 
-        input = utils.tensor_to_gradcheck_var(input)  # to var
-
-        assert gradcheck(kornia.geometry.transform.Rot180(), (input,), raise_exception=True, fast_mode=True)
+        self.gradcheck(kornia.geometry.transform.Rot180(), (input,))

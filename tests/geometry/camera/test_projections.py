@@ -6,12 +6,9 @@ from kornia.geometry.camera.projection_orthographic import (
     project_points_orthographic,
     unproject_points_orthographic,
 )
-from kornia.geometry.camera.projection_z1 import (
-    dx_project_points_z1,
-    project_points_z1,
-    unproject_points_z1,
-)
-from kornia.testing import BaseTester, tensor_to_gradcheck_var
+from kornia.geometry.camera.projection_z1 import dx_project_points_z1, project_points_z1, unproject_points_z1
+
+from testing.base import BaseTester
 
 
 class TestProjectionZ1(BaseTester):
@@ -106,14 +103,11 @@ class TestProjectionZ1(BaseTester):
 
     def _test_gradcheck_unproject(self, device):
         points = torch.tensor([1.0, 2.0], device=device, dtype=torch.float64)
-        points = tensor_to_gradcheck_var(points)
         extension = torch.tensor([2.0], device=device, dtype=torch.float64)
-        extension = tensor_to_gradcheck_var(extension)
         self.gradcheck(unproject_points_z1, (points, extension))
 
     def _test_gradcheck_project(self, device):
         points = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=torch.float64)
-        points = tensor_to_gradcheck_var(points)
         self.gradcheck(project_points_z1, (points,))
 
     def test_gradcheck(self, device) -> None:
@@ -201,14 +195,11 @@ class TestProjectionOrthographic(BaseTester):
 
     def _test_gradcheck_project(self, device):
         points = torch.tensor([1.0, 2.0, 3.0], device=device, dtype=torch.float64)
-        points = tensor_to_gradcheck_var(points)
         self.gradcheck(project_points_orthographic, (points,))
 
     def _test_gradcheck_unproject(self, device):
         points = torch.tensor([1.0, 2.0], device=device, dtype=torch.float64)
-        points = tensor_to_gradcheck_var(points)
         extension = torch.tensor([2.0], device=device, dtype=torch.float64)
-        extension = tensor_to_gradcheck_var(extension)
         self.gradcheck(unproject_points_orthographic, (points, extension))
 
     def test_gradcheck(self, device) -> None:

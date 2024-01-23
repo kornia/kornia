@@ -9,7 +9,8 @@ from kornia.filters import (
     edge_aware_blur_pool2d,
     max_blur_pool2d,
 )
-from kornia.testing import BaseTester, tensor_to_gradcheck_var
+
+from testing.base import BaseTester
 
 
 class TestMaxBlurPool(BaseTester):
@@ -45,8 +46,7 @@ class TestMaxBlurPool(BaseTester):
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 2, 5, 4
-        img = torch.rand(batch_size, channels, height, width, device=device)
-        img = tensor_to_gradcheck_var(img)  # to var
+        img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(max_blur_pool2d, (img, 3))
 
     @pytest.mark.parametrize("kernel_size", [(3, 3), 5])
@@ -104,8 +104,7 @@ class TestBlurPool(BaseTester):
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 1, 2, 5, 4
-        img = torch.rand(batch_size, channels, height, width, device=device)
-        img = tensor_to_gradcheck_var(img)  # to var
+        img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
         self.gradcheck(blur_pool2d, (img, 3))
 
     @pytest.mark.parametrize("kernel_size", [3, (5, 5)])
@@ -177,8 +176,7 @@ class TestEdgeAwareBlurPool(BaseTester):
         self.assert_close(actual, expected)
 
     def test_gradcheck(self, device):
-        img = torch.rand((1, 2, 5, 4), device=device)
-        img = tensor_to_gradcheck_var(img)  # to var
+        img = torch.rand((1, 2, 5, 4), device=device, dtype=torch.float64)
         self.gradcheck(edge_aware_blur_pool2d, (img, 3))
 
     def test_smooth(self, device, dtype):

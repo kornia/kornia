@@ -1,14 +1,13 @@
 import pytest
 import torch
-from torch.autograd import gradcheck
 
 from kornia.augmentation import RandomMotionBlur, RandomMotionBlur3D
 from kornia.filters import motion_blur, motion_blur3d
-from kornia.testing import assert_close, tensor_to_gradcheck_var
+
+from testing.base import BaseTester
 
 
-# TODO: add kornia.testing.BaseTester
-class TestRandomMotionBlur:
+class TestRandomMotionBlur(BaseTester):
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
@@ -32,9 +31,9 @@ class TestRandomMotionBlur:
         output = f(input)
 
         if same_on_batch:
-            assert_close(output[0], output[1], rtol=1e-4, atol=1e-4)
+            self.assert_close(output[0], output[1], rtol=1e-4, atol=1e-4)
         elif p == 0:
-            assert_close(output, input, rtol=1e-4, atol=1e-4)
+            self.assert_close(output, input, rtol=1e-4, atol=1e-4)
         else:
             assert not torch.allclose(output[0], output[1], rtol=1e-4, atol=1e-4)
 
@@ -55,13 +54,12 @@ class TestRandomMotionBlur:
             f.flags["border_type"].name.lower(),
         )
 
-        assert_close(output, expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(output, expected, rtol=1e-4, atol=1e-4)
 
     @pytest.mark.slow
     def test_gradcheck(self, device):
         torch.manual_seed(0)  # for random reproductibility
-        inp = torch.rand((1, 3, 11, 7)).to(device)
-        inp = tensor_to_gradcheck_var(inp)  # to var
+        inp = torch.rand((1, 3, 11, 7), device=device, dtype=torch.float64)
         # TODO: Gradcheck for param random gen failed. Suspect get_motion_kernel2d issue.
         params = {
             "batch_prob": torch.tensor([True]),
@@ -71,15 +69,14 @@ class TestRandomMotionBlur:
             "border_type": torch.tensor([0]),
             "idx": torch.tensor([0]),
         }
-        assert gradcheck(
+        self.gradcheck(
             RandomMotionBlur(kernel_size=3, angle=(10, 30), direction=(-0.5, 0.5), p=1.0),
             (inp, params),
-            raise_exception=True,
+            fast_mode=False,
         )
 
 
-# TODO: add kornia.testing.BaseTester
-class TestRandomMotionBlur3D:
+class TestRandomMotionBlur3D(BaseTester):
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
     # return values such a torch.Tensor variable.
     @pytest.mark.xfail(reason="might fail under windows OS due to printing preicision.")
@@ -102,9 +99,9 @@ class TestRandomMotionBlur3D:
         output = f(input)
 
         if same_on_batch:
-            assert_close(output[0], output[1], rtol=1e-4, atol=1e-4)
+            self.assert_close(output[0], output[1], rtol=1e-4, atol=1e-4)
         elif p == 0:
-            assert_close(output, input, rtol=1e-4, atol=1e-4)
+            self.assert_close(output, input, rtol=1e-4, atol=1e-4)
         else:
             assert not torch.allclose(output[0], output[1], rtol=1e-4, atol=1e-4)
 
@@ -125,13 +122,12 @@ class TestRandomMotionBlur3D:
             f.flags["border_type"].name.lower(),
         )
 
-        assert_close(output, expected, rtol=1e-4, atol=1e-4)
+        self.assert_close(output, expected, rtol=1e-4, atol=1e-4)
 
     @pytest.mark.slow
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         torch.manual_seed(0)  # for random reproductibility
-        inp = torch.rand((1, 3, 6, 7), device=device, dtype=dtype)
-        inp = tensor_to_gradcheck_var(inp)  # to var
+        inp = torch.rand((1, 3, 6, 7), device=device, dtype=torch.float64)
         params = {
             "batch_prob": torch.tensor([True]),
             "ksize_factor": torch.tensor([31]),
@@ -140,8 +136,8 @@ class TestRandomMotionBlur3D:
             "border_type": torch.tensor([0]),
             "idx": torch.tensor([0]),
         }
-        assert gradcheck(
+        self.gradcheck(
             RandomMotionBlur3D(kernel_size=3, angle=(10, 30), direction=(-0.5, 0.5), p=1.0),
             (inp, params),
-            raise_exception=True,
+            fast_mode=False,
         )

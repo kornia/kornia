@@ -3,7 +3,8 @@ import torch
 from torch.autograd import gradcheck
 
 from kornia.geometry.calibration.distort import distort_points
-from kornia.testing import assert_close
+
+from testing.base import assert_close
 
 
 class TestDistortPoints:

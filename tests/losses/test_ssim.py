@@ -1,13 +1,12 @@
 import pytest
 import torch
-from torch.autograd import gradcheck
 
 import kornia
-import kornia.testing as utils  # test utils
-from kornia.testing import BaseTester, assert_close
+
+from testing.base import BaseTester
 
 
-class TestSSIMLoss:
+class TestSSIMLoss(BaseTester):
     def test_ssim_equal_none(self, device, dtype):
         # input data
         img1 = torch.rand(1, 1, 10, 16, device=device, dtype=dtype)
@@ -16,9 +15,8 @@ class TestSSIMLoss:
         ssim1 = kornia.losses.ssim_loss(img1, img1, window_size=5, reduction="none")
         ssim2 = kornia.losses.ssim_loss(img2, img2, window_size=5, reduction="none")
 
-        tol_val: float = utils._get_precision_by_name(device, "xla", 1e-1, 1e-4)
-        assert_close(ssim1, torch.zeros_like(img1), rtol=tol_val, atol=tol_val)
-        assert_close(ssim2, torch.zeros_like(img2), rtol=tol_val, atol=tol_val)
+        self.assert_close(ssim1, torch.zeros_like(img1), low_tolerance=True)  # rtol=tol_val, atol=tol_val)
+        self.assert_close(ssim2, torch.zeros_like(img2), low_tolerance=True)  # rtol=tol_val, atol=tol_val)
 
     @pytest.mark.parametrize("window_size", [5, 11])
     @pytest.mark.parametrize("reduction_type", ["mean", "sum", "none"])
@@ -32,13 +30,12 @@ class TestSSIMLoss:
 
         loss = kornia.losses.ssim_loss(img, img, window_size, reduction=reduction_type)
 
-        tol_val: float = utils._get_precision_by_name(device, "xla", 1e-1, 1e-4)
         if reduction_type == "none":
             expected = torch.zeros_like(img)
         else:
             expected = torch.tensor(0.0, device=device, dtype=dtype)
 
-        assert_close(loss, expected, rtol=tol_val, atol=tol_val)
+        self.assert_close(loss, expected)
 
     def test_module(self, device, dtype):
         img1 = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
@@ -49,25 +46,21 @@ class TestSSIMLoss:
         op = kornia.losses.ssim_loss
         op_module = kornia.losses.SSIMLoss(*args[2:])
 
-        assert_close(op(*args), op_module(*args[:2]))
+        self.assert_close(op(*args), op_module(*args[:2]))
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         # input data
         window_size = 3
-        img1 = torch.rand(1, 1, 5, 4, device=device, dtype=dtype)
-        img2 = torch.rand(1, 1, 5, 4, device=device, dtype=dtype)
+        img1 = torch.rand(1, 1, 5, 4, device=device, dtype=torch.float64)
+        img2 = torch.rand(1, 1, 5, 4, device=device, dtype=torch.float64)
 
         # evaluate function gradient
-        img1 = utils.tensor_to_gradcheck_var(img1)  # to var
-        img2 = utils.tensor_to_gradcheck_var(img2)  # to var
 
         # TODO: review method since it needs `nondet_tol` in cuda sometimes.
-        assert gradcheck(
-            kornia.losses.ssim_loss, (img1, img2, window_size), raise_exception=True, nondet_tol=1e-8, fast_mode=True
-        )
+        self.gradcheck(kornia.losses.ssim_loss, (img1, img2, window_size), nondet_tol=1e-8)
 
 
-class TestMS_SSIMLoss:
+class TestMS_SSIMLoss(BaseTester):
     def test_msssim_equal_none(self, device, dtype):
         # input data
         img1 = torch.rand(1, 3, 10, 16, device=device, dtype=dtype)
@@ -77,8 +70,8 @@ class TestMS_SSIMLoss:
         msssim1 = msssim(img1, img1)
         msssim2 = msssim(img2, img2)
 
-        assert_close(msssim1.item(), 0.0)
-        assert_close(msssim2.item(), 0.0)
+        self.assert_close(msssim1.item(), 0.0)
+        self.assert_close(msssim2.item(), 0.0)
 
     def test_exception(self):
         criterion = kornia.losses.MS_SSIMLoss()
@@ -104,7 +97,7 @@ class TestMS_SSIMLoss:
         msssiml1 = kornia.losses.MS_SSIMLoss(reduction=reduction_type).to(device, dtype)
         loss = msssiml1(img, img)
 
-        assert_close(loss.sum().item(), 0.0)
+        self.assert_close(loss.sum().item(), 0.0)
 
     def test_gradcheck(self, device):
         # input data
@@ -113,12 +106,9 @@ class TestMS_SSIMLoss:
         img2 = torch.rand(1, 1, 5, 5, device=device, dtype=dtype)
 
         # evaluate function gradient
-        img1 = utils.tensor_to_gradcheck_var(img1)  # to var
-        img2 = utils.tensor_to_gradcheck_var(img2)  # to var
-
         loss = kornia.losses.MS_SSIMLoss().to(device, dtype)
 
-        assert gradcheck(loss, (img1, img2), raise_exception=True, nondet_tol=1e-8, fast_mode=True)
+        self.gradcheck(loss, (img1, img2), nondet_tol=1e-8)
 
     def test_jit(self, device, dtype):
         img1 = torch.rand(1, 3, 10, 10, device=device, dtype=dtype)
@@ -129,7 +119,7 @@ class TestMS_SSIMLoss:
         op = kornia.losses.MS_SSIMLoss().to(device, dtype)
         op_script = torch.jit.script(op)
 
-        assert_close(op(*args), op_script(*args))
+        self.assert_close(op(*args), op_script(*args))
 
 
 class TestSSIM3DLoss(BaseTester):
@@ -192,12 +182,9 @@ class TestSSIM3DLoss(BaseTester):
         img = torch.rand(1, 1, 5, 4, 3, device=device)
 
         # evaluate function gradient
-        img = utils.tensor_to_gradcheck_var(img)  # to var
 
         # TODO: review method since it needs `nondet_tol` in cuda sometimes.
-        assert gradcheck(
-            kornia.losses.ssim3d_loss, (img, img, 3), raise_exception=True, nondet_tol=1e-8, fast_mode=True
-        )
+        self.gradcheck(kornia.losses.ssim3d_loss, (img, img, 3), nondet_tol=1e-8)
 
     @pytest.mark.parametrize("shape", [(1, 2, 3, 5, 5), (2, 4, 2, 5, 5)])
     def test_cardinality(self, shape, device, dtype):

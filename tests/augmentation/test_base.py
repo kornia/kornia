@@ -2,19 +2,18 @@ from unittest.mock import patch
 
 import pytest
 import torch
-from torch.autograd import gradcheck
 
-import kornia.testing as utils  # test utils
 from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.augmentation._2d.geometric.affine import RandomAffine
 from kornia.augmentation._2d.intensity.gaussian_blur import RandomGaussianBlur
 from kornia.augmentation._3d.geometric.affine import RandomAffine3D
 from kornia.augmentation._3d.intensity.motion_blur import RandomMotionBlur3D
 from kornia.augmentation.base import _BasicAugmentationBase
-from kornia.testing import assert_close
+
+from testing.base import BaseTester
 
 
-class TestBasicAugmentationBase:
+class TestBasicAugmentationBase(BaseTester):
     def test_smoke(self):
         base = _BasicAugmentationBase(p=0.5, p_batch=1.0, same_on_batch=True)
         __repr__ = "_BasicAugmentationBase(p=0.5, p_batch=1.0, same_on_batch=True)"
@@ -27,7 +26,7 @@ class TestBasicAugmentationBase:
             transform_tensor.side_effect = lambda x: x.unsqueeze(dim=2)
             output = augmentation.transform_tensor(input)
             assert output.shape == torch.Size([2, 3, 1, 4, 5])
-            assert_close(input, output[:, :, 0, :, :])
+            self.assert_close(input, output[:, :, 0, :, :])
 
     @pytest.mark.parametrize(
         "p,p_batch,same_on_batch,num,seed",
@@ -76,10 +75,10 @@ class TestBasicAugmentationBase:
             # check_batching.side_effect = lambda input: None
             output = augmentation(input)
             assert output.shape == expected_output.shape
-            assert_close(output, expected_output)
+            self.assert_close(output, expected_output)
 
 
-class TestAugmentationBase2D:
+class TestAugmentationBase2D(BaseTester):
     def test_forward(self, device, dtype):
         torch.manual_seed(42)
         input = torch.rand((2, 3, 4, 5), device=device, dtype=dtype)
@@ -124,18 +123,12 @@ class TestAugmentationBase2D:
             # output = augmentation((input, input_transform))
             # assert output is expected_output
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         torch.manual_seed(42)
 
-        input = torch.rand((1, 1, 3, 3), device=device, dtype=dtype)
-        output = torch.rand((1, 1, 3, 3), device=device, dtype=dtype)
-        input_transform = torch.rand((1, 3, 3), device=device, dtype=dtype)
-        other_transform = torch.rand((1, 3, 3), device=device, dtype=dtype)
-
-        input = utils.tensor_to_gradcheck_var(input)  # to var
-        input_transform = utils.tensor_to_gradcheck_var(input_transform)  # to var
-        output = utils.tensor_to_gradcheck_var(output)  # to var
-        other_transform = utils.tensor_to_gradcheck_var(other_transform)  # to var
+        input = torch.rand((1, 1, 3, 3), device=device, dtype=torch.float64)
+        output = torch.rand((1, 1, 3, 3), device=device, dtype=torch.float64)
+        input_transform = torch.rand((1, 3, 3), device=device, dtype=torch.float64)
 
         input_param = {"batch_prob": torch.tensor([True]), "x": input_transform, "y": {}}
 
@@ -143,7 +136,7 @@ class TestAugmentationBase2D:
 
         with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform:
             apply_transform.return_value = output
-            assert gradcheck(augmentation, ((input, input_param)), raise_exception=True, fast_mode=True)
+            self.gradcheck(augmentation, ((input, input_param)))
 
 
 class TestGeometricAugmentationBase2D:

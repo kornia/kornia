@@ -9,7 +9,8 @@ from kornia.filters import (
     motion_blur,
     motion_blur3d,
 )
-from kornia.testing import BaseTester, tensor_to_gradcheck_var
+
+from testing.base import BaseTester
 
 
 class TestMotionBlur(BaseTester):
@@ -80,8 +81,7 @@ class TestMotionBlur(BaseTester):
         angle = 34.0
         direction = -0.2
 
-        sample = torch.rand(batch_shape, device=device)
-        sample = tensor_to_gradcheck_var(sample)
+        sample = torch.rand(batch_shape, device=device, dtype=torch.float64)
         self.gradcheck(motion_blur, (sample, ksize, angle, direction, "replicate"), nondet_tol=1e-8)
 
     def test_module(self, device, dtype):
@@ -171,8 +171,7 @@ class TestMotionBlur3D(BaseTester):
         angle = (0.0, 360.0, 150.0)
         direction = -0.2
 
-        sample = torch.rand(batch_shape, device=device)
-        sample = tensor_to_gradcheck_var(sample)
+        sample = torch.rand(batch_shape, device=device, dtype=torch.float64)
         self.gradcheck(motion_blur3d, (sample, ksize, angle, direction, "replicate"), nondet_tol=1e-8)
 
     def test_module(self, device, dtype):

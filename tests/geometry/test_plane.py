@@ -3,7 +3,8 @@ import torch
 
 from kornia.geometry.plane import Hyperplane, fit_plane
 from kornia.geometry.vector import Vector3
-from kornia.testing import BaseTester
+
+from testing.base import BaseTester
 
 
 # TODO: implement the rest of methods

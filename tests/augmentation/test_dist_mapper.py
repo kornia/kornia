@@ -3,7 +3,8 @@ from torch import nn
 from torch.distributions import Normal
 
 from kornia.augmentation.random_generator import DistributionWithMapper
-from kornia.testing import assert_close
+
+from testing.base import assert_close
 
 
 class TestDistMapper:

@@ -145,8 +145,10 @@ requires = [
     skip-magic-trailing-comma = false
 
   [tool.ruff.isort]
-    known-first-party = ["examples", "kornia", "test"]
+    known-first-party = ["kornia"]
     split-on-trailing-comma = true
+    forced-separate = ["testing", "tests"]
+
 
   [tool.ruff.mccabe]
     max-complexity = 20
@@ -164,6 +166,7 @@ requires = [
     "docs/generate_examples.py" = ["C901"] # Allow too complex function
     "kornia/__init__.py" = ["I001"] # Allow unsorted imports
     "tests/*" = ["S101", "S311", "BLE", "RUF012", "RUF005"] # allow assert, random, ignore BLE, mutable class attr
+    "testing/*" = ["S101",] # allow assert
 
 [tool.pytest.ini_options]
   addopts = "--color=yes"

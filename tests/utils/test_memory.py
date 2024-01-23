@@ -1,11 +1,11 @@
 import torch
-from torch.autograd import gradcheck
 
 import kornia
-import kornia.testing as utils
+
+from testing.base import BaseTester
 
 
-class TestBatchedForward:
+class TestBatchedForward(BaseTester):
     def test_runbatch(self, device):
         patches = torch.rand(34, 1, 32, 32)
         sift = kornia.feature.SIFTDescriptor(32)
@@ -22,12 +22,7 @@ class TestBatchedForward:
 
     def test_gradcheck(self, device):
         batch_size, channels, height, width = 3, 2, 5, 4
-        img = torch.rand(batch_size, channels, height, width, device=device)
-        img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(
-            kornia.utils.memory.batched_forward,
-            (kornia.feature.BlobHessian(), img, device, 2),
-            raise_exception=True,
-            nondet_tol=1e-4,
-            fast_mode=True,
+        img = torch.rand(batch_size, channels, height, width, device=device, dtype=torch.float64)
+        self.gradcheck(
+            kornia.utils.memory.batched_forward, (kornia.feature.BlobHessian(), img, device, 2), nondet_tol=1e-4
         )

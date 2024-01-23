@@ -3,17 +3,16 @@ from unittest.mock import PropertyMock, patch
 
 import pytest
 import torch
-from torch.autograd import gradcheck
 
 import kornia
-import kornia.testing as utils  # test utils
 from kornia.contrib.face_detection import FaceKeypoint
 from kornia.contrib.models.rt_detr import RTDETR, DETRPostProcessor, RTDETRConfig
-from kornia.testing import assert_close
 from kornia.utils._compat import torch_version_lt
 
+from testing.base import BaseTester
 
-class TestDiamondSquare:
+
+class TestDiamondSquare(BaseTester):
     def test_smoke(self, device, dtype):
         torch.manual_seed(0)
         output_size = (1, 1, 3, 4)
@@ -35,11 +34,11 @@ class TestDiamondSquare:
         out = kornia.contrib.diamond_square(
             output_size, roughness, random_scale, normalize_range=normalize_range, device=device, dtype=dtype
         )
-        assert_close(out.min(), expected_min)
-        assert_close(out.max(), expected_max)
+        self.assert_close(out.min(), expected_min)
+        self.assert_close(out.max(), expected_max)
 
 
-class TestVisionTransformer:
+class TestVisionTransformer(BaseTester):
     @pytest.mark.parametrize("B", [1, 2])
     @pytest.mark.parametrize("H", [1, 3, 8])
     @pytest.mark.parametrize("D", [240, 768])
@@ -78,7 +77,7 @@ class TestVisionTransformer:
         assert out.shape == (1, 197, 128)
 
 
-class TestMobileViT:
+class TestMobileViT(BaseTester):
     @pytest.mark.parametrize("B", [1, 2])
     @pytest.mark.parametrize("image_size", [(256, 256)])
     @pytest.mark.parametrize("mode", ["xxs", "xs", "s"])
@@ -95,7 +94,7 @@ class TestMobileViT:
         assert out.shape == (B, channel[mode], 8, 8)
 
 
-class TestClassificationHead:
+class TestClassificationHead(BaseTester):
     @pytest.mark.parametrize("B, D, N", [(1, 8, 10), (2, 2, 5)])
     def test_smoke(self, device, dtype, B, D, N):
         feat = torch.rand(B, D, D, device=device, dtype=dtype)
@@ -104,7 +103,7 @@ class TestClassificationHead:
         assert logits.shape == (B, N)
 
 
-class TestConnectedComponents:
+class TestConnectedComponents(BaseTester):
     def test_smoke(self, device, dtype):
         img = torch.rand(1, 1, 3, 4, device=device, dtype=dtype)
         out = kornia.contrib.connected_components(img, num_iterations=10)
@@ -172,19 +171,19 @@ class TestConnectedComponents:
         )
 
         out = kornia.contrib.connected_components(img, num_iterations=10)
-        assert_close(out, expected)
+        self.assert_close(out, expected)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         B, C, H, W = 2, 1, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.contrib.connected_components, (img,), raise_exception=True, fast_mode=True)
+        self.gradcheck(kornia.contrib.connected_components, (img,))
 
     def test_jit(self, device, dtype):
         B, C, H, W = 2, 1, 4, 4
         img = torch.ones(B, C, H, W, device=device, dtype=dtype)
         op = kornia.contrib.connected_components
         op_jit = torch.jit.script(op)
-        assert_close(op(img), op_jit(img))
+        self.assert_close(op(img), op_jit(img))
 
 
 def test_compute_padding():
@@ -193,7 +192,7 @@ def test_compute_padding():
     assert kornia.contrib.compute_padding((8, 7), (4, 4)) == (0, 0, 0, 1)
 
 
-class TestExtractTensorPatches:
+class TestExtractTensorPatches(BaseTester):
     def test_smoke(self, device):
         img = torch.arange(16.0, device=device).view(1, 1, 4, 4)
         m = kornia.contrib.ExtractTensorPatches(3)
@@ -204,10 +203,10 @@ class TestExtractTensorPatches:
         m = kornia.contrib.ExtractTensorPatches(3)
         patches = m(img)
         assert patches.shape == (1, 4, 1, 3, 3)
-        assert_close(img[0, :, :3, :3], patches[0, 0])
-        assert_close(img[0, :, :3, 1:], patches[0, 1])
-        assert_close(img[0, :, 1:, :3], patches[0, 2])
-        assert_close(img[0, :, 1:, 1:], patches[0, 3])
+        self.assert_close(img[0, :, :3, :3], patches[0, 0])
+        self.assert_close(img[0, :, :3, 1:], patches[0, 1])
+        self.assert_close(img[0, :, 1:, :3], patches[0, 2])
+        self.assert_close(img[0, :, 1:, 1:], patches[0, 3])
 
     def test_b1_ch2_h4w4_ws3(self, device):
         img = torch.arange(16.0, device=device).view(1, 1, 4, 4)
@@ -215,50 +214,50 @@ class TestExtractTensorPatches:
         m = kornia.contrib.ExtractTensorPatches(3)
         patches = m(img)
         assert patches.shape == (1, 4, 2, 3, 3)
-        assert_close(img[0, :, :3, :3], patches[0, 0])
-        assert_close(img[0, :, :3, 1:], patches[0, 1])
-        assert_close(img[0, :, 1:, :3], patches[0, 2])
-        assert_close(img[0, :, 1:, 1:], patches[0, 3])
+        self.assert_close(img[0, :, :3, :3], patches[0, 0])
+        self.assert_close(img[0, :, :3, 1:], patches[0, 1])
+        self.assert_close(img[0, :, 1:, :3], patches[0, 2])
+        self.assert_close(img[0, :, 1:, 1:], patches[0, 3])
 
     def test_b1_ch1_h4w4_ws2(self, device):
         img = torch.arange(16.0, device=device).view(1, 1, 4, 4)
         m = kornia.contrib.ExtractTensorPatches(2)
         patches = m(img)
         assert patches.shape == (1, 9, 1, 2, 2)
-        assert_close(img[0, :, 0:2, 1:3], patches[0, 1])
-        assert_close(img[0, :, 0:2, 2:4], patches[0, 2])
-        assert_close(img[0, :, 1:3, 1:3], patches[0, 4])
-        assert_close(img[0, :, 2:4, 1:3], patches[0, 7])
+        self.assert_close(img[0, :, 0:2, 1:3], patches[0, 1])
+        self.assert_close(img[0, :, 0:2, 2:4], patches[0, 2])
+        self.assert_close(img[0, :, 1:3, 1:3], patches[0, 4])
+        self.assert_close(img[0, :, 2:4, 1:3], patches[0, 7])
 
     def test_b1_ch1_h4w4_ws2_stride2(self, device):
         img = torch.arange(16.0, device=device).view(1, 1, 4, 4)
         m = kornia.contrib.ExtractTensorPatches(2, stride=2)
         patches = m(img)
         assert patches.shape == (1, 4, 1, 2, 2)
-        assert_close(img[0, :, 0:2, 0:2], patches[0, 0])
-        assert_close(img[0, :, 0:2, 2:4], patches[0, 1])
-        assert_close(img[0, :, 2:4, 0:2], patches[0, 2])
-        assert_close(img[0, :, 2:4, 2:4], patches[0, 3])
+        self.assert_close(img[0, :, 0:2, 0:2], patches[0, 0])
+        self.assert_close(img[0, :, 0:2, 2:4], patches[0, 1])
+        self.assert_close(img[0, :, 2:4, 0:2], patches[0, 2])
+        self.assert_close(img[0, :, 2:4, 2:4], patches[0, 3])
 
     def test_b1_ch1_h4w4_ws2_stride21(self, device):
         img = torch.arange(16.0, device=device).view(1, 1, 4, 4)
         m = kornia.contrib.ExtractTensorPatches(2, stride=(2, 1))
         patches = m(img)
         assert patches.shape == (1, 6, 1, 2, 2)
-        assert_close(img[0, :, 0:2, 1:3], patches[0, 1])
-        assert_close(img[0, :, 0:2, 2:4], patches[0, 2])
-        assert_close(img[0, :, 2:4, 0:2], patches[0, 3])
-        assert_close(img[0, :, 2:4, 2:4], patches[0, 5])
+        self.assert_close(img[0, :, 0:2, 1:3], patches[0, 1])
+        self.assert_close(img[0, :, 0:2, 2:4], patches[0, 2])
+        self.assert_close(img[0, :, 2:4, 0:2], patches[0, 3])
+        self.assert_close(img[0, :, 2:4, 2:4], patches[0, 5])
 
     def test_b1_ch1_h3w3_ws2_stride1_padding1(self, device):
         img = torch.arange(9.0).view(1, 1, 3, 3).to(device)
         m = kornia.contrib.ExtractTensorPatches(2, stride=1, padding=1)
         patches = m(img)
         assert patches.shape == (1, 16, 1, 2, 2)
-        assert_close(img[0, :, 0:2, 0:2], patches[0, 5])
-        assert_close(img[0, :, 0:2, 1:3], patches[0, 6])
-        assert_close(img[0, :, 1:3, 0:2], patches[0, 9])
-        assert_close(img[0, :, 1:3, 1:3], patches[0, 10])
+        self.assert_close(img[0, :, 0:2, 0:2], patches[0, 5])
+        self.assert_close(img[0, :, 0:2, 1:3], patches[0, 6])
+        self.assert_close(img[0, :, 1:3, 0:2], patches[0, 9])
+        self.assert_close(img[0, :, 1:3, 1:3], patches[0, 10])
 
     def test_b2_ch1_h3w3_ws2_stride1_padding1(self, device):
         batch_size = 2
@@ -268,28 +267,28 @@ class TestExtractTensorPatches:
         patches = m(img)
         assert patches.shape == (batch_size, 16, 1, 2, 2)
         for i in range(batch_size):
-            assert_close(img[i, :, 0:2, 0:2], patches[i, 5])
-            assert_close(img[i, :, 0:2, 1:3], patches[i, 6])
-            assert_close(img[i, :, 1:3, 0:2], patches[i, 9])
-            assert_close(img[i, :, 1:3, 1:3], patches[i, 10])
+            self.assert_close(img[i, :, 0:2, 0:2], patches[i, 5])
+            self.assert_close(img[i, :, 0:2, 1:3], patches[i, 6])
+            self.assert_close(img[i, :, 1:3, 0:2], patches[i, 9])
+            self.assert_close(img[i, :, 1:3, 1:3], patches[i, 10])
 
     def test_b1_ch1_h3w3_ws23(self, device):
         img = torch.arange(9.0).view(1, 1, 3, 3).to(device)
         m = kornia.contrib.ExtractTensorPatches((2, 3))
         patches = m(img)
         assert patches.shape == (1, 2, 1, 2, 3)
-        assert_close(img[0, :, 0:2, 0:3], patches[0, 0])
-        assert_close(img[0, :, 1:3, 0:3], patches[0, 1])
+        self.assert_close(img[0, :, 0:2, 0:3], patches[0, 0])
+        self.assert_close(img[0, :, 1:3, 0:3], patches[0, 1])
 
     def test_b1_ch1_h3w4_ws23(self, device):
         img = torch.arange(12.0).view(1, 1, 3, 4).to(device)
         m = kornia.contrib.ExtractTensorPatches((2, 3))
         patches = m(img)
         assert patches.shape == (1, 4, 1, 2, 3)
-        assert_close(img[0, :, 0:2, 0:3], patches[0, 0])
-        assert_close(img[0, :, 0:2, 1:4], patches[0, 1])
-        assert_close(img[0, :, 1:3, 0:3], patches[0, 2])
-        assert_close(img[0, :, 1:3, 1:4], patches[0, 3])
+        self.assert_close(img[0, :, 0:2, 0:3], patches[0, 0])
+        self.assert_close(img[0, :, 0:2, 1:4], patches[0, 1])
+        self.assert_close(img[0, :, 1:3, 0:3], patches[0, 2])
+        self.assert_close(img[0, :, 1:3, 1:4], patches[0, 3])
 
     @pytest.mark.skip(reason="turn off all jit for a while")
     def test_jit(self, device):
@@ -303,12 +302,11 @@ class TestExtractTensorPatches:
         actual = op_script(grid, height, width)
         expected = kornia.denormalize_pixel_coordinates(grid, height, width)
 
-        assert_close(actual, expected)
+        self.assert_close(actual, expected)
 
     def test_gradcheck(self, device):
-        img = torch.rand(2, 3, 4, 4).to(device)
-        img = utils.tensor_to_gradcheck_var(img)  # to var
-        assert gradcheck(kornia.contrib.extract_tensor_patches, (img, 3), raise_exception=True, fast_mode=True)
+        img = torch.rand(2, 3, 4, 4, device=device, dtype=torch.float64)
+        self.gradcheck(kornia.contrib.extract_tensor_patches, (img, 3))
 
     def test_auto_padding_stride(self, device, dtype):
         img_shape = (11, 14)
@@ -323,13 +321,13 @@ class TestExtractTensorPatches:
         assert patches.shape == (1, 35, 1, *window_size)
 
 
-class TestCombineTensorPatches:
+class TestCombineTensorPatches(BaseTester):
     def test_smoke(self, device, dtype):
         img = torch.arange(16, device=device, dtype=dtype).view(1, 1, 4, 4)
         m = kornia.contrib.CombineTensorPatches((4, 4), (2, 2), (2, 2))
         patches = kornia.contrib.extract_tensor_patches(img, window_size=(2, 2), stride=(2, 2))
         assert m(patches).shape == (1, 1, 4, 4)
-        assert_close(img, m(patches))
+        self.assert_close(img, m(patches))
 
     def test_error(self, device, dtype):
         patches = kornia.contrib.extract_tensor_patches(
@@ -345,7 +343,7 @@ class TestCombineTensorPatches:
             patches, original_size=(4, 3), window_size=(2, 2), stride=(2, 2), unpadding=(0, 2)
         )
         assert m.shape == (1, 1, 4, 3)
-        assert_close(img, m)
+        self.assert_close(img, m)
 
     def test_pad_triple_error(self, device, dtype):
         patches = kornia.contrib.extract_tensor_patches(
@@ -361,7 +359,7 @@ class TestCombineTensorPatches:
         patches = kornia.contrib.extract_tensor_patches(img, window_size=(2, 2), stride=(2, 2), padding=1)
         m = kornia.contrib.CombineTensorPatches((4, 6), (2, 2), (2, 2), unpadding=1)
         assert m(patches).shape == (1, 1, 4, 6)
-        assert_close(img, m(patches))
+        self.assert_close(img, m(patches))
 
     def test_padding1(self, device, dtype):
         img = torch.arange(16, device=device, dtype=dtype).view(1, 1, 4, 4)
@@ -369,14 +367,14 @@ class TestCombineTensorPatches:
         patches = kornia.contrib.extract_tensor_patches(img, window_size=(2, 2), stride=(1, 1), padding=padding)
         m = kornia.contrib.CombineTensorPatches((4, 4), (2, 2), stride=(1, 1), unpadding=padding)
         assert m(patches).shape == (1, 1, 4, 4)
-        assert_close(img, m(patches))
+        self.assert_close(img, m(patches))
 
     def test_padding2(self, device, dtype):
         img = torch.arange(64, device=device, dtype=dtype).view(1, 1, 8, 8)
         patches = kornia.contrib.extract_tensor_patches(img, window_size=(2, 2), stride=(2, 2), padding=1)
         m = kornia.contrib.CombineTensorPatches((8, 8), (2, 2), stride=(2, 2), unpadding=1)
         assert m(patches).shape == (1, 1, 8, 8)
-        assert_close(img, m(patches))
+        self.assert_close(img, m(patches))
 
     def test_compute_padding(self, device, dtype):
         img_shape = (8, 13)
@@ -389,7 +387,7 @@ class TestCombineTensorPatches:
         )
         m = kornia.contrib.CombineTensorPatches(img_shape, window_size, stride=window_size, unpadding=padding)
         assert m(patches).shape == (1, 1, *img_shape)
-        assert_close(img, m(patches))
+        self.assert_close(img, m(patches))
 
     def test_stride_greater_than_window_size(self, device, dtype):
         patches = kornia.contrib.extract_tensor_patches(
@@ -411,7 +409,7 @@ class TestCombineTensorPatches:
         m = kornia.contrib.CombineTensorPatches(img_shape, window_size, stride=window_size, unpadding=padding)
         assert m(patches).shape == (1, 1, *img_shape)
 
-        assert_close(img, m(patches))
+        self.assert_close(img, m(patches))
 
     def test_impl_autopadding(self, device, dtype):
         img_shape = (11, 16)
@@ -424,19 +422,16 @@ class TestCombineTensorPatches:
             patches, img_shape, window_size=window_size, stride=window_size, allow_auto_unpadding=True
         )
         assert recomb.shape == img.shape
-        assert_close(img, recomb)
+        self.assert_close(img, recomb)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         patches = kornia.contrib.extract_tensor_patches(
-            torch.arange(16.0, device=device, dtype=dtype).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2)
+            torch.arange(16.0, device=device, dtype=torch.float64).view(1, 1, 4, 4), window_size=(2, 2), stride=(2, 2)
         )
-        img = utils.tensor_to_gradcheck_var(patches)  # to var
-        assert gradcheck(
-            kornia.contrib.combine_tensor_patches, (img, (4, 4), (2, 2), (2, 2)), raise_exception=True, fast_mode=True
-        )
+        self.gradcheck(kornia.contrib.combine_tensor_patches, (patches, (4, 4), (2, 2), (2, 2)))
 
 
-class TestLambdaModule:
+class TestLambdaModule(BaseTester):
     def add_2_layer(self, tensor):
         return tensor + 2
 
@@ -469,14 +464,14 @@ class TestLambdaModule:
         out = lambda_module(img)
         assert isinstance(out, torch.Tensor)
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         B, C, H, W = 1, 3, 4, 5
         img = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         func = kornia.color.bgr_to_grayscale
-        assert gradcheck(kornia.contrib.Lambda(func), (img,), raise_exception=True, fast_mode=True)
+        self.gradcheck(kornia.contrib.Lambda(func), (img,))
 
 
-class TestImageStitcher:
+class TestImageStitcher(BaseTester):
     @pytest.mark.parametrize("estimator", ["ransac", "vanilla"])
     def test_smoke(self, estimator, device, dtype):
         B, C, H, W = 1, 3, 6, 6
@@ -600,7 +595,7 @@ class TestImageStitcher:
             stitcher(sample1, sample2)
 
 
-class TestConvDistanceTransform:
+class TestConvDistanceTransform(BaseTester):
     @pytest.mark.parametrize("kernel_size", [3, 5, 7])
     def test_smoke(self, kernel_size, device, dtype):
         sample1 = torch.rand(1, 3, 100, 100, device=device, dtype=dtype)
@@ -621,8 +616,7 @@ class TestConvDistanceTransform:
 
         output1 = distance_transformer(sample1)
         output2 = kornia.contrib.distance_transform(sample1)
-        tol_val: float = utils._get_precision(device, dtype)
-        assert_close(output1, output2, rtol=tol_val, atol=tol_val)
+        self.assert_close(output1, output2)
 
     def test_exception(self, device, dtype):
         B, C, H, W = 1, 1, 224, 224
@@ -666,12 +660,12 @@ class TestConvDistanceTransform:
             dtype=dtype,
         )
         output1 = kornia.contrib.distance_transform(sample1, kernel_size, h)
-        assert_close(expected_output1, output1)
+        self.assert_close(expected_output1, output1)
 
     def test_gradcheck(self, device):
         B, C, H, W = 1, 1, 32, 32
         sample1 = torch.ones(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.contrib.distance_transform, (sample1), raise_exception=True, fast_mode=True)
+        self.gradcheck(kornia.contrib.distance_transform, (sample1))
 
     def test_loss_grad(self, device, dtype):
         B, C, H, W = 1, 1, 32, 32
@@ -684,14 +678,14 @@ class TestConvDistanceTransform:
         loss.backward()
 
 
-class TestHistMatch:
+class TestHistMatch(BaseTester):
     def test_interp(self, device, dtype):
         xp = torch.tensor([1, 2, 3], device=device, dtype=dtype)
         fp = torch.tensor([4, 2, 0], device=device, dtype=dtype)
         x = torch.tensor([4, 5, 6], device=device, dtype=dtype)
         x_hat_expected = torch.tensor([-2.0, -4.0, -6.0], device=device, dtype=dtype)
         x_hat = kornia.contrib.interp(x, xp, fp)
-        assert_close(x_hat_expected, x_hat)
+        self.assert_close(x_hat_expected, x_hat)
 
     def test_histmatch(self, device, dtype):
         torch.manual_seed(44)
@@ -712,17 +706,17 @@ class TestHistMatch:
             dtype=dtype,
         )
         assert exp.shape == out.shape
-        assert_close(out, exp, rtol=1e-4, atol=1e-4)
+        self.assert_close(out, exp, rtol=1e-4, atol=1e-4)
 
     @pytest.mark.skip(reason="not differentiable now.")
     def test_grad(self, device):
         B, C, H, W = 1, 3, 32, 32
         src = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
         dst = torch.rand(B, C, H, W, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.contrib.histogram_matching, (src, dst), raise_exception=True, fast_mode=True)
+        self.gradcheck(kornia.contrib.histogram_matching, (src, dst))
 
 
-class TestFaceDetection:
+class TestFaceDetection(BaseTester):
     @pytest.mark.slow
     def test_smoke(self, device, dtype):
         assert kornia.contrib.FaceDetector().to(device, dtype) is not None
@@ -778,7 +772,7 @@ class TestFaceDetection:
             _ = kornia.contrib.FaceDetectorResult(data)
 
 
-class TestEdgeDetector:
+class TestEdgeDetector(BaseTester):
     @pytest.mark.slow
     def test_smoke(self, device, dtype):
         img = torch.rand(2, 3, 64, 64, device=device, dtype=dtype)
@@ -793,7 +787,7 @@ class TestEdgeDetector:
         assert op_jit is not None
 
 
-class TestObjectDetector:
+class TestObjectDetector(BaseTester):
     def test_smoke(self, device, dtype):
         batch_size = 3
         confidence = 0.3

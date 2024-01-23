@@ -1,14 +1,14 @@
 import pytest
 import torch
-from torch.autograd import gradcheck
 
-import kornia.testing as utils  # test utils
 from kornia.geometry import RANSAC, transform_points
 from kornia.geometry.epipolar import sampson_epipolar_distance
-from kornia.testing import assert_close
+
+from testing.base import BaseTester
+from testing.casts import dict_to
 
 
-class TestRANSACHomography:
+class TestRANSACHomography(BaseTester):
     def test_smoke(self, device, dtype):
         torch.random.manual_seed(0)
         points1 = torch.rand(4, 2, device=device, dtype=dtype)
@@ -36,14 +36,16 @@ class TestRANSACHomography:
         # compute transform from source to target
         dst_homo_src, _ = ransac(points_src[0], points_dst[0])
 
-        assert_close(transform_points(dst_homo_src[None], points_src[:, :-1]), points_dst[:, :-1], rtol=1e-3, atol=1e-3)
+        self.assert_close(
+            transform_points(dst_homo_src[None], points_src[:, :-1]), points_dst[:, :-1], rtol=1e-3, atol=1e-3
+        )
 
     @pytest.mark.slow
     @pytest.mark.parametrize("data", ["loftr_homo"], indirect=True)
     def test_real_clean(self, device, dtype, data):
         # generate input data
         torch.random.manual_seed(0)
-        data_dev = utils.dict_to(data, device, dtype)
+        data_dev = dict_to(data, device, dtype)
         homography_gt = torch.inverse(data_dev["H_gt"])
         homography_gt = homography_gt / homography_gt[2, 2]
         pts_src = data_dev["pts0"]
@@ -52,7 +54,7 @@ class TestRANSACHomography:
         # compute transform from source to target
         dst_homo_src, _ = ransac(pts_src, pts_dst)
 
-        assert_close(transform_points(dst_homo_src[None], pts_src[None]), pts_dst[None], rtol=1e-2, atol=1.0)
+        self.assert_close(transform_points(dst_homo_src[None], pts_src[None]), pts_dst[None], rtol=1e-2, atol=1.0)
 
     @pytest.mark.slow
     @pytest.mark.xfail(reason="might slightly and randomly imprecise due to RANSAC randomness")
@@ -60,7 +62,7 @@ class TestRANSACHomography:
     def test_real_dirty(self, device, dtype, data):
         # generate input data
         torch.random.manual_seed(0)
-        data_dev = utils.dict_to(data, device, dtype)
+        data_dev = dict_to(data, device, dtype)
         homography_gt = torch.inverse(data_dev["H_gt"])
         homography_gt = homography_gt / homography_gt[2, 2]
         pts_src = data_dev["pts0"]
@@ -74,7 +76,7 @@ class TestRANSACHomography:
         dst_homo_src, _ = ransac(kp1, kp2)
 
         # Reprojection error of 5px is OK
-        assert_close(transform_points(dst_homo_src[None], pts_src[None]), pts_dst[None], rtol=0.15, atol=5)
+        self.assert_close(transform_points(dst_homo_src[None], pts_src[None]), pts_dst[None], rtol=0.15, atol=5)
 
     @pytest.mark.skip(reason="find_homography_dlt is using try/except block")
     def test_jit(self, device, dtype):
@@ -83,10 +85,10 @@ class TestRANSACHomography:
         points2 = torch.rand(4, 2, device=device, dtype=dtype)
         model = RANSAC("homography").to(device=device, dtype=dtype)
         model_jit = torch.jit.script(RANSAC("homography").to(device=device, dtype=dtype))
-        assert_close(model(points1, points2)[0], model_jit(points1, points2)[0], rtol=1e-4, atol=1e-4)
+        self.assert_close(model(points1, points2)[0], model_jit(points1, points2)[0], rtol=1e-4, atol=1e-4)
 
 
-class TestRANSACHomographyLineSegments:
+class TestRANSACHomographyLineSegments(BaseTester):
     def test_smoke(self, device, dtype):
         torch.random.manual_seed(0)
         points1 = torch.rand(4, 2, 2, device=device, dtype=dtype)
@@ -120,7 +122,7 @@ class TestRANSACHomographyLineSegments:
         # compute transform from source to target
         dst_homo_src, _ = ransac(ls1[0], ls2[0])
 
-        assert_close(
+        self.assert_close(
             transform_points(dst_homo_src[None], points_src_st[:, :-1]), points_dst_st[:, :-1], rtol=1e-3, atol=1e-3
         )
 
@@ -131,10 +133,10 @@ class TestRANSACHomographyLineSegments:
         points2 = torch.rand(4, 2, 2, device=device, dtype=dtype)
         model = RANSAC("homography_from_linesegments").to(device=device, dtype=dtype)
         model_jit = torch.jit.script(RANSAC("homography_from_linesegments").to(device=device, dtype=dtype))
-        assert_close(model(points1, points2)[0], model_jit(points1, points2)[0], rtol=1e-4, atol=1e-4)
+        self.assert_close(model(points1, points2)[0], model_jit(points1, points2)[0], rtol=1e-4, atol=1e-4)
 
 
-class TestRANSACFundamental:
+class TestRANSACFundamental(BaseTester):
     def test_smoke(self, device, dtype):
         torch.random.manual_seed(0)
         points1 = torch.rand(8, 2, device=device, dtype=dtype)
@@ -149,7 +151,7 @@ class TestRANSACFundamental:
     def test_real_clean_8pt(self, device, dtype, data):
         torch.random.manual_seed(0)
         # generate input data
-        data_dev = utils.dict_to(data, device, dtype)
+        data_dev = dict_to(data, device, dtype)
         pts_src = data_dev["pts0"]
         pts_dst = data_dev["pts1"]
         # compute transform from source to target
@@ -166,7 +168,7 @@ class TestRANSACFundamental:
     def test_real_clean_7pt(self, device, dtype, data):
         torch.random.manual_seed(0)
         # generate input data
-        data_dev = utils.dict_to(data, device, dtype)
+        data_dev = dict_to(data, device, dtype)
         pts_src = data_dev["pts0"]
         pts_dst = data_dev["pts1"]
         # compute transform from source to target
@@ -183,7 +185,7 @@ class TestRANSACFundamental:
     def test_real_dirty_8pt(self, device, dtype, data):
         torch.random.manual_seed(0)
         # generate input data
-        data_dev = utils.dict_to(data, device, dtype)
+        data_dev = dict_to(data, device, dtype)
         pts_src = data_dev["pts0"]
         pts_dst = data_dev["pts1"]
 
@@ -204,7 +206,7 @@ class TestRANSACFundamental:
     def test_real_dirty_7pt(self, device, dtype, data):
         torch.random.manual_seed(0)
         # generate input data
-        data_dev = utils.dict_to(data, device, dtype)
+        data_dev = dict_to(data, device, dtype)
         pts_src = data_dev["pts0"]
         pts_dst = data_dev["pts1"]
 
@@ -226,7 +228,7 @@ class TestRANSACFundamental:
         points2 = torch.rand(8, 2, device=device, dtype=dtype)
         model = RANSAC("fundamental").to(device=device, dtype=dtype)
         model_jit = torch.jit.script(model)
-        assert_close(model(points1, points2)[0], model_jit(points1, points2)[0], rtol=1e-3, atol=1e-3)
+        self.assert_close(model(points1, points2)[0], model_jit(points1, points2)[0], rtol=1e-3, atol=1e-3)
 
     @pytest.mark.skip(reason="RANSAC is random algorithm, so Jacobian is not defined")
     def test_gradcheck(self, device):
@@ -238,4 +240,4 @@ class TestRANSACFundamental:
         def gradfun(p1, p2):
             return model(p1, p2)[0]
 
-        assert gradcheck(gradfun, (points1, points2), raise_exception=True)
+        self.gradcheck(gradfun, (points1, points2), fast_mode=False, requires_grad=(True, False, False))

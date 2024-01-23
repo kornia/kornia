@@ -1,10 +1,9 @@
 import pytest
 import torch
-from torch.autograd import gradcheck
 
 import kornia
-import kornia.testing as utils  # test utils
-from kornia.testing import BaseTester
+
+from testing.base import BaseTester
 
 
 class TestNormalize(BaseTester):
@@ -92,17 +91,13 @@ class TestNormalize(BaseTester):
 
         self.assert_close(op(*inputs), op_script(*inputs))
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         # prepare input data
-        data = torch.ones(2, 3, 1, 1, device=device, dtype=dtype)
-        mean = torch.tensor([0.5, 1.0, 2.0], device=device, dtype=dtype).repeat(2, 1)
-        std = torch.tensor([2.0, 2.0, 2.0], device=device, dtype=dtype).repeat(2, 1)
+        data = torch.ones(2, 3, 1, 1, device=device, dtype=torch.float64)
+        mean = torch.tensor([0.5, 1.0, 2.0], device=device, dtype=torch.float64).repeat(2, 1)
+        std = torch.tensor([2.0, 2.0, 2.0], device=device, dtype=torch.float64).repeat(2, 1)
 
-        data = utils.tensor_to_gradcheck_var(data)  # to var
-        mean = utils.tensor_to_gradcheck_var(mean)  # to var
-        std = utils.tensor_to_gradcheck_var(std)  # to var
-
-        assert gradcheck(kornia.enhance.Normalize(mean, std), (data,), raise_exception=True, fast_mode=True)
+        self.gradcheck(kornia.enhance.Normalize(mean, std), (data,))
 
     def test_single_value(self, device, dtype):
         # prepare input data
@@ -226,18 +221,14 @@ class TestDenormalize(BaseTester):
 
         self.assert_close(op(*inputs), op_script(*inputs))
 
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         # prepare input data
-        data = torch.ones(2, 3, 1, 1, device=device, dtype=dtype)
+        data = torch.ones(2, 3, 1, 1, device=device, dtype=torch.float64)
         data += 2
-        mean = torch.tensor([0.5, 1.0, 2.0], device=device, dtype=dtype)
-        std = torch.tensor([2.0, 2.0, 2.0], device=device, dtype=dtype)
+        mean = torch.tensor([0.5, 1.0, 2.0], device=device, dtype=torch.float64)
+        std = torch.tensor([2.0, 2.0, 2.0], device=device, dtype=torch.float64)
 
-        data = utils.tensor_to_gradcheck_var(data)  # to var
-        mean = utils.tensor_to_gradcheck_var(mean)  # to var
-        std = utils.tensor_to_gradcheck_var(std)  # to var
-
-        assert gradcheck(kornia.enhance.Denormalize(mean, std), (data,), raise_exception=True, fast_mode=True)
+        self.gradcheck(kornia.enhance.Denormalize(mean, std), (data,))
 
     def test_single_value(self, device, dtype):
         # prepare input data
@@ -317,10 +308,6 @@ class TestNormalizeMinMax(BaseTester):
         self.assert_close(op(x), op_jit(x))
 
     @pytest.mark.grad()
-    def test_gradcheck(self, device, dtype):
+    def test_gradcheck(self, device):
         x = torch.ones(1, 1, 1, 1, device=device, dtype=torch.float64, requires_grad=True)
-        assert gradcheck(kornia.enhance.normalize_min_max, (x,), raise_exception=True, fast_mode=True)
-
-    @pytest.mark.skip(reason="not implemented yet")
-    def test_module(self, device, dtype):
-        pass
+        self.gradcheck(kornia.enhance.normalize_min_max, (x,))
