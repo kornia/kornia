@@ -415,7 +415,7 @@ def jpeg_encode_decode_differentiable(
        - :math:`QT_{c}` is the chroma quantization table.
        - :math:`\hat{I}` is the resulting JPEG encoded-decoded image.
 
-    Notes:
+    .. note:::
         The input (and output) pixel range is :math:`[0, 1]`. In case you want to handle normalized images you are
         required to first perform denormalization followed by normalizing the output images again.
 
@@ -522,7 +522,7 @@ class JPEGEncodeDecodeDifferentiable(Module):
        - :math:`QT_{c}` is the chroma quantization table.
        - :math:`\hat{I}` is the resulting JPEG encoded-decoded image.
 
-    Notes:
+    .. note::
         The input (and output) pixel range is :math:`[0, 1]`. In case you want to handle normalized images you are
         required to first perform denormalization followed by normalizing the output images again.
 
