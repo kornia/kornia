@@ -11,7 +11,7 @@ from kornia.core.check import (
     KORNIA_CHECK_IS_TENSOR,
     KORNIA_CHECK_SHAPE,
 )
-from kornia.geometry import rescale
+from kornia.geometry.transform.affwarp import rescale
 
 __all__ = ["jpeg_encode_decode_differentiable", "JPEGEncodeDecodeDifferentiable"]
 
