@@ -442,10 +442,23 @@ def jpeg_codec_differentiable(
         JPEG coded image of the shape :math:`(B, 3, H, W)`
 
     Example:
+
+        To perform JPEG coding with the standard quantization tables just provide a JPEG quality
+
         >>> img = torch.rand(3, 3, 64, 64, requires_grad=True, dtype=torch.float)
         >>> jpeg_quality = torch.tensor((99.0, 25.0, 1.0), requires_grad=True)
         >>> img_jpeg = jpeg_codec_differentiable(img, jpeg_quality)
         >>> img_jpeg.sum().backward()
+
+        You also have the option to provide custom quantization tables
+
+        >>> img = torch.rand(3, 3, 64, 64, requires_grad=True, dtype=torch.float)
+        >>> jpeg_quality = torch.tensor((99.0, 25.0, 1.0), requires_grad=True)
+        >>> quantization_table_y = torch.randint(1, 256, size=(3, 8, 8), dtype=torch.float)
+        >>> quantization_table_c = torch.randint(1, 256, size=(3, 8, 8), dtype=torch.float)
+        >>> img_jpeg = jpeg_codec_differentiable(img, jpeg_quality, quantization_table_y, quantization_table_c)
+        >>> img_jpeg.sum().backward()
+
     """
     # Check that inputs are tensors
     KORNIA_CHECK_IS_TENSOR(image_rgb)
