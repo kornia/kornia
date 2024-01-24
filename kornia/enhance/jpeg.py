@@ -428,7 +428,7 @@ def jpeg_codec_differentiable(
 
     Args:
         image_rgb: the RGB image to be coded.
-        jpeg_quality: JPEG quality in the range :math:`[0, 99]` controlling the compression strength.
+        jpeg_quality: JPEG quality in the range :math:`[0, 100]` controlling the compression strength.
         quantization_table_y: quantization table for Y channel. Default: standard quantization table.
         quantization_table_c: quantization table for C channels. Default: standard quantization table.
 
@@ -454,6 +454,16 @@ def jpeg_codec_differentiable(
 
         >>> img = torch.rand(3, 3, 64, 64, requires_grad=True, dtype=torch.float)
         >>> jpeg_quality = torch.tensor((99.0, 25.0, 1.0), requires_grad=True)
+        >>> quantization_table_y = torch.randint(1, 256, size=(3, 8, 8), dtype=torch.float)
+        >>> quantization_table_c = torch.randint(1, 256, size=(3, 8, 8), dtype=torch.float)
+        >>> img_jpeg = jpeg_codec_differentiable(img, jpeg_quality, quantization_table_y, quantization_table_c)
+        >>> img_jpeg.sum().backward()
+
+        In case you want to control the quantization purly base on the quantization tables use a JPEG quality of 99.5.
+        Setting the JPEG quality to 99.5 leads to a QT scaling of 1, see Eq. 2 of :cite:`reich2024` for details.
+
+        >>> img = torch.rand(3, 3, 64, 64, requires_grad=True, dtype=torch.float)
+        >>> jpeg_quality = torch.ones(3) * 99.5
         >>> quantization_table_y = torch.randint(1, 256, size=(3, 8, 8), dtype=torch.float)
         >>> quantization_table_c = torch.randint(1, 256, size=(3, 8, 8), dtype=torch.float)
         >>> img_jpeg = jpeg_codec_differentiable(img, jpeg_quality, quantization_table_y, quantization_table_c)
@@ -488,7 +498,7 @@ def jpeg_codec_differentiable(
     KORNIA_CHECK_SHAPE(quantization_table_c, ["B", "8", "8"])
     # Check value range of JPEG quality
     KORNIA_CHECK(
-        (jpeg_quality.amin().item() >= 0.0) and (jpeg_quality.amax().item() <= 99.0),
+        (jpeg_quality.amin().item() >= 0.0) and (jpeg_quality.amax().item() <= 100.0),
         f"JPEG quality is out of range. Expected range is [0, 99], "
         f"got [{jpeg_quality.amin().item()}, {jpeg_quality.amax().item()}]. Consider clipping jpeg_quality.",
     )
@@ -548,7 +558,7 @@ class JPEGCodecDifferentiable(Module):
 
     Args:
         image_rgb: the RGB image to be coded.
-        jpeg_quality: JPEG quality in the range :math:`[0, 99]` controlling the compression strength.
+        jpeg_quality: JPEG quality in the range :math:`[0, 100]` controlling the compression strength.
         quantization_table_y: quantization table for Y channel. Default: standard quantization table.
         quantization_table_c: quantization table for C channels. Default: standard quantization table.
 
