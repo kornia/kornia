@@ -594,7 +594,6 @@ class JPEGCodecDifferentiable(Module):
         >>> jpeg_quality = torch.tensor((99.0, 1.0), requires_grad=True)
         >>> img_jpeg = diff_jpeg_module(img, jpeg_quality)
         >>> img_jpeg.sum().backward()
-
     """
 
     def __init__(
