@@ -13,7 +13,7 @@ from kornia.core.check import (
 )
 from kornia.geometry.transform.affwarp import rescale
 
-__all__ = ["jpeg_encode_decode_differentiable", "JPEGEncodeDecodeDifferentiable"]
+__all__ = ["jpeg_codec_differentiable", "JPEGCodecDifferentiable"]
 
 
 def _get_default_qt_y(device: Device, dtype: Dtype) -> Tensor:
@@ -394,7 +394,7 @@ def _jpeg_decode(
     return rgb_decoded
 
 
-def jpeg_encode_decode_differentiable(
+def jpeg_codec_differentiable(
     image_rgb: Tensor,
     jpeg_quality: Tensor,
     quantization_table_y: Tensor | None = None,
@@ -444,7 +444,7 @@ def jpeg_encode_decode_differentiable(
     Example:
         >>> img = torch.rand(3, 3, 64, 64, requires_grad=True, dtype=torch.float)
         >>> jpeg_quality = torch.tensor((99.0, 25.0, 1.0), requires_grad=True)
-        >>> img_jpeg = jpeg_encode_decode_differentiable(img, jpeg_quality)
+        >>> img_jpeg = jpeg_codec_differentiable(img, jpeg_quality)
         >>> img_jpeg.sum().backward()
     """
     # Check that inputs are tensors
@@ -506,7 +506,7 @@ def jpeg_encode_decode_differentiable(
     return image_rgb_jpeg
 
 
-class JPEGEncodeDecodeDifferentiable(Module):
+class JPEGCodecDifferentiable(Module):
     r"""Differentiable JPEG encoding-decoding module.
 
     Based on :cite:`reich2024` :cite:`shin2017`, we perform differentiable JPEG encoding-decoding as follows:
@@ -546,7 +546,7 @@ class JPEGEncodeDecodeDifferentiable(Module):
         - quantization_table_c: :math:`(8, 8)` or :math:`(B, 8, 8)`.
 
     Example:
-        >>> diff_jpeg_module = JPEGEncodeDecodeDifferentiable()
+        >>> diff_jpeg_module = JPEGCodecDifferentiable()
         >>> img = torch.rand(2, 3, 32, 32, requires_grad=True, dtype=torch.float)
         >>> jpeg_quality = torch.tensor((99.0, 1.0), requires_grad=True)
         >>> img_jpeg = diff_jpeg_module(img, jpeg_quality)
@@ -564,7 +564,7 @@ class JPEGEncodeDecodeDifferentiable(Module):
         quantization_table_c: Tensor | None = None,
     ) -> Tensor:
         # Perform encoding-decoding
-        image_rgb_jpeg: Tensor = jpeg_encode_decode_differentiable(
+        image_rgb_jpeg: Tensor = jpeg_codec_differentiable(
             image_rgb=image_rgb,
             jpeg_quality=jpeg_quality,
             quantization_table_c=quantization_table_c,
