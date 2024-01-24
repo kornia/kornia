@@ -977,12 +977,27 @@ class TestDiffJPEG(BaseTester):
         jpeg_quality = torch.randint(low=0, high=100, size=(B,), device=device, dtype=dtype)
         qt_y = torch.randint(low=1, high=255, size=(B, 8, 8), device=device, dtype=dtype)
         qt_c = torch.randint(low=1, high=255, size=(B, 8, 8), device=device, dtype=dtype)
-        diff_jpeg_module = kornia.enhance.JPEGCodecDifferentiable()
-        img_jpeg = diff_jpeg_module(img, jpeg_quality, qt_y, qt_c)
+        diff_jpeg_module = kornia.enhance.JPEGCodecDifferentiable(qt_y, qt_c)
+        for name, _ in diff_jpeg_module.named_parameters():
+            print(name)
+        img_jpeg = diff_jpeg_module(img, jpeg_quality)
         assert img_jpeg is not None
         assert img_jpeg.shape == img.shape
 
-    @pytest.mark.slow
+    def test_module_with_param(self, device, dtype) -> None:
+        B, H, W = 4, 16, 16
+        img = torch.rand(B, 3, H, W, device=device, dtype=dtype)
+        jpeg_quality = torch.randint(low=0, high=100, size=(B,), device=device, dtype=dtype)
+        qt_y = torch.nn.Parameter(torch.randint(low=1, high=255, size=(B, 8, 8), device=device, dtype=dtype))
+        qt_c = torch.nn.Parameter(torch.randint(low=1, high=255, size=(B, 8, 8), device=device, dtype=dtype))
+        diff_jpeg_module = kornia.enhance.JPEGCodecDifferentiable(qt_y, qt_c)
+        for name, _ in diff_jpeg_module.named_parameters():
+            print(name)
+        img_jpeg = diff_jpeg_module(img, jpeg_quality)
+        assert img_jpeg is not None
+        assert img_jpeg.shape == img.shape
+
+    # @pytest.mark.slow
     def test_gradcheck(self, device) -> None:
         """We test that the gradient matches the gradient of the reference implementation."""
         B, H, W = 1, 16, 16

@@ -5,7 +5,7 @@ from typing import Optional
 import torch
 
 from kornia.color import rgb_to_ycbcr, ycbcr_to_rgb
-from kornia.core import Device, Dtype, Module, Tensor
+from kornia.core import Device, Dtype, Module, Parameter, Tensor
 from kornia.core.check import (
     KORNIA_CHECK,
     KORNIA_CHECK_IS_TENSOR,
@@ -556,40 +556,75 @@ class JPEGCodecDifferentiable(Module):
         There we provide an optimized Rust implementation for fast JPEG loading.
 
     Args:
-        image_rgb: the RGB image to be coded.
-        jpeg_quality: JPEG quality in the range :math:`[0, 100]` controlling the compression strength.
         quantization_table_y: quantization table for Y channel. Default: standard quantization table.
         quantization_table_c: quantization table for C channels. Default: standard quantization table.
 
     Shape:
-        - image_rgb: :math:`(B, 3, H, W)`.
-        - jpeg_quality: :math:`(1)` or :math:`(B)`.
         - quantization_table_y: :math:`(8, 8)` or :math:`(B, 8, 8)`.
         - quantization_table_c: :math:`(8, 8)` or :math:`(B, 8, 8)`.
+        - image_rgb: :math:`(B, 3, H, W)`.
+        - jpeg_quality: :math:`(1)` or :math:`(B)`.
 
     Example:
+
+        You can use the differentiable JPEG module with standard quantization tables by
+
         >>> diff_jpeg_module = JPEGCodecDifferentiable()
         >>> img = torch.rand(2, 3, 32, 32, requires_grad=True, dtype=torch.float)
         >>> jpeg_quality = torch.tensor((99.0, 1.0), requires_grad=True)
         >>> img_jpeg = diff_jpeg_module(img, jpeg_quality)
         >>> img_jpeg.sum().backward()
+
+        You can also specify custom quantization tables to be used by
+
+        >>> quantization_table_y = torch.randint(1, 256, size=(2, 8, 8), dtype=torch.float)
+        >>> quantization_table_c = torch.randint(1, 256, size=(2, 8, 8), dtype=torch.float)
+        >>> diff_jpeg_module = JPEGCodecDifferentiable(quantization_table_y, quantization_table_c)
+        >>> img = torch.rand(2, 3, 32, 32, requires_grad=True, dtype=torch.float)
+        >>> jpeg_quality = torch.tensor((99.0, 1.0), requires_grad=True)
+        >>> img_jpeg = diff_jpeg_module(img, jpeg_quality)
+        >>> img_jpeg.sum().backward()
+
+        In case you want to learn the quantization tables just pass parameters `nn.Parameter`
+
+        >>> quantization_table_y = torch.nn.Parameter(torch.randint(1, 256, size=(2, 8, 8), dtype=torch.float))
+        >>> quantization_table_c = torch.nn.Parameter(torch.randint(1, 256, size=(2, 8, 8), dtype=torch.float))
+        >>> diff_jpeg_module = JPEGCodecDifferentiable(quantization_table_y, quantization_table_c)
+        >>> img = torch.rand(2, 3, 32, 32, requires_grad=True, dtype=torch.float)
+        >>> jpeg_quality = torch.tensor((99.0, 1.0), requires_grad=True)
+        >>> img_jpeg = diff_jpeg_module(img, jpeg_quality)
+        >>> img_jpeg.sum().backward()
+
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        quantization_table_y: Tensor | Parameter | None = None,
+        quantization_table_c: Tensor | Parameter | None = None,
+    ) -> None:
         super().__init__()
+        # Get default quantization tables if needed
+        quantization_table_y = _get_default_qt_y(None, None) if quantization_table_y is None else quantization_table_y
+        quantization_table_c = _get_default_qt_c(None, None) if quantization_table_c is None else quantization_table_c
+        if isinstance(quantization_table_y, Parameter):
+            self.register_parameter("quantization_table_y", quantization_table_y)
+        else:
+            self.register_buffer("quantization_table_y", quantization_table_y)
+        if isinstance(quantization_table_c, Parameter):
+            self.register_parameter("quantization_table_c", quantization_table_c)
+        else:
+            self.register_buffer("quantization_table_c", quantization_table_c)
 
     def forward(
         self,
         image_rgb: Tensor,
         jpeg_quality: Tensor,
-        quantization_table_y: Tensor | None = None,
-        quantization_table_c: Tensor | None = None,
     ) -> Tensor:
         # Perform encoding-decoding
         image_rgb_jpeg: Tensor = jpeg_codec_differentiable(
             image_rgb=image_rgb,
             jpeg_quality=jpeg_quality,
-            quantization_table_c=quantization_table_c,
-            quantization_table_y=quantization_table_y,
+            quantization_table_c=self.quantization_table_c,
+            quantization_table_y=self.quantization_table_y,
         )
         return image_rgb_jpeg
