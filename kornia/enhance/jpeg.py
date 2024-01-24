@@ -458,7 +458,6 @@ def jpeg_codec_differentiable(
         >>> quantization_table_c = torch.randint(1, 256, size=(3, 8, 8), dtype=torch.float)
         >>> img_jpeg = jpeg_codec_differentiable(img, jpeg_quality, quantization_table_y, quantization_table_c)
         >>> img_jpeg.sum().backward()
-
     """
     # Check that inputs are tensors
     KORNIA_CHECK_IS_TENSOR(image_rgb)
