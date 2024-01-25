@@ -11,32 +11,33 @@ Set of operators to perform data augmentation on 2D image tensors.
 Intensity
 ~~~~~~~~~
 
-.. autoclass:: RandomPlanckianJitter
-.. autoclass:: RandomPlasmaShadow
-.. autoclass:: RandomPlasmaBrightness
-.. autoclass:: RandomPlasmaContrast
 .. autoclass:: ColorJiggle
 .. autoclass:: ColorJitter
 .. autoclass:: RandomBoxBlur
 .. autoclass:: RandomBrightness
 .. autoclass:: RandomChannelShuffle
+.. autoclass:: RandomClahe
 .. autoclass:: RandomContrast
 .. autoclass:: RandomEqualize
 .. autoclass:: RandomGamma
-.. autoclass:: RandomGrayscale
 .. autoclass:: RandomGaussianBlur
 .. autoclass:: RandomGaussianNoise
+.. autoclass:: RandomGrayscale
 .. autoclass:: RandomHue
+.. autoclass:: RandomMedianBlur
 .. autoclass:: RandomMotionBlur
+.. autoclass:: RandomPlanckianJitter
+.. autoclass:: RandomPlasmaBrightness
+.. autoclass:: RandomPlasmaContrast
+.. autoclass:: RandomPlasmaShadow
 .. autoclass:: RandomPosterize
 .. autoclass:: RandomRGBShift
-.. autoclass:: RandomSaturation
-.. autoclass:: RandomSharpness
-.. autoclass:: RandomSolarize
-.. autoclass:: RandomMedianBlur
-.. autoclass:: RandomSnow
 .. autoclass:: RandomRain
-.. autoclass:: RandomClahe
+.. autoclass:: RandomSaturation
+.. autoclass:: RandomSaltAndPepperNoise
+.. autoclass:: RandomSharpness
+.. autoclass:: RandomSnow
+.. autoclass:: RandomSolarize
 
 Geometric
 ~~~~~~~~~
@@ -45,24 +46,24 @@ Geometric
 .. autoclass:: PadTo
 .. autoclass:: RandomAffine
 .. autoclass:: RandomCrop
-.. autoclass:: RandomErasing
 .. autoclass:: RandomElasticTransform
+.. autoclass:: RandomErasing
 .. autoclass:: RandomFisheye
 .. autoclass:: RandomHorizontalFlip
 .. autoclass:: RandomInvert
 .. autoclass:: RandomPerspective
 .. autoclass:: RandomResizedCrop
 .. autoclass:: RandomRotation
-.. autoclass:: RandomVerticalFlip
 .. autoclass:: RandomThinPlateSpline
+.. autoclass:: RandomVerticalFlip
 
 Mix
 ~~~
 
 .. autoclass:: RandomCutMixV2
+.. autoclass:: RandomJigsaw
 .. autoclass:: RandomMixUpV2
 .. autoclass:: RandomMosaic
-.. autoclass:: RandomJigsaw
 .. autoclass:: RandomTransplantation
 
 Transforms3D
@@ -73,19 +74,19 @@ Set of operators to perform data augmentation on 3D volumetric tensors.
 Geometric
 ~~~~~~~~~
 
-.. autoclass:: RandomDepthicalFlip3D
-.. autoclass:: RandomHorizontalFlip3D
-.. autoclass:: RandomVerticalFlip3D
-.. autoclass:: RandomRotation3D
+.. autoclass:: CenterCrop3D
 .. autoclass:: RandomAffine3D
 .. autoclass:: RandomCrop3D
-.. autoclass:: CenterCrop3D
+.. autoclass:: RandomDepthicalFlip3D
+.. autoclass:: RandomHorizontalFlip3D
+.. autoclass:: RandomRotation3D
+.. autoclass:: RandomVerticalFlip3D
 
 Intensity
 ~~~~~~~~~
 
-.. autoclass:: RandomMotionBlur3D
 .. autoclass:: RandomEqualize3D
+.. autoclass:: RandomMotionBlur3D
 
 Mix
 ~~~
@@ -103,6 +104,6 @@ Normalization operations are shape-agnostic for both 2D and 3D tensors.
 Image Resize
 ------------
 
-.. autoclass:: Resize
 .. autoclass:: LongestMaxSize
+.. autoclass:: Resize
 .. autoclass:: SmallestMaxSize
