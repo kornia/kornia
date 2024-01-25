@@ -51,6 +51,11 @@ Normalizations
 .. autofunction:: zca_whiten
 .. autofunction:: linear_transform
 
+Codec
+-----
+
+.. autofunction:: jpeg_codec_differentiable
+
 
 Modules
 -------
@@ -70,6 +75,8 @@ Modules
 .. autoclass:: AddWeighted
 
 .. autoclass:: Invert
+
+.. autoclass:: JPEGCodecDifferentiable
 
 
 ZCA Whitening Interactive Demo

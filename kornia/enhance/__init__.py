@@ -51,6 +51,7 @@ __all__ = [
     "adjust_saturation_raw",
     "adjust_sigmoid",
     "adjust_log",
+    "JPEGCodecDifferentiable",
     "jpeg_codec_differentiable",
     "solarize",
     "equalize",

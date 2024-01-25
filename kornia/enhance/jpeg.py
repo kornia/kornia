@@ -404,6 +404,8 @@ def jpeg_codec_differentiable(
 
     Based on :cite:`reich2024` :cite:`shin2017`, we perform differentiable JPEG encoding-decoding as follows:
 
+    .. image:: _static/img/jpeg_codec_differentiable.png
+
     .. math::
 
         \text{JPEG}_{\text{diff}}(I, q, QT_{y}, QT_{c}) = \hat{I}
@@ -429,8 +431,10 @@ def jpeg_codec_differentiable(
     Args:
         image_rgb: the RGB image to be coded.
         jpeg_quality: JPEG quality in the range :math:`[0, 100]` controlling the compression strength.
-        quantization_table_y: quantization table for Y channel. Default: standard quantization table.
-        quantization_table_c: quantization table for C channels. Default: standard quantization table.
+        quantization_table_y: quantization table for Y channel. Default: `None`, which will load the standard
+          quantization table.
+        quantization_table_c: quantization table for C channels. Default: `None`, which will load the standard
+          quantization table.
 
     Shape:
         - image_rgb: :math:`(B, 3, H, W)`.
@@ -544,6 +548,8 @@ class JPEGCodecDifferentiable(Module):
        - :math:`QT_{c}` is the chroma quantization table.
        - :math:`\hat{I}` is the resulting JPEG encoded-decoded image.
 
+    .. image:: _static/img/jpeg_codec_differentiable.png
+
     .. note::
         The input (and output) pixel range is :math:`[0, 1]`. In case you want to handle normalized images you are
         required to first perform denormalization followed by normalizing the output images again.
@@ -556,8 +562,10 @@ class JPEGCodecDifferentiable(Module):
         There we provide an optimized Rust implementation for fast JPEG loading.
 
     Args:
-        quantization_table_y: quantization table for Y channel. Default: standard quantization table.
-        quantization_table_c: quantization table for C channels. Default: standard quantization table.
+        quantization_table_y: quantization table for Y channel. Default: `None`, which will load the standard
+          quantization table.
+        quantization_table_c: quantization table for C channels. Default: `None`, which will load the standard
+          quantization table.
 
     Shape:
         - quantization_table_y: :math:`(8, 8)` or :math:`(B, 8, 8)`.
