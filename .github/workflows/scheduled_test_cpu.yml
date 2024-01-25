@@ -18,7 +18,7 @@ jobs:
         # os: ['Ubuntu-latest', 'Windows-latest', 'MacOS-latest']
         pytorch-dtype: ['float32', 'float64']
 
-    uses: ./.github/workflows/tests.yml
+    uses: kornia/workflows/.github/workflows/tests.yml@v1.2.1
     with:
       os: 'Ubuntu-latest'
       python-version: '["3.8", "3.9", "3.10", "3.11"]'
@@ -34,7 +34,7 @@ jobs:
       matrix:
         pytorch-dtype: ['float32', 'float64']
 
-    uses: ./.github/workflows/tests.yml
+    uses: kornia/workflows/.github/workflows/tests.yml@v1.2.1
     with:
       os: 'Windows-latest'
       python-version: '["3.11"]'
@@ -47,26 +47,19 @@ jobs:
       matrix:
         pytorch-dtype: ['float32', 'float64']
 
-    uses: ./.github/workflows/tests.yml
+    uses: kornia/workflows/.github/workflows/tests.yml@v1.2.1
     with:
       os: 'MacOS-latest'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
 
-  test-tutorials:
-    uses: ./.github/workflows/test_tutorials.yml
+  coverage:
+    uses: kornia/workflows/.github/workflows/coverage.yml@v1.2.1
 
-  test-typing:
-    uses: ./.github/workflows/test_typing.yml
+  typing:
+    uses: kornia/workflows/.github/workflows/mypy.yml@v1.2.1
+
+  tutorials:
+    uses: kornia/workflows/.github/workflows/tutorials.yml@v1.2.1
 
   docs:
-    uses: ./.github/workflows/docs.yml
-
-  tests-coverage:
-    uses: ./.github/workflows/tests.yml
-    with:
-      python-version: '["3.11"]'
-      pytorch-version: '["2.1.2"]'
-      pytorch-dtype: 'float32,float64'
-      coverage: true
-      continue-on-error: true
-      pytest-extra: '--runslow'
+    uses: kornia/workflows/.github/workflows/docs.yml@v1.2.1
