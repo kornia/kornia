@@ -419,8 +419,8 @@ class LightGlue(Module):
         state_dict = None
         if features is not None:
             fname = f"{conf.weights}_{self.version}.pth".replace(".", "-")
-            if features == 'dog_affnet_hardnet':
-                features = 'doghardnet' # new dog model is better for affnet as well
+            if features == "dog_affnet_hardnet":
+                features = "doghardnet"  # new dog model is better for affnet as well
             if features in ["keynet_affnet_hardnet"]:
                 fname = "keynet_affnet_hardnet_lightlue.pth"
                 url = "http://cmp.felk.cvut.cz/~mishkdmy/models/keynet_affnet_hardnet_lightlue.pth"
