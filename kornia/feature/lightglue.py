@@ -620,6 +620,7 @@ class LightGlue(Module):
             prune1 = ones_like(mscores1) * self.conf.n_layers
 
         pred = {
+            "log_assignment": scores,
             "matches0": m0,
             "matches1": m1,
             "matching_scores0": mscores0,
