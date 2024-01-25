@@ -501,3 +501,4 @@ class TestLightGlueDISK(BaseTester):
 class TestLightGlueHardNet(BaseTester):
     def test_smoke(self):
         lg = LightGlueMatcher("doghardnet")
+        assert isinstance(lg, LightGlueMatcher)
