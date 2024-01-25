@@ -42,6 +42,7 @@ from kornia.augmentation import (
     RandomResizedCrop,
     RandomRGBShift,
     RandomRotation,
+    RandomSaltAndPepperNoise,
     RandomSaturation,
     RandomSnow,
     RandomThinPlateSpline,
@@ -3207,6 +3208,86 @@ class TestRandomGaussianNoise(BaseTester):
         img = torch.rand(1, 1, 2, 2, device=device, dtype=dtype)
         aug = RandomGaussianNoise(p=1.0)
         assert img.shape == aug(img).shape
+
+
+class TestRandomSaltAndPepperNoise(BaseTester):
+    @pytest.mark.parametrize(
+        "expected",
+        [
+            torch.tensor(
+                [
+                    [
+                        [
+                            [1.0000, 1.0000, 0.5000, 0.5000, 0.5000],
+                            [0.5000, 0.5000, 0.5000, 0.5000, 0.5000],
+                            [0.0000, 0.0000, 0.5000, 0.5000, 0.5000],
+                            [0.5000, 1.0000, 0.5000, 0.5000, 0.5000],
+                            [0.5000, 0.5000, 0.5000, 0.5000, 0.5000],
+                        ]
+                    ]
+                ]
+            )
+        ],
+    )
+    def test_smoke(self, expected, device, dtype):
+        torch.manual_seed(0)
+        input_tensor = torch.ones(1, 1, 5, 5, device=device, dtype=dtype) * 0.5
+        expected = expected.to(device, dtype=dtype)
+        aug = RandomSaltAndPepperNoise(amount=0.2, salt_vs_pepper=0.5, p=1.0)
+        res = aug(input_tensor)
+        assert input_tensor.shape == res.shape
+        self.assert_close(res, expected)
+
+    def test_exception(self, device, dtype):
+        with pytest.raises(ValueError, match="salt_vs_pepper must be a tuple or a float"):
+            RandomSaltAndPepperNoise(salt_vs_pepper=[0.4, 0.6])
+        with pytest.raises(
+            ValueError,
+            match="The length of salt_vs_pepper must be greater than 0 \
+                        and less than or equal to 2, and it should be a tuple.",
+        ):
+            RandomSaltAndPepperNoise(salt_vs_pepper=(0.1, 0.2, 0.3))
+        with pytest.raises(
+            Exception,
+            match="False not true.\nSalt_vs_pepper values must be between 0 and 1. \
+                        Recommended value 0.5.",
+        ):
+            RandomSaltAndPepperNoise(salt_vs_pepper=(0.4, 3))
+        with pytest.raises(ValueError, match="amount must be a tuple or a float"):
+            RandomSaltAndPepperNoise(amount=[0.01, 0.06])
+        with pytest.raises(
+            ValueError,
+            match="The length of amount must be greater than 0 \
+                        and less than or equal to 2, and it should be a tuple.",
+        ):
+            RandomSaltAndPepperNoise(amount=())
+        with pytest.raises(
+            Exception,
+            match="False not true.\namount of noise values must be between 0 and 1. \
+                        Recommended values less than 0.2.",
+        ):
+            RandomSaltAndPepperNoise(amount=(0.05, 3))
+
+        with pytest.raises(ValueError, match="amount must be a tuple or a float"):
+            RandomSaltAndPepperNoise(amount=[0.01, 0.06])
+
+        with pytest.raises(ValueError, match="amount must be a tuple or a float"):
+            RandomSaltAndPepperNoise(amount=[0.01, 0.06])
+
+    @pytest.mark.parametrize("batch_shape", [1, 3, 3, 5])
+    @pytest.mark.parametrize("channel_shape", [1, 1, 3, 3])
+    def test_cardinality(self, batch_shape, channel_shape, device, dtype):
+        input_tensor = torch.ones(batch_shape, channel_shape, 16, 16, device=device, dtype=dtype) * 0.5
+        transform = RandomSaltAndPepperNoise(p=1.0)
+        output_tensor = transform(input_tensor)
+        assert input_tensor.shape[0] == output_tensor.shape[0]
+        assert input_tensor.shape[1] == output_tensor.shape[1]
+
+    def test_same_on_batch(self, device, dtype):
+        input_tensor = torch.ones(2, 1, 5, 5, device=device, dtype=dtype) * 0.5
+        transform = RandomSaltAndPepperNoise(p=1.0, same_on_batch=True)
+        output_tensor = transform(input_tensor)
+        self.assert_close(output_tensor[0], output_tensor[1])
 
 
 class TestNormalize(BaseTester):
