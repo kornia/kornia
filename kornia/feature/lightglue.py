@@ -363,12 +363,20 @@ class LightGlue(Module):
             "add_scale_ori": True,
         },
         "dog_affnet_hardnet": {
-            "weights": "keynet_affnet_hardnet_lightglue",
+            "weights": "doghardnet",
             "input_dim": 128,
             "width_confidence": -1,
             "depth_confidence": -1,
-            "add_laf": True,
-            "scale_coef": 0.1,
+            "add_scale_ori": True,
+            "scale_coef": 1.0 / 6.0,
+        },
+        "doghardnet": {
+            "weights": "doghardnet",
+            "input_dim": 128,
+            "width_confidence": -1,
+            "depth_confidence": -1,
+            "add_scale_ori": True,
+            "scale_coef": 1.0 / 6.0,
         },
         "keynet_affnet_hardnet": {
             "weights": "keynet_affnet_hardnet_lightglue",
@@ -411,7 +419,9 @@ class LightGlue(Module):
         state_dict = None
         if features is not None:
             fname = f"{conf.weights}_{self.version}.pth".replace(".", "-")
-            if features in ["keynet_affnet_hardnet", "dog_affnet_hardnet"]:
+            if features == "dog_affnet_hardnet":
+                features = "doghardnet"  # new dog model is better for affnet as well
+            if features in ["keynet_affnet_hardnet"]:
                 fname = "keynet_affnet_hardnet_lightlue.pth"
                 url = "http://cmp.felk.cvut.cz/~mishkdmy/models/keynet_affnet_hardnet_lightlue.pth"
             else:
@@ -490,7 +500,12 @@ class LightGlue(Module):
         KORNIA_CHECK(torch.all(kpts1 >= -1).item() and torch.all(kpts1 <= 1).item(), "")  # type: ignore
         if self.conf.add_scale_ori:
             kpts0 = concatenate([kpts0] + [data0[k].unsqueeze(-1) for k in ("scales", "oris")], -1)
+            if self.conf.scale_coef != 1.0:
+                kpts0[..., -2] = kpts0[..., -2] * self.conf.scale_coef
             kpts1 = concatenate([kpts1] + [data1[k].unsqueeze(-1) for k in ("scales", "oris")], -1)
+            if self.conf.scale_coef != 1.0:
+                kpts1[..., -2] = kpts1[..., -2] * self.conf.scale_coef
+
         elif self.conf.add_laf:
             laf0 = scale_laf(data0["lafs"], self.conf.scale_coef)
             laf1 = scale_laf(data1["lafs"], self.conf.scale_coef)
@@ -605,6 +620,7 @@ class LightGlue(Module):
             prune1 = ones_like(mscores1) * self.conf.n_layers
 
         pred = {
+            "log_assignment": scores,
             "matches0": m0,
             "matches1": m1,
             "matching_scores0": mscores0,
