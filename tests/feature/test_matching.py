@@ -496,3 +496,8 @@ class TestLightGlueDISK(BaseTester):
                 torch.empty(0, 0, 2, 3, device=device, dtype=dtype),
                 data_dev["lafs2"],
             )
+
+
+class TestLightGlueHardNet(BaseTester):
+    def test_smoke(self):
+        lg = LightGlueMatcher("doghardnet")
