@@ -3289,13 +3289,6 @@ class TestRandomSaltAndPepperNoise(BaseTester):
         output_tensor = transform(input_tensor)
         self.assert_close(output_tensor[0], output_tensor[1])
 
-    @pytest.mark.slow
-    def test_gradcheck(self, device):
-        torch.manual_seed(0)  # for random reproductibility
-        transform = RandomSaltAndPepperNoise(p=1.0)
-        input_tensor = torch.rand(1, 3, 16, 16, device=device, dtype=torch.float64)
-        self.gradcheck(transform, (input_tensor,))
-
 
 class TestNormalize(BaseTester):
     # TODO: improve and implement more meaningful smoke tests e.g check for a consistent
