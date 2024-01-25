@@ -382,10 +382,13 @@ def main():
         "invert": ((), 1),
         "equalize_clahe": ((), 1),
         "add_weighted": ((0.75, 0.25, 2.0), 1),
+        "jpeg_codec_differentiable": ((torch.tensor([50]),), 1),
     }
     # ITERATE OVER THE TRANSFORMS
     for fn_name, (args, num_samples) in transforms.items():
         img_in = img3.repeat(num_samples, 1, 1, 1)
+        if fn_name == "jpeg_codec_differentiable":
+            img_in = img_in[..., :176, :]
         if fn_name == "add_weighted":
             args_in = (img_in, args[0], img2, args[1], args[2])
         else:
