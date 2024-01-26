@@ -113,7 +113,7 @@ class TestRandAugment(BaseTester):
         aug(in_tensor)
 
     @pytest.mark.xfail(
-        torch_version() in {"1.10.2", "1.11.0", "1.12.1", "1.13.1"},
+        torch_version() in {"1.9.1", "1.10.2", "1.11.0", "1.12.1", "1.13.1"},
         reason="randomness failing into some torch versions",
     )
     def test_transform_mat(self, device, dtype):
