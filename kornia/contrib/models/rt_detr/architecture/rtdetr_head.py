@@ -466,7 +466,7 @@ class RTDETRHead(Module):
         anchors = torch.log(anchors / (1 - anchors))  # anchors.logit() fails ONNX export
 
         inf_t = torch.empty(1, device=device, dtype=dtype)
-        inf_t[0] = torch.inf
+        inf_t[0] = float("inf")
 
         anchors = torch.where(valid_mask, anchors, inf_t)
 
