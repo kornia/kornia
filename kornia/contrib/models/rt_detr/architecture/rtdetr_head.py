@@ -374,7 +374,7 @@ class RTDETRHead(Module):
             level_start_index.append(h * w + level_start_index[-1])
 
         # [b, l, c]
-        feat_flatten: Tensor = torch.concat(feat_flatten_list, 1)
+        feat_flatten: Tensor = concatenate(feat_flatten_list, 1)
 
         level_start_index.pop()
         return feat_flatten, spatial_shapes, level_start_index
