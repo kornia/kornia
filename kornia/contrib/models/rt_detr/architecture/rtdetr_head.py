@@ -10,6 +10,7 @@ from torch import nn
 
 from kornia.contrib.models.common import MLP, ConvNormAct
 from kornia.core import Module, Tensor, concatenate
+from kornia.utils._compat import torch_meshgrid
 
 
 def _inverse_sigmoid(x: torch.Tensor, eps: float = 1e-5) -> torch.Tensor:
@@ -374,7 +375,7 @@ class RTDETRHead(Module):
             level_start_index.append(h * w + level_start_index[-1])
 
         # [b, l, c]
-        feat_flatten: Tensor = torch.concat(feat_flatten_list, 1)
+        feat_flatten: Tensor = concatenate(feat_flatten_list, 1)
 
         level_start_index.pop()
         return feat_flatten, spatial_shapes, level_start_index
@@ -445,8 +446,9 @@ class RTDETRHead(Module):
 
         for i, (h, w) in enumerate(spatial_shapes):
             # TODO: fix later kornia.utils.create_meshgrid()
-            grid_y, grid_x = torch.meshgrid(
-                torch.arange(h, device=device, dtype=dtype), torch.arange(w, device=device, dtype=dtype), indexing="ij"
+            grid_y, grid_x = torch_meshgrid(
+                [torch.arange(h, device=device, dtype=dtype), torch.arange(w, device=device, dtype=dtype)],
+                indexing="ij",
             )
             grid_xy = torch.stack([grid_x, grid_y], -1)  # HxWx2
 
@@ -464,7 +466,7 @@ class RTDETRHead(Module):
         anchors = torch.log(anchors / (1 - anchors))  # anchors.logit() fails ONNX export
 
         inf_t = torch.empty(1, device=device, dtype=dtype)
-        inf_t[0] = torch.inf
+        inf_t[0] = float("inf")
 
         anchors = torch.where(valid_mask, anchors, inf_t)
 
