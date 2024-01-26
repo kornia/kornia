@@ -5,6 +5,7 @@ from typing import Optional
 import torch
 
 from kornia.color import rgb_to_ycbcr, ycbcr_to_rgb
+from kornia.constants import pi
 from kornia.core import Device, Dtype, Module, Parameter, Tensor
 from kornia.core.check import (
     KORNIA_CHECK,
@@ -99,7 +100,7 @@ def _dct_8x8(input: Tensor) -> Tensor:
     # Make DCT tensor and scaling
     index: Tensor = torch.arange(8, dtype=dtype, device=device)
     x, y, u, v = torch.meshgrid(index, index, index, index)
-    dct_tensor: Tensor = ((2.0 * x + 1.0) * u * torch.pi / 16.0).cos() * ((2.0 * y + 1.0) * v * torch.pi / 16.0).cos()
+    dct_tensor: Tensor = ((2.0 * x + 1.0) * u * pi / 16.0).cos() * ((2.0 * y + 1.0) * v * pi / 16.0).cos()
     alpha: Tensor = torch.ones(8, dtype=dtype, device=device)
     alpha[0] = 1.0 / (2**0.5)
     dct_scale: Tensor = torch.einsum("i, j -> ij", alpha, alpha) * 0.25
@@ -128,7 +129,7 @@ def _idct_8x8(input: Tensor) -> Tensor:
     # Make DCT tensor and scaling
     index: Tensor = torch.arange(8, dtype=dtype, device=device)
     x, y, u, v = torch.meshgrid(index, index, index, index)
-    idct_tensor: Tensor = ((2.0 * u + 1.0) * x * torch.pi / 16.0).cos() * ((2.0 * v + 1.0) * y * torch.pi / 16.0).cos()
+    idct_tensor: Tensor = ((2.0 * u + 1.0) * x * pi / 16.0).cos() * ((2.0 * v + 1.0) * y * pi / 16.0).cos()
     # Apply DCT
     output: Tensor = 0.25 * torch.tensordot(input, idct_tensor, dims=2) + 128.0
     return output
