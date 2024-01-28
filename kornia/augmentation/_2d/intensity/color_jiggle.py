@@ -75,10 +75,14 @@ class ColorJiggle(IntensityAugmentationBase2D):
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         transforms = [
-            lambda img: adjust_brightness(img, params["brightness_factor"] - 1),
-            lambda img: adjust_contrast(img, params["contrast_factor"]),
-            lambda img: adjust_saturation(img, params["saturation_factor"]),
-            lambda img: adjust_hue(img, params["hue_factor"] * 2 * pi),
+            lambda img: adjust_brightness(img, params["brightness_factor"] - 1) if (
+                params["brightness_factor"] - 1 != 0).any() else img,
+            lambda img: adjust_contrast(img, params["contrast_factor"]) if (
+                params["contrast_factor"] != 1).any() else img,
+            lambda img: adjust_saturation(img, params["saturation_factor"]) if (
+                params["saturation_factor"] != 1).any() else img,
+            lambda img: adjust_hue(img, params["hue_factor"] * 2 * pi) if (
+                params["hue_factor"] != 0).any() else img,
         ]
 
         jittered = input
