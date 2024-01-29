@@ -349,6 +349,10 @@ class LightGlue(Module):
             "weights": "superpoint_lightglue",
             "input_dim": 256,
         },
+        "dedodeb": {
+            "weights": "dedodeb_lightglue",
+            "input_dim": 256,
+        },
         "disk": {
             "weights": "disk_lightglue",
             "input_dim": 128,
@@ -424,6 +428,9 @@ class LightGlue(Module):
             if features in ["keynet_affnet_hardnet"]:
                 fname = "keynet_affnet_hardnet_lightlue.pth"
                 url = "http://cmp.felk.cvut.cz/~mishkdmy/models/keynet_affnet_hardnet_lightlue.pth"
+            elif features in ["dedodeb"]:
+                fname = "dedodeb_lightglue.pth"
+                url = "http://cmp.felk.cvut.cz/~mishkdmy/models/dedodeb_lightglue.pth"
             else:
                 url = self.url.format(self.version, features)
             state_dict = torch.hub.load_state_dict_from_url(url, file_name=fname)
