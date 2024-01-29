@@ -20,8 +20,8 @@ class SaltAndPepperGenerator(RandomGeneratorBase):
             - amount_factor: Element-wise factors determining the amount of noise with a shape of (B,).
             - salt_and_pepper_factor: Element-wise factors determining the ratio of Salt and Pepper noise
                 with a shape of (B,).
-            - mask_salt: Binary masks (float) indicating the presence of Salt noise with a shape of (B, C, H, W).
-            - mask_pepper: Binary masks (float) indicating the presence of Pepper noise with a shape of (B, C, H, W).
+            - mask_salt: Binary masks (bool) indicating the presence of Salt noise with a shape of (B, C, H, W).
+            - mask_pepper: Binary masks (bool) indicating the presence of Pepper noise with a shape of (B, C, H, W).
 
     Note:
         The generated random numbers are not reproducible across different devices and dtypes. By default,
@@ -82,8 +82,8 @@ class SaltAndPepperGenerator(RandomGeneratorBase):
         if C > 1:
             mask_noise = mask_noise.repeat(1, C, 1, 1)
             mask_salt = mask_salt.repeat(1, C, 1, 1)
-        mask_pepper = (~(~mask_salt & mask_noise)).to(device=_device, dtype=_dtype)
-        mask_salt = (mask_salt & mask_noise).to(device=_device, dtype=_dtype)
+        mask_pepper = (~mask_salt & mask_noise).to(device=_device)
+        mask_salt = (mask_salt & mask_noise).to(device=_device)
 
         return {
             "amount_factor": amount_factor,

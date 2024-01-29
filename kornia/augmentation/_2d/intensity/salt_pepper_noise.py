@@ -121,8 +121,10 @@ class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
             input = input[None, :, :, :]
         KORNIA_CHECK(input.shape[1] in {3, 1}, "Number of color channels should be 1 or 3.")
 
-        # Apply add and multiply mask.
-        noisy_image = input + params["mask_salt"].to(input)
-        noisy_image = noisy_image * params["mask_pepper"].to(input)
+        noisy_image = input.clone()
 
-        return noisy_image.clamp(0, 1)
+        # Apply noise masks using indexing.
+        noisy_image[params["mask_salt"].to(input.device)] = 1.0
+        noisy_image[params["mask_pepper"].to(input.device)] = 0.0
+
+        return noisy_image
