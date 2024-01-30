@@ -34,6 +34,9 @@ class RepVggBlock(Module):
     @torch.no_grad()
     def optimize_for_deployment(self) -> None:
         def _fuse_conv_bn_weights(m: ConvNormAct) -> tuple[nn.Parameter, nn.Parameter]:
+            if m.norm.running_mean is None or m.norm.running_var is None:
+                raise ValueError
+
             return fuse_conv_bn_weights(
                 m.conv.weight,
                 m.conv.bias,
