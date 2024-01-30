@@ -48,6 +48,7 @@ class TestEfficientViT:
 
         assert model_path.is_file()
 
+    @pytest.mark.slow
     def test_load_pretrained(self, device, dtype):
         model = EfficientViT.from_config(EfficientViTConfig())
         model = model.to(device=device, dtype=dtype)

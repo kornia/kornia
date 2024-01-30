@@ -3,6 +3,7 @@ import torch
 
 from kornia.feature import OnnxLightGlue
 from kornia.feature.lightglue_onnx.utils import normalize_keypoints
+from kornia.utils._compat import torch_version_le
 
 try:
     import onnxruntime as ort
@@ -11,6 +12,7 @@ except ImportError:
 
 
 @pytest.mark.skipif(ort is None, reason="OnnxLightGlue requires onnxruntime-gpu")
+@pytest.mark.skipif(torch_version_le(1, 9, 1), reason="Needs dlpack")
 class TestOnnxLightGlue:
     @pytest.mark.slow
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="Test requires CUDA")
