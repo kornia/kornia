@@ -13,6 +13,7 @@ from kornia.feature.matching import (
     match_smnn,
     match_snn,
 )
+from kornia.utils._compat import torch_version_le
 
 from testing.base import BaseTester
 from testing.casts import dict_to
@@ -448,6 +449,7 @@ class TestAdalam(BaseTester):
 
 class TestLightGlueDISK(BaseTester):
     @pytest.mark.slow
+    @pytest.mark.skipif(torch_version_le(1, 9, 1), reason="Needs autocast")
     @pytest.mark.parametrize("data", ["lightglue_idxs"], indirect=True)
     def test_real(self, device, dtype, data):
         torch.random.manual_seed(0)
