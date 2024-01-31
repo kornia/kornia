@@ -37,16 +37,19 @@ def validate_bbox(boxes: torch.Tensor) -> bool:
     if len(boxes.shape) == 4:
         boxes = boxes.view(-1, 4, 2)
 
-    if not torch.allclose((boxes[:, 1, 0] - boxes[:, 0, 0] + 1), (boxes[:, 2, 0] - boxes[:, 3, 0] + 1), atol=1e-4):
+    x_tl, y_tl = boxes[..., 0, 0], boxes[..., 0, 1]
+    x_tr, y_tr = boxes[..., 1, 0], boxes[..., 1, 1]
+    x_br, y_br = boxes[..., 2, 0], boxes[..., 2, 1]
+    x_bl, y_bl = boxes[..., 3, 0], boxes[..., 3, 1]
+
+    if not torch.allclose(x_tl - x_tr + 1, x_bl - x_br + 1, atol=1e-4):
         raise ValueError(
-            f"Boxes must have be rectangular, while get widths {boxes[:, 1, 0] - boxes[:, 0, 0] + 1!s}"
-            f" and {boxes[:, 2, 0] - boxes[:, 3, 0] + 1!s}"
+            f"Boxes must have be rectangular, while get widths {x_tl - x_tr + 1!s} and {x_bl - x_br + 1!s}"
         )
 
-    if not torch.allclose((boxes[:, 2, 1] - boxes[:, 0, 1] + 1), (boxes[:, 3, 1] - boxes[:, 1, 1] + 1), atol=1e-4):
+    if not torch.allclose(y_tl - y_bl + 1, y_tr - y_br + 1, atol=1e-4):
         raise ValueError(
-            f"Boxes must be rectangular, while getting heights {boxes[:, 2, 1] - boxes[:, 0, 1] + 1!s}"
-            f" and {boxes[:, 3, 1] - boxes[:, 1, 1] + 1!s}"
+            f"Boxes must have be rectangular, while get heights {y_tl - y_bl + 1!s} and {y_tr - y_br + 1!s}"
         )
 
     return True
