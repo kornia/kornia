@@ -177,6 +177,14 @@ class TestResize(BaseTester):
         input = torch.rand(1, 2, 3, 4, device=device, dtype=torch.float64)
         self.gradcheck(kornia.geometry.transform.Resize(new_size, align_corners=False), (input,))
 
+    @pytest.mark.parametrize("anti_alias", [True, False])
+    def test_dynamo(self, device, dtype, anti_alias, torch_optimizer):
+        new_size = (5, 6)
+        input = torch.rand(1, 2, 3, 4, device=device, dtype=dtype)
+        op = torch_optimizer(kornia.geometry.transform.resize)
+        out = op(input, new_size, align_corners=False, antialias=anti_alias)
+        assert out.shape == (1, 2, 5, 6)
+
 
 class TestRescale(BaseTester):
     def test_smoke(self, device, dtype):

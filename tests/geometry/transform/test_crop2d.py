@@ -258,3 +258,25 @@ class TestCropByTransform(BaseTester):
             (inp, transform, (2, 2)),
             requires_grad=(True, False, False),
         )
+
+
+class TestCropByIndices(BaseTester):
+    def test_crop_by_indices_no_resizing(self, device, dtype):
+        inp = torch.tensor([[[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7, 8, 9]]]], device=device, dtype=dtype)  # 1x3x3
+
+        # provide the indices to crop as 4 points
+        indices = torch.tensor([[[0, 0], [1, 0], [1, 1], [0, 1]]], device=device, dtype=torch.int64)
+        expected = torch.tensor([[[[1.0, 2.0], [4.0, 5.0]]]], device=device, dtype=dtype)
+
+        self.assert_close(kornia.geometry.transform.crop_by_indices(inp, indices), expected)
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        # Define script
+        op = kornia.geometry.transform.crop_by_indices
+        op_script = torch_optimizer(op)
+        # Define input
+        img = torch.ones(1, 2, 5, 4, device=device, dtype=dtype)
+
+        actual = op_script(img, torch.tensor([[[0, 0], [1, 0], [1, 1], [0, 1]]]))
+        expected = op(img, torch.tensor([[[0, 0], [1, 0], [1, 1], [0, 1]]]))
+        self.assert_close(actual, expected, rtol=1e-4, atol=1e-4)
