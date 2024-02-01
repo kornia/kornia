@@ -32,6 +32,18 @@ jobs:
       pytorch-version: '["1.9.1", "2.2.0"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
 
+  tests-mps:
+    strategy:
+      fail-fast: true
+      matrix:
+        pytorch-dtype: ['float32']
+        pytorch-version: '["2.2.0"]'
+    uses: kornia/workflows/.github/workflows/tests.yml@v1.5.2
+    with:
+      os: 'macos-14'
+      pytorch-dtype: ${{ matrix.pytorch-dtype }}
+      pytorch-device: 'mps'
+
   coverage:
     uses: kornia/workflows/.github/workflows/coverage.yml@v1.5.2
 
