@@ -37,7 +37,6 @@ jobs:
       fail-fast: true
       matrix:
         pytorch-dtype: ['float32']
-        pytorch-version: '["2.2.0"]'
     uses: kornia/workflows/.github/workflows/tests.yml@v1.5.2
     with:
       os: 'macos-14'
