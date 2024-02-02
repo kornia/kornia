@@ -1,5 +1,5 @@
 coverage
-kornia-rs
+kornia-rs==0.0.8;; sys_platform != 'darwin' or platform_machine != 'arm64'
 mypy
 numpy
 onnx
