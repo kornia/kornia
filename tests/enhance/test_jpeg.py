@@ -1028,8 +1028,6 @@ class TestDiffJPEG(BaseTester):
         qt_y = torch.randint(low=1, high=255, size=(B, 8, 8), device=device, dtype=dtype)
         qt_c = torch.randint(low=1, high=255, size=(B, 8, 8), device=device, dtype=dtype)
         diff_jpeg_module = kornia.enhance.JPEGCodecDifferentiable(qt_y, qt_c)
-        for name, _ in diff_jpeg_module.named_parameters():
-            print(name)
         img_jpeg = diff_jpeg_module(img, jpeg_quality)
         assert img_jpeg is not None
         assert img_jpeg.shape == img.shape
