@@ -152,8 +152,13 @@ def pytest_report_header(config):
         accelerate_info = f"accelerate-{accelerate.__version__}"
     except ImportError:
         accelerate_info = "`accelerate` not found"
+    try:
+        import kornia_rs
 
-    import kornia_rs
+        kornia_rs_info = f"kornia_rs-{kornia_rs.__version__}"
+
+    except ImportError:
+        kornia_rs_info = "`kornia-rs` not found"
     import onnx
 
     return f"""
@@ -165,7 +170,7 @@ main deps:
 x deps:
     - {accelerate_info}
 dev deps:
-    - kornia_rs-{kornia_rs.__version__}
+    - {kornia_rs_info}
     - onnx-{onnx.__version__}
 """
 
