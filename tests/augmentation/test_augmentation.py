@@ -978,10 +978,11 @@ class TestColorJiggle(BaseTester):
         )
         assert str(f) == repr
 
-    def test_color_jiggle(self, device, dtype):
+    @pytest.mark.parametrize("C", [1, 3])
+    def test_color_jiggle(self, device, dtype, C):
         f = ColorJiggle()
 
-        input = torch.rand(3, 5, 5, device=device, dtype=dtype).unsqueeze(0)  # 3 x 5 x 5
+        input = torch.rand(C, 5, 5, device=device, dtype=dtype).unsqueeze(0)  # 3 x 5 x 5
         expected = input
 
         expected_transform = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)  # 3 x 3
