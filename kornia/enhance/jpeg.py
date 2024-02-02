@@ -503,7 +503,7 @@ def jpeg_codec_differentiable(
     # Check value range of JPEG quality
     KORNIA_CHECK(
         (jpeg_quality.amin().item() >= 0.0) and (jpeg_quality.amax().item() <= 100.0),
-        f"JPEG quality is out of range. Expected range is [0, 99], "
+        f"JPEG quality is out of range. Expected range is [0, 100], "
         f"got [{jpeg_quality.amin().item()}, {jpeg_quality.amax().item()}]. Consider clipping jpeg_quality.",
     )
     # Get original shape
