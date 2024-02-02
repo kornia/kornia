@@ -3,6 +3,7 @@ from typing import Optional, Tuple
 import torch
 
 from kornia.core import Tensor, as_tensor, pad, tensor
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.bbox import infer_bbox_shape, validate_bbox
 
 from .affwarp import resize
@@ -310,6 +311,9 @@ def crop_by_indices(
         shape_compensation: if the cropped slice sizes are not exactly align `size`, the image can either be padded
             or resized.
     """
+    KORNIA_CHECK_SHAPE(input_tensor, ["B", "C", "H", "W"])
+    KORNIA_CHECK_SHAPE(src_box, ["B", "4", "2"])
+
     B, C, _, _ = input_tensor.shape
     src = as_tensor(src_box, device=input_tensor.device, dtype=torch.long)
     x1 = src[:, 0, 0]

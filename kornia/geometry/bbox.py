@@ -32,22 +32,24 @@ def validate_bbox(boxes: torch.Tensor) -> bool:
             bottom-left. The coordinates must be in the x, y order.
     """
     if not (len(boxes.shape) in [3, 4] and boxes.shape[-2:] == torch.Size([4, 2])):
-        raise AssertionError(f"Box shape must be (B, 4, 2) or (B, N, 4, 2). Got {boxes.shape}.")
+        return False
 
     if len(boxes.shape) == 4:
         boxes = boxes.view(-1, 4, 2)
 
-    if not torch.allclose((boxes[:, 1, 0] - boxes[:, 0, 0] + 1), (boxes[:, 2, 0] - boxes[:, 3, 0] + 1), atol=1e-4):
-        raise ValueError(
-            f"Boxes must have be rectangular, while get widths {boxes[:, 1, 0] - boxes[:, 0, 0] + 1!s}"
-            f" and {boxes[:, 2, 0] - boxes[:, 3, 0] + 1!s}"
-        )
+    x_tl, y_tl = boxes[..., 0, 0], boxes[..., 0, 1]
+    x_tr, y_tr = boxes[..., 1, 0], boxes[..., 1, 1]
+    x_br, y_br = boxes[..., 2, 0], boxes[..., 2, 1]
+    x_bl, y_bl = boxes[..., 3, 0], boxes[..., 3, 1]
 
-    if not torch.allclose((boxes[:, 2, 1] - boxes[:, 0, 1] + 1), (boxes[:, 3, 1] - boxes[:, 1, 1] + 1), atol=1e-4):
-        raise ValueError(
-            f"Boxes must be rectangular, while getting heights {boxes[:, 2, 1] - boxes[:, 0, 1] + 1!s}"
-            f" and {boxes[:, 3, 1] - boxes[:, 1, 1] + 1!s}"
-        )
+    width_t, width_b = x_tr - x_tl + 1, x_br - x_bl + 1
+    height_t, height_b = y_tr - y_tl + 1, y_br - y_bl + 1
+
+    if not torch.allclose(width_t, width_b, atol=1e-4):
+        return False
+
+    if not torch.allclose(height_t, height_b, atol=1e-4):
+        return False
 
     return True
 
@@ -555,4 +557,5 @@ def nms(boxes: torch.Tensor, scores: torch.Tensor, iou_threshold: float) -> torc
 
     if len(keep) > 0:
         return stack(keep)
+
     return torch.tensor(keep)
