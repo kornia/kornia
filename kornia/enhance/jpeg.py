@@ -102,7 +102,7 @@ def _dct_8x8(input: Tensor) -> Tensor:
     x, y, u, v = torch.meshgrid(index, index, index, index)
     dct_tensor: Tensor = ((2.0 * x + 1.0) * u * pi / 16.0).cos() * ((2.0 * y + 1.0) * v * pi / 16.0).cos()
     alpha: Tensor = torch.ones(8, dtype=dtype, device=device)
-    alpha[0] = 1.0 / (2**0.5)
+    alpha[0] = 1.0 / (2 ** 0.5)
     dct_scale: Tensor = torch.einsum("i, j -> ij", alpha, alpha) * 0.25
     # Apply DCT
     output: Tensor = dct_scale[None, None] * torch.tensordot(input - 128.0, dct_tensor)
@@ -123,7 +123,7 @@ def _idct_8x8(input: Tensor) -> Tensor:
     device: Device = input.device
     # Make and apply scaling
     alpha: Tensor = torch.ones(8, dtype=dtype, device=device)
-    alpha[0] = 1.0 / (2**0.5)
+    alpha[0] = 1.0 / (2 ** 0.5)
     dct_scale: Tensor = torch.outer(alpha, alpha)
     input = input * dct_scale[None, None]
     # Make DCT tensor and scaling
@@ -164,10 +164,10 @@ def _differentiable_polynomial_floor(input: Tensor) -> Tensor:
 
 
 def _differentiable_clipping(
-    input: Tensor,
-    min: Optional[float] = None,
-    max: Optional[float] = None,
-    scale: float = 0.02,
+        input: Tensor,
+        min: Optional[float] = None,
+        max: Optional[float] = None,
+        scale: float = 0.02,
 ) -> Tensor:
     """This function implements a differentiable and soft approximation of the clipping operation.
 
@@ -191,7 +191,7 @@ def _differentiable_clipping(
 
 
 def _jpeg_quality_to_scale(
-    compression_strength: Tensor,
+        compression_strength: Tensor,
 ) -> Tensor:
     """Converts a given JPEG quality to the scaling factor.
 
@@ -209,9 +209,9 @@ def _jpeg_quality_to_scale(
 
 
 def _quantize(
-    input: Tensor,
-    jpeg_quality: Tensor,
-    quantization_table: Tensor,
+        input: Tensor,
+        jpeg_quality: Tensor,
+        quantization_table: Tensor,
 ) -> Tensor:
     """Function performs quantization.
 
@@ -225,7 +225,7 @@ def _quantize(
     """
     # Scale quantization table
     quantization_table_scaled: Tensor = (
-        quantization_table[:, None] * _jpeg_quality_to_scale(jpeg_quality)[:, None, None, None]
+            quantization_table[:, None] * _jpeg_quality_to_scale(jpeg_quality)[:, None, None, None]
     )
     # Perform scaling
     quantization_table = _differentiable_polynomial_floor(
@@ -238,9 +238,9 @@ def _quantize(
 
 
 def _dequantize(
-    input: Tensor,
-    jpeg_quality: Tensor,
-    quantization_table: Tensor,
+        input: Tensor,
+        jpeg_quality: Tensor,
+        quantization_table: Tensor,
 ) -> Tensor:
     """Function performs dequantization.
 
@@ -254,7 +254,7 @@ def _dequantize(
     """
     # Scale quantization table
     quantization_table_scaled: Tensor = (
-        quantization_table[:, None] * _jpeg_quality_to_scale(jpeg_quality)[:, None, None, None]
+            quantization_table[:, None] * _jpeg_quality_to_scale(jpeg_quality)[:, None, None, None]
     )
     # Perform scaling
     output: Tensor = input * _differentiable_polynomial_floor(
@@ -301,10 +301,10 @@ def _chroma_upsampling(input_c: Tensor) -> Tensor:
 
 
 def _jpeg_encode(
-    image_rgb: Tensor,
-    jpeg_quality: Tensor,
-    quantization_table_y: Tensor,
-    quantization_table_c: Tensor,
+        image_rgb: Tensor,
+        jpeg_quality: Tensor,
+        quantization_table_y: Tensor,
+        quantization_table_c: Tensor,
 ) -> tuple[Tensor, Tensor, Tensor]:
     """Performs JPEG encoding.
 
@@ -343,14 +343,14 @@ def _jpeg_encode(
 
 
 def _jpeg_decode(
-    input_y: Tensor,
-    input_cb: Tensor,
-    input_cr: Tensor,
-    jpeg_quality: Tensor,
-    H: int,
-    W: int,
-    quantization_table_y: Tensor,
-    quantization_table_c: Tensor,
+        input_y: Tensor,
+        input_cb: Tensor,
+        input_cr: Tensor,
+        jpeg_quality: Tensor,
+        H: int,
+        W: int,
+        quantization_table_y: Tensor,
+        quantization_table_c: Tensor,
 ) -> Tensor:
     """Performs JPEG decoding.
 
@@ -396,10 +396,10 @@ def _jpeg_decode(
 
 
 def jpeg_codec_differentiable(
-    image_rgb: Tensor,
-    jpeg_quality: Tensor,
-    quantization_table_y: Tensor | None = None,
-    quantization_table_c: Tensor | None = None,
+        image_rgb: Tensor,
+        jpeg_quality: Tensor,
+        quantization_table_y: Tensor | None = None,
+        quantization_table_c: Tensor | None = None,
 ) -> Tensor:
     r"""Differentiable JPEG encoding-decoding module.
 
@@ -438,10 +438,10 @@ def jpeg_codec_differentiable(
           quantization table.
 
     Shape:
-        - image_rgb: :math:`(B, 3, H, W)`.
-        - jpeg_quality: :math:`(1)` or :math:`(B)`.
-        - quantization_table_y: :math:`(8, 8)` or :math:`(B, 8, 8)`.
-        - quantization_table_c: :math:`(8, 8)` or :math:`(B, 8, 8)`.
+        - image_rgb: :math:`(*, 3, H, W)`.
+        - jpeg_quality: :math:`(1)` or :math:`(B)` (if used batch dim. needs to match w/ image_rgb).
+        - quantization_table_y: :math:`(8, 8)` or :math:`(B, 8, 8)` (if used batch dim. needs to match w/ image_rgb).
+        - quantization_table_c: :math:`(8, 8)` or :math:`(B, 8, 8)` (if used batch dim. needs to match w/ image_rgb).
 
     Return:
         JPEG coded image of the shape :math:`(B, 3, H, W)`
@@ -486,9 +486,9 @@ def jpeg_codec_differentiable(
     KORNIA_CHECK_IS_TENSOR(quantization_table_y)
     KORNIA_CHECK_IS_TENSOR(quantization_table_c)
     # Check shape of inputs
-    KORNIA_CHECK_SHAPE(image_rgb, ["B", "3", "H", "W"])
+    KORNIA_CHECK_SHAPE(image_rgb, ["*", "3", "H", "W"])
     KORNIA_CHECK(
-        (image_rgb.shape[2] % 16 == 0) and (image_rgb.shape[3] % 16 == 0),
+        (image_rgb.shape[-1] % 16 == 0) and (image_rgb.shape[-2] % 16 == 0),
         f"image dimension must be divisible by 16. Got the shape {image_rgb.shape}.",
     )
     KORNIA_CHECK_SHAPE(jpeg_quality, ["B"])
@@ -506,8 +506,23 @@ def jpeg_codec_differentiable(
         f"JPEG quality is out of range. Expected range is [0, 100], "
         f"got [{jpeg_quality.amin().item()}, {jpeg_quality.amax().item()}]. Consider clipping jpeg_quality.",
     )
-    # Get original shape
-    H, W = image_rgb.shape[2:]
+    # Save original shape
+    original_shape = image_rgb.shape
+    # Reshape to [B, 3, H, W]
+    image_rgb = image_rgb.reshape(-1, 3, *original_shape[-2:])
+    # Check matching batch dimensions
+    if quantization_table_y.shape[0] != 1:
+        KORNIA_CHECK(quantization_table_y.shape[0] == image_rgb.shape[0],
+                     f"Batch dimensions do not match. "
+                     f"Got {image_rgb.shape[0]} images and {quantization_table_y.shape[0]} quantization tables (Y).")
+    if quantization_table_c.shape[0] != 1:
+        KORNIA_CHECK(quantization_table_c.shape[0] == image_rgb.shape[0],
+                     f"Batch dimensions do not match. "
+                     f"Got {image_rgb.shape[0]} images and {quantization_table_c.shape[0]} quantization tables (C).")
+    if jpeg_quality.shape[0] != 1:
+        KORNIA_CHECK(jpeg_quality.shape[0] == image_rgb.shape[0],
+                     f"Batch dimensions do not match. "
+                     f"Got {image_rgb.shape[0]} images and {jpeg_quality.shape[0]} JPEG qualities.")
     # Quantization tables to same device and dtype as input image
     quantization_table_y = quantization_table_y.to(device, dtype)
     quantization_table_c = quantization_table_c.to(device, dtype)
@@ -523,13 +538,15 @@ def jpeg_codec_differentiable(
         input_cb=cb_encoded,
         input_cr=cr_encoded,
         jpeg_quality=jpeg_quality,
-        H=H,
-        W=W,
+        H=original_shape[-2],
+        W=original_shape[-1],
         quantization_table_c=quantization_table_c,
         quantization_table_y=quantization_table_y,
     )
     # Clip coded image
     image_rgb_jpeg = _differentiable_clipping(input=image_rgb_jpeg, min=0.0, max=255.0)
+    # Back to original shape
+    image_rgb_jpeg = image_rgb_jpeg.view(original_shape)
     return image_rgb_jpeg
 
 
@@ -569,10 +586,10 @@ class JPEGCodecDifferentiable(Module):
           quantization table.
 
     Shape:
-        - quantization_table_y: :math:`(8, 8)` or :math:`(B, 8, 8)`.
-        - quantization_table_c: :math:`(8, 8)` or :math:`(B, 8, 8)`.
-        - image_rgb: :math:`(B, 3, H, W)`.
-        - jpeg_quality: :math:`(1)` or :math:`(B)`.
+        - quantization_table_y: :math:`(8, 8)` or :math:`(B, 8, 8)` (if used batch dim. needs to match w/ image_rgb).
+        - quantization_table_c: :math:`(8, 8)` or :math:`(B, 8, 8)` (if used batch dim. needs to match w/ image_rgb).
+        - image_rgb: :math:`(*, 3, H, W)`.
+        - jpeg_quality: :math:`(1)` or :math:`(B)` (if used batch dim. needs to match w/ image_rgb).
 
     Example:
 
@@ -606,9 +623,9 @@ class JPEGCodecDifferentiable(Module):
     """
 
     def __init__(
-        self,
-        quantization_table_y: Tensor | Parameter | None = None,
-        quantization_table_c: Tensor | Parameter | None = None,
+            self,
+            quantization_table_y: Tensor | Parameter | None = None,
+            quantization_table_c: Tensor | Parameter | None = None,
     ) -> None:
         super().__init__()
         # Get default quantization tables if needed
@@ -624,9 +641,9 @@ class JPEGCodecDifferentiable(Module):
             self.register_buffer("quantization_table_c", quantization_table_c)
 
     def forward(
-        self,
-        image_rgb: Tensor,
-        jpeg_quality: Tensor,
+            self,
+            image_rgb: Tensor,
+            jpeg_quality: Tensor,
     ) -> Tensor:
         # Perform encoding-decoding
         image_rgb_jpeg: Tensor = jpeg_codec_differentiable(
