@@ -1,0 +1,50 @@
+name: Benchmark (PR)
+
+on:
+  push:
+    branches: [test-me-*]
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, ready_for_review]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+
+jobs:
+  benchmark_cpu_head:
+    name: CPU Pytest benchmark main
+    runs-on: ubuntu-latest
+    steps:
+    - uses: kornia/workflows/.github/actions/env@v1.5.2
+
+    - name: Install benchmark requirements
+      run: pip install -r requirements/requirements-benchmarks.txt
+
+    - name: Setup benchmarks
+      run: |
+        echo "PR_JSON=$(mktemp)" >> $GITHUB_ENV
+        echo "HEAD_JSON=$(mktemp)" >> $GITHUB_ENV
+        echo "PR_COMMENT=$(mktemp)" >>  $GITHUB_ENV
+
+    - name: Run benchmarks
+      run: |
+        cd benchmarks/
+        RUN_BENCHMARK="pytest -vvv --benchmark-json "
+        git checkout ${{ github.event.pull_request.base.sha }}
+        $RUN_BENCHMARK ${{ env.PR_JSON }}
+        git checkout ${{ github.event.pull_request.head.sha }}
+        $RUN_BENCHMARK ${{ env.HEAD_JSON }}
+    - name: Publish results
+      uses: apbard/pytest-benchmark-commenter@v3
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        benchmark-file: ${{ env.HEAD_JSON }}
+        comparison-benchmark-file: ${{ env.PR_JSON }}
+        benchmark-metrics: 'name,max,mean,ops'
+        comparison-benchmark-metric: 'ops'
+        comparison-higher-is-better: true
+        comparison-threshold: 5
+        benchmark-title: 'Result of CPU Benchmark Tests'
