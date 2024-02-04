@@ -15,8 +15,12 @@ concurrency:
 
 jobs:
   benchmark_cpu:
+    # NOTE: from https://github.com/benchmark-action/github-action-benchmark?tab=readme-ov-file#stability-of-virtual-environment
+    #As far as watching the benchmark results of examples in this repository, the amplitude of the benchmarks
+    #is about +- 10~20%. If your benchmarks use some resources such as networks or file I/O, the amplitude
+    #might be bigger.
     name: CPU Pytest benchmark
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
 
     steps:
     - uses: kornia/workflows/.github/actions/env@v1.5.3
@@ -25,8 +29,6 @@ jobs:
 
     - name: Setup benchmarks
       run: |
-        echo "BASE_SHA=$(echo ${{ github.event.pull_request.base.sha }} | cut -c1-8)" >> $GITHUB_ENV
-        echo "HEAD_SHA=$(echo ${{ github.event.pull_request.head.sha }} | cut -c1-8)" >> $GITHUB_ENV
         echo "HEAD_JSON=$(mktemp)" >> $GITHUB_ENV
         echo "BASE_JSON=$(mktemp)" >> $GITHUB_ENV
         echo "PR_COMMENT=$(mktemp)" >>  $GITHUB_ENV
@@ -34,22 +36,33 @@ jobs:
     - name: Install benchmark requirements
       run: pip install -r requirements/requirements-benchmarks.txt
 
-    - name: Run benchmarks
+    - name: Run benchmarks BASE
+      # TODO: Save it using actions/cache then we don't need to regenerate it.
+      # By caching the result, it will also use the same information across PR's
       run: |
         cd benchmarks/
         git checkout ${{ github.event.pull_request.base.sha }}
         pytest ./ -vvv --benchmark-json ${{ env.BASE_JSON }}
+
+    - name: Run benchmarks HEAD
+      run: |
+        cd benchmarks/
         git checkout ${{ github.sha }}
         pytest ./ -vvv --benchmark-json ${{ env.HEAD_JSON }}
 
-    - name: Comment results
-      uses: apbard/pytest-benchmark-commenter@v3
+    - name: Comment benchmark result
+      uses: benchmark-action/github-action-benchmark@v1
       with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        benchmark-file: ${{ env.HEAD_JSON }}
-        comparison-benchmark-file: ${{ env.BASE_JSON }}
-        benchmark-metrics: 'name,max,mean,ops'
-        comparison-benchmark-metric: 'ops'
-        comparison-higher-is-better: true
-        comparison-threshold: 5
-        benchmark-title: 'Result of CPU Benchmark Tests'
+        tool: "pytest"
+        ref: ${{ github.sha }}
+        output-file-path: ${{ env.HEAD_JSON }}
+        external-data-json-path: ${{ env.BASE_JSON }}
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        comment-always: true
+        comment-on-alert: true
+        fail-on-alert: true
+        summary-always: true
+        skip-fetch-gh-pages: true
+        auto-push: false
+        save-data-file: false
+        # alert-comment-cc-users: '@johnnv1 @edgarriba'
