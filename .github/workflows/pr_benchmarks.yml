@@ -16,7 +16,7 @@ concurrency:
 jobs:
   benchmark_cpu:
     name: CPU Pytest benchmark
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
 
     steps:
     - uses: kornia/workflows/.github/actions/env@v1.5.3
@@ -25,6 +25,8 @@ jobs:
 
     - name: Setup benchmarks
       run: |
+        echo "BASE_SHA=$(echo ${{ github.event.pull_request.base.sha }} | cut -c1-8)" >> $GITHUB_ENV
+        echo "HEAD_SHA=$(echo ${{ github.event.pull_request.head.sha }} | cut -c1-8)" >> $GITHUB_ENV
         echo "HEAD_JSON=$(mktemp)" >> $GITHUB_ENV
         echo "BASE_JSON=$(mktemp)" >> $GITHUB_ENV
         echo "PR_COMMENT=$(mktemp)" >>  $GITHUB_ENV
@@ -36,9 +38,9 @@ jobs:
       run: |
         cd benchmarks/
         git checkout ${{ github.event.pull_request.base.sha }}
-        pytest -vvv --benchmark-json ${{ env.BASE_JSON }}
+        pytest ./ -vvv --benchmark-json ${{ env.BASE_JSON }}
         git checkout ${{ github.sha }}
-        pytest -vvv --benchmark-json ${{ env.HEAD_JSON }}
+        pytest ./ -vvv --benchmark-json ${{ env.HEAD_JSON }}
 
     - name: Comment results
       uses: apbard/pytest-benchmark-commenter@v3
