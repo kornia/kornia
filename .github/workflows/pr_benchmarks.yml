@@ -28,7 +28,6 @@ jobs:
         echo "HEAD_JSON=$(mktemp)" >> $GITHUB_ENV
         echo "BASE_JSON=$(mktemp)" >> $GITHUB_ENV
         echo "PR_COMMENT=$(mktemp)" >>  $GITHUB_ENV
-        echo "RUN_BENCHMARK='pytest -vvv --benchmark-json '" >>  $GITHUB_ENV
 
     - name: Install benchmark requirements
       run: pip install -r requirements/requirements-benchmarks.txt
@@ -37,9 +36,9 @@ jobs:
       run: |
         cd benchmarks/
         git checkout ${{ github.event.pull_request.base.sha }}
-        ${{ env.RUN_BENCHMARK }} ${{ env.BASE_JSON }}
+        pytest -vvv --benchmark-json ${{ env.BASE_JSON }}
         git checkout ${{ github.sha }}
-        ${{ env.RUN_BENCHMARK }} ${{ env.HEAD_JSON }}
+        pytest -vvv --benchmark-json ${{ env.HEAD_JSON }}
 
     - name: Comment results
       uses: apbard/pytest-benchmark-commenter@v3
