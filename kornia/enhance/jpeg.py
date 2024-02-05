@@ -13,6 +13,7 @@ from kornia.core.check import (
     KORNIA_CHECK_SHAPE,
 )
 from kornia.geometry.transform.affwarp import rescale
+from kornia.utils.image import perform_keep_shape_image
 
 __all__ = ["jpeg_codec_differentiable", "JPEGCodecDifferentiable"]
 
@@ -395,6 +396,7 @@ def _jpeg_decode(
     return rgb_decoded
 
 
+@perform_keep_shape_image
 def jpeg_codec_differentiable(
         image_rgb: Tensor,
         jpeg_quality: Tensor,
@@ -506,10 +508,12 @@ def jpeg_codec_differentiable(
         f"JPEG quality is out of range. Expected range is [0, 100], "
         f"got [{jpeg_quality.amin().item()}, {jpeg_quality.amax().item()}]. Consider clipping jpeg_quality.",
     )
+    # Get height and shape
+    H, W = image_rgb.shape[-2:]
     # Save original shape
-    original_shape = image_rgb.shape
+    # original_shape = image_rgb.shape
     # Reshape to [B, 3, H, W]
-    image_rgb = image_rgb.reshape(-1, 3, *original_shape[-2:])
+    # image_rgb = image_rgb.reshape(-1, 3, *original_shape[-2:])
     # Check matching batch dimensions
     if quantization_table_y.shape[0] != 1:
         KORNIA_CHECK(quantization_table_y.shape[0] == image_rgb.shape[0],
@@ -538,15 +542,15 @@ def jpeg_codec_differentiable(
         input_cb=cb_encoded,
         input_cr=cr_encoded,
         jpeg_quality=jpeg_quality,
-        H=original_shape[-2],
-        W=original_shape[-1],
+        H=H,
+        W=W,
         quantization_table_c=quantization_table_c,
         quantization_table_y=quantization_table_y,
     )
     # Clip coded image
     image_rgb_jpeg = _differentiable_clipping(input=image_rgb_jpeg, min=0.0, max=255.0)
     # Back to original shape
-    image_rgb_jpeg = image_rgb_jpeg.view(original_shape)
+    # image_rgb_jpeg = image_rgb_jpeg.view(original_shape)
     return image_rgb_jpeg
 
 
@@ -647,7 +651,7 @@ class JPEGCodecDifferentiable(Module):
     ) -> Tensor:
         # Perform encoding-decoding
         image_rgb_jpeg: Tensor = jpeg_codec_differentiable(
-            image_rgb=image_rgb,
+            image_rgb,
             jpeg_quality=jpeg_quality,
             quantization_table_c=self.quantization_table_c,
             quantization_table_y=self.quantization_table_y,
