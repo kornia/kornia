@@ -510,10 +510,6 @@ def jpeg_codec_differentiable(
     )
     # Get height and shape
     H, W = image_rgb.shape[-2:]
-    # Save original shape
-    # original_shape = image_rgb.shape
-    # Reshape to [B, 3, H, W]
-    # image_rgb = image_rgb.reshape(-1, 3, *original_shape[-2:])
     # Check matching batch dimensions
     if quantization_table_y.shape[0] != 1:
         KORNIA_CHECK(
