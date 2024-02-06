@@ -13,6 +13,7 @@ from kornia.core.check import (
     KORNIA_CHECK_SHAPE,
 )
 from kornia.geometry.transform.affwarp import rescale
+from kornia.utils.image import perform_keep_shape_image
 
 __all__ = ["jpeg_codec_differentiable", "JPEGCodecDifferentiable"]
 
@@ -395,6 +396,7 @@ def _jpeg_decode(
     return rgb_decoded
 
 
+@perform_keep_shape_image
 def jpeg_codec_differentiable(
     image_rgb: Tensor,
     jpeg_quality: Tensor,
@@ -438,10 +440,10 @@ def jpeg_codec_differentiable(
           quantization table.
 
     Shape:
-        - image_rgb: :math:`(B, 3, H, W)`.
-        - jpeg_quality: :math:`(1)` or :math:`(B)`.
-        - quantization_table_y: :math:`(8, 8)` or :math:`(B, 8, 8)`.
-        - quantization_table_c: :math:`(8, 8)` or :math:`(B, 8, 8)`.
+        - image_rgb: :math:`(*, 3, H, W)`.
+        - jpeg_quality: :math:`(1)` or :math:`(B)` (if used batch dim. needs to match w/ image_rgb).
+        - quantization_table_y: :math:`(8, 8)` or :math:`(B, 8, 8)` (if used batch dim. needs to match w/ image_rgb).
+        - quantization_table_c: :math:`(8, 8)` or :math:`(B, 8, 8)` (if used batch dim. needs to match w/ image_rgb).
 
     Return:
         JPEG coded image of the shape :math:`(B, 3, H, W)`
@@ -486,9 +488,9 @@ def jpeg_codec_differentiable(
     KORNIA_CHECK_IS_TENSOR(quantization_table_y)
     KORNIA_CHECK_IS_TENSOR(quantization_table_c)
     # Check shape of inputs
-    KORNIA_CHECK_SHAPE(image_rgb, ["B", "3", "H", "W"])
+    KORNIA_CHECK_SHAPE(image_rgb, ["*", "3", "H", "W"])
     KORNIA_CHECK(
-        (image_rgb.shape[2] % 16 == 0) and (image_rgb.shape[3] % 16 == 0),
+        (image_rgb.shape[-1] % 16 == 0) and (image_rgb.shape[-2] % 16 == 0),
         f"image dimension must be divisible by 16. Got the shape {image_rgb.shape}.",
     )
     KORNIA_CHECK_SHAPE(jpeg_quality, ["B"])
@@ -503,11 +505,30 @@ def jpeg_codec_differentiable(
     # Check value range of JPEG quality
     KORNIA_CHECK(
         (jpeg_quality.amin().item() >= 0.0) and (jpeg_quality.amax().item() <= 100.0),
-        f"JPEG quality is out of range. Expected range is [0, 99], "
+        f"JPEG quality is out of range. Expected range is [0, 100], "
         f"got [{jpeg_quality.amin().item()}, {jpeg_quality.amax().item()}]. Consider clipping jpeg_quality.",
     )
-    # Get original shape
-    H, W = image_rgb.shape[2:]
+    # Get height and shape
+    H, W = image_rgb.shape[-2:]
+    # Check matching batch dimensions
+    if quantization_table_y.shape[0] != 1:
+        KORNIA_CHECK(
+            quantization_table_y.shape[0] == image_rgb.shape[0],
+            f"Batch dimensions do not match. "
+            f"Got {image_rgb.shape[0]} images and {quantization_table_y.shape[0]} quantization tables (Y).",
+        )
+    if quantization_table_c.shape[0] != 1:
+        KORNIA_CHECK(
+            quantization_table_c.shape[0] == image_rgb.shape[0],
+            f"Batch dimensions do not match. "
+            f"Got {image_rgb.shape[0]} images and {quantization_table_c.shape[0]} quantization tables (C).",
+        )
+    if jpeg_quality.shape[0] != 1:
+        KORNIA_CHECK(
+            jpeg_quality.shape[0] == image_rgb.shape[0],
+            f"Batch dimensions do not match. "
+            f"Got {image_rgb.shape[0]} images and {jpeg_quality.shape[0]} JPEG qualities.",
+        )
     # Quantization tables to same device and dtype as input image
     quantization_table_y = quantization_table_y.to(device, dtype)
     quantization_table_c = quantization_table_c.to(device, dtype)
@@ -530,6 +551,8 @@ def jpeg_codec_differentiable(
     )
     # Clip coded image
     image_rgb_jpeg = _differentiable_clipping(input=image_rgb_jpeg, min=0.0, max=255.0)
+    # Back to original shape
+    # image_rgb_jpeg = image_rgb_jpeg.view(original_shape)
     return image_rgb_jpeg
 
 
@@ -569,10 +592,10 @@ class JPEGCodecDifferentiable(Module):
           quantization table.
 
     Shape:
-        - quantization_table_y: :math:`(8, 8)` or :math:`(B, 8, 8)`.
-        - quantization_table_c: :math:`(8, 8)` or :math:`(B, 8, 8)`.
-        - image_rgb: :math:`(B, 3, H, W)`.
-        - jpeg_quality: :math:`(1)` or :math:`(B)`.
+        - quantization_table_y: :math:`(8, 8)` or :math:`(B, 8, 8)` (if used batch dim. needs to match w/ image_rgb).
+        - quantization_table_c: :math:`(8, 8)` or :math:`(B, 8, 8)` (if used batch dim. needs to match w/ image_rgb).
+        - image_rgb: :math:`(*, 3, H, W)`.
+        - jpeg_quality: :math:`(1)` or :math:`(B)` (if used batch dim. needs to match w/ image_rgb).
 
     Example:
 
@@ -630,7 +653,7 @@ class JPEGCodecDifferentiable(Module):
     ) -> Tensor:
         # Perform encoding-decoding
         image_rgb_jpeg: Tensor = jpeg_codec_differentiable(
-            image_rgb=image_rgb,
+            image_rgb,
             jpeg_quality=jpeg_quality,
             quantization_table_c=self.quantization_table_c,
             quantization_table_y=self.quantization_table_y,

@@ -16,6 +16,17 @@ class TestDiffJPEG(BaseTester):
         assert img_jpeg is not None
         assert img_jpeg.shape == img.shape
 
+    def test_multi_batch(self, device, dtype) -> None:
+        """Here we test two batch dimensions."""
+        B, H, W = 4, 32, 32
+        img = torch.rand(B, B, 3, H, W, device=device, dtype=dtype)
+        jpeg_quality = torch.randint(low=0, high=100, size=(1,), device=device, dtype=dtype)
+        qt_y = torch.randint(low=1, high=255, size=(B * B, 8, 8), device=device, dtype=dtype)
+        qt_c = torch.randint(low=1, high=255, size=(B * B, 8, 8), device=device, dtype=dtype)
+        img_jpeg = kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality, qt_y, qt_c)
+        assert img_jpeg is not None
+        assert img_jpeg.shape == img.shape
+
     def test_custom_qt(self, device, dtype) -> None:
         """Here we test if we can handle custom quantization tables."""
         B, H, W = 4, 32, 32
@@ -38,13 +49,24 @@ class TestDiffJPEG(BaseTester):
         assert img_jpeg is not None
         assert img_jpeg.shape == img.shape
 
+    def test_non_batch_inp(self, device, dtype) -> None:
+        """Here we test if we can handle non-batched inputs (input image, JPEG quality, and QT's)."""
+        H, W = 32, 32
+        img = torch.rand(3, H, W, device=device, dtype=dtype)
+        jpeg_quality = torch.randint(low=0, high=100, size=(1,), device=device, dtype=dtype)
+        qt_y = torch.randint(low=1, high=255, size=(8, 8), device=device, dtype=dtype)
+        qt_c = torch.randint(low=1, high=255, size=(8, 8), device=device, dtype=dtype)
+        img_jpeg = kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality, qt_y, qt_c)
+        assert img_jpeg is not None
+        assert img_jpeg.shape == img.shape
+
     def test_exception(self, device, dtype) -> None:
         """Test exceptions (non-tensor input, wrong JPEG quality shape, wrong img shape, and wrong QT shape.)"""
         with pytest.raises(TypeError) as errinfo:
             B = 2
             jpeg_quality = torch.randint(low=0, high=100, size=(B,), device=device, dtype=dtype)
             kornia.enhance.jpeg_codec_differentiable(1904.0, jpeg_quality)
-        assert "Not a Tensor type. Got" in str(errinfo)
+        assert "Input input type is not a" in str(errinfo)
 
         with pytest.raises(TypeError) as errinfo:
             B, H, W = 2, 32, 32
@@ -83,6 +105,33 @@ class TestDiffJPEG(BaseTester):
             qt_c = torch.randint(low=1, high=255, size=(B, 8, 7), device=device, dtype=dtype)
             kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality, qt_y, qt_c)
         assert "shape must be [" in str(errinfo)
+
+        with pytest.raises(Exception) as errinfo:
+            B, H, W = 4, 32, 32
+            img = torch.rand(B, B, 3, H, W, device=device, dtype=dtype)
+            jpeg_quality = torch.randint(low=0, high=100, size=(B * B,), device=device, dtype=dtype)
+            qt_y = torch.randint(low=1, high=255, size=(B * B, 8, 8), device=device, dtype=dtype)
+            qt_c = torch.randint(low=1, high=255, size=(B * 2, 8, 8), device=device, dtype=dtype)
+            kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality, qt_y, qt_c)
+        assert "Batch dimensions do not match." in str(errinfo)
+
+        with pytest.raises(Exception) as errinfo:
+            B, H, W = 4, 32, 32
+            img = torch.rand(B, B, 3, H, W, device=device, dtype=dtype)
+            jpeg_quality = torch.randint(low=0, high=100, size=(B * B,), device=device, dtype=dtype)
+            qt_y = torch.randint(low=1, high=255, size=(B * 2, 8, 8), device=device, dtype=dtype)
+            qt_c = torch.randint(low=1, high=255, size=(B * B, 8, 8), device=device, dtype=dtype)
+            kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality, qt_y, qt_c)
+        assert "Batch dimensions do not match." in str(errinfo)
+
+        with pytest.raises(Exception) as errinfo:
+            B, H, W = 4, 32, 32
+            img = torch.rand(B, B, 3, H, W, device=device, dtype=dtype)
+            jpeg_quality = torch.randint(low=0, high=100, size=(B * 2,), device=device, dtype=dtype)
+            qt_y = torch.randint(low=1, high=255, size=(B * B, 8, 8), device=device, dtype=dtype)
+            qt_c = torch.randint(low=1, high=255, size=(B * B, 8, 8), device=device, dtype=dtype)
+            kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality, qt_y, qt_c)
+        assert "Batch dimensions do not match." in str(errinfo)
 
     def test_cardinality(self, device, dtype) -> None:
         B, H, W = 1, 16, 16
@@ -979,8 +1028,6 @@ class TestDiffJPEG(BaseTester):
         qt_y = torch.randint(low=1, high=255, size=(B, 8, 8), device=device, dtype=dtype)
         qt_c = torch.randint(low=1, high=255, size=(B, 8, 8), device=device, dtype=dtype)
         diff_jpeg_module = kornia.enhance.JPEGCodecDifferentiable(qt_y, qt_c)
-        for name, _ in diff_jpeg_module.named_parameters():
-            print(name)
         img_jpeg = diff_jpeg_module(img, jpeg_quality)
         assert img_jpeg is not None
         assert img_jpeg.shape == img.shape
@@ -992,8 +1039,6 @@ class TestDiffJPEG(BaseTester):
         qt_y = torch.nn.Parameter(torch.randint(low=1, high=255, size=(B, 8, 8), device=device, dtype=dtype))
         qt_c = torch.nn.Parameter(torch.randint(low=1, high=255, size=(B, 8, 8), device=device, dtype=dtype))
         diff_jpeg_module = kornia.enhance.JPEGCodecDifferentiable(qt_y, qt_c)
-        for name, _ in diff_jpeg_module.named_parameters():
-            print(name)
         img_jpeg = diff_jpeg_module(img, jpeg_quality)
         assert img_jpeg is not None
         assert img_jpeg.shape == img.shape
