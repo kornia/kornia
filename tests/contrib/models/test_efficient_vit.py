@@ -23,7 +23,13 @@ class TestEfficientViT:
         assert "stage_final" in out
         assert out["stage_final"].shape[-2:] == torch.Size([expected_resolution, expected_resolution])
 
-    @pytest.mark.parametrize("model_name", ["b0", "b1", "b2", "b3"])
+    @pytest.mark.parametrize("model_name", ["b3"])
+    @pytest.mark.parametrize("img_size,expected_resolution", [(224, 7), (256, 8), (288, 9)])
+    @pytest.mark.slow
+    def test_smoke_slow(self, device, dtype, img_size: int, expected_resolution: int, model_name: str):
+        self._test_smoke(device, dtype, img_size, expected_resolution, model_name)
+
+    @pytest.mark.parametrize("model_name", ["b0", "b1", "b2"])
     @pytest.mark.parametrize("img_size,expected_resolution", [(224, 7), (256, 8), (288, 9)])
     def test_smoke(self, device, dtype, img_size: int, expected_resolution: int, model_name: str):
         self._test_smoke(device, dtype, img_size, expected_resolution, model_name)
