@@ -1,4 +1,6 @@
 """Implements several backbone networks."""
+import functools
+import operator
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Type, Union
 
 import torch
@@ -48,7 +50,7 @@ class MultitaskHead(Module):
         m = int(input_channels / 4)
         head_size = [[2], [1], [2]]
         heads = []
-        for output_channels in sum(head_size, []):
+        for output_channels in functools.reduce(operator.iconcat, head_size, []):
             heads.append(
                 nn.Sequential(
                     nn.Conv2d(input_channels, m, kernel_size=3, padding=1),
