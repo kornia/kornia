@@ -82,7 +82,7 @@ class MultiHeadAttention(Module):
             )
 
         # fuse the queries, keys and values in one matrix
-        self.qkv = nn.Linear(emb_size, emb_size * 3, bias=False)
+        self.qkv = nn.Linear(emb_size, emb_size * 3)
         self.att_drop = nn.Dropout(att_drop)
         self.projection = nn.Linear(emb_size, emb_size)
         self.projection_drop = nn.Dropout(proj_drop)  # added timm trick
@@ -287,12 +287,11 @@ class VisionTransformer(Module):
             block[0].fn[0].weight.copy_(_get(prefix + "LayerNorm_0/scale"))
             block[0].fn[0].bias.copy_(_get(prefix + "LayerNorm_0/bias"))
 
-            # kornia impl does not use qkv bias
             mha_prefix = prefix + "MultiHeadDotProductAttention_1/"
             qkv_weight = [_get(mha_prefix + f"{x}/kernel") for x in ["query", "key", "value"]]
             block[0].fn[1].qkv.weight.copy_(concatenate(qkv_weight, 1).flatten(1).T)
-            # qkv_bias = [_get(mha_prefix + f"{x}/bias") for x in ["query", "key", "value"]]
-            # block[0].fn[1].qkv.bias.copy_(concatenate(qkv_bias, 0).flatten())
+            qkv_bias = [_get(mha_prefix + f"{x}/bias") for x in ["query", "key", "value"]]
+            block[0].fn[1].qkv.bias.copy_(concatenate(qkv_bias, 0).flatten())
             block[0].fn[1].projection.weight.copy_(_get(mha_prefix + "out/kernel").flatten(0, 1).T)
             block[0].fn[1].projection.bias.copy_(_get(mha_prefix + "out/bias"))
 
