@@ -166,8 +166,8 @@ def dedode_descriptor_G():
             ),
         }
     )
-    vgg_kwargs = {"amp":amp, "amp_dtype": amp_dtype}
-    dinov2_kwargs = {"amp":amp, "amp_dtype":amp_dtype, "dinov2_weights":None}
+    vgg_kwargs = {"amp": amp, "amp_dtype": amp_dtype}
+    dinov2_kwargs = {"amp": amp, "amp_dtype": amp_dtype, "dinov2_weights": None}
     encoder = VGG_DINOv2(vgg_kwargs=vgg_kwargs, dinov2_kwargs=dinov2_kwargs)
     decoder = Decoder(conv_refiner, num_prototypes=NUM_PROTOTYPES)
     model = DeDoDeDescriptor(encoder=encoder, decoder=decoder)
