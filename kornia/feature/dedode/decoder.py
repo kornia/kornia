@@ -3,18 +3,20 @@ from torch import nn
 
 
 class Decoder(nn.Module):
-    def __init__(self, layers, *args, super_resolution = False, num_prototypes = 1, **kwargs) -> None:
+    def __init__(self, layers, *args, super_resolution=False, num_prototypes=1, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.layers = layers
         self.scales = self.layers.keys()
         self.super_resolution = super_resolution
         self.num_prototypes = num_prototypes
-    def forward(self, features, context = None, scale = None):
+
+    def forward(self, features, context=None, scale=None):
         if context is not None:
-            features = torch.cat((features, context), dim = 1)
+            features = torch.cat((features, context), dim=1)
         stuff = self.layers[scale](features)
-        logits, context = stuff[:,:self.num_prototypes], stuff[:,self.num_prototypes:]
+        logits, context = stuff[:, : self.num_prototypes], stuff[:, self.num_prototypes :]
         return logits, context
+
 
 class ConvRefiner(nn.Module):
     def __init__(
@@ -25,13 +27,16 @@ class ConvRefiner(nn.Module):
         dw=True,
         kernel_size=5,
         hidden_blocks=5,
-        amp = True,
-        residual = False,
-        amp_dtype = torch.float16,
+        amp=True,
+        residual=False,
+        amp_dtype=torch.float16,
     ):
         super().__init__()
         self.block1 = self.create_block(
-            in_dim, hidden_dim, dw=False, kernel_size=1,
+            in_dim,
+            hidden_dim,
+            dw=False,
+            kernel_size=1,
         )
         self.hidden_blocks = nn.Sequential(
             *[
@@ -56,14 +61,13 @@ class ConvRefiner(nn.Module):
         out_dim,
         dw=True,
         kernel_size=5,
-        bias = True,
-        norm_type = nn.BatchNorm2d,
+        bias=True,
+        norm_type=nn.BatchNorm2d,
     ):
         num_groups = 1 if not dw else in_dim
         if dw:
-            assert (
-                out_dim % in_dim == 0
-            ), "outdim must be divisible by indim for depthwise"
+            if out_dim % in_dim != 0:
+                raise Exception("outdim must be divisible by indim for depthwise")
         conv1 = nn.Conv2d(
             in_dim,
             out_dim,
@@ -73,17 +77,17 @@ class ConvRefiner(nn.Module):
             groups=num_groups,
             bias=bias,
         )
-        norm = norm_type(out_dim) if norm_type is nn.BatchNorm2d else norm_type(num_channels = out_dim)
+        norm = norm_type(out_dim) if norm_type is nn.BatchNorm2d else norm_type(num_channels=out_dim)
         relu = nn.ReLU(inplace=True)
         conv2 = nn.Conv2d(out_dim, out_dim, 1, 1, 0)
         return nn.Sequential(conv1, norm, relu, conv2)
 
     def forward(self, feats):
-        b,c,hs,ws = feats.shape
-        with torch.autocast("cuda", enabled=self.amp, dtype = self.amp_dtype):
+        b, c, hs, ws = feats.shape
+        with torch.autocast("cuda", enabled=self.amp, dtype=self.amp_dtype):
             x0 = self.block1(feats)
             x = self.hidden_blocks(x0)
             if self.residual:
-                x = (x + x0)/1.4
+                x = (x + x0) / 1.4
             x = self.out_conv(x)
             return x

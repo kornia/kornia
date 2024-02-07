@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -32,7 +32,7 @@ class DeDoDe(Module):
         self,
         images: Tensor,
         n: Optional[int] = 10_000,
-    ) -> tuple[Tensor, Tensor]:
+    ) -> Tuple[Tensor, Tensor]:
         """
         Returns:
             A list of length :math:`B` containing the detected features.

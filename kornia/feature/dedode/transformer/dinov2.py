@@ -343,9 +343,7 @@ def vit_large(patch_size=16, **kwargs):
 
 
 def vit_giant2(patch_size=16, **kwargs):
-    """
-    Close to ViT-giant, with embed-dim 1536 and 24 heads => embed-dim per head 64
-    """
+    """Close to ViT-giant, with embed-dim 1536 and 24 heads => embed-dim per head 64."""
     model = DinoVisionTransformer(
         patch_size=patch_size,
         embed_dim=1536,

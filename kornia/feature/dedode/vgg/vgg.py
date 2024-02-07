@@ -3,26 +3,6 @@ from typing import Any, Dict, List, Union, cast
 import torch
 from torch import nn
 
-__all__ = [
-    "VGG",
-    "VGG11_Weights",
-    "VGG11_BN_Weights",
-    "VGG13_Weights",
-    "VGG13_BN_Weights",
-    "VGG16_Weights",
-    "VGG16_BN_Weights",
-    "VGG19_Weights",
-    "VGG19_BN_Weights",
-    "vgg11",
-    "vgg11_bn",
-    "vgg13",
-    "vgg13_bn",
-    "vgg16",
-    "vgg16_bn",
-    "vgg19",
-    "vgg19_bn",
-]
-
 
 class VGG(nn.Module):
     def __init__(
@@ -86,13 +66,12 @@ cfgs: Dict[str, List[Union[str, int]]] = {
 }
 
 
-def _vgg(cfg: str, batch_norm: bool, weights = None, **kwargs: Any) -> VGG:
+def _vgg(cfg: str, batch_norm: bool, weights=None, **kwargs: Any) -> VGG:
     model = VGG(make_layers(cfgs[cfg], batch_norm=batch_norm), **kwargs)
     return model
 
 
-
-def vgg11(*, weights = None, **kwargs: Any) -> VGG:
+def vgg11(*, weights=None, **kwargs: Any) -> VGG:
     """VGG-11 from `Very Deep Convolutional Networks for Large-Scale Image Recognition <https://arxiv.org/abs/1409.1556>`__.
 
     Args:
@@ -115,7 +94,7 @@ def vgg11(*, weights = None, **kwargs: Any) -> VGG:
     return _vgg("A", False, weights, **kwargs)
 
 
-def vgg11_bn(*, weights = None, **kwargs: Any) -> VGG:
+def vgg11_bn(*, weights=None, **kwargs: Any) -> VGG:
     """VGG-11-BN from `Very Deep Convolutional Networks for Large-Scale Image Recognition <https://arxiv.org/abs/1409.1556>`__.
 
     Args:
@@ -138,7 +117,7 @@ def vgg11_bn(*, weights = None, **kwargs: Any) -> VGG:
     return _vgg("A", True, weights, **kwargs)
 
 
-def vgg13(*, weights = None, **kwargs: Any) -> VGG:
+def vgg13(*, weights=None, **kwargs: Any) -> VGG:
     """VGG-13 from `Very Deep Convolutional Networks for Large-Scale Image Recognition <https://arxiv.org/abs/1409.1556>`__.
 
     Args:
@@ -160,7 +139,8 @@ def vgg13(*, weights = None, **kwargs: Any) -> VGG:
 
     return _vgg("B", False, weights, **kwargs)
 
-def vgg13_bn(*, weights = None, **kwargs: Any) -> VGG:
+
+def vgg13_bn(*, weights=None, **kwargs: Any) -> VGG:
     """VGG-13-BN from `Very Deep Convolutional Networks for Large-Scale Image Recognition <https://arxiv.org/abs/1409.1556>`__.
 
     Args:
@@ -183,7 +163,7 @@ def vgg13_bn(*, weights = None, **kwargs: Any) -> VGG:
     return _vgg("B", True, weights, **kwargs)
 
 
-def vgg16(*, weights = None, **kwargs: Any) -> VGG:
+def vgg16(*, weights=None, **kwargs: Any) -> VGG:
     """VGG-16 from `Very Deep Convolutional Networks for Large-Scale Image Recognition <https://arxiv.org/abs/1409.1556>`__.
 
     Args:
@@ -206,7 +186,7 @@ def vgg16(*, weights = None, **kwargs: Any) -> VGG:
     return _vgg("D", False, weights, **kwargs)
 
 
-def vgg16_bn(*, weights = None, **kwargs: Any) -> VGG:
+def vgg16_bn(*, weights=None, **kwargs: Any) -> VGG:
     """VGG-16-BN from `Very Deep Convolutional Networks for Large-Scale Image Recognition <https://arxiv.org/abs/1409.1556>`__.
 
     Args:
@@ -229,7 +209,7 @@ def vgg16_bn(*, weights = None, **kwargs: Any) -> VGG:
     return _vgg("D", True, weights, **kwargs)
 
 
-def vgg19(*, weights = None, **kwargs: Any) -> VGG:
+def vgg19(*, weights=None, **kwargs: Any) -> VGG:
     """VGG-19 from `Very Deep Convolutional Networks for Large-Scale Image Recognition <https://arxiv.org/abs/1409.1556>`__.
 
     Args:
@@ -252,7 +232,7 @@ def vgg19(*, weights = None, **kwargs: Any) -> VGG:
     return _vgg("E", False, weights, **kwargs)
 
 
-def vgg19_bn(*, weights = None, **kwargs: Any) -> VGG:
+def vgg19_bn(*, weights=None, **kwargs: Any) -> VGG:
     """VGG-19_BN from `Very Deep Convolutional Networks for Large-Scale Image Recognition <https://arxiv.org/abs/1409.1556>`__.
 
     Args:
