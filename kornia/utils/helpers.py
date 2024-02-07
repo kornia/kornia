@@ -229,11 +229,11 @@ def _torch_solve_cast(A: Tensor, B: Tensor) -> Tensor:
     The function torch.solve is only implemented for fp32/64 which makes impossible to be used by fp16 or others. What
     this function does, is cast input data type to fp32, apply torch.svd, and cast back to the input dtype.
     """
-    dtype: torch.dtype = A.dtype
-    if dtype not in (torch.float32, torch.float64):
-        dtype = torch.float32
+    # dtype: torch.dtype = A.dtype
+    # if dtype not in (torch.float32, torch.float64):
+    #    dtype = torch.float32
 
-    out = torch.linalg.solve(A.to(dtype), B.to(dtype))
+    out = torch.linalg.solve(A.to(torch.float64), B.to(torch.float64))
 
     return out.to(A.dtype)
 
