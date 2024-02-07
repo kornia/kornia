@@ -308,8 +308,8 @@ class VisionTransformer(Module):
 
     @staticmethod
     def from_config(variant: str, pretrained: bool = False, **kwargs: Any) -> VisionTransformer:
-        model_type, patch_size = variant.split("/")
-        patch_size = int(patch_size)
+        model_type, patch_size_str = variant.split("/")
+        patch_size = int(patch_size_str)
 
         _kwargs = {
             "vit_ti": {"embed_dim": 192, "depth": 12, "num_heads": 3},
