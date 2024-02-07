@@ -244,7 +244,7 @@ class VisionTransformer(Module):
         self.patch_embedding = PatchEmbedding(in_channels, embed_dim, patch_size, image_size, backbone)
         hidden_dim = self.patch_embedding.out_channels
         self.encoder = TransformerEncoder(hidden_dim, depth, num_heads, dropout_rate, dropout_attn)
-        self.norm = nn.LayerNorm(embed_dim, 1e-6)
+        self.norm = nn.LayerNorm(hidden_dim, 1e-6)
 
     @property
     def encoder_results(self) -> list[Tensor]:
