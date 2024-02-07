@@ -6,14 +6,41 @@ Based on: `https://towardsdatascience.com/implementing-visualttransformer-in-pyt
 
 Added some tricks from: `https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py`
 """
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from __future__ import annotations
+
+import os
+from typing import Any, Callable
 
 import torch
 from torch import nn
 
-from kornia.core import Module, Tensor
+from kornia.core import Module, Tensor, concatenate
+from kornia.core.check import KORNIA_CHECK
 
 __all__ = ["VisionTransformer"]
+
+
+# recommended checkpoint from https://github.com/google-research/vision_transformer
+_base_url = "https://storage.googleapis.com/vit_models/augreg/"
+_checkpoint_dict = {
+    "vit_l/16": "L_16-i21k-300ep-lr_0.001-aug_strong1-wd_0.1-do_0.0-sd_0.0--imagenet2012-steps_20k-lr_0.01-res_384.npz",
+    "vit_b/16": "B_16-i21k-300ep-lr_0.001-aug_medium1-wd_0.1-do_0.0-sd_0.0--imagenet2012-steps_20k-lr_0.03-res_384.npz",
+    "vit_s/16": "S_16-i21k-300ep-lr_0.001-aug_light1-wd_0.03-do_0.0-sd_0.0--imagenet2012-steps_20k-lr_0.03-res_384.npz",
+    "vit_ti/16": "Ti_16-i21k-300ep-lr_0.001-aug_none-wd_0.03-do_0.0-sd_0.0--imagenet2012-steps_20k-lr_0.03-res_384.npz",
+    "vit_b/32": "B_32-i21k-300ep-lr_0.001-aug_light1-wd_0.1-do_0.0-sd_0.0--imagenet2012-steps_20k-lr_0.01-res_384.npz",
+    "vit_s/32": "S_32-i21k-300ep-lr_0.001-aug_none-wd_0.1-do_0.0-sd_0.0--imagenet2012-steps_20k-lr_0.01-res_384.npz",
+}
+
+
+def download_to_torch_hub(url: str, progress: bool = True) -> str:
+    torch_hub_dir = torch.hub.get_dir()
+    filename = os.path.basename(url)
+    file_path = os.path.join(torch_hub_dir, filename)
+
+    if not os.path.exists(file_path):
+        torch.hub.download_url_to_file(url, file_path, progress=progress)
+
+    return file_path
 
 
 class ResidualAdd(Module):
@@ -21,7 +48,7 @@ class ResidualAdd(Module):
         super().__init__()
         self.fn = fn
 
-    def forward(self, x: Tensor, **kwargs: Dict[str, Any]) -> Tensor:
+    def forward(self, x: Tensor, **kwargs: Any) -> Tensor:
         res = x
         x = self.fn(x, **kwargs)
         x += res
@@ -60,7 +87,7 @@ class MultiHeadAttention(Module):
         self.projection = nn.Linear(emb_size, emb_size)
         self.projection_drop = nn.Dropout(proj_drop)  # added timm trick
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         B, N, C = x.shape
         # split keys, queries and values in num_heads
         # NOTE: the line below differs from timm
@@ -114,9 +141,9 @@ class TransformerEncoder(Module):
         self.blocks = nn.Sequential(
             *(TransformerEncoderBlock(embed_dim, num_heads, dropout_rate, dropout_attn) for _ in range(depth))
         )
-        self.results: List[torch.Tensor] = []
+        self.results: list[Tensor] = []
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         self.results = []
         out = x
         for m in self.blocks.children():
@@ -134,7 +161,7 @@ class PatchEmbedding(Module):
         out_channels: int = 768,
         patch_size: int = 16,
         image_size: int = 224,
-        backbone: Optional[Module] = None,
+        backbone: Module | None = None,
     ) -> None:
         super().__init__()
         self.in_channels = in_channels
@@ -152,17 +179,17 @@ class PatchEmbedding(Module):
         self.cls_token = nn.Parameter(torch.randn(1, 1, out_channels))
         self.positions = nn.Parameter(torch.randn(feat_size + 1, out_channels))
 
-    def _compute_feats_dims(self, image_size: Tuple[int, int, int]) -> Tuple[int, int]:
+    def _compute_feats_dims(self, image_size: tuple[int, int, int]) -> tuple[int, int]:
         out = self.backbone(torch.zeros(1, *image_size)).detach()
         return out.shape[-3], out.shape[-2] * out.shape[-1]
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: Tensor) -> Tensor:
         x = self.backbone(x)
         B, N, _, _ = x.shape
         x = x.view(B, N, -1).permute(0, 2, 1)  # BxNxE
         cls_tokens = self.cls_token.repeat(B, 1, 1)  # Bx1xE
         # prepend the cls token to the input
-        x = torch.cat([cls_tokens, x], dim=1)  # Bx(N+1)xE
+        x = concatenate([cls_tokens, x], dim=1)  # Bx(N+1)xE
         # add position embedding
         x += self.positions
         return x
@@ -206,7 +233,7 @@ class VisionTransformer(Module):
         num_heads: int = 12,
         dropout_rate: float = 0.0,
         dropout_attn: float = 0.0,
-        backbone: Optional[Module] = None,
+        backbone: Module | None = None,
     ) -> None:
         super().__init__()
         self.image_size = image_size
@@ -219,12 +246,12 @@ class VisionTransformer(Module):
         self.encoder = TransformerEncoder(hidden_dim, depth, num_heads, dropout_rate, dropout_attn)
 
     @property
-    def encoder_results(self) -> List[Tensor]:
+    def encoder_results(self) -> list[Tensor]:
         return self.encoder.results
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        if not isinstance(x, torch.Tensor):
-            raise TypeError(f"Input x type is not a torch.Tensor. Got: {type(x)}")
+    def forward(self, x: Tensor) -> Tensor:
+        if not isinstance(x, Tensor):
+            raise TypeError(f"Input x type is not a Tensor. Got: {type(x)}")
 
         if self.image_size not in (*x.shape[-2:],) and x.shape[-3] != self.in_channels:
             raise ValueError(
@@ -234,3 +261,69 @@ class VisionTransformer(Module):
         out = self.patch_embedding(x)
         out = self.encoder(out)
         return out
+
+    @torch.no_grad()
+    def load_jax_checkpoint(self, checkpoint: str) -> VisionTransformer:
+        import numpy as np
+
+        if checkpoint.startswith("http"):
+            checkpoint = download_to_torch_hub(checkpoint)
+
+        jax_ckpt = np.load(checkpoint)
+        used_keys = set()
+
+        def _get(key: str) -> Tensor:
+            used_keys.add(key)
+            return torch.from_numpy(jax_ckpt[key])
+
+        patch_embed = self.patch_embedding
+        patch_embed.cls_token.copy_(_get("cls"))
+        patch_embed.backbone.weight.copy_(_get("embedding/kernel").permute(3, 2, 0, 1))  # conv weight
+        patch_embed.backbone.bias.copy_(_get("embedding/bias"))
+        patch_embed.positions.copy_(_get("Transformer/posembed_input/pos_embedding").squeeze(0))  # resize
+
+        for i, block in enumerate(self.encoder.blocks):
+            prefix = f"Transformer/encoderblock_{i}/"
+            block[0].fn[0].weight.copy_(_get(prefix + "LayerNorm_0/scale"))
+            block[0].fn[0].bias.copy_(_get(prefix + "LayerNorm_0/bias"))
+
+            # kornia impl does not use qkv bias
+            mha_prefix = prefix + "MultiHeadDotProductAttention_1/"
+            qkv_weight = [_get(mha_prefix + f"{x}/kernel") for x in ["query", "key", "value"]]
+            block[0].fn[1].qkv.weight.copy_(concatenate(qkv_weight, 1).flatten(1).T)
+            # qkv_bias = [_get(mha_prefix + f"{x}/bias") for x in ["query", "key", "value"]]
+            # block[0].fn[1].qkv.bias.copy_(concatenate(qkv_bias, 0).flatten())
+            block[0].fn[1].projection.weight.copy_(_get(mha_prefix + "out/kernel").flatten(0, 1).T)
+            block[0].fn[1].projection.bias.copy_(_get(mha_prefix + "out/bias"))
+
+            block[1].fn[0].weight.copy_(_get(prefix + "LayerNorm_2/scale"))
+            block[1].fn[0].bias.copy_(_get(prefix + "LayerNorm_2/bias"))
+            block[1].fn[1][0].weight.copy_(_get(prefix + "MlpBlock_3/Dense_0/kernel").T)
+            block[1].fn[1][0].bias.copy_(_get(prefix + "MlpBlock_3/Dense_0/bias"))
+            block[1].fn[1][3].weight.copy_(_get(prefix + "MlpBlock_3/Dense_1/kernel").T)
+            block[1].fn[1][3].bias.copy_(_get(prefix + "MlpBlock_3/Dense_1/bias"))
+
+        unused_keys = [k for k in jax_ckpt.keys() if k not in used_keys]
+        print(unused_keys)  # debug
+        return self
+
+    @staticmethod
+    def from_config(variant: str, pretrained: bool = False, **kwargs: Any) -> VisionTransformer:
+        model_type, patch_size = variant.split("/")
+        patch_size = int(patch_size)
+
+        _kwargs = {
+            "vit_ti": {"embed_dim": 192, "depth": 12, "num_heads": 3},
+            "vit_s": {"embed_dim": 384, "depth": 12, "num_heads": 6},
+            "vit_b": {"embed_dim": 768, "depth": 12, "num_heads": 12},
+            "vit_l": {"embed_dim": 1024, "depth": 24, "num_heads": 16},
+            "vit_h": {"embed_dim": 1280, "depth": 32, "num_heads": 16},
+        }[model_type]
+
+        model = VisionTransformer(patch_size=patch_size, **_kwargs, **kwargs)
+
+        if pretrained:
+            KORNIA_CHECK(variant in _checkpoint_dict, f"Variant {variant} does not have pre-trained checkpoint")
+            model.load_jax_checkpoint(_base_url + _checkpoint_dict[variant])
+
+        return model
