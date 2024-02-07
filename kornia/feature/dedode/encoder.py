@@ -1,4 +1,3 @@
-
 import torch
 from torch import nn
 
@@ -6,7 +5,7 @@ from .vgg.vgg import vgg19_bn
 
 
 class VGG19(nn.Module):
-    def __init__(self, amp = False, amp_dtype = torch.float16) -> None:
+    def __init__(self, amp=False, amp_dtype=torch.float16) -> None:
         super().__init__()
         self.layers = nn.ModuleList(vgg19_bn().features[:40])
         # Maxpool layers: 6, 13, 26, 39
@@ -14,7 +13,7 @@ class VGG19(nn.Module):
         self.amp_dtype = amp_dtype
 
     def forward(self, x, **kwargs):
-        with torch.autocast("cuda", enabled=self.amp, dtype = self.amp_dtype):
+        with torch.autocast("cuda", enabled=self.amp, dtype=self.amp_dtype):
             feats = []
             sizes = []
             for layer in self.layers:
@@ -23,6 +22,7 @@ class VGG19(nn.Module):
                     sizes.append(x.shape[-2:])
                 x = layer(x)
             return feats, sizes
+
 
 class FrozenDINOv2(nn.Module):
     def __init__(self, amp=True, amp_dtype=torch.float16, dinov2_weights=None):
