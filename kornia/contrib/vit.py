@@ -23,12 +23,12 @@ __all__ = ["VisionTransformer"]
 # recommended checkpoint from https://github.com/google-research/vision_transformer
 _base_url = "https://storage.googleapis.com/vit_models/augreg/"
 _checkpoint_dict = {
-    "vit_l/16": "L_16-i21k-300ep-lr_0.001-aug_strong1-wd_0.1-do_0.0-sd_0.0--imagenet2012-steps_20k-lr_0.01-res_384.npz",
-    "vit_b/16": "B_16-i21k-300ep-lr_0.001-aug_medium1-wd_0.1-do_0.0-sd_0.0--imagenet2012-steps_20k-lr_0.03-res_384.npz",
-    "vit_s/16": "S_16-i21k-300ep-lr_0.001-aug_light1-wd_0.03-do_0.0-sd_0.0--imagenet2012-steps_20k-lr_0.03-res_384.npz",
-    "vit_ti/16": "Ti_16-i21k-300ep-lr_0.001-aug_none-wd_0.03-do_0.0-sd_0.0--imagenet2012-steps_20k-lr_0.03-res_384.npz",
-    "vit_b/32": "B_32-i21k-300ep-lr_0.001-aug_light1-wd_0.1-do_0.0-sd_0.0--imagenet2012-steps_20k-lr_0.01-res_384.npz",
-    "vit_s/32": "S_32-i21k-300ep-lr_0.001-aug_none-wd_0.1-do_0.0-sd_0.0--imagenet2012-steps_20k-lr_0.01-res_384.npz",
+    "vit_l/16": "L_16-i21k-300ep-lr_0.001-aug_strong1-wd_0.1-do_0.0-sd_0.0.npz",
+    "vit_b/16": "B_16-i21k-300ep-lr_0.001-aug_medium1-wd_0.1-do_0.0-sd_0.0.npz",
+    "vit_s/16": "S_16-i21k-300ep-lr_0.001-aug_light1-wd_0.03-do_0.0-sd_0.0.npz",
+    "vit_ti/16": "Ti_16-i21k-300ep-lr_0.001-aug_none-wd_0.03-do_0.0-sd_0.0.npz",
+    "vit_b/32": "B_32-i21k-300ep-lr_0.001-aug_light1-wd_0.1-do_0.0-sd_0.0.npz",
+    "vit_s/32": "S_32-i21k-300ep-lr_0.001-aug_none-wd_0.1-do_0.0-sd_0.0.npz",
 }
 
 
@@ -244,6 +244,7 @@ class VisionTransformer(Module):
         self.patch_embedding = PatchEmbedding(in_channels, embed_dim, patch_size, image_size, backbone)
         hidden_dim = self.patch_embedding.out_channels
         self.encoder = TransformerEncoder(hidden_dim, depth, num_heads, dropout_rate, dropout_attn)
+        self.norm = nn.LayerNorm(embed_dim)
 
     @property
     def encoder_results(self) -> list[Tensor]:
@@ -260,6 +261,7 @@ class VisionTransformer(Module):
 
         out = self.patch_embedding(x)
         out = self.encoder(out)
+        out = self.norm(out)
         return out
 
     @torch.no_grad()
@@ -270,10 +272,8 @@ class VisionTransformer(Module):
             checkpoint = download_to_torch_hub(checkpoint)
 
         jax_ckpt = np.load(checkpoint)
-        used_keys = set()
 
         def _get(key: str) -> Tensor:
-            used_keys.add(key)
             return torch.from_numpy(jax_ckpt[key])
 
         patch_embed = self.patch_embedding
@@ -301,9 +301,10 @@ class VisionTransformer(Module):
             block[1].fn[1][0].bias.copy_(_get(prefix + "MlpBlock_3/Dense_0/bias"))
             block[1].fn[1][3].weight.copy_(_get(prefix + "MlpBlock_3/Dense_1/kernel").T)
             block[1].fn[1][3].bias.copy_(_get(prefix + "MlpBlock_3/Dense_1/bias"))
+        
+        self.norm.weight.copy_(_get("Transformer/encoder_norm/scale"))
+        self.norm.bias.copy_(_get("Transformer/encoder_norm/bias"))
 
-        unused_keys = [k for k in jax_ckpt.keys() if k not in used_keys]
-        KORNIA_CHECK(len(unused_keys) == 0, f"The following weights are unused: {unused_keys}")
         return self
 
     @staticmethod
