@@ -3,7 +3,6 @@ import torch
 from torch.autograd import gradcheck
 
 import kornia
-from kornia.utils._compat import torch_version_ge
 
 from testing.base import assert_close
 
