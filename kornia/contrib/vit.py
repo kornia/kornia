@@ -311,15 +311,16 @@ class VisionTransformer(Module):
         model_type, patch_size_str = variant.split("/")
         patch_size = int(patch_size_str)
 
-        _kwargs = {
+        model_config = {
             "vit_ti": {"embed_dim": 192, "depth": 12, "num_heads": 3},
             "vit_s": {"embed_dim": 384, "depth": 12, "num_heads": 6},
             "vit_b": {"embed_dim": 768, "depth": 12, "num_heads": 12},
             "vit_l": {"embed_dim": 1024, "depth": 24, "num_heads": 16},
             "vit_h": {"embed_dim": 1280, "depth": 32, "num_heads": 16},
         }[model_type]
+        kwargs.update(model_config, patch_size=patch_size)
 
-        model = VisionTransformer(patch_size=patch_size, **_kwargs, **kwargs)
+        model = VisionTransformer(**kwargs)
 
         if pretrained:
             KORNIA_CHECK(variant in _checkpoint_dict, f"Variant {variant} does not have pre-trained checkpoint")
