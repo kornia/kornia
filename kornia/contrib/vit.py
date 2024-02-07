@@ -303,7 +303,7 @@ class VisionTransformer(Module):
             block[1].fn[1][3].bias.copy_(_get(prefix + "MlpBlock_3/Dense_1/bias"))
 
         unused_keys = [k for k in jax_ckpt.keys() if k not in used_keys]
-        print(unused_keys)  # debug
+        KORNIA_CHECK(len(unused_keys) == 0, f"The following weights are unused: {unused_keys}")
         return self
 
     @staticmethod
