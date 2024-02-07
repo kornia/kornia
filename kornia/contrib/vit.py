@@ -301,7 +301,7 @@ class VisionTransformer(Module):
             block[1].fn[1][0].bias.copy_(_get(prefix + "MlpBlock_3/Dense_0/bias"))
             block[1].fn[1][3].weight.copy_(_get(prefix + "MlpBlock_3/Dense_1/kernel").T)
             block[1].fn[1][3].bias.copy_(_get(prefix + "MlpBlock_3/Dense_1/bias"))
-        
+
         self.norm.weight.copy_(_get("Transformer/encoder_norm/scale"))
         self.norm.bias.copy_(_get("Transformer/encoder_norm/bias"))
 
