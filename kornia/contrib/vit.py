@@ -94,7 +94,7 @@ class TransformerEncoderBlock(nn.Sequential):
             ResidualAdd(
                 nn.Sequential(
                     nn.LayerNorm(embed_dim),
-                    FeedForward(embed_dim, embed_dim, embed_dim, dropout_rate=dropout_rate),
+                    FeedForward(embed_dim, embed_dim * 4, embed_dim, dropout_rate=dropout_rate),
                     nn.Dropout(dropout_rate),
                 )
             ),
