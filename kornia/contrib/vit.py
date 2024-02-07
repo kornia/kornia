@@ -113,14 +113,14 @@ class TransformerEncoderBlock(nn.Sequential):
         super().__init__(
             ResidualAdd(
                 nn.Sequential(
-                    nn.LayerNorm(embed_dim),
+                    nn.LayerNorm(embed_dim, 1e-6),
                     MultiHeadAttention(embed_dim, num_heads, dropout_attn, dropout_rate),
                     nn.Dropout(dropout_rate),
                 )
             ),
             ResidualAdd(
                 nn.Sequential(
-                    nn.LayerNorm(embed_dim),
+                    nn.LayerNorm(embed_dim, 1e-6),
                     FeedForward(embed_dim, embed_dim * 4, embed_dim, dropout_rate=dropout_rate),
                     nn.Dropout(dropout_rate),
                 )
@@ -244,7 +244,7 @@ class VisionTransformer(Module):
         self.patch_embedding = PatchEmbedding(in_channels, embed_dim, patch_size, image_size, backbone)
         hidden_dim = self.patch_embedding.out_channels
         self.encoder = TransformerEncoder(hidden_dim, depth, num_heads, dropout_rate, dropout_attn)
-        self.norm = nn.LayerNorm(embed_dim)
+        self.norm = nn.LayerNorm(embed_dim, 1e-6)
 
     @property
     def encoder_results(self) -> list[Tensor]:
@@ -304,7 +304,6 @@ class VisionTransformer(Module):
 
         self.norm.weight.copy_(_get("Transformer/encoder_norm/scale"))
         self.norm.bias.copy_(_get("Transformer/encoder_norm/bias"))
-
         return self
 
     @staticmethod
