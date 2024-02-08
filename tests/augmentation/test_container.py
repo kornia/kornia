@@ -676,8 +676,8 @@ class TestAugmentationSequential:
     def test_transform_list_of_masks_and_boxes(self, device, dtype):
         input = torch.randn(2, 3, 256, 256, device=device, dtype=dtype)
         mask = [
-            torch.ones(3, 256, 256, device=device, dtype=dtype),
-            torch.ones(2, 256, 256, device=device, dtype=dtype),
+            torch.ones(1, 3, 256, 256, device=device, dtype=dtype),
+            torch.ones(1, 2, 256, 256, device=device, dtype=dtype),
         ]
 
         bbox = [
