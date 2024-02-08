@@ -76,13 +76,12 @@ class ColorMap(ABC):
         self._dtype = dtype
         self._device = device
         self.colormap_options = colormap_options
+        self.colormap_names = list(self.colormap_options.keys())
 
         if name_colormap is not None:
             cmap = name_colormap.lower()
-            if cmap not in self.colormap_options.keys():
-                raise ValueError(
-                    f"Unsupported colormap: {cmap}. Available colormaps are {self.colormap_options.keys()}"
-                )
+            if cmap not in self.colormap_names:
+                raise ValueError(f"Unsupported colormap: {cmap}. Available colormaps are {self.colormap_names}")
             self.colors = self._generate_color_map(self.colormap_options[cmap], num_colors)
         elif base_colormap is not None:
             self.colors = self._generate_color_map(base_colormap, num_colors)
@@ -109,6 +108,14 @@ class ColorMap(ABC):
             int: Number of colors in the colormap.
         """
         return self.colors.shape[-1]
+
+    def colormap_list(self) -> List:
+        r"""Returns the list of colormaps available.
+
+        Returns:
+            List: Name of colorsmaps available.
+        """
+        return self.colormap_names
 
 
 def apply_colormap(input_tensor: Tensor, colormap: ColorMap) -> Tensor:
