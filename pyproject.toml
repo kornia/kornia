@@ -146,6 +146,7 @@ requires = [
   [tool.ruff.lint.isort]
     known-first-party = ["kornia"]
     split-on-trailing-comma = true
+    force-single-line = true
     forced-separate = ["testing", "tests"]
 
   [tool.ruff.lint.mccabe]
