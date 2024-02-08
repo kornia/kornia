@@ -226,15 +226,13 @@ def _torch_linalg_svdvals(input: Tensor) -> Tensor:
 def _torch_solve_cast(A: Tensor, B: Tensor) -> Tensor:
     """Helper function to make torch.solve work with other than fp32/64.
 
-    The function torch.solve is only implemented for fp32/64 which makes impossible to be used by fp16 or others. What
-    this function does, is cast input data type to fp32, apply torch.svd, and cast back to the input dtype.
+    For stable operation, the input matrices should be cast to fp64, and the output will be cast back to the input
+    dtype.
     """
-    # dtype: torch.dtype = A.dtype
-    # if dtype not in (torch.float32, torch.float64):
-    #    dtype = torch.float32
-
+    # cast to fp64 and solve
     out = torch.linalg.solve(A.to(torch.float64), B.to(torch.float64))
 
+    # cast back to the input dtype
     return out.to(A.dtype)
 
 

@@ -1,0 +1,5 @@
+User-agent: *
+￼Allow: /*/latest/
+￼Allow: /*/0.7.1
+￼Allow: /*/0.7.*
+￼Disallow: /
