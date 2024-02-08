@@ -4,123 +4,111 @@ from typing import List, Optional
 import torch
 from torch.nn.functional import interpolate
 
+from kornia.color import colormap_data as cm_data
 from kornia.core import Module, Tensor, tensor
 from kornia.core.check import KORNIA_CHECK_IS_GRAY
 
-RGBColor = List[float]
+RGBColor = cm_data.RGBColor
 
-
-def _list_color_to_tensor(
-    colors: List[RGBColor], dtype: Optional[torch.dtype], device: Optional[torch.device]
-) -> Tensor:
-    return tensor(list(colors), dtype=dtype, device=device).T
+colormap_options = {
+    "autumn": cm_data._AUTUMN_BASE,
+    "bone": cm_data._BONE_BASE,
+    "jet": cm_data._JET_BASE,
+    "winter": cm_data._WINTER_BASE,
+    "rainbow": cm_data._RAINBOW_BASE,
+    "ocean": cm_data._OCEAN_BASE,
+    "summer": cm_data._SUMMER_BASE,
+    "spring": cm_data._SPRING_BASE,
+    "cool": cm_data._COOL_BASE,
+    "hsv": cm_data._HSV_BASE,
+    "brg": cm_data._BRG_BASE,
+    "pink": cm_data._PINK_BASE,
+    "hot": cm_data._HOT_BASE,
+    "plasma": cm_data._PLASMA_BASE,
+    "viridis": cm_data._VIRIDIS_BASE,
+    "cividis": cm_data._CIVIDIS_BASE,
+    "twilight": cm_data._TWILIGHT_BASE,
+    "turbo": cm_data._TURBO_BASE,
+    "seismic": cm_data._SEISMIC_BASE,
+}
 
 
 class ColorMap(ABC):
-    r"""Abstract class to represents a color map."""
+    r"""Class to represent a colour map. It can be created or selected from the built-in colour map.
 
-    colors: Tensor
+    Args:
+        base_colormap: A list of RGB colors to define a custom colormap.
+        If specified, `name_colormap` should be None.
+        name_colormap: The name of a built-in colormap.
+        If specified, `base_colormap` should be None.
+        num_colors: Number of colors in the colormap.
+        device: The device to put the generated colormap on.
+        dtype: The data type of the generated colormap.
 
-    def __init__(
-        self,
-        base_colormap: List[RGBColor],
-        num_colors: int,
-        device: Optional[torch.device],
-        dtype: Optional[torch.dtype],
-    ) -> None:
-        self._dtype = dtype
-        self._device = device
+    Returns:
+            ColorMap: An object of the colormap with the num_colors length.
 
-        self.colors = interpolate(
-            _list_color_to_tensor(base_colormap, dtype=self._dtype, device=self._device)[None, ...],
-            size=num_colors,
-            mode="linear",
-        )[0, ...]
+    Raises:
+        ValueError: If both `base_colormap` and `name_colormap` are provided or if neither is provided.
 
-    def __len__(self) -> int:
-        return self.colors.shape[-1]
+    Example:
+        >>> ColorMap(name_colormap='viridis', num_colors=8).colors
+        tensor([[0.2813, 0.2621, 0.2013, 0.1505, 0.1210, 0.2463, 0.5259, 0.8557],
+                [0.0842, 0.2422, 0.3836, 0.5044, 0.6258, 0.7389, 0.8334, 0.8886],
+                [0.4072, 0.5207, 0.5543, 0.5574, 0.5334, 0.4519, 0.2880, 0.0989]])
 
-
-# TODO: Add more colormaps
-_BASE_AUTUMN: List[RGBColor] = [
-    [1.0, 0.0, 0.0],
-    [1.0, 0.01587301587301587, 0.0],
-    [1.0, 0.03174603174603174, 0.0],
-    [1.0, 0.04761904761904762, 0.0],
-    [1.0, 0.06349206349206349, 0.0],
-    [1.0, 0.07936507936507936, 0.0],
-    [1.0, 0.09523809523809523, 0.0],
-    [1.0, 0.1111111111111111, 0.0],
-    [1.0, 0.126984126984127, 0.0],
-    [1.0, 0.1428571428571428, 0.0],
-    [1.0, 0.1587301587301587, 0.0],
-    [1.0, 0.1746031746031746, 0.0],
-    [1.0, 0.1904761904761905, 0.0],
-    [1.0, 0.2063492063492063, 0.0],
-    [1.0, 0.2222222222222222, 0.0],
-    [1.0, 0.2380952380952381, 0.0],
-    [1.0, 0.253968253968254, 0.0],
-    [1.0, 0.2698412698412698, 0.0],
-    [1.0, 0.2857142857142857, 0.0],
-    [1.0, 0.3015873015873016, 0.0],
-    [1.0, 0.3174603174603174, 0.0],
-    [1.0, 0.3333333333333333, 0.0],
-    [1.0, 0.3492063492063492, 0.0],
-    [1.0, 0.3650793650793651, 0.0],
-    [1.0, 0.3809523809523809, 0.0],
-    [1.0, 0.3968253968253968, 0.0],
-    [1.0, 0.4126984126984127, 0.0],
-    [1.0, 0.4285714285714285, 0.0],
-    [1.0, 0.4444444444444444, 0.0],
-    [1.0, 0.4603174603174603, 0.0],
-    [1.0, 0.4761904761904762, 0.0],
-    [1.0, 0.492063492063492, 0.0],
-    [1.0, 0.5079365079365079, 0.0],
-    [1.0, 0.5238095238095238, 0.0],
-    [1.0, 0.5396825396825397, 0.0],
-    [1.0, 0.5555555555555556, 0.0],
-    [1.0, 0.5714285714285714, 0.0],
-    [1.0, 0.5873015873015873, 0.0],
-    [1.0, 0.6031746031746031, 0.0],
-    [1.0, 0.6190476190476191, 0.0],
-    [1.0, 0.6349206349206349, 0.0],
-    [1.0, 0.6507936507936508, 0.0],
-    [1.0, 0.6666666666666666, 0.0],
-    [1.0, 0.6825396825396826, 0.0],
-    [1.0, 0.6984126984126984, 0.0],
-    [1.0, 0.7142857142857143, 0.0],
-    [1.0, 0.7301587301587301, 0.0],
-    [1.0, 0.746031746031746, 0.0],
-    [1.0, 0.7619047619047619, 0.0],
-    [1.0, 0.7777777777777778, 0.0],
-    [1.0, 0.7936507936507936, 0.0],
-    [1.0, 0.8095238095238095, 0.0],
-    [1.0, 0.8253968253968254, 0.0],
-    [1.0, 0.8412698412698413, 0.0],
-    [1.0, 0.8571428571428571, 0.0],
-    [1.0, 0.873015873015873, 0.0],
-    [1.0, 0.8888888888888888, 0.0],
-    [1.0, 0.9047619047619048, 0.0],
-    [1.0, 0.9206349206349206, 0.0],
-    [1.0, 0.9365079365079365, 0.0],
-    [1.0, 0.9523809523809523, 0.0],
-    [1.0, 0.9682539682539683, 0.0],
-    [1.0, 0.9841269841269841, 0.0],
-    [1.0, 1.0, 0.0],
-]
-
-
-# Generate complete color map
-class AUTUMN(ColorMap):
-    r"""The GNU Octave colormap `autumn`
-
-    .. image:: _static/img/AUTUMN.png
+        # Create color map from first color (RGB with range[0-1]) to last one with num_colors length.
+        >>> ColorMap(base_colormap=[[0., 0.5 , 1.0], [1., 0.5, 0.]], num_colors=8).colors
+        tensor([[0.0000, 0.0000, 0.1250, 0.3750, 0.6250, 0.8750, 1.0000, 1.0000],
+                [0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000],
+                [1.0000, 1.0000, 0.8750, 0.6250, 0.3750, 0.1250, 0.0000, 0.0000]])
     """
 
     def __init__(
-        self, num_colors: int = 64, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None
+        self,
+        base_colormap: Optional[List[RGBColor]] = None,
+        name_colormap: Optional[str] = None,
+        num_colors: Optional[int] = 64,
+        device: Optional[torch.device] = None,
+        dtype: Optional[torch.dtype] = None,
     ) -> None:
-        super().__init__(base_colormap=_BASE_AUTUMN, num_colors=num_colors, device=device, dtype=dtype)
+        super().__init__()
+        self._dtype = dtype
+        self._device = device
+        self.colormap_options = colormap_options
+
+        if name_colormap is not None:
+            cmap = name_colormap.lower()
+            if cmap not in self.colormap_options.keys():
+                raise ValueError(
+                    f"Unsupported colormap: {cmap}. Available colormaps are {self.colormap_options.keys()}"
+                )
+            self.colors = self._generate_color_map(self.colormap_options[cmap], num_colors)
+        elif base_colormap is not None:
+            self.colors = self._generate_color_map(base_colormap, num_colors)
+        else:
+            raise ValueError("You should use `base_colormap` (List[RGBColor]) or `name_colormap` (str).")
+
+    def _generate_color_map(self, base_colormap: List[RGBColor], num_colors: int) -> Tensor:
+        r"""Generates a colormap tensor using interpolation.
+
+        Args:
+            base_colormap: A list of RGB colors defining the colormap.
+            num_colors: Number of colors in the colormap.
+
+        Returns:
+            Tensor: A tensor representing the colormap.
+        """
+        tensor_colors = tensor(list(base_colormap), dtype=self._dtype, device=self._device).T
+        return interpolate(tensor_colors[None, ...], size=num_colors, mode="linear")[0, ...]
+
+    def __len__(self) -> int:
+        r"""Returns the number of colors in the colormap.
+
+        Returns:
+            int: Number of colors in the colormap.
+        """
+        return self.colors.shape[-1]
 
 
 def apply_colormap(input_tensor: Tensor, colormap: ColorMap) -> Tensor:
@@ -139,7 +127,7 @@ def apply_colormap(input_tensor: Tensor, colormap: ColorMap) -> Tensor:
 
     Example:
         >>> input_tensor = torch.tensor([[[0, 1, 2], [25, 50, 63]]])
-        >>> colormap = AUTUMN()
+        >>> colormap = ColorMap(name_colormap='autumn')
         >>> apply_colormap(input_tensor, colormap)
         tensor([[[1.0000, 1.0000, 1.0000],
                  [1.0000, 1.0000, 1.0000]],
@@ -173,20 +161,26 @@ def apply_colormap(input_tensor: Tensor, colormap: ColorMap) -> Tensor:
 
 
 class ApplyColorMap(Module):
-    r"""Module that apply to a gray tensor (integer tensor) a colormap.
+    r"""Class for applying a colormap to images.
 
     Args:
-        input_tensor: the input tensor of a gray image.
-        colormap: the colormap desired to be applied to the input tensor.
+        colormap: Either the name of a built-in colormap or a ColorMap object.
+        num_colors: Number of colors in the colormap. Default is 256.
+        device: The device to put the generated colormap on.
+        dtype: The data type of the generated colormap.
 
     Returns:
         A RGB tensor with the applied color map into the input_tensor
 
+    Raises:
+        ValueError: If `colormap` is neither a string nor a ColorMap object.
+
+    .. note::
+        The image data is assumed to be integer values in range of [0-255].
+
     Example:
         >>> input_tensor = torch.tensor([[[0, 1, 2], [25, 50, 63]]])
-        >>> colormap = AUTUMN()
-        >>> apply_cm = ApplyColorMap(colormap)
-        >>> apply_cm(input_tensor)
+        >>> ApplyColorMap(name_colormap='autumn')(input_tensor)
         tensor([[[1.0000, 1.0000, 1.0000],
                  [1.0000, 1.0000, 1.0000]],
         <BLANKLINE>
@@ -197,9 +191,40 @@ class ApplyColorMap(Module):
                  [0.0000, 0.0000, 0.0000]]])
     """
 
-    def __init__(self, colormap: ColorMap) -> None:
+    def __init__(
+        self,
+        colormap: [str, ColorMap],
+        num_colors: Optional[int] = 64,
+        device: Optional[torch.device] = None,
+        dtype: Optional[torch.dtype] = None,
+    ) -> None:
         super().__init__()
-        self.colormap = colormap
+        self.num_colors = num_colors
+        self.device = device
+        self.dtype = dtype
+
+        if isinstance(colormap, str):
+            self.cmap = ColorMap(
+                name_colormap=colormap,
+                num_colors=self.num_colors,
+                device=self.device,
+                dtype=self.dtype,
+            )
+        elif isinstance(colormap, ColorMap):
+            self.cmap = colormap
+        else:
+            raise ValueError("Please provide a correct colormap. Could be a str or ColorMap object.")
 
     def forward(self, input_tensor: Tensor) -> Tensor:
-        return apply_colormap(input_tensor, self.colormap)
+        r"""Applies the colormap to the input tensor.
+
+        Args:
+            input_tensor: The input tensor representing the grayscale image.
+
+        .. note::
+        The image data is assumed to be integer values in range of [0-255].
+
+        Returns:
+            Tensor: The output tensor representing the image with the applied colormap.
+        """
+        return apply_colormap(input_tensor, self.cmap)

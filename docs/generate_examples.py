@@ -321,7 +321,7 @@ def main():
         "rgb_to_ycbcr": ((), 1),
         "rgb_to_yuv": ((), 1),
         "rgb_to_linear_rgb": ((), 1),
-        "apply_colormap": ((K.color.colormap.AUTUMN(255),), 1),
+        "apply_colormap": ((K.color.ColorMap("autumn", 256),), 1),
     }
     # ITERATE OVER THE TRANSFORMS
     for fn_name, (args, num_samples) in color_transforms_list.items():
@@ -356,12 +356,32 @@ def main():
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for {fn_name}. {sig}")
 
-    colormaps_list = {"AUTUMN": (256,)}
+    colormaps_list = {
+        "autumn": (256,),
+        "bone": (256,),
+        "jet": (256,),
+        "winter": (256,),
+        "rainbow": (256,),
+        "ocean": (256,),
+        "summer": (256,),
+        "spring": (256,),
+        "cool": (256,),
+        "hsv": (256,),
+        "brg": (256,),
+        "pink": (256,),
+        "hot": (256,),
+        "plasma": (256,),
+        "viridis": (256,),
+        "cividis": (256,),
+        "twilight": (256,),
+        "turbo": (256,),
+        "seismic": (256,),
+    }
     bar_img_gray = torch.range(0, 255).repeat(1, 40, 1)  # 1x1x40x256
     bar_img = K.color.grayscale_to_rgb(bar_img_gray)
     # ITERATE OVER THE COLORMAPS
     for colormap_name, args in colormaps_list.items():
-        cm = getattr(mod, colormap_name)(*args)
+        cm = K.color.ColorMap(name_colormap=colormap_name, num_colors=args[0])
         out = K.color.rgb_to_bgr(K.color.apply_colormap(bar_img_gray, cm))
 
         out = torch.cat([bar_img, out], dim=-1)
