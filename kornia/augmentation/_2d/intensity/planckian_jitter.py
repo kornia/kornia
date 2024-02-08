@@ -3,11 +3,9 @@ from typing import Any, Dict, List, Optional, Union
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.core import Tensor, stack, tensor
-from kornia.utils import get_cuda_or_mps_device_if_available
 
 
 def get_planckian_coeffs(mode: str) -> Tensor:
-    default_device = get_cuda_or_mps_device_if_available()
     if mode.lower() == "blackbody":
         coefs = tensor(
             [
@@ -36,8 +34,7 @@ def get_planckian_coeffs(mode: str) -> Tensor:
                 [0.3586, 0.4655, 0.6820],
                 [0.3544, 0.4654, 0.6878],
                 [0.3503, 0.4653, 0.6933],
-            ],
-            device=default_device,
+            ]
         )
 
     elif mode.upper() == "CIED":
@@ -66,8 +63,7 @@ def get_planckian_coeffs(mode: str) -> Tensor:
                 [0.3313, 0.4719, 0.6766],
                 [0.3263, 0.4719, 0.6826],
                 [0.3217, 0.4719, 0.6882],
-            ],
-            device=default_device,
+            ]
         )
     else:
         raise RuntimeError(f"Unexpected mode. Gotcha {mode}")
@@ -159,9 +155,8 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
 
         _pl = get_planckian_coeffs(mode)
         if select_from is not None:
-            self.pl = _pl[select_from]
-        else:
-            self.pl = _pl
+            _pl = _pl[select_from]
+        self.register_buffer("pl", _pl)
 
         # the range of the sampling parameters
         _param_min: float = 0.0
@@ -173,8 +168,6 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         list_idx = params["idx"].tolist()
-
-        self.pl = self.pl.to(device=input.device)
 
         coeffs = self.pl[list_idx]
 
