@@ -27,6 +27,7 @@ from kornia.augmentation import (
     RandomFisheye,
     RandomGamma,
     RandomGaussianBlur,
+    RandomGaussianIllumination,
     RandomGaussianNoise,
     RandomGrayscale,
     RandomHorizontalFlip,
@@ -3287,6 +3288,71 @@ class TestRandomSaltAndPepperNoise(BaseTester):
     def test_same_on_batch(self, device, dtype):
         input_tensor = torch.ones(2, 1, 5, 5, device=device, dtype=dtype) * 0.5
         transform = RandomSaltAndPepperNoise(p=1.0, same_on_batch=True)
+        output_tensor = transform(input_tensor)
+        self.assert_close(output_tensor[0], output_tensor[1])
+
+
+class TestRandomGaussianIllumination(BaseTester):
+    @pytest.mark.parametrize(
+        "expected",
+        [
+            torch.tensor(
+                [
+                    [
+                        [[0.7266, 1.0000, 0.7266], [0.6621, 0.9121, 0.6621], [0.5000, 0.6911, 0.5000]],
+                        [[0.7266, 1.0000, 0.7266], [0.6621, 0.9121, 0.6621], [0.5000, 0.6911, 0.5000]],
+                        [[0.7266, 1.0000, 0.7266], [0.6621, 0.9121, 0.6621], [0.5000, 0.6911, 0.5000]],
+                    ]
+                ]
+            )
+        ],
+    )
+    def test_smoke(self, expected, device, dtype):
+        torch.manual_seed(1)
+        input_tensor = torch.ones(1, 3, 3, 3, device=device, dtype=dtype) * 0.5
+        expected = expected.to(device, dtype=dtype)
+        aug = RandomGaussianIllumination(gain=0.5, p=1.0)
+        res = aug(input_tensor)
+        assert input_tensor.shape == res.shape
+        self.assert_close(res, expected)
+
+    def test_exception(self, device, dtype):
+        with pytest.raises(ValueError, match="sign must be a tuple or a float"):
+            RandomGaussianIllumination(sign=3)
+
+        with pytest.raises(ValueError, match="center must be a tuple or a float"):
+            RandomGaussianIllumination(center=3)
+
+        with pytest.raises(ValueError, match="sigma must be a tuple or a float"):
+            RandomGaussianIllumination(sigma=[0.01, 0.06])
+
+        with pytest.raises(ValueError, match="gain must be a tuple or a float"):
+            RandomGaussianIllumination(gain=[0.01, 0.06])
+
+        with pytest.raises(Exception, match="gain values must be between 0 and 1. Recommended values less than 0.2."):
+            RandomGaussianIllumination(gain=(0.01, 2))
+
+        with pytest.raises(Exception, match="sigma of gaussian value must be between 0 and 1."):
+            RandomGaussianIllumination(sigma=(0.01, 2))
+
+        with pytest.raises(Exception, match="center of gaussian value must be between 0 and 1."):
+            RandomGaussianIllumination(center=(0.01, 2))
+
+        with pytest.raises(Exception, match="sign of gaussian value must be between -1 and 1."):
+            RandomGaussianIllumination(sign=(0.01, 2))
+
+    @pytest.mark.parametrize("batch_shape", [1, 3, 3, 5])
+    @pytest.mark.parametrize("channel_shape", [1, 1, 2, 3])
+    def test_cardinality(self, batch_shape, channel_shape, device, dtype):
+        input_tensor = torch.ones(batch_shape, channel_shape, 16, 16, device=device, dtype=dtype) * 0.5
+        transform = RandomGaussianIllumination(p=1.0)
+        output_tensor = transform(input_tensor)
+        assert input_tensor.shape[0] == output_tensor.shape[0]
+        assert input_tensor.shape[1] == output_tensor.shape[1]
+
+    def test_same_on_batch(self, device, dtype):
+        input_tensor = torch.ones(2, 1, 5, 5, device=device, dtype=dtype) * 0.5
+        transform = RandomGaussianIllumination(p=1.0, same_on_batch=True)
         output_tensor = transform(input_tensor)
         self.assert_close(output_tensor[0], output_tensor[1])
 
