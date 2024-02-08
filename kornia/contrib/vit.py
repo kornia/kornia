@@ -308,6 +308,18 @@ class VisionTransformer(Module):
 
     @staticmethod
     def from_config(variant: str, pretrained: bool = False, **kwargs: Any) -> VisionTransformer:
+        """Build ViT model based on the given config string. The format is `vit_{size}/{patch_size}`.
+        E.g. vit_b/16 means ViT-Base, patch size 16x16.
+
+        Args:
+            config: ViT model config
+        Returns:
+            The respective ViT model
+
+        Example:
+            >>> from kornia.contrib import VisionTransformer
+            >>> vit_model = VisionTransformer.from_config("vit_b/16")
+        """
         model_type, patch_size_str = variant.split("/")
         patch_size = int(patch_size_str)
 
