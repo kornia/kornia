@@ -1,10 +1,14 @@
 from __future__ import annotations
 
-from kornia.core import Module, Tensor
+from kornia.core import Module
+from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR
 
-from .filter import filter2d, filter2d_separable
-from .kernels import _unpack_2d_ks, get_box_kernel1d, get_box_kernel2d
+from .filter import filter2d
+from .filter import filter2d_separable
+from .kernels import _unpack_2d_ks
+from .kernels import get_box_kernel1d
+from .kernels import get_box_kernel2d
 
 
 def box_blur(

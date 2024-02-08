@@ -3,15 +3,13 @@ import copy
 import pytest
 import torch
 
-from kornia.augmentation import (
-    AugmentationSequential,
-    RandomCutMixV2,
-    RandomJigsaw,
-    RandomMixUpV2,
-    RandomMosaic,
-    RandomTransplantation,
-    RandomTransplantation3D,
-)
+from kornia.augmentation import AugmentationSequential
+from kornia.augmentation import RandomCutMixV2
+from kornia.augmentation import RandomJigsaw
+from kornia.augmentation import RandomMixUpV2
+from kornia.augmentation import RandomMosaic
+from kornia.augmentation import RandomTransplantation
+from kornia.augmentation import RandomTransplantation3D
 
 from testing.base import BaseTester
 

@@ -1,10 +1,17 @@
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict
+from typing import Optional
+from typing import Tuple
+from typing import Union
 
 import torch
 from torch.distributions import Bernoulli
 
-from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
-from kornia.augmentation.utils import _adapted_rsampling, _adapted_sampling, _common_param_check, _joint_range_check
+from kornia.augmentation.random_generator.base import RandomGeneratorBase
+from kornia.augmentation.random_generator.base import UniformDistribution
+from kornia.augmentation.utils import _adapted_rsampling
+from kornia.augmentation.utils import _adapted_sampling
+from kornia.augmentation.utils import _common_param_check
+from kornia.augmentation.utils import _joint_range_check
 from kornia.utils.helpers import _extract_device_dtype
 
 __all__ = ["MixupGenerator"]

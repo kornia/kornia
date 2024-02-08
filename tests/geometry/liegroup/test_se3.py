@@ -1,8 +1,10 @@
 import pytest
 import torch
 
-from kornia.geometry.conversions import euler_from_quaternion, rotation_matrix_to_quaternion
-from kornia.geometry.liegroup import Se3, So3
+from kornia.geometry.conversions import euler_from_quaternion
+from kornia.geometry.conversions import rotation_matrix_to_quaternion
+from kornia.geometry.liegroup import Se3
+from kornia.geometry.liegroup import So3
 from kornia.geometry.quaternion import Quaternion
 from kornia.geometry.vector import Vector3
 

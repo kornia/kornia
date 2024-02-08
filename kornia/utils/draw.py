@@ -1,9 +1,13 @@
-from typing import List, Optional, Tuple, Union
+from typing import List
+from typing import Optional
+from typing import Tuple
+from typing import Union
 
 import torch
 from torch import Tensor
 
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK
+from kornia.core.check import KORNIA_CHECK_SHAPE
 
 # TODO: implement width of the line
 

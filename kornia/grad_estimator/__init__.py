@@ -1,1 +1,2 @@
-from .ste import STEFunction, StraightThroughEstimator
+from .ste import STEFunction
+from .ste import StraightThroughEstimator

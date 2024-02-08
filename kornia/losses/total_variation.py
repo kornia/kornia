@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from kornia.core import Module, Tensor
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core.check import KORNIA_CHECK
+from kornia.core.check import KORNIA_CHECK_SHAPE
 
 
 def total_variation(img: Tensor, reduction: str = "sum") -> Tensor:

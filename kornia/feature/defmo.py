@@ -1,9 +1,16 @@
-from typing import Callable, Dict, List, Optional, Type
+from typing import Callable
+from typing import Dict
+from typing import List
+from typing import Optional
+from typing import Type
 
 import torch
 from torch import nn
 
-from kornia.core import Module, Tensor, concatenate, stack
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import concatenate
+from kornia.core import stack
 from kornia.utils.helpers import map_location_to_cpu
 
 urls: Dict[str, str] = {}

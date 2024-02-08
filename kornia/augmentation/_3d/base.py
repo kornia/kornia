@@ -1,10 +1,15 @@
-from typing import Any, Dict, Optional
+from typing import Any
+from typing import Dict
+from typing import Optional
 
-from torch import float16, float32, float64
+from torch import float16
+from torch import float32
+from torch import float64
 
 import kornia
 from kornia.augmentation.base import _AugmentationBase
-from kornia.augmentation.utils import _transform_input3d, _validate_input_dtype
+from kornia.augmentation.utils import _transform_input3d
+from kornia.augmentation.utils import _validate_input_dtype
 from kornia.core import Tensor
 from kornia.geometry.boxes import Boxes3D
 from kornia.geometry.keypoints import Keypoints3D

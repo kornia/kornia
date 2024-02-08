@@ -1,13 +1,20 @@
 import math
-from typing import Optional, Tuple, Union
+from typing import Optional
+from typing import Tuple
+from typing import Union
 
 import torch
-from typing_extensions import NotRequired, TypedDict
+from typing_extensions import NotRequired
+from typing_extensions import TypedDict
 
-from kornia.core import Tensor, concatenate, tensor, where
+from kornia.core import Tensor
+from kornia.core import concatenate
+from kornia.core import tensor
+from kornia.core import where
 
 from .ransac import ransac
-from .utils import dist_matrix, orientation_diff
+from .utils import dist_matrix
+from .utils import orientation_diff
 
 
 class AdalamConfig(TypedDict):

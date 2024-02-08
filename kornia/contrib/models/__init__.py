@@ -1,1 +1,2 @@
-from kornia.contrib.models.structures import Prompts, SegmentationResults
+from kornia.contrib.models.structures import Prompts
+from kornia.contrib.models.structures import SegmentationResults

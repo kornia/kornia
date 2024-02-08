@@ -1,6 +1,7 @@
 from kornia.augmentation.container.augment import AugmentationSequential
 from kornia.augmentation.container.base import ImageSequentialBase
-from kornia.augmentation.container.dispatcher import ManyToManyAugmentationDispather, ManyToOneAugmentationDispather
+from kornia.augmentation.container.dispatcher import ManyToManyAugmentationDispather
+from kornia.augmentation.container.dispatcher import ManyToOneAugmentationDispather
 from kornia.augmentation.container.image import ImageSequential
 from kornia.augmentation.container.patch import PatchSequential
 from kornia.augmentation.container.video import VideoSequential

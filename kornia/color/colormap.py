@@ -1,10 +1,13 @@
 from abc import ABC
-from typing import List, Optional
+from typing import List
+from typing import Optional
 
 import torch
 from torch.nn.functional import interpolate
 
-from kornia.core import Module, Tensor, tensor
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import tensor
 from kornia.core.check import KORNIA_CHECK_IS_GRAY
 
 RGBColor = List[float]

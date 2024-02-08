@@ -1,12 +1,20 @@
-from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar
+from typing import Callable
+from typing import Dict
+from typing import List
+from typing import Optional
+from typing import Tuple
+from typing import Type
+from typing import TypeVar
 
 import torch
 from torch import nn
 from torch.autograd import Function
-from torch.distributions import Bernoulli, RelaxedBernoulli
+from torch.distributions import Bernoulli
+from torch.distributions import RelaxedBernoulli
 
 from kornia.augmentation.base import _AugmentationBase
-from kornia.core import Module, Tensor
+from kornia.core import Module
+from kornia.core import Tensor
 
 T = TypeVar("T", bound="OperationBase")
 

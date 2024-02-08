@@ -1,10 +1,14 @@
 import logging
-from typing import Any, Callable, Dict, Optional
+from typing import Any
+from typing import Callable
+from typing import Dict
+from typing import Optional
 
 # the accelerator library is a requirement for the Trainer
 # but it is optional for grousnd base user of kornia.
 import torch
-from torch.optim import Optimizer, lr_scheduler
+from torch.optim import Optimizer
+from torch.optim import lr_scheduler
 from torch.utils.data import DataLoader
 
 try:
@@ -12,10 +16,13 @@ try:
 except ImportError:
     Accelerator = None
 
-from kornia.core import Module, Tensor
+from kornia.core import Module
+from kornia.core import Tensor
 from kornia.metrics import AverageMeter
 
-from .utils import Configuration, StatsTracker, TrainerState
+from .utils import Configuration
+from .utils import StatsTracker
+from .utils import TrainerState
 
 callbacks_whitelist = [
     # high level functions

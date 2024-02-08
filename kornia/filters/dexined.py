@@ -9,7 +9,9 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core import Module, Tensor, concatenate
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import concatenate
 from kornia.core.check import KORNIA_CHECK
 from kornia.utils import map_location_to_cpu
 

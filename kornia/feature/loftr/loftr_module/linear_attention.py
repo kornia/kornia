@@ -7,7 +7,8 @@ from typing import Optional
 import torch
 from torch.nn import Dropout
 
-from kornia.core import Module, Tensor
+from kornia.core import Module
+from kornia.core import Tensor
 
 
 def elu_feature_map(x: Tensor) -> Tensor:

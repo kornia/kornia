@@ -1,7 +1,10 @@
 from typing import Union
 
-from kornia.core import Module, Tensor, tensor
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import tensor
+from kornia.core.check import KORNIA_CHECK
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR
 
 
 def add_weighted(

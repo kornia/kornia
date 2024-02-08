@@ -12,7 +12,8 @@ from torch.cuda.amp import autocast
 
 from kornia.contrib.models.efficient_vit.nn.act import build_act
 from kornia.contrib.models.efficient_vit.nn.norm import build_norm
-from kornia.contrib.models.efficient_vit.utils import get_same_padding, val2tuple
+from kornia.contrib.models.efficient_vit.utils import get_same_padding
+from kornia.contrib.models.efficient_vit.utils import val2tuple
 
 __all__ = [
     "ConvLayer",

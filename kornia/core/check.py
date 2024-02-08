@@ -1,9 +1,15 @@
 """The testing package contains testing-specific utilities."""
 from __future__ import annotations
 
-from typing import Any, Optional, Sequence, TypeVar, cast
+from typing import Any
+from typing import Optional
+from typing import Sequence
+from typing import TypeVar
+from typing import cast
 
-from torch import float16, float32, float64
+from torch import float16
+from torch import float32
+from torch import float64
 from typing_extensions import TypeGuard
 
 from kornia.core import Tensor

@@ -1,7 +1,8 @@
 import pytest
 import torch
 
-from kornia.feature import HardNet, HardNet8
+from kornia.feature import HardNet
+from kornia.feature import HardNet8
 
 from testing.base import BaseTester
 

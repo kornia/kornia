@@ -1,12 +1,21 @@
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any
+from typing import Dict
+from typing import List
+from typing import Tuple
+from typing import Union
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
 from kornia.constants import pi
-from kornia.core import Tensor, cos, sin, tensor, zeros
-from kornia.filters import GaussianBlur2d, SpatialGradient
+from kornia.core import Tensor
+from kornia.core import cos
+from kornia.core import sin
+from kornia.core import tensor
+from kornia.core import zeros
+from kornia.filters import GaussianBlur2d
+from kornia.filters import SpatialGradient
 from kornia.geometry.conversions import cart2pol
 from kornia.utils import create_meshgrid
 from kornia.utils.helpers import map_location_to_cpu

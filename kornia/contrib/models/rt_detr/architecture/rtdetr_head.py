@@ -8,8 +8,11 @@ from typing import Optional
 import torch
 from torch import nn
 
-from kornia.contrib.models.common import MLP, ConvNormAct
-from kornia.core import Module, Tensor, concatenate
+from kornia.contrib.models.common import MLP
+from kornia.contrib.models.common import ConvNormAct
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import concatenate
 from kornia.utils._compat import torch_meshgrid
 
 

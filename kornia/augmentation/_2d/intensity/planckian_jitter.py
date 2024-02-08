@@ -1,8 +1,14 @@
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
+from typing import Dict
+from typing import List
+from typing import Optional
+from typing import Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.core import Tensor, stack, tensor
+from kornia.core import Tensor
+from kornia.core import stack
+from kornia.core import tensor
 from kornia.utils import get_cuda_or_mps_device_if_available
 
 

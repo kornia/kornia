@@ -4,10 +4,14 @@ from typing import ClassVar
 
 import torch
 
-from kornia.core import Device, Tensor
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE
+from kornia.core import Device
+from kornia.core import Tensor
+from kornia.core.check import KORNIA_CHECK
+from kornia.core.check import KORNIA_CHECK_SAME_DEVICES
+from kornia.core.check import KORNIA_CHECK_SHAPE
 
-from .utils import download_onnx_from_url, normalize_keypoints
+from .utils import download_onnx_from_url
+from .utils import normalize_keypoints
 
 try:
     import numpy as np

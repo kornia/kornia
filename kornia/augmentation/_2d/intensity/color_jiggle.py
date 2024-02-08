@@ -1,10 +1,18 @@
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
+from typing import Dict
+from typing import List
+from typing import Optional
+from typing import Tuple
+from typing import Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.constants import pi
 from kornia.core import Tensor
-from kornia.enhance import adjust_brightness, adjust_contrast, adjust_hue, adjust_saturation
+from kornia.enhance import adjust_brightness
+from kornia.enhance import adjust_contrast
+from kornia.enhance import adjust_hue
+from kornia.enhance import adjust_saturation
 
 
 class ColorJiggle(IntensityAugmentationBase2D):

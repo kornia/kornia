@@ -4,7 +4,9 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core import Module, Tensor, pad
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import pad
 
 
 class ConvNormAct(nn.Sequential):

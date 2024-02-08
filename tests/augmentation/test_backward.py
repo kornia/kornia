@@ -2,17 +2,15 @@ import pytest
 import torch
 from torch import nn
 
-from kornia.augmentation import (
-    ColorJiggle,
-    ColorJitter,
-    RandomAffine,
-    RandomErasing,
-    RandomMotionBlur,
-    RandomPerspective,
-    RandomResizedCrop,
-    RandomRotation,
-    RandomSharpness,
-)
+from kornia.augmentation import ColorJiggle
+from kornia.augmentation import ColorJitter
+from kornia.augmentation import RandomAffine
+from kornia.augmentation import RandomErasing
+from kornia.augmentation import RandomMotionBlur
+from kornia.augmentation import RandomPerspective
+from kornia.augmentation import RandomResizedCrop
+from kornia.augmentation import RandomRotation
+from kornia.augmentation import RandomSharpness
 
 
 class TestColorJiggleBackward:

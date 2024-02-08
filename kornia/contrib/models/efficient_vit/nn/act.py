@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 from functools import partial
-from typing import Any, Optional, Union
+from typing import Any
+from typing import Optional
+from typing import Union
 
 from torch import nn
 

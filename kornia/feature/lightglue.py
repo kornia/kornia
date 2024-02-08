@@ -2,29 +2,34 @@ import math
 import warnings
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Callable, ClassVar, Dict, List, Optional, Tuple
+from typing import Any
+from typing import Callable
+from typing import ClassVar
+from typing import Dict
+from typing import List
+from typing import Optional
+from typing import Tuple
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core import (
-    Module,
-    ModuleList,
-    Tensor,
-    arange,
-    concatenate,
-    cos,
-    einsum,
-    ones,
-    ones_like,
-    sin,
-    stack,
-    where,
-    zeros,
-)
+from kornia.core import Module
+from kornia.core import ModuleList
+from kornia.core import Tensor
+from kornia.core import arange
+from kornia.core import concatenate
+from kornia.core import cos
+from kornia.core import einsum
+from kornia.core import ones
+from kornia.core import ones_like
+from kornia.core import sin
+from kornia.core import stack
+from kornia.core import where
+from kornia.core import zeros
 from kornia.core.check import KORNIA_CHECK
-from kornia.feature.laf import laf_to_three_points, scale_laf
+from kornia.feature.laf import laf_to_three_points
+from kornia.feature.laf import scale_laf
 
 try:
     from flash_attn.modules.mha import FlashCrossAttention

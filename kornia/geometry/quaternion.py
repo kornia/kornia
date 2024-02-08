@@ -3,18 +3,27 @@
 # https://github.com/KieranWynn/pyquaternion/blob/master/pyquaternion/quaternion.py
 # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Quaternion.h
 from math import pi
-from typing import Optional, Tuple, Union
+from typing import Optional
+from typing import Tuple
+from typing import Union
 
-from kornia.core import Device, Dtype, Module, Parameter, Tensor, concatenate, rand, stack, tensor, where
+from kornia.core import Device
+from kornia.core import Dtype
+from kornia.core import Module
+from kornia.core import Parameter
+from kornia.core import Tensor
+from kornia.core import concatenate
+from kornia.core import rand
+from kornia.core import stack
+from kornia.core import tensor
+from kornia.core import where
 from kornia.core.check import KORNIA_CHECK_TYPE
-from kornia.geometry.conversions import (
-    axis_angle_to_quaternion,
-    euler_from_quaternion,
-    normalize_quaternion,
-    quaternion_from_euler,
-    quaternion_to_rotation_matrix,
-    rotation_matrix_to_quaternion,
-)
+from kornia.geometry.conversions import axis_angle_to_quaternion
+from kornia.geometry.conversions import euler_from_quaternion
+from kornia.geometry.conversions import normalize_quaternion
+from kornia.geometry.conversions import quaternion_from_euler
+from kornia.geometry.conversions import quaternion_to_rotation_matrix
+from kornia.geometry.conversions import rotation_matrix_to_quaternion
 from kornia.geometry.linalg import batched_dot_product
 
 

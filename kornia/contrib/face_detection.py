@@ -1,7 +1,10 @@
 # based on: https://github.com/ShiqiYu/libfacedetection.train/blob/74f3aa77c63234dd954d21286e9a60703b8d0868/tasks/task1/yufacedetectnet.py  # noqa
 import math
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
+from typing import Dict
+from typing import List
+from typing import Optional
+from typing import Tuple
 
 import torch
 import torch.nn.functional as F

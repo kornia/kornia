@@ -1,10 +1,14 @@
-from typing import Dict, Tuple, Union
+from typing import Dict
+from typing import Tuple
+from typing import Union
 
 import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
 from kornia.augmentation.utils import _common_param_check
-from kornia.core import Device, Tensor, tensor
+from kornia.core import Device
+from kornia.core import Tensor
+from kornia.core import tensor
 from kornia.geometry.bbox import bbox_generator
 from kornia.geometry.transform.affwarp import _side_to_image_size
 

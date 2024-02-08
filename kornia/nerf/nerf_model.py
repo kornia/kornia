@@ -4,12 +4,15 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from kornia.core import Module, Tensor
+from kornia.core import Module
+from kornia.core import Tensor
 from kornia.geometry.camera import PinholeCamera
 from kornia.geometry.ray import Ray
 from kornia.nerf.positional_encoder import PositionalEncoder
-from kornia.nerf.samplers import sample_lengths, sample_ray_points
-from kornia.nerf.volume_renderer import IrregularRenderer, RegularRenderer
+from kornia.nerf.samplers import sample_lengths
+from kornia.nerf.samplers import sample_ray_points
+from kornia.nerf.volume_renderer import IrregularRenderer
+from kornia.nerf.volume_renderer import RegularRenderer
 from kornia.utils._compat import torch_inference_mode
 from kornia.utils.grid import create_meshgrid
 

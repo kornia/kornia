@@ -1,16 +1,24 @@
 from __future__ import annotations
 
 import warnings
-from typing import Any, Optional, Union
+from typing import Any
+from typing import Optional
+from typing import Union
 
 import torch
 
 from kornia.augmentation import LongestMaxSize
 from kornia.augmentation.container.augment import AugmentationSequential
-from kornia.contrib.models import Prompts, SegmentationResults
-from kornia.contrib.models.sam import Sam, SamConfig
-from kornia.core import Tensor, pad, tensor
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.contrib.models import Prompts
+from kornia.contrib.models import SegmentationResults
+from kornia.contrib.models.sam import Sam
+from kornia.contrib.models.sam import SamConfig
+from kornia.core import Tensor
+from kornia.core import pad
+from kornia.core import tensor
+from kornia.core.check import KORNIA_CHECK
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.enhance import normalize
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints

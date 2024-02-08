@@ -1,8 +1,13 @@
-from typing import List, Optional, Tuple
+from typing import List
+from typing import Optional
+from typing import Tuple
 
 import torch
 
-from kornia.core import Module, Tensor, concatenate, tensor
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import concatenate
+from kornia.core import tensor
 
 __all__ = ["zca_mean", "zca_whiten", "linear_transform", "ZCAWhitening"]
 

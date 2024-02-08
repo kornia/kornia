@@ -1,6 +1,9 @@
-from typing import List, Tuple, Union
+from typing import List
+from typing import Tuple
+from typing import Union
 
-from torch import Tensor, nn
+from torch import Tensor
+from torch import nn
 
 from .augment import AugmentationSequential
 

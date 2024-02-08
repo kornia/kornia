@@ -1,7 +1,10 @@
 import pytest
 import torch
 
-from kornia.filters import BilateralBlur, JointBilateralBlur, bilateral_blur, joint_bilateral_blur
+from kornia.filters import BilateralBlur
+from kornia.filters import JointBilateralBlur
+from kornia.filters import bilateral_blur
+from kornia.filters import joint_bilateral_blur
 
 from testing.base import BaseTester
 

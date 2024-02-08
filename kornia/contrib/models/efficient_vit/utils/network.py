@@ -4,7 +4,8 @@
 from __future__ import annotations
 
 from inspect import signature
-from typing import Any, Union
+from typing import Any
+from typing import Union
 
 
 def get_same_padding(kernel_size: Union[int, tuple[int, ...]]) -> Union[int, tuple[int, ...]]:

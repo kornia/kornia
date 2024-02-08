@@ -9,8 +9,10 @@ from typing import Tuple
 import torch
 from torch import nn
 
-from .rgb import linear_rgb_to_rgb, rgb_to_linear_rgb
-from .xyz import rgb_to_xyz, xyz_to_rgb
+from .rgb import linear_rgb_to_rgb
+from .rgb import rgb_to_linear_rgb
+from .xyz import rgb_to_xyz
+from .xyz import xyz_to_rgb
 
 
 def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:

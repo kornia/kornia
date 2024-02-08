@@ -3,7 +3,8 @@ from typing import List
 import torch
 from torch import nn
 
-from kornia.filters import filter2d_separable, get_gaussian_kernel1d
+from kornia.filters import filter2d_separable
+from kornia.filters import get_gaussian_kernel1d
 from kornia.filters.filter import _compute_padding
 
 

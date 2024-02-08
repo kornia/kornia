@@ -11,7 +11,8 @@ from __future__ import annotations
 import warnings
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
+from typing import Optional
 
 import torch
 
@@ -24,7 +25,8 @@ from kornia.contrib.models.sam.architecture.prompt_encoder import PromptEncoder
 from kornia.contrib.models.sam.architecture.transformer import TwoWayTransformer
 from kornia.contrib.models.tiny_vit import TinyViT
 from kornia.core import Tensor
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK
+from kornia.core.check import KORNIA_CHECK_SHAPE
 
 
 class SamModelType(Enum):

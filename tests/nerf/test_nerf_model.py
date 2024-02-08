@@ -2,7 +2,9 @@ import pytest
 import torch
 
 from kornia.geometry.camera import PinholeCamera
-from kornia.nerf.nerf_model import MLP, NerfModel, NerfModelRenderer
+from kornia.nerf.nerf_model import MLP
+from kornia.nerf.nerf_model import NerfModel
+from kornia.nerf.nerf_model import NerfModelRenderer
 
 
 @pytest.fixture

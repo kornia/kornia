@@ -1,8 +1,13 @@
-from typing import Dict, List, Tuple
+from typing import Dict
+from typing import List
+from typing import Tuple
 
 import torch
 
-from kornia.core import Tensor, concatenate, tensor, zeros
+from kornia.core import Tensor
+from kornia.core import concatenate
+from kornia.core import tensor
+from kornia.core import zeros
 
 from .mean_iou import mean_iou_bbox
 

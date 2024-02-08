@@ -1,4 +1,5 @@
-from typing import List, Union
+from typing import List
+from typing import Union
 
 from kornia.core import Tensor
 

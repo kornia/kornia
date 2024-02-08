@@ -1,10 +1,14 @@
-from typing import Optional, Union
+from typing import Optional
+from typing import Union
 
 import torch
 
-from kornia.core import Module, Tensor, tensor
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import tensor
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.filters import gaussian_blur2d, spatial_gradient
+from kornia.filters import gaussian_blur2d
+from kornia.filters import spatial_gradient
 
 
 def _get_kernel_size(sigma: float) -> int:

@@ -1,15 +1,24 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
+from typing import Dict
+from typing import Optional
+from typing import Tuple
 
 import torch
 import torch.nn.functional as F
 
-from kornia.core import Module, Tensor, concatenate, pad, stack
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import concatenate
+from kornia.core import pad
+from kornia.core import stack
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.conversions import normalize_pixel_coordinates
 from kornia.utils import map_location_to_cpu
 
 from .backbones import SOLD2Net
-from .sold2_detector import LineSegmentDetectionModule, line_map_to_segments, prob_to_junctions
+from .sold2_detector import LineSegmentDetectionModule
+from .sold2_detector import line_map_to_segments
+from .sold2_detector import prob_to_junctions
 
 urls: Dict[str, str] = {}
 urls["wireframe"] = "http://cmp.felk.cvut.cz/~mishkdmy/models/sold2_wireframe.pth"

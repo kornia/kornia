@@ -1,6 +1,7 @@
 import torch
 
-from kornia.core.check import KORNIA_CHECK_IS_COLOR, KORNIA_CHECK_IS_TENSOR
+from kornia.core.check import KORNIA_CHECK_IS_COLOR
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR
 
 
 def shift_rgb(image: torch.Tensor, r_shift: torch.Tensor, g_shift: torch.Tensor, b_shift: torch.Tensor) -> torch.Tensor:

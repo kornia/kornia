@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from typing import Any, TypeVar
+from typing import Any
+from typing import TypeVar
 
-from kornia.core import Device, Dtype, Tensor
+from kornia.core import Device
+from kornia.core import Dtype
+from kornia.core import Tensor
 
 T = TypeVar("T")
 

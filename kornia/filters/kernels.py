@@ -2,12 +2,24 @@ from __future__ import annotations
 
 import math
 from math import sqrt
-from typing import Any, Optional
+from typing import Any
+from typing import Optional
 
 import torch
 
-from kornia.core import Device, Dtype, Tensor, concatenate, cos, stack, tensor, where, zeros, zeros_like
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core import Device
+from kornia.core import Dtype
+from kornia.core import Tensor
+from kornia.core import concatenate
+from kornia.core import cos
+from kornia.core import stack
+from kornia.core import tensor
+from kornia.core import where
+from kornia.core import zeros
+from kornia.core import zeros_like
+from kornia.core.check import KORNIA_CHECK
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.utils import deprecated
 
 

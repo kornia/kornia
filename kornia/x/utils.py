@@ -1,8 +1,13 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from dataclasses import field
 from enum import Enum
-from typing import Any, Callable, Dict, Tuple
+from typing import Any
+from typing import Callable
+from typing import Dict
+from typing import Tuple
 
-from kornia.core import Module, Tensor
+from kornia.core import Module
+from kornia.core import Tensor
 from kornia.metrics.average_meter import AverageMeter
 
 # import yaml

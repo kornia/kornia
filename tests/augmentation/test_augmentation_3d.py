@@ -2,17 +2,15 @@ import pytest
 import torch
 
 import kornia
-from kornia.augmentation import (
-    CenterCrop3D,
-    RandomAffine3D,
-    RandomCrop,
-    RandomCrop3D,
-    RandomDepthicalFlip3D,
-    RandomEqualize3D,
-    RandomHorizontalFlip3D,
-    RandomRotation3D,
-    RandomVerticalFlip3D,
-)
+from kornia.augmentation import CenterCrop3D
+from kornia.augmentation import RandomAffine3D
+from kornia.augmentation import RandomCrop
+from kornia.augmentation import RandomCrop3D
+from kornia.augmentation import RandomDepthicalFlip3D
+from kornia.augmentation import RandomEqualize3D
+from kornia.augmentation import RandomHorizontalFlip3D
+from kornia.augmentation import RandomRotation3D
+from kornia.augmentation import RandomVerticalFlip3D
 from kornia.augmentation.container.augment import AugmentationSequential
 
 from testing.base import BaseTester

@@ -1,7 +1,8 @@
 import pytest
 import torch
 
-from kornia.filters import Canny, canny
+from kornia.filters import Canny
+from kornia.filters import canny
 from kornia.utils._compat import torch_version
 
 from testing.base import BaseTester

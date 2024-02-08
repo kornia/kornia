@@ -2,7 +2,8 @@ import pytest
 from torch import nn
 
 from kornia.metrics import AverageMeter
-from kornia.x import EarlyStopping, ModelCheckpoint
+from kornia.x import EarlyStopping
+from kornia.x import ModelCheckpoint
 from kornia.x.utils import TrainerState
 
 

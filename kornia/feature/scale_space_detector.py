@@ -1,16 +1,29 @@
 import math
-from typing import List, Optional, Tuple
+from typing import List
+from typing import Optional
+from typing import Tuple
 
 import torch
 import torch.nn.functional as F
 from typing_extensions import TypedDict
 
-from kornia.core import Device, Module, Tensor, concatenate, eye, tensor, where, zeros
+from kornia.core import Device
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import concatenate
+from kornia.core import eye
+from kornia.core import tensor
+from kornia.core import where
+from kornia.core import zeros
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.geometry.subpix import ConvSoftArgmax3d, NonMaximaSuppression2d
-from kornia.geometry.transform import ScalePyramid, pyrdown, resize
+from kornia.geometry.subpix import ConvSoftArgmax3d
+from kornia.geometry.subpix import NonMaximaSuppression2d
+from kornia.geometry.transform import ScalePyramid
+from kornia.geometry.transform import pyrdown
+from kornia.geometry.transform import resize
 
-from .laf import laf_from_center_scale_ori, laf_is_inside_image
+from .laf import laf_from_center_scale_ori
+from .laf import laf_is_inside_image
 from .orientation import PassLAF
 from .responses import BlobHessian
 

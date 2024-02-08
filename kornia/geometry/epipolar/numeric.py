@@ -2,7 +2,8 @@
 
 import torch
 
-from kornia.core import stack, zeros_like
+from kornia.core import stack
+from kornia.core import zeros_like
 
 
 def cross_product_matrix(x: torch.Tensor) -> torch.Tensor:

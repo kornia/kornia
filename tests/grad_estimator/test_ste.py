@@ -4,7 +4,8 @@ import torch.nn.functional as F
 from torch.testing import assert_close
 
 import kornia.augmentation as K
-from kornia.grad_estimator import STEFunction, StraightThroughEstimator
+from kornia.grad_estimator import STEFunction
+from kornia.grad_estimator import StraightThroughEstimator
 
 
 class TestSTE:

@@ -1,7 +1,8 @@
 import pytest
 import torch
 
-from kornia.geometry import RANSAC, transform_points
+from kornia.geometry import RANSAC
+from kornia.geometry import transform_points
 from kornia.geometry.epipolar import sampson_epipolar_distance
 
 from testing.base import BaseTester

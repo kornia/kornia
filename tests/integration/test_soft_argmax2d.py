@@ -2,7 +2,8 @@ import logging
 
 import pytest
 import torch
-from torch import nn, optim
+from torch import nn
+from torch import optim
 
 import kornia
 

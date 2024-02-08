@@ -1,17 +1,26 @@
 """Module containing functionalities for the Essential matrix."""
-from typing import Optional, Tuple
+from typing import Optional
+from typing import Tuple
 
 import torch
 
 import kornia.geometry.epipolar as epi
-from kornia.core import eye, ones_like, stack, where, zeros
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
+from kornia.core import eye
+from kornia.core import ones_like
+from kornia.core import stack
+from kornia.core import where
+from kornia.core import zeros
+from kornia.core.check import KORNIA_CHECK
+from kornia.core.check import KORNIA_CHECK_SAME_SHAPE
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry import solvers
-from kornia.utils import eye_like, vec_like
+from kornia.utils import eye_like
+from kornia.utils import vec_like
 from kornia.utils.helpers import _torch_svd_cast
 
 from .numeric import cross_product_matrix
-from .projection import depth_from_point, projection_from_KRt
+from .projection import depth_from_point
+from .projection import projection_from_KRt
 from .triangulation import triangulate_points
 
 __all__ = [

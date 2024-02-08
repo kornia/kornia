@@ -1,8 +1,12 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
+from typing import Dict
+from typing import Optional
+from typing import Tuple
 
 from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
 from kornia.constants import Resample
-from kornia.core import Tensor, as_tensor
+from kornia.core import Tensor
+from kornia.core import as_tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 from kornia.utils.helpers import _torch_inverse_cast

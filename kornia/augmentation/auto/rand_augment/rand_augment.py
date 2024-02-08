@@ -1,13 +1,21 @@
-from typing import Dict, Iterator, List, Optional, Tuple, Union, cast
+from typing import Dict
+from typing import Iterator
+from typing import List
+from typing import Optional
+from typing import Tuple
+from typing import Union
+from typing import cast
 
 import torch
 from torch.distributions import Categorical
 
-from kornia.augmentation.auto.base import SUBPLOLICY_CONFIG, PolicyAugmentBase
+from kornia.augmentation.auto.base import SUBPLOLICY_CONFIG
+from kornia.augmentation.auto.base import PolicyAugmentBase
 from kornia.augmentation.auto.operations import OperationBase
 from kornia.augmentation.auto.operations.policy import PolicySequential
 from kornia.augmentation.container.params import ParamItem
-from kornia.core import Module, Tensor
+from kornia.core import Module
+from kornia.core import Tensor
 
 from . import ops
 

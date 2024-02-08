@@ -1,13 +1,22 @@
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
+from typing import Any
+from typing import Dict
+from typing import Iterator
+from typing import List
+from typing import Optional
+from typing import Tuple
+from typing import Union
+from typing import cast
 
 import torch
 
 from kornia.augmentation.auto.operations.base import OperationBase
 from kornia.augmentation.auto.operations.policy import PolicySequential
-from kornia.augmentation.container.base import ImageSequentialBase, TransformMatrixMinIn
+from kornia.augmentation.container.base import ImageSequentialBase
+from kornia.augmentation.container.base import TransformMatrixMinIn
 from kornia.augmentation.container.ops import InputSequentialOps
 from kornia.augmentation.container.params import ParamItem
-from kornia.core import Module, Tensor
+from kornia.core import Module
+from kornia.core import Tensor
 from kornia.utils import eye_like
 
 NUMBER = Union[float, int]

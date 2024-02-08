@@ -1,5 +1,9 @@
-from enum import Enum, EnumMeta
-from typing import Iterator, Type, TypeVar, Union
+from enum import Enum
+from enum import EnumMeta
+from typing import Iterator
+from typing import Type
+from typing import TypeVar
+from typing import Union
 
 import torch
 

@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 import math
-from typing import Any, Callable, Optional, Sequence, Union
+from typing import Any
+from typing import Callable
+from typing import Optional
+from typing import Sequence
+from typing import Union
 
 import torch
 from torch.autograd import gradcheck
 from torch.testing import assert_close as _assert_close
 
-from kornia.core import Dtype, Tensor
+from kornia.core import Dtype
+from kornia.core import Tensor
 
 # {dtype: (rtol, atol)}
 _DTYPE_PRECISIONS = {

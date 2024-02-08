@@ -2,7 +2,9 @@ import pytest
 import torch
 
 from kornia.core import Tensor
-from kornia.core.tensor_wrapper import TensorWrapper, unwrap, wrap
+from kornia.core.tensor_wrapper import TensorWrapper
+from kornia.core.tensor_wrapper import unwrap
+from kornia.core.tensor_wrapper import wrap
 
 from testing.base import BaseTester
 

@@ -1,10 +1,14 @@
-from typing import Any, Dict, Optional, Union
+from typing import Any
+from typing import Dict
+from typing import Optional
+from typing import Union
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core import Module, Tensor
+from kornia.core import Module
+from kornia.core import Tensor
 
 INF = 1e9
 

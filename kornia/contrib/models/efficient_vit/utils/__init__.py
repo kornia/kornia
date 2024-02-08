@@ -4,6 +4,7 @@
 
 # TODO: promote this to kornia
 from .list import val2tuple
-from .network import build_kwargs_from_config, get_same_padding
+from .network import build_kwargs_from_config
+from .network import get_same_padding
 
 __all__ = ["val2tuple", "get_same_padding", "build_kwargs_from_config"]

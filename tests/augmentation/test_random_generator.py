@@ -2,22 +2,20 @@ import pytest
 import torch
 from torch import Tensor
 
-from kornia.augmentation.random_generator import (
-    AffineGenerator,
-    ColorJiggleGenerator,
-    ColorJitterGenerator,
-    CropGenerator,
-    CutmixGenerator,
-    MixupGenerator,
-    MotionBlurGenerator,
-    PerspectiveGenerator,
-    PlainUniformGenerator,
-    PosterizeGenerator,
-    ProbabilityGenerator,
-    RectangleEraseGenerator,
-    ResizedCropGenerator,
-    center_crop_generator,
-)
+from kornia.augmentation.random_generator import AffineGenerator
+from kornia.augmentation.random_generator import ColorJiggleGenerator
+from kornia.augmentation.random_generator import ColorJitterGenerator
+from kornia.augmentation.random_generator import CropGenerator
+from kornia.augmentation.random_generator import CutmixGenerator
+from kornia.augmentation.random_generator import MixupGenerator
+from kornia.augmentation.random_generator import MotionBlurGenerator
+from kornia.augmentation.random_generator import PerspectiveGenerator
+from kornia.augmentation.random_generator import PlainUniformGenerator
+from kornia.augmentation.random_generator import PosterizeGenerator
+from kornia.augmentation.random_generator import ProbabilityGenerator
+from kornia.augmentation.random_generator import RectangleEraseGenerator
+from kornia.augmentation.random_generator import ResizedCropGenerator
+from kornia.augmentation.random_generator import center_crop_generator
 from kornia.utils._compat import torch_version_ge
 
 from testing.base import assert_close

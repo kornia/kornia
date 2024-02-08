@@ -1,15 +1,18 @@
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
+from typing import Dict
+from typing import List
+from typing import Optional
+from typing import Tuple
+from typing import Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.constants import pi
 from kornia.core import Tensor
-from kornia.enhance import (
-    adjust_brightness_accumulative,
-    adjust_contrast_with_mean_subtraction,
-    adjust_hue,
-    adjust_saturation_with_gray_subtraction,
-)
+from kornia.enhance import adjust_brightness_accumulative
+from kornia.enhance import adjust_contrast_with_mean_subtraction
+from kornia.enhance import adjust_hue
+from kornia.enhance import adjust_saturation_with_gray_subtraction
 
 
 class ColorJitter(IntensityAugmentationBase2D):

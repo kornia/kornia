@@ -1,22 +1,20 @@
 """RandAugment operation wrapper."""
-from kornia.augmentation.auto.operations import (
-    AutoContrast,
-    Brightness,
-    Contrast,
-    Equalize,
-    Invert,
-    OperationBase,
-    Posterize,
-    Rotate,
-    Saturate,
-    Sharpness,
-    ShearX,
-    ShearY,
-    Solarize,
-    SolarizeAdd,
-    TranslateX,
-    TranslateY,
-)
+from kornia.augmentation.auto.operations import AutoContrast
+from kornia.augmentation.auto.operations import Brightness
+from kornia.augmentation.auto.operations import Contrast
+from kornia.augmentation.auto.operations import Equalize
+from kornia.augmentation.auto.operations import Invert
+from kornia.augmentation.auto.operations import OperationBase
+from kornia.augmentation.auto.operations import Posterize
+from kornia.augmentation.auto.operations import Rotate
+from kornia.augmentation.auto.operations import Saturate
+from kornia.augmentation.auto.operations import Sharpness
+from kornia.augmentation.auto.operations import ShearX
+from kornia.augmentation.auto.operations import ShearY
+from kornia.augmentation.auto.operations import Solarize
+from kornia.augmentation.auto.operations import SolarizeAdd
+from kornia.augmentation.auto.operations import TranslateX
+from kornia.augmentation.auto.operations import TranslateY
 
 
 def shear_x(min_mag: float, max_mag: float) -> OperationBase:

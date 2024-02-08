@@ -1,4 +1,7 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
+from typing import Dict
+from typing import Optional
+from typing import Tuple
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D

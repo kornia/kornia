@@ -2,15 +2,23 @@
 # https://github.com/cavalli1234/AdaLAM
 # Copyright (c) 2020, Luca Cavalli
 
-from typing import Optional, Tuple, Union
+from typing import Optional
+from typing import Tuple
+from typing import Union
 
 import torch
 
-from kornia.core import Tensor, as_tensor
-from kornia.core.check import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
-from kornia.feature.laf import get_laf_center, get_laf_orientation, get_laf_scale
+from kornia.core import Tensor
+from kornia.core import as_tensor
+from kornia.core.check import KORNIA_CHECK_LAF
+from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.feature.laf import get_laf_center
+from kornia.feature.laf import get_laf_orientation
+from kornia.feature.laf import get_laf_scale
 
-from .core import AdalamConfig, _no_match, adalam_core
+from .core import AdalamConfig
+from .core import _no_match
+from .core import adalam_core
 from .utils import dist_matrix
 
 

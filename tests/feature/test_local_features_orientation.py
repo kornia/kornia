@@ -1,7 +1,10 @@
 import pytest
 import torch
 
-from kornia.feature.orientation import LAFOrienter, OriNet, PassLAF, PatchDominantGradientOrientation
+from kornia.feature.orientation import LAFOrienter
+from kornia.feature.orientation import OriNet
+from kornia.feature.orientation import PassLAF
+from kornia.feature.orientation import PatchDominantGradientOrientation
 from kornia.geometry.conversions import rad2deg
 
 from testing.base import BaseTester

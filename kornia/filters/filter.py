@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import torch.nn.functional as F
 
-from kornia.core import Tensor, pad
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core import Tensor
+from kornia.core import pad
+from kornia.core.check import KORNIA_CHECK
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR
+from kornia.core.check import KORNIA_CHECK_SHAPE
 
 from .kernels import normalize_kernel2d
 

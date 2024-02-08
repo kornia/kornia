@@ -3,7 +3,8 @@
 # International Conference on Computer Vision (ICCV), 2023
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
+from typing import Optional
 
 import torch
 from torch import nn

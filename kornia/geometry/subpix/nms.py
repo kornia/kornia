@@ -3,7 +3,11 @@ from __future__ import annotations
 import torch
 import torch.nn.functional as F
 
-from kornia.core import Module, Tensor, eye, pad, zeros
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import eye
+from kornia.core import pad
+from kornia.core import zeros
 
 
 def _get_nms_kernel2d(kx: int, ky: int) -> Tensor:

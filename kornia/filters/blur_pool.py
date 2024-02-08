@@ -2,8 +2,13 @@ from __future__ import annotations
 
 import torch.nn.functional as F
 
-from kornia.core import Module, Tensor, as_tensor, pad, tensor
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import as_tensor
+from kornia.core import pad
+from kornia.core import tensor
+from kornia.core.check import KORNIA_CHECK
+from kornia.core.check import KORNIA_CHECK_SHAPE
 
 from .kernels import get_pascal_kernel_2d
 from .median import _compute_zero_padding  # TODO: Move to proper place

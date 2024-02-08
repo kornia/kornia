@@ -1,9 +1,15 @@
-from typing import Dict, Optional, Tuple
+from typing import Dict
+from typing import Optional
+from typing import Tuple
 
 import torch
 
-from kornia.core import Module, Tensor
-from kornia.feature import DescriptorMatcher, GFTTAffNetHardNet, LocalFeatureMatcher, LoFTR
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.feature import DescriptorMatcher
+from kornia.feature import GFTTAffNetHardNet
+from kornia.feature import LocalFeatureMatcher
+from kornia.feature import LoFTR
 from kornia.feature.integrated import LocalFeature
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.ransac import RANSAC

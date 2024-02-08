@@ -1,17 +1,26 @@
 from collections import OrderedDict
 from itertools import zip_longest
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any
+from typing import Dict
+from typing import Iterator
+from typing import List
+from typing import Optional
+from typing import Tuple
 
 import torch
 from torch import nn
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
-from kornia.core import Module, Tensor
+from kornia.core import Module
+from kornia.core import Tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
-from .ops import BoxSequentialOps, InputSequentialOps, KeypointSequentialOps, MaskSequentialOps
+from .ops import BoxSequentialOps
+from .ops import InputSequentialOps
+from .ops import KeypointSequentialOps
+from .ops import MaskSequentialOps
 from .params import ParamItem
 
 __all__ = ["BasicSequentialBase", "ImageSequentialBase", "SequentialBase"]

@@ -1,14 +1,12 @@
 import pytest
 import torch
 
-from kornia.filters import (
-    BlurPool2D,
-    EdgeAwareBlurPool2D,
-    MaxBlurPool2D,
-    blur_pool2d,
-    edge_aware_blur_pool2d,
-    max_blur_pool2d,
-)
+from kornia.filters import BlurPool2D
+from kornia.filters import EdgeAwareBlurPool2D
+from kornia.filters import MaxBlurPool2D
+from kornia.filters import blur_pool2d
+from kornia.filters import edge_aware_blur_pool2d
+from kornia.filters import max_blur_pool2d
 
 from testing.base import BaseTester
 

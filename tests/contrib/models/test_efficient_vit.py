@@ -3,7 +3,8 @@ from pathlib import Path
 import pytest
 import torch
 
-from kornia.contrib.models.efficient_vit import EfficientViT, EfficientViTConfig
+from kornia.contrib.models.efficient_vit import EfficientViT
+from kornia.contrib.models.efficient_vit import EfficientViTConfig
 from kornia.contrib.models.efficient_vit import backbone as vit
 from kornia.utils._compat import torch_version_lt
 

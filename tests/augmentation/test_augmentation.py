@@ -1,57 +1,60 @@
 import os
-from typing import Any, Dict, Optional, Tuple, Type
+from typing import Any
+from typing import Dict
+from typing import Optional
+from typing import Tuple
+from typing import Type
 from unittest.mock import patch
 
 import pytest
 import torch
 
 import kornia
-from kornia.augmentation import (
-    AugmentationSequential,
-    CenterCrop,
-    ColorJiggle,
-    ColorJitter,
-    Denormalize,
-    LongestMaxSize,
-    Normalize,
-    PadTo,
-    RandomBoxBlur,
-    RandomBrightness,
-    RandomChannelShuffle,
-    RandomClahe,
-    RandomContrast,
-    RandomCrop,
-    RandomElasticTransform,
-    RandomEqualize,
-    RandomErasing,
-    RandomFisheye,
-    RandomGamma,
-    RandomGaussianBlur,
-    RandomGaussianNoise,
-    RandomGrayscale,
-    RandomHorizontalFlip,
-    RandomHue,
-    RandomInvert,
-    RandomMedianBlur,
-    RandomPlanckianJitter,
-    RandomPlasmaBrightness,
-    RandomPlasmaContrast,
-    RandomPlasmaShadow,
-    RandomPosterize,
-    RandomRain,
-    RandomResizedCrop,
-    RandomRGBShift,
-    RandomRotation,
-    RandomSaltAndPepperNoise,
-    RandomSaturation,
-    RandomSnow,
-    RandomThinPlateSpline,
-    RandomVerticalFlip,
-    Resize,
-    SmallestMaxSize,
-)
+from kornia.augmentation import AugmentationSequential
+from kornia.augmentation import CenterCrop
+from kornia.augmentation import ColorJiggle
+from kornia.augmentation import ColorJitter
+from kornia.augmentation import Denormalize
+from kornia.augmentation import LongestMaxSize
+from kornia.augmentation import Normalize
+from kornia.augmentation import PadTo
+from kornia.augmentation import RandomBoxBlur
+from kornia.augmentation import RandomBrightness
+from kornia.augmentation import RandomChannelShuffle
+from kornia.augmentation import RandomClahe
+from kornia.augmentation import RandomContrast
+from kornia.augmentation import RandomCrop
+from kornia.augmentation import RandomElasticTransform
+from kornia.augmentation import RandomEqualize
+from kornia.augmentation import RandomErasing
+from kornia.augmentation import RandomFisheye
+from kornia.augmentation import RandomGamma
+from kornia.augmentation import RandomGaussianBlur
+from kornia.augmentation import RandomGaussianNoise
+from kornia.augmentation import RandomGrayscale
+from kornia.augmentation import RandomHorizontalFlip
+from kornia.augmentation import RandomHue
+from kornia.augmentation import RandomInvert
+from kornia.augmentation import RandomMedianBlur
+from kornia.augmentation import RandomPlanckianJitter
+from kornia.augmentation import RandomPlasmaBrightness
+from kornia.augmentation import RandomPlasmaContrast
+from kornia.augmentation import RandomPlasmaShadow
+from kornia.augmentation import RandomPosterize
+from kornia.augmentation import RandomRain
+from kornia.augmentation import RandomResizedCrop
+from kornia.augmentation import RandomRGBShift
+from kornia.augmentation import RandomRotation
+from kornia.augmentation import RandomSaltAndPepperNoise
+from kornia.augmentation import RandomSaturation
+from kornia.augmentation import RandomSnow
+from kornia.augmentation import RandomThinPlateSpline
+from kornia.augmentation import RandomVerticalFlip
+from kornia.augmentation import Resize
+from kornia.augmentation import SmallestMaxSize
 from kornia.augmentation._2d.base import AugmentationBase2D
-from kornia.constants import Resample, pi
+from kornia.constants import Resample
+from kornia.constants import pi
 from kornia.geometry import transform_points
 from kornia.utils import create_meshgrid
 from kornia.utils.helpers import _torch_inverse_cast

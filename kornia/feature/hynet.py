@@ -3,7 +3,11 @@ from typing import Dict
 import torch
 from torch import nn
 
-from kornia.core import Module, Parameter, Tensor, tensor, zeros
+from kornia.core import Module
+from kornia.core import Parameter
+from kornia.core import Tensor
+from kornia.core import tensor
+from kornia.core import zeros
 from kornia.utils.helpers import map_location_to_cpu
 
 urls: Dict[str, str] = {}

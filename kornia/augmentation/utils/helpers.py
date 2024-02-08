@@ -1,10 +1,18 @@
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any
+from typing import Callable
+from typing import Dict
+from typing import List
+from typing import Optional
+from typing import Tuple
+from typing import Union
 
 import torch
-from torch.distributions import Beta, Uniform
+from torch.distributions import Beta
+from torch.distributions import Uniform
 
-from kornia.core import Tensor, as_tensor
+from kornia.core import Tensor
+from kornia.core import as_tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 from kornia.utils import _extract_device_dtype

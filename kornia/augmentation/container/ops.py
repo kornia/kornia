@@ -1,12 +1,22 @@
-from abc import ABCMeta, abstractmethod
-from typing import Any, Callable, Dict, Generic, List, Optional, Type, TypeVar, Union
+from abc import ABCMeta
+from abc import abstractmethod
+from typing import Any
+from typing import Callable
+from typing import Dict
+from typing import Generic
+from typing import List
+from typing import Optional
+from typing import Type
+from typing import TypeVar
+from typing import Union
 
 from typing_extensions import ParamSpec
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
 from kornia.constants import DataKey
-from kornia.core import Module, Tensor
+from kornia.core import Module
+from kornia.core import Tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 

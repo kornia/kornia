@@ -1,11 +1,19 @@
 import warnings
-from typing import ClassVar, Dict, List, Optional, Tuple
+from typing import ClassVar
+from typing import Dict
+from typing import List
+from typing import Optional
+from typing import Tuple
 
 import torch
 
 from kornia.color import rgb_to_grayscale
 from kornia.constants import pi
-from kornia.core import Device, Module, Tensor, concatenate, deg2rad
+from kornia.core import Device
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import concatenate
+from kornia.core import deg2rad
 from kornia.core.check import KORNIA_CHECK_LAF
 from kornia.geometry.subpix import ConvQuadInterp3d
 from kornia.geometry.transform import ScalePyramid
@@ -13,17 +21,25 @@ from kornia.geometry.transform import ScalePyramid
 from .affine_shape import LAFAffNetShapeEstimator
 from .hardnet import HardNet
 from .keynet import KeyNetDetector
-from .laf import extract_patches_from_pyramid, get_laf_center, get_laf_orientation, get_laf_scale, scale_laf
+from .laf import extract_patches_from_pyramid
+from .laf import get_laf_center
+from .laf import get_laf_orientation
+from .laf import get_laf_scale
+from .laf import scale_laf
 from .lightglue import LightGlue
-from .matching import GeometryAwareDescriptorMatcher, _no_match
-from .orientation import LAFOrienter, OriNet, PassLAF
-from .responses import BlobDoG, BlobDoGSingle, BlobHessian, CornerGFTT
-from .scale_space_detector import (
-    Detector_config,
-    MultiResolutionDetector,
-    ScaleSpaceDetector,
-    get_default_detector_config,
-)
+from .matching import GeometryAwareDescriptorMatcher
+from .matching import _no_match
+from .orientation import LAFOrienter
+from .orientation import OriNet
+from .orientation import PassLAF
+from .responses import BlobDoG
+from .responses import BlobDoGSingle
+from .responses import BlobHessian
+from .responses import CornerGFTT
+from .scale_space_detector import Detector_config
+from .scale_space_detector import MultiResolutionDetector
+from .scale_space_detector import ScaleSpaceDetector
+from .scale_space_detector import get_default_detector_config
 from .siftdesc import SIFTDescriptor
 
 

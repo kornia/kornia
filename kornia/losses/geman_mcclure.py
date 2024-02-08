@@ -3,7 +3,10 @@ from __future__ import annotations
 from torch import Tensor
 
 from kornia.core import Module
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_DEVICE, KORNIA_CHECK_SAME_SHAPE
+from kornia.core.check import KORNIA_CHECK
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR
+from kornia.core.check import KORNIA_CHECK_SAME_DEVICE
+from kornia.core.check import KORNIA_CHECK_SAME_SHAPE
 
 
 def geman_mcclure_loss(img1: Tensor, img2: Tensor, reduction: str = "none") -> Tensor:

@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import uuid
 
-from kornia.core import Tensor, eye
-from kornia.geometry.liegroup import Se2, Se3, So2, So3
+from kornia.core import Tensor
+from kornia.core import eye
+from kornia.geometry.liegroup import Se2
+from kornia.geometry.liegroup import Se3
+from kornia.geometry.liegroup import So2
+from kornia.geometry.liegroup import So3
 from kornia.geometry.quaternion import Quaternion
 
 

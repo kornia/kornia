@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from kornia.core import Module, Tensor
+from kornia.core import Module
+from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK
 
-from .filter import filter2d, filter3d
-from .kernels_geometry import get_motion_kernel2d, get_motion_kernel3d
+from .filter import filter2d
+from .filter import filter3d
+from .kernels_geometry import get_motion_kernel2d
+from .kernels_geometry import get_motion_kernel3d
 
 _VALID_BORDER = {"constant", "reflect", "replicate", "circular"}
 

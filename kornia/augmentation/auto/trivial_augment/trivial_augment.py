@@ -1,9 +1,13 @@
-from typing import Iterator, List, Optional, Tuple
+from typing import Iterator
+from typing import List
+from typing import Optional
+from typing import Tuple
 
 import torch
 from torch.distributions import Categorical
 
-from kornia.augmentation.auto.base import SUBPLOLICY_CONFIG, PolicyAugmentBase
+from kornia.augmentation.auto.base import SUBPLOLICY_CONFIG
+from kornia.augmentation.auto.base import PolicyAugmentBase
 from kornia.augmentation.auto.operations.policy import PolicySequential
 from kornia.augmentation.auto.rand_augment import ops
 from kornia.augmentation.container.params import ParamItem

@@ -1,6 +1,8 @@
-from typing import Any, Callable
+from typing import Any
+from typing import Callable
 
-from kornia.core import Module, Tensor
+from kornia.core import Module
+from kornia.core import Tensor
 
 
 class Lambda(Module):

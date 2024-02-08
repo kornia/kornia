@@ -1,4 +1,8 @@
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any
+from typing import Dict
+from typing import Optional
+from typing import Tuple
+from typing import Union
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.random_generator._2d import SaltAndPepperGenerator

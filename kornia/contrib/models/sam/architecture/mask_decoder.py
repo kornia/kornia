@@ -8,8 +8,12 @@ from __future__ import annotations
 import torch
 from torch import nn
 
-from kornia.contrib.models.common import MLP, LayerNorm2d
-from kornia.core import Module, Tensor, concatenate, stack
+from kornia.contrib.models.common import MLP
+from kornia.contrib.models.common import LayerNorm2d
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import concatenate
+from kornia.core import stack
 
 
 class MaskDecoder(Module):

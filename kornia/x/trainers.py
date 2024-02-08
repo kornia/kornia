@@ -1,10 +1,19 @@
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any
+from typing import Callable
+from typing import Dict
+from typing import Optional
+from typing import Tuple
 
-from torch.optim import Optimizer, lr_scheduler
+from torch.optim import Optimizer
+from torch.optim import lr_scheduler
 from torch.utils.data import DataLoader
 
-from kornia.core import Module, Tensor, stack
-from kornia.metrics import accuracy, mean_average_precision, mean_iou
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import stack
+from kornia.metrics import accuracy
+from kornia.metrics import mean_average_precision
+from kornia.metrics import mean_iou
 
 from .trainer import Trainer
 from .utils import Configuration

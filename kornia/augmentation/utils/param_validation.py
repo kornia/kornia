@@ -1,8 +1,14 @@
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any
+from typing import List
+from typing import Optional
+from typing import Tuple
+from typing import Union
 
 import torch
 
-from kornia.core import Tensor, as_tensor, tensor
+from kornia.core import Tensor
+from kornia.core import as_tensor
+from kornia.core import tensor
 
 
 def _common_param_check(batch_size: int, same_on_batch: Optional[bool] = None) -> None:

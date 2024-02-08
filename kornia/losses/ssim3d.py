@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from kornia import metrics
-from kornia.core import Module, Tensor
+from kornia.core import Module
+from kornia.core import Tensor
 
 
 def ssim3d_loss(

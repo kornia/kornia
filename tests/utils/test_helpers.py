@@ -2,14 +2,12 @@ import pytest
 import torch
 
 from kornia.utils import _extract_device_dtype
-from kornia.utils.helpers import (
-    _torch_histc_cast,
-    _torch_inverse_cast,
-    _torch_solve_cast,
-    _torch_svd_cast,
-    safe_inverse_with_mask,
-    safe_solve_with_mask,
-)
+from kornia.utils.helpers import _torch_histc_cast
+from kornia.utils.helpers import _torch_inverse_cast
+from kornia.utils.helpers import _torch_solve_cast
+from kornia.utils.helpers import _torch_svd_cast
+from kornia.utils.helpers import safe_inverse_with_mask
+from kornia.utils.helpers import safe_solve_with_mask
 
 from testing.base import assert_close
 

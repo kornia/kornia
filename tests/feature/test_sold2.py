@@ -1,7 +1,8 @@
 import pytest
 import torch
 
-from kornia.feature.sold2 import SOLD2, SOLD2_detector
+from kornia.feature.sold2 import SOLD2
+from kornia.feature.sold2 import SOLD2_detector
 
 from testing.base import BaseTester
 

@@ -1,12 +1,17 @@
 from math import ceil
-from typing import Optional, Tuple, Union, cast
+from typing import Optional
+from typing import Tuple
+from typing import Union
+from typing import cast
 from warnings import warn
 
 import torch
 import torch.nn.functional as F
 from torch.nn.modules.utils import _pair
 
-from kornia.core import Module, Tensor, pad
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import pad
 
 FullPadType = Tuple[int, int, int, int]
 TuplePadType = Union[Tuple[int, int], FullPadType]

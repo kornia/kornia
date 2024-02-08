@@ -12,7 +12,10 @@ from torch import nn
 from torch.nn.utils.fusion import fuse_conv_bn_weights
 
 from kornia.contrib.models.common import ConvNormAct
-from kornia.core import Module, Tensor, concatenate, pad
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import concatenate
+from kornia.core import pad
 from kornia.utils._compat import torch_meshgrid
 
 

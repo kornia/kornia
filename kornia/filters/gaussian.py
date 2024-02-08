@@ -2,12 +2,17 @@ from __future__ import annotations
 
 from typing import Any
 
-from kornia.core import Module, Tensor, tensor
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import tensor
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR
 from kornia.utils import deprecated
 
-from .filter import filter2d, filter2d_separable
-from .kernels import _unpack_2d_ks, get_gaussian_kernel1d, get_gaussian_kernel2d
+from .filter import filter2d
+from .filter import filter2d_separable
+from .kernels import _unpack_2d_ks
+from .kernels import get_gaussian_kernel1d
+from .kernels import get_gaussian_kernel2d
 
 
 def gaussian_blur2d(

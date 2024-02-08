@@ -1,15 +1,18 @@
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
+from typing import Optional
 
 import torch
 
-from kornia.core import Module, Tensor
+from kornia.core import Module
+from kornia.core import Tensor
 from kornia.geometry import resize
 from kornia.utils.helpers import map_location_to_cpu
 
 from .backbone import build_backbone
-from .loftr_module import FinePreprocess, LocalFeatureTransformer
+from .loftr_module import FinePreprocess
+from .loftr_module import LocalFeatureTransformer
 from .utils.coarse_matching import CoarseMatching
 from .utils.fine_matching import FineMatching
 from .utils.position_encoding import PositionEncodingSine

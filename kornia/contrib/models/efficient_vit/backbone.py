@@ -8,17 +8,15 @@ from typing import Any
 import torch
 from torch import nn
 
-from kornia.contrib.models.efficient_vit.nn.ops import (  # type: ignore
-    ConvLayer,
-    DSConv,
-    EfficientViTBlock,
-    FusedMBConv,
-    IdentityLayer,
-    MBConv,
-    OpSequential,
-    ResBlock,
-    ResidualBlock,
-)
+from kornia.contrib.models.efficient_vit.nn.ops import ConvLayer  # type: ignore
+from kornia.contrib.models.efficient_vit.nn.ops import DSConv  # type: ignore
+from kornia.contrib.models.efficient_vit.nn.ops import EfficientViTBlock  # type: ignore
+from kornia.contrib.models.efficient_vit.nn.ops import FusedMBConv  # type: ignore
+from kornia.contrib.models.efficient_vit.nn.ops import IdentityLayer  # type: ignore
+from kornia.contrib.models.efficient_vit.nn.ops import MBConv  # type: ignore
+from kornia.contrib.models.efficient_vit.nn.ops import OpSequential  # type: ignore
+from kornia.contrib.models.efficient_vit.nn.ops import ResBlock  # type: ignore
+from kornia.contrib.models.efficient_vit.nn.ops import ResidualBlock  # type: ignore
 from kornia.contrib.models.efficient_vit.utils import build_kwargs_from_config
 
 

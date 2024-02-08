@@ -1,9 +1,15 @@
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any
+from typing import Dict
+from typing import Optional
+from typing import Tuple
+from typing import Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.core import Tensor, where
-from kornia.geometry.bbox import bbox_generator, bbox_to_mask
+from kornia.core import Tensor
+from kornia.core import where
+from kornia.geometry.bbox import bbox_generator
+from kornia.geometry.bbox import bbox_to_mask
 
 
 class RandomErasing(IntensityAugmentationBase2D):

@@ -1,11 +1,14 @@
-from typing import Dict, Tuple
+from typing import Dict
+from typing import Tuple
 
 import torch
 from torch.distributions import Bernoulli
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
-from kornia.augmentation.utils import _adapted_sampling, _common_param_check
-from kornia.core import Tensor, tensor
+from kornia.augmentation.utils import _adapted_sampling
+from kornia.augmentation.utils import _common_param_check
+from kornia.core import Tensor
+from kornia.core import tensor
 
 __all__ = ["ProbabilityGenerator"]
 

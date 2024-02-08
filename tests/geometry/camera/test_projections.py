@@ -1,12 +1,12 @@
 import pytest
 import torch
 
-from kornia.geometry.camera.projection_orthographic import (
-    dx_project_points_orthographic,
-    project_points_orthographic,
-    unproject_points_orthographic,
-)
-from kornia.geometry.camera.projection_z1 import dx_project_points_z1, project_points_z1, unproject_points_z1
+from kornia.geometry.camera.projection_orthographic import dx_project_points_orthographic
+from kornia.geometry.camera.projection_orthographic import project_points_orthographic
+from kornia.geometry.camera.projection_orthographic import unproject_points_orthographic
+from kornia.geometry.camera.projection_z1 import dx_project_points_z1
+from kornia.geometry.camera.projection_z1 import project_points_z1
+from kornia.geometry.camera.projection_z1 import unproject_points_z1
 
 from testing.base import BaseTester
 

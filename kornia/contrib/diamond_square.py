@@ -1,11 +1,17 @@
 # based on: https://github.com/anguelos/tormentor/blob/e8050ac235b0c7ad3c7d931cfa47c308a305c486/diamond_square/diamond_square.py  # noqa: E501
 import math
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable
+from typing import List
+from typing import Optional
+from typing import Tuple
+from typing import Union
 
 import torch
 
 from kornia.core import Tensor
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.enhance import normalize_min_max
 from kornia.filters import filter2d
 

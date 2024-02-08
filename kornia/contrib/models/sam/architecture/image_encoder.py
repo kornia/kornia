@@ -11,9 +11,13 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.contrib.models.common import LayerNorm2d, window_partition, window_unpartition
+from kornia.contrib.models.common import LayerNorm2d
+from kornia.contrib.models.common import window_partition
+from kornia.contrib.models.common import window_unpartition
 from kornia.contrib.models.sam.architecture.common import MLPBlock
-from kornia.core import Module, Tensor, zeros
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import zeros
 
 
 # This class and its supporting functions below lightly adapted from the ViTDet backbone available at: https://github.com/facebookresearch/detectron2/blob/main/detectron2/modeling/backbone/vit.py # noqa

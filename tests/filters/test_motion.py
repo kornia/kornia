@@ -1,14 +1,12 @@
 import pytest
 import torch
 
-from kornia.filters import (
-    MotionBlur,
-    MotionBlur3D,
-    get_motion_kernel2d,
-    get_motion_kernel3d,
-    motion_blur,
-    motion_blur3d,
-)
+from kornia.filters import MotionBlur
+from kornia.filters import MotionBlur3D
+from kornia.filters import get_motion_kernel2d
+from kornia.filters import get_motion_kernel3d
+from kornia.filters import motion_blur
+from kornia.filters import motion_blur3d
 
 from testing.base import BaseTester
 

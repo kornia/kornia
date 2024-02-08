@@ -1,17 +1,25 @@
 from enum import Enum
-from typing import Any, Callable, Dict, Optional, Tuple, Union
+from typing import Any
+from typing import Callable
+from typing import Dict
+from typing import Optional
+from typing import Tuple
+from typing import Union
 
 import torch
-from torch.distributions import Bernoulli, Distribution, RelaxedBernoulli
+from torch.distributions import Bernoulli
+from torch.distributions import Distribution
+from torch.distributions import RelaxedBernoulli
 
 from kornia.augmentation.random_generator import RandomGeneratorBase
-from kornia.augmentation.utils import (
-    _adapted_rsampling,
-    _adapted_sampling,
-    _transform_output_shape,
-    override_parameters,
-)
-from kornia.core import Module, Tensor, tensor, zeros
+from kornia.augmentation.utils import _adapted_rsampling
+from kornia.augmentation.utils import _adapted_sampling
+from kornia.augmentation.utils import _transform_output_shape
+from kornia.augmentation.utils import override_parameters
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import tensor
+from kornia.core import zeros
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 from kornia.utils import is_autocast_enabled

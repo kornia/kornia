@@ -1,13 +1,22 @@
-from typing import Any, ClassVar, Dict, List, Optional, Tuple
+from typing import Any
+from typing import ClassVar
+from typing import Dict
+from typing import List
+from typing import Optional
+from typing import Tuple
 
 import torch
 
-from kornia.core import Module, Tensor, concatenate
-from kornia.core.check import KORNIA_CHECK_DM_DESC, KORNIA_CHECK_SHAPE
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import concatenate
+from kornia.core.check import KORNIA_CHECK_DM_DESC
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.feature.laf import get_laf_center
 from kornia.utils.helpers import is_mps_tensor_safe
 
-from .adalam import get_adalam_default_config, match_adalam
+from .adalam import get_adalam_default_config
+from .adalam import match_adalam
 
 
 def _cdist(d1: Tensor, d2: Tensor) -> Tensor:

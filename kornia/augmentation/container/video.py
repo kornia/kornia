@@ -1,12 +1,20 @@
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from typing import Any
+from typing import Dict
+from typing import List
+from typing import Optional
+from typing import Tuple
+from typing import Union
+from typing import cast
 
 import torch
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.container.base import SequentialBase
-from kornia.augmentation.container.image import ImageSequential, _get_new_batch_shape
-from kornia.core import Module, Tensor
+from kornia.augmentation.container.image import ImageSequential
+from kornia.augmentation.container.image import _get_new_batch_shape
+from kornia.core import Module
+from kornia.core import Tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 

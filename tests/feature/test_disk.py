@@ -3,7 +3,8 @@ import sys
 import pytest
 import torch
 
-from kornia.feature.disk import DISK, DISKFeatures
+from kornia.feature.disk import DISK
+from kornia.feature.disk import DISKFeatures
 
 from testing.base import BaseTester
 from testing.casts import dict_to

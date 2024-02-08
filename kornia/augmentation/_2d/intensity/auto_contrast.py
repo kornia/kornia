@@ -1,4 +1,6 @@
-from typing import Any, Dict, Optional
+from typing import Any
+from typing import Dict
+from typing import Optional
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.core import Tensor

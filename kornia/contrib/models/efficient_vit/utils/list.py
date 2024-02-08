@@ -3,7 +3,8 @@
 # International Conference on Computer Vision (ICCV), 2023
 from __future__ import annotations
 
-from typing import Any, Union
+from typing import Any
+from typing import Union
 
 
 def val2list(x: Union[list[Any], tuple[Any, ...], Any], repeat_time: int = 1) -> list[Any]:

@@ -3,10 +3,15 @@ from __future__ import annotations
 import torch
 import torch.nn.functional as F
 
-from kornia.core import Module, Tensor, pad
-from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import pad
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR
+from kornia.core.check import KORNIA_CHECK_SHAPE
 
-from .kernels import get_spatial_gradient_kernel2d, get_spatial_gradient_kernel3d, normalize_kernel2d
+from .kernels import get_spatial_gradient_kernel2d
+from .kernels import get_spatial_gradient_kernel3d
+from .kernels import normalize_kernel2d
 
 
 def spatial_gradient(input: Tensor, mode: str = "sobel", order: int = 1, normalized: bool = True) -> Tensor:

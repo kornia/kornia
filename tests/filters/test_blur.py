@@ -1,7 +1,8 @@
 import pytest
 import torch
 
-from kornia.filters import BoxBlur, box_blur
+from kornia.filters import BoxBlur
+from kornia.filters import box_blur
 
 from testing.base import BaseTester
 

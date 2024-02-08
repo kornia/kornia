@@ -1,7 +1,8 @@
 import pytest
 import torch
 
-from kornia.filters import UnsharpMask, unsharp_mask
+from kornia.filters import UnsharpMask
+from kornia.filters import unsharp_mask
 
 from testing.base import BaseTester
 

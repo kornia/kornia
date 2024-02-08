@@ -4,7 +4,8 @@ import pytest
 import torch
 
 import kornia
-from kornia.utils._compat import torch_version, torch_version_lt
+from kornia.utils._compat import torch_version
+from kornia.utils._compat import torch_version_lt
 from kornia.utils.helpers import _torch_inverse_cast
 
 from testing.base import BaseTester

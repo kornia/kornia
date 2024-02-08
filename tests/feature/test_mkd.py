@@ -3,19 +3,17 @@ from math import pi
 import pytest
 import torch
 
-from kornia.feature.mkd import (
-    COEFFS,
-    EmbedGradients,
-    ExplicitSpacialEncoding,
-    MKDDescriptor,
-    MKDGradients,
-    SimpleKD,
-    VonMisesKernel,
-    Whitening,
-    get_grid_dict,
-    get_kron_order,
-    spatial_kernel_embedding,
-)
+from kornia.feature.mkd import COEFFS
+from kornia.feature.mkd import EmbedGradients
+from kornia.feature.mkd import ExplicitSpacialEncoding
+from kornia.feature.mkd import MKDDescriptor
+from kornia.feature.mkd import MKDGradients
+from kornia.feature.mkd import SimpleKD
+from kornia.feature.mkd import VonMisesKernel
+from kornia.feature.mkd import Whitening
+from kornia.feature.mkd import get_grid_dict
+from kornia.feature.mkd import get_kron_order
+from kornia.feature.mkd import spatial_kernel_embedding
 
 from testing.base import BaseTester
 

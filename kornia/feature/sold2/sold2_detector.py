@@ -1,12 +1,23 @@
 import math
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
+from typing import Dict
+from typing import Optional
+from typing import Tuple
 
 import torch
 
-from kornia.core import Module, Tensor, concatenate, sin, stack, tensor, where, zeros
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import concatenate
+from kornia.core import sin
+from kornia.core import stack
+from kornia.core import tensor
+from kornia.core import where
+from kornia.core import zeros
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.bbox import nms
-from kornia.utils import map_location_to_cpu, torch_meshgrid
+from kornia.utils import map_location_to_cpu
+from kornia.utils import torch_meshgrid
 
 from .backbones import SOLD2Net
 

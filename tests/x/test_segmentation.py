@@ -5,7 +5,8 @@ import torch
 from torch import nn
 from torch.utils.data import Dataset
 
-from kornia.x import Configuration, SemanticSegmentationTrainer
+from kornia.x import Configuration
+from kornia.x import SemanticSegmentationTrainer
 from kornia.x.trainer import Accelerator
 
 

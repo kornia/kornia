@@ -1,10 +1,16 @@
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any
+from typing import Dict
+from typing import Optional
+from typing import Tuple
+from typing import Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.constants import Resample
-from kornia.core import Tensor, as_tensor
-from kornia.geometry.transform import get_perspective_transform, warp_perspective
+from kornia.core import Tensor
+from kornia.core import as_tensor
+from kornia.geometry.transform import get_perspective_transform
+from kornia.geometry.transform import warp_perspective
 
 
 class RandomPerspective(GeometricAugmentationBase2D):

@@ -1,4 +1,10 @@
-from typing import TYPE_CHECKING, Callable, ContextManager, List, Optional, Tuple, TypeVar
+from typing import TYPE_CHECKING
+from typing import Callable
+from typing import ContextManager
+from typing import List
+from typing import Optional
+from typing import Tuple
+from typing import TypeVar
 
 import torch
 from packaging import version

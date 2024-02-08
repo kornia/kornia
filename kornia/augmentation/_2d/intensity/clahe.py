@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
+from typing import Optional
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D

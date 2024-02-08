@@ -1,11 +1,19 @@
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from typing import Any
+from typing import Dict
+from typing import List
+from typing import Optional
+from typing import Tuple
+from typing import Union
+from typing import cast
 
 import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.constants import BorderType, Resample
-from kornia.core import Tensor, tensor
+from kornia.constants import BorderType
+from kornia.constants import Resample
+from kornia.core import Tensor
+from kornia.core import tensor
 from kornia.filters import motion_blur
 
 

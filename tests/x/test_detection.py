@@ -5,7 +5,8 @@ import torch
 from torch import nn
 from torch.utils.data import Dataset
 
-from kornia.x import Configuration, ObjectDetectionTrainer
+from kornia.x import Configuration
+from kornia.x import ObjectDetectionTrainer
 from kornia.x.trainer import Accelerator
 
 

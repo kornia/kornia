@@ -2,17 +2,26 @@
 # https://github.com/strasdat/Sophus/blob/master/sympy/sophus/so2.py
 from __future__ import annotations
 
-from typing import Optional, overload
+from typing import Optional
+from typing import overload
 
-from kornia.core import Device, Dtype, Module, Parameter, Tensor, complex, rand, stack, tensor, zeros_like
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
-from kornia.geometry.liegroup._utils import (
-    check_so2_matrix,
-    check_so2_matrix_shape,
-    check_so2_t_shape,
-    check_so2_theta_shape,
-    check_so2_z_shape,
-)
+from kornia.core import Device
+from kornia.core import Dtype
+from kornia.core import Module
+from kornia.core import Parameter
+from kornia.core import Tensor
+from kornia.core import complex
+from kornia.core import rand
+from kornia.core import stack
+from kornia.core import tensor
+from kornia.core import zeros_like
+from kornia.core.check import KORNIA_CHECK
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR
+from kornia.geometry.liegroup._utils import check_so2_matrix
+from kornia.geometry.liegroup._utils import check_so2_matrix_shape
+from kornia.geometry.liegroup._utils import check_so2_t_shape
+from kornia.geometry.liegroup._utils import check_so2_theta_shape
+from kornia.geometry.liegroup._utils import check_so2_z_shape
 from kornia.geometry.vector import Vector2
 
 

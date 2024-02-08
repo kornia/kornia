@@ -1,12 +1,10 @@
 import pytest
 import torch
 
-from kornia.feature.siftdesc import (
-    DenseSIFTDescriptor,
-    SIFTDescriptor,
-    get_sift_bin_ksize_stride_pad,
-    get_sift_pooling_kernel,
-)
+from kornia.feature.siftdesc import DenseSIFTDescriptor
+from kornia.feature.siftdesc import SIFTDescriptor
+from kornia.feature.siftdesc import get_sift_bin_ksize_stride_pad
+from kornia.feature.siftdesc import get_sift_pooling_kernel
 
 from testing.base import BaseTester
 

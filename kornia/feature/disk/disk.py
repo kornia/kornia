@@ -4,7 +4,8 @@ from typing import Optional
 
 import torch
 
-from kornia.core import Module, Tensor
+from kornia.core import Module
+from kornia.core import Tensor
 
 from ._unets import Unet
 from .detector import heatmap_to_keypoints

@@ -1,14 +1,12 @@
 import pytest
 import torch
 
-from kornia.augmentation.random_generator import (
-    AffineGenerator3D,
-    CropGenerator3D,
-    MotionBlurGenerator3D,
-    PerspectiveGenerator3D,
-    RotationGenerator3D,
-    center_crop_generator3d,
-)
+from kornia.augmentation.random_generator import AffineGenerator3D
+from kornia.augmentation.random_generator import CropGenerator3D
+from kornia.augmentation.random_generator import MotionBlurGenerator3D
+from kornia.augmentation.random_generator import PerspectiveGenerator3D
+from kornia.augmentation.random_generator import RotationGenerator3D
+from kornia.augmentation.random_generator import center_crop_generator3d
 
 from testing.base import assert_close
 

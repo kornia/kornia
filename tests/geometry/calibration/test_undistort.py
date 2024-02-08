@@ -1,7 +1,8 @@
 import pytest
 import torch
 
-from kornia.geometry.calibration.undistort import undistort_image, undistort_points
+from kornia.geometry.calibration.undistort import undistort_image
+from kornia.geometry.calibration.undistort import undistort_points
 
 from testing.base import BaseTester
 

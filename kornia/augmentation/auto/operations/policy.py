@@ -1,14 +1,25 @@
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
+from typing import Any
+from typing import Dict
+from typing import Iterator
+from typing import List
+from typing import Optional
+from typing import Tuple
+from typing import Union
+from typing import cast
 
 from torch import Size
 
 import kornia.augmentation as K
 from kornia.augmentation.auto.operations import OperationBase
-from kornia.augmentation.container.base import ImageSequentialBase, TransformMatrixMinIn
+from kornia.augmentation.container.base import ImageSequentialBase
+from kornia.augmentation.container.base import TransformMatrixMinIn
 from kornia.augmentation.container.ops import InputSequentialOps
 from kornia.augmentation.container.params import ParamItem
-from kornia.augmentation.utils import _transform_input, override_parameters
-from kornia.core import Module, Tensor, as_tensor
+from kornia.augmentation.utils import _transform_input
+from kornia.augmentation.utils import override_parameters
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import as_tensor
 from kornia.utils import eye_like
 
 

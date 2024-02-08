@@ -3,31 +3,29 @@ from __future__ import annotations
 import torch.nn
 from torch.utils.data import Dataset
 
-from kornia.augmentation import (
-    ColorJiggle,
-    ColorJitter,
-    RandomAffine,
-    RandomAffine3D,
-    RandomCrop,
-    RandomCrop3D,
-    RandomCutMixV2,
-    RandomErasing,
-    RandomGaussianBlur,
-    RandomJigsaw,
-    RandomMixUpV2,
-    RandomMosaic,
-    RandomMotionBlur,
-    RandomMotionBlur3D,
-    RandomPerspective,
-    RandomPerspective3D,
-    RandomPlanckianJitter,
-    RandomPosterize,
-    RandomRain,
-    RandomRotation3D,
-    RandomShear,
-    RandomTranslate,
-    Resize,
-)
+from kornia.augmentation import ColorJiggle
+from kornia.augmentation import ColorJitter
+from kornia.augmentation import RandomAffine
+from kornia.augmentation import RandomAffine3D
+from kornia.augmentation import RandomCrop
+from kornia.augmentation import RandomCrop3D
+from kornia.augmentation import RandomCutMixV2
+from kornia.augmentation import RandomErasing
+from kornia.augmentation import RandomGaussianBlur
+from kornia.augmentation import RandomJigsaw
+from kornia.augmentation import RandomMixUpV2
+from kornia.augmentation import RandomMosaic
+from kornia.augmentation import RandomMotionBlur
+from kornia.augmentation import RandomMotionBlur3D
+from kornia.augmentation import RandomPerspective
+from kornia.augmentation import RandomPerspective3D
+from kornia.augmentation import RandomPlanckianJitter
+from kornia.augmentation import RandomPosterize
+from kornia.augmentation import RandomRain
+from kornia.augmentation import RandomRotation3D
+from kornia.augmentation import RandomShear
+from kornia.augmentation import RandomTranslate
+from kornia.augmentation import Resize
 
 
 class DummyMPDataset(Dataset):

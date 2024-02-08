@@ -1,14 +1,23 @@
 """Implements several backbone networks."""
 import functools
 import operator
-from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Type, Union
+from typing import Any
+from typing import Dict
+from typing import List
+from typing import NamedTuple
+from typing import Optional
+from typing import Tuple
+from typing import Type
+from typing import Union
 
 import torch
 import torch.nn.functional as F
 from torch import nn
-from torch.nn.functional import pixel_shuffle, softmax
+from torch.nn.functional import pixel_shuffle
+from torch.nn.functional import softmax
 
-from kornia.core import Module, Tensor
+from kornia.core import Module
+from kornia.core import Tensor
 
 
 class HourglassConfig(NamedTuple):

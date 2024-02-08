@@ -5,23 +5,23 @@ import torch
 from torch import nn
 
 import kornia
-from kornia.feature import (
-    DescriptorMatcher,
-    GFTTAffNetHardNet,
-    KeyNetHardNet,
-    LAFDescriptor,
-    LocalFeature,
-    ScaleSpaceDetector,
-    SIFTDescriptor,
-    SIFTFeature,
-    extract_patches_from_pyramid,
-    get_laf_center,
-    get_laf_descriptors,
-    get_laf_orientation,
-    get_laf_scale,
-)
+from kornia.feature import DescriptorMatcher
+from kornia.feature import GFTTAffNetHardNet
+from kornia.feature import KeyNetHardNet
+from kornia.feature import LAFDescriptor
+from kornia.feature import LocalFeature
+from kornia.feature import ScaleSpaceDetector
+from kornia.feature import SIFTDescriptor
+from kornia.feature import SIFTFeature
+from kornia.feature import extract_patches_from_pyramid
+from kornia.feature import get_laf_center
+from kornia.feature import get_laf_descriptors
+from kornia.feature import get_laf_orientation
+from kornia.feature import get_laf_scale
 from kornia.feature.integrated import LocalFeatureMatcher
-from kornia.geometry import RANSAC, resize, transform_points
+from kornia.geometry import RANSAC
+from kornia.geometry import resize
+from kornia.geometry import transform_points
 from kornia.utils._compat import torch_version_le
 
 from testing.base import BaseTester

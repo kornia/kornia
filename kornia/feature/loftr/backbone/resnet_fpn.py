@@ -1,9 +1,14 @@
-from typing import Any, Dict, List, Type, Union
+from typing import Any
+from typing import Dict
+from typing import List
+from typing import Type
+from typing import Union
 
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core import Module, Tensor
+from kornia.core import Module
+from kornia.core import Tensor
 
 
 def conv1x1(in_planes: int, out_planes: int, stride: int = 1) -> nn.Conv2d:

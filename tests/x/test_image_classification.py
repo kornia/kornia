@@ -5,8 +5,10 @@ import torch
 from torch import nn
 from torch.utils.data import Dataset
 
-from kornia.contrib import ClassificationHead, VisionTransformer
-from kornia.x import Configuration, ImageClassifierTrainer
+from kornia.contrib import ClassificationHead
+from kornia.contrib import VisionTransformer
+from kornia.x import Configuration
+from kornia.x import ImageClassifierTrainer
 from kornia.x.trainer import Accelerator
 
 

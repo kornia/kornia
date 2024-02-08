@@ -5,13 +5,17 @@ Nice long listing of all 256 colors and their codes.
 Taken from https://gist.github.com/klange/1687427
 """
 import re
-from typing import Tuple, Union
+from typing import Tuple
+from typing import Union
 
-from torch import float16, float32, float64
+from torch import float16
+from torch import float32
+from torch import float64
 
 import kornia
 from kornia.core import Tensor
-from kornia.core.check import KORNIA_CHECK_IS_IMAGE, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK_IS_IMAGE
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.io import ImageLoadType
 
 # color look-up table

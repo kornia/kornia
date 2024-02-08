@@ -8,12 +8,15 @@ import torch
 import torch.nn.functional as F
 from torch import optim
 
-from kornia.core import Module, Tensor, tensor
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import tensor
 from kornia.core.check import KORNIA_CHECK
 from kornia.geometry.camera import PinholeCamera
 from kornia.metrics import psnr
 from kornia.nerf.core import Images
-from kornia.nerf.data_utils import RayDataset, instantiate_ray_dataloader
+from kornia.nerf.data_utils import RayDataset
+from kornia.nerf.data_utils import instantiate_ray_dataloader
 from kornia.nerf.nerf_model import NerfModel
 from kornia.utils import deprecated
 

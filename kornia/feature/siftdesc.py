@@ -4,9 +4,14 @@ from typing import Tuple
 import torch
 from torch import nn
 
-from kornia.core import Module, Tensor, concatenate, eye, normalize
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import concatenate
+from kornia.core import eye
+from kornia.core import normalize
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.filters import get_gaussian_kernel2d, spatial_gradient
+from kornia.filters import get_gaussian_kernel2d
+from kornia.filters import spatial_gradient
 from kornia.geometry.conversions import pi
 
 

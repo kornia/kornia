@@ -1,7 +1,9 @@
 import pytest
 import torch
 
-from kornia.geometry.vector import Scalar, Vector2, Vector3
+from kornia.geometry.vector import Scalar
+from kornia.geometry.vector import Vector2
+from kornia.geometry.vector import Vector3
 
 from testing.base import BaseTester
 

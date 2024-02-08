@@ -1,12 +1,17 @@
 from .accuracy import accuracy
 from .average_meter import AverageMeter
 from .confusion_matrix import confusion_matrix
-from .endpoint_error import AEPE, aepe, average_endpoint_error
+from .endpoint_error import AEPE
+from .endpoint_error import aepe
+from .endpoint_error import average_endpoint_error
 from .mean_average_precision import mean_average_precision
-from .mean_iou import mean_iou, mean_iou_bbox
+from .mean_iou import mean_iou
+from .mean_iou import mean_iou_bbox
 from .psnr import psnr
-from .ssim import SSIM, ssim
-from .ssim3d import SSIM3D, ssim3d
+from .ssim import SSIM
+from .ssim import ssim
+from .ssim3d import SSIM3D
+from .ssim3d import ssim3d
 
 __all__ = [
     "accuracy",

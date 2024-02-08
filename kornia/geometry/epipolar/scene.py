@@ -4,11 +4,14 @@ from typing import Dict
 
 import torch
 
-from kornia.core import rand, stack, where
+from kornia.core import rand
+from kornia.core import stack
+from kornia.core import where
 from kornia.geometry.conversions import axis_angle_to_rotation_matrix
 from kornia.geometry.linalg import transform_points
 
-from .projection import projection_from_KRt, random_intrinsics
+from .projection import projection_from_KRt
+from .projection import random_intrinsics
 
 
 def generate_scene(num_views: int, num_points: int) -> Dict[str, torch.Tensor]:

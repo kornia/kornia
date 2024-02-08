@@ -1,4 +1,5 @@
-from typing import Optional, Tuple
+from typing import Optional
+from typing import Tuple
 
 import kornia.augmentation as K
 from kornia.augmentation.auto.operations.base import OperationBase

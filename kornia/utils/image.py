@@ -1,5 +1,7 @@
 from functools import wraps
-from typing import Any, Callable, List
+from typing import Any
+from typing import Callable
+from typing import List
 
 import torch
 from torch import nn

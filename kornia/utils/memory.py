@@ -1,6 +1,10 @@
-from typing import Any, Dict
+from typing import Any
+from typing import Dict
 
-from kornia.core import Device, Module, Tensor, concatenate
+from kornia.core import Device
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import concatenate
 
 
 def batched_forward(

@@ -3,7 +3,8 @@ import logging
 import pytest
 import torch
 import torch.nn.functional as F
-from torch import nn, optim
+from torch import nn
+from torch import optim
 
 import kornia
 

@@ -2,10 +2,12 @@ import pytest
 import torch
 from torch.autograd import gradcheck
 
-from kornia.geometry.line import ParametrizedLine, fit_line
+from kornia.geometry.line import ParametrizedLine
+from kornia.geometry.line import fit_line
 from kornia.geometry.plane import Hyperplane
 
-from testing.base import BaseTester, assert_close
+from testing.base import BaseTester
+from testing.base import assert_close
 
 
 class TestParametrizedLine(BaseTester):

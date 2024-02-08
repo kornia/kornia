@@ -5,7 +5,8 @@ from typing import Any
 
 import torch.nn.functional as F
 
-from kornia.core import Device, Tensor
+from kornia.core import Device
+from kornia.core import Tensor
 
 
 @dataclass

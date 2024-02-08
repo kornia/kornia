@@ -1,73 +1,78 @@
-from .affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, PatchAffineShapeEstimator
+from .affine_shape import LAFAffineShapeEstimator
+from .affine_shape import LAFAffNetShapeEstimator
+from .affine_shape import PatchAffineShapeEstimator
 from .defmo import DeFMO
-from .disk import DISK, DISKFeatures
-from .hardnet import HardNet, HardNet8
-from .hynet import TLU, FilterResponseNorm2d, HyNet
-from .integrated import (
-    GFTTAffNetHardNet,
-    HesAffNetHardNet,
-    KeyNetAffNetHardNet,
-    KeyNetHardNet,
-    LAFDescriptor,
-    LightGlueMatcher,
-    LocalFeature,
-    LocalFeatureMatcher,
-    SIFTFeature,
-    SIFTFeatureScaleSpace,
-    get_laf_descriptors,
-)
-from .keynet import KeyNet, KeyNetDetector
-from .laf import (
-    KORNIA_CHECK_LAF,
-    denormalize_laf,
-    ellipse_to_laf,
-    extract_patches_from_pyramid,
-    extract_patches_simple,
-    get_laf_center,
-    get_laf_orientation,
-    get_laf_scale,
-    laf_from_center_scale_ori,
-    laf_from_three_points,
-    laf_is_inside_image,
-    laf_to_boundary_points,
-    laf_to_three_points,
-    make_upright,
-    normalize_laf,
-    perspective_transform_lafs,
-    rotate_laf,
-    scale_laf,
-    set_laf_orientation,
-)
+from .disk import DISK
+from .disk import DISKFeatures
+from .hardnet import HardNet
+from .hardnet import HardNet8
+from .hynet import TLU
+from .hynet import FilterResponseNorm2d
+from .hynet import HyNet
+from .integrated import GFTTAffNetHardNet
+from .integrated import HesAffNetHardNet
+from .integrated import KeyNetAffNetHardNet
+from .integrated import KeyNetHardNet
+from .integrated import LAFDescriptor
+from .integrated import LightGlueMatcher
+from .integrated import LocalFeature
+from .integrated import LocalFeatureMatcher
+from .integrated import SIFTFeature
+from .integrated import SIFTFeatureScaleSpace
+from .integrated import get_laf_descriptors
+from .keynet import KeyNet
+from .keynet import KeyNetDetector
+from .laf import KORNIA_CHECK_LAF
+from .laf import denormalize_laf
+from .laf import ellipse_to_laf
+from .laf import extract_patches_from_pyramid
+from .laf import extract_patches_simple
+from .laf import get_laf_center
+from .laf import get_laf_orientation
+from .laf import get_laf_scale
+from .laf import laf_from_center_scale_ori
+from .laf import laf_from_three_points
+from .laf import laf_is_inside_image
+from .laf import laf_to_boundary_points
+from .laf import laf_to_three_points
+from .laf import make_upright
+from .laf import normalize_laf
+from .laf import perspective_transform_lafs
+from .laf import rotate_laf
+from .laf import scale_laf
+from .laf import set_laf_orientation
 from .lightglue import LightGlue
 from .lightglue_onnx import OnnxLightGlue
 from .loftr import LoFTR
-from .matching import (
-    DescriptorMatcher,
-    GeometryAwareDescriptorMatcher,
-    match_adalam,
-    match_fginn,
-    match_mnn,
-    match_nn,
-    match_smnn,
-    match_snn,
-)
+from .matching import DescriptorMatcher
+from .matching import GeometryAwareDescriptorMatcher
+from .matching import match_adalam
+from .matching import match_fginn
+from .matching import match_mnn
+from .matching import match_nn
+from .matching import match_smnn
+from .matching import match_snn
 from .mkd import MKDDescriptor
-from .orientation import LAFOrienter, OriNet, PatchDominantGradientOrientation
-from .responses import (
-    BlobDoG,
-    BlobDoGSingle,
-    BlobHessian,
-    CornerGFTT,
-    CornerHarris,
-    dog_response,
-    dog_response_single,
-    gftt_response,
-    harris_response,
-    hessian_response,
-)
-from .scale_space_detector import MultiResolutionDetector, PassLAF, ScaleSpaceDetector
-from .siftdesc import DenseSIFTDescriptor, SIFTDescriptor
-from .sold2 import SOLD2, SOLD2_detector
+from .orientation import LAFOrienter
+from .orientation import OriNet
+from .orientation import PatchDominantGradientOrientation
+from .responses import BlobDoG
+from .responses import BlobDoGSingle
+from .responses import BlobHessian
+from .responses import CornerGFTT
+from .responses import CornerHarris
+from .responses import dog_response
+from .responses import dog_response_single
+from .responses import gftt_response
+from .responses import harris_response
+from .responses import hessian_response
+from .scale_space_detector import MultiResolutionDetector
+from .scale_space_detector import PassLAF
+from .scale_space_detector import ScaleSpaceDetector
+from .siftdesc import DenseSIFTDescriptor
+from .siftdesc import SIFTDescriptor
+from .sold2 import SOLD2
+from .sold2 import SOLD2_detector
 from .sosnet import SOSNet
 from .tfeat import TFeat
 

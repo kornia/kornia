@@ -6,12 +6,18 @@ Based on: `https://towardsdatascience.com/implementing-visualttransformer-in-pyt
 
 Added some tricks from: `https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py`
 """
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any
+from typing import Callable
+from typing import Dict
+from typing import List
+from typing import Optional
+from typing import Tuple
 
 import torch
 from torch import nn
 
-from kornia.core import Module, Tensor
+from kornia.core import Module
+from kornia.core import Tensor
 
 __all__ = ["VisionTransformer"]
 

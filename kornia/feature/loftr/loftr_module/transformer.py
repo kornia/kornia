@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 import copy
-from typing import Any, Literal, Optional
+from typing import Any
+from typing import Literal
+from typing import Optional
 
 import torch
 from torch import nn
 
-from kornia.core import Module, Tensor
+from kornia.core import Module
+from kornia.core import Tensor
 
-from .linear_attention import FullAttention, LinearAttention
+from .linear_attention import FullAttention
+from .linear_attention import LinearAttention
 
 
 class LoFTREncoderLayer(Module):

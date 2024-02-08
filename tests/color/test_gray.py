@@ -5,7 +5,8 @@ from torch.autograd import gradcheck
 import kornia
 from kornia.utils._compat import torch_version
 
-from testing.base import BaseTester, assert_close
+from testing.base import BaseTester
+from testing.base import assert_close
 
 
 class TestGrayscaleToRgb(BaseTester):

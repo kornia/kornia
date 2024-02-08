@@ -1,16 +1,12 @@
 import pytest
 import torch
 
-from kornia.geometry.camera.distortion_affine import (
-    distort_points_affine,
-    dx_distort_points_affine,
-    undistort_points_affine,
-)
-from kornia.geometry.camera.distortion_kannala_brandt import (
-    distort_points_kannala_brandt,
-    dx_distort_points_kannala_brandt,
-    undistort_points_kannala_brandt,
-)
+from kornia.geometry.camera.distortion_affine import distort_points_affine
+from kornia.geometry.camera.distortion_affine import dx_distort_points_affine
+from kornia.geometry.camera.distortion_affine import undistort_points_affine
+from kornia.geometry.camera.distortion_kannala_brandt import distort_points_kannala_brandt
+from kornia.geometry.camera.distortion_kannala_brandt import dx_distort_points_kannala_brandt
+from kornia.geometry.camera.distortion_kannala_brandt import undistort_points_kannala_brandt
 
 from testing.base import BaseTester
 

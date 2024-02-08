@@ -1,11 +1,18 @@
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict
+from typing import Optional
+from typing import Tuple
+from typing import Union
 
 import torch
 from torch.distributions import Uniform
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase
-from kornia.augmentation.utils import _adapted_rsampling, _common_param_check
-from kornia.core import Device, Tensor, tensor, zeros
+from kornia.augmentation.utils import _adapted_rsampling
+from kornia.augmentation.utils import _common_param_check
+from kornia.core import Device
+from kornia.core import Tensor
+from kornia.core import tensor
+from kornia.core import zeros
 from kornia.geometry.bbox import bbox_generator3d
 from kornia.utils.helpers import _extract_device_dtype
 

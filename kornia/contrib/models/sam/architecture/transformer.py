@@ -10,7 +10,8 @@ import math
 from torch import nn
 
 from kornia.contrib.models.sam.architecture.common import MLPBlock
-from kornia.core import Module, Tensor
+from kornia.core import Module
+from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK
 
 

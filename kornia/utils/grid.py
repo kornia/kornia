@@ -2,7 +2,8 @@ from typing import Optional
 
 import torch
 
-from kornia.core import Tensor, stack
+from kornia.core import Tensor
+from kornia.core import stack
 from kornia.utils._compat import torch_meshgrid
 
 

@@ -1,14 +1,12 @@
 import torch
 
 import kornia
-from kornia.geometry.bbox import (
-    infer_bbox_shape,
-    infer_bbox_shape3d,
-    nms,
-    transform_bbox,
-    validate_bbox,
-    validate_bbox3d,
-)
+from kornia.geometry.bbox import infer_bbox_shape
+from kornia.geometry.bbox import infer_bbox_shape3d
+from kornia.geometry.bbox import nms
+from kornia.geometry.bbox import transform_bbox
+from kornia.geometry.bbox import validate_bbox
+from kornia.geometry.bbox import validate_bbox3d
 
 from testing.base import BaseTester
 

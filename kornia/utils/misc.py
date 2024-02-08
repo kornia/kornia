@@ -1,4 +1,6 @@
-from kornia.core import Tensor, eye, zeros
+from kornia.core import Tensor
+from kornia.core import eye
+from kornia.core import zeros
 
 
 def eye_like(n: int, input: Tensor, shared_memory: bool = False) -> Tensor:

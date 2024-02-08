@@ -1,12 +1,15 @@
 from pathlib import Path
-from unittest.mock import PropertyMock, patch
+from unittest.mock import PropertyMock
+from unittest.mock import patch
 
 import pytest
 import torch
 
 import kornia
 from kornia.contrib.face_detection import FaceKeypoint
-from kornia.contrib.models.rt_detr import RTDETR, DETRPostProcessor, RTDETRConfig
+from kornia.contrib.models.rt_detr import RTDETR
+from kornia.contrib.models.rt_detr import DETRPostProcessor
+from kornia.contrib.models.rt_detr import RTDETRConfig
 from kornia.utils._compat import torch_version_lt
 
 from testing.base import BaseTester

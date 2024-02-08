@@ -6,7 +6,8 @@ import torch
 import kornia.geometry.epipolar as epi
 
 from testing.base import BaseTester
-from testing.geometry.create import create_random_fundamental_matrix, generate_two_view_random_scene
+from testing.geometry.create import create_random_fundamental_matrix
+from testing.geometry.create import generate_two_view_random_scene
 
 
 class TestNormalizePoints(BaseTester):

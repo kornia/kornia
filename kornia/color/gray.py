@@ -5,7 +5,9 @@ from typing import Optional
 import torch
 
 from kornia.color.rgb import bgr_to_rgb
-from kornia.core import Module, Tensor, concatenate
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import concatenate
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR
 
 

@@ -12,10 +12,12 @@ from pathlib import Path
 import torch
 from torch.utils import dlpack  # TODO: remove this if kornia relies on torch>=1.10
 
-from kornia.color import rgb_to_grayscale, rgba_to_rgb
+from kornia.color import rgb_to_grayscale
+from kornia.color import rgba_to_rgb
 from kornia.color.gray import grayscale_to_rgb
 from kornia.color.rgb import rgb_to_rgba
-from kornia.core import Device, Tensor
+from kornia.core import Device
+from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK
 
 

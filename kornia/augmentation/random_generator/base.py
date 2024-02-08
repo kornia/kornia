@@ -1,10 +1,19 @@
-from typing import Any, Callable, Dict, Optional, Tuple, Type, TypeVar
+from typing import Any
+from typing import Callable
+from typing import Dict
+from typing import Optional
+from typing import Tuple
+from typing import Type
+from typing import TypeVar
 
 import torch
-from torch.distributions import Distribution, Uniform
+from torch.distributions import Distribution
+from torch.distributions import Uniform
 
 from kornia.augmentation.utils.helpers import MultiprocessWrapper
-from kornia.core import Device, Module, Tensor
+from kornia.core import Device
+from kornia.core import Module
+from kornia.core import Tensor
 
 T = TypeVar("T")
 

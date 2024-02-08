@@ -1,13 +1,19 @@
-from typing import Any, Dict, Optional
+from typing import Any
+from typing import Dict
+from typing import Optional
 
-from torch import float16, float32, float64
+from torch import float16
+from torch import float32
+from torch import float64
 
 from kornia.augmentation.base import _AugmentationBase
-from kornia.augmentation.utils import _transform_input, _validate_input_dtype
+from kornia.augmentation.utils import _transform_input
+from kornia.augmentation.utils import _validate_input_dtype
 from kornia.core import Tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
-from kornia.utils import eye_like, is_autocast_enabled
+from kornia.utils import eye_like
+from kornia.utils import is_autocast_enabled
 
 
 class AugmentationBase2D(_AugmentationBase):

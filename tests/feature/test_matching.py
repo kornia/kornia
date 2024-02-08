@@ -3,16 +3,14 @@ import torch
 
 from kornia.feature.integrated import LightGlueMatcher
 from kornia.feature.laf import laf_from_center_scale_ori
-from kornia.feature.matching import (
-    DescriptorMatcher,
-    GeometryAwareDescriptorMatcher,
-    match_adalam,
-    match_fginn,
-    match_mnn,
-    match_nn,
-    match_smnn,
-    match_snn,
-)
+from kornia.feature.matching import DescriptorMatcher
+from kornia.feature.matching import GeometryAwareDescriptorMatcher
+from kornia.feature.matching import match_adalam
+from kornia.feature.matching import match_fginn
+from kornia.feature.matching import match_mnn
+from kornia.feature.matching import match_nn
+from kornia.feature.matching import match_smnn
+from kornia.feature.matching import match_snn
 from kornia.utils._compat import torch_version_le
 
 from testing.base import BaseTester

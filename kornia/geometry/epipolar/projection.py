@@ -1,11 +1,18 @@
 """Module for image projections."""
-from typing import Tuple, Union
+from typing import Tuple
+from typing import Union
 
 import torch
 from torch.linalg import qr as linalg_qr
 
-from kornia.core import Tensor, concatenate, ones_like, pad, stack, zeros_like
-from kornia.utils import eye_like, vec_like
+from kornia.core import Tensor
+from kornia.core import concatenate
+from kornia.core import ones_like
+from kornia.core import pad
+from kornia.core import stack
+from kornia.core import zeros_like
+from kornia.utils import eye_like
+from kornia.utils import vec_like
 from kornia.utils.helpers import _torch_svd_cast
 
 from .numeric import cross_product_matrix

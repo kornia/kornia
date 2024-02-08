@@ -2,8 +2,10 @@ import math
 
 import torch
 
-from kornia.core import Device, Tensor
-from kornia.nerf.volume_renderer import IrregularRenderer, RegularRenderer
+from kornia.core import Device
+from kornia.core import Tensor
+from kornia.nerf.volume_renderer import IrregularRenderer
+from kornia.nerf.volume_renderer import RegularRenderer
 from kornia.utils._compat import torch_meshgrid
 
 from testing.base import assert_close

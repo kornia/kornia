@@ -1,7 +1,8 @@
 import pytest
 import torch
 
-from kornia.filters import MedianBlur, median_blur
+from kornia.filters import MedianBlur
+from kornia.filters import median_blur
 
 from testing.base import BaseTester
 

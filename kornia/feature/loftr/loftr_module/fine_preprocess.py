@@ -1,10 +1,13 @@
-from typing import Any, Dict, Tuple
+from typing import Any
+from typing import Dict
+from typing import Tuple
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.core import Module, Tensor
+from kornia.core import Module
+from kornia.core import Tensor
 
 
 class FinePreprocess(Module):

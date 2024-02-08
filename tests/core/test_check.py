@@ -1,21 +1,19 @@
 import pytest
 import torch
 
-from kornia.core.check import (
-    KORNIA_CHECK,
-    KORNIA_CHECK_DM_DESC,
-    KORNIA_CHECK_IS_COLOR,
-    KORNIA_CHECK_IS_COLOR_OR_GRAY,
-    KORNIA_CHECK_IS_GRAY,
-    KORNIA_CHECK_IS_LIST_OF_TENSOR,
-    KORNIA_CHECK_IS_TENSOR,
-    KORNIA_CHECK_LAF,
-    KORNIA_CHECK_SAME_DEVICE,
-    KORNIA_CHECK_SAME_DEVICES,
-    KORNIA_CHECK_SAME_SHAPE,
-    KORNIA_CHECK_SHAPE,
-    KORNIA_CHECK_TYPE,
-)
+from kornia.core.check import KORNIA_CHECK
+from kornia.core.check import KORNIA_CHECK_DM_DESC
+from kornia.core.check import KORNIA_CHECK_IS_COLOR
+from kornia.core.check import KORNIA_CHECK_IS_COLOR_OR_GRAY
+from kornia.core.check import KORNIA_CHECK_IS_GRAY
+from kornia.core.check import KORNIA_CHECK_IS_LIST_OF_TENSOR
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR
+from kornia.core.check import KORNIA_CHECK_LAF
+from kornia.core.check import KORNIA_CHECK_SAME_DEVICE
+from kornia.core.check import KORNIA_CHECK_SAME_DEVICES
+from kornia.core.check import KORNIA_CHECK_SAME_SHAPE
+from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK_TYPE
 
 
 class TestCheck:

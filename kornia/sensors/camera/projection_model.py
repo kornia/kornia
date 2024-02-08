@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from kornia.core import Tensor
-from kornia.geometry.vector import Vector2, Vector3
+from kornia.geometry.vector import Vector2
+from kornia.geometry.vector import Vector3
 
 
 class Z1Projection:

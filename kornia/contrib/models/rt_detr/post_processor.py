@@ -3,7 +3,9 @@ from __future__ import annotations
 # TODO:
 import torch
 
-from kornia.core import Module, Tensor, concatenate
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import concatenate
 from kornia.image.base import ImageSize
 
 

@@ -12,7 +12,14 @@ import torch
 from torch import nn
 
 from kornia.contrib.models.common import LayerNorm2d
-from kornia.core import Device, Module, Tensor, concatenate, cos, sin, stack, zeros
+from kornia.core import Device
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import concatenate
+from kornia.core import cos
+from kornia.core import sin
+from kornia.core import stack
+from kornia.core import zeros
 
 
 class PromptEncoder(Module):

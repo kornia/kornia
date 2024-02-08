@@ -1,7 +1,8 @@
 import pytest
 import torch
 
-from kornia.filters import GuidedBlur, guided_blur
+from kornia.filters import GuidedBlur
+from kornia.filters import guided_blur
 from kornia.utils._compat import torch_version
 
 from testing.base import BaseTester

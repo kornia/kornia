@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import torch
 
-from kornia.core import Tensor, tensor
+from kornia.core import Tensor
+from kornia.core import tensor
 
 
 def normalize_keypoints(kpts: Tensor, size: Tensor) -> Tensor:

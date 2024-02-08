@@ -5,7 +5,8 @@ from typing import Any
 
 import torch
 
-from kornia.core import Module, Tensor
+from kornia.core import Module
+from kornia.core import Tensor
 from kornia.geometry.subpix import dsnt
 from kornia.utils.grid import create_meshgrid
 

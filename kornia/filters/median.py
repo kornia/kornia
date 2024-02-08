@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import torch.nn.functional as F
 
-from kornia.core import Module, Tensor
-from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR
+from kornia.core.check import KORNIA_CHECK_SHAPE
 
-from .kernels import _unpack_2d_ks, get_binary_kernel2d
+from .kernels import _unpack_2d_ks
+from .kernels import get_binary_kernel2d
 
 
 def _compute_zero_padding(kernel_size: tuple[int, int] | int) -> tuple[int, int]:

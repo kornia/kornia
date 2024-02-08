@@ -1,12 +1,21 @@
-from itertools import cycle, islice
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
+from itertools import cycle
+from itertools import islice
+from typing import Any
+from typing import Dict
+from typing import Iterator
+from typing import List
+from typing import Optional
+from typing import Tuple
+from typing import Union
 
 import torch
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
 from kornia.contrib.extract_patches import extract_tensor_patches
-from kornia.core import Module, Tensor, concatenate
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import concatenate
 from kornia.core import pad as fpad
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
@@ -14,7 +23,8 @@ from kornia.geometry.keypoints import Keypoints
 from .base import SequentialBase
 from .image import ImageSequential
 from .ops import InputSequentialOps
-from .params import ParamItem, PatchParamItem
+from .params import ParamItem
+from .params import PatchParamItem
 
 __all__ = ["PatchSequential"]
 

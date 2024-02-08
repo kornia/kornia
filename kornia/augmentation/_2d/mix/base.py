@@ -1,11 +1,19 @@
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
+from typing import Dict
+from typing import List
+from typing import Optional
+from typing import Union
 
 import torch
 
 from kornia.augmentation.base import _BasicAugmentationBase
-from kornia.augmentation.utils import _transform_input, _transform_output_shape, _validate_input_dtype
-from kornia.constants import DataKey, DType
-from kornia.core import Tensor, tensor
+from kornia.augmentation.utils import _transform_input
+from kornia.augmentation.utils import _transform_output_shape
+from kornia.augmentation.utils import _validate_input_dtype
+from kornia.constants import DataKey
+from kornia.constants import DType
+from kornia.core import Tensor
+from kornia.core import tensor
 from kornia.core.check import KORNIA_UNWRAP
 from kornia.geometry.boxes import Boxes
 

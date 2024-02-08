@@ -3,11 +3,18 @@
 
 from typing import Optional
 
-from kornia.core import Module, Tensor, stack, where
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE, KORNIA_CHECK_TYPE
-from kornia.core.tensor_wrapper import unwrap, wrap  # type: ignore[attr-defined]
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import stack
+from kornia.core import where
+from kornia.core.check import KORNIA_CHECK
+from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK_TYPE
+from kornia.core.tensor_wrapper import unwrap  # type: ignore[attr-defined]
+from kornia.core.tensor_wrapper import wrap  # type: ignore[attr-defined]
 from kornia.geometry.linalg import batched_dot_product
-from kornia.geometry.vector import Scalar, Vector3
+from kornia.geometry.vector import Scalar
+from kornia.geometry.vector import Vector3
 from kornia.utils.helpers import _torch_svd_cast
 
 __all__ = ["Hyperplane", "fit_plane"]

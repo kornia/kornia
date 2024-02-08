@@ -5,7 +5,8 @@ import pytest
 import torch
 
 from kornia.augmentation.auto.autoaugment import AutoAugment
-from kornia.augmentation.auto.operations import OperationBase, ops
+from kornia.augmentation.auto.operations import OperationBase
+from kornia.augmentation.auto.operations import ops
 from kornia.augmentation.auto.rand_augment.rand_augment import RandAugment
 from kornia.augmentation.auto.rand_augment.rand_augment import default_policy as randaug_config
 from kornia.augmentation.auto.trivial_augment import TrivialAugment

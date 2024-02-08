@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from torch import nn
 
-from kornia.core import Module, Tensor
+from kornia.core import Module
+from kornia.core import Tensor
 
-from .blocks import ThinUnetDownBlock, ThinUnetUpBlock
+from .blocks import ThinUnetDownBlock
+from .blocks import ThinUnetUpBlock
 
 
 class Unet(Module):

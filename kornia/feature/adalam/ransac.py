@@ -1,10 +1,17 @@
-from typing import Any, Dict, Tuple, Union
+from typing import Any
+from typing import Dict
+from typing import Tuple
+from typing import Union
 
 import torch
 
 from kornia.core import Tensor
 
-from .utils import arange_sequence, batch_2x2_ellipse, batch_2x2_inv, draw_first_k_couples, piecewise_arange
+from .utils import arange_sequence
+from .utils import batch_2x2_ellipse
+from .utils import batch_2x2_inv
+from .utils import draw_first_k_couples
+from .utils import piecewise_arange
 
 
 def stable_sort_residuals(residuals: Tensor, ransidx: Tensor) -> Tuple[Tensor, Tensor]:

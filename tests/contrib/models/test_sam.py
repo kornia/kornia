@@ -1,7 +1,8 @@
 import pytest
 import torch
 
-from kornia.contrib.models.sam import Sam, SamConfig
+from kornia.contrib.models.sam import Sam
+from kornia.contrib.models.sam import SamConfig
 from kornia.core import pad
 
 from testing.base import BaseTester

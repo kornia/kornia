@@ -8,7 +8,9 @@ import requests
 import torch
 
 from kornia.core import Tensor
-from kornia.io import ImageLoadType, load_image, write_image
+from kornia.io import ImageLoadType
+from kornia.io import load_image
+from kornia.io import write_image
 from kornia.utils._compat import torch_version_ge
 
 try:

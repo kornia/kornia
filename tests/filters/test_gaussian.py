@@ -1,17 +1,16 @@
 import pytest
 import torch
 
-from kornia.filters import (
-    GaussianBlur2d,
-    gaussian_blur2d,
-    get_gaussian_discrete_kernel1d,
-    get_gaussian_erf_kernel1d,
-    get_gaussian_kernel1d,
-    get_gaussian_kernel2d,
-    get_gaussian_kernel3d,
-)
+from kornia.filters import GaussianBlur2d
+from kornia.filters import gaussian_blur2d
+from kornia.filters import get_gaussian_discrete_kernel1d
+from kornia.filters import get_gaussian_erf_kernel1d
+from kornia.filters import get_gaussian_kernel1d
+from kornia.filters import get_gaussian_kernel2d
+from kornia.filters import get_gaussian_kernel3d
 
-from testing.base import BaseTester, assert_close
+from testing.base import BaseTester
+from testing.base import assert_close
 
 
 @pytest.mark.parametrize("window_size", [5, 11])

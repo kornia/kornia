@@ -1,24 +1,24 @@
 import math
 import warnings
-from typing import Dict, Optional
+from typing import Dict
+from typing import Optional
 
 import torch
 from torch import nn
 
-from kornia.core.check import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK_LAF
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.filters.kernels import get_gaussian_kernel2d
 from kornia.filters.sobel import SpatialGradient
 from kornia.utils.helpers import map_location_to_cpu
 
-from .laf import (
-    ellipse_to_laf,
-    extract_patches_from_pyramid,
-    get_laf_orientation,
-    get_laf_scale,
-    make_upright,
-    scale_laf,
-    set_laf_orientation,
-)
+from .laf import ellipse_to_laf
+from .laf import extract_patches_from_pyramid
+from .laf import get_laf_orientation
+from .laf import get_laf_scale
+from .laf import make_upright
+from .laf import scale_laf
+from .laf import set_laf_orientation
 
 urls: Dict[str, str] = {}
 urls["affnet"] = "https://github.com/ducha-aiki/affnet/raw/master/pretrained/AffNet.pth"

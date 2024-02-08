@@ -1,7 +1,8 @@
 import pytest
 import torch
 
-from kornia.utils import image_to_string, print_image
+from kornia.utils import image_to_string
+from kornia.utils import print_image
 
 
 class TestImageToString:

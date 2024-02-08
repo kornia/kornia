@@ -1,18 +1,31 @@
 import warnings
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from typing import Any
+from typing import Dict
+from typing import List
+from typing import Optional
+from typing import Tuple
+from typing import Union
+from typing import cast
 
 from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
-from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmentationBase3D
+from kornia.augmentation._3d.base import AugmentationBase3D
+from kornia.augmentation._3d.base import RigidAffineAugmentationBase3D
 from kornia.augmentation.base import _AugmentationBase
-from kornia.constants import DataKey, Resample
-from kornia.core import Module, Tensor
-from kornia.geometry.boxes import Boxes, VideoBoxes
-from kornia.geometry.keypoints import Keypoints, VideoKeypoints
-from kornia.utils import eye_like, is_autocast_enabled
+from kornia.constants import DataKey
+from kornia.constants import Resample
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.geometry.boxes import Boxes
+from kornia.geometry.boxes import VideoBoxes
+from kornia.geometry.keypoints import Keypoints
+from kornia.geometry.keypoints import VideoKeypoints
+from kornia.utils import eye_like
+from kornia.utils import is_autocast_enabled
 
 from .base import TransformMatrixMinIn
 from .image import ImageSequential
-from .ops import AugmentationSequentialOps, DataType
+from .ops import AugmentationSequentialOps
+from .ops import DataType
 from .params import ParamItem
 from .patch import PatchSequential
 from .video import VideoSequential

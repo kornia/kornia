@@ -4,12 +4,15 @@ import pytest
 import torch
 
 from kornia.contrib.models.rt_detr.architecture.hgnetv2 import PPHGNetV2
-from kornia.contrib.models.rt_detr.architecture.hybrid_encoder import HybridEncoder, RepVggBlock
+from kornia.contrib.models.rt_detr.architecture.hybrid_encoder import HybridEncoder
+from kornia.contrib.models.rt_detr.architecture.hybrid_encoder import RepVggBlock
 from kornia.contrib.models.rt_detr.architecture.resnet_d import ResNetD
 from kornia.contrib.models.rt_detr.architecture.rtdetr_head import RTDETRHead
-from kornia.contrib.models.rt_detr.model import RTDETR, RTDETRConfig
+from kornia.contrib.models.rt_detr.model import RTDETR
+from kornia.contrib.models.rt_detr.model import RTDETRConfig
 
-from testing.base import BaseTester, assert_close
+from testing.base import BaseTester
+from testing.base import assert_close
 
 
 @pytest.mark.parametrize(

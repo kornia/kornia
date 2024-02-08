@@ -1,10 +1,13 @@
 import pytest
 import torch
 
-from kornia.color import AUTUMN, ApplyColorMap, apply_colormap
+from kornia.color import AUTUMN
+from kornia.color import ApplyColorMap
+from kornia.color import apply_colormap
 from kornia.core import tensor
 
-from testing.base import BaseTester, assert_close
+from testing.base import BaseTester
+from testing.base import assert_close
 
 
 def test_autumn(device, dtype):

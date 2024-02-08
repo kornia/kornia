@@ -5,7 +5,13 @@ from typing import Callable
 import torch
 from torch import nn
 
-from kornia.core import Module, Tensor, as_tensor, stack, tensor, where, zeros_like
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import as_tensor
+from kornia.core import stack
+from kornia.core import tensor
+from kornia.core import where
+from kornia.core import zeros_like
 
 
 class _HausdorffERLossBase(Module):

@@ -5,7 +5,9 @@ import sys
 from typing import Optional
 from urllib.parse import urlparse
 
-from torch.hub import HASH_REGEX, download_url_to_file, get_dir
+from torch.hub import HASH_REGEX
+from torch.hub import download_url_to_file
+from torch.hub import get_dir
 
 
 def download_onnx_from_url(

@@ -6,7 +6,9 @@ from typing import Optional
 
 import torch
 
-from kornia.core import Module, Tensor, concatenate
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import concatenate
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.image.base import ImageSize
 

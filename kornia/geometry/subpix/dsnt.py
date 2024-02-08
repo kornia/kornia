@@ -6,8 +6,11 @@ from __future__ import annotations
 
 import torch
 
-from kornia.core import Tensor, concatenate, softmax
-from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core import Tensor
+from kornia.core import concatenate
+from kornia.core import softmax
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.utils.grid import create_meshgrid
 
 

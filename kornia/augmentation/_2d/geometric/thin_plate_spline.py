@@ -1,10 +1,15 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
+from typing import Dict
+from typing import Optional
+from typing import Tuple
 
 import torch
 
 from kornia.augmentation._2d.base import AugmentationBase2D
-from kornia.core import Tensor, tensor
-from kornia.geometry.transform import get_tps_transform, warp_image_tps
+from kornia.core import Tensor
+from kornia.core import tensor
+from kornia.geometry.transform import get_tps_transform
+from kornia.geometry.transform import warp_image_tps
 
 
 # NOTE: This NEEDS to be updated. It is out of the random generator controller.

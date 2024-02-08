@@ -2,7 +2,8 @@ import torch
 from torch.nn.functional import mse_loss
 
 import kornia
-from kornia.geometry.subpix.spatial_soft_argmax import _get_center_kernel2d, _get_center_kernel3d
+from kornia.geometry.subpix.spatial_soft_argmax import _get_center_kernel2d
+from kornia.geometry.subpix.spatial_soft_argmax import _get_center_kernel3d
 
 from testing.base import BaseTester
 

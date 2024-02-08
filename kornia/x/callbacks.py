@@ -1,5 +1,8 @@
 from pathlib import Path
-from typing import Callable, Dict, Optional, Union
+from typing import Callable
+from typing import Dict
+from typing import Optional
+from typing import Union
 
 import torch
 

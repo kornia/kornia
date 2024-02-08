@@ -1,16 +1,21 @@
-from typing import List, Optional
+from typing import List
+from typing import Optional
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 from typing_extensions import TypedDict
 
-from kornia.core import Module, Tensor, concatenate
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import concatenate
 from kornia.filters import SpatialGradient
 from kornia.geometry.transform import pyrdown
 from kornia.utils.helpers import map_location_to_cpu
 
-from .scale_space_detector import Detector_config, MultiResolutionDetector, get_default_detector_config
+from .scale_space_detector import Detector_config
+from .scale_space_detector import MultiResolutionDetector
+from .scale_space_detector import get_default_detector_config
 
 
 class KeyNet_conf(TypedDict):

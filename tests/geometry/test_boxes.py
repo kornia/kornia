@@ -3,7 +3,8 @@ from functools import partial
 import pytest
 import torch
 
-from kornia.geometry.boxes import Boxes, Boxes3D
+from kornia.geometry.boxes import Boxes
+from kornia.geometry.boxes import Boxes3D
 
 from testing.base import BaseTester
 

@@ -5,9 +5,18 @@ import math
 import torch
 import torch.nn.functional as F
 
-from kornia.core import Module, Tensor, ones, pad, stack, tensor, zeros
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
-from kornia.filters import filter2d, gaussian_blur2d
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import ones
+from kornia.core import pad
+from kornia.core import stack
+from kornia.core import tensor
+from kornia.core import zeros
+from kornia.core.check import KORNIA_CHECK
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR
+from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.filters import filter2d
+from kornia.filters import gaussian_blur2d
 
 __all__ = [
     "PyrDown",

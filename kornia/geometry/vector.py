@@ -1,9 +1,20 @@
-from typing import Optional, Tuple, Union, cast
+from typing import Optional
+from typing import Tuple
+from typing import Union
+from typing import cast
 
-from kornia.core import Device, Dtype, Tensor, as_tensor, normalize, rand, stack
+from kornia.core import Device
+from kornia.core import Dtype
+from kornia.core import Tensor
+from kornia.core import as_tensor
+from kornia.core import normalize
+from kornia.core import rand
+from kornia.core import stack
 from kornia.core.check import KORNIA_CHECK
-from kornia.core.tensor_wrapper import TensorWrapper, wrap  # type: ignore[attr-defined]
-from kornia.geometry.linalg import batched_dot_product, batched_squared_norm
+from kornia.core.tensor_wrapper import TensorWrapper  # type: ignore[attr-defined]
+from kornia.core.tensor_wrapper import wrap  # type: ignore[attr-defined]
+from kornia.geometry.linalg import batched_dot_product
+from kornia.geometry.linalg import batched_squared_norm
 
 __all__ = ["Vector3", "Vector2", "Scalar"]
 

@@ -9,7 +9,9 @@ from typing import NamedTuple
 from torch import nn
 
 from kornia.contrib.models.common import ConvNormAct
-from kornia.core import Module, Tensor, concatenate
+from kornia.core import Module
+from kornia.core import Tensor
+from kornia.core import concatenate
 from kornia.core.check import KORNIA_CHECK
 
 

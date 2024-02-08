@@ -4,7 +4,11 @@ import numpy as np
 import pytest
 import torch
 
-from kornia.image.base import ChannelsOrder, ColorSpace, ImageLayout, ImageSize, PixelFormat
+from kornia.image.base import ChannelsOrder
+from kornia.image.base import ColorSpace
+from kornia.image.base import ImageLayout
+from kornia.image.base import ImageSize
+from kornia.image.base import PixelFormat
 from kornia.image.image import Image
 from kornia.utils._compat import torch_version_le
 

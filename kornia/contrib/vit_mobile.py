@@ -1,9 +1,12 @@
-from typing import Any, Dict, Tuple
+from typing import Any
+from typing import Dict
+from typing import Tuple
 
 import torch
 from torch import nn
 
-from kornia.core import Module, Tensor
+from kornia.core import Module
+from kornia.core import Tensor
 
 
 def conv_1x1_bn(inp: int, oup: int) -> Module:

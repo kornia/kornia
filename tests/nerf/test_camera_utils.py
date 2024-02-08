@@ -5,7 +5,8 @@ import pytest
 import torch
 
 from kornia.geometry.conversions import quaternion_to_rotation_matrix
-from kornia.nerf.camera_utils import create_spiral_path, parse_colmap_output
+from kornia.nerf.camera_utils import create_spiral_path
+from kornia.nerf.camera_utils import parse_colmap_output
 
 from testing.base import assert_close
 

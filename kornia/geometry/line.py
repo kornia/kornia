@@ -1,12 +1,22 @@
 # kornia.geometry.line module inspired by Eigen::geometry::ParametrizedLine
 # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/ParametrizedLine.h
-from typing import Iterator, Optional, Tuple, Union
+from typing import Iterator
+from typing import Optional
+from typing import Tuple
+from typing import Union
 
 import torch
 
-from kornia.core import Module, Parameter, Tensor, normalize, where
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
-from kornia.geometry.linalg import batched_dot_product, squared_norm
+from kornia.core import Module
+from kornia.core import Parameter
+from kornia.core import Tensor
+from kornia.core import normalize
+from kornia.core import where
+from kornia.core.check import KORNIA_CHECK
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR
+from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.geometry.linalg import batched_dot_product
+from kornia.geometry.linalg import squared_norm
 from kornia.geometry.plane import Hyperplane
 from kornia.utils.helpers import _torch_svd_cast
 

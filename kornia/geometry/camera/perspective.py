@@ -1,12 +1,10 @@
 import torch
 import torch.nn.functional as F
 
-from kornia.geometry.conversions import (
-    convert_points_from_homogeneous,
-    convert_points_to_homogeneous,
-    denormalize_points_with_intrinsics,
-    normalize_points_with_intrinsics,
-)
+from kornia.geometry.conversions import convert_points_from_homogeneous
+from kornia.geometry.conversions import convert_points_to_homogeneous
+from kornia.geometry.conversions import denormalize_points_with_intrinsics
+from kornia.geometry.conversions import normalize_points_with_intrinsics
 
 
 def project_points(point_3d: torch.Tensor, camera_matrix: torch.Tensor) -> torch.Tensor:
