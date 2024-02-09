@@ -13,6 +13,9 @@ from .helpers import (
     safe_inverse_with_mask,
     safe_solve_with_mask,
     xla_is_available,
+    differentiable_clipping,
+    differentiable_polynomial_rounding,
+    differentiable_polynomial_floor
 )
 from .image import ImageToTensor, image_list_to_tensor, image_to_tensor, tensor_to_image
 from .image_print import image_to_string, print_image
