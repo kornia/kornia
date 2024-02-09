@@ -281,6 +281,7 @@ class VisionTransformer(Module):
 
 _AVAILABLE_WEIGHTS = ["vit_l/16", "vit_b/16", "vit_s/16", "vit_ti/16", "vit_b/32", "vit_s/32"]
 
+
 def _get_weight_url(variant: str) -> str:
     """Return the URL of the model weights."""
     KORNIA_CHECK(variant in _AVAILABLE_WEIGHTS, f"Variant {variant} does not have pre-trained checkpoint")
