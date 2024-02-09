@@ -8,7 +8,6 @@ Added some tricks from: `https://github.com/rwightman/pytorch-image-models/blob/
 """
 from __future__ import annotations
 
-import os
 from typing import Any, Callable
 
 import torch
@@ -18,29 +17,6 @@ from kornia.core import Module, Tensor, concatenate
 from kornia.core.check import KORNIA_CHECK
 
 __all__ = ["VisionTransformer"]
-
-
-# recommended checkpoint from https://github.com/google-research/vision_transformer
-_base_url = "https://storage.googleapis.com/vit_models/augreg/"
-_checkpoint_dict = {
-    "vit_l/16": "L_16-i21k-300ep-lr_0.001-aug_strong1-wd_0.1-do_0.0-sd_0.0.npz",
-    "vit_b/16": "B_16-i21k-300ep-lr_0.001-aug_medium1-wd_0.1-do_0.0-sd_0.0.npz",
-    "vit_s/16": "S_16-i21k-300ep-lr_0.001-aug_light1-wd_0.03-do_0.0-sd_0.0.npz",
-    "vit_ti/16": "Ti_16-i21k-300ep-lr_0.001-aug_none-wd_0.03-do_0.0-sd_0.0.npz",
-    "vit_b/32": "B_32-i21k-300ep-lr_0.001-aug_light1-wd_0.1-do_0.0-sd_0.0.npz",
-    "vit_s/32": "S_32-i21k-300ep-lr_0.001-aug_none-wd_0.1-do_0.0-sd_0.0.npz",
-}
-
-
-def download_to_torch_hub(url: str, progress: bool = True) -> str:
-    torch_hub_dir = torch.hub.get_dir()
-    filename = os.path.basename(url)
-    file_path = os.path.join(torch_hub_dir, filename)
-
-    if not os.path.exists(file_path):
-        torch.hub.download_url_to_file(url, file_path, progress=progress)
-
-    return file_path
 
 
 class ResidualAdd(Module):
@@ -264,61 +240,22 @@ class VisionTransformer(Module):
         out = self.norm(out)
         return out
 
-    @torch.no_grad()
-    def load_jax_checkpoint(self, checkpoint: str) -> VisionTransformer:
-        import numpy as np
-
-        if checkpoint.startswith("http"):
-            checkpoint = download_to_torch_hub(checkpoint)
-
-        jax_ckpt = np.load(checkpoint)
-
-        def _get(key: str) -> Tensor:
-            return torch.from_numpy(jax_ckpt[key])
-
-        patch_embed = self.patch_embedding
-        patch_embed.cls_token.copy_(_get("cls"))
-        patch_embed.backbone.weight.copy_(_get("embedding/kernel").permute(3, 2, 0, 1))  # conv weight
-        patch_embed.backbone.bias.copy_(_get("embedding/bias"))
-        patch_embed.positions.copy_(_get("Transformer/posembed_input/pos_embedding").squeeze(0))  # resize
-
-        for i, block in enumerate(self.encoder.blocks):
-            prefix = f"Transformer/encoderblock_{i}/"
-            block[0].fn[0].weight.copy_(_get(prefix + "LayerNorm_0/scale"))
-            block[0].fn[0].bias.copy_(_get(prefix + "LayerNorm_0/bias"))
-
-            mha_prefix = prefix + "MultiHeadDotProductAttention_1/"
-            qkv_weight = [_get(mha_prefix + f"{x}/kernel") for x in ["query", "key", "value"]]
-            block[0].fn[1].qkv.weight.copy_(concatenate(qkv_weight, 1).flatten(1).T)
-            qkv_bias = [_get(mha_prefix + f"{x}/bias") for x in ["query", "key", "value"]]
-            block[0].fn[1].qkv.bias.copy_(concatenate(qkv_bias, 0).flatten())
-            block[0].fn[1].projection.weight.copy_(_get(mha_prefix + "out/kernel").flatten(0, 1).T)
-            block[0].fn[1].projection.bias.copy_(_get(mha_prefix + "out/bias"))
-
-            block[1].fn[0].weight.copy_(_get(prefix + "LayerNorm_2/scale"))
-            block[1].fn[0].bias.copy_(_get(prefix + "LayerNorm_2/bias"))
-            block[1].fn[1][0].weight.copy_(_get(prefix + "MlpBlock_3/Dense_0/kernel").T)
-            block[1].fn[1][0].bias.copy_(_get(prefix + "MlpBlock_3/Dense_0/bias"))
-            block[1].fn[1][3].weight.copy_(_get(prefix + "MlpBlock_3/Dense_1/kernel").T)
-            block[1].fn[1][3].bias.copy_(_get(prefix + "MlpBlock_3/Dense_1/bias"))
-
-        self.norm.weight.copy_(_get("Transformer/encoder_norm/scale"))
-        self.norm.bias.copy_(_get("Transformer/encoder_norm/bias"))
-        return self
-
     @staticmethod
     def from_config(variant: str, pretrained: bool = False, **kwargs: Any) -> VisionTransformer:
-        """Build ViT model based on the given config string. The format is `vit_{size}/{patch_size}`. E.g. vit_b/16
-        means ViT-Base, patch size 16x16.
+        """Build ViT model based on the given config string. The format is `vit_{size}/{patch_size}`.
+        E.g. `vit_b/16` means ViT-Base, patch size 16x16. If `pretrained=True`, AugReg weights are loaded.
+        The weights are hosted HuggingFace's model hub: https://huggingface.co/kornia.
 
         Args:
-            config: ViT model config
+            variant: ViT model variant e.g. `vit_b/16`.
+            pretrained: whether to load pre-trained AugReg weights.
+            kwargs: other arguments that will be passed to :func:`kornia.contrib.vit.VisionTransformer.__init__`.
         Returns:
             The respective ViT model
 
         Example:
             >>> from kornia.contrib import VisionTransformer
-            >>> vit_model = VisionTransformer.from_config("vit_b/16")
+            >>> vit_model = VisionTransformer.from_config("vit_b/16", pretrained=True)
         """
         model_type, patch_size_str = variant.split("/")
         patch_size = int(patch_size_str)
@@ -335,7 +272,17 @@ class VisionTransformer(Module):
         model = VisionTransformer(**kwargs)
 
         if pretrained:
-            KORNIA_CHECK(variant in _checkpoint_dict, f"Variant {variant} does not have pre-trained checkpoint")
-            model.load_jax_checkpoint(_base_url + _checkpoint_dict[variant])
+            url = _get_weight_url(variant)
+            state_dict = torch.hub.load_state_dict_from_url(url)
+            model.load_state_dict(state_dict)
 
         return model
+
+
+_AVAILABLE_WEIGHTS = ["vit_l/16", "vit_b/16", "vit_s/16", "vit_ti/16", "vit_b/32", "vit_s/32"]
+
+def _get_weight_url(variant: str) -> str:
+    """Return the URL of the model weights."""
+    KORNIA_CHECK(variant in _AVAILABLE_WEIGHTS, f"Variant {variant} does not have pre-trained checkpoint")
+    model_type, patch_size = variant.split("/")
+    return f"https://huggingface.co/kornia/vit_{model_type}{patch_size}_i21k/resolve/main/vit_{model_type}-{patch_size}.pth"
