@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
-
 import torch
 
 from kornia.color import rgb_to_ycbcr, ycbcr_to_rgb
@@ -13,12 +11,12 @@ from kornia.core.check import (
     KORNIA_CHECK_SHAPE,
 )
 from kornia.geometry.transform.affwarp import rescale
-from kornia.utils.image import perform_keep_shape_image
 from kornia.utils.helpers import (
     differentiable_clipping,
+    differentiable_polynomial_floor,
     differentiable_polynomial_rounding,
-    differentiable_polynomial_floor
 )
+from kornia.utils.image import perform_keep_shape_image
 
 __all__ = ["jpeg_codec_differentiable", "JPEGCodecDifferentiable"]
 
@@ -139,7 +137,6 @@ def _idct_8x8(input: Tensor) -> Tensor:
     # Apply DCT
     output: Tensor = 0.25 * torch.tensordot(input, idct_tensor, dims=2) + 128.0
     return output
-
 
 
 def _jpeg_quality_to_scale(

@@ -321,6 +321,7 @@ def is_autocast_enabled(both: bool = True) -> bool:
 
     return torch.is_autocast_enabled()
 
+
 def differentiable_polynomial_rounding(input: Tensor) -> Tensor:
     """This function implements differentiable rounding.
 

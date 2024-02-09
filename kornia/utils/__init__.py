@@ -4,6 +4,9 @@ from .grid import create_meshgrid, create_meshgrid3d
 from .helpers import (
     _extract_device_dtype,
     deprecated,
+    differentiable_clipping,
+    differentiable_polynomial_floor,
+    differentiable_polynomial_rounding,
     get_cuda_device_if_available,
     get_cuda_or_mps_device_if_available,
     get_mps_device_if_available,
@@ -13,9 +16,6 @@ from .helpers import (
     safe_inverse_with_mask,
     safe_solve_with_mask,
     xla_is_available,
-    differentiable_clipping,
-    differentiable_polynomial_rounding,
-    differentiable_polynomial_floor
 )
 from .image import ImageToTensor, image_list_to_tensor, image_to_tensor, tensor_to_image
 from .image_print import image_to_string, print_image
