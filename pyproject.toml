@@ -158,6 +158,9 @@ requires = [
     max-returns = 13  # Recommended: 6
     max-statements = 64  # Recommended: 50
 
+  [tool.ruff.lint.flake8-tidy-imports]
+    ban-relative-imports = "all"
+
   [tool.ruff.lint.per-file-ignores]
     "*/__init__.py" = ["F401", "F403"] # Allow unused imports and star imports
     "docs/*" = ["S101", "PLR0912", "PLR0915"] # allow assert, ignore max branches and statements
