@@ -19,10 +19,10 @@ class KMeans:
         device: the device to which all tensors are moved to and computed
         seed: number to set torch manual seed for reproducibility
 
-    .. code-block:: python
-        kmeans = kornia.contrib.KMeans(3, None, 10e-4, 100, device, 0)
-        kmeans.fit(torch.rand((1000, 5))
-        predictions = kmeans.predict(torch.rand((10, 5)))
+    Example:
+    >>> kmeans = kornia.contrib.KMeans(3, None, 10e-4, 100, device, 0)
+    >>> kmeans.fit(torch.rand((1000, 5))
+    >>> predictions = kmeans.predict(torch.rand((10, 5)))
     """
 
     def __init__(
@@ -31,7 +31,6 @@ class KMeans:
         cluster_centers: Tensor,
         tolerance: float = 10e-4,
         max_iterations: int = 0,
-        device: torch.device | None = None,
         seed: int | None = None,
     ) -> None:
         KORNIA_CHECK(num_clusters != 0, "num_clusters can't be 0")
@@ -44,7 +43,6 @@ class KMeans:
         self.cluster_centers = cluster_centers
         self.tolerance = tolerance
         self.max_iterations = max_iterations
-        self.device = device
 
         self.final_cluster_assignments = None
         self.final_cluster_centers = None
@@ -70,14 +68,14 @@ class KMeans:
         Returns:
             2D Tensor with num_cluster rows
         """
-        num_samples = len(X)
+        num_samples: int = len(X)
         perm = torch.randperm(num_samples)
         idx = perm[:num_clusters]
         initial_state = X[idx]
         return initial_state
 
     def _pairwise_euclidean_distance(self, data1: Tensor, data2: Tensor) -> Tensor:
-        """Computes pairwise distance between 2 sets of vectors.
+        """Computes pairwise squared distance between 2 sets of vectors.
 
         Args:
             data1: 2D tensor of shape N, D
@@ -115,10 +113,10 @@ class KMeans:
                 {X.shape[1]} != {self.cluster_centers.shape[1]}",
             )
 
-        X = X.to(self.device)
-        current_centers = self.cluster_centers.to(self.device)
+        # X = X.to(self.device)
+        current_centers = self.cluster_centers
 
-        previous_centers = None
+        previous_centers: Tensor | None = None
         iteration: int = 0
 
         while True:
@@ -130,7 +128,7 @@ class KMeans:
             previous_centers = current_centers.clone()
 
             for index in range(self.num_clusters):
-                selected = torch.nonzero(cluster_assignment == index).squeeze().to(self.device)
+                selected = torch.nonzero(cluster_assignment == index).squeeze()
                 selected = torch.index_select(X, 0, selected)
                 # edge case when a certain cluster centre has no points assigned to it
                 # just choose a random point as it's update
@@ -169,7 +167,6 @@ class KMeans:
                 {x.shape[1]} != {self.final_cluster_centers.shape[1]}",
         )
 
-        x = x.to(self.device)
         distance = self._pairwise_euclidean_distance(x, self.final_cluster_centers)
         cluster_assignment = torch.argmin(distance, axis=1)
         return cluster_assignment
