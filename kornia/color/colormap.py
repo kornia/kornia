@@ -187,7 +187,7 @@ class ApplyColorMap(Module):
 
     Example:
         >>> input_tensor = torch.tensor([[[0, 1, 2], [25, 50, 63]]])
-        >>> ApplyColorMap(name_colormap='autumn')(input_tensor)
+        >>> ApplyColorMap(colormap='autumn')(input_tensor)
         tensor([[[1.0000, 1.0000, 1.0000],
                  [1.0000, 1.0000, 1.0000]],
         <BLANKLINE>
