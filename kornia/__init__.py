@@ -1,11 +1,25 @@
 # NOTE: kornia filters and geometry must go first since are the core of the library
 # and by changing the import order you might get into a circular dependencies issue.
-from . import filters
-from . import geometry
-from . import grad_estimator
+from kornia import filters
+from kornia import geometry
+from kornia import grad_estimator
 
 # import the other modules for convenience
-from . import augmentation, color, contrib, core, enhance, feature, io, losses, metrics, morphology, tracking, utils, x
+from kornia import (
+    augmentation,
+    color,
+    contrib,
+    core,
+    enhance,
+    feature,
+    io,
+    losses,
+    metrics,
+    morphology,
+    tracking,
+    utils,
+    x,
+)
 
 # NOTE: we are going to expose to top level very few things
 from kornia.constants import pi

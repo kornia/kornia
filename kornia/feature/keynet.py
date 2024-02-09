@@ -6,11 +6,10 @@ from torch import nn
 from typing_extensions import TypedDict
 
 from kornia.core import Module, Tensor, concatenate
+from kornia.feature.scale_space_detector import Detector_config, MultiResolutionDetector, get_default_detector_config
 from kornia.filters import SpatialGradient
 from kornia.geometry.transform import pyrdown
 from kornia.utils.helpers import map_location_to_cpu
-
-from .scale_space_detector import Detector_config, MultiResolutionDetector, get_default_detector_config
 
 
 class KeyNet_conf(TypedDict):

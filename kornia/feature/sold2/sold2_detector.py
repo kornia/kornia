@@ -5,10 +5,9 @@ import torch
 
 from kornia.core import Module, Tensor, concatenate, sin, stack, tensor, where, zeros
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.feature.sold2.backbones import SOLD2Net
 from kornia.geometry.bbox import nms
 from kornia.utils import map_location_to_cpu, torch_meshgrid
-
-from .backbones import SOLD2Net
 
 urls: Dict[str, str] = {}
 urls["wireframe"] = "https://www.polybox.ethz.ch/index.php/s/blOrW89gqSLoHOk/download"

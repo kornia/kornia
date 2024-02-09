@@ -5,10 +5,9 @@ import torch
 from torch.linalg import qr as linalg_qr
 
 from kornia.core import Tensor, concatenate, ones_like, pad, stack, zeros_like
+from kornia.geometry.epipolar.numeric import cross_product_matrix
 from kornia.utils import eye_like, vec_like
 from kornia.utils.helpers import _torch_svd_cast
-
-from .numeric import cross_product_matrix
 
 
 def intrinsics_like(focal: float, input: Tensor) -> Tensor:

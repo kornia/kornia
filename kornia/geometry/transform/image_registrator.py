@@ -7,9 +7,8 @@ from torch import nn, optim
 
 from kornia.core import Module, Tensor
 from kornia.geometry.conversions import angle_to_rotation_matrix, convert_affinematrix_to_homography
-
-from .homography_warper import BaseWarper, HomographyWarper
-from .pyramid import build_pyramid
+from kornia.geometry.transform.homography_warper import BaseWarper, HomographyWarper
+from kornia.geometry.transform.pyramid import build_pyramid
 
 __all__ = ["ImageRegistrator", "Homography", "Similarity", "BaseModel"]
 

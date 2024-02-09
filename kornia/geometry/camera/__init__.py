@@ -1,18 +1,22 @@
-from .distortion_affine import distort_points_affine, dx_distort_points_affine, undistort_points_affine
-from .distortion_kannala_brandt import (
+from kornia.geometry.camera.distortion_affine import (
+    distort_points_affine,
+    dx_distort_points_affine,
+    undistort_points_affine,
+)
+from kornia.geometry.camera.distortion_kannala_brandt import (
     distort_points_kannala_brandt,
     dx_distort_points_kannala_brandt,
     undistort_points_kannala_brandt,
 )
-from .perspective import project_points, unproject_points
-from .pinhole import PinholeCamera, cam2pixel, pixel2cam
-from .projection_orthographic import (
+from kornia.geometry.camera.perspective import project_points, unproject_points
+from kornia.geometry.camera.pinhole import PinholeCamera, cam2pixel, pixel2cam
+from kornia.geometry.camera.projection_orthographic import (
     dx_project_points_orthographic,
     project_points_orthographic,
     unproject_points_orthographic,
 )
-from .projection_z1 import dx_project_points_z1, project_points_z1, unproject_points_z1
-from .stereo import StereoCamera
+from kornia.geometry.camera.projection_z1 import dx_project_points_z1, project_points_z1, unproject_points_z1
+from kornia.geometry.camera.stereo import StereoCamera
 
 __all__ = [
     "PinholeCamera",

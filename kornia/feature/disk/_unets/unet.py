@@ -3,8 +3,7 @@ from __future__ import annotations
 from torch import nn
 
 from kornia.core import Module, Tensor
-
-from .blocks import ThinUnetDownBlock, ThinUnetUpBlock
+from kornia.feature.disk._unets.blocks import ThinUnetDownBlock, ThinUnetUpBlock
 
 
 class Unet(Module):

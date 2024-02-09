@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from kornia.core import Module, Tensor
-
-from .gaussian import gaussian_blur2d
+from kornia.filters.gaussian import gaussian_blur2d
 
 
 def unsharp_mask(

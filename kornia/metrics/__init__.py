@@ -1,12 +1,12 @@
-from .accuracy import accuracy
-from .average_meter import AverageMeter
-from .confusion_matrix import confusion_matrix
-from .endpoint_error import AEPE, aepe, average_endpoint_error
-from .mean_average_precision import mean_average_precision
-from .mean_iou import mean_iou, mean_iou_bbox
-from .psnr import psnr
-from .ssim import SSIM, ssim
-from .ssim3d import SSIM3D, ssim3d
+from kornia.metrics.accuracy import accuracy
+from kornia.metrics.average_meter import AverageMeter
+from kornia.metrics.confusion_matrix import confusion_matrix
+from kornia.metrics.endpoint_error import AEPE, aepe, average_endpoint_error
+from kornia.metrics.mean_average_precision import mean_average_precision
+from kornia.metrics.mean_iou import mean_iou, mean_iou_bbox
+from kornia.metrics.psnr import psnr
+from kornia.metrics.ssim import SSIM, ssim
+from kornia.metrics.ssim3d import SSIM3D, ssim3d
 
 __all__ = [
     "accuracy",

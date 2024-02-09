@@ -4,12 +4,11 @@ import torch
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.container.base import ImageSequentialBase
+from kornia.augmentation.container.params import ParamItem
 from kornia.augmentation.utils import override_parameters
 from kornia.core import Module, Tensor, as_tensor
 from kornia.utils import eye_like
-
-from .base import ImageSequentialBase
-from .params import ParamItem
 
 __all__ = ["ImageSequential"]
 

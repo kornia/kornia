@@ -5,12 +5,11 @@ import torch
 
 from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
+from kornia.geometry.epipolar import normalize_points
+from kornia.geometry.linalg import transform_points
 from kornia.utils import _extract_device_dtype, safe_inverse_with_mask, safe_solve_with_mask
 from kornia.utils.helpers import _torch_svd_cast
-
-from .conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
-from .epipolar import normalize_points
-from .linalg import transform_points
 
 TupleTensor = Tuple[Tensor, Tensor]
 

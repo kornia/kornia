@@ -5,8 +5,7 @@ import torch.nn.functional as F
 
 from kornia.core import Module, Tensor, pad
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
-
-from .kernels import get_spatial_gradient_kernel2d, get_spatial_gradient_kernel3d, normalize_kernel2d
+from kornia.filters.kernels import get_spatial_gradient_kernel2d, get_spatial_gradient_kernel3d, normalize_kernel2d
 
 
 def spatial_gradient(input: Tensor, mode: str = "sobel", order: int = 1, normalized: bool = True) -> Tensor:

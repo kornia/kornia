@@ -1,7 +1,7 @@
-from ._compat import torch_meshgrid
-from .draw import draw_convex_polygon, draw_line, draw_point2d, draw_rectangle
-from .grid import create_meshgrid, create_meshgrid3d
-from .helpers import (
+from kornia.utils._compat import torch_meshgrid
+from kornia.utils.draw import draw_convex_polygon, draw_line, draw_point2d, draw_rectangle
+from kornia.utils.grid import create_meshgrid, create_meshgrid3d
+from kornia.utils.helpers import (
     _extract_device_dtype,
     deprecated,
     get_cuda_device_if_available,
@@ -14,12 +14,12 @@ from .helpers import (
     safe_solve_with_mask,
     xla_is_available,
 )
-from .image import ImageToTensor, image_list_to_tensor, image_to_tensor, tensor_to_image
-from .image_print import image_to_string, print_image
-from .memory import batched_forward
-from .misc import eye_like, vec_like
-from .one_hot import one_hot
-from .pointcloud_io import load_pointcloud_ply, save_pointcloud_ply
+from kornia.utils.image import ImageToTensor, image_list_to_tensor, image_to_tensor, tensor_to_image
+from kornia.utils.image_print import image_to_string, print_image
+from kornia.utils.memory import batched_forward
+from kornia.utils.misc import eye_like, vec_like
+from kornia.utils.one_hot import one_hot
+from kornia.utils.pointcloud_io import load_pointcloud_ply, save_pointcloud_ply
 
 __all__ = [
     "batched_forward",

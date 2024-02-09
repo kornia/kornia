@@ -76,7 +76,7 @@ class CoarseMatching(Module):
             self.temperature = config["dsmax_temperature"]
         elif self.match_type == "sinkhorn":
             try:
-                from .superglue import log_optimal_transport
+                from kornia.feature.loftr.utils.superglue import log_optimal_transport
             except ImportError:
                 raise ImportError("download superglue.py first!")
             self.log_optimal_transport = log_optimal_transport

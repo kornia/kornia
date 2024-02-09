@@ -7,24 +7,29 @@ from kornia.color import rgb_to_grayscale
 from kornia.constants import pi
 from kornia.core import Device, Module, Tensor, concatenate, deg2rad
 from kornia.core.check import KORNIA_CHECK_LAF
-from kornia.geometry.subpix import ConvQuadInterp3d
-from kornia.geometry.transform import ScalePyramid
-
-from .affine_shape import LAFAffNetShapeEstimator
-from .hardnet import HardNet
-from .keynet import KeyNetDetector
-from .laf import extract_patches_from_pyramid, get_laf_center, get_laf_orientation, get_laf_scale, scale_laf
-from .lightglue import LightGlue
-from .matching import GeometryAwareDescriptorMatcher, _no_match
-from .orientation import LAFOrienter, OriNet, PassLAF
-from .responses import BlobDoG, BlobDoGSingle, BlobHessian, CornerGFTT
-from .scale_space_detector import (
+from kornia.feature.affine_shape import LAFAffNetShapeEstimator
+from kornia.feature.hardnet import HardNet
+from kornia.feature.keynet import KeyNetDetector
+from kornia.feature.laf import (
+    extract_patches_from_pyramid,
+    get_laf_center,
+    get_laf_orientation,
+    get_laf_scale,
+    scale_laf,
+)
+from kornia.feature.lightglue import LightGlue
+from kornia.feature.matching import GeometryAwareDescriptorMatcher, _no_match
+from kornia.feature.orientation import LAFOrienter, OriNet, PassLAF
+from kornia.feature.responses import BlobDoG, BlobDoGSingle, BlobHessian, CornerGFTT
+from kornia.feature.scale_space_detector import (
     Detector_config,
     MultiResolutionDetector,
     ScaleSpaceDetector,
     get_default_detector_config,
 )
-from .siftdesc import SIFTDescriptor
+from kornia.feature.siftdesc import SIFTDescriptor
+from kornia.geometry.subpix import ConvQuadInterp3d
+from kornia.geometry.transform import ScalePyramid
 
 
 def get_laf_descriptors(

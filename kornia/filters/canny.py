@@ -8,10 +8,9 @@ import torch.nn.functional as F
 from kornia.color import rgb_to_grayscale
 from kornia.core import Module, Tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
-
-from .gaussian import gaussian_blur2d
-from .kernels import get_canny_nms_kernel, get_hysteresis_kernel
-from .sobel import spatial_gradient
+from kornia.filters.gaussian import gaussian_blur2d
+from kornia.filters.kernels import get_canny_nms_kernel, get_hysteresis_kernel
+from kornia.filters.sobel import spatial_gradient
 
 
 def canny(

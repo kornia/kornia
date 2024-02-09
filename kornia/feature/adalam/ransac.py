@@ -3,8 +3,13 @@ from typing import Any, Dict, Tuple, Union
 import torch
 
 from kornia.core import Tensor
-
-from .utils import arange_sequence, batch_2x2_ellipse, batch_2x2_inv, draw_first_k_couples, piecewise_arange
+from kornia.feature.adalam.utils import (
+    arange_sequence,
+    batch_2x2_ellipse,
+    batch_2x2_inv,
+    draw_first_k_couples,
+    piecewise_arange,
+)
 
 
 def stable_sort_residuals(residuals: Tensor, ransidx: Tensor) -> Tuple[Tensor, Tensor]:

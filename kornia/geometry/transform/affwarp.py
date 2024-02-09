@@ -5,11 +5,16 @@ from torch import nn
 
 from kornia.core import ones, ones_like, zeros
 from kornia.filters import gaussian_blur2d
+from kornia.geometry.transform.imgwarp import (
+    get_affine_matrix2d,
+    get_projective_transform,
+    get_rotation_matrix2d,
+    warp_affine,
+    warp_affine3d,
+)
 from kornia.utils import _extract_device_dtype
 from kornia.utils.image import perform_keep_shape_image
 from kornia.utils.misc import eye_like
-
-from .imgwarp import get_affine_matrix2d, get_projective_transform, get_rotation_matrix2d, warp_affine, warp_affine3d
 
 __all__ = [
     "affine",

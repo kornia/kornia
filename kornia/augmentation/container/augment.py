@@ -4,18 +4,17 @@ from typing import Any, Dict, List, Optional, Tuple, Union, cast
 from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
 from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmentationBase3D
 from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.container.base import TransformMatrixMinIn
+from kornia.augmentation.container.image import ImageSequential
+from kornia.augmentation.container.ops import AugmentationSequentialOps, DataType
+from kornia.augmentation.container.params import ParamItem
+from kornia.augmentation.container.patch import PatchSequential
+from kornia.augmentation.container.video import VideoSequential
 from kornia.constants import DataKey, Resample
 from kornia.core import Module, Tensor
 from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints, VideoKeypoints
 from kornia.utils import eye_like, is_autocast_enabled
-
-from .base import TransformMatrixMinIn
-from .image import ImageSequential
-from .ops import AugmentationSequentialOps, DataType
-from .params import ParamItem
-from .patch import PatchSequential
-from .video import VideoSequential
 
 __all__ = ["AugmentationSequential"]
 

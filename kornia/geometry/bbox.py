@@ -6,8 +6,7 @@ from typing import Optional
 import torch
 
 from kornia.core import arange, ones_like, stack, where, zeros
-
-from .linalg import transform_points
+from kornia.geometry.linalg import transform_points
 
 __all__ = [
     "validate_bbox",

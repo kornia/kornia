@@ -6,11 +6,7 @@ import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
-from kornia.filters.kernels import get_gaussian_kernel2d
-from kornia.filters.sobel import SpatialGradient
-from kornia.utils.helpers import map_location_to_cpu
-
-from .laf import (
+from kornia.feature.laf import (
     ellipse_to_laf,
     extract_patches_from_pyramid,
     get_laf_orientation,
@@ -19,6 +15,9 @@ from .laf import (
     scale_laf,
     set_laf_orientation,
 )
+from kornia.filters.kernels import get_gaussian_kernel2d
+from kornia.filters.sobel import SpatialGradient
+from kornia.utils.helpers import map_location_to_cpu
 
 urls: Dict[str, str] = {}
 urls["affnet"] = "https://github.com/ducha-aiki/affnet/raw/master/pretrained/AffNet.pth"

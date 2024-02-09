@@ -4,9 +4,8 @@ from typing import Optional
 
 from kornia.core import Module, Tensor, pad
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
-
-from .kernels import _unpack_2d_ks, get_gaussian_kernel2d
-from .median import _compute_zero_padding
+from kornia.filters.kernels import _unpack_2d_ks, get_gaussian_kernel2d
+from kornia.filters.median import _compute_zero_padding
 
 
 def _bilateral_blur(

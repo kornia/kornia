@@ -5,9 +5,8 @@ from torch.nn.functional import interpolate
 
 from kornia.core import Module, Tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
-
-from .blur import box_blur
-from .kernels import _unpack_2d_ks
+from kornia.filters.blur import box_blur
+from kornia.filters.kernels import _unpack_2d_ks
 
 
 def _preprocess_fast_guided_blur(

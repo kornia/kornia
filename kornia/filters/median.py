@@ -4,8 +4,7 @@ import torch.nn.functional as F
 
 from kornia.core import Module, Tensor
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
-
-from .kernels import _unpack_2d_ks, get_binary_kernel2d
+from kornia.filters.kernels import _unpack_2d_ks, get_binary_kernel2d
 
 
 def _compute_zero_padding(kernel_size: tuple[int, int] | int) -> tuple[int, int]:

@@ -1,2 +1,2 @@
-from .disk import DISK
-from .structs import DISKFeatures
+from kornia.feature.disk.disk import DISK
+from kornia.feature.disk.structs import DISKFeatures

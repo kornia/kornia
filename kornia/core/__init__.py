@@ -1,4 +1,4 @@
-from ._backend import (
+from kornia.core._backend import (
     Device,
     Dtype,
     Module,
@@ -31,7 +31,7 @@ from ._backend import (
     zeros,
     zeros_like,
 )
-from .tensor_wrapper import TensorWrapper  # type: ignore
+from kornia.core.tensor_wrapper import TensorWrapper  # type: ignore
 
 __all__ = [
     "arange",

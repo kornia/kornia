@@ -1,4 +1,4 @@
-from .adjust import (
+from kornia.enhance.adjust import (
     AdjustBrightness,
     AdjustBrightnessAccumulative,
     AdjustContrast,
@@ -29,14 +29,14 @@ from .adjust import (
     sharpness,
     solarize,
 )
-from .core import AddWeighted, add_weighted
-from .equalization import equalize_clahe
-from .histogram import histogram, histogram2d, image_histogram2d
-from .integral import IntegralImage, IntegralTensor, integral_image, integral_tensor
-from .jpeg import JPEGCodecDifferentiable, jpeg_codec_differentiable
-from .normalize import Denormalize, Normalize, denormalize, normalize, normalize_min_max
-from .shift_rgb import shift_rgb
-from .zca import ZCAWhitening, linear_transform, zca_mean, zca_whiten
+from kornia.enhance.core import AddWeighted, add_weighted
+from kornia.enhance.equalization import equalize_clahe
+from kornia.enhance.histogram import histogram, histogram2d, image_histogram2d
+from kornia.enhance.integral import IntegralImage, IntegralTensor, integral_image, integral_tensor
+from kornia.enhance.jpeg import JPEGCodecDifferentiable, jpeg_codec_differentiable
+from kornia.enhance.normalize import Denormalize, Normalize, denormalize, normalize, normalize_min_max
+from kornia.enhance.shift_rgb import shift_rgb
+from kornia.enhance.zca import ZCAWhitening, linear_transform, zca_mean, zca_whiten
 
 __all__ = [
     "adjust_brightness",

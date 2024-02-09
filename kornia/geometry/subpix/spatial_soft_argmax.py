@@ -6,12 +6,11 @@ import torch.nn.functional as F
 from kornia.core import Module, Tensor, concatenate, rand, stack, tensor, where, zeros, zeros_like
 from kornia.filters.sobel import spatial_gradient3d
 from kornia.geometry.conversions import normalize_pixel_coordinates, normalize_pixel_coordinates3d
+from kornia.geometry.subpix.dsnt import spatial_expectation2d, spatial_softmax2d
+from kornia.geometry.subpix.nms import nms3d
 from kornia.utils import create_meshgrid, create_meshgrid3d
 from kornia.utils._compat import torch_version_ge
 from kornia.utils.helpers import safe_solve_with_mask
-
-from .dsnt import spatial_expectation2d, spatial_softmax2d
-from .nms import nms3d
 
 
 def _get_window_grid_kernel2d(h: int, w: int, device: torch.device = torch.device("cpu")) -> Tensor:

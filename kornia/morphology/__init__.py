@@ -1,1 +1,1 @@
-from .morphology import *
+from kornia.morphology.morphology import *

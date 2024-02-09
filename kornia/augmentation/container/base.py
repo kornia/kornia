@@ -7,12 +7,16 @@ from torch import nn
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.container.ops import (
+    BoxSequentialOps,
+    InputSequentialOps,
+    KeypointSequentialOps,
+    MaskSequentialOps,
+)
+from kornia.augmentation.container.params import ParamItem
 from kornia.core import Module, Tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
-
-from .ops import BoxSequentialOps, InputSequentialOps, KeypointSequentialOps, MaskSequentialOps
-from .params import ParamItem
 
 __all__ = ["BasicSequentialBase", "ImageSequentialBase", "SequentialBase"]
 

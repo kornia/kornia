@@ -4,9 +4,8 @@ import torch.nn.functional as F
 
 from kornia.core import Module, Tensor, as_tensor, pad, tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
-
-from .kernels import get_pascal_kernel_2d
-from .median import _compute_zero_padding  # TODO: Move to proper place
+from kornia.filters.kernels import get_pascal_kernel_2d
+from kornia.filters.median import _compute_zero_padding  # TODO: Move to proper place
 
 __all__ = [
     "BlurPool2D",
