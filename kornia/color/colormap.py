@@ -1,5 +1,5 @@
 from abc import ABC
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import torch
 from torch.nn.functional import interpolate
@@ -200,7 +200,7 @@ class ApplyColorMap(Module):
 
     def __init__(
         self,
-        colormap: [str, ColorMap],
+        colormap: Union[str, ColorMap],
         num_colors: Optional[int] = 64,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
