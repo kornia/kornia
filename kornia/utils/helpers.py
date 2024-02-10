@@ -320,4 +320,3 @@ def is_autocast_enabled(both: bool = True) -> bool:
         return torch.is_autocast_enabled() or torch.is_autocast_cpu_enabled()
 
     return torch.is_autocast_enabled()
-

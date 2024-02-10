@@ -23,9 +23,6 @@ from .memory import batched_forward
 from .misc import (
     eye_like,
     vec_like,
-    differentiable_clipping,
-    differentiable_polynomial_rounding,
-    differentiable_polynomial_floor
 )
 from .one_hot import one_hot
 from .pointcloud_io import load_pointcloud_ply, save_pointcloud_ply

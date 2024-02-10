@@ -1,7 +1,8 @@
-from kornia.core import Tensor, eye, zeros
 from typing import Optional
 
 import torch
+
+from kornia.core import Tensor, eye, zeros
 
 
 def eye_like(n: int, input: Tensor, shared_memory: bool = False) -> Tensor:
