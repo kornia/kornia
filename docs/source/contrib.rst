@@ -174,6 +174,7 @@ Image Classification
 --------------------
 
 .. autoclass:: VisionTransformer
+    :members:
 .. autoclass:: MobileViT
 .. autoclass:: TinyViT
     :members:
