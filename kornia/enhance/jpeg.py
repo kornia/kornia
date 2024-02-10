@@ -11,17 +11,12 @@ from kornia.core.check import (
     KORNIA_CHECK_SHAPE,
 )
 from kornia.geometry.transform.affwarp import rescale
-<<<<<<< HEAD
-from kornia.utils.helpers import (
-=======
 from kornia.utils.image import perform_keep_shape_image
 from kornia.utils.misc import (
->>>>>>> ff4ac1c0 (Review changes)
     differentiable_clipping,
     differentiable_polynomial_floor,
     differentiable_polynomial_rounding,
 )
-from kornia.utils.image import perform_keep_shape_image
 
 __all__ = ["jpeg_codec_differentiable", "JPEGCodecDifferentiable"]
 
