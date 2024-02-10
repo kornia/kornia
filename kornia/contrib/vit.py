@@ -244,7 +244,7 @@ class VisionTransformer(Module):
     def from_config(variant: str, pretrained: bool = False, **kwargs: Any) -> VisionTransformer:
         """Build ViT model based on the given config string. The format is `vit_{size}/{patch_size}`.
         E.g. `vit_b/16` means ViT-Base, patch size 16x16. If `pretrained=True`, AugReg weights are loaded.
-        The weights are hosted HuggingFace's model hub: https://huggingface.co/kornia.
+        The weights are hosted on HuggingFace's model hub: https://huggingface.co/kornia.
 
         Args:
             variant: ViT model variant e.g. `vit_b/16`.
