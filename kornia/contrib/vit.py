@@ -247,12 +247,14 @@ class VisionTransformer(Module):
         The weights are hosted on HuggingFace's model hub: https://huggingface.co/kornia.
 
         .. note::
-            The available weights are: ``vit_l/16``, ``vit_b/16``, ``vit_s/16``, ``vit_ti/16``, ``vit_b/32``, ``vit_s/32``.
+            The available weights are: ``vit_l/16``, ``vit_b/16``, ``vit_s/16``, ``vit_ti/16``,
+            ``vit_b/32``, ``vit_s/32``.
 
         Args:
             variant: ViT model variant e.g. ``vit_b/16``.
             pretrained: whether to load pre-trained AugReg weights.
-            kwargs: other keyword arguments that will be passed to :func:`kornia.contrib.vit.VisionTransformer.__init__`.
+            kwargs: other keyword arguments that will be passed to
+                :func:`kornia.contrib.vit.VisionTransformer.__init__`.
         Returns:
             The respective ViT model
 
