@@ -1,4 +1,7 @@
 from kornia.core import Tensor, eye, zeros
+from typing import Optional
+
+import torch
 
 
 def eye_like(n: int, input: Tensor, shared_memory: bool = False) -> Tensor:
@@ -52,3 +55,58 @@ def vec_like(n: int, tensor: Tensor, shared_memory: bool = False) -> Tensor:
 
     vec = zeros(n, 1, device=tensor.device, dtype=tensor.dtype)
     return vec[None].expand(tensor.shape[0], n, 1) if shared_memory else vec[None].repeat(tensor.shape[0], 1, 1)
+
+
+def differentiable_polynomial_rounding(input: Tensor) -> Tensor:
+    """This function implements differentiable rounding.
+
+    Args:
+        input (Tensor): Input tensor of any shape to be rounded.
+
+    Returns:
+        output (Tensor): Pseudo rounded tensor of the same shape as input tensor.
+    """
+    # Perform differentiable rounding
+    output: Tensor = torch.round(input) + (input - torch.round(input)) ** 3
+    return output
+
+
+def differentiable_polynomial_floor(input: Tensor) -> Tensor:
+    """This function implements differentiable floor.
+
+    Args:
+        input (Tensor): Input tensor of any shape to be floored.
+
+    Returns:
+        output (Tensor): Pseudo rounded tensor of the same shape as input tensor.
+    """
+    # Perform differentiable rounding
+    output: Tensor = torch.floor(input) + (input - 0.5 - torch.floor(input)) ** 3
+    return output
+
+
+def differentiable_clipping(
+    input: Tensor,
+    min: Optional[float] = None,
+    max: Optional[float] = None,
+    scale: float = 0.02,
+) -> Tensor:
+    """This function implements a differentiable and soft approximation of the clipping operation.
+
+    Args:
+        input (Tensor): Input tensor of any shape.
+        min (Optional[float]): Minimum value.
+        max (Optional[float]): Maximum value.
+        scale (float): Scale value. Default 0.02.
+
+    Returns:
+        output (Tensor): Clipped output tensor of the same shape as the input tensor.
+    """
+    # Make a copy of the input tensor
+    output: Tensor = input.clone()
+    # Perform differentiable soft clipping
+    if max is not None:
+        output[output > max] = -scale * (torch.exp(-output[output > max] + max) - 1.0) + max
+    if min is not None:
+        output[output < min] = scale * (torch.exp(output[output < min] - min) - 1.0) + min
+    return output

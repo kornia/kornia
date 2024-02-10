@@ -20,7 +20,13 @@ from .helpers import (
 from .image import ImageToTensor, image_list_to_tensor, image_to_tensor, tensor_to_image
 from .image_print import image_to_string, print_image
 from .memory import batched_forward
-from .misc import eye_like, vec_like
+from .misc import (
+    eye_like,
+    vec_like,
+    differentiable_clipping,
+    differentiable_polynomial_rounding,
+    differentiable_polynomial_floor
+)
 from .one_hot import one_hot
 from .pointcloud_io import load_pointcloud_ply, save_pointcloud_ply
 
