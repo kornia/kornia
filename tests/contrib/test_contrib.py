@@ -76,7 +76,12 @@ class TestVisionTransformer(BaseTester):
         out = vit(img)
         assert out.shape == (1, 197, 128)
 
-    @pytest.mark.parametrize("variant", ["vit_ti/16", "vit_b/16"])
+    @pytest.mark.parametrize("variant", ["vit_ti/16", "vit_b/16", "vit_l/16"])
+    def test_from_config(self, variant):
+        model = kornia.contrib.VisionTransformer.from_config(variant)
+        assert isinstance(model, kornia.contrib.VisionTransformer)
+
+    @pytest.mark.parametrize("variant", ["vit_ti/16"])
     def test_from_config_pretrained(self, variant):
         model = kornia.contrib.VisionTransformer.from_config(variant, pretrained=True)
         assert isinstance(model, kornia.contrib.VisionTransformer)
