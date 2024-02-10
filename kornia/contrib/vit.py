@@ -242,15 +242,15 @@ class VisionTransformer(Module):
 
     @staticmethod
     def from_config(variant: str, pretrained: bool = False, **kwargs: Any) -> VisionTransformer:
-        """Build ViT model based on the given config string. The format is `vit_{size}/{patch_size}`.
-        E.g. `vit_b/16` means ViT-Base, patch size 16x16. If `pretrained=True`, AugReg weights are loaded.
+        """Build ViT model based on the given config string. The format is ``vit_{size}/{patch_size}``.
+        E.g. ``vit_b/16`` means ViT-Base, patch size 16x16. If ``pretrained=True``, AugReg weights are loaded.
         The weights are hosted on HuggingFace's model hub: https://huggingface.co/kornia.
 
         .. note::
-            The available weights are: "vit_l/16", "vit_b/16", "vit_s/16", "vit_ti/16", "vit_b/32", "vit_s/32"
+            The available weights are: ``vit_l/16``, ``vit_b/16``, ``vit_s/16``, ``vit_ti/16``, ``vit_b/32``, ``vit_s/32``.
 
         Args:
-            variant: ViT model variant e.g. `vit_b/16`.
+            variant: ViT model variant e.g. ``vit_b/16``.
             pretrained: whether to load pre-trained AugReg weights.
             kwargs: other keyword arguments that will be passed to :func:`kornia.contrib.vit.VisionTransformer.__init__`.
         Returns:
