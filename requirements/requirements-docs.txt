@@ -8,6 +8,7 @@ sphinx-autodoc-defaultargs
 sphinx-autodoc-typehints
 sphinx-copybutton>=0.3
 sphinx-design
+sphinx-notfound-page
 sphinxcontrib-bibtex
 sphinxcontrib-gtagjs
 sphinxcontrib-youtube

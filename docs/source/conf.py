@@ -46,6 +46,7 @@ extensions = [
     "sphinxcontrib.gtagjs",
     "sphinxcontrib.youtube",
     "sphinx_design",
+    "notfound.extension",
 ]
 
 # substitutes the default values
