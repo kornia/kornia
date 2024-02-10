@@ -286,4 +286,4 @@ def _get_weight_url(variant: str) -> str:
     """Return the URL of the model weights."""
     KORNIA_CHECK(variant in _AVAILABLE_WEIGHTS, f"Variant {variant} does not have pre-trained checkpoint")
     model_type, patch_size = variant.split("/")
-    return f"https://huggingface.co/kornia/vit_{model_type}{patch_size}_i21k/resolve/main/vit_{model_type}-{patch_size}.pth"
+    return f"https://huggingface.co/kornia/vit_{model_type}{patch_size}_augreg_i21k_r224/resolve/main/vit_{model_type}-{patch_size}.pth"
