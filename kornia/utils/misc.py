@@ -68,7 +68,8 @@ def differentiable_polynomial_rounding(input: Tensor) -> Tensor:
         output (Tensor): Pseudo rounded tensor of the same shape as input tensor.
     """
     # Perform differentiable rounding
-    output: Tensor = torch.round(input) + (input - torch.round(input)) ** 3
+    input_round = input.round()
+    output: Tensor = input_round + (input - input_round) ** 3
     return output
 
 
@@ -82,7 +83,8 @@ def differentiable_polynomial_floor(input: Tensor) -> Tensor:
         output (Tensor): Pseudo rounded tensor of the same shape as input tensor.
     """
     # Perform differentiable rounding
-    output: Tensor = torch.floor(input) + (input - 0.5 - torch.floor(input)) ** 3
+    input_floor = input.floor()
+    output: Tensor = input_floor + (input - 0.5 - input_floor) ** 3
     return output
 
 
