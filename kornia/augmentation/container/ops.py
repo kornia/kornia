@@ -67,15 +67,15 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
 
 
 class AugmentationSequentialOps:
-    def __init__(self, data_keys: List[DataKey] | None) -> None:
+    def __init__(self, data_keys: Optional[List[DataKey]]) -> None:
         self._data_keys = data_keys
 
     @property
-    def data_keys(self) -> List[DataKey] | None:
+    def data_keys(self) -> Optional[List[DataKey]]:
         return self._data_keys
 
     @data_keys.setter
-    def data_keys(self, data_keys: List[DataKey] | None) -> None:
+    def data_keys(self, data_keys: Optional[List[DataKey]]) -> None:
         if data_keys:
             self._data_keys = [DataKey.get(inp) for inp in data_keys]
         else:
