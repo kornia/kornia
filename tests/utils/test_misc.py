@@ -1,12 +1,12 @@
-import torch
-
 from kornia.core import tensor
 from kornia.utils.misc import (
     differentiable_clipping,
     differentiable_polynomial_floor,
     differentiable_polynomial_rounding,
 )
+
 from testing.base import assert_close
+
 
 class TestDifferentiableClipping:
     def test_differentiable_clipping(self, device):
