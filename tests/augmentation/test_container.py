@@ -35,6 +35,12 @@ def reproducibility_test(input, seq):
         assert_close(output_1, output_2[0])
     elif isinstance(output_2, (torch.Tensor,)) and isinstance(output_1, (torch.Tensor,)):
         assert_close(output_1, output_2, msg=f"{seq._params}")
+    elif isinstance(output_1, dict) and isinstance(output_2, dict):
+        [
+            assert_close(o1, o2)
+            for o1, o2 in zip(output_1.values(), output_2.values())
+            if isinstance(o1, (torch.Tensor,)) and isinstance(o2, (torch.Tensor,))
+        ]
     else:
         assert False, ("cannot compare", type(output_1), type(output_2))
 
@@ -705,6 +711,47 @@ class TestAugmentationSequential:
         assert out[0].shape == input.shape
         assert len(out[1]) == len(bbox)
         assert len(out[2]) == len(mask)
+
+    @pytest.mark.slow
+    @pytest.mark.parametrize("random_apply", [1, (2, 2), (1, 2), (2,), 10, True, False])
+    def test_dict_as_input_forward_and_inverse(self, random_apply, device, dtype):
+        inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
+        bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
+        keypoints = torch.tensor([[[465, 115], [545, 116]]], device=device, dtype=dtype)
+        mask = bbox_to_mask(
+            torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 1000, 500
+        )[:, None]
+        aug = K.AugmentationSequential(
+            K.ImageSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)),
+            K.AugmentationSequential(
+                K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
+                K.RandomAffine(360, p=1.0),
+                K.RandomAffine(360, p=1.0),
+                data_keys=["input", "mask", "bbox", "keypoints"],
+            ),
+            K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
+            K.RandomAffine(360, p=1.0),
+            data_keys=None,
+            random_apply=random_apply,
+        )
+
+        data = {"input": inp, "mask": mask, "bbox": bbox, "keypoints": keypoints}
+        out = aug(data)
+        assert out["input"].shape == inp.shape
+        assert out["mask"].shape == mask.shape
+        assert out["bbox"].shape == bbox.shape
+        assert out["keypoints"].shape == keypoints.shape
+        assert set(out["mask"].unique().tolist()).issubset(set(mask.unique().tolist()))
+
+        out_inv = aug.inverse(out)
+        assert out_inv["input"].shape == inp.shape
+        assert out_inv["mask"].shape == mask.shape
+        assert out_inv["bbox"].shape == bbox.shape
+        assert out_inv["keypoints"].shape == keypoints.shape
+        assert set(out_inv["mask"].unique().tolist()).issubset(set(mask.unique().tolist()))
+
+        if random_apply is False:
+            reproducibility_test(data, aug)
 
     @pytest.mark.jit()
     @pytest.mark.skip(reason="turn off due to Union Type")

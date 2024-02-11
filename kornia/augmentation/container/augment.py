@@ -173,7 +173,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
     def __init__(
         self,
         *args: Union[_AugmentationBase, ImageSequential],
-        data_keys: Union[List[str], List[int], List[DataKey]] = [DataKey.INPUT],
+        data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = [DataKey.INPUT],
         same_on_batch: Optional[bool] = None,
         keepdim: Optional[bool] = None,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
@@ -202,13 +202,14 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             AugmentationSequential,
         )
 
-        self.data_keys = [DataKey.get(inp) for inp in data_keys]
+        self.data_keys = [DataKey.get(inp) for inp in data_keys] if data_keys else data_keys
 
-        if not all(in_type in DataKey for in_type in self.data_keys):
-            raise AssertionError(f"`data_keys` must be in {DataKey}. Got {self.data_keys}.")
+        if data_keys:
+            if not all(in_type in DataKey for in_type in self.data_keys):
+                raise AssertionError(f"`data_keys` must be in {DataKey}. Got {self.data_keys}.")
 
-        if self.data_keys[0] != DataKey.INPUT:
-            raise NotImplementedError(f"The first input must be {DataKey.INPUT}.")
+            if self.data_keys[0] != DataKey.INPUT:
+                raise NotImplementedError(f"The first input must be {DataKey.INPUT}.")
 
         self.transform_op = AugmentationSequentialOps(self.data_keys)
 
@@ -250,6 +251,14 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         Number of input tensors must align with the number of``data_keys``. If ``data_keys`` is not set, use
         ``self.data_keys`` by default.
         """
+        original_keys = None
+        if len(args) == 1 and isinstance(args[0], dict):
+            if self.data_keys is not None:
+                raise ValueError("If you are using a dictionary as input, the data_keys should be None.")
+            data_keys = self._read_datakeys_from_dict(args[0])
+            original_keys = list(args[0].keys())
+            args = tuple(v for v in args[0].values())
+
         self.transform_op.data_keys = self.transform_op.preproc_datakeys(data_keys)
 
         self._validate_args_datakeys(*args, data_keys=self.transform_op.data_keys)
@@ -275,6 +284,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 outputs = [outputs]
 
         outputs = self._arguments_postproc(args, outputs, data_keys=self.transform_op.data_keys)  # type: ignore
+
+        if isinstance(original_keys, list):
+            return {k: v for v, k in zip(outputs, original_keys)}
 
         if len(outputs) == 1 and isinstance(outputs, list):
             return outputs[0]
@@ -341,12 +353,19 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
     def forward(  # type: ignore[override]
         self,
-        *args: DataType,
+        *args: Union[DataType, Dict[str, Tensor]],
         params: Optional[List[ParamItem]] = None,
         data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None,
     ) -> Union[DataType, List[DataType]]:
         """Compute multiple tensors simultaneously according to ``self.data_keys``."""
         self.clear_state()
+        original_keys = None
+        if len(args) == 1 and isinstance(args[0], dict):
+            if self.data_keys is not None:
+                raise ValueError("If you are using a dictionary as input, the data_keys should be None.")
+            data_keys = self._read_datakeys_from_dict(args[0])
+            original_keys = list(args[0].keys())
+            args = tuple(v for v in args[0].values())
 
         self.transform_op.data_keys = self.transform_op.preproc_datakeys(data_keys)
 
@@ -386,10 +405,34 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         self._params = params
 
+        if isinstance(original_keys, list):
+            return {k: v for v, k in zip(outputs, original_keys)}
+
         if len(outputs) == 1 and isinstance(outputs, list):
             return outputs[0]
 
         return outputs
+
+    def _read_datakeys_from_dict(self, data: dict[str, Tensor]) -> List[DataKey]:
+        # TODO: Support multiple dict levels
+        keys = data.keys()
+
+        def retrieve_key(key: str) -> DataKey:
+            """Try to retrieve the datakey value by matching `<datakey>*`"""
+            # Alias cases, like INPUT, will not be get by the enum iterator.
+            if key.upper().startswith("INPUT"):
+                return DataKey.INPUT
+
+            for dk in DataKey:
+                if key.upper().startswith(dk.name):
+                    return dk
+
+            allowed_dk = " | ".join(f"`{d.name}`" for d in DataKey)
+            raise ValueError(
+                f"You input data dictionary keys should starts with some of datakey values: {allowed_dk}. Got `{key}`"
+            )
+
+        return [DataKey.get(retrieve_key(k)) for k in keys]
 
     def _preproc_boxes(self, arg: DataType, dcate: DataKey) -> Boxes:
         if DataKey.get(dcate) in [DataKey.BBOX]:
