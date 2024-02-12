@@ -99,8 +99,8 @@ class GaussianIlluminationGenerator(RandomGeneratorBase):
         ).to(device=_device, dtype=_dtype)
 
         # Generate random gaussian for create a 2D gaussian image.
-        gauss_x = gaussian(width, sigma_x, center=center_x).unsqueeze(1)
-        gauss_y = gaussian(height, sigma_y, center=center_y).unsqueeze(2)
+        gauss_x = gaussian(width, sigma_x, mean=center_x).unsqueeze(1)
+        gauss_y = gaussian(height, sigma_y, mean=center_y).unsqueeze(2)
         # gradient = (batch_size, channels, height, width)
         gradient = torch.matmul(gauss_y, gauss_x).unsqueeze(1).repeat(1, channels, 1, 1)
 
