@@ -498,7 +498,7 @@ def jpeg_codec_differentiable(
         quantization_table_y=quantization_table_y,
     )
     # Clip coded image
-    image_rgb_jpeg = differentiable_clipping(input=image_rgb_jpeg, min=0.0, max=255.0)
+    image_rgb_jpeg = differentiable_clipping(input=image_rgb_jpeg, min_val=0.0, max_val=255.0)
     # Back to original shape
     # image_rgb_jpeg = image_rgb_jpeg.view(original_shape)
     return image_rgb_jpeg
