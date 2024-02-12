@@ -146,6 +146,28 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         >>> out = aug_list(input, mask, bbox, points)
         >>> [o.shape for o in out]  # doctest: +ELLIPSIS
         [torch.Size([1, 2, 3, 5, 6]), torch.Size([1, 2, 3, 5, 6]), ...([1, 2, 1, 4, 2]), torch.Size([1, 2, 1, 2])]
+
+    This example shows how to use a list of masks and boxes within AugmentationSequential
+
+        >>> import kornia.augmentation as K
+        >>> input = torch.randn(2, 3, 256, 256)
+        >>> mask = [torch.ones(1, 3, 256, 256), torch.ones(1, 2, 256, 256)]
+        >>> bbox = [
+        ...    torch.tensor([[28.0, 53.0, 143.0, 164.0], [254.0, 158.0, 364.0, 290.0], [307.0, 204.0, 413.0, 350.0]]),
+        ...    torch.tensor([[254.0, 158.0, 364.0, 290.0], [307.0, 204.0, 413.0, 350.0]])
+        ... ]
+        >>> bbox = [Boxes.from_tensor(i).data for i in bbox]
+
+        >>> aug_list = K.AugmentationSequential(
+        ...    K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
+        ...    K.RandomHorizontalFlip(p=1.0),
+        ...    K.ImageSequential(K.RandomHorizontalFlip(p=1.0)),
+        ...    K.ImageSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0)),
+        ...    data_keys=["input", "mask", "bbox"],
+        ...    same_on_batch=False,
+        ...    random_apply=10,
+        ... )
+        >>> out = aug_list(input, mask, bbox)
     """
 
     def __init__(
