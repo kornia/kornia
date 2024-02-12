@@ -75,7 +75,7 @@ class AugmentationSequentialOps:
         return self._data_keys
 
     @data_keys.setter
-    def data_keys(self, data_keys: Optional[List[DataKey]]) -> None:
+    def data_keys(self, data_keys: Optional[Union[List[DataKey], List[str], List[int]]]) -> None:
         if data_keys:
             self._data_keys = [DataKey.get(inp) for inp in data_keys]
         else:
@@ -83,7 +83,9 @@ class AugmentationSequentialOps:
 
     def preproc_datakeys(self, data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None) -> List[DataKey]:
         if data_keys is None:
-            return self.data_keys
+            if isinstance(self.data_keys, list):
+                return self.data_keys
+            raise ValueError("Sequential ops needs data keys to be able to process.")
         else:
             return [DataKey.get(inp) for inp in data_keys]
 
