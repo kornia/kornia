@@ -87,7 +87,7 @@ class _BasicAugmentationBase(Module):
     def __unpack_input__(self, input: Tensor) -> Tensor:
         return input
 
-    def transform_tensor(self, input: Tensor) -> Tensor:
+    def transform_tensor(self, input: Tensor, *, batch_size: Optional[Tensor] = None) -> Tensor:
         """Standardize input tensors."""
         raise NotImplementedError
 
@@ -247,8 +247,6 @@ class _AugmentationBase(_BasicAugmentationBase):
         transform: Optional[Tensor] = None,
         **kwargs: Any,
     ) -> Tensor:
-        self.validate_tensor(input)
-
         params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, flags, **kwargs
         )
@@ -257,6 +255,8 @@ class _AugmentationBase(_BasicAugmentationBase):
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         ori_shape = input.shape
         in_tensor = self.transform_tensor(input)
+
+        self.validate_tensor(in_tensor)
         if to_apply.all():
             output = self.apply_transform(in_tensor, params, flags, transform=transform)
         elif not to_apply.any():
@@ -271,6 +271,7 @@ class _AugmentationBase(_BasicAugmentationBase):
                 output = output.type(input.dtype)
                 applied = applied.type(input.dtype)
             output = output.index_put((to_apply,), applied)
+
         output = _transform_output_shape(output, ori_shape) if self.keepdim else output
 
         if is_autocast_enabled():
@@ -285,8 +286,6 @@ class _AugmentationBase(_BasicAugmentationBase):
         transform: Optional[Tensor] = None,
         **kwargs: Any,
     ) -> Tensor:
-        self.validate_tensor(input)
-
         params, flags = self._process_kwargs_to_params_and_flags(
             self._params if params is None else params, flags, **kwargs
         )
@@ -294,7 +293,9 @@ class _AugmentationBase(_BasicAugmentationBase):
         batch_prob = params["batch_prob"]
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         ori_shape = input.shape
-        in_tensor = self.transform_tensor(input)
+        batch_size = params["forward_input_shape"][0]
+        in_tensor = self.transform_tensor(input, batch_size=batch_size)
+        self.validate_tensor(in_tensor)
         if to_apply.all():
             output = self.apply_transform_mask(in_tensor, params, flags, transform=transform)
         elif not to_apply.any():
@@ -305,7 +306,7 @@ class _AugmentationBase(_BasicAugmentationBase):
                 in_tensor[to_apply], params, flags, transform=transform if transform is None else transform[to_apply]
             )
             output = output.index_put((to_apply,), applied)
-        output = _transform_output_shape(output, ori_shape) if self.keepdim else output
+        output = _transform_output_shape(output, ori_shape, batch_size=batch_size) if self.keepdim else output
         return output
 
     def transform_boxes(

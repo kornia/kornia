@@ -33,10 +33,10 @@ class AugmentationBase2D(_AugmentationBase):
         if len(input.shape) != 4:
             raise RuntimeError(f"Expect (B, C, H, W). Got {input.shape}.")
 
-    def transform_tensor(self, input: Tensor) -> Tensor:
+    def transform_tensor(self, input: Tensor, *, batch_size: Optional[Tensor] = None) -> Tensor:
         """Convert any incoming (H, W), (C, H, W) and (B, C, H, W) into (B, C, H, W)."""
         _validate_input_dtype(input, accepted_dtypes=[float16, float32, float64])
-        return _transform_input(input)
+        return _transform_input(input, batch_size=batch_size)
 
 
 class RigidAffineAugmentationBase2D(AugmentationBase2D):

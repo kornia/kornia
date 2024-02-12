@@ -516,6 +516,40 @@ class TestAugmentationSequential:
         _, out_labels = aug(img, labels)
         assert labels is out_labels
 
+    @pytest.mark.parametrize("B", [None, 1, 3, 5])
+    @pytest.mark.parametrize("C_i", [1, 3])
+    @pytest.mark.parametrize("C_m", [None, 1])
+    @pytest.mark.parametrize("keepdim", [True, False])
+    def test_masks_without_channel_dim(self, device, dtype, B, C_i, C_m, keepdim):
+        img_shape = (B, C_i, 1000, 500) if B else (C_i, 1000, 500)
+        mask_shape = tuple(x for x in (B, C_m, *img_shape[-2:]) if x)
+
+        inp = torch.randn(*img_shape, device=device, dtype=dtype)
+        mask = torch.randint(0, 5, mask_shape, device=device, dtype=dtype)
+
+        aug = K.AugmentationSequential(
+            # K.ImageSequential(K.RandomAffine(360, p=1.0)),
+            # K.AugmentationSequential(
+            #     K.RandomAffine(360, p=1.0),
+            #     data_keys=["input", "mask"],
+            # ),
+            K.RandomAffine(360, p=1.0),
+            data_keys=["input", "mask"],
+            keepdim=keepdim,
+        )
+
+        aug.keepdim = keepdim  # FIXME(@shijianjian): This shouldn't be necessary
+
+        out = aug(inp, mask)
+        if keepdim:
+            assert out[0].shape == img_shape
+            assert out[1].shape == mask_shape
+        else:
+            assert (*(1,) * (4 - len(img_shape)), *img_shape) == out[0].shape
+
+            out_mask_shape = tuple(x if x else 1 for x in (B, C_m, *img_shape[-2:]))
+            assert out[1].shape == out_mask_shape
+
     @pytest.mark.slow
     @pytest.mark.parametrize("random_apply", [1, (2, 2), (1, 2), (2,), 10, True, False])
     def test_forward_and_inverse(self, random_apply, device, dtype):
