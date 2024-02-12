@@ -1,7 +1,5 @@
 from typing import Optional
 
-import torch
-
 from kornia.core import Tensor, eye, zeros
 
 
@@ -90,16 +88,16 @@ def differentiable_polynomial_floor(input: Tensor) -> Tensor:
 
 def differentiable_clipping(
     input: Tensor,
-    min: Optional[float] = None,
-    max: Optional[float] = None,
+    min_val: Optional[float] = None,
+    max_val: Optional[float] = None,
     scale: float = 0.02,
 ) -> Tensor:
     """This function implements a differentiable and soft approximation of the clipping operation.
 
     Args:
         input (Tensor): Input tensor of any shape.
-        min (Optional[float]): Minimum value.
-        max (Optional[float]): Maximum value.
+        min_val (Optional[float]): Minimum value.
+        max_val (Optional[float]): Maximum value.
         scale (float): Scale value. Default 0.02.
 
     Returns:
@@ -108,8 +106,10 @@ def differentiable_clipping(
     # Make a copy of the input tensor
     output: Tensor = input.clone()
     # Perform differentiable soft clipping
-    if max is not None:
-        output[output > max] = -scale * (torch.exp(-output[output > max] + max) - 1.0) + max
-    if min is not None:
-        output[output < min] = scale * (torch.exp(output[output < min] - min) - 1.0) + min
+    if max_val is not None:
+        scaled_value = -scale * ((-output + max_val).exp() - 1.0) + max_val
+        output = output.clamp(max=scaled_value)
+    if min_val is not None:
+        scaled_value = scale * ((output - min_val).exp() - 1.0) + min_val
+        output = output.clip(min=scaled_value)
     return output

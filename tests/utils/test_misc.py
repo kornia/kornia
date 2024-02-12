@@ -11,7 +11,7 @@ from testing.base import BaseTester
 class TestDifferentiableClipping(BaseTester):
     def test_differentiable_clipping(self, device):
         x = tensor([1.0, 6.0, 10.0, 12.0], device=device)
-        y = differentiable_clipping(x, min=5.0, max=10.0)
+        y = differentiable_clipping(x, min_val=5.0, max_val=10.0)
         y_expected = tensor([4.9804, 6.0, 10.0, 10.0173], device=device)
 
         self.assert_close(y, y_expected)
