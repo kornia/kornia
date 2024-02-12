@@ -35,9 +35,8 @@ class AugmentationBase2D(_AugmentationBase):
 
     def transform_tensor(self, input: Tensor) -> Tensor:
         """Convert any incoming (H, W), (C, H, W) and (B, C, H, W) into (B, C, H, W)."""
-        input = _transform_input(input)
         _validate_input_dtype(input, accepted_dtypes=[float16, float32, float64])
-        return input
+        return _transform_input(input)
 
 
 class RigidAffineAugmentationBase2D(AugmentationBase2D):
