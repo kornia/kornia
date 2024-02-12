@@ -168,6 +168,31 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         ...    random_apply=10,
         ... )
         >>> out = aug_list(input, mask, bbox)
+
+    How to use a dictionary as input with AugmentationSequential? The dictionary should starts with
+    one of the datakey availables.
+
+        >>> import kornia.augmentation as K
+        >>> img = torch.randn(1, 3, 256, 256)
+        >>> mask = [torch.ones(1, 3, 256, 256), torch.ones(1, 2, 256, 256)]
+        >>> bbox = [
+        ...    torch.tensor([[28.0, 53.0, 143.0, 164.0], [254.0, 158.0, 364.0, 290.0], [307.0, 204.0, 413.0, 350.0]]),
+        ...    torch.tensor([[254.0, 158.0, 364.0, 290.0], [307.0, 204.0, 413.0, 350.0]])
+        ... ]
+        >>> bbox = [Boxes.from_tensor(i).data for i in bbox]
+        >>> aug_dict = K.AugmentationSequential(
+        ...    K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
+        ...    K.RandomHorizontalFlip(p=1.0),
+        ...    K.ImageSequential(K.RandomHorizontalFlip(p=1.0)),
+        ...    K.ImageSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0)),
+        ...    data_keys=None,
+        ...    same_on_batch=False,
+        ...    random_apply=10,
+        ... )
+        >>> data = {'image': img, 'mask': mask[0], 'mask-b': mask[1], 'bbox': bbox[0], 'bbox-other':bbox[1]}
+        >>> out = aug_dict(data)
+        >>> out.keys()
+        dict_keys(['image', 'mask', 'mask-b', 'bbox', 'bbox-other'])
     """
 
     def __init__(
@@ -253,11 +278,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         """
         original_keys = None
         if len(args) == 1 and isinstance(args[0], dict):
-            if self.data_keys is not None:
-                raise ValueError("If you are using a dictionary as input, the data_keys should be None.")
-            data_keys = self._read_datakeys_from_dict(args[0])
-            original_keys = list(args[0].keys())
-            args = tuple(v for v in args[0].values())
+            original_keys, data_keys, args = self._preprocess_dict_data(args[0])
 
         self.transform_op.data_keys = self.transform_op.preproc_datakeys(data_keys)
 
@@ -285,7 +306,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         outputs = self._arguments_postproc(args, outputs, data_keys=self.transform_op.data_keys)  # type: ignore
 
-        if isinstance(original_keys, list):
+        if isinstance(original_keys, tuple):
             return {k: v for v, k in zip(outputs, original_keys)}
 
         if len(outputs) == 1 and isinstance(outputs, list):
@@ -359,13 +380,10 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
     ) -> Union[DataType, List[DataType]]:
         """Compute multiple tensors simultaneously according to ``self.data_keys``."""
         self.clear_state()
+
         original_keys = None
         if len(args) == 1 and isinstance(args[0], dict):
-            if self.data_keys is not None:
-                raise ValueError("If you are using a dictionary as input, the data_keys should be None.")
-            data_keys = self._read_datakeys_from_dict(args[0])
-            original_keys = list(args[0].keys())
-            args = tuple(v for v in args[0].values())
+            original_keys, data_keys, args = self._preprocess_dict_data(args[0])
 
         self.transform_op.data_keys = self.transform_op.preproc_datakeys(data_keys)
 
@@ -405,7 +423,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         self._params = params
 
-        if isinstance(original_keys, list):
+        if isinstance(original_keys, tuple):
             return {k: v for v, k in zip(outputs, original_keys)}
 
         if len(outputs) == 1 and isinstance(outputs, list):
@@ -413,8 +431,17 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         return outputs
 
-    def _read_datakeys_from_dict(self, data: dict[str, Tensor]) -> List[DataKey]:
-        # TODO: Support multiple dict levels
+    def _preprocess_dict_data(self, data: Dict[str, Tensor]) -> Tuple[Tuple[str], List[DataKey], Tuple[Tensor]]:
+        if self.data_keys is not None:
+            raise ValueError("If you are using a dictionary as input, the data_keys should be None.")
+
+        data_keys = self._read_datakeys_from_dict(data)
+        original_keys = tuple(data.keys())
+        tensors = tuple(v for v in data.values())
+
+        return original_keys, data_keys, tensors
+
+    def _read_datakeys_from_dict(self, data: Dict[str, Tensor]) -> List[DataKey]:
         keys = data.keys()
 
         def retrieve_key(key: str) -> DataKey:
