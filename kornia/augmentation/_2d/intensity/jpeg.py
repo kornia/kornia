@@ -32,7 +32,7 @@ class RandomJPEG(IntensityAugmentationBase2D):
 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
         >>> images = 0.1904 * torch.ones(2, 3, 32, 32)
-        >>> aug = RandomJPEG(jpeg_quality=20.0, p=1.)
+        >>> aug = RandomJPEG(jpeg_quality=20.0, p=1.)  # Samples a JPEG quality from the range [30.0, 70.0]
         >>> (aug(images) == aug(images, params=aug._params)).all()
         tensor(True)
     """
