@@ -149,8 +149,5 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         transform: Optional[Tensor] = None,
     ) -> Tensor:
         r"""Apply random gaussian gradient illumination to the input image."""
-        KORNIA_CHECK(len(input.shape) in (3, 4), "Wrong input dimension.")
-        if len(input.shape) == 3:
-            input = input[None, :, :, :]
 
         return input.add(params["gradient"].to(input)).clamp(0, 1)
