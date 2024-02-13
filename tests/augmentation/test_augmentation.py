@@ -640,8 +640,8 @@ class TestRandomGrayscaleAlternative(CommonTests):
         ).repeat(1, 3, 1, 1)
         expected_output = (
             (input_tensor * torch.tensor([0.299, 0.587, 0.114], device=self.device, dtype=self.dtype).view(1, 3, 1, 1))
-                .sum(dim=1, keepdim=True)
-                .repeat(1, 3, 1, 1)
+            .sum(dim=1, keepdim=True)
+            .repeat(1, 3, 1, 1)
         )
 
         parameters = {}
@@ -657,8 +657,8 @@ class TestRandomGrayscaleAlternative(CommonTests):
         ).repeat(2, 3, 1, 1)
         expected_output = (
             (input_tensor * torch.tensor([0.299, 0.587, 0.114], device=self.device, dtype=self.dtype).view(1, 3, 1, 1))
-                .sum(dim=1, keepdim=True)
-                .repeat(1, 3, 1, 1)
+            .sum(dim=1, keepdim=True)
+            .repeat(1, 3, 1, 1)
         )
 
         expected_transformation = kornia.eye_like(3, input_tensor)
@@ -3128,7 +3128,7 @@ class TestRandomGaussianBlur(BaseTester):
 
     @pytest.mark.xfail(
         reason="might fail due to the sampling distribution gradcheck errors. "
-               "See: https://github.com/pytorch/pytorch/issues/78346."
+        "See: https://github.com/pytorch/pytorch/issues/78346."
     )
     def test_gradcheck_class_non_deterministic(self, device):
         torch.manual_seed(0)
@@ -3244,28 +3244,28 @@ class TestRandomSaltAndPepperNoise(BaseTester):
         with pytest.raises(ValueError, match="salt_vs_pepper must be a tuple or a float"):
             RandomSaltAndPepperNoise(salt_vs_pepper=[0.4, 0.6])
         with pytest.raises(
-                ValueError,
-                match="The length of salt_vs_pepper must be greater than 0 \
+            ValueError,
+            match="The length of salt_vs_pepper must be greater than 0 \
                         and less than or equal to 2, and it should be a tuple.",
         ):
             RandomSaltAndPepperNoise(salt_vs_pepper=(0.1, 0.2, 0.3))
         with pytest.raises(
-                Exception,
-                match="False not true.\nSalt_vs_pepper values must be between 0 and 1. \
+            Exception,
+            match="False not true.\nSalt_vs_pepper values must be between 0 and 1. \
                         Recommended value 0.5.",
         ):
             RandomSaltAndPepperNoise(salt_vs_pepper=(0.4, 3))
         with pytest.raises(ValueError, match="amount must be a tuple or a float"):
             RandomSaltAndPepperNoise(amount=[0.01, 0.06])
         with pytest.raises(
-                ValueError,
-                match="The length of amount must be greater than 0 \
+            ValueError,
+            match="The length of amount must be greater than 0 \
                         and less than or equal to 2, and it should be a tuple.",
         ):
             RandomSaltAndPepperNoise(amount=())
         with pytest.raises(
-                Exception,
-                match="False not true.\namount of noise values must be between 0 and 1. \
+            Exception,
+            match="False not true.\namount of noise values must be between 0 and 1. \
                         Recommended values less than 0.2.",
         ):
             RandomSaltAndPepperNoise(amount=(0.05, 3))

@@ -27,8 +27,8 @@ class JPEGGenerator(RandomGeneratorBase):
     """
 
     def __init__(
-            self,
-            jpeg_quality: Union[Tensor, float, Tuple[float, float], List[float]] = 50.0,
+        self,
+        jpeg_quality: Union[Tensor, float, Tuple[float, float], List[float]] = 50.0,
     ) -> None:
         super().__init__()
         self.jpeg_quality: Union[Tensor, float, Tuple[float, float], List[float]] = jpeg_quality

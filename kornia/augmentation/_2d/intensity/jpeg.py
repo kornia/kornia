@@ -38,18 +38,18 @@ class RandomJPEG(IntensityAugmentationBase2D):
     """
 
     def __init__(
-            self,
-            jpeg_quality: Union[Tensor, float, Tuple[float, float], List[float]] = 50.0,
-            same_on_batch: bool = False,
-            p: float = 1.0,
-            keepdim: bool = False,
+        self,
+        jpeg_quality: Union[Tensor, float, Tuple[float, float], List[float]] = 50.0,
+        same_on_batch: bool = False,
+        p: float = 1.0,
+        keepdim: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self.jpeg_quality = jpeg_quality
         self._param_generator = rg.JPEGGenerator(jpeg_quality)
 
     def apply_transform(
-            self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         jpeg_output: Tensor = jpeg_codec_differentiable(input, params["jpeg_quality"])
         return jpeg_output
