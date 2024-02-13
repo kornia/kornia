@@ -143,7 +143,7 @@ def main():
         "RandomFisheye": ((torch.tensor([-0.3, 0.3]), torch.tensor([-0.3, 0.3]), torch.tensor([0.9, 1.0])), 2, 2020),
         "RandomGamma": (((0.0, 1.0),), 2, 2022),
         "RandomGaussianBlur": (((3, 3), (0.1, 2.0)), 1, 2020),
-        "RandomGaussianIllumination": (((0.2, 0.2), (0.2, 0.8), (0.2, 0.8), (-1.0, 1.0)), 2, 2020),
+        "RandomGaussianIllumination": (((0.5, 0.5), (0.5, 0.5), (0.5, 0.5), (-1.0, 1.0)), 2, 2021),
         "RandomGaussianNoise": ((0.0, 0.05), 1, 2020),
         "RandomGrayscale": ((), 1, 2020),
         "RandomHue": (((-0.5, 0.5),), 2, 2022),

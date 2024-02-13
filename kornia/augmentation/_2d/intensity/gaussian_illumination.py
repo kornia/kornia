@@ -153,4 +153,4 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         if len(input.shape) == 3:
             input = input[None, :, :, :]
 
-        return input.add(params["gradient"].to(input))
+        return input.add(params["gradient"].to(input)).clamp(0, 1)

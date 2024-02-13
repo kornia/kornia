@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from math import sqrt
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 import torch
 
@@ -63,7 +63,7 @@ def gaussian(
     window_size: int,
     sigma: Tensor | float,
     *,
-    mean: Tensor | float = None,
+    mean: Optional[Union[Tensor, float]] = None,
     device: Optional[Device] = None,
     dtype: Optional[Dtype] = None,
 ) -> Tensor:
