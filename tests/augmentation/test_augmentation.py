@@ -4033,7 +4033,7 @@ class TestRandomJPEG(BaseTester):
         images_aug = aug(images)
         assert images_aug.shape == images.shape
 
-    # @pytest.mark.slow
+    @pytest.mark.slow
     def test_gradcheck(self, device):
         B, H, W = 1, 16, 16
         img = torch.zeros(B, 3, H, W, device=device, dtype=torch.float)
