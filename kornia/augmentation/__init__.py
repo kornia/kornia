@@ -28,6 +28,7 @@ from kornia.augmentation._2d import (
     RandomHorizontalFlip,
     RandomHue,
     RandomInvert,
+    RandomJPEG,
     RandomJigsaw,
     RandomMedianBlur,
     RandomMixUpV2,
