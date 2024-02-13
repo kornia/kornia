@@ -34,7 +34,7 @@ class JPEGGenerator(RandomGeneratorBase):
         self.jpeg_quality: Union[Tensor, float, Tuple[float, float], List[float]] = jpeg_quality
 
     def __repr__(self) -> str:
-        return f"RandomJPEG quality={self.brightness}"
+        return f"RandomJPEG quality={self.jpeg_quality}"
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         jpeg_quality = _range_bound(
