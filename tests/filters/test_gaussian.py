@@ -23,25 +23,26 @@ from testing.base import BaseTester, assert_close
             11,
             5.0,
             None,
-            torch.tensor([[0.0663, 0.0794, 0.0914, 0.1010, 0.1072, 0.1094, 0.1072, 0.1010, 0.0914, 0.0794, 0.0663]]),
+            [[0.0663, 0.0794, 0.0914, 0.1010, 0.1072, 0.1094, 0.1072, 0.1010, 0.0914, 0.0794, 0.0663]],
         ),
         (
             11,
             5.0,
             8.0,
-            torch.tensor([[0.0343, 0.0463, 0.0600, 0.0747, 0.0895, 0.1029, 0.1138, 0.1208, 0.1232, 0.1208, 0.1138]]),
+            [[0.0343, 0.0463, 0.0600, 0.0747, 0.0895, 0.1029, 0.1138, 0.1208, 0.1232, 0.1208, 0.1138]],
         ),
         (
             11,
             11.0,
             3.0,
-            torch.tensor([[0.0926, 0.0946, 0.0957, 0.0961, 0.0957, 0.0946, 0.0926, 0.0900, 0.0867, 0.0828, 0.0785]]),
+            [[0.0926, 0.0946, 0.0957, 0.0961, 0.0957, 0.0946, 0.0926, 0.0900, 0.0867, 0.0828, 0.0785]],
         ),
     ],
 )
-def test_gaussian(window_size, sigma, mean, expected):
-    result = gaussian(window_size, sigma, mean=mean)
-    assert_close(result.sum(), expected.sum())
+def test_gaussian(window_size, sigma, mean, expected, device, dtype):
+    expected = torch.tensor(expected, device=device, dtype=dtype)
+    result = gaussian(window_size, sigma, mean=mean, device=device, dtype=dtype)
+    assert_close(result, expected, atol=1e-4, rtol=1e-4)
 
 
 @pytest.mark.parametrize("window_size", [5, 11])

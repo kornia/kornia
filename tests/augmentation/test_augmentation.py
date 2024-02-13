@@ -3293,36 +3293,35 @@ class TestRandomSaltAndPepperNoise(BaseTester):
 
 
 class TestRandomGaussianIllumination(BaseTester):
-    @pytest.mark.parametrize(
-        "expected",
-        [
-            torch.tensor(
+    def _get_expected(self, device, dtype):
+        return torch.tensor(
+            [
                 [
                     [
-                        [
-                            [0.726599991321564, 1.000000000000000, 0.726599991321564],
-                            [0.662100017070770, 0.912100017070770, 0.662100017070770],
-                            [0.500000000000000, 0.691100001335144, 0.500000000000000],
-                        ],
-                        [
-                            [0.726599991321564, 1.000000000000000, 0.726599991321564],
-                            [0.662100017070770, 0.912100017070770, 0.662100017070770],
-                            [0.500000000000000, 0.691100001335144, 0.500000000000000],
-                        ],
-                        [
-                            [0.726599991321564, 1.000000000000000, 0.726599991321564],
-                            [0.662100017070770, 0.912100017070770, 0.662100017070770],
-                            [0.500000000000000, 0.691100001335144, 0.500000000000000],
-                        ],
-                    ]
+                        [0.726599991321564, 1.000000000000000, 0.726599991321564],
+                        [0.662100017070770, 0.912100017070770, 0.662100017070770],
+                        [0.500000000000000, 0.691100001335144, 0.500000000000000],
+                    ],
+                    [
+                        [0.726599991321564, 1.000000000000000, 0.726599991321564],
+                        [0.662100017070770, 0.912100017070770, 0.662100017070770],
+                        [0.500000000000000, 0.691100001335144, 0.500000000000000],
+                    ],
+                    [
+                        [0.726599991321564, 1.000000000000000, 0.726599991321564],
+                        [0.662100017070770, 0.912100017070770, 0.662100017070770],
+                        [0.500000000000000, 0.691100001335144, 0.500000000000000],
+                    ],
                 ]
-            )
-        ],
-    )
-    def test_smoke(self, expected, device, dtype):
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+    def test_smoke(self, device, dtype):
         torch.manual_seed(1)
         input_tensor = torch.ones(1, 3, 3, 3, device=device, dtype=dtype) * 0.5
-        expected = expected.to(device, dtype=dtype)
+        expected = self._get_expected(device=device, dtype=dtype)
         aug = RandomGaussianIllumination(gain=0.5, p=1.0)
         res = aug(input_tensor)
         assert input_tensor.shape == res.shape
@@ -3353,8 +3352,7 @@ class TestRandomGaussianIllumination(BaseTester):
         with pytest.raises(Exception, match="sign of gaussian value must be between -1 and 1."):
             RandomGaussianIllumination(sign=(0.01, 2))
 
-    @pytest.mark.parametrize("batch_shape", [1, 3, 3, 5])
-    @pytest.mark.parametrize("channel_shape", [1, 1, 2, 3])
+    @pytest.mark.parametrize("channel_shape, batch_shape", [(1, 1), (3, 2), (5, 3)])
     def test_cardinality(self, batch_shape, channel_shape, device, dtype):
         input_tensor = torch.ones(batch_shape, channel_shape, 16, 16, device=device, dtype=dtype) * 0.5
         transform = RandomGaussianIllumination(p=1.0)
