@@ -32,6 +32,7 @@ from kornia.augmentation import (
     RandomHorizontalFlip,
     RandomHue,
     RandomInvert,
+    RandomJPEG,
     RandomMedianBlur,
     RandomPlanckianJitter,
     RandomPlasmaBrightness,
@@ -639,8 +640,8 @@ class TestRandomGrayscaleAlternative(CommonTests):
         ).repeat(1, 3, 1, 1)
         expected_output = (
             (input_tensor * torch.tensor([0.299, 0.587, 0.114], device=self.device, dtype=self.dtype).view(1, 3, 1, 1))
-            .sum(dim=1, keepdim=True)
-            .repeat(1, 3, 1, 1)
+                .sum(dim=1, keepdim=True)
+                .repeat(1, 3, 1, 1)
         )
 
         parameters = {}
@@ -656,8 +657,8 @@ class TestRandomGrayscaleAlternative(CommonTests):
         ).repeat(2, 3, 1, 1)
         expected_output = (
             (input_tensor * torch.tensor([0.299, 0.587, 0.114], device=self.device, dtype=self.dtype).view(1, 3, 1, 1))
-            .sum(dim=1, keepdim=True)
-            .repeat(1, 3, 1, 1)
+                .sum(dim=1, keepdim=True)
+                .repeat(1, 3, 1, 1)
         )
 
         expected_transformation = kornia.eye_like(3, input_tensor)
@@ -3127,7 +3128,7 @@ class TestRandomGaussianBlur(BaseTester):
 
     @pytest.mark.xfail(
         reason="might fail due to the sampling distribution gradcheck errors. "
-        "See: https://github.com/pytorch/pytorch/issues/78346."
+               "See: https://github.com/pytorch/pytorch/issues/78346."
     )
     def test_gradcheck_class_non_deterministic(self, device):
         torch.manual_seed(0)
@@ -3243,28 +3244,28 @@ class TestRandomSaltAndPepperNoise(BaseTester):
         with pytest.raises(ValueError, match="salt_vs_pepper must be a tuple or a float"):
             RandomSaltAndPepperNoise(salt_vs_pepper=[0.4, 0.6])
         with pytest.raises(
-            ValueError,
-            match="The length of salt_vs_pepper must be greater than 0 \
+                ValueError,
+                match="The length of salt_vs_pepper must be greater than 0 \
                         and less than or equal to 2, and it should be a tuple.",
         ):
             RandomSaltAndPepperNoise(salt_vs_pepper=(0.1, 0.2, 0.3))
         with pytest.raises(
-            Exception,
-            match="False not true.\nSalt_vs_pepper values must be between 0 and 1. \
+                Exception,
+                match="False not true.\nSalt_vs_pepper values must be between 0 and 1. \
                         Recommended value 0.5.",
         ):
             RandomSaltAndPepperNoise(salt_vs_pepper=(0.4, 3))
         with pytest.raises(ValueError, match="amount must be a tuple or a float"):
             RandomSaltAndPepperNoise(amount=[0.01, 0.06])
         with pytest.raises(
-            ValueError,
-            match="The length of amount must be greater than 0 \
+                ValueError,
+                match="The length of amount must be greater than 0 \
                         and less than or equal to 2, and it should be a tuple.",
         ):
             RandomSaltAndPepperNoise(amount=())
         with pytest.raises(
-            Exception,
-            match="False not true.\namount of noise values must be between 0 and 1. \
+                Exception,
+                match="False not true.\namount of noise values must be between 0 and 1. \
                         Recommended values less than 0.2.",
         ):
             RandomSaltAndPepperNoise(amount=(0.05, 3))
@@ -4003,3 +4004,47 @@ class TestMultiprocessing:
             pass
 
         torch.cuda.empty_cache()
+
+
+class TestRandomJPEG(BaseTester):
+    torch.manual_seed(0)  # for random reproductibility
+
+    def test_smoke(self):
+        images = torch.rand(4, 3, 16, 16)
+        aug = RandomJPEG(jpeg_quality=(1.0, 100.0), p=1.0)
+        images_aug = aug(images)
+        assert images_aug.shape == images.shape
+
+    def test_same_on_batch(self, device, dtype):
+        images = torch.rand(1, 3, 16, 16).repeat(2, 1, 1, 1)
+        aug = RandomJPEG(jpeg_quality=(1.0, 100.0), same_on_batch=True)
+        images_aug = aug(images)
+        self.assert_close(images_aug[0], images_aug[1])
+
+    def test_single_jpeg_quality(self, device, dtype):
+        images = torch.rand(4, 3, 16, 16)
+        aug = RandomJPEG(jpeg_quality=19.04, p=1.0)
+        images_aug = aug(images)
+        assert images_aug.shape == images.shape
+
+    def test_single_image(self, device, dtype):
+        images = torch.rand(3, 16, 16)
+        aug = RandomJPEG(jpeg_quality=19.04, p=1.0, keepdim=True)
+        images_aug = aug(images)
+        assert images_aug.shape == images.shape
+
+    # @pytest.mark.slow
+    def test_gradcheck(self, device):
+        B, H, W = 1, 16, 16
+        img = torch.zeros(B, 3, H, W, device=device, dtype=torch.float)
+        img[..., 0, 4:-4, 4:-4] = 1.0
+        img[..., 1, 4:-4, 4:-4] = 0.5
+        img[..., 2, 4:-4, 4:-4] = 0.5
+        img.requires_grad = True
+        aug = RandomJPEG(jpeg_quality=(10.0, 10.0))
+        img_jpeg = aug(img)
+        (img_jpeg - torch.zeros_like(img_jpeg)).abs().sum().backward()
+        # Numbers generated based on reference implementation
+        img_jpeg_mean_grad_ref = torch.tensor([0.1919])
+        # We use a slightly higher tolerance since our implementation varies from the reference implementation
+        self.assert_close(img.grad.mean().view(-1), img_jpeg_mean_grad_ref, rtol=0.01, atol=0.01)
