@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from math import sqrt
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 import torch
 
@@ -60,13 +60,20 @@ def normalize_kernel2d(input: Tensor) -> Tensor:
 
 
 def gaussian(
-    window_size: int, sigma: Tensor | float, *, device: Optional[Device] = None, dtype: Optional[Dtype] = None
+    window_size: int,
+    sigma: Tensor | float,
+    *,
+    mean: Optional[Union[Tensor, float]] = None,
+    device: Optional[Device] = None,
+    dtype: Optional[Dtype] = None,
 ) -> Tensor:
     """Compute the gaussian values based on the window and sigma values.
 
     Args:
         window_size: the size which drives the filter amount.
         sigma: gaussian standard deviation. If a tensor, should be in a shape :math:`(B, 1)`
+        mean: Mean of the Gaussian function (center). If not provided, it defaults to window_size // 2.
+        If a tensor, should be in a shape :math:`(B, 1)`
         device: This value will be used if sigma is a float. Device desired to compute.
         dtype: This value will be used if sigma is a float. Dtype desired for compute.
     Returns:
@@ -80,7 +87,14 @@ def gaussian(
     KORNIA_CHECK_SHAPE(sigma, ["B", "1"])
     batch_size = sigma.shape[0]
 
-    x = (torch.arange(window_size, device=sigma.device, dtype=sigma.dtype) - window_size // 2).expand(batch_size, -1)
+    mean = float(window_size // 2) if mean is None else mean
+    if isinstance(mean, float):
+        mean = tensor([[mean]], device=device, dtype=dtype)
+
+    KORNIA_CHECK_IS_TENSOR(mean)
+    KORNIA_CHECK_SHAPE(mean, ["B", "1"])
+
+    x = (torch.arange(window_size, device=sigma.device, dtype=sigma.dtype) - mean).expand(batch_size, -1)
 
     if window_size % 2 == 0:
         x = x + 0.5
