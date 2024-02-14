@@ -1,5 +1,7 @@
 from typing import Optional
 
+import torch
+
 from kornia.core import Tensor, eye, zeros
 
 
@@ -107,9 +109,7 @@ def differentiable_clipping(
     output: Tensor = input.clone()
     # Perform differentiable soft clipping
     if max_val is not None:
-        scaled_value = -scale * ((-output + max_val).exp() - 1.0) + max_val
-        output = output.clamp(max=scaled_value)
+        output[output > max_val] = -scale * (torch.exp(-output[output > max_val] + max_val) - 1.0) + max_val
     if min_val is not None:
-        scaled_value = scale * ((output - min_val).exp() - 1.0) + min_val
-        output = output.clip(min=scaled_value)
+        output[output < min_val] = scale * (torch.exp(output[output < min_val] - min_val) - 1.0) + min_val
     return output
