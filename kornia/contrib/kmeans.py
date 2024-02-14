@@ -16,13 +16,12 @@ class KMeans:
         cluster_centers: tensor of starting cluster centres can be passed instead of num_clusters
         tolerance: float value. the algorithm terminates if the shift in centers is less than tolerance
         max_iterations: number of iterations to run the algorithm for
-        device: the device to which all tensors are moved to and computed
         seed: number to set torch manual seed for reproducibility
 
     Example:
-    >>> kmeans = kornia.contrib.KMeans(3, None, 10e-4, 100, device, 0)
-    >>> kmeans.fit(torch.rand((1000, 5))
-    >>> predictions = kmeans.predict(torch.rand((10, 5)))
+        >>> kmeans = kornia.contrib.KMeans(3, None, 10e-4, 100, 0)
+        >>> kmeans.fit(torch.rand((1000, 5))
+        >>> predictions = kmeans.predict(torch.rand((10, 5)))
     """
 
     def __init__(
@@ -40,7 +39,7 @@ class KMeans:
             KORNIA_CHECK_SHAPE(cluster_centers, ["C", "D"])
 
         self.num_clusters = num_clusters
-        self.cluster_centers = cluster_centers
+        self.init_cluster_centers = cluster_centers
         self.tolerance = tolerance
         self.max_iterations = max_iterations
 
@@ -103,18 +102,18 @@ class KMeans:
         # X should have only 2 dimensions
         KORNIA_CHECK_SHAPE(X, ["N", "D"])
 
-        if self.cluster_centers is None:
-            self.cluster_centers = self._initialise_cluster_centers(X, self.num_clusters)
+        if self.init_cluster_centers is None:
+            self.init_cluster_centers = self._initialise_cluster_centers(X, self.num_clusters)
         else:
             # X and cluster_centers should have same number of columns
             KORNIA_CHECK(
-                X.shape[1] == self.cluster_centers.shape[1],
+                X.shape[1] == self.init_cluster_centers.shape[1],
                 f"Dimensions at position 1 of X and cluster_centers do not match. \
-                {X.shape[1]} != {self.cluster_centers.shape[1]}",
+                {X.shape[1]} != {self.init_cluster_centers.shape[1]}",
             )
 
         # X = X.to(self.device)
-        current_centers = self.cluster_centers
+        current_centers = self.init_cluster_centers
 
         previous_centers: Tensor | None = None
         iteration: int = 0
@@ -123,7 +122,7 @@ class KMeans:
             # find distance between X and current_centers
             distance: Tensor = self._pairwise_euclidean_distance(X, current_centers)
 
-            cluster_assignment = torch.argmin(distance, dim=1)
+            cluster_assignment = distance.argmin(-1)
 
             previous_centers = current_centers.clone()
 
@@ -168,5 +167,5 @@ class KMeans:
         )
 
         distance = self._pairwise_euclidean_distance(x, self.final_cluster_centers)
-        cluster_assignment = torch.argmin(distance, axis=1)
+        cluster_assignment = distance.argmin(-1)
         return cluster_assignment
