@@ -17,8 +17,8 @@ class TestKMeans(BaseTester):
         kmeans = kornia.contrib.KMeans(num_clusters, None, tolerance, max_iterations, 0)
         kmeans.fit(torch.rand((N, D), dtype=dtype, device=device))
 
-        out1 = kmeans.get_cluster_assignments()
-        out2 = kmeans.get_cluster_centers()
+        out1 = kmeans.cluster_assignments
+        out2 = kmeans.cluster_centers
 
         # output is of type tensor
         assert isinstance(out1, torch.Tensor)
@@ -38,8 +38,8 @@ class TestKMeans(BaseTester):
         kmeans = kornia.contrib.KMeans(num_clusters, None, tolerance, max_iterations, 0)
         kmeans.fit(torch.rand((N, D), dtype=dtype))
 
-        out1 = kmeans.get_cluster_assignments()
-        out2 = kmeans.get_cluster_centers()
+        out1 = kmeans.cluster_assignments
+        out2 = kmeans.cluster_centers
 
         # output is of correct shape
         assert out1.shape == (N,)
@@ -70,7 +70,8 @@ class TestKMeans(BaseTester):
             kmeans.predict(torch.rand((10, 7), dtype=dtype))
         assert "7 != 5" in str(errinfo)
 
-    def test_module(self, device, dtype):
+    @staticmethod
+    def _create_data(device, dtype):
         # create example dataset
         torch.manual_seed(2023)
         x = 5 * torch.randn((500, 2), dtype=dtype, device=device) + torch.tensor((-13, 17), dtype=dtype, device=device)
@@ -84,11 +85,15 @@ class TestKMeans(BaseTester):
                 + torch.tensor((35, 15), dtype=dtype, device=device),
             ]
         )
+        return x
+
+    def test_module(self, device, dtype):
+        x = TestKMeans._create_data(device, dtype)
 
         kmeans = kornia.contrib.KMeans(3, None, 10e-4, 10000, 2023)
         kmeans.fit(x)
 
-        centers = kmeans.get_cluster_centers()
+        centers = kmeans.cluster_centers
         prediciton = kmeans.predict(torch.tensor([[-14, 16], [45, 12]], dtype=dtype, device=device)).tolist()
 
         expected_centers = torch.tensor([[-13, 17], [15, -12], [35, 15]], dtype=dtype, device=device)
@@ -103,3 +108,26 @@ class TestKMeans(BaseTester):
 
         self.assert_close(ordered_centers, expected_centers, atol=2, rtol=0.1)
         assert oredered_prediciton == expected_prediciton
+
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        x = TestKMeans._create_data(device, dtype)
+        kmeans_params = (3, None, 10e-4, 10000, 2023)
+        predict_param = torch.tensor([[-14, 16], [45, 12]])
+
+        kmeans = kornia.contrib.KMeans(*kmeans_params)
+        kmeans.fit(x)
+
+        centers = kmeans.cluster_centers
+        prediciton = kmeans.predict(predict_param, dtype=dtype, device=device).tolist()
+
+        kmeans_op = kornia.contrib.KMeans(*kmeans_params)
+        kmeans_op.fit = torch_optimizer(kmeans_op.fit)
+        kmeans_op.predict = torch_optimizer(kmeans_op.predict)
+
+        kmeans_op.fit(x)
+
+        centers_op = kmeans_op.cluster_centers
+        prediciton_op = kmeans_op.predict(predict_param, dtype=dtype, device=device).tolist()
+
+        self.assert_close(centers, centers_op)
+        assert prediciton == prediciton_op

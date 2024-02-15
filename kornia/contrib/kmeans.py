@@ -154,8 +154,8 @@ class KMeans:
             if self.max_iterations != 0 and iteration >= self.max_iterations:
                 break
 
-        self.final_cluster_assignments = cluster_assignment
-        self.final_cluster_centers = current_centers
+        self._final_cluster_assignments = cluster_assignment
+        self._final_cluster_centers = current_centers
 
     def predict(self, x: Tensor) -> Tensor:
         """Find the cluster center closest to each point in x.
