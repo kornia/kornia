@@ -122,12 +122,12 @@ class TestKMeans(BaseTester):
 
         kmeans_op = kornia.contrib.KMeans(*kmeans_params)
         kmeans_op.fit = torch_optimizer(kmeans_op.fit)
-        kmeans_op.predict = torch_optimizer(kmeans_op.predict).detach().cpu().tolist()
+        kmeans_op.predict = torch_optimizer(kmeans_op.predict)
 
         kmeans_op.fit(x)
 
         centers_op = kmeans_op.cluster_centers
-        prediciton_op = kmeans_op.predict(predict_param).detach().cpu().tolist()
+        prediciton_op = kmeans_op.predict(predict_param)
 
         self.assert_close(centers, centers_op)
-        assert prediciton == prediciton_op
+        self.assert_close(prediciton, prediciton_op)
