@@ -2,7 +2,8 @@ import pytest
 import torch
 
 import kornia
-from kornia.testing import BaseTester
+
+from testing.base import BaseTester
 
 
 class TestKMeans(BaseTester):
@@ -102,6 +103,3 @@ class TestKMeans(BaseTester):
 
         self.assert_close(ordered_centers, expected_centers, atol=2, rtol=0.1)
         assert oredered_prediciton == expected_prediciton
-
-    def test_gradcheck(self, device):
-        pass

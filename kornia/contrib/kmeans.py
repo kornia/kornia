@@ -27,7 +27,7 @@ class KMeans:
     def __init__(
         self,
         num_clusters: int,
-        cluster_centers: Tensor,
+        cluster_centers: Tensor | None,
         tolerance: float = 10e-4,
         max_iterations: int = 0,
         seed: int | None = None,
@@ -39,23 +39,31 @@ class KMeans:
             KORNIA_CHECK_SHAPE(cluster_centers, ["C", "D"])
 
         self.num_clusters = num_clusters
-        self.init_cluster_centers = cluster_centers
+        self._cluster_centers = cluster_centers
         self.tolerance = tolerance
         self.max_iterations = max_iterations
 
-        self.final_cluster_assignments = None
-        self.final_cluster_centers = None
+        self._final_cluster_assignments: None | Tensor = None
+        self._final_cluster_centers: None | Tensor = None
 
         if seed is not None:
             torch.manual_seed(seed)
 
-    def get_cluster_centers(self) -> Tensor:
-        KORNIA_CHECK(self.final_cluster_centers is not None, "Model has not been fit to a dataset")
-        return self.final_cluster_centers
+    @property
+    def cluster_centers(self) -> Tensor:
+        if isinstance(self._final_cluster_centers, Tensor):
+            return self._final_cluster_centers
+        if isinstance(self._cluster_centers, Tensor):
+            return self._cluster_centers
+        else:
+            raise TypeError("Model has not been fit to a dataset")
 
-    def get_cluster_assignments(self) -> Tensor:
-        KORNIA_CHECK(self.final_cluster_assignments is not None, "Model has not been fit to a dataset")
-        return self.final_cluster_assignments
+    @property
+    def cluster_assignments(self) -> Tensor:
+        if isinstance(self._final_cluster_assignments, Tensor):
+            return self._final_cluster_assignments
+        else:
+            raise TypeError("Model has not been fit to a dataset")
 
     def _initialise_cluster_centers(self, X: Tensor, num_clusters: int) -> Tensor:
         """Chooses num_cluster points from X as the initial cluster centers.
@@ -102,18 +110,18 @@ class KMeans:
         # X should have only 2 dimensions
         KORNIA_CHECK_SHAPE(X, ["N", "D"])
 
-        if self.init_cluster_centers is None:
-            self.init_cluster_centers = self._initialise_cluster_centers(X, self.num_clusters)
+        if self._cluster_centers is None:
+            self._cluster_centers = self._initialise_cluster_centers(X, self.num_clusters)
         else:
             # X and cluster_centers should have same number of columns
             KORNIA_CHECK(
-                X.shape[1] == self.init_cluster_centers.shape[1],
+                X.shape[1] == self._cluster_centers.shape[1],
                 f"Dimensions at position 1 of X and cluster_centers do not match. \
-                {X.shape[1]} != {self.init_cluster_centers.shape[1]}",
+                {X.shape[1]} != {self._cluster_centers.shape[1]}",
             )
 
         # X = X.to(self.device)
-        current_centers = self.init_cluster_centers
+        current_centers = self._cluster_centers
 
         previous_centers: Tensor | None = None
         iteration: int = 0
@@ -161,11 +169,11 @@ class KMeans:
 
         # x and cluster_centers should have same number of columns
         KORNIA_CHECK(
-            x.shape[1] == self.final_cluster_centers.shape[1],
+            x.shape[1] == self.cluster_centers.shape[1],
             f"Dimensions at position 1 of x and cluster_centers do not match. \
-                {x.shape[1]} != {self.final_cluster_centers.shape[1]}",
+                {x.shape[1]} != {self.cluster_centers.shape[1]}",
         )
 
-        distance = self._pairwise_euclidean_distance(x, self.final_cluster_centers)
+        distance = self._pairwise_euclidean_distance(x, self.cluster_centers)
         cluster_assignment = distance.argmin(-1)
         return cluster_assignment
