@@ -149,6 +149,7 @@ def main():
         "RandomHue": (((-0.5, 0.5),), 2, 2022),
         "RandomHorizontalFlip": ((), 1, 2020),
         "RandomInvert": ((), 1, 2020),
+        "RandomJPEG": (((1.0, 5.0),), 1, 2024),
         "RandomMedianBlur": (((3, 3),), 1, 2023),
         "RandomMotionBlur": ((7, 35.0, 0.5), 2, 2020),
         "RandomPerspective": ((0.2,), 2, 2020),
@@ -182,6 +183,8 @@ def main():
         torch.manual_seed(seed)
         if aug_name == "RandomJigsaw":  # make sure the image is dividable
             img_in = K.geometry.resize(img_in, (1020, 500))
+        elif aug_name == "RandomJPEG":
+            img_in = img_in[..., :176, :]
         # apply the augmentation to the image and concat
         out = aug(img_in)
 

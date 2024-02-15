@@ -30,6 +30,7 @@ from kornia.augmentation._2d import (
     RandomHue,
     RandomInvert,
     RandomJigsaw,
+    RandomJPEG,
     RandomMedianBlur,
     RandomMixUpV2,
     RandomMosaic,
