@@ -16,6 +16,10 @@ class TestDifferentiableClipping(BaseTester):
 
         self.assert_close(y, y_expected)
 
+    def test_gradcheck(self, device):
+        x = tensor([1.0, 6.0, 11.0, 12.0], device=device)
+        self.gradcheck(differentiable_clipping, (x, 5.0, 10.0))
+
 
 class TestDifferentiablePolynomialRounding(BaseTester):
     def test_differentiable_polynomial_rounding(self, device):
@@ -25,6 +29,10 @@ class TestDifferentiablePolynomialRounding(BaseTester):
 
         self.assert_close(y, y_expected)
 
+    def test_gradcheck(self, device):
+        x = tensor([1.0, 6.0, 10.0, 12.0], device=device)
+        self.gradcheck(differentiable_polynomial_rounding, (x))
+
 
 class TestDifferentiablePolynomialFloor(BaseTester):
     def test_differentiable_polynomial_floor(self, device):
@@ -33,3 +41,7 @@ class TestDifferentiablePolynomialFloor(BaseTester):
         y_expected = tensor([1.0], device=device)
 
         self.assert_close(y, y_expected)
+
+        def test_gradcheck(self, device):
+            x = tensor([1.0, 6.0, 10.0, 12.0], device=device)
+            self.gradcheck(differentiable_polynomial_floor, (x))
