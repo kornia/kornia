@@ -290,9 +290,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         self.transform_op.data_keys = self.transform_op.preproc_datakeys(data_keys)
 
-        self._validate_args_datakeys(*args, data_keys=self.transform_op.data_keys)
+        self._validate_args_datakeys(*args, data_keys=self.transform_op.data_keys)  # typing: ignore
 
-        in_args = self._arguments_preproc(*args, data_keys=self.transform_op.data_keys)
+        in_args = self._arguments_preproc(*args, data_keys=self.transform_op.data_keys)  # typing: ignore
 
         if params is None:
             if self._params is None:
@@ -396,9 +396,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         self.transform_op.data_keys = self.transform_op.preproc_datakeys(data_keys)
 
-        self._validate_args_datakeys(*args, data_keys=self.transform_op.data_keys)
+        self._validate_args_datakeys(*args, data_keys=self.transform_op.data_keys)  # typing: ignore
 
-        in_args = self._arguments_preproc(*args, data_keys=self.transform_op.data_keys)
+        in_args = self._arguments_preproc(*args, data_keys=self.transform_op.data_keys)  # typing: ignore
 
         if params is None:
             # image data must exist if params is not provided.
