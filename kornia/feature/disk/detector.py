@@ -6,8 +6,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.core import Tensor
-
-from .structs import Keypoints
+from kornia.feature.disk.structs import Keypoints
 
 
 def nms(signal: Tensor, window_size: int = 5, cutoff: float = 0.0) -> Tensor:

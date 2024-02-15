@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from .dsnt import render_gaussian2d, spatial_expectation2d, spatial_softmax2d
-from .nms import NonMaximaSuppression2d, NonMaximaSuppression3d, nms2d, nms3d
-from .spatial_soft_argmax import (
+from kornia.geometry.subpix.dsnt import render_gaussian2d, spatial_expectation2d, spatial_softmax2d
+from kornia.geometry.subpix.nms import NonMaximaSuppression2d, NonMaximaSuppression3d, nms2d, nms3d
+from kornia.geometry.subpix.spatial_soft_argmax import (
     ConvQuadInterp3d,
     ConvSoftArgmax2d,
     ConvSoftArgmax3d,

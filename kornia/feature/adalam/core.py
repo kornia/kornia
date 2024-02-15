@@ -5,9 +5,8 @@ import torch
 from typing_extensions import NotRequired, TypedDict
 
 from kornia.core import Tensor, concatenate, tensor, where
-
-from .ransac import ransac
-from .utils import dist_matrix, orientation_diff
+from kornia.feature.adalam.ransac import ransac
+from kornia.feature.adalam.utils import dist_matrix, orientation_diff
 
 
 class AdalamConfig(TypedDict):

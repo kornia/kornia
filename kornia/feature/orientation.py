@@ -6,11 +6,10 @@ from torch import nn
 
 from kornia.constants import pi
 from kornia.core.check import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
+from kornia.feature.laf import extract_patches_from_pyramid, get_laf_orientation, set_laf_orientation
 from kornia.filters import SpatialGradient, get_gaussian_discrete_kernel1d, get_gaussian_kernel2d
 from kornia.geometry import rad2deg
 from kornia.utils.helpers import map_location_to_cpu
-
-from .laf import extract_patches_from_pyramid, get_laf_orientation, set_laf_orientation
 
 urls: Dict[str, str] = {}
 urls["orinet"] = "https://github.com/ducha-aiki/affnet/raw/master/pretrained/OriNet.pth"

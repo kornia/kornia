@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .resnet_fpn import ResNetFPN_8_2, ResNetFPN_16_4
+from kornia.feature.loftr.backbone.resnet_fpn import ResNetFPN_8_2, ResNetFPN_16_4
 
 
 def build_backbone(config: dict[str, Any]) -> ResNetFPN_8_2 | ResNetFPN_16_4:

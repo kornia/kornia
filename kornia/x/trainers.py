@@ -5,9 +5,8 @@ from torch.utils.data import DataLoader
 
 from kornia.core import Module, Tensor, stack
 from kornia.metrics import accuracy, mean_average_precision, mean_iou
-
-from .trainer import Trainer
-from .utils import Configuration
+from kornia.x.trainer import Trainer
+from kornia.x.utils import Configuration
 
 
 class ImageClassifierTrainer(Trainer):

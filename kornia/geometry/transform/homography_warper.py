@@ -6,9 +6,8 @@ from typing import Any, Optional
 import torch.nn.functional as F
 
 from kornia.core import Module, Tensor
+from kornia.geometry.transform.imgwarp import homography_warp, warp_grid
 from kornia.utils import create_meshgrid
-
-from .imgwarp import homography_warp, warp_grid
 
 __all__ = ["HomographyWarper", "BaseWarper"]
 

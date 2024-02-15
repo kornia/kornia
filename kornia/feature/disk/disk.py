@@ -5,10 +5,9 @@ from typing import Optional
 import torch
 
 from kornia.core import Module, Tensor
-
-from ._unets import Unet
-from .detector import heatmap_to_keypoints
-from .structs import DISKFeatures
+from kornia.feature.disk._unets import Unet
+from kornia.feature.disk.detector import heatmap_to_keypoints
+from kornia.feature.disk.structs import DISKFeatures
 
 
 class DISK(Module):

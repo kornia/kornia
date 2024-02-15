@@ -3,8 +3,7 @@ from typing import Dict, List, Tuple
 import torch
 
 from kornia.core import Tensor, concatenate, tensor, zeros
-
-from .mean_iou import mean_iou_bbox
+from kornia.metrics.mean_iou import mean_iou_bbox
 
 
 def mean_average_precision(

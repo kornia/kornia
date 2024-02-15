@@ -5,16 +5,15 @@ import torch
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.container.base import SequentialBase
+from kornia.augmentation.container.image import ImageSequential
+from kornia.augmentation.container.ops import InputSequentialOps
+from kornia.augmentation.container.params import ParamItem, PatchParamItem
 from kornia.contrib.extract_patches import extract_tensor_patches
 from kornia.core import Module, Tensor, concatenate
 from kornia.core import pad as fpad
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
-
-from .base import SequentialBase
-from .image import ImageSequential
-from .ops import InputSequentialOps
-from .params import ParamItem, PatchParamItem
 
 __all__ = ["PatchSequential"]
 

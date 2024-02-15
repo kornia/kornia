@@ -1,1 +1,1 @@
-from .autoaugment import AutoAugment
+from kornia.augmentation.auto.autoaugment.autoaugment import AutoAugment

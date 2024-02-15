@@ -5,9 +5,8 @@ from typing import Any
 import torch
 
 from kornia.core import Tensor
+from kornia.feature.loftr.utils.geometry import warp_kpts
 from kornia.utils import create_meshgrid
-
-from .geometry import warp_kpts
 
 
 #  Coarse-Level supervision

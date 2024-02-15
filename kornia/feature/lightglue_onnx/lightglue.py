@@ -6,8 +6,7 @@ import torch
 
 from kornia.core import Device, Tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_DEVICES, KORNIA_CHECK_SHAPE
-
-from .utils import download_onnx_from_url, normalize_keypoints
+from kornia.feature.lightglue_onnx.utils import download_onnx_from_url, normalize_keypoints
 
 try:
     import numpy as np

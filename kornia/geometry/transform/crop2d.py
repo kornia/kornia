@@ -5,9 +5,8 @@ import torch
 from kornia.core import Tensor, as_tensor, pad, tensor
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.bbox import infer_bbox_shape, validate_bbox
-
-from .affwarp import resize
-from .imgwarp import get_perspective_transform, warp_affine
+from kornia.geometry.transform.affwarp import resize
+from kornia.geometry.transform.imgwarp import get_perspective_transform, warp_affine
 
 __all__ = ["crop_and_resize", "crop_by_boxes", "crop_by_transform_mat", "crop_by_indices", "center_crop"]
 

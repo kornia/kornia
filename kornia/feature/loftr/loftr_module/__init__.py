@@ -1,2 +1,2 @@
-from .fine_preprocess import FinePreprocess
-from .transformer import LocalFeatureTransformer
+from kornia.feature.loftr.loftr_module.fine_preprocess import FinePreprocess
+from kornia.feature.loftr.loftr_module.transformer import LocalFeatureTransformer

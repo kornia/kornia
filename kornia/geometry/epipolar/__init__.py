@@ -1,10 +1,10 @@
-from ._metrics import (
+from kornia.geometry.epipolar._metrics import (
     left_to_right_epipolar_distance,
     right_to_left_epipolar_distance,
     sampson_epipolar_distance,
     symmetrical_epipolar_distance,
 )
-from .essential import (
+from kornia.geometry.epipolar.essential import (
     decompose_essential_matrix,
     essential_from_fundamental,
     essential_from_Rt,
@@ -13,7 +13,7 @@ from .essential import (
     motion_from_essential_choose_solution,
     relative_camera_motion,
 )
-from .fundamental import (
+from kornia.geometry.epipolar.fundamental import (
     compute_correspond_epilines,
     find_fundamental,
     fundamental_from_essential,
@@ -23,8 +23,8 @@ from .fundamental import (
     normalize_points,
     normalize_transformation,
 )
-from .numeric import cross_product_matrix
-from .projection import (
+from kornia.geometry.epipolar.numeric import cross_product_matrix
+from kornia.geometry.epipolar.projection import (
     KRt_from_projection,
     depth_from_point,
     intrinsics_like,
@@ -33,8 +33,8 @@ from .projection import (
     random_intrinsics,
     scale_intrinsics,
 )
-from .scene import generate_scene
-from .triangulation import triangulate_points
+from kornia.geometry.epipolar.scene import generate_scene
+from kornia.geometry.epipolar.triangulation import triangulate_points
 
 __all__ = [
     "cross_product_matrix",

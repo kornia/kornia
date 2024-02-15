@@ -1,9 +1,9 @@
-from .affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, PatchAffineShapeEstimator
-from .defmo import DeFMO
-from .disk import DISK, DISKFeatures
-from .hardnet import HardNet, HardNet8
-from .hynet import TLU, FilterResponseNorm2d, HyNet
-from .integrated import (
+from kornia.feature.affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, PatchAffineShapeEstimator
+from kornia.feature.defmo import DeFMO
+from kornia.feature.disk import DISK, DISKFeatures
+from kornia.feature.hardnet import HardNet, HardNet8
+from kornia.feature.hynet import TLU, FilterResponseNorm2d, HyNet
+from kornia.feature.integrated import (
     GFTTAffNetHardNet,
     HesAffNetHardNet,
     KeyNetAffNetHardNet,
@@ -16,8 +16,8 @@ from .integrated import (
     SIFTFeatureScaleSpace,
     get_laf_descriptors,
 )
-from .keynet import KeyNet, KeyNetDetector
-from .laf import (
+from kornia.feature.keynet import KeyNet, KeyNetDetector
+from kornia.feature.laf import (
     KORNIA_CHECK_LAF,
     denormalize_laf,
     ellipse_to_laf,
@@ -38,10 +38,10 @@ from .laf import (
     scale_laf,
     set_laf_orientation,
 )
-from .lightglue import LightGlue
-from .lightglue_onnx import OnnxLightGlue
-from .loftr import LoFTR
-from .matching import (
+from kornia.feature.lightglue import LightGlue
+from kornia.feature.lightglue_onnx import OnnxLightGlue
+from kornia.feature.loftr import LoFTR
+from kornia.feature.matching import (
     DescriptorMatcher,
     GeometryAwareDescriptorMatcher,
     match_adalam,
@@ -51,9 +51,9 @@ from .matching import (
     match_smnn,
     match_snn,
 )
-from .mkd import MKDDescriptor
-from .orientation import LAFOrienter, OriNet, PatchDominantGradientOrientation
-from .responses import (
+from kornia.feature.mkd import MKDDescriptor
+from kornia.feature.orientation import LAFOrienter, OriNet, PatchDominantGradientOrientation
+from kornia.feature.responses import (
     BlobDoG,
     BlobDoGSingle,
     BlobHessian,
@@ -65,11 +65,11 @@ from .responses import (
     harris_response,
     hessian_response,
 )
-from .scale_space_detector import MultiResolutionDetector, PassLAF, ScaleSpaceDetector
-from .siftdesc import DenseSIFTDescriptor, SIFTDescriptor
-from .sold2 import SOLD2, SOLD2_detector
-from .sosnet import SOSNet
-from .tfeat import TFeat
+from kornia.feature.scale_space_detector import MultiResolutionDetector, PassLAF, ScaleSpaceDetector
+from kornia.feature.siftdesc import DenseSIFTDescriptor, SIFTDescriptor
+from kornia.feature.sold2 import SOLD2, SOLD2_detector
+from kornia.feature.sosnet import SOSNet
+from kornia.feature.tfeat import TFeat
 
 __all__ = [
     "match_nn",

@@ -7,12 +7,11 @@ import kornia.geometry.epipolar as epi
 from kornia.core import eye, ones_like, stack, where, zeros
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
 from kornia.geometry import solvers
+from kornia.geometry.epipolar.numeric import cross_product_matrix
+from kornia.geometry.epipolar.projection import depth_from_point, projection_from_KRt
+from kornia.geometry.epipolar.triangulation import triangulate_points
 from kornia.utils import eye_like, vec_like
 from kornia.utils.helpers import _torch_svd_cast
-
-from .numeric import cross_product_matrix
-from .projection import depth_from_point, projection_from_KRt
-from .triangulation import triangulate_points
 
 __all__ = [
     "find_essential",

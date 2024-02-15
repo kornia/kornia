@@ -5,8 +5,7 @@ import torch
 
 from kornia.core import Module
 from kornia.metrics import AverageMeter
-
-from .utils import TrainerState
+from kornia.x.utils import TrainerState
 
 
 # default function to generate the filename in the model checkpoint

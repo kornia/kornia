@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from kornia.core import Module, Tensor
-
-from .filter import filter2d
-from .kernels import get_laplacian_kernel2d, normalize_kernel2d
+from kornia.filters.filter import filter2d
+from kornia.filters.kernels import get_laplacian_kernel2d, normalize_kernel2d
 
 
 def laplacian(

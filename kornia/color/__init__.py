@@ -1,11 +1,26 @@
-from .colormap import AUTUMN, ApplyColorMap, ColorMap, RGBColor, apply_colormap
-from .gray import BgrToGrayscale, GrayscaleToRgb, RgbToGrayscale, bgr_to_grayscale, grayscale_to_rgb, rgb_to_grayscale
-from .hls import HlsToRgb, RgbToHls, hls_to_rgb, rgb_to_hls
-from .hsv import HsvToRgb, RgbToHsv, hsv_to_rgb, rgb_to_hsv
-from .lab import LabToRgb, RgbToLab, lab_to_rgb, rgb_to_lab
-from .luv import LuvToRgb, RgbToLuv, luv_to_rgb, rgb_to_luv
-from .raw import CFA, RawToRgb, RawToRgb2x2Downscaled, RgbToRaw, raw_to_rgb, raw_to_rgb_2x2_downscaled, rgb_to_raw
-from .rgb import (
+from kornia.color.colormap import AUTUMN, ApplyColorMap, ColorMap, RGBColor, apply_colormap
+from kornia.color.gray import (
+    BgrToGrayscale,
+    GrayscaleToRgb,
+    RgbToGrayscale,
+    bgr_to_grayscale,
+    grayscale_to_rgb,
+    rgb_to_grayscale,
+)
+from kornia.color.hls import HlsToRgb, RgbToHls, hls_to_rgb, rgb_to_hls
+from kornia.color.hsv import HsvToRgb, RgbToHsv, hsv_to_rgb, rgb_to_hsv
+from kornia.color.lab import LabToRgb, RgbToLab, lab_to_rgb, rgb_to_lab
+from kornia.color.luv import LuvToRgb, RgbToLuv, luv_to_rgb, rgb_to_luv
+from kornia.color.raw import (
+    CFA,
+    RawToRgb,
+    RawToRgb2x2Downscaled,
+    RgbToRaw,
+    raw_to_rgb,
+    raw_to_rgb_2x2_downscaled,
+    rgb_to_raw,
+)
+from kornia.color.rgb import (
     BgrToRgb,
     BgrToRgba,
     LinearRgbToRgb,
@@ -23,10 +38,10 @@ from .rgb import (
     rgba_to_bgr,
     rgba_to_rgb,
 )
-from .sepia import Sepia, sepia_from_rgb
-from .xyz import RgbToXyz, XyzToRgb, rgb_to_xyz, xyz_to_rgb
-from .ycbcr import RgbToYcbcr, YcbcrToRgb, rgb_to_y, rgb_to_ycbcr, ycbcr_to_rgb
-from .yuv import (
+from kornia.color.sepia import Sepia, sepia_from_rgb
+from kornia.color.xyz import RgbToXyz, XyzToRgb, rgb_to_xyz, xyz_to_rgb
+from kornia.color.ycbcr import RgbToYcbcr, YcbcrToRgb, rgb_to_y, rgb_to_ycbcr, ycbcr_to_rgb
+from kornia.color.yuv import (
     RgbToYuv,
     RgbToYuv420,
     RgbToYuv422,

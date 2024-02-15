@@ -4,8 +4,7 @@ import torch.nn.functional as F
 
 from kornia.core import Tensor, pad
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
-
-from .kernels import normalize_kernel2d
+from kornia.filters.kernels import normalize_kernel2d
 
 _VALID_BORDERS = {"constant", "reflect", "replicate", "circular"}
 _VALID_PADDING = {"valid", "same"}

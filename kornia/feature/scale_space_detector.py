@@ -7,12 +7,11 @@ from typing_extensions import TypedDict
 
 from kornia.core import Device, Module, Tensor, concatenate, eye, tensor, where, zeros
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.feature.laf import laf_from_center_scale_ori, laf_is_inside_image
+from kornia.feature.orientation import PassLAF
+from kornia.feature.responses import BlobHessian
 from kornia.geometry.subpix import ConvSoftArgmax3d, NonMaximaSuppression2d
 from kornia.geometry.transform import ScalePyramid, pyrdown, resize
-
-from .laf import laf_from_center_scale_ori, laf_is_inside_image
-from .orientation import PassLAF
-from .responses import BlobHessian
 
 
 def _scale_index_to_scale(max_coords: Tensor, sigmas: Tensor, num_levels: int) -> Tensor:

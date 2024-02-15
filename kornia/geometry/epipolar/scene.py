@@ -6,9 +6,8 @@ import torch
 
 from kornia.core import rand, stack, where
 from kornia.geometry.conversions import axis_angle_to_rotation_matrix
+from kornia.geometry.epipolar.projection import projection_from_KRt, random_intrinsics
 from kornia.geometry.linalg import transform_points
-
-from .projection import projection_from_KRt, random_intrinsics
 
 
 def generate_scene(num_views: int, num_points: int) -> Dict[str, torch.Tensor]:

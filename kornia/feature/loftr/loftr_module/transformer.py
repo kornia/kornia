@@ -7,8 +7,7 @@ import torch
 from torch import nn
 
 from kornia.core import Module, Tensor
-
-from .linear_attention import FullAttention, LinearAttention
+from kornia.feature.loftr.loftr_module.linear_attention import FullAttention, LinearAttention
 
 
 class LoFTREncoderLayer(Module):

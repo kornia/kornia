@@ -8,10 +8,9 @@ import torch
 
 from kornia.core import Tensor, as_tensor
 from kornia.core.check import KORNIA_CHECK_LAF, KORNIA_CHECK_SHAPE
+from kornia.feature.adalam.core import AdalamConfig, _no_match, adalam_core
+from kornia.feature.adalam.utils import dist_matrix
 from kornia.feature.laf import get_laf_center, get_laf_orientation, get_laf_scale
-
-from .core import AdalamConfig, _no_match, adalam_core
-from .utils import dist_matrix
 
 
 def get_adalam_default_config() -> AdalamConfig:

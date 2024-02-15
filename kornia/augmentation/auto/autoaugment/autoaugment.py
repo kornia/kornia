@@ -2,12 +2,11 @@ from typing import Iterator, List, Optional, Tuple, Union
 
 from torch.distributions import Categorical
 
+from kornia.augmentation.auto.autoaugment import ops
 from kornia.augmentation.auto.base import SUBPLOLICY_CONFIG, PolicyAugmentBase
 from kornia.augmentation.auto.operations.policy import PolicySequential
 from kornia.augmentation.container.params import ParamItem
 from kornia.core import Module, tensor
-
-from . import ops
 
 imagenet_policy: List[SUBPLOLICY_CONFIG] = [
     [("posterize", 0.4, 8), ("rotate", 0.6, 9)],

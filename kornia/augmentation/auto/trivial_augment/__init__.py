@@ -1,1 +1,1 @@
-from .trivial_augment import TrivialAugment
+from kornia.augmentation.auto.trivial_augment.trivial_augment import TrivialAugment

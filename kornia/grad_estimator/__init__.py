@@ -1,1 +1,1 @@
-from .ste import STEFunction, StraightThroughEstimator
+from kornia.grad_estimator.ste import STEFunction, StraightThroughEstimator

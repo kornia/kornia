@@ -5,12 +5,11 @@ from typing_extensions import ParamSpec
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.container.params import ParamItem
 from kornia.constants import DataKey
 from kornia.core import Module, Tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
-
-from .params import ParamItem
 
 DataType = Union[Tensor, List[Tensor], Boxes, Keypoints]
 

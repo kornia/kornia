@@ -14,8 +14,7 @@ except ImportError:
 
 from kornia.core import Module, Tensor
 from kornia.metrics import AverageMeter
-
-from .utils import Configuration, StatsTracker, TrainerState
+from kornia.x.utils import Configuration, StatsTracker, TrainerState
 
 callbacks_whitelist = [
     # high level functions

@@ -6,10 +6,9 @@ from torch.distributions import Categorical
 from kornia.augmentation.auto.base import SUBPLOLICY_CONFIG, PolicyAugmentBase
 from kornia.augmentation.auto.operations import OperationBase
 from kornia.augmentation.auto.operations.policy import PolicySequential
+from kornia.augmentation.auto.rand_augment import ops
 from kornia.augmentation.container.params import ParamItem
 from kornia.core import Module, Tensor
-
-from . import ops
 
 default_policy: List[SUBPLOLICY_CONFIG] = [
     [("auto_contrast", 0, 1)],

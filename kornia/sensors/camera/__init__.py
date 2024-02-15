@@ -1,4 +1,4 @@
-from .camera_model import (
+from kornia.sensors.camera.camera_model import (
     BrownConradyModel,
     CameraModel,
     CameraModelBase,

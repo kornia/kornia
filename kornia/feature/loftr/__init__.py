@@ -1,3 +1,3 @@
 from __future__ import annotations
 
-from .loftr import LoFTR
+from kornia.feature.loftr.loftr import LoFTR
