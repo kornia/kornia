@@ -42,6 +42,6 @@ class TestDifferentiablePolynomialFloor(BaseTester):
 
         self.assert_close(y, y_expected)
 
-        def test_gradcheck(self, device):
+    def test_gradcheck(self, device):
             x = tensor([1.0, 6.0, 10.0, 12.0], device=device)
             self.gradcheck(differentiable_polynomial_floor, (x))
