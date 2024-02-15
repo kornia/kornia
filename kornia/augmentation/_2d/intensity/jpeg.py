@@ -9,6 +9,8 @@ from kornia.enhance import jpeg_codec_differentiable
 class RandomJPEG(IntensityAugmentationBase2D):
     r"""Applies random (differentiable) JPEG coding to a tensor image.
 
+    .. image:: _static/img/RandomJPEG.png
+
     Args:
         jpeg_quality: The range of compression rates to be applied.
         p: probability of applying the transformation.
