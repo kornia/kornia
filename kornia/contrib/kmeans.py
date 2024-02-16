@@ -20,7 +20,7 @@ class KMeans:
 
     Example:
         >>> kmeans = kornia.contrib.KMeans(3, None, 10e-4, 100, 0)
-        >>> kmeans.fit(torch.rand((1000, 5))
+        >>> kmeans.fit(torch.rand((1000, 5)))
         >>> predictions = kmeans.predict(torch.rand((10, 5)))
     """
 
