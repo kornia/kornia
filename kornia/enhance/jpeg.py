@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
-
 import torch
 
 from kornia.color import rgb_to_ycbcr, ycbcr_to_rgb
@@ -14,6 +12,11 @@ from kornia.core.check import (
 )
 from kornia.geometry.transform.affwarp import rescale
 from kornia.utils.image import perform_keep_shape_image
+from kornia.utils.misc import (
+    differentiable_clipping,
+    differentiable_polynomial_floor,
+    differentiable_polynomial_rounding,
+)
 
 __all__ = ["jpeg_codec_differentiable", "JPEGCodecDifferentiable"]
 
@@ -136,61 +139,6 @@ def _idct_8x8(input: Tensor) -> Tensor:
     return output
 
 
-def _differentiable_polynomial_rounding(input: Tensor) -> Tensor:
-    """This function implements differentiable rounding.
-
-    Args:
-        input (Tensor): Input tensor of any shape to be rounded.
-
-    Returns:
-        output (Tensor): Pseudo rounded tensor of the same shape as input tensor.
-    """
-    # Perform differentiable rounding
-    output: Tensor = torch.round(input) + (input - torch.round(input)) ** 3
-    return output
-
-
-def _differentiable_polynomial_floor(input: Tensor) -> Tensor:
-    """This function implements differentiable floor.
-
-    Args:
-        input (Tensor): Input tensor of any shape to be floored.
-
-    Returns:
-        output (Tensor): Pseudo rounded tensor of the same shape as input tensor.
-    """
-    # Perform differentiable rounding
-    output: Tensor = torch.floor(input) + (input - 0.5 - torch.floor(input)) ** 3
-    return output
-
-
-def _differentiable_clipping(
-    input: Tensor,
-    min: Optional[float] = None,
-    max: Optional[float] = None,
-    scale: float = 0.02,
-) -> Tensor:
-    """This function implements a differentiable and soft approximation of the clipping operation.
-
-    Args:
-        input (Tensor): Input tensor of any shape.
-        min (Optional[float]): Minimum value.
-        max (Optional[float]): Maximum value.
-        scale (float): Scale value. Default 0.02.
-
-    Returns:
-        output (Tensor): Clipped output tensor of the same shape as the input tensor.
-    """
-    # Make a copy of the input tensor
-    output: Tensor = input.clone()
-    # Perform differentiable soft clipping
-    if max is not None:
-        output[output > max] = -scale * (torch.exp(-output[output > max] + max) - 1.0) + max
-    if min is not None:
-        output[output < min] = scale * (torch.exp(output[output < min] - min) - 1.0) + min
-    return output
-
-
 def _jpeg_quality_to_scale(
     compression_strength: Tensor,
 ) -> Tensor:
@@ -203,7 +151,7 @@ def _jpeg_quality_to_scale(
         scale (Tensor): Scaling factor to be applied to quantization matrix. Same shape as input.
     """
     # Get scale
-    scale: Tensor = _differentiable_polynomial_floor(
+    scale: Tensor = differentiable_polynomial_floor(
         torch.where(compression_strength < 50, 5000.0 / compression_strength, 200.0 - 2.0 * compression_strength)
     )
     return scale
@@ -229,12 +177,12 @@ def _quantize(
         quantization_table[:, None] * _jpeg_quality_to_scale(jpeg_quality)[:, None, None, None]
     )
     # Perform scaling
-    quantization_table = _differentiable_polynomial_floor(
-        _differentiable_clipping((quantization_table_scaled + 50.0) / 100.0, 1, 255)
+    quantization_table = differentiable_polynomial_floor(
+        differentiable_clipping((quantization_table_scaled + 50.0) / 100.0, 1, 255)
     )
     output: Tensor = input / quantization_table
     # Perform rounding
-    output = _differentiable_polynomial_rounding(output)
+    output = differentiable_polynomial_rounding(output)
     return output
 
 
@@ -258,8 +206,8 @@ def _dequantize(
         quantization_table[:, None] * _jpeg_quality_to_scale(jpeg_quality)[:, None, None, None]
     )
     # Perform scaling
-    output: Tensor = input * _differentiable_polynomial_floor(
-        _differentiable_clipping((quantization_table_scaled + 50.0) / 100.0, 1, 255)
+    output: Tensor = input * differentiable_polynomial_floor(
+        differentiable_clipping((quantization_table_scaled + 50.0) / 100.0, 1, 255)
     )
     return output
 
@@ -550,7 +498,7 @@ def jpeg_codec_differentiable(
         quantization_table_y=quantization_table_y,
     )
     # Clip coded image
-    image_rgb_jpeg = _differentiable_clipping(input=image_rgb_jpeg, min=0.0, max=255.0)
+    image_rgb_jpeg = differentiable_clipping(input=image_rgb_jpeg, min_val=0.0, max_val=255.0)
     # Back to original shape
     # image_rgb_jpeg = image_rgb_jpeg.view(original_shape)
     return image_rgb_jpeg
