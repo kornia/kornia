@@ -197,3 +197,9 @@ Distance Transform
 .. autofunction:: diamond_square
 
 .. autoclass:: DistanceTransform
+
+KMeans
+------
+
+.. autoclass:: KMeans
+    :members:
