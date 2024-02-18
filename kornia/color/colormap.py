@@ -1,46 +1,83 @@
-from abc import ABC
+from enum import Enum
 from typing import List, Optional, Union
 
 import torch
 from torch.nn.functional import interpolate
 
-from kornia.color import colormap_data as cm_data
+import kornia.color._colormap_data as cm_data
+from kornia.color._colormap_data import RGBColor
 from kornia.core import Module, Tensor, tensor
 from kornia.core.check import KORNIA_CHECK_IS_GRAY
-
-RGBColor = cm_data.RGBColor
-
-colormap_options = {
-    "autumn": cm_data._AUTUMN_BASE,
-    "bone": cm_data._BONE_BASE,
-    "jet": cm_data._JET_BASE,
-    "winter": cm_data._WINTER_BASE,
-    "rainbow": cm_data._RAINBOW_BASE,
-    "ocean": cm_data._OCEAN_BASE,
-    "summer": cm_data._SUMMER_BASE,
-    "spring": cm_data._SPRING_BASE,
-    "cool": cm_data._COOL_BASE,
-    "hsv": cm_data._HSV_BASE,
-    "brg": cm_data._BRG_BASE,
-    "pink": cm_data._PINK_BASE,
-    "hot": cm_data._HOT_BASE,
-    "plasma": cm_data._PLASMA_BASE,
-    "viridis": cm_data._VIRIDIS_BASE,
-    "cividis": cm_data._CIVIDIS_BASE,
-    "twilight": cm_data._TWILIGHT_BASE,
-    "turbo": cm_data._TURBO_BASE,
-    "seismic": cm_data._SEISMIC_BASE,
-}
+from kornia.utils.helpers import deprecated
 
 
-class ColorMap(ABC):
+class CMAP(Enum):
+    r"""An enumeration for available colormaps."""
+
+    autumn = 1
+    bone = 2
+    jet = 3
+    winter = 4
+    rainbow = 5
+    ocean = 6
+    summer = 7
+    spring = 8
+    cool = 9
+    hsv = 10
+    brg = 11
+    pink = 12
+    hot = 13
+    plasma = 14
+    viridis = 15
+    cividis = 16
+    twilight = 17
+    turbo = 18
+    seismic = 19
+
+    def _load_base(self) -> RGBColor:
+        r"""Load the base colormap corresponding to the enumeration member.
+
+        Returns:
+            RGBColor: The base colormap.
+        """
+        return {
+            "autumn": cm_data._AUTUMN_BASE,
+            "bone": cm_data._BONE_BASE,
+            "jet": cm_data._JET_BASE,
+            "winter": cm_data._WINTER_BASE,
+            "rainbow": cm_data._RAINBOW_BASE,
+            "ocean": cm_data._OCEAN_BASE,
+            "summer": cm_data._SUMMER_BASE,
+            "spring": cm_data._SPRING_BASE,
+            "cool": cm_data._COOL_BASE,
+            "hsv": cm_data._HSV_BASE,
+            "brg": cm_data._BRG_BASE,
+            "pink": cm_data._PINK_BASE,
+            "hot": cm_data._HOT_BASE,
+            "plasma": cm_data._PLASMA_BASE,
+            "viridis": cm_data._VIRIDIS_BASE,
+            "cividis": cm_data._CIVIDIS_BASE,
+            "twilight": cm_data._TWILIGHT_BASE,
+            "turbo": cm_data._TURBO_BASE,
+            "seismic": cm_data._SEISMIC_BASE,
+        }[self.name]
+
+    @classmethod
+    def list(cls):
+        r"""Returns a list of names of enumeration members.
+
+        Returns:
+            List[str]: A list containing the names of enumeration members.
+        """
+        return [c.name for c in cls]
+
+
+class ColorMap:
     r"""Class to represent a colour map. It can be created or selected from the built-in colour map.
 
     Args:
-        base_colormap: A list of RGB colors to define a custom colormap.
-        If specified, `name_colormap` should be None.
-        name_colormap: The name of a built-in colormap.
-        If specified, `base_colormap` should be None.
+        base: A list of RGB colors to define a new custom colormap or
+        the name of a built-in colormap as str or using CMAP class.
         num_colors: Number of colors in the colormap.
         device: The device to put the generated colormap on.
         dtype: The data type of the generated colormap.
@@ -48,17 +85,14 @@ class ColorMap(ABC):
     Returns:
             ColorMap: An object of the colormap with the num_colors length.
 
-    Raises:
-        ValueError: If both `base_colormap` and `name_colormap` are provided or if neither is provided.
-
     Example:
-        >>> ColorMap(name_colormap='viridis', num_colors=8).colors
+        >>> ColorMap(base='viridis', num_colors=8).colors
         tensor([[0.2813, 0.2621, 0.2013, 0.1505, 0.1210, 0.2463, 0.5259, 0.8557],
                 [0.0842, 0.2422, 0.3836, 0.5044, 0.6258, 0.7389, 0.8334, 0.8886],
                 [0.4072, 0.5207, 0.5543, 0.5574, 0.5334, 0.4519, 0.2880, 0.0989]])
 
         # Create color map from first color (RGB with range[0-1]) to last one with num_colors length.
-        >>> ColorMap(base_colormap=[[0., 0.5 , 1.0], [1., 0.5, 0.]], num_colors=8).colors
+        >>> ColorMap(base=[[0., 0.5 , 1.0], [1., 0.5, 0.]], num_colors=8).colors
         tensor([[0.0000, 0.0000, 0.1250, 0.3750, 0.6250, 0.8750, 1.0000, 1.0000],
                 [0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000],
                 [1.0000, 1.0000, 0.8750, 0.6250, 0.3750, 0.1250, 0.0000, 0.0000]])
@@ -66,8 +100,7 @@ class ColorMap(ABC):
 
     def __init__(
         self,
-        base_colormap: Optional[List[RGBColor]] = None,
-        name_colormap: Optional[str] = None,
+        base: Union[List[RGBColor], str, CMAP],
         num_colors: Optional[int] = 64,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
@@ -75,18 +108,24 @@ class ColorMap(ABC):
         super().__init__()
         self._dtype = dtype
         self._device = device
-        self.colormap_options = colormap_options
-        self.colormap_names = list(self.colormap_options.keys())
 
-        if name_colormap is not None:
-            cmap = name_colormap.lower()
-            if cmap not in self.colormap_names:
-                raise ValueError(f"Unsupported colormap: {cmap}. Available colormaps are {self.colormap_names}")
-            self.colors = self._generate_color_map(self.colormap_options[cmap], num_colors)
-        elif base_colormap is not None:
-            self.colors = self._generate_color_map(base_colormap, num_colors)
+        if isinstance(base, str):
+            base = base.lower()
+            if base not in CMAP.list():
+                raise ValueError(f"Unsupported colormap: {base}. Available colormaps are {CMAP.list()}")
+            base_colormap_data = CMAP[base]._load_base()
+            self.name = base
+        elif isinstance(base, CMAP):
+            # Check if CMAP.base exist in enum CMAP? How?
+            base_colormap_data = base._load_base()
+            self.name = base.name
+        elif isinstance(base, list):
+            base_colormap_data = base
+            self.name = "CustomCmap"
         else:
-            raise ValueError("You should use `base_colormap` (List[RGBColor]) or `name_colormap` (str).")
+            raise ValueError("Base should be one of the available `CMAP` or a base colormap data (list[RGBColor])")
+
+        self.colors = self._generate_color_map(base_colormap_data, num_colors)
 
     def _generate_color_map(self, base_colormap: List[RGBColor], num_colors: int) -> Tensor:
         r"""Generates a colormap tensor using interpolation.
@@ -109,14 +148,6 @@ class ColorMap(ABC):
         """
         return self.colors.shape[-1]
 
-    def colormap_list(self) -> List:
-        r"""Returns the list of colormaps available.
-
-        Returns:
-            List: Name of colorsmaps available.
-        """
-        return self.colormap_names
-
 
 def apply_colormap(input_tensor: Tensor, colormap: ColorMap) -> Tensor:
     r"""Apply to a gray tensor a colormap.
@@ -134,7 +165,7 @@ def apply_colormap(input_tensor: Tensor, colormap: ColorMap) -> Tensor:
 
     Example:
         >>> input_tensor = torch.tensor([[[0, 1, 2], [25, 50, 63]]])
-        >>> colormap = ColorMap(name_colormap='autumn')
+        >>> colormap = ColorMap(base='autumn')
         >>> apply_colormap(input_tensor, colormap)
         tensor([[[1.0000, 1.0000, 1.0000],
                  [1.0000, 1.0000, 1.0000]],
@@ -187,7 +218,8 @@ class ApplyColorMap(Module):
 
     Example:
         >>> input_tensor = torch.tensor([[[0, 1, 2], [25, 50, 63]]])
-        >>> ApplyColorMap(colormap='autumn')(input_tensor)
+        >>> colormap = ColorMap(base='autumn')
+        >>> ApplyColorMap(colormap=colormap)(input_tensor)
         tensor([[[1.0000, 1.0000, 1.0000],
                  [1.0000, 1.0000, 1.0000]],
         <BLANKLINE>
@@ -200,27 +232,10 @@ class ApplyColorMap(Module):
 
     def __init__(
         self,
-        colormap: Union[str, ColorMap],
-        num_colors: Optional[int] = 64,
-        device: Optional[torch.device] = None,
-        dtype: Optional[torch.dtype] = None,
+        colormap: ColorMap,
     ) -> None:
         super().__init__()
-        self.num_colors = num_colors
-        self.device = device
-        self.dtype = dtype
-
-        if isinstance(colormap, str):
-            self.cmap = ColorMap(
-                name_colormap=colormap,
-                num_colors=self.num_colors,
-                device=self.device,
-                dtype=self.dtype,
-            )
-        elif isinstance(colormap, ColorMap):
-            self.cmap = colormap
-        else:
-            raise ValueError("Please provide a correct colormap. Could be a str or ColorMap object.")
+        self.colormap = colormap
 
     def forward(self, input_tensor: Tensor) -> Tensor:
         r"""Applies the colormap to the input tensor.
@@ -234,4 +249,21 @@ class ApplyColorMap(Module):
         Returns:
             Tensor: The output tensor representing the image with the applied colormap.
         """
-        return apply_colormap(input_tensor, self.cmap)
+        return apply_colormap(input_tensor, self.colormap)
+
+
+# Generate complete color map
+@deprecated(
+    "0.7.2",
+    extra_reason="The AUTUMN() class is deprecated and will be removed next kornia versions (0.8.0 - dec 2024).",
+)
+class AUTUMN(ColorMap):
+    r"""The GNU Octave colormap `autumn`
+
+    .. image:: _static/img/AUTUMN.png
+    """
+
+    def __init__(
+        self, num_colors: int = 64, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None
+    ) -> None:
+        super().__init__(base=CMAP.autumn, num_colors=num_colors, device=device, dtype=dtype)
