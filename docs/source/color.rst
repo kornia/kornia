@@ -202,18 +202,21 @@ Sepia
 
 Color Maps
 ----------
-You can create your custom color map with
 
 .. autoclass:: ColorMap
 .. autoclass:: RGBColor
 
 
-Color maps availables:
+Color maps available:
 
-.. autoclass:: AUTUMN
+.. autoclass:: CMAP
+    :members:
+    :undoc-members:
+    :member-order: bysource
 
 
 Functions and modules to use the color maps:
 
 .. autofunction:: apply_colormap
 .. autoclass:: ApplyColorMap
+.. autoclass:: AUTUMN
