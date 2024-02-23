@@ -187,7 +187,9 @@ class TestAngleOfRotations:
     @pytest.mark.parametrize("axis_name", ("x", "y", "z"))
     def test_axis_angle_to_rotation_matrix(self, axis_name, device, dtype, atol, rtol):
         # Random angle in [-pi..pi]
-        angle = torch.tensor((np.random.random(size=(2, 1)) * 2.0 * np.pi - np.pi), device=device, dtype=dtype)
+        angle = torch.tensor(
+            (np.random.default_rng().random(size=(2, 1)) * 2.0 * np.pi - np.pi), device=device, dtype=dtype
+        )
         rot_m, axis = TestAngleOfRotations.axis_and_angle_to_rotation_matrix(
             axis_name=axis_name, angle=angle, device=device, dtype=dtype
         )
