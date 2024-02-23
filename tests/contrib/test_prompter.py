@@ -88,17 +88,21 @@ class TestVisualPrompter(BaseTester):
 
     def test_dynamo(self, device, torch_optimizer):
         dtype = torch.float32
-        img = torch.rand(3, 128, 75, device=device, dtype=dtype)
+        batch_size = 1
+        N = 2
+        inpt = torch.rand(3, 77, 128, device=device, dtype=dtype)
+        keypoints = torch.randint(0, min(inpt.shape[-2:]), (batch_size, N, 2), device=device).to(dtype=dtype)
+        labels = torch.randint(0, 1, (batch_size, N), device=device).to(dtype=dtype)
 
         prompter = VisualPrompter(SamConfig("vit_b"), device, dtype)
-        prompter.set_image(img)
+        prompter.set_image(inpt)
 
-        expected = prompter.predict(img)
+        expected = prompter.predict(keypoints=keypoints, keypoints_labels=labels)
         prompter.reset_image()
 
         prompter.compile()
-        prompter.set_image(img)
-        actual = prompter.predict(img)
+        prompter.set_image(inpt)
+        actual = prompter.predict(keypoints=keypoints, keypoints_labels=labels)
 
         self.assert_close(expected.logits, actual.logits)
         self.assert_close(expected.scores, actual.scores)

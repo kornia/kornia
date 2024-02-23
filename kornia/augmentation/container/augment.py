@@ -1,5 +1,5 @@
 import warnings
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union, cast
 
 from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
 from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmentationBase3D
@@ -168,12 +168,37 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         ...    random_apply=10,
         ... )
         >>> out = aug_list(input, mask, bbox)
+
+    How to use a dictionary as input with AugmentationSequential? The dictionary should starts with
+    one of the datakey availables.
+
+        >>> import kornia.augmentation as K
+        >>> img = torch.randn(1, 3, 256, 256)
+        >>> mask = [torch.ones(1, 3, 256, 256), torch.ones(1, 2, 256, 256)]
+        >>> bbox = [
+        ...    torch.tensor([[28.0, 53.0, 143.0, 164.0], [254.0, 158.0, 364.0, 290.0], [307.0, 204.0, 413.0, 350.0]]),
+        ...    torch.tensor([[254.0, 158.0, 364.0, 290.0], [307.0, 204.0, 413.0, 350.0]])
+        ... ]
+        >>> bbox = [Boxes.from_tensor(i).data for i in bbox]
+        >>> aug_dict = K.AugmentationSequential(
+        ...    K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
+        ...    K.RandomHorizontalFlip(p=1.0),
+        ...    K.ImageSequential(K.RandomHorizontalFlip(p=1.0)),
+        ...    K.ImageSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0)),
+        ...    data_keys=None,
+        ...    same_on_batch=False,
+        ...    random_apply=10,
+        ... )
+        >>> data = {'image': img, 'mask': mask[0], 'mask-b': mask[1], 'bbox': bbox[0], 'bbox-other':bbox[1]}
+        >>> out = aug_dict(data)
+        >>> out.keys()
+        dict_keys(['image', 'mask', 'mask-b', 'bbox', 'bbox-other'])
     """
 
     def __init__(
         self,
         *args: Union[_AugmentationBase, ImageSequential],
-        data_keys: Union[List[str], List[int], List[DataKey]] = [DataKey.INPUT],
+        data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = [DataKey.INPUT],
         same_on_batch: Optional[bool] = None,
         keepdim: Optional[bool] = None,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
@@ -202,13 +227,18 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             AugmentationSequential,
         )
 
-        self.data_keys = [DataKey.get(inp) for inp in data_keys]
+        self.data_keys: Optional[List[DataKey]]
+        if data_keys is not None:
+            self.data_keys = [DataKey.get(inp) for inp in data_keys]
+        else:
+            self.data_keys = data_keys
 
-        if not all(in_type in DataKey for in_type in self.data_keys):
-            raise AssertionError(f"`data_keys` must be in {DataKey}. Got {self.data_keys}.")
+        if self.data_keys:
+            if not all(in_type in DataKey for in_type in self.data_keys):
+                raise AssertionError(f"`data_keys` must be in {DataKey}. Got {self.data_keys}.")
 
-        if self.data_keys[0] != DataKey.INPUT:
-            raise NotImplementedError(f"The first input must be {DataKey.INPUT}.")
+            if self.data_keys[0] != DataKey.INPUT:
+                raise NotImplementedError(f"The first input must be {DataKey.INPUT}.")
 
         self.transform_op = AugmentationSequentialOps(self.data_keys)
 
@@ -241,20 +271,28 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
     def inverse(  # type: ignore[override]
         self,
-        *args: DataType,
+        *args: Union[DataType, Dict[str, DataType]],
         params: Optional[List[ParamItem]] = None,
         data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None,
-    ) -> Union[DataType, List[DataType]]:
+    ) -> Union[DataType, List[DataType], Dict[str, DataType]]:
         """Reverse the transformation applied.
 
         Number of input tensors must align with the number of``data_keys``. If ``data_keys`` is not set, use
         ``self.data_keys`` by default.
         """
+        original_keys = None
+        if len(args) == 1 and isinstance(args[0], dict):
+            original_keys, data_keys, args = self._preproc_dict_data(args[0])
+
+        # args here should already be `DataType`
+        # NOTE: how to right type to: unpacked args <-> tuple of args to unpack
+        # issue with `self._preproc_dict_data` return args type
+
         self.transform_op.data_keys = self.transform_op.preproc_datakeys(data_keys)
 
-        self._validate_args_datakeys(*args, data_keys=self.transform_op.data_keys)
+        self._validate_args_datakeys(*args, data_keys=self.transform_op.data_keys)  # type: ignore
 
-        in_args = self._arguments_preproc(*args, data_keys=self.transform_op.data_keys)
+        in_args = self._arguments_preproc(*args, data_keys=self.transform_op.data_keys)  # type: ignore
 
         if params is None:
             if self._params is None:
@@ -275,6 +313,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 outputs = [outputs]
 
         outputs = self._arguments_postproc(args, outputs, data_keys=self.transform_op.data_keys)  # type: ignore
+
+        if isinstance(original_keys, tuple):
+            return {k: v for v, k in zip(outputs, original_keys)}
 
         if len(outputs) == 1 and isinstance(outputs, list):
             return outputs[0]
@@ -341,18 +382,23 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
     def forward(  # type: ignore[override]
         self,
-        *args: DataType,
+        *args: Union[DataType, Dict[str, DataType]],
         params: Optional[List[ParamItem]] = None,
         data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None,
-    ) -> Union[DataType, List[DataType]]:
+    ) -> Union[DataType, List[DataType], Dict[str, DataType]]:
         """Compute multiple tensors simultaneously according to ``self.data_keys``."""
         self.clear_state()
 
+        # Unpack/handle dictionary args
+        original_keys = None
+        if len(args) == 1 and isinstance(args[0], dict):
+            original_keys, data_keys, args = self._preproc_dict_data(args[0])
+
         self.transform_op.data_keys = self.transform_op.preproc_datakeys(data_keys)
 
-        self._validate_args_datakeys(*args, data_keys=self.transform_op.data_keys)
+        self._validate_args_datakeys(*args, data_keys=self.transform_op.data_keys)  # type: ignore
 
-        in_args = self._arguments_preproc(*args, data_keys=self.transform_op.data_keys)
+        in_args = self._arguments_preproc(*args, data_keys=self.transform_op.data_keys)  # type: ignore
 
         if params is None:
             # image data must exist if params is not provided.
@@ -386,10 +432,43 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         self._params = params
 
+        if isinstance(original_keys, tuple):
+            return {k: v for v, k in zip(outputs, original_keys)}
+
         if len(outputs) == 1 and isinstance(outputs, list):
             return outputs[0]
 
         return outputs
+
+    def _preproc_dict_data(
+        self, data: Dict[str, DataType]
+    ) -> Tuple[Tuple[str, ...], List[DataKey], Tuple[DataType, ...]]:
+        if self.data_keys is not None:
+            raise ValueError("If you are using a dictionary as input, the data_keys should be None.")
+
+        data_keys = self._read_datakeys_from_dict(tuple(data.keys()))
+        keys = tuple(data.keys())
+        data_unpacked = tuple(v for v in data.values())
+
+        return keys, data_keys, data_unpacked
+
+    def _read_datakeys_from_dict(self, keys: Sequence[str]) -> List[DataKey]:
+        def retrieve_key(key: str) -> DataKey:
+            """Try to retrieve the datakey value by matching `<datakey>*`"""
+            # Alias cases, like INPUT, will not be get by the enum iterator.
+            if key.upper().startswith("INPUT"):
+                return DataKey.INPUT
+
+            for dk in DataKey:
+                if key.upper().startswith(dk.name):
+                    return DataKey.get(dk.name)
+
+            allowed_dk = " | ".join(f"`{d.name}`" for d in DataKey)
+            raise ValueError(
+                f"You input data dictionary keys should starts with some of datakey values: {allowed_dk}. Got `{key}`"
+            )
+
+        return [DataKey.get(retrieve_key(k)) for k in keys]
 
     def _preproc_boxes(self, arg: DataType, dcate: DataKey) -> Boxes:
         if DataKey.get(dcate) in [DataKey.BBOX]:

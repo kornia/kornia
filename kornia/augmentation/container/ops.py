@@ -67,20 +67,25 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
 
 
 class AugmentationSequentialOps:
-    def __init__(self, data_keys: List[DataKey]) -> None:
+    def __init__(self, data_keys: Optional[List[DataKey]]) -> None:
         self._data_keys = data_keys
 
     @property
-    def data_keys(self) -> List[DataKey]:
+    def data_keys(self) -> Optional[List[DataKey]]:
         return self._data_keys
 
     @data_keys.setter
-    def data_keys(self, data_keys: List[DataKey]) -> None:
-        self._data_keys = [DataKey.get(inp) for inp in data_keys]
+    def data_keys(self, data_keys: Optional[Union[List[DataKey], List[str], List[int]]]) -> None:
+        if data_keys:
+            self._data_keys = [DataKey.get(inp) for inp in data_keys]
+        else:
+            self._data_keys = None
 
     def preproc_datakeys(self, data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None) -> List[DataKey]:
         if data_keys is None:
-            return self.data_keys
+            if isinstance(self.data_keys, list):
+                return self.data_keys
+            raise ValueError("Sequential ops needs data keys to be able to process.")
         else:
             return [DataKey.get(inp) for inp in data_keys]
 
