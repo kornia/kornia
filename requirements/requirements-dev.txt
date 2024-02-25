@@ -5,6 +5,6 @@ numpy
 onnx
 pre-commit>=2
 pydocstyle
-pytest==8.0.1
+pytest==8.0.2
 pytest-timeout
 requests
