@@ -11,7 +11,7 @@ from kornia.core import Module, Tensor
 
 from . import ops
 
-default_policy: List[SUBPLOLICY_CONFIG] = [
+default_policy: List[SUBPOLICY_CONFIG] = [
     [("auto_contrast", 0, 1)],
     [("equalize", 0, 1)],
     [("invert", 0, 1)],
@@ -27,7 +27,7 @@ default_policy: List[SUBPLOLICY_CONFIG] = [
     [("shear_y", -0.3, 0.3)],
     # (CutoutAbs, 0, 40),
     [("translate_x", -0.1, 0.1)],
-    [("translate_x", -0.1, 0.1)],
+    [("translate_y", -0.1, 0.1)],
 ]
 
 
