@@ -27,7 +27,7 @@ default_policy: List[SUBPLOLICY_CONFIG] = [
     [("shear_y", -0.3, 0.3)],
     # (CutoutAbs, 0, 40),
     [("translate_x", -0.1, 0.1)],
-    [("translate_x", -0.1, 0.1)],
+    [("translate_y", -0.1, 0.1)],
 ]
 
 
