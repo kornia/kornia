@@ -3,7 +3,7 @@ from typing import Dict, Iterator, List, Optional, Tuple, Union, cast
 import torch
 from torch.distributions import Categorical
 
-from kornia.augmentation.auto.base import SUBPLOLICY_CONFIG, PolicyAugmentBase
+from kornia.augmentation.auto.base import SUBPOLICY_CONFIG, PolicyAugmentBase
 from kornia.augmentation.auto.operations import OperationBase
 from kornia.augmentation.auto.operations.policy import PolicySequential
 from kornia.augmentation.container.params import ParamItem
@@ -11,7 +11,7 @@ from kornia.core import Module, Tensor
 
 from . import ops
 
-default_policy: List[SUBPLOLICY_CONFIG] = [
+default_policy: List[SUBPOLICY_CONFIG] = [
     [("auto_contrast", 0, 1)],
     [("equalize", 0, 1)],
     [("invert", 0, 1)],
@@ -58,7 +58,7 @@ class RandAugment(PolicyAugmentBase):
         self,
         n: int,
         m: int,
-        policy: Optional[List[SUBPLOLICY_CONFIG]] = None,
+        policy: Optional[List[SUBPOLICY_CONFIG]] = None,
         transformation_matrix_mode: str = "silent",
     ) -> None:
         if m <= 0 or m >= 30:
@@ -75,7 +75,7 @@ class RandAugment(PolicyAugmentBase):
         self.n = n
         self.m = m
 
-    def compose_subpolicy_sequential(self, subpolicy: SUBPLOLICY_CONFIG) -> PolicySequential:
+    def compose_subpolicy_sequential(self, subpolicy: SUBPOLICY_CONFIG) -> PolicySequential:
         if len(subpolicy) != 1:
             raise RuntimeError(f"Each policy must have only one operation for RandAugment. Got {len(subpolicy)}.")
         name, low, high = subpolicy[0]
