@@ -3,13 +3,13 @@ from typing import Iterator, List, Optional, Tuple
 import torch
 from torch.distributions import Categorical
 
-from kornia.augmentation.auto.base import SUBPLOLICY_CONFIG, PolicyAugmentBase
+from kornia.augmentation.auto.base import SUBPOLICY_CONFIG, PolicyAugmentBase
 from kornia.augmentation.auto.operations.policy import PolicySequential
 from kornia.augmentation.auto.rand_augment import ops
 from kornia.augmentation.container.params import ParamItem
 from kornia.core import Module
 
-default_policy: List[SUBPLOLICY_CONFIG] = [
+default_policy: List[SUBPOLICY_CONFIG] = [
     # [("identity", 0, 1)],
     [("auto_contrast", 0, 1)],
     [("equalize", 0, 1)],
@@ -49,7 +49,7 @@ class TrivialAugment(PolicyAugmentBase):
     """
 
     def __init__(
-        self, policy: Optional[List[SUBPLOLICY_CONFIG]] = None, transformation_matrix_mode: str = "silent"
+        self, policy: Optional[List[SUBPOLICY_CONFIG]] = None, transformation_matrix_mode: str = "silent"
     ) -> None:
         if policy is None:
             _policy = default_policy
@@ -60,7 +60,7 @@ class TrivialAugment(PolicyAugmentBase):
         selection_weights = torch.tensor([1.0 / len(self)] * len(self))
         self.rand_selector = Categorical(selection_weights)
 
-    def compose_subpolicy_sequential(self, subpolicy: SUBPLOLICY_CONFIG) -> PolicySequential:
+    def compose_subpolicy_sequential(self, subpolicy: SUBPOLICY_CONFIG) -> PolicySequential:
         if len(subpolicy) != 1:
             raise RuntimeError(f"Each policy must have only one operation for TrivialAugment. Got {len(subpolicy)}.")
         name, low, high = subpolicy[0]
