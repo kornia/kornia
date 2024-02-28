@@ -2,14 +2,14 @@ from typing import Iterator, List, Optional, Tuple, Union
 
 from torch.distributions import Categorical
 
-from kornia.augmentation.auto.base import SUBPLOLICY_CONFIG, PolicyAugmentBase
+from kornia.augmentation.auto.base import SUBPOLICY_CONFIG, PolicyAugmentBase
 from kornia.augmentation.auto.operations.policy import PolicySequential
 from kornia.augmentation.container.params import ParamItem
 from kornia.core import Module, tensor
 
 from . import ops
 
-imagenet_policy: List[SUBPLOLICY_CONFIG] = [
+imagenet_policy: List[SUBPOLICY_CONFIG] = [
     [("posterize", 0.4, 8), ("rotate", 0.6, 9)],
     [("solarize", 0.6, 5), ("auto_contrast", 0.6, None)],
     [("equalize", 0.8, None), ("equalize", 0.6, None)],
@@ -38,7 +38,7 @@ imagenet_policy: List[SUBPLOLICY_CONFIG] = [
 ]
 
 
-cifar10_policy: List[SUBPLOLICY_CONFIG] = [
+cifar10_policy: List[SUBPOLICY_CONFIG] = [
     [("invert", 0.1, None), ("contrast", 0.2, 6)],
     [("rotate", 0.7, 2), ("translate_x", 0.3, 9)],
     [("sharpness", 0.8, 1), ("sharpness", 0.9, 3)],
@@ -67,7 +67,7 @@ cifar10_policy: List[SUBPLOLICY_CONFIG] = [
 ]
 
 
-svhn_policy: List[SUBPLOLICY_CONFIG] = [
+svhn_policy: List[SUBPOLICY_CONFIG] = [
     [("shear_x", 0.9, 4), ("invert", 0.2, None)],
     [("shear_y", 0.9, 8), ("invert", 0.7, None)],
     [("equalize", 0.6, None), ("solarize", 0.6, 6)],
@@ -119,7 +119,7 @@ class AutoAugment(PolicyAugmentBase):
     """
 
     def __init__(
-        self, policy: Union[str, List[SUBPLOLICY_CONFIG]] = "imagenet", transformation_matrix_mode: str = "silent"
+        self, policy: Union[str, List[SUBPOLICY_CONFIG]] = "imagenet", transformation_matrix_mode: str = "silent"
     ) -> None:
         if policy == "imagenet":
             _policy = imagenet_policy
@@ -136,7 +136,7 @@ class AutoAugment(PolicyAugmentBase):
         selection_weights = tensor([1.0 / len(self)] * len(self))
         self.rand_selector = Categorical(selection_weights)
 
-    def compose_subpolicy_sequential(self, subpolicy: SUBPLOLICY_CONFIG) -> PolicySequential:
+    def compose_subpolicy_sequential(self, subpolicy: SUBPOLICY_CONFIG) -> PolicySequential:
         return PolicySequential(*[getattr(ops, name)(prob, mag) for name, prob, mag in subpolicy])
 
     def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, Module]]:
