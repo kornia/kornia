@@ -12,13 +12,13 @@ from kornia.utils import eye_like
 
 NUMBER = Union[float, int]
 OP_CONFIG = Tuple[str, NUMBER, Optional[NUMBER]]
-SUBPLOLICY_CONFIG = List[OP_CONFIG]
+SUBPOLICY_CONFIG = List[OP_CONFIG]
 
 
 class PolicyAugmentBase(TransformMatrixMinIn, ImageSequentialBase):
     """Policy-based image augmentation."""
 
-    def __init__(self, policy: List[SUBPLOLICY_CONFIG], transformation_matrix_mode: str = "silence") -> None:
+    def __init__(self, policy: List[SUBPOLICY_CONFIG], transformation_matrix_mode: str = "silence") -> None:
         policies = self.compose_policy(policy)
         super().__init__(*policies)
         self._parse_transformation_matrix_mode(transformation_matrix_mode)
@@ -31,11 +31,11 @@ class PolicyAugmentBase(TransformMatrixMinIn, ImageSequentialBase):
         self._reset_transform_matrix_state()
         return super().clear_state()
 
-    def compose_policy(self, policy: List[SUBPLOLICY_CONFIG]) -> List[PolicySequential]:
+    def compose_policy(self, policy: List[SUBPOLICY_CONFIG]) -> List[PolicySequential]:
         """Compose policy by the provided policy config."""
         return [self.compose_subpolicy_sequential(subpolicy) for subpolicy in policy]
 
-    def compose_subpolicy_sequential(self, subpolicy: SUBPLOLICY_CONFIG) -> PolicySequential:
+    def compose_subpolicy_sequential(self, subpolicy: SUBPOLICY_CONFIG) -> PolicySequential:
         raise NotImplementedError
 
     def identity_matrix(self, input: Tensor) -> Tensor:
