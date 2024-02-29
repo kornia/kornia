@@ -208,30 +208,20 @@ as follows passing as ``callbacks`` the classes :py:class:`~kornia.x.ModelCheckp
 :py:class:`~kornia.x.EarlyStopping`.
 
 .. code:: python
-<<<<<<< HEAD
-=======
-      def my_evaluate(self):
-          # stats = StatsTracker()
-          # loss = nn.CrossEntropyLoss()
-          ...
-          prediction = self.on_model(self.model, sample)
-          val_loss = self.compute_loss(out, sample["mask"])
-          stats.update("loss", val_loss.item(), batch_size)
-          return stats.as_dict()
->>>>>>> cb394e48 (fix docs)
 
-	def my_evaluate(self) -> dict[str, AverageMeter]:
-		# stats = StatsTracker()
-		# loss = nn.CrossEntropyLoss()
-		...
-		prediction = self.on_model(self.model, sample)
-		val_loss = self.compute_loss(out, sample["mask"])
-		stats.update("loss", val_loss.item(), batch_size)
-		return stats.as_dict()
+    def my_evaluate(self):
+      # stats = StatsTracker()
+      # loss = nn.CrossEntropyLoss()
+      
+      prediction = self.on_model(self.model, sample)
+      val_loss = self.compute_loss(out, sample["mask"])
+      stats.update("loss", val_loss.item(), batch_size)
+      return stats.as_dict()
 
 	model_checkpoint = ModelCheckpoint(
 		filepath="./outputs", monitor="loss",
 	)
+
 	early_stop = EarlyStopping(
 		monitor="loss", patience=10
 	)
