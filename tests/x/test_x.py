@@ -13,7 +13,7 @@ def model():
 
 class TestModelCheckpoint:
     def test_smoke(self, tmp_path, model):
-        cb = ModelCheckpoint(tmp_path, "test_monitor", reverse_metric=True)
+        cb = ModelCheckpoint(tmp_path, "test_monitor", max_mode=True)
         assert cb is not None
 
         metric = {"test_monitor": AverageMeter()}
@@ -24,7 +24,7 @@ class TestModelCheckpoint:
         assert (tmp_path / "model_epoch=0_metricValue=1.0.pt").is_file()
 
     def test_custom_filename(self, tmp_path, model):
-        cb = ModelCheckpoint(tmp_path, "test_monitor", filename_fcn=lambda x, _: "model.pt", reverse_metric=True)
+        cb = ModelCheckpoint(tmp_path, "test_monitor", filename_fcn=lambda x, _: "model.pt", max_mode=True)
         assert cb is not None
 
         metric = {"test_monitor": AverageMeter()}
@@ -36,7 +36,7 @@ class TestModelCheckpoint:
 
 
 def test_callback_earlystopping(model):
-    cb = EarlyStopping("test_monitor", patience=2, reverse_metric=True)
+    cb = EarlyStopping("test_monitor", patience=2, max_mode=True)
     assert cb is not None
     assert cb.counter == 0
 
@@ -67,7 +67,7 @@ def test_callback_earlystopping(model):
     assert cb.counter == 2
 
 def test_callback_earlystopping(model):
-    cb = EarlyStopping("test_monitor", patience=2, reverse_metric=False)
+    cb = EarlyStopping("test_monitor", patience=2, max_mode=False)
     assert cb is not None
     assert cb.counter == 0
 
