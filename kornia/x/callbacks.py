@@ -1,8 +1,9 @@
+from math import inf
 from pathlib import Path
 from typing import Callable, Dict, Optional, Union
 
 import torch
-from math import inf
+
 from kornia.core import Module
 from kornia.metrics import AverageMeter
 
@@ -57,7 +58,6 @@ class EarlyStopping:
         self.counter: int = 0
         self.best_score: Optional[float] = None
         self.early_stop: bool = False
-        
 
     def __call__(self, model: Module, epoch: int, valid_metric: Dict[str, AverageMeter]) -> TrainerState:
         score: float = valid_metric[self.monitor].avg
@@ -109,7 +109,9 @@ class ModelCheckpoint:
         )
     """
 
-    def __init__(self, filepath: str, monitor: str, filename_fcn: Optional[Callable[..., str]] = None, max_mode: bool = False) -> None:
+    def __init__(
+        self, filepath: str, monitor: str, filename_fcn: Optional[Callable[..., str]] = None, max_mode: bool = False
+    ) -> None:
         self.filepath = filepath
         self.monitor = monitor
         self._filename_fcn = filename_fcn or default_filename_fcn
@@ -117,14 +119,14 @@ class ModelCheckpoint:
         self.best_metric: float = inf
         # flag to reverse metric, for example in case of accuracy metric where bigger value is better
         # In classical loss functions smaller value = better,
-        # In case of max_mode checkpoints are saved if new metric value > old metric value 
+        # In case of max_mode checkpoints are saved if new metric value > old metric value
         self.max_mode = max_mode
 
         # create directory
         Path(self.filepath).mkdir(parents=True, exist_ok=True)
 
     def __call__(self, model: Module, epoch: int, valid_metric: Dict[str, AverageMeter]) -> None:
-        valid_metric_value: float = valid_metric[self.monitor].avg            
+        valid_metric_value: float = valid_metric[self.monitor].avg
         if (valid_metric_value if not self.max_mode else valid_metric_value * -1) < self.best_metric:
             self.best_metric = valid_metric_value
             # store old metric and save new model

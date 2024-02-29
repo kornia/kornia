@@ -66,6 +66,7 @@ def test_callback_earlystopping(model):
     assert cb.best_score == 2
     assert cb.counter == 2
 
+
 def test_callback_earlystopping(model):
     cb = EarlyStopping("test_monitor", patience=2, max_mode=False)
     assert cb is not None
