@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Callable, Dict, Optional, Union
 
 import torch
-
+from math import inf
 from kornia.core import Module
 from kornia.metrics import AverageMeter
 
@@ -10,8 +10,8 @@ from .utils import TrainerState
 
 
 # default function to generate the filename in the model checkpoint
-def default_filename_fcn(epoch: Union[str, int], loss: Union[str, int]) -> str:
-    return f"model_epoch={epoch}_loss={loss}.pt"
+def default_filename_fcn(epoch: Union[str, int], metric: Union[str, float]) -> str:
+    return f"model_epoch={epoch}_metricValue={metric}.pt"
 
 
 class EarlyStopping:
@@ -114,7 +114,7 @@ class ModelCheckpoint:
         self.monitor = monitor
         self._filename_fcn = filename_fcn or default_filename_fcn
         # track best model
-        self.best_metric: float = 0.0
+        self.best_metric: float = inf
         # flag to reverse metric, for example in case of accuracy metric where bigger value is better
         # In classical loss functions smaller value = better
         self.reverse_metric = reverse_metric
@@ -123,10 +123,8 @@ class ModelCheckpoint:
         Path(self.filepath).mkdir(parents=True, exist_ok=True)
 
     def __call__(self, model: Module, epoch: int, valid_metric: Dict[str, AverageMeter]) -> None:
-        valid_metric_value: float = valid_metric[self.monitor].avg
-        if self.reverse_loss:
-            valid_metric_value *= -1
-        if valid_metric_value < self.best_metric:
+        valid_metric_value: float = valid_metric[self.monitor].avg            
+        if (valid_metric_value if not self.reverse_metric else valid_metric_value * -1) < self.best_metric:
             self.best_metric = valid_metric_value
             # store old metric and save new model
             filename = Path(self.filepath) / self._filename_fcn(epoch, valid_metric_value)

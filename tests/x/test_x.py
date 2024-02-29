@@ -21,10 +21,10 @@ class TestModelCheckpoint:
 
         cb(model, epoch=0, valid_metric=metric)
         assert cb.best_metric == 1.0
-        assert (tmp_path / "model_epoch=0_loss=1.0.pt").is_file()
+        assert (tmp_path / "model_epoch=0_metricValue=1.0.pt").is_file()
 
     def test_custom_filename(self, tmp_path, model):
-        cb = ModelCheckpoint(tmp_path, "test_monitor", filename_fcn=lambda x: "model.pt", reverse_metric=True)
+        cb = ModelCheckpoint(tmp_path, "test_monitor", filename_fcn=lambda x, _: "model.pt", reverse_metric=True)
         assert cb is not None
 
         metric = {"test_monitor": AverageMeter()}
@@ -76,23 +76,23 @@ def test_callback_earlystopping(model):
 
     state = cb(model, epoch=0, valid_metric=metric)
     assert state == TrainerState.TRAINING
-    assert cb.best_score == 1
+    assert cb.best_score == -1
     assert cb.counter == 0
 
     metric["test_monitor"]._avg = -2
     state = cb(model, epoch=0, valid_metric=metric)
     assert state == TrainerState.TRAINING
-    assert cb.best_score == 2
+    assert cb.best_score == -2
     assert cb.counter == 0
 
     metric["test_monitor"]._avg = -1.9
     state = cb(model, epoch=0, valid_metric=metric)
     assert state == TrainerState.TRAINING
-    assert cb.best_score == 2
+    assert cb.best_score == -2
     assert cb.counter == 1
 
     metric["test_monitor"]._avg = -1.9
     state = cb(model, epoch=0, valid_metric=metric)
     assert state == TrainerState.TERMINATE
-    assert cb.best_score == 2
+    assert cb.best_score == -2
     assert cb.counter == 2
