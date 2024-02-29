@@ -181,7 +181,7 @@ through callbacks to pass pointers to the ``proprocess`` and ``augmentation`` fu
 the debugging and experimentation experience.
 
 .. code:: python
-
+	
 	def preprocess(x):
 	  return x.float() / 255.
 
@@ -208,25 +208,26 @@ as follows passing as ``callbacks`` the classes :py:class:`~kornia.x.ModelCheckp
 :py:class:`~kornia.x.EarlyStopping`.
 
 .. code:: python
-      def my_evaluate(self) -> dict[str, AverageMeter]:
-          # stats = StatsTracker()
-          # loss = nn.CrossEntropyLoss()
-          ...
-          prediction = self.on_model(self.model, sample)
-          val_loss = self.compute_loss(out, sample["mask"])
-          stats.update("loss", val_loss.item(), batch_size)
-          return stats.as_dict()
+	
+	def my_evaluate(self) -> dict[str, AverageMeter]:
+		# stats = StatsTracker()
+		# loss = nn.CrossEntropyLoss()
+		...
+		prediction = self.on_model(self.model, sample)
+		val_loss = self.compute_loss(out, sample["mask"])
+		stats.update("loss", val_loss.item(), batch_size)
+		return stats.as_dict()
 
-      model_checkpoint = ModelCheckpoint(
-          filepath="./outputs", monitor="loss",
-      )
-      early_stop = EarlyStopping(
-            monitor="loss", patience=10
-      )
-
-      trainer = SemanticSegmentationTrainer(...,
-          callbacks={"on_epoch_end": early_stop, "on_checkpoint", model_checkpoint}
-      )
+	model_checkpoint = ModelCheckpoint(
+		filepath="./outputs", monitor="loss",
+	)
+	early_stop = EarlyStopping(
+		monitor="loss", patience=10
+	)
+	
+	trainer = SemanticSegmentationTrainer(...,
+		callbacks={"on_epoch_end": early_stop, "on_checkpoint", model_checkpoint}
+	)
 
 Hyperparameter sweeps
 ---------------------
