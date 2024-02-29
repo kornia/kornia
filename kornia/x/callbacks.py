@@ -38,7 +38,7 @@ class EarlyStopping:
             return stats.as_dict()
 
         early_stop = EarlyStopping(
-            monitor="loss", filepath="early_stop_model.pt"
+            monitor="loss", patience=10
         )
 
         trainer = ImageClassifierTrainer(...,
