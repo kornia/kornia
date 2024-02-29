@@ -24,7 +24,8 @@ class EarlyStopping:
         monitor: the name of the value to track.
         min_delta: the minimum difference between losses to increase the patience counter.
         patience: the number of times to wait until the trainer does not terminate.
-        max_mode: if true metric will be multiply by -1, turn this flag when increasing metric value is expected for example Accuracy
+        max_mode: if true metric will be multiply by -1, 
+                  turn this flag when increasing metric value is expected for example Accuracy
 
     **Usage example:**
 
@@ -86,7 +87,8 @@ class ModelCheckpoint:
     Args:
         filepath: the where to save the mode.
         monitor: the name of the value to track.
-        max_mode: if true metric will be multiply by -1, turn this flag when increasing metric value is expected for example Accuracy
+        max_mode: if true metric will be multiply by -1
+                  turn this flag when increasing metric value is expected for example Accuracy
     **Usage example:**
 
     .. code:: python

@@ -45,25 +45,25 @@ def test_callback_earlystopping(model):
 
     state = cb(model, epoch=0, valid_metric=metric)
     assert state == TrainerState.TRAINING
-    assert cb.best_score == 1
+    assert cb.best_score == -1
     assert cb.counter == 0
 
     metric["test_monitor"]._avg = 2
     state = cb(model, epoch=0, valid_metric=metric)
     assert state == TrainerState.TRAINING
-    assert cb.best_score == 2
+    assert cb.best_score == -2
     assert cb.counter == 0
 
     metric["test_monitor"]._avg = 1.9
     state = cb(model, epoch=0, valid_metric=metric)
     assert state == TrainerState.TRAINING
-    assert cb.best_score == 2
+    assert cb.best_score == -2
     assert cb.counter == 1
 
     metric["test_monitor"]._avg = 1.9
     state = cb(model, epoch=0, valid_metric=metric)
     assert state == TrainerState.TERMINATE
-    assert cb.best_score == 2
+    assert cb.best_score == -2
     assert cb.counter == 2
 
 
