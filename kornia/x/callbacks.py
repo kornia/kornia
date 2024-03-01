@@ -62,17 +62,19 @@ class EarlyStopping:
 
     def __call__(self, model: Module, epoch: int, valid_metric: Dict[str, AverageMeter]) -> TrainerState:
         score: float = valid_metric[self.monitor].avg
-        is_best: bool = score > self.best_score if self.max_mode \
-                           else score < self.best_score
+        is_best: bool = score > self.best_score if self.max_mode else score < self.best_score
         if is_best:
             self.best_score = score
             self.counter = 0
         else:
-            # Example score = 1.9 best_score = 2.0 min_delta = 0.15 
+            # Example score = 1.9 best_score = 2.0 min_delta = 0.15
             # with max_mode (1.9 > (2.0 - 0.15)) == True
             # with min_mode (1.9 < (2.0 + 0.15)) == True
-            is_within_delta: bool = score > (self.best_score - self.min_delta) if self.max_mode \
-                                    else score < (self.best_score + self.min_delta)
+            is_within_delta: bool = (
+                score > (self.best_score - self.min_delta)
+                if self.max_mode
+                else score < (self.best_score + self.min_delta)
+            )
             if not is_within_delta:
                 self.counter += 1
                 if self.counter >= self.patience:
@@ -133,8 +135,9 @@ class ModelCheckpoint:
 
     def __call__(self, model: Module, epoch: int, valid_metric: Dict[str, AverageMeter]) -> None:
         valid_metric_value: float = valid_metric[self.monitor].avg
-        is_best: bool = valid_metric_value > self.best_metric if self.max_mode \
-                           else valid_metric_value < self.best_metric
+        is_best: bool = (
+            valid_metric_value > self.best_metric if self.max_mode else valid_metric_value < self.best_metric
+        )
         if is_best:
             self.best_metric = valid_metric_value
             # store old metric and save new model
