@@ -98,6 +98,7 @@ def test_callback_earlystopping_min_mode(model):
     assert cb.best_score == -2
     assert cb.counter == 2
 
+
 def test_callback_earlystopping_max_mode_with_delta(model):
     cb = EarlyStopping("test_monitor", patience=1, max_mode=True, min_delta=0.15)
     assert cb is not None
@@ -134,6 +135,7 @@ def test_callback_earlystopping_max_mode_with_delta(model):
     assert state == TrainerState.TERMINATE
     assert cb.best_score == 2
     assert cb.counter == 1
+
 
 def test_callback_earlystopping_with_delta(model):
     cb = EarlyStopping("test_monitor", patience=1, max_mode=False, min_delta=0.15)
