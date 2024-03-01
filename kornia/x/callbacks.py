@@ -57,22 +57,26 @@ class EarlyStopping:
         self.max_mode = max_mode
 
         self.counter: int = 0
-        self.best_score: Optional[float] = None
+        self.best_score: Optional[float] = -inf if max_mode else inf
         self.early_stop: bool = False
 
     def __call__(self, model: Module, epoch: int, valid_metric: Dict[str, AverageMeter]) -> TrainerState:
         score: float = valid_metric[self.monitor].avg
-        if self.max_mode:
-            score *= -1
-        if self.best_score is None:
-            self.best_score = score
-        elif score > self.best_score + self.min_delta:
-            self.counter += 1
-            if self.counter >= self.patience:
-                self.early_stop = True
-        else:
+        is_best: bool = score > self.best_score if self.max_mode \
+                           else score < self.best_score
+        if is_best:
             self.best_score = score
             self.counter = 0
+        else:
+            # Example score = 1.9 best_score = 2.0 min_delta = 0.15 
+            # with max_mode (1.9 > (2.0 - 0.15)) == True
+            # with min_mode (1.9 < (2.0 + 0.15)) == True
+            is_within_delta: bool = score > (self.best_score - self.min_delta) if self.max_mode \
+                                    else score < (self.best_score + self.min_delta)
+            if not is_within_delta:
+                self.counter += 1
+                if self.counter >= self.patience:
+                    self.early_stop = True
 
         if self.early_stop:
             print(f"[INFO] Early-Stopping the training process. Epoch: {epoch}.")
@@ -118,7 +122,7 @@ class ModelCheckpoint:
         self.monitor = monitor
         self._filename_fcn = filename_fcn or default_filename_fcn
         # track best model
-        self.best_metric: float = inf
+        self.best_metric: float = -inf if max_mode else inf
         # flag to reverse metric, for example in case of accuracy metric where bigger value is better
         # In classical loss functions smaller value = better,
         # In case of max_mode checkpoints are saved if new metric value > old metric value
@@ -129,7 +133,9 @@ class ModelCheckpoint:
 
     def __call__(self, model: Module, epoch: int, valid_metric: Dict[str, AverageMeter]) -> None:
         valid_metric_value: float = valid_metric[self.monitor].avg
-        if (valid_metric_value if not self.max_mode else valid_metric_value * -1) < self.best_metric:
+        is_best: bool = valid_metric_value > self.best_metric if self.max_mode \
+                           else valid_metric_value < self.best_metric
+        if is_best:
             self.best_metric = valid_metric_value
             # store old metric and save new model
             filename = Path(self.filepath) / self._filename_fcn(epoch, valid_metric_value)

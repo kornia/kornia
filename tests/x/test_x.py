@@ -35,7 +35,7 @@ class TestModelCheckpoint:
         assert (tmp_path / "model.pt").is_file()
 
 
-def test_callback_earlystopping(model):
+def test_callback_earlystopping_max_mode(model):
     cb = EarlyStopping("test_monitor", patience=2, max_mode=True)
     assert cb is not None
     assert cb.counter == 0
@@ -45,29 +45,29 @@ def test_callback_earlystopping(model):
 
     state = cb(model, epoch=0, valid_metric=metric)
     assert state == TrainerState.TRAINING
-    assert cb.best_score == -1
+    assert cb.best_score == 1
     assert cb.counter == 0
 
     metric["test_monitor"]._avg = 2
     state = cb(model, epoch=0, valid_metric=metric)
     assert state == TrainerState.TRAINING
-    assert cb.best_score == -2
+    assert cb.best_score == 2
     assert cb.counter == 0
 
     metric["test_monitor"]._avg = 1.9
     state = cb(model, epoch=0, valid_metric=metric)
     assert state == TrainerState.TRAINING
-    assert cb.best_score == -2
+    assert cb.best_score == 2
     assert cb.counter == 1
 
     metric["test_monitor"]._avg = 1.9
     state = cb(model, epoch=0, valid_metric=metric)
     assert state == TrainerState.TERMINATE
-    assert cb.best_score == -2
+    assert cb.best_score == 2
     assert cb.counter == 2
 
 
-def test_callback_earlystopping(model):
+def test_callback_earlystopping_min_mode(model):
     cb = EarlyStopping("test_monitor", patience=2, max_mode=False)
     assert cb is not None
     assert cb.counter == 0
@@ -97,3 +97,77 @@ def test_callback_earlystopping(model):
     assert state == TrainerState.TERMINATE
     assert cb.best_score == -2
     assert cb.counter == 2
+
+def test_callback_earlystopping_max_mode_with_delta(model):
+    cb = EarlyStopping("test_monitor", patience=1, max_mode=True, min_delta=0.15)
+    assert cb is not None
+    assert cb.counter == 0
+
+    metric = {"test_monitor": AverageMeter()}
+    metric["test_monitor"]._avg = 1
+
+    state = cb(model, epoch=0, valid_metric=metric)
+    assert state == TrainerState.TRAINING
+    assert cb.best_score == 1
+    assert cb.counter == 0
+
+    metric["test_monitor"]._avg = 2
+    state = cb(model, epoch=0, valid_metric=metric)
+    assert state == TrainerState.TRAINING
+    assert cb.best_score == 2
+    assert cb.counter == 0
+
+    metric["test_monitor"]._avg = 1.9
+    state = cb(model, epoch=0, valid_metric=metric)
+    assert state == TrainerState.TRAINING
+    assert cb.best_score == 2
+    assert cb.counter == 0
+
+    metric["test_monitor"]._avg = 1.9
+    state = cb(model, epoch=0, valid_metric=metric)
+    assert state == TrainerState.TRAINING
+    assert cb.best_score == 2
+    assert cb.counter == 0
+
+    metric["test_monitor"]._avg = 1.7
+    state = cb(model, epoch=0, valid_metric=metric)
+    assert state == TrainerState.TERMINATE
+    assert cb.best_score == 2
+    assert cb.counter == 1
+
+def test_callback_earlystopping_with_delta(model):
+    cb = EarlyStopping("test_monitor", patience=1, max_mode=False, min_delta=0.15)
+    assert cb is not None
+    assert cb.counter == 0
+
+    metric = {"test_monitor": AverageMeter()}
+    metric["test_monitor"]._avg = -1
+
+    state = cb(model, epoch=0, valid_metric=metric)
+    assert state == TrainerState.TRAINING
+    assert cb.best_score == -1
+    assert cb.counter == 0
+
+    metric["test_monitor"]._avg = -2
+    state = cb(model, epoch=0, valid_metric=metric)
+    assert state == TrainerState.TRAINING
+    assert cb.best_score == -2
+    assert cb.counter == 0
+
+    metric["test_monitor"]._avg = -1.9
+    state = cb(model, epoch=0, valid_metric=metric)
+    assert state == TrainerState.TRAINING
+    assert cb.best_score == -2
+    assert cb.counter == 0
+
+    metric["test_monitor"]._avg = -1.9
+    state = cb(model, epoch=0, valid_metric=metric)
+    assert state == TrainerState.TRAINING
+    assert cb.best_score == -2
+    assert cb.counter == 0
+
+    metric["test_monitor"]._avg = -1.7
+    state = cb(model, epoch=0, valid_metric=metric)
+    assert state == TrainerState.TERMINATE
+    assert cb.best_score == -2
+    assert cb.counter == 1
