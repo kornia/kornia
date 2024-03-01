@@ -57,7 +57,7 @@ class EarlyStopping:
         self.max_mode = max_mode
 
         self.counter: int = 0
-        self.best_score: Optional[float] = -inf if max_mode else inf
+        self.best_score: float = -inf if max_mode else inf
         self.early_stop: bool = False
 
     def __call__(self, model: Module, epoch: int, valid_metric: Dict[str, AverageMeter]) -> TrainerState:
@@ -118,7 +118,8 @@ class ModelCheckpoint:
     """
 
     def __init__(
-        self, filepath: str, monitor: str, filename_fcn: Optional[Callable[..., str]] = None, max_mode: bool = False
+        self, filepath: str, monitor: str, filename_fcn: Optional[Callable[..., str]] = None, 
+        max_mode: bool = False
     ) -> None:
         self.filepath = filepath
         self.monitor = monitor
