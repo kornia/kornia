@@ -48,21 +48,32 @@ class EarlyStopping:
         )
     """
 
-    def __init__(self, monitor: str, min_delta: float = 0.0, patience: int = 8, max_mode: bool = False) -> None:
+    def __init__(
+        self,
+        monitor: str,
+        min_delta: float = 0.0,
+        patience: int = 8,
+        max_mode: bool = False,
+    ) -> None:
         self.monitor = monitor
         self.min_delta = min_delta
         self.patience = patience
         # flag to reverse metric, for example in case of accuracy metric where bigger value is better
-        # In classical loss functions smaller value = better, in case of max_mode training end with metric stable/decreasing
+        # In classical loss functions smaller value = better,
+        # in case of max_mode training end with metric stable/decreasing
         self.max_mode = max_mode
 
         self.counter: int = 0
         self.best_score: float = -inf if max_mode else inf
         self.early_stop: bool = False
 
-    def __call__(self, model: Module, epoch: int, valid_metric: Dict[str, AverageMeter]) -> TrainerState:
+    def __call__(
+        self, model: Module, epoch: int, valid_metric: Dict[str, AverageMeter]
+    ) -> TrainerState:
         score: float = valid_metric[self.monitor].avg
-        is_best: bool = score > self.best_score if self.max_mode else score < self.best_score
+        is_best: bool = (
+            score > self.best_score if self.max_mode else score < self.best_score
+        )
         if is_best:
             self.best_score = score
             self.counter = 0
@@ -118,8 +129,11 @@ class ModelCheckpoint:
     """
 
     def __init__(
-        self, filepath: str, monitor: str, filename_fcn: Optional[Callable[..., str]] = None, 
-        max_mode: bool = False
+        self,
+        filepath: str,
+        monitor: str,
+        filename_fcn: Optional[Callable[..., str]] = None,
+        max_mode: bool = False,
     ) -> None:
         self.filepath = filepath
         self.monitor = monitor
@@ -134,13 +148,19 @@ class ModelCheckpoint:
         # create directory
         Path(self.filepath).mkdir(parents=True, exist_ok=True)
 
-    def __call__(self, model: Module, epoch: int, valid_metric: Dict[str, AverageMeter]) -> None:
+    def __call__(
+        self, model: Module, epoch: int, valid_metric: Dict[str, AverageMeter]
+    ) -> None:
         valid_metric_value: float = valid_metric[self.monitor].avg
         is_best: bool = (
-            valid_metric_value > self.best_metric if self.max_mode else valid_metric_value < self.best_metric
+            valid_metric_value > self.best_metric
+            if self.max_mode
+            else valid_metric_value < self.best_metric
         )
         if is_best:
             self.best_metric = valid_metric_value
             # store old metric and save new model
-            filename = Path(self.filepath) / self._filename_fcn(epoch, valid_metric_value)
+            filename = Path(self.filepath) / self._filename_fcn(
+                epoch, valid_metric_value
+            )
             torch.save(model, filename)
