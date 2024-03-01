@@ -212,7 +212,7 @@ as follows passing as ``callbacks`` the classes :py:class:`~kornia.x.ModelCheckp
     def my_evaluate(self):
       # stats = StatsTracker()
       # loss = nn.CrossEntropyLoss()
-
+      # rest of your evaluation loop
       prediction = self.on_model(self.model, sample)
       val_loss = self.compute_loss(out, sample["mask"])
       stats.update("loss", val_loss.item(), batch_size)
@@ -223,12 +223,34 @@ as follows passing as ``callbacks`` the classes :py:class:`~kornia.x.ModelCheckp
 	)
 
 	early_stop = EarlyStopping(
-		monitor="loss", patience=10
+		monitor="loss", patience=2
 	)
 
 	trainer = SemanticSegmentationTrainer(...,
 		callbacks={"on_epoch_end": early_stop, "on_checkpoint", model_checkpoint}
 	)
+.. note::
+  It'll look something like this considering code above
+  | best_loss = inf
+
+  | epoch 1:
+  | avg_loss = 1.0
+  | checkpoint = ./output/model_epoch=1_metricValue=1.0.pt
+
+  | epoch 2:
+  | avg_loss = 0.9
+  | best_loss = 0.9
+  | checkpoint = ./output/model_epoch=1_metricValue=0.9.pt
+
+  | epoch 3
+  | avg_loss = 1.1
+  | early_stop.counter += 1
+
+  | epoch 4
+  | avg_loss = 1.2
+  | early_stop.counter += 1
+  | early_stop.patience == early_stop.counter
+  | training ends here
 
 Hyperparameter sweeps
 ---------------------
