@@ -118,7 +118,8 @@ class ModelCheckpoint:
     """
 
     def __init__(
-        self, filepath: str, monitor: str, filename_fcn: Optional[Callable[..., str]] = None, max_mode: bool = False
+        self, filepath: str, monitor: str, filename_fcn: Optional[Callable[..., str]] = None,
+        max_mode: bool = False
     ) -> None:
         self.filepath = filepath
         self.monitor = monitor
