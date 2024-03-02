@@ -30,10 +30,10 @@ class EarlyStopping:
     **Usage example:**
 
     .. code:: python
-        def my_evaluate(self) -> dict[str, AverageMeter]:
+        def my_evaluate(self):
             # stats = StatsTracker()
             # loss = nn.CrossEntropyLoss()
-            ...
+            
             prediction = self.on_model(self.model, sample)
             val_loss = self.compute_loss(out, sample["mask"])
             stats.update("loss", val_loss.item(), batch_size)
