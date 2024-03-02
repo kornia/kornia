@@ -43,7 +43,7 @@ class EarlyStopping:
             monitor="loss", patience=10
         )
 
-        trainer = ImageClassifierTrainer(...,
+        trainer = ImageClassifierTrainer(
             callbacks={"on_checkpoint", early_stop}
         )
     """
