@@ -30,21 +30,12 @@ class EarlyStopping:
     **Usage example:**
 
     .. code:: python
-        def my_evaluate(self):
-            # stats = StatsTracker()
-            # loss = nn.CrossEntropyLoss()
-
-            prediction = self.on_model(self.model, sample)
-            val_loss = self.compute_loss(out, sample["mask"])
-            stats.update("loss", val_loss.item(), batch_size)
-            return stats.as_dict()
-
         early_stop = EarlyStopping(
             monitor="loss", patience=10
         )
 
         trainer = ImageClassifierTrainer(
-            callbacks={"on_checkpoint", early_stop}
+            callbacks={"on_checkpoint": early_stop}
         )
     """
 
@@ -105,22 +96,12 @@ class ModelCheckpoint:
     **Usage example:**
 
     .. code:: python
-        def my_evaluate(self):
-            # stats = StatsTracker()
-            # loss = nn.CrossEntropyLoss()
-
-            prediction = self.on_model(self.model, sample)
-            val_loss = self.compute_loss(out, sample["mask"])
-            stats.update("loss", val_loss.item(), batch_size)
-
-            return stats.as_dict()
-
         model_checkpoint = ModelCheckpoint(
             filepath="./outputs", monitor="loss",
         )
 
         trainer = ImageClassifierTrainer(
-            callbacks={"on_checkpoint", model_checkpoint}
+            callbacks={"on_checkpoint": model_checkpoint}
         )
     """
 
