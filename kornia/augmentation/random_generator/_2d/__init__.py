@@ -7,6 +7,7 @@ from kornia.augmentation.random_generator._2d.gaussian_blur import *
 from kornia.augmentation.random_generator._2d.gaussian_illumination import *
 from kornia.augmentation.random_generator._2d.jigsaw import *
 from kornia.augmentation.random_generator._2d.jpeg import *
+from kornia.augmentation.random_generator._2d.linear_illumination import *
 from kornia.augmentation.random_generator._2d.mixup import *
 from kornia.augmentation.random_generator._2d.mosaic import *
 from kornia.augmentation.random_generator._2d.motion_blur import *
