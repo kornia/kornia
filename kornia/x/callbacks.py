@@ -30,12 +30,13 @@ class EarlyStopping:
     **Usage example:**
 
     .. code:: python
+
         early_stop = EarlyStopping(
             monitor="loss", patience=10
         )
 
         trainer = ImageClassifierTrainer(
-            callbacks={"on_checkpoint": early_stop}
+            callbacks={"on_epoch_end", early_stop}
         )
     """
 
@@ -96,12 +97,13 @@ class ModelCheckpoint:
     **Usage example:**
 
     .. code:: python
+
         model_checkpoint = ModelCheckpoint(
             filepath="./outputs", monitor="loss",
         )
 
-        trainer = ImageClassifierTrainer(
-            callbacks={"on_checkpoint": model_checkpoint}
+        trainer = ImageClassifierTrainer(...,
+            callbacks={"on_checkpoint", model_checkpoint}
         )
     """
 
