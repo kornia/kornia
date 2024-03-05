@@ -1,7 +1,7 @@
 from __future__ import annotations
-from typing import List, Optional, Union
 
 from enum import Enum
+from typing import List, Optional, Union
 
 import torch
 from torch.nn.functional import interpolate
