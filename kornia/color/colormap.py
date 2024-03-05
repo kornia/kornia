@@ -38,7 +38,7 @@ class CMAP(Enum):
     turbo = 18
     seismic = 19
 
-    def _load_base(self) -> RGBColor:
+    def _load_base(self) -> List[RGBColor]:
         r"""Load the base colormap corresponding to the enumeration member.
 
         Returns:
@@ -91,22 +91,22 @@ class ColorMap:
         An object of the colormap with the num_colors length.
 
     Example:
-        >>> ColorMap(base='viridis', num_colors=8).colors
-        tensor([[0.2813, 0.2621, 0.2013, 0.1505, 0.1210, 0.2463, 0.5259, 0.8557],
-                [0.0842, 0.2422, 0.3836, 0.5044, 0.6258, 0.7389, 0.8334, 0.8886],
-                [0.4072, 0.5207, 0.5543, 0.5574, 0.5334, 0.4519, 0.2880, 0.0989]])
+    >>> ColorMap(base='viridis', num_colors=8).colors
+    tensor([[0.2813, 0.2621, 0.2013, 0.1505, 0.1210, 0.2463, 0.5259, 0.8557],
+            [0.0842, 0.2422, 0.3836, 0.5044, 0.6258, 0.7389, 0.8334, 0.8886],
+            [0.4072, 0.5207, 0.5543, 0.5574, 0.5334, 0.4519, 0.2880, 0.0989]])
 
-        # Create color map from first color (RGB with range[0-1]) to last one with num_colors length.
-        >>> ColorMap(base=[[0., 0.5 , 1.0], [1., 0.5, 0.]], num_colors=8).colors
-        tensor([[0.0000, 0.0000, 0.1250, 0.3750, 0.6250, 0.8750, 1.0000, 1.0000],
-                [0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000],
-                [1.0000, 1.0000, 0.8750, 0.6250, 0.3750, 0.1250, 0.0000, 0.0000]])
+    # Create color map from first color (RGB with range[0-1]) to last one with num_colors length.
+    >>> ColorMap(base=[[0., 0.5 , 1.0], [1., 0.5, 0.]], num_colors=8).colors
+    tensor([[0.0000, 0.0000, 0.1250, 0.3750, 0.6250, 0.8750, 1.0000, 1.0000],
+            [0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000, 0.5000],
+            [1.0000, 1.0000, 0.8750, 0.6250, 0.3750, 0.1250, 0.0000, 0.0000]])
     """
 
     def __init__(
         self,
         base: Union[List[RGBColor], str, CMAP],
-        num_colors: Optional[int] = 64,
+        num_colors: int = 64,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
     ) -> None:

@@ -219,4 +219,3 @@ Functions and modules to use the color maps:
 
 .. autofunction:: apply_colormap
 .. autoclass:: ApplyColorMap
-.. autoclass:: AUTUMN
