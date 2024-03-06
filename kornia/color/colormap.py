@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import List, Optional, Union
+from typing import Optional, Union
 
 import torch
 from torch.nn.functional import interpolate
@@ -40,7 +40,7 @@ class CMAP(Enum):
     turbo = 18
     seismic = 19
 
-    def _load_base(self) -> List[RGBColor]:
+    def _load_base(self) -> list[RGBColor]:
         r"""Load the base colormap corresponding to the enumeration member.
 
         Returns:
@@ -69,7 +69,7 @@ class CMAP(Enum):
         }[self.name]()
 
     @classmethod
-    def list(cls) -> List[str]:
+    def list(cls) -> list[str]:
         r"""Returns a list of names of enumeration members.
 
         Returns:
@@ -107,7 +107,7 @@ class ColorMap:
 
     def __init__(
         self,
-        base: Union[List[RGBColor], str, CMAP],
+        base: Union[list[RGBColor], str, CMAP],
         num_colors: int = 64,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
@@ -133,7 +133,7 @@ class ColorMap:
 
         self.colors = self._generate_color_map(base_colormap_data, num_colors)
 
-    def _generate_color_map(self, base_colormap: List[RGBColor], num_colors: int) -> Tensor:
+    def _generate_color_map(self, base_colormap: list[RGBColor], num_colors: int) -> Tensor:
         r"""Generates a colormap tensor using interpolation.
 
         Args:

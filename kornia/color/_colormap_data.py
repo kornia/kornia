@@ -1,13 +1,13 @@
-from typing import List
+from __future__ import annotations
 
 # All colormaps has 64 base colors. Extracted from matplotlib.
 # https://matplotlib.org/stable/users/explain/colors/colormaps.html
 
 
-RGBColor = List[float]
+RGBColor = list[float]
 
 
-def get_autumn_base() -> List[RGBColor]:
+def get_autumn_base() -> list[RGBColor]:
     return [
         [1.0, 0.0, 0.0],
         [1.0, 0.015873015873015872, 0.0],
@@ -76,7 +76,7 @@ def get_autumn_base() -> List[RGBColor]:
     ]
 
 
-def get_bone_base() -> List[RGBColor]:
+def get_bone_base() -> list[RGBColor]:
     return [
         [0.0, 0.0, 0.0],
         [0.013888888888888888, 0.013888883454100847, 0.019323671497584544],
@@ -145,7 +145,7 @@ def get_bone_base() -> List[RGBColor]:
     ]
 
 
-def get_jet_base() -> List[RGBColor]:
+def get_jet_base() -> list[RGBColor]:
     return [
         [0.0, 0.0, 0.5],
         [0.0, 0.0, 0.5721500721500722],
@@ -214,7 +214,7 @@ def get_jet_base() -> List[RGBColor]:
     ]
 
 
-def get_winter_base() -> List[RGBColor]:
+def get_winter_base() -> list[RGBColor]:
     return [
         [0.0, 0.0, 1.0],
         [0.0, 0.015873015873015872, 0.9920634920634921],
@@ -283,7 +283,7 @@ def get_winter_base() -> List[RGBColor]:
     ]
 
 
-def get_rainbow_base() -> List[RGBColor]:
+def get_rainbow_base() -> list[RGBColor]:
     return [
         [0.5, 0.0, 1.0],
         [0.46825396825396826, 0.049845885660697156, 0.9996891820008162],
@@ -352,7 +352,7 @@ def get_rainbow_base() -> List[RGBColor]:
     ]
 
 
-def get_ocean_base() -> List[RGBColor]:
+def get_ocean_base() -> list[RGBColor]:
     return [
         [0.0, 0.5, 0.0],
         [0.0, 0.47619047619047616, 0.015873015873015872],
@@ -421,7 +421,7 @@ def get_ocean_base() -> List[RGBColor]:
     ]
 
 
-def get_summer_base() -> List[RGBColor]:
+def get_summer_base() -> list[RGBColor]:
     return [
         [0.0, 0.5, 0.4],
         [0.015873015873015872, 0.5079365079365079, 0.4],
@@ -490,7 +490,7 @@ def get_summer_base() -> List[RGBColor]:
     ]
 
 
-def get_spring_base() -> List[RGBColor]:
+def get_spring_base() -> list[RGBColor]:
     return [
         [1.0, 0.0, 1.0],
         [1.0, 0.015873015873015872, 0.9841269841269842],
@@ -559,7 +559,7 @@ def get_spring_base() -> List[RGBColor]:
     ]
 
 
-def get_cool_base() -> List[RGBColor]:
+def get_cool_base() -> list[RGBColor]:
     return [
         [0.0, 1.0, 1.0],
         [0.015873015873015872, 0.9841269841269842, 1.0],
@@ -628,7 +628,7 @@ def get_cool_base() -> List[RGBColor]:
     ]
 
 
-def get_hsv_base() -> List[RGBColor]:
+def get_hsv_base() -> list[RGBColor]:
     return [
         [1.0, 0.0, 0.0],
         [1.0, 0.09375009375009374, 0.0],
@@ -697,7 +697,7 @@ def get_hsv_base() -> List[RGBColor]:
     ]
 
 
-def get_bgr_base() -> List[RGBColor]:
+def get_bgr_base() -> list[RGBColor]:
     return [
         [0.0, 0.0, 1.0],
         [0.031746031746031744, 0.0, 0.9682539682539683],
@@ -766,7 +766,7 @@ def get_bgr_base() -> List[RGBColor]:
     ]
 
 
-def get_pink_base() -> List[RGBColor]:
+def get_pink_base() -> list[RGBColor]:
     return [
         [0.1178, 0.0, 0.0],
         [0.1958570548040548, 0.10286904261004261, 0.10286904261004261],
@@ -835,7 +835,7 @@ def get_pink_base() -> List[RGBColor]:
     ]
 
 
-def get_hot_base() -> List[RGBColor]:
+def get_hot_base() -> list[RGBColor]:
     return [
         [0.0416, 0.0, 0.0],
         [0.0832696068869982, 0.0, 0.0],
@@ -904,7 +904,7 @@ def get_hot_base() -> List[RGBColor]:
     ]
 
 
-def get_plasma_base() -> List[RGBColor]:
+def get_plasma_base() -> list[RGBColor]:
     return [
         [0.050383, 0.029803, 0.527975],
         [0.096379, 0.025165, 0.547103],
@@ -973,7 +973,7 @@ def get_plasma_base() -> List[RGBColor]:
     ]
 
 
-def get_viridis_base() -> List[RGBColor]:
+def get_viridis_base() -> list[RGBColor]:
     return [
         [0.267004, 0.004874, 0.329415],
         [0.272594, 0.025563, 0.353093],
@@ -1042,7 +1042,7 @@ def get_viridis_base() -> List[RGBColor]:
     ]
 
 
-def get_cividis_base() -> List[RGBColor]:
+def get_cividis_base() -> list[RGBColor]:
     return [
         [0.0, 0.135112, 0.304751],
         [0.0, 0.146877, 0.330479],
@@ -1111,7 +1111,7 @@ def get_cividis_base() -> List[RGBColor]:
     ]
 
 
-def get_twilight_base() -> List[RGBColor]:
+def get_twilight_base() -> list[RGBColor]:
     return [
         [0.8857501584075443, 0.8500092494306783, 0.8879736506427196],
         [0.8669601550533358, 0.8510896085314068, 0.8790976697717334],
@@ -1180,7 +1180,7 @@ def get_twilight_base() -> List[RGBColor]:
     ]
 
 
-def get_turbo_base() -> List[RGBColor]:
+def get_turbo_base() -> list[RGBColor]:
     return [
         [0.18995, 0.07176, 0.23217],
         [0.2086, 0.11802, 0.34607],
@@ -1249,7 +1249,7 @@ def get_turbo_base() -> List[RGBColor]:
     ]
 
 
-def get_seismic_base() -> List[RGBColor]:
+def get_seismic_base() -> list[RGBColor]:
     return [
         [0.0, 0.0, 0.3],
         [0.0, 0.0, 0.34444444444444444],

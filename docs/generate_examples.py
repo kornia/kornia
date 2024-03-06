@@ -394,7 +394,7 @@ def main():
         axes[i].imshow(out.permute(1, 2, 0).numpy())
         axes[i].axis("off")
     fig.tight_layout()
-    fig.savefig("CMAP.png", dpi=300)
+    fig.savefig(os.path.join(OUTPUT_PATH, "CMAP.png"), dpi=300)
 
     # korna.enhance module
     mod = importlib.import_module("kornia.enhance")
