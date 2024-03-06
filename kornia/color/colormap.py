@@ -17,6 +17,7 @@ class CMAP(Enum):
     r"""An enumeration for available colormaps.
 
     List of available colormaps:
+
     .. image:: _static/img/CMAP.png
     """
 
