@@ -82,10 +82,36 @@ def _infer_batch_shape3d(input: Union[Tensor, Tuple[Tensor, Tensor]]) -> torch.S
     return tensor.shape
 
 
-def _transform_input(input: Tensor, *, batch_size: Optional[Tensor] = None) -> Tensor:
-    r"""Reshape an input tensor to be (*, C, H, W).
+def _transform_input_by_shape(input: Tensor, reference_shape: torch.Size, match_channel: bool = True) -> Tensor:
+    """Reshape an input tensor to have the same dimensions as the reference_shape.
 
-    Accept either (H, W), (C, H, W) or (*, C, H, W). Using `batch_size` accepts (B, H, W)
+    Arguments
+        input: tensor to be transformed
+        reference_shape: shape used as reference
+        match_channel: if True, C_{src} == C_{ref}. otherwise, no constrain. C =1 by default
+    """
+    B = reference_shape[-4] if len(reference_shape) >= 4 else None
+    C = reference_shape[-3] if len(reference_shape) >= 3 else None
+
+    if len(input.shape) == 2:
+        input = input.unsqueeze(0)
+
+    if len(input.shape) == 3 and B == input.shape[-3]:
+        # If the first dim matches within the batch_size, add a `C` dim
+        # Useful to handler Masks without `C` dimensions
+        input = input.unsqueeze(1)
+
+    if match_channel and C:
+        if not input.shape[-3] == C:
+            raise ValueError("The C dimension of tensor did not match with the reference tensor.")
+    elif match_channel and C is None:
+        raise ValueError("The reference tensor do not have a C dimension!")
+
+    return input
+
+
+def _transform_input(input: Tensor) -> Tensor:
+    r"""Reshape an input tensor to be (*, C, H, W). Accept either (H, W), (C, H, W) or (*, C, H, W).
     Args:
         input: Tensor
 
@@ -102,12 +128,7 @@ def _transform_input(input: Tensor, *, batch_size: Optional[Tensor] = None) -> T
         input = input.unsqueeze(0)
 
     if len(input.shape) == 3:
-        if batch_size == input.shape[0]:
-            # If the first dim matches within the batch_size, add a `C` dim
-            # Useful to handler Masks without `C` dimensions
-            input = input.unsqueeze(1)
-        else:
-            input = input.unsqueeze(0)
+        input = input.unsqueeze(0)
 
     return input
 
@@ -147,7 +168,9 @@ def _validate_input_dtype(input: Tensor, accepted_dtypes: List[torch.dtype]) -> 
         raise TypeError(f"Expected input of {accepted_dtypes}. Got {input.dtype}")
 
 
-def _transform_output_shape(output: Tensor, shape: Tuple[int, ...], *, batch_size: Optional[Tensor] = None) -> Tensor:
+def _transform_output_shape(
+    output: Tensor, shape: Tuple[int, ...], *, reference_shape: Optional[torch.Size] = None
+) -> Tensor:
     r"""Collapse the broadcasted batch dimensions an input tensor to be the specified shape.
     Args:
         input: Tensor
@@ -160,7 +183,7 @@ def _transform_output_shape(output: Tensor, shape: Tuple[int, ...], *, batch_siz
 
     for dim in range(len(out_tensor.shape) - len(shape)):
         idx = 0
-        if batch_size and out_tensor.shape[0] == batch_size and len(shape) > 2:
+        if reference_shape is not None and out_tensor.shape[0] == reference_shape[0] and len(shape) > 2:
             idx = 1
         if out_tensor.shape[idx] != 1:
             raise AssertionError(f"Dimension {dim} of input is expected to be 1, got {out_tensor.shape[idx]}")
