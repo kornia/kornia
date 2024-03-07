@@ -82,7 +82,7 @@ class TestInverseCast:
         op = _torch_inverse_cast
         op_jit = torch.jit.script(op)
         assert_close(op(x), op_jit(x))
-    
+
     def test_not_invertible(self, device, dtype):
         with pytest.raises(RuntimeError):
             x = torch.tensor([[0.0, 0.0], [0.0, 0.0]], device=device, dtype=dtype)
