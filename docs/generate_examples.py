@@ -379,20 +379,29 @@ def main():
     # Plot for all ColorMaps (CMAP.png)
     height_image = 40
     num_colors = 256
-    # 1xheight_imagexnum_colors
+    num_columns = 3
+
+    # 1 x height_image x num_colors
     input_tensor = torch.arange(start=0, end=num_colors, step=1).unsqueeze(0).repeat(1, height_image, 1)
     input_tensor = input_tensor.to("cpu").to(torch.float32)
-    gray = K.color.grayscale_to_rgb(input_tensor / 255.0)
 
-    fig, axes = plt.subplots(len(K.color.CMAP.list()), 1, figsize=(5, 10))
-    for i, cmap in enumerate(K.color.CMAP.list()):
-        cmap_object = K.color.ColorMap(base=cmap, num_colors=num_colors)
-        out_cmap = K.color.ApplyColorMap(colormap=cmap_object)(input_tensor)
-        out = torch.cat([gray, out_cmap], dim=-1)
-        # Plotting
-        axes[i].set_title(cmap)
-        axes[i].imshow(out.permute(1, 2, 0).numpy())
-        axes[i].axis("off")
+    # Get colormap list
+    colormap_list = K.color.CMAP.list()
+    num_colormaps = len(colormap_list)
+    # Calculate number of rows needed
+    num_rows = (num_colormaps + num_columns - 1) // num_columns
+
+    # Create figure and axis objects
+    fig, axes = plt.subplots(num_rows, num_columns, figsize=(12, 8))
+    for i, ax in enumerate(axes.flat):
+        if i < num_colormaps:
+            cmap = K.color.ColorMap(base=colormap_list[i], num_colors=num_colors)
+            res = K.color.ApplyColorMap(colormap=cmap)(input_tensor)
+            ax.imshow(res.permute(1, 2, 0).numpy())
+            ax.set_title(colormap_list[i], fontsize=12)
+            ax.axis("off")
+        else:
+            fig.delaxes(ax)
     fig.tight_layout()
     fig.savefig(os.path.join(OUTPUT_PATH, "CMAP.png"), dpi=300)
 
