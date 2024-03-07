@@ -321,7 +321,8 @@ def main():
         "rgb_to_ycbcr": ((), 1),
         "rgb_to_yuv": ((), 1),
         "rgb_to_linear_rgb": ((), 1),
-        "apply_colormap": ((K.color.colormap.AUTUMN(255),), 1),
+        "apply_colormap": ((K.color.ColorMap("autumn", 256),), 1),
+        "ApplyColorMap": ((K.color.ColorMap("winter", 256),), 1),
     }
     # ITERATE OVER THE TRANSFORMS
     for fn_name, (args, num_samples) in color_transforms_list.items():
@@ -332,6 +333,9 @@ def main():
         elif fn_name == "apply_colormap":
             gray_image = (K.color.rgb_to_grayscale(img2) * 255.0).round()
             out = K.color.rgb_to_bgr(fn(gray_image, *args))
+        elif fn_name == "ApplyColorMap":
+            gray_image = (K.color.rgb_to_grayscale(img2) * 255.0).round()
+            out = K.color.rgb_to_bgr(fn(*args)(gray_image))
         else:
             out = fn(img2, *args)
         # perform normalization to visualize
@@ -345,7 +349,7 @@ def main():
         if out.shape[1] != 3:
             out = out.repeat(1, 3, 1, 1)
         # save the output image
-        if fn_name in ("grayscale_to_rgb", "apply_colormap"):
+        if fn_name in ("grayscale_to_rgb", "apply_colormap", "ApplyColorMap"):
             out = torch.cat(
                 [K.color.rgb_to_grayscale(img2[0]).repeat(3, 1, 1), *(out[i] for i in range(out.size(0)))], dim=-1
             )
@@ -356,12 +360,13 @@ def main():
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for {fn_name}. {sig}")
 
+    # korna.color.colormap
     colormaps_list = {"AUTUMN": (256,)}
     bar_img_gray = torch.range(0, 255).repeat(1, 40, 1)  # 1x1x40x256
     bar_img = K.color.grayscale_to_rgb(bar_img_gray)
     # ITERATE OVER THE COLORMAPS
     for colormap_name, args in colormaps_list.items():
-        cm = getattr(mod, colormap_name)(*args)
+        cm = K.color.ColorMap(base=colormap_name, num_colors=args[0])
         out = K.color.rgb_to_bgr(K.color.apply_colormap(bar_img_gray, cm))
 
         out = torch.cat([bar_img, out], dim=-1)
@@ -370,6 +375,35 @@ def main():
         cv2.imwrite(str(OUTPUT_PATH / f"{colormap_name}.png"), out_np)
         sig = f"{colormap_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for {colormap_name}. {sig}")
+
+    # Plot for all ColorMaps (ColorMapType.png)
+    height_image = 40
+    num_colors = 256
+    num_columns = 3
+
+    # 1 x height_image x num_colors
+    input_tensor = torch.arange(start=0, end=num_colors, step=1).unsqueeze(0).repeat(1, height_image, 1)
+    input_tensor = input_tensor.to("cpu").to(torch.float32)
+
+    # Get colormap list
+    colormap_list = K.color.ColorMapType.list()
+    num_colormaps = len(colormap_list)
+    # Calculate number of rows needed
+    num_rows = (num_colormaps + num_columns - 1) // num_columns
+
+    # Create figure and axis objects
+    fig, axes = plt.subplots(num_rows, num_columns, figsize=(12, 8))
+    for i, ax in enumerate(axes.flat):
+        if i < num_colormaps:
+            cmap = K.color.ColorMap(base=colormap_list[i], num_colors=num_colors)
+            res = K.color.ApplyColorMap(colormap=cmap)(input_tensor)
+            ax.imshow(res.permute(1, 2, 0).numpy())
+            ax.set_title(colormap_list[i], fontsize=12)
+            ax.axis("off")
+        else:
+            fig.delaxes(ax)
+    fig.tight_layout()
+    fig.savefig(os.path.join(OUTPUT_PATH, "ColorMapType.png"), dpi=300)
 
     # korna.enhance module
     mod = importlib.import_module("kornia.enhance")

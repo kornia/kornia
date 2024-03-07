@@ -1,24 +1,22 @@
 import pytest
 import torch
 
-from kornia.color import AUTUMN, ApplyColorMap, apply_colormap
+from kornia.color import AUTUMN, ApplyColorMap, ColorMap, apply_colormap
 from kornia.core import tensor
 
 from testing.base import BaseTester, assert_close
 
 
 def test_autumn(device, dtype):
-    cm = AUTUMN(num_colors=254, device=device, dtype=dtype)
+    cm = AUTUMN(num_colors=64, device=device, dtype=dtype)
     colors = cm.colors
 
     actual = colors[..., 0]
-
     expected = tensor([1, 0, 0], device=device, dtype=dtype)
-
     assert_close(actual, expected)
 
-    actual = colors[..., 127]
-    expected = tensor([1, 0.5019997358322144, 0], device=device, dtype=dtype)
+    actual = colors[..., 32]
+    expected = tensor([1.0, 0.5079365079365079, 0.0], device=device, dtype=dtype)
     assert_close(actual, expected)
 
     actual = colors[..., -1]
@@ -39,7 +37,7 @@ class TestApplyColorMap(BaseTester):
             device=device,
             dtype=dtype,
         )
-        cm = AUTUMN(device=device, dtype=dtype)
+        cm = ColorMap(base="autumn", device=device, dtype=dtype)
         actual = apply_colormap(input_tensor, cm)
 
         self.assert_close(actual, expected_tensor)
@@ -58,17 +56,17 @@ class TestApplyColorMap(BaseTester):
             dtype=dtype,
         )
 
-        actual = apply_colormap(input_tensor, AUTUMN(device=device, dtype=dtype))
+        actual = apply_colormap(input_tensor, ColorMap(base="autumn", device=device, dtype=dtype))
         self.assert_close(actual, expected_tensor)
 
     def test_exception(self, device, dtype):
-        cm = AUTUMN(device=device, dtype=dtype)
+        cm = ColorMap(base="autumn", device=device, dtype=dtype)
         with pytest.raises(TypeError):
             apply_colormap(torch.rand(size=(5, 1, 1), dtype=dtype, device=device), cm)
 
     @pytest.mark.parametrize("shape", [(2, 1, 4, 4), (1, 4, 4), (4, 4)])
     def test_cardinality(self, shape, device, dtype):
-        cm = AUTUMN(device=device, dtype=dtype)
+        cm = ColorMap(base="autumn", device=device, dtype=dtype)
         input_tensor = torch.randint(0, 63, shape, device=device, dtype=dtype)
         actual = apply_colormap(input_tensor, cm)
 
@@ -82,7 +80,7 @@ class TestApplyColorMap(BaseTester):
     @pytest.mark.skip(reason="jacobian mismatch")
     def test_gradcheck(self, device):
         # TODO: implement differentiability
-        cm = AUTUMN(device=device, dtype=torch.float64)
+        cm = ColorMap(base="autumn", device=device, dtype=torch.float64)
         input_tensor = torch.randint(0, 63, (1, 2, 1), device=device, dtype=torch.float64)
 
         self.gradcheck(apply_colormap, (input_tensor, cm))
@@ -91,16 +89,16 @@ class TestApplyColorMap(BaseTester):
         op = apply_colormap
         op_script = torch_optimizer(op)
 
-        cm = AUTUMN(device=device, dtype=dtype)
+        cm = ColorMap(base="autumn", device=device, dtype=dtype)
         img = torch.ones(1, 3, 3, device=device, dtype=dtype)
 
         self.assert_close(op(img, cm), op_script(img, cm))
 
     def test_module(self, device, dtype):
         op = apply_colormap
-        cm = AUTUMN(device=device, dtype=dtype)
-        op_module = ApplyColorMap(cm)
+        cm = ColorMap(base="autumn", device=device, dtype=dtype)
+        op_module = ApplyColorMap(colormap=cm)
 
         img = torch.ones(1, 3, 3, device=device, dtype=dtype)
 
-        self.assert_close(op(img, cm), op_module(img))
+        self.assert_close(op(img, colormap=cm), op_module(img))
