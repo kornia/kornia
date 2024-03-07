@@ -3,7 +3,12 @@ from typing import Any, Dict, List, Optional, Union
 import torch
 
 from kornia.augmentation.base import _BasicAugmentationBase
-from kornia.augmentation.utils import _transform_input, _transform_output_shape, _validate_input_dtype
+from kornia.augmentation.utils import (
+    _transform_input,
+    _transform_input_by_shape,
+    _transform_output_shape,
+    _validate_input_dtype,
+)
 from kornia.constants import DataKey, DType
 from kornia.core import Tensor, tensor
 from kornia.core.check import KORNIA_UNWRAP
@@ -38,10 +43,14 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         super().__init__(p, p_batch=p_batch, same_on_batch=same_on_batch, keepdim=keepdim)
         self.data_keys = [DataKey.get(inp) for inp in data_keys]
 
-    def transform_tensor(self, input: Tensor) -> Tensor:
+    def transform_tensor(self, input: Tensor, *, shape: Optional[Tensor] = None, match_channel: bool = True) -> Tensor:
         """Convert any incoming (H, W), (C, H, W) and (B, C, H, W) into (B, C, H, W)."""
         _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
-        return _transform_input(input)
+
+        if shape is None:
+            return _transform_input(input)
+        else:
+            return _transform_input_by_shape(input, reference_shape=shape, match_channel=match_channel)
 
     def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         # NOTE: apply_transform receives the whole tensor, but returns only altered elements.

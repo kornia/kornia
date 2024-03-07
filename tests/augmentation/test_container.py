@@ -534,6 +534,7 @@ class TestAugmentationSequential:
             #     data_keys=["input", "mask"],
             # ),
             K.RandomAffine(360, p=1.0),
+            K.RandomMixUpV2(p=1.0),
             data_keys=["input", "mask"],
             keepdim=keepdim,
         )

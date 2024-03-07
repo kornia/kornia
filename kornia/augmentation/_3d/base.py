@@ -4,7 +4,7 @@ from torch import float16, float32, float64
 
 import kornia
 from kornia.augmentation.base import _AugmentationBase
-from kornia.augmentation.utils import _transform_input3d, _validate_input_dtype
+from kornia.augmentation.utils import _transform_input3d, _transform_input3d_by_shape, _validate_input_dtype
 from kornia.core import Tensor
 from kornia.geometry.boxes import Boxes3D
 from kornia.geometry.keypoints import Keypoints3D
@@ -27,10 +27,13 @@ class AugmentationBase3D(_AugmentationBase):
         if len(input.shape) != 5:
             raise RuntimeError(f"Expect (B, C, D, H, W). Got {input.shape}.")
 
-    def transform_tensor(self, input: Tensor) -> Tensor:
+    def transform_tensor(self, input: Tensor, *, shape: Tensor | None = None, match_channel: bool = True) -> Tensor:
         """Convert any incoming (D, H, W), (C, D, H, W) and (B, C, D, H, W) into (B, C, D, H, W)."""
         _validate_input_dtype(input, accepted_dtypes=[float16, float32, float64])
-        return _transform_input3d(input)
+        if shape is None:
+            return _transform_input3d(input)
+        else:
+            return _transform_input3d_by_shape(input, reference_shape=shape, match_channel=match_channel)
 
     def identity_matrix(self, input: Tensor) -> Tensor:
         """Return 4x4 identity matrix."""

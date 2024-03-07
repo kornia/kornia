@@ -87,9 +87,7 @@ class _BasicAugmentationBase(Module):
     def __unpack_input__(self, input: Tensor) -> Tensor:
         return input
 
-    def transform_tensor(
-        self, input: Tensor, *, shape: Optional[torch.Size] = None, match_channel: bool = True
-    ) -> Tensor:
+    def transform_tensor(self, input: Tensor, *, shape: Optional[Tensor] = None, match_channel: bool = True) -> Tensor:
         """Standardize input tensors."""
         raise NotImplementedError
 

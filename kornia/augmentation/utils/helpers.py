@@ -82,7 +82,7 @@ def _infer_batch_shape3d(input: Union[Tensor, Tuple[Tensor, Tensor]]) -> torch.S
     return tensor.shape
 
 
-def _transform_input_by_shape(input: Tensor, reference_shape: torch.Size, match_channel: bool = True) -> Tensor:
+def _transform_input_by_shape(input: Tensor, reference_shape: Tensor, match_channel: bool = True) -> Tensor:
     """Reshape an input tensor to have the same dimensions as the reference_shape.
 
     Arguments
@@ -103,6 +103,34 @@ def _transform_input_by_shape(input: Tensor, reference_shape: torch.Size, match_
 
     if match_channel and C:
         if not input.shape[-3] == C:
+            raise ValueError("The C dimension of tensor did not match with the reference tensor.")
+    elif match_channel and C is None:
+        raise ValueError("The reference tensor do not have a C dimension!")
+
+    return input
+
+
+def _transform_input3d_by_shape(input: Tensor, reference_shape: Tensor, match_channel: bool = True) -> Tensor:
+    """Reshape an input tensor to have the same dimensions as the reference_shape.
+
+    Arguments
+        input: tensor to be transformed
+        reference_shape: shape used as reference
+        match_channel: if True, C_{src} == C_{ref}. otherwise, no constrain. C =1 by default
+    """
+    B = reference_shape[-5] if len(reference_shape) >= 5 else None
+    C = reference_shape[-4] if len(reference_shape) >= 4 else None
+
+    if len(input.shape) == 3:
+        input = input.unsqueeze(0)
+
+    if len(input.shape) == 4 and B == input.shape[-4]:
+        # If the first dim matches within the batch_size, add a `C` dim
+        # Useful to handler Masks without `C` dimensions
+        input = input.unsqueeze(2)
+
+    if match_channel and C:
+        if not input.shape[-4] == C:
             raise ValueError("The C dimension of tensor did not match with the reference tensor.")
     elif match_channel and C is None:
         raise ValueError("The reference tensor do not have a C dimension!")
@@ -169,7 +197,7 @@ def _validate_input_dtype(input: Tensor, accepted_dtypes: List[torch.dtype]) -> 
 
 
 def _transform_output_shape(
-    output: Tensor, shape: Tuple[int, ...], *, reference_shape: Optional[torch.Size] = None
+    output: Tensor, shape: Tuple[int, ...], *, reference_shape: Optional[Tensor] = None
 ) -> Tensor:
     r"""Collapse the broadcasted batch dimensions an input tensor to be the specified shape.
     Args:
