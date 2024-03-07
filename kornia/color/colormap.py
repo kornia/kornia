@@ -130,7 +130,9 @@ class ColorMap:
             base_colormap_data = base
             self.name = "CustomColorMapType"
         else:
-            raise ValueError("Base should be one of the available `ColorMapType` or a base colormap data (list[RGBColor])")
+            raise ValueError(
+                "Base should be one of the available `ColorMapType` or a base colormap data (list[RGBColor])"
+            )
 
         self.colors = self._generate_color_map(base_colormap_data, num_colors)
 
