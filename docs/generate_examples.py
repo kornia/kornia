@@ -376,7 +376,7 @@ def main():
         sig = f"{colormap_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for {colormap_name}. {sig}")
 
-    # Plot for all ColorMaps (CMAP.png)
+    # Plot for all ColorMaps (ColorMapType.png)
     height_image = 40
     num_colors = 256
     num_columns = 3
@@ -386,7 +386,7 @@ def main():
     input_tensor = input_tensor.to("cpu").to(torch.float32)
 
     # Get colormap list
-    colormap_list = K.color.CMAP.list()
+    colormap_list = K.color.ColorMapType.list()
     num_colormaps = len(colormap_list)
     # Calculate number of rows needed
     num_rows = (num_colormaps + num_columns - 1) // num_columns
@@ -403,7 +403,7 @@ def main():
         else:
             fig.delaxes(ax)
     fig.tight_layout()
-    fig.savefig(os.path.join(OUTPUT_PATH, "CMAP.png"), dpi=300)
+    fig.savefig(os.path.join(OUTPUT_PATH, "ColorMapType.png"), dpi=300)
 
     # korna.enhance module
     mod = importlib.import_module("kornia.enhance")

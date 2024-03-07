@@ -209,7 +209,7 @@ Color Maps
 
 Color maps available:
 
-.. autoclass:: CMAP
+.. autoclass:: ColorMapType
     :members:
     :undoc-members:
     :member-order: bysource

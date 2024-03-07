@@ -13,12 +13,12 @@ from kornia.core.check import KORNIA_CHECK_IS_GRAY
 from kornia.utils.helpers import deprecated
 
 
-class CMAP(Enum):
+class ColorMapType(Enum):
     r"""An enumeration for available colormaps.
 
     List of available colormaps:
 
-    .. image:: _static/img/CMAP.png
+    .. image:: _static/img/ColorMapType.png
     """
 
     autumn = 1
@@ -81,11 +81,11 @@ class CMAP(Enum):
 
 class ColorMap:
     r"""Class to represent a colour map. It can be created or selected from the built-in colour map. Please refer to
-    the `CMAP` enum class to view all available colormaps.
+    the `ColorMapType` enum class to view all available colormaps.
 
     Args:
         base: A list of RGB colors to define a new custom colormap or
-        the name of a built-in colormap as str or using CMAP class.
+        the name of a built-in colormap as str or using ColorMapType class.
         num_colors: Number of colors in the colormap.
         device: The device to put the generated colormap on.
         dtype: The data type of the generated colormap.
@@ -108,7 +108,7 @@ class ColorMap:
 
     def __init__(
         self,
-        base: Union[list[RGBColor], str, CMAP],
+        base: Union[list[RGBColor], str, ColorMapType],
         num_colors: int = 64,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
@@ -119,18 +119,18 @@ class ColorMap:
 
         if isinstance(base, str):
             base = base.lower()
-            if base not in CMAP.list():
-                raise ValueError(f"Unsupported colormap: {base}. Available colormaps are {CMAP.list()}")
-            base_colormap_data = CMAP[base]._load_base()
+            if base not in ColorMapType.list():
+                raise ValueError(f"Unsupported colormap: {base}. Available colormaps are {ColorMapType.list()}")
+            base_colormap_data = ColorMapType[base]._load_base()
             self.name = base
-        elif isinstance(base, CMAP):
+        elif isinstance(base, ColorMapType):
             base_colormap_data = base._load_base()
             self.name = base.name
         elif isinstance(base, list):
             base_colormap_data = base
-            self.name = "CustomCmap"
+            self.name = "CustomColorMapType"
         else:
-            raise ValueError("Base should be one of the available `CMAP` or a base colormap data (list[RGBColor])")
+            raise ValueError("Base should be one of the available `ColorMapType` or a base colormap data (list[RGBColor])")
 
         self.colors = self._generate_color_map(base_colormap_data, num_colors)
 
@@ -280,4 +280,4 @@ class AUTUMN(ColorMap):
     def __init__(
         self, num_colors: int = 64, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None
     ) -> None:
-        super().__init__(base=CMAP.autumn, num_colors=num_colors, device=device, dtype=dtype)
+        super().__init__(base=ColorMapType.autumn, num_colors=num_colors, device=device, dtype=dtype)
