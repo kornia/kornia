@@ -156,7 +156,7 @@ def _torch_inverse_cast(input: Tensor) -> Tensor:
     dtype: torch.dtype = input.dtype
     if dtype not in (torch.float32, torch.float64):
         dtype = torch.float32
-    return torch.inverse(input.to(dtype)).to(input.dtype)
+    return torch.linalg.inv(input.to(dtype)).to(input.dtype)
 
 
 def _torch_histc_cast(input: Tensor, bins: int, min: int, max: int) -> Tensor:
