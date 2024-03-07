@@ -88,14 +88,6 @@ class TestInverseCast:
             x = torch.tensor([[0.0, 0.0], [0.0, 0.0]], device=device, dtype=dtype)
             _ = _torch_inverse_cast(x)
 
-    def test_not_invertible(self, device, dtype):
-        x = torch.tensor([[0.0, 0.0], [0.0, 0.0]], device=device, dtype=dtype)
-
-        try:
-            _ = _torch_inverse_cast(x)
-        except Exception as e:
-            assert isinstance(e, torch._C._LinAlgError)
-
 
 class TestHistcCast:
     def test_smoke(self, device, dtype):
