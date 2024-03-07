@@ -62,7 +62,7 @@ def test_extract_device_dtype(tensor_list, out_device, out_dtype, will_throw_err
 
 
 class TestInverseCast:
-    @pytest.mark.parametrize("input_shape", [(1, 3, 4, 4), (2, 4, 5, 5)])
+    @pytest.mark.parametrize("input_shape", [(4, 4), (1, 3, 4, 4), (2, 4, 5, 5)])
     def test_smoke(self, device, dtype, input_shape):
         x = torch.rand(input_shape, device=device, dtype=dtype)
         y = _torch_inverse_cast(x)
@@ -82,6 +82,11 @@ class TestInverseCast:
         op = _torch_inverse_cast
         op_jit = torch.jit.script(op)
         assert_close(op(x), op_jit(x))
+
+    def test_not_invertible(self, device, dtype):
+        with pytest.raises(RuntimeError):
+            x = torch.tensor([[0.0, 0.0], [0.0, 0.0]], device=device, dtype=dtype)
+            _ = _torch_inverse_cast(x)
 
 
 class TestHistcCast:
