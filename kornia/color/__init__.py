@@ -1,4 +1,4 @@
-from .colormap import AUTUMN, CMAP, ApplyColorMap, ColorMap, apply_colormap
+from .colormap import AUTUMN, CMAP, ApplyColorMap, ColorMap, apply_colormap, RGBColor
 from .gray import BgrToGrayscale, GrayscaleToRgb, RgbToGrayscale, bgr_to_grayscale, grayscale_to_rgb, rgb_to_grayscale
 from .hls import HlsToRgb, RgbToHls, hls_to_rgb, rgb_to_hls
 from .hsv import HsvToRgb, RgbToHsv, hsv_to_rgb, rgb_to_hsv
@@ -115,6 +115,7 @@ __all__ = [
     "ColorMap",
     "CMAP",
     "apply_colormap",
+    "RGBColor",
 ]
 
 sepia = sepia_from_rgb
