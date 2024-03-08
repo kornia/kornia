@@ -105,6 +105,7 @@ class TestLAFAffNetShapeEstimator(BaseTester):
         out = ori(laf, inp)
         assert out.shape == laf.shape
 
+    @pytest.mark.slow
     def test_pretrained(self, device):
         inp = torch.rand(1, 1, 32, 32, device=device)
         laf = torch.rand(1, 1, 2, 3, device=device)
