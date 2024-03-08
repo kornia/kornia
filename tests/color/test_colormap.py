@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from kornia.color import AUTUMN, ApplyColorMap, ColorMap, apply_colormap
+from kornia.color import AUTUMN, ApplyColorMap, ColorMap, ColorMapType, apply_colormap
 from kornia.core import tensor
 
 from testing.base import BaseTester, assert_close
@@ -65,8 +65,9 @@ class TestApplyColorMap(BaseTester):
             apply_colormap(torch.rand(size=(5, 1, 1), dtype=dtype, device=device), cm)
 
     @pytest.mark.parametrize("shape", [(2, 1, 4, 4), (1, 4, 4), (4, 4)])
-    def test_cardinality(self, shape, device, dtype):
-        cm = ColorMap(base="autumn", device=device, dtype=dtype)
+    @pytest.mark.parametrize("cmap_base", ColorMapType)
+    def test_cardinality(self, shape, device, dtype, cmap_base):
+        cm = ColorMap(base=cmap_base, device=device, dtype=dtype)
         input_tensor = torch.randint(0, 63, shape, device=device, dtype=dtype)
         actual = apply_colormap(input_tensor, cm)
 

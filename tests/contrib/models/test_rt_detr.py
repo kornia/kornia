@@ -16,6 +16,7 @@ from testing.base import BaseTester, assert_close
     "backbone_factory",
     (partial(ResNetD.from_config, 18), partial(ResNetD.from_config, 50), partial(PPHGNetV2.from_config, "L")),
 )
+@pytest.mark.slow
 def test_backbone(backbone_factory, device, dtype):
     backbone = backbone_factory().to(device, dtype)
     assert hasattr(backbone, "out_channels")
