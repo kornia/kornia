@@ -26,6 +26,8 @@ Intensity
 .. autoclass:: RandomGrayscale
 .. autoclass:: RandomHue
 .. autoclass:: RandomJPEG
+.. autoclass:: RandomLinearIllumination
+.. autoclass:: RandomLinearCornerIllumination
 .. autoclass:: RandomMedianBlur
 .. autoclass:: RandomMotionBlur
 .. autoclass:: RandomPlanckianJitter
