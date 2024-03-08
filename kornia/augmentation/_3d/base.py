@@ -27,7 +27,7 @@ class AugmentationBase3D(_AugmentationBase):
         if len(input.shape) != 5:
             raise RuntimeError(f"Expect (B, C, D, H, W). Got {input.shape}.")
 
-    def transform_tensor(self, input: Tensor, *, shape: Tensor | None = None, match_channel: bool = True) -> Tensor:
+    def transform_tensor(self, input: Tensor, *, shape: Optional[Tensor] = None, match_channel: bool = True) -> Tensor:
         """Convert any incoming (D, H, W), (C, D, H, W) and (B, C, D, H, W) into (B, C, D, H, W)."""
         _validate_input_dtype(input, accepted_dtypes=[float16, float32, float64])
         if shape is None:
