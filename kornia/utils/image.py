@@ -136,7 +136,7 @@ def _to_bcdhw(tensor: Tensor) -> Tensor:
     return tensor
 
 
-def tensor_to_image(tensor: Tensor, keepdim: bool = False) -> Any:
+def tensor_to_image(tensor: Tensor, keepdim: bool = False, force_contiguous: bool = False) -> Any:
     """Converts a PyTorch tensor image to a numpy image.
 
     In case the tensor is in the GPU, it will be copied back to CPU.
@@ -146,6 +146,7 @@ def tensor_to_image(tensor: Tensor, keepdim: bool = False) -> Any:
             :math:`(B, C, H, W)`.
         keepdim: If ``False`` squeeze the input image to match the shape
             :math:`(H, W, C)` or :math:`(H, W)`.
+        force_contiguous: If ``True`` call `contiguous` to the tensor before
 
     Returns:
         image of the form :math:`(H, W)`, :math:`(H, W, C)` or :math:`(B, H, W, C)`.
@@ -166,7 +167,7 @@ def tensor_to_image(tensor: Tensor, keepdim: bool = False) -> Any:
         raise ValueError("Input size must be a two, three or four dimensional tensor")
 
     input_shape = tensor.shape
-    image = tensor.cpu().detach().numpy()
+    image = tensor.cpu().detach()
 
     if len(input_shape) == 2:
         # (H, W) -> (H, W)
@@ -177,10 +178,10 @@ def tensor_to_image(tensor: Tensor, keepdim: bool = False) -> Any:
             # Grayscale for proper plt.imshow needs to be (H,W)
             image = image.squeeze()
         else:
-            image = image.transpose(1, 2, 0)
+            image = image.permute(1, 2, 0)
     elif len(input_shape) == 4:
         # (B, C, H, W) -> (B, H, W, C)
-        image = image.transpose(0, 2, 3, 1)
+        image = image.permute(0, 2, 3, 1)
         if input_shape[0] == 1 and not keepdim:
             image = image.squeeze(0)
         if input_shape[1] == 1:
@@ -188,7 +189,11 @@ def tensor_to_image(tensor: Tensor, keepdim: bool = False) -> Any:
     else:
         raise ValueError(f"Cannot process tensor with shape {input_shape}")
 
-    return image
+    # make sure the image is contiguous
+    if force_contiguous:
+        image = image.contiguous()
+
+    return image.numpy()
 
 
 class ImageToTensor(nn.Module):

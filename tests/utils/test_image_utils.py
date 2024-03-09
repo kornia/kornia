@@ -108,3 +108,13 @@ def test_image_to_tensor_keepdim(input_shape, expected):
     tensor = kornia.utils.image_to_tensor(image, keepdim=True)
     assert tensor.shape == expected
     assert isinstance(tensor, torch.Tensor)
+
+
+def test_tensor_to_image_contiguous(device, dtype):
+    tensor = torch.rand(2, 3, 4, 4, device=device, dtype=dtype)
+
+    image = kornia.utils.tensor_to_image(tensor)
+    assert not image.flags["C_CONTIGUOUS"]
+
+    image = kornia.utils.tensor_to_image(tensor, force_contiguous=True)
+    assert image.flags["C_CONTIGUOUS"]

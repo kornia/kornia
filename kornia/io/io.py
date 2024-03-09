@@ -5,18 +5,17 @@ try:
 except ImportError:  # pragma: no cover
     kornia_rs = None
 
-import os
 from enum import Enum
 from pathlib import Path
 
 import torch
-from torch.utils import dlpack  # TODO: remove this if kornia relies on torch>=1.10
 
 from kornia.color import rgb_to_grayscale, rgba_to_rgb
 from kornia.color.gray import grayscale_to_rgb
 from kornia.color.rgb import rgb_to_rgba
 from kornia.core import Device, Tensor
 from kornia.core.check import KORNIA_CHECK
+from kornia.utils import image_to_tensor, tensor_to_image
 
 
 class ImageLoadType(Enum):
@@ -30,28 +29,42 @@ class ImageLoadType(Enum):
     RGB32 = 5
 
 
-def load_image_to_tensor(path_file: str, device: Device) -> Tensor:
-    # load the file and decodes using kornia_rs. Internally it uses a package that
-    # combines image-rs a self maintained version of the dlpack-rs. After the decoding,
-    # the obtained stream bits are encapusalted to a cv::Tensor data structure without
-    # memory ownership and passed as PyCapsule from rust to python.
-    cv_tensor = kornia_rs.read_image_rs(path_file)
-    # for convenience use the torch dlpack parser to get a zero copy torch.Tensor
-    # TODO: evaluate other potential API so that we can return in numpy, jax, mxnet since
-    # the kornia_rs cv::Tensor has this ability.
-    th_tensor = dlpack.from_dlpack(cv_tensor)  # HxWx3
-    # move the tensor to the desired device, move the data layout to CHW and clone
-    # to return an owned data tensor.
+def load_image_to_tensor(path_file: Path, device: Device) -> Tensor:
+    """Read an image file and decode using the Kornia Rust backend.
+
+    The decoded image is returned as numpy array with shape HxWxC.
+
+    Args:
+        path_file: Path to a valid image file.
+        device: the device where you want to get your image placed.
+
+    Return:
+        Image tensor with shape :math:`(3,H,W)`.
+    """
+
+    # read image and return as `np.ndarray` with shape HxWxC
+    if path_file.suffix in [".jpg", ".jpeg"]:
+        img = kornia_rs.read_image_jpeg(str(path_file))
+    else:
+        img = kornia_rs.read_image_any(str(path_file))
+
+    # convert the image to tensor with shape CxHxW
+    img_t = image_to_tensor(img, keepdim=True)
+
+    # move the tensor to the desired device,
     dev = device if isinstance(device, torch.device) or device is None else torch.device(device)
-    return th_tensor.to(device=dev).permute(2, 0, 1).clone()  # CxHxW
+
+    return img_t.to(device=dev)
 
 
 def to_float32(image: Tensor) -> Tensor:
+    """Convert an image tensor to float32."""
     KORNIA_CHECK(image.dtype == torch.uint8)
     return image.float() / 255.0
 
 
 def to_uint8(image: Tensor) -> Tensor:
+    """Convert an image tensor to uint8."""
     KORNIA_CHECK(image.dtype == torch.float32)
     return image.mul(255.0).byte()
 
@@ -70,10 +83,10 @@ def load_image(path_file: str | Path, desired_type: ImageLoadType, device: Devic
     if kornia_rs is None:  # pragma: no cover
         raise ModuleNotFoundError("The io API is not available: `pip install kornia_rs` in a Linux system.")
 
-    if isinstance(path_file, Path):
-        path_file = str(path_file)
+    if not isinstance(path_file, Path):
+        path_file = Path(path_file)
 
-    KORNIA_CHECK(os.path.isfile(path_file), f"Invalid file: {path_file}")
+    # read the image using the kornia_rs package
     image: Tensor = load_image_to_tensor(path_file, device)  # CxHxW
 
     if desired_type == ImageLoadType.UNCHANGED:
@@ -135,25 +148,27 @@ def write_image(path_file: str | Path, image: Tensor) -> None:
     if kornia_rs is None:  # pragma: no cover
         raise ModuleNotFoundError("The io API is not available: `pip install kornia_rs` in a Linux system.")
 
-    if isinstance(path_file, Path):
-        path_file = str(path_file)
+    if not isinstance(path_file, Path):
+        path_file = Path(path_file)
 
-    KORNIA_CHECK("jpg" in path_file[-3:], f"Invalid file extension: {path_file}")
+    KORNIA_CHECK(path_file.suffix in [".jpg", ".jpeg"], f"Invalid file extension: {path_file}")
     KORNIA_CHECK(image.dim() == 3 and image.shape[0] == 3, f"Invalid image shape: {image.shape}")
     KORNIA_CHECK(image.dtype == torch.uint8, f"Invalid image dtype: {image.dtype}")
 
     # create the image encoder
-    image_encoder = kornia_rs.ImageEncoder()
-    image_encoder.set_quality(100)
+    # image_encoder = kornia_rs.ImageEncoder()
+    # image_encoder.set_quality(100)
 
-    # move the tensor to the cpu and clone to avoid memory ownership issues.
-    image = image.cpu().clone()  # 3xHxW
+    ## move the tensor to the cpu and clone to avoid memory ownership issues.
+    # image = image.cpu().clone()  # 3xHxW
 
-    # move the data layout to HWC and convert to numpy
-    image_np = image.permute(1, 2, 0).numpy()  # HxWx3
+    ## move the data layout to HWC and convert to numpy
+    # image_np = image.permute(1, 2, 0).numpy()  # HxWx3
 
-    # encode the image using the kornia_rs
-    image_encoded: list[int] = image_encoder.encode(image_np.tobytes(), image_np.shape)
+    ## encode the image using the kornia_rs
+    # image_encoded: list[int] = image_encoder.encode(image_np.tobytes(), image_np.shape)
+
+    img_np = tensor_to_image(image, keepdim=True, force_contiguous=True)  # HxWx3
 
     # save the image using the
-    kornia_rs.write_image_jpeg(path_file, image_encoded)
+    kornia_rs.write_image_jpeg(str(path_file), img_np)
