@@ -1,13 +1,9 @@
 from __future__ import annotations
 
-try:
-    import kornia_rs
-except ImportError:  # pragma: no cover
-    kornia_rs = None
-
 from enum import Enum
 from pathlib import Path
 
+import kornia_rs
 import torch
 
 from kornia.color import rgb_to_grayscale, rgba_to_rgb
@@ -29,7 +25,7 @@ class ImageLoadType(Enum):
     RGB32 = 5
 
 
-def _load_image_to_tensor(path_file: Path, device: Device) -> Tensor:
+def load_image_to_tensor(path_file: Path, device: Device) -> Tensor:
     """Read an image file and decode using the Kornia Rust backend.
 
     The decoded image is returned as numpy array with shape HxWxC.
@@ -84,7 +80,7 @@ def load_image(path_file: str | Path, desired_type: ImageLoadType, device: Devic
         path_file = Path(path_file)
 
     # read the image using the kornia_rs package
-    image: Tensor = _load_image_to_tensor(path_file, device)  # CxHxW
+    image: Tensor = load_image_to_tensor(path_file, device)  # CxHxW
 
     if desired_type == ImageLoadType.UNCHANGED:
         return image
