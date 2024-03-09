@@ -29,7 +29,7 @@ class ImageLoadType(Enum):
     RGB32 = 5
 
 
-def load_image_to_tensor(path_file: Path, device: Device) -> Tensor:
+def _load_image_to_tensor(path_file: Path, device: Device) -> Tensor:
     """Read an image file and decode using the Kornia Rust backend.
 
     The decoded image is returned as numpy array with shape HxWxC.
@@ -80,14 +80,11 @@ def load_image(path_file: str | Path, desired_type: ImageLoadType, device: Devic
     Return:
         Image tensor with shape :math:`(3,H,W)`.
     """
-    if kornia_rs is None:  # pragma: no cover
-        raise ModuleNotFoundError("The io API is not available: `pip install kornia_rs` in a Linux system.")
-
     if not isinstance(path_file, Path):
         path_file = Path(path_file)
 
     # read the image using the kornia_rs package
-    image: Tensor = load_image_to_tensor(path_file, device)  # CxHxW
+    image: Tensor = _load_image_to_tensor(path_file, device)  # CxHxW
 
     if desired_type == ImageLoadType.UNCHANGED:
         return image
