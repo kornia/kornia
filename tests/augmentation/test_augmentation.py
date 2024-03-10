@@ -98,13 +98,15 @@ class CommonTests(BaseTester):
         self._test_smoke_call_implementation(params=param_set)
 
     @pytest.mark.parametrize(
-        "input_shape,expected_output_shape",
-        [((4, 5), (1, 1, 4, 5)), ((3, 4, 5), (1, 3, 4, 5)), ((2, 3, 4, 5), (2, 3, 4, 5))],
+        "input_shape",
+        [(4, 5), (3, 4, 5), (2, 3, 4, 5)],
     )
-    def test_cardinality(self, input_shape, expected_output_shape):
-        self._test_cardinality_implementation(
-            input_shape=input_shape, expected_output_shape=expected_output_shape, params=self._default_param_set
-        )
+    @pytest.mark.parametrize(
+        "keepdim",
+        [True, False],
+    )
+    def test_cardinality(self, input_shape, keepdim):
+        self._test_cardinality_implementation(input_shape=input_shape, keepdim=keepdim, params=self._default_param_set)
 
     def test_random_p_0(self):
         self._test_random_p_0_implementation(params=self._default_param_set)
@@ -190,20 +192,30 @@ class CommonTests(BaseTester):
         assert output.shape[0] == batch_shape[0]
         assert augmentation.transform_matrix.shape == expected_transformation_shape
 
-    def _test_cardinality_implementation(self, input_shape, expected_output_shape, params):
+    def _test_cardinality_implementation(self, input_shape, params, keepdim=False, expected_output_shape=None):
         # p==0.0
-        augmentation = self._create_augmentation_from_params(**params, p=0.0)
+        augmentation = self._create_augmentation_from_params(**params, p=0.0, keepdim=keepdim)
         test_input = torch.rand(input_shape, device=self.device, dtype=self.dtype)
         output = augmentation(test_input)
-        assert len(output.shape) == 4
-        assert output.shape == torch.Size((1,) * (4 - len(input_shape)) + tuple(input_shape))
+
+        if keepdim:
+            assert output.shape == input_shape
+        else:
+            assert len(output.shape) == 4
+            assert output.shape == torch.Size((1,) * (4 - len(input_shape)) + tuple(input_shape))
 
         # p==1.0
-        augmentation = self._create_augmentation_from_params(**params, p=1.0)
+        augmentation = self._create_augmentation_from_params(**params, p=1.0, keepdim=keepdim)
         test_input = torch.rand(input_shape, device=self.device, dtype=self.dtype)
         output = augmentation(test_input)
-        assert len(output.shape) == 4
-        assert output.shape == expected_output_shape
+
+        if expected_output_shape:
+            assert len(output.shape) == 4
+            assert output.shape == expected_output_shape
+        elif keepdim:
+            assert output.shape == input_shape
+        else:
+            assert (*(1,) * (4 - len(input_shape)), *input_shape) == output.shape
 
     def _test_random_p_0_implementation(self, params):
         augmentation = self._create_augmentation_from_params(**params, p=0.0)
@@ -4162,11 +4174,17 @@ class TestRandomRain(BaseTester):
             (err_msg_wrong_ch, (1, 2), (1, 2), torch.rand(2, 4, 5, device=device, dtype=dtype)),
         ]
 
-    @pytest.mark.parametrize("batch_shape", [(1, 3, 5, 7), (1, 3, 6, 9)])
-    def test_cardinality(self, batch_shape, device, dtype):
+    @pytest.mark.parametrize("batch_shape", [(1, 3, 5, 7), (1, 3, 6, 9), (5, 7)])
+    @pytest.mark.parametrize("keepdim", [True, False])
+    def test_cardinality(self, batch_shape, keepdim, device, dtype):
         input_data = torch.rand(batch_shape, device=device, dtype=dtype)
-        output_data = RandomRain(p=1.0, drop_height=(3, 4), drop_width=(2, 3), number_of_drops=(1, 3))(input_data)
-        assert output_data.shape == batch_shape
+        output_data = RandomRain(p=1.0, drop_height=(3, 4), drop_width=(2, 3), number_of_drops=(1, 3), keepdim=keepdim)(
+            input_data
+        )
+        if keepdim:
+            assert output_data.shape == batch_shape
+        else:
+            assert (*(1,) * (4 - len(batch_shape)), *batch_shape) == output_data.shape
 
     def test_smoke(self, device, dtype):
         input_data = torch.rand(1, 3, 8, 9, device=device, dtype=dtype)

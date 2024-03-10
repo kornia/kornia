@@ -82,6 +82,62 @@ def _infer_batch_shape3d(input: Union[Tensor, Tuple[Tensor, Tensor]]) -> torch.S
     return tensor.shape
 
 
+def _transform_input_by_shape(input: Tensor, reference_shape: Tensor, match_channel: bool = True) -> Tensor:
+    """Reshape an input tensor to have the same dimensions as the reference_shape.
+
+    Arguments
+        input: tensor to be transformed
+        reference_shape: shape used as reference
+        match_channel: if True, C_{src} == C_{ref}. otherwise, no constrain. C =1 by default
+    """
+    B = reference_shape[-4] if len(reference_shape) >= 4 else None
+    C = reference_shape[-3] if len(reference_shape) >= 3 else None
+
+    if len(input.shape) == 2:
+        input = input.unsqueeze(0)
+
+    if len(input.shape) == 3 and B == input.shape[-3]:
+        # If the first dim matches within the batch_size, add a `C` dim
+        # Useful to handler Masks without `C` dimensions
+        input = input.unsqueeze(1)
+
+    if match_channel and C:
+        if not input.shape[-3] == C:
+            raise ValueError("The C dimension of tensor did not match with the reference tensor.")
+    elif match_channel and C is None:
+        raise ValueError("The reference tensor do not have a C dimension!")
+
+    return input
+
+
+def _transform_input3d_by_shape(input: Tensor, reference_shape: Tensor, match_channel: bool = True) -> Tensor:
+    """Reshape an input tensor to have the same dimensions as the reference_shape.
+
+    Arguments
+        input: tensor to be transformed
+        reference_shape: shape used as reference
+        match_channel: if True, C_{src} == C_{ref}. otherwise, no constrain. C =1 by default
+    """
+    B = reference_shape[-5] if len(reference_shape) >= 5 else None
+    C = reference_shape[-4] if len(reference_shape) >= 4 else None
+
+    if len(input.shape) == 3:
+        input = input.unsqueeze(0)
+
+    if len(input.shape) == 4 and B == input.shape[-4]:
+        # If the first dim matches within the batch_size, add a `C` dim
+        # Useful to handler Masks without `C` dimensions
+        input = input.unsqueeze(2)
+
+    if match_channel and C:
+        if not input.shape[-4] == C:
+            raise ValueError("The C dimension of tensor did not match with the reference tensor.")
+    elif match_channel and C is None:
+        raise ValueError("The reference tensor do not have a C dimension!")
+
+    return input
+
+
 def _transform_input(input: Tensor) -> Tensor:
     r"""Reshape an input tensor to be (*, C, H, W). Accept either (H, W), (C, H, W) or (*, C, H, W).
     Args:
@@ -140,7 +196,9 @@ def _validate_input_dtype(input: Tensor, accepted_dtypes: List[torch.dtype]) -> 
         raise TypeError(f"Expected input of {accepted_dtypes}. Got {input.dtype}")
 
 
-def _transform_output_shape(output: Tensor, shape: Tuple[int, ...]) -> Tensor:
+def _transform_output_shape(
+    output: Tensor, shape: Tuple[int, ...], *, reference_shape: Optional[Tensor] = None
+) -> Tensor:
     r"""Collapse the broadcasted batch dimensions an input tensor to be the specified shape.
     Args:
         input: Tensor
@@ -152,9 +210,12 @@ def _transform_output_shape(output: Tensor, shape: Tuple[int, ...]) -> Tensor:
     out_tensor = output.clone()
 
     for dim in range(len(out_tensor.shape) - len(shape)):
-        if out_tensor.shape[0] != 1:
-            raise AssertionError(f"Dimension {dim} of input is expected to be 1, got {out_tensor.shape[0]}")
-        out_tensor = out_tensor.squeeze(0)
+        idx = 0
+        if reference_shape is not None and out_tensor.shape[0] == reference_shape[0] and len(shape) > 2:
+            idx = 1
+        if out_tensor.shape[idx] != 1:
+            raise AssertionError(f"Dimension {dim} of input is expected to be 1, got {out_tensor.shape[idx]}")
+        out_tensor = out_tensor.squeeze(idx)
 
     return out_tensor
 
