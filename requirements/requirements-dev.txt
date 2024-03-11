@@ -1,5 +1,4 @@
 coverage
-kornia-rs==0.1.0
 mypy
 numpy
 onnx
