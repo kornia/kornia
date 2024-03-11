@@ -39,7 +39,7 @@ def _load_image_to_tensor(path_file: Path, device: Device) -> Tensor:
     """
 
     # read image and return as `np.ndarray` with shape HxWxC
-    if path_file.suffix in [".jpg", ".jpeg"]:
+    if path_file.suffix.lower() in [".jpg", ".jpeg"]:
         img = kornia_rs.read_image_jpeg(str(path_file))
     else:
         img = kornia_rs.read_image_any(str(path_file))
@@ -138,9 +138,6 @@ def write_image(path_file: str | Path, image: Tensor) -> None:
     Return:
         None.
     """
-    if kornia_rs is None:  # pragma: no cover
-        raise ModuleNotFoundError("The io API is not available: `pip install kornia_rs` in a Linux system.")
-
     if not isinstance(path_file, Path):
         path_file = Path(path_file)
 
@@ -148,19 +145,7 @@ def write_image(path_file: str | Path, image: Tensor) -> None:
     KORNIA_CHECK(image.dim() == 3 and image.shape[0] == 3, f"Invalid image shape: {image.shape}")
     KORNIA_CHECK(image.dtype == torch.uint8, f"Invalid image dtype: {image.dtype}")
 
-    # create the image encoder
-    # image_encoder = kornia_rs.ImageEncoder()
-    # image_encoder.set_quality(100)
-
-    ## move the tensor to the cpu and clone to avoid memory ownership issues.
-    # image = image.cpu().clone()  # 3xHxW
-
-    ## move the data layout to HWC and convert to numpy
-    # image_np = image.permute(1, 2, 0).numpy()  # HxWx3
-
-    ## encode the image using the kornia_rs
-    # image_encoded: list[int] = image_encoder.encode(image_np.tobytes(), image_np.shape)
-
+    # convert the tensor to numpy
     img_np = tensor_to_image(image, keepdim=True, force_contiguous=True)  # HxWx3
 
     # save the image using the
