@@ -25,7 +25,7 @@ class ImageLoadType(Enum):
     RGB32 = 5
 
 
-def load_image_to_tensor(path_file: Path, device: Device) -> Tensor:
+def _load_image_to_tensor(path_file: Path, device: Device) -> Tensor:
     """Read an image file and decode using the Kornia Rust backend.
 
     The decoded image is returned as numpy array with shape HxWxC.
@@ -53,13 +53,13 @@ def load_image_to_tensor(path_file: Path, device: Device) -> Tensor:
     return img_t.to(device=dev)
 
 
-def to_float32(image: Tensor) -> Tensor:
+def _to_float32(image: Tensor) -> Tensor:
     """Convert an image tensor to float32."""
     KORNIA_CHECK(image.dtype == torch.uint8)
     return image.float() / 255.0
 
 
-def to_uint8(image: Tensor) -> Tensor:
+def _to_uint8(image: Tensor) -> Tensor:
     """Convert an image tensor to uint8."""
     KORNIA_CHECK(image.dtype == torch.float32)
     return image.mul(255.0).byte()
@@ -80,7 +80,7 @@ def load_image(path_file: str | Path, desired_type: ImageLoadType, device: Devic
         path_file = Path(path_file)
 
     # read the image using the kornia_rs package
-    image: Tensor = load_image_to_tensor(path_file, device)  # CxHxW
+    image: Tensor = _load_image_to_tensor(path_file, device)  # CxHxW
 
     if desired_type == ImageLoadType.UNCHANGED:
         return image
@@ -91,8 +91,8 @@ def load_image(path_file: str | Path, desired_type: ImageLoadType, device: Devic
             gray8 = rgb_to_grayscale(image)
             return gray8
         elif image.shape[0] == 4 and image.dtype == torch.uint8:
-            gray32 = rgb_to_grayscale(rgba_to_rgb(to_float32(image)))
-            return to_uint8(gray32)
+            gray32 = rgb_to_grayscale(rgba_to_rgb(_to_float32(image)))
+            return _to_uint8(gray32)
 
     elif desired_type == ImageLoadType.RGB8:
         if image.shape[0] == 3 and image.dtype == torch.uint8:
@@ -103,24 +103,24 @@ def load_image(path_file: str | Path, desired_type: ImageLoadType, device: Devic
 
     elif desired_type == ImageLoadType.RGBA8:
         if image.shape[0] == 3 and image.dtype == torch.uint8:
-            rgba32 = rgb_to_rgba(to_float32(image), 0.0)
-            return to_uint8(rgba32)
+            rgba32 = rgb_to_rgba(_to_float32(image), 0.0)
+            return _to_uint8(rgba32)
 
     elif desired_type == ImageLoadType.GRAY32:
         if image.shape[0] == 1 and image.dtype == torch.uint8:
-            return to_float32(image)
+            return _to_float32(image)
         elif image.shape[0] == 3 and image.dtype == torch.uint8:
-            gray32 = rgb_to_grayscale(to_float32(image))
+            gray32 = rgb_to_grayscale(_to_float32(image))
             return gray32
         elif image.shape[0] == 4 and image.dtype == torch.uint8:
-            gray32 = rgb_to_grayscale(rgba_to_rgb(to_float32(image)))
+            gray32 = rgb_to_grayscale(rgba_to_rgb(_to_float32(image)))
             return gray32
 
     elif desired_type == ImageLoadType.RGB32:
         if image.shape[0] == 3 and image.dtype == torch.uint8:
-            return to_float32(image)
+            return _to_float32(image)
         elif image.shape[0] == 1 and image.dtype == torch.uint8:
-            rgb32 = grayscale_to_rgb(to_float32(image))
+            rgb32 = grayscale_to_rgb(_to_float32(image))
             return rgb32
 
     raise NotImplementedError(f"Unknown type: {desired_type}")
