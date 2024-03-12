@@ -89,7 +89,7 @@ def gaussian(
 
     mean = float(window_size // 2) if mean is None else mean
     if isinstance(mean, float):
-        mean = tensor([[mean]], device=device, dtype=dtype)
+        mean = tensor([[mean]], device=sigma.device, dtype=sigma.dtype)
 
     KORNIA_CHECK_IS_TENSOR(mean)
     KORNIA_CHECK_SHAPE(mean, ["B", "1"])
