@@ -1,15 +1,17 @@
-from typing import Optional, Any, Tuple
+from typing import Any, Optional, Tuple
+
 import torch
 from torch import nn
+
 from kornia.core import Module, Tensor
 
 from .vgg import vgg19_bn
 
 
 class VGG19(Module):
-    def __init__(self, amp: bool=False, amp_dtype: torch.dtype=torch.float16) -> None:
+    def __init__(self, amp: bool = False, amp_dtype: torch.dtype = torch.float16) -> None:
         super().__init__()
-        self.layers = nn.ModuleList(vgg19_bn().features[:40]) # type: ignore
+        self.layers = nn.ModuleList(vgg19_bn().features[:40])  # type: ignore
         # Maxpool layers: 6, 13, 26, 39
         self.amp = amp
         self.amp_dtype = amp_dtype
@@ -27,7 +29,7 @@ class VGG19(Module):
 
 
 class FrozenDINOv2(Module):
-    def __init__(self, amp: bool=True, amp_dtype: torch.dtype=torch.float16, dinov2_weights: Optional[Any]=None):
+    def __init__(self, amp: bool = True, amp_dtype: torch.dtype = torch.float16, dinov2_weights: Optional[Any] = None):
         super().__init__()
         if dinov2_weights is None:
             dinov2_weights = torch.hub.load_state_dict_from_url(
@@ -50,7 +52,7 @@ class FrozenDINOv2(Module):
             dinov2_vitl14 = dinov2_vitl14.to(self.amp_dtype)
         self.dinov2_vitl14 = [dinov2_vitl14]  # ugly hack to not show parameters to DDP
 
-    def forward(self, x: Tensor):   # type: ignore[no-untyped-def]
+    def forward(self, x: Tensor):  # type: ignore[no-untyped-def]
         B, C, H, W = x.shape
         if self.dinov2_vitl14[0].device != x.device:
             self.dinov2_vitl14[0] = self.dinov2_vitl14[0].to(x.device).to(self.amp_dtype)
@@ -61,7 +63,7 @@ class FrozenDINOv2(Module):
 
 
 class VGG_DINOv2(Module):
-    def __init__(self, vgg_kwargs=None, dinov2_kwargs=None):   # type: ignore[no-untyped-def]
+    def __init__(self, vgg_kwargs=None, dinov2_kwargs=None):  # type: ignore[no-untyped-def]
         if (vgg_kwargs is None) or (dinov2_kwargs is None):
             raise ValueError("Input kwargs please")
         super().__init__()

@@ -60,7 +60,7 @@ class Attention(nn.Module):
 
 
 class MemEffAttention(Attention):
-    def forward(self, x: Tensor, attn_bias=None) -> Tensor:    # type: ignore[no-untyped-def]
+    def forward(self, x: Tensor, attn_bias=None) -> Tensor:  # type: ignore[no-untyped-def]
         if not XFORMERS_AVAILABLE:
             if attn_bias is not None:
                 raise ValueError("xFormers is required for nested tensors usage")
