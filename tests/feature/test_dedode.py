@@ -4,13 +4,11 @@ import pytest
 import torch
 
 from kornia.feature.dedode import DeDoDe
-from kornia.utils._compat import torch_version, torch_version_le
+from kornia.utils._compat import torch_version_le
 
 
 class TestDeDoDe:
-    @pytest.mark.skipif(
-        torch_version_le(2, 0, 0),  reason="Autocast not supported"
-    )
+    @pytest.mark.skipif(torch_version_le(2, 0, 0), reason="Autocast not supported")
     def test_smoke(self, dtype, device):
         # only testing "B" as dinov2 is quite heavy
         dedode = DeDoDe(descriptor_model="B").to(device, dtype)
