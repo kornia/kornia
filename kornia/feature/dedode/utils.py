@@ -10,9 +10,10 @@ def sample_keypoints(
     increase_coverage=True,
 ):
     device = scoremap.device
+    dtype = scoremap.dtype
     B, H, W = scoremap.shape
     if increase_coverage:
-        weights = (-(torch.linspace(-2, 2, steps=51, device=device) ** 2)).exp()[None, None]
+        weights = (-(torch.linspace(-2, 2, steps=51, device=device, dtype=dtype) ** 2)).exp()[None, None]
         # 10000 is just some number for maybe numerical stability, who knows. :), result is invariant anyway
         local_density_x = F.conv2d((scoremap[:, None] + 1e-6) * 10000, weights[..., None, :], padding=(0, 51 // 2))
         local_density = F.conv2d(local_density_x, weights[..., None], padding=(51 // 2, 0))[:, 0]
