@@ -83,7 +83,7 @@ def gaussian(
     if isinstance(sigma, float):
         sigma = tensor([[sigma]], device=device, dtype=dtype)
     else:
-        device, dtype = sigma.device, sigma.dtype # we want to mean be consisnent with sigma
+        device, dtype = sigma.device, sigma.dtype  # we want to mean be consisnent with sigma
     KORNIA_CHECK_IS_TENSOR(sigma)
     KORNIA_CHECK_SHAPE(sigma, ["B", "1"])
     batch_size = sigma.shape[0]
@@ -95,7 +95,9 @@ def gaussian(
     KORNIA_CHECK_IS_TENSOR(mean)
     KORNIA_CHECK_SHAPE(mean, ["B", "1"])
 
-    x = (torch.arange(window_size, device=sigma.device, dtype=sigma.dtype) - mean.to(device, dtype)).expand(batch_size, -1)
+    x = (torch.arange(window_size, device=sigma.device, dtype=sigma.dtype) - mean.to(device, dtype)).expand(
+        batch_size, -1
+    )
 
     if window_size % 2 == 0:
         x = x + 0.5
