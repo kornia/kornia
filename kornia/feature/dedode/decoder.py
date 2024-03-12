@@ -1,19 +1,22 @@
-from typing import Any, Tuple, Optional
+from typing import Any, Optional, Tuple
+
 import torch
 from torch import nn
+
 from kornia.core import Tensor
 
 
-
 class Decoder(nn.Module):
-    def __init__(self, layers: Any, *args, super_resolution: bool=False, num_prototypes: int=1, **kwargs) -> None:    # type: ignore[no-untyped-def]
+    def __init__(self, layers: Any, *args, super_resolution: bool = False, num_prototypes: int = 1, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
         self.layers = layers
         self.scales = self.layers.keys()
         self.super_resolution = super_resolution
         self.num_prototypes = num_prototypes
 
-    def forward(self, features: Tensor, context: Optional[Tensor] = None, scale: Optional[int] = None)-> Tuple[Tensor, Optional[Tensor]]:
+    def forward(
+        self, features: Tensor, context: Optional[Tensor] = None, scale: Optional[int] = None
+    ) -> Tuple[Tensor, Optional[Tensor]]:
         if context is not None:
             features = torch.cat((features, context), dim=1)
         stuff = self.layers[scale](features)
@@ -22,7 +25,7 @@ class Decoder(nn.Module):
 
 
 class ConvRefiner(nn.Module):
-    def __init__(   # type: ignore[no-untyped-def]
+    def __init__(  # type: ignore[no-untyped-def]
         self,
         in_dim=6,
         hidden_dim=16,
@@ -58,7 +61,7 @@ class ConvRefiner(nn.Module):
         self.amp_dtype = amp_dtype
         self.residual = residual
 
-    def create_block(   # type: ignore[no-untyped-def]
+    def create_block(  # type: ignore[no-untyped-def]
         self,
         in_dim,
         out_dim,

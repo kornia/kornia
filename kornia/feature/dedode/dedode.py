@@ -43,7 +43,9 @@ class DeDoDe(Module):
     """
 
     # TODO: implement steerers and mnn matchers
-    def __init__(self, detector_model: str="L", descriptor_model: str = "G", amp_dtype: torch.dtype = torch.float16) -> None:
+    def __init__(
+        self, detector_model: str = "L", descriptor_model: str = "G", amp_dtype: torch.dtype = torch.float16
+    ) -> None:
         super().__init__()
         self.detector: DeDoDeDetector = get_detector(detector_model, amp_dtype)
         self.descriptor: DeDoDeDescriptor = get_descriptor(descriptor_model, amp_dtype)

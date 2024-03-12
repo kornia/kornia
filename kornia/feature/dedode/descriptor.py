@@ -1,6 +1,7 @@
 from typing import Union
+
 import torch.nn.functional as F
-from torch import nn
+
 from kornia.core import Module, Tensor
 
 
