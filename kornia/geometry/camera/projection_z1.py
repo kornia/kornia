@@ -1,4 +1,5 @@
 """Module for the projection of points in the canonical z=1 plane."""
+
 # inspired by: https://github.com/farm-ng/sophus-rs/blob/main/src/sensor/perspective_camera.rs
 from __future__ import annotations
 

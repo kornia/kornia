@@ -80,12 +80,10 @@ class TestVisualPrompter(BaseTester):
         assert "The keypoints and labels should have the same batch size" in str(errinfo)
 
     @pytest.mark.skip(reason="Unnecessary test")
-    def test_gradcheck(self, device):
-        ...
+    def test_gradcheck(self, device): ...
 
     @pytest.mark.skip(reason="Unnecessary test")
-    def test_module(self):
-        ...
+    def test_module(self): ...
 
     @pytest.mark.skipif(torch_version() in {"2.0.0", "2.0.1"}, reason="Not working on 2.0")
     def test_dynamo(self, device, torch_optimizer):

@@ -96,16 +96,13 @@ class TestRTDETR(BaseTester):
         assert boxes.shape == (shape[0], num_queries, 4)
 
     @pytest.mark.skip("Unnecessary")
-    def test_exception(self):
-        ...
+    def test_exception(self): ...
 
     @pytest.mark.skip("Unnecessary")
-    def test_gradcheck(self):
-        ...
+    def test_gradcheck(self): ...
 
     @pytest.mark.skip("Unnecessary")
-    def test_module(self):
-        ...
+    def test_module(self): ...
 
     @pytest.mark.skip("Needs more investigation")
     @pytest.mark.parametrize("variant", ("resnet50d", "hgnetv2_l"))

@@ -1,4 +1,5 @@
 """Module containing RANSAC modules."""
+
 import math
 from functools import partial
 from typing import Callable, Optional, Tuple

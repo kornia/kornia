@@ -1,4 +1,5 @@
 """Implements several backbone networks."""
+
 import functools
 import operator
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Type, Union

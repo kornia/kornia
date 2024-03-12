@@ -1,4 +1,5 @@
 """Module to generate synthetic 3d scenes."""
+
 import math
 from typing import Dict
 

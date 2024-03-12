@@ -6,6 +6,7 @@ Based on: `https://towardsdatascience.com/implementing-visualttransformer-in-pyt
 
 Added some tricks from: `https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/vision_transformer.py`
 """
+
 from __future__ import annotations
 
 from typing import Any, Callable
