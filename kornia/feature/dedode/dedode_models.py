@@ -11,7 +11,6 @@ def dedode_detector_L(amp_dtype=torch.float16):
     NUM_PROTOTYPES = 1
     residual = True
     hidden_blocks = 8
-    amp_dtype = amp_dtype
     amp = True
     conv_refiner = nn.ModuleDict(
         {
@@ -63,7 +62,6 @@ def dedode_descriptor_B(amp_dtype=torch.float16):
     NUM_PROTOTYPES = 256  # == descriptor size
     residual = True
     hidden_blocks = 5
-    amp_dtype = amp_dtype
     amp = True
     conv_refiner = nn.ModuleDict(
         {
@@ -115,7 +113,6 @@ def dedode_descriptor_G(amp_dtype=torch.float16):
     NUM_PROTOTYPES = 256  # == descriptor size
     residual = True
     hidden_blocks = 5
-    amp_dtype = amp_dtype
     amp = True
     conv_refiner = nn.ModuleDict(
         {

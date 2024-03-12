@@ -13,6 +13,7 @@ from typing import Any, Callable, Dict, List, Tuple
 
 import torch
 from torch import Tensor, nn
+from kornia.core.check import KORNIA_CHECK
 
 from .attention import Attention, MemEffAttention
 from .drop_path import DropPath
@@ -200,7 +201,7 @@ def drop_add_residual_stochastic_depth_list(
 class NestedTensorBlock(Block):
     def forward_nested(self, x_list: List[Tensor]) -> List[Tensor]:
         """x_list contains a list of tensors to nest together and run."""
-        assert isinstance(self.attn, MemEffAttention)
+        KORNIA_CHECK(isinstance(self.attn, MemEffAttention))
 
         if self.training and self.sample_drop_ratio > 0.0:
 
@@ -240,7 +241,7 @@ class NestedTensorBlock(Block):
         if isinstance(x_or_x_list, Tensor):
             return super().forward(x_or_x_list)
         elif isinstance(x_or_x_list, list):
-            assert XFORMERS_AVAILABLE, "Please install xFormers for nested tensors usage"
+            KORNIA_CHECK(XFORMERS_AVAILABLE, "Please install xFormers for nested tensors usage")
             return self.forward_nested(x_or_x_list)
         else:
             raise AssertionError

@@ -60,7 +60,8 @@ class FrozenDINOv2(nn.Module):
 
 class VGG_DINOv2(nn.Module):
     def __init__(self, vgg_kwargs=None, dinov2_kwargs=None):
-        assert vgg_kwargs is not None and dinov2_kwargs is not None, "Input kwargs pls"
+        if (vgg_kwargs is None) or (dinov2_kwargs is None):
+            raise ValueError("Input kwargs please")
         super().__init__()
         self.vgg = VGG19(**vgg_kwargs)
         self.frozen_dinov2 = FrozenDINOv2(**dinov2_kwargs)

@@ -16,7 +16,7 @@ class SwiGLUFFN(nn.Module):
         in_features: int,
         hidden_features: Optional[int] = None,
         out_features: Optional[int] = None,
-        act_layer: Callable[..., nn.Module] = None,
+        act_layer: Optional[Callable[..., nn.Module]] = None,
         drop: float = 0.0,
         bias: bool = True,
     ) -> None:
@@ -48,7 +48,7 @@ class SwiGLUFFNFused(SwiGLU):
         in_features: int,
         hidden_features: Optional[int] = None,
         out_features: Optional[int] = None,
-        act_layer: Callable[..., nn.Module] = None,
+        act_layer: Optional[Callable[..., nn.Module]] = None,
         drop: float = 0.0,
         bias: bool = True,
     ) -> None:

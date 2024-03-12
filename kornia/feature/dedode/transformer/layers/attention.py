@@ -62,7 +62,8 @@ class Attention(nn.Module):
 class MemEffAttention(Attention):
     def forward(self, x: Tensor, attn_bias=None) -> Tensor:
         if not XFORMERS_AVAILABLE:
-            assert attn_bias is None, "xFormers is required for nested tensors usage"
+            if attn_bias is not None:
+                raise ValueError("xFormers is required for nested tensors usage")
             return super().forward(x)
 
         B, N, C = x.shape

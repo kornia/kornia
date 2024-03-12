@@ -64,9 +64,11 @@ class DeDoDe(Module):
             apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images.
 
         Returns:
-            keypoints: A tensor of shape :math:`(B, N, 2)` containing the detected keypoints in the image range unlike `.detect()` function
+            keypoints: A tensor of shape :math:`(B, N, 2)` containing the detected keypoints in the image range,
+            unlike `.detect()` function
             scores: A tensor of shape :math:`(B, N)` containing the scores of the detected keypoints.
-            descriptions: A tensor of shape :math:`(B, N, DIM)` containing the descriptions of the detected keypoints. DIM is 256 for B and 512 for G.
+            descriptions: A tensor of shape :math:`(B, N, DIM)` containing the descriptions of the detected keypoints.
+            DIM is 256 for B and 512 for G.
         """
         if apply_imagenet_normalization:
             images = self.normalizer(images)
@@ -159,7 +161,8 @@ class DeDoDe(Module):
             detector_weights: The weights to load for the detector. One of 'L-upright', 'L-C4', 'L-SO2'.
             descriptor_weights: The weights to load for the descriptor. One of 'B-upright', 'B-C4', 'B-SO2', 'G-upright', 'G-C4'.
             checkpoint: The checkpoint to load. One of 'depth' or 'epipolar'.
-            amp_dtype: the dtype to use for the model. One of torch.float16 or torch.float32. Default is torch.float16, suitable for CUDA. Use torch.float32 for CPU or MPS
+            amp_dtype: the dtype to use for the model. One of torch.float16 or torch.float32. 
+            Default is torch.float16, suitable for CUDA. Use torch.float32 for CPU or MPS
 
         Returns:
             The pretrained model.
