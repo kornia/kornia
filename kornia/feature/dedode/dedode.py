@@ -84,8 +84,13 @@ class DeDoDe(Module):
 
     @torch.inference_mode()
     def detect(
-        self, images, n: Optional[int] = 10_000, apply_imagenet_normalization: bool = True,
-        pad_if_not_divisible: bool = True, crop_h: Optional[int] = None, crop_w: Optional[int] = None
+        self,
+        images,
+        n: Optional[int] = 10_000,
+        apply_imagenet_normalization: bool = True,
+        pad_if_not_divisible: bool = True,
+        crop_h: Optional[int] = None,
+        crop_w: Optional[int] = None,
     ) -> Tuple[Tensor, Tensor]:
         """Detects keypoints in the input images.
 
@@ -161,7 +166,7 @@ class DeDoDe(Module):
             detector_weights: The weights to load for the detector. One of 'L-upright', 'L-C4', 'L-SO2'.
             descriptor_weights: The weights to load for the descriptor. One of 'B-upright', 'B-C4', 'B-SO2', 'G-upright', 'G-C4'.
             checkpoint: The checkpoint to load. One of 'depth' or 'epipolar'.
-            amp_dtype: the dtype to use for the model. One of torch.float16 or torch.float32. 
+            amp_dtype: the dtype to use for the model. One of torch.float16 or torch.float32.
             Default is torch.float16, suitable for CUDA. Use torch.float32 for CPU or MPS
 
         Returns:
