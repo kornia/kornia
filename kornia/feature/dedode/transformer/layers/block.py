@@ -13,6 +13,7 @@ from typing import Any, Callable, Dict, List, Tuple
 
 import torch
 from torch import Tensor, nn
+
 from kornia.core.check import KORNIA_CHECK
 
 from .attention import Attention, MemEffAttention

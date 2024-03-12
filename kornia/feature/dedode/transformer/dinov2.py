@@ -16,6 +16,7 @@ import torch
 import torch.utils.checkpoint
 from torch import nn
 from torch.nn.init import trunc_normal_
+
 from kornia.core.check import KORNIA_CHECK
 
 from .layers import MemEffAttention, Mlp, PatchEmbed, SwiGLUFFNFused
@@ -184,8 +185,8 @@ class DinoVisionTransformer(nn.Module):
             scale_factor=(w0 / math.sqrt(N), h0 / math.sqrt(N)),
             mode="bicubic",
         )
-        KORNIA_CHECK( int(w0) == patch_pos_embed.shape[-2])
-        KORNIA_CHECK( int(h0) == patch_pos_embed.shape[-1])
+        KORNIA_CHECK(int(w0) == patch_pos_embed.shape[-2])
+        KORNIA_CHECK(int(h0) == patch_pos_embed.shape[-1])
         patch_pos_embed = patch_pos_embed.permute(0, 2, 3, 1).view(1, -1, dim)
         return torch.cat((class_pos_embed.unsqueeze(0), patch_pos_embed), dim=1).to(previous_dtype)
 
