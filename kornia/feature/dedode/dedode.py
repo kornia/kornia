@@ -70,19 +70,20 @@ class DeDoDe(Module):
         """
         if apply_imagenet_normalization:
             images = self.normalizer(images)
+        B, C, H, W = images.shape
         if pad_if_not_divisible:
             h, w = images.shape[2:]
             pd_h = 14 - h % 14 if h % 14 > 0 else 0
             pd_w = 14 - w % 14 if w % 14 > 0 else 0
             images = torch.nn.functional.pad(images, (0, pd_w, 0, pd_h), value=0.0)
-        keypoints, scores = self.detect(images, n=n, apply_imagenet_normalization=False)
+        keypoints, scores = self.detect(images, n=n, apply_imagenet_normalization=False, crop_h=h, crop_w=w)
         descriptions = self.describe(images, keypoints, apply_imagenet_normalization=False)
-        B, C, H, W = images.shape
         return denormalize_pixel_coordinates(keypoints, H, W), scores, descriptions
 
     @torch.inference_mode()
     def detect(
-        self, images, n: Optional[int] = 10_000, apply_imagenet_normalization: bool = True
+        self, images, n: Optional[int] = 10_000, apply_imagenet_normalization: bool = True,
+        pad_if_not_divisible: bool = True, crop_h: Optional[int] = None, crop_w: Optional[int] = None
     ) -> Tuple[Tensor, Tensor]:
         """Detects keypoints in the input images.
 
@@ -90,6 +91,8 @@ class DeDoDe(Module):
             images: A tensor of shape :math:`(B, 3, H, W)` containing the input images.
             n: The number of keypoints to detect.
             apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images.
+            crop_h: The height of the crop to be used for detection. If None, the full image is used.
+            crop_w: The width of the crop to be used for detection. If None, the full image is used.
 
         Returns:
             keypoints: A tensor of shape :math:`(B, N, 2)` containing the detected keypoints normalized to the range :math:`[-1, 1]`.
@@ -101,6 +104,9 @@ class DeDoDe(Module):
             images = self.normalizer(images)
         B, C, H, W = images.shape
         logits = self.detector.forward(images)
+        if crop_h is not None and crop_w is not None:
+            logits = logits[..., :crop_h, :crop_w]
+            H, W = crop_h, crop_w
         scoremap = logits.reshape(B, H * W).softmax(dim=-1).reshape(B, H, W)
         keypoints, confidence = sample_keypoints(scoremap, num_samples=n)
         return keypoints, confidence
