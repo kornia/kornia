@@ -160,7 +160,6 @@ __all__ = [
     "DeDoDe",
     "DISK",
     "DISKFeatures",
-    "DeDoDe",
     "LightGlue",
     "LightGlueMatcher",
     "OnnxLightGlue",
