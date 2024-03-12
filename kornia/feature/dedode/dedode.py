@@ -37,9 +37,9 @@ class DeDoDe(Module):
     Example:
         >>> dedode = DeDoDe.from_pretrained(detector_weights="L-upright", descriptor_weights="B-upright")
         >>> images = torch.randn(1, 3, 256, 256)
-        >>> detections = dedode.detect(images)
-        >>> descriptions = dedode.describe(images, detections = detections)
-        >>> detections, features = dedode(images) # alternatively do both
+        >>> keypoints, scores = dedode.detect(images)
+        >>> descriptions = dedode.describe(images, keypoints = keypoints)
+        >>> keypoints, scores, features = dedode(images) # alternatively do both
     """
 
     # TODO: implement steerers and mnn matchers
