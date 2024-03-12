@@ -1,19 +1,21 @@
+from typing import Union
 import torch.nn.functional as F
 from torch import nn
+from kornia.core import Module, Tensor
 
 
-class DeDoDeDescriptor(nn.Module):
-    def __init__(self, encoder, decoder, *args, **kwargs) -> None:
+class DeDoDeDescriptor(Module):
+    def __init__(self, encoder: Module, decoder: Module, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
         super().__init__(*args, **kwargs)
         self.encoder = encoder
         self.decoder = decoder
 
     def forward(
         self,
-        images,
-    ):
+        images: Tensor,
+    ) -> Union[float, Tensor]:
         features, sizes = self.encoder(images)
-        descriptions = 0
+        descriptions = 0.0
         context = None
         scales = self.decoder.scales
         for idx, (feature_map, scale) in enumerate(zip(reversed(features), scales)):

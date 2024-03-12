@@ -1,14 +1,15 @@
+from typing import Union, Tuple, Optional
 import torch
 import torch.nn.functional as F
+from kornia.core import Tensor
 
 
 @torch.no_grad()
 def sample_keypoints(
-    scoremap,
-    num_samples=10_000,
-    return_scoremap=True,
-    increase_coverage=True,
-):
+    scoremap: Tensor,
+    num_samples: Optional[int] = 10_000,
+    return_scoremap: bool = True,
+    increase_coverage: bool = True) -> Union[Tensor, Tuple[Tensor, Tensor]]:
     device = scoremap.device
     dtype = scoremap.dtype
     B, H, W = scoremap.shape
@@ -19,17 +20,17 @@ def sample_keypoints(
         local_density = F.conv2d(local_density_x, weights[..., None], padding=(51 // 2, 0))[:, 0]
         scoremap = scoremap * (local_density + 1e-8) ** (-1 / 2)
     grid = get_grid(B, H, W, device=device).reshape(B, H * W, 2)
-    inds = torch.topk(scoremap.reshape(B, H * W), k=num_samples).indices
-    kps = torch.gather(grid, dim=1, index=inds[..., None].expand(B, num_samples, 2))
+    inds = torch.topk(scoremap.reshape(B, H * W), k=num_samples).indices # type: ignore 
+    kps = torch.gather(grid, dim=1, index=inds[..., None].expand(B, num_samples, 2)) # type: ignore 
     if return_scoremap:
         return kps, torch.gather(scoremap.reshape(B, H * W), dim=1, index=inds)
     return kps
 
 
-def get_grid(B, H, W, device):
-    x1_n = torch.meshgrid(
+def get_grid(B: int, H: int, W: int, device: torch.device) -> torch.Tensor:
+    x1_n_ = torch.meshgrid(
         *[torch.linspace(-1 + 1 / n, 1 - 1 / n, n, device=device) for n in (B, H, W)],
         indexing="ij",
     )
-    x1_n = torch.stack((x1_n[2], x1_n[1]), dim=-1).reshape(B, H * W, 2)
+    x1_n = torch.stack((x1_n_[2], x1_n_[1]), dim=-1).reshape(B, H * W, 2)
     return x1_n

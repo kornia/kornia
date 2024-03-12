@@ -35,7 +35,7 @@ class DeDoDe(Module):
 
     .. note:: DeDode takes ImageNet normalized images as input (not in range [0, 1]).
     Example:
-        >>> dedode = DeDoDe.from_pretrained(weights = "default")
+        >>> dedode = DeDoDe.from_pretrained(detector_weights="L-upright", descriptor_weights="B-upright")
         >>> images = torch.randn(1, 3, 256, 256)
         >>> detections = dedode.detect(images)
         >>> descriptions = dedode.describe(images, detections = detections)
@@ -43,7 +43,7 @@ class DeDoDe(Module):
     """
 
     # TODO: implement steerers and mnn matchers
-    def __init__(self, detector_model="L", descriptor_model="G", amp_dtype=torch.float16) -> None:
+    def __init__(self, detector_model: str="L", descriptor_model: str = "G", amp_dtype: torch.dtype = torch.float16) -> None:
         super().__init__()
         self.detector: DeDoDeDetector = get_detector(detector_model, amp_dtype)
         self.descriptor: DeDoDeDescriptor = get_descriptor(descriptor_model, amp_dtype)
@@ -55,7 +55,7 @@ class DeDoDe(Module):
         n: Optional[int] = 10_000,
         apply_imagenet_normalization: bool = True,
         pad_if_not_divisible: bool = True,
-    ) -> Tuple[Tensor, Tensor]:
+    ) -> Tuple[Tensor, Tensor, Tensor]:
         """Detects and describes keypoints in the input images.
 
         Args:
@@ -85,7 +85,7 @@ class DeDoDe(Module):
     @torch.inference_mode()
     def detect(
         self,
-        images,
+        images: Tensor,
         n: Optional[int] = 10_000,
         apply_imagenet_normalization: bool = True,
         pad_if_not_divisible: bool = True,
@@ -108,6 +108,11 @@ class DeDoDe(Module):
         """
         KORNIA_CHECK_SHAPE(images, ["B", "3", "H", "W"])
         self.train(False)
+        if pad_if_not_divisible:
+            h, w = images.shape[2:]
+            pd_h = 14 - h % 14 if h % 14 > 0 else 0
+            pd_w = 14 - w % 14 if w % 14 > 0 else 0
+            images = torch.nn.functional.pad(images, (0, pd_w, 0, pd_h), value=0.0)
         if apply_imagenet_normalization:
             images = self.normalizer(images)
         B, C, H, W = images.shape
@@ -155,7 +160,7 @@ class DeDoDe(Module):
         detector_weights: str = "L-upright",
         descriptor_weights: str = "G-upright",
         amp_dtype: torch.dtype = torch.float16,
-    ):
+    ) -> DeDoDe:
         r"""Loads a pretrained model.
 
         Depth model was trained using depth map supervision and is slightly more precise but biased to detect keypoints
