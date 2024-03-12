@@ -160,7 +160,7 @@ class DeDoDe(Module):
         detector_weights: str = "L-upright",
         descriptor_weights: str = "G-upright",
         amp_dtype: torch.dtype = torch.float16,
-    ) -> DeDoDe:
+    ) -> Module:
         r"""Loads a pretrained model.
 
         Depth model was trained using depth map supervision and is slightly more precise but biased to detect keypoints
