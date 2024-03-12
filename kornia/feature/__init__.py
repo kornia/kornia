@@ -1,4 +1,5 @@
 from .affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, PatchAffineShapeEstimator
+from .dedode import DeDoDe
 from .defmo import DeFMO
 from .disk import DISK, DISKFeatures
 from .hardnet import HardNet, HardNet8
@@ -70,6 +71,7 @@ from .siftdesc import DenseSIFTDescriptor, SIFTDescriptor
 from .sold2 import SOLD2, SOLD2_detector
 from .sosnet import SOSNet
 from .tfeat import TFeat
+from .dedode import DeDoDe
 
 __all__ = [
     "match_nn",
@@ -156,8 +158,10 @@ __all__ = [
     "perspective_transform_lafs",
     "SOLD2_detector",
     "SOLD2",
+    "DeDoDe",
     "DISK",
     "DISKFeatures",
+    "DeDoDe",
     "LightGlue",
     "LightGlueMatcher",
     "OnnxLightGlue",

@@ -58,6 +58,9 @@ Local Features (Detector and Descriptors together)
 .. autoclass:: SOLD2_detector
    :members: forward
 
+.. autoclass:: DeDoDe
+   :members: forward, from_pretrained, describe, detect
+
 .. autoclass:: DISK
    :members: forward, from_pretrained, heatmap_and_dense_descriptors
 
