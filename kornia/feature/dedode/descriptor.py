@@ -1,4 +1,3 @@
-
 import torch.nn.functional as F
 
 from kornia.core import Module, Tensor
