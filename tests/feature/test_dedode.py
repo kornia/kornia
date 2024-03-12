@@ -1,6 +1,8 @@
+import sys
+
 import pytest
 import torch
-import sys
+
 from kornia.feature.dedode import DeDoDe
 
 
@@ -22,4 +24,3 @@ class TestDeDoDe:
         # only testing "B" as dinov2 is quite heavy
         dedode = DeDoDe(descriptor_model="B").to(device, dtype)
         dedode = DeDoDe(descriptor_model="G").to(device, dtype)
-    

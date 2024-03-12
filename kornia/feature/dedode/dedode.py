@@ -1,35 +1,36 @@
-from typing import Optional, Tuple, Dict
+from typing import Dict, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
 
+from kornia.augmentation._2d.intensity.normalize import Normalize
 from kornia.core import Module, Tensor
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.conversions import denormalize_pixel_coordinates
-from kornia.augmentation._2d.intensity.normalize import Normalize
 from kornia.utils.helpers import map_location_to_cpu
 
 from .dedode_models import DeDoDeDescriptor, DeDoDeDetector, get_descriptor, get_detector
 from .utils import sample_keypoints
 
+urls: Dict[str, Dict[str, str]] = {
+    "detector": {
+        "L-upright": "https://github.com/Parskatt/DeDoDe/releases/download/dedode_pretrained_models/dedode_detector_L.pth",
+        "L-C4": "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/dedode_detector_C4.pth",
+        "L-SO2": "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/dedode_detector_SO2.pth",
+    },
+    "descriptor": {
+        "B-upright": "https://github.com/Parskatt/DeDoDe/releases/download/dedode_pretrained_models/dedode_descriptor_B.pth",
+        "B-C4": "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/B_C4_Perm_descriptor_setting_C.pth",
+        "B-SO2": "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/B_SO2_Spread_descriptor_setting_C.pth",
+        "G-upright": "https://github.com/Parskatt/DeDoDe/releases/download/dedode_pretrained_models/dedode_descriptor_G.pth",
+        "G-C4": "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/G_C4_Perm_descriptor_setting_C.pth",
+    },
+}
 
-urls: Dict[str, Dict[str, str]] = { "detector": {
-                "L-upright": "https://github.com/Parskatt/DeDoDe/releases/download/dedode_pretrained_models/dedode_detector_L.pth",
-                "L-C4": "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/dedode_detector_C4.pth",
-                "L-SO2": "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/dedode_detector_SO2.pth",
-            },
-            "descriptor": {
-                "B-upright": "https://github.com/Parskatt/DeDoDe/releases/download/dedode_pretrained_models/dedode_descriptor_B.pth",
-                "B-C4": "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/B_C4_Perm_descriptor_setting_C.pth",
-                "B-SO2": "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/B_SO2_Spread_descriptor_setting_C.pth",
-                "G-upright": "https://github.com/Parskatt/DeDoDe/releases/download/dedode_pretrained_models/dedode_descriptor_G.pth",
-                "G-C4": "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/G_C4_Perm_descriptor_setting_C.pth",
-            }
-            }
 
 class DeDoDe(Module):
     r"""Module which detects and/or describes local features in an image using the DeDode method.
-    
+
     See :cite:`edstedt2024dedode` for details.
 
     .. note:: DeDode takes ImageNet normalized images as input (not in range [0, 1]).
@@ -46,8 +47,7 @@ class DeDoDe(Module):
         super().__init__()
         self.detector: DeDoDeDetector = get_detector(detector_model, amp_dtype)
         self.descriptor: DeDoDeDescriptor = get_descriptor(descriptor_model, amp_dtype)
-        self.normalizer = Normalize(torch.tensor([0.485, 0.456, 0.406]),
-                                    std=torch.tensor([0.229, 0.224, 0.225]))
+        self.normalizer = Normalize(torch.tensor([0.485, 0.456, 0.406]), std=torch.tensor([0.229, 0.224, 0.225]))
 
     def forward(
         self,
@@ -56,14 +56,13 @@ class DeDoDe(Module):
         apply_imagenet_normalization: bool = True,
         pad_if_not_divisible: bool = True,
     ) -> Tuple[Tensor, Tensor]:
-        """
-        Detects and describes keypoints in the input images.
-        
+        """Detects and describes keypoints in the input images.
+
         Args:
             images: A tensor of shape :math:`(B, 3, H, W)` containing the ImageNet-Normalized input images.
             n: The number of keypoints to detect.
             apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images.
-        
+
         Returns:
             keypoints: A tensor of shape :math:`(B, N, 2)` containing the detected keypoints in the image range unlike `.detect()` function
             scores: A tensor of shape :math:`(B, N)` containing the scores of the detected keypoints.
@@ -82,18 +81,20 @@ class DeDoDe(Module):
         return denormalize_pixel_coordinates(keypoints, H, W), scores, descriptions
 
     @torch.inference_mode()
-    def detect(self, images, n: Optional[int] = 10_000, apply_imagenet_normalization: bool = True) -> Tuple[Tensor, Tensor]:
-        '''Detects keypoints in the input images.
-        
+    def detect(
+        self, images, n: Optional[int] = 10_000, apply_imagenet_normalization: bool = True
+    ) -> Tuple[Tensor, Tensor]:
+        """Detects keypoints in the input images.
+
         Args:
             images: A tensor of shape :math:`(B, 3, H, W)` containing the input images.
-            n: The number of keypoints to detect. 
+            n: The number of keypoints to detect.
             apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images.
-        
+
         Returns:
             keypoints: A tensor of shape :math:`(B, N, 2)` containing the detected keypoints normalized to the range :math:`[-1, 1]`.
             scores: A tensor of shape :math:`(B, N)` containing the scores of the detected keypoints.
-        '''
+        """
         KORNIA_CHECK_SHAPE(images, ["B", "3", "H", "W"])
         self.train(False)
         if apply_imagenet_normalization:
@@ -105,19 +106,20 @@ class DeDoDe(Module):
         return keypoints, confidence
 
     @torch.inference_mode()
-    def describe(self, images: Tensor, keypoints: Optional[Tensor] = None, apply_imagenet_normalization: bool = True) -> Tensor:
-        '''Describes keypoints in the input images. If keypoints are not provided, returns the dense descriptors
-        
+    def describe(
+        self, images: Tensor, keypoints: Optional[Tensor] = None, apply_imagenet_normalization: bool = True
+    ) -> Tensor:
+        """Describes keypoints in the input images. If keypoints are not provided, returns the dense descriptors.
+
         Args:
             images: A tensor of shape :math:`(B, 3, H, W)` containing the input images.
             keypoints: An optiona tensor of shape :math:`(B, N, 2)` containing the detected keypoints.
             apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images.
-        
+
         Returns:
-            descriptions: A tensor of shape :math:`(B, N, DIM)` containing the descriptions of the detected keypoints. 
+            descriptions: A tensor of shape :math:`(B, N, DIM)` containing the descriptions of the detected keypoints.
             If the dense descriptors are requested, the shape is :math:`(B, DIM, H, W)`.
-            
-        '''
+        """
         KORNIA_CHECK_SHAPE(images, ["B", "3", "H", "W"])
         B, C, H, W = images.shape
         if keypoints is not None:
@@ -156,8 +158,14 @@ class DeDoDe(Module):
         Returns:
             The pretrained model.
         """
-        model: DeDoDe = cls(detector_model=detector_weights[0], descriptor_model=descriptor_weights[0], amp_dtype=amp_dtype)
-        model.detector.load_state_dict(torch.hub.load_state_dict_from_url(urls["detector"][detector_weights], map_location=map_location_to_cpu))
-        model.descriptor.load_state_dict(torch.hub.load_state_dict_from_url(urls["descriptor"][descriptor_weights], map_location=map_location_to_cpu))
+        model: DeDoDe = cls(
+            detector_model=detector_weights[0], descriptor_model=descriptor_weights[0], amp_dtype=amp_dtype
+        )
+        model.detector.load_state_dict(
+            torch.hub.load_state_dict_from_url(urls["detector"][detector_weights], map_location=map_location_to_cpu)
+        )
+        model.descriptor.load_state_dict(
+            torch.hub.load_state_dict_from_url(urls["descriptor"][descriptor_weights], map_location=map_location_to_cpu)
+        )
         model.eval()
         return model
