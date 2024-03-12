@@ -17,7 +17,6 @@ logger = logging.getLogger("dinov2")
 
 try:
     from xformers.ops import fmha, memory_efficient_attention, unbind
-
     XFORMERS_AVAILABLE = True
 except ImportError:
     XFORMERS_AVAILABLE = False

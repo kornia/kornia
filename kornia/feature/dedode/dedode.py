@@ -102,7 +102,8 @@ class DeDoDe(Module):
             crop_w: The width of the crop to be used for detection. If None, the full image is used.
 
         Returns:
-            keypoints: A tensor of shape :math:`(B, N, 2)` containing the detected keypoints normalized to the range :math:`[-1, 1]`.
+            keypoints: A tensor of shape :math:`(B, N, 2)` containing the detected keypoints,
+            normalized to the range :math:`[-1, 1]`.
             scores: A tensor of shape :math:`(B, N)` containing the scores of the detected keypoints.
         """
         KORNIA_CHECK_SHAPE(images, ["B", "3", "H", "W"])
@@ -164,7 +165,8 @@ class DeDoDe(Module):
 
         Args:
             detector_weights: The weights to load for the detector. One of 'L-upright', 'L-C4', 'L-SO2'.
-            descriptor_weights: The weights to load for the descriptor. One of 'B-upright', 'B-C4', 'B-SO2', 'G-upright', 'G-C4'.
+            descriptor_weights: The weights to load for the descriptor.
+            One of 'B-upright', 'B-C4', 'B-SO2', 'G-upright', 'G-C4'.
             checkpoint: The checkpoint to load. One of 'depth' or 'epipolar'.
             amp_dtype: the dtype to use for the model. One of torch.float16 or torch.float32.
             Default is torch.float16, suitable for CUDA. Use torch.float32 for CPU or MPS
