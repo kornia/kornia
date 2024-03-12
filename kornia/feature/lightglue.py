@@ -514,7 +514,11 @@ class LightGlue(Module):
         KORNIA_CHECK(torch.all(kpts1 >= -1).item() and torch.all(kpts1 <= 1).item(), "")  # type: ignore
         if self.conf.add_scale_ori:
             kpts0 = concatenate([kpts0] + [data0[k].unsqueeze(-1) for k in ("scales", "oris")], -1)
+            if self.conf.scale_coef != 1.0:
+                kpts0[..., -2] = kpts0[..., -2] * self.conf.scale_coef
             kpts1 = concatenate([kpts1] + [data1[k].unsqueeze(-1) for k in ("scales", "oris")], -1)
+            if self.conf.scale_coef != 1.0:
+                kpts1[..., -2] = kpts1[..., -2] * self.conf.scale_coef
         elif self.conf.add_laf:
             laf0 = scale_laf(data0["lafs"], self.conf.scale_coef)
             laf1 = scale_laf(data1["lafs"], self.conf.scale_coef)
@@ -629,6 +633,7 @@ class LightGlue(Module):
             prune1 = ones_like(mscores1) * self.conf.n_layers
 
         pred = {
+            "log_assignment": scores,
             "matches0": m0,
             "matches1": m1,
             "matching_scores0": mscores0,
