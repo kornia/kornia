@@ -349,13 +349,17 @@ class LightGlue(Module):
             "weights": "superpoint_lightglue",
             "input_dim": 256,
         },
-        "disk": {
-            "weights": "disk_lightglue",
-            "input_dim": 128,
-        },
         "dedodeb": {
             "weights": "dedodeb_lightglue",
             "input_dim": 256,
+        },
+        "dedodeg": {
+            "weights": "dedodeg_lightglue",
+            "input_dim": 256,
+        },
+        "disk": {
+            "weights": "disk_lightglue",
+            "input_dim": 128,
         },
         "aliked": {
             "weights": "aliked_lightglue",
@@ -367,12 +371,20 @@ class LightGlue(Module):
             "add_scale_ori": True,
         },
         "dog_affnet_hardnet": {
-            "weights": "keynet_affnet_hardnet_lightglue",
+            "weights": "doghardnet",
             "input_dim": 128,
             "width_confidence": -1,
             "depth_confidence": -1,
-            "add_laf": True,
-            "scale_coef": 0.1,
+            "add_scale_ori": True,
+            "scale_coef": 1.0 / 6.0,
+        },
+        "doghardnet": {
+            "weights": "doghardnet",
+            "input_dim": 128,
+            "width_confidence": -1,
+            "depth_confidence": -1,
+            "add_scale_ori": True,
+            "scale_coef": 1.0 / 6.0,
         },
         "keynet_affnet_hardnet": {
             "weights": "keynet_affnet_hardnet_lightglue",
@@ -415,12 +427,17 @@ class LightGlue(Module):
         state_dict = None
         if features is not None:
             fname = f"{conf.weights}_{self.version}.pth".replace(".", "-")
-            if features in ["keynet_affnet_hardnet", "dog_affnet_hardnet"]:
+            if features == "dog_affnet_hardnet":
+                features = "doghardnet"  # new dog model is better for affnet as well
+            if features in ["keynet_affnet_hardnet"]:
                 fname = "keynet_affnet_hardnet_lightlue.pth"
                 url = "http://cmp.felk.cvut.cz/~mishkdmy/models/keynet_affnet_hardnet_lightlue.pth"
-            elif features in ['dedodeb']:
-                fname = 'dedodeb_lightglue.pth'
-                url = 'http://cmp.felk.cvut.cz/~mishkdmy/models/dedodeb_lightglue.pth'
+            elif features in ["dedodeb"]:
+                fname = "dedodeb_lightglue.pth"
+                url = "http://cmp.felk.cvut.cz/~mishkdmy/models/dedodeb_lightglue.pth"
+            elif features in ["dedodeg"]:
+                fname = "dedodeg_lightglue.pth"
+                url = "http://cmp.felk.cvut.cz/~mishkdmy/models/dedodeg_lightglue.pth"
             else:
                 url = self.url.format(self.version, features)
             state_dict = torch.hub.load_state_dict_from_url(url, file_name=fname)
