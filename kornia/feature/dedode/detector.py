@@ -24,7 +24,7 @@ class DeDoDeDetector(nn.Module):
             if logits is None:
                 logits = delta_logits
             else:
-                logits = logits + delta_logits.float()  # ensure float (need bf16 doesnt have f.interpolate)
+                logits = logits + delta_logits.float()  # ensure float (need bf16 doesn't have f.interpolate)
             if idx < len(scales) - 1:
                 size = sizes[-(idx + 2)]
                 logits = F.interpolate(logits, size=size, mode="bicubic", align_corners=False)

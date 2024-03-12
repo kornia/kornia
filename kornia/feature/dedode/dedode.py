@@ -134,7 +134,7 @@ class DeDoDe(Module):
 
         Args:
             images: A tensor of shape :math:`(B, 3, H, W)` containing the input images.
-            keypoints: An optiona tensor of shape :math:`(B, N, 2)` containing the detected keypoints.
+            keypoints: An optional tensor of shape :math:`(B, N, 2)` containing the detected keypoints.
             apply_imagenet_normalization: Whether to apply ImageNet normalization to the input images.
 
         Returns:
