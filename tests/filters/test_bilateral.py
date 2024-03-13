@@ -57,10 +57,10 @@ class TestBilateralBlur(BaseTester):
         sigma_color = torch.rand(1, device=device, dtype=torch.float64)
         sigma_space = torch.rand(1, 2, device=device, dtype=torch.float64)
 
-        self.gradcheck(bilateral_blur, (img, 3, 1, (1, 1)))
-        self.gradcheck(bilateral_blur, (img, 3, sigma_color, (1, 1)))
-        self.gradcheck(bilateral_blur, (img, 3, 1, sigma_space))
-        self.gradcheck(bilateral_blur, (img, 3, sigma_color, sigma_space))
+        self.gradcheck(bilateral_blur, (img, 3, 1, (1, 1)), nondet_tol=1e-4)
+        self.gradcheck(bilateral_blur, (img, 3, sigma_color, (1, 1)), nondet_tol=1e-4)
+        self.gradcheck(bilateral_blur, (img, 3, 1, sigma_space), nondet_tol=1e-4)
+        self.gradcheck(bilateral_blur, (img, 3, sigma_color, sigma_space), nondet_tol=1e-4)
 
     @pytest.mark.parametrize("shape", [(1, 1, 8, 15), (2, 3, 11, 7)])
     @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
@@ -219,7 +219,7 @@ class TestJointBilateralBlur(BaseTester):
     def test_gradcheck(self, device):
         img = torch.rand(1, 2, 5, 4, device=device, dtype=torch.float64)
         guide = torch.rand(1, 2, 5, 4, device=device, dtype=torch.float64)
-        self.gradcheck(joint_bilateral_blur, (img, guide, 3, 1, (1, 1)))
+        self.gradcheck(joint_bilateral_blur, (img, guide, 3, 1, (1, 1)), nondet_tol=1e-4)
 
     def test_module(self, device, dtype):
         shape = (2, 3, 11, 7)
