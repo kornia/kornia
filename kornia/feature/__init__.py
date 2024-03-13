@@ -1,4 +1,5 @@
 from .affine_shape import LAFAffineShapeEstimator, LAFAffNetShapeEstimator, PatchAffineShapeEstimator
+from .dedode import DeDoDe
 from .defmo import DeFMO
 from .disk import DISK, DISKFeatures
 from .hardnet import HardNet, HardNet8
@@ -156,6 +157,7 @@ __all__ = [
     "perspective_transform_lafs",
     "SOLD2_detector",
     "SOLD2",
+    "DeDoDe",
     "DISK",
     "DISKFeatures",
     "LightGlue",

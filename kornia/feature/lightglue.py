@@ -353,6 +353,10 @@ class LightGlue(Module):
             "weights": "dedodeb_lightglue",
             "input_dim": 256,
         },
+        "dedodeg": {
+            "weights": "dedodeg_lightglue",
+            "input_dim": 256,
+        },
         "disk": {
             "weights": "disk_lightglue",
             "input_dim": 128,
@@ -431,6 +435,9 @@ class LightGlue(Module):
             elif features in ["dedodeb"]:
                 fname = "dedodeb_lightglue.pth"
                 url = "http://cmp.felk.cvut.cz/~mishkdmy/models/dedodeb_lightglue.pth"
+            elif features in ["dedodeg"]:
+                fname = "dedodeg_lightglue.pth"
+                url = "http://cmp.felk.cvut.cz/~mishkdmy/models/dedodeg_lightglue.pth"
             else:
                 url = self.url.format(self.version, features)
             state_dict = torch.hub.load_state_dict_from_url(url, file_name=fname)
@@ -512,7 +519,6 @@ class LightGlue(Module):
             kpts1 = concatenate([kpts1] + [data1[k].unsqueeze(-1) for k in ("scales", "oris")], -1)
             if self.conf.scale_coef != 1.0:
                 kpts1[..., -2] = kpts1[..., -2] * self.conf.scale_coef
-
         elif self.conf.add_laf:
             laf0 = scale_laf(data0["lafs"], self.conf.scale_coef)
             laf1 = scale_laf(data1["lafs"], self.conf.scale_coef)

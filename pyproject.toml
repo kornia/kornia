@@ -153,7 +153,7 @@ requires = [
 
   [tool.ruff.lint.pylint]
     allow-magic-value-types = ["bytes", "float", "int", "str"]
-    max-args = 17  # Recommended: 5
+    max-args = 30  # Recommended: 5
     max-branches = 21  # Recommended: 12
     max-returns = 13  # Recommended: 6
     max-statements = 64  # Recommended: 50
@@ -166,6 +166,7 @@ requires = [
     "tests/*" = ["S101", "S311", "BLE", "RUF012", "RUF005"] # allow assert, random, ignore BLE, mutable class attr
     "benchmarks/*" = ["S101", "S311", "BLE", "RUF012", "RUF005"] # allow assert, random, ignore BLE, mutable class attr
     "testing/*" = ["S101",] # allow assert
+    "kornia/feature/dedode/*"  = ["C408", "FLY002", "PLR1714", "F401", "F841"]  # allow DINOv2 things
 
   [tool.ruff.format]
     skip-magic-trailing-comma = false
@@ -233,6 +234,7 @@ partial_branches = [
   show_error_codes = true
   warn_redundant_casts = true
   warn_unused_ignores = true
+  exclude =  ["kornia/feature/dedode/transformer"]
 
 [tool.pydocstyle]
   ignore = ['D105','D107','D203','D204','D213','D406','D407']
