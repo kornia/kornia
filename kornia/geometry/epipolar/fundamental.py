@@ -386,7 +386,7 @@ def fundamental_from_projections(P1: Tensor, P2: Tensor) -> Tensor:
     if input_dtype not in (torch.float32, torch.float64):
         P1 = P1.to(torch.float32)
         P2 = P2.to(torch.float32)
-    
+
     X1 = P1[..., 1:, :]
     X2 = vstack(P1[..., 2:3, :], P1[..., 0:1, :])
     X3 = P1[..., :2, :]
