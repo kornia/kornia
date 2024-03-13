@@ -76,7 +76,7 @@ class KMeans:
             2D Tensor with num_cluster rows
         """
         num_samples: int = len(X)
-        perm = torch.randperm(num_samples)
+        perm = torch.randperm(num_samples, device=X.device)
         idx = perm[:num_clusters]
         initial_state = X[idx]
         return initial_state
@@ -140,7 +140,7 @@ class KMeans:
                 # edge case when a certain cluster centre has no points assigned to it
                 # just choose a random point as it's update
                 if selected.shape[0] == 0:
-                    selected = X[torch.randint(len(X), (1,))]
+                    selected = X[torch.randint(len(X), (1,), device=X.device)]
                 current_centers[index] = selected.mean(dim=0)
 
             # sum of distance of how much the newly computed clusters have moved from their previous positions
