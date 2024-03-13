@@ -7,7 +7,7 @@ import kornia.geometry.epipolar as epi
 from kornia.core import eye, ones_like, stack, where, zeros
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
 from kornia.geometry import solvers
-from kornia.utils import  eye_like, safe_inverse_with_mask, vec_like
+from kornia.utils import eye_like, safe_inverse_with_mask, vec_like
 from kornia.utils.helpers import _torch_solve_cast, _torch_svd_cast
 
 from .numeric import cross_product_matrix
