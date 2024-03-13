@@ -1056,8 +1056,8 @@ class TestDiffJPEG(BaseTester):
         img_jpeg = kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality)
         (img_jpeg - torch.zeros_like(img_jpeg)).abs().sum().backward()
         # Numbers generated based on reference implementation
-        img_jpeg_mean_grad_ref = torch.tensor([0.1919])
-        jpeg_quality_grad_ref = torch.tensor([0.0042])
+        img_jpeg_mean_grad_ref = torch.tensor([0.1919], device=device)
+        jpeg_quality_grad_ref = torch.tensor([0.0042], device=device)
         # We use a slightly higher tolerance since our implementation varies from the reference implementation
         self.assert_close(img.grad.mean().view(-1), img_jpeg_mean_grad_ref, rtol=0.01, atol=0.01)
         self.assert_close(jpeg_quality.grad, jpeg_quality_grad_ref, rtol=0.01, atol=0.01)
