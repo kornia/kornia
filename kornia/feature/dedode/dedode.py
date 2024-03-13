@@ -3,9 +3,9 @@ from typing import Dict, Optional, Tuple
 import torch
 import torch.nn.functional as F
 
-from kornia.augmentation._2d.intensity.normalize import Normalize
 from kornia.core import Module, Tensor
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.enhance.normalize import Normalize
 from kornia.geometry.conversions import denormalize_pixel_coordinates
 from kornia.utils.helpers import map_location_to_cpu
 
