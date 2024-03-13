@@ -134,7 +134,7 @@ class TestHomographyWarper(BaseTester):
     def test_warp_grid_translation(self, shape, offset, device, dtype):
         # create input data
         height, width = shape
-        grid = kornia.utils.create_meshgrid(height, width, normalized_coordinates=False, dtype=dtype)
+        grid = kornia.utils.create_meshgrid(height, width, normalized_coordinates=False, device=device, dtype=dtype)
         dst_homo_src = eye_like(3, grid)
         dst_homo_src[..., 0, 2] = offset  # apply offset in x
         flow = kornia.geometry.transform.warp_grid(grid, dst_homo_src)

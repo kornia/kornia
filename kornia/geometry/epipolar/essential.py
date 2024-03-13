@@ -7,8 +7,8 @@ import kornia.geometry.epipolar as epi
 from kornia.core import eye, ones_like, stack, where, zeros
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
 from kornia.geometry import solvers
-from kornia.utils import eye_like, vec_like
-from kornia.utils.helpers import _torch_svd_cast
+from kornia.utils import eye_like, safe_inverse_with_mask, vec_like
+from kornia.utils.helpers import _torch_solve_cast, _torch_svd_cast
 
 from .numeric import cross_product_matrix
 from .projection import depth_from_point, projection_from_KRt
@@ -124,7 +124,7 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
         torch.linalg.matrix_rank(coeffs), ones_like(torch.linalg.matrix_rank(coeffs[:, :, :10])) * 10
     )
 
-    eliminated_mat = torch.linalg.solve(coeffs[singular_filter, :, :10], b[singular_filter])
+    eliminated_mat = _torch_solve_cast(coeffs[singular_filter, :, :10], b[singular_filter])
 
     coeffs_ = torch.cat((coeffs[singular_filter, :, :10], eliminated_mat), dim=-1)
 
@@ -178,12 +178,12 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
         ).T.unsqueeze(-1)
 
         # We try to solve using top two rows,
-        xzs = Bs[:, 0:2, 0:2].inverse() @ (bs[:, 0:2])
+        xzs = (safe_inverse_with_mask(Bs[:, 0:2, 0:2])[0]) @ (bs[:, 0:2])
 
         mask = (abs(Bs[:, 2].unsqueeze(1) @ xzs - bs[:, 2].unsqueeze(1)) > 1e-3).flatten()
         if torch.sum(mask) != 0:
             q, r = torch.linalg.qr(Bs[mask].clone())  #
-            xzs[mask] = torch.linalg.solve(r, q.transpose(-1, -2) @ bs[mask])  # [mask]
+            xzs[mask] = _torch_solve_cast(r, q.transpose(-1, -2) @ bs[mask])  # [mask]
 
         # models
         Es = null_i[0] * (-xzs[:, 0]) + null_i[1] * (-xzs[:, 1]) + null_i[2] * roots.unsqueeze(-1) + null_i[3]

@@ -181,7 +181,7 @@ def find_homography_dlt(
         H = sol.reshape(-1, 3, 3)
     else:
         raise NotImplementedError
-    H = transform2.inverse() @ (H @ transform1)
+    H = safe_inverse_with_mask(transform2)[0] @ (H @ transform1)
     H_norm = H / (H[..., -1:, -1:] + eps)
     return H_norm
 
@@ -304,13 +304,13 @@ def find_homography_lines_dlt(ls1: Tensor, ls2: Tensor, weights: Optional[Tensor
         A = A.transpose(-2, -1) @ w_diag @ A
 
     try:
-        _, _, V = torch.svd(A)
+        _, _, V = _torch_svd_cast(A)
     except RuntimeError:
         warnings.warn("SVD did not converge", RuntimeWarning)
         return torch.empty((points1_norm.size(0), 3, 3), device=device, dtype=dtype)
 
     H = V[..., -1].view(-1, 3, 3)
-    H = transform2.inverse() @ (H @ transform1)
+    H = safe_inverse_with_mask(transform2)[0] @ (H @ transform1)
     H_norm = H / (H[..., -1:, -1:] + eps)
     return H_norm
 

@@ -9,7 +9,7 @@ from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.solvers import solve_cubic
-from kornia.utils.helpers import _torch_svd_cast
+from kornia.utils.helpers import _torch_svd_cast, safe_inverse_with_mask
 
 
 def normalize_points(points: Tensor, eps: float = 1e-8) -> Tuple[Tensor, Tensor]:
@@ -120,8 +120,8 @@ def run_7point(points1: Tensor, points2: Tensor) -> Tensor:
     f1_det = torch.linalg.det(f1)
     f2_det = torch.linalg.det(f2)
     coeffs[:, 0] = f1_det
-    coeffs[:, 1] = torch.einsum("bii->b", f2 @ torch.inverse(f1)) * f1_det
-    coeffs[:, 2] = torch.einsum("bii->b", f1 @ torch.inverse(f2)) * f2_det
+    coeffs[:, 1] = torch.einsum("bii->b", f2 @ safe_inverse_with_mask(f1)[0]) * f1_det
+    coeffs[:, 2] = torch.einsum("bii->b", f1 @ safe_inverse_with_mask(f2)[0]) * f2_det
     coeffs[:, 3] = f2_det
 
     # solve the cubic equation, there can be 1 to 3 roots
@@ -354,7 +354,7 @@ def fundamental_from_essential(E_mat: Tensor, K1: Tensor, K2: Tensor) -> Tensor:
     if not len(E_mat.shape[:-2]) == len(K1.shape[:-2]) == len(K2.shape[:-2]):
         raise AssertionError
 
-    return K2.inverse().transpose(-2, -1) @ E_mat @ K1.inverse()
+    return (safe_inverse_with_mask(K2)[0]).transpose(-2, -1) @ E_mat @ (safe_inverse_with_mask(K1)[0])
 
 
 # adapted from:
@@ -381,6 +381,11 @@ def fundamental_from_projections(P1: Tensor, P2: Tensor) -> Tensor:
 
     def vstack(x: Tensor, y: Tensor) -> Tensor:
         return concatenate([x, y], dim=-2)
+
+    input_dtype = P1.dtype
+    if input_dtype not in (torch.float32, torch.float64):
+        P1 = P1.to(torch.float32)
+        P2 = P2.to(torch.float32)
 
     X1 = P1[..., 1:, :]
     X2 = vstack(P1[..., 2:3, :], P1[..., 0:1, :])
@@ -409,4 +414,4 @@ def fundamental_from_projections(P1: Tensor, P2: Tensor) -> Tensor:
         dim=1,
     )
 
-    return F_vec.view(*P1.shape[:-2], 3, 3)
+    return F_vec.view(*P1.shape[:-2], 3, 3).to(input_dtype)

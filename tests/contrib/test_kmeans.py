@@ -36,7 +36,7 @@ class TestKMeans(BaseTester):
         D = 2
 
         kmeans = kornia.contrib.KMeans(num_clusters, None, tolerance, max_iterations, 0)
-        kmeans.fit(torch.rand((N, D), dtype=dtype))
+        kmeans.fit(torch.rand((N, D), device=device, dtype=dtype))
 
         out1 = kmeans.cluster_assignments
         out2 = kmeans.cluster_centers
@@ -112,7 +112,7 @@ class TestKMeans(BaseTester):
     def test_dynamo(self, device, dtype, torch_optimizer):
         x = TestKMeans._create_data(device, dtype)
         kmeans_params = (3, None, 10e-4, 10000, 2023)
-        predict_param = torch.tensor([[-14, 16], [45, 12]])
+        predict_param = torch.tensor([[-14, 16], [45, 12]], dtype=dtype, device=device)
 
         kmeans = kornia.contrib.KMeans(*kmeans_params)
         kmeans.fit(x)
