@@ -3,6 +3,7 @@ import torch
 
 from kornia.contrib.models.sam import SamConfig
 from kornia.contrib.visual_prompter import VisualPrompter
+from kornia.utils._compat import torch_version
 
 from testing.base import BaseTester
 
@@ -86,6 +87,7 @@ class TestVisualPrompter(BaseTester):
     def test_module(self):
         ...
 
+    @pytest.mark.skipif(torch_version() in {"2.0.0", "2.0.1"}, reason="Not working on 2.0")
     def test_dynamo(self, device, torch_optimizer):
         dtype = torch.float32
         batch_size = 1
