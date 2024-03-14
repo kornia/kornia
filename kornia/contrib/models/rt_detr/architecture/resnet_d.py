@@ -3,6 +3,7 @@
 Based on the code from https://github.com/pytorch/vision/blob/v0.15.1/torchvision/models/resnet.py
 https://github.com/PaddlePaddle/PaddleDetection/blob/release/2.6/ppdet/modeling/backbones/resnet.py
 """
+
 from __future__ import annotations
 
 from torch import nn

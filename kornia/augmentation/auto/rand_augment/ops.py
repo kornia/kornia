@@ -1,4 +1,5 @@
 """RandAugment operation wrapper."""
+
 from kornia.augmentation.auto.operations import (
     AutoContrast,
     Brightness,

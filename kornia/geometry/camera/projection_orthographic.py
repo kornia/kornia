@@ -1,4 +1,5 @@
 """Module containing functions for orthographic projection."""
+
 # inspired by: https://github.com/farm-ng/sophus-rs/blob/main/src/sensor/ortho_camera.rs
 import kornia.core as ops
 from kornia.core import Tensor

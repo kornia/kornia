@@ -1,4 +1,5 @@
 """Module containing operators to work on RGB-Depth images."""
+
 from __future__ import annotations
 
 from typing import Optional

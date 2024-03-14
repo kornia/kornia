@@ -1,4 +1,5 @@
 """Module containing utilities for classification."""
+
 import torch
 from torch import nn
 

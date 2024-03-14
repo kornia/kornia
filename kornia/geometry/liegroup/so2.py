@@ -61,12 +61,10 @@ class So2(Module):
         return So2(self._z[idx])
 
     @overload
-    def __mul__(self, right: So2) -> So2:
-        ...
+    def __mul__(self, right: So2) -> So2: ...
 
     @overload
-    def __mul__(self, right: Tensor) -> Tensor:
-        ...
+    def __mul__(self, right: Tensor) -> Tensor: ...
 
     def __mul__(self, right: So2 | Tensor) -> So2 | Tensor:
         """Performs a left-multiplication either rotation concatenation or point-transform.

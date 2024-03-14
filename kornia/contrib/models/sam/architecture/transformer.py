@@ -3,6 +3,7 @@
 https://github.com/facebookresearch/segment-
 anything/blob/3518c86b78b3bc9cf4fbe3d18e682fad1c79dc51/segment_anything/modeling/transformer.py
 """
+
 from __future__ import annotations
 
 import math

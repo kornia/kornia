@@ -1,4 +1,5 @@
 """Module for image projections."""
+
 from typing import Tuple, Union
 
 import torch

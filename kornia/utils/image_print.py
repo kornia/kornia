@@ -4,6 +4,7 @@ Nice long listing of all 256 colors and their codes.
 
 Taken from https://gist.github.com/klange/1687427
 """
+
 import re
 from typing import Tuple, Union
 

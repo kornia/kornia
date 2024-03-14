@@ -66,13 +66,11 @@ def get_cuda_or_mps_device_if_available() -> torch.device:
 
 
 @overload
-def map_location_to_cpu(storage: Tensor, location: str) -> Tensor:
-    ...
+def map_location_to_cpu(storage: Tensor, location: str) -> Tensor: ...
 
 
 @overload
-def map_location_to_cpu(storage: str) -> str:
-    ...
+def map_location_to_cpu(storage: str) -> str: ...
 
 
 def map_location_to_cpu(storage: Union[str, Tensor], *args: Any, **kwargs: Any) -> Union[str, Tensor]:
