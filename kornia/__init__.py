@@ -12,4 +12,4 @@ from kornia.constants import pi
 from kornia.utils import eye_like, vec_like, create_meshgrid, image_to_tensor, tensor_to_image, xla_is_available
 
 # Version variable
-__version__ = "0.7.2-dev"
+__version__ = "0.7.2"

@@ -3209,8 +3209,9 @@ class TestRandomChannelShuffle(BaseTester):
 
 class TestRandomClahe(BaseTester):
     def test_smoke(self, device, dtype):
-        img = (torch.arange(36).reshape(2, 2, 3, 3) / 36).to(device=device, dtype=dtype)
-        self.assert_close(RandomClahe(p=1.0, grid_size=(2, 2))(img).sum(), torch.tensor(22.4588, dtype=dtype))
+        img = torch.arange(36, device=device, dtype=dtype).reshape(2, 2, 3, 3) / 36
+        expected = torch.tensor(22.4588, device=device, dtype=dtype)
+        self.assert_close(RandomClahe(p=1.0, grid_size=(2, 2))(img).sum(), expected)
 
     @pytest.mark.parametrize("batch_shape", [(1, 3, 5, 7), (3, 1, 5, 7)])
     def test_cardinality(self, batch_shape, device, dtype):
@@ -3975,14 +3976,14 @@ class TestPlanckianJitter(BaseTester):
 
     def test_planckian_jitter_blackbody(self, device, dtype):
         torch.manual_seed(0)
-        f = RandomPlanckianJitter(select_from=1)
+        f = RandomPlanckianJitter(select_from=1).to(device)
         input = self._get_input(device, dtype)
         expected = self._get_expected_output_blackbody(device, dtype)
         self.assert_close(f(input), expected, low_tolerance=True)
 
     def test_planckian_jitter_cied(self, device, dtype):
         torch.manual_seed(0)
-        f = RandomPlanckianJitter(mode="CIED", select_from=1)
+        f = RandomPlanckianJitter(mode="CIED", select_from=1).to(device)
         input = self._get_input(device, dtype)
         expected = self._get_expected_output_cied(device, dtype)
         self.assert_close(f(input), expected, low_tolerance=True)
@@ -3992,7 +3993,7 @@ class TestPlanckianJitter(BaseTester):
         input = self._get_input(device, dtype).repeat(2, 1, 1, 1)
 
         select_from = [1, 2, 24]
-        f = RandomPlanckianJitter(select_from=select_from)
+        f = RandomPlanckianJitter(select_from=select_from).to(device)
         expected = self._get_expected_output_batch(device, dtype)
         self.assert_close(f(input), expected, low_tolerance=True)
 
@@ -4001,7 +4002,7 @@ class TestPlanckianJitter(BaseTester):
         input = self._get_input(device, dtype).repeat(2, 1, 1, 1)
 
         select_from = [1, 2, 24, 3, 4, 5]
-        f = RandomPlanckianJitter(select_from=select_from, same_on_batch=True, p=1.0)
+        f = RandomPlanckianJitter(select_from=select_from, same_on_batch=True, p=1.0).to(device)
         expected = self._get_expected_output_same_on_batch(device, dtype)
         self.assert_close(f(input), expected, low_tolerance=True)
 

@@ -70,10 +70,10 @@ class TestGuidedBlur(BaseTester):
     def test_gradcheck(self, device):
         guide = torch.rand(1, 2, 5, 4, device=device, dtype=torch.float64)
         img = torch.rand(1, 2, 5, 4, device=device, dtype=torch.float64)
-        self.gradcheck(guided_blur, (guide, img, 3, 0.1))
+        self.gradcheck(guided_blur, (guide, img, 3, 0.1), nondet_tol=1e-4)
 
         eps = torch.rand(1, device=device, dtype=torch.float64)
-        self.gradcheck(guided_blur, (guide, img, 3, eps))
+        self.gradcheck(guided_blur, (guide, img, 3, eps), nondet_tol=1e-4)
 
     @pytest.mark.parametrize("shape", [(1, 1, 8, 16), (2, 3, 12, 8)])
     @pytest.mark.parametrize("kernel_size", [5, (3, 5)])

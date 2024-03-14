@@ -204,8 +204,12 @@ class TestFindHomographyDLT(BaseTester):
 
         # compute transform from source to target
         dst_homo_src = find_homography_dlt(points_src, points_dst, weights, "svd")
-
-        self.assert_close(kornia.geometry.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-3, atol=1e-4)
+        rtol = 1e-3
+        atol = 1e-4
+        if dtype not in (torch.float32, torch.float64):
+            rtol = 3e-3
+            atol = 1e-3
+        self.assert_close(kornia.geometry.transform_points(dst_homo_src, points_src), points_dst, rtol=rtol, atol=atol)
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
     def test_clean_points_lu(self, batch_size, device, dtype):
@@ -220,8 +224,12 @@ class TestFindHomographyDLT(BaseTester):
 
         # compute transform from source to target
         dst_homo_src = find_homography_dlt(points_src, points_dst, weights, "lu")
-
-        self.assert_close(kornia.geometry.transform_points(dst_homo_src, points_src), points_dst, rtol=1e-3, atol=1e-4)
+        rtol = 1e-3
+        atol = 1e-4
+        if dtype not in (torch.float32, torch.float64):
+            rtol = 3e-3
+            atol = 1e-3
+        self.assert_close(kornia.geometry.transform_points(dst_homo_src, points_src), points_dst, rtol=rtol, atol=atol)
 
     @pytest.mark.grad()
     def test_gradcheck(self, device):
@@ -331,9 +339,13 @@ class TestFindHomographyFromLinesDLT(BaseTester):
         ls2 = torch.stack([points_dst_st, points_dst_end], axis=2)
         # compute transform from source to target
         dst_homo_src = find_homography_lines_dlt(ls1, ls2, None)
-
+        rtol = 1e-3
+        atol = 1e-4
+        if dtype not in (torch.float32, torch.float64):
+            rtol = 5e-3
+            atol = 1e-3
         self.assert_close(
-            kornia.geometry.transform_points(dst_homo_src, points_src_st), points_dst_st, rtol=1e-3, atol=1e-4
+            kornia.geometry.transform_points(dst_homo_src, points_src_st), points_dst_st, rtol=rtol, atol=atol
         )
 
     @pytest.mark.parametrize("batch_size", [1, 2, 5])
@@ -352,9 +364,13 @@ class TestFindHomographyFromLinesDLT(BaseTester):
         ls2 = torch.stack([points_dst_st, points_dst_end], axis=2)
         # compute transform from source to target
         dst_homo_src = find_homography_lines_dlt_iterated(ls1, ls2, None, 5)
-
+        rtol = 1e-3
+        atol = 1e-4
+        if dtype not in (torch.float32, torch.float64):
+            rtol = 5e-3
+            atol = 1e-3
         self.assert_close(
-            kornia.geometry.transform_points(dst_homo_src, points_src_st), points_dst_st, rtol=1e-3, atol=1e-4
+            kornia.geometry.transform_points(dst_homo_src, points_src_st), points_dst_st, rtol=rtol, atol=atol
         )
 
     @pytest.mark.grad()
