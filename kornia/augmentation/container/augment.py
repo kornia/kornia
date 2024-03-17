@@ -456,11 +456,11 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         def retrieve_key(key: str) -> DataKey:
             """Try to retrieve the datakey value by matching `<datakey>*`"""
             # Alias cases, like INPUT, will not be get by the enum iterator.
-            if key.upper().startswith("INPUT"):
+            if key.upper() == "INPUT":
                 return DataKey.INPUT
 
             for dk in DataKey:
-                if key.upper().startswith(dk.name):
+                if key.upper() == dk.name:
                     return DataKey.get(dk.name)
 
             allowed_dk = " | ".join(f"`{d.name}`" for d in DataKey)
