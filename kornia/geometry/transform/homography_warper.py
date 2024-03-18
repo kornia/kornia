@@ -20,12 +20,10 @@ class BaseWarper(Module):
         self.width = width
 
     @abstractmethod
-    def forward(self, patch_src: Tensor, src_homo_dst: Optional[Tensor] = None) -> Tensor:
-        ...
+    def forward(self, patch_src: Tensor, src_homo_dst: Optional[Tensor] = None) -> Tensor: ...
 
     @abstractmethod
-    def precompute_warp_grid(self, src_homo_dst: Tensor) -> None:
-        ...
+    def precompute_warp_grid(self, src_homo_dst: Tensor) -> None: ...
 
 
 class HomographyWarper(BaseWarper):
@@ -122,9 +120,9 @@ class HomographyWarper(BaseWarper):
             if not _warped_grid.device == patch_src.device:
                 raise TypeError(
                     "Patch and warped grid must be on the same device.                                  Got"
-                    " patch.device: {} warped_grid.device: {}. Whether                                  recall"
+                    f" patch.device: {patch_src.device} warped_grid.device: {_warped_grid.device}. Whether                                  recall"
                     " precompute_warp_grid() with the correct device                                  for the homograhy"
-                    " or change the patch device.".format(patch_src.device, _warped_grid.device)
+                    " or change the patch device."
                 )
             warped_patch = F.grid_sample(
                 patch_src,

@@ -27,16 +27,13 @@ class TestTinyViT(BaseTester):
         assert out.shape == (batch_size, num_classes)
 
     @pytest.mark.skip("not implemented")
-    def test_exception(self):
-        ...
+    def test_exception(self): ...
 
     @pytest.mark.skip("not implemented")
-    def test_gradcheck(self):
-        ...
+    def test_gradcheck(self): ...
 
     @pytest.mark.skip("not implemented")
-    def test_module(self):
-        ...
+    def test_module(self): ...
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         op = TinyViT().to(device=device, dtype=dtype)

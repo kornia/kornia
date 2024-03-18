@@ -71,12 +71,10 @@ class TestSam(BaseTester):
         assert next(model.parameters()).device == device
 
     @pytest.mark.skip(reason="Unsupported at moment -- the code is not tested for training and had `torch.no_grad`")
-    def test_gradcheck(self, device):
-        ...
+    def test_gradcheck(self, device): ...
 
     @pytest.mark.skip(reason="Unnecessary test")
-    def test_module(self):
-        ...
+    def test_module(self): ...
 
     @pytest.mark.skip(reason="Needs to be reviewed.")
     def test_dynamo(self, device, torch_optimizer):

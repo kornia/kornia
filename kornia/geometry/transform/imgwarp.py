@@ -426,16 +426,12 @@ def get_rotation_matrix2d(center: Tensor, angle: Tensor, scale: Tensor) -> Tenso
 
     if not (center.shape[0] == angle.shape[0] == scale.shape[0]):
         raise ValueError(
-            "Inputs must have same batch size dimension. Got center {}, angle {} and scale {}".format(
-                center.shape, angle.shape, scale.shape
-            )
+            f"Inputs must have same batch size dimension. Got center {center.shape}, angle {angle.shape} and scale {scale.shape}"
         )
 
     if not (center.device == angle.device == scale.device) or not (center.dtype == angle.dtype == scale.dtype):
         raise ValueError(
-            "Inputs must have same device Got center ({}, {}), angle ({}, {}) and scale ({}, {})".format(
-                center.device, center.dtype, angle.device, angle.dtype, scale.device, scale.dtype
-            )
+            f"Inputs must have same device Got center ({center.device}, {center.dtype}), angle ({angle.device}, {angle.dtype}) and scale ({scale.device}, {scale.dtype})"
         )
 
     shift_m = eye_like(3, center)

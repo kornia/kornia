@@ -67,8 +67,7 @@ class TestLaplacian(BaseTester):
         assert actual.shape == shape
 
     @pytest.mark.skip(reason="Nothing to test.")
-    def test_exception(self):
-        ...
+    def test_exception(self): ...
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3

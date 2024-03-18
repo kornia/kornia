@@ -3,6 +3,7 @@
 https://github.com/facebookresearch/segment-
 anything/blob/3518c86b78b3bc9cf4fbe3d18e682fad1c79dc51/segment_anything/modeling/common.py
 """
+
 from __future__ import annotations
 
 from typing import Any

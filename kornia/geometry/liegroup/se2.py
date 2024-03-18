@@ -99,12 +99,10 @@ class Se2(Module):
         return Se2(_r, _t)
 
     @overload
-    def __mul__(self, right: Se2) -> Se2:
-        ...
+    def __mul__(self, right: Se2) -> Se2: ...
 
     @overload
-    def __mul__(self, right: Tensor) -> Tensor:
-        ...
+    def __mul__(self, right: Tensor) -> Tensor: ...
 
     def __mul__(self, right: Se2 | Tensor) -> Se2 | Tensor:
         """Compose two Se2 transformations.
