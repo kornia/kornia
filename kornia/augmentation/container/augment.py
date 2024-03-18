@@ -460,7 +460,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 return DataKey.INPUT
 
             for dk in DataKey:
-                if key.upper() in ["BBOX_XYXY", "BBOX_XYWH"]:
+                if key.upper() in {"BBOX_XYXY", "BBOX_XYWH"}:
                     return DataKey.get(key.upper())
                 if key.upper().startswith(dk.name):
                     return DataKey.get(dk.name)

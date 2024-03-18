@@ -749,9 +749,14 @@ class TestAugmentationSequential:
 
     @pytest.mark.slow
     @pytest.mark.parametrize("random_apply", [1, (2, 2), (1, 2), (2,), 10, True, False])
-    def test_dict_as_input_forward_and_inverse(self, random_apply, device, dtype):
+    @pytest.mark.parametrize("bbox_key", ["bbox", "bbox_xyxy", "bbox_xywh"])
+    def test_dict_as_input_forward_and_inverse(self, random_apply, bbox_key, device, dtype):
         inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
         bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
+        if bbox_key == "bbox_xyxy":
+            bbox = Boxes(bbox).to_tensor(mode="xyxy_plus")
+        if bbox_key == "bbox_xywh":
+            bbox = Boxes(bbox).to_tensor(mode="xywh")
         keypoints = torch.tensor([[[465, 115], [545, 116]]], device=device, dtype=dtype)
         mask = bbox_to_mask(
             torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 1000, 500
@@ -762,7 +767,7 @@ class TestAugmentationSequential:
                 K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
                 K.RandomAffine(360, p=1.0),
                 K.RandomAffine(360, p=1.0),
-                data_keys=["input", "mask", "bbox", "keypoints"],
+                data_keys=["input", "mask", bbox_key, "keypoints"],
             ),
             K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0),
             K.RandomAffine(360, p=1.0),
@@ -770,18 +775,18 @@ class TestAugmentationSequential:
             random_apply=random_apply,
         )
 
-        data = {"input": inp, "mask": mask, "bbox": bbox, "keypoints": keypoints}
+        data = {"input": inp, "mask": mask, bbox_key: bbox, "keypoints": keypoints}
         out = aug(data)
         assert out["input"].shape == inp.shape
         assert out["mask"].shape == mask.shape
-        assert out["bbox"].shape == bbox.shape
+        assert out[bbox_key].shape == bbox.shape
         assert out["keypoints"].shape == keypoints.shape
         assert set(out["mask"].unique().tolist()).issubset(set(mask.unique().tolist()))
 
         out_inv = aug.inverse(out)
         assert out_inv["input"].shape == inp.shape
         assert out_inv["mask"].shape == mask.shape
-        assert out_inv["bbox"].shape == bbox.shape
+        assert out_inv[bbox_key].shape == bbox.shape
         assert out_inv["keypoints"].shape == keypoints.shape
         assert set(out_inv["mask"].unique().tolist()).issubset(set(mask.unique().tolist()))
 
