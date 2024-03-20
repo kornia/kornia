@@ -1,6 +1,6 @@
 from abc import ABCMeta, abstractmethod
 from typing import Any, Callable, Dict, Generic, List, Optional, Type, TypeVar, Union
-
+import copy
 from typing_extensions import ParamSpec
 
 import kornia.augmentation as K
@@ -286,10 +286,11 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
         if isinstance(module, (K.GeometricAugmentationBase2D,)):
             tfm_input = []
             params = cls.get_instance_module_param(param)
-            for inp in input:
-                inp = module.transform_tensor(inp)
+            params_i = copy.deepcopy(params)
+            for i, inp in enumerate(input):
+                params_i["batch_prob"] =  params["batch_prob"][i]
                 tfm_inp = module.transform_masks(
-                    inp, params=params, flags=module.flags, transform=module.transform_matrix, **extra_args
+                    inp, params=params_i, flags=module.flags, transform=module.transform_matrix, **extra_args
                 )
                 tfm_input.append(tfm_inp)
             input = tfm_input
@@ -302,9 +303,10 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
         elif isinstance(module, (_AugmentationBase)):
             tfm_input = []
             params = cls.get_instance_module_param(param)
-            for inp in input:
-                inp = module.transform_tensor(inp)
-                tfm_inp = module.transform_masks(inp, params=params, flags=module.flags, **extra_args)
+            params_i = copy.deepcopy(params)
+            for i, inp in enumerate(input):
+                params_i["batch_prob"] =  params["batch_prob"][i]
+                tfm_inp = module.transform_masks(inp, params=params_i, flags=module.flags, **extra_args)
                 tfm_input.append(tfm_inp)
             input = tfm_input
 
@@ -314,7 +316,7 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
             for inp in input:
                 tfm_inp = module.transform_masks(inp, params=seq_params, extra_args=extra_args)
                 tfm_input.append(tfm_inp)
-                input = tfm_input
+            input = tfm_input
 
         elif isinstance(module, K.container.ImageSequentialBase):
             tfm_input = []
@@ -329,9 +331,6 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
                 "The support for list of masks under auto operations are not yet supported. You are welcome to file a"
                 " PR in our repo."
             )
-            # return [
-            # MaskSequentialOps.transform(inp, module=module.op, param=param, extra_args=extra_args) for inp in input
-            # ]
         return input
 
     @classmethod

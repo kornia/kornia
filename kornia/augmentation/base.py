@@ -294,8 +294,6 @@ class _AugmentationBase(_BasicAugmentationBase):
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         ori_shape = input.shape
 
-        # This should not be forward_input_shape. While H,W might be the same as input
-        # channel most definitely will not. 
         in_tensor = self.transform_tensor(input)
 
         self.validate_tensor(in_tensor)
