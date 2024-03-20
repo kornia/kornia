@@ -294,8 +294,9 @@ class _AugmentationBase(_BasicAugmentationBase):
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         ori_shape = input.shape
 
-        shape = params["forward_input_shape"]
-        in_tensor = self.transform_tensor(input, shape=shape, match_channel=False)
+        # This should not be forward_input_shape. While H,W might be the same as input
+        # channel most definitely will not. 
+        in_tensor = self.transform_tensor(input)
 
         self.validate_tensor(in_tensor)
         if to_apply.all():
@@ -308,7 +309,7 @@ class _AugmentationBase(_BasicAugmentationBase):
                 in_tensor[to_apply], params, flags, transform=transform if transform is None else transform[to_apply]
             )
             output = output.index_put((to_apply,), applied)
-        output = _transform_output_shape(output, ori_shape, reference_shape=shape) if self.keepdim else output
+        output = _transform_output_shape(output, ori_shape) if self.keepdim else output
         return output
 
     def transform_boxes(
