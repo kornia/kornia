@@ -234,7 +234,10 @@ partial_branches = [
   show_error_codes = true
   warn_redundant_casts = true
   warn_unused_ignores = true
-  exclude =  ["kornia/feature/dedode/transformer"]
+
+[[tool.mypy.overrides]]
+module = "kornia.feature.dedode.transformer.*"
+ignore_errors = true
 
 [tool.pydocstyle]
   ignore = ['D105','D107','D203','D204','D213','D406','D407']
