@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple
+from typing import Dict, Literal, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -34,6 +34,12 @@ class DeDoDe(Module):
     See :cite:`edstedt2024dedode` for details.
 
     .. note:: DeDode takes ImageNet normalized images as input (not in range [0, 1]).
+
+    Args:
+        detector_model: The detector model kind. Available options are: `L`.
+        descriptor_model: The descriptor model kind. Available options are: `G` or `B`
+        amp_dtype: The automatic mixed precision desired.
+
     Example:
         >>> dedode = DeDoDe.from_pretrained(detector_weights="L-upright", descriptor_weights="B-upright")
         >>> images = torch.randn(1, 3, 256, 256)
@@ -44,7 +50,10 @@ class DeDoDe(Module):
 
     # TODO: implement steerers and mnn matchers
     def __init__(
-        self, detector_model: str = "L", descriptor_model: str = "G", amp_dtype: torch.dtype = torch.float16
+        self,
+        detector_model: Literal["L"] = "L",
+        descriptor_model: Literal["G", "B"] = "G",
+        amp_dtype: torch.dtype = torch.float16,
     ) -> None:
         super().__init__()
         self.detector: DeDoDeDetector = get_detector(detector_model, amp_dtype)
