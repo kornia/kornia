@@ -43,8 +43,7 @@ class TestMotionBlur(BaseTester):
         assert motion(sample).shape == shape
 
     @pytest.mark.skip(reason="nothing to test")
-    def test_exception(self):
-        ...
+    def test_exception(self): ...
 
     @pytest.mark.parametrize("batch_size", [1, 3])
     @pytest.mark.parametrize("ksize", [3, 11])
@@ -133,8 +132,7 @@ class TestMotionBlur3D(BaseTester):
         assert motion(sample).shape == shape
 
     @pytest.mark.skip(reason="nothing to test")
-    def test_exception(self):
-        ...
+    def test_exception(self): ...
 
     @pytest.mark.parametrize("batch_size", [1, 3])
     @pytest.mark.parametrize("ksize", [3, 11])

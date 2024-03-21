@@ -1,4 +1,5 @@
 """Module containing the affine distortion model."""
+
 # inspired by: https://github.com/farm-ng/sophus-rs/blob/main/src/sensor/affine.rs
 import kornia.core as ops
 from kornia.core import Tensor

@@ -16,16 +16,13 @@ __all__ = ["ImageRegistrator", "Homography", "Similarity", "BaseModel"]
 
 class BaseModel(Module):
     @abstractmethod
-    def reset_model(self) -> None:
-        ...
+    def reset_model(self) -> None: ...
 
     @abstractmethod
-    def forward(self) -> Tensor:
-        ...
+    def forward(self) -> Tensor: ...
 
     @abstractmethod
-    def forward_inverse(self) -> Tensor:
-        ...
+    def forward_inverse(self) -> Tensor: ...
 
 
 class Homography(BaseModel):

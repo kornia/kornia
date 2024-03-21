@@ -353,8 +353,7 @@ class TestFilter2D(BaseTester):
         self.gradcheck(filter2d, (sample, kernel), nondet_tol=1e-8)
 
     @pytest.mark.skip(reason="filter2d do not have a module")
-    def test_module(self):
-        ...
+    def test_module(self): ...
 
     @pytest.mark.parametrize("normalized", [True, False])
     @pytest.mark.parametrize("padding", ["same", "valid"])
@@ -711,8 +710,7 @@ class TestFilter3D(BaseTester):
         self.gradcheck(filter3d, (sample, kernel), nondet_tol=1e-8)
 
     @pytest.mark.skip(reason="filter3d do not have a module")
-    def test_module(self):
-        ...
+    def test_module(self): ...
 
     @pytest.mark.parametrize("normalized", [True, False])
     def test_dynamo(self, normalized, device, dtype, torch_optimizer):
