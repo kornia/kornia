@@ -1,6 +1,7 @@
+import copy
 from abc import ABCMeta, abstractmethod
 from typing import Any, Callable, Dict, Generic, List, Optional, Type, TypeVar, Union
-import copy
+
 from typing_extensions import ParamSpec
 
 import kornia.augmentation as K
@@ -288,7 +289,7 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
             params = cls.get_instance_module_param(param)
             params_i = copy.deepcopy(params)
             for i, inp in enumerate(input):
-                params_i["batch_prob"] =  params["batch_prob"][i]
+                params_i["batch_prob"] = params["batch_prob"][i]
                 tfm_inp = module.transform_masks(
                     inp, params=params_i, flags=module.flags, transform=module.transform_matrix, **extra_args
                 )
@@ -305,7 +306,7 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
             params = cls.get_instance_module_param(param)
             params_i = copy.deepcopy(params)
             for i, inp in enumerate(input):
-                params_i["batch_prob"] =  params["batch_prob"][i]
+                params_i["batch_prob"] = params["batch_prob"][i]
                 tfm_inp = module.transform_masks(inp, params=params_i, flags=module.flags, **extra_args)
                 tfm_input.append(tfm_inp)
             input = tfm_input
