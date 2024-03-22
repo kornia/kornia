@@ -553,10 +553,8 @@ class _PriorBox:
             shifts_x = (torch.arange(0, feat_w, device=self.device) + self.offset) * stride
             shifts_y = (torch.arange(0, feat_h, device=self.device) + self.offset) * stride
 
-            # Creating a meshgrid
-            shift_xx, shift_yy = torch.meshgrid(shifts_x, shifts_y, indexing="xy")
-            shifts_xx = shift_xx.reshape(-1)
-            shifts_yy = shift_yy.reshape(-1)
+            shifts_xx = shifts_x.repeat(feat_h).reshape(-1)
+            shifts_yy = shifts_y.unsqueeze(1).repeat(1, feat_w).reshape(-1)
 
             # Include stride information if required
             strides_xx = torch.full_like(shifts_xx, stride, dtype=self.dtype, device=self.device)
