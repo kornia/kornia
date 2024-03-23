@@ -79,7 +79,7 @@ def torch_optimizer(optimizer_backend):
         return lambda x: x
 
     if optimizer_backend == "jit":
-        raise NotImplementedError
+        return torch.jit.script
 
     if hasattr(torch, "compile") and sys.platform == "linux":
         if not (sys.version_info[:2] == (3, 11) and torch_version() in {"2.0.0", "2.0.1"}):
