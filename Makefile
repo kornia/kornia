@@ -64,5 +64,10 @@ benchmark: FORCE
 	# We want to always run within warmup because torch optimizer backend
 	pytest $(BENCHMARK_SOURCE) --benchmark-warmup=on --benchmark-warmup-iterations=100 --benchmark-calibration-precision=10 --benchmark-group-by=func --optimizer=$(BENCHMARK_BACKENDS) $(BENCHMARK_OPTS) $(0)
 
+benchmark-docker:
+	docker image rm kornia-benchmark:latest --force
+	docker build -t kornia-benchmark:latest -f docker/Dockerfile.benchmark .
+	docker run -e "TERM=xterm-256color" -it kornia-benchmark:latest
+
 uninstall: FORCE
 	pip uninstall kornia

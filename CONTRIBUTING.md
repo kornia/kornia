@@ -183,6 +183,13 @@ We are using as default:
 - the default for `BENCHMARK_BACKENDS` are `'inductor,eager'`.
 - the default for `BENCHMARK_SOURCE` is `benchmarks/`.
 
+You can also run the benchmark within docker:
+```console
+$ make benchmark-docker
+```
+
+which will build and run the image [docker/Dockerfile.benchmark](docker/Dockerfile.benchmark).
+
 # Coding Standards
 
 This section provides general guidance for developing code for the project. The following rules will serve as a guide in
