@@ -61,7 +61,8 @@ install-dev: FORCE
 	python setup.py develop
 
 benchmark: FORCE
-	pytest $(BENCHMARK_SOURCE) --optimizer=$(BENCHMARK_BACKENDS) $(BENCHMARK_OPTS) $(0)
+	# We want to always run within warmup because torch optimizer backend
+	pytest $(BENCHMARK_SOURCE) --benchmark-warmup=on --benchmark-warmup-iterations=100 --benchmark-calibration-precision=10 --benchmark-group-by=func --optimizer=$(BENCHMARK_BACKENDS) $(BENCHMARK_OPTS) $(0)
 
 uninstall: FORCE
 	pip uninstall kornia
