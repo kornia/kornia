@@ -1,3 +1,7 @@
+BENCHMARK_SOURCE 	= benchmarks/
+BENCHMARK_BACKENDS 	= inductor,eager
+BENCHMARK_OPTS 		=
+
 .PHONY: test test-cpu test-cuda lint mypy build-docs install uninstall FORCE
 
 test: mypy lint build-docs test-all
@@ -57,7 +61,7 @@ install-dev: FORCE
 	python setup.py develop
 
 benchmark: FORCE
-	for f in tests/performance/*.py  ; do python -utt $${f}; done
+	pytest $(BENCHMARK_SOURCE) --optimizer=$(BENCHMARK_BACKENDS) $(BENCHMARK_OPTS) $(0)
 
 uninstall: FORCE
 	pip uninstall kornia
