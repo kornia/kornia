@@ -142,6 +142,47 @@ repository under your GitHub account.
     commands of the [Makefile](./Makefile). Read more about the code standards adopted [here](#coding-standards).
 
 
+## Benchmarking
+
+We have a benchmark suite configured in [benchmarks/](./benchmarks/). We used the
+ [pytest-benchmark](https://pypi.org/project/pytest-benchmark/) library to benchmark our functions units.
+
+Our [Makefile](./Makefile) has an `benchmark` command as an alias on how to run our benchmarks.
+
+```console
+# To run all suite
+$ make benchmark
+
+# To run a specific file you can pass `BENCHMARK_SOURCE`
+$ make benchmark BENCHMARK_SOURCE=benchmarks/augmentation/2d_geometric_test.py
+
+# To run a specific benchmark you use `BENCHMARK_SOURCE` as the pytest standard behaviour
+$ make benchmark BENCHMARK_SOURCE=benchmarks/augmentation/2d_geometric_test.py::test_aug_2d_elastic_transform
+
+# To update the optimizer backends desired to execute you can pass `BENCHMARK_BACKENDS=`
+$ make benchmark BENCHMARK_BACKENDS='inductor,eager'
+
+# To pass other options to the runner, you can use `BENCHMARK_OPTS`
+# Example, setup to run the benchmark on cuda on verbose mode
+$ make benchmark BENCHMARK_OPTS='--device=cuda -vv'
+```
+
+We use the same tests generator suite, so you can setup the device within `--device`, the dtype within
+`--dtype`, and the optimizer backend within `--optimizer`.
+
+The optimizer backend supported on the suite, are the torch compile backend on non experimental mode,
+ and the `''` or `None` which will do the same as `eager` mode and do anything, and `'jit'` which will
+ try to `torch.jit.script` the operation.
+
+You can use the `BENCHMARK_OPTS` on `make benchmark` to overload the default options we use on pytest-benchmark.
+
+We are using as default:
+- the warmup, because the optimizer/jit may had an overhead.
+- the group: to display the benchmark per each test
+- the precision: to have a better precision on the results
+- the default for `BENCHMARK_BACKENDS` are `'inductor,eager'`.
+- the default for `BENCHMARK_SOURCE` is `benchmarks/`.
+
 # Coding Standards
 
 This section provides general guidance for developing code for the project. The following rules will serve as a guide in
