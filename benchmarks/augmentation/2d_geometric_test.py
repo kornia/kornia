@@ -6,6 +6,7 @@ from kornia.augmentation import (
     RandomAffine,
     RandomCrop,
     RandomElasticTransform,
+    RandomErasing,
     RandomFisheye,
     RandomHorizontalFlip,
     RandomPerspective,
@@ -65,6 +66,16 @@ def test_aug_2d_crop(benchmark, device, dtype, torch_optimizer, shape):
 def test_aug_2d_elastic_transform(benchmark, device, dtype, torch_optimizer, shape):
     data = torch.rand(*shape, device=device, dtype=dtype)
     aug = RandomElasticTransform(p=1.0)
+    op = torch_optimizer(aug)
+
+    actual = benchmark(op, input=data)
+
+    assert actual.shape == shape
+
+
+def test_aug_2d_erasing(benchmark, device, dtype, torch_optimizer, shape):
+    data = torch.rand(*shape, device=device, dtype=dtype)
+    aug = RandomErasing(p=1.0)
     op = torch_optimizer(aug)
 
     actual = benchmark(op, input=data)
