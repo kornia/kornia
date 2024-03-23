@@ -183,7 +183,7 @@ def pytest_sessionstart(session):
     # TODO: cache all torch.load weights/states here to not impact on test suite
 
 
-def _get_env_info() -> dict[str, dict[str, str]]:
+def _get_env_info() -> Dict[str, Dict[str, str]]:
     run_lmb = torch.utils.collect_env.run
     separator = ":"
     br = "\n"
@@ -192,7 +192,7 @@ def _get_env_info() -> dict[str, dict[str, str]]:
         parts = v.split(separator)
         return parts[0].strip(), parts[-1].strip()
 
-    def _get_cpu_info() -> dict[str, str]:
+    def _get_cpu_info() -> Dict[str, str]:
         cpu_info = {}
         cpu_str = torch.utils.collect_env.get_cpu_info(run_lmb)
         for data in cpu_str.split(br):
@@ -201,7 +201,7 @@ def _get_env_info() -> dict[str, dict[str, str]]:
 
         return cpu_info
 
-    def _get_gpu_info() -> dict[str, str]:
+    def _get_gpu_info() -> Dict[str, str]:
         gpu_info = {}
         gpu_str = torch.utils.collect_env.get_gpu_info(run_lmb)
         for data in gpu_str.split(br):
