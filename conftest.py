@@ -183,6 +183,40 @@ def pytest_sessionstart(session):
     # TODO: cache all torch.load weights/states here to not impact on test suite
 
 
+def _get_env_info() -> dict[str, dict[str, str]]:
+    run_lmb = torch.utils.collect_env.run
+    separator = ":"
+    br = "\n"
+
+    def _get_key_value(v: str):
+        parts = v.split(separator)
+        return parts[0].strip(), parts[-1].strip()
+
+    def _get_cpu_info() -> dict[str, str]:
+        cpu_info = {}
+        cpu_str = torch.utils.collect_env.get_cpu_info(run_lmb)
+        for data in cpu_str.split(br):
+            key, value = _get_key_value(data)
+            cpu_info[key] = value
+
+        return cpu_info
+
+    def _get_gpu_info() -> dict[str, str]:
+        gpu_info = {}
+        gpu_str = torch.utils.collect_env.get_gpu_info(run_lmb)
+        for data in gpu_str.split(br):
+            key, value = _get_key_value(data)
+            gpu_info[key] = value
+
+        return gpu_info
+
+    return {
+        "cpu": _get_cpu_info(),
+        "gpu": _get_gpu_info(),
+        "nvidia": torch.utils.collect_env.get_nvidia_driver_version(run_lmb),
+    }
+
+
 def pytest_report_header(config):
     try:
         import accelerate
@@ -194,12 +228,23 @@ def pytest_report_header(config):
     import kornia_rs
     import onnx
 
+    env_info = _get_env_info()
+
     return f"""
+cpu info:
+    - Model name: {env_info['cpu']['Model name']}
+    - Architecture: {env_info['cpu']['Architecture']}
+    - CPU(s): {env_info['cpu']['CPU(s)']}
+    - Thread(s) per core: {env_info['cpu']['Thread(s) per core']}
+    - CPU max MHz: {env_info['cpu']['CPU max MHz']}
+    - CPU min MHz: {env_info['cpu']['CPU min MHz']}
+gpu info: {env_info['gpu']}
 main deps:
     - kornia-{kornia.__version__}
     - torch-{torch.__version__}
         - commit: {torch.version.git_version}
         - cuda: {torch.version.cuda}
+        - nvidia-driver: {env_info['nvidia']}
 x deps:
     - {accelerate_info}
 dev deps:
