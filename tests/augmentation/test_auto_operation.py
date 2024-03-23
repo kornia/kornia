@@ -11,7 +11,6 @@ from kornia.augmentation.auto.rand_augment.rand_augment import default_policy as
 from kornia.augmentation.auto.trivial_augment import TrivialAugment
 from kornia.augmentation.container import AugmentationSequential
 from kornia.geometry.bbox import bbox_to_mask
-from kornia.utils._compat import torch_version
 
 from testing.base import BaseTester
 
