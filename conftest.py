@@ -1,4 +1,5 @@
 import sys
+from functools import partial
 from itertools import product
 from typing import Dict
 
@@ -8,6 +9,13 @@ import torch
 
 import kornia
 from kornia.utils._compat import torch_version
+
+try:
+    import torch._dynamo
+
+    _backends_non_experimental = torch._dynamo.list_backends()
+except ImportError:
+    _backends_non_experimental = []
 
 
 def get_test_devices() -> Dict[str, torch.device]:
@@ -49,7 +57,7 @@ def get_test_dtypes() -> Dict[str, torch.dtype]:
 
 TEST_DEVICES: Dict[str, torch.device] = get_test_devices()
 TEST_DTYPES: Dict[str, torch.dtype] = get_test_dtypes()
-
+TEST_OPTIMIZER_BACKEND = {"", None, "jit", *_backends_non_experimental}
 # Combinations of device and dtype to be excluded from testing.
 # DEVICE_DTYPE_BLACKLIST = {('cpu', 'float16')}
 DEVICE_DTYPE_BLACKLIST = {}
@@ -65,12 +73,21 @@ def dtype(dtype_name) -> torch.dtype:
     return TEST_DTYPES[dtype_name]
 
 
-@pytest.fixture(scope="session")
-def torch_optimizer():
+@pytest.fixture()
+def torch_optimizer(optimizer_backend):
+    if not optimizer_backend:
+        return lambda x: x
+
+    if optimizer_backend == "jit":
+        raise NotImplementedError
+
     if hasattr(torch, "compile") and sys.platform == "linux":
         if not (sys.version_info[:2] == (3, 11) and torch_version() in {"2.0.0", "2.0.1"}):
+            torch._dynamo.reset()
             # torch compile just have support for python 3.11 after torch 2.1.0
-            return torch.compile
+            return partial(
+                torch.compile, backend=optimizer_backend
+            )  # TODO: explore the others parameters of torch compile
 
     pytest.skip(f"skipped because {torch.__version__} not have `compile` available! Failed to setup dynamo.")
 
@@ -78,6 +95,8 @@ def torch_optimizer():
 def pytest_generate_tests(metafunc):
     device_names = None
     dtype_names = None
+    optimizer_backends_names = None
+
     if "device_name" in metafunc.fixturenames:
         raw_value = metafunc.config.getoption("--device")
         if raw_value == "all":
@@ -90,7 +109,23 @@ def pytest_generate_tests(metafunc):
             dtype_names = list(TEST_DTYPES.keys())
         else:
             dtype_names = raw_value.split(",")
-    if device_names is not None and dtype_names is not None:
+
+    if "optimizer_backend" in metafunc.fixturenames:
+        raw_value = metafunc.config.getoption("--optimizer")
+        if raw_value == "all":
+            optimizer_backends_names = TEST_OPTIMIZER_BACKEND
+        else:
+            optimizer_backends_names = raw_value.split(",")
+
+    if device_names is not None and dtype_names is not None and optimizer_backends_names is not None:
+        # Exclude any blacklisted device/dtype combinations.
+        params = [
+            combo
+            for combo in product(device_names, dtype_names, optimizer_backends_names)
+            if combo not in DEVICE_DTYPE_BLACKLIST
+        ]
+        metafunc.parametrize("device_name,dtype_name,optimizer_backend", params)
+    elif device_names is not None and dtype_names is not None and optimizer_backends_names is None:
         # Exclude any blacklisted device/dtype combinations.
         params = [combo for combo in product(device_names, dtype_names) if combo not in DEVICE_DTYPE_BLACKLIST]
         metafunc.parametrize("device_name,dtype_name", params)
@@ -98,6 +133,8 @@ def pytest_generate_tests(metafunc):
         metafunc.parametrize("device_name", device_names)
     elif dtype_names is not None:
         metafunc.parametrize("dtype_name", dtype_names)
+    elif optimizer_backends_names is not None:
+        metafunc.parametrize("optimizer_backend", optimizer_backends_names)
 
 
 def pytest_collection_modifyitems(config, items):
@@ -114,6 +151,7 @@ def pytest_collection_modifyitems(config, items):
 def pytest_addoption(parser):
     parser.addoption("--device", action="store", default="cpu")
     parser.addoption("--dtype", action="store", default="float32")
+    parser.addoption("--optimizer", action="store", default="")
     parser.addoption("--runslow", action="store_true", default=False, help="run slow tests")
 
 
@@ -167,6 +205,7 @@ x deps:
 dev deps:
     - kornia_rs-{kornia_rs.__version__}
     - onnx-{onnx.__version__}
+available optimizers: {TEST_OPTIMIZER_BACKEND}
 """
 
 

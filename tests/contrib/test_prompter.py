@@ -88,7 +88,7 @@ class TestVisualPrompter(BaseTester):
         ...
 
     @pytest.mark.skipif(torch_version() in {"2.0.0", "2.0.1", "2.1.2"}, reason="Not working on 2.0.x and 2.1.x")
-    def test_dynamo(self, device, torch_optimizer):
+    def test_dynamo(self, device):
         dtype = torch.float32
         batch_size = 1
         N = 2
