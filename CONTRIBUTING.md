@@ -189,6 +189,7 @@ $ make benchmark-docker
 ```
 
 which will build and run the image [docker/Dockerfile.benchmark](docker/Dockerfile.benchmark).
+ The benchmark command can be used within `BENCHMARK_BACKENDS` and `BENCHMARK_SOURCE`.
 
 # Coding Standards
 

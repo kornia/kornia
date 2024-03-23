@@ -67,7 +67,10 @@ benchmark: FORCE
 benchmark-docker:
 	docker image rm kornia-benchmark:latest --force
 	docker build -t kornia-benchmark:latest -f docker/Dockerfile.benchmark .
-	docker run -e "TERM=xterm-256color" -it kornia-benchmark:latest
+	docker run -e "TERM=xterm-256color" \
+			   -e BACKENDS=$(BENCHMARK_BACKENDS) \
+			   -e OPTS=$(BENCHMARK_OPTS) \
+			   -it kornia-benchmark:latest
 
 uninstall: FORCE
 	pip uninstall kornia

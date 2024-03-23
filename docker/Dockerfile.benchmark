@@ -3,6 +3,10 @@ FROM pytorch/pytorch:2.2.1-cuda12.1-cudnn8-runtime
 # This will allow the compile inductor optimizer install g++ with conda
 ENV TORCH_INDUCTOR_INSTALL_GXX=True
 
+# This allow us to setup the benchmark parameters from env vars
+ENV BACKENDS='eager,inductor'
+ENV OPTS=''
+
 # Setup make
 RUN DEBIAN_FRONTEND=noninteractive apt update && apt install make
 
@@ -28,4 +32,4 @@ RUN DEBIAN_FRONTEND=noninteractive apt autoremove -y
 RUN rm -rf /var/lib/apt/lists/*
 
 # CMD
-CMD ["make", "benchmark", "BENCHMARK_OPTS='--device=all'"]
+CMD ["make", "benchmark", "BENCHMARK_BACKENDS=$(BACKENDS)", "BENCHMARK_OPTS=$(OPTS)"]
