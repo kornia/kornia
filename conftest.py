@@ -151,7 +151,7 @@ def pytest_collection_modifyitems(config, items):
 def pytest_addoption(parser):
     parser.addoption("--device", action="store", default="cpu")
     parser.addoption("--dtype", action="store", default="float32")
-    parser.addoption("--optimizer", action="store", default="")
+    parser.addoption("--optimizer", action="store", default="inductor")
     parser.addoption("--runslow", action="store_true", default=False, help="run slow tests")
 
 
