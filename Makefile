@@ -70,6 +70,7 @@ benchmark-docker:
 	docker run -e "TERM=xterm-256color" \
 			   -e BACKENDS=$(BENCHMARK_BACKENDS) \
 			   -e OPTS=$(BENCHMARK_OPTS) \
+			   --gpus all\
 			   -it kornia-benchmark:latest
 
 uninstall: FORCE
