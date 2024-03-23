@@ -214,6 +214,7 @@ def _get_env_info() -> Dict[str, Dict[str, str]]:
         "cpu": _get_cpu_info(),
         "gpu": _get_gpu_info(),
         "nvidia": torch.utils.collect_env.get_nvidia_driver_version(run_lmb),
+        "gcc": torch.utils.collect_env.get_gcc_version(run_lmb),
     }
 
 
@@ -250,6 +251,7 @@ x deps:
 dev deps:
     - kornia_rs-{kornia_rs.__version__}
     - onnx-{onnx.__version__}
+gcc info: {env_info['gcc']}
 available optimizers: {TEST_OPTIMIZER_BACKEND}
 """
 
