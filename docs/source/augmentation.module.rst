@@ -13,6 +13,7 @@ Intensity
 
 .. autoclass:: ColorJiggle
 .. autoclass:: ColorJitter
+.. autoclass:: RandomAutoContrast
 .. autoclass:: RandomBoxBlur
 .. autoclass:: RandomBrightness
 .. autoclass:: RandomChannelShuffle
@@ -25,9 +26,10 @@ Intensity
 .. autoclass:: RandomGaussianNoise
 .. autoclass:: RandomGrayscale
 .. autoclass:: RandomHue
+.. autoclass:: RandomInvert
 .. autoclass:: RandomJPEG
-.. autoclass:: RandomLinearIllumination
 .. autoclass:: RandomLinearCornerIllumination
+.. autoclass:: RandomLinearIllumination
 .. autoclass:: RandomMedianBlur
 .. autoclass:: RandomMotionBlur
 .. autoclass:: RandomPlanckianJitter
@@ -35,13 +37,14 @@ Intensity
 .. autoclass:: RandomPlasmaContrast
 .. autoclass:: RandomPlasmaShadow
 .. autoclass:: RandomPosterize
-.. autoclass:: RandomRGBShift
 .. autoclass:: RandomRain
-.. autoclass:: RandomSaturation
+.. autoclass:: RandomRGBShift
 .. autoclass:: RandomSaltAndPepperNoise
+.. autoclass:: RandomSaturation
 .. autoclass:: RandomSharpness
 .. autoclass:: RandomSnow
 .. autoclass:: RandomSolarize
+
 
 Geometric
 ~~~~~~~~~
@@ -58,8 +61,10 @@ Geometric
 .. autoclass:: RandomPerspective
 .. autoclass:: RandomResizedCrop
 .. autoclass:: RandomRotation
+.. autoclass:: RandomShear
 .. autoclass:: RandomThinPlateSpline
 .. autoclass:: RandomVerticalFlip
+
 
 Mix
 ~~~
