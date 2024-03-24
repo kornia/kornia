@@ -62,7 +62,7 @@ class RandomSaturation(IntensityAugmentationBase2D):
         keepdim: bool = False,
         callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
-        super().__init__(p=p, p_batch=1., same_on_batch=same_on_batch, keepdim=keepdim, callbacks=callbacks)
+        super().__init__(p=p, p_batch=1.0, same_on_batch=same_on_batch, keepdim=keepdim, callbacks=callbacks)
         self.saturation: Tensor = _range_bound(saturation, "saturation", center=1.0)
         self._param_generator = rg.PlainUniformGenerator((self.saturation, "saturation_factor", None, None))
 

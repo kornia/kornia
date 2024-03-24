@@ -1,9 +1,10 @@
 from typing import Any, Dict, List, Optional, Union
 
 import torch
-from kornia.core import Tensor
+
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.callbacks import AugmentationCallbackBase
+from kornia.core import Tensor
 from kornia.enhance import invert
 
 

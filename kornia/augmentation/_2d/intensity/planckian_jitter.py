@@ -151,7 +151,7 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         keepdim: bool = False,
         callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
-        super().__init__(p=p, p_batch=1., same_on_batch=same_on_batch, keepdim=keepdim, callbacks=callbacks)
+        super().__init__(p=p, p_batch=1.0, same_on_batch=same_on_batch, keepdim=keepdim, callbacks=callbacks)
 
         if isinstance(select_from, int):
             select_from = [select_from]

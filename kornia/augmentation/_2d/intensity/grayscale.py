@@ -1,10 +1,11 @@
 from typing import Any, Dict, List, Optional
 
 import torch
-from kornia.core import Tensor
+
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.callbacks import AugmentationCallbackBase
 from kornia.color import rgb_to_grayscale
+from kornia.core import Tensor
 
 
 class RandomGrayscale(IntensityAugmentationBase2D):
@@ -53,10 +54,14 @@ class RandomGrayscale(IntensityAugmentationBase2D):
     """
 
     def __init__(
-        self, rgb_weights: Optional[Tensor] = None, same_on_batch: bool = False, p: float = 0.1, keepdim: bool = False,
+        self,
+        rgb_weights: Optional[Tensor] = None,
+        same_on_batch: bool = False,
+        p: float = 0.1,
+        keepdim: bool = False,
         callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
-        super().__init__(p=p, p_batch=1., same_on_batch=same_on_batch, keepdim=keepdim, callbacks=callbacks)
+        super().__init__(p=p, p_batch=1.0, same_on_batch=same_on_batch, keepdim=keepdim, callbacks=callbacks)
         self.rgb_weights = rgb_weights
 
     def apply_transform(

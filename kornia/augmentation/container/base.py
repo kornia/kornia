@@ -111,8 +111,11 @@ class SequentialBase(BasicSequentialBase):
     """
 
     def __init__(
-        self, *args: Module, same_on_batch: Optional[bool] = None, keepdim: Optional[bool] = None,
-        callbacks: List[AugmentationCallbackBase] = []
+        self,
+        *args: Module,
+        same_on_batch: Optional[bool] = None,
+        keepdim: Optional[bool] = None,
+        callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
         # To name the modules properly
         super().__init__(*args)

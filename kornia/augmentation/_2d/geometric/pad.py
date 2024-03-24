@@ -1,9 +1,10 @@
 from typing import Any, Dict, List, Optional, Tuple
 
 import torch
-from kornia.core import Tensor
+
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.augmentation.callbacks import AugmentationCallbackBase
+from kornia.core import Tensor
 
 
 class PadTo(GeometricAugmentationBase2D):
@@ -47,7 +48,11 @@ class PadTo(GeometricAugmentationBase2D):
     """
 
     def __init__(
-        self, size: Tuple[int, int], pad_mode: str = "constant", pad_value: float = 0, keepdim: bool = False,
+        self,
+        size: Tuple[int, int],
+        pad_mode: str = "constant",
+        pad_value: float = 0,
+        keepdim: bool = False,
         callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
         super().__init__(p=1.0, same_on_batch=True, p_batch=1.0, keepdim=keepdim, callbacks=callbacks)

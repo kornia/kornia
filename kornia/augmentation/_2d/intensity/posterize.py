@@ -55,7 +55,7 @@ class RandomPosterize(IntensityAugmentationBase2D):
         keepdim: bool = False,
         callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
-        super().__init__(p=p, p_batch=1., same_on_batch=same_on_batch, keepdim=keepdim, callbacks=callbacks)
+        super().__init__(p=p, p_batch=1.0, same_on_batch=same_on_batch, keepdim=keepdim, callbacks=callbacks)
         # TODO: the generator should receive the device
         self._param_generator = rg.PosterizeGenerator(bits)
 

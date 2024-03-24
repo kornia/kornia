@@ -25,10 +25,14 @@ class RandomAutoContrast(IntensityAugmentationBase2D):
     """
 
     def __init__(
-        self, clip_output: bool = True, same_on_batch: bool = False, p: float = 1.0, keepdim: bool = False,
+        self,
+        clip_output: bool = True,
+        same_on_batch: bool = False,
+        p: float = 1.0,
+        keepdim: bool = False,
         callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
-        super().__init__(p=p, p_batch=1., same_on_batch=same_on_batch, keepdim=keepdim, callbacks=callbacks)
+        super().__init__(p=p, p_batch=1.0, same_on_batch=same_on_batch, keepdim=keepdim, callbacks=callbacks)
 
         self.clip_output = clip_output
 

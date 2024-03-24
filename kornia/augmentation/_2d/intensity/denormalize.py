@@ -48,7 +48,7 @@ class Denormalize(IntensityAugmentationBase2D):
         keepdim: bool = False,
         callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
-        super().__init__(p=p, p_batch=1., same_on_batch=True, keepdim=keepdim, callbacks=callbacks)
+        super().__init__(p=p, p_batch=1.0, same_on_batch=True, keepdim=keepdim, callbacks=callbacks)
         if isinstance(mean, float):
             mean = torch.tensor([mean])
 

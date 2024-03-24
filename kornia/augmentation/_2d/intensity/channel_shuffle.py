@@ -37,7 +37,10 @@ class RandomChannelShuffle(IntensityAugmentationBase2D):
     """
 
     def __init__(
-        self, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False,
+        self,
+        same_on_batch: bool = False,
+        p: float = 0.5,
+        keepdim: bool = False,
         callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim, callbacks=callbacks)

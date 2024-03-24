@@ -1,8 +1,7 @@
 from typing import Any, Dict, Optional, Tuple
 
-from kornia.core import Tensor
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
-from kornia.core import as_tensor, tensor
+from kornia.core import Tensor, as_tensor, tensor
 from kornia.geometry.transform import hflip
 
 

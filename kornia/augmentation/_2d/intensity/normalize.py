@@ -3,9 +3,10 @@ from __future__ import annotations
 from typing import Any, List, Optional
 
 import torch
-from kornia.core import Tensor
+
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.callbacks import AugmentationCallbackBase
+from kornia.core import Tensor
 from kornia.enhance import normalize
 
 
@@ -48,7 +49,7 @@ class Normalize(IntensityAugmentationBase2D):
         keepdim: bool = False,
         callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
-        super().__init__(p=p, p_batch=1., same_on_batch=True, keepdim=keepdim, callbacks=callbacks)
+        super().__init__(p=p, p_batch=1.0, same_on_batch=True, keepdim=keepdim, callbacks=callbacks)
         if isinstance(mean, (int, float)):
             mean = torch.tensor([mean])
 

@@ -1,8 +1,8 @@
 from typing import Any, Dict, List, Optional, Tuple
 
-from kornia.core import Tensor
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.callbacks import AugmentationCallbackBase
+from kornia.core import Tensor
 from kornia.filters import median_blur
 
 
@@ -41,7 +41,11 @@ class RandomMedianBlur(IntensityAugmentationBase2D):
     """
 
     def __init__(
-        self, kernel_size: Tuple[int, int] = (3, 3), same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False,
+        self,
+        kernel_size: Tuple[int, int] = (3, 3),
+        same_on_batch: bool = False,
+        p: float = 0.5,
+        keepdim: bool = False,
         callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim, callbacks=callbacks)

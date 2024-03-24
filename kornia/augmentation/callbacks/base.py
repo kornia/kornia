@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional, Union
 from kornia.augmentation.container.ops import DataType
 from kornia.augmentation.container.params import ParamItem
 from kornia.constants import DataKey
-from kornia.core import Tensor, Module
+from kornia.core import Module, Tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
@@ -11,6 +11,7 @@ __all__ = [
     "AugmentationCallbackBase",
     "SequentialCallbackBase",
 ]
+
 
 class AugmentationCallbackBase(Module):
     """A Meta Callback base class."""
@@ -215,27 +216,19 @@ class AugmentationCallbackBase(Module):
         """Called when `inverse_keypoints` ends."""
         ...
 
-    def on_forward_start(
-        self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs: Any
-    ):
+    def on_forward_start(self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs: Any):
         """Called when `forward` starts."""
         ...
 
-    def on_forward_end(
-        self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs: Any
-    ):
+    def on_forward_end(self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs: Any):
         """Called when `forward` ends."""
         ...
 
-    def on_inverse_start(
-        self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs: Any
-    ):
+    def on_inverse_start(self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs: Any):
         """Called when `inverse` starts."""
         ...
 
-    def on_inverse_end(
-        self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs: Any
-    ):
+    def on_inverse_end(self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs: Any):
         """Called when `inverse` ends."""
         ...
 

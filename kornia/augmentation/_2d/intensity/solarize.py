@@ -59,7 +59,7 @@ class RandomSolarize(IntensityAugmentationBase2D):
         keepdim: bool = False,
         callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
-        super().__init__(p=p, p_batch=1., same_on_batch=same_on_batch, keepdim=keepdim, callbacks=callbacks)
+        super().__init__(p=p, p_batch=1.0, same_on_batch=same_on_batch, keepdim=keepdim, callbacks=callbacks)
         self._param_generator = rg.PlainUniformGenerator(
             (thresholds, "thresholds", 0.5, (0.0, 1.0)), (additions, "additions", 0.0, (-0.5, 0.5))
         )

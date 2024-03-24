@@ -1,17 +1,17 @@
-from typing import Any, Dict, List, Optional, Union
 import importlib
+from typing import Dict, List, Optional, Union
 
 from kornia.augmentation.container.ops import DataType
 from kornia.augmentation.container.params import ParamItem
 from kornia.constants import DataKey
+from kornia.core import Module, Tensor
 
-from kornia.core import Tensor, Module
 from .base import AugmentationCallbackBase
 
 
 class WandbLogger(AugmentationCallbackBase):
     """Logging images onto W&B for `AugmentationSequential`.
-    
+
     Args:
         batches_to_save: the number of batches to be logged. -1 is to save all batches.
         num_to_log: number of images to log in a batch.
@@ -40,7 +40,7 @@ class WandbLogger(AugmentationCallbackBase):
         self.preprocessing = preprocessing
         self.num_to_log = num_to_log
         if run is None:
-            self.wandb = importlib.import_module('wandb')
+            self.wandb = importlib.import_module("wandb")
         else:
             self.wandb = run
 
@@ -49,7 +49,7 @@ class WandbLogger(AugmentationCallbackBase):
 
     def _make_bbox_data(self, mask: Tensor):
         raise NotImplementedError
-  
+
     def on_sequential_forward_end(
         self,
         *args: Union[DataType, Dict[str, DataType]],
@@ -65,7 +65,7 @@ class WandbLogger(AugmentationCallbackBase):
                 continue
 
             preproc = self.preprocessing[self.log_indices[i]]
-            out_arg = arg[:self.num_to_log]
+            out_arg = arg[: self.num_to_log]
             if preproc is not None:
                 out_arg = preproc(out_arg)
             if data_key in [DataKey.INPUT]:

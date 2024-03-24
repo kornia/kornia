@@ -1,8 +1,8 @@
 from typing import Any, Dict, List, Optional
 
-from kornia.core import Tensor
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.callbacks import AugmentationCallbackBase
+from kornia.core import Tensor
 from kornia.enhance import equalize
 
 
@@ -44,10 +44,13 @@ class RandomEqualize(IntensityAugmentationBase2D):
     """
 
     def __init__(
-        self, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False,
+        self,
+        same_on_batch: bool = False,
+        p: float = 0.5,
+        keepdim: bool = False,
         callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
-        super().__init__(p=p, p_batch=1., same_on_batch=same_on_batch, keepdim=keepdim, callbacks=callbacks)
+        super().__init__(p=p, p_batch=1.0, same_on_batch=same_on_batch, keepdim=keepdim, callbacks=callbacks)
 
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None

@@ -1,7 +1,7 @@
 from typing import Any, Dict, Optional
 
-from kornia.core import Tensor
 from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
+from kornia.core import Tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 

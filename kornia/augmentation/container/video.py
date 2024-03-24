@@ -107,7 +107,7 @@ class VideoSequential(ImageSequential):
         same_on_frame: bool = True,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
         random_apply_weights: Optional[List[float]] = None,
-        callbacks: List[SequentialCallbackBase] = []
+        callbacks: List[SequentialCallbackBase] = [],
     ) -> None:
         super().__init__(
             *args,

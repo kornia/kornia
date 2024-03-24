@@ -79,7 +79,7 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         keepdim: bool = False,
         callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
-        super().__init__(p=p, p_batch=1., same_on_batch=same_on_batch, keepdim=keepdim, callbacks=callbacks)
+        super().__init__(p=p, p_batch=1.0, same_on_batch=same_on_batch, keepdim=keepdim, callbacks=callbacks)
         self._param_generator = rg.MotionBlurGenerator(kernel_size, angle, direction)
         self.flags = {"border_type": BorderType.get(border_type), "resample": Resample.get(resample)}
 

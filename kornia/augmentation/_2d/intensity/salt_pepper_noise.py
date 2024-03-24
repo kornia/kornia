@@ -1,8 +1,8 @@
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
-from kornia.augmentation.random_generator._2d import SaltAndPepperGenerator
 from kornia.augmentation.callbacks import AugmentationCallbackBase
+from kornia.augmentation.random_generator._2d import SaltAndPepperGenerator
 from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK
 
