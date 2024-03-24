@@ -1,7 +1,8 @@
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
+from kornia.augmentation.callbacks import AugmentationCallbackBase
 from kornia.constants import Resample
 from kornia.core import Tensor, as_tensor
 from kornia.geometry.transform import get_perspective_transform, warp_perspective
@@ -24,6 +25,7 @@ class RandomPerspective(GeometricAugmentationBase2D):
             If ``'basic'``, samples by translating the image corners randomly inwards.
             If ``'area_preserving'``, samples by randomly translating the image corners in any direction.
             Preserves area on average. See https://arxiv.org/abs/2104.03308 for further details.
+        callbacks: add a list of callbacks.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -64,8 +66,9 @@ class RandomPerspective(GeometricAugmentationBase2D):
         p: float = 0.5,
         keepdim: bool = False,
         sampling_method: str = "basic",
+        callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
-        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim, callbacks=callbacks)
         self._param_generator = rg.PerspectiveGenerator(distortion_scale, sampling_method=sampling_method)
 
         self.flags: Dict[str, Any] = {"align_corners": align_corners, "resample": Resample.get(resample)}

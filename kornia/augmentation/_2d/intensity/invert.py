@@ -1,9 +1,9 @@
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import torch
-from torch import Tensor
-
+from kornia.core import Tensor
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.callbacks import AugmentationCallbackBase
 from kornia.enhance import invert
 
 
@@ -19,6 +19,7 @@ class RandomInvert(IntensityAugmentationBase2D):
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
+        callbacks: add a list of callbacks.
     .. note::
         This function internally uses :func:`kornia.enhance.invert`.
 
@@ -46,8 +47,9 @@ class RandomInvert(IntensityAugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
+        callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
-        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
+        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim, callbacks=callbacks)
         self.flags = {"max_val": max_val}
 
     def apply_transform(

@@ -1,6 +1,7 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.callbacks import AugmentationCallbackBase
 from kornia.core import Tensor
 from kornia.enhance import normalize_min_max
 
@@ -14,6 +15,7 @@ class RandomAutoContrast(IntensityAugmentationBase2D):
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
+        callbacks: add a list of callbacks.
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
@@ -23,9 +25,10 @@ class RandomAutoContrast(IntensityAugmentationBase2D):
     """
 
     def __init__(
-        self, clip_output: bool = True, same_on_batch: bool = False, p: float = 1.0, keepdim: bool = False
+        self, clip_output: bool = True, same_on_batch: bool = False, p: float = 1.0, keepdim: bool = False,
+        callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
-        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(p=p, p_batch=1., same_on_batch=same_on_batch, keepdim=keepdim, callbacks=callbacks)
 
         self.clip_output = clip_output
 

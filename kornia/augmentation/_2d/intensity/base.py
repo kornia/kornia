@@ -1,7 +1,6 @@
 from typing import Any, Dict, Optional
 
-from torch import Tensor
-
+from kornia.core import Tensor
 from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
@@ -18,6 +17,7 @@ class IntensityAugmentationBase2D(RigidAffineAugmentationBase2D):
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
+        callbacks: add a list of callbacks.
     """
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:

@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Optional, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.callbacks import AugmentationCallbackBase
 from kornia.core import Tensor, stack, tensor
 
 
@@ -89,6 +90,7 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         p: probability that the random erasing operation will be performed.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False).
+        callbacks: add a list of callbacks.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
@@ -147,8 +149,9 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
+        callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
-        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(p=p, p_batch=1., same_on_batch=same_on_batch, keepdim=keepdim, callbacks=callbacks)
 
         if isinstance(select_from, int):
             select_from = [select_from]

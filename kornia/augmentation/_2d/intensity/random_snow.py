@@ -1,9 +1,10 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.callbacks import AugmentationCallbackBase
 from kornia.color import hls_to_rgb, rgb_to_hls
 from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK
@@ -20,6 +21,7 @@ class RandomSnow(IntensityAugmentationBase2D):
         same_on_batch: If True, apply the same transformation to each image in a batch. Default: False.
         p: Probability of applying the transformation. Default: 0.5.
         keepdim: Keep the output tensor with the same shape as input. Default: False.
+        callbacks: add a list of callbacks.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
@@ -40,8 +42,9 @@ class RandomSnow(IntensityAugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
+        callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
-        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(p=p, p_batch=1., same_on_batch=same_on_batch, keepdim=keepdim, callbacks=callbacks)
         KORNIA_CHECK(all(0 <= el <= 1 for el in snow_coefficient), "Snow coefficient values must be between 0 and 1.")
         KORNIA_CHECK(all(1 <= el for el in brightness), "Brightness values must be greater than 1.")
 

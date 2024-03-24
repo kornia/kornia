@@ -1,7 +1,8 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.base import AugmentationBase2D
+from kornia.augmentation.callbacks import AugmentationCallbackBase
 from kornia.core import Tensor
 from kornia.geometry.transform import remap
 from kornia.utils import create_meshgrid
@@ -20,6 +21,7 @@ class RandomFisheye(AugmentationBase2D):
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
+        callbacks: add a list of callbacks.
 
     Examples:
         >>> import torch
@@ -46,8 +48,9 @@ class RandomFisheye(AugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
+        callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
-        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
+        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim, callbacks=callbacks)
         self._check_tensor(center_x)
         self._check_tensor(center_y)
         self._check_tensor(gamma)

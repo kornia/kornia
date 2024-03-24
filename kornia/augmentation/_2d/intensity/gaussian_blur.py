@@ -1,10 +1,11 @@
 import warnings
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from torch import Tensor
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.callbacks import AugmentationCallbackBase
 from kornia.constants import BorderType
 from kornia.filters import gaussian_blur2d
 
@@ -26,6 +27,7 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
         silence_instantiation_warning: if True, silence the warning at instantiation.
+        callbacks: add a list of callbacks.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -62,8 +64,9 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         p: float = 0.5,
         keepdim: bool = False,
         silence_instantiation_warning: bool = False,
+        callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
-        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
+        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim, callbacks=callbacks)
 
         if not silence_instantiation_warning:
             warnings.warn(

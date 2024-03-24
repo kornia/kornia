@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional, Union
 import torch
 
 from kornia.augmentation.base import _BasicAugmentationBase
+from kornia.augmentation.callbacks import SequentialCallbackBase
 from kornia.augmentation.utils import (
     _transform_input,
     _transform_input_by_shape,
@@ -30,6 +31,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
           to the batch form ``False``.
         data_keys: the input type sequential for applying augmentations.
             Accepts "input", "image", "mask", "bbox", "bbox_xyxy", "bbox_xywh", "keypoints".
+        callbacks: add a list of callbacks.
     """
 
     def __init__(
@@ -39,9 +41,11 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         same_on_batch: bool = False,
         keepdim: bool = False,
         data_keys: List[Union[str, int, DataKey]] = [DataKey.INPUT],
+        callbacks: List[SequentialCallbackBase] = [],
     ) -> None:
         super().__init__(p, p_batch=p_batch, same_on_batch=same_on_batch, keepdim=keepdim)
         self.data_keys = [DataKey.get(inp) for inp in data_keys]
+        self.callbacks = callbacks
 
     def transform_tensor(self, input: Tensor, *, shape: Optional[Tensor] = None, match_channel: bool = True) -> Tensor:
         """Convert any incoming (H, W), (C, H, W) and (B, C, H, W) into (B, C, H, W)."""
@@ -165,6 +169,8 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         else:
             self._params = params
 
+        [cb.on_forward_start(input, params=params, data_keys=data_keys) for cb in self.callbacks]
+
         outputs: List[Tensor] = []
         for dcate, _input in zip(keys, input):
             output: Tensor
@@ -191,6 +197,8 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
             else:
                 raise NotImplementedError
             outputs.append(output)
+
+        [cb.on_forward_start(input, params=params, data_keys=data_keys) for cb in self.callbacks]
         if len(outputs) == 1:
             return outputs[0]
         return outputs

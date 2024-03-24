@@ -1,8 +1,9 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 
 from kornia.augmentation._2d.base import AugmentationBase2D
+from kornia.augmentation.callbacks import AugmentationCallbackBase
 from kornia.core import Tensor, tensor
 from kornia.geometry.transform import get_tps_transform, warp_image_tps
 
@@ -21,6 +22,8 @@ class RandomThinPlateSpline(AugmentationBase2D):
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
+        callbacks: add a list of callbacks.
+
     .. note::
         This function internally uses :func:`kornia.geometry.transform.warp_image_tps`.
 
@@ -44,8 +47,9 @@ class RandomThinPlateSpline(AugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
+        callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
-        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
+        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim, callbacks=callbacks)
         self.flags = {"align_corners": align_corners}
         self.dist = torch.distributions.Uniform(-scale, scale)
 
