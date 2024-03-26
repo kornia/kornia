@@ -53,7 +53,11 @@ class _BasicAugmentationBase(Module):
     """
 
     def __init__(
-        self, p: float = 0.5, p_batch: float = 1.0, same_on_batch: bool = False, keepdim: bool = False
+        self,
+        p: float = 0.5,
+        p_batch: float = 1.0,
+        same_on_batch: bool = False,
+        keepdim: bool = False,
     ) -> None:
         super().__init__()
         self.p = p
@@ -73,6 +77,11 @@ class _BasicAugmentationBase(Module):
 
     apply_transform: Callable[..., Tensor] = _apply_transform_unimplemented
 
+    def to(self, *args, **kwargs):
+        r"""Set the device and dtype for the random number generator."""
+        self.set_rng_device_and_dtype(*args, **kwargs)
+        return self
+
     def __repr__(self) -> str:
         txt = f"p={self.p}, p_batch={self.p_batch}, same_on_batch={self.same_on_batch}"
         if isinstance(self._param_generator, RandomGeneratorBase):
@@ -87,7 +96,13 @@ class _BasicAugmentationBase(Module):
     def __unpack_input__(self, input: Tensor) -> Tensor:
         return input
 
-    def transform_tensor(self, input: Tensor, *, shape: Optional[Tensor] = None, match_channel: bool = True) -> Tensor:
+    def transform_tensor(
+        self,
+        input: Tensor,
+        *,
+        shape: Optional[Tensor] = None,
+        match_channel: bool = True,
+    ) -> Tensor:
         """Standardize input tensors."""
         raise NotImplementedError
 
@@ -116,7 +131,11 @@ class _BasicAugmentationBase(Module):
             self._param_generator.set_rng_device_and_dtype(device, dtype)
 
     def __batch_prob_generator__(
-        self, batch_shape: Tuple[int, ...], p: float, p_batch: float, same_on_batch: bool
+        self,
+        batch_shape: Tuple[int, ...],
+        p: float,
+        p_batch: float,
+        same_on_batch: bool,
     ) -> Tensor:
         batch_prob: Tensor
         if p_batch == 1:
@@ -147,7 +166,10 @@ class _BasicAugmentationBase(Module):
         return batch_prob
 
     def _process_kwargs_to_params_and_flags(
-        self, params: Optional[Dict[str, Tensor]] = None, flags: Optional[Dict[str, Any]] = None, **kwargs: Any
+        self,
+        params: Optional[Dict[str, Tensor]] = None,
+        flags: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
     ) -> Tuple[Dict[str, Tensor], Dict[str, Any]]:
         # NOTE: determine how to save self._params
         save_kwargs = kwargs["save_kwargs"] if "save_kwargs" in kwargs else False
@@ -227,13 +249,21 @@ class _AugmentationBase(_BasicAugmentationBase):
     """
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self,
+        input: Tensor,
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[Tensor] = None,
     ) -> Tensor:
         # apply transform for the input image tensor
         raise NotImplementedError
 
     def apply_non_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self,
+        input: Tensor,
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[Tensor] = None,
     ) -> Tensor:
         # apply additional transform for the images that are skipped from transformation
         # where batch_prob == False.
@@ -264,7 +294,10 @@ class _AugmentationBase(_BasicAugmentationBase):
         else:  # If any tensor needs to be transformed.
             output = self.apply_non_transform(in_tensor, params, flags, transform=transform)
             applied = self.apply_transform(
-                in_tensor[to_apply], params, flags, transform=transform if transform is None else transform[to_apply]
+                in_tensor[to_apply],
+                params,
+                flags,
+                transform=transform if transform is None else transform[to_apply],
             )
 
             if is_autocast_enabled():
@@ -305,7 +338,10 @@ class _AugmentationBase(_BasicAugmentationBase):
         else:  # If any tensor needs to be transformed.
             output = self.apply_non_transform_mask(in_tensor, params, flags, transform=transform)
             applied = self.apply_transform_mask(
-                in_tensor[to_apply], params, flags, transform=transform if transform is None else transform[to_apply]
+                in_tensor[to_apply],
+                params,
+                flags,
+                transform=transform if transform is None else transform[to_apply],
             )
             output = output.index_put((to_apply,), applied)
         output = _transform_output_shape(output, ori_shape, reference_shape=shape) if self.keepdim else output
@@ -336,7 +372,10 @@ class _AugmentationBase(_BasicAugmentationBase):
         else:  # If any tensor needs to be transformed.
             output = self.apply_non_transform_box(input, params, flags, transform=transform)
             applied = self.apply_transform_box(
-                input[to_apply], params, flags, transform=transform if transform is None else transform[to_apply]
+                input[to_apply],
+                params,
+                flags,
+                transform=transform if transform is None else transform[to_apply],
             )
             if is_autocast_enabled():
                 output = output.type(input.dtype)
@@ -369,7 +408,10 @@ class _AugmentationBase(_BasicAugmentationBase):
         else:  # If any tensor needs to be transformed.
             output = self.apply_non_transform_keypoint(input, params, flags, transform=transform)
             applied = self.apply_transform_keypoint(
-                input[to_apply], params, flags, transform=transform if transform is None else transform[to_apply]
+                input[to_apply],
+                params,
+                flags,
+                transform=transform if transform is None else transform[to_apply],
             )
             if is_autocast_enabled():
                 output = output.type(input.dtype)
@@ -398,61 +440,99 @@ class _AugmentationBase(_BasicAugmentationBase):
         else:  # If any tensor needs to be transformed.
             output = self.apply_non_transform_class(input, params, flags, transform=transform)
             applied = self.apply_transform_class(
-                input[to_apply], params, flags, transform=transform if transform is None else transform[to_apply]
+                input[to_apply],
+                params,
+                flags,
+                transform=transform if transform is None else transform[to_apply],
             )
             output = output.index_put((to_apply,), applied)
         return output
 
     def apply_non_transform_mask(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self,
+        input: Tensor,
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[Tensor] = None,
     ) -> Tensor:
         """Process masks corresponding to the inputs that are no transformation applied."""
         raise NotImplementedError
 
     def apply_transform_mask(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self,
+        input: Tensor,
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[Tensor] = None,
     ) -> Tensor:
         """Process masks corresponding to the inputs that are transformed."""
         raise NotImplementedError
 
     def apply_non_transform_box(
-        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self,
+        input: Boxes,
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[Tensor] = None,
     ) -> Boxes:
         """Process boxes corresponding to the inputs that are no transformation applied."""
         return input
 
     def apply_transform_box(
-        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self,
+        input: Boxes,
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[Tensor] = None,
     ) -> Boxes:
         """Process boxes corresponding to the inputs that are transformed."""
         raise NotImplementedError
 
     def apply_non_transform_keypoint(
-        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self,
+        input: Keypoints,
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[Tensor] = None,
     ) -> Keypoints:
         """Process keypoints corresponding to the inputs that are no transformation applied."""
         return input
 
     def apply_transform_keypoint(
-        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self,
+        input: Keypoints,
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[Tensor] = None,
     ) -> Keypoints:
         """Process keypoints corresponding to the inputs that are transformed."""
         raise NotImplementedError
 
     def apply_non_transform_class(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self,
+        input: Tensor,
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[Tensor] = None,
     ) -> Tensor:
         """Process class tags corresponding to the inputs that are no transformation applied."""
         return input
 
     def apply_transform_class(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self,
+        input: Tensor,
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[Tensor] = None,
     ) -> Tensor:
         """Process class tags corresponding to the inputs that are transformed."""
         raise NotImplementedError
 
     def apply_func(
-        self, in_tensor: Tensor, params: Dict[str, Tensor], flags: Optional[Dict[str, Any]] = None
+        self,
+        in_tensor: Tensor,
+        params: Dict[str, Tensor],
+        flags: Optional[Dict[str, Any]] = None,
     ) -> Tensor:
         if flags is None:
             flags = self.flags
