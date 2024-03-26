@@ -241,10 +241,13 @@ def pytest_report_header(config):
 
     env_info = _get_env_info()
 
-    desired_cpu_info = ["Model name", "Architecture", "CPU(s)", "Thread(s) per core", "CPU max MHz", "CPU min MHz"]
-    cpu_info = "cpu info:\n" + "\n".join(
-        f'\t- {i}: {env_info["cpu"][i]}' for i in desired_cpu_info if i in env_info["cpu"]
-    )
+    if "cpu" in env_info:
+        desired_cpu_info = ["Model name", "Architecture", "CPU(s)", "Thread(s) per core", "CPU max MHz", "CPU min MHz"]
+        cpu_info = "cpu info:\n" + "\n".join(
+            f'\t- {i}: {env_info["cpu"][i]}' for i in desired_cpu_info if i in env_info["cpu"]
+        )
+    else:
+        cpu_info = ""
     gpu_info = f"gpu info: {env_info['gpu']}" if "gpu" in env_info else ""
     gcc_info = f"gcc info: {env_info['gcc']}" if "gcc" in env_info else ""
 
