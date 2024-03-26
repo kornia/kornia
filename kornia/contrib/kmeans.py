@@ -8,6 +8,7 @@ from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 from kornia.geometry.linalg import euclidean_distance
 
+
 class KMeans:
     """Implements the kmeans clustering algorithm with euclidean distance as similarity measure.
 
