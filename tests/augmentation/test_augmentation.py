@@ -17,6 +17,7 @@ from kornia.augmentation import (
     PadTo,
     RandomBoxBlur,
     RandomBrightness,
+    RandomChannelDropout,
     RandomChannelShuffle,
     RandomClahe,
     RandomContrast,
@@ -3505,6 +3506,63 @@ class TestRandomLinearCornerIllumination(BaseTester):
     def test_same_on_batch(self, device, dtype):
         input_tensor = torch.ones(2, 1, 5, 5, device=device, dtype=dtype) * 0.5
         transform = RandomLinearCornerIllumination(p=1.0, same_on_batch=True)
+        output_tensor = transform(input_tensor)
+        self.assert_close(output_tensor[0], output_tensor[1])
+
+
+class TestRandomChannelDropout(BaseTester):
+    def _get_expected(self, device, dtype):
+        return torch.tensor(
+            [
+                [
+                    [[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]],
+                    [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+                    [[1.0, 1.0, 1.0], [1.0, 1.0, 1.0], [1.0, 1.0, 1.0]],
+                ]
+            ],
+            device=device,
+            dtype=dtype,
+        )
+
+    def test_smoke(self, device, dtype):
+        torch.manual_seed(1)
+        input_tensor = torch.ones(1, 3, 3, 3, device=device, dtype=dtype)
+        expected = self._get_expected(device=device, dtype=dtype)
+        aug = RandomChannelDropout(p=1.0)
+        res = aug(input_tensor)
+        assert input_tensor.shape == res.shape
+        self.assert_close(res, expected, rtol=1e-4, atol=1e-4)
+
+    def test_exception(self, device, dtype):
+        num_drop_channels = 5
+        with pytest.raises(
+            Exception, match=f"Invalid num_drop_channels. Should be a int bewteen 1 and 3. Got: {num_drop_channels}"
+        ):
+            RandomChannelDropout(num_drop_channels=num_drop_channels)
+
+        num_drop_channels = 0.5
+        with pytest.raises(
+            Exception, match=f"Invalid num_drop_channels. Should be a int bewteen 1 and 3. Got: {num_drop_channels}"
+        ):
+            RandomChannelDropout(num_drop_channels=num_drop_channels)
+
+        fill_value = 2.0
+        with pytest.raises(
+            Exception, match=f"Invalid fill_value. Should be a float bewteen 0 and 1. Got: {fill_value}"
+        ):
+            RandomChannelDropout(fill_value=fill_value)
+
+    @pytest.mark.parametrize("channel_shape, batch_shape", [(3, 1), (3, 2), (3, 5)])
+    def test_cardinality(self, batch_shape, channel_shape, device, dtype):
+        input_tensor = torch.ones(batch_shape, channel_shape, 16, 16, device=device, dtype=dtype)
+        transform = RandomChannelDropout(p=1.0)
+        output_tensor = transform(input_tensor)
+        assert input_tensor.shape[0] == output_tensor.shape[0]
+        assert input_tensor.shape[1] == output_tensor.shape[1]
+
+    def test_same_on_batch(self, device, dtype):
+        input_tensor = torch.ones(2, 3, 5, 5, device=device, dtype=dtype)
+        transform = RandomChannelDropout(p=1.0, same_on_batch=True)
         output_tensor = transform(input_tensor)
         self.assert_close(output_tensor[0], output_tensor[1])
 
