@@ -6,7 +6,7 @@ import torch
 
 from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
-
+from kornia.geometry.linalg import euclidean_distance
 
 class KMeans:
     """Implements the kmeans clustering algorithm with euclidean distance as similarity measure.
@@ -95,9 +95,7 @@ class KMeans:
         A = data1[:, None, ...]
         # 1*C*D
         B = data2[None, ...]
-        distance = (A - B) ** 2.0
-        # return N*C matrix for pairwise distance
-        distance = distance.sum(dim=-1)
+        distance = euclidean_distance(A, B)
         return distance
 
     def fit(self, X: Tensor) -> None:
