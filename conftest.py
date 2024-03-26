@@ -184,6 +184,9 @@ def pytest_sessionstart(session):
 
 
 def _get_env_info() -> Dict[str, Dict[str, str]]:
+    if not hasattr(torch.utils, "collect_env"):
+        return {}
+
     run_lmb = torch.utils.collect_env.run
     separator = ":"
     br = "\n"
@@ -195,6 +198,9 @@ def _get_env_info() -> Dict[str, Dict[str, str]]:
     def _get_cpu_info() -> Dict[str, str]:
         cpu_info = {}
         cpu_str = torch.utils.collect_env.get_cpu_info(run_lmb)
+        if not cpu_str:
+            return {}
+
         for data in cpu_str.split(br):
             key, value = _get_key_value(data)
             cpu_info[key] = value
@@ -204,6 +210,10 @@ def _get_env_info() -> Dict[str, Dict[str, str]]:
     def _get_gpu_info() -> Dict[str, str]:
         gpu_info = {}
         gpu_str = torch.utils.collect_env.get_gpu_info(run_lmb)
+
+        if not gpu_str:
+            return {}
+
         for data in gpu_str.split(br):
             key, value = _get_key_value(data)
             gpu_info[key] = value
@@ -231,7 +241,8 @@ def pytest_report_header(config):
 
     env_info = _get_env_info()
 
-    return f"""
+    cpu_info = (
+        f"""
 cpu info:
     - Model name: {env_info['cpu']['Model name']}
     - Architecture: {env_info['cpu']['Architecture']}
@@ -239,19 +250,28 @@ cpu info:
     - Thread(s) per core: {env_info['cpu']['Thread(s) per core']}
     - CPU max MHz: {env_info['cpu']['CPU max MHz']}
     - CPU min MHz: {env_info['cpu']['CPU min MHz']}
-gpu info: {env_info['gpu']}
+"""
+        if "cpu" in env_info
+        else ""
+    )
+    gpu_info = f"gpu info: {env_info['gpu']}" if "gpu" in env_info else ""
+    gcc_info = f"gcc info: {env_info['gcc']}" if "gcc" in env_info else ""
+
+    return f"""
+{cpu_info}
+{gpu_info}
 main deps:
     - kornia-{kornia.__version__}
     - torch-{torch.__version__}
         - commit: {torch.version.git_version}
         - cuda: {torch.version.cuda}
-        - nvidia-driver: {env_info['nvidia']}
+        - nvidia-driver: {env_info['nvidia'] if 'nvidia' in env_info else None}
 x deps:
     - {accelerate_info}
 dev deps:
     - kornia_rs-{kornia_rs.__version__}
     - onnx-{onnx.__version__}
-gcc info: {env_info['gcc']}
+{gcc_info}
 available optimizers: {TEST_OPTIMIZER_BACKEND}
 """
 
