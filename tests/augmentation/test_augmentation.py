@@ -3768,7 +3768,7 @@ class TestLongestMaxSize:
 class TestRandomPosterize:
     def test_smoke(self, device, dtype):
         img = torch.rand(1, 1, 4, 5, device=device, dtype=dtype)
-        aug = RandomPosterize(bits=6, p=1.0).to(device)
+        aug = RandomPosterize(bits=6, p=1.0).to(device, dtype)
         out = aug(img)
         assert out.shape == (1, 1, 4, 5)
 
