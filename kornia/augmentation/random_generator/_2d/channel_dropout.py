@@ -3,10 +3,8 @@ from __future__ import annotations
 import torch
 
 from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
-from kornia.augmentation.utils import _adapted_rsampling, _common_param_check
+from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _range_bound
 from kornia.core import Tensor
-
-# from kornia.utils import _extract_device_dtype
 
 
 class ChannelDropoutGenerator(RandomGeneratorBase):
@@ -31,28 +29,30 @@ class ChannelDropoutGenerator(RandomGeneratorBase):
     ) -> None:
         super().__init__()
         self.num_drop_channels = num_drop_channels
+        self.drop_sampler: UniformDistribution
 
     def __repr__(self) -> str:
         r"""Return a string representation of the object."""
-        repr = f"num_drop_channels={self.num_drop_channels}"
-        return repr
+        repr_buf = f"num_drop_channels={self.num_drop_channels}"
+        return repr_buf
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         r"""Create samplers for generating random dropout parameters."""
-        if self.num_drop_channels == 0:
-            self.channel_sampler = UniformDistribution(1, 4, validate_args=False)
-        self.drop_sampler = UniformDistribution(0, 1, validate_args=False)
+        drop = _range_bound((0.0, 1.0), "drop", device=device, dtype=dtype)
+        self.drop_sampler = UniformDistribution(drop[0], drop[1], validate_args=False)
 
     def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, Tensor]:
         r"""Generates a mask for dropout channels."""
-        batch_size, channels, height, width = batch_shape
+        batch_size, channels, _, _ = batch_shape
         _common_param_check(batch_size, same_on_batch)
-        # _device, _dtype = _extract_device_dtype([self.num_drop_channels])
+        _device, _dtype = self.device, self.dtype
 
-        channel_mask = torch.argsort(
+        batch_idx = torch.arange(batch_size, device=_device, dtype=torch.int32).reshape(batch_size, 1)
+        channel_idx = torch.argsort(
             _adapted_rsampling((batch_size, channels), self.drop_sampler, same_on_batch), dim=1
-        )[:, : self.num_drop_channels]
-        dropout_mask = torch.zeros(batch_size, channels, height, width, dtype=torch.bool)
-        dropout_mask[torch.arange(batch_size).unsqueeze(1), channel_mask, :, :] = True
+        )[:, : self.num_drop_channels].to(torch.int32)
 
-        return {"dropout_mask": dropout_mask}
+        return {
+            "batch_idx": batch_idx,
+            "channel_idx": channel_idx,
+        }
