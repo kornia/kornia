@@ -57,7 +57,6 @@ Geometric
 .. autoclass:: RandomErasing
 .. autoclass:: RandomFisheye
 .. autoclass:: RandomHorizontalFlip
-.. autoclass:: RandomInvert
 .. autoclass:: RandomPerspective
 .. autoclass:: RandomResizedCrop
 .. autoclass:: RandomRotation
