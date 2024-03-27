@@ -3534,22 +3534,25 @@ class TestRandomChannelDropout(BaseTester):
         self.assert_close(res, expected, rtol=1e-4, atol=1e-4)
 
     def test_exception(self, device, dtype):
-        num_drop_channels = 5
-        with pytest.raises(
-            Exception, match=f"Invalid num_drop_channels. Should be a int bewteen 1 and 3. Got: {num_drop_channels}"
-        ):
+        num_drop_channels = 2.0
+        with pytest.raises(TypeError, match=f"`num_drop_channels` must be an int. Got: {type(num_drop_channels)}"):
             RandomChannelDropout(num_drop_channels=num_drop_channels)
 
-        num_drop_channels = 0.5
+        num_drop_channels = 5
         with pytest.raises(
-            Exception, match=f"Invalid num_drop_channels. Should be a int bewteen 1 and 3. Got: {num_drop_channels}"
+            Exception,
+            match=f"Invalid value in `num_drop_channels`. Must be an int bewteen 1 and 3. Got: {num_drop_channels}",
         ):
             RandomChannelDropout(num_drop_channels=num_drop_channels)
 
         fill_value = 2.0
         with pytest.raises(
-            Exception, match=f"Invalid fill_value. Should be a float bewteen 0 and 1. Got: {fill_value}"
+            Exception, match=f"Invalid value in `fill_value`. Must be a float bewteen 0 and 1. Got: {fill_value}"
         ):
+            RandomChannelDropout(fill_value=fill_value)
+
+        fill_value = 1
+        with pytest.raises(TypeError, match=f"`fill_value` must be a float. Got: {type(fill_value)}"):
             RandomChannelDropout(fill_value=fill_value)
 
     @pytest.mark.parametrize("channel_shape, batch_shape", [(3, 1), (3, 2), (3, 5)])
