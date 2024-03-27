@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Union, cast
 from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
 from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmentationBase3D
 from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.callbacks import AugmentationCallbackBase
 from kornia.constants import DataKey, Resample
 from kornia.core import Module, Tensor
 from kornia.geometry.boxes import Boxes, VideoBoxes
@@ -207,6 +208,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         extra_args: Dict[DataKey, Dict[str, Any]] = {
             DataKey.MASK: {"resample": Resample.NEAREST, "align_corners": None}
         },
+        callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
         self._transform_matrix: Optional[Tensor]
         self._transform_matrices: List[Optional[Tensor]] = []
@@ -217,6 +219,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             keepdim=keepdim,
             random_apply=random_apply,
             random_apply_weights=random_apply_weights,
+            callbacks=callbacks,
         )
 
         self._parse_transformation_matrix_mode(transformation_matrix_mode)
@@ -302,6 +305,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 )
             params = self._params
 
+        [cb.on_sequential_inverse_start(in_args, params=params, data_keys=data_keys) for cb in self.callbacks]
+
         outputs: List[DataType] = in_args
         for param in params[::-1]:
             module = self.get_submodule(param.name)
@@ -316,6 +321,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         if isinstance(original_keys, tuple):
             return {k: v for v, k in zip(outputs, original_keys)}
+
+        [cb.on_sequential_inverse_end(*outputs, params=params, data_keys=data_keys) for cb in self.callbacks]
 
         if len(outputs) == 1 and isinstance(outputs, list):
             return outputs[0]
@@ -415,6 +422,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             else:
                 raise ValueError("`params` must be provided whilst INPUT is not in data_keys.")
 
+        [cb.on_sequential_forward_start(in_args, params=params, data_keys=data_keys) for cb in self.callbacks]
+
         outputs: Union[Tensor, List[DataType]] = in_args
         for param in params:
             module = self.get_submodule(param.name)
@@ -434,6 +443,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         if isinstance(original_keys, tuple):
             return {k: v for v, k in zip(outputs, original_keys)}
+
+        [cb.on_sequential_forward_end(*outputs, params=params, data_keys=data_keys) for cb in self.callbacks]
 
         if len(outputs) == 1 and isinstance(outputs, list):
             return outputs[0]

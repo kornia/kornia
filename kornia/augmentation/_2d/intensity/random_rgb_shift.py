@@ -1,7 +1,8 @@
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.callbacks import AugmentationCallbackBase
 from kornia.core import Tensor
 from kornia.enhance import shift_rgb
 
@@ -20,6 +21,7 @@ class RandomRGBShift(IntensityAugmentationBase2D):
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
+        callbacks: add a list of callbacks.
 
     Note:
         Input tensor must be float and normalized into [0, 1].
@@ -81,8 +83,9 @@ class RandomRGBShift(IntensityAugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
+        callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
-        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(p=p, p_batch=1.0, same_on_batch=same_on_batch, keepdim=keepdim, callbacks=callbacks)
         self._param_generator = rg.PlainUniformGenerator(
             (r_shift_limit, "r_shift", 0, (-r_shift_limit, r_shift_limit)),
             (g_shift_limit, "g_shift", 0, (-g_shift_limit, g_shift_limit)),

@@ -1,8 +1,9 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.callbacks import AugmentationCallbackBase
 from kornia.core import Tensor
 
 
@@ -27,6 +28,7 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
+        callbacks: add a list of callbacks.
     Examples:
         >>> rng = torch.manual_seed(0)
         >>> img = torch.ones(1, 1, 2, 2)
@@ -42,9 +44,15 @@ class RandomGaussianNoise(IntensityAugmentationBase2D):
     """
 
     def __init__(
-        self, mean: float = 0.0, std: float = 1.0, same_on_batch: bool = False, p: float = 0.5, keepdim: bool = False
+        self,
+        mean: float = 0.0,
+        std: float = 1.0,
+        same_on_batch: bool = False,
+        p: float = 0.5,
+        keepdim: bool = False,
+        callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
-        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
+        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim, callbacks=callbacks)
         self.flags = {"mean": mean, "std": std}
 
     def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, Tensor]:

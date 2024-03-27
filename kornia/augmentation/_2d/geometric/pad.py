@@ -1,9 +1,10 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
-from torch import Tensor
 
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
+from kornia.augmentation.callbacks import AugmentationCallbackBase
+from kornia.core import Tensor
 
 
 class PadTo(GeometricAugmentationBase2D):
@@ -19,6 +20,7 @@ class PadTo(GeometricAugmentationBase2D):
         pad_value: fill value for 'constant' padding applied to the image
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
+        callbacks: add a list of callbacks.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -46,9 +48,14 @@ class PadTo(GeometricAugmentationBase2D):
     """
 
     def __init__(
-        self, size: Tuple[int, int], pad_mode: str = "constant", pad_value: float = 0, keepdim: bool = False
+        self,
+        size: Tuple[int, int],
+        pad_mode: str = "constant",
+        pad_value: float = 0,
+        keepdim: bool = False,
+        callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
-        super().__init__(p=1.0, same_on_batch=True, p_batch=1.0, keepdim=keepdim)
+        super().__init__(p=1.0, same_on_batch=True, p_batch=1.0, keepdim=keepdim, callbacks=callbacks)
         self.flags = {"size": size, "pad_mode": pad_mode, "pad_value": pad_value}
 
     # TODO: It is incorrect to return identity

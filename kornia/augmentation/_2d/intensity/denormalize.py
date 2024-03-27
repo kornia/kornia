@@ -4,6 +4,7 @@ import torch
 from torch import Tensor
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.callbacks import AugmentationCallbackBase
 from kornia.enhance import denormalize
 
 
@@ -22,6 +23,7 @@ class Denormalize(IntensityAugmentationBase2D):
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
+        callbacks: add a list of callbacks.
 
     Return:
         Denormalised tensor with same size as input :math:`(*, C, H, W)`.
@@ -44,8 +46,9 @@ class Denormalize(IntensityAugmentationBase2D):
         std: Union[Tensor, Tuple[float], List[float], float],
         p: float = 1.0,
         keepdim: bool = False,
+        callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
-        super().__init__(p=p, same_on_batch=True, keepdim=keepdim)
+        super().__init__(p=p, p_batch=1.0, same_on_batch=True, keepdim=keepdim, callbacks=callbacks)
         if isinstance(mean, float):
             mean = torch.tensor([mean])
 

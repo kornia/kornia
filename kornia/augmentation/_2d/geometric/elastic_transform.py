@@ -1,8 +1,9 @@
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
 from kornia.augmentation._2d.base import AugmentationBase2D
+from kornia.augmentation.callbacks import AugmentationCallbackBase
 from kornia.constants import Resample
 from kornia.core import Tensor
 from kornia.geometry.boxes import Boxes
@@ -27,6 +28,7 @@ class RandomElasticTransform(AugmentationBase2D):
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False).
+        callbacks: add a list of callbacks.
 
     .. note::
         This function internally uses :func:`kornia.geometry.transform.elastic_transform2d`.
@@ -56,8 +58,9 @@ class RandomElasticTransform(AugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
+        callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
-        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
+        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim, callbacks=callbacks)
 
         self.flags = {
             "kernel_size": kernel_size,

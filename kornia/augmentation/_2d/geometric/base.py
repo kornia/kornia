@@ -19,6 +19,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
+        callbacks: add a list of callbacks.
     """
 
     def inverse_transform(
@@ -144,6 +145,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             _size = params["forward_input_shape"].tolist()
             size = (_size[-2], _size[-1])
 
+        [cb.on_inverse_inputs_start(in_tensor, params, flags, transform) for cb in self.callbacks]
         # if no augmentation needed
         if not to_apply.any():
             output = in_tensor
@@ -157,6 +159,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
                 size=size,
                 flags=flags,
             )
+        [cb.on_inverse_inputs_end(output, params, flags, transform) for cb in self.callbacks]
         return output
 
     def inverse_masks(
@@ -171,9 +174,11 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         if "resample" in flags:
             resample_method = flags["resample"]
             flags["resample"] = Resample.get("nearest")
+        [cb.on_inverse_masks_start(input, params, flags, transform) for cb in self.callbacks]
         output = self.inverse_inputs(input, params, flags, transform, **kwargs)
         if resample_method is not None:
             flags["resample"] = resample_method
+        [cb.on_inverse_masks_end(output, params, flags, transform) for cb in self.callbacks]
         return output
 
     def inverse_boxes(
@@ -195,6 +200,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             self._params if params is None else params, flags, **kwargs
         )
 
+        [cb.on_inverse_boxes_start(input, params, flags, transform) for cb in self.callbacks]
         # if no augmentation needed
         if not to_apply.any():
             output = input
@@ -204,6 +210,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         else:
             output[to_apply] = input[to_apply].transform_boxes_(transform[to_apply])
 
+        [cb.on_inverse_boxes_end(output, params, flags, transform) for cb in self.callbacks]
         return output
 
     def inverse_keypoints(
@@ -233,6 +240,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             self._params if params is None else params, flags, **kwargs
         )
 
+        [cb.on_inverse_keypoints_start(input, params, flags, transform) for cb in self.callbacks]
         # if no augmentation needed
         if not to_apply.any():
             output = input
@@ -242,6 +250,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         else:
             output[to_apply] = input[to_apply].transform_keypoints_(transform[to_apply])
 
+        [cb.on_inverse_keypoints_end(output, params, flags, transform) for cb in self.callbacks]
         return output
 
     def inverse_classes(
@@ -252,6 +261,8 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         transform: Optional[Tensor] = None,
         **kwargs: Any,
     ) -> Tensor:
+        [cb.on_inverse_classes_start(input, params, flags, transform) for cb in self.callbacks]
+        [cb.on_inverse_classes_end(input, params, flags, transform) for cb in self.callbacks]
         return input
 
     def inverse(self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs: Any) -> Tensor:
@@ -275,9 +286,11 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         transform = self.get_transformation_matrix(in_tensor, params=params, flags=flags)
 
         transform = self.compute_inverse_transformation(transform)
+        [cb.on_inverse_start(input, params, flags, transform) for cb in self.callbacks]
         output = self.inverse_inputs(in_tensor, params, flags, transform)
 
         if self.keepdim:
-            return self.transform_output_tensor(output, input_shape)
+            output = self.transform_output_tensor(output, input_shape)
 
+        [cb.on_inverse_end(output, params, flags, transform) for cb in self.callbacks]
         return output

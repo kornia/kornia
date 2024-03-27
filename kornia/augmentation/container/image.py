@@ -4,6 +4,7 @@ import torch
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.callbacks import AugmentationCallbackBase
 from kornia.augmentation.utils import override_parameters
 from kornia.core import Module, Tensor, as_tensor
 from kornia.utils import eye_like
@@ -32,6 +33,7 @@ class ImageSequential(ImageSequentialBase):
             If False, the whole list of args will be processed as a sequence in original order.
         random_apply_weights: a list of selection weights for each operation. The length shall be as
             same as the number of operations. By default, operations are sampled uniformly.
+        callbacks: add a list of callbacks.
 
     .. note::
         Transformation matrix returned only considers the transformation applied in ``kornia.augmentation`` module.
@@ -85,8 +87,9 @@ class ImageSequential(ImageSequentialBase):
         random_apply: Union[int, bool, Tuple[int, int]] = False,
         random_apply_weights: Optional[List[float]] = None,
         if_unsupported_ops: str = "raise",
+        callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
-        super().__init__(*args, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(*args, same_on_batch=same_on_batch, keepdim=keepdim, callbacks=callbacks)
 
         self.random_apply = self._read_random_apply(random_apply, len(args))
         if random_apply_weights is not None and len(random_apply_weights) != len(self):

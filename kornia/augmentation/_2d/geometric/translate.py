@@ -1,7 +1,8 @@
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
+from kornia.augmentation.callbacks import AugmentationCallbackBase
 from kornia.constants import Resample, SamplePadding
 from kornia.core import Tensor, as_tensor, stack
 from kornia.geometry.transform import get_translation_matrix2d, warp_affine
@@ -23,6 +24,7 @@ class RandomTranslate(GeometricAugmentationBase2D):
         align_corners: interpolation flag.
         p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it to the batch form (False).
+        callbacks: add a list of callbacks.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
@@ -65,8 +67,9 @@ class RandomTranslate(GeometricAugmentationBase2D):
         padding_mode: Union[str, int, SamplePadding] = SamplePadding.ZEROS.name,
         p: float = 0.5,
         keepdim: bool = False,
+        callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
-        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
+        super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim, callbacks=callbacks)
         self._param_generator: rg.TranslateGenerator = rg.TranslateGenerator(translate_x, translate_y)
         self.flags = {
             "resample": Resample.get(resample),

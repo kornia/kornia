@@ -1,7 +1,8 @@
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
+from kornia.augmentation.callbacks import AugmentationCallbackBase
 from kornia.constants import Resample
 from kornia.core import Tensor
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
@@ -25,6 +26,7 @@ class CenterCrop(GeometricAugmentationBase2D):
                        on the sampled indices. ``resample`` will use `warp_affine` using the affine transformation
                        to extract and resize at once. Use `slice` for efficiency, or `resample` for proper
                        differentiability.
+        callbacks: add a list of callbacks.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -68,10 +70,11 @@ class CenterCrop(GeometricAugmentationBase2D):
         p: float = 1.0,
         keepdim: bool = False,
         cropping_mode: str = "slice",
+        callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
         # same_on_batch is always True for CenterCrop
         # Since PyTorch does not support ragged tensor. So cropping function happens batch-wisely.
-        super().__init__(p=1.0, same_on_batch=True, p_batch=p, keepdim=keepdim)
+        super().__init__(p=1.0, same_on_batch=True, p_batch=p, keepdim=keepdim, callbacks=callbacks)
         if isinstance(size, tuple):
             self.size = (size[0], size[1])
         elif isinstance(size, int):

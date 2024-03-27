@@ -1,9 +1,7 @@
 from typing import Any, Dict, Optional, Tuple
 
-from torch import Tensor
-
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
-from kornia.core import as_tensor, tensor
+from kornia.core import Tensor, as_tensor, tensor
 from kornia.geometry.transform import hflip
 
 
@@ -23,6 +21,7 @@ class RandomHorizontalFlip(GeometricAugmentationBase2D):
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
+        callbacks: add a list of callbacks.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`

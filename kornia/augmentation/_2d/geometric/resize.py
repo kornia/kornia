@@ -1,9 +1,10 @@
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
+from kornia.augmentation.callbacks import AugmentationCallbackBase
 from kornia.constants import Resample
 from kornia.core import Tensor
 from kornia.geometry.transform import crop_by_transform_mat, get_perspective_transform, resize
@@ -21,6 +22,7 @@ class Resize(GeometricAugmentationBase2D):
         antialias: if True, then image will be filtered with Gaussian before downscaling. No effect for upscaling.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False).
+        callbacks: add a list of callbacks.
     """
 
     def __init__(
@@ -32,8 +34,9 @@ class Resize(GeometricAugmentationBase2D):
         antialias: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
+        callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
-        super().__init__(p=1.0, same_on_batch=True, p_batch=p, keepdim=keepdim)
+        super().__init__(p=1.0, same_on_batch=True, p_batch=p, keepdim=keepdim, callbacks=callbacks)
         self._param_generator = rg.ResizeGenerator(resize_to=size, side=side)
         self.flags = {
             "size": size,

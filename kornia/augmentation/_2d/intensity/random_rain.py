@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 import torch
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
+from kornia.augmentation.callbacks import AugmentationCallbackBase
 from kornia.augmentation.random_generator._2d import RainGenerator
 from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK
@@ -18,6 +19,7 @@ class RandomRain(IntensityAugmentationBase2D):
         number_of_drops: number of drops per image
         drop_height: height of the drop in image(same for each drops in one image)
         drop_width: width of the drop in image(same for each drops in one image)
+        callbacks: add a list of callbacks.
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
         - Output: :math:`(B, C, H, W)`
@@ -42,8 +44,9 @@ class RandomRain(IntensityAugmentationBase2D):
         number_of_drops: tuple[int, int] = (1000, 2000),
         drop_height: tuple[int, int] = (5, 20),
         drop_width: tuple[int, int] = (-5, 5),
+        callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
-        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
+        super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim, callbacks=callbacks)
         self._param_generator = RainGenerator(number_of_drops, drop_height, drop_width)
 
     def apply_transform(

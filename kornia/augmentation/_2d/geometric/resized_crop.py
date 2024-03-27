@@ -1,7 +1,8 @@
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
+from kornia.augmentation.callbacks import AugmentationCallbackBase
 from kornia.constants import Resample
 from kornia.core import Tensor
 from kornia.geometry.transform import crop_by_indices, crop_by_transform_mat, get_perspective_transform
@@ -26,6 +27,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
                        on the sampled indices. ``resample`` will use `warp_affine` using the affine transformation
                        to extract and resize at once. Use `slice` for efficiency, or `resample` for proper
                        differentiability.
+        callbacks: add a list of callbacks.
 
     Shape:
         - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`, Optional: :math:`(B, 3, 3)`
@@ -70,9 +72,10 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         p: float = 1.0,
         keepdim: bool = False,
         cropping_mode: str = "slice",
+        callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
         # Since PyTorch does not support ragged tensor. So cropping function happens all the time.
-        super().__init__(p=1.0, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim)
+        super().__init__(p=1.0, same_on_batch=same_on_batch, p_batch=p, keepdim=keepdim, callbacks=callbacks)
         self._param_generator = rg.ResizedCropGenerator(size, scale, ratio)
         self.flags = {
             "size": size,
