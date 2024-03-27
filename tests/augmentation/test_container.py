@@ -524,7 +524,7 @@ class TestAugmentationSequential:
 
     @pytest.mark.parametrize("B", [None, 1, 3, 5])
     @pytest.mark.parametrize("C_i", [1, 3])
-    @pytest.mark.parametrize("C_m", [None, 1])
+    @pytest.mark.parametrize("C_m", [None, 1, 3, 4])
     @pytest.mark.parametrize("keepdim", [True, False])
     def test_masks_without_channel_dim(self, device, dtype, B, C_i, C_m, keepdim):
         img_shape = (B, C_i, 1000, 500) if B else (C_i, 1000, 500)
