@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional, Union
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.core import Tensor, stack, tensor
+from kornia.core.check import KORNIA_CHECK_SHAPE
 
 
 def get_planckian_coeffs(mode: str) -> Tensor:
@@ -157,6 +158,7 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         if select_from is not None:
             _pl = _pl[select_from]
         self.register_buffer("pl", _pl)
+        self.pl: Tensor
 
         # the range of the sampling parameters
         _param_min: float = 0.0
@@ -168,7 +170,8 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         list_idx = params["idx"].tolist()
-
+        KORNIA_CHECK_SHAPE(input, ["*", "3", "H", "W"])
+        self.pl = self.pl.to(device=input.device)
         coeffs = self.pl[list_idx]
 
         r_w = coeffs[:, 0][..., None, None]

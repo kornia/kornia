@@ -15,11 +15,11 @@ class RandomBrightness(IntensityAugmentationBase2D):
     .. image:: _static/img/RandomBrightness.png
 
     Args:
-        p: probability of applying the transformation.
         brightness: the brightness factor to apply
         clip_output: if true clip output
         silence_instantiation_warning: if True, silence the warning at instantiation.
         same_on_batch: apply the same transformation across the batch.
+        p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
     Shape:

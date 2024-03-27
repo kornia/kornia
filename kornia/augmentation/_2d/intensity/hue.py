@@ -16,9 +16,9 @@ class RandomHue(IntensityAugmentationBase2D):
     .. image:: _static/img/RandomHue.png
 
     Args:
-        p: probability of applying the transformation.
         hue: the saturation factor to apply.
         same_on_batch: apply the same transformation across the batch.
+        p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
     Shape:
