@@ -158,6 +158,7 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         if select_from is not None:
             _pl = _pl[select_from]
         self.register_buffer("pl", _pl)
+        self.pl: Tensor
 
         # the range of the sampling parameters
         _param_min: float = 0.0
