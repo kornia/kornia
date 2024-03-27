@@ -77,15 +77,11 @@ class _BasicAugmentationBase(Module):
 
     apply_transform: Callable[..., Tensor] = _apply_transform_unimplemented
 
-    def to(
-        self,
-        device: Optional[Union[str, torch.device]] = None,
-        dtype: Optional[torch.dtype] = None,
-    ) -> Module:
+    def to(self, *args: Any, **kwargs: Any) -> "_BasicAugmentationBase":
         r"""Set the device and dtype for the random number generator."""
+        device, dtype, _, _ = torch._C._nn._parse_to(*args, **kwargs)
         self.set_rng_device_and_dtype(device, dtype)
-        super().to(device, dtype)
-        return self
+        return super().to(*args, **kwargs)
 
     def __repr__(self) -> str:
         txt = f"p={self.p}, p_batch={self.p_batch}, same_on_batch={self.same_on_batch}"
