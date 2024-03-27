@@ -11,7 +11,6 @@ from kornia.augmentation.auto.rand_augment.rand_augment import default_policy as
 from kornia.augmentation.auto.trivial_augment import TrivialAugment
 from kornia.augmentation.container import AugmentationSequential
 from kornia.geometry.bbox import bbox_to_mask
-from kornia.utils._compat import torch_version
 
 from testing.base import BaseTester
 
@@ -112,10 +111,6 @@ class TestRandAugment(BaseTester):
         in_tensor = torch.rand(10, 3, 50, 50, requires_grad=True)
         aug(in_tensor)
 
-    @pytest.mark.xfail(
-        torch_version() in {"1.9.1", "1.10.2", "1.11.0", "1.12.1", "1.13.1"},
-        reason="randomness failing into some torch versions",
-    )
     def test_transform_mat(self, device, dtype):
         aug = RandAugment(n=3, m=15)
         in_tensor = torch.rand(10, 3, 50, 50, device=device, dtype=dtype, requires_grad=True)

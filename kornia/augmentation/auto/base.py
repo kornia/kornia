@@ -95,5 +95,22 @@ class PolicyAugmentBase(TransformMatrixMinIn, ImageSequentialBase):
         for param in params:
             module = self.get_submodule(param.name)
             input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
+        return input
+
+    def forward(
+        self, input: Tensor, params: Optional[List[ParamItem]] = None, extra_args: Dict[str, Any] = {}
+    ) -> Tensor:
+        self.clear_state()
+
+        if params is None:
+            inp = input
+            _, out_shape = self.autofill_dim(inp, dim_range=(2, 4))
+            params = self.forward_parameters(out_shape)
+
+        for param in params:
+            module = self.get_submodule(param.name)
+            input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
             self._update_transform_matrix_by_module(module)
+
+        self._params = params
         return input
