@@ -1,0 +1,33 @@
+FROM pytorch/pytorch:2.2.1-cuda12.1-cudnn8-runtime
+
+# This allow us to setup the benchmark parameters from env vars
+ENV BACKENDS='eager,inductor'
+ENV OPTS=''
+
+# Setup make and gcc
+RUN DEBIAN_FRONTEND=noninteractive apt update && \
+    DEBIAN_FRONTEND=noninteractive apt install make g++ -y
+
+# Setup Kornia dev mode
+WORKDIR /tmp/kornia-lib/
+COPY kornia/ kornia/
+COPY pyproject.toml ./
+COPY requirements/ requirements/
+
+RUN pip install .[dev,x]
+
+# Setup benchmarks
+WORKDIR /kornia-benchmarks/
+COPY benchmarks/ benchmarks/
+COPY Makefile ./
+COPY conftest.py ./
+
+# Cleanup
+RUN rm -rf /tmp/kornia-lib/
+RUN DEBIAN_FRONTEND=noninteractive apt autopurge -y
+RUN DEBIAN_FRONTEND=noninteractive apt autoclean -y
+RUN DEBIAN_FRONTEND=noninteractive apt autoremove -y
+RUN rm -rf /var/lib/apt/lists/*
+
+# CMD
+CMD ["make", "benchmark", "BENCHMARK_BACKENDS=$(BACKENDS)", "BENCHMARK_OPTS=$(OPTS)"]

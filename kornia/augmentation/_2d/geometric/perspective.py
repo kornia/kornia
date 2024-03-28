@@ -13,11 +13,11 @@ class RandomPerspective(GeometricAugmentationBase2D):
     .. image:: _static/img/RandomPerspective.png
 
     Args:
-        p: probability of the image being perspectively transformed.
         distortion_scale: the degree of distortion, ranged from 0 to 1.
         resample: the interpolation method to use.
         same_on_batch: apply the same transformation across the batch. Default: False.
         align_corners: interpolation flag.
+        p: probability of the image being perspectively transformed.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
         sampling_method: ``'basic'`` | ``'area_preserving'``. Default: ``'basic'``

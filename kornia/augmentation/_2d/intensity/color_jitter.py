@@ -22,13 +22,13 @@ class ColorJitter(IntensityAugmentationBase2D):
     .. image:: _static/img/ColorJitter.png
 
     Args:
-        p: probability of applying the transformation.
         brightness: The brightness factor to apply.
         contrast: The contrast factor to apply.
         saturation: The saturation factor to apply.
         hue: The hue factor to apply.
         silence_instantiation_warning: if True, silence the warning at instantiation.
         same_on_batch: apply the same transformation across the batch.
+        p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
     Shape:

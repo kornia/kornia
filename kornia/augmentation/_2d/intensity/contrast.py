@@ -15,10 +15,10 @@ class RandomContrast(IntensityAugmentationBase2D):
     .. image:: _static/img/RandomContrast.png
 
     Args:
-        p: probability of applying the transformation.
         contrast: the contrast factor to apply.
         clip_output: if true clip output.
         same_on_batch: apply the same transformation across the batch.
+        p: probability of applying the transformation.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
                  to the batch form (False).
     Shape:
