@@ -67,7 +67,8 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
 
         KORNIA_CHECK_TYPE(fill_value, float, f"`fill_value` must be a float. Got: {type(fill_value)}")
         KORNIA_CHECK(
-            0.0 <= fill_value <= 1.0, f"Invalid value in `fill_value`. Must be a float bewteen 0 and 1. Got: {fill_value}"
+            0.0 <= fill_value <= 1.0,
+            f"Invalid value in `fill_value`. Must be a float bewteen 0 and 1. Got: {fill_value}",
         )
         self.fill_value = tensor(fill_value)
 
