@@ -3555,7 +3555,7 @@ class TestRandomChannelDropout(BaseTester):
 
         fill_value = 2.0
         with pytest.raises(
-            Exception, match=f"Invalid value in `fill_value`. Must be a float bewteen 0 and 1. Got: {fill_value}"
+            Exception, match=f"Invalid value in `fill_value`. Must be a float between 0 and 1. Got: {fill_value}"
         ):
             RandomChannelDropout(fill_value=fill_value)
 
