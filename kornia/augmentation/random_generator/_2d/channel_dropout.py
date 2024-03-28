@@ -47,10 +47,10 @@ class ChannelDropoutGenerator(RandomGeneratorBase):
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = self.device, self.dtype
 
-        batch_idx = torch.arange(batch_size, device=_device, dtype=torch.int32).reshape(batch_size, 1)
+        batch_idx = torch.arange(batch_size, device=_device, dtype=torch.long).reshape(batch_size, 1)
         channel_idx = torch.argsort(
             _adapted_rsampling((batch_size, channels), self.drop_sampler, same_on_batch), dim=1
-        )[:, : self.num_drop_channels].to(torch.int32)
+        )[:, : self.num_drop_channels].to(torch.long)
 
         return {
             "batch_idx": batch_idx,

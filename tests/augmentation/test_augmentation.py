@@ -3538,12 +3538,20 @@ class TestRandomChannelDropout(BaseTester):
         with pytest.raises(TypeError, match=f"`num_drop_channels` must be an int. Got: {type(num_drop_channels)}"):
             RandomChannelDropout(num_drop_channels=num_drop_channels)
 
-        num_drop_channels = 5
+        num_drop_channels = 0
         with pytest.raises(
             Exception,
-            match=f"Invalid value in `num_drop_channels`. Must be an int bewteen 1 and 3. Got: {num_drop_channels}",
+            match=f"Invalid value in `num_drop_channels`. Must be an int greater than 1. Got: {num_drop_channels}",
         ):
             RandomChannelDropout(num_drop_channels=num_drop_channels)
+
+        num_drop_channels = 5
+        input_tensor = torch.ones(1, 3, 3, 3, device=device, dtype=dtype)
+        with pytest.raises(
+            Exception,
+            match="Invalid value in `num_drop_channels`. Cannot be greater than the number of channels of `input`.",
+        ):
+            RandomChannelDropout(num_drop_channels=num_drop_channels, p=1.0)(input_tensor)
 
         fill_value = 2.0
         with pytest.raises(
@@ -3555,9 +3563,9 @@ class TestRandomChannelDropout(BaseTester):
         with pytest.raises(TypeError, match=f"`fill_value` must be a float. Got: {type(fill_value)}"):
             RandomChannelDropout(fill_value=fill_value)
 
-    @pytest.mark.parametrize("channel_shape, batch_shape", [(3, 1), (3, 2), (3, 5)])
+    @pytest.mark.parametrize("channel_shape, batch_shape", [(3, 1), (1, 1), (5, 5)])
     def test_cardinality(self, batch_shape, channel_shape, device, dtype):
-        input_tensor = torch.ones(batch_shape, channel_shape, 16, 16, device=device, dtype=dtype)
+        input_tensor = torch.ones(batch_shape, channel_shape, 5, 5, device=device, dtype=dtype)
         transform = RandomChannelDropout(p=1.0)
         output_tensor = transform(input_tensor)
         assert input_tensor.shape[0] == output_tensor.shape[0]

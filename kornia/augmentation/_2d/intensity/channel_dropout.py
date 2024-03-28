@@ -20,8 +20,8 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
             to the batch form ``False``. Defaults to False.
 
     Shape:
-        - Input: :math:`(3, H, W)` or :math:`(B, 3, H, W)`
-        - Output: :math:`(3, H, W)` or :math:`(B, 3, H, W)`
+        - Input: :math:`(C, H, W)` or :math:`(B, C, H, W)`
+        - Output: :math:`(C, H, W)` or :math:`(B, C, H, W)`
 
     .. note::
         If `num_drop_channels` is set to 1, it means that for each image in the batch,
@@ -73,8 +73,8 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
 
         KORNIA_CHECK_TYPE(num_drop_channels, int, f"`num_drop_channels` must be an int. Got: {type(num_drop_channels)}")
         KORNIA_CHECK(
-            1 <= num_drop_channels <= 3,
-            f"Invalid value in `num_drop_channels`. Must be an int bewteen 1 and 3. Got: {num_drop_channels}",
+            num_drop_channels >= 1,
+            f"Invalid value in `num_drop_channels`. Must be an int greater than 1. Got: {num_drop_channels}",
         )
         self.num_drop_channels = num_drop_channels
         # Generator of random parameters.
@@ -83,7 +83,11 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        KORNIA_CHECK_SHAPE(input, ["B", "3", "H", "W"])
+        KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
+        KORNIA_CHECK(
+            self.num_drop_channels <= input.shape[1],
+            "Invalid value in `num_drop_channels`. Cannot be greater than the number of channels of `input`.",
+        )
 
         out = input.clone()
         out[params["batch_idx"], params["channel_idx"], ...] = self.fill_value.to(
