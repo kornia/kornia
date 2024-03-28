@@ -16,6 +16,7 @@ Intensity
 .. autoclass:: RandomAutoContrast
 .. autoclass:: RandomBoxBlur
 .. autoclass:: RandomBrightness
+.. autoclass:: RandomChannelDropout
 .. autoclass:: RandomChannelShuffle
 .. autoclass:: RandomClahe
 .. autoclass:: RandomContrast

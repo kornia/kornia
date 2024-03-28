@@ -9,6 +9,7 @@ from kornia.augmentation import (
     RandomAutoContrast,
     RandomBoxBlur,
     RandomBrightness,
+    RandomChannelDropout,
     RandomChannelShuffle,
     RandomClahe,
     RandomContrast,
@@ -95,6 +96,16 @@ def test_aug_2d_box_blur(benchmark, device, dtype, torch_optimizer, shape):
 def test_aug_2d_brightness(benchmark, device, dtype, torch_optimizer, shape):
     data = torch.rand(*shape, device=device, dtype=dtype)
     aug = RandomBrightness((0.1, 1), p=1.0)
+    op = torch_optimizer(aug)
+
+    actual = benchmark(op, input=data)
+
+    assert actual.shape == shape
+
+
+def test_aug_2d_channel_dropout(benchmark, device, dtype, torch_optimizer, shape):
+    data = torch.rand(*shape, device=device, dtype=dtype)
+    aug = RandomChannelDropout(p=1.0)
     op = torch_optimizer(aug)
 
     actual = benchmark(op, input=data)
