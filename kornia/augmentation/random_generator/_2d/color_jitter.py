@@ -1,4 +1,4 @@
-from functools import partial
+import random
 from typing import Dict, List, Tuple, Union
 
 import torch
@@ -58,6 +58,7 @@ class ColorJitterGenerator(RandomGeneratorBase):
         self.contrast = contrast
         self.saturation = saturation
         self.hue = hue
+        self.randperm_list: List[int] = [0, 1, 2, 3]
 
     def __repr__(self) -> str:
         return f"brightness={self.brightness}, contrast={self.contrast}, saturation={self.saturation}, hue={self.hue}"
@@ -77,7 +78,6 @@ class ColorJitterGenerator(RandomGeneratorBase):
         self.contrast_sampler = UniformDistribution(contrast[0], contrast[1], validate_args=False)
         self.hue_sampler = UniformDistribution(hue[0], hue[1], validate_args=False)
         self.saturation_sampler = UniformDistribution(saturation[0], saturation[1], validate_args=False)
-        self.randperm = partial(torch.randperm, device=device, dtype=dtype)
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
@@ -85,10 +85,14 @@ class ColorJitterGenerator(RandomGeneratorBase):
         contrast_factor = _adapted_rsampling((batch_size,), self.contrast_sampler, same_on_batch)
         hue_factor = _adapted_rsampling((batch_size,), self.hue_sampler, same_on_batch)
         saturation_factor = _adapted_rsampling((batch_size,), self.saturation_sampler, same_on_batch)
+
+        # perform random permutation of the order of the color adjustments
+        random.shuffle(self.randperm_list)
+
         return {
             "brightness_factor": brightness_factor,
             "contrast_factor": contrast_factor,
             "hue_factor": hue_factor,
             "saturation_factor": saturation_factor,
-            "order": self.randperm(4, dtype=torch.long),
+            "order": self.randperm_list,
         }

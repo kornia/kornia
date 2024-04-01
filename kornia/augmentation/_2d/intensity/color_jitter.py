@@ -85,23 +85,33 @@ class ColorJitter(IntensityAugmentationBase2D):
         self._param_generator = rg.ColorJitterGenerator(brightness, contrast, saturation, hue)
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self,
+        input: Tensor,
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[Tensor] = None,
     ) -> Tensor:
         transforms = [
-            lambda img: adjust_brightness_accumulative(img, params["brightness_factor"])
-            if (params["brightness_factor"] != 0).any()
-            else img,
-            lambda img: adjust_contrast_with_mean_subtraction(img, params["contrast_factor"])
-            if (params["contrast_factor"] != 1).any()
-            else img,
-            lambda img: adjust_saturation_with_gray_subtraction(img, params["saturation_factor"])
-            if (params["saturation_factor"] != 1).any()
-            else img,
-            lambda img: adjust_hue(img, params["hue_factor"] * 2 * pi) if (params["hue_factor"] != 0).any() else img,
+            lambda img: (
+                adjust_brightness_accumulative(img, params["brightness_factor"])
+                if (params["brightness_factor"] != 0).any()
+                else img
+            ),
+            lambda img: (
+                adjust_contrast_with_mean_subtraction(img, params["contrast_factor"])
+                if (params["contrast_factor"] != 1).any()
+                else img
+            ),
+            lambda img: (
+                adjust_saturation_with_gray_subtraction(img, params["saturation_factor"])
+                if (params["saturation_factor"] != 1).any()
+                else img
+            ),
+            lambda img: (adjust_hue(img, params["hue_factor"] * 2 * pi) if (params["hue_factor"] != 0).any() else img),
         ]
 
         jittered = input
-        for idx in params["order"].tolist():
+        for idx in params["order"]:
             t = transforms[idx]
             jittered = t(jittered)
 
