@@ -1,5 +1,7 @@
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import torch
+
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.constants import pi
@@ -84,6 +86,11 @@ class ColorJitter(IntensityAugmentationBase2D):
         self.hue = hue
         self._param_generator = rg.ColorJitterGenerator(brightness, contrast, saturation, hue)
 
+        self.brightness_fn = torch.compile(adjust_brightness_accumulative, fullgraph=True)
+        self.contrast_fn = torch.compile(adjust_contrast_with_mean_subtraction, fullgraph=True)
+        self.saturation_fn = torch.compile(adjust_saturation_with_gray_subtraction, fullgraph=True)
+        self.hue_fn = torch.compile(adjust_hue, fullgraph=True)
+
     def apply_transform(
         self,
         input: Tensor,
@@ -93,21 +100,19 @@ class ColorJitter(IntensityAugmentationBase2D):
     ) -> Tensor:
         transforms = [
             lambda img: (
-                adjust_brightness_accumulative(img, params["brightness_factor"])
+                self.brightness_fn(img, params["brightness_factor"])
                 if (params["brightness_factor"] != 0).any()
                 else img
             ),
             lambda img: (
-                adjust_contrast_with_mean_subtraction(img, params["contrast_factor"])
-                if (params["contrast_factor"] != 1).any()
-                else img
+                self.contrast_fn(img, params["contrast_factor"]) if (params["contrast_factor"] != 1).any() else img
             ),
             lambda img: (
-                adjust_saturation_with_gray_subtraction(img, params["saturation_factor"])
+                self.saturation_fn(img, params["saturation_factor"])
                 if (params["saturation_factor"] != 1).any()
                 else img
             ),
-            lambda img: (adjust_hue(img, params["hue_factor"] * 2 * pi) if (params["hue_factor"] != 0).any() else img),
+            lambda img: (self.hue_fn(img, params["hue_factor"] * 2 * pi) if (params["hue_factor"] != 0).any() else img),
         ]
 
         jittered = input
