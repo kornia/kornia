@@ -81,3 +81,64 @@ def load_pointcloud_ply(filename: str, header_size: int = 8) -> torch.Tensor:
         # create tensor from list
         pointcloud: torch.Tensor = torch.tensor(points)
         return pointcloud
+
+
+def iterative_closest_point(
+    points_in_a: torch.Tensor, points_in_b: torch.Tensor, max_iterations: int = 20, tolerance: float = 1e-4
+) -> torch.Tensor:
+    """Compute the relative transformation between two point clouds.
+
+    The resulting transformation uses the iterative closest point algorithm to satisfy:
+
+        points_in_b = b_from_a @ points_in_a
+
+    Args:
+        points_in_a: The point cloud in the source coordinates frame A  with shape Nx3
+        points_in_b:  The point cloud in the source coordinates frame A with shape Nx
+        max_iterations (int): Maximum number of iterations to run.
+        tolerance (float): Tolerance criteria for stopping.
+
+     Return:
+        The relative transformation between the two pointcloud with shape 3x4
+    """
+
+    src = points_in_a.clone()
+    dst = points_in_b.clone()
+    prev_error = 0
+
+    for iter in range(max_iterations):
+        distances = torch.cdist(points_in_a, points_in_b)
+        min_idx = torch.argmin(distances, dim=1)
+
+        points_in_b = points_in_b[min_idx]
+
+        a_mean = torch.mean(points_in_a, dim=0)
+        b_mean = torch.mean(points_in_b, dim=0)
+
+        a_center = points_in_a - a_mean
+        b_center = points_in_b - b_mean
+
+        H = a_center.T @ b_center
+
+        U, S, Vt = torch.linalg.svd(H)
+
+        R = U.T @ Vt.T
+
+        if torch.det(R) < 0:
+            Vt[-1, :] *= -1
+            R = U.T @ Vt.T
+
+        t = b_mean.T - R @ a_mean.T
+
+        points_in_a = (points_in_a.T @ R + t.unsqueeze(-1)).T
+
+        mean_error = torch.mean(torch.norm(src - dst[min_idx], dim=1))
+
+        if torch.abs(prev_error - mean_error) < tolerance:
+            break
+        prev_error = mean_error
+        print(mean_error, iter)
+
+    # print(points_in_a)
+
+    return 0
