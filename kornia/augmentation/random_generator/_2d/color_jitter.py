@@ -3,10 +3,16 @@ from typing import Dict, List, Tuple, Union
 
 import torch
 
-from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
-from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _joint_range_check, _range_bound
+from kornia.augmentation.random_generator.base import (
+    RandomGeneratorBase,
+    UniformDistribution,
+)
+from kornia.augmentation.utils import (
+    _adapted_rsampling,
+    _joint_range_check,
+    _range_bound,
+)
 from kornia.core import Tensor
-from kornia.utils.helpers import _extract_device_dtype
 
 __all__ = ["ColorJitterGenerator"]
 
@@ -75,16 +81,14 @@ class ColorJitterGenerator(RandomGeneratorBase):
 
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
-        _common_param_check(batch_size, same_on_batch)
-        _device, _dtype = _extract_device_dtype([self.brightness, self.contrast, self.hue, self.saturation])
         brightness_factor = _adapted_rsampling((batch_size,), self.brightness_sampler, same_on_batch)
         contrast_factor = _adapted_rsampling((batch_size,), self.contrast_sampler, same_on_batch)
         hue_factor = _adapted_rsampling((batch_size,), self.hue_sampler, same_on_batch)
         saturation_factor = _adapted_rsampling((batch_size,), self.saturation_sampler, same_on_batch)
         return {
-            "brightness_factor": brightness_factor.to(device=_device, dtype=_dtype),
-            "contrast_factor": contrast_factor.to(device=_device, dtype=_dtype),
-            "hue_factor": hue_factor.to(device=_device, dtype=_dtype),
-            "saturation_factor": saturation_factor.to(device=_device, dtype=_dtype),
-            "order": self.randperm(4).to(device=_device, dtype=_dtype).long(),
+            "brightness_factor": brightness_factor,
+            "contrast_factor": contrast_factor,
+            "hue_factor": hue_factor,
+            "saturation_factor": saturation_factor,
+            "order": self.randperm(4, dtype=torch.long),
         }
