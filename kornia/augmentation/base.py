@@ -2,6 +2,7 @@ from enum import Enum
 from typing import Any, Callable, Dict, Optional, Tuple, Union
 
 import torch
+from functorch.experimental.control_flow import cond
 from torch.distributions import Bernoulli, Distribution, RelaxedBernoulli
 
 from kornia.augmentation.random_generator import RandomGeneratorBase
@@ -131,37 +132,88 @@ class _BasicAugmentationBase(Module):
         if self._param_generator is not None:
             self._param_generator.set_rng_device_and_dtype(device, dtype)
 
-    def __batch_prob_generator__(
-        self,
-        batch_shape: Tuple[int, ...],
-        p: float,
-        p_batch: float,
-        same_on_batch: bool,
-    ) -> Tensor:
-        batch_prob: Tensor
-        if p_batch == 1:
-            batch_prob = zeros(1) + 1
-        elif p_batch == 0:
-            batch_prob = zeros(1)
-        elif isinstance(self._p_batch_gen, (RelaxedBernoulli,)):
-            # NOTE: there is no simple way to know if the sampler has `rsample` or not
-            batch_prob = _adapted_rsampling((1,), self._p_batch_gen, same_on_batch)
-        else:
-            batch_prob = _adapted_sampling((1,), self._p_batch_gen, same_on_batch)
+    # def __batch_prob_generator__(
+    #    self,
+    #    batch_shape: Tuple[int, ...],
+    #    p: float,
+    #    p_batch: float,
+    #    same_on_batch: bool,
+    # ) -> Tensor:
+    #    # breakpoint()
+    #    batch_prob: Tensor
+    #    if p_batch == 1.0:
+    #        batch_prob = zeros(1) + 1
+    #    elif p_batch == 0:
+    #        batch_prob = zeros(1)
+    #    elif isinstance(self._p_batch_gen, (RelaxedBernoulli,)):
+    #        # NOTE: there is no simple way to know if the sampler has `rsample` or not
+    #        batch_prob = _adapted_rsampling((1,), self._p_batch_gen, same_on_batch)
+    #    else:
+    #        batch_prob = _adapted_sampling((1,), self._p_batch_gen, same_on_batch)
 
-        if batch_prob.sum() == 1:
-            elem_prob: Tensor
-            if p == 1:
-                elem_prob = zeros(batch_shape[0]) + 1
-            elif p == 0:
-                elem_prob = zeros(batch_shape[0])
-            elif isinstance(self._p_gen, (RelaxedBernoulli,)):
-                elem_prob = _adapted_rsampling((batch_shape[0],), self._p_gen, same_on_batch)
+    #    if batch_prob.sum() == 1.0:
+    #        elem_prob: Tensor
+    #        if p == 1:
+    #            elem_prob = zeros(batch_shape[0]) + 1
+    #        elif p == 0:
+    #            elem_prob = zeros(batch_shape[0])
+    #        elif isinstance(self._p_gen, (RelaxedBernoulli,)):
+    #            elem_prob = _adapted_rsampling(
+    #                (batch_shape[0],), self._p_gen, same_on_batch
+    #            )
+    #        else:
+    #            elem_prob = _adapted_sampling(
+    #                (batch_shape[0],), self._p_gen, same_on_batch
+    #            )
+    #        batch_prob = batch_prob * elem_prob
+    #    else:
+    #        batch_prob = batch_prob.repeat(batch_shape[0])
+    #    if len(batch_prob.shape) == 2:
+    #        return batch_prob[..., 0]
+    #    return batch_prob
+
+    def __batch_prob_generator__(self, batch_shape: tuple, p: float, p_batch: float, same_on_batch: bool) -> Tensor:
+        def batch_prob_one():
+            return zeros(1) + 1
+
+        def batch_prob_zero():
+            return zeros(1)
+
+        def batch_prob_else():
+            if isinstance(self._p_batch_gen, RelaxedBernoulli):
+                return _adapted_rsampling((1,), self._p_batch_gen, same_on_batch)
             else:
-                elem_prob = _adapted_sampling((batch_shape[0],), self._p_gen, same_on_batch)
-            batch_prob = batch_prob * elem_prob
-        else:
-            batch_prob = batch_prob.repeat(batch_shape[0])
+                return _adapted_sampling((1,), self._p_batch_gen, same_on_batch)
+
+        # Conditional logic for batch_prob
+        batch_prob = cond(
+            p_batch == 1.0,
+            lambda: batch_prob_one(),
+            lambda: cond(p_batch == 0, lambda: batch_prob_zero(), lambda: batch_prob_else(), ()),
+            (),
+        )
+
+        # Assumed implementation details for elem_prob
+        def elem_prob_cond():
+            if p == 1:
+                return zeros(batch_shape[0]) + 1
+            elif p == 0:
+                return zeros(batch_shape[0])
+            elif isinstance(self._p_gen, RelaxedBernoulli):
+                return _adapted_rsampling(batch_shape, self._p_gen, same_on_batch)
+            else:
+                return _adapted_sampling(batch_shape, self._p_gen, same_on_batch)
+
+        def update_batch_prob():
+            elem_prob = elem_prob_cond()
+            return batch_prob * elem_prob
+
+        def repeat_batch_prob():
+            return batch_prob.repeat(batch_shape[0])
+
+        # Applying cond to the main conditional logic
+        batch_prob = cond(batch_prob.sum() == 1.0, update_batch_prob, repeat_batch_prob, ())
+
         if len(batch_prob.shape) == 2:
             return batch_prob[..., 0]
         return batch_prob
@@ -178,20 +230,25 @@ class _BasicAugmentationBase(Module):
         params = self._params if params is None else params
         flags = self.flags if flags is None else flags
 
-        if save_kwargs:
-            params = override_parameters(params, kwargs, in_place=True)
-            self._params = params
-        else:
-            self._params = params
-            params = override_parameters(params, kwargs, in_place=False)
+        # TODO: fix this
+        # if save_kwargs:
+        #    params = override_parameters(params, kwargs, in_place=True)
+        #    self._params = params
+        # else:
+        #    self._params = params
+        #    params = override_parameters(params, kwargs, in_place=False)
 
         flags = override_parameters(flags, kwargs, in_place=False)
         return params, flags
 
     def forward_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, Tensor]:
         batch_prob = self.__batch_prob_generator__(batch_shape, self.p, self.p_batch, self.same_on_batch)
+        # breakpoint()
         to_apply = batch_prob > 0.5
-        _params = self.generate_parameters(torch.Size((int(to_apply.sum().item()), *batch_shape[1:])))
+        _params = self.generate_parameters(
+            # torch.Size((int(to_apply.sum().item()), *batch_shape[1:]))
+            batch_prob.shape
+        )
         if _params is None:
             _params = {}
         _params["batch_prob"] = batch_prob

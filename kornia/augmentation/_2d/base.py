@@ -1,13 +1,18 @@
 from typing import Any, Dict, Optional
 
+import torch
 from torch import float16, float32, float64
 
 from kornia.augmentation.base import _AugmentationBase
-from kornia.augmentation.utils import _transform_input, _transform_input_by_shape, _validate_input_dtype
+from kornia.augmentation.utils import (
+    _transform_input,
+    _transform_input_by_shape,
+    _validate_input_dtype,
+)
 from kornia.core import Tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
-from kornia.utils import eye_like, is_autocast_enabled
+from kornia.utils import eye_like
 
 
 class AugmentationBase2D(_AugmentationBase):
@@ -33,7 +38,13 @@ class AugmentationBase2D(_AugmentationBase):
         if len(input.shape) != 4:
             raise RuntimeError(f"Expect (B, C, H, W). Got {input.shape}.")
 
-    def transform_tensor(self, input: Tensor, *, shape: Optional[Tensor] = None, match_channel: bool = True) -> Tensor:
+    def transform_tensor(
+        self,
+        input: Tensor,
+        *,
+        shape: Optional[Tensor] = None,
+        match_channel: bool = True,
+    ) -> Tensor:
         """Convert any incoming (H, W), (C, H, W) and (B, C, H, W) into (B, C, H, W)."""
         _validate_input_dtype(input, accepted_dtypes=[float16, float32, float64])
 
@@ -72,55 +83,118 @@ class RigidAffineAugmentationBase2D(AugmentationBase2D):
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         raise NotImplementedError
 
+    # def generate_transformation_matrix(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    #    """Generate transformation matrices with the given input and param settings."""
+    #    batch_prob = params["batch_prob"]
+    #    to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
+
+    #    in_tensor = self.transform_tensor(input)
+    #    if not to_apply.any():
+    #        trans_matrix = self.identity_matrix(in_tensor)
+    #    elif to_apply.all():
+    #        trans_matrix = self.compute_transformation(in_tensor, params=params, flags=flags)
+    #    else:
+    #        trans_matrix_A = self.identity_matrix(in_tensor)
+    #        trans_matrix_B = self.compute_transformation(in_tensor[to_apply], params=params, flags=flags)
+
+    #        if is_autocast_enabled():
+    #            trans_matrix_A = trans_matrix_A.type(input.dtype)
+    #            trans_matrix_B = trans_matrix_B.type(input.dtype)
+
+    #        trans_matrix = trans_matrix_A.index_put((to_apply,), trans_matrix_B)
+
+    #    return trans_matrix
+
     def generate_transformation_matrix(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
-        """Generate transformation matrices with the given input and param settings."""
         batch_prob = params["batch_prob"]
-        to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
+        to_apply = batch_prob > 0.5
 
-        in_tensor = self.transform_tensor(input)
-        if not to_apply.any():
-            trans_matrix = self.identity_matrix(in_tensor)
-        elif to_apply.all():
-            trans_matrix = self.compute_transformation(in_tensor, params=params, flags=flags)
-        else:
-            trans_matrix_A = self.identity_matrix(in_tensor)
-            trans_matrix_B = self.compute_transformation(in_tensor[to_apply], params=params, flags=flags)
+        # Define callable functions for the true and false branches without direct arguments
+        def true_branch():
+            # Handles the case where all elements should apply the transformation
+            return self.compute_transformation(input, params=params, flags=flags)
 
-            if is_autocast_enabled():
-                trans_matrix_A = trans_matrix_A.type(input.dtype)
-                trans_matrix_B = trans_matrix_B.type(input.dtype)
+        def false_branch():
+            # Handles the case where none of the elements apply the transformation
+            return self.identity_matrix(input)
 
-            trans_matrix = trans_matrix_A.index_put((to_apply,), trans_matrix_B)
+        def mixed_branch():
+            # Handles the mixed case with a custom approach
+            trans_matrix_A = self.identity_matrix(input)
+            # Only apply transformation to parts of the input as per `to_apply`
+            trans_matrix_B = self.compute_transformation(input[to_apply], params=params, flags=flags)
+            # if is_autocast_enabled():
+            #    trans_matrix_A = trans_matrix_A.type(input.dtype)
+            #    trans_matrix_B = trans_matrix_B.type(input.dtype)
+            # Assuming trans_matrix_A and B are batch-wise and index_put_ can be used here.
+            trans_matrix_A.index_put_((to_apply,), trans_matrix_B)
+            return trans_matrix_A
+
+        # Decide which branch to execute based on the conditions
+        # if to_apply.all():
+        #    trans_matrix = true_branch()
+        # elif not to_apply.any():
+        #    trans_matrix = false_branch()
+        # else:
+        #    trans_matrix = mixed_branch()
+        trans_matrix = torch.where(
+            to_apply.all(),
+            true_branch(),
+            torch.where(not to_apply.any(), false_branch(), mixed_branch()),
+        )
 
         return trans_matrix
 
     def inverse_inputs(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self,
+        input: Tensor,
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[Tensor] = None,
     ) -> Tensor:
         raise NotImplementedError
 
     def inverse_masks(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self,
+        input: Tensor,
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[Tensor] = None,
     ) -> Tensor:
         raise NotImplementedError
 
     def inverse_boxes(
-        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self,
+        input: Boxes,
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[Tensor] = None,
     ) -> Boxes:
         raise NotImplementedError
 
     def inverse_keypoints(
-        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self,
+        input: Keypoints,
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[Tensor] = None,
     ) -> Keypoints:
         raise NotImplementedError
 
     def inverse_classes(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self,
+        input: Tensor,
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[Tensor] = None,
     ) -> Tensor:
         raise NotImplementedError
 
     def apply_func(
-        self, in_tensor: Tensor, params: Dict[str, Tensor], flags: Optional[Dict[str, Any]] = None
+        self,
+        in_tensor: Tensor,
+        params: Dict[str, Tensor],
+        flags: Optional[Dict[str, Any]] = None,
     ) -> Tensor:
         if flags is None:
             flags = self.flags
