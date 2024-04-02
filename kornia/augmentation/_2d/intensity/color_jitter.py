@@ -132,7 +132,7 @@ class ColorJitter(IntensityAugmentationBase2D):
         mode: Optional[str] = None,
         options: Optional[Dict[Any, Any]] = None,
         disable: bool = False,
-    ) -> None:
+    ) -> "ColorJitter":
         self.brightness_fn = torch.compile(
             self.brightness_fn,
             fullgraph=fullgraph,

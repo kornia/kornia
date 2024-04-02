@@ -89,5 +89,5 @@ class ColorJitterGenerator(RandomGeneratorBase):
             "contrast_factor": contrast_factor,
             "hue_factor": hue_factor,
             "saturation_factor": saturation_factor,
-            "order": torch.randperm(4).tolist(),
+            "order": torch.randperm(4, dtype=torch.long),
         }

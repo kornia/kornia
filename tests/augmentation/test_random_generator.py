@@ -355,7 +355,7 @@ class TestColorJiggleGen(RandomGeneratorBaseTests):
             atol=1e-4,
         )
         assert_close(
-            jitter_params["order"].to(dtype),
+            jitter_params["order"],
             expected_res["order"],
             rtol=1e-4,
             atol=1e-4,
@@ -520,7 +520,7 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
         )
         assert_close(
             jitter_params["order"],
-            expected_jitter_params["order"].tolist(),
+            expected_jitter_params["order"],
             rtol=1e-4,
             atol=1e-4,
         )
@@ -540,7 +540,7 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
             "contrast_factor": torch.tensor([1.2490] * batch_size, device=device, dtype=dtype),
             "hue_factor": torch.tensor([-0.0234] * batch_size, device=device, dtype=dtype),
             "saturation_factor": torch.tensor([1.3674] * batch_size, device=device, dtype=dtype),
-            "order": torch.tensor([2, 3, 0, 1], device=device, dtype=dtype),
+            "order": torch.tensor([2, 3, 0, 1], device=device, dtype=torch.long),
         }
 
         assert_close(
@@ -569,7 +569,7 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
         )
         assert_close(
             jitter_params["order"],
-            expected_res["order"].tolist(),
+            expected_res["order"],
             rtol=1e-4,
             atol=1e-4,
         )
