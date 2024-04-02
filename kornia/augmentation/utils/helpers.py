@@ -96,10 +96,10 @@ def _transform_input_by_shape(input: Tensor, reference_shape: Tensor, match_chan
     if len(input.shape) == 2:
         input = input.unsqueeze(0)
 
-    if len(input.shape) == 3 and B == input.shape[-3]:
+    if len(input.shape) == 3:
         # If the first dim matches within the batch_size, add a `C` dim
         # Useful to handler Masks without `C` dimensions
-        input = input.unsqueeze(1)
+        input = input.unsqueeze(1) if B == input.shape[-3] else input.unsqueeze(0)
 
     if match_channel and C:
         if not input.shape[-3] == C:
@@ -211,7 +211,7 @@ def _transform_output_shape(
 
     for dim in range(len(out_tensor.shape) - len(shape)):
         idx = 0
-        if reference_shape is not None and out_tensor.shape[0] == reference_shape[0] and len(shape) > 2:
+        if reference_shape is not None and out_tensor.shape[0] == reference_shape[0] != 1 and len(shape) > 2:
             idx = 1
         if out_tensor.shape[idx] != 1:
             raise AssertionError(f"Dimension {dim} of input is expected to be 1, got {out_tensor.shape[idx]}")
