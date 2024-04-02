@@ -523,7 +523,7 @@ def jpeg_codec_differentiable(
     # Clip coded image
     image_rgb_jpeg = differentiable_clipping(input=image_rgb_jpeg, min_val=0.0, max_val=255.0)
     # Crop the image again to the original shape
-    image_rgb_jpeg = image_rgb_jpeg[..., :H - h_pad, :W - w_pad]
+    image_rgb_jpeg = image_rgb_jpeg[..., : H - h_pad, : W - w_pad]
     return image_rgb_jpeg
 
 
