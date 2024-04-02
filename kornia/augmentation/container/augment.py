@@ -205,7 +205,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         random_apply_weights: Optional[List[float]] = None,
         transformation_matrix_mode: str = "silent",
         extra_args: Dict[DataKey, Dict[str, Any]] = {
-            DataKey.MASK: {"resample": Resample.NEAREST, "align_corners": True}
+            DataKey.MASK: {"resample": Resample.NEAREST, "align_corners": None}
         },
     ) -> None:
         self._transform_matrix: Optional[Tensor]
