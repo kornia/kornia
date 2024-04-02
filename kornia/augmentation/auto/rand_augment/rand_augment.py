@@ -1,7 +1,6 @@
 from typing import Dict, Iterator, List, Optional, Tuple, Union, cast
 
 import torch
-from torch.distributions import Categorical
 
 from kornia.augmentation.auto.base import SUBPOLICY_CONFIG, PolicyAugmentBase
 from kornia.augmentation.auto.operations import OperationBase
@@ -86,7 +85,9 @@ class RandAugment(PolicyAugmentBase):
 
     def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, Module]]:
         if params is None:
-            idx = self.rand_selector(self.n,)
+            idx = self.rand_selector(
+                self.n,
+            )
             return self.get_children_by_indices(idx)
 
         return self.get_children_by_params(params)
