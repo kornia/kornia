@@ -86,10 +86,11 @@ class ColorJitter(IntensityAugmentationBase2D):
         self.hue = hue
         self._param_generator = rg.ColorJitterGenerator(brightness, contrast, saturation, hue)
 
-        self.brightness_fn = torch.compile(adjust_brightness_accumulative, fullgraph=True)
-        self.contrast_fn = torch.compile(adjust_contrast_with_mean_subtraction, fullgraph=True)
-        self.saturation_fn = torch.compile(adjust_saturation_with_gray_subtraction, fullgraph=True)
-        self.hue_fn = torch.compile(adjust_hue, fullgraph=True)
+        # native functions
+        self.brightness_fn = adjust_brightness_accumulative
+        self.contrast_fn = adjust_contrast_with_mean_subtraction
+        self.saturation_fn = adjust_saturation_with_gray_subtraction
+        self.hue_fn = adjust_hue
 
     def apply_transform(
         self,
@@ -121,3 +122,51 @@ class ColorJitter(IntensityAugmentationBase2D):
             jittered = t(jittered)
 
         return jittered
+
+    def compile(
+        self,
+        *,
+        fullgraph: bool = False,
+        dynamic: bool = False,
+        backend: str = "inductor",
+        mode: Optional[str] = None,
+        options: Optional[Dict[Any, Any]] = None,
+        disable: bool = False,
+    ) -> None:
+        self.brightness_fn = torch.compile(
+            self.brightness_fn,
+            fullgraph=fullgraph,
+            dynamic=dynamic,
+            backend=backend,
+            mode=mode,
+            options=options,
+            disable=disable,
+        )
+        self.contrast_fn = torch.compile(
+            self.contrast_fn,
+            fullgraph=fullgraph,
+            dynamic=dynamic,
+            backend=backend,
+            mode=mode,
+            options=options,
+            disable=disable,
+        )
+        self.saturation_fn = torch.compile(
+            self.saturation_fn,
+            fullgraph=fullgraph,
+            dynamic=dynamic,
+            backend=backend,
+            mode=mode,
+            options=options,
+            disable=disable,
+        )
+        self.hue_fn = torch.compile(
+            self.hue_fn,
+            fullgraph=fullgraph,
+            dynamic=dynamic,
+            backend=backend,
+            mode=mode,
+            options=options,
+            disable=disable,
+        )
+        return self

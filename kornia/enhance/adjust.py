@@ -6,7 +6,11 @@ from torch import Tensor
 from torch.nn import Module, Parameter
 
 from kornia.color import hsv_to_rgb, rgb_to_grayscale, rgb_to_hsv
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_COLOR_OR_GRAY, KORNIA_CHECK_IS_TENSOR
+from kornia.core.check import (
+    KORNIA_CHECK,
+    KORNIA_CHECK_IS_COLOR_OR_GRAY,
+    KORNIA_CHECK_IS_TENSOR,
+)
 from kornia.utils.helpers import _torch_histc_cast
 from kornia.utils.image import perform_keep_shape_image, perform_keep_shape_video
 
@@ -625,7 +629,9 @@ def _solarize(input: Tensor, thresholds: Union[float, Tensor] = 0.5) -> Tensor:
 
 
 def solarize(
-    input: Tensor, thresholds: Union[float, Tensor] = 0.5, additions: Optional[Union[float, Tensor]] = None
+    input: Tensor,
+    thresholds: Union[float, Tensor] = 0.5,
+    additions: Optional[Union[float, Tensor]] = None,
 ) -> Tensor:
     r"""For each pixel in the image less than threshold.
 
