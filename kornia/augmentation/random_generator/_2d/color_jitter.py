@@ -1,4 +1,3 @@
-import random
 from typing import Dict, List, Tuple, Union
 
 import torch
@@ -58,7 +57,6 @@ class ColorJitterGenerator(RandomGeneratorBase):
         self.contrast = contrast
         self.saturation = saturation
         self.hue = hue
-        self.randperm_list: List[int] = [0, 1, 2, 3]
 
     def __repr__(self) -> str:
         return f"brightness={self.brightness}, contrast={self.contrast}, saturation={self.saturation}, hue={self.hue}"
@@ -86,13 +84,10 @@ class ColorJitterGenerator(RandomGeneratorBase):
         hue_factor = _adapted_rsampling((batch_size,), self.hue_sampler, same_on_batch)
         saturation_factor = _adapted_rsampling((batch_size,), self.saturation_sampler, same_on_batch)
 
-        # perform random permutation of the order of the color adjustments
-        random.shuffle(self.randperm_list)
-
         return {
             "brightness_factor": brightness_factor,
             "contrast_factor": contrast_factor,
             "hue_factor": hue_factor,
             "saturation_factor": saturation_factor,
-            "order": self.randperm_list,
+            "order": torch.randperm(4).tolist(),
         }

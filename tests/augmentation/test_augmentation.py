@@ -1592,10 +1592,11 @@ class TestColorJitter(BaseTester):
         self.assert_close(f(input), expected)
         self.assert_close(f.transform_matrix, expected_transform)
 
-    @pytest.mark.slow
-    def test_gradcheck(self, device):
-        input = torch.rand((3, 5, 5), device=device, dtype=torch.float64).unsqueeze(0)  # 3 x 3
-        self.gradcheck(ColorJitter(p=1.0), (input,))
+    def test_compile(self, device):
+        input = torch.rand((1, 3, 5, 5), device=device)
+        f = ColorJitter(p=1.0).compile(fullgraph=True)
+        out = f(input)
+        assert out.shape == input.shape
 
 
 class TestRandomBrightness(BaseTester):

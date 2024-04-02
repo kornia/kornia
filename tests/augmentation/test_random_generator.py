@@ -18,7 +18,6 @@ from kornia.augmentation.random_generator import (
     ResizedCropGenerator,
     center_crop_generator,
 )
-from kornia.utils._compat import torch_version_ge
 
 from testing.base import assert_close
 
@@ -58,7 +57,11 @@ class TestRandomProbGen(RandomGeneratorBaseTests):
 
     @pytest.mark.parametrize(
         "p,expected",
-        [(0.0, [False] * 8), (0.5, [False, False, True, False, True, False, True, False]), (1.0, [True] * 8)],
+        [
+            (0.0, [False] * 8),
+            (0.5, [False, False, True, False, True, False, True, False]),
+            (1.0, [True] * 8),
+        ],
     )
     def test_random_gen(self, p, expected, device, dtype):
         torch.manual_seed(42)
@@ -82,17 +85,37 @@ class TestColorJiggleGen(RandomGeneratorBaseTests):
     @pytest.mark.parametrize("batch_size", [0, 1, 8])
     @pytest.mark.parametrize("same_on_batch", [True, False])
     def test_valid_param_combinations(
-        self, brightness, contrast, saturation, hue, batch_size, same_on_batch, device, dtype
+        self,
+        brightness,
+        contrast,
+        saturation,
+        hue,
+        batch_size,
+        same_on_batch,
+        device,
+        dtype,
     ):
         ColorJiggleGenerator(
             torch.as_tensor(
-                brightness if brightness is not None else torch.tensor([0.0, 0.0]), device=device, dtype=dtype
+                brightness if brightness is not None else torch.tensor([0.0, 0.0]),
+                device=device,
+                dtype=dtype,
             ),
-            torch.as_tensor(contrast if contrast is not None else torch.tensor([0.0, 0.0]), device=device, dtype=dtype),
             torch.as_tensor(
-                saturation if saturation is not None else torch.tensor([0.0, 0.0]), device=device, dtype=dtype
+                contrast if contrast is not None else torch.tensor([0.0, 0.0]),
+                device=device,
+                dtype=dtype,
             ),
-            torch.as_tensor(hue if hue is not None else torch.tensor([0.0, 0.0]), device=device, dtype=dtype),
+            torch.as_tensor(
+                saturation if saturation is not None else torch.tensor([0.0, 0.0]),
+                device=device,
+                dtype=dtype,
+            ),
+            torch.as_tensor(
+                hue if hue is not None else torch.tensor([0.0, 0.0]),
+                device=device,
+                dtype=dtype,
+            ),
         )(torch.Size([batch_size]), same_on_batch)
 
     @pytest.mark.parametrize(
@@ -119,15 +142,25 @@ class TestColorJiggleGen(RandomGeneratorBaseTests):
         with pytest.raises(Exception):
             ColorJiggleGenerator(
                 torch.as_tensor(
-                    brightness if brightness is not None else torch.tensor([0.0, 0.0]), device=device, dtype=dtype
+                    brightness if brightness is not None else torch.tensor([0.0, 0.0]),
+                    device=device,
+                    dtype=dtype,
                 ),
                 torch.as_tensor(
-                    contrast if contrast is not None else torch.tensor([0.0, 0.0]), device=device, dtype=dtype
+                    contrast if contrast is not None else torch.tensor([0.0, 0.0]),
+                    device=device,
+                    dtype=dtype,
                 ),
                 torch.as_tensor(
-                    saturation if saturation is not None else torch.tensor([0.0, 0.0]), device=device, dtype=dtype
+                    saturation if saturation is not None else torch.tensor([0.0, 0.0]),
+                    device=device,
+                    dtype=dtype,
                 ),
-                torch.as_tensor(hue if hue is not None else torch.tensor([0.0, 0.0]), device=device, dtype=dtype),
+                torch.as_tensor(
+                    hue if hue is not None else torch.tensor([0.0, 0.0]),
+                    device=device,
+                    dtype=dtype,
+                ),
             )(torch.Size([8]))
 
     def test_random_gen(self, device, dtype):
@@ -142,16 +175,24 @@ class TestColorJiggleGen(RandomGeneratorBaseTests):
 
         expected_jitter_params = {
             "brightness_factor": torch.tensor(
-                [1.1529, 1.1660, 0.9531, 1.1837, 0.9562, 1.0404, 0.9026, 1.1175], device=device, dtype=dtype
+                [1.1529, 1.1660, 0.9531, 1.1837, 0.9562, 1.0404, 0.9026, 1.1175],
+                device=device,
+                dtype=dtype,
             ),
             "contrast_factor": torch.tensor(
-                [1.2645, 0.7799, 1.2608, 1.0561, 1.2216, 1.0406, 1.1447, 0.9576], device=device, dtype=dtype
+                [1.2645, 0.7799, 1.2608, 1.0561, 1.2216, 1.0406, 1.1447, 0.9576],
+                device=device,
+                dtype=dtype,
             ),
             "hue_factor": torch.tensor(
-                [0.0771, 0.0148, -0.0467, 0.0255, -0.0461, -0.0117, -0.0406, 0.0663], device=device, dtype=dtype
+                [0.0771, 0.0148, -0.0467, 0.0255, -0.0461, -0.0117, -0.0406, 0.0663],
+                device=device,
+                dtype=dtype,
             ),
             "saturation_factor": torch.tensor(
-                [0.6843, 0.8156, 0.8871, 0.7595, 1.0378, 0.6049, 1.3612, 0.6602], device=device, dtype=dtype
+                [0.6843, 0.8156, 0.8871, 0.7595, 1.0378, 0.6049, 1.3612, 0.6602],
+                device=device,
+                dtype=dtype,
             ),
             "order": torch.tensor([3, 2, 0, 1], device=device, dtype=dtype),
         }
@@ -166,14 +207,35 @@ class TestColorJiggleGen(RandomGeneratorBaseTests):
                 'brightness_factor', 'contrast_factor', 'hue_factor', 'saturation_factor', 'order'"
 
         assert_close(
-            jitter_params["brightness_factor"], expected_jitter_params["brightness_factor"], rtol=1e-4, atol=1e-4
+            jitter_params["brightness_factor"],
+            expected_jitter_params["brightness_factor"],
+            rtol=1e-4,
+            atol=1e-4,
         )
-        assert_close(jitter_params["contrast_factor"], expected_jitter_params["contrast_factor"], rtol=1e-4, atol=1e-4)
-        assert_close(jitter_params["hue_factor"], expected_jitter_params["hue_factor"], rtol=1e-4, atol=1e-4)
         assert_close(
-            jitter_params["saturation_factor"], expected_jitter_params["saturation_factor"], rtol=1e-4, atol=1e-4
+            jitter_params["contrast_factor"],
+            expected_jitter_params["contrast_factor"],
+            rtol=1e-4,
+            atol=1e-4,
         )
-        assert_close(jitter_params["order"].to(dtype), expected_jitter_params["order"], rtol=1e-4, atol=1e-4)
+        assert_close(
+            jitter_params["hue_factor"],
+            expected_jitter_params["hue_factor"],
+            rtol=1e-4,
+            atol=1e-4,
+        )
+        assert_close(
+            jitter_params["saturation_factor"],
+            expected_jitter_params["saturation_factor"],
+            rtol=1e-4,
+            atol=1e-4,
+        )
+        assert_close(
+            jitter_params["order"].to(dtype),
+            expected_jitter_params["order"],
+            rtol=1e-4,
+            atol=1e-4,
+        )
 
     def test_random_gen_accumulative_additive_additive(self, device, dtype):
         torch.manual_seed(42)
@@ -187,16 +249,24 @@ class TestColorJiggleGen(RandomGeneratorBaseTests):
 
         expected_jitter_params = {
             "brightness_factor": torch.tensor(
-                [1.1529, 1.1660, 0.9531, 1.1837, 0.9562, 1.0404, 0.9026, 1.1175], device=device, dtype=dtype
+                [1.1529, 1.1660, 0.9531, 1.1837, 0.9562, 1.0404, 0.9026, 1.1175],
+                device=device,
+                dtype=dtype,
             ),
             "contrast_factor": torch.tensor(
-                [1.2645, 0.7799, 1.2608, 1.0561, 1.2216, 1.0406, 1.1447, 0.9576], device=device, dtype=dtype
+                [1.2645, 0.7799, 1.2608, 1.0561, 1.2216, 1.0406, 1.1447, 0.9576],
+                device=device,
+                dtype=dtype,
             ),
             "hue_factor": torch.tensor(
-                [0.0771, 0.0148, -0.0467, 0.0255, -0.0461, -0.0117, -0.0406, 0.0663], device=device, dtype=dtype
+                [0.0771, 0.0148, -0.0467, 0.0255, -0.0461, -0.0117, -0.0406, 0.0663],
+                device=device,
+                dtype=dtype,
             ),
             "saturation_factor": torch.tensor(
-                [0.6843, 0.8156, 0.8871, 0.7595, 1.0378, 0.6049, 1.3612, 0.6602], device=device, dtype=dtype
+                [0.6843, 0.8156, 0.8871, 0.7595, 1.0378, 0.6049, 1.3612, 0.6602],
+                device=device,
+                dtype=dtype,
             ),
             "order": torch.tensor([3, 2, 0, 1], device=device, dtype=dtype),
         }
@@ -211,14 +281,35 @@ class TestColorJiggleGen(RandomGeneratorBaseTests):
                 'brightness_factor', 'contrast_factor', 'hue_factor', 'saturation_factor', 'order'"
 
         assert_close(
-            jitter_params["brightness_factor"], expected_jitter_params["brightness_factor"], rtol=1e-4, atol=1e-4
+            jitter_params["brightness_factor"],
+            expected_jitter_params["brightness_factor"],
+            rtol=1e-4,
+            atol=1e-4,
         )
-        assert_close(jitter_params["contrast_factor"], expected_jitter_params["contrast_factor"], rtol=1e-4, atol=1e-4)
-        assert_close(jitter_params["hue_factor"], expected_jitter_params["hue_factor"], rtol=1e-4, atol=1e-4)
         assert_close(
-            jitter_params["saturation_factor"], expected_jitter_params["saturation_factor"], rtol=1e-4, atol=1e-4
+            jitter_params["contrast_factor"],
+            expected_jitter_params["contrast_factor"],
+            rtol=1e-4,
+            atol=1e-4,
         )
-        assert_close(jitter_params["order"].to(dtype), expected_jitter_params["order"], rtol=1e-4, atol=1e-4)
+        assert_close(
+            jitter_params["hue_factor"],
+            expected_jitter_params["hue_factor"],
+            rtol=1e-4,
+            atol=1e-4,
+        )
+        assert_close(
+            jitter_params["saturation_factor"],
+            expected_jitter_params["saturation_factor"],
+            rtol=1e-4,
+            atol=1e-4,
+        )
+        assert_close(
+            jitter_params["order"].to(dtype),
+            expected_jitter_params["order"],
+            rtol=1e-4,
+            atol=1e-4,
+        )
 
     def test_same_on_batch(self, device, dtype):
         torch.manual_seed(42)
@@ -238,11 +329,36 @@ class TestColorJiggleGen(RandomGeneratorBaseTests):
             "order": torch.tensor([2, 3, 0, 1], device=device, dtype=dtype),
         }
 
-        assert_close(jitter_params["brightness_factor"], expected_res["brightness_factor"], rtol=1e-4, atol=1e-4)
-        assert_close(jitter_params["contrast_factor"], expected_res["contrast_factor"], rtol=1e-4, atol=1e-4)
-        assert_close(jitter_params["hue_factor"], expected_res["hue_factor"], rtol=1e-4, atol=1e-4)
-        assert_close(jitter_params["saturation_factor"], expected_res["saturation_factor"], rtol=1e-4, atol=1e-4)
-        assert_close(jitter_params["order"].to(dtype), expected_res["order"], rtol=1e-4, atol=1e-4)
+        assert_close(
+            jitter_params["brightness_factor"],
+            expected_res["brightness_factor"],
+            rtol=1e-4,
+            atol=1e-4,
+        )
+        assert_close(
+            jitter_params["contrast_factor"],
+            expected_res["contrast_factor"],
+            rtol=1e-4,
+            atol=1e-4,
+        )
+        assert_close(
+            jitter_params["hue_factor"],
+            expected_res["hue_factor"],
+            rtol=1e-4,
+            atol=1e-4,
+        )
+        assert_close(
+            jitter_params["saturation_factor"],
+            expected_res["saturation_factor"],
+            rtol=1e-4,
+            atol=1e-4,
+        )
+        assert_close(
+            jitter_params["order"].to(dtype),
+            expected_res["order"],
+            rtol=1e-4,
+            atol=1e-4,
+        )
 
 
 class TestColorJitterGen(RandomGeneratorBaseTests):
@@ -253,17 +369,37 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
     @pytest.mark.parametrize("batch_size", [0, 1, 8])
     @pytest.mark.parametrize("same_on_batch", [True, False])
     def test_valid_param_combinations(
-        self, brightness, contrast, saturation, hue, batch_size, same_on_batch, device, dtype
+        self,
+        brightness,
+        contrast,
+        saturation,
+        hue,
+        batch_size,
+        same_on_batch,
+        device,
+        dtype,
     ):
         ColorJitterGenerator(
             torch.as_tensor(
-                brightness if brightness is not None else torch.tensor([0.0, 0.0]), device=device, dtype=dtype
+                brightness if brightness is not None else torch.tensor([0.0, 0.0]),
+                device=device,
+                dtype=dtype,
             ),
-            torch.as_tensor(contrast if contrast is not None else torch.tensor([0.0, 0.0]), device=device, dtype=dtype),
             torch.as_tensor(
-                saturation if saturation is not None else torch.tensor([0.0, 0.0]), device=device, dtype=dtype
+                contrast if contrast is not None else torch.tensor([0.0, 0.0]),
+                device=device,
+                dtype=dtype,
             ),
-            torch.as_tensor(hue if hue is not None else torch.tensor([0.0, 0.0]), device=device, dtype=dtype),
+            torch.as_tensor(
+                saturation if saturation is not None else torch.tensor([0.0, 0.0]),
+                device=device,
+                dtype=dtype,
+            ),
+            torch.as_tensor(
+                hue if hue is not None else torch.tensor([0.0, 0.0]),
+                device=device,
+                dtype=dtype,
+            ),
         )(torch.Size([batch_size]), same_on_batch)
 
     @pytest.mark.parametrize(
@@ -289,44 +425,63 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
         with pytest.raises(Exception):
             ColorJitterGenerator(
                 torch.as_tensor(
-                    brightness if brightness is not None else torch.tensor([0.0, 0.0]), device=device, dtype=dtype
+                    brightness if brightness is not None else torch.tensor([0.0, 0.0]),
+                    device=device,
+                    dtype=dtype,
                 ),
                 torch.as_tensor(
-                    contrast if contrast is not None else torch.tensor([0.0, 0.0]), device=device, dtype=dtype
+                    contrast if contrast is not None else torch.tensor([0.0, 0.0]),
+                    device=device,
+                    dtype=dtype,
                 ),
                 torch.as_tensor(
-                    saturation if saturation is not None else torch.tensor([0.0, 0.0]), device=device, dtype=dtype
+                    saturation if saturation is not None else torch.tensor([0.0, 0.0]),
+                    device=device,
+                    dtype=dtype,
                 ),
-                torch.as_tensor(hue if hue is not None else torch.tensor([0.0, 0.0]), device=device, dtype=dtype),
+                torch.as_tensor(
+                    hue if hue is not None else torch.tensor([0.0, 0.0]),
+                    device=device,
+                    dtype=dtype,
+                ),
             )(torch.Size([8]))
 
     def test_random_gen(self, device, dtype):
         # TODO(jian): crashes with pytorch 1.10, cuda and fp64
-        if torch_version_ge(1, 10) and "cuda" in str(device):
+        if "cuda" in str(device):
             pytest.skip("AssertionError: Tensor-likes are not close!")
         torch.manual_seed(42)
         batch_size = 8
-        jitter_params = ColorJitterGenerator(
+        gen = ColorJitterGenerator(
             brightness=torch.tensor([0.8, 1.2], device=device, dtype=dtype),
             contrast=torch.tensor([0.7, 1.3], device=device, dtype=dtype),
             saturation=torch.tensor([0.6, 1.4], device=device, dtype=dtype),
             hue=torch.tensor([-0.1, 0.1], device=device, dtype=dtype),
-        )(torch.Size([batch_size]))
+        ).to(device)
+        jitter_params = gen(torch.Size([batch_size]))
 
         expected_jitter_params = {
             "brightness_factor": torch.tensor(
-                [1.1529, 1.1660, 0.9531, 1.1837, 0.9562, 1.0404, 0.9026, 1.1175], device=device, dtype=dtype
+                [1.1529, 1.1660, 0.9531, 1.1837, 0.9562, 1.0404, 0.9026, 1.1175],
+                device=device,
+                dtype=dtype,
             ),
             "contrast_factor": torch.tensor(
-                [1.2645, 0.7799, 1.2608, 1.0561, 1.2216, 1.0406, 1.1447, 0.9576], device=device, dtype=dtype
+                [1.2645, 0.7799, 1.2608, 1.0561, 1.2216, 1.0406, 1.1447, 0.9576],
+                device=device,
+                dtype=dtype,
             ),
             "hue_factor": torch.tensor(
-                [0.0771, 0.0148, -0.0467, 0.0255, -0.0461, -0.0117, -0.0406, 0.0663], device=device, dtype=dtype
+                [0.0771, 0.0148, -0.0467, 0.0255, -0.0461, -0.0117, -0.0406, 0.0663],
+                device=device,
+                dtype=dtype,
             ),
             "saturation_factor": torch.tensor(
-                [0.6843, 0.8156, 0.8871, 0.7595, 1.0378, 0.6049, 1.3612, 0.6602], device=device, dtype=dtype
+                [0.6843, 0.8156, 0.8871, 0.7595, 1.0378, 0.6049, 1.3612, 0.6602],
+                device=device,
+                dtype=dtype,
             ),
-            "order": torch.tensor([3, 2, 0, 1], device=device, dtype=dtype),
+            "order": torch.tensor([3, 2, 0, 1], device=device, dtype=torch.long),
         }
 
         assert set(jitter_params.keys()) == {
@@ -339,14 +494,35 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
                 'brightness_factor', 'contrast_factor', 'hue_factor', 'saturation_factor', 'order'"
 
         assert_close(
-            jitter_params["brightness_factor"], expected_jitter_params["brightness_factor"], rtol=1e-4, atol=1e-4
+            jitter_params["brightness_factor"],
+            expected_jitter_params["brightness_factor"],
+            rtol=1e-4,
+            atol=1e-4,
         )
-        assert_close(jitter_params["contrast_factor"], expected_jitter_params["contrast_factor"], rtol=1e-4, atol=1e-4)
-        assert_close(jitter_params["hue_factor"], expected_jitter_params["hue_factor"], rtol=1e-4, atol=1e-4)
         assert_close(
-            jitter_params["saturation_factor"], expected_jitter_params["saturation_factor"], rtol=1e-4, atol=1e-4
+            jitter_params["contrast_factor"],
+            expected_jitter_params["contrast_factor"],
+            rtol=1e-4,
+            atol=1e-4,
         )
-        assert_close(jitter_params["order"].to(dtype), expected_jitter_params["order"], rtol=1e-4, atol=1e-4)
+        assert_close(
+            jitter_params["hue_factor"],
+            expected_jitter_params["hue_factor"],
+            rtol=1e-4,
+            atol=1e-4,
+        )
+        assert_close(
+            jitter_params["saturation_factor"],
+            expected_jitter_params["saturation_factor"],
+            rtol=1e-4,
+            atol=1e-4,
+        )
+        assert_close(
+            jitter_params["order"],
+            expected_jitter_params["order"].tolist(),
+            rtol=1e-4,
+            atol=1e-4,
+        )
 
     def test_same_on_batch(self, device, dtype):
         torch.manual_seed(42)
@@ -366,11 +542,36 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
             "order": torch.tensor([2, 3, 0, 1], device=device, dtype=dtype),
         }
 
-        assert_close(jitter_params["brightness_factor"], expected_res["brightness_factor"], rtol=1e-4, atol=1e-4)
-        assert_close(jitter_params["contrast_factor"], expected_res["contrast_factor"], rtol=1e-4, atol=1e-4)
-        assert_close(jitter_params["hue_factor"], expected_res["hue_factor"], rtol=1e-4, atol=1e-4)
-        assert_close(jitter_params["saturation_factor"], expected_res["saturation_factor"], rtol=1e-4, atol=1e-4)
-        assert_close(jitter_params["order"].to(dtype), expected_res["order"], rtol=1e-4, atol=1e-4)
+        assert_close(
+            jitter_params["brightness_factor"],
+            expected_res["brightness_factor"],
+            rtol=1e-4,
+            atol=1e-4,
+        )
+        assert_close(
+            jitter_params["contrast_factor"],
+            expected_res["contrast_factor"],
+            rtol=1e-4,
+            atol=1e-4,
+        )
+        assert_close(
+            jitter_params["hue_factor"],
+            expected_res["hue_factor"],
+            rtol=1e-4,
+            atol=1e-4,
+        )
+        assert_close(
+            jitter_params["saturation_factor"],
+            expected_res["saturation_factor"],
+            rtol=1e-4,
+            atol=1e-4,
+        )
+        assert_close(
+            jitter_params["order"],
+            expected_res["order"].tolist(),
+            rtol=1e-4,
+            atol=1e-4,
+        )
 
 
 class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
@@ -414,8 +615,18 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
             ),
             "end_points": torch.tensor(
                 [
-                    [[44.1135, 45.7502], [179.8568, 47.9653], [179.4776, 168.9552], [12.8286, 159.3179]],
-                    [[47.0386, 6.6593], [152.2701, 29.6790], [155.5298, 170.6142], [37.0547, 177.5298]],
+                    [
+                        [44.1135, 45.7502],
+                        [179.8568, 47.9653],
+                        [179.4776, 168.9552],
+                        [12.8286, 159.3179],
+                    ],
+                    [
+                        [47.0386, 6.6593],
+                        [152.2701, 29.6790],
+                        [155.5298, 170.6142],
+                        [37.0547, 177.5298],
+                    ],
                 ],
                 device=device,
                 dtype=dtype,
@@ -433,10 +644,19 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
         )
         expected = {
             "start_points": torch.tensor(
-                [[[0.0, 0.0], [199.0, 0.0], [199.0, 199.0], [0.0, 199.0]]], device=device, dtype=dtype
+                [[[0.0, 0.0], [199.0, 0.0], [199.0, 199.0], [0.0, 199.0]]],
+                device=device,
+                dtype=dtype,
             ).repeat(2, 1, 1),
             "end_points": torch.tensor(
-                [[[44.1135, 45.7502], [179.8568, 47.9653], [179.4776, 168.9552], [12.8286, 159.3179]]],
+                [
+                    [
+                        [44.1135, 45.7502],
+                        [179.8568, 47.9653],
+                        [179.4776, 168.9552],
+                        [12.8286, 159.3179],
+                    ]
+                ],
                 device=device,
                 dtype=dtype,
             ).repeat(2, 1, 1),
@@ -448,9 +668,10 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
     def test_sampling_method(self, device, dtype):
         torch.manual_seed(42)
         batch_size = 2
-        res = PerspectiveGenerator(torch.tensor(0.5, device=device, dtype=dtype), sampling_method="area_preserving")(
-            torch.Size([batch_size, 1, 200, 200])
-        )
+        res = PerspectiveGenerator(
+            torch.tensor(0.5, device=device, dtype=dtype),
+            sampling_method="area_preserving",
+        )(torch.Size([batch_size, 1, 200, 200]))
 
         expected = {
             "start_points": torch.tensor(
@@ -463,8 +684,18 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
             ),
             "end_points": torch.tensor(
                 [
-                    [[38.2269, 41.5004], [187.2864, 45.9306], [188.0448, 209.0895], [-24.3428, 228.3641]],
-                    [[44.0771, -36.6814], [242.4598, 9.3580], [235.9404, 205.7715], [24.1094, 191.9404]],
+                    [
+                        [38.2269, 41.5004],
+                        [187.2864, 45.9306],
+                        [188.0448, 209.0895],
+                        [-24.3428, 228.3641],
+                    ],
+                    [
+                        [44.0771, -36.6814],
+                        [242.4598, 9.3580],
+                        [235.9404, 205.7715],
+                        [24.1094, 191.9404],
+                    ],
                 ],
                 device=device,
                 dtype=dtype,
@@ -477,9 +708,10 @@ class TestRandomPerspectiveGen(RandomGeneratorBaseTests):
     def test_not_implemented_sampling_method(self, device, dtype):
         batch_size = 2
         with pytest.raises(NotImplementedError):
-            PerspectiveGenerator(torch.tensor(0.5, device=device, dtype=dtype), sampling_method="non_existing_method")(
-                torch.Size([batch_size, 1, 200, 200])
-            )
+            PerspectiveGenerator(
+                torch.tensor(0.5, device=device, dtype=dtype),
+                sampling_method="non_existing_method",
+            )(torch.Size([batch_size, 1, 200, 200]))
 
 
 class TestRandomAffineGen(RandomGeneratorBaseTests):
@@ -492,11 +724,21 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
     @pytest.mark.parametrize("shear", [None, torch.tensor([[0, 20], [0, 20]])])
     @pytest.mark.parametrize("same_on_batch", [True, False])
     def test_valid_param_combinations(
-        self, batch_size, height, width, degrees, translate, scale, shear, same_on_batch, device, dtype
+        self,
+        batch_size,
+        height,
+        width,
+        degrees,
+        translate,
+        scale,
+        shear,
+        same_on_batch,
+        device,
+        dtype,
     ):
         AffineGenerator(
             degrees=degrees.to(device=device, dtype=dtype),
-            translate=translate.to(device=device, dtype=dtype) if translate is not None else None,
+            translate=(translate.to(device=device, dtype=dtype) if translate is not None else None),
             scale=scale.to(device=device, dtype=dtype) if scale is not None else None,
             shear=shear.to(device=device, dtype=dtype) if shear is not None else None,
         )(torch.Size([batch_size, 1, height, width]), same_on_batch)
@@ -521,9 +763,9 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
         with pytest.raises(Exception):
             AffineGenerator(
                 degrees=degrees.to(device=device, dtype=dtype),
-                translate=translate.to(device=device, dtype=dtype) if translate is not None else None,
-                scale=scale.to(device=device, dtype=dtype) if scale is not None else None,
-                shear=shear.to(device=device, dtype=dtype) if shear is not None else None,
+                translate=(translate.to(device=device, dtype=dtype) if translate is not None else None),
+                scale=(scale.to(device=device, dtype=dtype) if scale is not None else None),
+                shear=(shear.to(device=device, dtype=dtype) if shear is not None else None),
             )(torch.Size([8, 1, height, width]))
 
     def test_random_gen(self, device, dtype):
@@ -534,7 +776,7 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
         shear = torch.tensor([[10, 20], [10, 20]], device=device, dtype=dtype)
         res = AffineGenerator(
             degrees=degrees.to(device=device, dtype=dtype),
-            translate=translate.to(device=device, dtype=dtype) if translate is not None else None,
+            translate=(translate.to(device=device, dtype=dtype) if translate is not None else None),
             scale=scale.to(device=device, dtype=dtype) if scale is not None else None,
             shear=shear.to(device=device, dtype=dtype) if shear is not None else None,
         )(torch.Size([2, 1, 200, 200]))
@@ -562,7 +804,7 @@ class TestRandomAffineGen(RandomGeneratorBaseTests):
         shear = torch.tensor([[10, 20], [10, 20]], device=device, dtype=dtype)
         res = AffineGenerator(
             degrees=degrees.to(device=device, dtype=dtype),
-            translate=translate.to(device=device, dtype=dtype) if translate is not None else None,
+            translate=(translate.to(device=device, dtype=dtype) if translate is not None else None),
             scale=scale.to(device=device, dtype=dtype) if scale is not None else None,
             shear=shear.to(device=device, dtype=dtype) if shear is not None else None,
         )(torch.Size([2, 1, 200, 200]), True)
@@ -596,14 +838,18 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
 
     @pytest.mark.parametrize(
         "input_size,size,resize_to",
-        [((-300, 300), (200, 200), (100, 100)), ((200, 200), torch.tensor([50, 50]), (100, 100))],
+        [
+            ((-300, 300), (200, 200), (100, 100)),
+            ((200, 200), torch.tensor([50, 50]), (100, 100)),
+        ],
     )
     def test_invalid_param_combinations(self, input_size, size, resize_to, device, dtype):
         batch_size = 2
         with pytest.raises(Exception):
-            CropGenerator(size.to(device=device, dtype=dtype) if isinstance(size, Tensor) else size, resize_to)(
-                torch.Size([batch_size, 1, *input_size])
-            )
+            CropGenerator(
+                (size.to(device=device, dtype=dtype) if isinstance(size, Tensor) else size),
+                resize_to,
+            )(torch.Size([batch_size, 1, *input_size]))
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
@@ -612,12 +858,18 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
         )
         expected = {
             "src": torch.tensor(
-                [[[36, 19], [95, 19], [95, 68], [36, 68]], [[19, 29], [98, 29], [98, 98], [19, 98]]],
+                [
+                    [[36, 19], [95, 19], [95, 68], [36, 68]],
+                    [[19, 29], [98, 29], [98, 98], [19, 98]],
+                ],
                 device=device,
                 dtype=dtype,
             ),
             "dst": torch.tensor(
-                [[[0, 0], [199, 0], [199, 199], [0, 199]], [[0, 0], [199, 0], [199, 199], [0, 199]]],
+                [
+                    [[0, 0], [199, 0], [199, 199], [0, 199]],
+                    [[0, 0], [199, 0], [199, 199], [0, 199]],
+                ],
                 device=device,
                 dtype=dtype,
             ),
@@ -635,12 +887,18 @@ class TestRandomCropGen(RandomGeneratorBaseTests):
         )
         expected = {
             "src": torch.tensor(
-                [[[36, 46], [95, 46], [95, 95], [36, 95]], [[36, 46], [115, 46], [115, 115], [36, 115]]],
+                [
+                    [[36, 46], [95, 46], [95, 95], [36, 95]],
+                    [[36, 46], [115, 46], [115, 115], [36, 115]],
+                ],
                 device=device,
                 dtype=dtype,
             ),
             "dst": torch.tensor(
-                [[[0, 0], [199, 0], [199, 199], [0, 199]], [[0, 0], [199, 0], [199, 199], [0, 199]]],
+                [
+                    [[0, 0], [199, 0], [199, 199], [0, 199]],
+                    [[0, 0], [199, 0], [199, 199], [0, 199]],
+                ],
                 device=device,
                 dtype=dtype,
             ),
@@ -660,7 +918,9 @@ class TestRandomCropSizeGen(RandomGeneratorBaseTests):
     @pytest.mark.parametrize("same_on_batch", [True, False])
     def test_valid_param_combinations(self, batch_size, size, scale, ratio, same_on_batch, device, dtype):
         ResizedCropGenerator(
-            size, torch.as_tensor(scale, device=device, dtype=dtype), torch.as_tensor(ratio, device=device, dtype=dtype)
+            size,
+            torch.as_tensor(scale, device=device, dtype=dtype),
+            torch.as_tensor(ratio, device=device, dtype=dtype),
         )(torch.Size([batch_size, 1, 300, 300]), same_on_batch)
 
     @pytest.mark.parametrize(
@@ -757,10 +1017,21 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
     @pytest.mark.parametrize("value", [0])
     @pytest.mark.parametrize("same_on_batch", [True, False])
     def test_valid_param_combinations(
-        self, batch_size, height, width, scale, ratio, value, same_on_batch, device, dtype
+        self,
+        batch_size,
+        height,
+        width,
+        scale,
+        ratio,
+        value,
+        same_on_batch,
+        device,
+        dtype,
     ):
         RectangleEraseGenerator(
-            scale=scale.to(device=device, dtype=dtype), ratio=ratio.to(device=device, dtype=dtype), value=value
+            scale=scale.to(device=device, dtype=dtype),
+            ratio=ratio.to(device=device, dtype=dtype),
+            value=value,
         )(torch.Size([batch_size, 1, height, width]), same_on_batch)
 
     @pytest.mark.parametrize(
@@ -774,14 +1045,22 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
             (100, 100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3, 1.5]), 0),
             (100, 100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3]), -1),
             (100, 100, torch.tensor([0.7, 1.3]), torch.tensor([0.7, 1.3]), 2),
-            (100, 100, torch.tensor([0.5, 0.7]), torch.tensor([0.7, 0.9]), torch.tensor(0.5)),
+            (
+                100,
+                100,
+                torch.tensor([0.5, 0.7]),
+                torch.tensor([0.7, 0.9]),
+                torch.tensor(0.5),
+            ),
         ],
     )
     def test_invalid_param_combinations(self, height, width, scale, ratio, value, device, dtype):
         batch_size = 8
         with pytest.raises(Exception):
             RectangleEraseGenerator(
-                scale=scale.to(device=device, dtype=dtype), ratio=ratio.to(device=device, dtype=dtype), value=value
+                scale=scale.to(device=device, dtype=dtype),
+                ratio=ratio.to(device=device, dtype=dtype),
+                value=value,
             )(torch.Size([batch_size, 1, height, width]))
 
     def test_random_gen(self, device, dtype):
@@ -791,7 +1070,9 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
         ratio = torch.tensor([0.7, 1.3], device=device, dtype=dtype)
         value = 0.5
         res = RectangleEraseGenerator(
-            scale=scale.to(device=device, dtype=dtype), ratio=ratio.to(device=device, dtype=dtype), value=value
+            scale=scale.to(device=device, dtype=dtype),
+            ratio=ratio.to(device=device, dtype=dtype),
+            value=value,
         )(torch.Size([2, 1, height, width]))
         expected = {
             "widths": torch.tensor([100, 100], device=device, dtype=dtype),
@@ -814,7 +1095,9 @@ class TestRandomRectangleGen(RandomGeneratorBaseTests):
         ratio = torch.tensor([0.7, 1.3], device=device, dtype=dtype)
         value = 0.5
         res = RectangleEraseGenerator(
-            scale=scale.to(device=device, dtype=dtype), ratio=ratio.to(device=device, dtype=dtype), value=value
+            scale=scale.to(device=device, dtype=dtype),
+            ratio=ratio.to(device=device, dtype=dtype),
+            value=value,
         )(torch.Size([2, 1, height, width]), True)
         expected = {
             "widths": torch.tensor([100, 100], device=device, dtype=dtype),
@@ -859,12 +1142,18 @@ class TestCenterCropGen(RandomGeneratorBaseTests):
         res = center_crop_generator(batch_size=2, height=200, width=200, size=(120, 150))
         expected = {
             "src": torch.tensor(
-                [[[25, 40], [174, 40], [174, 159], [25, 159]], [[25, 40], [174, 40], [174, 159], [25, 159]]],
+                [
+                    [[25, 40], [174, 40], [174, 159], [25, 159]],
+                    [[25, 40], [174, 40], [174, 159], [25, 159]],
+                ],
                 device=device,
                 dtype=torch.long,
             ),
             "dst": torch.tensor(
-                [[[0, 0], [149, 0], [149, 119], [0, 119]], [[0, 0], [149, 0], [149, 119], [0, 119]]],
+                [
+                    [[0, 0], [149, 0], [149, 119], [0, 119]],
+                    [[0, 0], [149, 0], [149, 119], [0, 119]],
+                ],
                 device=device,
                 dtype=torch.long,
             ),
@@ -956,7 +1245,15 @@ class TestRandomPosterizeGen(RandomGeneratorBaseTests):
     def test_valid_param_combinations(self, batch_size, bits, same_on_batch, device, dtype):
         PosterizeGenerator(bits)(torch.Size([batch_size]), same_on_batch)
 
-    @pytest.mark.parametrize("bits", [(torch.tensor([-1, 1])), (torch.tensor([0, 9])), (torch.tensor([3])), ([0, 8],)])
+    @pytest.mark.parametrize(
+        "bits",
+        [
+            (torch.tensor([-1, 1])),
+            (torch.tensor([0, 9])),
+            (torch.tensor([3])),
+            ([0, 8],),
+        ],
+    )
     def test_invalid_param_combinations(self, bits, device, dtype):
         with pytest.raises(Exception):
             if isinstance(bits, Tensor):
@@ -998,18 +1295,30 @@ class TestPlainUniformGenerator(RandomGeneratorBaseTests):
         with pytest.raises(Exception):
             PlainUniformGenerator(
                 (sharpness.to(device=device, dtype=dtype), "sharpness", None, None),
-                (sharpness.to(device=device, dtype=dtype), "sharpness", 0.0, (0.0, 1.0)),
+                (
+                    sharpness.to(device=device, dtype=dtype),
+                    "sharpness",
+                    0.0,
+                    (0.0, 1.0),
+                ),
             )(torch.Size([8, 1]))
 
     def test_random_gen(self, device, dtype):
         torch.manual_seed(42)
         batch_size = 8
         res = PlainUniformGenerator(
-            (torch.tensor([0.0, 1.0], device=device, dtype=dtype), "sharpness_factor", None, None)
+            (
+                torch.tensor([0.0, 1.0], device=device, dtype=dtype),
+                "sharpness_factor",
+                None,
+                None,
+            )
         )(torch.Size([batch_size, 1]))
         expected = {
             "sharpness_factor": torch.tensor(
-                [0.8823, 0.9150, 0.3829, 0.9593, 0.3904, 0.6009, 0.2566, 0.7936], device=device, dtype=dtype
+                [0.8823, 0.9150, 0.3829, 0.9593, 0.3904, 0.6009, 0.2566, 0.7936],
+                device=device,
+                dtype=dtype,
             )
         }
         assert res.keys() == expected.keys()
@@ -1019,11 +1328,18 @@ class TestPlainUniformGenerator(RandomGeneratorBaseTests):
         torch.manual_seed(42)
         batch_size = 8
         res = PlainUniformGenerator(
-            (torch.tensor([0.0, 1.0], device=device, dtype=dtype), "sharpness_factor", None, None)
+            (
+                torch.tensor([0.0, 1.0], device=device, dtype=dtype),
+                "sharpness_factor",
+                None,
+                None,
+            )
         )(torch.Size([batch_size, 1]), True)
         expected = {
             "sharpness_factor": torch.tensor(
-                [0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823], device=device, dtype=dtype
+                [0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823, 0.8823],
+                device=device,
+                dtype=dtype,
             )
         }
         assert res.keys() == expected.keys()
@@ -1038,11 +1354,17 @@ class TestRandomMixUpGen(RandomGeneratorBaseTests):
     def test_valid_param_combinations(self, batch_size, p, lambda_val, same_on_batch, device, dtype):
         MixupGenerator(
             p=p,
-            lambda_val=lambda_val.to(device=device, dtype=dtype) if isinstance(lambda_val, (Tensor)) else lambda_val,
+            lambda_val=(lambda_val.to(device=device, dtype=dtype) if isinstance(lambda_val, (Tensor)) else lambda_val),
         )(torch.Size([batch_size, 3, 200, 200]), same_on_batch=same_on_batch)
 
     @pytest.mark.parametrize(
-        "lambda_val", [(torch.tensor([-1, 1])), (torch.tensor([0, 2])), (torch.tensor([0, 0.5, 1])), ([0.0, 1.0])]
+        "lambda_val",
+        [
+            (torch.tensor([-1, 1])),
+            (torch.tensor([0, 2])),
+            (torch.tensor([0, 0.5, 1])),
+            ([0.0, 1.0]),
+        ],
     )
     def test_invalid_param_combinations(self, lambda_val, device, dtype):
         with pytest.raises(Exception):
@@ -1059,7 +1381,9 @@ class TestRandomMixUpGen(RandomGeneratorBaseTests):
         expected = {
             "mixup_pairs": torch.tensor([6, 1, 0, 7, 2, 5, 3, 4], device=device, dtype=torch.long),
             "mixup_lambdas": torch.tensor(
-                [0.0000, 0.0000, 0.5739, 0.0000, 0.6274, 0.0000, 0.4414, 0.0000], device=device, dtype=dtype
+                [0.0000, 0.0000, 0.5739, 0.0000, 0.6274, 0.0000, 0.4414, 0.0000],
+                device=device,
+                dtype=dtype,
             ),
         }
         assert res.keys() == expected.keys()
@@ -1075,7 +1399,9 @@ class TestRandomMixUpGen(RandomGeneratorBaseTests):
         expected = {
             "mixup_pairs": torch.tensor([4, 6, 7, 5, 0, 1, 3, 2], device=device, dtype=torch.long),
             "mixup_lambdas": torch.tensor(
-                [0.3804, 0.3804, 0.3804, 0.3804, 0.3804, 0.3804, 0.3804, 0.3804], device=device, dtype=dtype
+                [0.3804, 0.3804, 0.3804, 0.3804, 0.3804, 0.3804, 0.3804, 0.3804],
+                device=device,
+                dtype=dtype,
             ),
         }
         assert res.keys() == expected.keys()
@@ -1092,13 +1418,23 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
     @pytest.mark.parametrize("cut_size", [None, torch.tensor([0.0, 1.0]), torch.tensor([0.3, 0.6])])
     @pytest.mark.parametrize("same_on_batch", [True, False])
     def test_valid_param_combinations(
-        self, batch_size, p, width, height, num_mix, beta, cut_size, same_on_batch, device, dtype
+        self,
+        batch_size,
+        p,
+        width,
+        height,
+        num_mix,
+        beta,
+        cut_size,
+        same_on_batch,
+        device,
+        dtype,
     ):
         CutmixGenerator(
             p=p,
             num_mix=num_mix,
-            beta=beta.to(device=device, dtype=dtype) if isinstance(beta, (Tensor)) else beta,
-            cut_size=cut_size.to(device=device, dtype=dtype) if isinstance(cut_size, (Tensor)) else cut_size,
+            beta=(beta.to(device=device, dtype=dtype) if isinstance(beta, (Tensor)) else beta),
+            cut_size=(cut_size.to(device=device, dtype=dtype) if isinstance(cut_size, (Tensor)) else cut_size),
         )(torch.Size([batch_size, 3, height, width]), same_on_batch=same_on_batch)
 
     @pytest.mark.parametrize(
@@ -1119,8 +1455,8 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
             CutmixGenerator(
                 p=0.5,
                 num_mix=num_mix,
-                beta=beta.to(device=device, dtype=dtype) if isinstance(beta, (Tensor)) else beta,
-                cut_size=cut_size.to(device=device, dtype=dtype) if isinstance(cut_size, (Tensor)) else cut_size,
+                beta=(beta.to(device=device, dtype=dtype) if isinstance(beta, (Tensor)) else beta),
+                cut_size=(cut_size.to(device=device, dtype=dtype) if isinstance(cut_size, (Tensor)) else cut_size),
             )(torch.Size([8, 3, height, width]), same_on_batch=same_on_batch)
 
     def test_random_gen(self, device, dtype):
@@ -1169,7 +1505,12 @@ class TestRandomCutMixGen(RandomGeneratorBaseTests):
         expected = {
             "mix_pairs": torch.tensor([[1, 0]], device=device, dtype=torch.long),
             "crop_src": torch.tensor(
-                [[[[114, 53], [113, 53], [113, 52], [114, 52]], [[114, 53], [113, 53], [113, 52], [114, 52]]]],
+                [
+                    [
+                        [[114, 53], [113, 53], [113, 52], [114, 52]],
+                        [[114, 53], [113, 53], [113, 52], [114, 52]],
+                    ]
+                ],
                 device=device,
                 dtype=dtype,
             ),
