@@ -18,6 +18,7 @@ from kornia.augmentation.random_generator import (
     ResizedCropGenerator,
     center_crop_generator,
 )
+from kornia.utils._compat import torch_version_ge
 
 from testing.base import assert_close
 
@@ -448,7 +449,7 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
 
     def test_random_gen(self, device, dtype):
         # TODO(jian): crashes with pytorch 1.10, cuda and fp64
-        if "cuda" in str(device):
+        if torch_version_ge(1, 10) and "cuda" in str(device):
             pytest.skip("AssertionError: Tensor-likes are not close!")
         torch.manual_seed(42)
         batch_size = 8
