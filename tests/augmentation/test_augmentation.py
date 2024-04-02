@@ -3847,6 +3847,7 @@ class TestRandomGaussianBlur(BaseTester):
         img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
         self.assert_close(op(img, *func_params), op_module(img))
 
+    @pytest.mark.slow
     @pytest.mark.skipif(
         torch_version_le(1, 13, 1),
         reason="torch.compile is not available in previous versions",
