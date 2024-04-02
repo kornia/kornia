@@ -70,10 +70,13 @@ class RandAugment(PolicyAugmentBase):
             _policy = policy
 
         super().__init__(_policy, transformation_matrix_mode=transformation_matrix_mode)
-        selection_weights = torch.tensor([1.0 / len(self)] * len(self))
-        self.rand_selector = Categorical(selection_weights)
         self.n = n
         self.m = m
+
+    def rand_selector(self, n: int) -> Tensor:
+        perm = torch.randperm(len(self._modules))
+        idx = perm[:n]
+        return idx
 
     def compose_subpolicy_sequential(self, subpolicy: SUBPOLICY_CONFIG) -> PolicySequential:
         if len(subpolicy) != 1:
@@ -83,14 +86,13 @@ class RandAugment(PolicyAugmentBase):
 
     def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, Module]]:
         if params is None:
-            idx = self.rand_selector.sample((self.n,))
+            idx = self.rand_selector(self.n,)
             return self.get_children_by_indices(idx)
 
         return self.get_children_by_params(params)
 
     def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
         named_modules: Iterator[Tuple[str, Module]] = self.get_forward_sequence()
-
         params: List[ParamItem] = []
         mod_param: Union[Dict[str, Tensor], List[ParamItem]]
         m = torch.tensor([self.m / 30] * batch_shape[0])
