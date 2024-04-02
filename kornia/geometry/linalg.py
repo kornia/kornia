@@ -3,7 +3,7 @@ from __future__ import annotations
 import torch
 
 from kornia.core import Tensor, zeros_like
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 
 __all__ = [
@@ -251,7 +251,6 @@ def euclidean_distance(x: Tensor, y: Tensor, keepdim: bool = False, eps: float =
     """
     KORNIA_CHECK_SHAPE(x, ["*", "N"])
     KORNIA_CHECK_SHAPE(y, ["*", "N"])
-    KORNIA_CHECK(x.shape == y.shape)
 
     return (x - y + eps).pow(2).sum(-1, keepdim).sqrt()
 

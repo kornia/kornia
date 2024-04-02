@@ -1,4 +1,5 @@
 import sys
+from functools import partial
 from itertools import product
 from typing import Dict
 
@@ -8,6 +9,13 @@ import torch
 
 import kornia
 from kornia.utils._compat import torch_version
+
+try:
+    import torch._dynamo
+
+    _backends_non_experimental = torch._dynamo.list_backends()
+except ImportError:
+    _backends_non_experimental = []
 
 
 def get_test_devices() -> Dict[str, torch.device]:
@@ -49,7 +57,7 @@ def get_test_dtypes() -> Dict[str, torch.dtype]:
 
 TEST_DEVICES: Dict[str, torch.device] = get_test_devices()
 TEST_DTYPES: Dict[str, torch.dtype] = get_test_dtypes()
-
+TEST_OPTIMIZER_BACKEND = {"", None, "jit", *_backends_non_experimental}
 # Combinations of device and dtype to be excluded from testing.
 # DEVICE_DTYPE_BLACKLIST = {('cpu', 'float16')}
 DEVICE_DTYPE_BLACKLIST = {}
@@ -65,12 +73,21 @@ def dtype(dtype_name) -> torch.dtype:
     return TEST_DTYPES[dtype_name]
 
 
-@pytest.fixture(scope="session")
-def torch_optimizer():
+@pytest.fixture()
+def torch_optimizer(optimizer_backend):
+    if not optimizer_backend:
+        return lambda x: x
+
+    if optimizer_backend == "jit":
+        return torch.jit.script
+
     if hasattr(torch, "compile") and sys.platform == "linux":
         if not (sys.version_info[:2] == (3, 11) and torch_version() in {"2.0.0", "2.0.1"}):
+            torch._dynamo.reset()
             # torch compile just have support for python 3.11 after torch 2.1.0
-            return torch.compile
+            return partial(
+                torch.compile, backend=optimizer_backend
+            )  # TODO: explore the others parameters of torch compile
 
     pytest.skip(f"skipped because {torch.__version__} not have `compile` available! Failed to setup dynamo.")
 
@@ -78,6 +95,8 @@ def torch_optimizer():
 def pytest_generate_tests(metafunc):
     device_names = None
     dtype_names = None
+    optimizer_backends_names = None
+
     if "device_name" in metafunc.fixturenames:
         raw_value = metafunc.config.getoption("--device")
         if raw_value == "all":
@@ -90,7 +109,23 @@ def pytest_generate_tests(metafunc):
             dtype_names = list(TEST_DTYPES.keys())
         else:
             dtype_names = raw_value.split(",")
-    if device_names is not None and dtype_names is not None:
+
+    if "optimizer_backend" in metafunc.fixturenames:
+        raw_value = metafunc.config.getoption("--optimizer")
+        if raw_value == "all":
+            optimizer_backends_names = TEST_OPTIMIZER_BACKEND
+        else:
+            optimizer_backends_names = raw_value.split(",")
+
+    if device_names is not None and dtype_names is not None and optimizer_backends_names is not None:
+        # Exclude any blacklisted device/dtype combinations.
+        params = [
+            combo
+            for combo in product(device_names, dtype_names, optimizer_backends_names)
+            if combo not in DEVICE_DTYPE_BLACKLIST
+        ]
+        metafunc.parametrize("device_name,dtype_name,optimizer_backend", params)
+    elif device_names is not None and dtype_names is not None and optimizer_backends_names is None:
         # Exclude any blacklisted device/dtype combinations.
         params = [combo for combo in product(device_names, dtype_names) if combo not in DEVICE_DTYPE_BLACKLIST]
         metafunc.parametrize("device_name,dtype_name", params)
@@ -98,6 +133,8 @@ def pytest_generate_tests(metafunc):
         metafunc.parametrize("device_name", device_names)
     elif dtype_names is not None:
         metafunc.parametrize("dtype_name", dtype_names)
+    elif optimizer_backends_names is not None:
+        metafunc.parametrize("optimizer_backend", optimizer_backends_names)
 
 
 def pytest_collection_modifyitems(config, items):
@@ -114,6 +151,7 @@ def pytest_collection_modifyitems(config, items):
 def pytest_addoption(parser):
     parser.addoption("--device", action="store", default="cpu")
     parser.addoption("--dtype", action="store", default="float32")
+    parser.addoption("--optimizer", action="store", default="inductor")
     parser.addoption("--runslow", action="store_true", default=False, help="run slow tests")
 
 
@@ -145,6 +183,51 @@ def pytest_sessionstart(session):
     # TODO: cache all torch.load weights/states here to not impact on test suite
 
 
+def _get_env_info() -> Dict[str, Dict[str, str]]:
+    if not hasattr(torch.utils, "collect_env"):
+        return {}
+
+    run_lmb = torch.utils.collect_env.run
+    separator = ":"
+    br = "\n"
+
+    def _get_key_value(v: str):
+        parts = v.split(separator)
+        return parts[0].strip(), parts[-1].strip()
+
+    def _get_cpu_info() -> Dict[str, str]:
+        cpu_info = {}
+        cpu_str = torch.utils.collect_env.get_cpu_info(run_lmb)
+        if not cpu_str:
+            return {}
+
+        for data in cpu_str.split(br):
+            key, value = _get_key_value(data)
+            cpu_info[key] = value
+
+        return cpu_info
+
+    def _get_gpu_info() -> Dict[str, str]:
+        gpu_info = {}
+        gpu_str = torch.utils.collect_env.get_gpu_info(run_lmb)
+
+        if not gpu_str:
+            return {}
+
+        for data in gpu_str.split(br):
+            key, value = _get_key_value(data)
+            gpu_info[key] = value
+
+        return gpu_info
+
+    return {
+        "cpu": _get_cpu_info(),
+        "gpu": _get_gpu_info(),
+        "nvidia": torch.utils.collect_env.get_nvidia_driver_version(run_lmb),
+        "gcc": torch.utils.collect_env.get_gcc_version(run_lmb),
+    }
+
+
 def pytest_report_header(config):
     try:
         import accelerate
@@ -156,17 +239,34 @@ def pytest_report_header(config):
     import kornia_rs
     import onnx
 
+    env_info = _get_env_info()
+
+    if "cpu" in env_info:
+        desired_cpu_info = ["Model name", "Architecture", "CPU(s)", "Thread(s) per core", "CPU max MHz", "CPU min MHz"]
+        cpu_info = "cpu info:\n" + "\n".join(
+            f'\t- {i}: {env_info["cpu"][i]}' for i in desired_cpu_info if i in env_info["cpu"]
+        )
+    else:
+        cpu_info = ""
+    gpu_info = f"gpu info: {env_info['gpu']}" if "gpu" in env_info else ""
+    gcc_info = f"gcc info: {env_info['gcc']}" if "gcc" in env_info else ""
+
     return f"""
+{cpu_info}
+{gpu_info}
 main deps:
     - kornia-{kornia.__version__}
     - torch-{torch.__version__}
         - commit: {torch.version.git_version}
         - cuda: {torch.version.cuda}
+        - nvidia-driver: {env_info['nvidia'] if 'nvidia' in env_info else None}
 x deps:
     - {accelerate_info}
 dev deps:
     - kornia_rs-{kornia_rs.__version__}
     - onnx-{onnx.__version__}
+{gcc_info}
+available optimizers: {TEST_OPTIMIZER_BACKEND}
 """
 
 

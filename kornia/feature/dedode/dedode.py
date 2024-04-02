@@ -191,7 +191,9 @@ class DeDoDe(Module):
             The pretrained model.
         """
         model: DeDoDe = cls(
-            detector_model=detector_weights[0], descriptor_model=descriptor_weights[0], amp_dtype=amp_dtype
+            detector_model=detector_weights[0],  # type: ignore[arg-type]
+            descriptor_model=descriptor_weights[0],  # type: ignore[arg-type]
+            amp_dtype=amp_dtype,
         )
         model.detector.load_state_dict(
             torch.hub.load_state_dict_from_url(urls["detector"][detector_weights], map_location=map_location_to_cpu)

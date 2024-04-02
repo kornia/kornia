@@ -19,6 +19,7 @@ class Resize(GeometricAugmentationBase2D):
         resample: Resampling mode.
         align_corners: interpolation flag.
         antialias: if True, then image will be filtered with Gaussian before downscaling. No effect for upscaling.
+        p: probability of the augmentation been applied.
         keepdim: whether to keep the output shape the same as input (True) or broadcast it
             to the batch form (False).
     """
