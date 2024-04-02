@@ -5,6 +5,7 @@ import torch
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.callbacks import SequentialCallbackBase
 from kornia.contrib.extract_patches import extract_tensor_patches
 from kornia.core import Module, Tensor, concatenate
 from kornia.core import pad as fpad
@@ -51,6 +52,7 @@ class PatchSequential(ImageSequential):
             If ``False`` and not ``patchwise_apply``, the whole list of args will be processed in original order.
             If ``False`` and ``patchwise_apply``, the whole list of args will be processed in original order
             location-wisely.
+        callbacks: add a list of callbacks.
 
     .. note::
         Transformation matrix returned only considers the transformation applied in ``kornia.augmentation`` module.
@@ -119,6 +121,7 @@ class PatchSequential(ImageSequential):
         patchwise_apply: bool = True,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
         random_apply_weights: Optional[List[float]] = None,
+        callbacks: List[SequentialCallbackBase] = [],
     ) -> None:
         _random_apply: Optional[Union[int, Tuple[int, int]]]
 
@@ -143,6 +146,7 @@ class PatchSequential(ImageSequential):
             keepdim=keepdim,
             random_apply=_random_apply,
             random_apply_weights=random_apply_weights,
+            callbacks=callbacks,
         )
         if padding not in ("same", "valid"):
             raise ValueError(f"`padding` must be either `same` or `valid`. Got {padding}.")
@@ -385,6 +389,8 @@ class PatchSequential(ImageSequential):
         provided parameters.
         """
         if self.is_intensity_only():
+            [cb.on_inverse_start(input, params=params) for cb in self.callbacks]
+            [cb.on_inverse_end(input, params=params) for cb in self.callbacks]
             return input
 
         raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
@@ -398,7 +404,9 @@ class PatchSequential(ImageSequential):
         if params is None:
             params = self.forward_parameters(input.shape)
 
+        [cb.on_forward_start(input, params=params) for cb in self.callbacks]
         output = self.transform_inputs(input, params=params)
+        [cb.on_forward_end(input, params=params) for cb in self.callbacks]
 
         self._params = params
 

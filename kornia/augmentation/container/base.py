@@ -7,6 +7,7 @@ from torch import nn
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.callbacks import AugmentationCallbackBase
 from kornia.core import Module, Tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
@@ -109,11 +110,18 @@ class SequentialBase(BasicSequentialBase):
             to the batch form (False). If None, it will not overwrite the function-wise settings.
     """
 
-    def __init__(self, *args: Module, same_on_batch: Optional[bool] = None, keepdim: Optional[bool] = None) -> None:
+    def __init__(
+        self,
+        *args: Module,
+        same_on_batch: Optional[bool] = None,
+        keepdim: Optional[bool] = None,
+        callbacks: List[AugmentationCallbackBase] = [],
+    ) -> None:
         # To name the modules properly
         super().__init__(*args)
         self._same_on_batch = same_on_batch
         self._keepdim = keepdim
+        self.callbacks = callbacks
         self.update_attribute(same_on_batch, keepdim)
 
     def update_attribute(
@@ -193,51 +201,67 @@ class ImageSequentialBase(SequentialBase):
         raise NotImplementedError
 
     def transform_inputs(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
+        [cb.on_transform_inputs_start(input, params) for cb in self.callbacks]
         for param in params:
             module = self.get_submodule(param.name)
             input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
+        [cb.on_transform_inputs_end(input, params) for cb in self.callbacks]
         return input
 
     def inverse_inputs(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
+        [cb.on_inverse_inputs_start(input, params) for cb in self.callbacks]
         for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
             input = InputSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
+        [cb.on_inverse_inputs_end(input, params) for cb in self.callbacks]
         return input
 
     def transform_masks(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
+        [cb.on_transform_masks_start(input, params) for cb in self.callbacks]
         for param in params:
             module = self.get_submodule(param.name)
             input = MaskSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
+        [cb.on_transform_masks_end(input, params) for cb in self.callbacks]
         return input
 
     def inverse_masks(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
+        [cb.on_inverse_masks_start(input, params) for cb in self.callbacks]
         for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
             input = MaskSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
+        [cb.on_inverse_masks_end(input, params) for cb in self.callbacks]
         return input
 
     def transform_boxes(self, input: Boxes, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Boxes:
+        [cb.on_transform_boxes_start(input, params) for cb in self.callbacks]
         for param in params:
             module = self.get_submodule(param.name)
             input = BoxSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
+        [cb.on_transform_boxes_end(input, params) for cb in self.callbacks]
         return input
 
     def inverse_boxes(self, input: Boxes, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Boxes:
+        [cb.on_inverse_boxes_start(input, params) for cb in self.callbacks]
         for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
             input = BoxSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
+        [cb.on_inverse_boxes_end(input, params) for cb in self.callbacks]
         return input
 
     def transform_keypoints(
         self, input: Keypoints, params: List[ParamItem], extra_args: Dict[str, Any] = {}
     ) -> Keypoints:
+        [cb.on_transform_keypoints_start(input, params) for cb in self.callbacks]
         for param in params:
             module = self.get_submodule(param.name)
             input = KeypointSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
+        [cb.on_transform_keypoints_end(input, params) for cb in self.callbacks]
         return input
 
     def inverse_keypoints(
         self, input: Keypoints, params: List[ParamItem], extra_args: Dict[str, Any] = {}
     ) -> Keypoints:
+        [cb.on_inverse_keypoints_start(input, params) for cb in self.callbacks]
         for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
             input = KeypointSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
+        [cb.on_inverse_keypoints_end(input, params) for cb in self.callbacks]
         return input
 
     def inverse(
@@ -255,9 +279,9 @@ class ImageSequentialBase(SequentialBase):
                     "or passing valid params into this function."
                 )
             params = self._params
-
+        [cb.on_inverse_start(input, params=params) for cb in self.callbacks]
         input = self.inverse_inputs(input, params, extra_args=extra_args)
-
+        [cb.on_inverse_end(input, params=params) for cb in self.callbacks]
         return input
 
     def forward(
@@ -270,7 +294,9 @@ class ImageSequentialBase(SequentialBase):
             _, out_shape = self.autofill_dim(inp, dim_range=(2, 4))
             params = self.forward_parameters(out_shape)
 
+        [cb.on_forward_start(input, params=params) for cb in self.callbacks]
         input = self.transform_inputs(input, params=params, extra_args=extra_args)
+        [cb.on_forward_end(input, params=params) for cb in self.callbacks]
 
         self._params = params
         return input
