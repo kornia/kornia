@@ -58,6 +58,7 @@ from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.constants import Resample, pi
 from kornia.geometry import transform_points
 from kornia.utils import create_meshgrid
+from kornia.utils._compat import torch_version_le
 from kornia.utils.helpers import _torch_inverse_cast
 
 from testing.augmentation.datasets import DummyMPDataset
@@ -1592,6 +1593,7 @@ class TestColorJitter(BaseTester):
         self.assert_close(f(input), expected)
         self.assert_close(f.transform_matrix, expected_transform)
 
+    @pytest.mark.skipif(torch_version_le(2, 1, 0), reason="not supported in this pytorch version")
     def test_compile(self, device):
         input = torch.rand((1, 3, 5, 5), device=device)
         f = ColorJitter(p=1.0).compile(fullgraph=True)
