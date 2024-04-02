@@ -101,8 +101,8 @@ class GaussianIlluminationGenerator(RandomGeneratorBase):
 
         sign = torch.where(
             _adapted_rsampling((batch_size, 1, 1, 1), self.sign_sampler, same_on_batch) >= 0.0,
-            torch.tensor(1, device=_device, dtype=_dtype),
-            torch.tensor(-1, device=_device, dtype=_dtype),
+            torch.tensor(1.0, device=_device, dtype=_dtype),
+            torch.tensor(-1.0, device=_device, dtype=_dtype),
         )
 
         # Generate random gaussian for create a 2D gaussian image.
