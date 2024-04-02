@@ -365,7 +365,7 @@ def _perform_padding(image: Tensor) -> Tuple[Tensor, int, int]:
     h_pad: int = math.ceil(H / 16) * 16 - H
     w_pad: int = math.ceil(W / 16) * 16 - W
     # Perform padding (we follow JPEG and pad only the bottom and right side of the image)
-    image_padded: Tensor = F.pad(image, (0, w_pad, 0, h_pad), "replicate") if (h_pad != 0) or (w_pad != 0) else image
+    image_padded: Tensor = F.pad(image, (0, w_pad, 0, h_pad), "replicate")
     return image_padded, h_pad, w_pad
 
 
@@ -522,9 +522,8 @@ def jpeg_codec_differentiable(
     )
     # Clip coded image
     image_rgb_jpeg = differentiable_clipping(input=image_rgb_jpeg, min_val=0.0, max_val=255.0)
-    # Crop the image again to the original shape if needed
-    if (h_pad != 0) or (w_pad != 0):
-        image_rgb_jpeg = image_rgb_jpeg[..., :-h_pad, :-w_pad]
+    # Crop the image again to the original shape
+    image_rgb_jpeg = image_rgb_jpeg[..., :H - h_pad, :W - w_pad]
     return image_rgb_jpeg
 
 
