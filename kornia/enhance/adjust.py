@@ -6,7 +6,11 @@ from torch import Tensor
 from torch.nn import Module, Parameter
 
 from kornia.color import hsv_to_rgb, rgb_to_grayscale, rgb_to_hsv
-from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_COLOR_OR_GRAY, KORNIA_CHECK_IS_TENSOR
+from kornia.core.check import (
+    KORNIA_CHECK,
+    KORNIA_CHECK_IS_COLOR_OR_GRAY,
+    KORNIA_CHECK_IS_TENSOR,
+)
 from kornia.utils.helpers import _torch_histc_cast
 from kornia.utils.image import perform_keep_shape_image, perform_keep_shape_video
 
@@ -393,7 +397,7 @@ def adjust_contrast_with_mean_subtraction(image: Tensor, factor: Union[float, Te
     while len(factor.shape) != len(image.shape):
         factor = factor[..., None]
 
-    KORNIA_CHECK(any(factor >= 0), "Contrast factor must be positive.")
+    # KORNIA_CHECK(any(factor >= 0), "Contrast factor must be positive.")
 
     if image.shape[-3] == 3:
         img_mean = rgb_to_grayscale(image).mean((-2, -1), True)
@@ -625,7 +629,9 @@ def _solarize(input: Tensor, thresholds: Union[float, Tensor] = 0.5) -> Tensor:
 
 
 def solarize(
-    input: Tensor, thresholds: Union[float, Tensor] = 0.5, additions: Optional[Union[float, Tensor]] = None
+    input: Tensor,
+    thresholds: Union[float, Tensor] = 0.5,
+    additions: Optional[Union[float, Tensor]] = None,
 ) -> Tensor:
     r"""For each pixel in the image less than threshold.
 

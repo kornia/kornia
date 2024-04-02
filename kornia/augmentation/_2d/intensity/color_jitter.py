@@ -1,5 +1,7 @@
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import torch
+
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.constants import pi
@@ -84,25 +86,87 @@ class ColorJitter(IntensityAugmentationBase2D):
         self.hue = hue
         self._param_generator = rg.ColorJitterGenerator(brightness, contrast, saturation, hue)
 
+        # native functions
+        self.brightness_fn = adjust_brightness_accumulative
+        self.contrast_fn = adjust_contrast_with_mean_subtraction
+        self.saturation_fn = adjust_saturation_with_gray_subtraction
+        self.hue_fn = adjust_hue
+
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self,
+        input: Tensor,
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[Tensor] = None,
     ) -> Tensor:
         transforms = [
-            lambda img: adjust_brightness_accumulative(img, params["brightness_factor"])
-            if (params["brightness_factor"] != 0).any()
-            else img,
-            lambda img: adjust_contrast_with_mean_subtraction(img, params["contrast_factor"])
-            if (params["contrast_factor"] != 1).any()
-            else img,
-            lambda img: adjust_saturation_with_gray_subtraction(img, params["saturation_factor"])
-            if (params["saturation_factor"] != 1).any()
-            else img,
-            lambda img: adjust_hue(img, params["hue_factor"] * 2 * pi) if (params["hue_factor"] != 0).any() else img,
+            lambda img: (
+                self.brightness_fn(img, params["brightness_factor"])
+                if (params["brightness_factor"] != 0).any()
+                else img
+            ),
+            lambda img: (
+                self.contrast_fn(img, params["contrast_factor"]) if (params["contrast_factor"] != 1).any() else img
+            ),
+            lambda img: (
+                self.saturation_fn(img, params["saturation_factor"])
+                if (params["saturation_factor"] != 1).any()
+                else img
+            ),
+            lambda img: (self.hue_fn(img, params["hue_factor"] * 2 * pi) if (params["hue_factor"] != 0).any() else img),
         ]
 
         jittered = input
-        for idx in params["order"].tolist():
+        for idx in params["order"]:
             t = transforms[idx]
             jittered = t(jittered)
 
         return jittered
+
+    def compile(
+        self,
+        *,
+        fullgraph: bool = False,
+        dynamic: bool = False,
+        backend: str = "inductor",
+        mode: Optional[str] = None,
+        options: Optional[Dict[Any, Any]] = None,
+        disable: bool = False,
+    ) -> "ColorJitter":
+        self.brightness_fn = torch.compile(
+            self.brightness_fn,
+            fullgraph=fullgraph,
+            dynamic=dynamic,
+            backend=backend,
+            mode=mode,
+            options=options,
+            disable=disable,
+        )
+        self.contrast_fn = torch.compile(
+            self.contrast_fn,
+            fullgraph=fullgraph,
+            dynamic=dynamic,
+            backend=backend,
+            mode=mode,
+            options=options,
+            disable=disable,
+        )
+        self.saturation_fn = torch.compile(
+            self.saturation_fn,
+            fullgraph=fullgraph,
+            dynamic=dynamic,
+            backend=backend,
+            mode=mode,
+            options=options,
+            disable=disable,
+        )
+        self.hue_fn = torch.compile(
+            self.hue_fn,
+            fullgraph=fullgraph,
+            dynamic=dynamic,
+            backend=backend,
+            mode=mode,
+            options=options,
+            disable=disable,
+        )
+        return self
