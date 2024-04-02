@@ -110,7 +110,7 @@ def _dct_8x8(input: Tensor) -> Tensor:
     x, y, u, v = torch.meshgrid(index, index, index, index)
     dct_tensor: Tensor = ((2.0 * x + 1.0) * u * pi / 16.0).cos() * ((2.0 * y + 1.0) * v * pi / 16.0).cos()
     alpha: Tensor = torch.ones(8, dtype=dtype, device=device)
-    alpha[0] = 1.0 / (2 ** 0.5)
+    alpha[0] = 1.0 / (2**0.5)
     dct_scale: Tensor = torch.einsum("i, j -> ij", alpha, alpha) * 0.25
     # Apply DCT
     output: Tensor = dct_scale[None, None] * torch.tensordot(input - 128.0, dct_tensor)
@@ -131,7 +131,7 @@ def _idct_8x8(input: Tensor) -> Tensor:
     device: Device = input.device
     # Make and apply scaling
     alpha: Tensor = torch.ones(8, dtype=dtype, device=device)
-    alpha[0] = 1.0 / (2 ** 0.5)
+    alpha[0] = 1.0 / (2**0.5)
     dct_scale: Tensor = torch.outer(alpha, alpha)
     input = input * dct_scale[None, None]
     # Make DCT tensor and scaling
@@ -144,7 +144,7 @@ def _idct_8x8(input: Tensor) -> Tensor:
 
 
 def _jpeg_quality_to_scale(
-        compression_strength: Tensor,
+    compression_strength: Tensor,
 ) -> Tensor:
     """Converts a given JPEG quality to the scaling factor.
 
@@ -162,9 +162,9 @@ def _jpeg_quality_to_scale(
 
 
 def _quantize(
-        input: Tensor,
-        jpeg_quality: Tensor,
-        quantization_table: Tensor,
+    input: Tensor,
+    jpeg_quality: Tensor,
+    quantization_table: Tensor,
 ) -> Tensor:
     """Function performs quantization.
 
@@ -178,7 +178,7 @@ def _quantize(
     """
     # Scale quantization table
     quantization_table_scaled: Tensor = (
-            quantization_table[:, None] * _jpeg_quality_to_scale(jpeg_quality)[:, None, None, None]
+        quantization_table[:, None] * _jpeg_quality_to_scale(jpeg_quality)[:, None, None, None]
     )
     # Perform scaling
     quantization_table = differentiable_polynomial_floor(
@@ -191,9 +191,9 @@ def _quantize(
 
 
 def _dequantize(
-        input: Tensor,
-        jpeg_quality: Tensor,
-        quantization_table: Tensor,
+    input: Tensor,
+    jpeg_quality: Tensor,
+    quantization_table: Tensor,
 ) -> Tensor:
     """Function performs dequantization.
 
@@ -207,7 +207,7 @@ def _dequantize(
     """
     # Scale quantization table
     quantization_table_scaled: Tensor = (
-            quantization_table[:, None] * _jpeg_quality_to_scale(jpeg_quality)[:, None, None, None]
+        quantization_table[:, None] * _jpeg_quality_to_scale(jpeg_quality)[:, None, None, None]
     )
     # Perform scaling
     output: Tensor = input * differentiable_polynomial_floor(
@@ -254,10 +254,10 @@ def _chroma_upsampling(input_c: Tensor) -> Tensor:
 
 
 def _jpeg_encode(
-        image_rgb: Tensor,
-        jpeg_quality: Tensor,
-        quantization_table_y: Tensor,
-        quantization_table_c: Tensor,
+    image_rgb: Tensor,
+    jpeg_quality: Tensor,
+    quantization_table_y: Tensor,
+    quantization_table_c: Tensor,
 ) -> tuple[Tensor, Tensor, Tensor]:
     """Performs JPEG encoding.
 
@@ -296,14 +296,14 @@ def _jpeg_encode(
 
 
 def _jpeg_decode(
-        input_y: Tensor,
-        input_cb: Tensor,
-        input_cr: Tensor,
-        jpeg_quality: Tensor,
-        H: int,
-        W: int,
-        quantization_table_y: Tensor,
-        quantization_table_c: Tensor,
+    input_y: Tensor,
+    input_cb: Tensor,
+    input_cr: Tensor,
+    jpeg_quality: Tensor,
+    H: int,
+    W: int,
+    quantization_table_y: Tensor,
+    quantization_table_c: Tensor,
 ) -> Tensor:
     """Performs JPEG decoding.
 
@@ -371,10 +371,10 @@ def _perform_padding(image: Tensor) -> Tuple[Tensor, int, int]:
 
 @perform_keep_shape_image
 def jpeg_codec_differentiable(
-        image_rgb: Tensor,
-        jpeg_quality: Tensor,
-        quantization_table_y: Tensor | None = None,
-        quantization_table_c: Tensor | None = None,
+    image_rgb: Tensor,
+    jpeg_quality: Tensor,
+    quantization_table_y: Tensor | None = None,
+    quantization_table_c: Tensor | None = None,
 ) -> Tensor:
     r"""Differentiable JPEG encoding-decoding module.
 
@@ -601,9 +601,9 @@ class JPEGCodecDifferentiable(Module):
     """
 
     def __init__(
-            self,
-            quantization_table_y: Tensor | Parameter | None = None,
-            quantization_table_c: Tensor | Parameter | None = None,
+        self,
+        quantization_table_y: Tensor | Parameter | None = None,
+        quantization_table_c: Tensor | Parameter | None = None,
     ) -> None:
         super().__init__()
         # Get default quantization tables if needed
@@ -619,9 +619,9 @@ class JPEGCodecDifferentiable(Module):
             self.register_buffer("quantization_table_c", quantization_table_c)
 
     def forward(
-            self,
-            image_rgb: Tensor,
-            jpeg_quality: Tensor,
+        self,
+        image_rgb: Tensor,
+        jpeg_quality: Tensor,
     ) -> Tensor:
         # Perform encoding-decoding
         image_rgb_jpeg: Tensor = jpeg_codec_differentiable(
