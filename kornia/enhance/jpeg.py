@@ -352,12 +352,12 @@ def _perform_padding(image: Tensor) -> Tuple[Tensor, int, int]:
     """Pads a given image to be dividable by 16.
 
     Args:
-        image (Tensor): Image of the shape :math:`(*, 3, H, W)`.
+        image: Image of the shape :math:`(*, 3, H, W)`.
 
     Returns:
-        image_padded (Tensor): Padded image of the shape :math:`(*, 3, H_{new}, W_{new})`.
-        h_pad (int): Padded pixels along the horizontal axis.
-        w_pad (int): Padded pixels along the vertical axis.
+        image_padded: Padded image of the shape :math:`(*, 3, H_{new}, W_{new})`.
+        h_pad: Padded pixels along the horizontal axis.
+        w_pad: Padded pixels along the vertical axis.
     """
     # Get spatial dimensions of the image
     H, W = image.shape[-2:]
