@@ -11,8 +11,8 @@ from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints, VideoKeypoints
 from kornia.utils import eye_like, is_autocast_enabled
 
-from .mixins import TransformMatrixMinIn
 from .image import ImageSequential
+from .mixins import TransformMatrixMinIn
 from .ops import AugmentationSequentialOps, DataType
 from .params import ParamItem
 from .patch import PatchSequential

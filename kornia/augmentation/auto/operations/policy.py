@@ -21,7 +21,11 @@ class PolicySequential(ImageSequentialBase, TransformMatrixMinIn):
         operations: a list of operations to perform.
     """
 
-    def __init__(self, *operations: OperationBase, callbacks: List[AugmentationCallbackBase] = [],) -> None:
+    def __init__(
+        self,
+        *operations: OperationBase,
+        callbacks: List[AugmentationCallbackBase] = [],
+    ) -> None:
         self.validate_operations(*operations)
         super().__init__(*operations, callbacks=callbacks)
         self._valid_ops_for_transform_computation: Tuple[Any, ...] = (OperationBase,)

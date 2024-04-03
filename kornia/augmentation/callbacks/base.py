@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from kornia.augmentation.base import _BasicAugmentationBase
 from kornia.augmentation.container.augment import AugmentationSequential

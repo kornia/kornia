@@ -3,18 +3,22 @@ from typing import Any, List, Optional, Tuple
 from kornia.augmentation.callbacks import AugmentationCallbackBase
 from kornia.core import Module, Tensor
 
-__all__ = ["CallbacksMixIn", "TransformMatrixMinIn",]
+__all__ = [
+    "CallbacksMixIn",
+    "TransformMatrixMinIn",
+]
 
 
 class CallbacksMixIn:
-
     def __init__(self, *args, **kwargs) -> None:  # type:ignore
         super().__init__(*args, **kwargs)
         self._callbacks: List[AugmentationCallbackBase] = []
         self._hooks = []
 
     @property
-    def callbacks(self,):
+    def callbacks(
+        self,
+    ):
         return self._callbacks
 
     def register_callbacks(self, callbacks: AugmentationCallbackBase) -> None:
