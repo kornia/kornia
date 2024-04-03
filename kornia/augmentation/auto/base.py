@@ -4,7 +4,8 @@ import torch
 
 from kornia.augmentation.auto.operations.base import OperationBase
 from kornia.augmentation.auto.operations.policy import PolicySequential
-from kornia.augmentation.container.base import ImageSequentialBase, TransformMatrixMinIn
+from kornia.augmentation.container.base import ImageSequentialBase
+from kornia.augmentation.container.mixins import TransformMatrixMinIn
 from kornia.augmentation.container.ops import InputSequentialOps
 from kornia.augmentation.container.params import ParamItem
 from kornia.core import Module, Tensor

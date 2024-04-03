@@ -11,7 +11,7 @@ from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints, VideoKeypoints
 from kornia.utils import eye_like, is_autocast_enabled
 
-from .base import TransformMatrixMinIn
+from .mixins import TransformMatrixMinIn
 from .image import ImageSequential
 from .ops import AugmentationSequentialOps, DataType
 from .params import ParamItem
@@ -25,7 +25,7 @@ _KEYPOINTS_OPTIONS = {DataKey.KEYPOINTS}
 _IMG_MSK_OPTIONS = {DataKey.INPUT, DataKey.MASK}
 
 
-class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
+class AugmentationSequential(ImageSequential, TransformMatrixMinIn):
     r"""AugmentationSequential for handling multiple input types like inputs, masks, keypoints at once.
 
     .. image:: _static/img/AugmentationSequential.png
@@ -305,7 +305,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 )
             params = self._params
 
-        [cb.on_sequential_inverse_start(in_args, params=params, data_keys=data_keys) for cb in self.callbacks]
+        self.run_callbacks("on_sequential_inverse_start", input=in_args, params=params)
 
         outputs: List[DataType] = in_args
         for param in params[::-1]:
@@ -322,7 +322,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         if isinstance(original_keys, tuple):
             return {k: v for v, k in zip(outputs, original_keys)}
 
-        [cb.on_sequential_inverse_end(*outputs, params=params, data_keys=data_keys) for cb in self.callbacks]
+        self.run_callbacks("on_sequential_inverse_end", input=outputs, params=params)
 
         if len(outputs) == 1 and isinstance(outputs, list):
             return outputs[0]
@@ -422,7 +422,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             else:
                 raise ValueError("`params` must be provided whilst INPUT is not in data_keys.")
 
-        [cb.on_sequential_forward_start(in_args, params=params, data_keys=data_keys) for cb in self.callbacks]
+        self.run_callbacks("on_sequential_forward_start", input=in_args, params=params)
 
         outputs: Union[Tensor, List[DataType]] = in_args
         for param in params:
@@ -444,7 +444,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         if isinstance(original_keys, tuple):
             return {k: v for v, k in zip(outputs, original_keys)}
 
-        [cb.on_sequential_forward_end(*outputs, params=params, data_keys=data_keys) for cb in self.callbacks]
+        self.run_callbacks("on_sequential_forward_end", input=outputs, params=params)
 
         if len(outputs) == 1 and isinstance(outputs, list):
             return outputs[0]
