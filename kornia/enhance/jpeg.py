@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-from typing import Tuple
 
 import torch
 import torch.nn.functional as F
@@ -156,7 +155,11 @@ def _jpeg_quality_to_scale(
     """
     # Get scale
     scale: Tensor = differentiable_polynomial_floor(
-        torch.where(compression_strength < 50, 5000.0 / compression_strength, 200.0 - 2.0 * compression_strength)
+        torch.where(
+            compression_strength < 50,
+            5000.0 / compression_strength,
+            200.0 - 2.0 * compression_strength,
+        )
     )
     return scale
 
@@ -232,8 +235,20 @@ def _chroma_subsampling(input_ycbcr: Tensor) -> tuple[Tensor, Tensor, Tensor]:
     output_cb: Tensor = input_ycbcr[:, 1]
     output_cr: Tensor = input_ycbcr[:, 2]
     # Perform average pooling of Cb and Cr channels
-    output_cb = rescale(output_cb[:, None], factor=0.5, interpolation="bilinear", align_corners=False, antialias=True)
-    output_cr = rescale(output_cr[:, None], factor=0.5, interpolation="bilinear", align_corners=False, antialias=True)
+    output_cb = rescale(
+        output_cb[:, None],
+        factor=0.5,
+        interpolation="bilinear",
+        align_corners=False,
+        antialias=True,
+    )
+    output_cr = rescale(
+        output_cr[:, None],
+        factor=0.5,
+        interpolation="bilinear",
+        align_corners=False,
+        antialias=True,
+    )
     return output_y, output_cb[:, 0], output_cr[:, 0]
 
 
@@ -248,7 +263,11 @@ def _chroma_upsampling(input_c: Tensor) -> Tensor:
     """
     # Upsample component
     output_c: Tensor = rescale(
-        input_c[:, None], factor=2.0, interpolation="bilinear", align_corners=False, antialias=False
+        input_c[:, None],
+        factor=2.0,
+        interpolation="bilinear",
+        align_corners=False,
+        antialias=False,
     )
     return output_c[:, 0]
 
@@ -279,7 +298,11 @@ def _jpeg_encode(
     # Perform chroma subsampling
     input_y, input_cb, input_cr = _chroma_subsampling(image_ycbcr)
     # Patchify, DCT, and rounding
-    input_y, input_cb, input_cr = _patchify_8x8(input_y), _patchify_8x8(input_cb), _patchify_8x8(input_cr)
+    input_y, input_cb, input_cr = (
+        _patchify_8x8(input_y),
+        _patchify_8x8(input_cb),
+        _patchify_8x8(input_cr),
+    )
     dct_y = _dct_8x8(input_y)
     dct_cb_cr = _dct_8x8(torch.cat((input_cb, input_cr), dim=1))
     y_encoded: Tensor = _quantize(
@@ -348,7 +371,7 @@ def _jpeg_decode(
     return rgb_decoded
 
 
-def _perform_padding(image: Tensor) -> Tuple[Tensor, int, int]:
+def _perform_padding(image: Tensor) -> tuple[Tensor, int, int]:
     """Pads a given image to be dividable by 16.
 
     Args:
