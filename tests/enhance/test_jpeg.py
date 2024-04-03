@@ -16,6 +16,15 @@ class TestDiffJPEG(BaseTester):
         assert img_jpeg is not None
         assert img_jpeg.shape == img.shape
 
+    def test_smoke_not_div_by_16(self, device, dtype) -> None:
+        """This test standard usage."""
+        B, H, W = 2, 33, 33
+        img = torch.rand(B, 3, H, W, device=device, dtype=dtype)
+        jpeg_quality = torch.randint(low=0, high=100, size=(B,), device=device, dtype=dtype)
+        img_jpeg = kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality)
+        assert img_jpeg is not None
+        assert img_jpeg.shape == img.shape
+
     def test_multi_batch(self, device, dtype) -> None:
         """Here we test two batch dimensions."""
         B, H, W = 4, 32, 32
@@ -80,13 +89,6 @@ class TestDiffJPEG(BaseTester):
             jpeg_quality = torch.randint(low=0, high=100, size=(B, 3, 2, 1), device=device, dtype=dtype)
             kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality)
         assert "shape must be [" in str(errinfo)
-
-        with pytest.raises(Exception) as errinfo:
-            B, H, W = 2, 31, 31
-            img = torch.rand(B, 3, H, W, device=device, dtype=dtype)
-            jpeg_quality = torch.randint(low=0, high=100, size=(B,), device=device, dtype=dtype)
-            kornia.enhance.jpeg_codec_differentiable(img, jpeg_quality)
-        assert "divisible" in str(errinfo)
 
         with pytest.raises(Exception) as errinfo:
             B, H, W = 4, 32, 32
