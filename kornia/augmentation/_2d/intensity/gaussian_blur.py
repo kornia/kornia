@@ -71,7 +71,7 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         }
         self._param_generator = rg.RandomGaussianBlurGenerator(sigma)
 
-        self.gaussian_blur2d_fn = gaussian_blur2d
+        self._gaussian_blur2d_fn = gaussian_blur2d
 
     def apply_transform(
         self,
@@ -81,7 +81,7 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         transform: Optional[Tensor] = None,
     ) -> Tensor:
         sigma = params["sigma"].unsqueeze(-1).expand(-1, 2)
-        return self.gaussian_blur2d_fn(
+        return self._gaussian_blur2d_fn(
             input,
             kernel_size=self.flags["kernel_size"],
             sigma=sigma,
@@ -99,7 +99,7 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         options: Optional[Dict[Any, Any]] = None,
         disable: bool = False,
     ) -> "RandomGaussianBlur":
-        self.gaussian_blur2d_fn = torch.compile(
+        self._gaussian_blur2d_fn = torch.compile(
             self.gaussian_blur2d_fn,
             fullgraph=fullgraph,
             dynamic=dynamic,
