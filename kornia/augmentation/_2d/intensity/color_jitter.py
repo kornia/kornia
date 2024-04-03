@@ -87,10 +87,10 @@ class ColorJitter(IntensityAugmentationBase2D):
         self._param_generator = rg.ColorJitterGenerator(brightness, contrast, saturation, hue)
 
         # native functions
-        self.brightness_fn = adjust_brightness_accumulative
-        self.contrast_fn = adjust_contrast_with_mean_subtraction
-        self.saturation_fn = adjust_saturation_with_gray_subtraction
-        self.hue_fn = adjust_hue
+        self._brightness_fn = adjust_brightness_accumulative
+        self._contrast_fn = adjust_contrast_with_mean_subtraction
+        self._saturation_fn = adjust_saturation_with_gray_subtraction
+        self._hue_fn = adjust_hue
 
     def apply_transform(
         self,
@@ -101,19 +101,21 @@ class ColorJitter(IntensityAugmentationBase2D):
     ) -> Tensor:
         transforms = [
             lambda img: (
-                self.brightness_fn(img, params["brightness_factor"])
+                self._brightness_fn(img, params["brightness_factor"])
                 if (params["brightness_factor"] != 0).any()
                 else img
             ),
             lambda img: (
-                self.contrast_fn(img, params["contrast_factor"]) if (params["contrast_factor"] != 1).any() else img
+                self._contrast_fn(img, params["contrast_factor"]) if (params["contrast_factor"] != 1).any() else img
             ),
             lambda img: (
-                self.saturation_fn(img, params["saturation_factor"])
+                self._saturation_fn(img, params["saturation_factor"])
                 if (params["saturation_factor"] != 1).any()
                 else img
             ),
-            lambda img: (self.hue_fn(img, params["hue_factor"] * 2 * pi) if (params["hue_factor"] != 0).any() else img),
+            lambda img: (
+                self._hue_fn(img, params["hue_factor"] * 2 * pi) if (params["hue_factor"] != 0).any() else img
+            ),
         ]
 
         jittered = input
@@ -134,7 +136,7 @@ class ColorJitter(IntensityAugmentationBase2D):
         disable: bool = False,
     ) -> "ColorJitter":
         self.brightness_fn = torch.compile(
-            self.brightness_fn,
+            self._brightness_fn,
             fullgraph=fullgraph,
             dynamic=dynamic,
             backend=backend,
@@ -143,7 +145,7 @@ class ColorJitter(IntensityAugmentationBase2D):
             disable=disable,
         )
         self.contrast_fn = torch.compile(
-            self.contrast_fn,
+            self._contrast_fn,
             fullgraph=fullgraph,
             dynamic=dynamic,
             backend=backend,
@@ -152,7 +154,7 @@ class ColorJitter(IntensityAugmentationBase2D):
             disable=disable,
         )
         self.saturation_fn = torch.compile(
-            self.saturation_fn,
+            self._saturation_fn,
             fullgraph=fullgraph,
             dynamic=dynamic,
             backend=backend,
@@ -161,7 +163,7 @@ class ColorJitter(IntensityAugmentationBase2D):
             disable=disable,
         )
         self.hue_fn = torch.compile(
-            self.hue_fn,
+            self._hue_fn,
             fullgraph=fullgraph,
             dynamic=dynamic,
             backend=backend,

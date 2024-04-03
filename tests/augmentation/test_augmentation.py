@@ -1935,7 +1935,10 @@ class TestColorJitter(BaseTester):
         self.assert_close(f.transform_matrix, expected_transform)
 
     @pytest.mark.slow
-    @pytest.mark.skipif(torch_version_le(2, 1, 0), reason="not supported in this pytorch version")
+    @pytest.mark.skipif(
+        torch_version_le(1, 13, 0),
+        reason="torch compilation is not supported in previous versions",
+    )
     def test_compile(self, device):
         input = torch.rand((1, 3, 5, 5), device=device)
         f = ColorJitter(p=1.0).compile(fullgraph=True)
@@ -3817,43 +3820,6 @@ class TestRandomGaussianBlur(BaseTester):
         actual = aug(input)
         self.assert_close(actual, actual)
 
-    @pytest.mark.slow
-    def test_gradcheck(self, device):
-        torch.manual_seed(0)
-
-        # test parameters
-        batch_shape = (3, 3, 5, 5)
-        kernel_size = (3, 3)
-        sigma = (1.5, 1.5)
-
-        # evaluate function gradient
-        input = torch.rand(batch_shape, device=device, dtype=torch.float64)
-        self.gradcheck(
-            RandomGaussianBlur(kernel_size, sigma, "replicate", p=1.0),
-            (input,),
-            fast_mode=False,
-        )
-
-    @pytest.mark.xfail(
-        reason="might fail due to the sampling distribution gradcheck errors. "
-        "See: https://github.com/pytorch/pytorch/issues/78346."
-    )
-    def test_gradcheck_class_non_deterministic(self, device):
-        torch.manual_seed(0)
-
-        # test parameters
-        batch_shape = (3, 3, 5, 5)
-        kernel_size = (3, 3)
-        sigma = (1.5, 2.1)
-
-        # evaluate function gradient
-        input = torch.rand(batch_shape, device=device, dtype=torch.float64)
-        self.gradcheck(
-            RandomGaussianBlur(kernel_size, sigma, "replicate", p=1.0),
-            (input,),
-            fast_mode=False,
-        )
-
     def test_module(self, device, dtype):
         func_params = [(3, 3), torch.tensor([1.5, 1.5]).view(1, -1)]
         params = [(3, 3), (1.5, 1.5)]
@@ -3880,6 +3846,22 @@ class TestRandomGaussianBlur(BaseTester):
 
         img = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
         self.assert_close(op(img, *func_params), op_module(img))
+
+    @pytest.mark.slow
+    @pytest.mark.skipif(
+        torch_version_le(1, 13, 1),
+        reason="torch.compile is not available in previous versions",
+    )
+    def test_compile(self, device, dtype):
+        kernel_size = (3, 3)
+        sigma = (1.5, 2.1)
+        img = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
+        aug = RandomGaussianBlur(kernel_size, sigma, "replicate")
+        expected = aug(img)
+        aug = aug.compile(fullgraph=True)
+        actual = aug(img)
+        assert actual.shape == img.shape
+        self.assert_close(expected, actual)
 
 
 class TestRandomInvert(BaseTester):

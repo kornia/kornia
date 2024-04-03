@@ -3,9 +3,15 @@ from typing import Dict, Tuple, Union
 import torch
 from torch import Tensor
 
-from kornia.augmentation.random_generator.base import RandomGeneratorBase, UniformDistribution
-from kornia.augmentation.utils import _adapted_rsampling, _common_param_check, _joint_range_check
-from kornia.utils.helpers import _extract_device_dtype
+from kornia.augmentation.random_generator.base import (
+    RandomGeneratorBase,
+    UniformDistribution,
+)
+from kornia.augmentation.utils import (
+    _adapted_rsampling,
+    _common_param_check,
+    _joint_range_check,
+)
 
 __all__ = ["RandomGaussianBlurGenerator"]
 
@@ -32,10 +38,11 @@ class RandomGaussianBlurGenerator(RandomGeneratorBase):
             raise TypeError(f"sigma_max should be higher than sigma_min: {sigma} passed.")
 
         self.sigma = sigma
+        self.sigma_sampler: UniformDistribution
 
     def __repr__(self) -> str:
-        repr = f"sigma={self.sigma}"
-        return repr
+        repr_buf = f"sigma={self.sigma}"
+        return repr_buf
 
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         if not isinstance(self.sigma, (torch.Tensor)):
@@ -50,6 +57,5 @@ class RandomGaussianBlurGenerator(RandomGeneratorBase):
     def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
-        _device, _dtype = _extract_device_dtype([self.sigma])
         sigma = _adapted_rsampling((batch_size,), self.sigma_sampler, same_on_batch)
-        return {"sigma": sigma.to(device=_device, dtype=_dtype)}
+        return {"sigma": sigma}

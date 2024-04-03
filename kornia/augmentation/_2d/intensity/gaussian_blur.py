@@ -1,6 +1,6 @@
-import warnings
 from typing import Any, Dict, Optional, Tuple, Union
 
+import torch
 from torch import Tensor
 
 from kornia.augmentation import random_generator as rg
@@ -61,28 +61,51 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
-        silence_instantiation_warning: bool = False,
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, p_batch=1.0, keepdim=keepdim)
 
-        if not silence_instantiation_warning:
-            warnings.warn(
-                "`RandomGaussianBlur` has changed its behavior and now randomly sample sigma for both axes. "
-                "To retrieve old behavior please consider using kornia.filters.GaussianBlur2d",
-                category=DeprecationWarning,
-            )
-
-        self.flags = {"kernel_size": kernel_size, "separable": separable, "border_type": BorderType.get(border_type)}
+        self.flags = {
+            "kernel_size": kernel_size,
+            "separable": separable,
+            "border_type": BorderType.get(border_type),
+        }
         self._param_generator = rg.RandomGaussianBlurGenerator(sigma)
 
+        self._gaussian_blur2d_fn = gaussian_blur2d
+
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self,
+        input: Tensor,
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
+        transform: Optional[Tensor] = None,
     ) -> Tensor:
-        sigma = params["sigma"].to(device=input.device, dtype=input.dtype).unsqueeze(-1).expand(-1, 2)
-        return gaussian_blur2d(
+        sigma = params["sigma"].unsqueeze(-1).expand(-1, 2)
+        return self._gaussian_blur2d_fn(
             input,
-            self.flags["kernel_size"],
-            sigma,
-            self.flags["border_type"].name.lower(),
+            kernel_size=self.flags["kernel_size"],
+            sigma=sigma,
+            border_type=self.flags["border_type"].name.lower(),
             separable=self.flags["separable"],
         )
+
+    def compile(
+        self,
+        *,
+        fullgraph: bool = False,
+        dynamic: bool = False,
+        backend: str = "inductor",
+        mode: Optional[str] = None,
+        options: Optional[Dict[Any, Any]] = None,
+        disable: bool = False,
+    ) -> "RandomGaussianBlur":
+        self._gaussian_blur2d_fn = torch.compile(
+            self.gaussian_blur2d_fn,
+            fullgraph=fullgraph,
+            dynamic=dynamic,
+            backend=backend,
+            mode=mode,
+            options=options,
+            disable=disable,
+        )
+        return self

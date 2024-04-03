@@ -149,5 +149,4 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         transform: Optional[Tensor] = None,
     ) -> Tensor:
         r"""Apply random gaussian gradient illumination to the input image."""
-
         return input.add_(params["gradient"]).clamp_(0, 1)
