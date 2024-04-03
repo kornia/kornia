@@ -3857,8 +3857,11 @@ class TestRandomGaussianBlur(BaseTester):
         sigma = (1.5, 2.1)
         img = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
         aug = RandomGaussianBlur(kernel_size, sigma, "replicate")
+        expected = aug(img)
         aug = aug.compile(fullgraph=True)
-        assert aug(img).shape == img.shape
+        actual = aug(img)
+        assert actual.shape == img.shape
+        self.assert_close(expected, actual)
 
 
 class TestRandomInvert(BaseTester):
