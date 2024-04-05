@@ -143,14 +143,15 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         # Generator of random parameters and masks.
         self._param_generator = GaussianIlluminationGenerator(gain, center, sigma, sign)
 
-    def _apply_transform(
-        self,
-        input: Tensor,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any],
-        transform: Optional[Tensor] = None,
-    ) -> Tensor:
-        return input.add_(params["gradient"]).clamp_(0, 1)
+        def _apply_transform(
+            input: Tensor,
+            params: Dict[str, Tensor],
+            flags: Dict[str, Any],
+            transform: Optional[Tensor] = None,
+        ) -> Tensor:
+            return input.add_(params["gradient"]).clamp_(0, 1)
+
+        self._fn = _apply_transform
 
     def apply_transform(
         self,
@@ -160,7 +161,7 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         transform: Optional[Tensor] = None,
     ) -> Tensor:
         r"""Apply random gaussian gradient illumination to the input image."""
-        return self._apply_transform(input=input, params=params, flags=flags, transform=transform)
+        return self._fn(input=input, params=params, flags=flags, transform=transform)
 
     def compile(
         self,
@@ -172,8 +173,8 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         options: Optional[Dict[Any, Any]] = None,
         disable: bool = False,
     ) -> "RandomGaussianIllumination":
-        self._apply_transform = torch.compile(
-            self._apply_transform,
+        self._fn = torch.compile(
+            self._fn,
             fullgraph=fullgraph,
             dynamic=dynamic,
             backend=backend,
