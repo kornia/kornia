@@ -33,7 +33,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         *args: a list of kornia augmentation modules.
 
         data_keys: the input type sequential for applying augmentations. Accepts "input", "image", "mask",
-                   "bbox", "bbox_xyxy", "bbox_xywh", "keypoints".
+                   "bbox", "bbox_xyxy", "bbox_xywh", "keypoints", "class", "label".
 
         same_on_batch: apply the same transformation across the batch. If None, it will not overwrite the function-wise
                        settings.
@@ -467,7 +467,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
             allowed_dk = " | ".join(f"`{d.name}`" for d in DataKey)
             raise ValueError(
-                f"You input data dictionary keys should starts with some of datakey values: {allowed_dk}. Got `{key}`"
+                f"Your input data dictionary keys should starts with some of datakey values: {allowed_dk}. Got `{key}`"
             )
 
         return [DataKey.get(retrieve_key(k)) for k in keys]
