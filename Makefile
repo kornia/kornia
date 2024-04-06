@@ -48,9 +48,6 @@ mypy: FORCE
 doctest:
 	pytest -v --doctest-modules kornia/
 
-docstyle: FORCE
-	pydocstyle kornia/
-
 build-docs: FORCE
 	cd docs; make clean html
 
