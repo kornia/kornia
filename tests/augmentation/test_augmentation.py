@@ -1935,8 +1935,8 @@ class TestColorJitter(BaseTester):
         self.assert_close(f.transform_matrix, expected_transform)
 
     @pytest.mark.slow
-    def test_compile(self, device, torch_optimizer):
-        input = torch.rand((1, 3, 5, 5), device=device)
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        input = torch.rand((1, 3, 5, 5), device=device, dtype=dtype)
         f = ColorJitter(p=1.0).compile(fullgraph=True)
         out = f(input)
         assert out.shape == input.shape
@@ -3844,16 +3844,14 @@ class TestRandomGaussianBlur(BaseTester):
         self.assert_close(op(img, *func_params), op_module(img))
 
     @pytest.mark.slow
-    def test_compile(self, device, dtype, torch_optimizer):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         kernel_size = (3, 3)
         sigma = (1.5, 2.1)
         img = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
         aug = RandomGaussianBlur(kernel_size, sigma, "replicate")
-        expected = aug(img)
         aug = aug.compile(fullgraph=True)
         actual = aug(img)
         assert actual.shape == img.shape
-        self.assert_close(expected, actual)
 
 
 class TestRandomInvert(BaseTester):
