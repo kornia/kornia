@@ -151,6 +151,12 @@ html_theme_options = {
 # html_logo = '_static/img/kornia_logo_only.png'
 html_favicon = "_static/img/kornia_logo_favicon.png"
 
+# Config the `sphinxcontrib.gtagjs` extension
+# NOTE: if this didn't work, we can remove the extension itself
+gtagjs_ids = [
+    "G-YSCFZB2WDV",  # Shouldn't be necessary if the readthedocs autoinjection work
+]
+
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
