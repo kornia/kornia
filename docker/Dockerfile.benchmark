@@ -14,7 +14,8 @@ COPY kornia/ kornia/
 COPY pyproject.toml ./
 COPY requirements/ requirements/
 
-RUN pip install .[dev,x]
+RUN pip install -r requirements/requirements-benchmarks.txt --no-cache-dir
+RUN pip install .[dev,x] --no-cache-dir
 
 # Setup benchmarks
 WORKDIR /kornia-benchmarks/

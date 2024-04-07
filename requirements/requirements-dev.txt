@@ -3,8 +3,6 @@ mypy
 numpy
 onnx
 pre-commit>=2
-pydocstyle
 pytest==8.1.1
-pytest-benchmark
 pytest-timeout
 requests
