@@ -161,7 +161,7 @@ gtagjs_ids = [
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ["_static"]
-html_extra_path = ["_extra/robots.txt"]
+html_extra_path = []
 
 # Output file base name for HTML help builder.
 htmlhelp_basename = "Kornia"
