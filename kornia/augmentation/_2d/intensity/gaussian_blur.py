@@ -100,7 +100,7 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         disable: bool = False,
     ) -> "RandomGaussianBlur":
         self._gaussian_blur2d_fn = torch.compile(
-            self.gaussian_blur2d_fn,
+            self._gaussian_blur2d_fn,
             fullgraph=fullgraph,
             dynamic=dynamic,
             backend=backend,

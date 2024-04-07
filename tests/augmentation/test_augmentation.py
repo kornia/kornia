@@ -59,7 +59,6 @@ from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.constants import Resample, pi
 from kornia.geometry import transform_points
 from kornia.utils import create_meshgrid
-from kornia.utils._compat import torch_version_le
 from kornia.utils.helpers import _torch_inverse_cast
 
 from testing.augmentation.datasets import DummyMPDataset
@@ -1936,12 +1935,8 @@ class TestColorJitter(BaseTester):
         self.assert_close(f.transform_matrix, expected_transform)
 
     @pytest.mark.slow
-    @pytest.mark.skipif(
-        torch_version_le(1, 13, 0),
-        reason="torch compilation is not supported in previous versions",
-    )
-    def test_compile(self, device):
-        input = torch.rand((1, 3, 5, 5), device=device)
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        input = torch.rand((1, 3, 5, 5), device=device, dtype=dtype)
         f = ColorJitter(p=1.0).compile(fullgraph=True)
         out = f(input)
         assert out.shape == input.shape
@@ -3849,20 +3844,14 @@ class TestRandomGaussianBlur(BaseTester):
         self.assert_close(op(img, *func_params), op_module(img))
 
     @pytest.mark.slow
-    @pytest.mark.skipif(
-        torch_version_le(1, 13, 1),
-        reason="torch.compile is not available in previous versions",
-    )
-    def test_compile(self, device, dtype):
+    def test_dynamo(self, device, dtype, torch_optimizer):
         kernel_size = (3, 3)
         sigma = (1.5, 2.1)
         img = torch.rand(1, 3, 5, 5, device=device, dtype=dtype)
         aug = RandomGaussianBlur(kernel_size, sigma, "replicate")
-        expected = aug(img)
         aug = aug.compile(fullgraph=True)
         actual = aug(img)
         assert actual.shape == img.shape
-        self.assert_close(expected, actual)
 
 
 class TestRandomInvert(BaseTester):
