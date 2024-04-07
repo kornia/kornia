@@ -467,7 +467,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
             allowed_dk = " | ".join(f"`{d.name}`" for d in DataKey)
             raise ValueError(
-                f"Your input data dictionary keys should starts with some of datakey values: {allowed_dk}. Got `{key}`"
+                f"Your input data dictionary keys should start with some of datakey values: {allowed_dk}. Got `{key}`"
             )
 
         return [DataKey.get(retrieve_key(k)) for k in keys]
