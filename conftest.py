@@ -129,6 +129,10 @@ def pytest_generate_tests(metafunc):
         # Exclude any blacklisted device/dtype combinations.
         params = [combo for combo in product(device_names, dtype_names) if combo not in DEVICE_DTYPE_BLACKLIST]
         metafunc.parametrize("device_name,dtype_name", params)
+    elif device_names is not None and dtype_names is None and optimizer_backends_names is not None:
+        params = product(device_names, optimizer_backends_names)
+        metafunc.parametrize("device_name,optimizer_backend", params)
+
     elif device_names is not None:
         metafunc.parametrize("device_name", device_names)
     elif dtype_names is not None:
