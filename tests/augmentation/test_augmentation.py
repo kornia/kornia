@@ -4060,6 +4060,14 @@ class TestRandomGaussianIllumination(BaseTester):
         output_tensor = transform(input_tensor)
         self.assert_close(output_tensor[0], output_tensor[1])
 
+    @pytest.mark.slow
+    def test_dynamo(self, device, dtype, torch_optimizer):
+        input_tensor = torch.ones(1, 3, 3, 3, device=device, dtype=dtype) * 0.5
+        aug = RandomGaussianIllumination(gain=0.5, p=1.0)
+        aug = aug.compile(fullgraph=True)
+        actual = aug(input_tensor)
+        assert actual.shape == input_tensor.shape
+
 
 class TestRandomLinearIllumination(BaseTester):
     def _get_expected(self, device, dtype):

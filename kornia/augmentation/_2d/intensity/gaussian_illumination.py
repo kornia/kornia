@@ -1,5 +1,7 @@
 from typing import Any, Dict, Optional, Tuple, Union
 
+import torch
+
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.random_generator._2d import GaussianIlluminationGenerator
 from kornia.core import Tensor
@@ -141,6 +143,16 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         # Generator of random parameters and masks.
         self._param_generator = GaussianIlluminationGenerator(gain, center, sigma, sign)
 
+        def _apply_transform(
+            input: Tensor,
+            params: Dict[str, Tensor],
+            flags: Dict[str, Any],
+            transform: Optional[Tensor] = None,
+        ) -> Tensor:
+            return input.add_(params["gradient"]).clamp_(0, 1)
+
+        self._fn = _apply_transform
+
     def apply_transform(
         self,
         input: Tensor,
@@ -149,4 +161,26 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         transform: Optional[Tensor] = None,
     ) -> Tensor:
         r"""Apply random gaussian gradient illumination to the input image."""
-        return input.add_(params["gradient"]).clamp_(0, 1)
+        return self._fn(input=input, params=params, flags=flags, transform=transform)
+
+    def compile(
+        self,
+        *,
+        fullgraph: bool = False,
+        dynamic: bool = False,
+        backend: str = "inductor",
+        mode: Optional[str] = None,
+        options: Optional[Dict[Any, Any]] = None,
+        disable: bool = False,
+    ) -> "RandomGaussianIllumination":
+        self._fn = torch.compile(
+            self._fn,
+            fullgraph=fullgraph,
+            dynamic=dynamic,
+            backend=backend,
+            mode=mode,
+            options=options,
+            disable=disable,
+        )
+
+        return self
