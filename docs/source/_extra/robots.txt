@@ -1,6 +1,0 @@
-User-agent: *
-    Allow: /*/latest/
-    Allow: /en/latest/
-    Allow: /*/stable/
-    Allow: /en/stable/
-    Disallow: /

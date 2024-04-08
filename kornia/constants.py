@@ -130,6 +130,7 @@ class DataKey(Enum, metaclass=_KORNIA_EnumMeta):
     BBOX_XYXY = 3
     BBOX_XYWH = 4
     KEYPOINTS = 5
+    LABEL = 6
     CLASS = 6
 
     @classmethod

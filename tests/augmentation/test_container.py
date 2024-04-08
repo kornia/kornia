@@ -514,10 +514,11 @@ class TestAugmentationSequential:
         for i in range(len(bbox)):
             assert len(bboxes_transformed[i]) == len(bbox[i])
 
-    def test_class(self, device, dtype):
+    @pytest.mark.parametrize("class_data_key", ["class", "label"])
+    def test_class(self, class_data_key, device, dtype):
         img = torch.zeros((5, 1, 5, 5))
         labels = torch.randint(0, 10, size=(5, 1))
-        aug = K.AugmentationSequential(K.RandomCrop((3, 3), pad_if_needed=True), data_keys=["input", "class"])
+        aug = K.AugmentationSequential(K.RandomCrop((3, 3), pad_if_needed=True), data_keys=["input", class_data_key])
 
         _, out_labels = aug(img, labels)
         assert labels is out_labels

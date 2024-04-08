@@ -33,7 +33,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         *args: a list of kornia augmentation modules.
 
         data_keys: the input type sequential for applying augmentations. Accepts "input", "image", "mask",
-                   "bbox", "bbox_xyxy", "bbox_xywh", "keypoints".
+                   "bbox", "bbox_xyxy", "bbox_xywh", "keypoints", "class", "label".
 
         same_on_batch: apply the same transformation across the batch. If None, it will not overwrite the function-wise
                        settings.
@@ -234,7 +234,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             self.data_keys = data_keys
 
         if self.data_keys:
-            if not all(in_type in DataKey for in_type in self.data_keys):
+            if any(in_type not in DataKey for in_type in self.data_keys):
                 raise AssertionError(f"`data_keys` must be in {DataKey}. Got {self.data_keys}.")
 
             if self.data_keys[0] != DataKey.INPUT:
@@ -446,9 +446,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         if self.data_keys is not None:
             raise ValueError("If you are using a dictionary as input, the data_keys should be None.")
 
-        data_keys = self._read_datakeys_from_dict(tuple(data.keys()))
         keys = tuple(data.keys())
-        data_unpacked = tuple(v for v in data.values())
+        data_keys = self._read_datakeys_from_dict(keys)
+        data_unpacked = tuple(data.values())
 
         return keys, data_keys, data_unpacked
 
@@ -467,7 +467,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
             allowed_dk = " | ".join(f"`{d.name}`" for d in DataKey)
             raise ValueError(
-                f"You input data dictionary keys should starts with some of datakey values: {allowed_dk}. Got `{key}`"
+                f"Your input data dictionary keys should start with some of datakey values: {allowed_dk}. Got `{key}`"
             )
 
         return [DataKey.get(retrieve_key(k)) for k in keys]
