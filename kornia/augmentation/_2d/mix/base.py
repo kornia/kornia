@@ -29,7 +29,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
         data_keys: the input type sequential for applying augmentations.
-            Accepts "input", "image", "mask", "bbox", "bbox_xyxy", "bbox_xywh", "keypoints".
+            Accepts "input", "image", "mask", "bbox", "bbox_xyxy", "bbox_xywh", "keypoints", "class", "label".
     """
 
     def __init__(
