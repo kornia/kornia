@@ -14,8 +14,9 @@ from kornia.utils.one_hot import one_hot
 # https://github.com/Lightning-AI/metrics/blob/v0.11.3/src/torchmetrics/functional/classification/dice.py#L66-L207
 
 
-def dice_loss(pred: Tensor, target: Tensor, average: str = "micro", eps: float = 1e-8,
-              weight: Optional[Tensor] = None) -> Tensor:
+def dice_loss(
+    pred: Tensor, target: Tensor, average: str = "micro", eps: float = 1e-8, weight: Optional[Tensor] = None
+) -> Tensor:
     r"""Criterion that computes Sørensen-Dice Coefficient loss.
 
     According to [1], we compute the Sørensen-Dice Coefficient as follows:
