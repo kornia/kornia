@@ -64,7 +64,7 @@ class TestDiceLoss(BaseTester):
         criterion = kornia.losses.DiceLoss(average="micro", eps=eps)
         loss = criterion(logits, labels)
         self.assert_close(loss, expected_loss, rtol=1e-3, atol=1e-3)
-    
+
     def test_weight(self, device, dtype):
         num_classes = 3
         eps = 1e-8

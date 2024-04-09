@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from typing import Optional
+
 import torch
 from torch import Tensor, nn
 
-from kornia.core.check import KORNIA_CHECK_SHAPE, KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 # based on:
 # https://github.com/bermanmaxim/LovaszSoftmax
@@ -66,7 +67,7 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor, weight: Optional[Tensor] =
 
     if not pred.device == target.device:
         raise ValueError(f"pred and target must be in the same device. Got: {pred.device} and {target.device}")
-    
+
     num_of_classes = pred.shape[1]
     # compute the actual dice score
     if weight is not None:
