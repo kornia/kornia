@@ -61,7 +61,7 @@ class TestLovaszSoftmaxLoss(BaseTester):
         loss = criterion(prediction, labels)
 
         self.assert_close(loss, torch.zeros_like(loss), rtol=1e-3, atol=1e-3)
-    
+
     def test_weight(self, device, dtype):
         num_classes = 2
         # make perfect prediction
