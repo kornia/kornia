@@ -1,15 +1,16 @@
 from __future__ import annotations
 
+from typing import Optional
 import torch
 from torch import Tensor, nn
 
-from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK_SHAPE, KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
 
 # based on:
 # https://github.com/bermanmaxim/LovaszSoftmax
 
 
-def lovasz_softmax_loss(pred: Tensor, target: Tensor) -> Tensor:
+def lovasz_softmax_loss(pred: Tensor, target: Tensor, weight: Optional[Tensor] = None) -> Tensor:
     r"""Criterion that computes a surrogate multi-class intersection-over-union (IoU) loss.
 
     According to [1], we compute the IoU as follows:
@@ -22,7 +23,7 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor) -> Tensor:
 
     Where:
        - :math:`X` expects to be the scores of each class.
-       - :math:`Y` expects to be the binary tensor with the class labels.
+       - :math:`Y` expects to be the long tensor with the class labels.
 
     the loss, is finally computed as:
 
@@ -41,6 +42,7 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor) -> Tensor:
         pred: logits tensor with shape :math:`(N, C, H, W)` where C = number of classes > 1.
         labels: labels tensor with shape :math:`(N, H, W)` where each value
           is :math:`0 ≤ targets[i] ≤ C-1`.
+        weight: weights for classes with shape :math:`(num\_of\_classes,)`.
 
     Return:
         a scalar with the computed loss.
@@ -64,6 +66,19 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor) -> Tensor:
 
     if not pred.device == target.device:
         raise ValueError(f"pred and target must be in the same device. Got: {pred.device} and {target.device}")
+    
+    num_of_classes = pred.shape[1]
+    # compute the actual dice score
+    if weight is not None:
+        KORNIA_CHECK_IS_TENSOR(weight, "weight must be Tensor or None.")
+        KORNIA_CHECK(
+            (weight.shape[0] == num_of_classes and weight.numel() == num_of_classes),
+            f"weight shape must be (num_of_classes,): ({num_of_classes},), got {weight.shape}",
+        )
+        KORNIA_CHECK(
+            weight.device == pred.device,
+            f"weight and pred must be in the same device. Got: {weight.device} and {pred.device}",
+        )
 
     # flatten pred [B, C, -1] and target [B, -1] and to float
     pred_flatten: Tensor = pred.reshape(pred.shape[0], pred.shape[1], -1)
@@ -91,7 +106,7 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor) -> Tensor:
         gradient: Tensor = 1.0 - intersection / union
         if N > 1:
             gradient[..., 1:] = gradient[..., 1:] - gradient[..., :-1]
-        loss: Tensor = (errors_sorted.relu() * gradient).sum(1).mean()
+        loss: Tensor = (errors_sorted.relu() * gradient).sum(1).mean() * (1.0 if weight is None else weight[c])
         losses.append(loss)
     final_loss: Tensor = torch.stack(losses, dim=0).mean()
     return final_loss
@@ -129,6 +144,7 @@ class LovaszSoftmaxLoss(nn.Module):
         pred: logits tensor with shape :math:`(N, C, H, W)` where C = number of classes > 1.
         labels: labels tensor with shape :math:`(N, H, W)` where each value
           is :math:`0 ≤ targets[i] ≤ C-1`.
+        weight: weights for classes with shape :math:`(num\_of\_classes,)`.
 
     Return:
         a scalar with the computed loss.
@@ -142,8 +158,9 @@ class LovaszSoftmaxLoss(nn.Module):
         >>> output.backward()
     """
 
-    def __init__(self) -> None:
+    def __init__(self, weight: Optional[Tensor] = None) -> None:
         super().__init__()
+        self.weight = weight
 
     def forward(self, pred: Tensor, target: Tensor) -> Tensor:
-        return lovasz_softmax_loss(pred=pred, target=target)
+        return lovasz_softmax_loss(pred=pred, target=target, weight=self.weight)

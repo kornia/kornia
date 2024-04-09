@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Optional
 import torch
 from torch import nn
 
@@ -12,7 +13,7 @@ from kornia.utils.one_hot import one_hot
 # https://github.com/Lightning-AI/metrics/blob/v0.11.3/src/torchmetrics/functional/classification/dice.py#L66-L207
 
 
-def dice_loss(pred: Tensor, target: Tensor, average: str = "micro", eps: float = 1e-8) -> Tensor:
+def dice_loss(pred: Tensor, target: Tensor, average: str = "micro", eps: float = 1e-8,  weight: Optional[Tensor] = None) -> Tensor:
     r"""Criterion that computes Sørensen-Dice Coefficient loss.
 
     According to [1], we compute the Sørensen-Dice Coefficient as follows:
@@ -43,6 +44,7 @@ def dice_loss(pred: Tensor, target: Tensor, average: str = "micro", eps: float =
             - ``'micro'`` [default]: Calculate the loss across all classes.
             - ``'macro'``: Calculate the loss for each class separately and average the metrics across classes.
         eps: Scalar to enforce numerical stabiliy.
+        weight: weights for classes with shape :math:`(num\_of\_classes,)`.
 
     Return:
         One-element tensor of the computed loss.
@@ -64,7 +66,7 @@ def dice_loss(pred: Tensor, target: Tensor, average: str = "micro", eps: float =
 
     if not pred.device == target.device:
         raise ValueError(f"pred and target must be in the same device. Got: {pred.device} and {target.device}")
-
+    num_of_classes = pred.shape[1]
     possible_average = {"micro", "macro"}
     KORNIA_CHECK(average in possible_average, f"The `average` has to be one of {possible_average}. Got: {average}")
 
@@ -80,6 +82,18 @@ def dice_loss(pred: Tensor, target: Tensor, average: str = "micro", eps: float =
         dims = (1, *dims)
 
     # compute the actual dice score
+    if weight is not None:
+        KORNIA_CHECK_IS_TENSOR(weight, "weight must be Tensor or None.")
+        KORNIA_CHECK(
+            (weight.shape[0] == num_of_classes and weight.numel() == num_of_classes),
+            f"weight shape must be (num_of_classes,): ({num_of_classes},), got {weight.shape}",
+        )
+        KORNIA_CHECK(
+            weight.device == pred.device,
+            f"weight and pred must be in the same device. Got: {weight.device} and {pred.device}",
+        )
+        pred_soft = pred_soft * weight
+        target_one_hot = target_one_hot * weight
     intersection = torch.sum(pred_soft * target_one_hot, dims)
     cardinality = torch.sum(pred_soft + target_one_hot, dims)
 
@@ -120,6 +134,7 @@ class DiceLoss(nn.Module):
             - ``'micro'`` [default]: Calculate the loss across all classes.
             - ``'macro'``: Calculate the loss for each class separately and average the metrics across classes.
         eps: Scalar to enforce numerical stabiliy.
+        weight: weights for classes with shape :math:`(num\_of\_classes,)`.
 
     Shape:
         - Pred: :math:`(N, C, H, W)` where C = number of classes.
@@ -135,10 +150,11 @@ class DiceLoss(nn.Module):
         >>> output.backward()
     """
 
-    def __init__(self, average: str = "micro", eps: float = 1e-8) -> None:
+    def __init__(self, average: str = "micro", eps: float = 1e-8, weight: Optional[Tensor] = None) -> None:
         super().__init__()
         self.average = average
         self.eps = eps
+        self.weight = weight
 
     def forward(self, pred: Tensor, target: Tensor) -> Tensor:
-        return dice_loss(pred, target, self.average, self.eps)
+        return dice_loss(pred, target, self.average, self.eps, self.weight)
