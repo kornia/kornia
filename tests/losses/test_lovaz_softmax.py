@@ -62,6 +62,19 @@ class TestLovaszSoftmaxLoss(BaseTester):
 
         self.assert_close(loss, torch.zeros_like(loss), rtol=1e-3, atol=1e-3)
 
+    def test_weight(self, device, dtype):
+        num_classes = 2
+        # make perfect prediction
+        # note that softmax(prediction[:, 1]) == 1. softmax(prediction[:, 0]) == 0.
+        prediction = torch.zeros(2, num_classes, 1, 2, device=device, dtype=dtype)
+        prediction[:, 0] = 100.0
+        labels = torch.ones(2, 1, 2, device=device, dtype=torch.int64)
+
+        criterion = kornia.losses.LovaszSoftmaxLoss(weight=torch.tensor([1.0, 0.0], device=device, dtype=dtype))
+        loss = criterion(prediction, labels)
+
+        self.assert_close(loss, 0.5 * torch.ones_like(loss), rtol=1e-3, atol=1e-3)
+
     def test_gradcheck(self, device):
         num_classes = 4
         logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=torch.float64)

@@ -65,6 +65,17 @@ class TestDiceLoss(BaseTester):
         loss = criterion(logits, labels)
         self.assert_close(loss, expected_loss, rtol=1e-3, atol=1e-3)
 
+    def test_weight(self, device, dtype):
+        num_classes = 3
+        eps = 1e-8
+        logits = torch.zeros(2, num_classes, 4, 1, device=device, dtype=dtype)
+        labels = torch.zeros(2, 4, 1, device=device, dtype=torch.int64)
+        expected_loss = torch.tensor([2.0 / 3.0], device=device, dtype=dtype).squeeze()
+        weight = torch.tensor([0.0, 1.0, 1.0], device=device, dtype=dtype)
+        criterion = kornia.losses.DiceLoss(average="micro", eps=eps, weight=weight)
+        loss = criterion(logits, labels)
+        self.assert_close(loss, expected_loss, rtol=1e-3, atol=1e-3)
+
     def test_averaging_macro(self, device, dtype):
         num_classes = 2
         eps = 1e-8
