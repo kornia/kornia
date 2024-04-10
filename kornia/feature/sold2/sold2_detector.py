@@ -1,5 +1,5 @@
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, is_dataclass
 from typing import Any, Dict, Optional, Tuple
 
 import torch
@@ -61,6 +61,20 @@ class DetectorCfg:
     detection_thresh: float = 0.0153846
     max_num_junctions: int = 500
     line_detector_cfg: LineDetectorCfg = field(default_factory=LineDetectorCfg)
+
+
+def dict_to_dataclass(dict_obj, dataclass_type):
+    """Recursively convert dictionaries to dataclass instances."""
+    if not isinstance(dict_obj, dict):
+        return TypeError("Input conf must be dict")
+    field_types = {f.name: f.type for f in dataclass_type.__dataclass_fields__.values()}
+    constructor_args = {}
+    for key, value in dict_obj.items():
+        if key in field_types and is_dataclass(field_types[key]):
+            constructor_args[key] = dict_to_dataclass(value, field_types[key])
+        else:
+            constructor_args[key] = value
+    return dataclass_type(**constructor_args)
 
 
 default_detector_cfg = {
