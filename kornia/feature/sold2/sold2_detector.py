@@ -1,5 +1,5 @@
 import math
-from dataclasses import dataclass, field, is_dataclass
+from dataclasses import asdict, dataclass, field, is_dataclass
 from typing import Any, Dict, Optional, Tuple
 
 import torch
@@ -75,6 +75,18 @@ def dict_to_dataclass(dict_obj, dataclass_type):
         else:
             constructor_args[key] = value
     return dataclass_type(**constructor_args)
+
+
+def dataclass_to_dict(obj):
+    """Recursively convert dataclass instances to dictionaries."""
+    if is_dataclass(obj) and not isinstance(obj, type):
+        return {key: dataclass_to_dict(value) for key, value in asdict(obj).items()}
+    elif isinstance(obj, (list, tuple)):
+        return type(obj)(dataclass_to_dict(item) for item in obj)
+    elif isinstance(obj, dict):
+        return {key: dataclass_to_dict(value) for key, value in obj.items()}
+    else:
+        return obj
 
 
 default_detector_cfg = {
