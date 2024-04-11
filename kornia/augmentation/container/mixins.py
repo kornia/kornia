@@ -17,6 +17,7 @@ class CallbacksMixIn:
 
     def register_callbacks(self, callbacks: AugmentationCallbackBase) -> None:
         [self._callbacks.append(cb) for cb in callbacks]
+        assert False, self._callbacks
 
     def run_callbacks(self, hook: str, *args, **kwargs) -> None:
         for cb in self._callbacks:
