@@ -236,3 +236,71 @@ class AugmentationCallbackBase(Module):
     ):
         """Called when `inverse` ends for `AugmentationSequential`."""
         ...
+
+
+class AugmentationCallback(AugmentationCallbackBase):
+    """Logging images for `AugmentationSequential`.
+
+    Args:
+        batches_to_save: the number of batches to be logged. -1 is to save all batches.
+        num_to_log: number of images to log in a batch.
+        log_indices: only selected input types are logged. If `log_indices=[0, 2]` and
+                     `data_keys=["input", "bbox", "mask"]`, only the images and masks
+                     will be logged.
+        data_keys: the input type sequential. Accepts "input", "image", "mask",
+                   "bbox", "bbox_xyxy", "bbox_xywh", "keypoints".
+        postprocessing: add postprocessing for images if needed. If not None, the length
+                       must match `data_keys`.
+    """
+
+    def __init__(
+        self,
+        batches_to_save: int = 10,
+        num_to_log: int = 4,
+        log_indices: Optional[List[int]] = None,
+        data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None,
+        postprocessing: Optional[List[Optional[Module]]] = None,
+    ):
+        super().__init__()
+        self.batches_to_log = batches_to_log
+        self.log_indices = log_indices
+        self.data_keys = data_keys
+        self.postprocessing = postprocessing
+        self.num_to_log = num_to_log
+
+    def _make_mask_data(self, mask: Tensor):
+        raise NotImplementedError
+
+    def _make_bbox_data(self, bbox: Tensor):
+        raise NotImplementedError
+
+    def _log_data(self, data: SequenceDataType):
+        raise NotImplementedError
+
+    def on_sequential_forward_end(
+        self,
+        *args: Union[DataType, Dict[str, DataType]],
+        params: Optional[List[ParamItem]] = None,
+        data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None,
+    ):
+        """Called when `forward` ends for `AugmentationSequential`."""
+        image_data = None
+        output_data = []
+        for i, (arg, data_key) in enumerate(zip(args, data_keys)):
+            if i not in self.log_indices:
+                continue
+
+            postproc = self.postprocessing[self.log_indices[i]]
+            data = arg[: self.num_to_log]
+            if postproc is not None:
+                data = postproc(data)
+            if data_key in [DataKey.INPUT]:
+                data = data
+            if data_key in [DataKey.MASK]:
+                data = self._make_mask_data(data)
+            if data_key in [DataKey.BBOX, DataKey.BBOX_XYWH, DataKey.BBOX_XYXY]:
+                data = self._make_bbox_data(data)
+
+            output_data.append(data)
+
+        self._log_data(output_data)

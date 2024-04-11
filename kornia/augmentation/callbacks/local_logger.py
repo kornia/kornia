@@ -26,7 +26,7 @@ class WandbLogger(AugmentationCallback):
 
     def __init__(
         self,
-        run: Optional["wandb.Run"] = None,
+        log_dir: str = "./kornia_logs",
         batches_to_save: int = 10,
         num_to_log: int = 4,
         log_indices: Optional[List[int]] = None,
@@ -40,26 +40,13 @@ class WandbLogger(AugmentationCallback):
             data_keys=data_keys,
             postprocessing=postprocessing,
         )
-        if run is None:
-            self.wandb = importlib.import_module("wandb")
-        else:
-            self.wandb = run
-        
-        self.has_duplication(data_keys)
-
-    def has_duplication(self, data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None):
-        # WANDB only supports visualization without duplication
-        ...
+        self.log_dir = log_dir
 
     def _make_mask_data(self, mask: Tensor):
-        raise NotImplementedError
+        ...
 
     def _make_bbox_data(self, bbox: Tensor):
-        raise NotImplementedError
+        ...
 
     def _log_data(self, data: SequenceDataType):
         ...
-        # assert self.data_keys no duplication, ...
-        # for i, (value, key) in enumerate(zip(data, self.data_keys)):
-        #     wandb_img = self.wandb.Image(img, masks=mask, boxes=box)
-        #     self.wandb.log({"kornia_augmentation": wandb_img})
