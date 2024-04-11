@@ -1,8 +1,7 @@
 import importlib
-from typing import Dict, List, Optional, Union
+from typing import List, Optional, Union
 
-from kornia.augmentation.container.ops import DataType, SequenceDataType
-from kornia.augmentation.container.params import ParamItem
+from kornia.augmentation.container.ops import SequenceDataType
 from kornia.constants import DataKey
 from kornia.core import Module, Tensor
 
@@ -44,7 +43,7 @@ class WandbLogger(AugmentationCallback):
             self.wandb = importlib.import_module("wandb")
         else:
             self.wandb = run
-        
+
         self.has_duplication(data_keys)
 
     def has_duplication(self, data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None):

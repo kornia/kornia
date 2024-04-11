@@ -11,10 +11,13 @@ __all__ = [
 
 class CallbacksMixIn:
     """Enables callbacks life cycle."""
+
     _callbacks: List[AugmentationCallbackBase] = []
 
     @property
-    def callbacks(self,):
+    def callbacks(
+        self,
+    ):
         return self._callbacks
 
     def register_callbacks(self, callbacks: AugmentationCallbackBase) -> None:

@@ -1,8 +1,6 @@
-import importlib
-from typing import Dict, List, Optional, Union
+from typing import List, Optional, Union
 
-from kornia.augmentation.container.ops import DataType, SequenceDataType
-from kornia.augmentation.container.params import ParamItem
+from kornia.augmentation.container.ops import SequenceDataType
 from kornia.constants import DataKey
 from kornia.core import Module, Tensor
 
@@ -42,11 +40,8 @@ class WandbLogger(AugmentationCallback):
         )
         self.log_dir = log_dir
 
-    def _make_mask_data(self, mask: Tensor):
-        ...
+    def _make_mask_data(self, mask: Tensor): ...
 
-    def _make_bbox_data(self, bbox: Tensor):
-        ...
+    def _make_bbox_data(self, bbox: Tensor): ...
 
-    def _log_data(self, data: SequenceDataType):
-        ...
+    def _log_data(self, data: SequenceDataType): ...

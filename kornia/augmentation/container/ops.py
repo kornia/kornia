@@ -14,7 +14,6 @@ from kornia.geometry.keypoints import Keypoints
 from .data_types import DataType, SequenceDataType
 from .params import ParamItem
 
-
 T = TypeVar("T")
 
 
