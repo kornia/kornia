@@ -199,67 +199,68 @@ class ImageSequentialBase(SequentialBase):
         raise NotImplementedError
 
     def transform_inputs(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
-        self.run_callbacks("on_transform_inputs_start", input=input, params=param)
         for param in params:
             module = self.get_submodule(param.name)
+            # NOTE: temp disabled
+            # self.run_callbacks("on_transform_inputs_start", input=input, params=param)
             input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
-        self.run_callbacks("on_transform_inputs_end", input=input, params=params)
+            # self.run_callbacks("on_transform_inputs_end", input=input, params=params)
         return input
 
     def inverse_inputs(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
-        self.run_callbacks("on_inverse_inputs_start", input=input, params=param)
         for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
+            # self.run_callbacks("on_inverse_inputs_start", input=input, params=param)
             input = InputSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
-        self.run_callbacks("on_inverse_inputs_end", input=input, params=params)
+            # self.run_callbacks("on_inverse_inputs_end", input=input, params=params)
         return input
 
     def transform_masks(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
-        self.run_callbacks("on_transform_masks_start", input=input, params=params)
         for param in params:
             module = self.get_submodule(param.name)
+            # self.run_callbacks("on_transform_masks_start", input=input, params=params)
             input = MaskSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
-        self.run_callbacks("on_transform_masks_end", input=input, params=params)
+            # self.run_callbacks("on_transform_masks_end", input=input, params=params)
         return input
 
     def inverse_masks(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
-        self.run_callbacks("on_inverse_masks_start", input=input, params=params)
         for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
+            # self.run_callbacks("on_inverse_masks_start", input=input, params=params)
             input = MaskSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
-        self.run_callbacks("on_inverse_masks_end", input=input, params=params)
+            # self.run_callbacks("on_inverse_masks_end", input=input, params=params)
         return input
 
     def transform_boxes(self, input: Boxes, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Boxes:
-        self.run_callbacks("on_transform_boxes_start", input=input, params=params)
         for param in params:
             module = self.get_submodule(param.name)
+            # self.run_callbacks("on_transform_boxes_start", input=input, params=params)
             input = BoxSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
-        self.run_callbacks("on_transform_boxes_end", input=input, params=params)
+            # self.run_callbacks("on_transform_boxes_end", input=input, params=params)
         return input
 
     def inverse_boxes(self, input: Boxes, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Boxes:
-        self.run_callbacks("on_inverse_boxes_start", input=input, params=params)
         for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
+            # self.run_callbacks("on_inverse_boxes_start", input=input, params=params)
             input = BoxSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
-        self.run_callbacks("on_inverse_boxes_end", input=input, params=params)
+            # self.run_callbacks("on_inverse_boxes_end", input=input, params=params)
         return input
 
     def transform_keypoints(
         self, input: Keypoints, params: List[ParamItem], extra_args: Dict[str, Any] = {}
     ) -> Keypoints:
-        self.run_callbacks("on_transform_keypoints_start", input=input, params=params)
         for param in params:
             module = self.get_submodule(param.name)
+            # self.run_callbacks("on_transform_keypoints_start", input=input, params=params)
             input = KeypointSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
-        self.run_callbacks("on_transform_keypoints_end", input=input, params=params)
+            # self.run_callbacks("on_transform_keypoints_end", input=input, params=params)
         return input
 
     def inverse_keypoints(
         self, input: Keypoints, params: List[ParamItem], extra_args: Dict[str, Any] = {}
     ) -> Keypoints:
-        self.run_callbacks("on_inverse_keypoints_start", input=input, params=params)
         for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
+            # self.run_callbacks("on_inverse_keypoints_start", input=input, params=params)
             input = KeypointSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
-        self.run_callbacks("on_inverse_keypoints_end", input=input, params=params)
+            # self.run_callbacks("on_inverse_keypoints_end", input=input, params=params)
         return input
 
     def inverse(
@@ -277,9 +278,9 @@ class ImageSequentialBase(SequentialBase):
                     "or passing valid params into this function."
                 )
             params = self._params
-        self.run_callbacks("on_inverse_start", input=input, params=params)
+        self.run_callbacks("on_sequential_inverse_start", input=input, params=params)
         input = self.inverse_inputs(input, params, extra_args=extra_args)
-        self.run_callbacks("on_inverse_end", input=input, params=params)
+        self.run_callbacks("on_sequential_inverse_end", input=input, params=params)
         return input
 
     def forward(
@@ -292,9 +293,9 @@ class ImageSequentialBase(SequentialBase):
             _, out_shape = self.autofill_dim(inp, dim_range=(2, 4))
             params = self.forward_parameters(out_shape)
 
-        self.run_callbacks("on_forward_start", input=input, params=params)
+        self.run_callbacks("on_sequential_forward_start", input=input, params=params)
         input = self.transform_inputs(input, params=params, extra_args=extra_args)
-        self.run_callbacks("on_forward_end", input=input, params=params)
+        self.run_callbacks("on_sequential_forward_end", input=input, params=params)
 
         self._params = params
         return input
