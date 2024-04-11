@@ -5,6 +5,7 @@ import torch
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.callbacks import AugmentationCallbackBase
+from kornia.augmentation.container.mixins import CallbacksMixIn
 from kornia.augmentation.utils import override_parameters
 from kornia.core import Module, Tensor, as_tensor
 from kornia.utils import eye_like
@@ -15,7 +16,7 @@ from .params import ParamItem
 __all__ = ["ImageSequential"]
 
 
-class ImageSequential(ImageSequentialBase):
+class ImageSequential(ImageSequentialBase, CallbacksMixIn):
     r"""Sequential for creating kornia image processing pipeline.
 
     Args:
@@ -89,7 +90,7 @@ class ImageSequential(ImageSequentialBase):
         if_unsupported_ops: str = "raise",
         callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
-        super().__init__(*args, same_on_batch=same_on_batch, keepdim=keepdim, callbacks=callbacks)
+        super().__init__(*args, same_on_batch=same_on_batch, keepdim=keepdim)
 
         self.random_apply = self._read_random_apply(random_apply, len(args))
         if random_apply_weights is not None and len(random_apply_weights) != len(self):
@@ -99,6 +100,8 @@ class ImageSequential(ImageSequentialBase):
             )
         self.random_apply_weights = as_tensor(random_apply_weights or torch.ones((len(self),)))
         self.if_unsupported_ops = if_unsupported_ops
+
+        self.register_callbacks(callbacks)
 
     def _read_random_apply(
         self, random_apply: Union[int, bool, Tuple[int, int]], max_length: int

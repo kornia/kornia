@@ -10,22 +10,16 @@ __all__ = [
 
 
 class CallbacksMixIn:
+    """Enables callbacks life cycle."""
     def __init__(self, *args, **kwargs) -> None:  # type:ignore
         super().__init__(*args, **kwargs)
         self._callbacks: List[AugmentationCallbackBase] = []
-        self._hooks = []
-
-    @property
-    def callbacks(
-        self,
-    ):
-        return self._callbacks
 
     def register_callbacks(self, callbacks: AugmentationCallbackBase) -> None:
         [self._callbacks.append(cb) for cb in callbacks]
 
     def run_callbacks(self, hook: str, *args, **kwargs) -> None:
-        for cb in self.callbacks:
+        for cb in self._callbacks:
             if not hasattr(cb, hook):
                 continue
 

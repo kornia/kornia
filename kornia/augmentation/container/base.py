@@ -8,7 +8,6 @@ from torch import nn
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.callbacks import AugmentationCallbackBase
-from kornia.augmentation.container.mixins import CallbacksMixIn
 from kornia.core import Module, Tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
@@ -98,7 +97,7 @@ class BasicSequentialBase(nn.Sequential):
             yield ParamItem(name, None)
 
 
-class SequentialBase(BasicSequentialBase, CallbacksMixIn):
+class SequentialBase(BasicSequentialBase):
     r"""SequentialBase for creating kornia modulized processing pipeline.
 
     Args:
@@ -116,15 +115,12 @@ class SequentialBase(BasicSequentialBase, CallbacksMixIn):
         *args: Module,
         same_on_batch: Optional[bool] = None,
         keepdim: Optional[bool] = None,
-        callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
         # To name the modules properly
         super().__init__(*args)
         self._same_on_batch = same_on_batch
         self._keepdim = keepdim
-        self.callbacks = callbacks
         self.update_attribute(same_on_batch, keepdim)
-        self.register_callbacks(callbacks)
 
     def update_attribute(
         self,

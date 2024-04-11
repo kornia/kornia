@@ -252,8 +252,8 @@ class _AugmentationBase(_BasicAugmentationBase):
 
     def __init__(
         self,
-        p: float,
-        p_batch: float,
+        p: float = 0.5,
+        p_batch: float = 1.0,
         same_on_batch: bool = False,
         keepdim: bool = False,
     ) -> None:
