@@ -11,12 +11,9 @@ from kornia.core import Module, Tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 
+from .data_types import DataType, SequenceDataType
 from .params import ParamItem
 
-DataType = Union[Tensor, List[Tensor], Boxes, Keypoints]
-
-# NOTE: shouldn't this SequenceDataType alias be equals to List[DataType]?
-SequenceDataType = Union[List[Tensor], List[List[Tensor]], List[Boxes], List[Keypoints]]
 
 T = TypeVar("T")
 

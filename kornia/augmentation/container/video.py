@@ -4,7 +4,7 @@ import torch
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
-from kornia.augmentation.callbacks import SequentialCallbackBase
+from kornia.augmentation.callbacks import AugmentationCallbackBase
 from kornia.augmentation.container.base import SequentialBase
 from kornia.augmentation.container.image import ImageSequential, _get_new_batch_shape
 from kornia.core import Module, Tensor
@@ -107,7 +107,7 @@ class VideoSequential(ImageSequential):
         same_on_frame: bool = True,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
         random_apply_weights: Optional[List[float]] = None,
-        callbacks: List[SequentialCallbackBase] = [],
+        callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
         super().__init__(
             *args,
@@ -326,9 +326,9 @@ class VideoSequential(ImageSequential):
             else:
                 raise RuntimeError("No valid params to inverse the transformation.")
 
-        [cb.on_inverse_start(input, params=params) for cb in self.callbacks]
+        self.run_callbacks("on_sequential_inverse_start", input=outputs, params=params)
         output = self.inverse_inputs(input, params, extra_args=extra_args)
-        [cb.on_inverse_end(input, params=params) for cb in self.callbacks]
+        self.run_callbacks("on_sequential_inverse_end", input=outputs, params=params)
 
         return output
 
@@ -343,8 +343,8 @@ class VideoSequential(ImageSequential):
             self._params = self.forward_parameters(input.shape)
             params = self._params
 
-        [cb.on_forward_start(input, params=params) for cb in self.callbacks]
+        self.run_callbacks("on_sequential_forward_start", input=outputs, params=params)
         output = self.transform_inputs(input, params, extra_args=extra_args)
-        [cb.on_forward_end(input, params=params) for cb in self.callbacks]
+        self.run_callbacks("on_sequential_forward_start", input=outputs, params=params)
 
         return output

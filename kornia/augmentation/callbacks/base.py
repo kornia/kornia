@@ -1,9 +1,9 @@
 from typing import Dict, List, Optional, Union
 
-from kornia.augmentation.base import _BasicAugmentationBase
-from kornia.augmentation.container.augment import AugmentationSequential
-from kornia.augmentation.container.ops import DataType
-from kornia.augmentation.container.params import ParamItem
+# NOTE: fix circular import
+import kornia.augmentation as K
+# .data_types import DataType
+# from kornia.augmentation.container.params import ParamItem
 from kornia.constants import DataKey
 from kornia.core import Module, Tensor
 from kornia.geometry.boxes import Boxes
@@ -11,7 +11,6 @@ from kornia.geometry.keypoints import Keypoints
 
 __all__ = [
     "AugmentationCallbackBase",
-    "SequentialCallbackBase",
 ]
 
 
@@ -22,7 +21,7 @@ class AugmentationCallbackBase(Module):
         self,
         input: Tensor,
         params: Dict[str, Tensor],
-        module: _BasicAugmentationBase,
+        module: object,
     ):
         """Called when `transform_inputs` begins."""
         ...
@@ -31,7 +30,7 @@ class AugmentationCallbackBase(Module):
         self,
         input: Tensor,
         params: Dict[str, Tensor],
-        module: _BasicAugmentationBase,
+        module: object,
     ):
         """Called when `transform_inputs` ends."""
         ...
@@ -40,7 +39,7 @@ class AugmentationCallbackBase(Module):
         self,
         input: Tensor,
         params: Dict[str, Tensor],
-        module: _BasicAugmentationBase,
+        module: object,
     ):
         """Called when `transform_masks` begins."""
         ...
@@ -49,7 +48,7 @@ class AugmentationCallbackBase(Module):
         self,
         input: Tensor,
         params: Dict[str, Tensor],
-        module: _BasicAugmentationBase,
+        module: object,
     ):
         """Called when `transform_masks` ends."""
         ...
@@ -58,7 +57,7 @@ class AugmentationCallbackBase(Module):
         self,
         input: Tensor,
         params: Dict[str, Tensor],
-        module: _BasicAugmentationBase,
+        module: object,
     ):
         """Called when `transform_classes` begins."""
         ...
@@ -67,7 +66,7 @@ class AugmentationCallbackBase(Module):
         self,
         input: Tensor,
         params: Dict[str, Tensor],
-        module: _BasicAugmentationBase,
+        module: object,
     ):
         """Called when `transform_classes` ends."""
         ...
@@ -76,7 +75,7 @@ class AugmentationCallbackBase(Module):
         self,
         input: Boxes,
         params: Dict[str, Tensor],
-        module: _BasicAugmentationBase,
+        module: object,
     ):
         """Called when `transform_boxes` begins."""
         ...
@@ -85,7 +84,7 @@ class AugmentationCallbackBase(Module):
         self,
         input: Boxes,
         params: Dict[str, Tensor],
-        module: _BasicAugmentationBase,
+        module: object,
     ):
         """Called when `transform_boxes` ends."""
         ...
@@ -94,7 +93,7 @@ class AugmentationCallbackBase(Module):
         self,
         input: Keypoints,
         params: Dict[str, Tensor],
-        module: _BasicAugmentationBase,
+        module: object,
     ):
         """Called when `transform_keypoints` begins."""
         ...
@@ -103,7 +102,7 @@ class AugmentationCallbackBase(Module):
         self,
         input: Keypoints,
         params: Dict[str, Tensor],
-        module: _BasicAugmentationBase,
+        module: object,
     ):
         """Called when `transform_keypoints` ends."""
         ...
@@ -112,7 +111,7 @@ class AugmentationCallbackBase(Module):
         self,
         input: Tensor,
         params: Dict[str, Tensor],
-        module: _BasicAugmentationBase,
+        module: object,
     ):
         """Called when `inverse_input` begins."""
         ...
@@ -121,7 +120,7 @@ class AugmentationCallbackBase(Module):
         self,
         input: Tensor,
         params: Dict[str, Tensor],
-        module: _BasicAugmentationBase,
+        module: object,
     ):
         """Called when `inverse_inputs` ends."""
         ...
@@ -130,7 +129,7 @@ class AugmentationCallbackBase(Module):
         self,
         input: Tensor,
         params: Dict[str, Tensor],
-        module: _BasicAugmentationBase,
+        module: object,
     ):
         """Called when `inverse_masks` begins."""
         ...
@@ -139,7 +138,7 @@ class AugmentationCallbackBase(Module):
         self,
         input: Tensor,
         params: Dict[str, Tensor],
-        module: _BasicAugmentationBase,
+        module: object,
     ):
         """Called when `inverse_masks` ends."""
         ...
@@ -148,7 +147,7 @@ class AugmentationCallbackBase(Module):
         self,
         input: Tensor,
         params: Dict[str, Tensor],
-        module: _BasicAugmentationBase,
+        module: object,
     ):
         """Called when `inverse_classes` begins."""
         ...
@@ -157,7 +156,7 @@ class AugmentationCallbackBase(Module):
         self,
         input: Tensor,
         params: Dict[str, Tensor],
-        module: _BasicAugmentationBase,
+        module: object,
     ):
         """Called when `inverse_classes` ends."""
         ...
@@ -166,7 +165,7 @@ class AugmentationCallbackBase(Module):
         self,
         input: Boxes,
         params: Dict[str, Tensor],
-        module: _BasicAugmentationBase,
+        module: object,
     ):
         """Called when `inverse_boxes` begins."""
         ...
@@ -175,7 +174,7 @@ class AugmentationCallbackBase(Module):
         self,
         input: Boxes,
         params: Dict[str, Tensor],
-        module: _BasicAugmentationBase,
+        module: object,
     ):
         """Called when `inverse_boxes` ends."""
         ...
@@ -184,7 +183,7 @@ class AugmentationCallbackBase(Module):
         self,
         input: Keypoints,
         params: Dict[str, Tensor],
-        module: _BasicAugmentationBase,
+        module: object,
     ):
         """Called when `inverse_keypoints` begins."""
         ...
@@ -193,47 +192,47 @@ class AugmentationCallbackBase(Module):
         self,
         input: Keypoints,
         params: Dict[str, Tensor],
-        module: _BasicAugmentationBase,
+        module: object,
     ):
         """Called when `inverse_keypoints` ends."""
         ...
 
     def on_sequential_forward_start(
         self,
-        *args: Union[DataType, Dict[str, DataType]],
-        params: Optional[List[ParamItem]] = None,
-        data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None,
-        module: AugmentationSequential,
+        *args: Union["K.container.data_types.DataType", Dict[str, "K.container.data_types.DataType"]],
+        params: Optional[List["K.container.params.DataType"]] = None,
+        data_keys: Optional[Union[List[str], List[int], List["K.container.data_types.DataType"]]] = None,
+        module: object,
     ):
         """Called when `forward` begins for `AugmentationSequential`."""
         ...
 
     def on_sequential_forward_end(
         self,
-        *args: Union[DataType, Dict[str, DataType]],
-        params: Optional[List[ParamItem]] = None,
-        data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None,
-        module: AugmentationSequential,
+        *args: Union["K.container.data_types.DataType", Dict[str, "K.container.data_types.DataType"]],
+        params: Optional[List["K.container.params.DataType"]] = None,
+        data_keys: Optional[Union[List[str], List[int], List["K.container.data_types.DataType"]]] = None,
+        module: object,
     ):
         """Called when `forward` ends for `AugmentationSequential`."""
         ...
 
     def on_sequential_inverse_start(
         self,
-        *args: Union[DataType, Dict[str, DataType]],
-        params: Optional[List[ParamItem]] = None,
-        data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None,
-        module: AugmentationSequential,
+        *args: Union["K.container.data_types.DataType", Dict[str, "K.container.data_types.DataType"]],
+        params: Optional[List["K.container.params.DataType"]] = None,
+        data_keys: Optional[Union[List[str], List[int], List["K.container.data_types.DataType"]]] = None,
+        module: object,
     ):
         """Called when `inverse` begins for `AugmentationSequential`."""
         ...
 
     def on_sequential_inverse_end(
         self,
-        *args: Union[DataType, Dict[str, DataType]],
-        params: Optional[List[ParamItem]] = None,
-        data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None,
-        module: AugmentationSequential,
+        *args: Union["K.container.data_types.DataType", Dict[str, "K.container.data_types.DataType"]],
+        params: Optional[List["K.container.params.DataType"]] = None,
+        data_keys: Optional[Union[List[str], List[int], List["K.container.data_types.DataType"]]] = None,
+        module: object,
     ):
         """Called when `inverse` ends for `AugmentationSequential`."""
         ...

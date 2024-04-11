@@ -4,7 +4,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import torch
 from torch.distributions import Bernoulli, Distribution, RelaxedBernoulli
 
-from kornia.augmentation.callbacks import AugmentationCallbackBase
 from kornia.augmentation.random_generator import RandomGeneratorBase
 from kornia.augmentation.utils import (
     _adapted_rsampling,
@@ -231,10 +230,8 @@ class _BasicAugmentationBase(Module):
 
         params, flags = self._process_kwargs_to_params_and_flags(params, self.flags, **kwargs)
 
-        [cb.on_forward_start(input, params, flags) for cb in self.callbacks]
         output = self.apply_func(in_tensor, params, flags)
         output = self.transform_output_tensor(output, input_shape) if self.keepdim else output
-        [cb.on_forward_end(output, params, flags) for cb in self.callbacks]
         return output
 
 
@@ -251,7 +248,6 @@ class _AugmentationBase(_BasicAugmentationBase):
         same_on_batch: apply the same transformation across the batch.
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
-        callbacks: add a list of callbacks.
     """
 
     def __init__(
@@ -260,10 +256,8 @@ class _AugmentationBase(_BasicAugmentationBase):
         p_batch: float,
         same_on_batch: bool = False,
         keepdim: bool = False,
-        callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
         super().__init__(p, p_batch=p_batch, same_on_batch=same_on_batch, keepdim=keepdim)
-        self.callbacks = callbacks
 
     def apply_transform(
         self,
@@ -304,7 +298,6 @@ class _AugmentationBase(_BasicAugmentationBase):
         in_tensor = self.transform_tensor(input)
 
         self.validate_tensor(in_tensor)
-        [cb.on_transform_inputs_start(in_tensor, params, flags, transform) for cb in self.callbacks]
         if to_apply.all():
             output = self.apply_transform(in_tensor, params, flags, transform=transform)
         elif not to_apply.any():
@@ -327,7 +320,6 @@ class _AugmentationBase(_BasicAugmentationBase):
 
         if is_autocast_enabled():
             output = output.type(input.dtype)
-        [cb.on_transform_inputs_end(output, params, flags, transform) for cb in self.callbacks]
         return output
 
     def transform_masks(
@@ -350,7 +342,6 @@ class _AugmentationBase(_BasicAugmentationBase):
         in_tensor = self.transform_tensor(input, shape=shape, match_channel=False)
 
         self.validate_tensor(in_tensor)
-        [cb.on_transform_masks_start(in_tensor, params, flags, transform) for cb in self.callbacks]
         if to_apply.all():
             output = self.apply_transform_mask(in_tensor, params, flags, transform=transform)
         elif not to_apply.any():
@@ -365,7 +356,6 @@ class _AugmentationBase(_BasicAugmentationBase):
             )
             output = output.index_put((to_apply,), applied)
         output = _transform_output_shape(output, ori_shape, reference_shape=shape) if self.keepdim else output
-        [cb.on_transform_masks_end(output, params, flags, transform) for cb in self.callbacks]
         return output
 
     def transform_boxes(
@@ -385,7 +375,6 @@ class _AugmentationBase(_BasicAugmentationBase):
 
         batch_prob = params["batch_prob"]
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
-        [cb.on_transform_boxes_start(input, params, flags, transform) for cb in self.callbacks]
         output: Boxes
         if to_apply.bool().all():
             output = self.apply_transform_box(input, params, flags, transform=transform)
@@ -404,7 +393,6 @@ class _AugmentationBase(_BasicAugmentationBase):
                 applied = applied.type(input.dtype)
 
             output = output.index_put((to_apply,), applied)
-        [cb.on_transform_boxes_end(output, params, flags, transform) for cb in self.callbacks]
         return output
 
     def transform_keypoints(
@@ -424,7 +412,6 @@ class _AugmentationBase(_BasicAugmentationBase):
 
         batch_prob = params["batch_prob"]
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
-        [cb.on_transform_keypoints_start(input, params, flags, transform) for cb in self.callbacks]
         if to_apply.all():
             output = self.apply_transform_keypoint(input, params, flags, transform=transform)
         elif not to_apply.any():
@@ -441,7 +428,6 @@ class _AugmentationBase(_BasicAugmentationBase):
                 output = output.type(input.dtype)
                 applied = applied.type(input.dtype)
             output = output.index_put((to_apply,), applied)
-        [cb.on_transform_keypoints_end(output, params, flags, transform) for cb in self.callbacks]
         return output
 
     def transform_classes(
@@ -458,7 +444,6 @@ class _AugmentationBase(_BasicAugmentationBase):
 
         batch_prob = params["batch_prob"]
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
-        [cb.on_transform_classes_start(input, params, flags, transform) for cb in self.callbacks]
         if to_apply.all():
             output = self.apply_transform_class(input, params, flags, transform=transform)
         elif not to_apply.any():
@@ -472,7 +457,6 @@ class _AugmentationBase(_BasicAugmentationBase):
                 transform=transform if transform is None else transform[to_apply],
             )
             output = output.index_put((to_apply,), applied)
-        [cb.on_transform_classes_end(output, params, flags, transform) for cb in self.callbacks]
         return output
 
     def apply_non_transform_mask(

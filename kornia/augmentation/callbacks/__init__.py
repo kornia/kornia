@@ -1,1 +1,1 @@
-from .base import AugmentationCallbackBase, SequentialCallbackBase
+from .base import AugmentationCallbackBase
