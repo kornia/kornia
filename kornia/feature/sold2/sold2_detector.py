@@ -136,16 +136,17 @@ class SOLD2_detector(Module):
         >>> line_segments = sold2_detector(img)["line_segments"]
     """
 
-    def __init__(self, pretrained: bool = True, config: Optional[Dict[str, Any]] = None) -> None:
+    def __init__(self, pretrained: bool = True, config: Optional[DetectorCfg] = None) -> None:
         super().__init__()
         # Initialize some parameters
-        self.config = default_detector_cfg if config is None else config
-        self.grid_size = self.config["grid_size"]
-        self.junc_detect_thresh = self.config.get("detection_thresh", 1 / 65)
-        self.max_num_junctions = self.config.get("max_num_junctions", 500)
+        # self.config = default_detector_cfg if config is None else config
+        self.config = config if config is not None else DetectorCfg()
+        self.grid_size = self.config.grid_size
+        self.junc_detect_thresh = self.config.detection_thresh
+        self.max_num_junctions = self.config.max_num_junctions
 
         # Load the pre-trained model
-        self.model = SOLD2Net(self.config)
+        self.model = SOLD2Net(**dataclass_to_dict(self.config))
         if pretrained:
             pretrained_dict = torch.hub.load_state_dict_from_url(urls["wireframe"], map_location=map_location_to_cpu)
             state_dict = self.adapt_state_dict(pretrained_dict["model_state_dict"])
@@ -153,8 +154,8 @@ class SOLD2_detector(Module):
         self.eval()
 
         # Initialize the line detector
-        self.line_detector_cfg = self.config["line_detector_cfg"]
-        self.line_detector = LineSegmentDetectionModule(**self.config["line_detector_cfg"])
+        self.line_detector_cfg = self.config.line_detector_cfg
+        self.line_detector = LineSegmentDetectionModule(**dataclass_to_dict(self.line_detector_cfg))
 
     def adapt_state_dict(self, state_dict: Dict[str, Any]) -> Dict[str, Any]:
         del state_dict["w_junc"]
