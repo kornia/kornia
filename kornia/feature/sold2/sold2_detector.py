@@ -130,9 +130,8 @@ class SOLD2_detector(Module):
             self.model.load_state_dict(state_dict)
         self.eval()
 
-        # Initialize the line detector
-        self.line_detector_cfg = self.config.line_detector_cfg
-        self.line_detector = LineSegmentDetectionModule(**dataclass_to_dict(self.line_detector_cfg))
+        # Initialize the line detector with a configuration from the dataclass
+        self.line_detector = LineSegmentDetectionModule(self.config.line_detector_cfg)
 
     def adapt_state_dict(self, state_dict: Dict[str, Any]) -> Dict[str, Any]:
         del state_dict["w_junc"]
