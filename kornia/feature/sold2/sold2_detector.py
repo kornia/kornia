@@ -100,9 +100,10 @@ class SOLD2_detector(Module):
     Occlusion-aware Line Detector and Descriptor". See :cite:`SOLD22021` for more details.
 
     Args:
-        config: Dict specifying parameters. None will load the default parameters,
-            which are tuned for images in the range 400~800 px.
-        pretrained: If True, download and set pretrained weights to the model.
+        config (DetectorCfg): Configuration object containing all parameters. None will load the default parameters,
+            which are tuned for images in the range 400~800 px. Using a dataclass ensures type safety and clearer
+            parameter management.
+        pretrained (bool): If True, download and set pretrained weights to the model.
 
     Returns:
         The raw junction and line heatmaps, as well as the list of detected line segments (ij coordinates convention).
