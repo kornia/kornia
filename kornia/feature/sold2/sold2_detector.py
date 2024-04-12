@@ -37,6 +37,10 @@ class LineDetectorCfg:
     inlier_thresh: float = 0.99
     use_candidate_suppression: bool = True
     nms_dist_tolerance: float = 3.0
+    heatmap_low_thresh: float = (0.15,)
+    heatmap_high_thresh: float = (0.2,)
+    max_local_patch_radius: float = (3,)
+    lambda_radius: float = (2.0,)
     use_heatmap_refinement: bool = True
     heatmap_refine_cfg: HeatMapRefineCfg = field(default_factory=HeatMapRefineCfg)
     use_junction_refinement: bool = True
