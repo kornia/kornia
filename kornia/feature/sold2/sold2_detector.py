@@ -179,27 +179,34 @@ class LineSegmentDetectionModule:
     r"""Module extracting line segments from junctions and line heatmaps.
 
     Args:
-        detect_thresh: The probability threshold for mean activation (0. ~ 1.)
-        num_samples: Number of sampling locations along the line segments.
-        inlier_thresh: The min inlier ratio to satisfy (0. ~ 1.) => 0. means no threshold.
-        heatmap_low_thresh: The lowest threshold for the pixel to be considered as candidate in junction recovery.
-        heatmap_high_thresh: The higher threshold for NMS in junction recovery.
-        max_local_patch_radius: The max patch to be considered in local maximum search.
-        lambda_radius: The lambda factor in linear local maximum search formulation
-        use_candidate_suppression: Apply candidate suppression to break long segments into short sub-segments.
-        nms_dist_tolerance: The distance tolerance for nms. Decide whether the junctions are on the line.
-        use_heatmap_refinement: Use heatmap refinement method or not.
-        heatmap_refine_cfg: The configs for heatmap refinement methods.
-        use_junction_refinement: Use junction refinement method or not.
-        junction_refine_cfg: The configs for junction refinement methods.
+        config (LineDetectorCfg): Configuration dataclass containing all settings required for line segment detection.
+            - detect_thresh (float): Probability threshold for mean activation (0. ~ 1.).
+            - num_samples (int): Number of sampling locations along the line segments.
+            - inlier_thresh (float): Minimum inlier ratio to satisfy (0. ~ 1.) => 0. means no threshold.
+            - heatmap_low_thresh (float): Lowest threshold for pixel considered as a candidate in junction recovery.
+            - heatmap_high_thresh (float): Higher threshold for NMS in junction recovery.
+            - max_local_patch_radius (float): Maximum patch to be considered in local maximum search.
+            - lambda_radius (float): Lambda factor in linear local maximum search formulation.
+            - use_candidate_suppression (bool): Apply candidate suppression to break long segments into sub-segments.
+            - nms_dist_tolerance (float): Distance tolerance for NMS. Decides whether the junctions are on the line.
+            - use_heatmap_refinement (bool): Whether to use heatmap refinement methods.
+            - heatmap_refine_cfg: Configuration for heatmap refinement methods.
+            - use_junction_refinement (bool): Whether to use junction refinement methods.
+            - junction_refine_cfg: Configuration for junction refinement methods.
+
+    Example:
+        >>> config = LineDetectorCfg(detect_thresh=0.6, use_heatmap_refinement=True)
+        >>> module = LineSegmentDetectionModule(config)
+        >>> junctions, heatmap = torch.rand(10, 2), torch.rand(256, 256)
+        >>> line_map, junctions, _ = module.detect(junctions, heatmap)
     """
 
     def __init__(self, detect_thresh: float = 0.5, config: LineDetectorCfg = LineDetectorCfg()) -> None:
-        # Line detection parameters
-        self.detect_thresh = detect_thresh
-
         # Load LineDetectorCfg
         self.config = config
+
+        # Line detection parameters
+        self.detect_thresh = self.config.detect_thresh
 
         # Line sampling parameters
         self.num_samples = self.config.num_samples
