@@ -112,7 +112,6 @@ class SOLD2_detector(Module):
     def __init__(self, pretrained: bool = True, config: Optional[DetectorCfg] = None) -> None:
         super().__init__()
         # Initialize some parameters
-        # self.config = default_detector_cfg if config is None else config
         self.config = config if config is not None else DetectorCfg()
         self.grid_size = self.config.grid_size
         self.junc_detect_thresh = self.config.detection_thresh
