@@ -89,33 +89,6 @@ def dataclass_to_dict(obj):
         return obj
 
 
-default_detector_cfg = {
-    "backbone_cfg": {"input_channel": 1, "depth": 4, "num_stacks": 2, "num_blocks": 1, "num_classes": 5},
-    "use_descriptor": False,
-    "grid_size": 8,
-    "keep_border_valid": True,
-    "detection_thresh": 0.0153846,  # = 1/65: threshold of junction detection
-    "max_num_junctions": 500,  # maximum number of junctions per image
-    "line_detector_cfg": {
-        "detect_thresh": 0.5,
-        "num_samples": 64,
-        "inlier_thresh": 0.99,
-        "use_candidate_suppression": True,
-        "nms_dist_tolerance": 3.0,
-        "use_heatmap_refinement": True,
-        "heatmap_refine_cfg": {
-            "mode": "local",
-            "ratio": 0.2,
-            "valid_thresh": 0.001,
-            "num_blocks": 20,
-            "overlap_ratio": 0.5,
-        },
-        "use_junction_refinement": True,
-        "junction_refine_cfg": {"num_perturbs": 9, "perturb_interval": 0.25},
-    },
-}
-
-
 class SOLD2_detector(Module):
     r"""Module, which detects line segments in an image.
 
