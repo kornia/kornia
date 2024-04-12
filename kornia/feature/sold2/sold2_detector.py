@@ -194,51 +194,39 @@ class LineSegmentDetectionModule:
         junction_refine_cfg: The configs for junction refinement methods.
     """
 
-    def __init__(
-        self,
-        detect_thresh: float,
-        num_samples: int = 64,
-        inlier_thresh: float = 0.0,
-        heatmap_low_thresh: float = 0.15,
-        heatmap_high_thresh: float = 0.2,
-        max_local_patch_radius: float = 3,
-        lambda_radius: float = 2.0,
-        use_candidate_suppression: bool = False,
-        nms_dist_tolerance: float = 3.0,
-        use_heatmap_refinement: bool = False,
-        heatmap_refine_cfg: Optional[Dict[str, Any]] = None,
-        use_junction_refinement: bool = False,
-        junction_refine_cfg: Optional[Dict[str, Any]] = None,
-    ) -> None:
+    def __init__(self, detect_thresh: float = 0.5, config: LineDetectorCfg = LineDetectorCfg()) -> None:
         # Line detection parameters
         self.detect_thresh = detect_thresh
 
+        # Load LineDetectorCfg
+        self.config = config
+
         # Line sampling parameters
-        self.num_samples = num_samples
-        self.inlier_thresh = inlier_thresh
-        self.local_patch_radius = max_local_patch_radius
-        self.lambda_radius = lambda_radius
+        self.num_samples = self.config.num_samples
+        self.inlier_thresh = self.config.inlier_thresh
+        self.local_patch_radius = self.config.max_local_patch_radius
+        self.lambda_radius = self.config.lambda_radius
 
         # Detecting junctions on the boundary parameters
-        self.low_thresh = heatmap_low_thresh
-        self.high_thresh = heatmap_high_thresh
+        self.low_thresh = self.config.heatmap_low_thresh
+        self.high_thresh = self.config.heatmap_high_thresh
 
         # Pre-compute the linspace sampler
         self.torch_sampler = torch.linspace(0, 1, self.num_samples)
 
         # Long line segment suppression configuration
-        self.use_candidate_suppression = use_candidate_suppression
-        self.nms_dist_tolerance = nms_dist_tolerance
+        self.use_candidate_suppression = self.config.use_candidate_suppression
+        self.nms_dist_tolerance = self.config.nms_dist_tolerance
 
         # Heatmap refinement configuration
-        self.use_heatmap_refinement = use_heatmap_refinement
-        self.heatmap_refine_cfg = heatmap_refine_cfg
+        self.use_heatmap_refinement = self.config.use_heatmap_refinement
+        self.heatmap_refine_cfg = self.config.heatmap_refine_cfg
         if self.use_heatmap_refinement and self.heatmap_refine_cfg is None:
             raise ValueError("[Error] Missing heatmap refinement config.")
 
         # Junction refinement configuration
-        self.use_junction_refinement = use_junction_refinement
-        self.junction_refine_cfg = junction_refine_cfg
+        self.use_junction_refinement = self.config.use_junction_refinement
+        self.junction_refine_cfg = self.config.junction_refine_cfg
         if self.use_junction_refinement and self.junction_refine_cfg is None:
             raise ValueError("[Error] Missing junction refinement config.")
 
