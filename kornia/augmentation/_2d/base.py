@@ -1,6 +1,6 @@
 from typing import Any, Dict, Optional
 
-from torch import float16, float32, float64
+from torch import float16, float32, float64, int32, int64
 
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils import _transform_input, _transform_input_by_shape, _validate_input_dtype
@@ -29,13 +29,13 @@ class AugmentationBase2D(_AugmentationBase):
 
     def validate_tensor(self, input: Tensor) -> None:
         """Check if the input tensor is formatted as expected."""
-        _validate_input_dtype(input, accepted_dtypes=[float16, float32, float64])
+        _validate_input_dtype(input, accepted_dtypes=[float16, float32, float64, int32, int64])
         if len(input.shape) != 4:
             raise RuntimeError(f"Expect (B, C, H, W). Got {input.shape}.")
 
     def transform_tensor(self, input: Tensor, *, shape: Optional[Tensor] = None, match_channel: bool = True) -> Tensor:
         """Convert any incoming (H, W), (C, H, W) and (B, C, H, W) into (B, C, H, W)."""
-        _validate_input_dtype(input, accepted_dtypes=[float16, float32, float64])
+        _validate_input_dtype(input, accepted_dtypes=[float16, float32, float64, int32, int64])
 
         if shape is None:
             return _transform_input(input)
