@@ -526,6 +526,7 @@ def jpeg_codec_differentiable(
     # Quantization tables to same device and dtype as input image
     quantization_table_y = quantization_table_y.to(device, dtype)
     quantization_table_c = quantization_table_c.to(device, dtype)
+    jpeg_quality = jpeg_quality.to(device)
     # Perform encoding
     y_encoded, cb_encoded, cr_encoded = _jpeg_encode(
         image_rgb=image_rgb,
