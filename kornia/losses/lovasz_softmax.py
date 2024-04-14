@@ -83,7 +83,7 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor, weight: Optional[Tensor] =
 
     # flatten pred [B, C, -1] and target [B, -1] and to float
     pred_flatten: Tensor = pred.reshape(pred.shape[0], pred.shape[1], -1)
-    target_flatten: Tensor = target.reshape(target.shape[0], -1).float()
+    target_flatten: Tensor = target.reshape(target.shape[0], -1)
 
     # get shapes
     B, C, N = pred_flatten.shape
@@ -91,25 +91,24 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor, weight: Optional[Tensor] =
     # compute softmax over the classes axis
     pred_soft: Tensor = pred_flatten.softmax(1)
 
+
     # compute actual loss
-    losses: list[Tensor] = []
-    batch_index: Tensor = torch.arange(B, device=pred.device).reshape(-1, 1).repeat(1, N).reshape(-1)
-    for c in range(C):
-        foreground: Tensor = 1.0 * (target_flatten == c)
-        class_pred: Tensor = pred_soft[:, c]
-        errors = (class_pred - foreground).abs()
-        errors_sorted, permutation = torch.sort(errors, dim=1, descending=True)
-        target_sorted: Tensor = target_flatten[batch_index, permutation.view(-1)]
-        target_sorted = target_sorted.view(B, N)
-        target_sorted_sum: Tensor = target_sorted.sum(1, keepdim=True)
-        intersection: Tensor = target_sorted_sum - target_sorted.cumsum(1)
-        union: Tensor = target_sorted_sum + (1.0 - target_sorted).cumsum(1)
-        gradient: Tensor = 1.0 - intersection / union
-        if N > 1:
-            gradient[..., 1:] = gradient[..., 1:] - gradient[..., :-1]
-        loss: Tensor = (errors_sorted.relu() * gradient).sum(1).mean() * (1.0 if weight is None else weight[c])
-        losses.append(loss)
-    final_loss: Tensor = torch.stack(losses, dim=0).mean()
+    foreground: Tensor = torch.nn.functional.one_hot(target_flatten.to(torch.int64), num_classes=C).permute(0, 2, 1).to(pred.dtype)
+    errors: Tensor = (pred_soft - foreground).abs()
+    errors_sorted, permutations = torch.sort(errors, dim=2, descending=True)
+    batch_index = torch.arange(B, device=pred.device).unsqueeze(1).unsqueeze(2).expand(B, C, N)
+    target_sorted = target_flatten[batch_index, permutations]
+    target_sorted_sum = target_sorted.sum(2, keepdim=True)
+    intersection = target_sorted_sum - target_sorted.cumsum(2)
+    union = target_sorted_sum + (1.0 - target_sorted).cumsum(2)
+    gradient = 1.0 - intersection / union
+    if N > 1:
+        gradient[..., 1:] = gradient[..., 1:] - gradient[..., :-1]
+    weighted_errors = errors_sorted * gradient
+    loss_per_class = weighted_errors.sum(2).mean(0)
+    if weight is not None:
+        loss_per_class *= weight
+    final_loss: Tensor = loss_per_class.mean()
     return final_loss
 
 
