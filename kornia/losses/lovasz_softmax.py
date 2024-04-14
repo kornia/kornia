@@ -91,9 +91,10 @@ def lovasz_softmax_loss(pred: Tensor, target: Tensor, weight: Optional[Tensor] =
     # compute softmax over the classes axis
     pred_soft: Tensor = pred_flatten.softmax(1)
 
-
     # compute actual loss
-    foreground: Tensor = torch.nn.functional.one_hot(target_flatten.to(torch.int64), num_classes=C).permute(0, 2, 1).to(pred.dtype)
+    foreground: Tensor = (
+        torch.nn.functional.one_hot(target_flatten.to(torch.int64), num_classes=C).permute(0, 2, 1).to(pred.dtype)
+    )
     errors: Tensor = (pred_soft - foreground).abs()
     errors_sorted, permutations = torch.sort(errors, dim=2, descending=True)
     batch_index = torch.arange(B, device=pred.device).unsqueeze(1).unsqueeze(2).expand(B, C, N)
