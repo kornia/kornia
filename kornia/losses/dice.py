@@ -72,7 +72,7 @@ def dice_loss(
     num_of_classes = pred.shape[1]
     possible_average = {"micro", "macro"}
     KORNIA_CHECK(average in possible_average, f"The `average` has to be one of {possible_average}. Got: {average}")
-
+    broadcast_dims = [-1] + [1] * len(pred.shape[2:])
     # compute softmax over the classes axis
     pred_soft: Tensor = pred.softmax(dim=1)
 
@@ -95,6 +95,7 @@ def dice_loss(
             weight.device == pred.device,
             f"weight and pred must be in the same device. Got: {weight.device} and {pred.device}",
         )
+        weight = weight.view(broadcast_dims)
         pred_soft = pred_soft * weight
         target_one_hot = target_one_hot * weight
     intersection = torch.sum(pred_soft * target_one_hot, dims)
