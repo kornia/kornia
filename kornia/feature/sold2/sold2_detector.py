@@ -38,10 +38,10 @@ class LineDetectorCfg:
     inlier_thresh: float = 0.99
     use_candidate_suppression: bool = True
     nms_dist_tolerance: float = 3.0
-    heatmap_low_thresh: float = (0.15,)
-    heatmap_high_thresh: float = (0.2,)
-    max_local_patch_radius: float = (3,)
-    lambda_radius: float = (2.0,)
+    heatmap_low_thresh: float = 0.15
+    heatmap_high_thresh: float = 0.2
+    max_local_patch_radius: float = 3
+    lambda_radius: float = 2.0
     use_heatmap_refinement: bool = True
     heatmap_refine_cfg: HeatMapRefineCfg = field(default_factory=HeatMapRefineCfg)
     use_junction_refinement: bool = True
@@ -63,8 +63,8 @@ class DetectorCfg:
     use_descriptor: bool = False
     grid_size: int = 8
     keep_border_valid: bool = True
-    detection_thresh: float = 0.0153846
-    max_num_junctions: int = 500
+    detection_thresh: float = 0.0153846  # = 1/65: threshold of junction detection
+    max_num_junctions: int = 500  # maximum number of junctions per image
     line_detector_cfg: LineDetectorCfg = field(default_factory=LineDetectorCfg)
 
 
@@ -133,7 +133,8 @@ class SOLD2_detector(Module):
         self.max_num_junctions = self.config.max_num_junctions
 
         # Load the pre-trained model
-        self.model = SOLD2Net(**dataclass_to_dict(self.config))
+        self.model = SOLD2Net(dataclass_to_dict(self.config))
+
         if pretrained:
             pretrained_dict = torch.hub.load_state_dict_from_url(urls["wireframe"], map_location=map_location_to_cpu)
             state_dict = self.adapt_state_dict(pretrained_dict["model_state_dict"])
@@ -217,6 +218,7 @@ class LineSegmentDetectionModule:
 
         # Line detection parameters
         self.detect_thresh = self.config.detect_thresh
+        # self.detect_thresh = detect_thresh
 
         # Line sampling parameters
         self.num_samples = self.config.num_samples
@@ -254,18 +256,18 @@ class LineSegmentDetectionModule:
         device = junctions.device
 
         # Perform the heatmap refinement
-        if self.use_heatmap_refinement and isinstance(self.heatmap_refine_cfg, dict):
-            if self.heatmap_refine_cfg["mode"] == "global":
+        if self.use_heatmap_refinement and isinstance(self.heatmap_refine_cfg, HeatMapRefineCfg):
+            if self.heatmap_refine_cfg.mode == "global":
                 heatmap = self.refine_heatmap(
-                    heatmap, self.heatmap_refine_cfg["ratio"], self.heatmap_refine_cfg["valid_thresh"]
+                    heatmap, self.heatmap_refine_cfg.ratio, self.heatmap_refine_cfg.valid_thresh
                 )
-            elif self.heatmap_refine_cfg["mode"] == "local":
+            elif self.heatmap_refine_cfg.mode == "local":
                 heatmap = self.refine_heatmap_local(
                     heatmap,
-                    self.heatmap_refine_cfg["num_blocks"],
-                    self.heatmap_refine_cfg["overlap_ratio"],
-                    self.heatmap_refine_cfg["ratio"],
-                    self.heatmap_refine_cfg["valid_thresh"],
+                    self.heatmap_refine_cfg.num_blocks,
+                    self.heatmap_refine_cfg.overlap_ratio,
+                    self.heatmap_refine_cfg.ratio,
+                    self.heatmap_refine_cfg.valid_thresh,
                 )
 
         # Initialize empty line map
@@ -450,10 +452,13 @@ class LineSegmentDetectionModule:
     ) -> Tuple[Tensor, Tensor]:
         """Refine the line endpoints in a similar way as in LSD."""
         # Fetch refinement parameters
-        if not isinstance(self.junction_refine_cfg, dict):
-            raise TypeError(f"Expected to have a dict of config for junction. Gotcha {type(self.junction_refine_cfg)}")
-        num_perturbs = self.junction_refine_cfg["num_perturbs"]
-        perturb_interval = self.junction_refine_cfg["perturb_interval"]
+        if not isinstance(self.junction_refine_cfg, JunctionRefineCfg):
+            raise TypeError(
+                "Expected to have dataclass of type JunctionRefineCfg for junction."
+                f"Gotcha {type(self.junction_refine_cfg)}"
+            )
+        num_perturbs = self.junction_refine_cfg.num_perturbs
+        perturb_interval = self.junction_refine_cfg.perturb_interval
         side_perturbs = (num_perturbs - 1) // 2
 
         # Fetch the 2D perturb mat

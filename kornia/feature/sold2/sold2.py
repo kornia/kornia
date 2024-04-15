@@ -9,7 +9,7 @@ from kornia.geometry.conversions import normalize_pixel_coordinates
 from kornia.utils import map_location_to_cpu
 
 from .backbones import SOLD2Net
-from .sold2_detector import LineSegmentDetectionModule, line_map_to_segments, prob_to_junctions
+from .sold2_detector import LineDetectorCfg, LineSegmentDetectionModule, line_map_to_segments, prob_to_junctions
 
 urls: Dict[str, str] = {}
 urls["wireframe"] = "http://cmp.felk.cvut.cz/~mishkdmy/models/sold2_wireframe.pth"
@@ -22,23 +22,7 @@ default_cfg: Dict[str, Any] = {
     "keep_border_valid": True,
     "detection_thresh": 0.0153846,  # = 1/65: threshold of junction detection
     "max_num_junctions": 500,  # maximum number of junctions per image
-    "line_detector_cfg": {
-        "detect_thresh": 0.5,
-        "num_samples": 64,
-        "inlier_thresh": 0.99,
-        "use_candidate_suppression": True,
-        "nms_dist_tolerance": 3.0,
-        "use_heatmap_refinement": True,
-        "heatmap_refine_cfg": {
-            "mode": "local",
-            "ratio": 0.2,
-            "valid_thresh": 0.001,
-            "num_blocks": 20,
-            "overlap_ratio": 0.5,
-        },
-        "use_junction_refinement": True,
-        "junction_refine_cfg": {"num_perturbs": 9, "perturb_interval": 0.25},
-    },
+    "line_detector_cfg": LineDetectorCfg(),
     "line_matcher_cfg": {
         "cross_check": True,
         "num_samples": 5,
@@ -92,8 +76,7 @@ class SOLD2(Module):
         self.eval()
 
         # Initialize the line detector
-        self.line_detector_cfg = self.config["line_detector_cfg"]
-        self.line_detector = LineSegmentDetectionModule(**self.config["line_detector_cfg"])
+        self.line_detector = LineSegmentDetectionModule(LineDetectorCfg())
 
         # Initialize the line matcher
         self.line_matcher = WunschLineMatcher(**self.config["line_matcher_cfg"])
