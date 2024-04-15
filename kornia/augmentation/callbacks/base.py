@@ -2,7 +2,6 @@ from typing import Dict, List, Optional, Union
 
 # NOTE: fix circular import
 import kornia.augmentation as K
-
 from kornia.constants import DataKey
 from kornia.core import Module, Tensor
 from kornia.geometry.boxes import Boxes
