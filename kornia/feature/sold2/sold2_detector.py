@@ -1,4 +1,5 @@
 import math
+import warnings
 from dataclasses import asdict, dataclass, field, is_dataclass
 from typing import Any, Dict, Optional, Tuple
 
@@ -79,6 +80,20 @@ def dataclass_to_dict(obj):
         return obj
 
 
+def dict_to_dataclass(dict_obj, dataclass_type):
+    """Recursively convert dictionaries to dataclass instances."""
+    if not isinstance(dict_obj, dict):
+        return TypeError("Input conf must be dict")
+    field_types = {f.name: f.type for f in dataclass_type.__dataclass_fields__.values()}
+    constructor_args = {}
+    for key, value in dict_obj.items():
+        if key in field_types and is_dataclass(field_types[key]):
+            constructor_args[key] = dict_to_dataclass(value, field_types[key])
+        else:
+            constructor_args[key] = value
+    return dataclass_type(**constructor_args)
+
+
 class SOLD2_detector(Module):
     r"""Module, which detects line segments in an image.
 
@@ -101,13 +116,15 @@ class SOLD2_detector(Module):
     """
 
     def __init__(self, pretrained: bool = True, config: Optional[DetectorCfg] = None) -> None:
-        if isinstance(cofig, dict):
+        if isinstance(config, dict):
             warnings.warn(
-                    f"Usage of config as a plain dictionary is deprecated in favor of `kornia.feature.sold2.sold2_detector.DetectorCfg`. The support of plain dictionaries as config will be removed in kornia v0.8.0 (December 2024).",
-                    category=DeprecationWarning,
-                    stacklevel=2,
-                )
-            config = dict_to_dataclass(**config, DetectorCfg)
+                "Usage of config as a plain dictionary is deprecated in favor of"
+                " `kornia.feature.sold2.sold2_detector.DetectorCfg`. The support of plain dictionaries"
+                "as config will be removed in kornia v0.8.0 (December 2024).",
+                category=DeprecationWarning,
+                stacklevel=2,
+            )
+            config = dict_to_dataclass(config, DetectorCfg)
         super().__init__()
         # Initialize some parameters
         self.config = config if config is not None else DetectorCfg()
@@ -194,7 +211,7 @@ class LineSegmentDetectionModule:
         >>> line_map, junctions, _ = module.detect(junctions, heatmap)
     """
 
-    def __init__(self, detect_thresh: float = 0.5, config: LineDetectorCfg = LineDetectorCfg()) -> None:
+    def __init__(self, config: LineDetectorCfg = LineDetectorCfg()) -> None:
         # Load LineDetectorCfg
         self.config = config
 
