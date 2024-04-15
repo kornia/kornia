@@ -391,9 +391,11 @@ class PatchSequential(ImageSequential):
         """
         if self.is_intensity_only():
             self.run_callbacks(
-                "on_sequential_inverse_start", input=[input], module=self, params=params, data_keys=[DataKey.INPUT])
+                "on_sequential_inverse_start", input=[input], module=self, params=params, data_keys=[DataKey.INPUT]
+            )
             self.run_callbacks(
-                "on_sequential_inverse_end", input=[input], module=self, params=params, data_keys=[DataKey.INPUT])
+                "on_sequential_inverse_end", input=[input], module=self, params=params, data_keys=[DataKey.INPUT]
+            )
             return input
 
         raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
@@ -408,10 +410,12 @@ class PatchSequential(ImageSequential):
             params = self.forward_parameters(input.shape)
 
         self.run_callbacks(
-            "on_sequential_forward_start", input=[input], module=self, params=params, data_keys=[DataKey.INPUT])
+            "on_sequential_forward_start", input=[input], module=self, params=params, data_keys=[DataKey.INPUT]
+        )
         output = self.transform_inputs(input, params=params)
         self.run_callbacks(
-            "on_sequential_forward_end", input=[output], module=self, params=params, data_keys=[DataKey.INPUT])
+            "on_sequential_forward_end", input=[output], module=self, params=params, data_keys=[DataKey.INPUT]
+        )
 
         self._params = params
 

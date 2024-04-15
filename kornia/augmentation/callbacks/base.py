@@ -1,4 +1,4 @@
-from typing import cast, Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union, cast
 
 # NOTE: fix circular import
 import kornia.augmentation as K
@@ -284,7 +284,7 @@ class AugmentationCallback(AugmentationCallbackBase):
     ) -> None:
         """Called when `forward` ends for `AugmentationSequential`."""
         output_data: List["K.container.data_types.DataType"] = []
-        
+
         # Log all the indices
         if self.log_indices is None:
             self.log_indices = list(range(len(data_keys)))
@@ -296,7 +296,7 @@ class AugmentationCallback(AugmentationCallbackBase):
             postproc = None
             if self.postprocessing is not None:
                 postproc = self.postprocessing[self.log_indices[i]]
-            data = arg[:self.num_to_log]
+            data = arg[: self.num_to_log]
             if postproc is not None:
                 data = postproc(data)
 

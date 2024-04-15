@@ -22,7 +22,7 @@ class CallbacksMixIn:
 
     def register_callbacks(self, callbacks: List[AugmentationCallbackBase]) -> None:
         for cb in callbacks:
-            self._callbacks.append(cb) 
+            self._callbacks.append(cb)
 
     def run_callbacks(self, hook: str, *args, **kwargs) -> None:  # type: ignore
         for cb in self._callbacks:

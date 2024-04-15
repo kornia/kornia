@@ -308,7 +308,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             params = self._params
 
         self.run_callbacks(
-            "on_sequential_inverse_start", input=in_args, module=self, params=params, data_keys=data_keys)
+            "on_sequential_inverse_start", input=in_args, module=self, params=params, data_keys=data_keys
+        )
 
         outputs: List[DataType] = in_args
         for param in params[::-1]:
@@ -325,8 +326,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         if isinstance(original_keys, tuple):
             return {k: v for v, k in zip(outputs, original_keys)}
 
-        self.run_callbacks(
-            "on_sequential_inverse_end", input=outputs, module=self, params=params, data_keys=data_keys)
+        self.run_callbacks("on_sequential_inverse_end", input=outputs, module=self, params=params, data_keys=data_keys)
 
         if len(outputs) == 1 and isinstance(outputs, list):
             return outputs[0]
@@ -427,7 +427,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 raise ValueError("`params` must be provided whilst INPUT is not in data_keys.")
 
         self.run_callbacks(
-            "on_sequential_forward_start", input=in_args, module=self, params=params, data_keys=data_keys)
+            "on_sequential_forward_start", input=in_args, module=self, params=params, data_keys=data_keys
+        )
 
         outputs: Union[Tensor, List[DataType]] = in_args
         for param in params:
@@ -449,8 +450,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         if isinstance(original_keys, tuple):
             return {k: v for v, k in zip(outputs, original_keys)}
 
-        self.run_callbacks(
-            "on_sequential_forward_end", input=outputs, module=self, params=params, data_keys=data_keys)
+        self.run_callbacks("on_sequential_forward_end", input=outputs, module=self, params=params, data_keys=data_keys)
 
         if len(outputs) == 1 and isinstance(outputs, list):
             return outputs[0]

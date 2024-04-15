@@ -47,9 +47,7 @@ class WandbLogger(AugmentationCallback):
 
         self.contains_duplicated_keys(data_keys)
 
-    def contains_duplicated_keys(
-        self, data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None
-    ) -> None:
+    def contains_duplicated_keys(self, data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None) -> None:
         # WANDB only supports visualization without duplication
         ...
 
