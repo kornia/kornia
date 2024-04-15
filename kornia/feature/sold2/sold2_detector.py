@@ -1,7 +1,7 @@
 import math
 import warnings
-from dataclasses import asdict, dataclass, field, is_dataclass
-from typing import Any, Dict, Optional, Tuple, Union
+from dataclasses import asdict, dataclass, field, fields, is_dataclass
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
 import torch
 
@@ -68,7 +68,7 @@ class DetectorCfg:
     line_detector_cfg: LineDetectorCfg = field(default_factory=LineDetectorCfg)
 
 
-def dataclass_to_dict(obj: Any) -> Union[Dict[str, Any], list, tuple]:
+def dataclass_to_dict(obj: Any) -> Union[Dict[str, Any], List[Any], Tuple[Any, ...]]:
     """Recursively convert dataclass instances to dictionaries."""
     if is_dataclass(obj) and not isinstance(obj, type):
         return {key: dataclass_to_dict(value) for key, value in asdict(obj).items()}
@@ -80,13 +80,11 @@ def dataclass_to_dict(obj: Any) -> Union[Dict[str, Any], list, tuple]:
         return obj
 
 
-def dict_to_dataclass(
-    dict_obj: Dict[str, Any], dataclass_type: Union[Dict[str, Any], list, tuple]
-) -> Union[Dict[str, Any], list, tuple]:
+def dict_to_dataclass(dict_obj: Dict[str, Any], dataclass_type: Type[Any]) -> Any:
     """Recursively convert dictionaries to dataclass instances."""
     if not isinstance(dict_obj, dict):
-        return TypeError("Input conf must be dict")
-    field_types = {f.name: f.type for f in dataclass_type.__dataclass_fields__.values()}
+        raise TypeError("Input conf must be dict")
+    field_types = {f.name: f.type for f in fields(dataclass_type)}
     constructor_args = {}
     for key, value in dict_obj.items():
         if key in field_types and is_dataclass(field_types[key]):
