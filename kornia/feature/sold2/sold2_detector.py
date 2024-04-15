@@ -101,6 +101,13 @@ class SOLD2_detector(Module):
     """
 
     def __init__(self, pretrained: bool = True, config: Optional[DetectorCfg] = None) -> None:
+        if isinstance(cofig, dict):
+            warnings.warn(
+                    f"Usage of config as a plain dictionary is deprecated in favor of `kornia.feature.sold2.sold2_detector.DetectorCfg`. The support of plain dictionaries as config will be removed in kornia v0.8.0 (December 2024).",
+                    category=DeprecationWarning,
+                    stacklevel=2,
+                )
+            config = dict_to_dataclass(**config, DetectorCfg)
         super().__init__()
         # Initialize some parameters
         self.config = config if config is not None else DetectorCfg()
