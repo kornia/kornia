@@ -3,8 +3,6 @@ from typing import Dict, List, Optional, Union
 # NOTE: fix circular import
 import kornia.augmentation as K
 
-# .data_types import DataType
-# from kornia.augmentation.container.params import ParamItem
 from kornia.constants import DataKey
 from kornia.core import Module, Tensor
 from kornia.geometry.boxes import Boxes
@@ -263,7 +261,7 @@ class AugmentationCallback(AugmentationCallbackBase):
         postprocessing: Optional[List[Optional[Module]]] = None,
     ):
         super().__init__()
-        self.batches_to_log = batches_to_log
+        self.batches_to_save = batches_to_save
         self.log_indices = log_indices
         self.data_keys = data_keys
         self.postprocessing = postprocessing
@@ -275,13 +273,13 @@ class AugmentationCallback(AugmentationCallbackBase):
     def _make_bbox_data(self, bbox: Tensor):
         raise NotImplementedError
 
-    def _log_data(self, data: SequenceDataType):
+    def _log_data(self, data: "K.container.data_types.SequenceDataType"):
         raise NotImplementedError
 
     def on_sequential_forward_end(
         self,
-        *args: Union[DataType, Dict[str, DataType]],
-        params: Optional[List[ParamItem]] = None,
+        *args: Union["K.container.data_types.DataType", Dict[str, "K.container.data_types.DataType"]],
+        params: Optional[List["K.container.params.ParamItem"]] = None,
         data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None,
     ):
         """Called when `forward` ends for `AugmentationSequential`."""

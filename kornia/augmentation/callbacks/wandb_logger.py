@@ -33,7 +33,7 @@ class WandbLogger(AugmentationCallback):
         postprocessing: Optional[List[Optional[Module]]] = None,
     ):
         super().__init__(
-            batches_to_log=batches_to_log,
+            batches_to_save=batches_to_save,
             num_to_log=num_to_log,
             log_indices=log_indices,
             data_keys=data_keys,
@@ -44,9 +44,9 @@ class WandbLogger(AugmentationCallback):
         else:
             self.wandb = run
 
-        self.has_duplication(data_keys)
+        self.contains_duplicated_keys(data_keys)
 
-    def has_duplication(self, data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None):
+    def contains_duplicated_keys(self, data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None):
         # WANDB only supports visualization without duplication
         ...
 

@@ -7,8 +7,8 @@ from kornia.core import Module, Tensor
 from .base import AugmentationCallback
 
 
-class WandbLogger(AugmentationCallback):
-    """Logging images onto W&B for `AugmentationSequential`.
+class LocalLogger(AugmentationCallback):
+    """Logging images to the desired folder for `AugmentationSequential`.
 
     Args:
         batches_to_save: the number of batches to be logged. -1 is to save all batches.
@@ -32,7 +32,7 @@ class WandbLogger(AugmentationCallback):
         postprocessing: Optional[List[Optional[Module]]] = None,
     ):
         super().__init__(
-            batches_to_log=batches_to_log,
+            batches_to_save=batches_to_save,
             num_to_log=num_to_log,
             log_indices=log_indices,
             data_keys=data_keys,
