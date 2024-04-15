@@ -1,9 +1,7 @@
-from typing import cast, List, Optional, Union
+from typing import List, Optional, Union
 
-from kornia.augmentation.container.ops import DataType
 from kornia.constants import DataKey
 from kornia.core import Module, Tensor
-from kornia.geometry.boxes import Boxes
 
 from .base import AugmentationCallback
 
