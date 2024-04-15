@@ -267,12 +267,15 @@ class AugmentationCallback(AugmentationCallbackBase):
         self.num_to_log = num_to_log
 
     def _make_mask_data(self, mask: Tensor) -> Tensor:
-        raise NotImplementedError
+        return mask
 
-    def _make_bbox_data(self, bbox: Boxes) -> Boxes:
-        raise NotImplementedError
+    def _make_bbox_data(self, bbox: Boxes) -> Tensor:
+        return cast(Tensor, bbox.to_tensor("xyxy", as_padded_sequence=True))
 
-    def _log_data(self, data: List["K.container.data_types.DataType"]) -> None:
+    def _make_keypoints_data(self, keypoints: Keypoints) -> Tensor:
+        return cast(Tensor, keypoints.to_tensor(as_padded_sequence=True))
+
+    def _log_data(self, data: List[Tensor]) -> None:
         raise NotImplementedError
 
     def on_sequential_forward_end(
@@ -283,8 +286,8 @@ class AugmentationCallback(AugmentationCallbackBase):
         data_keys: Union[List[str], List[int], List[DataKey]],
     ) -> None:
         """Called when `forward` ends for `AugmentationSequential`."""
-        output_data: List["K.container.data_types.DataType"] = []
-
+        output_data: List[Tensor] = []
+        
         # Log all the indices
         if self.log_indices is None:
             self.log_indices = list(range(len(data_keys)))
@@ -296,15 +299,18 @@ class AugmentationCallback(AugmentationCallbackBase):
             postproc = None
             if self.postprocessing is not None:
                 postproc = self.postprocessing[self.log_indices[i]]
-            data = arg[: self.num_to_log]
+            data = arg[:self.num_to_log]
+
             if postproc is not None:
                 data = postproc(data)
 
             if data_key in [DataKey.INPUT]:
-                output_data.append(data)
+                output_data.append(cast(Tensor, data))
             if data_key in [DataKey.MASK]:
                 output_data.append(self._make_mask_data(cast(Tensor, data)))
             if data_key in [DataKey.BBOX, DataKey.BBOX_XYWH, DataKey.BBOX_XYXY]:
                 output_data.append(self._make_bbox_data(cast(Boxes, data)))
+            if data_key in [DataKey.KEYPOINTS]:
+                output_data.append(self._make_keypoints_data(cast(Keypoints, data)))
 
         self._log_data(output_data)

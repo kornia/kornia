@@ -1,4 +1,4 @@
-from typing import List, Optional, Union
+from typing import cast, List, Optional, Union
 
 from kornia.augmentation.container.ops import DataType
 from kornia.constants import DataKey
@@ -41,11 +41,5 @@ class LocalLogger(AugmentationCallback):
         )
         self.log_dir = log_dir
 
-    def _make_mask_data(self, mask: Tensor) -> Tensor:
-        raise NotImplementedError
-
-    def _make_bbox_data(self, bbox: Boxes) -> Boxes:
-        raise NotImplementedError
-
-    def _log_data(self, data: List[DataType]) -> None:
+    def _log_data(self, data: List[Tensor]) -> None:
         raise NotImplementedError

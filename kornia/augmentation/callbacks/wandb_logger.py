@@ -51,13 +51,7 @@ class WandbLogger(AugmentationCallback):
         # WANDB only supports visualization without duplication
         ...
 
-    def _make_mask_data(self, mask: Tensor) -> Tensor:
-        raise NotImplementedError
-
-    def _make_bbox_data(self, bbox: Boxes) -> Boxes:
-        raise NotImplementedError
-
-    def _log_data(self, data: List[DataType]) -> None:
+    def _log_data(self, data: List[Tensor]) -> None:
         ...
         # assert self.data_keys no duplication, ...
         # for i, (value, key) in enumerate(zip(data, self.data_keys)):

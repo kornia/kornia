@@ -35,7 +35,7 @@ def draw_point2d(image: Tensor, points: Tensor, color: Tensor) -> Tensor:
     return image
 
 
-def _draw_pixel(image: torch.Tensor, x: int, y: int, color: torch.Tensor) -> None:
+def _draw_pixel(image: Tensor, x: int, y: int, color: Tensor) -> None:
     r"""Draws a pixel into an image.
 
     Args:
@@ -50,7 +50,7 @@ def _draw_pixel(image: torch.Tensor, x: int, y: int, color: torch.Tensor) -> Non
     image[:, y, x] = color
 
 
-def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: torch.Tensor) -> torch.Tensor:
+def draw_line(image: Tensor, p1: Tensor, p2: Tensor, color: Tensor) -> Tensor:
     r"""Draw a single line into an image.
 
     Args:
@@ -176,8 +176,8 @@ def draw_line(image: torch.Tensor, p1: torch.Tensor, p2: torch.Tensor, color: to
 
 
 def draw_rectangle(
-    image: torch.Tensor, rectangle: torch.Tensor, color: Optional[torch.Tensor] = None, fill: Optional[bool] = None
-) -> torch.Tensor:
+    image: Tensor, rectangle: Tensor, color: Optional[Tensor] = None, fill: Optional[bool] = None
+) -> Tensor:
     r"""Draw N rectangles on a batch of image tensors.
 
     Args:
