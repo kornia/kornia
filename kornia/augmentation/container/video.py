@@ -7,7 +7,6 @@ from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.callbacks import AugmentationCallbackBase
 from kornia.augmentation.container.base import SequentialBase
 from kornia.augmentation.container.image import ImageSequential, _get_new_batch_shape
-from kornia.augmentation.container.mixins import CallbacksMixIn
 from kornia.core import Module, Tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
@@ -17,7 +16,7 @@ from .params import ParamItem
 __all__ = ["VideoSequential"]
 
 
-class VideoSequential(ImageSequential, CallbacksMixIn):
+class VideoSequential(ImageSequential):
     r"""VideoSequential for processing 5-dim video data like (B, T, C, H, W) and (B, C, T, H, W).
 
     `VideoSequential` is used to replace `nn.Sequential` for processing video data augmentations.

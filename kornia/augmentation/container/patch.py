@@ -6,7 +6,6 @@ import torch
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.callbacks import AugmentationCallbackBase
-from kornia.augmentation.container.mixins import CallbacksMixIn
 from kornia.contrib.extract_patches import extract_tensor_patches
 from kornia.core import Module, Tensor, concatenate
 from kornia.core import pad as fpad
@@ -21,7 +20,7 @@ from .params import ParamItem, PatchParamItem
 __all__ = ["PatchSequential"]
 
 
-class PatchSequential(ImageSequential, CallbacksMixIn):
+class PatchSequential(ImageSequential):
     r"""Container for performing patch-level image data augmentation.
 
     .. image:: _static/img/PatchSequential.png

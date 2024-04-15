@@ -5,7 +5,6 @@ import torch
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.callbacks import AugmentationCallbackBase
-from kornia.augmentation.container.mixins import CallbacksMixIn
 from kornia.augmentation.utils import override_parameters
 from kornia.core import Module, Tensor, as_tensor
 from kornia.utils import eye_like
@@ -16,7 +15,7 @@ from .params import ParamItem
 __all__ = ["ImageSequential"]
 
 
-class ImageSequential(ImageSequentialBase, CallbacksMixIn):
+class ImageSequential(ImageSequentialBase):
     r"""Sequential for creating kornia image processing pipeline.
 
     Args:

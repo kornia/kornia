@@ -7,6 +7,7 @@ from torch import nn
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.container.mixins import CallbacksMixIn
 from kornia.core import Module, Tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
@@ -168,7 +169,7 @@ class SequentialBase(BasicSequentialBase):
         return ori_shape, input.shape
 
 
-class ImageSequentialBase(SequentialBase):
+class ImageSequentialBase(CallbacksMixIn, SequentialBase):
     def identity_matrix(self, input: Tensor) -> Tensor:
         """Return identity matrix."""
         raise NotImplementedError

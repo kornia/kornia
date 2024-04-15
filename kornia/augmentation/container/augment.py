@@ -5,7 +5,6 @@ from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
 from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmentationBase3D
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.callbacks import AugmentationCallbackBase
-from kornia.augmentation.container.mixins import CallbacksMixIn
 from kornia.constants import DataKey, Resample
 from kornia.core import Module, Tensor
 from kornia.geometry.boxes import Boxes, VideoBoxes
@@ -26,7 +25,7 @@ _KEYPOINTS_OPTIONS = {DataKey.KEYPOINTS}
 _IMG_MSK_OPTIONS = {DataKey.INPUT, DataKey.MASK}
 
 
-class AugmentationSequential(ImageSequential, TransformMatrixMinIn, CallbacksMixIn):
+class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
     r"""AugmentationSequential for handling multiple input types like inputs, masks, keypoints at once.
 
     .. image:: _static/img/AugmentationSequential.png
