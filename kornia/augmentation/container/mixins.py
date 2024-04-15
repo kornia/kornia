@@ -17,13 +17,14 @@ class CallbacksMixIn:
     @property
     def callbacks(
         self,
-    ):
+    ) -> List[AugmentationCallbackBase]:
         return self._callbacks
 
-    def register_callbacks(self, callbacks: AugmentationCallbackBase) -> None:
-        [self._callbacks.append(cb) for cb in callbacks]
+    def register_callbacks(self, callbacks: List[AugmentationCallbackBase]) -> None:
+        for cb in callbacks:
+            self._callbacks.append(cb) 
 
-    def run_callbacks(self, hook: str, *args, **kwargs) -> None:
+    def run_callbacks(self, hook: str, *args, **kwargs) -> None:  # type: ignore
         for cb in self._callbacks:
             if not hasattr(cb, hook):
                 continue

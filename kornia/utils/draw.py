@@ -1,7 +1,7 @@
 from typing import List, Optional, Tuple, Union
 
 import torch
-from torch import Tensor
+from kornia.core import Tensor
 
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 

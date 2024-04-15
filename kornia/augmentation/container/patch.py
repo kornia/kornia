@@ -6,6 +6,7 @@ import torch
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.callbacks import AugmentationCallbackBase
+from kornia.constants import DataKey
 from kornia.contrib.extract_patches import extract_tensor_patches
 from kornia.core import Module, Tensor, concatenate
 from kornia.core import pad as fpad
@@ -389,8 +390,10 @@ class PatchSequential(ImageSequential):
         provided parameters.
         """
         if self.is_intensity_only():
-            self.run_callbacks("on_sequential_inverse_start", input=input, params=params)
-            self.run_callbacks("on_sequential_inverse_end", input=input, params=params)
+            self.run_callbacks(
+                "on_sequential_inverse_start", input=[input], module=self, params=params, data_keys=[DataKey.INPUT])
+            self.run_callbacks(
+                "on_sequential_inverse_end", input=[input], module=self, params=params, data_keys=[DataKey.INPUT])
             return input
 
         raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
@@ -404,9 +407,11 @@ class PatchSequential(ImageSequential):
         if params is None:
             params = self.forward_parameters(input.shape)
 
-        self.run_callbacks("on_sequential_forward_start", input=input, params=params)
+        self.run_callbacks(
+            "on_sequential_forward_start", input=[input], module=self, params=params, data_keys=[DataKey.INPUT])
         output = self.transform_inputs(input, params=params)
-        self.run_callbacks("on_sequential_forward_end", input=output, params=params)
+        self.run_callbacks(
+            "on_sequential_forward_end", input=[output], module=self, params=params, data_keys=[DataKey.INPUT])
 
         self._params = params
 

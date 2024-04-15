@@ -1,8 +1,9 @@
 from typing import List, Optional, Union
 
-from kornia.augmentation.container.ops import SequenceDataType
+from kornia.augmentation.container.ops import DataType
 from kornia.constants import DataKey
 from kornia.core import Module, Tensor
+from kornia.geometry.boxes import Boxes
 
 from .base import AugmentationCallback
 
@@ -30,7 +31,7 @@ class LocalLogger(AugmentationCallback):
         log_indices: Optional[List[int]] = None,
         data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None,
         postprocessing: Optional[List[Optional[Module]]] = None,
-    ):
+    ) -> None:
         super().__init__(
             batches_to_save=batches_to_save,
             num_to_log=num_to_log,
@@ -40,8 +41,11 @@ class LocalLogger(AugmentationCallback):
         )
         self.log_dir = log_dir
 
-    def _make_mask_data(self, mask: Tensor): ...
+    def _make_mask_data(self, mask: Tensor) -> Tensor:
+        raise NotImplementedError
 
-    def _make_bbox_data(self, bbox: Tensor): ...
+    def _make_bbox_data(self, bbox: Boxes) -> Boxes:
+        raise NotImplementedError
 
-    def _log_data(self, data: SequenceDataType): ...
+    def _log_data(self, data: List[DataType]) -> None:
+        raise NotImplementedError

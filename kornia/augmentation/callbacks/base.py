@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Union
+from typing import cast, Dict, List, Optional, Union
 
 # NOTE: fix circular import
 import kornia.augmentation as K
@@ -20,7 +20,7 @@ class AugmentationCallbackBase(Module):
         input: Tensor,
         params: Dict[str, Tensor],
         module: object,
-    ):
+    ) -> None:
         """Called when `transform_inputs` begins."""
         ...
 
@@ -29,7 +29,7 @@ class AugmentationCallbackBase(Module):
         input: Tensor,
         params: Dict[str, Tensor],
         module: object,
-    ):
+    ) -> None:
         """Called when `transform_inputs` ends."""
         ...
 
@@ -38,7 +38,7 @@ class AugmentationCallbackBase(Module):
         input: Tensor,
         params: Dict[str, Tensor],
         module: object,
-    ):
+    ) -> None:
         """Called when `transform_masks` begins."""
         ...
 
@@ -47,7 +47,7 @@ class AugmentationCallbackBase(Module):
         input: Tensor,
         params: Dict[str, Tensor],
         module: object,
-    ):
+    ) -> None:
         """Called when `transform_masks` ends."""
         ...
 
@@ -56,7 +56,7 @@ class AugmentationCallbackBase(Module):
         input: Tensor,
         params: Dict[str, Tensor],
         module: object,
-    ):
+    ) -> None:
         """Called when `transform_classes` begins."""
         ...
 
@@ -65,7 +65,7 @@ class AugmentationCallbackBase(Module):
         input: Tensor,
         params: Dict[str, Tensor],
         module: object,
-    ):
+    ) -> None:
         """Called when `transform_classes` ends."""
         ...
 
@@ -74,7 +74,7 @@ class AugmentationCallbackBase(Module):
         input: Boxes,
         params: Dict[str, Tensor],
         module: object,
-    ):
+    ) -> None:
         """Called when `transform_boxes` begins."""
         ...
 
@@ -83,7 +83,7 @@ class AugmentationCallbackBase(Module):
         input: Boxes,
         params: Dict[str, Tensor],
         module: object,
-    ):
+    ) -> None:
         """Called when `transform_boxes` ends."""
         ...
 
@@ -92,7 +92,7 @@ class AugmentationCallbackBase(Module):
         input: Keypoints,
         params: Dict[str, Tensor],
         module: object,
-    ):
+    ) -> None:
         """Called when `transform_keypoints` begins."""
         ...
 
@@ -101,7 +101,7 @@ class AugmentationCallbackBase(Module):
         input: Keypoints,
         params: Dict[str, Tensor],
         module: object,
-    ):
+    ) -> None:
         """Called when `transform_keypoints` ends."""
         ...
 
@@ -110,7 +110,7 @@ class AugmentationCallbackBase(Module):
         input: Tensor,
         params: Dict[str, Tensor],
         module: object,
-    ):
+    ) -> None:
         """Called when `inverse_input` begins."""
         ...
 
@@ -119,7 +119,7 @@ class AugmentationCallbackBase(Module):
         input: Tensor,
         params: Dict[str, Tensor],
         module: object,
-    ):
+    ) -> None:
         """Called when `inverse_inputs` ends."""
         ...
 
@@ -128,7 +128,7 @@ class AugmentationCallbackBase(Module):
         input: Tensor,
         params: Dict[str, Tensor],
         module: object,
-    ):
+    ) -> None:
         """Called when `inverse_masks` begins."""
         ...
 
@@ -137,7 +137,7 @@ class AugmentationCallbackBase(Module):
         input: Tensor,
         params: Dict[str, Tensor],
         module: object,
-    ):
+    ) -> None:
         """Called when `inverse_masks` ends."""
         ...
 
@@ -146,7 +146,7 @@ class AugmentationCallbackBase(Module):
         input: Tensor,
         params: Dict[str, Tensor],
         module: object,
-    ):
+    ) -> None:
         """Called when `inverse_classes` begins."""
         ...
 
@@ -155,7 +155,7 @@ class AugmentationCallbackBase(Module):
         input: Tensor,
         params: Dict[str, Tensor],
         module: object,
-    ):
+    ) -> None:
         """Called when `inverse_classes` ends."""
         ...
 
@@ -164,7 +164,7 @@ class AugmentationCallbackBase(Module):
         input: Boxes,
         params: Dict[str, Tensor],
         module: object,
-    ):
+    ) -> None:
         """Called when `inverse_boxes` begins."""
         ...
 
@@ -173,7 +173,7 @@ class AugmentationCallbackBase(Module):
         input: Boxes,
         params: Dict[str, Tensor],
         module: object,
-    ):
+    ) -> None:
         """Called when `inverse_boxes` ends."""
         ...
 
@@ -182,7 +182,7 @@ class AugmentationCallbackBase(Module):
         input: Keypoints,
         params: Dict[str, Tensor],
         module: object,
-    ):
+    ) -> None:
         """Called when `inverse_keypoints` begins."""
         ...
 
@@ -191,47 +191,47 @@ class AugmentationCallbackBase(Module):
         input: Keypoints,
         params: Dict[str, Tensor],
         module: object,
-    ):
+    ) -> None:
         """Called when `inverse_keypoints` ends."""
         ...
 
     def on_sequential_forward_start(
         self,
-        *args: Union["K.container.data_types.DataType", Dict[str, "K.container.data_types.DataType"]],
-        params: Optional[List["K.container.params.DataType"]] = None,
-        data_keys: Optional[Union[List[str], List[int], List["K.container.data_types.DataType"]]] = None,
-        module: object,
-    ):
+        *args: "K.container.data_types.DataType",
+        module: "K.AugmentationSequential",
+        params: List["K.container.params.ParamItem"],
+        data_keys: Union[List[str], List[int], List[DataKey]],
+    ) -> None:
         """Called when `forward` begins for `AugmentationSequential`."""
         ...
 
     def on_sequential_forward_end(
         self,
-        *args: Union["K.container.data_types.DataType", Dict[str, "K.container.data_types.DataType"]],
-        params: Optional[List["K.container.params.DataType"]] = None,
-        data_keys: Optional[Union[List[str], List[int], List["K.container.data_types.DataType"]]] = None,
-        module: object,
-    ):
+        *args: "K.container.data_types.DataType",
+        module: "K.AugmentationSequential",
+        params: List["K.container.params.ParamItem"],
+        data_keys: Union[List[str], List[int], List[DataKey]],
+    ) -> None:
         """Called when `forward` ends for `AugmentationSequential`."""
         ...
 
     def on_sequential_inverse_start(
         self,
-        *args: Union["K.container.data_types.DataType", Dict[str, "K.container.data_types.DataType"]],
-        params: Optional[List["K.container.params.DataType"]] = None,
-        data_keys: Optional[Union[List[str], List[int], List["K.container.data_types.DataType"]]] = None,
-        module: object,
-    ):
+        *args: "K.container.data_types.DataType",
+        module: "K.AugmentationSequential",
+        params: List["K.container.params.ParamItem"],
+        data_keys: Union[List[str], List[int], List[DataKey]],
+    ) -> None:
         """Called when `inverse` begins for `AugmentationSequential`."""
         ...
 
     def on_sequential_inverse_end(
         self,
-        *args: Union["K.container.data_types.DataType", Dict[str, "K.container.data_types.DataType"]],
-        params: Optional[List["K.container.params.DataType"]] = None,
-        data_keys: Optional[Union[List[str], List[int], List["K.container.data_types.DataType"]]] = None,
-        module: object,
-    ):
+        *args: "K.container.data_types.DataType",
+        module: "K.AugmentationSequential",
+        params: List["K.container.params.ParamItem"],
+        data_keys: Union[List[str], List[int], List[DataKey]],
+    ) -> None:
         """Called when `inverse` ends for `AugmentationSequential`."""
         ...
 
@@ -266,39 +266,45 @@ class AugmentationCallback(AugmentationCallbackBase):
         self.postprocessing = postprocessing
         self.num_to_log = num_to_log
 
-    def _make_mask_data(self, mask: Tensor):
+    def _make_mask_data(self, mask: Tensor) -> Tensor:
         raise NotImplementedError
 
-    def _make_bbox_data(self, bbox: Tensor):
+    def _make_bbox_data(self, bbox: Boxes) -> Boxes:
         raise NotImplementedError
 
-    def _log_data(self, data: "K.container.data_types.SequenceDataType"):
+    def _log_data(self, data: List["K.container.data_types.DataType"]) -> None:
         raise NotImplementedError
 
     def on_sequential_forward_end(
         self,
-        *args: Union["K.container.data_types.DataType", Dict[str, "K.container.data_types.DataType"]],
-        params: Optional[List["K.container.params.ParamItem"]] = None,
-        data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None,
-    ):
+        *args: "K.container.data_types.DataType",
+        module: "K.AugmentationSequential",
+        params: List["K.container.params.ParamItem"],
+        data_keys: Union[List[str], List[int], List[DataKey]],
+    ) -> None:
         """Called when `forward` ends for `AugmentationSequential`."""
-        image_data = None
-        output_data = []
+        output_data: List["K.container.data_types.DataType"] = []
+        
+        # Log all the indices
+        if self.log_indices is None:
+            self.log_indices = list(range(len(data_keys)))
+
         for i, (arg, data_key) in enumerate(zip(args, data_keys)):
             if i not in self.log_indices:
                 continue
 
-            postproc = self.postprocessing[self.log_indices[i]]
-            data = arg[: self.num_to_log]
+            postproc = None
+            if self.postprocessing is not None:
+                postproc = self.postprocessing[self.log_indices[i]]
+            data = arg[:self.num_to_log]
             if postproc is not None:
                 data = postproc(data)
-            if data_key in [DataKey.INPUT]:
-                data = data
-            if data_key in [DataKey.MASK]:
-                data = self._make_mask_data(data)
-            if data_key in [DataKey.BBOX, DataKey.BBOX_XYWH, DataKey.BBOX_XYXY]:
-                data = self._make_bbox_data(data)
 
-            output_data.append(data)
+            if data_key in [DataKey.INPUT]:
+                output_data.append(data)
+            if data_key in [DataKey.MASK]:
+                output_data.append(self._make_mask_data(cast(Tensor, data)))
+            if data_key in [DataKey.BBOX, DataKey.BBOX_XYWH, DataKey.BBOX_XYXY]:
+                output_data.append(self._make_bbox_data(cast(Boxes, data)))
 
         self._log_data(output_data)

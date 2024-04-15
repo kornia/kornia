@@ -1,9 +1,10 @@
 import importlib
 from typing import List, Optional, Union
 
-from kornia.augmentation.container.ops import SequenceDataType
+from kornia.augmentation.container.ops import DataType
 from kornia.constants import DataKey
 from kornia.core import Module, Tensor
+from kornia.geometry.boxes import Boxes
 
 from .base import AugmentationCallback
 
@@ -25,7 +26,7 @@ class WandbLogger(AugmentationCallback):
 
     def __init__(
         self,
-        run: Optional["wandb.Run"] = None,
+        run: Optional["wandb.Run"] = None,  # type: ignore
         batches_to_save: int = 10,
         num_to_log: int = 4,
         log_indices: Optional[List[int]] = None,
@@ -46,17 +47,19 @@ class WandbLogger(AugmentationCallback):
 
         self.contains_duplicated_keys(data_keys)
 
-    def contains_duplicated_keys(self, data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None):
+    def contains_duplicated_keys(
+        self, data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None
+    ) -> None:
         # WANDB only supports visualization without duplication
         ...
 
-    def _make_mask_data(self, mask: Tensor):
+    def _make_mask_data(self, mask: Tensor) -> Tensor:
         raise NotImplementedError
 
-    def _make_bbox_data(self, bbox: Tensor):
+    def _make_bbox_data(self, bbox: Boxes) -> Boxes:
         raise NotImplementedError
 
-    def _log_data(self, data: SequenceDataType):
+    def _log_data(self, data: List[DataType]) -> None:
         ...
         # assert self.data_keys no duplication, ...
         # for i, (value, key) in enumerate(zip(data, self.data_keys)):
