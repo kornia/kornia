@@ -3,7 +3,9 @@ from .draw import draw_convex_polygon, draw_line, draw_point2d, draw_rectangle
 from .grid import create_meshgrid, create_meshgrid3d
 from .helpers import (
     _extract_device_dtype,
+    dataclass_to_dict,
     deprecated,
+    dict_to_dataclass,
     get_cuda_device_if_available,
     get_cuda_or_mps_device_if_available,
     get_mps_device_if_available,
@@ -58,4 +60,6 @@ __all__ = [
     "print_image",
     "xla_is_available",
     "is_mps_tensor_safe",
+    "dataclass_to_dict",
+    "dict_to_dataclass",
 ]

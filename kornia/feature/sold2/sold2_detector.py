@@ -1,6 +1,6 @@
 import math
 import warnings
-from dataclasses import asdict, dataclass, field, fields, is_dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Tuple
 
 import torch
@@ -8,7 +8,7 @@ import torch
 from kornia.core import Module, Tensor, concatenate, sin, stack, tensor, where, zeros
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.bbox import nms
-from kornia.utils import map_location_to_cpu, torch_meshgrid
+from kornia.utils import dataclass_to_dict, dict_to_dataclass, map_location_to_cpu, torch_meshgrid
 
 from .backbones import SOLD2Net
 
@@ -66,37 +66,6 @@ class DetectorCfg:
     detection_thresh: float = 0.0153846  # = 1/65: threshold of junction detection
     max_num_junctions: int = 500  # maximum number of junctions per image
     line_detector_cfg: LineDetectorCfg = field(default_factory=LineDetectorCfg)
-
-
-def dataclass_to_dict(obj: Any) -> Any:
-    """Recursively convert dataclass instances to dictionaries."""
-    if is_dataclass(obj) and not isinstance(obj, type):
-        return {key: dataclass_to_dict(value) for key, value in asdict(obj).items()}
-    elif isinstance(obj, (list, tuple)):
-        return type(obj)(dataclass_to_dict(item) for item in obj)
-    elif isinstance(obj, dict):
-        return {key: dataclass_to_dict(value) for key, value in obj.items()}
-    else:
-        return obj
-
-
-from typing import TypeVar
-
-T = TypeVar("T")
-
-
-def dict_to_dataclass(dict_obj: Dict[str, Any], dataclass_type: T) -> T:
-    """Recursively convert dictionaries to dataclass instances."""
-    if not isinstance(dict_obj, dict):
-        raise TypeError("Input conf must be dict")
-    field_types = {f.name: f.type for f in fields(dataclass_type)}
-    constructor_args = {}
-    for key, value in dict_obj.items():
-        if key in field_types and is_dataclass(field_types[key]):
-            constructor_args[key] = dict_to_dataclass(value, field_types[key])
-        else:
-            constructor_args[key] = value
-    return dataclass_type(**constructor_args)
 
 
 class SOLD2_detector(Module):
