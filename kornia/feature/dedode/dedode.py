@@ -42,7 +42,7 @@ class DeDoDe(Module):
         amp_dtype: The automatic mixed precision desired.
 
     Example:
-        >>> dedode = DeDoDe.from_pretrained(detector_weights="L-C", descriptor_weights="B-upright")
+        >>> dedode = DeDoDe.from_pretrained(detector_weights="L-C4-v2", descriptor_weights="B-upright")
         >>> images = torch.randn(1, 3, 256, 256)
         >>> keypoints, scores = dedode.detect(images)
         >>> descriptions = dedode.describe(images, keypoints = keypoints)
@@ -169,7 +169,7 @@ class DeDoDe(Module):
     @classmethod
     def from_pretrained(
         cls,
-        detector_weights: str = "L-C4-v2",
+        detector_weights: str = "L-upright",
         descriptor_weights: str = "G-upright",
         amp_dtype: torch.dtype = torch.float16,
     ) -> Module:
@@ -179,12 +179,14 @@ class DeDoDe(Module):
 
         Args:
             detector_weights: The weights to load for the detector. 
-                              One of 'L-upright' (original paper, https://arxiv.org/abs/2308.08479), 
-                              'L-C4', 'L-SO2' (from steerers, better for rotations, https://arxiv.org/abs/2312.02152),
-                              Default is 'L-C4-v2' (from dedode v2, better at rotations, less clustering, https://arxiv.org/abs/2404.08928)
+                One of 'L-upright' (original paper, https://arxiv.org/abs/2308.08479), 
+                'L-C4', 'L-SO2' (from steerers, better for rotations, https://arxiv.org/abs/2312.02152),
+                'L-C4-v2' (from dedode v2, better at rotations, less clustering, https://arxiv.org/abs/2404.08928)
+                Default is 'L-upright', but perhaps it should be 'L-C4-v2'?
             descriptor_weights: The weights to load for the descriptor.
-            One of 'B-upright', 'B-C4', 'B-SO2', 'G-upright', 'G-C4'.
-            checkpoint: The checkpoint to load. One of 'depth' or 'epipolar'.
+                One of 'B-upright','G-upright' (original paper, https://arxiv.org/abs/2308.08479), 
+                'B-C4', 'B-SO2', 'G-C4' (from steerers, better for rotations, https://arxiv.org/abs/2312.02152).
+                Default is 'G-upright'.
             amp_dtype: the dtype to use for the model. One of torch.float16 or torch.float32.
             Default is torch.float16, suitable for CUDA. Use torch.float32 for CPU or MPS
 
