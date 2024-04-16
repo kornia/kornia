@@ -175,8 +175,6 @@ class DeDoDe(Module):
     ) -> Module:
         r"""Loads a pretrained model.
 
-        Detector weights L-upright are from 
-
         Args:
             detector_weights: The weights to load for the detector. 
                 One of 'L-upright' (original paper, https://arxiv.org/abs/2308.08479), 
