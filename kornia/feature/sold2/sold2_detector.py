@@ -79,8 +79,11 @@ def dataclass_to_dict(obj: Any) -> Any:
     else:
         return obj
 
+from typing import TypeVar
 
-def dict_to_dataclass(dict_obj: Dict[str, Any], dataclass_type: Type[Any]) -> Any:
+T = TypeVar('T')
+
+def dict_to_dataclass(dict_obj: Dict[str, Any], dataclass_type: T) -> T:
     """Recursively convert dictionaries to dataclass instances."""
     if not isinstance(dict_obj, dict):
         raise TypeError("Input conf must be dict")
