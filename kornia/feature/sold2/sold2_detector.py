@@ -68,7 +68,7 @@ class DetectorCfg:
     line_detector_cfg: LineDetectorCfg = field(default_factory=LineDetectorCfg)
 
 
-def dataclass_to_dict(obj: Any) -> Union[Dict[str, Any], List[Any], Tuple[Any, ...]]:
+def dataclass_to_dict(obj: Any) -> Any:
     """Recursively convert dataclass instances to dictionaries."""
     if is_dataclass(obj) and not isinstance(obj, type):
         return {key: dataclass_to_dict(value) for key, value in asdict(obj).items()}
