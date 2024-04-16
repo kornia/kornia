@@ -1,7 +1,7 @@
 import math
 import warnings
 from dataclasses import asdict, dataclass, field, fields, is_dataclass
-from typing import Any, Dict, Optional, Tuple, Type
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 
@@ -79,9 +79,11 @@ def dataclass_to_dict(obj: Any) -> Any:
     else:
         return obj
 
+
 from typing import TypeVar
 
-T = TypeVar('T')
+T = TypeVar("T")
+
 
 def dict_to_dataclass(dict_obj: Dict[str, Any], dataclass_type: T) -> T:
     """Recursively convert dictionaries to dataclass instances."""
