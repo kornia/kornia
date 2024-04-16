@@ -176,13 +176,13 @@ class DeDoDe(Module):
         r"""Loads a pretrained model.
 
         Args:
-            detector_weights: The weights to load for the detector. 
-                One of 'L-upright' (original paper, https://arxiv.org/abs/2308.08479), 
+            detector_weights: The weights to load for the detector.
+                One of 'L-upright' (original paper, https://arxiv.org/abs/2308.08479),
                 'L-C4', 'L-SO2' (from steerers, better for rotations, https://arxiv.org/abs/2312.02152),
                 'L-C4-v2' (from dedode v2, better at rotations, less clustering, https://arxiv.org/abs/2404.08928)
                 Default is 'L-upright', but perhaps it should be 'L-C4-v2'?
             descriptor_weights: The weights to load for the descriptor.
-                One of 'B-upright','G-upright' (original paper, https://arxiv.org/abs/2308.08479), 
+                One of 'B-upright','G-upright' (original paper, https://arxiv.org/abs/2308.08479),
                 'B-C4', 'B-SO2', 'G-C4' (from steerers, better for rotations, https://arxiv.org/abs/2312.02152).
                 Default is 'G-upright'.
             amp_dtype: the dtype to use for the model. One of torch.float16 or torch.float32.
