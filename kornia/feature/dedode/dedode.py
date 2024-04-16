@@ -17,6 +17,7 @@ urls: Dict[str, Dict[str, str]] = {
         "L-upright": "https://github.com/Parskatt/DeDoDe/releases/download/dedode_pretrained_models/dedode_detector_L.pth",
         "L-C4": "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/dedode_detector_C4.pth",
         "L-SO2": "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/dedode_detector_SO2.pth",
+        "L-C4-v2": "https://github.com/Parskatt/DeDoDe/releases/download/v2/dedode_detector_L_v2.pth",
     },
     "descriptor": {
         "B-upright": "https://github.com/Parskatt/DeDoDe/releases/download/dedode_pretrained_models/dedode_descriptor_B.pth",
@@ -41,7 +42,7 @@ class DeDoDe(Module):
         amp_dtype: The automatic mixed precision desired.
 
     Example:
-        >>> dedode = DeDoDe.from_pretrained(detector_weights="L-upright", descriptor_weights="B-upright")
+        >>> dedode = DeDoDe.from_pretrained(detector_weights="L-C", descriptor_weights="B-upright")
         >>> images = torch.randn(1, 3, 256, 256)
         >>> keypoints, scores = dedode.detect(images)
         >>> descriptions = dedode.describe(images, keypoints = keypoints)
@@ -168,19 +169,19 @@ class DeDoDe(Module):
     @classmethod
     def from_pretrained(
         cls,
-        detector_weights: str = "L-upright",
+        detector_weights: str = "L-C4-v2",
         descriptor_weights: str = "G-upright",
         amp_dtype: torch.dtype = torch.float16,
     ) -> Module:
         r"""Loads a pretrained model.
 
-        Depth model was trained using depth map supervision and is slightly more precise but biased to detect keypoints
-        only where SfM depth is available. Epipolar model was trained using epipolar geometry supervision and
-        is less precise but detects keypoints everywhere where they are matchable. The difference is especially
-        pronounced on thin structures and on edges of objects.
+        Detector weights L-upright are from 
 
         Args:
-            detector_weights: The weights to load for the detector. One of 'L-upright', 'L-C4', 'L-SO2'.
+            detector_weights: The weights to load for the detector. 
+                              One of 'L-upright' (original paper, https://arxiv.org/abs/2308.08479), 
+                              'L-C4', 'L-SO2' (from steerers, better for rotations, https://arxiv.org/abs/2312.02152),
+                              Default is 'L-C4-v2' (from dedode v2, better at rotations, less clustering, https://arxiv.org/abs/2404.08928)
             descriptor_weights: The weights to load for the descriptor.
             One of 'B-upright', 'B-C4', 'B-SO2', 'G-upright', 'G-C4'.
             checkpoint: The checkpoint to load. One of 'depth' or 'epipolar'.
