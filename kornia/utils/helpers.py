@@ -333,10 +333,10 @@ def dataclass_to_dict(obj: Any) -> Any:
         return obj
 
 
-T = TypeVar("T", bound=Type[Any])
+T = TypeVar("T")
 
 
-def dict_to_dataclass(dict_obj: Dict[str, Any], dataclass_type: T) -> Any:
+def dict_to_dataclass(dict_obj: Dict[str, Any], dataclass_type: Type[T]) -> T:
     """Recursively convert dictionaries to dataclass instances."""
     if not isinstance(dict_obj, dict):
         raise TypeError("Input conf must be dict")
@@ -349,4 +349,6 @@ def dict_to_dataclass(dict_obj: Dict[str, Any], dataclass_type: T) -> Any:
             constructor_args[key] = dict_to_dataclass(value, field_types[key])
         else:
             constructor_args[key] = value
-    return dataclass_type(**constructor_args)
+    # TODO: remove type ignore when https://github.com/python/mypy/issues/14941 be andressed
+    return dataclass_type(**constructor_args)  # type: ignore[return-value]
+
