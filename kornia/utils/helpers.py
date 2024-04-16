@@ -5,7 +5,7 @@ import warnings
 from dataclasses import asdict, fields, is_dataclass
 from functools import wraps
 from inspect import isclass, isfunction
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union, overload
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union, overload
 
 import torch
 from torch.linalg import inv_ex
@@ -333,13 +333,15 @@ def dataclass_to_dict(obj: Any) -> Any:
         return obj
 
 
-T = TypeVar("T")
+T = TypeVar("T", bound=Type[Any])
 
 
-def dict_to_dataclass(dict_obj: Dict[str, Any], dataclass_type: T) -> T:
+def dict_to_dataclass(dict_obj: Dict[str, Any], dataclass_type: T) -> Any:
     """Recursively convert dictionaries to dataclass instances."""
     if not isinstance(dict_obj, dict):
         raise TypeError("Input conf must be dict")
+    if not is_dataclass(dataclass_type):
+        raise TypeError("dataclass_type must be a dataclass")
     field_types = {f.name: f.type for f in fields(dataclass_type)}
     constructor_args = {}
     for key, value in dict_obj.items():
