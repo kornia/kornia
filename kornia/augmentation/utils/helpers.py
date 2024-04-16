@@ -26,9 +26,7 @@ def _validate_input(f: Callable[..., Any]) -> Callable[..., Any]:
             raise TypeError(f"Input type is not a Tensor. Got {type(input)}")
 
         _validate_shape(input.shape, required_shapes=("BCHW",))
-        _validate_input_dtype(
-            input, accepted_dtypes=[torch.float16, torch.float32, torch.float64, torch.int32, torch.int64]
-        )
+        _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
         return f(input, *args, **kwargs)
 
@@ -53,9 +51,7 @@ def _validate_input3d(f: Callable[..., Any]) -> Callable[..., Any]:
         input_shape = len(input.shape)
         if input_shape != 5:
             raise AssertionError(f"Expect input of 5 dimensions, got {input_shape} instead")
-        _validate_input_dtype(
-            input, accepted_dtypes=[torch.float16, torch.float32, torch.float64, torch.int32, torch.int64]
-        )
+        _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
         return f(input, *args, **kwargs)
 

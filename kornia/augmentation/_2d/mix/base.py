@@ -45,9 +45,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
 
     def transform_tensor(self, input: Tensor, *, shape: Optional[Tensor] = None, match_channel: bool = True) -> Tensor:
         """Convert any incoming (H, W), (C, H, W) and (B, C, H, W) into (B, C, H, W)."""
-        _validate_input_dtype(
-            input, accepted_dtypes=[torch.float16, torch.float32, torch.float64, torch.int32, torch.int64]
-        )
+        _validate_input_dtype(input, accepted_dtypes=[torch.float16, torch.float32, torch.float64])
 
         if shape is None:
             return _transform_input(input)
