@@ -1,7 +1,7 @@
 import math
 import warnings
 from dataclasses import asdict, dataclass, field, fields, is_dataclass
-from typing import Any, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Dict, Optional, Tuple, Type
 
 import torch
 
