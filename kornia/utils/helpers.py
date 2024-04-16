@@ -351,4 +351,3 @@ def dict_to_dataclass(dict_obj: Dict[str, Any], dataclass_type: Type[T]) -> T:
             constructor_args[key] = value
     # TODO: remove type ignore when https://github.com/python/mypy/issues/14941 be andressed
     return dataclass_type(**constructor_args)  # type: ignore[return-value]
-
