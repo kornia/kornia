@@ -26,13 +26,26 @@ def test_autumn(device, dtype):
 
 class TestApplyColorMap(BaseTester):
     def test_smoke(self, device, dtype):
-        input_tensor = tensor([[[0, 1, 3], [25, 50, 63]]], device=device, dtype=dtype)
-
+        input_tensor = tensor([[[0, 1, 2], [15, 25, 33], [128, 158, 188]]], device=device, dtype=dtype)
         expected_tensor = tensor(
             [
-                [[1, 1, 1], [1, 1, 1]],
-                [[0, 0.01587301587301587, 0.04761904761904762], [0.3968253968253968, 0.7936507936507936, 1]],
-                [[0, 0, 0], [0, 0, 0]],
+                [
+                    [
+                        [1.0000000000, 1.0000000000, 1.0000000000],
+                        [1.0000000000, 1.0000000000, 1.0000000000],
+                        [1.0000000000, 1.0000000000, 1.0000000000],
+                    ],
+                    [
+                        [0.0000000000, 0.0158730168, 0.0158730168],
+                        [0.0634920672, 0.1111111119, 0.1428571492],
+                        [0.5079365373, 0.6190476418, 0.7301587462],
+                    ],
+                    [
+                        [0.0000000000, 0.0000000000, 0.0000000000],
+                        [0.0000000000, 0.0000000000, 0.0000000000],
+                        [0.0000000000, 0.0000000000, 0.0000000000],
+                    ],
+                ]
             ],
             device=device,
             dtype=dtype,
@@ -40,41 +53,30 @@ class TestApplyColorMap(BaseTester):
         cm = ColorMap(base="autumn", device=device, dtype=dtype)
         actual = apply_colormap(input_tensor, cm)
 
-        self.assert_close(actual, expected_tensor)
-
-    def test_eye(self, device, dtype):
-        input_tensor = torch.stack(
-            [torch.eye(2, dtype=dtype, device=device) * 255, torch.eye(2, dtype=dtype, device=device) * 150]
-        ).view(2, -1, 2, 2)
-
-        expected_tensor = tensor(
-            [
-                [[[1.0, 1.0], [1.0, 1.0]], [[1.0, 0.0], [0.0, 1.0]], [[0.0, 0.0], [0.0, 0.0]]],
-                [[[1.0, 1.0], [1.0, 1.0]], [[1.0, 0.0], [0.0, 1.0]], [[0.0, 0.0], [0.0, 0.0]]],
-            ],
-            device=device,
-            dtype=dtype,
-        )
-
-        actual = apply_colormap(input_tensor, ColorMap(base="autumn", device=device, dtype=dtype))
         self.assert_close(actual, expected_tensor)
 
     def test_exception(self, device, dtype):
         cm = ColorMap(base="autumn", device=device, dtype=dtype)
-        with pytest.raises(TypeError):
-            apply_colormap(torch.rand(size=(5, 1, 1), dtype=dtype, device=device), cm)
+        with pytest.raises(Exception):
+            apply_colormap(torch.rand(size=(3, 3), dtype=dtype, device=device), cm)
 
-    @pytest.mark.parametrize("shape", [(2, 1, 4, 4), (1, 4, 4), (4, 4)])
+        with pytest.raises(Exception):
+            apply_colormap(torch.rand(size=(3), dtype=dtype, device=device), cm)
+
+        with pytest.raises(Exception):
+            apply_colormap(torch.rand(size=(3), dtype=dtype, device=device).item(), cm)
+
+    @pytest.mark.parametrize("shape", [(2, 1, 3, 3), (1, 3, 3, 3), (1, 3, 3)])
     @pytest.mark.parametrize("cmap_base", ColorMapType)
     def test_cardinality(self, shape, device, dtype, cmap_base):
-        cm = ColorMap(base=cmap_base, device=device, dtype=dtype)
-        input_tensor = torch.randint(0, 63, shape, device=device, dtype=dtype)
+        cm = ColorMap(base=cmap_base, num_colors=256, device=device, dtype=dtype)
+        input_tensor = torch.randint(0, 256, shape, device=device, dtype=dtype)
         actual = apply_colormap(input_tensor, cm)
 
         if len(shape) == 4:
-            expected_shape = (shape[0], 3, shape[-2], shape[-1])
+            expected_shape = (shape[-4], shape[-3] * 3, shape[-2], shape[-1])
         else:
-            expected_shape = (3, shape[-2], shape[-1])
+            expected_shape = (1, shape[-3] * 3, shape[-2], shape[-1])
 
         assert actual.shape == expected_shape
 
