@@ -512,20 +512,29 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
     def _preproc_keypoints(self, arg: DataType, dcate: DataKey) -> Keypoints:
         dtype = None
-        if not torch.is_floating_point(arg):
-            dtype = arg.dtype
-            arg = arg.float()
 
         if self.contains_video_sequential:
             arg = cast(Union[Tensor, List[Tensor]], arg)
-            result = VideoKeypoints.from_tensor(arg)
-            return result.type(dtype) if dtype else result
+            if isinstance(arg, list):
+                if not torch.is_floating_point(arg[0]):
+                    dtype = arg[0].dtype
+                    arg = [a.float() for a in arg]
+            elif not torch.is_floating_point(arg):
+                dtype = arg.dtype
+                arg = arg.float()
+            video_result = VideoKeypoints.from_tensor(arg)
+            return video_result.type(dtype) if dtype else video_result
         elif self.contains_3d_augmentation:
             raise NotImplementedError("3D keypoint handlers are not yet supported.")
         elif isinstance(arg, (Keypoints,)):
+            if not torch.is_floating_point(arg.data):
+                dtype = arg.data.dtype
             return arg.type(dtype) if dtype else arg
         else:
             arg = cast(Tensor, arg)
+            if not torch.is_floating_point(arg):
+                dtype = arg.dtype
+                arg = arg.float()
             # TODO: Add List[Tensor] in the future.
             result = Keypoints.from_tensor(arg)
             return result.type(dtype) if dtype else result
