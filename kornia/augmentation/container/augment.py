@@ -527,9 +527,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         elif self.contains_3d_augmentation:
             raise NotImplementedError("3D keypoint handlers are not yet supported.")
         elif isinstance(arg, (Keypoints,)):
-            if not torch.is_floating_point(arg.data):
-                dtype = arg.data.dtype
-            return arg.type(dtype) if dtype else arg
+            return arg
         else:
             arg = cast(Tensor, arg)
             if not torch.is_floating_point(arg):
