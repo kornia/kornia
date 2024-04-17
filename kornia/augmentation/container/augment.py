@@ -1,6 +1,8 @@
 import warnings
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union, cast
 
+import torch
+
 from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
 from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmentationBase3D
 from kornia.augmentation.base import _AugmentationBase
@@ -509,17 +511,24 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             return out_arg.to_tensor(mode=mode)
 
     def _preproc_keypoints(self, arg: DataType, dcate: DataKey) -> Keypoints:
+        dtype = None
+        if not torch.is_floating_point(arg):
+            dtype = arg.dtype
+            arg = arg.float()
+
         if self.contains_video_sequential:
             arg = cast(Union[Tensor, List[Tensor]], arg)
-            return VideoKeypoints.from_tensor(arg)
+            result = VideoKeypoints.from_tensor(arg)
+            return result.type(dtype) if dtype else result
         elif self.contains_3d_augmentation:
             raise NotImplementedError("3D keypoint handlers are not yet supported.")
         elif isinstance(arg, (Keypoints,)):
-            return arg
+            return arg.type(dtype) if dtype else arg
         else:
             arg = cast(Tensor, arg)
             # TODO: Add List[Tensor] in the future.
-            return Keypoints.from_tensor(arg)
+            result = Keypoints.from_tensor(arg)
+            return result.type(dtype) if dtype else result
 
     def _postproc_keypoint(
         self, in_arg: DataType, out_arg: Keypoints, dcate: DataKey

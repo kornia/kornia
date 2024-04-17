@@ -560,13 +560,16 @@ class TestAugmentationSequential:
 
     @pytest.mark.slow
     @pytest.mark.parametrize("random_apply", [1, (2, 2), (1, 2), (2,), 10, True, False])
-    @pytest.mark.parametrize("mask_dtype", [torch.float32, torch.int64])
-    def test_forward_and_inverse(self, random_apply, device, dtype, mask_dtype):
-        inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
+    @pytest.mark.parametrize("dtype", [torch.int32, torch.int64, torch.float32])
+    def test_forward_and_inverse(self, random_apply, device, dtype):
+        if dtype not in [torch.float32, torch.float64]:
+            inp = torch.randint(0, 255, (1, 3, 1000, 500), device=device, dtype=dtype)
+        else:
+            inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
         bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
         keypoints = torch.tensor([[[465, 115], [545, 116]]], device=device, dtype=dtype)
         mask = bbox_to_mask(
-            torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=mask_dtype), 1000, 500
+            torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 1000, 500
         )[:, None]
         aug = K.AugmentationSequential(
             K.ImageSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)),

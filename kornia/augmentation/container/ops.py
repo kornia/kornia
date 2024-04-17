@@ -183,6 +183,11 @@ def get_geometric_only_param(module: "K.container.ImageSequentialBase", param: L
 class InputSequentialOps(SequentialOpsInterface[Tensor]):
     @classmethod
     def transform(cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}) -> Tensor:
+        dtype = None
+        if not torch.is_floating_point(input):
+            dtype = input.dtype
+            input = input.float()
+
         if isinstance(module, (_AugmentationBase, K.MixAugmentationBaseV2)):
             input = module(input, params=cls.get_instance_module_param(param), data_keys=[DataKey.INPUT], **extra_args)
         elif isinstance(module, (K.container.ImageSequentialBase,)):
@@ -193,10 +198,16 @@ class InputSequentialOps(SequentialOpsInterface[Tensor]):
             if param.data is not None:
                 raise AssertionError(f"Non-augmentaion operation {param.name} require empty parameters. Got {param}.")
             input = module(input)
+        if dtype:
+            input = input.to(dtype)
         return input
 
     @classmethod
     def inverse(cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}) -> Tensor:
+        dtype = None
+        if not torch.is_floating_point(input):
+            dtype = input.dtype
+            input = input.float()
         if isinstance(module, K.GeometricAugmentationBase2D):
             input = module.inverse(input, params=cls.get_instance_module_param(param), **extra_args)
         elif isinstance(module, (K.GeometricAugmentationBase3D,)):
@@ -209,6 +220,10 @@ class InputSequentialOps(SequentialOpsInterface[Tensor]):
             input = module.inverse_inputs(input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
         elif isinstance(module, K.container.ImageSequentialBase):
             input = module.inverse_inputs(input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
+
+        if dtype:
+            input = input.to(dtype)
+
         return input
 
 
