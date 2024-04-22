@@ -42,7 +42,7 @@ class TestDeDoDe:
         assert descriptions.shape == (shape[0], n, 256)
 
     @pytest.mark.slow
-    @pytest.mark.parametrize("detector_weights", ["L-upright", "L-C4", "L-SO2"])
+    @pytest.mark.parametrize("detector_weights", ["L-upright", "L-C4", "L-SO2", "L-C4-v2"])
     @pytest.mark.parametrize("descriptor_weights", ["B-upright", "B-C4", "B-SO2", "G-upright", "G-C4"])
     def test_pretrained(self, dtype, device, descriptor_weights, detector_weights):
         if "G" in descriptor_weights and device.type != "cuda" and dtype == torch.float16:
