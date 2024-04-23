@@ -1,3 +1,4 @@
+import datetime
 import importlib.util
 import inspect
 import os
@@ -71,7 +72,7 @@ master_doc = "index"
 # General information about the project.
 project = "Kornia"
 author = f"{project} developers"
-copyright = f"2019, {author}"
+copyright = f"{datetime.date.today().year}, {author}"
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -168,7 +169,6 @@ htmlhelp_basename = "Kornia"
 html_css_files = ["css/main.css"]
 html_js_files = ["js/custom.js"]
 
-
 # Configure viewcode extension.
 # based on https://github.com/readthedocs/sphinx-autoapi/issues/202
 code_url = "https://github.com/kornia/kornia/blob/main"
@@ -233,13 +233,11 @@ latex_elements = {
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [(master_doc, "kornia.tex", "Kornia", "manual")]
 
-
 # -- Options for manual page output ---------------------------------------
 
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [(master_doc, "Kornia", "Kornia Documentation", [author], 1)]
-
 
 # -- Options for Texinfo output -------------------------------------------
 
@@ -257,7 +255,6 @@ texinfo_documents = [
         "Miscellaneous",
     )
 ]
-
 
 # Example configuration for intersphinx: refer to the Python standard library.
 intersphinx_mapping = {
