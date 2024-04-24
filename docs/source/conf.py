@@ -1,8 +1,8 @@
-import datetime
 import importlib.util
 import inspect
 import os
 import sys
+from datetime import datetime, timezone
 
 # readthedocs generated the whole documentation in an isolated environment
 # by cloning the git repo. Thus, any on-the-fly operation will not effect
@@ -72,7 +72,7 @@ master_doc = "index"
 # General information about the project.
 project = "Kornia"
 author = f"{project} developers"
-copyright = f"{datetime.date.today().year}, {author}"
+copyright = f"{datetime.now(tz=timezone.utc).year}, {author}"
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
