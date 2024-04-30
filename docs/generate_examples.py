@@ -524,12 +524,14 @@ def main():
 
     # kornia.filters.in_range
     mod = importlib.import_module("kornia.filters")
-    transforms: dict = {"in_range": (((0.314, 0.2, 0.2), (0.47, 1.0, 1.0)), 1), }
+    transforms: dict = {
+        "in_range": (((0.314, 0.2, 0.2), (0.47, 1.0, 1.0)), 1),
+    }
     # ITERATE OVER THE TRANSFORMS
     for fn_name, (args, num_samples) in transforms.items():
         img_hsv = K.color.rgb_to_hsv(img1)
         h, s, v = torch.split(img_hsv, split_size_or_sections=1, dim=1)
-        h = h / (2*torch.pi)
+        h = h / (2 * torch.pi)
         img_hsv = torch.cat((h, s, v), dim=1)
         args_in = (img_hsv, *args)
         fn = getattr(mod, fn_name)

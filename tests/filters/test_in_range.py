@@ -41,7 +41,7 @@ class TestInRange(BaseTester):
             ((1, 3, 3, 3), (0.2, 0.2, 0.2), (0.6, 0.6, 0.6)),
             ((2, 3, 3, 3), (0.2, 0.2, 0.2), (0.6, 0.6, 0.6)),
             ((5, 5, 3, 3), (0.2, 0.2, 0.2, 0.2, 0.2), (0.6, 0.6, 0.6, 0.6, 0.6)),
-            ((3, 3), (0.2, ), (0.6, )),
+            ((3, 3), (0.2,), (0.6,)),
             ((2, 3, 3), (0.2, 0.2), (0.6, 0.6)),
         ],
     )
@@ -57,7 +57,6 @@ class TestInRange(BaseTester):
             assert res.shape == (res.shape[0], 1, res.shape[-2], res.shape[-1])
 
     def test_exception(self, device, dtype):
-
         input_tensor = torch.rand(1, 3, 3, 3, device=device, dtype=dtype)
         with pytest.raises(Exception, match="Invalid `lower` and `upper` format. Should be tuple or Tensor."):
             InRange(lower=3, upper=3)(input_tensor)
@@ -75,7 +74,9 @@ class TestInRange(BaseTester):
 
         with pytest.raises(
             ValueError,
-            match=re.escape("`lower` and `upper` bounds as Tensors must have compatible shapes with the input (B, C, 1, 1)."),
+            match=re.escape(
+                "`lower` and `upper` bounds as Tensors must have compatible shapes with the input (B, C, 1, 1)."
+            ),
         ):
             lower = torch.tensor([0.2, 0.2, 0.2])
             upper = torch.tensor([0.6, 0.6, 0.6])
