@@ -537,6 +537,7 @@ def main():
         fn = getattr(mod, fn_name)
         mask = fn(*args_in)
         filtered = img1 * mask
+        mask = mask.repeat(1, img1.shape[1], 1, 1)
         # save the output image
         out = torch.cat([img1[0], mask[0], filtered[0]], dim=-1)
         out_np = K.utils.tensor_to_image((out * 255.0).byte())
