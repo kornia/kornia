@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Union, Any
 
 import torch
 
@@ -8,7 +9,7 @@ from kornia.utils.image import perform_keep_shape_image
 
 
 @perform_keep_shape_image
-def in_range(input: Tensor, lower: tuple | Tensor, upper: tuple | Tensor) -> Tensor:
+def in_range(input: Tensor, lower: Union[tuple[Any, ...], Tensor], upper: Union[tuple[Any, ...], Tensor]) -> Tensor:
     r"""Creates a mask indicating whether elements of the input tensor are within the specified range.
 
     .. image:: _static/img/in_range.png
@@ -88,8 +89,16 @@ def in_range(input: Tensor, lower: tuple | Tensor, upper: tuple | Tensor) -> Ten
         if len(lower) != input_shape[1] or len(upper) != input_shape[1]:
             raise ValueError("Shape of `lower`, `upper` and `input` image channels must have same shape.")
 
-        lower = torch.tensor(lower).reshape(1, -1, 1, 1).repeat(input_shape[0], 1, 1, 1)
-        upper = torch.tensor(upper).reshape(1, -1, 1, 1).repeat(input_shape[0], 1, 1, 1)
+        lower = (
+            torch.tensor(lower, device=input.device, dtype=input.dtype)
+            .reshape(1, -1, 1, 1)
+            .repeat(input_shape[0], 1, 1, 1)
+        )
+        upper = (
+            torch.tensor(upper, device=input.device, dtype=input.dtype)
+            .reshape(1, -1, 1, 1)
+            .repeat(input_shape[0], 1, 1, 1)
+        )
 
     elif isinstance(lower, Tensor) and isinstance(upper, Tensor):
         valid_tensor_shape = (input_shape[0], input_shape[1], 1, 1)
@@ -97,9 +106,8 @@ def in_range(input: Tensor, lower: tuple | Tensor, upper: tuple | Tensor) -> Ten
             raise ValueError(
                 "`lower` and `upper` bounds as Tensors must have compatible shapes with the input (B, C, 1, 1)."
             )
-
-    lower = lower.to(input)
-    upper = upper.to(input)
+        lower = lower.to(input)
+        upper = upper.to(input)
 
     # Apply lower and upper bounds. Combine masks with logical_and.
     mask = torch.logical_and(input >= lower, input <= upper)
@@ -136,7 +144,7 @@ class InRange(Module):
         torch.Size([1, 1, 3, 3])
     """
 
-    def __init__(self, lower: tuple | Tensor, upper: tuple | Tensor) -> None:
+    def __init__(self, lower: Union[tuple[Any, ...], Tensor], upper: Union[tuple[Any, ...], Tensor]) -> None:
         super().__init__()
         self.lower = lower
         self.upper = upper
