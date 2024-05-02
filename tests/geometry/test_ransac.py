@@ -246,9 +246,7 @@ class TestRANSACFundamental(BaseTester):
 
 
 class TestRansacMethods:
-
     def test_max_samples_by_conf(self):
-
         conf = 0.99
         eps = 1e-9
 
