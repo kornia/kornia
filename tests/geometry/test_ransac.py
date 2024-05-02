@@ -1,3 +1,5 @@
+import math
+
 import pytest
 import torch
 
@@ -241,3 +243,19 @@ class TestRANSACFundamental(BaseTester):
             return model(p1, p2)[0]
 
         self.gradcheck(gradfun, (points1, points2), fast_mode=False, requires_grad=(True, False, False))
+
+
+class TestRansacMethods:
+
+    def test_max_samples_by_conf(self):
+
+        conf = 0.99
+        eps = 1e-9
+
+        x = RANSAC.max_samples_by_conf(n_inl=1, num_tc=1000, sample_size=7, conf=conf)
+        assert x > 0.0
+        assert x == math.log(1.0 - conf) / -eps
+
+        x = RANSAC.max_samples_by_conf(n_inl=999999999, num_tc=1000000000, sample_size=1, conf=conf)
+        assert x > 0.0
+        assert x == math.log(1.0 - conf) / math.log(eps)
