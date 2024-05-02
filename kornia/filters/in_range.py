@@ -15,12 +15,13 @@ def in_range(input: Tensor, lower: Union[tuple[Any, ...], Tensor], upper: Union[
 
     .. image:: _static/img/in_range.png
 
-    The formula applied is:
+    The formula applied for single-channel tensor is:
     .. math::
-        For single-channel tensor:
-            \text{out}(I) = \text{lower}(I) \leq \text{input}(I) \geq \text{upper}(I)
-        For multi-channel tensor:
-            \text{out}(I) = \bigwedge_{c=0}^{C}\left( \text{lower}_c(I) \leq \text{input}_c(I) \geq \text{upper}_c(I) \right)
+        \text{out}(I) = \text{lower}(I) \leq \text{input}(I) \geq \text{upper}(I)
+    The formula applied for multi-channel tensor is:
+    .. math::
+        \text{out}(I) = \bigwedge_{c=0}^{C}\left( \text{lower}_c(I) \leq \text{input}_c(I) \geq \text{upper}_c(I) \right)
+    Where `C` is the number of channels.
 
     Args:
         input: The input tensor to be filtered.

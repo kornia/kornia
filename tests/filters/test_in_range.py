@@ -9,12 +9,13 @@ from testing.base import BaseTester, assert_close
 
 
 def test_in_range(device, dtype):
-    torch.manual_seed(1)
-    input = torch.rand(1, 3, 3, 3, device=device, dtype=dtype)
+    rng = torch.manual_seed(1)
+    input_tensor = torch.randn(1, 3, 3, 3, device=device)
+    input_tensor = input_tensor.to(dtype=dtype)
     expected = torch.tensor([[[[1.0, 1.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]]]], device=device, dtype=dtype)
     lower = (0.2, 0.3, 0.4)
     upper = (0.8, 0.9, 1.0)
-    result = in_range(input, lower, upper)
+    result = in_range(input_tensor, lower, upper)
 
     assert_close(result, expected, atol=1e-4, rtol=1e-4)
 
@@ -28,8 +29,9 @@ class TestInRange(BaseTester):
         )
 
     def test_smoke(self, device, dtype):
-        torch.manual_seed(1)
-        input_tensor = torch.rand(1, 3, 3, 3, device=device, dtype=dtype)
+        rng = torch.manual_seed(1)
+        input_tensor = torch.rand(1, 3, 3, 3, device=device)
+        input_tensor = input_tensor.to(dtype=dtype)
         expected = self._get_expected(device=device, dtype=dtype)
         res = InRange(lower=(0.2, 0.3, 0.4), upper=(0.8, 0.9, 1.0))(input_tensor)
         assert expected.shape == res.shape
