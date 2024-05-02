@@ -23,7 +23,8 @@ def in_range(input: Tensor, lower: Union[tuple[Any, ...], Tensor], upper: Union[
     The formula applied for multi-channel tensor is:
 
     .. math::
-        \text{out}(I) = \bigwedge_{c=0}^{C}\left( \text{lower}_c(I) \leq \text{input}_c(I) \geq \text{upper}_c(I) \right)
+        \text{out}(I) = \bigwedge_{c=0}^{C}
+        \left( \text{lower}_c(I) \leq \text{input}_c(I) \geq \text{upper}_c(I) \right)
 
     where `C` is the number of channels.
 
@@ -44,12 +45,14 @@ def in_range(input: Tensor, lower: Union[tuple[Any, ...], Tensor], upper: Union[
 
     .. note::
         Clarification of `lower` and `upper`:
-            If provided as a tuple, it should have the same number of elements as the channels in the input tensor.
-                This bound is then applied uniformly across all batches.
-            When provided as a tensor, it allows for different bounds to be applied to each batch.
-                The tensor shape should be (B, C, 1, 1), where B is the batch size and C is the number of channels.
-            If the tensor has a 1-D shape, same bound will be applied across all batches.
-            Refer to the example below.
+
+        - If provided as a tuple, it should have the same number of elements as the channels in the input tensor.
+        This bound is then applied uniformly across all batches.
+
+        - When provided as a tensor, it allows for different bounds to be applied to each batch.
+        The tensor shape should be (B, C, 1, 1), where B is the batch size and C is the number of channels.
+
+        - If the tensor has a 1-D shape, same bound will be applied across all batches.
 
     Examples:
         >>> rng = torch.manual_seed(1)

@@ -9,7 +9,7 @@ from testing.base import BaseTester, assert_close
 
 
 def test_in_range(device, dtype):
-    rng = torch.manual_seed(1)
+    torch.manual_seed(1)
     input_tensor = torch.rand(1, 3, 3, 3, device=device)
     input_tensor = input_tensor.to(dtype=dtype)
     expected = torch.tensor([[[[1.0, 1.0, 0.0], [0.0, 0.0, 0.0], [0.0, 1.0, 1.0]]]], device=device, dtype=dtype)
@@ -29,7 +29,7 @@ class TestInRange(BaseTester):
         )
 
     def test_smoke(self, device, dtype):
-        rng = torch.manual_seed(1)
+        torch.manual_seed(1)
         input_tensor = torch.rand(1, 3, 3, 3, device=device)
         input_tensor = input_tensor.to(dtype=dtype)
         expected = self._get_expected(device=device, dtype=dtype)
