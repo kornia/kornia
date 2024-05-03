@@ -87,8 +87,6 @@ def in_range(
                 [[[0., 0., 0.],
                   [1., 0., 0.],
                   [0., 0., 1.]]]])
-        >>> mask.shape
-        torch.Size([2, 1, 3, 3])
     """
     input_shape = input.shape
 
@@ -161,8 +159,6 @@ class InRange(Module):
         tensor([[[[1., 1., 0.],
                   [0., 0., 0.],
                   [0., 1., 1.]]]])
-        >>> mask.shape
-        torch.Size([1, 1, 3, 3])
     """
 
     def __init__(
