@@ -10,7 +10,12 @@ from kornia.utils.image import perform_keep_shape_image
 
 
 @perform_keep_shape_image
-def in_range(input: Tensor, lower: Union[tuple[Any, ...], Tensor], upper: Union[tuple[Any, ...], Tensor]) -> Tensor:
+def in_range(
+    input: Tensor,
+    lower: Union[tuple[Any, ...], Tensor],
+    upper: Union[tuple[Any, ...], Tensor],
+    return_mask: bool = False,
+) -> Tensor:
     r"""Creates a mask indicating whether elements of the input tensor are within the specified range.
 
     .. image:: _static/img/in_range.png
@@ -29,18 +34,16 @@ def in_range(input: Tensor, lower: Union[tuple[Any, ...], Tensor], upper: Union[
     where `C` is the number of channels.
 
     Args:
-        input: The input tensor to be filtered.
+        input: The input tensor to be filtered in the shape of :math:`(*, *, H, W)`.
         lower: The lower bounds of the filter (inclusive).
         upper: The upper bounds of the filter (inclusive).
+        return_mask: If is true, the filtered mask is returned, otherwise the filtered input image.
 
     Returns:
-        A binary mask with same dtye of input indicating whether elements are within the range.
+        A binary mask :math:`(*, 1, H, W)` of input indicating whether elements are within the range
+        or filtered input image :math:`(*, *, H, W)`.
 
-    Shape:
-        - Input: :math:`(B, C, H, W)`
-        - Output: :math:`(B, 1, H, W)`
-
-    Raises:
+    Raises
         ValueError: If the shape of `lower`, `upper`, and `input` image channels do not match.
 
     .. note::
@@ -59,7 +62,7 @@ def in_range(input: Tensor, lower: Union[tuple[Any, ...], Tensor], upper: Union[
         >>> input = torch.rand(1, 3, 3, 3)
         >>> lower = (0.2, 0.3, 0.4)
         >>> upper = (0.8, 0.9, 1.0)
-        >>> mask = in_range(input, lower, upper)
+        >>> mask = in_range(input, lower, upper, return_mask=True)
         >>> mask
         tensor([[[[1., 1., 0.],
                   [0., 0., 0.],
@@ -74,7 +77,7 @@ def in_range(input: Tensor, lower: Union[tuple[Any, ...], Tensor], upper: Union[
         >>> input_shape = input_tensor.shape
         >>> lower = torch.tensor([[0.2, 0.2, 0.2], [0.2, 0.2, 0.2]]).reshape(input_shape[0], input_shape[1], 1, 1)
         >>> upper = torch.tensor([[0.6, 0.6, 0.6], [0.8, 0.8, 0.8]]).reshape(input_shape[0], input_shape[1], 1, 1)
-        >>> mask = in_range(input_tensor, lower, upper)
+        >>> mask = in_range(input_tensor, lower, upper, return_mask=True)
         >>> mask
         tensor([[[[0., 0., 1.],
                   [0., 0., 0.],
@@ -92,6 +95,10 @@ def in_range(input: Tensor, lower: Union[tuple[Any, ...], Tensor], upper: Union[
     KORNIA_CHECK(
         isinstance(lower, (tuple, Tensor)) and isinstance(upper, (tuple, Tensor)),
         "Invalid `lower` and `upper` format. Should be tuple or Tensor.",
+    )
+    KORNIA_CHECK(
+        isinstance(return_mask, bool),
+        "Invalid `return_mask` format. Should be boolean.",
     )
 
     if isinstance(lower, tuple) and isinstance(upper, tuple):
@@ -122,7 +129,10 @@ def in_range(input: Tensor, lower: Union[tuple[Any, ...], Tensor], upper: Union[
     mask = torch.logical_and(input >= lower, input <= upper)
     mask = mask.all(dim=(1), keepdim=True).to(input.dtype)
 
-    return mask
+    if return_mask:
+        return mask
+
+    return input * mask
 
 
 class InRange(Module):
@@ -132,9 +142,11 @@ class InRange(Module):
         input: The input tensor to be filtered.
         lower: The lower bounds of the filter (inclusive).
         upper: The upper bounds of the filter (inclusive).
+        return_mask: If is true, the filtered mask is returned, otherwise the filtered input image.
 
     Returns:
-        A binary mask with same dtye of input indicating whether elements are within the range.
+        A binary mask :math:`(*, 1, H, W)` of input indicating whether elements are within the range
+        or filtered input image :math:`(*, *, H, W)`.
 
     .. note::
         View complete documentation in :func:`kornia.filters.in_range`.
@@ -144,7 +156,7 @@ class InRange(Module):
         >>> input = torch.rand(1, 3, 3, 3)
         >>> lower = (0.2, 0.3, 0.4)
         >>> upper = (0.8, 0.9, 1.0)
-        >>> mask = InRange(lower, upper)(input)
+        >>> mask = InRange(lower, upper, return_mask=True)(input)
         >>> mask
         tensor([[[[1., 1., 0.],
                   [0., 0., 0.],
@@ -153,10 +165,13 @@ class InRange(Module):
         torch.Size([1, 1, 3, 3])
     """
 
-    def __init__(self, lower: Union[tuple[Any, ...], Tensor], upper: Union[tuple[Any, ...], Tensor]) -> None:
+    def __init__(
+        self, lower: Union[tuple[Any, ...], Tensor], upper: Union[tuple[Any, ...], Tensor], return_mask: bool = False
+    ) -> None:
         super().__init__()
         self.lower = lower
         self.upper = upper
+        self.return_mask = return_mask
 
     def forward(self, input: Tensor) -> Tensor:
-        return in_range(input, self.lower, self.upper)
+        return in_range(input, self.lower, self.upper, self.return_mask)

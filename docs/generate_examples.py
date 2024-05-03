@@ -525,7 +525,7 @@ def main():
     # kornia.filters.in_range
     mod = importlib.import_module("kornia.filters")
     transforms: dict = {
-        "in_range": (((0.314, 0.2, 0.2), (0.47, 1.0, 1.0)), 1),
+        "in_range": (((0.314, 0.2, 0.2), (0.47, 1.0, 1.0), True), 1),
     }
     # ITERATE OVER THE TRANSFORMS
     for fn_name, (args, num_samples) in transforms.items():
