@@ -342,7 +342,9 @@ class TFPN(nn.Module):
 
 
 class MultiLevelShareConvs(nn.Module):
-    def __init__(self, in_channels: int, feat_channels: int, shared_stacked_convs: int, strides: Tuple[int, int, int]) -> None:
+    def __init__(
+        self, in_channels: int, feat_channels: int, shared_stacked_convs: int, strides: Tuple[int, int, int]
+    ) -> None:
         super().__init__()
         self.shared_stacked_convs = shared_stacked_convs
         for i, _ in enumerate(strides):
