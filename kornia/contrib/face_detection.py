@@ -292,7 +292,7 @@ class FaceDetector(nn.Module):
         """
         img = self.preprocess(image)
         out = self.model(img)
-        return self.postprocess(out, self._config, image.shape[-2:])
+        return self.postprocess(out, self._config, (image.size(-2), image.size(-1)))
 
 
 class ConvDPUnit(nn.Sequential):
@@ -342,7 +342,7 @@ class TFPN(nn.Module):
 
 
 class MultiLevelShareConvs(nn.Module):
-    def __init__(self, in_channels: int, feat_channels: int, shared_stacked_convs: int, strides: List[int]) -> None:
+    def __init__(self, in_channels: int, feat_channels: int, shared_stacked_convs: int, strides: Tuple[int, int, int]) -> None:
         super().__init__()
         self.shared_stacked_convs = shared_stacked_convs
         for i, _ in enumerate(strides):
@@ -411,7 +411,7 @@ class YuFaceDetectNet(nn.Module):
             self.load_state_dict(pretrained_dict["state_dict"], strict=True)
         self.eval()
 
-    def forward(self, x: torch.Tensor) -> Dict[str, List[torch.Tensor]]:
+    def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
         detection_sources = []
 
         for i in range(self.num_layers):
@@ -487,7 +487,7 @@ def _decode(loc: torch.Tensor, priors: torch.Tensor, scale: torch.Tensor) -> tor
 class _PriorBox:
     def __init__(
         self,
-        strides: List[int],
+        strides: Tuple[int, int, int],
         image_size: Tuple[int, int],
         featmap_sizes: List[Tuple[int, int]],
         offset: float = 0.0,
