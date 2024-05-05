@@ -1,12 +1,13 @@
 # based on: https://github.com/ShiqiYu/libfacedetection.train/blob/74f3aa77c63234dd954d21286e9a60703b8d0868/tasks/task1/yufacedetectnet.py  # noqa
+from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional, Tuple, TypedDict
+from typing import Dict, List, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.geometry.bbox import nms as nms_kornia
+from kornia.geometry.bbox import nms
 from kornia.utils.helpers import map_location_to_cpu
 
 __all__ = ["FaceDetector", "FaceDetectorResult", "FaceKeypoint"]
@@ -14,30 +15,40 @@ __all__ = ["FaceDetector", "FaceDetectorResult", "FaceKeypoint"]
 NET_TYPES = ["yunet_n", "yunet_s"]
 
 
-class BackboneConfig(TypedDict):
+@dataclass
+class BackboneConfig:
     stage_channels: List[Tuple[int, ...]]
     sample_layer_idxs: List[int]
     downsample_layer_idxs: List[int]
 
 
-class NeckConfig(TypedDict):
+@dataclass
+class NeckConfig:
     in_channels: List[int]
     out_idx: List[int]
 
 
-class BboxHeadConfig(TypedDict):
+@dataclass
+class BboxHeadConfig:
     in_channels: int
     feat_channels: int
     shared_stacked_convs: int
 
 
-class YuNetConfig(TypedDict):
+@dataclass
+class YuNetConfig:
     url: str
     backbone: BackboneConfig
     neck: NeckConfig
     bbox_head: BboxHeadConfig
-    steps: List[int]
-    clip: bool
+    input_size: Tuple[int, int] = (320, 320)
+    strides: Tuple[int, int, int] = (8, 16, 32)
+    top_k: int = 5000
+    confidence_threshold: float = 0.3
+    nms_threshold: float = 0.3
+    keep_top_k: int = 750
+    num_classes: int = 1
+    num_keypoints: int = 5
 
 
 class FaceKeypoint(Enum):
@@ -172,158 +183,101 @@ class FaceDetector(nn.Module):
 
     def __init__(
         self,
-        name: str = "yunet_s",
+        model_type: str = "yunet_s",
         top_k: int = 5000,
         confidence_threshold: float = 0.3,
         nms_threshold: float = 0.3,
         keep_top_k: int = 750,
     ) -> None:
         super().__init__()
-        if name.lower() not in NET_TYPES:
-            raise ValueError(f"Invalid network type. Expected one of {NET_TYPES}. Got: {name}.")
-        self.name = name.lower()
-        self.top_k = top_k
-        self.confidence_threshold = confidence_threshold
-        self.nms_threshold = nms_threshold
-        self.keep_top_k = keep_top_k
+        if model_type.lower() not in NET_TYPES:
+            raise ValueError(f"Invalid network type. Expected one of {NET_TYPES}. Got: {model_type}.")
+        self.model_type = model_type.lower()
         config_dict = {
             "yunet_s": YuNetConfig(
                 url="https://github.com/ShiqiYu/libfacedetection.train/raw/master/weights/yunet_s.pth",
-                backbone={
-                    "stage_channels": [
-                        (3, 16, 16),
-                        (16, 32),
-                        (32, 64),
-                        (64, 64),
-                        (64, 64),
-                        (64, 64),
-                    ],
-                    "sample_layer_idxs": [3, 4, 5],
-                    "downsample_layer_idxs": [0, 2, 3, 4],
-                },
-                neck={
-                    "in_channels": [64, 64, 64],
-                    "out_idx": [0, 1, 2],
-                },
-                bbox_head={
-                    "in_channels": 64,
-                    "feat_channels": 64,
-                    "shared_stacked_convs": 0,
-                },
-                steps=[8, 16, 32, 64],
-                clip=False,
+                backbone=BackboneConfig(
+                    stage_channels=[(3, 16, 16), (16, 32), (32, 64), (64, 64), (64, 64), (64, 64)],
+                    sample_layer_idxs=[3, 4, 5],
+                    downsample_layer_idxs=[0, 2, 3, 4],
+                ),
+                neck=NeckConfig(in_channels=[64, 64, 64], out_idx=[0, 1, 2]),
+                bbox_head=BboxHeadConfig(in_channels=64, feat_channels=64, shared_stacked_convs=0),
+                top_k=top_k,
+                confidence_threshold=confidence_threshold,
+                nms_threshold=nms_threshold,
+                keep_top_k=keep_top_k,
             ),
             "yunet_n": YuNetConfig(
                 url="https://github.com/ShiqiYu/libfacedetection.train/raw/master/weights/yunet_n.pth",
-                backbone={
-                    "stage_channels": [
-                        (3, 16, 16),
-                        (16, 64),
-                        (64, 64),
-                        (64, 64),
-                        (64, 64),
-                        (64, 64),
-                    ],
-                    "sample_layer_idxs": [3, 4, 5],
-                    "downsample_layer_idxs": [0, 2, 3, 4],
-                },
-                neck={
-                    "in_channels": [64, 64, 64],
-                    "out_idx": [0, 1, 2],
-                },
-                bbox_head={
-                    "in_channels": 64,
-                    "feat_channels": 64,
-                    "shared_stacked_convs": 1,
-                },
-                steps=[8, 16, 32, 64],
-                clip=False,
+                backbone=BackboneConfig(
+                    stage_channels=[(3, 16, 16), (16, 64), (64, 64), (64, 64), (64, 64), (64, 64)],
+                    sample_layer_idxs=[3, 4, 5],
+                    downsample_layer_idxs=[0, 2, 3, 4],
+                ),
+                neck=NeckConfig(in_channels=[64, 64, 64], out_idx=[0, 1, 2]),
+                bbox_head=BboxHeadConfig(in_channels=64, feat_channels=64, shared_stacked_convs=1),
+                confidence_threshold=confidence_threshold,
+                nms_threshold=nms_threshold,
+                keep_top_k=keep_top_k,
             ),
         }
-        self.model = YuFaceDetectNet(config=config_dict[self.name], pretrained=True)
-        self.steps = [8, 16, 32]
-        self.clip = False
-        self.nms = nms_kornia
+        self._config = config_dict[self.model_type]
+        self.model = YuFaceDetectNet(config=self._config, pretrained=True)
+
+    @property
+    def config(self) -> YuNetConfig:
+        return self._config
 
     def preprocess(self, image: torch.Tensor) -> torch.Tensor:
         return image
 
+    @staticmethod
     def postprocess(
-        self, data: Dict[str, torch.Tensor], img_dims: Tuple[int, int], org_dims: Tuple[int, int]
+        data: Dict[str, torch.Tensor], config: YuNetConfig, image_size: Tuple[int, int]
     ) -> List[torch.Tensor]:
-        height, width = img_dims
-        org_height, org_width = org_dims
+        image_height, image_width = image_size
+        model_input_height, model_input_width = config.input_size
         bbox_preds, cls_preds, obj_preds, kps_preds = (
             data["bbox_preds"],
             data["cls_preds"],
             data["obj_preds"],
             data["kps_preds"],
         )
-        num_imgs = cls_preds[0].shape[0]
-        featmap_sizes = [cls_pred.shape[2:] for cls_pred in cls_preds]
+        featmap_sizes = [(image_height // stride, image_width // stride) for stride in config.strides]
 
-        priors = _PriorBox(self.steps, (height, width), featmap_sizes)()
+        priors = _PriorBox(config.strides, (model_input_height, model_input_width), featmap_sizes)()
 
-        flatten_cls_preds = torch.cat(
-            [cls_pred.permute(0, 2, 3, 1).reshape(num_imgs, -1, 1) for cls_pred in cls_preds], dim=1
-        ).sigmoid()
-        flatten_bbox_preds = torch.cat(
-            [bbox_pred.permute(0, 2, 3, 1).reshape(num_imgs, -1, 4) for bbox_pred in bbox_preds], dim=1
-        )
-        flatten_obj_preds = torch.cat(
-            [obj_pred.permute(0, 2, 3, 1).reshape(num_imgs, -1) for obj_pred in obj_preds], dim=1
-        ).sigmoid()
-        flatten_kps_preds = torch.cat(
-            [kps_pred.permute(0, 2, 3, 1).reshape(num_imgs, -1, 10) for kps_pred in kps_preds], dim=1
-        )
         flatten_priros = torch.cat(priors)
 
-        scale = torch.tensor(
-            [
-                org_width / width,
-                org_height / height,
-                org_width / width,
-                org_height / height,
-                org_width / width,
-                org_height / height,
-                org_width / width,
-                org_height / height,
-                org_width / width,
-                org_height / height,
-                org_width / width,
-                org_height / height,
-                org_width / width,
-                org_height / height,
-            ],
-            device=flatten_bbox_preds.device,
-            dtype=flatten_bbox_preds.dtype,
+        scale = torch.Tensor([image_width / model_input_width, image_height / model_input_height]).to(
+            bbox_preds.device, bbox_preds.dtype
         )
 
-        flatten_priros = flatten_priros.to(flatten_bbox_preds.device, flatten_bbox_preds.dtype)
+        flatten_priros = flatten_priros.to(bbox_preds.device, bbox_preds.dtype)
         batched_dets: List[torch.Tensor] = []
-        for batch_elem in range(flatten_bbox_preds.shape[0]):
-            boxes = _decode(torch.cat([flatten_bbox_preds, flatten_kps_preds], -1)[batch_elem], flatten_priros)  # Nx14
+        for batch_elem in range(bbox_preds.shape[0]):
+            boxes = _decode(torch.cat([bbox_preds, kps_preds], -1)[batch_elem], flatten_priros, scale)  # Nx14
 
-            boxes *= scale
-            cls_scores = flatten_cls_preds[batch_elem]
-            score_factor = flatten_obj_preds[batch_elem]
+            cls_scores = cls_preds[batch_elem]
+            score_factor = obj_preds[batch_elem]
 
             # ignore low scores
             max_scores, labels = torch.max(cls_scores, 1)
-            valid_mask = score_factor * max_scores >= self.confidence_threshold
+            valid_mask = score_factor[:, 0] * max_scores >= config.confidence_threshold
             boxes = boxes[valid_mask]
-            scores = max_scores[valid_mask] * score_factor[valid_mask]
+            scores = max_scores[valid_mask] * score_factor[valid_mask][:, 0]
             labels = labels[valid_mask]
 
             # performd NMS
             # NOTE: nms need to be revise since does not export well to onnx
             dets = torch.cat((boxes, scores[:, None]), dim=-1)  # Nx15
-            keep = self.nms(boxes[:, :4], scores, self.nms_threshold)
+            keep = nms(boxes[:, :4], scores, config.nms_threshold)
             if len(keep) > 0:
                 dets = dets[keep, :]
 
             # keep top-K faster NMS
-            batched_dets.append(dets[: self.keep_top_k])
+            batched_dets.append(dets[: config.keep_top_k])
 
         return batched_dets
 
@@ -338,10 +292,7 @@ class FaceDetector(nn.Module):
         """
         img = self.preprocess(image)
         out = self.model(img)
-        return self.postprocess(out, (img.shape[-2], img.shape[-1]), (image.shape[-2], image.shape[-1]))
-
-
-# utils for the network
+        return self.postprocess(out, self._config, image.shape[-2:])
 
 
 class ConvDPUnit(nn.Sequential):
@@ -380,12 +331,12 @@ class TFPN(nn.Module):
             self.lateral_convs.append(ConvDPUnit(in_channels[i], in_channels[i], True))
 
     def forward(self, feats: torch.Tensor) -> List[torch.Tensor]:
-        num_feats = len(feats)
-        # top-down flow
-        for i in range(num_feats - 1, 0, -1):
-            feats[i] = self.lateral_convs[i](feats[i])
-            feats[i - 1] = feats[i - 1] + F.interpolate(feats[i], scale_factor=2.0, mode="nearest")
-        feats[0] = self.lateral_convs[0](feats[0])
+        for idx, lateral_conv in enumerate(self.lateral_convs[::-1], 1):
+            # Reverse the index calculation to match the reversed iteration
+            i = self.num_layers - idx
+            feats[i] = lateral_conv(feats[i])
+            if i > 0:  # Check to prevent out-of-range access
+                feats[i - 1] = feats[i - 1] + F.interpolate(feats[i], scale_factor=2.0, mode="nearest")
         outs = [feats[i] for i in self.out_idxs]
         return outs
 
@@ -405,21 +356,21 @@ class MultiLevelShareConvs(nn.Module):
 class YuFaceDetectNet(nn.Module):
     def __init__(self, config: YuNetConfig, pretrained: bool = False) -> None:
         super().__init__()
-        self.stage_channels = config["backbone"]["stage_channels"]
-        self.num_classes = 1
+        self.stage_channels = config.backbone.stage_channels
+        self.num_classes = config.num_classes
         self.num_layers = len(self.stage_channels)
-        self.num_keypoints = 5
-        self.sample_layer_idxs = config["backbone"]["sample_layer_idxs"]
-        self.downsample_layer_idxs = config["backbone"]["downsample_layer_idxs"]
-        self.shared_stacked_convs = config["bbox_head"]["shared_stacked_convs"]
-        self.strides = [8, 16, 32]
+        self.num_keypoints = config.num_keypoints
+        self.sample_layer_idxs = config.backbone.sample_layer_idxs
+        self.downsample_layer_idxs = config.backbone.downsample_layer_idxs
+        self.shared_stacked_convs = config.bbox_head.shared_stacked_convs
+        self.strides = config.strides
 
         self.backbone = nn.Sequential()
         self.backbone.add_module("model0", Conv_head(*self.stage_channels[0]))
         for i in range(1, self.num_layers):
             self.backbone.add_module(f"model{i}", Conv4layerBlock(self.stage_channels[i][0], self.stage_channels[i][1]))
 
-        self.neck = TFPN(config["neck"]["in_channels"], config["neck"]["out_idx"])
+        self.neck = TFPN(config.neck.in_channels, config.neck.out_idx)
 
         self.bbox_head = nn.ModuleDict()
 
@@ -448,15 +399,15 @@ class YuFaceDetectNet(nn.Module):
         )
 
         self.bbox_head["multi_level_share_convs"] = MultiLevelShareConvs(
-            config["bbox_head"]["in_channels"],
-            config["bbox_head"]["feat_channels"],
+            config.bbox_head.in_channels,
+            config.bbox_head.feat_channels,
             self.shared_stacked_convs,
             self.strides,
         )
 
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(config["url"], map_location=map_location_to_cpu)
+            pretrained_dict = torch.hub.load_state_dict_from_url(config.url, map_location=map_location_to_cpu)
             self.load_state_dict(pretrained_dict["state_dict"], strict=True)
         self.eval()
 
@@ -488,14 +439,24 @@ class YuFaceDetectNet(nn.Module):
 
         kps_preds = [conv(feat) for conv, feat in zip(self.bbox_head["multi_level_kps"], feats)]
 
-        return {"cls_preds": cls_preds, "bbox_preds": bbox_preds, "obj_preds": obj_preds, "kps_preds": kps_preds}
+        cls_preds = [f.permute(0, 2, 3, 1).view(f.shape[0], -1, self.num_classes).sigmoid() for f in cls_preds]
+        obj_preds = [f.permute(0, 2, 3, 1).view(f.shape[0], -1, 1).sigmoid() for f in obj_preds]
+        bbox_preds = [f.permute(0, 2, 3, 1).view(f.shape[0], -1, 4) for f in bbox_preds]
+        kps_preds = [f.permute(0, 2, 3, 1).view(f.shape[0], -1, self.num_keypoints * 2) for f in kps_preds]
+
+        return {
+            "cls_preds": torch.cat(cls_preds, dim=1),
+            "bbox_preds": torch.cat(bbox_preds, dim=1),
+            "obj_preds": torch.cat(obj_preds, dim=1),
+            "kps_preds": torch.cat(kps_preds, dim=1),
+        }
 
 
 # utils for post-processing
 
 
 # Adapted from https://github.com/Hakuyume/chainer-ssd
-def _decode(loc: torch.Tensor, priors: torch.Tensor) -> torch.Tensor:
+def _decode(loc: torch.Tensor, priors: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
     """Decode locations from predictions using priors to undo the encoding we did for offset regression at train
     time.
 
@@ -508,13 +469,13 @@ def _decode(loc: torch.Tensor, priors: torch.Tensor) -> torch.Tensor:
     """
     boxes = torch.cat(
         (
-            priors[:, 0:2] + loc[:, 0:2] * priors[:, 2:4],
-            priors[:, 2:4] * torch.exp(loc[:, 2:4]),
-            priors[:, 0:2] + loc[:, 4:6] * priors[:, 2:4],
-            priors[:, 0:2] + loc[:, 6:8] * priors[:, 2:4],
-            priors[:, 0:2] + loc[:, 8:10] * priors[:, 2:4],
-            priors[:, 0:2] + loc[:, 10:12] * priors[:, 2:4],
-            priors[:, 0:2] + loc[:, 12:14] * priors[:, 2:4],
+            (priors[:, 0:2] + loc[:, 0:2] * priors[:, 2:4]) * scale,
+            priors[:, 2:4] * torch.exp(loc[:, 2:4]) * scale,
+            (priors[:, 0:2] + loc[:, 4:6] * priors[:, 2:4]) * scale,
+            (priors[:, 0:2] + loc[:, 6:8] * priors[:, 2:4]) * scale,
+            (priors[:, 0:2] + loc[:, 8:10] * priors[:, 2:4]) * scale,
+            (priors[:, 0:2] + loc[:, 10:12] * priors[:, 2:4]) * scale,
+            (priors[:, 0:2] + loc[:, 12:14] * priors[:, 2:4]) * scale,
         ),
         1,
     )
