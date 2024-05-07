@@ -2,9 +2,10 @@ import importlib.util
 import platform
 import sys
 import warnings
+from dataclasses import asdict, fields, is_dataclass
 from functools import wraps
 from inspect import isclass, isfunction
-from typing import TYPE_CHECKING, Any, Callable, List, Optional, Tuple, Union, overload
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union, overload
 
 import torch
 from torch.linalg import inv_ex
@@ -318,3 +319,35 @@ def is_autocast_enabled(both: bool = True) -> bool:
         return torch.is_autocast_enabled() or torch.is_autocast_cpu_enabled()
 
     return torch.is_autocast_enabled()
+
+
+def dataclass_to_dict(obj: Any) -> Any:
+    """Recursively convert dataclass instances to dictionaries."""
+    if is_dataclass(obj) and not isinstance(obj, type):
+        return {key: dataclass_to_dict(value) for key, value in asdict(obj).items()}
+    elif isinstance(obj, (list, tuple)):
+        return type(obj)(dataclass_to_dict(item) for item in obj)
+    elif isinstance(obj, dict):
+        return {key: dataclass_to_dict(value) for key, value in obj.items()}
+    else:
+        return obj
+
+
+T = TypeVar("T")
+
+
+def dict_to_dataclass(dict_obj: Dict[str, Any], dataclass_type: Type[T]) -> T:
+    """Recursively convert dictionaries to dataclass instances."""
+    if not isinstance(dict_obj, dict):
+        raise TypeError("Input conf must be dict")
+    if not is_dataclass(dataclass_type):
+        raise TypeError("dataclass_type must be a dataclass")
+    field_types = {f.name: f.type for f in fields(dataclass_type)}
+    constructor_args = {}
+    for key, value in dict_obj.items():
+        if key in field_types and is_dataclass(field_types[key]):
+            constructor_args[key] = dict_to_dataclass(value, field_types[key])
+        else:
+            constructor_args[key] = value
+    # TODO: remove type ignore when https://github.com/python/mypy/issues/14941 be andressed
+    return dataclass_type(**constructor_args)  # type: ignore[return-value]
