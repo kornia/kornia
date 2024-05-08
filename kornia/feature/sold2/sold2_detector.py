@@ -41,7 +41,7 @@ class SOLD2_detector(Module):
         if isinstance(config, dict):
             warnings.warn(
                 "Usage of config as a plain dictionary is deprecated in favor of"
-                " `kornia.feature.sold2.sold2_detector.DetectorCfg`. The support of plain dictionaries"
+                " `kornia.utils.structures.DetectorCfg`. The support of plain dictionaries"
                 "as config will be removed in kornia v0.8.0 (December 2024).",
                 category=DeprecationWarning,
                 stacklevel=2,
