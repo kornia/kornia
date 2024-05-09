@@ -6,9 +6,9 @@ import torch
 
 from kornia.core import Module, Tensor, concatenate, sin, stack, tensor, where, zeros
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.feature.sold2.structures import DetectorCfg, HeatMapRefineCfg, JunctionRefineCfg, LineDetectorCfg
 from kornia.geometry.bbox import nms
 from kornia.utils import dataclass_to_dict, dict_to_dataclass, map_location_to_cpu, torch_meshgrid
-from kornia.utils.structures import DetectorCfg, HeatMapRefineCfg, JunctionRefineCfg, LineDetectorCfg
 
 from .backbones import SOLD2Net
 
