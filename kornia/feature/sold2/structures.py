@@ -36,10 +36,11 @@ class LineDetectorCfg:
 @dataclass
 class LineMatcherCfg:
     cross_check: bool = True
-    num_samples: int = 5
-    mind_dist_pts: int = 8
+    num_samples: int = 10
+    min_dist_pts: int = 8
     top_k_candidates: int = 10
-    grid_size: int = 4
+    grid_size: int = 8
+    line_score: bool = False
 
 
 @dataclass
