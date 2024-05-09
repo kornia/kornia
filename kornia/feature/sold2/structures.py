@@ -40,7 +40,7 @@ class LineMatcherCfg:
     min_dist_pts: int = 8
     top_k_candidates: int = 10
     grid_size: int = 8
-    line_score: bool = False
+    line_score: bool = False  # True to compute saliency on a line
 
 
 @dataclass
@@ -61,4 +61,3 @@ class DetectorCfg:
     detection_thresh: float = 0.0153846  # = 1/65: threshold of junction detection
     max_num_junctions: int = 500  # maximum number of junctions per image
     line_detector_cfg: LineDetectorCfg = field(default_factory=LineDetectorCfg)
-    line_matcher_cfg: LineMatcherCfg = field(default_factory=LineMatcherCfg)
