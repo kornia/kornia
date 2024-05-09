@@ -34,6 +34,15 @@ class LineDetectorCfg:
 
 
 @dataclass
+class LineMatcherCfg:
+    cross_check: bool = True
+    num_samples: int = 5
+    mind_dist_pts: int = 8
+    top_k_candidates: int = 10
+    grid_size: int = 4
+
+
+@dataclass
 class BackboneCfg:
     input_channel: int = 1
     depth: int = 4
@@ -51,3 +60,4 @@ class DetectorCfg:
     detection_thresh: float = 0.0153846  # = 1/65: threshold of junction detection
     max_num_junctions: int = 500  # maximum number of junctions per image
     line_detector_cfg: LineDetectorCfg = field(default_factory=LineDetectorCfg)
+    line_matcher_cfg: LineMatcherCfg = field(default_factory=LineMatcherCfg)
