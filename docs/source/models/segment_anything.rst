@@ -173,7 +173,7 @@ Read more about the :code:`SegmentationResults` on :ref:`the official docs<ancho
 
 Load from config
 ^^^^^^^^^^^^^^^^
-You can build a SAM model by specifying the encoder parameters on the the :code:`SamConfig`, or from the model type. The
+You can build a SAM model by specifying the encoder parameters on the :code:`SamConfig`, or from the model type. The
 :code:`from_config` method will first try to build the model based on the model type, otherwise will try from the specified
 parameters. If a checkpoint URL or path for a file is seted, the method will automatically load it.
 
