@@ -43,7 +43,7 @@ class SOLD2(Module):
         >>> matches = sold2.match(line_seg1, line_seg2, desc1[None], desc2[None])
     """
 
-    def __init__(self, pretrained: bool = True, config: Optional[Dict[str, Any]] = None) -> None:
+    def __init__(self, pretrained: bool = True, config: Optional[DetectorCfg] = None) -> None:
         if isinstance(config, dict):
             warnings.warn(
                 "Usage of config as a plain dictionary is deprecated in favor of"
