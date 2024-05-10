@@ -61,3 +61,4 @@ class DetectorCfg:
     detection_thresh: float = 0.0153846  # = 1/65: threshold of junction detection
     max_num_junctions: int = 500  # maximum number of junctions per image
     line_detector_cfg: LineDetectorCfg = field(default_factory=LineDetectorCfg)
+    line_matcher_cfg: LineMatcherCfg = field(default_factory=LineMatcherCfg)

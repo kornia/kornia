@@ -73,7 +73,7 @@ class SOLD2(Module):
         self.line_detector = LineSegmentDetectionModule(self.config.line_detector_cfg)
 
         # Initialize the line matcher
-        self.line_matcher = WunschLineMatcher(**dataclass_to_dict(self.config.line_matcher_cfg))
+        self.line_matcher = WunschLineMatcher(self.config.line_matcher_cfg)
 
     def forward(self, img: Tensor) -> Dict[str, Any]:
         """
