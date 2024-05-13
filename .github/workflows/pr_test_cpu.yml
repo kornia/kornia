@@ -24,7 +24,7 @@ jobs:
     with:
       os: ${{ matrix.os }}
       python-version: '["3.8", "3.11"]'
-      pytorch-version: '["1.9.1", "2.2.0"]'
+      pytorch-version: '["1.9.1", "2.2.2"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
 
   tests-cpu-macos:
@@ -32,7 +32,6 @@ jobs:
     with:
       os: 'MacOS-latest'
       python-version: '["3.8", "3.11"]'
-      pytorch-version: '["2.2.0"]'
       pytorch-dtype: 'float32'
 
 
