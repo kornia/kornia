@@ -55,6 +55,11 @@ Interactive Demo
 Visit the `Kornia edge detector demo on the Hugging Face Spaces
 <https://huggingface.co/spaces/kornia/edge_detector>`_.
 
+Segmentation
+--------------
+
+.. autofunction:: in_range
+.. autoclass:: InRange
 
 Filtering API
 -------------

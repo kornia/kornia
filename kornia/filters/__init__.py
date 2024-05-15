@@ -15,6 +15,7 @@ from .dexined import DexiNed
 from .filter import filter2d, filter2d_separable, filter3d
 from .gaussian import GaussianBlur2d, gaussian_blur2d, gaussian_blur2d_t
 from .guided import GuidedBlur, guided_blur
+from .in_range import InRange, in_range
 from .kernels import (
     gaussian,
     get_binary_kernel2d,
@@ -67,6 +68,8 @@ __all__ = [
     "get_diff_kernel2d",
     "gaussian_blur2d",
     "guided_blur",
+    "InRange",
+    "in_range",
     "laplacian",
     "laplacian_1d",
     "unsharp_mask",
