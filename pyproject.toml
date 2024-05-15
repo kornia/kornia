@@ -1,3 +1,9 @@
+[build-system]
+build-backend = "setuptools.build_meta"
+requires = [
+  "setuptools>=61.2",
+]
+
 [project]
 name = "kornia"
 description = "Open Source Differentiable Computer Vision Library for PyTorch"
@@ -6,8 +12,10 @@ keywords = [
   "deep learning",
   "pytorch",
 ]
-license = {text = "Apache-2.0"}
-authors = [{name = "Edgar Riba", email = "edgar@kornia.org"}]
+license = { text = "Apache-2.0" }
+authors = [
+  { name = "Edgar Riba", email = "edgar@kornia.org" },
+]
 requires-python = ">=3.8"
 classifiers = [
   "Development Status :: 4 - Beta",
@@ -36,209 +44,274 @@ dynamic = [
   "readme",
   "version",
 ]
-[project.urls]
-  "Bug Tracker" = "https://github.com/kornia/kornia/issues"
-  Documentation = "https://kornia.readthedocs.io/en/latest"
-  Download = "https://github.com/kornia/kornia"
-  Homepage = "https://www.kornia.org"
-  "Source Code" = "https://github.com/kornia/kornia"
 
-[build-system]
-build-backend = "setuptools.build_meta"
-requires = [
-  "setuptools>=61.2",
-]
+urls."Bug Tracker" = "https://github.com/kornia/kornia/issues"
+
+urls.Documentation = "https://kornia.readthedocs.io/en/latest"
+
+urls.Download = "https://github.com/kornia/kornia"
+
+urls.Homepage = "https://www.kornia.org"
+
+urls."Source Code" = "https://github.com/kornia/kornia"
 
 [tool.setuptools]
-  zip-safe = true
-  license-files = ["LICENSE"]
-  include-package-data = false
+zip-safe = true
+license-files = [
+  "LICENSE",
+]
+include-package-data = false
 
-  [tool.setuptools.dynamic]
-    dependencies = {file = ["requirements/requirements.txt"]}
-    version = {attr = "kornia.__version__"}
-    readme = {file = ["README.md"], content-type = "text/markdown"}
+[tool.setuptools.dynamic]
+dependencies = { file = [
+  "requirements/requirements.txt",
+] }
+version = { attr = "kornia.__version__" }
+readme = { file = [
+  "README.md",
+], content-type = "text/markdown" }
 
-  [tool.setuptools.dynamic.optional-dependencies]
-    dev = {file = "requirements/requirements-dev.txt"}
-    docs = {file = ["requirements/requirements-docs.txt"]}
-    x = {file = ["requirements/requirements-x.txt"]}
+[tool.setuptools.dynamic.optional-dependencies]
+dev = { file = "requirements/requirements-dev.txt" }
+docs = { file = [
+  "requirements/requirements-docs.txt",
+] }
+x = { file = [
+  "requirements/requirements-x.txt",
+] }
 
-  [tool.setuptools.packages.find]
-    exclude = ["docs*", "test*", "examples*"]
-    namespaces = false
+[tool.setuptools.packages.find]
+exclude = [
+  "docs*",
+  "test*",
+  "examples*",
+]
+namespaces = false
 
-  [tool.setuptools.package-data]
-    kornia = ["py.typed"]
+[tool.setuptools.package-data]
+kornia = [
+  "py.typed",
+]
 
 [tool.distutils.bdist_wheel]
-  universal = true
+universal = true
 
 [tool.ruff]
-  line-length = 120
-  target-version = "py38"
+line-length = 120
+target-version = "py38"
 
-  [tool.ruff.lint]
-  select = [
-    "AIR",    # Airflow
-    "ASYNC",  # flake8-async
-    "BLE",    # flake8-blind-except
-    "C4",     # flake8-comprehensions
-    "C90",    # McCabe cyclomatic complexity
-    # "CPY",    # Copyright-related rules
-    "DTZ",    # flake8-datetimez
-    "E",      # pycodestyle
-    "F",      # Pyflakes
-    "FLY",    # flynt
-    "I",      # isort
-    "ICN",    # flake8-import-conventions
-    "INT",    # flake8-gettext
-    "NPY",    # NumPy-specific rules
-    "PL",     # Pylint
-    "PYI",    # flake8-pyi
-    "RSE",    # flake8-raise
-    "RUF",    # Ruff-specific rules
-    "S",      # flake8-bandit
-    "SLOT",   # flake8-slots
-    "T10",    # flake8-debugger
-    "TID",    # flake8-tidy-imports
-    "UP",     # pyupgrade
-    "W",      # pycodestyle
-    "YTT",    # flake8-2020
-    # "A",    # flake8-builtins
-    # "ANN",  # flake8-annotations
-    # "ARG",  # flake8-unused-arguments
-    # "B",    # flake8-bugbear
-    # "COM",  # flake8-commas
-    # "D",    # pydocstyle
-    # "DJ",   # flake8-django
-    # "EM",   # flake8-errmsg
-    # "ERA",  # eradicate
-    # "EXE",  # flake8-executable
-    # "FA",   # flake8-future-annotations
-    # "FBT",  # flake8-boolean-trap
-    # "FIX",  # flake8-fixme
-    # "G",    # flake8-logging-format
-    # "INP",  # flake8-no-pep420
-    # "ISC",  # flake8-implicit-str-concat
-    # "N",    # pep8-naming
-    # "PD",   # pandas-vet
-    # "PERF", # Perflint
-    # "PGH",  # pygrep-hooks
-    # "PIE",  # flake8-pie
-    # "PT",   # flake8-pytest-style
-    # "PTH",  # flake8-use-pathlib
-    # "Q",    # flake8-quotes
-    # "RET",  # flake8-return
-    # "SIM",  # flake8-simplify
-    # "SLF",  # flake8-self
-    # "T20",  # flake8-print
-    # "TCH",  # flake8-type-checking
-    # "TD",   # flake8-todos
-    # "TRY",  # tryceratops
-  ]
-  ignore = [
-    "PLW2901", # Allow overwritten values on loops
-    "PLR0915", # Allow condition check in list comprehension
-    "UP007", # Prefer Optional[], Union[] over | due to torch jit scripting
-  ]
+[tool.ruff.lint]
+select = [
+  "AIR",   # Airflow
+  "ASYNC", # flake8-async
+  "BLE",   # flake8-blind-except
+  "C4",    # flake8-comprehensions
+  "C90",   # McCabe cyclomatic complexity
+  # "CPY",    # Copyright-related rules
+  "DTZ",  # flake8-datetimez
+  "E",    # pycodestyle
+  "F",    # Pyflakes
+  "FLY",  # flynt
+  "I",    # isort
+  "ICN",  # flake8-import-conventions
+  "INT",  # flake8-gettext
+  "NPY",  # NumPy-specific rules
+  "PL",   # Pylint
+  "PYI",  # flake8-pyi
+  "RSE",  # flake8-raise
+  "RUF",  # Ruff-specific rules
+  "S",    # flake8-bandit
+  "SLOT", # flake8-slots
+  "T10",  # flake8-debugger
+  "TID",  # flake8-tidy-imports
+  "UP",   # pyupgrade
+  "W",    # pycodestyle
+  "YTT",  # flake8-2020
+  # "A",    # flake8-builtins
+  # "ANN",  # flake8-annotations
+  # "ARG",  # flake8-unused-arguments
+  # "B",    # flake8-bugbear
+  # "COM",  # flake8-commas
+  # "D",    # pydocstyle
+  # "DJ",   # flake8-django
+  # "EM",   # flake8-errmsg
+  # "ERA",  # eradicate
+  # "EXE",  # flake8-executable
+  # "FA",   # flake8-future-annotations
+  # "FBT",  # flake8-boolean-trap
+  # "FIX",  # flake8-fixme
+  # "G",    # flake8-logging-format
+  # "INP",  # flake8-no-pep420
+  # "ISC",  # flake8-implicit-str-concat
+  # "N",    # pep8-naming
+  # "PD",   # pandas-vet
+  # "PERF", # Perflint
+  # "PGH",  # pygrep-hooks
+  # "PIE",  # flake8-pie
+  # "PT",   # flake8-pytest-style
+  # "PTH",  # flake8-use-pathlib
+  # "Q",    # flake8-quotes
+  # "RET",  # flake8-return
+  # "SIM",  # flake8-simplify
+  # "SLF",  # flake8-self
+  # "T20",  # flake8-print
+  # "TCH",  # flake8-type-checking
+  # "TD",   # flake8-todos
+  # "TRY",  # tryceratops
+]
+ignore = [
+  "PLW2901", # Allow overwritten values on loops
+  "PLR0915", # Allow condition check in list comprehension
+  "UP007",   # Prefer Optional[], Union[] over | due to torch jit scripting
+]
 
-  [tool.ruff.lint.isort]
-    known-first-party = ["kornia"]
-    split-on-trailing-comma = true
-    forced-separate = ["testing", "tests"]
+[tool.ruff.lint.isort]
+known-first-party = [
+  "kornia",
+]
+split-on-trailing-comma = true
+forced-separate = [
+  "testing",
+  "tests",
+]
 
-  [tool.ruff.lint.mccabe]
-    max-complexity = 20
+[tool.ruff.lint.mccabe]
+max-complexity = 20
 
-  [tool.ruff.lint.pylint]
-    allow-magic-value-types = ["bytes", "float", "int", "str"]
-    max-args = 30  # Recommended: 5
-    max-branches = 21  # Recommended: 12
-    max-returns = 13  # Recommended: 6
-    max-statements = 64  # Recommended: 50
+[tool.ruff.lint.pylint]
+allow-magic-value-types = [
+  "bytes",
+  "float",
+  "int",
+  "str",
+]
+max-args = 30 # Recommended: 5
+max-branches = 21 # Recommended: 12
+max-returns = 13 # Recommended: 6
+max-statements = 64 # Recommended: 50
 
-  [tool.ruff.lint.per-file-ignores]
-    "*/__init__.py" = ["F401", "F403"] # Allow unused imports and star imports
-    "docs/*" = ["S101", "PLR0912", "PLR0915"] # allow assert, ignore max branches and statements
-    "docs/generate_examples.py" = ["C901"] # Allow too complex function
-    "kornia/__init__.py" = ["I001"] # Allow unsorted imports
-    "tests/*" = ["S101", "S311", "BLE", "RUF012", "RUF005"] # allow assert, random, ignore BLE, mutable class attr
-    "benchmarks/*" = ["S101", "S311", "BLE", "RUF012", "RUF005"] # allow assert, random, ignore BLE, mutable class attr
-    "testing/*" = ["S101",] # allow assert
-    "kornia/feature/dedode/*"  = ["C408", "FLY002", "PLR1714", "F401", "F841"]  # allow DINOv2 things
+[tool.ruff.lint.per-file-ignores]
+"*/__init__.py" = [
+  "F401",
+  "F403",
+] # Allow unused imports and star imports
+"docs/*" = [
+  "S101",
+  "PLR0912",
+  "PLR0915",
+] # allow assert, ignore max branches and statements
+"docs/generate_examples.py" = [
+  "C901",
+] # Allow too complex function
+"kornia/__init__.py" = [
+  "I001",
+] # Allow unsorted imports
+"tests/*" = [
+  "S101",
+  "S311",
+  "BLE",
+  "RUF012",
+  "RUF005",
+] # allow assert, random, ignore BLE, mutable class attr
+"benchmarks/*" = [
+  "S101",
+  "S311",
+  "BLE",
+  "RUF012",
+  "RUF005",
+] # allow assert, random, ignore BLE, mutable class attr
+"testing/*" = [
+  "S101",
+] # allow assert
+"kornia/feature/dedode/*" = [
+  "C408",
+  "FLY002",
+  "PLR1714",
+  "F401",
+  "F841",
+] # allow DINOv2 things
 
-  [tool.ruff.format]
-    skip-magic-trailing-comma = false
+[tool.ruff.format]
+skip-magic-trailing-comma = false
 
 [tool.pytest.ini_options]
-  addopts = "--color=yes"
-  markers =[
-    "grad: mark a test as gradcheck test",
-    "jit: mark a test as torchscript test",
-    "nn: mark a test as module test",
-    "slow: mark test as slow to run",
+addopts = "--color=yes"
+markers = [
+  "grad: mark a test as gradcheck test",
+  "jit: mark a test as torchscript test",
+  "nn: mark a test as module test",
+  "slow: mark test as slow to run",
 ]
 
 [tool.coverage.run]
 branch = true
 source = [
-    'kornia/',
+  'kornia/',
 ]
 omit = [
-    '*/__main__.py',
-    '*/setup.py',
+  '*/__main__.py',
+  '*/setup.py',
 ]
 
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
 fail_under = 87
-exclude_lines =[
-    # Based into the covdefaults plugin config
-    # a more strict default pragma
-    '\# pragma: no cover\b',
+exclude_lines = [
+  # Based into the covdefaults plugin config
+  # a more strict default pragma
+  '\# pragma: no cover\b',
 
-    # allow defensive code
-    '^\s*raise AssertionError\b',
-    '^\s*raise NotImplementedError\b',
-    '^\s*return NotImplemented\b',
-    '^\s*raise$',
+  # allow defensive code
+  '^\s*raise AssertionError\b',
+  '^\s*raise NotImplementedError\b',
+  '^\s*return NotImplemented\b',
+  '^\s*raise$',
 
-    # typing-related code
-    '^\s*if (False|TYPE_CHECKING):',
-    ': \.\.\.(\s*#.*)?$',
-    '^ +\.\.\.$',
+  # typing-related code
+  '^\s*if (False|TYPE_CHECKING):',
+  ': \.\.\.(\s*#.*)?$',
+  '^ +\.\.\.$',
 
-    # ----------------------------
-      "def __repr__",
-      "if __name__ == .__main__.:",
-      "if 0:",
-      "if self.debug:",
+  # ----------------------------
+  "def __repr__",
+  "if __name__ == .__main__.:",
+  "if 0:",
+  "if self.debug:",
 ]
 
 partial_branches = [
-    # a more strict default pragma
-    '\# pragma: no cover\b',
+  # a more strict default pragma
+  '\# pragma: no cover\b',
 ]
 
 [tool.mypy]
-  check_untyped_defs = true
-  disallow_any_generics = true
-  disallow_incomplete_defs = true
-  disallow_untyped_defs = true
-  files = ["kornia/"]
-  ignore_missing_imports = true
-  no_implicit_optional = true
-  pretty = true
-  show_error_codes = true
-  warn_redundant_casts = true
-  warn_unused_ignores = true
+check_untyped_defs = true
+disallow_any_generics = true
+disallow_incomplete_defs = true
+disallow_untyped_defs = true
+files = [
+  "kornia/",
+]
+ignore_missing_imports = true
+no_implicit_optional = true
+pretty = true
+show_error_codes = true
+warn_redundant_casts = true
+warn_unused_ignores = true
 
 [[tool.mypy.overrides]]
 module = "kornia.feature.dedode.transformer.*"
 ignore_errors = true
 
 [tool.pydocstyle]
-  ignore = ['D105','D107','D203','D204','D213','D406','D407']
-  match = '.*\.py'
+ignore = [
+  'D105',
+  'D107',
+  'D203',
+  'D204',
+  'D213',
+  'D406',
+  'D407',
+]
+match = '.*\.py'
