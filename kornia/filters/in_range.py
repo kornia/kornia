@@ -50,10 +50,10 @@ def in_range(
         Clarification of `lower` and `upper`:
 
         - If provided as a tuple, it should have the same number of elements as the channels in the input tensor.
-        This bound is then applied uniformly across all batches.
+          This bound is then applied uniformly across all batches.
 
         - When provided as a tensor, it allows for different bounds to be applied to each batch.
-        The tensor shape should be (B, C, 1, 1), where B is the batch size and C is the number of channels.
+          The tensor shape should be (B, C, 1, 1), where B is the batch size and C is the number of channels.
 
         - If the tensor has a 1-D shape, same bound will be applied across all batches.
 
@@ -162,7 +162,10 @@ class InRange(Module):
     """
 
     def __init__(
-        self, lower: Union[tuple[Any, ...], Tensor], upper: Union[tuple[Any, ...], Tensor], return_mask: bool = False
+        self,
+        lower: Union[tuple[Any, ...], Tensor],
+        upper: Union[tuple[Any, ...], Tensor],
+        return_mask: bool = False,
     ) -> None:
         super().__init__()
         self.lower = lower
