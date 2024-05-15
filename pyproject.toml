@@ -54,6 +54,7 @@ urls.Download = "https://github.com/kornia/kornia"
 urls.Homepage = "https://www.kornia.org"
 
 urls."Source Code" = "https://github.com/kornia/kornia"
+
 [tool.setuptools]
 zip-safe = true
 license-files = [
