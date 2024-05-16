@@ -56,7 +56,7 @@ class SOLD2(Module):
         super().__init__()
         # Initialize some parameters
         self.config = config if config is not None else DetectorCfg()
-        self.config.use_descriptor = True
+        self.config.use_descriptor = True  # Only difference to SOLD2_detector DetectorCfg
         self.grid_size = self.config.grid_size
         self.junc_detect_thresh = self.config.detection_thresh
         self.max_num_junctions = self.config.max_num_junctions
