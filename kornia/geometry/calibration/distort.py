@@ -12,7 +12,7 @@ def tilt_projection(taux: torch.Tensor, tauy: torch.Tensor, return_inverse: bool
     Args:
         taux: Rotation angle in radians around the :math:`x`-axis with shape :math:`(*, 1)`.
         tauy: Rotation angle in radians around the :math:`y`-axis with shape :math:`(*, 1)`.
-        return_inverse: False to obtain the the tilt projection matrix. True for the inverse matrix.
+        return_inverse: False to obtain the tilt projection matrix. True for the inverse matrix.
 
     Returns:
         torch.Tensor: Inverse tilt projection matrix with shape :math:`(*, 3, 3)`.

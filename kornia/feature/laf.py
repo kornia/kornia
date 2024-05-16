@@ -68,8 +68,8 @@ def get_laf_orientation(LAF: Tensor) -> Tensor:
 
 
 def rotate_laf(LAF: Tensor, angles_degrees: Tensor) -> Tensor:
-    """Apply additional rotation to the the LAFs. Compared to `set_laf_orientation`, the resulting rotation is
-    original LAF orientation plus angles_degrees.
+    """Apply additional rotation to the LAFs. Compared to `set_laf_orientation`, the resulting rotation is original
+    LAF orientation plus angles_degrees.
 
     Args:
         LAF: :math:`(B, N, 2, 3)`

@@ -522,6 +522,29 @@ def main():
         sig = f"{fn_name}({', '.join([str(a) for a in args])})"
         print(f"Generated image example for {fn_name}. {sig}")
 
+    # kornia.filters.in_range
+    mod = importlib.import_module("kornia.filters")
+    transforms: dict = {
+        "in_range": (((0.314, 0.2, 0.2), (0.47, 1.0, 1.0), True), 1),
+    }
+    # ITERATE OVER THE TRANSFORMS
+    for fn_name, (args, num_samples) in transforms.items():
+        img_hsv = K.color.rgb_to_hsv(img1)
+        h, s, v = torch.split(img_hsv, split_size_or_sections=1, dim=1)
+        h = h / (2 * torch.pi)
+        img_hsv = torch.cat((h, s, v), dim=1)
+        args_in = (img_hsv, *args)
+        fn = getattr(mod, fn_name)
+        mask = fn(*args_in)
+        filtered = img1 * mask
+        mask = mask.repeat(1, img1.shape[1], 1, 1)
+        # save the output image
+        out = torch.cat([img1[0], mask[0], filtered[0]], dim=-1)
+        out_np = K.utils.tensor_to_image((out * 255.0).byte())
+        cv2.imwrite(str(OUTPUT_PATH / f"{fn_name}.png"), out_np)
+        sig = f"{fn_name}({', '.join([str(a) for a in args])})"
+        print(f"Generated image example for {fn_name}. {sig}")
+
     # korna.geometry.transform module
     mod = importlib.import_module("kornia.geometry.transform")
     h, w = img6.shape[-2:]
