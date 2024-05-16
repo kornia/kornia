@@ -20,11 +20,11 @@ jobs:
         os: ['Ubuntu-latest', 'Windows-latest']
         pytorch-dtype: ['float32', 'float64']
 
-    uses: kornia/workflows/.github/workflows/tests.yml@v1.8.1
+    uses: kornia/workflows/.github/workflows/tests.yml@v1.9.0
     with:
       os: ${{ matrix.os }}
       python-version: '["3.8", "3.11"]'
-      pytorch-version: '["1.9.1", "2.2.2"]'
+      pytorch-version: '["1.9.1", "2.3.0"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
 
   tests-cpu-macos:
@@ -36,16 +36,16 @@ jobs:
 
 
   coverage:
-    uses: kornia/workflows/.github/workflows/coverage.yml@v1.8.1
+    uses: kornia/workflows/.github/workflows/coverage.yml@v1.9.0
 
   typing:
-    uses: kornia/workflows/.github/workflows/mypy.yml@v1.8.1
+    uses: kornia/workflows/.github/workflows/mypy.yml@v1.9.0
 
   tutorials:
-    uses: kornia/workflows/.github/workflows/tutorials.yml@v1.8.1
+    uses: kornia/workflows/.github/workflows/tutorials.yml@v1.9.0
 
   docs:
-    uses: kornia/workflows/.github/workflows/docs.yml@v1.8.1
+    uses: kornia/workflows/.github/workflows/docs.yml@v1.9.0
 
   collector:
     needs: [coverage, tests-cpu, tutorials, typing, docs]
@@ -66,7 +66,7 @@ jobs:
         os: ['Ubuntu-latest', 'Windows-latest'] #, 'MacOS-latest'] add it when https://github.com/pytorch/pytorch/pull/89262 be merged
         pytorch-dtype: ['float32', 'float64']
 
-    uses: kornia/workflows/.github/workflows/tests.yml@v1.8.1
+    uses: kornia/workflows/.github/workflows/tests.yml@v1.9.0
     with:
       os: ${{ matrix.os }}
       pytorch-version: '["nightly"]'
