@@ -5,15 +5,15 @@ import torch.nn.functional as F
 
 from kornia.core import Module, Tensor, concatenate, pad, stack
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.feature.sold2.structures import LineDetectorCfg
 from kornia.geometry.conversions import normalize_pixel_coordinates
 from kornia.utils import map_location_to_cpu
 
 from .backbones import SOLD2Net
-from .sold2_detector import LineDetectorCfg, LineSegmentDetectionModule, line_map_to_segments, prob_to_junctions
+from .sold2_detector import LineSegmentDetectionModule, line_map_to_segments, prob_to_junctions
 
 urls: Dict[str, str] = {}
 urls["wireframe"] = "http://cmp.felk.cvut.cz/~mishkdmy/models/sold2_wireframe.pth"
-
 
 default_cfg: Dict[str, Any] = {
     "backbone_cfg": {"input_channel": 1, "depth": 4, "num_stacks": 2, "num_blocks": 1, "num_classes": 5},
