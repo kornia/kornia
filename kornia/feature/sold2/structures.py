@@ -36,10 +36,10 @@ class LineDetectorCfg:
 @dataclass
 class LineMatcherCfg:
     cross_check: bool = True
-    num_samples: int = 10
+    num_samples: int = 5
     min_dist_pts: int = 8
     top_k_candidates: int = 10
-    grid_size: int = 8
+    grid_size: int = 4
     line_score: bool = False  # True to compute saliency on a line
 
 
