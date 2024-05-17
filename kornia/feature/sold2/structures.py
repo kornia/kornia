@@ -1,4 +1,7 @@
 from dataclasses import dataclass, field
+from typing import Type
+
+from torch.nn import Module
 
 
 @dataclass
@@ -45,11 +48,25 @@ class LineMatcherCfg:
 
 @dataclass
 class BackboneCfg:
-    input_channel: int = 1
+    input_channels: int = 1
     depth: int = 4
     num_stacks: int = 2
     num_blocks: int = 1
     num_classes: int = 5
+    head: Type[Module]
+
+
+@dataclass
+class SuperpointDecoderCfg:
+    input_feat_dim: int = 256
+    grid_size: int = 8
+
+
+@dataclass
+class PixelShuffleDecoderCfg:
+    input_feat_dim: int = 256
+    num_upsample: int = 2
+    output_channels: int = 2
 
 
 @dataclass
@@ -62,3 +79,5 @@ class DetectorCfg:
     max_num_junctions: int = 500  # maximum number of junctions per image
     line_detector_cfg: LineDetectorCfg = field(default_factory=LineDetectorCfg)
     line_matcher_cfg: LineMatcherCfg = field(default_factory=LineMatcherCfg)
+    super_point_decoder_cfg: SuperpointDecoderCfg = field(default_factory=SuperpointDecoderCfg)
+    pixel_shuffle_decoder_cfg: PixelShuffleDecoderCfg = field(default_factory=PixelShuffleDecoderCfg)
