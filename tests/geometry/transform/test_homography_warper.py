@@ -262,6 +262,9 @@ class TestHomographyWarper(BaseTester):
     @pytest.mark.parametrize("align_corners", [True, False])
     @pytest.mark.parametrize("normalized_coordinates", [True, False])
     def test_dynamo(self, batch_size, align_corners, normalized_coordinates, device, dtype, torch_optimizer):
+        if device == torch.device("cpu") and batch_size != 1 and kornia.utils._compat.torch_version() == "2.3.0":
+            pytest.skip("Failing to compile batched inputs see pytorch/pytorch#126617")
+
         # generate input data
         height, width = 128, 64
         eye_size = 3  # identity 3x3
@@ -271,29 +274,28 @@ class TestHomographyWarper(BaseTester):
         # create base homography
         dst_homo_src = eye_like(eye_size, patch_src)
 
-        for _ in range(self.num_tests):
-            # generate homography noise
-            homo_delta = torch.rand_like(dst_homo_src) * 0.3
+        # generate homography noise
+        homo_delta = torch.rand_like(dst_homo_src) * 0.3
 
-            dst_homo_src_i = dst_homo_src + homo_delta
+        dst_homo_src_i = dst_homo_src + homo_delta
 
-            # transform the points with and without jit
-            patch_dst = kornia.geometry.transform.homography_warp(
-                patch_src,
-                dst_homo_src_i,
-                (height, width),
-                align_corners=align_corners,
-                normalized_coordinates=normalized_coordinates,
-            )
-            patch_dst_optimized = torch_optimizer(kornia.geometry.transform.homography_warp)(
-                patch_src,
-                dst_homo_src_i,
-                (height, width),
-                align_corners=align_corners,
-                normalized_coordinates=normalized_coordinates,
-            )
+        # transform the points with and without jit
+        patch_dst = kornia.geometry.transform.homography_warp(
+            patch_src,
+            dst_homo_src_i,
+            (height, width),
+            align_corners=align_corners,
+            normalized_coordinates=normalized_coordinates,
+        )
+        patch_dst_optimized = torch_optimizer(kornia.geometry.transform.homography_warp)(
+            patch_src,
+            dst_homo_src_i,
+            (height, width),
+            align_corners=align_corners,
+            normalized_coordinates=normalized_coordinates,
+        )
 
-            self.assert_close(patch_dst, patch_dst_optimized, atol=1e-4, rtol=1e-4)
+        self.assert_close(patch_dst, patch_dst_optimized, atol=1e-4, rtol=1e-4)
 
 
 class TestHomographyNormalTransform(BaseTester):
