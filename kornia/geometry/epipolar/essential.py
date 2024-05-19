@@ -84,7 +84,7 @@ def null_to_Nister_solution(X: torch.Tensor, batch_size: int)-> torch.Tensor:
 
     Returns:
         the computed essential matrix with shape :math:`(B, 3, 3)`. 
-        Note that the retuned E matrices should be the same batch size with the input.
+        Note that the returned E matrices should be the same batch size with the input.
     """
     
     # compute eigenvectors and retrieve the one with the smallest eigenvalue, using SVD
