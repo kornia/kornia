@@ -8,7 +8,7 @@ import kornia.geometry.epipolar as epi
 from kornia.core import eye, ones_like, stack, where, zeros
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
 from kornia.geometry import solvers
-from kornia.utils import eye_like, safe_inverse_with_mask, vec_like
+from kornia.utils import eye_like, vec_like
 from kornia.utils.helpers import _torch_solve_cast, _torch_svd_cast
 
 from .numeric import cross_product_matrix
@@ -66,14 +66,16 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
 
     # use Nister's 5PC to solve essential matrix
     E_Nister = null_to_Nister_solution(X, batch_size)
-    
+
     return E_Nister
+
 
 def fun_select(null_mat: torch.Tensor, i: int, j: int, ratio=3) -> torch.Tensor:
     return null_mat[:, ratio * j + i]
 
-def null_to_Nister_solution(X: torch.Tensor, batch_size: int)-> torch.Tensor:
-    r"""use Nister's 5PC to solve essential matrix
+
+def null_to_Nister_solution(X: torch.Tensor, batch_size: int) -> torch.Tensor:
+    r"""Use Nister's 5PC to solve essential matrix.
 
     The linear system is solved by Nister's 5-point algorithm [@nister2004efficient],
     and the solver implemented referred to [@barath2020magsac++][@wei2023generalized][@wang2023vggsfm].
@@ -83,33 +85,36 @@ def null_to_Nister_solution(X: torch.Tensor, batch_size: int)-> torch.Tensor:
         batch_size: batcs size of the input, the number of image pairs :math:`B`.
 
     Returns:
-        the computed essential matrix with shape :math:`(B, 3, 3)`. 
+        the computed essential matrix with shape :math:`(B, 3, 3)`.
         Note that the returned  E matrices should be the same batch size with the input.
     """
-    
+
     # compute eigenvectors and retrieve the one with the smallest eigenvalue, using SVD
     # turn off the grad check due to the unstable gradients from SVD.
     # several close to zero values of eigenvalues.
     _, _, V = _torch_svd_cast(X)  # torch.svd
-    
+
     null_ = V[:, :, -4:]  # the last four rows
     nullSpace = V.transpose(-1, -2)[:, -4:, :]
 
     coeffs = zeros(batch_size, 10, 20, device=null_.device, dtype=null_.dtype)
     d = zeros(batch_size, 60, device=null_.device, dtype=null_.dtype)
-    
+
     # Determinant constraint
     coeffs[:, 9] = (
         solvers.multiply_deg_two_one_poly(
-            solvers.multiply_deg_one_poly(fun_select(null_, 0, 1), fun_select(null_, 1, 2)) - solvers.multiply_deg_one_poly(fun_select(null_, 0, 2), fun_select(null_, 1, 1)),
+            solvers.multiply_deg_one_poly(fun_select(null_, 0, 1), fun_select(null_, 1, 2))
+            - solvers.multiply_deg_one_poly(fun_select(null_, 0, 2), fun_select(null_, 1, 1)),
             fun_select(null_, 2, 0),
         )
         + solvers.multiply_deg_two_one_poly(
-            solvers.multiply_deg_one_poly(fun_select(null_, 0, 2), fun_select(null_, 1, 0)) - solvers.multiply_deg_one_poly(fun_select(null_, 0, 0), fun_select(null_, 1, 2)),
+            solvers.multiply_deg_one_poly(fun_select(null_, 0, 2), fun_select(null_, 1, 0))
+            - solvers.multiply_deg_one_poly(fun_select(null_, 0, 0), fun_select(null_, 1, 2)),
             fun_select(null_, 2, 1),
         )
         + solvers.multiply_deg_two_one_poly(
-            solvers.multiply_deg_one_poly(fun_select(null_, 0, 0), fun_select(null_, 1, 1)) - solvers.multiply_deg_one_poly(fun_select(null_, 0, 1), fun_select(null_, 1, 0)),
+            solvers.multiply_deg_one_poly(fun_select(null_, 0, 0), fun_select(null_, 1, 1))
+            - solvers.multiply_deg_one_poly(fun_select(null_, 0, 1), fun_select(null_, 1, 0)),
             fun_select(null_, 2, 2),
         )
     )
@@ -146,18 +151,18 @@ def null_to_Nister_solution(X: torch.Tensor, batch_size: int)-> torch.Tensor:
     singular_filter = torch.linalg.matrix_rank(coeffs[:, :, :10]) >= torch.max(
         torch.linalg.matrix_rank(coeffs), ones_like(torch.linalg.matrix_rank(coeffs[:, :, :10])) * 10
     )
-    
+
     # check if there is no solution
     if len(singular_filter) == 0:
         return torch.eye(3, dtype=coeffs.dtype, device=coeffs.device)[None].expand(batch_size, 10, -1, -1).clone()
-    
+
     eliminated_mat = _torch_solve_cast(coeffs[singular_filter, :, :10], b[singular_filter])
 
     coeffs_ = torch.cat((coeffs[singular_filter, :, :10], eliminated_mat), dim=-1)
-    
+
     # check the batch size after singular filter, for batch operation afterwards
     batch_size_filtered = coeffs_.shape[0]
-    
+
     A = zeros(coeffs_.shape[0], 3, 13, device=coeffs_.device, dtype=coeffs_.dtype)
 
     for i in range(3):
@@ -188,7 +193,7 @@ def null_to_Nister_solution(X: torch.Tensor, batch_size: int)-> torch.Tensor:
     roots = torch.real(torch.linalg.eigvals(C))
 
     roots_unsqu = roots.unsqueeze(1)
-    
+
     Bs = stack(
         (
             A[:, :3, :1] * (roots_unsqu**3)
@@ -202,7 +207,7 @@ def null_to_Nister_solution(X: torch.Tensor, batch_size: int)-> torch.Tensor:
         ),
         dim=1,
     )
-    
+
     Bs = Bs.transpose(1, -1)
 
     bs = (
@@ -222,8 +227,10 @@ def null_to_Nister_solution(X: torch.Tensor, batch_size: int)-> torch.Tensor:
     mask = (abs(Bs[:, 2].unsqueeze(1) @ xzs - bs[:, 2].unsqueeze(1)) > 1e-3).flatten()
 
     # mask: bx10x1x1
-    mask = (abs(torch.matmul(Bs[:, :, 2, :].unsqueeze(2), xzs) - bs[:, :, 2, :].unsqueeze(2)) > 1e-3)  # .flatten(start_dim=1)
-    
+    mask = (
+        abs(torch.matmul(Bs[:, :, 2, :].unsqueeze(2), xzs) - bs[:, :, 2, :].unsqueeze(2)) > 1e-3
+    )  # .flatten(start_dim=1)
+
     # bx10
     mask = mask.squeeze(3).squeeze(2)
 
@@ -245,7 +252,7 @@ def null_to_Nister_solution(X: torch.Tensor, batch_size: int)-> torch.Tensor:
     Es *= inv
 
     Es = Es.view(batch_size_filtered, -1, 3, 3).transpose(-1, -2)
-    
+
     # make sure the returned batch size equals to that of inputs
     E_return = torch.eye(3, dtype=Es.dtype, device=Es.device)[None].expand(batch_size, 10, -1, -1).clone()
     E_return[singular_filter] = Es
