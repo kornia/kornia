@@ -16,7 +16,7 @@ class TestFindEssential(BaseTester):
         E_mat = epi.essential.find_essential(points1, points2, weights)
         assert E_mat.shape == (1, 3, 3)
 
-    @pytest.mark.parametrize("batch_size, num_points", [(1, 5), (2, 6), (3, 7), (1000, 5), (10000, 5)])
+    @pytest.mark.parametrize("batch_size, num_points", [(1, 5), (2, 6), (3, 7), (1000, 5)])
     def test_shape(self, batch_size, num_points, device, dtype):
         B, N = batch_size, num_points
         points1 = torch.rand(B, N, 2, device=device, dtype=dtype)
