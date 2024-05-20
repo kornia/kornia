@@ -392,9 +392,9 @@ class Boxes:
 
     def compute_area(self) -> torch.Tensor:
         """Returns :math:`(B, N)`."""
-        w = self._data[:, :, 1, 0] - self._data[:, :, 0, 0]
-        h = self._data[:, :, 2, 1] - self._data[:, :, 0, 1]
-        return w * h
+        w = self._data[..., 1, 0] - self._data[..., 0, 0]
+        h = self._data[..., 2, 1] - self._data[..., 0, 1]
+        return (w * h).unsqueeze(0) if self._data.ndim == 3 else (w * h)
 
     @classmethod
     def from_tensor(
