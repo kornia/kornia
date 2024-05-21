@@ -97,11 +97,11 @@ kornia = [
 universal = true
 
 [tool.ruff]
-line-length = 120
 target-version = "py38"
 
-[tool.ruff.lint]
-select = [
+line-length = 120
+format.skip-magic-trailing-comma = false
+lint.select = [
   "AIR",   # Airflow
   "ASYNC", # flake8-async
   "BLE",   # flake8-blind-except
@@ -159,80 +159,69 @@ select = [
   # "TD",   # flake8-todos
   # "TRY",  # tryceratops
 ]
-ignore = [
-  "PLW2901", # Allow overwritten values on loops
-  "PLR0915", # Allow condition check in list comprehension
-  "UP007",   # Prefer Optional[], Union[] over | due to torch jit scripting
-]
-
-[tool.ruff.lint.isort]
-known-first-party = [
-  "kornia",
-]
-split-on-trailing-comma = true
-forced-separate = [
+lint.per-file-ignores."*/__init__.py" = [
+  "F401",
+  "F403",
+] # Allow unused imports and star imports
+lint.per-file-ignores."benchmarks/*" = [
+  "BLE",
+  "RUF005",
+  "RUF012",
+  "S101",
+  "S311",
+] # allow assert, random, ignore BLE, mutable class attr
+lint.per-file-ignores."docs/*" = [
+  "PLR0912",
+  "PLR0915",
+  "S101",
+] # allow assert, ignore max branches and statements
+lint.per-file-ignores."docs/generate_examples.py" = [
+  "C901",
+] # Allow too complex function
+lint.per-file-ignores."kornia/__init__.py" = [
+  "I001",
+] # Allow unsorted imports
+lint.per-file-ignores."kornia/feature/dedode/*" = [
+  "C408",
+  "F401",
+  "F841",
+  "FLY002",
+  "PLR1714",
+] # allow DINOv2 things
+lint.per-file-ignores."testing/*" = [
+  "S101",
+] # allow assert
+lint.per-file-ignores."tests/*" = [
+  "BLE",
+  "RUF005",
+  "RUF012",
+  "S101",
+  "S311",
+] # allow assert, random, ignore BLE, mutable class attr
+lint.isort.forced-separate = [
   "testing",
   "tests",
 ]
-
-[tool.ruff.lint.mccabe]
-max-complexity = 20
-
-[tool.ruff.lint.pylint]
-allow-magic-value-types = [
+lint.isort.known-first-party = [
+  "kornia",
+]
+lint.isort.split-on-trailing-comma = true
+lint.mccabe.max-complexity = 20
+lint.pylint.allow-magic-value-types = [
   "bytes",
   "float",
   "int",
   "str",
 ]
-max-args = 30 # Recommended: 5
-max-branches = 21 # Recommended: 12
-max-returns = 13 # Recommended: 6
-max-statements = 64 # Recommended: 50
-
-[tool.ruff.lint.per-file-ignores]
-"*/__init__.py" = [
-  "F401",
-  "F403",
-] # Allow unused imports and star imports
-"docs/*" = [
-  "S101",
-  "PLR0912",
-  "PLR0915",
-] # allow assert, ignore max branches and statements
-"docs/generate_examples.py" = [
-  "C901",
-] # Allow too complex function
-"kornia/__init__.py" = [
-  "I001",
-] # Allow unsorted imports
-"tests/*" = [
-  "S101",
-  "S311",
-  "BLE",
-  "RUF012",
-  "RUF005",
-] # allow assert, random, ignore BLE, mutable class attr
-"benchmarks/*" = [
-  "S101",
-  "S311",
-  "BLE",
-  "RUF012",
-  "RUF005",
-] # allow assert, random, ignore BLE, mutable class attr
-"testing/*" = [
-  "S101",
-] # allow assert
-"kornia/feature/dedode/*" = [
-  "C408",
-  "FLY002",
-  "PLR1714",
-  "F401",
-  "F841",
-] # allow DINOv2 things
-
-[tool.ruff.format]
-skip-magic-trailing-comma = false
+lint.pylint.max-args = 30 # Recommended: 5
+lint.pylint.max-branches = 21 # Recommended: 12
+lint.pylint.max-returns = 13 # Recommended: 6
+lint.pylint.max-statements = 64 # Recommended: 50
+lint.ignore = [
+  "PLR0915", # Allow condition check in list comprehension
+  "PLW2901", # Allow overwritten values on loops
+  "UP007",   # Prefer Optional[], Union[] over | due to torch jit scripting
+]
 
 [tool.pytest.ini_options]
 addopts = "--color=yes"

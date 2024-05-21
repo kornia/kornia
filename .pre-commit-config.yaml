@@ -15,7 +15,7 @@ repos:
         exclude: ^$|.devcontainer
 
   - repo: https://github.com/tox-dev/pyproject-fmt
-    rev: "2.0.4"
+    rev: "2.1.1"
     hooks:
       - id: pyproject-fmt
 
