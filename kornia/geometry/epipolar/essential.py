@@ -69,7 +69,7 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     return E_Nister
 
 
-def fun_select(null_mat: torch.Tensor, i: int, j: int, ratio=3) -> torch.Tensor:
+def fun_select(null_mat: torch.Tensor, i: int, j: int, ratio: int=3) -> torch.Tensor:
     return null_mat[:, ratio * j + i]
 
 
