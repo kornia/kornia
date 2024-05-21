@@ -153,7 +153,7 @@ def null_to_Nister_solution(X: torch.Tensor, batch_size: int) -> torch.Tensor:
     )
 
     # check if there is no solution
-    if len(singular_filter) == 0:
+    if singular_filter.sum() == 0:
         return torch.eye(3, dtype=coeffs.dtype, device=coeffs.device)[None].expand(batch_size, 10, -1, -1).clone()
 
     eliminated_mat = _torch_solve_cast(coeffs[singular_filter, :, :10], b[singular_filter])
@@ -543,27 +543,12 @@ def find_essential(
         points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=5`.
         weights: Tensor containing the weights per point correspondence with a shape of :math:`(5, N)`.
 
-    Returns:
-        the computed essential matrix with shape :math:`(B, 3, 3)`,
-        one model for each batch selected out of ten solutions by Sampson distances.
+   Returns:
+        the computed essential matrices with shape :math:`(B, 10, 3, 3)`.
+        Note that all possible solutions are returned, i.e., 10 essential matrices for each image pair. 
+        To choose the best one out of 10, try to check the one with the lowest Sampson distance. 
 
     """
     E = run_5point(points1, points2, weights).to(points1.dtype)
 
-    # select one out of 10 possible solutions from 5PC Nister solver.
-    solution_num = 10
-    batch_size = points1.shape[0]
-
-    error = zeros((batch_size, solution_num))
-
-    for b in range(batch_size):
-        error[b] = epi.sampson_epipolar_distance(points1[b], points2[b], E.view(batch_size, solution_num, 3, 3)[b]).sum(
-            -1
-        )
-
-    KORNIA_CHECK_SHAPE(error, ["f{batch_size}", "10"])
-
-    chosen_indices = torch.argmin(error, dim=-1)
-    result = stack([(E.view(-1, solution_num, 3, 3))[i, chosen_indices[i], :] for i in range(batch_size)])
-
-    return result
+    return E
