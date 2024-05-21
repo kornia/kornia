@@ -177,7 +177,7 @@ def null_to_Nister_solution(X: torch.Tensor, batch_size: int) -> torch.Tensor:
 
     # Bx11
     cs = solvers.determinant_to_polynomial(A)
-
+ 
     # A: Bx3x13
     # nullSpace: Bx4x9
     # companion matrices to solve the polynomial, in batch
@@ -186,7 +186,7 @@ def null_to_Nister_solution(X: torch.Tensor, batch_size: int) -> torch.Tensor:
     C[:, 0:-1, 1:] = eye_mat
 
     cs_de = cs[:, -1].unsqueeze(-1)
-    cs_de = torch.where(cs_de == 0, 1e-8, cs_de)
+    cs_de = torch.where(cs_de == 0, torch.tensor(1e-8, dtype=cs_de.dtype), cs_de)
     C[:, -1, :] = -cs[:, :-1] / cs_de
 
     roots = torch.real(torch.linalg.eigvals(C))
