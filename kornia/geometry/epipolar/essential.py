@@ -69,7 +69,7 @@ def run_5point(points1: torch.Tensor, points2: torch.Tensor, weights: Optional[t
     return E_Nister
 
 
-def fun_select(null_mat: torch.Tensor, i: int, j: int, ratio: int=3) -> torch.Tensor:
+def fun_select(null_mat: torch.Tensor, i: int, j: int, ratio: int = 3) -> torch.Tensor:
     return null_mat[:, ratio * j + i]
 
 
@@ -177,7 +177,7 @@ def null_to_Nister_solution(X: torch.Tensor, batch_size: int) -> torch.Tensor:
 
     # Bx11
     cs = solvers.determinant_to_polynomial(A)
- 
+
     # A: Bx3x13
     # nullSpace: Bx4x9
     # companion matrices to solve the polynomial, in batch
