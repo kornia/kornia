@@ -45,14 +45,13 @@ class TestFindEssential(BaseTester):
             device=device,
             dtype=dtype,
         )
-        
+
         E = epi.essential.find_essential(calibrated_x1, calibrated_x2)
         if torch.all(E != 0):
             distance = epi.symmetrical_epipolar_distance(calibrated_x1, calibrated_x2, E)
             # Note : here we check only the best model, although all solutions are returned
             mean_error = distance.mean(-1).min()
             self.assert_close(mean_error, torch.tensor(0.0, device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
-            
 
     def test_synthetic_sampson(self, device, dtype):
         calibrated_x1 = torch.tensor(
@@ -70,7 +69,10 @@ class TestFindEssential(BaseTester):
         E_est = epi.essential.find_essential(calibrated_x1, calibrated_x2, weights)
         error = epi.sampson_epipolar_distance(calibrated_x1, calibrated_x2, E_est)
         self.assert_close(
-            error[:, torch.argmin(error.mean(-1).min())], torch.zeros((calibrated_x1.shape[:2]), device=device, dtype=dtype), atol=1e-4, rtol=1e-4
+            error[:, torch.argmin(error.mean(-1).min())],
+            torch.zeros((calibrated_x1.shape[:2]), device=device, dtype=dtype),
+            atol=1e-4,
+            rtol=1e-4,
         )
 
     @pytest.mark.parametrize("batch_size, num_points", [(5, 5), (10, 5)])
@@ -80,6 +82,7 @@ class TestFindEssential(BaseTester):
         weights = torch.ones_like(points1_deg)[..., 0]
         E_mat_deg = epi.essential.find_essential(points1_deg, points1_deg, weights)
         assert E_mat_deg.shape == (B, 10, 3, 3)
+
 
 class TestEssentialFromFundamental(BaseTester):
     def test_smoke(self, device, dtype):

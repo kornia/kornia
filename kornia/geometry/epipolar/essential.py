@@ -4,7 +4,6 @@ from typing import Optional, Tuple
 
 import torch
 
-import kornia.geometry.epipolar as epi
 from kornia.core import eye, ones_like, stack, where, zeros
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
 from kornia.geometry import solvers
@@ -538,15 +537,15 @@ def find_essential(
     points1: torch.Tensor, points2: torch.Tensor, weights: Optional[torch.Tensor] = None
 ) -> torch.Tensor:
     r"""
-    Args:
-        points1: A set of points in the first image with a tensor shape :math:`(B, N, 2), N>=5`.
-        points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=5`.
-        weights: Tensor containing the weights per point correspondence with a shape of :math:`(5, N)`.
+     Args:
+         points1: A set of points in the first image with a tensor shape :math:`(B, N, 2), N>=5`.
+         points2: A set of points in the second image with a tensor shape :math:`(B, N, 2), N>=5`.
+         weights: Tensor containing the weights per point correspondence with a shape of :math:`(5, N)`.
 
-   Returns:
-        the computed essential matrices with shape :math:`(B, 10, 3, 3)`.
-        Note that all possible solutions are returned, i.e., 10 essential matrices for each image pair. 
-        To choose the best one out of 10, try to check the one with the lowest Sampson distance. 
+    Returns:
+         the computed essential matrices with shape :math:`(B, 10, 3, 3)`.
+         Note that all possible solutions are returned, i.e., 10 essential matrices for each image pair.
+         To choose the best one out of 10, try to check the one with the lowest Sampson distance.
 
     """
     E = run_5point(points1, points2, weights).to(points1.dtype)
