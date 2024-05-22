@@ -14,16 +14,16 @@ class TestFindEssential(BaseTester):
         points2 = torch.rand(1, 5, 2, device=device, dtype=dtype)
         weights = torch.ones(1, 5, device=device, dtype=dtype)
         E_mat = epi.essential.find_essential(points1, points2, weights)
-        assert E_mat.shape == (1, 3, 3)
+        assert E_mat.shape == (1, 10, 3, 3)
 
-    @pytest.mark.parametrize("batch_size, num_points", [(1, 5), (2, 6), (3, 7)])
+    @pytest.mark.parametrize("batch_size, num_points", [(1, 5), (2, 6), (3, 7), (1000, 5)])
     def test_shape(self, batch_size, num_points, device, dtype):
         B, N = batch_size, num_points
         points1 = torch.rand(B, N, 2, device=device, dtype=dtype)
         points2 = torch.rand(B, N, 2, device=device, dtype=dtype)
         weights = torch.ones(B, N, device=device, dtype=dtype)
         E_mat = epi.essential.find_essential(points1, points2, weights)
-        assert E_mat.shape == (B, 3, 3)
+        assert E_mat.shape == (B, 10, 3, 3)
 
     @pytest.mark.parametrize("batch_size, num_points", [(1, 5), (2, 6), (3, 7)])
     def test_shape_noweights(self, batch_size, num_points, device, dtype):
@@ -32,7 +32,7 @@ class TestFindEssential(BaseTester):
         points2 = torch.rand(B, N, 2, device=device, dtype=dtype)
         weights = None
         E_mat = epi.essential.find_essential(points1, points2, weights)
-        assert E_mat.shape == (B, 3, 3)
+        assert E_mat.shape == (B, 10, 3, 3)
 
     def test_epipolar_constraint(self, device, dtype):
         calibrated_x1 = torch.tensor(
@@ -49,7 +49,8 @@ class TestFindEssential(BaseTester):
         E = epi.essential.find_essential(calibrated_x1, calibrated_x2)
         if torch.all(E != 0):
             distance = epi.symmetrical_epipolar_distance(calibrated_x1, calibrated_x2, E)
-            mean_error = distance.mean()
+            # Note : here we check only the best model, although all solutions are returned
+            mean_error = distance.mean(-1).min()
             self.assert_close(mean_error, torch.tensor(0.0, device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
 
     def test_synthetic_sampson(self, device, dtype):
@@ -68,8 +69,19 @@ class TestFindEssential(BaseTester):
         E_est = epi.essential.find_essential(calibrated_x1, calibrated_x2, weights)
         error = epi.sampson_epipolar_distance(calibrated_x1, calibrated_x2, E_est)
         self.assert_close(
-            error, torch.zeros((calibrated_x1.shape[:2]), device=device, dtype=dtype), atol=1e-4, rtol=1e-4
+            error[:, torch.argmin(error.mean(-1).min())],
+            torch.zeros((calibrated_x1.shape[:2]), device=device, dtype=dtype),
+            atol=1e-4,
+            rtol=1e-4,
         )
+
+    @pytest.mark.parametrize("batch_size, num_points", [(5, 5), (10, 5)])
+    def test_degenerate_case(self, batch_size, num_points, device, dtype):
+        B, N = batch_size, num_points
+        points1_deg = torch.rand(B, N, 2, device=device, dtype=dtype)
+        weights = torch.ones_like(points1_deg)[..., 0]
+        E_mat_deg = epi.essential.find_essential(points1_deg, points1_deg, weights)
+        assert E_mat_deg.shape == (B, 10, 3, 3)
 
 
 class TestEssentialFromFundamental(BaseTester):
