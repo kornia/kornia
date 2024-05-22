@@ -76,7 +76,7 @@ class TestFindEssential(BaseTester):
         )
 
     @pytest.mark.parametrize("batch_size, num_points", [(5, 5), (10, 5)])
-    def test_degenarate_case(self, batch_size, num_points, device, dtype):
+    def test_degenerate_case(self, batch_size, num_points, device, dtype):
         B, N = batch_size, num_points
         points1_deg = torch.rand(B, N, 2, device=device, dtype=dtype)
         weights = torch.ones_like(points1_deg)[..., 0]
