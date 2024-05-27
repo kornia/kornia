@@ -207,8 +207,8 @@ def apply_colormap(input_tensor: Tensor, colormap: ColorMap) -> Tensor:
     max_value = 1.0 if input_tensor.max() <= 1.0 else 255.0
     input_tensor = input_tensor.float().div_(max_value)
 
-    colormap = colormap.colors.permute(1, 0)
-    num_colors, channels_cmap = colormap.shape
+    colors = colormap.colors.permute(1, 0)
+    num_colors, channels_cmap = colors.shape
     keys = torch.linspace(0.0, 1.0, num_colors - 1, device=input_tensor.device, dtype=input_tensor.dtype)
     indices = torch.bucketize(input_tensor, keys).unsqueeze(-1).expand(-1, -1, -1, 3)
 
