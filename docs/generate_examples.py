@@ -370,7 +370,7 @@ def main():
     # ITERATE OVER THE COLORMAPS
     for colormap_name, args in colormaps_list.items():
         cm = K.color.ColorMap(base=colormap_name, num_colors=args[0])
-        out = K.color.rgb_to_bgr(K.color.apply_colormap(bar_img_gray, cm))
+        out = K.color.rgb_to_bgr(K.color.apply_colormap(bar_img_gray, cm))[0]
 
         out = torch.cat([bar_img, out], dim=-1)
 
@@ -399,7 +399,7 @@ def main():
     for i, ax in enumerate(axes.flat):
         if i < num_colormaps:
             cmap = K.color.ColorMap(base=colormap_list[i], num_colors=num_colors)
-            res = K.color.ApplyColorMap(colormap=cmap)(input_tensor)
+            res = K.color.ApplyColorMap(colormap=cmap)(input_tensor)[0]
             ax.imshow(res.permute(1, 2, 0).numpy())
             ax.set_title(colormap_list[i], fontsize=12)
             ax.axis("off")

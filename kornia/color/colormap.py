@@ -9,7 +9,7 @@ from torch.nn.functional import interpolate
 import kornia.color._colormap_data as cm_data
 from kornia.color._colormap_data import RGBColor
 from kornia.core import Module, Tensor, tensor
-from kornia.core.check import KORNIA_CHECK_IS_GRAY
+from kornia.core.check import KORNIA_CHECK
 from kornia.utils.helpers import deprecated
 
 
@@ -84,8 +84,8 @@ class ColorMap:
     the `ColorMapType` enum class to view all available colormaps.
 
     Args:
-        base: A list of RGB colors to define a new custom colormap or
-        the name of a built-in colormap as str or using ColorMapType class.
+        base: A list of RGB colors to define a new custom colormap or the name of a built-in colormap as str or
+        using `ColorMapType` class.
         num_colors: Number of colors in the colormap.
         device: The device to put the generated colormap on.
         dtype: The data type of the generated colormap.
@@ -164,7 +164,7 @@ def apply_colormap(input_tensor: Tensor, colormap: ColorMap) -> Tensor:
     .. image:: _static/img/apply_colormap.png
 
     Args:
-        input_tensor: the input tensor of a gray image.
+        input_tensor: the input tensor of image.
         colormap: the colormap desired to be applied to the input tensor.
 
     Returns:
@@ -174,41 +174,49 @@ def apply_colormap(input_tensor: Tensor, colormap: ColorMap) -> Tensor:
         ValueError: If `colormap` is not a ColorMap object.
 
     .. note::
-        The image data is assumed to be integer values in range of [0-255].
+        The input tensor must be integer values in the range of [0-255] or float values in the range of [0-1].
 
     Example:
-        >>> input_tensor = torch.tensor([[[0, 1, 2], [25, 50, 63]]])
-        >>> colormap = ColorMap(base='autumn')
+        >>> input_tensor = torch.tensor([[[0, 1, 2], [15, 25, 33], [128, 158, 188]]])
+        >>> colormap = ColorMap(base=ColorMapType.autumn)
         >>> apply_colormap(input_tensor, colormap)
-        tensor([[[1.0000, 1.0000, 1.0000],
-                 [1.0000, 1.0000, 1.0000]],
+        tensor([[[[1.0000, 1.0000, 1.0000],
+                  [1.0000, 1.0000, 1.0000],
+                  [1.0000, 1.0000, 1.0000]],
         <BLANKLINE>
-                [[0.0000, 0.0159, 0.0317],
-                 [0.3968, 0.7937, 1.0000]],
+                 [[0.0000, 0.0159, 0.0159],
+                  [0.0635, 0.1111, 0.1429],
+                  [0.5079, 0.6190, 0.7302]],
         <BLANKLINE>
-                [[0.0000, 0.0000, 0.0000],
-                 [0.0000, 0.0000, 0.0000]]])
+                 [[0.0000, 0.0000, 0.0000],
+                  [0.0000, 0.0000, 0.0000],
+                  [0.0000, 0.0000, 0.0000]]]])
     """
-    # FIXME: implement to work with RGB images
-    # should work with KORNIA_CHECK_SHAPE(x, ["B","C", "H", "W"])
 
-    KORNIA_CHECK_IS_GRAY(input_tensor)
+    KORNIA_CHECK(isinstance(input_tensor, Tensor), f"`input_tensor` must be a Tensor. Got: {type(input_tensor)}")
+    valid_types = [torch.half, torch.float, torch.double, torch.uint8, torch.int, torch.long, torch.short]
+    KORNIA_CHECK(
+        input_tensor.dtype in valid_types, f"`input_tensor` must be a {valid_types}. Got: {input_tensor.dtype}"
+    )
+    KORNIA_CHECK(len(input_tensor.shape) in (3, 4), "Wrong input tensor dimension.")
+    if len(input_tensor.shape) == 3:
+        input_tensor = input_tensor.unsqueeze_(0)
 
-    if len(input_tensor.shape) == 4 and input_tensor.shape[1] == 1:  # if (B x 1 X H x W)
-        input_tensor = input_tensor[:, 0, ...]  # (B x H x W)
-    elif len(input_tensor.shape) == 3 and input_tensor.shape[0] == 1:  # if (1 X H x W)
-        input_tensor = input_tensor[0, ...]  # (H x W)
+    B, C, H, W = input_tensor.shape
+    input_tensor = input_tensor.reshape(B, C, -1)
+    max_value = 1.0 if input_tensor.max() <= 1.0 else 255.0
+    input_tensor = input_tensor.float().div_(max_value)
 
-    keys = torch.arange(0, len(colormap) - 1, dtype=input_tensor.dtype, device=input_tensor.device)  # (num_colors)
+    colors = colormap.colors.permute(1, 0)
+    num_colors, channels_cmap = colors.shape
+    keys = torch.linspace(0.0, 1.0, num_colors - 1, device=input_tensor.device, dtype=input_tensor.dtype)
+    indices = torch.bucketize(input_tensor, keys).unsqueeze(-1).expand(-1, -1, -1, 3)
 
-    index = torch.bucketize(input_tensor, keys)  # shape equals <input_tensor>: (B x H x W) or (H x W)
+    output = torch.gather(colors.expand(B, C, -1, -1), 2, indices)
+    # (B, C, H*W, channels_cmap) -> (B, C*channels_cmap, H, W)
+    output = output.permute(0, 1, 3, 2).reshape(B, C * channels_cmap, H, W)
 
-    output = colormap.colors[:, index]  # (3 x B x H x W) or (3 x H x W)
-
-    if len(output.shape) == 4:
-        output = output.permute(1, 0, -2, -1)  # (B x 3 x H x W)
-
-    return output  # (B x 3 x H x W) or (3 x H x W)
+    return output
 
 
 class ApplyColorMap(Module):
@@ -229,20 +237,23 @@ class ApplyColorMap(Module):
         ValueError: If `colormap` is not a ColorMap object.
 
     .. note::
-        The image data is assumed to be integer values in range of [0-255].
+        The input tensor must be integer values in the range of [0-255] or float values in the range of [0-1].
 
     Example:
-        >>> input_tensor = torch.tensor([[[0, 1, 2], [25, 50, 63]]])
-        >>> colormap = ColorMap(base='autumn')
+        >>> input_tensor = torch.tensor([[[0, 1, 2], [15, 25, 33], [128, 158, 188]]])
+        >>> colormap = ColorMap(base=ColorMapType.autumn)
         >>> ApplyColorMap(colormap=colormap)(input_tensor)
-        tensor([[[1.0000, 1.0000, 1.0000],
-                 [1.0000, 1.0000, 1.0000]],
+        tensor([[[[1.0000, 1.0000, 1.0000],
+                  [1.0000, 1.0000, 1.0000],
+                  [1.0000, 1.0000, 1.0000]],
         <BLANKLINE>
-                [[0.0000, 0.0159, 0.0317],
-                 [0.3968, 0.7937, 1.0000]],
+                 [[0.0000, 0.0159, 0.0159],
+                  [0.0635, 0.1111, 0.1429],
+                  [0.5079, 0.6190, 0.7302]],
         <BLANKLINE>
-                [[0.0000, 0.0000, 0.0000],
-                 [0.0000, 0.0000, 0.0000]]])
+                 [[0.0000, 0.0000, 0.0000],
+                  [0.0000, 0.0000, 0.0000],
+                  [0.0000, 0.0000, 0.0000]]]])
     """
 
     def __init__(
@@ -259,7 +270,7 @@ class ApplyColorMap(Module):
             input_tensor: The input tensor representing the grayscale image.
 
         .. note::
-        The image data is assumed to be integer values in range of [0-255].
+        The input tensor must be integer values in the range of [0-255] or float values in the range of [0-1].
 
         Returns:
             The output tensor representing the image with the applied colormap.
