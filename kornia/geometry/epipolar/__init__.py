@@ -12,6 +12,7 @@ from .essential import (
     motion_from_essential,
     motion_from_essential_choose_solution,
     relative_camera_motion,
+    decompose_essential_matrix_no_svd,
 )
 from .fundamental import (
     compute_correspond_epilines,
@@ -66,4 +67,5 @@ __all__ = [
     "get_perpendicular",
     "get_closest_point_on_epipolar_line",
     "find_essential",
+    "decompose_essential_matrix_no_svd"
 ]
