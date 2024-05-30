@@ -27,6 +27,8 @@ _IMG_OPTIONS = {DataKey.INPUT, DataKey.IMAGE}
 _MSK_OPTIONS = {DataKey.MASK}
 _CLS_OPTIONS = {DataKey.CLASS, DataKey.LABEL}
 
+MaskDataType = Union[Tensor, List[Tensor]]
+
 
 class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
     r"""AugmentationSequential for handling multiple input types like inputs, masks, keypoints at once.
@@ -340,10 +342,16 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         inp: List[DataType] = []
         for arg, dcate in zip(args, data_keys):
             if DataKey.get(dcate) in _IMG_OPTIONS:
+                arg = cast(Tensor, arg)
                 self.input_dtype = arg.dtype
                 inp.append(arg)
             elif DataKey.get(dcate) in _MSK_OPTIONS:
-                self.mask_dtype = arg[0].dtype if isinstance(inp, list) else arg.dtype
+                if isinstance(inp, list):
+                    arg = cast(List[Tensor], arg)
+                    self.mask_dtype = arg[0].dtype
+                else:
+                    arg = cast(Tensor, arg)
+                    self.mask_dtype = arg.dtype
                 inp.append(self._preproc_mask(arg))
             elif DataKey.get(dcate) in _KEYPOINTS_OPTIONS:
                 inp.append(self._preproc_keypoints(arg, dcate))
@@ -365,8 +373,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 out.append(out_arg)
                 # TODO: may add the float to integer (for masks), etc.
             elif DataKey.get(dcate) in _MSK_OPTIONS:
-                _out_k = self._postproc_mask(out_arg)
-                out.append(_out_k)
+                _out_m = self._postproc_mask(cast(MaskDataType, out_arg))
+                out.append(_out_m)
 
             elif DataKey.get(dcate) in _KEYPOINTS_OPTIONS:
                 _out_k = self._postproc_keypoint(in_arg, cast(Keypoints, out_arg), dcate)
@@ -486,7 +494,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         return [DataKey.get(retrieve_key(k)) for k in keys]
 
-    def _preproc_mask(self, arg: DataType) -> Tensor:
+    def _preproc_mask(self, arg: MaskDataType) -> MaskDataType:
         if isinstance(arg, list):
             new_arg = []
             for a in arg:
@@ -498,7 +506,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             arg = arg.to(self.input_dtype) if self.input_dtype else arg.to(torch.float)
         return arg
 
-    def _postproc_mask(self, arg: DataType) -> Tensor:
+    def _postproc_mask(self, arg: MaskDataType) -> MaskDataType:
         if isinstance(arg, list):
             new_arg = []
             for a in arg:
