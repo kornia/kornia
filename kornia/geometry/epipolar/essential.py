@@ -331,7 +331,7 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
 def decompose_essential_matrix_no_svd(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     r"""
       recover rotation and translation from essential matrices without SVD
-      reference: Horn, Berthold KP. Recovering baseline and orientation from essential matrix[J]. 
+      reference: Horn, Berthold KP. Recovering baseline and orientation from essential matrix[J].
       J. Opt. Soc. Am, 1990, 110.
       Args:
        E_mat: The essential matrix in the form of :math:`(*, 3, 3)`.
