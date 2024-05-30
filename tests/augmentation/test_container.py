@@ -716,11 +716,12 @@ class TestAugmentationSequential:
         if random_apply is False:
             reproducibility_test((inp, mask, bbox, keypoints, bbox_2, bbox_wh, bbox_wh_2), aug)
 
-    def test_transform_list_of_masks_and_boxes(self, device, dtype):
+    @pytest.mark.parametrize("mask_dtype", [torch.int32, torch.int64, torch.float32])
+    def test_transform_list_of_masks_and_boxes(self, device, dtype, mask_dtype):
         input = torch.randn(2, 3, 256, 256, device=device, dtype=dtype)
         mask = [
-            torch.ones(1, 3, 256, 256, device=device, dtype=dtype),
-            torch.ones(1, 2, 256, 256, device=device, dtype=dtype),
+            torch.ones(1, 3, 256, 256, device=device, dtype=mask_dtype),
+            torch.ones(1, 2, 256, 256, device=device, dtype=mask_dtype),
         ]
 
         bbox = [

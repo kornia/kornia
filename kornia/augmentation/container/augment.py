@@ -23,7 +23,9 @@ __all__ = ["AugmentationSequential"]
 
 _BOXES_OPTIONS = {DataKey.BBOX, DataKey.BBOX_XYXY, DataKey.BBOX_XYWH}
 _KEYPOINTS_OPTIONS = {DataKey.KEYPOINTS}
-_IMG_MSK_OPTIONS = {DataKey.INPUT, DataKey.MASK}
+_IMG_OPTIONS = {DataKey.INPUT, DataKey.IMAGE}
+_MSK_OPTIONS = {DataKey.MASK}
+_CLS_OPTIONS = {DataKey.CLASS, DataKey.LABEL}
 
 
 class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
@@ -197,6 +199,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         dict_keys(['image', 'mask', 'mask-b', 'bbox', 'bbox-other'])
     """
 
+    input_dtype = None
+    mask_dtype = None
+
     def __init__(
         self,
         *args: Union[_AugmentationBase, ImageSequential],
@@ -334,13 +339,17 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
     def _arguments_preproc(self, *args: DataType, data_keys: List[DataKey]) -> List[DataType]:
         inp: List[DataType] = []
         for arg, dcate in zip(args, data_keys):
-            if DataKey.get(dcate) in _IMG_MSK_OPTIONS:
+            if DataKey.get(dcate) in _IMG_OPTIONS:
+                self.input_dtype = arg.dtype
                 inp.append(arg)
+            elif DataKey.get(dcate) in _MSK_OPTIONS:
+                self.mask_dtype = arg[0].dtype if isinstance(inp, list) else arg.dtype
+                inp.append(self._preproc_mask(arg))
             elif DataKey.get(dcate) in _KEYPOINTS_OPTIONS:
                 inp.append(self._preproc_keypoints(arg, dcate))
             elif DataKey.get(dcate) in _BOXES_OPTIONS:
                 inp.append(self._preproc_boxes(arg, dcate))
-            elif DataKey.get(dcate) is DataKey.CLASS:
+            elif DataKey.get(dcate) in _CLS_OPTIONS:
                 inp.append(arg)
             else:
                 raise NotImplementedError(f"input type of {dcate} is not implemented.")
@@ -351,10 +360,13 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
     ) -> List[DataType]:
         out: List[DataType] = []
         for in_arg, out_arg, dcate in zip(in_args, out_args, data_keys):
-            if DataKey.get(dcate) in _IMG_MSK_OPTIONS:
+            if DataKey.get(dcate) in _IMG_OPTIONS:
                 # It is tensor type already.
                 out.append(out_arg)
                 # TODO: may add the float to integer (for masks), etc.
+            elif DataKey.get(dcate) in _MSK_OPTIONS:
+                _out_k = self._postproc_mask(out_arg)
+                out.append(_out_k)
 
             elif DataKey.get(dcate) in _KEYPOINTS_OPTIONS:
                 _out_k = self._postproc_keypoint(in_arg, cast(Keypoints, out_arg), dcate)
@@ -374,7 +386,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                         _out_b = _out_b.type(in_arg.dtype)
                 out.append(_out_b)
 
-            elif DataKey.get(dcate) is DataKey.CLASS:
+            elif DataKey.get(dcate) in _CLS_OPTIONS:
                 out.append(out_arg)
 
             else:
@@ -473,6 +485,30 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             )
 
         return [DataKey.get(retrieve_key(k)) for k in keys]
+
+    def _preproc_mask(self, arg: DataType) -> Tensor:
+        if isinstance(arg, list):
+            new_arg = []
+            for a in arg:
+                a_new = a.to(self.input_dtype) if self.input_dtype else a.to(torch.float)
+                new_arg.append(a_new)
+            return new_arg
+
+        else:
+            arg = arg.to(self.input_dtype) if self.input_dtype else arg.to(torch.float)
+        return arg
+
+    def _postproc_mask(self, arg: DataType) -> Tensor:
+        if isinstance(arg, list):
+            new_arg = []
+            for a in arg:
+                a_new = a.to(self.mask_dtype) if self.mask_dtype else a.to(torch.float)
+                new_arg.append(a_new)
+            return new_arg
+
+        else:
+            arg = arg.to(self.mask_dtype) if self.mask_dtype else arg.to(torch.float)
+        return arg
 
     def _preproc_boxes(self, arg: DataType, dcate: DataKey) -> Boxes:
         if DataKey.get(dcate) in [DataKey.BBOX]:
