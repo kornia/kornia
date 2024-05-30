@@ -270,6 +270,7 @@ class TestDecomposeEssentialMatrix(BaseTester):
         self.gradcheck(eval_rot2, (E_mat,))
         self.gradcheck(eval_vec, (E_mat,))
 
+
 class TestDecomposeEssentialMatrixNoSVD(BaseTester):
     def test_smoke(self, device, dtype):
         E_mat = torch.rand(2, 3, 3, device=device, dtype=dtype)
@@ -278,7 +279,7 @@ class TestDecomposeEssentialMatrixNoSVD(BaseTester):
         assert R2.shape == (2, 3, 3)
         assert t.shape == (2, 3, 1)
 
-    @pytest.mark.parametrize("batch_shape", [(1, 3, 3), (2, 3, 3)])#, (2, 1, 3, 3), (3, 2, 1, 3, 3)
+    @pytest.mark.parametrize("batch_shape", [(1, 3, 3), (2, 3, 3)])  # , (2, 1, 3, 3), (3, 2, 1, 3, 3)
     def test_shape(self, batch_shape, device, dtype):
         E_mat = torch.rand(batch_shape, device=device, dtype=dtype)
         R1, R2, t = epi.decompose_essential_matrix_no_svd(E_mat)
@@ -303,15 +304,13 @@ class TestDecomposeEssentialMatrixNoSVD(BaseTester):
         self.gradcheck(eval_vec, (E_mat,))
 
     def test_correct_decompose(self):
-        E_mat = torch.tensor([[[ 0.2057, -3.8266,  3.1615],
-        [ 4.5417, -1.0707, -2.2023],
-        [-1.0975,  1.6386, -0.6590]]])
+        E_mat = torch.tensor([[[0.2057, -3.8266, 3.1615], [4.5417, -1.0707, -2.2023], [-1.0975, 1.6386, -0.6590]]])
         R1, R2, t = epi.decompose_essential_matrix(E_mat)
         R1_1, R2_1, t_1 = epi.decompose_essential_matrix_no_svd(E_mat)
-        # As the orders of two R solutions and t solutions might be different from epi.decompose_essential_matrix(), 
+        # As the orders of two R solutions and t solutions might be different from epi.decompose_essential_matrix(),
         # we have to check on the correct ones
         rtol: float = 1e-4
-        if (R1-R1_1).abs().sum() < rtol:
+        if (R1 - R1_1).abs().sum() < rtol:
             self.assert_close(R1, R1_1)
             self.assert_close(R2, R2_1)
         else:
@@ -319,13 +318,14 @@ class TestDecomposeEssentialMatrixNoSVD(BaseTester):
             self.assert_close(R2, R1_1)
             R1_1, R2_1 = R2_1, R1_1
 
-        if (t-t_1).abs().sum() < rtol:
-            self.assert_close(t, t_1) 
+        if (t - t_1).abs().sum() < rtol:
+            self.assert_close(t, t_1)
         else:
-            self.assert_close(t, -t_1) 
+            self.assert_close(t, -t_1)
             t_1 = -t_1.clone()
-        self.assert_close(epi.essential_from_Rt(R1_1, t_1, R2_1, -t_1), epi.essential_from_Rt(R1, t, R2,-t), rtol=1e-3, atol=1e-3)   
-
+        self.assert_close(
+            epi.essential_from_Rt(R1_1, t_1, R2_1, -t_1), epi.essential_from_Rt(R1, t, R2, -t), rtol=1e-3, atol=1e-3
+        )
 
     def test_consistency(self, device, dtype):
         scene = generate_two_view_random_scene(device, dtype)
@@ -338,10 +338,10 @@ class TestDecomposeEssentialMatrixNoSVD(BaseTester):
         # compare the decomposed R and t to the method with svd
         R1, R2, t = epi.decompose_essential_matrix(E_mat)
         R1_1, R2_1, t_1 = epi.decompose_essential_matrix_no_svd(E_mat)
-        # As the orders of two R solutions and t solutions might be different from epi.decompose_essential_matrix(), 
+        # As the orders of two R solutions and t solutions might be different from epi.decompose_essential_matrix(),
         # we have to check on the correct ones
         rtol: float = 1e-4
-        if (R1-R1_1).abs().sum() < rtol:
+        if (R1 - R1_1).abs().sum() < rtol:
             self.assert_close(R1, R1_1)
             self.assert_close(R2, R2_1)
         else:
@@ -349,13 +349,13 @@ class TestDecomposeEssentialMatrixNoSVD(BaseTester):
             self.assert_close(R2, R1_1)
             R1_1, R2_1 = R2_1, R1_1
 
-        if (t-t_1).abs().sum() < rtol:
-            self.assert_close(t, t_1) 
+        if (t - t_1).abs().sum() < rtol:
+            self.assert_close(t, t_1)
         else:
-            self.assert_close(t, -t_1) 
+            self.assert_close(t, -t_1)
             t_1 = -t_1.clone()
 
-        self.assert_close(epi.essential_from_Rt(R1_1, t_1, R2_1, -t_1), epi.essential_from_Rt(R1, t, R2,-t))
+        self.assert_close(epi.essential_from_Rt(R1_1, t_1, R2_1, -t_1), epi.essential_from_Rt(R1, t, R2, -t))
 
 
 class TestMotionFromEssential(BaseTester):

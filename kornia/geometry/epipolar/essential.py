@@ -22,7 +22,7 @@ __all__ = [
     "motion_from_essential",
     "motion_from_essential_choose_solution",
     "relative_camera_motion",
-    "decompose_essential_matrix_no_svd"
+    "decompose_essential_matrix_no_svd",
 ]
 
 
@@ -342,7 +342,7 @@ def decompose_essential_matrix_no_svd(E_mat: torch.Tensor) -> Tuple[torch.Tensor
     """
     if not (len(E_mat.shape) >= 2 and E_mat.shape[-2:]):
         raise AssertionError(E_mat.shape)
-    
+
     B = E_mat.shape[0]
 
     # Eq.18, choose the largest of the three possible pairwise cross-products
@@ -350,23 +350,19 @@ def decompose_essential_matrix_no_svd(E_mat: torch.Tensor) -> Tuple[torch.Tensor
 
     # sqrt(1/2 trace(EE^T)), B
     scale_factor = torch.sqrt(0.5 * torch.diagonal(E_mat @ E_mat.transpose(-1, -2), dim1=-1, dim2=-2).sum(-1))
-    
+
     # B, 3, 3
-    cross_products = torch.stack([
-        torch.cross(e1, e2),
-        torch.cross(e2, e3),
-        torch.cross(e3, e1)
-    ], dim=1)
+    cross_products = torch.stack([torch.cross(e1, e2), torch.cross(e2, e3), torch.cross(e3, e1)], dim=1)
     # B, 3, 1
     norms = torch.norm(cross_products, dim=-1, keepdim=True)
-    
+
     # B, to select which b1
     largest = torch.argmax(norms, dim=-2)
 
     # B, 3, 3
     e_cross_products = scale_factor[:, None, None] * cross_products / norms
 
-    # broadcast the index 
+    # broadcast the index
     index_expanded = largest.unsqueeze(-1).expand(-1, -1, e_cross_products.size(-1))
 
     # slice at dim=1, select for each batch one b (e1*e2 or e2*e3 or e3*e1), B, 1, 3
@@ -377,9 +373,9 @@ def decompose_essential_matrix_no_svd(E_mat: torch.Tensor) -> Tuple[torch.Tensor
     # skew-symmetric matrix
     B1 = torch.zeros((B, 3, 3), device=E_mat.device, dtype=E_mat.dtype)
     t0, t1, t2 = b1[:, 0], b1[:, 1], b1[:, 2]
-    B1[:, 0, 1], B1[:, 1, 0]  = -t2, t2
-    B1[:, 0, 2], B1[:, 2, 0]  = t1, -t1
-    B1[:, 1, 2], B1[:, 2, 1]  = -t0, t0
+    B1[:, 0, 1], B1[:, 1, 0] = -t2, t2
+    B1[:, 0, 2], B1[:, 2, 0] = t1, -t1
+    B1[:, 1, 2], B1[:, 2, 1] = -t0, t0
 
     # the second translation and rotation
     B2 = -B1
@@ -387,10 +383,11 @@ def decompose_essential_matrix_no_svd(E_mat: torch.Tensor) -> Tuple[torch.Tensor
 
     # Eq.24, recover R
     # (bb)R = Cofactors(E)^T - BE
-    R1 = (matrix_cofactor_tensor(E_mat) - B1@E_mat) / (b1*b1).sum().unsqueeze(-1)
-    R2 = (matrix_cofactor_tensor(E_mat) - B2@E_mat) / (b2*b2).sum().unsqueeze(-1)
+    R1 = (matrix_cofactor_tensor(E_mat) - B1 @ E_mat) / (b1 * b1).sum().unsqueeze(-1)
+    R2 = (matrix_cofactor_tensor(E_mat) - B2 @ E_mat) / (b2 * b2).sum().unsqueeze(-1)
 
     return (R1, R2, b1_.unsqueeze(-1))
+
 
 def essential_from_Rt(R1: torch.Tensor, t1: torch.Tensor, R2: torch.Tensor, t2: torch.Tensor) -> torch.Tensor:
     r"""Get the Essential matrix from Camera motion (Rs and ts).
