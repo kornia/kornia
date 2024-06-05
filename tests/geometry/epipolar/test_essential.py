@@ -279,7 +279,7 @@ class TestDecomposeEssentialMatrixNoSVD(BaseTester):
         assert R2.shape == (2, 3, 3)
         assert t.shape == (2, 3, 1)
 
-    @pytest.mark.parametrize("batch_shape", [(3,3),(1, 3, 3), (2, 3, 3)])  # , (2, 1, 3, 3), (3, 2, 1, 3, 3)
+    @pytest.mark.parametrize("batch_shape", [(3, 3), (1, 3, 3), (2, 3, 3)])  # , (2, 1, 3, 3), (3, 2, 1, 3, 3)
     def test_shape(self, batch_shape, device, dtype):
         E_mat = torch.rand(batch_shape, device=device, dtype=dtype)
         R1, R2, t = epi.decompose_essential_matrix_no_svd(E_mat)
