@@ -329,10 +329,13 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
 
 
 def decompose_essential_matrix_no_svd(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    r"""
-      recover rotation and translation from essential matrices without SVD
+    r"""Decompose the essential matrix to rotation and translation.
+    
+     
+       Recover rotation and translation from essential matrices without SVD
       reference: Horn, Berthold KP. Recovering baseline and orientation from essential matrix[J].
       J. Opt. Soc. Am, 1990, 110.
+      
       Args:
        E_mat: The essential matrix in the form of :math:`(*, 3, 3)`.
 
@@ -341,7 +344,7 @@ def decompose_essential_matrix_no_svd(E_mat: torch.Tensor) -> Tuple[torch.Tensor
        The shape of the tensors with be same input :math:`[(*, 3, 3), (*, 3, 3), (*, 3, 1)]`.
 
     """
-    if not (len(E_mat.shape) >= 2 and E_mat.shape[-2:]):
+    if not (len(E_mat.shape) >= 2 and E_mat.shape[-2:] == (3, 3):
         raise AssertionError(E_mat.shape)
 
     B = E_mat.shape[0]
