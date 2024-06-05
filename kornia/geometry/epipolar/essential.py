@@ -356,9 +356,9 @@ def decompose_essential_matrix_no_svd(E_mat: torch.Tensor) -> Tuple[torch.Tensor
 
     # sqrt(1/2 trace(EE^T)), B
     scale_factor = torch.sqrt(0.5 * torch.diagonal(E_mat @ E_mat.transpose(-1, -2), dim1=-1, dim2=-2).sum(-1))
-
+    
     # B, 3, 3
-    cross_products = torch.stack([torch.linalg.cross(e1, e2), torch.linalg.cross(e2, e3), torch.linalg.cross(e3, e1)], dim=1)
+    cross_products = torch.stack([torch.cross(e1, e2), torch.cross(e2, e3), torch.cross(e3, e1)], dim=1)
     # B, 3, 1
     norms = torch.norm(cross_products, dim=-1, keepdim=True)
 
