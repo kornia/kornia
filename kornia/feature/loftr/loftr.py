@@ -154,9 +154,9 @@ class LoFTR(Module):
         feat_c1 = feat_c1.reshape(n1, -1, c1)
 
         mask_c0 = mask_c1 = None  # mask is useful in training
-        if "mask0" in _data:
+        if "mask0" in data:
             mask_c0 = resize(data["mask0"], _data["hw0_c"], interpolation="nearest").flatten(-2)
-        if "mask1" in _data:
+        if "mask1" in data:
             mask_c1 = resize(data["mask1"], _data["hw1_c"], interpolation="nearest").flatten(-2)
         feat_c0, feat_c1 = self.loftr_coarse(feat_c0, feat_c1, mask_c0, mask_c1)
 
