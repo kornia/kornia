@@ -119,7 +119,7 @@ class TestInRange(BaseTester):
 
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_dynamo(self, batch_size, device, dtype, torch_optimizer):
-        if device == torch.device("cpu") and torch_version() == "2.3.0":
+        if device == torch.device("cpu") and torch_version() in {"2.3.0", "2.3.1"}:
             pytest.skip("Failing to compile on CPU see pytorch/pytorch#126619")
         inpt = torch.rand(batch_size, 3, 5, 5, device=device, dtype=dtype)
         op = InRange(lower=(0.2, 0.2, 0.2), upper=(0.6, 0.6, 0.6), return_mask=True)
