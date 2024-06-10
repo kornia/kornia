@@ -6,6 +6,7 @@ from ._metrics import (
 )
 from .essential import (
     decompose_essential_matrix,
+    decompose_essential_matrix_no_svd,
     essential_from_fundamental,
     essential_from_Rt,
     find_essential,
@@ -66,4 +67,5 @@ __all__ = [
     "get_perpendicular",
     "get_closest_point_on_epipolar_line",
     "find_essential",
+    "decompose_essential_matrix_no_svd",
 ]

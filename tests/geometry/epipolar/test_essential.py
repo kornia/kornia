@@ -271,6 +271,96 @@ class TestDecomposeEssentialMatrix(BaseTester):
         self.gradcheck(eval_vec, (E_mat,))
 
 
+class TestDecomposeEssentialMatrixNoSVD(BaseTester):
+    def test_smoke(self, device, dtype):
+        E_mat = torch.rand(1, 3, 3, device=device, dtype=dtype)
+        R1, R2, t = epi.decompose_essential_matrix_no_svd(E_mat)
+        assert R1.shape == (1, 3, 3)
+        assert R2.shape == (1, 3, 3)
+        assert t.shape == (1, 3, 1)
+
+    @pytest.mark.parametrize("batch_shape", [(3, 3), (1, 3, 3), (2, 3, 3), (2, 1, 3, 3), (3, 2, 1, 3, 3)])
+    def test_shape(self, batch_shape, device, dtype):
+        E_mat = torch.rand(batch_shape, device=device, dtype=dtype)
+        R1, R2, t = epi.decompose_essential_matrix_no_svd(E_mat)
+        if len(batch_shape) >= 2:
+            batch_shape = E_mat.view(-1, 3, 3).shape
+        assert R1.shape == batch_shape
+        assert R2.shape == batch_shape
+        assert t.shape == batch_shape[:-1] + (1,)
+
+    def test_gradcheck(self, device):
+        E_mat = torch.rand(1, 3, 3, device=device, dtype=torch.float64, requires_grad=True)
+
+        def eval_rot1(input):
+            return epi.decompose_essential_matrix_no_svd(input)[0]
+
+        def eval_rot2(input):
+            return epi.decompose_essential_matrix_no_svd(input)[1]
+
+        def eval_vec(input):
+            return epi.decompose_essential_matrix_no_svd(input)[2]
+
+        self.gradcheck(eval_rot1, (E_mat,))
+        self.gradcheck(eval_rot2, (E_mat,))
+        self.gradcheck(eval_vec, (E_mat,))
+
+    def test_correct_decompose(self):
+        E_mat = torch.tensor([[[0.2057, -3.8266, 3.1615], [4.5417, -1.0707, -2.2023], [-1.0975, 1.6386, -0.6590]]])
+        R1, R2, t = epi.decompose_essential_matrix(E_mat)
+        R1_1, R2_1, t_1 = epi.decompose_essential_matrix_no_svd(E_mat)
+        # As the orders of two R solutions and t solutions might be different from epi.decompose_essential_matrix(),
+        # we have to check on the correct ones
+        rtol: float = 1e-4
+        if (R1 - R1_1).abs().sum() < rtol:
+            self.assert_close(R1, R1_1)
+            self.assert_close(R2, R2_1)
+        else:
+            self.assert_close(R1, R2_1)
+            self.assert_close(R2, R1_1)
+            R1_1, R2_1 = R2_1, R1_1
+
+        if (t - t_1).abs().sum() < rtol:
+            self.assert_close(t, t_1)
+        else:
+            self.assert_close(t, -t_1)
+            t_1 = -t_1.clone()
+        self.assert_close(
+            epi.essential_from_Rt(R1_1, t_1, R2_1, -t_1), epi.essential_from_Rt(R1, t, R2, -t), rtol=1e-3, atol=1e-3
+        )
+
+    @pytest.mark.xfail(reason="skip the tests where there are no solutions.")
+    def test_consistency(self, device, dtype):
+        scene = generate_two_view_random_scene(device, dtype)
+
+        R1, t1 = scene["R1"], scene["t1"]
+        R2, t2 = scene["R2"], scene["t2"]
+
+        E_mat = epi.essential_from_Rt(R1, t1, R2, t2)
+
+        # compare the decomposed R and t to the method with svd
+        R1, R2, t = epi.decompose_essential_matrix(E_mat)
+        R1_1, R2_1, t_1 = epi.decompose_essential_matrix_no_svd(E_mat)
+        # As the orders of two R solutions and t solutions might be different from epi.decompose_essential_matrix(),
+        # we have to check on the correct ones
+        rtol: float = 1e-4
+        if (R1 - R1_1).abs().sum() < rtol:
+            self.assert_close(R1, R1_1)
+            self.assert_close(R2, R2_1)
+        else:
+            self.assert_close(R1, R2_1)
+            self.assert_close(R2, R1_1)
+            R1_1, R2_1 = R2_1, R1_1
+
+        if (t - t_1).abs().sum() < rtol:
+            self.assert_close(t, t_1)
+        else:
+            self.assert_close(t, -t_1)
+            t_1 = -t_1.clone()
+
+        self.assert_close(epi.essential_from_Rt(R1_1, t_1, R2_1, -t_1), epi.essential_from_Rt(R1, t, R2, -t))
+
+
 class TestMotionFromEssential(BaseTester):
     def test_smoke(self, device, dtype):
         E_mat = torch.rand(1, 3, 3, device=device, dtype=dtype)
