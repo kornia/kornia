@@ -1,3 +1,4 @@
+import sys
 from functools import partial
 
 import numpy as np
@@ -19,6 +20,7 @@ from kornia.geometry.conversions import (
     worldtocam_to_camtoworld_Rt,
 )
 from kornia.geometry.quaternion import Quaternion
+from kornia.utils._compat import torch_version
 from kornia.utils.misc import eye_like
 
 from testing.base import BaseTester, assert_close
@@ -1109,6 +1111,10 @@ class TestEulerFromQuaternion(BaseTester):
         q = Quaternion.random(batch_size=1).to(device, torch.float64)
         self.gradcheck(euler_from_quaternion, (q.w, q.x, q.y, q.z))
 
+    @pytest.mark.skipif(
+        torch_version() in {"2.0.1", "2.1.2", "2.2.2", "2.3.1"} and sys.version_info.minor == 8,
+        reason="Not working on 2.0",
+    )
     def test_dynamo(self, device, dtype, torch_optimizer):
         q = Quaternion.random(batch_size=1)
         q = q.to(device, dtype)

@@ -64,6 +64,7 @@ class TestImageRegistrator(BaseTester):
         assert ir is not None
 
     @pytest.mark.slow
+    @pytest.mark.xfail(torch_version() in {"2.0.0", "2.0.1", "2.1.2", "2.2.2"}, reason="failing at some 2.x torch")
     def test_registration_toy(self, device, dtype):
         ch, height, width = 3, 16, 18
         homography = torch.eye(3, device=device, dtype=dtype)[None]

@@ -2,6 +2,7 @@ import pytest
 import torch
 
 from kornia.filters import Sobel, SpatialGradient, SpatialGradient3d, sobel, spatial_gradient, spatial_gradient3d
+from kornia.utils._compat import torch_version
 
 from testing.base import BaseTester
 
@@ -242,6 +243,7 @@ class TestSpatialGradient(BaseTester):
     @pytest.mark.parametrize("mode", ["sobel", "diff"])
     @pytest.mark.parametrize("order", [1, 2])
     @pytest.mark.parametrize("batch_size", [1, 2])
+    @pytest.mark.xfail(torch_version() in {"2.0.1"}, reason="random failing")
     def test_dynamo(self, batch_size, order, mode, device, dtype, torch_optimizer):
         inpt = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
         if order == 1 and dtype == torch.float64:

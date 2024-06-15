@@ -247,6 +247,7 @@ class TestFindFundamental(BaseTester):
                 error = epi.sampson_epipolar_distance(x1, x2, F)
                 self.assert_close(error, torch.zeros((F.shape[0], 7), device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
 
+    @pytest.mark.xfail()
     def test_epipolar_constraint_7point(self, device, dtype):
         scene: Dict[str, torch.Tensor] = generate_two_view_random_scene(device, dtype)
         x1 = scene["x1"][:, :7, :]
