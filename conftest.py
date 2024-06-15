@@ -82,7 +82,10 @@ def torch_optimizer(optimizer_backend):
         return torch.jit.script
 
     if hasattr(torch, "compile") and sys.platform == "linux":
-        if not (sys.version_info[:2] == (3, 11) and torch_version() in {"2.0.0", "2.0.1"}):
+        if (not (sys.version_info[:2] == (3, 11) and torch_version() in {"2.0.0", "2.0.1"})) and (
+            not sys.version_info[:2] == (3, 12)
+        ):
+            # torch compile don't have support for python3.12 yet
             torch._dynamo.reset()
             # torch compile just have support for python 3.11 after torch 2.1.0
             return partial(
@@ -182,7 +185,9 @@ def pytest_sessionstart(session):
     try:
         _setup_torch_compile()
     except RuntimeError as ex:
-        if "not yet supported for torch.compile" not in str(ex):
+        if "not yet supported for torch.compile" not in str(
+            ex
+        ) and "Dynamo is not supported on Python 3.12+" not in str(ex):
             raise ex
     # TODO: cache all torch.load weights/states here to not impact on test suite
 
