@@ -1,4 +1,5 @@
 import os
+import sys
 from typing import Any, Dict, Optional, Tuple, Type
 from unittest.mock import patch
 
@@ -59,6 +60,7 @@ from kornia.augmentation._2d.base import AugmentationBase2D
 from kornia.constants import Resample, pi
 from kornia.geometry import transform_points
 from kornia.utils import create_meshgrid
+from kornia.utils._compat import torch_version
 from kornia.utils.helpers import _torch_inverse_cast
 
 from testing.augmentation.datasets import DummyMPDataset
@@ -4459,6 +4461,10 @@ class TestRandomElasticTransform(BaseTester):
         )
 
     @pytest.mark.parametrize("batch_prob", [[True, True], [False, True], [False, False]])
+    @pytest.mark.skipif(
+        torch_version() in {"1.11.0", "1.12.1"} and sys.version_info.minor == 10,
+        reason="failing because no gaussian mean",
+    )
     def test_apply(self, batch_prob, device, dtype):
         torch.manual_seed(0)
 
