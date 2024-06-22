@@ -555,17 +555,18 @@ class TestAugmentationSequential:
         else:
             assert (*(1,) * (4 - len(img_shape)), *img_shape) == out[0].shape
 
-            out_mask_shape = tuple(x if x else 1 for x in (B, C_m, *img_shape[-2:]))
+            out_mask_shape = tuple(x or 1 for x in (B, C_m, *img_shape[-2:]))
             assert out[1].shape == out_mask_shape
 
     @pytest.mark.slow
     @pytest.mark.parametrize("random_apply", [1, (2, 2), (1, 2), (2,), 10, True, False])
-    def test_forward_and_inverse(self, random_apply, device, dtype):
+    @pytest.mark.parametrize("mask_dtype", [torch.int32, torch.int64, torch.float32])
+    def test_forward_and_inverse(self, random_apply, device, dtype, mask_dtype):
         inp = torch.randn(1, 3, 1000, 500, device=device, dtype=dtype)
         bbox = torch.tensor([[[355, 10], [660, 10], [660, 250], [355, 250]]], device=device, dtype=dtype)
         keypoints = torch.tensor([[[465, 115], [545, 116]]], device=device, dtype=dtype)
         mask = bbox_to_mask(
-            torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=dtype), 1000, 500
+            torch.tensor([[[155, 0], [900, 0], [900, 400], [155, 400]]], device=device, dtype=mask_dtype), 1000, 500
         )[:, None]
         aug = K.AugmentationSequential(
             K.ImageSequential(K.ColorJiggle(0.1, 0.1, 0.1, 0.1, p=1.0), K.RandomAffine(360, p=1.0)),
@@ -715,11 +716,12 @@ class TestAugmentationSequential:
         if random_apply is False:
             reproducibility_test((inp, mask, bbox, keypoints, bbox_2, bbox_wh, bbox_wh_2), aug)
 
-    def test_transform_list_of_masks_and_boxes(self, device, dtype):
+    @pytest.mark.parametrize("mask_dtype", [torch.int32, torch.int64, torch.float32])
+    def test_transform_list_of_masks_and_boxes(self, device, dtype, mask_dtype):
         input = torch.randn(2, 3, 256, 256, device=device, dtype=dtype)
         mask = [
-            torch.ones(1, 3, 256, 256, device=device, dtype=dtype),
-            torch.ones(1, 2, 256, 256, device=device, dtype=dtype),
+            torch.ones(1, 3, 256, 256, device=device, dtype=mask_dtype),
+            torch.ones(1, 2, 256, 256, device=device, dtype=mask_dtype),
         ]
 
         bbox = [

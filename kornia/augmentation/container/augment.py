@@ -1,6 +1,8 @@
 import warnings
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union, cast
 
+import torch
+
 from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
 from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmentationBase3D
 from kornia.augmentation.base import _AugmentationBase
@@ -21,7 +23,11 @@ __all__ = ["AugmentationSequential"]
 
 _BOXES_OPTIONS = {DataKey.BBOX, DataKey.BBOX_XYXY, DataKey.BBOX_XYWH}
 _KEYPOINTS_OPTIONS = {DataKey.KEYPOINTS}
-_IMG_MSK_OPTIONS = {DataKey.INPUT, DataKey.MASK}
+_IMG_OPTIONS = {DataKey.INPUT, DataKey.IMAGE}
+_MSK_OPTIONS = {DataKey.MASK}
+_CLS_OPTIONS = {DataKey.CLASS, DataKey.LABEL}
+
+MaskDataType = Union[Tensor, List[Tensor]]
 
 
 class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
@@ -195,6 +201,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         dict_keys(['image', 'mask', 'mask-b', 'bbox', 'bbox-other'])
     """
 
+    input_dtype = None
+    mask_dtype = None
+
     def __init__(
         self,
         *args: Union[_AugmentationBase, ImageSequential],
@@ -332,13 +341,23 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
     def _arguments_preproc(self, *args: DataType, data_keys: List[DataKey]) -> List[DataType]:
         inp: List[DataType] = []
         for arg, dcate in zip(args, data_keys):
-            if DataKey.get(dcate) in _IMG_MSK_OPTIONS:
+            if DataKey.get(dcate) in _IMG_OPTIONS:
+                arg = cast(Tensor, arg)
+                self.input_dtype = arg.dtype
                 inp.append(arg)
+            elif DataKey.get(dcate) in _MSK_OPTIONS:
+                if isinstance(inp, list):
+                    arg = cast(List[Tensor], arg)
+                    self.mask_dtype = arg[0].dtype
+                else:
+                    arg = cast(Tensor, arg)
+                    self.mask_dtype = arg.dtype
+                inp.append(self._preproc_mask(arg))
             elif DataKey.get(dcate) in _KEYPOINTS_OPTIONS:
                 inp.append(self._preproc_keypoints(arg, dcate))
             elif DataKey.get(dcate) in _BOXES_OPTIONS:
                 inp.append(self._preproc_boxes(arg, dcate))
-            elif DataKey.get(dcate) is DataKey.CLASS:
+            elif DataKey.get(dcate) in _CLS_OPTIONS:
                 inp.append(arg)
             else:
                 raise NotImplementedError(f"input type of {dcate} is not implemented.")
@@ -349,10 +368,13 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
     ) -> List[DataType]:
         out: List[DataType] = []
         for in_arg, out_arg, dcate in zip(in_args, out_args, data_keys):
-            if DataKey.get(dcate) in _IMG_MSK_OPTIONS:
+            if DataKey.get(dcate) in _IMG_OPTIONS:
                 # It is tensor type already.
                 out.append(out_arg)
                 # TODO: may add the float to integer (for masks), etc.
+            elif DataKey.get(dcate) in _MSK_OPTIONS:
+                _out_m = self._postproc_mask(cast(MaskDataType, out_arg))
+                out.append(_out_m)
 
             elif DataKey.get(dcate) in _KEYPOINTS_OPTIONS:
                 _out_k = self._postproc_keypoint(in_arg, cast(Keypoints, out_arg), dcate)
@@ -372,7 +394,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                         _out_b = _out_b.type(in_arg.dtype)
                 out.append(_out_b)
 
-            elif DataKey.get(dcate) is DataKey.CLASS:
+            elif DataKey.get(dcate) in _CLS_OPTIONS:
                 out.append(out_arg)
 
             else:
@@ -472,6 +494,30 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         return [DataKey.get(retrieve_key(k)) for k in keys]
 
+    def _preproc_mask(self, arg: MaskDataType) -> MaskDataType:
+        if isinstance(arg, list):
+            new_arg = []
+            for a in arg:
+                a_new = a.to(self.input_dtype) if self.input_dtype else a.to(torch.float)
+                new_arg.append(a_new)
+            return new_arg
+
+        else:
+            arg = arg.to(self.input_dtype) if self.input_dtype else arg.to(torch.float)
+        return arg
+
+    def _postproc_mask(self, arg: MaskDataType) -> MaskDataType:
+        if isinstance(arg, list):
+            new_arg = []
+            for a in arg:
+                a_new = a.to(self.mask_dtype) if self.mask_dtype else a.to(torch.float)
+                new_arg.append(a_new)
+            return new_arg
+
+        else:
+            arg = arg.to(self.mask_dtype) if self.mask_dtype else arg.to(torch.float)
+        return arg
+
     def _preproc_boxes(self, arg: DataType, dcate: DataKey) -> Boxes:
         if DataKey.get(dcate) in [DataKey.BBOX]:
             mode = "vertices_plus"
@@ -509,17 +555,31 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             return out_arg.to_tensor(mode=mode)
 
     def _preproc_keypoints(self, arg: DataType, dcate: DataKey) -> Keypoints:
+        dtype = None
+
         if self.contains_video_sequential:
             arg = cast(Union[Tensor, List[Tensor]], arg)
-            return VideoKeypoints.from_tensor(arg)
+            if isinstance(arg, list):
+                if not torch.is_floating_point(arg[0]):
+                    dtype = arg[0].dtype
+                    arg = [a.float() for a in arg]
+            elif not torch.is_floating_point(arg):
+                dtype = arg.dtype
+                arg = arg.float()
+            video_result = VideoKeypoints.from_tensor(arg)
+            return video_result.type(dtype) if dtype else video_result
         elif self.contains_3d_augmentation:
             raise NotImplementedError("3D keypoint handlers are not yet supported.")
         elif isinstance(arg, (Keypoints,)):
             return arg
         else:
             arg = cast(Tensor, arg)
+            if not torch.is_floating_point(arg):
+                dtype = arg.dtype
+                arg = arg.float()
             # TODO: Add List[Tensor] in the future.
-            return Keypoints.from_tensor(arg)
+            result = Keypoints.from_tensor(arg)
+            return result.type(dtype) if dtype else result
 
     def _postproc_keypoint(
         self, in_arg: DataType, out_arg: Keypoints, dcate: DataKey

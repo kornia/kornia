@@ -129,7 +129,7 @@ class AugmentationSequentialOps:
         outputs = []
         for inp, dcate in zip(arg, _data_keys):
             op = self._get_op(dcate)
-            extra_arg = extra_args[dcate] if dcate in extra_args else {}
+            extra_arg = extra_args.get(dcate, {})
             if dcate.name == "MASK" and isinstance(inp, list):
                 outputs.append(MaskSequentialOps.transform_list(inp, module, param=param, extra_args=extra_arg))
             else:
@@ -240,6 +240,7 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
                 to apply transformations.
             param: the corresponding parameters to the module.
         """
+
         if isinstance(module, (K.GeometricAugmentationBase2D,)):
             input = module.transform_masks(
                 input,
@@ -269,7 +270,8 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
             input = module.transform_masks(input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
 
         elif isinstance(module, (K.auto.operations.OperationBase,)):
-            return MaskSequentialOps.transform(input, module=module.op, param=param, extra_args=extra_args)
+            input = MaskSequentialOps.transform(input, module=module.op, param=param, extra_args=extra_args)
+
         return input
 
     @classmethod
@@ -344,6 +346,7 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
                 to apply transformations.
             param: the corresponding parameters to the module.
         """
+
         if isinstance(module, (K.GeometricAugmentationBase2D,)):
             if module.transform_matrix is None:
                 raise ValueError(f"No valid transformation matrix found in {module.__class__}.")
@@ -365,7 +368,7 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
             input = module.inverse_masks(input, params=cls.get_sequential_module_param(param), extra_args=extra_args)
 
         elif isinstance(module, (K.auto.operations.OperationBase,)):
-            return MaskSequentialOps.inverse(input, module=module.op, param=param, extra_args=extra_args)
+            input = MaskSequentialOps.inverse(input, module=module.op, param=param, extra_args=extra_args)
 
         return input
 
