@@ -199,15 +199,15 @@ class TestGaussianBlur2d(BaseTester):
     @pytest.mark.parametrize("separable", [False, True])
     def test_smoke(self, shape, kernel_size, separable, device, dtype):
         B, C, H, W = shape
-        inpt = torch.rand(B, C, H, W, device=device, dtype=dtype)
+        data = torch.rand(B, C, H, W, device=device, dtype=dtype)
         sigma_tensor = torch.rand(B, 2, device=device, dtype=dtype)
 
-        actual_A = gaussian_blur2d(inpt, kernel_size, sigma_tensor, "reflect", separable)
+        actual_A = gaussian_blur2d(data, kernel_size, sigma_tensor, "reflect", separable)
         assert isinstance(actual_A, torch.Tensor)
         assert actual_A.shape == shape
 
         sigma = tuple(sigma_tensor[0, ...].cpu().numpy().tolist())
-        actual_B = gaussian_blur2d(inpt, kernel_size, sigma, "reflect", separable)
+        actual_B = gaussian_blur2d(data, kernel_size, sigma, "reflect", separable)
         assert isinstance(actual_B, torch.Tensor)
         assert actual_B.shape == shape
 
@@ -271,15 +271,15 @@ class TestGaussianBlur2d(BaseTester):
     @pytest.mark.parametrize("kernel_size", [3, (5, 5), (5, 7)])
     @pytest.mark.parametrize("sigma", [(1.5, 2.1), (0.5, 0.5)])
     def test_dynamo(self, kernel_size, sigma, device, dtype, torch_optimizer):
-        inpt = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
+        data = torch.ones(1, 3, 5, 5, device=device, dtype=dtype)
 
         op = GaussianBlur2d(kernel_size, sigma)
         op_optimized = torch_optimizer(op)
 
-        self.assert_close(op(inpt), op_optimized(inpt))
+        self.assert_close(op(data), op_optimized(data))
 
         sigma_tensor = torch.tensor([sigma], device=device, dtype=dtype)
         op = GaussianBlur2d(kernel_size, sigma_tensor)
         op_optimized = torch_optimizer(op)
 
-        self.assert_close(op(inpt), op_optimized(inpt))
+        self.assert_close(op(data), op_optimized(data))

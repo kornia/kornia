@@ -22,11 +22,11 @@ class TestSam(BaseTester):
         assert isinstance(model, Sam)
 
         img_size = model.image_encoder.img_size
-        inpt = torch.randn(1, 3, img_size, img_size, device=device)
+        data = torch.randn(1, 3, img_size, img_size, device=device)
         keypoints = torch.randint(0, img_size, (1, 2, 2), device=device, dtype=torch.float)
         labels = torch.randint(0, 1, (1, 2), device=device, dtype=torch.float)
 
-        model(inpt, [{"points": (keypoints, labels)}], False)
+        model(data, [{"points": (keypoints, labels)}], False)
 
     @pytest.mark.slow
     @pytest.mark.parametrize("batch_size", [1, 3])
@@ -35,30 +35,30 @@ class TestSam(BaseTester):
     def test_cardinality(self, device, batch_size, N, multimask_output):
         # SAM: don't supports float64
         dtype = torch.float32
-        inpt = torch.rand(1, 3, 77, 128, device=device, dtype=dtype)
+        data = torch.rand(1, 3, 77, 128, device=device, dtype=dtype)
         model = Sam.from_config(SamConfig("vit_b"))
         model = model.to(device=device, dtype=dtype)
-        inpt = _pad_rb(inpt, model.image_encoder.img_size)
-        keypoints = torch.randint(0, min(inpt.shape[-2:]), (batch_size, N, 2), device=device).to(dtype=dtype)
+        data = _pad_rb(data, model.image_encoder.img_size)
+        keypoints = torch.randint(0, min(data.shape[-2:]), (batch_size, N, 2), device=device).to(dtype=dtype)
         labels = torch.randint(0, 1, (batch_size, N), device=device).to(dtype=dtype)
 
-        out = model(inpt, [{"points": (keypoints, labels)}], multimask_output)
+        out = model(data, [{"points": (keypoints, labels)}], multimask_output)
 
         C = 3 if multimask_output else 1
-        assert len(out) == inpt.size(0)
+        assert len(out) == data.size(0)
         assert out[0].logits.shape == (batch_size, C, 256, 256)
 
     def test_exception(self):
         model = Sam.from_config(SamConfig("mobile_sam"))
 
         with pytest.raises(TypeError) as errinfo:
-            inpt = torch.rand(3, 1, 2)
-            model(inpt, [], False)
+            data = torch.rand(3, 1, 2)
+            model(data, [], False)
         assert "shape must be [['B', '3', 'H', 'W']]. Got torch.Size([3, 1, 2])" in str(errinfo)
 
         with pytest.raises(Exception) as errinfo:
-            inpt = torch.rand(2, 3, 1, 2)
-            model(inpt, [{}], False)
+            data = torch.rand(2, 3, 1, 2)
+            model(data, [{}], False)
         assert "The number of images (`B`) should match with the length of prompts!" in str(errinfo)
 
     @pytest.mark.slow

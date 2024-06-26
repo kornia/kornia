@@ -15,8 +15,8 @@ class Testunsharp(BaseTester):
         if params_as_tensor is True:
             sigma = torch.tensor([sigma], device=device, dtype=dtype).repeat(shape[0], 1)
 
-        inpt = torch.ones(shape, device=device, dtype=dtype)
-        actual = unsharp_mask(inpt, kernel_size, sigma, "replicate")
+        data = torch.ones(shape, device=device, dtype=dtype)
+        actual = unsharp_mask(data, kernel_size, sigma, "replicate")
         assert isinstance(actual, torch.Tensor)
         assert actual.shape == shape
 
@@ -25,8 +25,8 @@ class Testunsharp(BaseTester):
         kernel_size = (5, 7)
         sigma = (1.5, 2.1)
 
-        inpt = torch.ones(shape, device=device, dtype=dtype)
-        actual = unsharp_mask(inpt, kernel_size, sigma, "replicate")
+        data = torch.ones(shape, device=device, dtype=dtype)
+        actual = unsharp_mask(data, kernel_size, sigma, "replicate")
         assert actual.shape == shape
 
     @pytest.mark.skip(reason="nothing to test")
@@ -34,11 +34,11 @@ class Testunsharp(BaseTester):
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
-        inpt = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
+        data = torch.rand(3, 5, 5, device=device, dtype=dtype).expand(batch_size, -1, -1, -1)
 
         kernel_size = (3, 3)
         sigma = (1.5, 2.1)
-        actual = unsharp_mask(inpt, kernel_size, sigma, "replicate")
+        actual = unsharp_mask(data, kernel_size, sigma, "replicate")
         assert actual.is_contiguous()
 
     def test_gradcheck(self, device):
@@ -48,8 +48,8 @@ class Testunsharp(BaseTester):
         sigma = (1.5, 2.1)
 
         # evaluate function gradient
-        inpt = torch.rand(shape, device=device, dtype=torch.float64)
-        self.gradcheck(unsharp_mask, (inpt, kernel_size, sigma, "replicate"))
+        data = torch.rand(shape, device=device, dtype=torch.float64)
+        self.gradcheck(unsharp_mask, (data, kernel_size, sigma, "replicate"))
 
     def test_module(self, device, dtype):
         params = [(3, 3), (1.5, 1.5)]
@@ -65,8 +65,8 @@ class Testunsharp(BaseTester):
         if params_as_tensor is True:
             sigma = torch.tensor([sigma], device=device, dtype=dtype)
 
-        inpt = torch.ones(1, 3, 10, 10, device=device, dtype=dtype)
+        data = torch.ones(1, 3, 10, 10, device=device, dtype=dtype)
         op = UnsharpMask(3, sigma)
         op_optimized = torch_optimizer(op)
 
-        self.assert_close(op(inpt), op_optimized(inpt))
+        self.assert_close(op(data), op_optimized(data))

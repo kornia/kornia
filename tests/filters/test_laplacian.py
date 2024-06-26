@@ -54,8 +54,8 @@ class TestLaplacian(BaseTester):
     @pytest.mark.parametrize("kernel_size", [5, (11, 7), (3, 3)])
     @pytest.mark.parametrize("normalized", [True, False])
     def test_smoke(self, shape, kernel_size, normalized, device, dtype):
-        inpt = torch.rand(shape, device=device, dtype=dtype)
-        actual = laplacian(inpt, kernel_size, "reflect", normalized)
+        data = torch.rand(shape, device=device, dtype=dtype)
+        actual = laplacian(data, kernel_size, "reflect", normalized)
         assert isinstance(actual, torch.Tensor)
         assert actual.shape == shape
 
@@ -97,8 +97,8 @@ class TestLaplacian(BaseTester):
     @pytest.mark.parametrize("kernel_size", [5, (5, 7)])
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_dynamo(self, batch_size, kernel_size, device, dtype, torch_optimizer):
-        inpt = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
+        data = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
         op = Laplacian(kernel_size)
         op_optimized = torch_optimizer(op)
 
-        self.assert_close(op(inpt), op_optimized(inpt))
+        self.assert_close(op(data), op_optimized(data))

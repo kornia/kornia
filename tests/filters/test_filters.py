@@ -76,13 +76,13 @@ class TestFilter2D(BaseTester):
 
     def test_exception(self):
         k = torch.ones(1, 1, 1)
-        inpt = torch.ones(1, 1, 1, 1)
+        data = torch.ones(1, 1, 1, 1)
         with pytest.raises(TypeError) as errinfo:
             filter2d(1, k)
         assert "Not a Tensor type." in str(errinfo)
 
         with pytest.raises(TypeError) as errinfo:
-            filter2d(inpt, 1)
+            filter2d(data, 1)
         assert "Not a Tensor type." in str(errinfo)
 
         with pytest.raises(TypeError) as errinfo:
@@ -90,15 +90,15 @@ class TestFilter2D(BaseTester):
         assert "shape must be [['B', 'C', 'H', 'W']]" in str(errinfo)
 
         with pytest.raises(TypeError) as errinfo:
-            filter2d(inpt, torch.ones(1))
+            filter2d(data, torch.ones(1))
         assert "shape must be [['B', 'H', 'W']]" in str(errinfo)
 
         with pytest.raises(Exception) as errinfo:
-            filter2d(inpt, k, border_type="a")
+            filter2d(data, k, border_type="a")
         assert "Invalid border, gotcha a. Ex" in str(errinfo)
 
         with pytest.raises(Exception) as errinfo:
-            filter2d(inpt, k, padding="a")
+            filter2d(data, k, padding="a")
         assert "Invalid padding mode, gotcha a. Ex" in str(errinfo)
 
     @pytest.mark.parametrize("padding", ["same", "valid"])
@@ -359,12 +359,12 @@ class TestFilter2D(BaseTester):
     @pytest.mark.parametrize("padding", ["same", "valid"])
     def test_dynamo(self, normalized, padding, device, dtype, torch_optimizer):
         kernel = torch.rand(1, 3, 3, device=device, dtype=dtype)
-        inpt = torch.ones(2, 3, 10, 10, device=device, dtype=dtype)
+        data = torch.ones(2, 3, 10, 10, device=device, dtype=dtype)
         op = filter2d
         op_optimized = torch_optimizer(op)
 
-        expected = op(inpt, kernel, padding=padding, normalized=normalized)
-        actual = op_optimized(inpt, kernel, padding=padding, normalized=normalized)
+        expected = op(data, kernel, padding=padding, normalized=normalized)
+        actual = op_optimized(data, kernel, padding=padding, normalized=normalized)
 
         self.assert_close(actual, expected)
 
@@ -377,27 +377,27 @@ class TestFilter3D(BaseTester):
             pytest.skip(reason="Reflect border is not implemented for 3D on torch < 1.9.1")
 
         kernel = torch.rand(1, 3, 3, 3, device=device, dtype=dtype)
-        inpt = torch.ones(1, 1, 6, 7, 8, device=device, dtype=dtype)
-        actual = filter3d(inpt, kernel, border_type, normalized)
+        data = torch.ones(1, 1, 6, 7, 8, device=device, dtype=dtype)
+        actual = filter3d(data, kernel, border_type, normalized)
 
         assert isinstance(actual, torch.Tensor)
-        assert actual.shape == inpt.shape
+        assert actual.shape == data.shape
 
     @pytest.mark.parametrize("batch_size", [2, 3, 6, 8])
     def test_cardinality(self, batch_size, device, dtype):
         kernel = torch.rand(1, 3, 3, 3, device=device, dtype=dtype)
-        inpt = torch.ones(batch_size, 3, 6, 7, 8, device=device, dtype=dtype)
-        assert filter3d(inpt, kernel).shape == inpt.shape
+        data = torch.ones(batch_size, 3, 6, 7, 8, device=device, dtype=dtype)
+        assert filter3d(data, kernel).shape == data.shape
 
     def test_exception(self):
         k = torch.ones(1, 1, 1, 1)
-        inpt = torch.ones(1, 1, 1, 1, 1)
+        data = torch.ones(1, 1, 1, 1, 1)
         with pytest.raises(TypeError) as errinfo:
             filter3d(1, k)
         assert "Not a Tensor type." in str(errinfo)
 
         with pytest.raises(TypeError) as errinfo:
-            filter3d(inpt, 1)
+            filter3d(data, 1)
         assert "Not a Tensor type." in str(errinfo)
 
         with pytest.raises(TypeError) as errinfo:
@@ -405,11 +405,11 @@ class TestFilter3D(BaseTester):
         assert "shape must be [['B', 'C', 'D', 'H', 'W']]" in str(errinfo)
 
         with pytest.raises(TypeError) as errinfo:
-            filter3d(inpt, torch.ones(1))
+            filter3d(data, torch.ones(1))
         assert "shape must be [['B', 'D', 'H', 'W']]" in str(errinfo)
 
         with pytest.raises(Exception) as errinfo:
-            filter3d(inpt, k, border_type="a")
+            filter3d(data, k, border_type="a")
         assert "Invalid border, gotcha a. Ex" in str(errinfo)
 
     def test_mean_filter(self, device, dtype):
@@ -715,12 +715,12 @@ class TestFilter3D(BaseTester):
     @pytest.mark.parametrize("normalized", [True, False])
     def test_dynamo(self, normalized, device, dtype, torch_optimizer):
         kernel = torch.rand(1, 3, 3, 3, device=device, dtype=dtype)
-        inpt = torch.ones(2, 3, 4, 10, 10, device=device, dtype=dtype)
+        data = torch.ones(2, 3, 4, 10, 10, device=device, dtype=dtype)
         op = filter3d
         op_optimized = torch_optimizer(op)
 
-        expected = op(inpt, kernel, normalized=normalized)
-        actual = op_optimized(inpt, kernel, normalized=normalized)
+        expected = op(data, kernel, normalized=normalized)
+        actual = op_optimized(data, kernel, normalized=normalized)
 
         self.assert_close(actual, expected)
 
@@ -756,11 +756,11 @@ class TestDexiNed(BaseTester):
     @pytest.mark.skip(reason="DexiNed do not compile with dynamo.")
     def test_dynamo(self, device, dtype, torch_optimizer):
         # TODO: update the dexined to be possible to use with dynamo
-        inpt = torch.rand(2, 3, 32, 32, device=device, dtype=dtype)
+        data = torch.rand(2, 3, 32, 32, device=device, dtype=dtype)
         op = DexiNed(pretrained=True).to(device, dtype)
         op_optimized = torch_optimizer(op)
 
-        expected = op(inpt)
-        actual = op_optimized(inpt)
+        expected = op(data)
+        actual = op_optimized(data)
 
         self.assert_close(actual, expected)

@@ -99,8 +99,8 @@ class TestMedianBlur(BaseTester):
     @pytest.mark.parametrize("kernel_size", [5, (5, 7)])
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_dynamo(self, batch_size, kernel_size, device, dtype, torch_optimizer):
-        inpt = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
+        data = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
         op = MedianBlur(kernel_size)
         op_optimized = torch_optimizer(op)
 
-        self.assert_close(op(inpt), op_optimized(inpt))
+        self.assert_close(op(data), op_optimized(data))

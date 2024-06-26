@@ -78,18 +78,18 @@ class TestBilateralBlur(BaseTester):
     @pytest.mark.parametrize("kernel_size", [5, (5, 7)])
     @pytest.mark.parametrize("color_distance_type", ["l1", "l2"])
     def test_dynamo(self, kernel_size, color_distance_type, device, dtype, torch_optimizer):
-        inpt = torch.ones(2, 3, 8, 8, device=device, dtype=dtype)
+        data = torch.ones(2, 3, 8, 8, device=device, dtype=dtype)
         op = BilateralBlur(kernel_size, 1, (1, 1), color_distance_type=color_distance_type)
         op_optimized = torch_optimizer(op)
 
-        self.assert_close(op(inpt), op_optimized(inpt))
+        self.assert_close(op(data), op_optimized(data))
 
         sigma_color = torch.rand(1, device=device, dtype=dtype)
         sigma_space = torch.rand(1, 2, device=device, dtype=dtype)
         op = BilateralBlur(kernel_size, sigma_color, sigma_space, color_distance_type=color_distance_type)
         op_optimized = torch_optimizer(op)
 
-        self.assert_close(op(inpt), op_optimized(inpt))
+        self.assert_close(op(data), op_optimized(data))
 
     def test_opencv_grayscale(self, device, dtype):
         img = [[95, 130, 108, 228], [98, 142, 187, 166], [114, 166, 190, 141], [150, 83, 174, 216]]
@@ -237,19 +237,19 @@ class TestJointBilateralBlur(BaseTester):
     @pytest.mark.parametrize("kernel_size", [5, (5, 7)])
     @pytest.mark.parametrize("color_distance_type", ["l1", "l2"])
     def test_dynamo(self, kernel_size, color_distance_type, device, dtype, torch_optimizer):
-        inpt = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
+        data = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
         guide = torch.rand(2, 3, 8, 8, device=device, dtype=dtype)
         op = JointBilateralBlur(kernel_size, 1, (1, 1), color_distance_type=color_distance_type)
         op_optimized = torch_optimizer(op)
 
-        self.assert_close(op(inpt, guide), op_optimized(inpt, guide))
+        self.assert_close(op(data, guide), op_optimized(data, guide))
 
         sigma_color = torch.rand(1, device=device, dtype=dtype)
         sigma_space = torch.rand(1, 2, device=device, dtype=dtype)
         op = JointBilateralBlur(kernel_size, sigma_color, sigma_space, color_distance_type=color_distance_type)
         op_optimized = torch_optimizer(op)
 
-        self.assert_close(op(inpt, guide), op_optimized(inpt, guide))
+        self.assert_close(op(data, guide), op_optimized(data, guide))
 
     def test_opencv_grayscale(self, device, dtype):
         img = [[95, 130, 108, 228], [98, 142, 187, 166], [114, 166, 190, 141], [150, 83, 174, 216]]

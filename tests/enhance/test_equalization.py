@@ -75,8 +75,8 @@ class TestEqualization(BaseTester):
         bs, channels, height, width = 1, 1, 11, 11
         inputs = torch.rand(bs, channels, height, width, device=device, dtype=torch.float64)
 
-        def grad_rot(inpt, a, b, c):
-            rot = rotate(inpt, torch.tensor(30.0, dtype=inpt.dtype, device=device))
+        def grad_rot(data, a, b, c):
+            rot = rotate(data, torch.tensor(30.0, dtype=data.dtype, device=device))
             return enhance.equalize_clahe(rot, a, b, c)
 
         self.gradcheck(grad_rot, (inputs, 40.0, (2, 2), True), nondet_tol=1e-4)

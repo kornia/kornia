@@ -84,8 +84,8 @@ class TestSpatialExpectation2d:
 
     @pytest.mark.skip("After the op be optimized the results are not the same")
     def test_dynamo(self, dtype, device, torch_optimizer):
-        inpt = torch.tensor([[[[0.0, 0.0, 1.0], [0.0, 0.0, 0.0]]]], device=device, dtype=dtype)
+        data = torch.tensor([[[[0.0, 0.0, 1.0], [0.0, 0.0, 0.0]]]], device=device, dtype=dtype)
         op = kornia.geometry.subpix.spatial_expectation2d
         op_optimized = torch_optimizer(op)
 
-        assert_close(op(inpt, True), op_optimized(inpt, True))
+        assert_close(op(data, True), op_optimized(data, True))

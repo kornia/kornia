@@ -22,12 +22,12 @@ class TestMotionBlur(BaseTester):
     @pytest.mark.parametrize("params_as_tensor", [True, False])
     def test_smoke(self, shape, kernel_size, angle, direction, mode, params_as_tensor, device, dtype):
         B, C, H, W = shape
-        inpt = torch.rand(shape, device=device, dtype=dtype)
+        data = torch.rand(shape, device=device, dtype=dtype)
 
         if params_as_tensor is True:
             angle = torch.tensor([angle], device=device, dtype=dtype).repeat(B)
             direction = torch.tensor([direction], device=device, dtype=dtype).repeat(B)
-        actual = motion_blur(inpt, kernel_size, angle, direction, "constant", mode)
+        actual = motion_blur(data, kernel_size, angle, direction, "constant", mode)
 
         assert isinstance(actual, torch.Tensor)
         assert actual.shape == shape
@@ -95,11 +95,11 @@ class TestMotionBlur(BaseTester):
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_dynamo(self, batch_size, device, dtype, torch_optimizer):
         # TODO: FIX op
-        inpt = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
+        data = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
         op = MotionBlur(3, 36.0, 0.5)
         op_optimized = torch_optimizer(op)
 
-        self.assert_close(op(inpt), op_optimized(inpt))
+        self.assert_close(op(data), op_optimized(data))
 
 
 class TestMotionBlur3D(BaseTester):
@@ -111,12 +111,12 @@ class TestMotionBlur3D(BaseTester):
     @pytest.mark.parametrize("params_as_tensor", [True, False])
     def test_smoke(self, shape, kernel_size, angle, direction, mode, params_as_tensor, device, dtype):
         B, C, D, H, W = shape
-        inpt = torch.rand(shape, device=device, dtype=dtype)
+        data = torch.rand(shape, device=device, dtype=dtype)
 
         if params_as_tensor is True:
             angle = torch.tensor([angle], device=device, dtype=dtype).expand(B, 3)
             direction = torch.tensor([direction], device=device, dtype=dtype).repeat(B)
-        actual = motion_blur3d(inpt, kernel_size, angle, direction, "constant", mode)
+        actual = motion_blur3d(data, kernel_size, angle, direction, "constant", mode)
 
         assert isinstance(actual, torch.Tensor)
         assert actual.shape == shape
@@ -184,8 +184,8 @@ class TestMotionBlur3D(BaseTester):
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_dynamo(self, batch_size, device, dtype, torch_optimizer):
         # TODO: Fix the operation to works after dynamo optimize
-        inpt = torch.ones(batch_size, 3, 1, 10, 10, device=device, dtype=dtype)
+        data = torch.ones(batch_size, 3, 1, 10, 10, device=device, dtype=dtype)
         op = MotionBlur3D(3, (0.0, 360.0, 150.0), 0.5)
         op_optimized = torch_optimizer(op)
 
-        self.assert_close(op(inpt), op_optimized(inpt))
+        self.assert_close(op(data), op_optimized(data))
