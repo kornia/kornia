@@ -54,7 +54,7 @@ def _bilateral_blur(
     elif color_distance_type == "l2":
         color_distance_sq = diff.square().sum(1, keepdim=True)
     else:
-        raise ValueError("color_distance_type only acceps l1 or l2")
+        raise ValueError("color_distance_type only accepts l1 or l2")
     color_kernel = (-0.5 / sigma_color**2 * color_distance_sq).exp()  # (B, 1, H, W, Ky x Kx)
 
     space_kernel = get_gaussian_kernel2d(kernel_size, sigma_space, device=input.device, dtype=input.dtype)

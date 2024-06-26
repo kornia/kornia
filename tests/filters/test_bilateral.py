@@ -43,7 +43,7 @@ class TestBilateralBlur(BaseTester):
 
         with pytest.raises(ValueError) as errinfo:
             bilateral_blur(torch.rand(1, 1, 5, 5), 3, 0.1, (1, 1), color_distance_type="l3")
-        assert "color_distance_type only acceps l1 or l2" in str(errinfo)
+        assert "color_distance_type only accepts l1 or l2" in str(errinfo)
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3
@@ -206,7 +206,7 @@ class TestJointBilateralBlur(BaseTester):
 
         with pytest.raises(ValueError) as errinfo:
             joint_bilateral_blur(inp, guide, 3, 0.1, (1, 1), color_distance_type="l3")
-        assert "color_distance_type only acceps l1 or l2" in str(errinfo)
+        assert "color_distance_type only accepts l1 or l2" in str(errinfo)
 
     def test_noncontiguous(self, device, dtype):
         batch_size = 3

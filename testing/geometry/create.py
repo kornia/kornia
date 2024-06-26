@@ -7,10 +7,10 @@ from kornia.core import Device, Dtype, Tensor, tensor, zeros
 from kornia.utils.misc import eye_like
 
 
-def create_random_homography(inpt: Tensor, eye_size: int, std_val: float = 1e-3) -> Tensor:
+def create_random_homography(data: Tensor, eye_size: int, std_val: float = 1e-3) -> Tensor:
     """Create a batch of random homographies of shape Bx3x3."""
-    std = zeros(inpt.shape[0], eye_size, eye_size, device=inpt.device, dtype=inpt.dtype)
-    eye = eye_like(eye_size, inpt)
+    std = zeros(data.shape[0], eye_size, eye_size, device=data.device, dtype=data.dtype)
+    eye = eye_like(eye_size, data)
     return eye + std.uniform_(-std_val, std_val)
 
 

@@ -263,7 +263,7 @@ This is a simple example, of how to directly use the SAM model loaded. We recomm
     image = image[None, ...]
 
     # Resize the image to have the maximum size 1024 on its largest side
-    inpt = resize(image, 1024, side='long')
+    data = resize(image, 1024, side='long')
 
     # Embed prompts -- ATTENTION: should match the coordinates after the resize of the image
     sparse_embeddings, dense_embeddings = sam_model.prompt_encoder(points=None, boxes=None, masks=None)
@@ -273,16 +273,16 @@ This is a simple example, of how to directly use the SAM model loaded. We recomm
     pixel_std = torch.tensor(...)
 
     # Preprocess input
-    inpt = normalize(inpt, pixel_mean, pixel_std)
+    data = normalize(data, pixel_mean, pixel_std)
     padh = model_sam.image_encoder.img_size - h
     padw = model_sam.image_encoder.img_size - w
-    inpt = pad(inpt, (0, padw, 0, padh))
+    data = pad(data, (0, padw, 0, padh))
 
     #--------------------------------------------------------------------
     # Option A: Manually calling each API
     #--------------------------------------------------------------------
     low_res_logits, iou_predictions = sam_model.mask_decoder(
-        image_embeddings=sam_model.image_encoder(inpt),
+        image_embeddings=sam_model.image_encoder(data),
         image_pe=sam_model.prompt_encoder.get_dense_pe(),
         sparse_prompt_embeddings=sparse_embeddings,
         dense_prompt_embeddings=dense_embeddings,
@@ -294,13 +294,13 @@ This is a simple example, of how to directly use the SAM model loaded. We recomm
     #--------------------------------------------------------------------
     # Option B: Calling the model itself
     #--------------------------------------------------------------------
-    prediction = sam_model(inpt[None, ...], [{}], multimask_output=True)
+    prediction = sam_model(data[None, ...], [{}], multimask_output=True)
 
     #--------------------------------------------------------------------
     # Post processing
     #--------------------------------------------------------------------
     # Upscale the masks to the original image resolution
-    input_size = (inpt.shape[-2], inpt.shape[-1])
+    input_size = (data.shape[-2], data.shape[-1])
     original_size = (image.shape[-2], image.shape[-1])
     image_size_encoder = (model_sam.image_encoder.img_size, model_sam.image_encoder.img_size)
     prediction.original_res_logits(input_size, original_size, image_size_encoder)
