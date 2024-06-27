@@ -1,6 +1,6 @@
 coverage
 mypy
-numpy
+numpy<2
 onnx
 pre-commit>=2
 pytest==8.2.2
