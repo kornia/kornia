@@ -98,16 +98,16 @@ class TestGuidedBlur(BaseTester):
     @pytest.mark.parametrize("subsample", [1, 2])
     def test_dynamo(self, kernel_size, subsample, device, dtype, torch_optimizer):
         guide = torch.ones(2, 3, 8, 8, device=device, dtype=dtype)
-        inpt = torch.ones(2, 3, 8, 8, device=device, dtype=dtype)
+        data = torch.ones(2, 3, 8, 8, device=device, dtype=dtype)
         op = GuidedBlur(kernel_size, 0.1, subsample=subsample)
         op_optimized = torch_optimizer(op)
 
-        self.assert_close(op(guide, inpt), op_optimized(guide, inpt))
+        self.assert_close(op(guide, data), op_optimized(guide, data))
 
         op = GuidedBlur(kernel_size, torch.tensor(0.1, device=device, dtype=dtype), subsample=subsample)
         op_optimized = torch_optimizer(op)
 
-        self.assert_close(op(guide, inpt), op_optimized(guide, inpt))
+        self.assert_close(op(guide, data), op_optimized(guide, data))
 
     def test_opencv_grayscale(self, device, dtype):
         guide = [[100, 130, 58, 36], [215, 142, 173, 166], [114, 150, 190, 60], [23, 83, 84, 216]]

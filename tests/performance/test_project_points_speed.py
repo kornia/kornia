@@ -17,10 +17,10 @@ def test_performance_speed(device, dtype):
 
     print("Benchmarking project_points")
     for input_shape in points_shapes:
-        inpt = torch.rand(input_shape).to(device)
+        data = torch.rand(input_shape).to(device)
         pose = torch.rand((1, 4, 4)).to(device)
         torch.cuda.synchronize(device)
         t = time()
-        kornia.geometry.transform_points(pose, inpt)
+        kornia.geometry.transform_points(pose, data)
         torch.cuda.synchronize(device)
         print(f"inp={input_shape}, dev={device}, {time() - t}, sec")

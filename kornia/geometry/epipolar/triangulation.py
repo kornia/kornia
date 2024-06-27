@@ -1,4 +1,4 @@
-"""Module with the functionalites for triangulation."""
+"""Module with the functionalities for triangulation."""
 
 import torch
 

@@ -94,20 +94,20 @@ class TestKMeans(BaseTester):
         kmeans.fit(x)
 
         centers = kmeans.cluster_centers
-        prediciton = kmeans.predict(torch.tensor([[-14, 16], [45, 12]], dtype=dtype, device=device)).tolist()
+        prediction = kmeans.predict(torch.tensor([[-14, 16], [45, 12]], dtype=dtype, device=device)).tolist()
 
         expected_centers = torch.tensor([[-13, 17], [15, -12], [35, 15]], dtype=dtype, device=device)
-        expected_prediciton = [0, 2]
+        expected_prediction = [0, 2]
 
         # sorting centers using dimension 0 as key so that they can be checked for equalness
         order = torch.argsort(centers[:, 0]).tolist()
         new_classes = {old_class: new_class for new_class, old_class in enumerate(order)}
 
         ordered_centers = centers[order]
-        oredered_prediciton = [new_classes[predicted_class] for predicted_class in prediciton]
+        oredered_prediction = [new_classes[predicted_class] for predicted_class in prediction]
 
         self.assert_close(ordered_centers, expected_centers, atol=2, rtol=0.1)
-        assert oredered_prediciton == expected_prediciton
+        assert oredered_prediction == expected_prediction
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         x = TestKMeans._create_data(device, dtype)
@@ -118,7 +118,7 @@ class TestKMeans(BaseTester):
         kmeans.fit(x)
 
         centers = kmeans.cluster_centers
-        prediciton = kmeans.predict(predict_param)
+        prediction = kmeans.predict(predict_param)
 
         kmeans_op = kornia.contrib.KMeans(*kmeans_params)
         kmeans_op.fit = torch_optimizer(kmeans_op.fit)
@@ -127,7 +127,7 @@ class TestKMeans(BaseTester):
         kmeans_op.fit(x)
 
         centers_op = kmeans_op.cluster_centers
-        prediciton_op = kmeans_op.predict(predict_param)
+        prediction_op = kmeans_op.predict(predict_param)
 
         self.assert_close(centers, centers_op)
-        self.assert_close(prediciton, prediciton_op)
+        self.assert_close(prediction, prediction_op)

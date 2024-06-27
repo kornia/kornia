@@ -305,12 +305,12 @@ class TestCanny(BaseTester):
             and (isinstance(kernel_size, int) or kernel_size[0] == kernel_size[1])
         ):
             pytest.skip("Canny compiled failing into fp64 for kernel sizes where kx and ky are equals")
-        inpt = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
+        data = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
         op = Canny(kernel_size=kernel_size)
         op_optimized = torch_optimizer(op)
 
-        expected_magnitude, expected_edges = op(inpt)
-        actual_magnitude, actual_edges = op_optimized(inpt)
+        expected_magnitude, expected_edges = op(data)
+        actual_magnitude, actual_edges = op_optimized(data)
 
         self.assert_close(actual_magnitude, expected_magnitude)
         self.assert_close(actual_edges, expected_edges)

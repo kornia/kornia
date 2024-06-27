@@ -9,25 +9,25 @@ from testing.base import BaseTester
 class TestBoxBlur(BaseTester):
     @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
     def test_smoke(self, kernel_size, device, dtype):
-        inpt = torch.rand(1, 1, 10, 10, device=device, dtype=dtype)
+        data = torch.rand(1, 1, 10, 10, device=device, dtype=dtype)
 
         bb = BoxBlur(kernel_size, "reflect")
-        actual = bb(inpt)
+        actual = bb(data)
         assert actual.shape == (1, 1, 10, 10)
 
     @pytest.mark.parametrize("kernel_size", [5, (3, 5)])
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_separable(self, batch_size, kernel_size, device, dtype):
-        inpt = torch.randn(batch_size, 3, 10, 10, device=device, dtype=dtype)
-        out1 = box_blur(inpt, kernel_size, separable=False)
-        out2 = box_blur(inpt, kernel_size, separable=True)
+        data = torch.randn(batch_size, 3, 10, 10, device=device, dtype=dtype)
+        out1 = box_blur(data, kernel_size, separable=False)
+        out2 = box_blur(data, kernel_size, separable=True)
         self.assert_close(out1, out2)
 
     def test_exception(self):
-        inpt = torch.rand(1, 1, 3, 3)
+        data = torch.rand(1, 1, 3, 3)
 
         with pytest.raises(Exception) as errinfo:
-            box_blur(inpt, (1,))
+            box_blur(data, (1,))
         assert "2D Kernel size should have a length of 2." in str(errinfo)
 
     @pytest.mark.parametrize("kernel_size", [(3, 3), 5, (5, 7)])
@@ -132,8 +132,8 @@ class TestBoxBlur(BaseTester):
     @pytest.mark.parametrize("kernel_size", [5, (5, 7)])
     @pytest.mark.parametrize("batch_size", [1, 2])
     def test_dynamo(self, batch_size, kernel_size, separable, device, dtype, torch_optimizer):
-        inpt = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
+        data = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
         op = BoxBlur(kernel_size, separable=separable)
         op_optimized = torch_optimizer(op)
 
-        self.assert_close(op(inpt), op_optimized(inpt))
+        self.assert_close(op(data), op_optimized(data))

@@ -153,11 +153,11 @@ class TestSpatialSoftArgmax2d(BaseTester):
         loss.backward()
 
     def test_dynamo(self, device, dtype, torch_optimizer):
-        inpt = torch.rand((2, 3, 7, 7), dtype=dtype, device=device)
+        data = torch.rand((2, 3, 7, 7), dtype=dtype, device=device)
         op = kornia.geometry.subpix.spatial_soft_argmax2d
         op_optimized = torch_optimizer(op)
 
-        self.assert_close(op(inpt), op_optimized(inpt))
+        self.assert_close(op(data), op_optimized(data))
 
 
 class TestConvSoftArgmax2d(BaseTester):

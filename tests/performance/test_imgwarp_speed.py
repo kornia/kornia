@@ -18,11 +18,11 @@ def test_performance_speed(device, dtype):
     for input_shape in shapes:
         for PS in PSs:
             BS = input_shape[0]
-            inpt = torch.rand(input_shape).to(device)
+            data = torch.rand(input_shape).to(device)
             As = torch.eye(3).unsqueeze(0).repeat(BS, 1, 1)[:, :2, :].to(device)
             As += 0.1 * torch.rand(As.size()).to(device)
             torch.cuda.synchronize(device)
             t = time()
-            _ = kornia.warp_affine(inpt, As, (PS, PS))
+            _ = kornia.warp_affine(data, As, (PS, PS))
             print(f"inp={input_shape}, PS={PS}, dev={device}, {time() - t}, sec")
             torch.cuda.synchronize(device)

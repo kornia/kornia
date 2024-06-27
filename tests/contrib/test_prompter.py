@@ -11,10 +11,10 @@ from testing.base import BaseTester
 class TestVisualPrompter(BaseTester):
     @pytest.mark.slow
     def test_smoke(self, device, dtype):
-        inpt = torch.rand(3, 77, 128, device=device, dtype=dtype)
+        data = torch.rand(3, 77, 128, device=device, dtype=dtype)
         prompter = VisualPrompter(SamConfig("vit_b"), device, dtype)
 
-        prompter.set_image(inpt)
+        prompter.set_image(data)
         assert prompter.is_image_set
 
         prompter.reset_image()
@@ -27,13 +27,13 @@ class TestVisualPrompter(BaseTester):
     def test_cardinality(self, device, batch_size, N, multimask_output):
         # SAM: don't supports float64
         dtype = torch.float32
-        inpt = torch.rand(3, 77, 128, device=device, dtype=dtype)
+        data = torch.rand(3, 77, 128, device=device, dtype=dtype)
         prompter = VisualPrompter(SamConfig("vit_b"), device, dtype)
 
-        keypoints = torch.randint(0, min(inpt.shape[-2:]), (batch_size, N, 2), device=device).to(dtype=dtype)
+        keypoints = torch.randint(0, min(data.shape[-2:]), (batch_size, N, 2), device=device).to(dtype=dtype)
         labels = torch.randint(0, 1, (batch_size, N), device=device).to(dtype=dtype)
 
-        prompter.set_image(inpt)
+        prompter.set_image(data)
 
         out = prompter.predict(keypoints, labels, multimask_output=multimask_output)
 
@@ -44,11 +44,11 @@ class TestVisualPrompter(BaseTester):
     def test_exception(self):
         prompter = VisualPrompter(SamConfig("vit_b"))
 
-        inpt = torch.rand(1, 3, 1, 2)
+        data = torch.rand(1, 3, 1, 2)
 
         # Wrong shape for the image
         with pytest.raises(TypeError) as errinfo:
-            prompter.set_image(inpt, [], False)
+            prompter.set_image(data, [], False)
         assert "shape must be [['3', 'H', 'W']]. Got torch.Size([1, 3, 1, 2])" in str(errinfo)
 
         # predict without set an image
@@ -58,21 +58,21 @@ class TestVisualPrompter(BaseTester):
 
         # Valid masks
         with pytest.raises(TypeError) as errinfo:
-            prompter._valid_masks(inpt)
+            prompter._valid_masks(data)
         assert "shape must be [['K', '1', '256', '256']]. Got torch.Size([1, 3, 1, 2])" in str(errinfo)
 
         # Valid boxes
         with pytest.raises(TypeError) as errinfo:
-            prompter._valid_boxes(inpt)
+            prompter._valid_boxes(data)
         assert "shape must be [['K', '4']]. Got torch.Size([1, 3, 1, 2])" in str(errinfo)
 
         # Valid keypoints
         with pytest.raises(TypeError) as errinfo:
-            prompter._valid_keypoints(inpt, None)
+            prompter._valid_keypoints(data, None)
         assert "shape must be [['K', 'N', '2']]. Got torch.Size([1, 3, 1, 2])" in str(errinfo)
 
         with pytest.raises(TypeError) as errinfo:
-            prompter._valid_keypoints(torch.rand(1, 1, 2), inpt)
+            prompter._valid_keypoints(torch.rand(1, 1, 2), data)
         assert "shape must be [['K', 'N']]. Got torch.Size([1, 3, 1, 2])" in str(errinfo)
 
         with pytest.raises(Exception) as errinfo:
@@ -90,18 +90,18 @@ class TestVisualPrompter(BaseTester):
         dtype = torch.float32
         batch_size = 1
         N = 2
-        inpt = torch.rand(3, 77, 128, device=device, dtype=dtype)
-        keypoints = torch.randint(0, min(inpt.shape[-2:]), (batch_size, N, 2), device=device, dtype=dtype)
+        data = torch.rand(3, 77, 128, device=device, dtype=dtype)
+        keypoints = torch.randint(0, min(data.shape[-2:]), (batch_size, N, 2), device=device, dtype=dtype)
         labels = torch.randint(0, 1, (batch_size, N), device=device, dtype=dtype)
 
         prompter = VisualPrompter(SamConfig("vit_b"), device, dtype)
-        prompter.set_image(inpt)
+        prompter.set_image(data)
 
         expected = prompter.predict(keypoints=keypoints, keypoints_labels=labels)
         prompter.reset_image()
 
         prompter.compile()
-        prompter.set_image(inpt)
+        prompter.set_image(data)
         actual = prompter.predict(keypoints=keypoints, keypoints_labels=labels)
 
         # TODO (joao): explore the reason for the discrepancy between cuda/cpu

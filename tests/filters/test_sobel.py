@@ -13,8 +13,8 @@ class TestSpatialGradient(BaseTester):
     @pytest.mark.parametrize("order", [1, 2])
     @pytest.mark.parametrize("normalized", [True, False])
     def test_smoke(self, batch_size, mode, order, normalized, device, dtype):
-        inpt = torch.zeros(batch_size, 3, 4, 4, device=device, dtype=dtype)
-        actual = SpatialGradient(mode, order, normalized)(inpt)
+        data = torch.zeros(batch_size, 3, 4, 4, device=device, dtype=dtype)
+        actual = SpatialGradient(mode, order, normalized)(data)
         assert isinstance(actual, torch.Tensor)
 
     @pytest.mark.parametrize("batch_size", [1, 2])
@@ -245,14 +245,14 @@ class TestSpatialGradient(BaseTester):
     @pytest.mark.parametrize("batch_size", [1, 2])
     @pytest.mark.xfail(torch_version() in {"2.0.1"}, reason="random failing")
     def test_dynamo(self, batch_size, order, mode, device, dtype, torch_optimizer):
-        inpt = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
+        data = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
         if order == 1 and dtype == torch.float64:
             # TODO: FIX order 1 spatial gradient with fp64 on dynamo
             pytest.xfail(reason="Order 1 on spatial gradient may be wrong computed for float64 on dynamo")
         op = SpatialGradient(mode, order)
         op_optimized = torch_optimizer(op)
 
-        self.assert_close(op(inpt), op_optimized(inpt))
+        self.assert_close(op(data), op_optimized(data))
 
 
 class TestSpatialGradient3d(BaseTester):
@@ -260,8 +260,8 @@ class TestSpatialGradient3d(BaseTester):
     @pytest.mark.parametrize("mode", ["diff"])  # TODO: add support to 'sobel'
     @pytest.mark.parametrize("order", [1, 2])
     def test_smoke(self, batch_size, mode, order, device, dtype):
-        inpt = torch.ones(batch_size, 3, 2, 7, 4, device=device, dtype=dtype)
-        actual = SpatialGradient3d(mode, order)(inpt)
+        data = torch.ones(batch_size, 3, 2, 7, 4, device=device, dtype=dtype)
+        actual = SpatialGradient3d(mode, order)(data)
         assert isinstance(actual, torch.Tensor)
 
     @pytest.mark.parametrize("batch_size", [1, 2])
@@ -411,11 +411,11 @@ class TestSpatialGradient3d(BaseTester):
     @pytest.mark.parametrize("mode", ["diff"])
     @pytest.mark.parametrize("order", [1, 2])
     def test_dynamo(self, mode, order, device, dtype, torch_optimizer):
-        inpt = torch.ones(1, 3, 1, 10, 10, device=device, dtype=dtype)
+        data = torch.ones(1, 3, 1, 10, 10, device=device, dtype=dtype)
         op = SpatialGradient3d(mode, order)
         op_optimized = torch_optimizer(op)
 
-        self.assert_close(op(inpt), op_optimized(inpt))
+        self.assert_close(op(data), op_optimized(data))
 
 
 class TestSobel(BaseTester):
@@ -508,8 +508,8 @@ class TestSobel(BaseTester):
         if dtype == torch.float64:
             # TODO: investigate sobel for float64 with dynamo
             pytest.xfail(reason="The sobel results can be different after dynamo on fp64")
-        inpt = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
+        data = torch.ones(batch_size, 3, 10, 10, device=device, dtype=dtype)
         op = Sobel()
         op_optimized = torch_optimizer(op)
 
-        self.assert_close(op(inpt), op_optimized(inpt))
+        self.assert_close(op(data), op_optimized(data))
