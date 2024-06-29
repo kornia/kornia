@@ -5,6 +5,7 @@ import torch
 from kornia.core import Module, Tensor, concatenate
 from kornia.core.check import KORNIA_CHECK_DM_DESC, KORNIA_CHECK_SHAPE
 from kornia.feature.laf import get_laf_center
+from kornia.feature.steerers import DiscreteSteerer
 from kornia.utils.helpers import is_mps_tensor_safe
 
 from .adalam import get_adalam_default_config, match_adalam
@@ -329,6 +330,96 @@ class DescriptorMatcher(Module):
         else:
             raise NotImplementedError
         return out
+
+
+class DescriptorMatcherWithSteerer(Module):
+    """Matching that is invariant under rotations, using Steerers.
+
+    Args:
+        steerer: An instance of :func:`kornia.feature.steerers.DiscreteSteerer`.
+        steerer_order: order of discretisation of rotation angles, e.g. 4 leads to quarter rotations.
+        steer_mode: can be `global`, `local`. 
+            `global` means that the we output matches from the global rotation with most matches.
+            `local` means that we output matches from a distance matrix where the distance between each descriptor pair is the minimal over rotations.
+        match_mode: type of matching, can be `nn`, `snn`, `mnn`, `smnn`.
+            WARNING: using steer_mode `global` with match_mode `nn` will lead to bad results 
+            since `nn` doesn't generate different amount of matches depending on goodness of fit.
+        th: threshold on distance ratio, or other quality measure.
+    """
+
+    def __init__(
+        self,
+        steerer: DiscreteSteerer,
+        steerer_order: int,
+        steer_mode: str = "global",
+        match_mode: str = "snn",
+        th: float = 0.8,
+    ) -> None:
+        super().__init__()
+        self.steerer = steerer
+        self.steerer_order = steerer_order
+
+        _steer_mode: str = steer_mode.lower()
+        self.known_steer_modes = ["global", "local"]
+        if _steer_mode not in self.known_steer_modes:
+            raise NotImplementedError(f"{steer_mode} is not supported. Try one of {self.known_steer_modes}")
+        self.steer_mode = _steer_mode
+        _match_mode: str = match_mode.lower()
+        self.known_modes = ["nn", "mnn", "snn", "smnn"]
+        if _match_mode not in self.known_modes:
+            raise NotImplementedError(f"{match_mode} is not supported. Try one of {self.known_modes}")
+        self.match_mode = _match_mode
+        self.th = th
+
+    def forward(self, desc1: Tensor, desc2: Tensor, normalize: bool = False) -> Tuple[Tensor, Tensor]:
+        """
+        Args:
+            desc1: Batch of descriptors of a shape :math:`(B1, D)`.
+            desc2: Batch of descriptors of a shape :math:`(B2, D)`.
+            normalize: bool to decide whether to normalize descriptors to unit norm.
+
+        Return:
+            - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
+            - Long tensor indexes of matching descriptors in desc1 and desc2,
+                shape of :math:`(B3, 2)` where :math:`0 <= B3 <= B1`.
+            - Number of global rotations from desc1 to desc2, in terms of `self.steerer_order`
+                (will be `None` if `self.steer_mode` is `local`).
+        """
+        rot1to2 = None
+        if self.match_mode == "nn":
+            matching_function = lambda d1, d2, dm: match_nn(d1, d2, dm=dm)
+        elif self.match_mode == "mnn":
+            matching_function = lambda d1, d2, dm: match_mnn(d1, d2, dm=dm)
+        elif self.match_mode == "snn":
+            matching_function = lambda d1, d2, dm: match_snn(d1, d2, self.th, dm=dm)
+        elif self.match_mode == "smnn":
+            matching_function = lambda d1, d2, dm: match_smnn(d1, d2, self.th, dm=dm)
+        else:
+            raise NotImplementedError
+
+        if normalize:
+            desc1 = torch.nn.functional.normalize(desc1, dim=-1)
+            desc2 = torch.nn.functional.normalize(desc2, dim=-1)
+
+        if self.steer_mode == "global":
+            dist, idx = matching_function(desc1, desc2, None)
+            rot1to2 = 0
+            for r in range(1, self.steerer_order):
+                desc1 = self.steerer.steer_descriptions(desc1, normalize=normalize)
+                dist_new, idx_new = matching_function(desc1, desc2, None)
+                if idx_new.shape[0] > idx.shape[0]:
+                    dist, idx, rot1to2 = dist_new, idx_new, r
+        elif self.steer_mode == "local":
+            dm = _cdist(desc1, desc2)
+            for r in range(1, self.steerer_order):
+                desc1 = self.steerer.steer_descriptions(desc1, normalize=normalize)
+                dm_new = _cdist(desc1, desc2)
+                dm = torch.minimum(dm, dm_new)
+            dist, idx = matching_function(desc1, desc2, dm)
+        else:
+            raise NotImplementedError
+
+        return dist, idx, rot1to2
 
 
 class GeometryAwareDescriptorMatcher(Module):

@@ -12,7 +12,9 @@ from kornia.feature.matching import (
     match_nn,
     match_smnn,
     match_snn,
+    DescriptorMatcherWithSteerer,
 )
+from kornia.feature.steerers import DiscreteSteerer
 from kornia.utils._compat import torch_version_le
 
 from testing.base import BaseTester
@@ -504,3 +506,80 @@ class TestLightGlueHardNet(BaseTester):
     def test_smoke(self):
         lg = LightGlueMatcher("doghardnet")
         assert isinstance(lg, LightGlueMatcher)
+
+
+class TestMatchSteererGlobal(BaseTester):
+    @pytest.mark.parametrize("num_desc1, num_desc2, dim", [(1, 4, 4), (2, 5, 128), (6, 2, 32)])
+    def test_shape(self, num_desc1, num_desc2, dim, device):
+        desc1 = torch.rand(num_desc1, dim, device=device)
+        generator = torch.rand(dim, dim, device=device)
+        steerer = DiscreteSteerer(generator)
+        desc2 = steerer(desc1)
+
+        matcher = DescriptorMatcherWithSteerer(steerer=steerer, steerer_order=3, steer_mode="global", match_mode="mnn")
+
+        dists, idxs, num_rot = matcher(desc1, desc2)
+        assert dists.shape[1] == 1
+        assert idxs.shape == (dists.shape[0], 2)
+        assert dists.shape[0] == num_desc1
+
+    def test_matching(self, device):
+        desc1 = torch.tensor([[0, 0.0], [1, 1], [2, 2], [3, 3.0], [5, 5.0]], device=device)
+        desc2 = torch.tensor([[5, 5.0], [3, 3.0], [2.3, 2.4], [1, 1], [0, 0.0]], device=device)
+
+        # rotate desc2 270 deg anti-clockwise
+        desc2 = desc2[:, [1, 0]]
+        desc2[:, 0] = -desc2[:, 0]
+        
+        generator = torch.tensor([[0., 1], [-1, 0]], device=device)
+        steerer = DiscreteSteerer(generator)
+        matcher = DescriptorMatcherWithSteerer(steerer=steerer, steerer_order=4, steer_mode="global", match_mode="mnn")
+
+        dists, idxs, num_rot = matcher(desc1, desc2)
+        expected_dists = torch.tensor([0, 0, 0.5, 0, 0], device=device).view(-1, 1)
+        expected_idx = torch.tensor([[0, 4], [1, 3], [2, 2], [3, 1], [4, 0]], device=device)
+        self.assert_close(dists, expected_dists)
+        self.assert_close(idxs, expected_idx)
+
+        assert num_rot == 3
+
+
+class TestMatchSteererLocal(BaseTester):
+    @pytest.mark.parametrize("num_desc1, num_desc2, dim", [(1, 4, 4), (2, 5, 128), (6, 2, 32)])
+    def test_shape(self, num_desc1, num_desc2, dim, device):
+        desc1 = torch.rand(num_desc1, dim, device=device)
+        generator = torch.rand(dim, dim, device=device)
+        steerer = DiscreteSteerer(generator)
+        desc2 = steerer(desc1)
+        desc2[:1] = steerer(desc2[:1])
+
+        matcher = DescriptorMatcherWithSteerer(steerer=steerer, steerer_order=3, steer_mode="local", match_mode="mnn")
+
+        dists, idxs, num_rot = matcher(desc1, desc2)
+        assert dists.shape[1] == 1
+        assert idxs.shape == (dists.shape[0], 2)
+        assert dists.shape[0] == num_desc1
+
+    def test_matching(self, device):
+        desc1 = torch.tensor([[0, 0.0], [1, 1], [2, 2], [3, 3.0], [5, 5.0]], device=device)
+        desc2 = torch.tensor([[5, 5.0], [3, 3.0], [2.3, 2.4], [1, 1], [0, 0.0]], device=device)
+
+        # rotate second to last element of desc2 90 deg anti-clockwise
+        desc2[-2] = desc2[-2, [1, 0]]
+        desc2[-2, 1] = -desc2[-2, 1]
+
+        # rotate first two elements of desc2 270 deg anti-clockwise
+        desc2[:2] = desc2[:2, [1, 0]]
+        desc2[:2, 0] = -desc2[:2, 0]
+        
+        generator = torch.tensor([[0., 1], [-1, 0]], device=device)
+        steerer = DiscreteSteerer(generator)
+        matcher = DescriptorMatcherWithSteerer(steerer=steerer, steerer_order=4, steer_mode="local", match_mode="mnn")
+
+        dists, idxs, num_rot = matcher(desc1, desc2)
+        expected_dists = torch.tensor([0, 0, 0.5, 0, 0], device=device).view(-1, 1)
+        expected_idx = torch.tensor([[0, 4], [1, 3], [2, 2], [3, 1], [4, 0]], device=device)
+        self.assert_close(dists, expected_dists)
+        self.assert_close(idxs, expected_idx)
+
+        assert num_rot is None
