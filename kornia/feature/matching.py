@@ -340,7 +340,7 @@ class DescriptorMatcherWithSteerer(Module):
         steerer_order: order of discretisation of rotation angles, e.g. 4 leads to quarter rotations.
         steer_mode: can be `global`, `local`.
             `global` means that the we output matches from the global rotation with most matches.
-            `local` means that we output matches from a distance matrix 
+            `local` means that we output matches from a distance matrix
             where the distance between each descriptor pair is the minimal over rotations.
         match_mode: type of matching, can be `nn`, `snn`, `mnn`, `smnn`.
             WARNING: using steer_mode `global` with match_mode `nn` will lead to bad results
@@ -388,15 +388,19 @@ class DescriptorMatcherWithSteerer(Module):
         """
         rot1to2 = None
         if self.match_mode == "nn":
+
             def matching_function(d1, d2, dm):
                 return match_nn(d1, d2, dm=dm)
         elif self.match_mode == "mnn":
+
             def matching_function(d1, d2, dm):
                 return match_mnn(d1, d2, dm=dm)
         elif self.match_mode == "snn":
+
             def matching_function(d1, d2, dm):
                 return match_snn(d1, d2, self.th, dm=dm)
         elif self.match_mode == "smnn":
+
             def matching_function(d1, d2, dm):
                 return match_smnn(d1, d2, self.th, dm=dm)
         else:
