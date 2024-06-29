@@ -338,12 +338,12 @@ class DescriptorMatcherWithSteerer(Module):
     Args:
         steerer: An instance of :func:`kornia.feature.steerers.DiscreteSteerer`.
         steerer_order: order of discretisation of rotation angles, e.g. 4 leads to quarter rotations.
-        steer_mode: can be `global`, `local`. 
+        steer_mode: can be `global`, `local`.
             `global` means that the we output matches from the global rotation with most matches.
             `local` means that we output matches from a distance matrix 
             where the distance between each descriptor pair is the minimal over rotations.
         match_mode: type of matching, can be `nn`, `snn`, `mnn`, `smnn`.
-            WARNING: using steer_mode `global` with match_mode `nn` will lead to bad results 
+            WARNING: using steer_mode `global` with match_mode `nn` will lead to bad results
             since `nn` doesn't generate different amount of matches depending on goodness of fit.
         th: threshold on distance ratio, or other quality measure.
     """

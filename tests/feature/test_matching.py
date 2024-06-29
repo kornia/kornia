@@ -5,6 +5,7 @@ from kornia.feature.integrated import LightGlueMatcher
 from kornia.feature.laf import laf_from_center_scale_ori
 from kornia.feature.matching import (
     DescriptorMatcher,
+    DescriptorMatcherWithSteerer,
     GeometryAwareDescriptorMatcher,
     match_adalam,
     match_fginn,
@@ -12,7 +13,6 @@ from kornia.feature.matching import (
     match_nn,
     match_smnn,
     match_snn,
-    DescriptorMatcherWithSteerer,
 )
 from kornia.feature.steerers import DiscreteSteerer
 from kornia.utils._compat import torch_version_le
@@ -530,8 +530,8 @@ class TestMatchSteererGlobal(BaseTester):
         # rotate desc2 270 deg anti-clockwise
         desc2 = desc2[:, [1, 0]]
         desc2[:, 0] = -desc2[:, 0]
-        
-        generator = torch.tensor([[0., 1], [-1, 0]], device=device)
+
+        generator = torch.tensor([[0.0, 1], [-1, 0]], device=device)
         steerer = DiscreteSteerer(generator)
         matcher = DescriptorMatcherWithSteerer(steerer=steerer, steerer_order=4, steer_mode="global", match_mode="mnn")
 
@@ -571,8 +571,8 @@ class TestMatchSteererLocal(BaseTester):
         # rotate first two elements of desc2 270 deg anti-clockwise
         desc2[:2] = desc2[:2, [1, 0]]
         desc2[:2, 0] = -desc2[:2, 0]
-        
-        generator = torch.tensor([[0., 1], [-1, 0]], device=device)
+
+        generator = torch.tensor([[0.0, 1], [-1, 0]], device=device)
         steerer = DiscreteSteerer(generator)
         matcher = DescriptorMatcherWithSteerer(steerer=steerer, steerer_order=4, steer_mode="local", match_mode="mnn")
 

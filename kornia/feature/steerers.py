@@ -1,5 +1,7 @@
-from typing import Dict, Literal, Optional, Tuple
+from typing import Dict
+
 import torch
+
 from kornia.core import Module, Tensor
 from kornia.utils.helpers import map_location_to_cpu
 
@@ -10,6 +12,7 @@ dedode_steerer_urls: Dict[str, Dict[str, str]] = {
     "G-SO2": "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/G_SO2_Spread_steerer_setting_C.pth",
 }
 
+
 class DiscreteSteerer(Module):
     def __init__(self, generator: Tensor) -> None:
         super().__init__()
@@ -19,7 +22,10 @@ class DiscreteSteerer(Module):
         return torch.nn.functional.linear(x, self.generator)
 
     def steer_descriptions(
-        self, descriptions: Tensor, steerer_power: int = 1, normalize: bool = False,
+        self,
+        descriptions: Tensor,
+        steerer_power: int = 1,
+        normalize: bool = False,
     ) -> Tensor:
         for _ in range(steerer_power):
             descriptions = self.forward(descriptions)
@@ -54,11 +60,7 @@ class DiscreteSteerer(Module):
                 dedode_steerer_urls[generator_weights],
                 map_location=map_location_to_cpu,
             )
-            generator = torch.matrix_exp(
-                (2 * 3.14159 / steerer_order) * lie_generator
-            )
+            generator = torch.matrix_exp((2 * 3.14159 / steerer_order) * lie_generator)
             return DiscreteSteerer(generator).eval()
         else:
             raise ValueError
-
-

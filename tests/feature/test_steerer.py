@@ -2,9 +2,9 @@ import pytest
 import torch
 
 from kornia.feature.steerers import DiscreteSteerer
-from kornia.feature.dedode import DeDoDe
 
 from testing.base import BaseTester
+
 
 class TestDiscreteSteerer(BaseTester):
     @pytest.mark.parametrize("num_desc, desc_dim, steerer_power", [(1, 4, 1), (2, 128, 7), (32, 128, 11)])
@@ -18,7 +18,7 @@ class TestDiscreteSteerer(BaseTester):
         assert desc.shape == (num_desc, desc_dim)
 
     def test_steering(self, device):
-        generator = torch.tensor([[0., 1], [-1, 0]], device=device)
+        generator = torch.tensor([[0.0, 1], [-1, 0]], device=device)
         desc = torch.rand(16, 2, device=device)
         steerer = DiscreteSteerer(generator)
         desc_out = steerer.steer_descriptions(desc, steerer_power=3)
