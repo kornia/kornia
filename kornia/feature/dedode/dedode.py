@@ -9,7 +9,7 @@ from kornia.enhance.normalize import Normalize
 from kornia.utils.helpers import map_location_to_cpu
 
 from .dedode_models import DeDoDeDescriptor, DeDoDeDetector, get_descriptor, get_detector
-from .utils import sample_keypoints, dedode_denormalize_pixel_coordinates
+from .utils import dedode_denormalize_pixel_coordinates, sample_keypoints
 
 urls: Dict[str, Dict[str, str]] = {
     "detector": {
