@@ -6,11 +6,10 @@ import torch.nn.functional as F
 from kornia.core import Module, Tensor
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.enhance.normalize import Normalize
-from kornia.geometry.conversions import denormalize_pixel_coordinates
 from kornia.utils.helpers import map_location_to_cpu
 
 from .dedode_models import DeDoDeDescriptor, DeDoDeDetector, get_descriptor, get_detector
-from .utils import sample_keypoints
+from .utils import sample_keypoints, dedode_denormalize_pixel_coordinates
 
 urls: Dict[str, Dict[str, str]] = {
     "detector": {
@@ -92,7 +91,7 @@ class DeDoDe(Module):
             images = torch.nn.functional.pad(images, (0, pd_w, 0, pd_h), value=0.0)
         keypoints, scores = self.detect(images, n=n, apply_imagenet_normalization=False, crop_h=h, crop_w=w)
         descriptions = self.describe(images, keypoints, apply_imagenet_normalization=False)
-        return denormalize_pixel_coordinates(keypoints, H, W), scores, descriptions
+        return dedode_denormalize_pixel_coordinates(keypoints, H, W), scores, descriptions
 
     @torch.inference_mode()
     def detect(

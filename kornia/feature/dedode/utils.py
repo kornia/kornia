@@ -34,3 +34,16 @@ def get_grid(B: int, H: int, W: int, device: torch.device) -> torch.Tensor:
     )
     x1_n = torch.stack((x1_n_[2], x1_n_[1]), dim=-1).reshape(B, H * W, 2)
     return x1_n
+
+
+def dedode_denormalize_pixel_coordinates(flow: torch.Tensor, h: int, w: int) -> torch.Tensor:
+    flow = (
+        torch.stack(
+            (
+                w * (flow[..., 0] + 1) / 2,
+                h * (flow[..., 1] + 1) / 2,
+            ),
+            axis=-1,
+        )
+    )
+    return flow
