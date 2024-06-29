@@ -42,6 +42,6 @@ def dedode_denormalize_pixel_coordinates(flow: torch.Tensor, h: int, w: int) -> 
             w * (flow[..., 0] + 1) / 2,
             h * (flow[..., 1] + 1) / 2,
         ),
-        axis=-1,
+        dim=-1,
     )
     return flow
