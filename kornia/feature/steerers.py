@@ -31,7 +31,7 @@ class DiscreteSteerer(Module):
     def from_pretrained(
         cls,
         generator_weights: str = "G-C4",
-        steerer_order: int = None,
+        steerer_order: Optional[int] = None,
     ) -> Module:
         r"""Loads a pretrained DeDoDe steerer from the paper https://arxiv.org/abs/2312.02152.
 
