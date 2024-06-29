@@ -312,8 +312,6 @@ class DescriptorMatcher(Module):
         Args:
             desc1: Batch of descriptors of a shape :math:`(B1, D)`.
             desc2: Batch of descriptors of a shape :math:`(B2, D)`.
-            lafs1: LAFs of a shape :math:`(1, B1, 2, 3)`.
-            lafs2: LAFs of a shape :math:`(1, B2, 2, 3)`.
 
         Return:
             - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
