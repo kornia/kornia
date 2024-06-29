@@ -5,7 +5,7 @@ import torch
 from kornia.core import Module, Tensor
 from kornia.utils.helpers import map_location_to_cpu
 
-dedode_steerer_urls: Dict[str, Dict[str, str]] = {
+dedode_steerer_urls: Dict[str, str] = {
     "B-C4": "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/B_C4_Perm_steerer_setting_C.pth",
     "B-SO2": "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/B_SO2_Spread_steerer_setting_C.pth",
     "G-C4": "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/G_C4_Perm_steerer_setting_C.pth",

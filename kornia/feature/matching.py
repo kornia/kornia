@@ -372,7 +372,19 @@ class DescriptorMatcherWithSteerer(Module):
         self.match_mode = _match_mode
         self.th = th
 
-    def forward(self, desc1: Tensor, desc2: Tensor, normalize: bool = False) -> Tuple[Tensor, Tensor]:
+    def matching_function(self, d1: Tensor, d2: Tensor, dm: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
+        if self.match_mode == "nn":
+            return match_nn(d1, d2, dm=dm)
+        elif self.match_mode == "mnn":
+            return match_mnn(d1, d2, dm=dm)
+        elif self.match_mode == "snn":
+            return match_snn(d1, d2, self.th, dm=dm)
+        elif self.match_mode == "smnn":
+            return match_smnn(d1, d2, self.th, dm=dm)
+        else:
+            raise NotImplementedError
+
+    def forward(self, desc1: Tensor, desc2: Tensor, normalize: bool = False) -> Tuple[Tensor, Tensor, Optional[int]]:
         """
         Args:
             desc1: Batch of descriptors of a shape :math:`(B1, D)`.
@@ -387,35 +399,17 @@ class DescriptorMatcherWithSteerer(Module):
                 (will be `None` if `self.steer_mode` is `local`).
         """
         rot1to2 = None
-        if self.match_mode == "nn":
-
-            def matching_function(d1, d2, dm):
-                return match_nn(d1, d2, dm=dm)
-        elif self.match_mode == "mnn":
-
-            def matching_function(d1, d2, dm):
-                return match_mnn(d1, d2, dm=dm)
-        elif self.match_mode == "snn":
-
-            def matching_function(d1, d2, dm):
-                return match_snn(d1, d2, self.th, dm=dm)
-        elif self.match_mode == "smnn":
-
-            def matching_function(d1, d2, dm):
-                return match_smnn(d1, d2, self.th, dm=dm)
-        else:
-            raise NotImplementedError
 
         if normalize:
             desc1 = torch.nn.functional.normalize(desc1, dim=-1)
             desc2 = torch.nn.functional.normalize(desc2, dim=-1)
 
         if self.steer_mode == "global":
-            dist, idx = matching_function(desc1, desc2, None)
+            dist, idx = self.matching_function(desc1, desc2, None)
             rot1to2 = 0
             for r in range(1, self.steerer_order):
                 desc1 = self.steerer.steer_descriptions(desc1, normalize=normalize)
-                dist_new, idx_new = matching_function(desc1, desc2, None)
+                dist_new, idx_new = self.matching_function(desc1, desc2, None)
                 if idx_new.shape[0] > idx.shape[0]:
                     dist, idx, rot1to2 = dist_new, idx_new, r
         elif self.steer_mode == "local":
@@ -424,7 +418,7 @@ class DescriptorMatcherWithSteerer(Module):
                 desc1 = self.steerer.steer_descriptions(desc1, normalize=normalize)
                 dm_new = _cdist(desc1, desc2)
                 dm = torch.minimum(dm, dm_new)
-            dist, idx = matching_function(desc1, desc2, dm)
+            dist, idx = self.matching_function(desc1, desc2, dm)
         else:
             raise NotImplementedError
 
