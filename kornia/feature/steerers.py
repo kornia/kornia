@@ -5,15 +5,21 @@ import torch
 from kornia.core import Module, Tensor
 from kornia.utils.helpers import map_location_to_cpu
 
-dedode_steerer_urls: Dict[str, str] = {
-    "B-C4": "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/B_C4_Perm_steerer_setting_C.pth",
-    "B-SO2": "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/B_SO2_Spread_steerer_setting_C.pth",
-    "G-C4": "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/G_C4_Perm_steerer_setting_C.pth",
-    "G-SO2": "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/G_SO2_Spread_steerer_setting_C.pth",
-}
-
-
 class DiscreteSteerer(Module):
+    """Module for discrete rotation steerers.
+
+    A steerer rotates keypoint descriptions in latent space as if they were obtained from rotated images.
+
+    Args:
+        generator: [N, N] tensor where N is the descriptor dimension.
+
+    Example:
+        >>> desc = torch.randn(512, 128)
+        >>> generator = torch.randn(128, 128)
+        >>> steerer = DiscreteSteerer(generator)
+        >>> # steer 3 times:
+        >>> steered_desc = steerer.steer_descriptions(desc, steerer_power=3, normalize=True)
+    """
     def __init__(self, generator: Tensor) -> None:
         super().__init__()
         self.generator = torch.nn.Parameter(generator)
@@ -36,31 +42,46 @@ class DiscreteSteerer(Module):
     @classmethod
     def from_pretrained(
         cls,
-        generator_weights: str = "G-C4",
+        generator_type: str = "C4",
         steerer_order: int = 8,
     ) -> Module:
-        r"""Loads a pretrained DeDoDe steerer from the paper https://arxiv.org/abs/2312.02152.
+        r"""Loads a steerer for pretrained DeDoDe descriptors from the paper https://arxiv.org/abs/2312.02152.
 
         Args:
-            generator_weights: The weights to load for the steerer generator.
-                One of 'B-C4', 'B-SO2', 'G-C4', 'G-SO2', default is 'G-C4'.
+            generator_type: The type of steerer generator.
+                One of 'C4', 'SO2', default is 'C4'.
+                These can be used with the DeDoDe descriptors with C4 or SO2 in the name respectively.
             steerer_order: The discretisation order for SO2-steerers (NOT used for C4-steerers).
 
         Returns:
             The pretrained model.
         """
-        if "C4" in generator_weights:
-            generator = torch.hub.load_state_dict_from_url(
-                dedode_steerer_urls[generator_weights],
-                map_location=map_location_to_cpu,
+        descriptor_dim = 256
+        if generator_type == "C4":
+            generator = torch.block_diag(
+                *(
+                    torch.tensor([[0., 1, 0, 0],
+                                  [0, 0, 1, 0],
+                                  [0, 0, 0, 1],
+                                  [1, 0, 0, 0]])
+                    for _ in range(descriptor_dim // 4)
+                )
             )
-            return DiscreteSteerer(generator).eval()
-        elif "SO2" in generator_weights:
-            lie_generator = torch.hub.load_state_dict_from_url(
-                dedode_steerer_urls[generator_weights],
-                map_location=map_location_to_cpu,
+            return cls(generator).eval()
+        elif generator_type == "SO2":
+            lie_generator = torch.block_diag(
+                torch.zeros(
+                    [descriptor_dim - 12 * (descriptor_dim // 14),
+                     descriptor_dim - 12 * (descriptor_dim // 14)],
+                ),
+                *(
+                    torch.tensor([[0., j],
+                                  [-j, 0]])
+                    for j in range(1, 7)
+                    for _ in range(descriptor_dim // 14)
+                ),
             )
             generator = torch.matrix_exp((2 * 3.14159 / steerer_order) * lie_generator)
-            return DiscreteSteerer(generator).eval()
+            return cls(generator).eval()
         else:
             raise ValueError

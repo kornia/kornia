@@ -27,17 +27,16 @@ class TestDiscreteSteerer(BaseTester):
         desc[:, 0] = -desc[:, 0]
         assert torch.allclose(desc, desc_out)
 
-    @pytest.mark.slow
-    @pytest.mark.parametrize("generator_weights", ["B-C4", "B-SO2", "G-C4", "G-SO2"])
+    @pytest.mark.parametrize("generator_type", ["C4", "SO2"])
     @pytest.mark.parametrize("steerer_order", [2, 14])
-    def test_pretrained(self, device, generator_weights, steerer_order):
+    def test_pretrained(self, device, generator_type, steerer_order):
         steerer = DiscreteSteerer.from_pretrained(
-            generator_weights=generator_weights,
+            generator_type=generator_type,
             steerer_order=steerer_order,
         ).to(device)
         assert isinstance(steerer, DiscreteSteerer)
 
-        shape = (1024, 256)
+        shape = (96, 256)
         desc = torch.randn(*shape, device=device)
         desc = steerer(desc)
 
