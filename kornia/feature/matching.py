@@ -357,7 +357,7 @@ class DescriptorMatcherWithSteerer(Module):
         >>>     detector_weights="L-C4-v2", descriptor_weights="B-SO2"
         >>> ).to(device)
         >>> steerer_order = 8  # discretisation order of rotation angles
-        >>> steerer = KF.steerers.DiscreteSteerer.from_pretrained(
+        >>> steerer = KF.steerers.DiscreteSteerer.create_dedode_default(
         >>>     generator_type="SO2", steerer_order=steerer_order
         >>> ).to(device)
         >>> matcher = KF.matching.DescriptorMatcherWithSteerer(

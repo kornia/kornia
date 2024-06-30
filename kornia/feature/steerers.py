@@ -39,17 +39,20 @@ class DiscreteSteerer(Module):
         return descriptions
 
     @classmethod
-    def from_pretrained(
+    def create_dedode_default(
         cls,
         generator_type: str = "C4",
         steerer_order: int = 8,
     ) -> Module:
-        r"""Loads a steerer for pretrained DeDoDe descriptors from the paper https://arxiv.org/abs/2312.02152.
+        r"""Creates a steerer for pretrained DeDoDe descriptors int the "C-setting"
+            from the paper https://arxiv.org/abs/2312.02152, where descriptors were
+            trained for fixed steerers.
 
         Args:
             generator_type: The type of steerer generator.
                 One of 'C4', 'SO2', default is 'C4'.
-                These can be used with the DeDoDe descriptors with C4 or SO2 in the name respectively.
+                These can be used with the DeDoDe descriptors in Kornia
+                with C4 or SO2 in the name respectively (so called C-setting steerers).
             steerer_order: The discretisation order for SO2-steerers (NOT used for C4-steerers).
 
         Returns:

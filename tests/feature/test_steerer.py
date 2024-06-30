@@ -17,20 +17,23 @@ class TestDiscreteSteerer(BaseTester):
         desc = steerer.steer_descriptions(desc, steerer_power=steerer_power)
         assert desc.shape == (num_desc, desc_dim)
 
-    def test_steering(self, device):
+    @pytest.mark.parametrize("normalize", [True, False])
+    def test_steering(self, device, normalize):
         generator = torch.tensor([[0.0, 1], [-1, 0]], device=device)
         desc = torch.rand(16, 2, device=device)
         steerer = DiscreteSteerer(generator)
-        desc_out = steerer.steer_descriptions(desc, steerer_power=3)
+        desc_out = steerer.steer_descriptions(desc, steerer_power=3, normalize=normalize)
 
+        if normalize:
+            desc = torch.nn.functional.normalize(desc, dim=-1)
         desc = desc[:, [1, 0]]
         desc[:, 0] = -desc[:, 0]
         assert torch.allclose(desc, desc_out)
 
     @pytest.mark.parametrize("generator_type", ["C4", "SO2"])
     @pytest.mark.parametrize("steerer_order", [2, 14])
-    def test_pretrained(self, device, generator_type, steerer_order):
-        steerer = DiscreteSteerer.from_pretrained(
+    def test_default(self, device, generator_type, steerer_order):
+        steerer = DiscreteSteerer.create_dedode_default(
             generator_type=generator_type,
             steerer_order=steerer_order,
         ).to(device)
