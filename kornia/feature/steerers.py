@@ -1,9 +1,7 @@
-from typing import Dict
-
 import torch
 
 from kornia.core import Module, Tensor
-from kornia.utils.helpers import map_location_to_cpu
+
 
 class DiscreteSteerer(Module):
     """Module for discrete rotation steerers.
@@ -20,6 +18,7 @@ class DiscreteSteerer(Module):
         >>> # steer 3 times:
         >>> steered_desc = steerer.steer_descriptions(desc, steerer_power=3, normalize=True)
     """
+
     def __init__(self, generator: Tensor) -> None:
         super().__init__()
         self.generator = torch.nn.Parameter(generator)
@@ -60,10 +59,7 @@ class DiscreteSteerer(Module):
         if generator_type == "C4":
             generator = torch.block_diag(
                 *(
-                    torch.tensor([[0., 1, 0, 0],
-                                  [0, 0, 1, 0],
-                                  [0, 0, 0, 1],
-                                  [1, 0, 0, 0]])
+                    torch.tensor([[0.0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1], [1, 0, 0, 0]])
                     for _ in range(descriptor_dim // 4)
                 )
             )
@@ -71,15 +67,9 @@ class DiscreteSteerer(Module):
         elif generator_type == "SO2":
             lie_generator = torch.block_diag(
                 torch.zeros(
-                    [descriptor_dim - 12 * (descriptor_dim // 14),
-                     descriptor_dim - 12 * (descriptor_dim // 14)],
+                    [descriptor_dim - 12 * (descriptor_dim // 14), descriptor_dim - 12 * (descriptor_dim // 14)],
                 ),
-                *(
-                    torch.tensor([[0., j],
-                                  [-j, 0]])
-                    for j in range(1, 7)
-                    for _ in range(descriptor_dim // 14)
-                ),
+                *(torch.tensor([[0.0, j], [-j, 0]]) for j in range(1, 7) for _ in range(descriptor_dim // 14)),
             )
             generator = torch.matrix_exp((2 * 3.14159 / steerer_order) * lie_generator)
             return cls(generator).eval()
