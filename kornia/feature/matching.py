@@ -346,6 +346,31 @@ class DescriptorMatcherWithSteerer(Module):
             WARNING: using steer_mode `global` with match_mode `nn` will lead to bad results
             since `nn` doesn't generate different amount of matches depending on goodness of fit.
         th: threshold on distance ratio, or other quality measure.
+
+    Example:
+        >>> import kornia as K
+        >>> import kornia.feature as KF
+        >>> device = K.utils.get_cuda_or_mps_device_if_available()
+        >>> img1 = torch.randn([1, 3, 768, 768], device=device)
+        >>> img2 = torch.randn([1, 3, 768, 768], device=device)
+        >>> dedode = KF.DeDoDe.from_pretrained(
+        >>>     detector_weights="L-C4-v2", descriptor_weights="B-SO2"
+        >>> ).to(device)
+        >>> steerer_order = 8  # discretisation order of rotation angles
+        >>> steerer = KF.steerers.DiscreteSteerer.from_pretrained(
+        >>>     generator_type="SO2", steerer_order=steerer_order
+        >>> ).to(device)
+        >>> matcher = KF.matching.DescriptorMatcherWithSteerer(
+        >>>     steerer=steerer, steerer_order=steerer_order, steer_mode="global",
+        >>>     match_mode="smnn", th=0.98,
+        >>> )
+        >>> with torch.inference_mode():
+        >>>     kps1, scores1, descs1 = dedode(img1, n=20_000)
+        >>>     kps2, scores2, descs2 = dedode(img2, n=20_000)
+        >>>     kps1, kps2, descs1, descs2 = kps1[0], kps2[0], descs1[0], descs2[0]
+        >>>     dists, idxs, num_rot = matcher(descs1, descs2, normalize=True)
+        >>> print(f"{idxs.shape[0]} tentative matches with steered DeDoDe")
+        >>> print(f"at rotation of {num_rot * 360 / steerer_order} degrees")
     """
 
     def __init__(
