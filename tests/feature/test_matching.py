@@ -510,7 +510,8 @@ class TestLightGlueHardNet(BaseTester):
 
 class TestMatchSteererGlobal(BaseTester):
     @pytest.mark.parametrize("num_desc1, num_desc2, dim", [(1, 4, 4), (2, 5, 128), (6, 2, 32)])
-    def test_shape(self, num_desc1, num_desc2, dim, device):
+    @pytest.mark.parametrize("matching_mode", ["nn", "mnn", "snn", "smnn"])
+    def test_shape(self, num_desc1, num_desc2, dim, matching_mode, device):
         desc1 = torch.rand(num_desc1, dim, device=device)
         generator = torch.rand(dim, dim, device=device)
         steerer = DiscreteSteerer(generator)
@@ -546,7 +547,8 @@ class TestMatchSteererGlobal(BaseTester):
 
 class TestMatchSteererLocal(BaseTester):
     @pytest.mark.parametrize("num_desc1, num_desc2, dim", [(1, 4, 4), (2, 5, 128), (6, 2, 32)])
-    def test_shape(self, num_desc1, num_desc2, dim, device):
+    @pytest.mark.parametrize("matching_mode", ["nn", "mnn", "snn", "smnn"])
+    def test_shape(self, num_desc1, num_desc2, dim, matching_mode, device):
         desc1 = torch.rand(num_desc1, dim, device=device)
         generator = torch.rand(dim, dim, device=device)
         steerer = DiscreteSteerer(generator)
