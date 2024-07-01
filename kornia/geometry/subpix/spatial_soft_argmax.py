@@ -562,7 +562,7 @@ def conv_quad_interp3d(input: Tensor, strict_maxima_bonus: float = 10.0, eps: fl
 
     # to determine the location we are solving system of linear equations Ax = b, where b is 1st order gradient
     # and A is Hessian matrix
-    b: Tensor = spatial_gradient3d(input, order=1, mode="diff")  #
+    b: Tensor = spatial_gradient3d(input, order=1, mode="diff")
     b = b.permute(0, 1, 3, 4, 5, 2).reshape(-1, 3, 1)
     A: Tensor = spatial_gradient3d(input, order=2, mode="diff")
     A = A.permute(0, 1, 3, 4, 5, 2).reshape(-1, 6)
