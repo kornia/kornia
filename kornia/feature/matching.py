@@ -443,16 +443,8 @@ class DescriptorMatcherWithSteerer(Module):
 
         if self.steer_mode == "global":
             if fast:
-                subsample1 = np.random.choice(
-                    desc1.shape[0],
-                    size=subset_size,
-                    replace=False,
-                )
-                subsample2 = np.random.choice(
-                    desc2.shape[0],
-                    size=subset_size,
-                    replace=False,
-                )
+                subsample1 = torch.randperm(desc1.shape[0])[:subset_size]
+                subsample2 = torch.randperm(desc2.shape[0])[:subset_size]
                 _, _, rot1to2 = self(
                     desc1[subsample1],
                     desc2[subsample2],
