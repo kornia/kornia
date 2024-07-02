@@ -1,6 +1,5 @@
 from typing import Any, ClassVar, Dict, List, Optional, Tuple
 
-import numpy as np
 import torch
 
 from kornia.core import Module, Tensor, concatenate
