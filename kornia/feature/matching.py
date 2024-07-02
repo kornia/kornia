@@ -411,15 +411,19 @@ class DescriptorMatcherWithSteerer(Module):
             raise NotImplementedError
 
     def forward(
-        self, desc1: Tensor, desc2: Tensor, 
-        normalize: bool = False, fast: bool = False, subset_size: int = 1000,
+        self,
+        desc1: Tensor,
+        desc2: Tensor,
+        normalize: bool = False,
+        fast: bool = False,
+        subset_size: int = 1000,
     ) -> Tuple[Tensor, Tensor, Optional[int]]:
         """
         Args:
             desc1: Batch of descriptors of a shape :math:`(B1, D)`.
             desc2: Batch of descriptors of a shape :math:`(B2, D)`.
             normalize: bool to decide whether to normalize descriptors to unit norm.
-            fast: bool to decide whether to determine optimal number of rotations 
+            fast: bool to decide whether to determine optimal number of rotations
                 using only a subset of the descriptions.
                 This is only used if `self.steer_mode` is `global`.
             subset_size: The subset size to use if `fast` is True.
@@ -450,10 +454,14 @@ class DescriptorMatcherWithSteerer(Module):
                     replace=False,
                 )
                 _, _, rot1to2 = self(
-                    desc1[subsample1], desc2[subsample2], normalize=normalize,
+                    desc1[subsample1],
+                    desc2[subsample2],
+                    normalize=normalize,
                 )
                 desc1 = self.steerer.steer_descriptions(
-                    desc1, steerer_power=rot1to2, normalize=normalize,
+                    desc1,
+                    steerer_power=rot1to2,
+                    normalize=normalize,
                 )
                 dist, idx = self.matching_function(desc1, desc2, None)
                 return dist, idx, rot1to2

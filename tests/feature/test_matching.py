@@ -509,8 +509,7 @@ class TestLightGlueHardNet(BaseTester):
 
 
 class TestMatchSteererGlobal(BaseTester):
-    @pytest.mark.parametrize("num_desc1, num_desc2, dim",
-                             [(1, 4, 4), (2, 5, 128), (6, 2, 32), (32, 32, 8)])
+    @pytest.mark.parametrize("num_desc1, num_desc2, dim", [(1, 4, 4), (2, 5, 128), (6, 2, 32), (32, 32, 8)])
     @pytest.mark.parametrize("matching_mode", ["nn", "mnn", "snn", "smnn"])
     @pytest.mark.parametrize("fast", [False, True])
     def test_shape(self, num_desc1, num_desc2, dim, matching_mode, fast, device):
@@ -519,11 +518,15 @@ class TestMatchSteererGlobal(BaseTester):
         steerer = DiscreteSteerer(generator)
         desc2 = steerer(desc1)
 
-        matcher = DescriptorMatcherWithSteerer(steerer=steerer, steerer_order=3, steer_mode="global", match_mode=matching_mode)
+        matcher = DescriptorMatcherWithSteerer(
+            steerer=steerer, steerer_order=3, steer_mode="global", match_mode=matching_mode
+        )
 
         dists, idxs, num_rot = matcher(
-            desc1, desc2, fast=fast,
-            subset_size=max(1, min(num_desc1//2, num_desc2//2)),
+            desc1,
+            desc2,
+            fast=fast,
+            subset_size=max(1, min(num_desc1 // 2, num_desc2 // 2)),
         )
         assert dists.shape[1] == 1
         assert dists.shape[0] <= num_desc1
