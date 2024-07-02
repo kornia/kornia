@@ -1,5 +1,6 @@
 from typing import Any, ClassVar, Dict, List, Optional, Tuple
 
+import numpy as np
 import torch
 
 from kornia.core import Module, Tensor, concatenate
@@ -368,7 +369,7 @@ class DescriptorMatcherWithSteerer(Module):
         >>>     kps1, scores1, descs1 = dedode(img1, n=20_000)
         >>>     kps2, scores2, descs2 = dedode(img2, n=20_000)
         >>>     kps1, kps2, descs1, descs2 = kps1[0], kps2[0], descs1[0], descs2[0]
-        >>>     dists, idxs, num_rot = matcher(descs1, descs2, normalize=True)
+        >>>     dists, idxs, num_rot = matcher(descs1, descs2, normalize=True, fast=True)
         >>> print(f"{idxs.shape[0]} tentative matches with steered DeDoDe")
         >>> print(f"at rotation of {num_rot * 360 / steerer_order} degrees")
     """
@@ -409,12 +410,19 @@ class DescriptorMatcherWithSteerer(Module):
         else:
             raise NotImplementedError
 
-    def forward(self, desc1: Tensor, desc2: Tensor, normalize: bool = False) -> Tuple[Tensor, Tensor, Optional[int]]:
+    def forward(
+        self, desc1: Tensor, desc2: Tensor, 
+        normalize: bool = False, fast: bool = False, subset_size: int = 1000,
+    ) -> Tuple[Tensor, Tensor, Optional[int]]:
         """
         Args:
             desc1: Batch of descriptors of a shape :math:`(B1, D)`.
             desc2: Batch of descriptors of a shape :math:`(B2, D)`.
             normalize: bool to decide whether to normalize descriptors to unit norm.
+            fast: bool to decide whether to determine optimal number of rotations 
+                using only a subset of the descriptions.
+                This is only used if `self.steer_mode` is `global`.
+            subset_size: The subset size to use if `fast` is True.
 
         Return:
             - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
@@ -430,6 +438,25 @@ class DescriptorMatcherWithSteerer(Module):
             desc2 = torch.nn.functional.normalize(desc2, dim=-1)
 
         if self.steer_mode == "global":
+            if fast:
+                subsample1 = np.random.choice(
+                    desc1.shape[0],
+                    size=subset_size,
+                    replace=False,
+                )
+                subsample2 = np.random.choice(
+                    desc2.shape[0],
+                    size=subset_size,
+                    replace=False,
+                )
+                _, _, rot1to2 = self(
+                    desc1[subsample1], desc2[subsample2], normalize=normalize,
+                )
+                desc1 = self.steerer.steer_descriptions(
+                    desc1, steerer_power=rot1to2, normalize=normalize,
+                )
+                dist, idx = self.matching_function(desc1, desc2, None)
+                return dist, idx, rot1to2
             dist, idx = self.matching_function(desc1, desc2, None)
             rot1to2 = 0
             for r in range(1, self.steerer_order):
