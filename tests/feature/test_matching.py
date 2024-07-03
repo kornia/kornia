@@ -525,8 +525,7 @@ class TestMatchSteererGlobal(BaseTester):
         dists, idxs, num_rot = matcher(
             desc1,
             desc2,
-            fast=fast,
-            subset_size=max(1, min(num_desc1 // 2, num_desc2 // 2)),
+            subset_size=max(1, min(num_desc1 // 2, num_desc2 // 2)) if fast else None,
         )
         assert dists.shape[1] == 1
         assert dists.shape[0] <= num_desc1

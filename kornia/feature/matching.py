@@ -368,7 +368,9 @@ class DescriptorMatcherWithSteerer(Module):
         >>>     kps1, scores1, descs1 = dedode(img1, n=20_000)
         >>>     kps2, scores2, descs2 = dedode(img2, n=20_000)
         >>>     kps1, kps2, descs1, descs2 = kps1[0], kps2[0], descs1[0], descs2[0]
-        >>>     dists, idxs, num_rot = matcher(descs1, descs2, normalize=True, fast=True)
+        >>>     dists, idxs, num_rot = matcher(
+        >>>         descs1, descs2, normalize=True, subset_size=1000,
+        >>>     )
         >>> print(f"{idxs.shape[0]} tentative matches with steered DeDoDe")
         >>> print(f"at rotation of {num_rot * 360 / steerer_order} degrees")
     """
@@ -414,18 +416,16 @@ class DescriptorMatcherWithSteerer(Module):
         desc1: Tensor,
         desc2: Tensor,
         normalize: bool = False,
-        fast: bool = False,
-        subset_size: int = 1000,
+        subset_size: Optional[int] = None,
     ) -> Tuple[Tensor, Tensor, Optional[int]]:
         """
         Args:
             desc1: Batch of descriptors of a shape :math:`(B1, D)`.
             desc2: Batch of descriptors of a shape :math:`(B2, D)`.
             normalize: bool to decide whether to normalize descriptors to unit norm.
-            fast: bool to decide whether to determine optimal number of rotations
-                using only a subset of the descriptions.
-                This is only used if `self.steer_mode` is `global`.
-            subset_size: The subset size to use if `fast` is True.
+            subset_size: If set, the subset size to use for determining optimal
+                number of rotations. Smaller subset size leads to faster but less
+                accurate matching. Only used when `self.steer_mode` is `"global"`.
 
         Return:
             - Descriptor distance of matching descriptors, shape of :math:`(B3, 1)`.
@@ -441,7 +441,7 @@ class DescriptorMatcherWithSteerer(Module):
             desc2 = torch.nn.functional.normalize(desc2, dim=-1)
 
         if self.steer_mode == "global":
-            if fast:
+            if subset_size is not None:
                 subsample1 = torch.randperm(desc1.shape[0])[:subset_size]
                 subsample2 = torch.randperm(desc2.shape[0])[:subset_size]
                 _, _, rot1to2 = self(
