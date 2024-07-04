@@ -546,8 +546,6 @@ class TestAugmentationSequential:
             keepdim=keepdim,
         )
 
-        aug.keepdim = keepdim  # FIXME(@shijianjian): This shouldn't be necessary
-
         out = aug(inp, mask)
         if keepdim:
             assert out[0].shape == img_shape
