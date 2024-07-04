@@ -5,6 +5,8 @@ import torch
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.callbacks import AugmentationCallbackBase
+from kornia.constants import DataKey
 from kornia.contrib.extract_patches import extract_tensor_patches
 from kornia.core import Module, Tensor, concatenate
 from kornia.core import pad as fpad
@@ -51,6 +53,7 @@ class PatchSequential(ImageSequential):
             If ``False`` and not ``patchwise_apply``, the whole list of args will be processed in original order.
             If ``False`` and ``patchwise_apply``, the whole list of args will be processed in original order
             location-wisely.
+        callbacks: add a list of callbacks.
 
     .. note::
         Transformation matrix returned only considers the transformation applied in ``kornia.augmentation`` module.
@@ -119,6 +122,7 @@ class PatchSequential(ImageSequential):
         patchwise_apply: bool = True,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
         random_apply_weights: Optional[List[float]] = None,
+        callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
         _random_apply: Optional[Union[int, Tuple[int, int]]]
 
@@ -150,6 +154,7 @@ class PatchSequential(ImageSequential):
         self.padding = padding
         self.patchwise_apply = patchwise_apply
         self._params: Optional[List[PatchParamItem]]  # type: ignore[assignment]
+        self.register_callbacks(callbacks)
 
     def compute_padding(
         self, input: Tensor, padding: str, grid_size: Optional[Tuple[int, int]] = None
@@ -385,6 +390,12 @@ class PatchSequential(ImageSequential):
         provided parameters.
         """
         if self.is_intensity_only():
+            self.run_callbacks(
+                "on_sequential_inverse_start", input=[input], module=self, params=params, data_keys=[DataKey.INPUT]
+            )
+            self.run_callbacks(
+                "on_sequential_inverse_end", input=[input], module=self, params=params, data_keys=[DataKey.INPUT]
+            )
             return input
 
         raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
@@ -398,7 +409,13 @@ class PatchSequential(ImageSequential):
         if params is None:
             params = self.forward_parameters(input.shape)
 
+        self.run_callbacks(
+            "on_sequential_forward_start", input=[input], module=self, params=params, data_keys=[DataKey.INPUT]
+        )
         output = self.transform_inputs(input, params=params)
+        self.run_callbacks(
+            "on_sequential_forward_end", input=[output], module=self, params=params, data_keys=[DataKey.INPUT]
+        )
 
         self._params = params
 

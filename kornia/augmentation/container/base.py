@@ -7,6 +7,7 @@ from torch import nn
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.container.mixins import CallbacksMixIn
 from kornia.core import Module, Tensor
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
@@ -109,7 +110,12 @@ class SequentialBase(BasicSequentialBase):
             to the batch form (False). If None, it will not overwrite the function-wise settings.
     """
 
-    def __init__(self, *args: Module, same_on_batch: Optional[bool] = None, keepdim: Optional[bool] = None) -> None:
+    def __init__(
+        self,
+        *args: Module,
+        same_on_batch: Optional[bool] = None,
+        keepdim: Optional[bool] = None,
+    ) -> None:
         # To name the modules properly
         super().__init__(*args)
         self._same_on_batch = same_on_batch
@@ -163,7 +169,7 @@ class SequentialBase(BasicSequentialBase):
         return ori_shape, input.shape
 
 
-class ImageSequentialBase(SequentialBase):
+class ImageSequentialBase(CallbacksMixIn, SequentialBase):
     def identity_matrix(self, input: Tensor) -> Tensor:
         """Return identity matrix."""
         raise NotImplementedError
@@ -195,34 +201,47 @@ class ImageSequentialBase(SequentialBase):
     def transform_inputs(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
         for param in params:
             module = self.get_submodule(param.name)
+            # NOTE: temp disabled
+            # self.run_callbacks("on_transform_inputs_start", input=input, params=param)
             input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
+            # self.run_callbacks("on_transform_inputs_end", input=input, params=params)
         return input
 
     def inverse_inputs(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
         for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
+            # self.run_callbacks("on_inverse_inputs_start", input=input, params=param)
             input = InputSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
+            # self.run_callbacks("on_inverse_inputs_end", input=input, params=params)
         return input
 
     def transform_masks(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
         for param in params:
             module = self.get_submodule(param.name)
+            # self.run_callbacks("on_transform_masks_start", input=input, params=params)
             input = MaskSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
+            # self.run_callbacks("on_transform_masks_end", input=input, params=params)
         return input
 
     def inverse_masks(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
         for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
+            # self.run_callbacks("on_inverse_masks_start", input=input, params=params)
             input = MaskSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
+            # self.run_callbacks("on_inverse_masks_end", input=input, params=params)
         return input
 
     def transform_boxes(self, input: Boxes, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Boxes:
         for param in params:
             module = self.get_submodule(param.name)
+            # self.run_callbacks("on_transform_boxes_start", input=input, params=params)
             input = BoxSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
+            # self.run_callbacks("on_transform_boxes_end", input=input, params=params)
         return input
 
     def inverse_boxes(self, input: Boxes, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Boxes:
         for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
+            # self.run_callbacks("on_inverse_boxes_start", input=input, params=params)
             input = BoxSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
+            # self.run_callbacks("on_inverse_boxes_end", input=input, params=params)
         return input
 
     def transform_keypoints(
@@ -230,14 +249,18 @@ class ImageSequentialBase(SequentialBase):
     ) -> Keypoints:
         for param in params:
             module = self.get_submodule(param.name)
+            # self.run_callbacks("on_transform_keypoints_start", input=input, params=params)
             input = KeypointSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
+            # self.run_callbacks("on_transform_keypoints_end", input=input, params=params)
         return input
 
     def inverse_keypoints(
         self, input: Keypoints, params: List[ParamItem], extra_args: Dict[str, Any] = {}
     ) -> Keypoints:
         for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
+            # self.run_callbacks("on_inverse_keypoints_start", input=input, params=params)
             input = KeypointSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
+            # self.run_callbacks("on_inverse_keypoints_end", input=input, params=params)
         return input
 
     def inverse(
@@ -255,9 +278,9 @@ class ImageSequentialBase(SequentialBase):
                     "or passing valid params into this function."
                 )
             params = self._params
-
+        self.run_callbacks("on_sequential_inverse_start", input=input, params=params)
         input = self.inverse_inputs(input, params, extra_args=extra_args)
-
+        self.run_callbacks("on_sequential_inverse_end", input=input, params=params)
         return input
 
     def forward(
@@ -270,62 +293,9 @@ class ImageSequentialBase(SequentialBase):
             _, out_shape = self.autofill_dim(inp, dim_range=(2, 4))
             params = self.forward_parameters(out_shape)
 
+        self.run_callbacks("on_sequential_forward_start", input=input, params=params)
         input = self.transform_inputs(input, params=params, extra_args=extra_args)
+        self.run_callbacks("on_sequential_forward_end", input=input, params=params)
 
         self._params = params
         return input
-
-
-class TransformMatrixMinIn:
-    """Enables computation matrix computation."""
-
-    _valid_ops_for_transform_computation: Tuple[Any, ...] = ()
-    _transformation_matrix_arg: str = "silent"
-
-    def __init__(self, *args, **kwargs) -> None:  # type:ignore
-        super().__init__(*args, **kwargs)
-        self._transform_matrix: Optional[Tensor] = None
-        self._transform_matrices: List[Optional[Tensor]] = []
-
-    def _parse_transformation_matrix_mode(self, transformation_matrix_mode: str) -> None:
-        _valid_transformation_matrix_args = {"silence", "silent", "rigid", "skip"}
-        if transformation_matrix_mode not in _valid_transformation_matrix_args:
-            raise ValueError(
-                f"`transformation_matrix` has to be one of {_valid_transformation_matrix_args}. "
-                f"Got {transformation_matrix_mode}."
-            )
-        self._transformation_matrix_arg = transformation_matrix_mode
-
-    @property
-    def transform_matrix(self) -> Optional[Tensor]:
-        # In AugmentationSequential, the parent class is accessed first.
-        # So that it was None in the beginning. We hereby use lazy computation here.
-        if self._transform_matrix is None and len(self._transform_matrices) != 0:
-            self._transform_matrix = self._transform_matrices[0]
-            for mat in self._transform_matrices[1:]:
-                self._update_transform_matrix(mat)
-        return self._transform_matrix
-
-    def _update_transform_matrix_for_valid_op(self, module: Module) -> None:
-        raise NotImplementedError(module)
-
-    def _update_transform_matrix_by_module(self, module: Module) -> None:
-        if self._transformation_matrix_arg == "skip":
-            return
-        if isinstance(module, self._valid_ops_for_transform_computation):
-            self._update_transform_matrix_for_valid_op(module)
-        elif self._transformation_matrix_arg == "rigid":
-            raise RuntimeError(
-                f"Non-rigid module `{module}` is not supported under `rigid` computation mode. "
-                "Please either update the module or change the `transformation_matrix` argument."
-            )
-
-    def _update_transform_matrix(self, transform_matrix: Optional[Tensor]) -> None:
-        if self._transform_matrix is None:
-            self._transform_matrix = transform_matrix
-        else:
-            self._transform_matrix = transform_matrix @ self._transform_matrix
-
-    def _reset_transform_matrix_state(self) -> None:
-        self._transform_matrix = None
-        self._transform_matrices = []

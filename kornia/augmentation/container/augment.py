@@ -6,14 +6,15 @@ import torch
 from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
 from kornia.augmentation._3d.base import AugmentationBase3D, RigidAffineAugmentationBase3D
 from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.callbacks import AugmentationCallbackBase
 from kornia.constants import DataKey, Resample
 from kornia.core import Module, Tensor
 from kornia.geometry.boxes import Boxes, VideoBoxes
 from kornia.geometry.keypoints import Keypoints, VideoKeypoints
 from kornia.utils import eye_like, is_autocast_enabled
 
-from .base import TransformMatrixMinIn
 from .image import ImageSequential
+from .mixins import TransformMatrixMinIn
 from .ops import AugmentationSequentialOps, DataType
 from .params import ParamItem
 from .patch import PatchSequential
@@ -216,6 +217,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         extra_args: Dict[DataKey, Dict[str, Any]] = {
             DataKey.MASK: {"resample": Resample.NEAREST, "align_corners": None}
         },
+        callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
         self._transform_matrix: Optional[Tensor]
         self._transform_matrices: List[Optional[Tensor]] = []
@@ -226,6 +228,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             keepdim=keepdim,
             random_apply=random_apply,
             random_apply_weights=random_apply_weights,
+            callbacks=callbacks,
         )
 
         self._parse_transformation_matrix_mode(transformation_matrix_mode)
@@ -263,6 +266,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 self.contains_3d_augmentation = True
         self._transform_matrix = None
         self.extra_args = extra_args
+
+        self.register_callbacks(callbacks)
 
     def clear_state(self) -> None:
         self._reset_transform_matrix_state()
@@ -311,6 +316,10 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 )
             params = self._params
 
+        self.run_callbacks(
+            "on_sequential_inverse_start", input=in_args, module=self, params=params, data_keys=data_keys
+        )
+
         outputs: List[DataType] = in_args
         for param in params[::-1]:
             module = self.get_submodule(param.name)
@@ -325,6 +334,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         if isinstance(original_keys, tuple):
             return {k: v for v, k in zip(outputs, original_keys)}
+
+        self.run_callbacks("on_sequential_inverse_end", input=outputs, module=self, params=params, data_keys=data_keys)
 
         if len(outputs) == 1 and isinstance(outputs, list):
             return outputs[0]
@@ -437,6 +448,10 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             else:
                 raise ValueError("`params` must be provided whilst INPUT is not in data_keys.")
 
+        self.run_callbacks(
+            "on_sequential_forward_start", input=in_args, module=self, params=params, data_keys=data_keys
+        )
+
         outputs: Union[Tensor, List[DataType]] = in_args
         for param in params:
             module = self.get_submodule(param.name)
@@ -456,6 +471,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         if isinstance(original_keys, tuple):
             return {k: v for v, k in zip(outputs, original_keys)}
+
+        self.run_callbacks("on_sequential_forward_end", input=outputs, module=self, params=params, data_keys=data_keys)
 
         if len(outputs) == 1 and isinstance(outputs, list):
             return outputs[0]

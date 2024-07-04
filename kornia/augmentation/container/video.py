@@ -4,6 +4,7 @@ import torch
 
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
+from kornia.augmentation.callbacks import AugmentationCallbackBase
 from kornia.augmentation.container.base import SequentialBase
 from kornia.augmentation.container.image import ImageSequential, _get_new_batch_shape
 from kornia.core import Module, Tensor
@@ -33,6 +34,7 @@ class VideoSequential(ImageSequential):
             If (a,), x number of transformations (a <= x <= len(args)) will be selected.
             If (a, b), x number of transformations (a <= x <= b) will be selected.
             If None, the whole list of args will be processed as a sequence.
+        callbacks: add a list of callbacks.
 
     Note:
         Transformation matrix returned only considers the transformation applied in ``kornia.augmentation`` module.
@@ -105,6 +107,7 @@ class VideoSequential(ImageSequential):
         same_on_frame: bool = True,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
         random_apply_weights: Optional[List[float]] = None,
+        callbacks: List[AugmentationCallbackBase] = [],
     ) -> None:
         super().__init__(
             *args,
@@ -122,6 +125,7 @@ class VideoSequential(ImageSequential):
             self._temporal_channel = 2
         elif self.data_format == "BTCHW":
             self._temporal_channel = 1
+        self.register_callbacks(callbacks)
 
     def __infer_channel_exclusive_batch_shape__(self, batch_shape: torch.Size, chennel_index: int) -> torch.Size:
         # Fix mypy complains: error: Incompatible return value type (got "Tuple[int, ...]", expected "Size")
@@ -322,7 +326,11 @@ class VideoSequential(ImageSequential):
             else:
                 raise RuntimeError("No valid params to inverse the transformation.")
 
-        return self.inverse_inputs(input, params, extra_args=extra_args)
+        self.run_callbacks("on_sequential_inverse_start", input=input, params=params)
+        output = self.inverse_inputs(input, params, extra_args=extra_args)
+        self.run_callbacks("on_sequential_inverse_end", input=output, params=params)
+
+        return output
 
     def forward(
         self, input: Tensor, params: Optional[List[ParamItem]] = None, extra_args: Dict[str, Any] = {}
@@ -335,6 +343,8 @@ class VideoSequential(ImageSequential):
             self._params = self.forward_parameters(input.shape)
             params = self._params
 
+        self.run_callbacks("on_sequential_forward_start", input=input, params=params)
         output = self.transform_inputs(input, params, extra_args=extra_args)
+        self.run_callbacks("on_sequential_forward_start", input=output, params=params)
 
         return output

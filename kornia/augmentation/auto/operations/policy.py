@@ -4,7 +4,9 @@ from torch import Size
 
 import kornia.augmentation as K
 from kornia.augmentation.auto.operations import OperationBase
-from kornia.augmentation.container.base import ImageSequentialBase, TransformMatrixMinIn
+from kornia.augmentation.callbacks import AugmentationCallbackBase
+from kornia.augmentation.container.base import ImageSequentialBase
+from kornia.augmentation.container.mixins import TransformMatrixMinIn
 from kornia.augmentation.container.ops import InputSequentialOps
 from kornia.augmentation.container.params import ParamItem
 from kornia.augmentation.utils import _transform_input, override_parameters
@@ -19,10 +21,15 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
         operations: a list of operations to perform.
     """
 
-    def __init__(self, *operations: OperationBase) -> None:
+    def __init__(
+        self,
+        *operations: OperationBase,
+        callbacks: List[AugmentationCallbackBase] = [],
+    ) -> None:
         self.validate_operations(*operations)
         super().__init__(*operations)
         self._valid_ops_for_transform_computation: Tuple[Any, ...] = (OperationBase,)
+        self.register_callbacks(callbacks)
 
     def _update_transform_matrix_for_valid_op(self, module: Module) -> None:
         self._transform_matrices.append(module.transform_matrix)

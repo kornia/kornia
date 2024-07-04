@@ -231,7 +231,8 @@ class _BasicAugmentationBase(Module):
         params, flags = self._process_kwargs_to_params_and_flags(params, self.flags, **kwargs)
 
         output = self.apply_func(in_tensor, params, flags)
-        return self.transform_output_tensor(output, input_shape) if self.keepdim else output
+        output = self.transform_output_tensor(output, input_shape) if self.keepdim else output
+        return output
 
 
 class _AugmentationBase(_BasicAugmentationBase):
@@ -248,6 +249,15 @@ class _AugmentationBase(_BasicAugmentationBase):
         keepdim: whether to keep the output shape the same as input ``True`` or broadcast it
           to the batch form ``False``.
     """
+
+    def __init__(
+        self,
+        p: float = 0.5,
+        p_batch: float = 1.0,
+        same_on_batch: bool = False,
+        keepdim: bool = False,
+    ) -> None:
+        super().__init__(p, p_batch=p_batch, same_on_batch=same_on_batch, keepdim=keepdim)
 
     def apply_transform(
         self,
