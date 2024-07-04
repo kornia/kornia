@@ -114,7 +114,7 @@ class SequentialBase(BasicSequentialBase):
         super().__init__(*args)
         self._same_on_batch = same_on_batch
         self._keepdim = keepdim
-        self.update_attribute(same_on_batch, keepdim)
+        self.update_attribute(same_on_batch, keepdim=keepdim)
 
     def update_attribute(
         self,
