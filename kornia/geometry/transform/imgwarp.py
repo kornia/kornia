@@ -227,7 +227,7 @@ def warp_grid(grid: Tensor, src_homo_dst: Tensor) -> Tensor:
     r"""Compute the grid to warp the coordinates grid by the homography/ies.
 
     Args:
-        grid: Unwrapped grid of the shape :math:`(1, N, W, 2)`.
+        grid: Unwrapped grid of the shape :math:`(1, H, W, 2)`.
         src_homo_dst: Homography or homographies (stacked) to
           transform all points in the grid. Shape of the homography
           has to be :math:`(1, 3, 3)` or :math:`(N, 1, 3, 3)`.
