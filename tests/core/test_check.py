@@ -29,6 +29,11 @@ class TestCheck:
     def test_invalid_raises_false(self):
         assert KORNIA_CHECK(False, "This should not raise", raises=False) is False
 
+    def test_jit(self):
+        op_jit = torch.jit.script(KORNIA_CHECK)
+        assert op_jit is not None
+        assert op_jit(True, "Testing") is True
+
 
 class TestCheckShape:
     @pytest.mark.parametrize(
@@ -59,12 +64,22 @@ class TestCheckShape:
     def test_invalid_raises_false(self):
         assert KORNIA_CHECK_SHAPE(torch.rand(2, 3), ["1", "H", "W"], raises=False) is False
 
+    def test_jit(self):
+        op_jit = torch.jit.script(KORNIA_CHECK_SHAPE)
+        assert op_jit is not None
+        assert op_jit(torch.rand(2, 3, 2, 3), ["2", "3", "H", "W"]) is True
+
 
 class TestCheckSameShape:
     def test_valid(self):
         assert KORNIA_CHECK_SAME_SHAPE(torch.rand(2, 3), torch.rand(2, 3)) is True
         assert KORNIA_CHECK_SAME_SHAPE(torch.rand(1, 2, 3), torch.rand(1, 2, 3)) is True
         assert KORNIA_CHECK_SAME_SHAPE(torch.rand(2, 3, 3), torch.rand(2, 3, 3)) is True
+
+    def test_jit(self):
+        op_jit = torch.jit.script(KORNIA_CHECK_SAME_SHAPE)
+        assert op_jit is not None
+        assert op_jit(torch.rand(2, 3), torch.rand(2, 3)) is True
 
     def test_invalid(self):
         with pytest.raises(Exception):
