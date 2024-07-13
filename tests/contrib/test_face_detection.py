@@ -61,3 +61,24 @@ class TestFaceDetection(BaseTester):
         data = torch.zeros(14, device=device, dtype=dtype)
         with pytest.raises(ValueError):
             _ = kornia.contrib.FaceDetectorResult(data)
+
+    @pytest.mark.slow
+    def test_model_onnx(self, device, dtype, tmp_path):
+        torch.manual_seed(44)
+        img = torch.rand(1, 3, 320, 320, device=device, dtype=dtype)
+        face_detection = kornia.contrib.FaceDetector().to(device, dtype)
+        model = face_detection.model
+
+        model_path = tmp_path / "facedetector_model.onnx"
+
+        dynamic_axes = {"images": {0: "B"}}
+        torch.onnx.export(
+            model,
+            img,
+            model_path,
+            input_names=["images"],
+            output_names=["loc", "conf", "iou"],
+            dynamic_axes=dynamic_axes,
+        )
+
+        assert model_path.is_file()
