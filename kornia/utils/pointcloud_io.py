@@ -103,7 +103,7 @@ def iterative_closest_point(
     """
 
     src = points_in_a.clone()
-    dst = points_in_b.clone()
+    # dst = points_in_b.clone()
     prev_error = 0
 
     for iter in range(max_iterations):
@@ -112,32 +112,35 @@ def iterative_closest_point(
 
         points_in_b = points_in_b[min_idx]
 
-        a_mean = torch.mean(points_in_a, dim=0)
+        a_mean = torch.mean(src, dim=0)
         b_mean = torch.mean(points_in_b, dim=0)
 
-        a_center = points_in_a - a_mean
+        # a_center = points_in_a - a_mean
+        # b_center = points_in_b - b_mean
+
+        a_center = src - a_mean
         b_center = points_in_b - b_mean
 
         H = a_center.T @ b_center
 
         U, S, Vt = torch.linalg.svd(H)
 
-        R = U.T @ Vt.T
+        R = Vt.T @ U.T
 
         if torch.det(R) < 0:
             Vt[-1, :] *= -1
-            R = U.T @ Vt.T
+            R = Vt.T @ U.T
 
         t = b_mean.T - R @ a_mean.T
 
-        points_in_a = (points_in_a.T @ R + t.unsqueeze(-1)).T
+        src = (src.T @ R + t.unsqueeze(-1)).T
 
-        mean_error = torch.mean(torch.norm(src - dst[min_idx], dim=1))
+        mean_error = torch.mean(torch.norm(src - points_in_b, dim=1))
 
         if torch.abs(prev_error - mean_error) < tolerance:
             break
         prev_error = mean_error
-        print(mean_error, iter)
+        print((torch.abs(prev_error - mean_error)), iter)
 
     # print(points_in_a)
 

@@ -51,3 +51,8 @@ class TestSaveLoadPointCloud:
 
         if os.path.exists(filename):
             os.remove(filename)
+
+
+class TestICP:
+    def test_vanila_icp(self):
+        pass
