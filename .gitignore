@@ -19,6 +19,8 @@ kornia.egg-info/
 *bak
 *ipynb_checkpoints*
 docs/source/_static/*jpg
+docs/source/_static/img/*jpg
+docs/source/_static/scripts/*
 *DS_Store
 
 # onnx tests create temp.onnx file
