@@ -26,7 +26,7 @@ Interactive Demo
 ~~~~~~~~~~~~~~~~
 .. raw:: html
 
-    <gradio-app space="kornia/kornia-image-enhancement"></gradio-app>
+    <gradio-app src="kornia/kornia-image-enhancement"></gradio-app>
 
 Visit the demo on `Hugging Face Spaces <https://huggingface.co/spaces/kornia/kornia-image-enhancement>`_.
 
@@ -83,4 +83,4 @@ ZCA Whitening Interactive Demo
 ------------------------------
 .. raw:: html
 
-  <gradio-app space="kornia/zca-whitening"></gradio-app>
+  <gradio-app src="kornia/zca-whitening"></gradio-app>

@@ -5,4 +5,4 @@ Image Denoising
 
 .. raw:: html
 
-    <gradio-app space="kornia/total_variation_denoising"></gradio-app>
+    <gradio-app src="kornia/total_variation_denoising"></gradio-app>

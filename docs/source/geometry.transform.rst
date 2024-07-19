@@ -98,9 +98,9 @@ Interactive Demo
 
 .. raw:: html
 
-    <gradio-app space="kornia/kornia-resize-antialias"></gradio-app>
+    <gradio-app src="kornia/kornia-resize-antialias"></gradio-app>
 
 
 .. raw:: html
 
-    <gradio-app space="kornia/geometry_image_transform_with_kornia"></gradio-app>
+    <gradio-app src="kornia/geometry_image_transform_with_kornia"></gradio-app>

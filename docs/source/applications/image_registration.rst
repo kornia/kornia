@@ -27,7 +27,7 @@ Interactive Demo
 ----------------
 .. raw:: html
 
-   <gradio-app space="kornia/image-registration-with-kornia"></gradio-app>
+   <gradio-app src="kornia/image-registration-with-kornia"></gradio-app>
 
 
 Visit the `image registration demo on the Hugging Face Spaces <https://huggingface.co/spaces/kornia/image-registration-with-kornia>`_.
