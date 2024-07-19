@@ -167,7 +167,6 @@ html_extra_path = []
 # Output file base name for HTML help builder.
 htmlhelp_basename = "Kornia"
 html_css_files = ["css/main.css"]
-# html_js_files = ["js/custom.js"]
 html_js_files = [
     "js/custom.js",
     ("https://gradio.s3-us-west-2.amazonaws.com/4.38.1/gradio.js", {"defer": "defer", "type": "module"}),
