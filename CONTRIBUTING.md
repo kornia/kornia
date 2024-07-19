@@ -141,6 +141,31 @@ repository under your GitHub account.
     under your dev environment, otherwise, you can install the tools manually and run them with the help of the available
     commands of the [Makefile](./Makefile). Read more about the code standards adopted [here](#coding-standards).
 
+# Contributing to Documentation
+
+We welcome contributions to the Kornia documentation! If you'd like to improve our docs, please follow these steps:
+
+1. Set up your development environment as described in the [Developing Kornia](#developing-kornia) section above.
+
+2. Make your changes to the documentation files located in the `docs/` directory.
+
+3. Build the documentation using the provided Makefile:
+
+   ```bash
+   $ make build-docs
+   ```
+
+   This command will delete any previously built files and generate the newest version of the documentation.
+
+4. The built documentation will be available in the `docs/build/html/` directory. You can open the main page in your browser by running:
+
+   ```bash
+   $ open docs/build/html/index.html
+   ```
+
+5. Review your changes in the browser to ensure they appear as expected.
+
+6. Once you're satisfied with your changes, commit them and submit a pull request following the guidelines in the [Pull Request](#pull-request) section below.
 
 ## Benchmarking
 
