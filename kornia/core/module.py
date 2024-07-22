@@ -1,9 +1,12 @@
+import os
+import math
+import time
+import datetime
+
 import torch
 import numpy as np
 from PIL import Image
 from functools import wraps
-
-from .importer import PILImporter, NumpyImporter
 
 
 class ImageModule(torch.nn.Module):
@@ -14,6 +17,7 @@ class ImageModule(torch.nn.Module):
     """
     def __init__(self):
         super(ImageModule, self).__init__()
+        self._output_image = None
 
     def convert_input_output(self, input_names_to_handle=None, output_type='tensor'):
         def decorator(func):
@@ -22,9 +26,11 @@ class ImageModule(torch.nn.Module):
                 # If input_names_to_handle is None, handle all inputs
                 if input_names_to_handle is None:
                     # Convert all args to tensors
-                    args = tuple(self.to_tensor(arg) if isinstance(arg, (np.ndarray, Image.Image, torch.Tensor)) else arg for arg in args)
+                    args = tuple(self.to_tensor(arg) if isinstance(
+                        arg, (str, np.ndarray, Image.Image, torch.Tensor)) else arg for arg in args)
                     # Convert all kwargs to tensors
-                    kwargs = {k: self.to_tensor(v) if isinstance(v, (np.ndarray, Image.Image, torch.Tensor)) else v for k, v in kwargs.items()}
+                    kwargs = {k: self.to_tensor(v) if isinstance(
+                        v, (str, np.ndarray, Image.Image, torch.Tensor)) else v for k, v in kwargs.items()}
                 else:
                     # Convert specified args to tensors
                     args = list(args)
@@ -59,10 +65,15 @@ class ImageModule(torch.nn.Module):
         return decorator
 
     def to_tensor(self, x):
-        if isinstance(x, np.ndarray):
-            return torch.from_numpy(x)
+        """Supports image path, numpy array, PIL image, and raw tensor."""
+        if isinstance(x, np.ndarray) and len(x.shape) == 3:
+            return torch.from_numpy(x).permute(2, 0, 1).float() / 255
+        if isinstance(x, np.ndarray) and len(x.shape) == 4:
+            return torch.from_numpy(x).permute(0, 3, 1, 2).float() / 255
         elif isinstance(x, Image.Image):
             return torch.from_numpy(np.array(x)).permute(2, 0, 1).float() / 255  # Convert PIL to tensor
+        elif isinstance(x, str):
+            return torch.from_numpy(np.array(Image.open(x))).permute(2, 0, 1).float() / 255
         elif isinstance(x, torch.Tensor):
             return x
         else:
@@ -96,16 +107,38 @@ class ImageModule(torch.nn.Module):
         else:
             raise TypeError("Input type not supported")
 
-    def _default_visualizer(self, *args, **kwargs, backend="matplotlib"):
-        output = self.__call__(*args, **kwargs)
-        raise NotImplementedError
-
-    def show(self, *args, **kwargs):
-        self._default_visualizer(*args, **kwargs)
+    def show(self):
+        """Returns PIL images."""
+        if self._output_image is None:
+            self._output_image = self.__call__(*args, **kwargs)
+        if len(self._output_image.shape) == 3:
+            return Image.fromarray((self._output_image.permute(1, 2, 0).squeeze().numpy() * 255).astype(np.uint8))
+        if len(self._output_image.shape) == 4:
+            return [Image.fromarray(o) for o in (
+                self._output_image.permute(0, 2, 3, 1).squeeze().numpy() * 255).astype(np.uint8)]
+        raise ValueError
+    
+    def save(self, dir=".", rows=None, cols=None):
+        imgs = self.show()
+        name = f"Kornia-{str(datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d%H%M%S'))}.png"
+        if isinstance(imgs, (list, tuple,)):
+            if rows is None:
+                rows = math.ceil(len(imgs) ** .5)
+            if cols is None:
+                cols = len(imgs) // rows
+            w, h = imgs[0].size
+            grid = Image.new('RGB', size=(cols * w, rows * h))
+            grid_w, grid_h = grid.size
+            for i, img in enumerate(imgs):
+                grid.paste(img, box=(i % cols * w, i // cols * h))
+            grid.save(os.path.join(dir, name))
+        else:
+            imgs.save(os.path.join(dir, name))
 
     def __call__(self, *inputs, input_names_to_handle=None, output_type='tensor', **kwargs):
         # Wrap the forward method with the decorator
         decorated_forward = self.convert_input_output(
             input_names_to_handle=input_names_to_handle, output_type=output_type
         )(super().__call__)
-        return decorated_forward(*inputs, **kwargs)
+        self._output_image = decorated_forward(*inputs, **kwargs)
+        return self._output_image
