@@ -170,6 +170,7 @@ html_css_files = ["css/main.css"]
 html_js_files = [
     "js/custom.js",
     ("https://gradio.s3-us-west-2.amazonaws.com/4.38.1/gradio.js", {"defer": "defer", "type": "module"}),
+    "https://cdnjs.cloudflare.com/ajax/libs/iframe-resizer/4.3.2/iframeResizer.min.js",
 ]
 
 # Configure viewcode extension.

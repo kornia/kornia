@@ -31,3 +31,12 @@ function onLoad() {
 }
 
 window.addEventListener("load", onLoad);
+
+
+document.addEventListener("DOMContentLoaded", function () {
+  if (typeof iFrameResize === "function") {
+    iFrameResize({}, "#augmentation-tester");
+  } else {
+    console.error("iFrameResize function is not available");
+  }
+});
