@@ -83,7 +83,7 @@ class Vector3(TensorWrapper):
         device: Optional[Device] = None,
         dtype: Dtype = None,
     ) -> "Vector3":
-        KORNIA_CHECK(type(x) == type(y) == type(z))
+        KORNIA_CHECK(type(x) is type(y) is type(z))
         KORNIA_CHECK(isinstance(x, (Tensor, float)))
         if isinstance(x, float):
             return wrap(as_tensor((x, y, z), device=device, dtype=dtype), Vector3)
@@ -130,7 +130,7 @@ class Vector2(TensorWrapper):
     def from_coords(
         cls, x: Union[float, Tensor], y: Union[float, Tensor], device: Device = None, dtype: Dtype = None
     ) -> "Vector2":
-        KORNIA_CHECK(type(x) == type(y))
+        KORNIA_CHECK(type(x) is type(y))
         KORNIA_CHECK(isinstance(x, (Tensor, float)))
         if isinstance(x, float):
             return wrap(as_tensor((x, y), device=device, dtype=dtype), Vector2)
