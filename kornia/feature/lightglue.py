@@ -25,6 +25,7 @@ from kornia.core import (
 )
 from kornia.core.check import KORNIA_CHECK
 from kornia.feature.laf import laf_to_three_points, scale_laf
+from kornia.utils._compat import torch_version_ge
 
 try:
     from flash_attn.modules.mha import FlashCrossAttention
@@ -36,12 +37,21 @@ if FlashCrossAttention or hasattr(F, "scaled_dot_product_attention"):
 else:
     FLASH_AVAILABLE = False
 
+if torch_version_ge(2, 4):
+    from functools import partial
+
+    from torch.amp import custom_fwd as _custom_fwd
+
+    custom_fwd = partial(_custom_fwd, device_type="cuda")
+else:
+    from torch.cuda.amp import custom_fwd
+
 
 def math_clamp(x, min_, max_):  # type: ignore
     return max(min(x, min_), min_)
 
 
-@torch.cuda.amp.custom_fwd(cast_inputs=torch.float32)
+@custom_fwd(cast_inputs=torch.float32)
 def normalize_keypoints(kpts: Tensor, size: Tensor) -> Tensor:
     if isinstance(size, torch.Size):
         size = Tensor(size)[None]
