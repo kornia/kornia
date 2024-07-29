@@ -291,7 +291,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         """
         original_keys = None
         if len(args) == 1 and isinstance(args[0], dict):
-            original_keys, data_keys, args = self._preproc_dict_data(args[0])
+            original_keys, data_keys, args, invalid_data = self._preproc_dict_data(args[0])
 
         # args here should already be `DataType`
         # NOTE: how to right type to: unpacked args <-> tuple of args to unpack
@@ -324,7 +324,10 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         outputs = self._arguments_postproc(args, outputs, data_keys=self.transform_op.data_keys)  # type: ignore
 
         if isinstance(original_keys, tuple):
-            return {k: v for v, k in zip(outputs, original_keys)}
+            result = {k: v for v, k in zip(outputs, original_keys)}
+            if invalid_data:
+                result.update(invalid_data)
+            return result
 
         if len(outputs) == 1 and isinstance(outputs, list):
             return outputs[0]
@@ -414,7 +417,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         # Unpack/handle dictionary args
         original_keys = None
         if len(args) == 1 and isinstance(args[0], dict):
-            original_keys, data_keys, args = self._preproc_dict_data(args[0])
+            original_keys, data_keys, args, invalid_data = self._preproc_dict_data(args[0])
 
         self.transform_op.data_keys = self.transform_op.preproc_datakeys(data_keys)
 
@@ -455,7 +458,10 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         self._params = params
 
         if isinstance(original_keys, tuple):
-            return {k: v for v, k in zip(outputs, original_keys)}
+            result = {k: v for v, k in zip(outputs, original_keys)}
+            if invalid_data:
+                result.update(invalid_data)
+            return result
 
         if len(outputs) == 1 and isinstance(outputs, list):
             return outputs[0]
@@ -464,15 +470,17 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
     def _preproc_dict_data(
         self, data: Dict[str, DataType]
-    ) -> Tuple[Tuple[str, ...], List[DataKey], Tuple[DataType, ...]]:
+    ) -> Tuple[Tuple[str, ...], List[DataKey], Tuple[DataType, ...], Optional[Dict[str, Any]]]:
         if self.data_keys is not None:
             raise ValueError("If you are using a dictionary as input, the data_keys should be None.")
 
         keys = tuple(data.keys())
-        data_keys = self._read_datakeys_from_dict(keys)
+        data_keys, invalid_keys = self._read_datakeys_from_dict(keys)
+        invalid_data = {i: data.pop(i) for i in invalid_keys} if invalid_keys else None
+        keys = tuple(k for k in keys if k not in invalid_keys) if invalid_keys else keys
         data_unpacked = tuple(data.values())
 
-        return keys, data_keys, data_unpacked
+        return keys, data_keys, data_unpacked, invalid_data
 
     def _read_datakeys_from_dict(self, keys: Sequence[str]) -> List[DataKey]:
         def retrieve_key(key: str) -> DataKey:
@@ -487,12 +495,15 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 if key.upper().startswith(dk.name):
                     return DataKey.get(dk.name)
 
-            allowed_dk = " | ".join(f"`{d.name}`" for d in DataKey)
-            raise ValueError(
-                f"Your input data dictionary keys should start with some of datakey values: {allowed_dk}. Got `{key}`"
-            )
+        valid_data_keys = []
+        invalid_keys = []
+        for k in keys:
+            try:
+                valid_data_keys.append(DataKey.get(retrieve_key(k)))
+            except TypeError:
+                invalid_keys.append(k)
 
-        return [DataKey.get(retrieve_key(k)) for k in keys]
+        return valid_data_keys, invalid_keys
 
     def _preproc_mask(self, arg: MaskDataType) -> MaskDataType:
         if isinstance(arg, list):

@@ -776,13 +776,14 @@ class TestAugmentationSequential:
             random_apply=random_apply,
         )
 
-        data = {"input": inp, "mask": mask, bbox_key: bbox, "keypoints": keypoints}
+        data = {"input": inp, "mask": mask, bbox_key: bbox, "keypoints": keypoints, "invalid": 45}
         out = aug(data)
         assert out["input"].shape == inp.shape
         assert out["mask"].shape == mask.shape
         assert out[bbox_key].shape == bbox.shape
         assert out["keypoints"].shape == keypoints.shape
         assert set(out["mask"].unique().tolist()).issubset(set(mask.unique().tolist()))
+        assert out["invalid"] == 45
 
         out_inv = aug.inverse(out)
         assert out_inv["input"].shape == inp.shape
@@ -790,6 +791,7 @@ class TestAugmentationSequential:
         assert out_inv[bbox_key].shape == bbox.shape
         assert out_inv["keypoints"].shape == keypoints.shape
         assert set(out_inv["mask"].unique().tolist()).issubset(set(mask.unique().tolist()))
+        assert out_inv["invalid"] == 45
 
         if random_apply is False:
             reproducibility_test(data, aug)
