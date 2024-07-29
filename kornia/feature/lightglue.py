@@ -3,6 +3,7 @@ import warnings
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Callable, ClassVar, Dict, List, Optional, Tuple
+from mypy_extensions import DefaultNamedArg
 
 import torch
 import torch.nn.functional as F
@@ -42,7 +43,7 @@ if torch_version_ge(2, 4):
 
     from torch.amp import custom_fwd as _custom_fwd
 
-    custom_fwd = partial(_custom_fwd, device_type="cuda")
+    custom_fwd: Callable[[DefaultNamedArg(Any, 'cast_inputs')], Any] = partial(_custom_fwd, device_type="cuda")
 else:
     from torch.cuda.amp import custom_fwd
 
