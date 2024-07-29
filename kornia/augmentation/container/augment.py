@@ -175,8 +175,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         ... )
         >>> out = aug_list(input, mask, bbox)
 
-    How to use a dictionary as input with AugmentationSequential? The dictionary should starts with
-    one of the datakey availables.
+    How to use a dictionary as input with AugmentationSequential? The dictionary keys that start with
+    one of the available datakeys will be augmented accordingly. Otherwise, the dictionary item is passed
+    without any augmentation.
 
         >>> import kornia.augmentation as K
         >>> img = torch.randn(1, 3, 256, 256)
