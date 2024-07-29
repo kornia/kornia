@@ -483,7 +483,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         return keys, data_keys, data_unpacked, invalid_data
 
-    def _read_datakeys_from_dict(self, keys: Sequence[str]) -> List[DataKey]:
+    def _read_datakeys_from_dict(self, keys: Sequence[str]) -> Tuple[List[DataKey], Optional[List[str]]]:
         def retrieve_key(key: str) -> DataKey:
             """Try to retrieve the datakey value by matching `<datakey>*`"""
             # Alias cases, like INPUT, will not be get by the enum iterator.
@@ -496,12 +496,17 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 if key.upper().startswith(dk.name):
                     return DataKey.get(dk.name)
 
+            allowed_dk = " | ".join(f"`{d.name}`" for d in DataKey)
+            raise ValueError(
+                f"Your input data dictionary keys should start with some of datakey values: {allowed_dk}. Got `{key}`"
+            )
+
         valid_data_keys = []
         invalid_keys = []
         for k in keys:
             try:
                 valid_data_keys.append(DataKey.get(retrieve_key(k)))
-            except TypeError:
+            except ValueError:
                 invalid_keys.append(k)
 
         return valid_data_keys, invalid_keys
