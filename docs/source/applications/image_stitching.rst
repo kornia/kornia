@@ -26,6 +26,6 @@ Interactive Demo
 ----------------
 .. raw:: html
 
-    <gradio-app space="kornia/Image-Stitching"></gradio-app>
+    <gradio-app src="kornia/Image-Stitching"></gradio-app>
 
 Visit the demo on `Hugging Face Spaces <https://huggingface.co/spaces/kornia/Image-Stitching>`_.

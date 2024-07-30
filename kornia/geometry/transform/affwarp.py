@@ -670,7 +670,7 @@ class Resize(nn.Module):
 
     .. raw:: html
 
-        <gradio-app space="kornia/kornia-resize-antialias"></gradio-app>
+        <gradio-app src="kornia/kornia-resize-antialias"></gradio-app>
     """
 
     def __init__(

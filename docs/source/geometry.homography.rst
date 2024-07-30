@@ -11,4 +11,4 @@ Interactive Demo
 ----------------
 .. raw:: html
 
-   <gradio-app space="kornia/homography-warping"></gradio-app>
+   <gradio-app src="kornia/homography-warping"></gradio-app>
