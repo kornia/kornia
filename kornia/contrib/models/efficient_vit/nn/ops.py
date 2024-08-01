@@ -9,20 +9,10 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from kornia.utils._compat import torch_version_ge
-
-if torch_version_ge(2, 4):
-    from functools import partial
-
-    from torch.amp import autocast as _autocast
-
-    autocast = partial(_autocast, "cuda")
-else:
-    from torch.cuda.amp import autocast
-
 from kornia.contrib.models.efficient_vit.nn.act import build_act
 from kornia.contrib.models.efficient_vit.nn.norm import build_norm
 from kornia.contrib.models.efficient_vit.utils import get_same_padding, val2tuple
+from kornia.utils._compat import autocast
 
 __all__ = [
     "ConvLayer",

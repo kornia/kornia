@@ -2,11 +2,10 @@ import math
 import warnings
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, Callable, ClassVar, Dict, List, Optional, Tuple
+from typing import Any, Callable, ClassVar, Dict, List, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
-from mypy_extensions import DefaultNamedArg
 from torch import nn
 
 from kornia.core import (
@@ -26,7 +25,7 @@ from kornia.core import (
 )
 from kornia.core.check import KORNIA_CHECK
 from kornia.feature.laf import laf_to_three_points, scale_laf
-from kornia.utils._compat import torch_version_ge
+from kornia.utils._compat import custom_fwd
 
 try:
     from flash_attn.modules.mha import FlashCrossAttention
@@ -37,17 +36,6 @@ if FlashCrossAttention or hasattr(F, "scaled_dot_product_attention"):
     FLASH_AVAILABLE = True
 else:
     FLASH_AVAILABLE = False
-
-if TYPE_CHECKING:  # TODO (@johnnv1): remove this branch when bump the pytorch CI to support torch 2.4
-    from torch.cuda.amp import custom_fwd
-elif torch_version_ge(2, 4):
-    from functools import partial
-
-    from torch.amp import custom_fwd as _custom_fwd
-
-    custom_fwd: Callable[[DefaultNamedArg(Any, "cast_inputs")], Any] = partial(_custom_fwd, device_type="cuda")
-else:
-    from torch.cuda.amp import custom_fwd
 
 
 def math_clamp(x, min_, max_):  # type: ignore

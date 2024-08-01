@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Callable, ContextManager, List, Optional, Tuple, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, ContextManager, List, Optional, Tuple, TypeVar
 
 import torch
 from packaging import version
@@ -52,3 +52,19 @@ elif torch_version_ge(1, 10, 0):
 else:
     # TODO: remove this branch when kornia relies on torch >= 1.10.0
     torch_inference_mode = torch.no_grad
+
+if TYPE_CHECKING:  # TODO (@johnnv1): remove this branch when bump the pytorch CI to support torch 2.4
+    custom_fwd: Callable[..., Any]
+    autocast: Callable[..., Any]
+elif torch_version_ge(2, 4):
+    from functools import partial
+
+    from torch.amp import autocast as _autocast
+    from torch.amp import custom_fwd as _custom_fwd
+
+    custom_fwd = partial(_custom_fwd, device_type="cuda")
+    autocast = partial(_autocast, "cuda")
+
+else:
+    custom_fwd = torch.cuda.amp.custom_fwd
+    autocast = torch.cuda.amp.autocast
