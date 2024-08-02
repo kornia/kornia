@@ -8,11 +8,11 @@ from __future__ import annotations
 import torch
 import torch.nn.functional as F
 from torch import nn
-from torch.cuda.amp import autocast
 
 from kornia.contrib.models.efficient_vit.nn.act import build_act
 from kornia.contrib.models.efficient_vit.nn.norm import build_norm
 from kornia.contrib.models.efficient_vit.utils import get_same_padding, val2tuple
+from kornia.utils._compat import autocast
 
 __all__ = [
     "ConvLayer",
