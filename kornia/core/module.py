@@ -42,7 +42,7 @@ class ImageModuleMixIn:
                     # Convert all args to tensors
                     args = tuple(self.to_tensor(arg) if self._is_valid_arg(arg) else arg for arg in args)
                     # Convert all kwargs to tensors
-                    kwargs = {k: self.to_tensor(v) if self._is_valid_arg(arg) else v for k, v in kwargs.items()}
+                    kwargs = {k: self.to_tensor(v) if self._is_valid_arg(v) else v for k, v in kwargs.items()}
                 else:
                     # Convert specified args to tensors
                     args = list(args)
@@ -85,7 +85,9 @@ class ImageModuleMixIn:
         Returns:
             bool: True if valid, False otherwise.
         """
-        if isinstance(arg, (str, Tensor,)):
+        if isinstance(arg, (str,)) and os.path.exists(arg):
+            return True
+        if isinstance(arg, (Tensor,)):
             return True
         # Make sure that the numpy and PIL are not necessarily needed to be imported.
         if isinstance(arg, (np.ndarray,)):
