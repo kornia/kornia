@@ -469,6 +469,39 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         return outputs
 
+    def __call__(
+        self, *inputs: Any, input_names_to_handle: Optional[List[Any]] = None, output_type: str = "tensor",
+        **kwargs: Any
+    ) -> Any:
+        """Overwrites the __call__ function to handle various inputs.
+
+        Args:
+            input_names_to_handle: List of input names to convert, if None, handle all inputs.
+            output_type: Desired output type ('tensor', 'numpy', or 'pil').
+
+        Returns:
+            Callable: Decorated function with converted input and output types.
+        """
+
+        # Wrap the forward method with the decorator
+        if not self._disable_features:
+            decorated_forward = self.convert_input_output(
+                input_names_to_handle=input_names_to_handle, output_type=output_type
+            )(super().__call__)
+            _output_image = decorated_forward(*inputs, **kwargs)
+            if len(self.transform_op.data_keys) > 1:
+                # NOTE: we may update it later for more supports of drawing boxes, etc.
+                _output_image = _output_image[self.transform_op.data_keys.index(DataKey.INPUT)]
+            else:
+                _output_image = _output_image
+            if output_type == "tensor":
+                self._output_image = self._detach_tensor_to_cpu(_output_image)
+            else:
+                self._output_image = _output_image
+        else:
+            _output_image = super().__call__(*inputs, **kwargs)
+        return _output_image
+
     def _preproc_dict_data(
         self, data: Dict[str, DataType]
     ) -> Tuple[Tuple[str, ...], List[DataKey], Tuple[DataType, ...], Optional[Dict[str, Any]]]:

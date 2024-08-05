@@ -175,7 +175,7 @@ class ImageModuleMixIn:
             ),
         ):
             return type(output_image)([self._detach_tensor_to_cpu(out) for out in output_image])  # type: ignore
-        raise RuntimeError
+        raise RuntimeError(f"Unexpected object {output_image} with a type of `{type(output_image)}`")
 
     def show(self, n_row: Optional[int] = None, backend: str = "pil", display: bool = True) -> Optional[Any]:
         """Returns PIL images.
