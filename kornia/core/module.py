@@ -58,7 +58,7 @@ class ImageModuleMixIn:
                 # Call the actual forward method
                 tensor_outputs = func(*args, **kwargs)
 
-                if not isinstance(tensor_outputs, tuple):
+                if not isinstance(tensor_outputs, (tuple,)):
                     tensor_outputs = (tensor_outputs,)
 
                 # Convert outputs to the desired type
@@ -93,7 +93,7 @@ class ImageModuleMixIn:
         if isinstance(arg, (Tensor,)):
             return True
         # Make sure that the numpy and PIL are not necessarily needed to be imported.
-        if isinstance(arg, (np.array,)):
+        if isinstance(arg, (np.ndarray,)):
             return True
         if isinstance(arg, (Image.Image)):
             return True
@@ -110,16 +110,15 @@ class ImageModuleMixIn:
         Returns:
             Tensor: The converted tensor.
         """
-        if isinstance(x, str):
+        if isinstance(x, (str,)):
             return kornia.io.load_image(x, kornia.io.ImageLoadType.UNCHANGED) / 255
-        elif isinstance(x, Tensor):
+        if isinstance(x, (Tensor,)):
             return x
-        elif isinstance(x, np.array):
+        if isinstance(x, (np.ndarray,)):
             return kornia.utils.image.image_to_tensor(x) / 255
-        elif isinstance(x, Image.Image):
+        if isinstance(x, (Image.Image,)):
             return from_numpy(np.array(x)).permute(2, 0, 1).float() / 255  # Convert PIL to tensor
-        else:
-            raise TypeError("Input type not supported")
+        raise TypeError("Input type not supported")
 
     def to_numpy(self, x: Any) -> np.array:
         """Convert input to numpy array.
@@ -130,14 +129,13 @@ class ImageModuleMixIn:
         Returns:
             np.array: The converted numpy array.
         """
-        if isinstance(x, Tensor):
+        if isinstance(x, (Tensor,)):
             return x.cpu().detach().numpy()
-        elif isinstance(x, np.array):
+        if isinstance(x, (np.ndarray,)):
             return x
-        elif isinstance(x, Image.Image):
+        if isinstance(x, (Image.Image,)):
             return np.array(x)
-        else:
-            raise TypeError("Input type not supported")
+        raise TypeError("Input type not supported")
 
     def to_pil(self, x: Any) -> Image.Image:
         """Convert input to PIL image.
@@ -148,7 +146,7 @@ class ImageModuleMixIn:
         Returns:
             Image.Image: The converted PIL image.
         """
-        if isinstance(x, Tensor):
+        if isinstance(x, (Tensor,)):
             x = x.cpu().detach() * 255
             if x.dim() == 3:
                 x = x.permute(1, 2, 0)
@@ -158,12 +156,11 @@ class ImageModuleMixIn:
                 return [Image.fromarray(_x.byte().numpy()) for _x in x]
             else:
                 raise NotImplementedError
-        elif isinstance(x, np.array):
+        if isinstance(x, (np.ndarray,)):
             raise NotImplementedError
-        elif isinstance(x, Image.Image):
+        if isinstance(x, (Image.Image,)):
             return x
-        else:
-            raise TypeError("Input type not supported")
+        raise TypeError("Input type not supported")
 
     def _detach_tensor_to_cpu(
         self, output_image: Union[Tensor, List[Tensor], Tuple[Tensor]]
@@ -180,7 +177,7 @@ class ImageModuleMixIn:
             return type(output_image)([self._detach_tensor_to_cpu(out) for out in output_image])
         raise RuntimeError
 
-    def show(self, n_row: Optional[int] = None, backend: str = "pil") -> None:
+    def show(self, n_row: Optional[int] = None, backend: str = "pil", display: bool = True) -> Optional[Any]:
         """Returns PIL images.
 
         Args:
@@ -190,16 +187,20 @@ class ImageModuleMixIn:
         if self._output_image is None:
             raise ValueError("No pre-computed images found. Needs to execute first.")
 
-        if backend == "pil":
-            if len(self._output_image.shape) == 3:
-                out_image = self._output_image
-            elif len(self._output_image.shape) == 4:
-                if n_row is None:
-                    n_row = math.ceil(self._output_image.shape[0] ** 0.5)
-                out_image = kornia.utils.image.make_grid(self._output_image, n_row, padding=2)
-            else:
-                raise ValueError
+        if len(self._output_image.shape) == 3:
+            out_image = self._output_image
+        elif len(self._output_image.shape) == 4:
+            if n_row is None:
+                n_row = math.ceil(self._output_image.shape[0] ** 0.5)
+            out_image = kornia.utils.image.make_grid(self._output_image, n_row, padding=2)
+        else:
+            raise ValueError
+
+        if backend == "pil" and display:
             Image.fromarray((out_image.permute(1, 2, 0).squeeze().numpy() * 255).astype(np.uint8)).show()
+            return
+        if backend == "pil":
+            return Image.fromarray((out_image.permute(1, 2, 0).squeeze().numpy() * 255).astype(np.uint8))
         raise ValueError(f"Unsupported backend `{backend}`.")
 
     def save(self, name: Optional[str] = None, n_row: Optional[int] = None) -> None:

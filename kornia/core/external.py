@@ -23,7 +23,7 @@ class LazyLoader:
             module_name (str): The name of the module to be lazily loaded.
         """
         self.module_name = module_name
-        self.module: ModuleType
+        self.module: Optional[ModuleType] = None
 
     def _load(self) -> None:
         """Loads the module if it hasn't been loaded yet.

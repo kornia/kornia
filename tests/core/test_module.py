@@ -36,12 +36,12 @@ class TestImageModuleMixIn:
 
     def test_to_tensor_pil(self, img_module, sample_image):
         tensor = img_module.to_tensor(sample_image)
-        assert isinstance(tensor, torch.Tensor)
+        assert isinstance(tensor, (torch.Tensor,))
         assert tensor.shape == (3, 100, 100)
 
     def test_to_tensor_numpy(self, img_module, sample_numpy):
         tensor = img_module.to_tensor(sample_numpy)
-        assert isinstance(tensor, torch.Tensor)
+        assert isinstance(tensor, (torch.Tensor,))
         assert tensor.shape == (3, 100, 100)
 
     def test_to_tensor_tensor(self, img_module, sample_tensor):
@@ -50,7 +50,7 @@ class TestImageModuleMixIn:
 
     def test_to_numpy_tensor(self, img_module, sample_tensor):
         array = img_module.to_numpy(sample_tensor)
-        assert isinstance(array, np.ndarray)
+        assert isinstance(array, (np.ndarray,))
         assert array.shape == (3, 100, 100)
 
     def test_to_numpy_numpy(self, img_module, sample_numpy):
@@ -59,7 +59,7 @@ class TestImageModuleMixIn:
 
     def test_to_pil_tensor(self, img_module, sample_tensor):
         pil_image = img_module.to_pil(sample_tensor)
-        assert isinstance(pil_image, PILImage.Image)
+        assert isinstance(pil_image, (PILImage.Image,))
 
     def test_to_pil_pil(self, img_module, sample_image):
         pil_image = img_module.to_pil(sample_image)
@@ -71,12 +71,12 @@ class TestImageModuleMixIn:
             return tensor
 
         output = dummy_func(sample_image)
-        assert isinstance(output, np.ndarray)
+        assert isinstance(output, (np.ndarray,))
 
     def test_show(self, img_module, sample_tensor):
         img_module._output_image = sample_tensor
-        pil_image = img_module.show()
-        assert isinstance(pil_image, PILImage.Image)
+        pil_image = img_module.show(display=False)
+        assert isinstance(pil_image, (PILImage.Image,))
 
     def test_save(self, img_module, sample_tensor, tmpdir):
         img_module._output_image = sample_tensor
