@@ -3,10 +3,11 @@ from typing import Dict, Optional
 import torch
 import torch.nn as nn
 from kornia.core import Module, Tensor
+from kornia.core.external import diffusers
 
 
 class _DissolvingWraper_HF:
-    def __init__(self, model, num_ddim_steps=50):
+    def __init__(self, model: Module, num_ddim_steps: int = 50) -> None:
         self.model = model
         self.num_ddim_steps = num_ddim_steps
         self.tokenizer = self.model.tokenizer
@@ -15,14 +16,14 @@ class _DissolvingWraper_HF:
         self.prompt = None
         self.context = None
 
-    def predict_start_from_noise(self, noise_pred: Tensor, timestep: int, latent: Tensor):
+    def predict_start_from_noise(self, noise_pred: Tensor, timestep: int, latent: Tensor) -> Tensor:
         return (
             torch.sqrt(1. / self.scheduler.alphas_cumprod[timestep]) * latent - 
             torch.sqrt(1. / self.scheduler.alphas_cumprod[timestep] - 1) * noise_pred
         )
 
     @torch.no_grad()
-    def init_prompt(self, prompt: str):
+    def init_prompt(self, prompt: str) -> None:
         uncond_input = self.model.tokenizer(
             [""], padding="max_length", max_length=self.model.tokenizer.model_max_length,
             return_tensors="pt"
@@ -41,7 +42,7 @@ class _DissolvingWraper_HF:
 
     # Encode the image to latent using the VAE.
     @torch.no_grad()
-    def encode_tensor_to_latent(self, image):
+    def encode_tensor_to_latent(self, image: Tensor) -> Tensor:
         with torch.no_grad():
             image = (image / 0.5 - 1).to(self.model.device)
             latents = self.model.vae.encode(image)['latent_dist'].sample()
@@ -49,14 +50,14 @@ class _DissolvingWraper_HF:
         return latents
 
     @torch.no_grad()
-    def decode_tensor_to_latent(self, latents):
+    def decode_tensor_to_latent(self, latents: Tensor) -> Tensor:
         latents = 1 / 0.18215 * latents.detach()
         image = self.model.vae.decode(latents)['sample']
         image = (image / 2 + 0.5).clamp(0, 1)
         return image
 
     @torch.no_grad()
-    def one_step_dissolve(self, latent, i):
+    def one_step_dissolve(self, latent: Tensor, i: int) -> Tensor:
         _, cond_embeddings = self.context.chunk(2)
         latent = latent.clone().detach()
         # NOTE: This implementation use a reversed timesteps but can reach to
@@ -73,7 +74,7 @@ class _DissolvingWraper_HF:
         return self.model.scheduler
 
     @torch.no_grad()
-    def dissolve(self, image, t):
+    def dissolve(self, image: Tensor, t: int) -> Tensor:
         self.init_prompt("")
         latent = self.encode_tensor_to_latent(image)
         ddim_latents = self.one_step_dissolve(latent, t)
@@ -105,7 +106,6 @@ class StableDiffusionDissolving(Module):
     """
     def __init__(self, version: str = "2.1", **kwargs):
         super().__init__()
-        from kornia.core.external import diffusers
         StableDiffusionPipeline = diffusers.StableDiffusionPipeline
         DDIMScheduler = diffusers.DDIMScheduler
 
@@ -128,6 +128,6 @@ class StableDiffusionDissolving(Module):
             raise NotImplementedError
 
         self.model = _DissolvingWraper_HF(self._sdm_model, num_ddim_steps=1000)
-    
+
     def forward(self, input: Tensor, step_number: int) -> Tensor:
         return self.model.dissolve(input, step_number)
