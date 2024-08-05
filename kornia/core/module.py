@@ -1,4 +1,4 @@
-from typing import Any, Callable, Optional, Union, List
+from typing import Any, Callable, Optional, Union, List, Tuple
 
 import os
 import math
@@ -8,6 +8,8 @@ from functools import wraps
 import kornia
 
 from ._backend import Tensor, Module, from_numpy
+from .external import numpy as np
+from .external import PILImage as Image
 
 
 class ImageModuleMixIn:
@@ -162,6 +164,15 @@ class ImageModuleMixIn:
         else:
             raise TypeError("Input type not supported")
 
+    def _detach_tensor_to_cpu(
+        self, output_image: Union[Tensor, List[Tensor], Tuple[Tensor]]
+    ) -> Union[Tensor, List[Tensor], Tuple[Tensor]]:
+        if isinstance(output_image, (Tensor,)):
+            return output_image.detach().cpu()
+        if isinstance(output_image, (list, tuple,)):
+            return type(output_image)([self._detach_tensor_to_cpu(out) for out in output_image])
+        raise RuntimeError
+
     def show(self, n_row: Optional[int] = None, backend: str = "pil") -> "Image.Image":
         """Returns PIL images.
 
@@ -236,6 +247,7 @@ class ImageModule(Module, ImageModuleMixIn):
         Returns:
             Callable: Decorated function with converted input and output types.
         """
+
         # Wrap the forward method with the decorator
         if not self._disable_features:
             decorated_forward = self.convert_input_output(
@@ -243,7 +255,7 @@ class ImageModule(Module, ImageModuleMixIn):
             )(super().__call__)
             _output_image = decorated_forward(*inputs, **kwargs)
             if output_type == "tensor":
-                self._output_image = _output_image.detach().cpu()
+                self._output_image = self._detach_tensor_to_cpu(_output_image)
             else:
                 self._output_image = _output_image
         else:

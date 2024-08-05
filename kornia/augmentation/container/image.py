@@ -323,6 +323,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         Returns:
             Callable: Decorated function with converted input and output types.
         """
+
         # Wrap the forward method with the decorator
         if not self._disable_features:
             decorated_forward = self.convert_input_output(
@@ -330,7 +331,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             )(super().__call__)
             _output_image = decorated_forward(*inputs, **kwargs)
             if output_type == "tensor":
-                self._output_image = _output_image.detach().cpu()
+                self._output_image = self._detach_tensor_to_cpu(_output_image)
             else:
                 self._output_image = _output_image
         else:
