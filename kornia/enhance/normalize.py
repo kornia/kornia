@@ -4,11 +4,12 @@ from typing import List, Tuple, Union
 
 import torch
 from torch import nn
+from kornia.core import ImageModule as Module, Tensor
 
 __all__ = ["normalize", "normalize_min_max", "denormalize", "Normalize", "Denormalize"]
 
 
-class Normalize(nn.Module):
+class Normalize(Module):
     r"""Normalize a tensor image with mean and standard deviation.
 
     .. math::
@@ -40,8 +41,8 @@ class Normalize(nn.Module):
 
     def __init__(
         self,
-        mean: Union[torch.Tensor, Tuple[float], List[float], float],
-        std: Union[torch.Tensor, Tuple[float], List[float], float],
+        mean: Union[Tensor, Tuple[float], List[float], float],
+        std: Union[Tensor, Tuple[float], List[float], float],
     ) -> None:
         super().__init__()
 
@@ -60,7 +61,7 @@ class Normalize(nn.Module):
         self.mean = mean
         self.std = std
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: Tensor) -> Tensor:
         return normalize(input, self.mean, self.std)
 
     def __repr__(self) -> str:
@@ -68,7 +69,7 @@ class Normalize(nn.Module):
         return self.__class__.__name__ + repr
 
 
-def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torch.Tensor:
+def normalize(data: Tensor, mean: Tensor, std: Tensor) -> Tensor:
     r"""Normalize an image/video tensor with mean and standard deviation.
 
     .. math::
@@ -121,12 +122,12 @@ def normalize(data: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torc
     if std.shape:
         std = std[..., :, None]
 
-    out: torch.Tensor = (data.view(shape[0], shape[1], -1) - mean) / std
+    out: Tensor = (data.view(shape[0], shape[1], -1) - mean) / std
 
     return out.view(shape)
 
 
-class Denormalize(nn.Module):
+class Denormalize(Module):
     r"""Denormalize a tensor image with mean and standard deviation.
 
     .. math::
@@ -156,13 +157,13 @@ class Denormalize(nn.Module):
         torch.Size([1, 4, 3, 3, 3])
     """
 
-    def __init__(self, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]) -> None:
+    def __init__(self, mean: Union[Tensor, float], std: Union[Tensor, float]) -> None:
         super().__init__()
 
         self.mean = mean
         self.std = std
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: Tensor) -> Tensor:
         return denormalize(input, self.mean, self.std)
 
     def __repr__(self) -> str:
@@ -170,7 +171,7 @@ class Denormalize(nn.Module):
         return self.__class__.__name__ + repr
 
 
-def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union[torch.Tensor, float]) -> torch.Tensor:
+def denormalize(data: Tensor, mean: Union[Tensor, float], std: Union[Tensor, float]) -> Tensor:
     r"""Denormalize an image/video tensor with mean and standard deviation.
 
     .. math::
@@ -207,13 +208,13 @@ def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union
     if isinstance(std, float):
         std = torch.tensor([std] * shape[1], device=data.device, dtype=data.dtype)
 
-    if not isinstance(data, torch.Tensor):
+    if not isinstance(data, Tensor):
         raise TypeError(f"data should be a tensor. Got {type(data)}")
 
-    if not isinstance(mean, torch.Tensor):
+    if not isinstance(mean, Tensor):
         raise TypeError(f"mean should be a tensor or a float. Got {type(mean)}")
 
-    if not isinstance(std, torch.Tensor):
+    if not isinstance(std, Tensor):
         raise TypeError(f"std should be a tensor or float. Got {type(std)}")
 
     # Allow broadcast on channel dimension
@@ -234,12 +235,12 @@ def denormalize(data: torch.Tensor, mean: Union[torch.Tensor, float], std: Union
     if std.shape:
         std = std[..., :, None]
 
-    out: torch.Tensor = (data.view(shape[0], shape[1], -1) * std) + mean
+    out: Tensor = (data.view(shape[0], shape[1], -1) * std) + mean
 
     return out.view(shape)
 
 
-def normalize_min_max(x: torch.Tensor, min_val: float = 0.0, max_val: float = 1.0, eps: float = 1e-6) -> torch.Tensor:
+def normalize_min_max(x: Tensor, min_val: float = 0.0, max_val: float = 1.0, eps: float = 1e-6) -> Tensor:
     r"""Normalise an image/video tensor by MinMax and re-scales the value between a range.
 
     The data is normalised using the following formulation:
@@ -266,7 +267,7 @@ def normalize_min_max(x: torch.Tensor, min_val: float = 0.0, max_val: float = 1.
         >>> x_norm.max()
         tensor(1.0000)
     """
-    if not isinstance(x, torch.Tensor):
+    if not isinstance(x, Tensor):
         raise TypeError(f"data should be a tensor. Got: {type(x)}.")
 
     if not isinstance(min_val, float):
@@ -281,8 +282,8 @@ def normalize_min_max(x: torch.Tensor, min_val: float = 0.0, max_val: float = 1.
     shape = x.shape
     B, C = shape[0], shape[1]
 
-    x_min: torch.Tensor = x.view(B, C, -1).min(-1)[0].view(B, C, 1)
-    x_max: torch.Tensor = x.view(B, C, -1).max(-1)[0].view(B, C, 1)
+    x_min: Tensor = x.view(B, C, -1).min(-1)[0].view(B, C, 1)
+    x_max: Tensor = x.view(B, C, -1).max(-1)[0].view(B, C, 1)
 
-    x_out: torch.Tensor = (max_val - min_val) * (x.view(B, C, -1) - x_min) / (x_max - x_min + eps) + min_val
+    x_out: Tensor = (max_val - min_val) * (x.view(B, C, -1) - x_min) / (x_max - x_min + eps) + min_val
     return x_out.view(shape)

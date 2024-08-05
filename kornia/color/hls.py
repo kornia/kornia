@@ -3,7 +3,7 @@ from typing import Tuple
 
 import torch
 
-from kornia.core import Module, Tensor, stack, tensor, where
+from kornia.core import ImageModule as Module, Tensor, stack, tensor, where
 
 
 def rgb_to_hls(image: Tensor, eps: float = 1e-8) -> Tensor:

@@ -5,21 +5,22 @@ import math
 import time
 import datetime
 from functools import wraps
+import kornia
 
 from ._backend import Tensor, Module, from_numpy
 from .external import numpy as np
 from .external import PILImage as Image
 
 
-class ImageModule(Module):
-    """Handles image-based operations.
+class ImageModuleMixIn:
+    """A MixIn that handles image-based operations.
 
     This modules accepts multiple input and output data types, provides end-to-end
-    visualization, file saving features.
+    visualization, file saving features. Note that this MixIn fits the classes that
+    return one image tensor only.
     """
-    def __init__(self) -> None:
-        super(ImageModule, self).__init__()
-        self._output_image = None
+
+    _output_image = None
 
     def convert_input_output(
         self, input_names_to_handle: Optional[List[Any]] = None, output_type: str = 'tensor'
@@ -104,16 +105,16 @@ class ImageModule(Module):
         Returns:
             Tensor: The converted tensor.
         """
-        if isinstance(x, np.ndarray) and len(x.shape) == 3:
+        if isinstance(x, str):
+            return kornia.io.load_image(x, kornia.io.ImageLoadType.UNCHANGED) / 255
+        elif isinstance(x, Tensor):
+            return x
+        elif isinstance(x, np.ndarray) and len(x.shape) == 3:
             return from_numpy(x).permute(2, 0, 1).float() / 255
-        if isinstance(x, np.ndarray) and len(x.shape) == 4:
+        elif isinstance(x, np.ndarray) and len(x.shape) == 4:
             return from_numpy(x).permute(0, 3, 1, 2).float() / 255
         elif isinstance(x, Image.Image):
             return from_numpy(np.array(x)).permute(2, 0, 1).float() / 255  # Convert PIL to tensor
-        elif isinstance(x, str):
-            return from_numpy(np.array(Image.open(x))).permute(2, 0, 1).float() / 255
-        elif isinstance(x, Tensor):
-            return x
         else:
             raise TypeError("Input type not supported")
 
@@ -145,13 +146,13 @@ class ImageModule(Module):
             Image.Image: The converted PIL image.
         """
         if isinstance(x, Tensor):
-            x = x.cpu().detach().numpy() * 255
+            x = x.cpu().detach() * 255
             if x.dim() == 3:
-                x = x.transpose(1, 2, 0)  # Convert from (C, H, W) to (H, W, C)
-                return Image.fromarray(x.astype(np.uint8))
+                x = x.permute(1, 2, 0)
+                return Image.fromarray(x.byte().numpy())
             elif x.dim() == 4:
-                x = x.transpose(0, 2, 3, 1)  # Convert from (C, H, W) to (H, W, C)
-                return [Image.fromarray(_x.astype(np.uint8)) for _x in x]
+                x = x.permute(0, 2, 3, 1)
+                return [Image.fromarray(_x.byte().numpy()) for _x in x]
             else:
                 raise NotImplementedError
         elif isinstance(x, np.ndarray):
@@ -161,45 +162,67 @@ class ImageModule(Module):
         else:
             raise TypeError("Input type not supported")
 
-    def show(self) -> Union["Image.Image", list["Image.Image"]]:
+    def show(self, n_row: Optional[int] = None, backend: str = "pil") -> "Image.Image":
         """Returns PIL images.
 
-        Returns:
-            Image.Image or list[Image.Image]: The converted PIL images.
+        Args:
+            n_row: Number of images displayed in each row of the grid.
+            backend: visulization backend. Only PIL is supported now.
         """
         if self._output_image is None:
-            self._output_image = self.__call__(*args, **kwargs)
-        if len(self._output_image.shape) == 3:
-            return Image.fromarray((self._output_image.permute(1, 2, 0).squeeze().numpy() * 255).astype(np.uint8))
-        if len(self._output_image.shape) == 4:
-            return [Image.fromarray(o) for o in (
-                self._output_image.permute(0, 2, 3, 1).squeeze().numpy() * 255).astype(np.uint8)]
-        raise ValueError
+            raise ValueError("No pre-computed images found. Needs to execute first.")
+        if backend.lower() not in ["pil"]:
+            raise ValueError(f"Unsupported backend `{backend}`.")
 
-    def save(self, name: Optional[str] = None, rows: Optional[int] = None, cols: Optional[int] = None) -> None:
+        if len(self._output_image.shape) == 3:
+            out_image = self._output_image
+        elif len(self._output_image.shape) == 4:
+            if n_row is None:
+                n_row = math.ceil(self._output_image.shape[0] ** .5)
+            out_image = kornia.utils.image.make_grid(self._output_image, n_row, padding=2)
+        else:
+            raise ValueError
+        return Image.fromarray((out_image.permute(1, 2, 0).squeeze().numpy() * 255).astype(np.uint8))
+
+    def save(self, name: Optional[str] = None, n_row: Optional[int] = None) -> None:
         """Saves the output image(s) to a directory.
 
         Args:
             name: Directory to save the images.
-            rows: Number of rows for grid layout.
-            cols: Number of columns for grid layout.
+            n_row: Number of images displayed in each row of the grid.
         """
-        imgs = self.show()
         if name is None:
-            name = f"Kornia-{str(datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d%H%M%S'))}.png"
-        if isinstance(imgs, (list, tuple,)):
-            if rows is None:
-                rows = math.ceil(len(imgs) ** .5)
-            if cols is None:
-                cols = len(imgs) // rows
-            w, h = imgs[0].size
-            grid = Image.new('RGB', size=(cols * w, rows * h))
-            grid_w, grid_h = grid.size
-            for i, img in enumerate(imgs):
-                grid.paste(img, box=(i % cols * w, i // cols * h))
-            grid.save(name)
-        else:
-            imgs.save(name)
+            name = f"Kornia-{str(datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d%H%M%S'))}.jpg"
+        if len(self._output_image.shape) == 3:
+            out_image = self._output_image
+        if len(self._output_image.shape) == 4:
+            if n_row is None:
+                n_row = math.ceil(self._output_image.shape[0] ** .5)
+            out_image = kornia.utils.image.make_grid(self._output_image, n_row, padding=2)
+        kornia.io.write_image(name, out_image.mul(255.0).byte())
+
+
+class ImageModule(Module, ImageModuleMixIn):
+    """Handles image-based operations.
+
+    This modules accepts multiple input and output data types, provides end-to-end
+    visualization, file saving features. Note that this module fits the classes that
+    return one image tensor only.
+
+    Note:
+        The additional add-on features increase the use of memories. To restore the
+        original behaviour, you may set `_disable_features = True`.
+    """
+
+    _disable_features: bool = False
+
+    @property
+    def disable_features(self):
+        return self._disable_features
+
+    @disable_features.setter
+    def disable_features(self, value: bool = True):
+        self._disable_features = value
 
     def __call__(
         self, *inputs, input_names_to_handle: Optional[List[Any]] = None, output_type: str = 'tensor', **kwargs
@@ -214,8 +237,15 @@ class ImageModule(Module):
             Callable: Decorated function with converted input and output types.
         """
         # Wrap the forward method with the decorator
-        decorated_forward = self.convert_input_output(
-            input_names_to_handle=input_names_to_handle, output_type=output_type
-        )(super().__call__)
-        self._output_image = decorated_forward(*inputs, **kwargs)
-        return self._output_image
+        if not self._disable_features:
+            decorated_forward = self.convert_input_output(
+                input_names_to_handle=input_names_to_handle, output_type=output_type
+            )(super().__call__)
+            _output_image = decorated_forward(*inputs, **kwargs)
+            if output_type == "tensor":
+                self._output_image = _output_image.detach().cpu()
+            else:
+                self._output_image = _output_image
+        else:
+            _output_image = super().__call__(*inputs, **kwargs)
+        return _output_image

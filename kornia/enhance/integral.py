@@ -1,6 +1,6 @@
 from typing import Optional, Tuple
 
-from kornia.core import Module, Tensor
+from kornia.core import ImageModule as Module, Tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 

@@ -2,8 +2,7 @@ from math import pi
 from typing import Optional, Union
 
 import torch
-from torch import Tensor
-from torch.nn import Module, Parameter
+from kornia.core import ImageModule as Module, Tensor, Parameter
 
 from kornia.color import hsv_to_rgb, rgb_to_grayscale, rgb_to_hsv
 from kornia.core.check import (

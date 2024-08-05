@@ -1,6 +1,6 @@
 from typing import Union
 
-from kornia.core import Module, Tensor, tensor
+from kornia.core import ImageModule as Module, Tensor, tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
 
 

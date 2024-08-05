@@ -1,5 +1,7 @@
 import torch
-from torch import Tensor, nn
+from torch import nn
+
+from kornia.core import ImageModule as Module, Tensor
 
 
 def _rgb_to_y(r: Tensor, g: Tensor, b: Tensor) -> Tensor:
@@ -101,7 +103,7 @@ def ycbcr_to_rgb(image: Tensor) -> Tensor:
     return torch.stack([r, g, b], -3).clamp(0, 1)
 
 
-class RgbToYcbcr(nn.Module):
+class RgbToYcbcr(Module):
     r"""Convert an image from RGB to YCbCr.
 
     The image data is assumed to be in the range of (0, 1).
@@ -123,7 +125,7 @@ class RgbToYcbcr(nn.Module):
         return rgb_to_ycbcr(image)
 
 
-class YcbcrToRgb(nn.Module):
+class YcbcrToRgb(Module):
     r"""Convert an image from YCbCr to Rgb.
 
     The image data is assumed to be in the range of (0, 1).

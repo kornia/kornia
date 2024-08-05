@@ -4,7 +4,7 @@ from typing import Any, Union
 
 import torch
 
-from kornia.core import Module, Tensor
+from kornia.core import ImageModule as Module, Tensor
 from kornia.core.check import KORNIA_CHECK
 from kornia.utils.image import perform_keep_shape_image
 

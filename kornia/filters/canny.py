@@ -6,7 +6,7 @@ import torch
 import torch.nn.functional as F
 
 from kornia.color import rgb_to_grayscale
-from kornia.core import Module, Tensor
+from kornia.core import ImageModule as Module, Tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 from .gaussian import gaussian_blur2d

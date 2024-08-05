@@ -2,7 +2,7 @@ from typing import List, Optional, Tuple
 
 import torch
 
-from kornia.core import Module, Tensor, concatenate, tensor
+from kornia.core import ImageModule as Module, Tensor, concatenate, tensor
 
 __all__ = ["zca_mean", "zca_whiten", "linear_transform", "ZCAWhitening"]
 

@@ -3,6 +3,8 @@ import math
 import torch
 from torch import nn
 
+from kornia.core import ImageModule as Module
+
 
 def rgb_to_hsv(image: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
     r"""Convert an image from RGB to HSV.
@@ -94,7 +96,7 @@ def hsv_to_rgb(image: torch.Tensor) -> torch.Tensor:
     return out
 
 
-class RgbToHsv(nn.Module):
+class RgbToHsv(Module):
     r"""Convert an image from RGB to HSV.
 
     The image data is assumed to be in the range of (0, 1).
@@ -123,7 +125,7 @@ class RgbToHsv(nn.Module):
         return rgb_to_hsv(image, self.eps)
 
 
-class HsvToRgb(nn.Module):
+class HsvToRgb(Module):
     r"""Convert an image from HSV to RGB.
 
     H channel values are assumed to be in the range 0..2pi. S and V are in the range 0..1.

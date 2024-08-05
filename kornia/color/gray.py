@@ -5,7 +5,7 @@ from typing import Optional
 import torch
 
 from kornia.color.rgb import bgr_to_rgb
-from kornia.core import ImageModule, Tensor, concatenate
+from kornia.core import ImageModule as Module, Tensor, concatenate
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR
 
 
@@ -106,7 +106,7 @@ def bgr_to_grayscale(image: Tensor) -> Tensor:
     return rgb_to_grayscale(image_rgb)
 
 
-class GrayscaleToRgb(ImageModule):
+class GrayscaleToRgb(Module):
     r"""Module to convert a grayscale image to RGB version of image.
 
     The image data is assumed to be in the range of (0, 1).
@@ -128,7 +128,7 @@ class GrayscaleToRgb(ImageModule):
         return grayscale_to_rgb(image)
 
 
-class RgbToGrayscale(ImageModule):
+class RgbToGrayscale(Module):
     r"""Module to convert a RGB image to grayscale version of image.
 
     The image data is assumed to be in the range of (0, 1).
@@ -156,7 +156,7 @@ class RgbToGrayscale(ImageModule):
         return rgb_to_grayscale(image, rgb_weights=self.rgb_weights)
 
 
-class BgrToGrayscale(ImageModule):
+class BgrToGrayscale(Module):
     r"""Module to convert a BGR image to grayscale version of image.
 
     The image data is assumed to be in the range of (0, 1). First flips to RGB, then converts.
