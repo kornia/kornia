@@ -1,3 +1,6 @@
+from typing import List
+from types import ModuleType
+
 import importlib
 
 
@@ -13,16 +16,16 @@ class LazyLoader:
         module: The actual module object, initialized to None and loaded upon first access.
     """
 
-    def __init__(self, module_name: str):
+    def __init__(self, module_name: str) -> None:
         """Initializes the LazyLoader with the name of the module.
 
         Args:
             module_name (str): The name of the module to be lazily loaded.
         """
         self.module_name = module_name
-        self.module = None
+        self.module: ModuleType
 
-    def _load(self):
+    def _load(self) -> None:
         """Loads the module if it hasn't been loaded yet.
 
         This method is called internally when an attribute of the module is accessed for the first time. It attempts to
@@ -52,7 +55,7 @@ class LazyLoader:
         self._load()
         return getattr(self.module, item)
 
-    def __dir__(self):
+    def __dir__(self) -> List[str]:
         """Loads the module (if not already loaded) and returns the list of attributes of the module.
 
         This method is called when the built-in dir() function is used on the LazyLoader instance.

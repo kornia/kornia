@@ -19,14 +19,14 @@ class ImageModuleForSequentialMixIn(ImageModuleMixIn):
     _disable_features: bool = False
 
     @property
-    def disable_features(self):
+    def disable_features(self) -> bool:
         return self._disable_features
 
     @disable_features.setter
-    def disable_features(self, value: bool = True):
+    def disable_features(self, value: bool = True) -> None:
         self._disable_features = value
 
-    def disable_item_features(self, *args: Module):
+    def disable_item_features(self, *args: Module) -> None:
         for arg in args:
             if isinstance(arg, (ImageModule,)):
                 arg.disable_features = True
@@ -311,8 +311,8 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         return True
 
     def __call__(
-        self, *inputs, input_names_to_handle: Optional[List[Any]] = None, output_type: str = "tensor", **kwargs
-    ):
+        self, *inputs: Any, input_names_to_handle: Optional[List[Any]] = None, output_type: str = "tensor", **kwargs
+    ) -> Any:
         """Overwrites the __call__ function to handle various inputs.
 
         Args:

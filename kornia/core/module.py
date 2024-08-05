@@ -1,9 +1,10 @@
+from typing import Any, Callable, List, Optional, Tuple, Union
+
 import datetime
 import math
 import os
 import time
 from functools import wraps
-from typing import Any, Callable, List, Optional, Tuple, Union
 
 import kornia
 
@@ -19,7 +20,7 @@ class ImageModuleMixIn:
     Note that this MixIn fits the classes that return one image tensor only.
     """
 
-    _output_image = None
+    _output_image: Any
 
     def convert_input_output(
         self, input_names_to_handle: Optional[List[Any]] = None, output_type: str = "tensor"
@@ -34,9 +35,9 @@ class ImageModuleMixIn:
             Callable: Decorated function with converted input and output types.
         """
 
-        def decorator(func):
+        def decorator(func: Callable) -> Callable:
             @wraps(func)
-            def wrapper(*args, **kwargs):
+            def wrapper(*args, **kwargs) -> Union[Any, List[Any]]:
                 # If input_names_to_handle is None, handle all inputs
                 if input_names_to_handle is None:
                     # Convert all args to tensors
@@ -92,7 +93,7 @@ class ImageModuleMixIn:
         if isinstance(arg, (Tensor,)):
             return True
         # Make sure that the numpy and PIL are not necessarily needed to be imported.
-        if isinstance(arg, (np.ndarray,)):
+        if isinstance(arg, (np.array,)):
             return True
         if isinstance(arg, (Image.Image)):
             return True
@@ -113,34 +114,32 @@ class ImageModuleMixIn:
             return kornia.io.load_image(x, kornia.io.ImageLoadType.UNCHANGED) / 255
         elif isinstance(x, Tensor):
             return x
-        elif isinstance(x, np.ndarray) and len(x.shape) == 3:
-            return from_numpy(x).permute(2, 0, 1).float() / 255
-        elif isinstance(x, np.ndarray) and len(x.shape) == 4:
-            return from_numpy(x).permute(0, 3, 1, 2).float() / 255
+        elif isinstance(x, np.array):
+            return kornia.utils.image.image_to_tensor(x) / 255
         elif isinstance(x, Image.Image):
             return from_numpy(np.array(x)).permute(2, 0, 1).float() / 255  # Convert PIL to tensor
         else:
             raise TypeError("Input type not supported")
 
-    def to_numpy(self, x: Any) -> "np.ndarray":
+    def to_numpy(self, x: Any) -> np.array:
         """Convert input to numpy array.
 
         Args:
             x: The input to convert.
 
         Returns:
-            np.ndarray: The converted numpy array.
+            np.array: The converted numpy array.
         """
         if isinstance(x, Tensor):
             return x.cpu().detach().numpy()
-        elif isinstance(x, np.ndarray):
+        elif isinstance(x, np.array):
             return x
         elif isinstance(x, Image.Image):
             return np.array(x)
         else:
             raise TypeError("Input type not supported")
 
-    def to_pil(self, x: Any) -> "Image.Image":
+    def to_pil(self, x: Any) -> Image.Image:
         """Convert input to PIL image.
 
         Args:
@@ -159,7 +158,7 @@ class ImageModuleMixIn:
                 return [Image.fromarray(_x.byte().numpy()) for _x in x]
             else:
                 raise NotImplementedError
-        elif isinstance(x, np.ndarray):
+        elif isinstance(x, np.array):
             raise NotImplementedError
         elif isinstance(x, Image.Image):
             return x
@@ -181,7 +180,7 @@ class ImageModuleMixIn:
             return type(output_image)([self._detach_tensor_to_cpu(out) for out in output_image])
         raise RuntimeError
 
-    def show(self, n_row: Optional[int] = None, backend: str = "pil") -> "Image.Image":
+    def show(self, n_row: Optional[int] = None, backend: str = "pil") -> None:
         """Returns PIL images.
 
         Args:
@@ -190,18 +189,18 @@ class ImageModuleMixIn:
         """
         if self._output_image is None:
             raise ValueError("No pre-computed images found. Needs to execute first.")
-        if backend.lower() not in ["pil"]:
-            raise ValueError(f"Unsupported backend `{backend}`.")
 
-        if len(self._output_image.shape) == 3:
-            out_image = self._output_image
-        elif len(self._output_image.shape) == 4:
-            if n_row is None:
-                n_row = math.ceil(self._output_image.shape[0] ** 0.5)
-            out_image = kornia.utils.image.make_grid(self._output_image, n_row, padding=2)
-        else:
-            raise ValueError
-        return Image.fromarray((out_image.permute(1, 2, 0).squeeze().numpy() * 255).astype(np.uint8))
+        if backend == "pil":
+            if len(self._output_image.shape) == 3:
+                out_image = self._output_image
+            elif len(self._output_image.shape) == 4:
+                if n_row is None:
+                    n_row = math.ceil(self._output_image.shape[0] ** 0.5)
+                out_image = kornia.utils.image.make_grid(self._output_image, n_row, padding=2)
+            else:
+                raise ValueError
+            Image.fromarray((out_image.permute(1, 2, 0).squeeze().numpy() * 255).astype(np.uint8)).show()
+        raise ValueError(f"Unsupported backend `{backend}`.")
 
     def save(self, name: Optional[str] = None, n_row: Optional[int] = None) -> None:
         """Saves the output image(s) to a directory.
@@ -233,21 +232,21 @@ class ImageModule(Module, ImageModuleMixIn):
         original behaviour, you may set `disable_features = True`.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._disable_features: bool = False
 
     @property
-    def disable_features(self):
+    def disable_features(self) -> bool:
         return self._disable_features
 
     @disable_features.setter
-    def disable_features(self, value: bool = True):
+    def disable_features(self, value: bool = True) -> None:
         self._disable_features = value
 
     def __call__(
-        self, *inputs, input_names_to_handle: Optional[List[Any]] = None, output_type: str = "tensor", **kwargs
-    ):
+        self, *inputs: Any, input_names_to_handle: Optional[List[Any]] = None, output_type: str = "tensor", **kwargs
+    ) -> Any:
         """Overwrites the __call__ function to handle various inputs.
 
         Args:
