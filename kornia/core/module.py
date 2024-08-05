@@ -3,7 +3,6 @@ from typing import cast, Any, Callable, List, Optional, Tuple, Union
 import datetime
 import math
 import os
-import time
 from functools import wraps
 
 import kornia
@@ -211,7 +210,7 @@ class ImageModuleMixIn:
             n_row: Number of images displayed in each row of the grid.
         """
         if name is None:
-            name = f"Kornia-{datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d%H%M%S')!s}.jpg"
+            name = f"Kornia-{datetime.datetime.today().strftime('%Y%m%d%H%M%S')!s}.jpg"
         if len(self._output_image.shape) == 3:
             out_image = self._output_image
         if len(self._output_image.shape) == 4:

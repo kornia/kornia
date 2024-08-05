@@ -22,7 +22,7 @@ class TestImageModuleMixIn:
     @pytest.fixture
     def sample_image(self):
         # Create a sample PIL image for testing
-        return PILImage.fromarray(np.random.randint(0, 255, (100, 100, 3), dtype=np.uint8))
+        return PILImage.fromarray(torch.randint(0, 255, (100, 100, 3)).numpy().astype(np.uint8))
 
     @pytest.fixture
     def sample_tensor(self):
@@ -32,7 +32,7 @@ class TestImageModuleMixIn:
     @pytest.fixture
     def sample_numpy(self):
         # Create a sample numpy array for testing
-        return np.random.rand(100, 100, 3).astype(np.float32)
+        return torch.rand(100, 100, 3).numpy()
 
     def test_to_tensor_pil(self, img_module, sample_image):
         tensor = img_module.to_tensor(sample_image)

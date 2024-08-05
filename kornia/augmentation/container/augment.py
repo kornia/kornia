@@ -496,7 +496,6 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                     idx = self.transform_op.data_keys.index(DataKey.INPUT)
                     self._output_image[idx] = self._detach_tensor_to_cpu(_output_image[idx])
                 else:
-                    _output_image = _output_image
                     self._output_image = self._detach_tensor_to_cpu(_output_image)
             else:
                 self._output_image = _output_image
