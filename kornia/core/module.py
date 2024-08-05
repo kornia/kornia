@@ -230,10 +230,12 @@ class ImageModule(Module, ImageModuleMixIn):
 
     Note:
         The additional add-on features increase the use of memories. To restore the
-        original behaviour, you may set `_disable_features = True`.
+        original behaviour, you may set `disable_features = True`.
     """
 
-    _disable_features: bool = False
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._disable_features: bool = False
 
     @property
     def disable_features(self):
