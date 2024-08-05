@@ -2,9 +2,10 @@ from math import pi
 from typing import Optional, Union
 
 import torch
-from kornia.core import ImageModule as Module, Tensor, Parameter
 
 from kornia.color import hsv_to_rgb, rgb_to_grayscale, rgb_to_hsv
+from kornia.core import ImageModule as Module
+from kornia.core import Parameter, Tensor
 from kornia.core.check import (
     KORNIA_CHECK,
     KORNIA_CHECK_IS_COLOR_OR_GRAY,

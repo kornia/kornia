@@ -1,9 +1,9 @@
 from typing import Union, cast
 
 import torch
-from torch import nn
 
-from kornia.core import ImageModule as Module, Tensor
+from kornia.core import ImageModule as Module
+from kornia.core import Tensor
 
 
 def rgb_to_bgr(image: Tensor) -> Tensor:

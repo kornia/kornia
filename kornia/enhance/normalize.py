@@ -3,8 +3,9 @@
 from typing import List, Tuple, Union
 
 import torch
-from torch import nn
-from kornia.core import ImageModule as Module, Tensor
+
+from kornia.core import ImageModule as Module
+from kornia.core import Tensor
 
 __all__ = ["normalize", "normalize_min_max", "denormalize", "Normalize", "Denormalize"]
 

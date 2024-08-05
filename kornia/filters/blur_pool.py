@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import torch.nn.functional as F
 
-from kornia.core import ImageModule as Module, Tensor, as_tensor, pad, tensor
+from kornia.core import ImageModule as Module
+from kornia.core import Tensor, as_tensor, pad, tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 from .kernels import get_pascal_kernel_2d

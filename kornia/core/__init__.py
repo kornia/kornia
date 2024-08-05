@@ -31,8 +31,8 @@ from ._backend import (
     zeros,
     zeros_like,
 )
-from .tensor_wrapper import TensorWrapper  # type: ignore
 from .module import ImageModule
+from .tensor_wrapper import TensorWrapper  # type: ignore
 
 __all__ = [
     "arange",

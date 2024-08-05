@@ -2,8 +2,7 @@ import importlib
 
 
 class LazyLoader:
-    """
-    A class that implements lazy loading for Python modules.
+    """A class that implements lazy loading for Python modules.
 
     This class defers the import of a module until an attribute of the module is accessed.
     It helps in reducing the initial load time and memory usage of a script, especially when
@@ -15,8 +14,7 @@ class LazyLoader:
     """
 
     def __init__(self, module_name: str):
-        """
-        Initializes the LazyLoader with the name of the module.
+        """Initializes the LazyLoader with the name of the module.
 
         Args:
             module_name (str): The name of the module to be lazily loaded.
@@ -25,12 +23,10 @@ class LazyLoader:
         self.module = None
 
     def _load(self):
-        """
-        Loads the module if it hasn't been loaded yet.
+        """Loads the module if it hasn't been loaded yet.
 
-        This method is called internally when an attribute of the module is accessed for the first time.
-        It attempts to import the module and raises an ImportError with a custom message if the module
-        is not installed.
+        This method is called internally when an attribute of the module is accessed for the first time. It attempts to
+        import the module and raises an ImportError with a custom message if the module is not installed.
         """
         if self.module is None:
             try:
@@ -42,8 +38,7 @@ class LazyLoader:
                 ) from e
 
     def __getattr__(self, item: str) -> object:
-        """
-        Loads the module (if not already loaded) and returns the requested attribute.
+        """Loads the module (if not already loaded) and returns the requested attribute.
 
         This method is called when an attribute of the LazyLoader instance is accessed.
         It ensures that the module is loaded and then returns the requested attribute.
@@ -58,8 +53,7 @@ class LazyLoader:
         return getattr(self.module, item)
 
     def __dir__(self):
-        """
-        Loads the module (if not already loaded) and returns the list of attributes of the module.
+        """Loads the module (if not already loaded) and returns the list of attributes of the module.
 
         This method is called when the built-in dir() function is used on the LazyLoader instance.
         It ensures that the module is loaded and then returns the list of attributes of the module.

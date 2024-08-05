@@ -247,7 +247,7 @@ def make_grid(tensor: Tensor, n_row: Optional[int] = None, padding: int = 2) -> 
         top = row * padded_H
         left = col * padded_W
 
-        combined_image[:, top:top + H, left:left + W] = tensor[idx]
+        combined_image[:, top : top + H, left : left + W] = tensor[idx]
 
     return combined_image
 

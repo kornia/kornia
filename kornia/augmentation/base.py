@@ -11,7 +11,8 @@ from kornia.augmentation.utils import (
     _transform_output_shape,
     override_parameters,
 )
-from kornia.core import ImageModule as Module, Tensor, tensor, zeros
+from kornia.core import ImageModule as Module
+from kornia.core import Tensor, tensor, zeros
 from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 from kornia.utils import is_autocast_enabled

@@ -1,7 +1,6 @@
 import math
 
 import torch
-from torch import nn
 
 from kornia.core import ImageModule as Module
 

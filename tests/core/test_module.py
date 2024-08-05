@@ -1,19 +1,22 @@
-import pytest
-from unittest.mock import MagicMock, patch
-from PIL import Image as PILImage
-import numpy as np
-import torch
 import os
-from kornia.core.module import ImageModuleMixIn, ImageModule
+from unittest.mock import MagicMock
+
+import numpy as np
+import pytest
+import torch
+from PIL import Image as PILImage
+
+from kornia.core.module import ImageModule, ImageModuleMixIn
 
 # Assuming ImageModuleMixIn and ImageModule have been imported from the module
 
-class TestImageModuleMixIn:
 
+class TestImageModuleMixIn:
     @pytest.fixture
     def img_module(self):
         class DummyModule(ImageModuleMixIn):
             pass
+
         return DummyModule()
 
     @pytest.fixture
@@ -63,7 +66,7 @@ class TestImageModuleMixIn:
         assert pil_image is sample_image
 
     def test_convert_input_output(self, img_module, sample_image, sample_numpy, sample_tensor):
-        @img_module.convert_input_output(output_type='numpy')
+        @img_module.convert_input_output(output_type="numpy")
         def dummy_func(tensor):
             return tensor
 
@@ -83,7 +86,6 @@ class TestImageModuleMixIn:
 
 
 class TestImageModule:
-
     @pytest.fixture
     def image_module(self):
         return ImageModule()

@@ -5,7 +5,7 @@ import torch
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils import override_parameters
-from kornia.core import Module, ImageModule, Tensor, as_tensor
+from kornia.core import ImageModule, Module, Tensor, as_tensor
 from kornia.core.module import ImageModuleMixIn
 from kornia.utils import eye_like
 
@@ -16,7 +16,6 @@ __all__ = ["ImageSequential"]
 
 
 class ImageModuleForSequentialMixIn(ImageModuleMixIn):
-
     _disable_features: bool = False
 
     @property
@@ -312,7 +311,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         return True
 
     def __call__(
-        self, *inputs, input_names_to_handle: Optional[List[Any]] = None, output_type: str = 'tensor', **kwargs
+        self, *inputs, input_names_to_handle: Optional[List[Any]] = None, output_type: str = "tensor", **kwargs
     ):
         """Overwrites the __call__ function to handle various inputs.
 
@@ -337,7 +336,6 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         else:
             _output_image = super().__call__(*inputs, **kwargs)
         return _output_image
-
 
 
 def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size) -> torch.Size:

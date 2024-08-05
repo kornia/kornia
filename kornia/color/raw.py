@@ -1,9 +1,9 @@
 from enum import Enum
 
 import torch
-from torch import nn
 
-from kornia.core import ImageModule as Module, Tensor, concatenate
+from kornia.core import ImageModule as Module
+from kornia.core import Tensor, concatenate
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 

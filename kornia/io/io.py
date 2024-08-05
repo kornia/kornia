@@ -141,8 +141,10 @@ def write_image(path_file: str | Path, image: Tensor) -> None:
     if not isinstance(path_file, Path):
         path_file = Path(path_file)
 
-    KORNIA_CHECK(path_file.suffix in [
-        ".jpg", ".jpeg"], f"Invalid file extension: {path_file}, only .jpg and .jpeg are supported.")
+    KORNIA_CHECK(
+        path_file.suffix in [".jpg", ".jpeg"],
+        f"Invalid file extension: {path_file}, only .jpg and .jpeg are supported.",
+    )
 
     if (image.dim() == 3 and image.shape[0] == 1) or image.dim() == 2:  # Grayscale image
         image = image.squeeze(0)  # HxW

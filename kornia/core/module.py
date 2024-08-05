@@ -1,29 +1,28 @@
-from typing import Any, Callable, Optional, Union, List, Tuple
-
-import os
-import math
-import time
 import datetime
+import math
+import os
+import time
 from functools import wraps
+from typing import Any, Callable, List, Optional, Tuple, Union
+
 import kornia
 
-from ._backend import Tensor, Module, from_numpy
-from .external import numpy as np
+from ._backend import Module, Tensor, from_numpy
 from .external import PILImage as Image
+from .external import numpy as np
 
 
 class ImageModuleMixIn:
     """A MixIn that handles image-based operations.
 
-    This modules accepts multiple input and output data types, provides end-to-end
-    visualization, file saving features. Note that this MixIn fits the classes that
-    return one image tensor only.
+    This modules accepts multiple input and output data types, provides end-to-end visualization, file saving features.
+    Note that this MixIn fits the classes that return one image tensor only.
     """
 
     _output_image = None
 
     def convert_input_output(
-        self, input_names_to_handle: Optional[List[Any]] = None, output_type: str = 'tensor'
+        self, input_names_to_handle: Optional[List[Any]] = None, output_type: str = "tensor"
     ) -> Callable:
         """Decorator to convert input and output types for a function.
 
@@ -34,6 +33,7 @@ class ImageModuleMixIn:
         Returns:
             Callable: Decorated function with converted input and output types.
         """
+
         def decorator(func):
             @wraps(func)
             def wrapper(*args, **kwargs):
@@ -63,17 +63,19 @@ class ImageModuleMixIn:
                 # Convert outputs to the desired type
                 outputs = []
                 for output in tensor_outputs:
-                    if output_type == 'tensor':
+                    if output_type == "tensor":
                         outputs.append(output)
-                    elif output_type == 'numpy':
+                    elif output_type == "numpy":
                         outputs.append(self.to_numpy(output))
-                    elif output_type == 'pil':
+                    elif output_type == "pil":
                         outputs.append(self.to_pil(output))
                     else:
                         raise ValueError("Output type not supported. Choose from 'tensor', 'numpy', or 'pil'.")
 
                 return outputs if len(outputs) > 1 else outputs[0]
+
             return wrapper
+
         return decorator
 
     def _is_valid_arg(self, arg: Any) -> bool:
@@ -169,7 +171,13 @@ class ImageModuleMixIn:
     ) -> Union[Tensor, List[Tensor], Tuple[Tensor]]:
         if isinstance(output_image, (Tensor,)):
             return output_image.detach().cpu()
-        if isinstance(output_image, (list, tuple,)):
+        if isinstance(
+            output_image,
+            (
+                list,
+                tuple,
+            ),
+        ):
             return type(output_image)([self._detach_tensor_to_cpu(out) for out in output_image])
         raise RuntimeError
 
@@ -189,7 +197,7 @@ class ImageModuleMixIn:
             out_image = self._output_image
         elif len(self._output_image.shape) == 4:
             if n_row is None:
-                n_row = math.ceil(self._output_image.shape[0] ** .5)
+                n_row = math.ceil(self._output_image.shape[0] ** 0.5)
             out_image = kornia.utils.image.make_grid(self._output_image, n_row, padding=2)
         else:
             raise ValueError
@@ -203,12 +211,12 @@ class ImageModuleMixIn:
             n_row: Number of images displayed in each row of the grid.
         """
         if name is None:
-            name = f"Kornia-{str(datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d%H%M%S'))}.jpg"
+            name = f"Kornia-{datetime.datetime.fromtimestamp(time.time()).strftime('%Y%m%d%H%M%S')!s}.jpg"
         if len(self._output_image.shape) == 3:
             out_image = self._output_image
         if len(self._output_image.shape) == 4:
             if n_row is None:
-                n_row = math.ceil(self._output_image.shape[0] ** .5)
+                n_row = math.ceil(self._output_image.shape[0] ** 0.5)
             out_image = kornia.utils.image.make_grid(self._output_image, n_row, padding=2)
         kornia.io.write_image(name, out_image.mul(255.0).byte())
 
@@ -236,7 +244,7 @@ class ImageModule(Module, ImageModuleMixIn):
         self._disable_features = value
 
     def __call__(
-        self, *inputs, input_names_to_handle: Optional[List[Any]] = None, output_type: str = 'tensor', **kwargs
+        self, *inputs, input_names_to_handle: Optional[List[Any]] = None, output_type: str = "tensor", **kwargs
     ):
         """Overwrites the __call__ function to handle various inputs.
 
