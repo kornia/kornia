@@ -8,8 +8,6 @@ from functools import wraps
 import kornia
 
 from ._backend import Tensor, Module, from_numpy
-from .external import numpy as np
-from .external import PILImage as Image
 
 
 class ImageModuleMixIn:
