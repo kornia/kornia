@@ -1,4 +1,4 @@
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import cast, Any, Callable, List, Optional, Tuple, Union
 
 import datetime
 import math
@@ -24,7 +24,7 @@ class ImageModuleMixIn:
 
     def convert_input_output(
         self, input_names_to_handle: Optional[List[Any]] = None, output_type: str = "tensor"
-    ) -> Callable:
+    ) -> Callable[[Any], Any]:
         """Decorator to convert input and output types for a function.
 
         Args:
@@ -35,9 +35,9 @@ class ImageModuleMixIn:
             Callable: Decorated function with converted input and output types.
         """
 
-        def decorator(func: Callable) -> Callable:
+        def decorator(func: Callable[[Any], Any]) -> Callable[[Any], Any]:
             @wraps(func)
-            def wrapper(*args, **kwargs) -> Union[Any, List[Any]]:
+            def wrapper(*args: Any, **kwargs: Any) -> Union[Any, List[Any]]:
                 # If input_names_to_handle is None, handle all inputs
                 if input_names_to_handle is None:
                     # Convert all args to tensors
@@ -46,10 +46,10 @@ class ImageModuleMixIn:
                     kwargs = {k: self.to_tensor(v) if self._is_valid_arg(v) else v for k, v in kwargs.items()}
                 else:
                     # Convert specified args to tensors
-                    args = list(args)
+                    args = list(args)  # type:ignore
                     for i, (arg, name) in enumerate(zip(args, func.__code__.co_varnames)):
                         if name in input_names_to_handle:
-                            args[i] = self.to_tensor(arg)
+                            args[i] = self.to_tensor(arg)  # type:ignore
                     # Convert specified kwargs to tensors
                     for name, value in kwargs.items():
                         if name in input_names_to_handle:
@@ -93,9 +93,9 @@ class ImageModuleMixIn:
         if isinstance(arg, (Tensor,)):
             return True
         # Make sure that the numpy and PIL are not necessarily needed to be imported.
-        if isinstance(arg, (np.ndarray,)):
+        if isinstance(arg, (np.ndarray,)):  # type: ignore
             return True
-        if isinstance(arg, (Image.Image)):
+        if isinstance(arg, (Image.Image)):  # type: ignore
             return True
         return False
 
@@ -114,13 +114,13 @@ class ImageModuleMixIn:
             return kornia.io.load_image(x, kornia.io.ImageLoadType.UNCHANGED) / 255
         if isinstance(x, (Tensor,)):
             return x
-        if isinstance(x, (np.ndarray,)):
+        if isinstance(x, (np.ndarray,)):  # type: ignore
             return kornia.utils.image.image_to_tensor(x) / 255
-        if isinstance(x, (Image.Image,)):
-            return from_numpy(np.array(x)).permute(2, 0, 1).float() / 255  # Convert PIL to tensor
+        if isinstance(x, (Image.Image,)):  # type: ignore
+            return from_numpy(np.array(x)).permute(2, 0, 1).float() / 255  # type: ignore
         raise TypeError("Input type not supported")
 
-    def to_numpy(self, x: Any) -> np.array:
+    def to_numpy(self, x: Any) -> np.array:  # type: ignore
         """Convert input to numpy array.
 
         Args:
@@ -131,13 +131,13 @@ class ImageModuleMixIn:
         """
         if isinstance(x, (Tensor,)):
             return x.cpu().detach().numpy()
-        if isinstance(x, (np.ndarray,)):
+        if isinstance(x, (np.ndarray,)):  # type: ignore
             return x
-        if isinstance(x, (Image.Image,)):
-            return np.array(x)
+        if isinstance(x, (Image.Image,)):  # type: ignore
+            return np.array(x)  # type: ignore
         raise TypeError("Input type not supported")
 
-    def to_pil(self, x: Any) -> Image.Image:
+    def to_pil(self, x: Any) -> Image.Image:  # type: ignore
         """Convert input to PIL image.
 
         Args:
@@ -150,15 +150,15 @@ class ImageModuleMixIn:
             x = x.cpu().detach() * 255
             if x.dim() == 3:
                 x = x.permute(1, 2, 0)
-                return Image.fromarray(x.byte().numpy())
+                return Image.fromarray(x.byte().numpy())  # type: ignore
             elif x.dim() == 4:
                 x = x.permute(0, 2, 3, 1)
-                return [Image.fromarray(_x.byte().numpy()) for _x in x]
+                return [Image.fromarray(_x.byte().numpy()) for _x in x]  # type: ignore
             else:
                 raise NotImplementedError
-        if isinstance(x, (np.ndarray,)):
+        if isinstance(x, (np.ndarray,)):  # type: ignore
             raise NotImplementedError
-        if isinstance(x, (Image.Image,)):
+        if isinstance(x, (Image.Image,)):  # type: ignore
             return x
         raise TypeError("Input type not supported")
 
@@ -174,7 +174,7 @@ class ImageModuleMixIn:
                 tuple,
             ),
         ):
-            return type(output_image)([self._detach_tensor_to_cpu(out) for out in output_image])
+            return type(output_image)([self._detach_tensor_to_cpu(out) for out in output_image])  # type: ignore
         raise RuntimeError
 
     def show(self, n_row: Optional[int] = None, backend: str = "pil", display: bool = True) -> Optional[Any]:
@@ -182,7 +182,7 @@ class ImageModuleMixIn:
 
         Args:
             n_row: Number of images displayed in each row of the grid.
-            backend: visulization backend. Only PIL is supported now.
+            backend: visualization backend. Only PIL is supported now.
         """
         if self._output_image is None:
             raise ValueError("No pre-computed images found. Needs to execute first.")
@@ -197,10 +197,10 @@ class ImageModuleMixIn:
             raise ValueError
 
         if backend == "pil" and display:
-            Image.fromarray((out_image.permute(1, 2, 0).squeeze().numpy() * 255).astype(np.uint8)).show()
-            return
+            Image.fromarray((out_image.permute(1, 2, 0).squeeze().numpy() * 255).astype(np.uint8)).show()  # type: ignore
+            return None
         if backend == "pil":
-            return Image.fromarray((out_image.permute(1, 2, 0).squeeze().numpy() * 255).astype(np.uint8))
+            return Image.fromarray((out_image.permute(1, 2, 0).squeeze().numpy() * 255).astype(np.uint8))  # type: ignore
         raise ValueError(f"Unsupported backend `{backend}`.")
 
     def save(self, name: Optional[str] = None, n_row: Optional[int] = None) -> None:
@@ -233,7 +233,7 @@ class ImageModule(Module, ImageModuleMixIn):
         original behaviour, you may set `disable_features = True`.
     """
 
-    def __init__(self, *args, **kwargs) -> None:
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._disable_features: bool = False
 
@@ -246,7 +246,8 @@ class ImageModule(Module, ImageModuleMixIn):
         self._disable_features = value
 
     def __call__(
-        self, *inputs: Any, input_names_to_handle: Optional[List[Any]] = None, output_type: str = "tensor", **kwargs
+        self, *inputs: Any, input_names_to_handle: Optional[List[Any]] = None, output_type: str = "tensor",
+        **kwargs: Any
     ) -> Any:
         """Overwrites the __call__ function to handle various inputs.
 
