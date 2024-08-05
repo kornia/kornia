@@ -115,6 +115,12 @@ Matching
 .. autoclass:: LoFTR
    :members: forward
 
+Interactive Demo
+~~~~~~~~~~~~~~~~
+.. raw:: html
+
+    <gradio-app src="https://kornia-kornia-loftr.hf.space"></gradio-app>
+
 .. autoclass:: OnnxLightGlue
    :members: forward
 
