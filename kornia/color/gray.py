@@ -39,7 +39,7 @@ def rgb_to_grayscale(image: Tensor, rgb_weights: Optional[Tensor] = None) -> Ten
 
     .. image:: _static/img/rgb_to_grayscale.png
 
-    The image data is assumed to be in the range of (0, 1).
+    The image data is assumed to be in the range of [0, 1] if floating point, and [0, 255] if uint8.
 
     Args:
         image: RGB image to be converted to grayscale with shape :math:`(*,3,H,W)`.
@@ -63,7 +63,7 @@ def rgb_to_grayscale(image: Tensor, rgb_weights: Optional[Tensor] = None) -> Ten
     if rgb_weights is None:
         # 8 bit images
         if image.dtype == torch.uint8:
-            rgb_weights = torch.tensor([76, 150, 29], device=image.device, dtype=torch.uint8)
+            rgb_weights = torch.tensor([0.299, 0.587, 0.114], device=image.device, dtype=torch.float32)
         # floating point images
         elif image.dtype in (torch.float16, torch.float32, torch.float64):
             rgb_weights = torch.tensor([0.299, 0.587, 0.114], device=image.device, dtype=image.dtype)
@@ -79,7 +79,10 @@ def rgb_to_grayscale(image: Tensor, rgb_weights: Optional[Tensor] = None) -> Ten
     b: Tensor = image[..., 2:3, :, :]
 
     w_r, w_g, w_b = rgb_weights.unbind()
-    return w_r * r + w_g * g + w_b * b
+    output_image = w_r * r + w_g * g + w_b * b
+    if image.dtype == torch.uint8:
+        output_image = output_image.clamp(0, 255).to(torch.uint8)
+    return output_image
 
 
 def bgr_to_grayscale(image: Tensor) -> Tensor:
