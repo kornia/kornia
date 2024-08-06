@@ -1,9 +1,8 @@
-from typing import cast, Any, Callable, List, Optional, Tuple, Union
-
 import datetime
 import math
 import os
 from functools import wraps
+from typing import Any, Callable, List, Optional, Tuple, Union
 
 import kornia
 
@@ -245,8 +244,11 @@ class ImageModule(Module, ImageModuleMixIn):
         self._disable_features = value
 
     def __call__(
-        self, *inputs: Any, input_names_to_handle: Optional[List[Any]] = None, output_type: str = "tensor",
-        **kwargs: Any
+        self,
+        *inputs: Any,
+        input_names_to_handle: Optional[List[Any]] = None,
+        output_type: str = "tensor",
+        **kwargs: Any,
     ) -> Any:
         """Overwrites the __call__ function to handle various inputs.
 

@@ -1,7 +1,6 @@
-from typing import List, Optional
-from types import ModuleType
-
 import importlib
+from types import ModuleType
+from typing import List, Optional
 
 
 class LazyLoader:

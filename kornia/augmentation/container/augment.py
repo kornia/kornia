@@ -470,8 +470,11 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         return outputs
 
     def __call__(
-        self, *inputs: Any, input_names_to_handle: Optional[List[Any]] = None, output_type: str = "tensor",
-        **kwargs: Any
+        self,
+        *inputs: Any,
+        input_names_to_handle: Optional[List[Any]] = None,
+        output_type: str = "tensor",
+        **kwargs: Any,
     ) -> Any:
         """Overwrites the __call__ function to handle various inputs.
 

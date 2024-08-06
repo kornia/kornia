@@ -112,7 +112,7 @@ class UpConvBlock(Module):
         layers = nn.ModuleList([])
         all_pads = [0, 0, 1, 3, 7]
         for i in range(up_scale):
-            kernel_size = 2 ** up_scale
+            kernel_size = 2**up_scale
             pad = all_pads[up_scale]  # kernel_size-1
             out_features = self.compute_out_features(i, up_scale)
             layers.append(nn.Conv2d(in_features, out_features, 1))
