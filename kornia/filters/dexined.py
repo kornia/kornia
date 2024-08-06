@@ -108,7 +108,7 @@ class UpConvBlock(Module):
         KORNIA_CHECK(layers is not None, "layers cannot be none")
         self.features = nn.Sequential(*layers)
 
-    def make_deconv_layers(self, in_features: int, up_scale: int) -> list[Module]:
+    def make_deconv_layers(self, in_features: int, up_scale: int) -> nn.ModuleList:
         layers = nn.ModuleList([])
         all_pads = [0, 0, 1, 3, 7]
         for i in range(up_scale):
@@ -221,7 +221,7 @@ class DexiNed(Module):
             # NOTE: workaround typing. Otherwise,
             # Argument 1 to "apply" of "Module" has incompatible type "Callable[[ImageModule], None]";
             # expected "Callable[[Module], None]"  [arg-type]
-            super(Module, self).apply(weight_init)
+            super(nn.Module, self).apply(weight_init)
 
     def load_from_file(self, path_file: str) -> None:
         # use torch.hub to load pretrained model

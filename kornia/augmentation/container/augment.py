@@ -485,20 +485,27 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         # Wrap the forward method with the decorator
         if not self._disable_features:
+            # TODO: Some more behaviour for AugmentationSequential needs to be revisited later
+            # e.g. We convert only images, etc.
             decorated_forward = self.convert_input_output(
                 input_names_to_handle=input_names_to_handle, output_type=output_type
             )(super(ImageSequential, self).__call__)
             _output_image = decorated_forward(*inputs, **kwargs)
-            if self.transform_op.data_keys is None:  # To address typing
-                raise RuntimeError("Unexpected `data_keys is None`. Probably need to set `disable_features = True`.")
-            if output_type == "tensor":
-                if len(self.transform_op.data_keys) > 1:
-                    # NOTE: we may update it later for more supports of drawing boxes, etc.
+
+            if len(inputs) == 1 and isinstance(inputs[0], dict):
+                original_keys, in_data_keys, inputs, invalid_data = self._preproc_dict_data(inputs[0])
+            else:
+                in_data_keys = kwargs["data_keys"] if "data_keys" in kwargs else self.data_keys
+            data_keys = self.transform_op.preproc_datakeys(in_data_keys)
+
+            if len(data_keys) > 1 and data_keys.index(DataKey.INPUT):
+                # NOTE: we may update it later for more supports of drawing boxes, etc.
+                idx = self.transform_op.data_keys.index(DataKey.INPUT)
+                if output_type == "tensor":
                     self._output_image = _output_image
-                    idx = self.transform_op.data_keys.index(DataKey.INPUT)
                     self._output_image[idx] = self._detach_tensor_to_cpu(_output_image[idx])
                 else:
-                    self._output_image = self._detach_tensor_to_cpu(_output_image)
+                    self._output_image[idx] = _output_image[idx]
             else:
                 self._output_image = _output_image
         else:
