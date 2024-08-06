@@ -17,7 +17,7 @@ from kornia.utils import map_location_to_cpu
 url: str = "http://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth"
 
 
-def weight_init(m: Module) -> None:
+def weight_init(m: nn.Module) -> None:
     if isinstance(m, (nn.Conv2d,)):
         # torch.nn.init.xavier_uniform_(m.weight, gain=1.0)
         torch.nn.init.xavier_normal_(m.weight, gain=1.0)
@@ -218,10 +218,7 @@ class DexiNed(Module):
         if pretrained:
             self.load_from_file(url)
         else:
-            # NOTE: workaround typing. Otherwise,
-            # Argument 1 to "apply" of "Module" has incompatible type "Callable[[ImageModule], None]";
-            # expected "Callable[[Module], None]"  [arg-type]
-            super(Module, self).apply(weight_init)
+            self.apply(weight_init)
 
     def load_from_file(self, path_file: str) -> None:
         # use torch.hub to load pretrained model
