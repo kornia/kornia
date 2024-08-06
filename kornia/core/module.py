@@ -1,8 +1,9 @@
+from typing import cast, Any, Callable, List, Optional, Tuple, Union
+
 import datetime
 import math
 import os
 from functools import wraps
-from typing import Any, Callable, List, Optional, Tuple, Union
 
 import kornia
 
@@ -209,7 +210,7 @@ class ImageModuleMixIn:
             n_row: Number of images displayed in each row of the grid.
         """
         if name is None:
-            name = f"Kornia-{datetime.datetime.now(tz=None).strftime('%Y%m%d%H%M%S')!s}.jpg"
+            name = f"Kornia-{datetime.datetime.today().strftime('%Y%m%d%H%M%S')!s}.jpg"
         if len(self._output_image.shape) == 3:
             out_image = self._output_image
         if len(self._output_image.shape) == 4:
@@ -244,11 +245,8 @@ class ImageModule(Module, ImageModuleMixIn):
         self._disable_features = value
 
     def __call__(
-        self,
-        *inputs: Any,
-        input_names_to_handle: Optional[List[Any]] = None,
-        output_type: str = "tensor",
-        **kwargs: Any,
+        self, *inputs: Any, input_names_to_handle: Optional[List[Any]] = None, output_type: str = "tensor",
+        **kwargs: Any
     ) -> Any:
         """Overwrites the __call__ function to handle various inputs.
 

@@ -503,7 +503,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
             if len(data_keys) > 1 and data_keys.index(DataKey.INPUT):
                 # NOTE: we may update it later for more supports of drawing boxes, etc.
-                idx = self.transform_op.data_keys.index(DataKey.INPUT)
+                idx = data_keys.index(DataKey.INPUT)
                 if output_type == "tensor":
                     self._output_image = _output_image
                     self._output_image[idx] = self._detach_tensor_to_cpu(_output_image[idx])

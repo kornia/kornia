@@ -221,7 +221,7 @@ class DexiNed(Module):
             # NOTE: workaround typing. Otherwise,
             # Argument 1 to "apply" of "Module" has incompatible type "Callable[[ImageModule], None]";
             # expected "Callable[[Module], None]"  [arg-type]
-            super(nn.Module, self).apply(weight_init)
+            super(Module, self).apply(weight_init)
 
     def load_from_file(self, path_file: str) -> None:
         # use torch.hub to load pretrained model
