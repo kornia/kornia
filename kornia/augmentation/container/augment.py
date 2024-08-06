@@ -500,7 +500,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             else:
                 self._output_image = _output_image
         else:
-            _output_image = super().__call__(*inputs, **kwargs)
+            _output_image = super(ImageSequential, self).__call__(*inputs, **kwargs)
         return _output_image
 
     def _preproc_dict_data(
