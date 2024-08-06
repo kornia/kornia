@@ -487,8 +487,10 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         if not self._disable_features:
             decorated_forward = self.convert_input_output(
                 input_names_to_handle=input_names_to_handle, output_type=output_type
-            )(super().__call__)
+            )(super(ImageSequential, self).__call__)
             _output_image = decorated_forward(*inputs, **kwargs)
+            if self.transform_op.data_keys is None:  # To address typing
+                raise RuntimeError("Unexpected `data_keys is None`. Probably need to set `disable_features = True`.")
             if output_type == "tensor":
                 if len(self.transform_op.data_keys) > 1:
                     # NOTE: we may update it later for more supports of drawing boxes, etc.

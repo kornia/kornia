@@ -109,10 +109,10 @@ class UpConvBlock(Module):
         self.features = nn.Sequential(*layers)
 
     def make_deconv_layers(self, in_features: int, up_scale: int) -> list[Module]:
-        layers: list[Module] = []
+        layers = nn.ModuleList([])
         all_pads = [0, 0, 1, 3, 7]
         for i in range(up_scale):
-            kernel_size = 2**up_scale
+            kernel_size = 2 ** up_scale
             pad = all_pads[up_scale]  # kernel_size-1
             out_features = self.compute_out_features(i, up_scale)
             layers.append(nn.Conv2d(in_features, out_features, 1))
@@ -218,7 +218,10 @@ class DexiNed(Module):
         if pretrained:
             self.load_from_file(url)
         else:
-            self.apply(weight_init)
+            # NOTE: workaround typing. Otherwise,
+            # Argument 1 to "apply" of "Module" has incompatible type "Callable[[ImageModule], None]";
+            # expected "Callable[[Module], None]"  [arg-type]
+            super(Module, self).apply(weight_init)
 
     def load_from_file(self, path_file: str) -> None:
         # use torch.hub to load pretrained model
