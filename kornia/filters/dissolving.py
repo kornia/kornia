@@ -2,7 +2,7 @@ from typing import Dict, Optional
 
 import torch
 import torch.nn as nn
-from kornia.core import Module, Tensor
+from kornia.core import Module, ImageModule, Tensor
 from kornia.core.external import diffusers
 
 
@@ -82,7 +82,7 @@ class _DissolvingWraper_HF:
         return dissolved
 
 
-class StableDiffusionDissolving(Module):
+class StableDiffusionDissolving(ImageModule):
     r"""Perform dissolving transformation using StableDiffusion models.
 
     Based on :cite:`shi2024dissolving`, the dissolving transformation is essentially applying one-step
