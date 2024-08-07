@@ -69,3 +69,4 @@ class LazyLoader:
 
 numpy = LazyLoader("numpy")
 PILImage = LazyLoader("PIL.Image")
+diffusers = LazyLoader("diffusers")
