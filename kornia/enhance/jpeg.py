@@ -7,7 +7,8 @@ import torch.nn.functional as F
 
 from kornia.color import rgb_to_ycbcr, ycbcr_to_rgb
 from kornia.constants import pi
-from kornia.core import Device, Dtype, Module, Parameter, Tensor
+from kornia.core import Device, Dtype, Parameter, Tensor
+from kornia.core import ImageModule as Module
 from kornia.core.check import (
     KORNIA_CHECK,
     KORNIA_CHECK_IS_TENSOR,

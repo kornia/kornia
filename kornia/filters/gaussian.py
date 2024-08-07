@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from kornia.core import Module, Tensor, tensor
+from kornia.core import ImageModule as Module
+from kornia.core import Tensor, tensor
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR
 from kornia.utils import deprecated
 

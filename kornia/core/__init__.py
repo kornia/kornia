@@ -31,6 +31,7 @@ from ._backend import (
     zeros,
     zeros_like,
 )
+from .module import ImageModule
 from .tensor_wrapper import TensorWrapper  # type: ignore
 
 __all__ = [
@@ -66,4 +67,5 @@ __all__ = [
     "diag",
     "TensorWrapper",
     "map_coordinates",
+    "ImageModule",
 ]

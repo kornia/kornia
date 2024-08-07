@@ -3,7 +3,8 @@ from __future__ import annotations
 import torch
 import torch.nn.functional as F
 
-from kornia.core import Module, Tensor, pad
+from kornia.core import ImageModule as Module
+from kornia.core import Tensor, pad
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 from .kernels import get_spatial_gradient_kernel2d, get_spatial_gradient_kernel3d, normalize_kernel2d

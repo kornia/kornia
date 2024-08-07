@@ -1,9 +1,9 @@
 from enum import Enum
 
 import torch
-from torch import nn
 
-from kornia.core import Module, Tensor, concatenate
+from kornia.core import ImageModule as Module
+from kornia.core import Tensor, concatenate
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 
@@ -273,7 +273,7 @@ def raw_to_rgb_2x2_downscaled(image: Tensor, cfa: CFA) -> Tensor:
     return rgb
 
 
-class RawToRgb(nn.Module):
+class RawToRgb(Module):
     r"""Module to convert a bayer raw image to RGB version of image.
 
     The image data is assumed to be in the range of (0, 1).
@@ -296,7 +296,7 @@ class RawToRgb(nn.Module):
         return raw_to_rgb(image, cfa=self.cfa)
 
 
-class RgbToRaw(nn.Module):
+class RgbToRaw(Module):
     r"""Module to convert a RGB image to bayer raw version of image.
 
     The image data is assumed to be in the range of (0, 1).

@@ -2,6 +2,7 @@ coverage
 mypy
 numpy<3
 onnx
+pillow
 pre-commit>=2
 pytest==8.2.2
 pytest-timeout

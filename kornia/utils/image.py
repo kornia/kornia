@@ -1,5 +1,5 @@
 from functools import wraps
-from typing import Any, Callable, List
+from typing import Any, Callable, List, Optional
 
 import torch
 from torch import nn
@@ -209,6 +209,47 @@ class ImageToTensor(nn.Module):
 
     def forward(self, x: Any) -> Tensor:
         return image_to_tensor(x, keepdim=self.keepdim)
+
+
+def make_grid(tensor: Tensor, n_row: Optional[int] = None, padding: int = 2) -> Tensor:
+    """Convert a batched tensor to one image with padding in between.
+
+    Args:
+        tensor: A batched tensor of shape (B, C, H, W).
+        n_row: Number of images displayed in each row of the grid.
+        padding: The amount of padding to add between images.
+
+    Returns:
+        Tensor: The combined image grid.
+    """
+    if not isinstance(tensor, torch.Tensor):
+        raise TypeError("Input tensor must be a PyTorch tensor.")
+
+    B, C, H, W = tensor.shape
+    if n_row is None:
+        n_row = int(torch.sqrt(torch.tensor(B, dtype=torch.float32)).ceil())
+    n_col = (B + n_row - 1) // n_row
+
+    # Calculate new dimensions with padding
+    padded_H = H + padding
+    padded_W = W + padding
+    combined_H = n_row * padded_H - padding
+    combined_W = n_col * padded_W - padding
+
+    # Initialize an empty canvas with the padding value
+    pad_value = 0
+    combined_image = torch.full((C, combined_H, combined_W), pad_value, dtype=tensor.dtype)
+
+    for idx in range(B):
+        row = idx // n_col
+        col = idx % n_col
+
+        top = row * padded_H
+        left = col * padded_W
+
+        combined_image[:, top : top + H, left : left + W] = tensor[idx]
+
+    return combined_image
 
 
 def perform_keep_shape_image(f: Callable[..., Tensor]) -> Callable[..., Tensor]:

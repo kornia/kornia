@@ -3,7 +3,8 @@ from __future__ import annotations
 import torch
 from torch.nn.functional import interpolate
 
-from kornia.core import Module, Tensor
+from kornia.core import ImageModule as Module
+from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 
 from .blur import box_blur

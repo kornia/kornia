@@ -38,6 +38,7 @@ rad2deg = torch.rad2deg
 
 # constructors
 as_tensor = torch.as_tensor
+from_numpy = torch.from_numpy
 
 # random
 rand = torch.rand

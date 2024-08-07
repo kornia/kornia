@@ -1,6 +1,7 @@
 import torch
 
-from kornia.core import Module, Tensor
+from kornia.core import ImageModule as Module
+from kornia.core import Tensor
 
 
 def sepia_from_rgb(input: Tensor, rescale: bool = True, eps: float = 1e-6) -> Tensor:

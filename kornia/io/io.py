@@ -133,7 +133,7 @@ def write_image(path_file: str | Path, image: Tensor) -> None:
 
     Args:
         path_file: Path to a valid image file.
-        image: Image tensor with shape :math:`(3,H,W)`.
+        image: Image tensor with shape :math:`(3,H,W)`, `(1,H,W)` and `(H,W)`.
 
     Return:
         None.
@@ -141,7 +141,15 @@ def write_image(path_file: str | Path, image: Tensor) -> None:
     if not isinstance(path_file, Path):
         path_file = Path(path_file)
 
-    KORNIA_CHECK(path_file.suffix in [".jpg", ".jpeg"], f"Invalid file extension: {path_file}")
+    KORNIA_CHECK(
+        path_file.suffix in [".jpg", ".jpeg"],
+        f"Invalid file extension: {path_file}, only .jpg and .jpeg are supported.",
+    )
+
+    if (image.dim() == 3 and image.shape[0] == 1) or image.dim() == 2:  # Grayscale image
+        image = image.squeeze(0)  # HxW
+        image = image[None, :, :].repeat(3, 1, 1)  # Convert to HxWx3
+
     KORNIA_CHECK(image.dim() == 3 and image.shape[0] == 3, f"Invalid image shape: {image.shape}")
     KORNIA_CHECK(image.dtype == torch.uint8, f"Invalid image dtype: {image.dtype}")
 

@@ -1,8 +1,10 @@
 import torch
-from torch import nn
+
+from kornia.core import ImageModule as Module
+from kornia.core import Tensor
 
 
-def rgb_to_xyz(image: torch.Tensor) -> torch.Tensor:
+def rgb_to_xyz(image: Tensor) -> Tensor:
     r"""Convert a RGB image to XYZ.
 
     .. image:: _static/img/rgb_to_xyz.png
@@ -17,26 +19,26 @@ def rgb_to_xyz(image: torch.Tensor) -> torch.Tensor:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = rgb_to_xyz(input)  # 2x3x4x5
     """
-    if not isinstance(image, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
+    if not isinstance(image, Tensor):
+        raise TypeError(f"Input type is not a Tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
-    r: torch.Tensor = image[..., 0, :, :]
-    g: torch.Tensor = image[..., 1, :, :]
-    b: torch.Tensor = image[..., 2, :, :]
+    r: Tensor = image[..., 0, :, :]
+    g: Tensor = image[..., 1, :, :]
+    b: Tensor = image[..., 2, :, :]
 
-    x: torch.Tensor = 0.412453 * r + 0.357580 * g + 0.180423 * b
-    y: torch.Tensor = 0.212671 * r + 0.715160 * g + 0.072169 * b
-    z: torch.Tensor = 0.019334 * r + 0.119193 * g + 0.950227 * b
+    x: Tensor = 0.412453 * r + 0.357580 * g + 0.180423 * b
+    y: Tensor = 0.212671 * r + 0.715160 * g + 0.072169 * b
+    z: Tensor = 0.019334 * r + 0.119193 * g + 0.950227 * b
 
-    out: torch.Tensor = torch.stack([x, y, z], -3)
+    out: Tensor = torch.stack([x, y, z], -3)
 
     return out
 
 
-def xyz_to_rgb(image: torch.Tensor) -> torch.Tensor:
+def xyz_to_rgb(image: Tensor) -> Tensor:
     r"""Convert a XYZ image to RGB.
 
     Args:
@@ -49,26 +51,26 @@ def xyz_to_rgb(image: torch.Tensor) -> torch.Tensor:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = xyz_to_rgb(input)  # 2x3x4x5
     """
-    if not isinstance(image, torch.Tensor):
-        raise TypeError(f"Input type is not a torch.Tensor. Got {type(image)}")
+    if not isinstance(image, Tensor):
+        raise TypeError(f"Input type is not a Tensor. Got {type(image)}")
 
     if len(image.shape) < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
-    x: torch.Tensor = image[..., 0, :, :]
-    y: torch.Tensor = image[..., 1, :, :]
-    z: torch.Tensor = image[..., 2, :, :]
+    x: Tensor = image[..., 0, :, :]
+    y: Tensor = image[..., 1, :, :]
+    z: Tensor = image[..., 2, :, :]
 
-    r: torch.Tensor = 3.2404813432005266 * x + -1.5371515162713185 * y + -0.4985363261688878 * z
-    g: torch.Tensor = -0.9692549499965682 * x + 1.8759900014898907 * y + 0.0415559265582928 * z
-    b: torch.Tensor = 0.0556466391351772 * x + -0.2040413383665112 * y + 1.0573110696453443 * z
+    r: Tensor = 3.2404813432005266 * x + -1.5371515162713185 * y + -0.4985363261688878 * z
+    g: Tensor = -0.9692549499965682 * x + 1.8759900014898907 * y + 0.0415559265582928 * z
+    b: Tensor = 0.0556466391351772 * x + -0.2040413383665112 * y + 1.0573110696453443 * z
 
-    out: torch.Tensor = torch.stack([r, g, b], dim=-3)
+    out: Tensor = torch.stack([r, g, b], dim=-3)
 
     return out
 
 
-class RgbToXyz(nn.Module):
+class RgbToXyz(Module):
     r"""Convert an image from RGB to XYZ.
 
     The image data is assumed to be in the range of (0, 1).
@@ -89,11 +91,11 @@ class RgbToXyz(nn.Module):
         [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
     """
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
+    def forward(self, image: Tensor) -> Tensor:
         return rgb_to_xyz(image)
 
 
-class XyzToRgb(nn.Module):
+class XyzToRgb(Module):
     r"""Converts an image from XYZ to RGB.
 
     Returns:
@@ -112,5 +114,5 @@ class XyzToRgb(nn.Module):
         [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
     """
 
-    def forward(self, image: torch.Tensor) -> torch.Tensor:
+    def forward(self, image: Tensor) -> Tensor:
         return xyz_to_rgb(image)

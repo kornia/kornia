@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from kornia.core import Module, Tensor
+from kornia.core import ImageModule as Module
+from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR
 
 from .filter import filter2d, filter2d_separable

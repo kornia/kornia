@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from kornia.core import Module, Tensor
+from kornia.core import ImageModule as Module
+from kornia.core import Tensor
 
 from .gaussian import gaussian_blur2d
 

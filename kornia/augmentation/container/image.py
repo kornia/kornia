@@ -5,7 +5,8 @@ import torch
 import kornia.augmentation as K
 from kornia.augmentation.base import _AugmentationBase
 from kornia.augmentation.utils import override_parameters
-from kornia.core import Module, Tensor, as_tensor
+from kornia.core import ImageModule, Module, Tensor, as_tensor
+from kornia.core.module import ImageModuleMixIn
 from kornia.utils import eye_like
 
 from .base import ImageSequentialBase
@@ -14,7 +15,24 @@ from .params import ParamItem
 __all__ = ["ImageSequential"]
 
 
-class ImageSequential(ImageSequentialBase):
+class ImageModuleForSequentialMixIn(ImageModuleMixIn):
+    _disable_features: bool = False
+
+    @property
+    def disable_features(self) -> bool:
+        return self._disable_features
+
+    @disable_features.setter
+    def disable_features(self, value: bool = True) -> None:
+        self._disable_features = value
+
+    def disable_item_features(self, *args: Module) -> None:
+        for arg in args:
+            if isinstance(arg, (ImageModule,)):
+                arg.disable_features = True
+
+
+class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
     r"""Sequential for creating kornia image processing pipeline.
 
     Args:
@@ -85,7 +103,13 @@ class ImageSequential(ImageSequentialBase):
         random_apply: Union[int, bool, Tuple[int, int]] = False,
         random_apply_weights: Optional[List[float]] = None,
         if_unsupported_ops: str = "raise",
+        disable_item_features: bool = True,
+        disable_sequential_features: bool = False,
     ) -> None:
+        if disable_item_features:
+            self.disable_item_features(*args)
+        if disable_sequential_features:
+            self.disable_features = True
         super().__init__(*args, same_on_batch=same_on_batch, keepdim=keepdim)
 
         self.random_apply = self._read_random_apply(random_apply, len(args))
@@ -285,6 +309,37 @@ class ImageSequential(ImageSequentialBase):
                 # TODO: add an ops register module
                 return False
         return True
+
+    def __call__(
+        self,
+        *inputs: Any,
+        input_names_to_handle: Optional[List[Any]] = None,
+        output_type: str = "tensor",
+        **kwargs: Any,
+    ) -> Any:
+        """Overwrites the __call__ function to handle various inputs.
+
+        Args:
+            input_names_to_handle: List of input names to convert, if None, handle all inputs.
+            output_type: Desired output type ('tensor', 'numpy', or 'pil').
+
+        Returns:
+            Callable: Decorated function with converted input and output types.
+        """
+
+        # Wrap the forward method with the decorator
+        if not self._disable_features:
+            decorated_forward = self.convert_input_output(
+                input_names_to_handle=input_names_to_handle, output_type=output_type
+            )(super().__call__)
+            _output_image = decorated_forward(*inputs, **kwargs)
+            if output_type == "tensor":
+                self._output_image = self._detach_tensor_to_cpu(_output_image)
+            else:
+                self._output_image = _output_image
+        else:
+            _output_image = super().__call__(*inputs, **kwargs)
+        return _output_image
 
 
 def _get_new_batch_shape(param: ParamItem, batch_shape: torch.Size) -> torch.Size:
