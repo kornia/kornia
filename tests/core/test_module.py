@@ -8,8 +8,6 @@ from PIL import Image as PILImage
 
 from kornia.core.module import ImageModule, ImageModuleMixIn
 
-# Assuming ImageModuleMixIn and ImageModule have been imported from the module
-
 
 class TestImageModuleMixIn:
     @pytest.fixture

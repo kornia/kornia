@@ -1,6 +1,20 @@
 Highlighted Features
 ====================
 
+At Kornia, we are dedicated to pushing the boundaries of computer vision by providing a robust, efficient, and versatile toolkit. Our library is built on the powerful PyTorch backend, leveraging its efficiency and auto-differentiation capabilities to deliver high-performance solutions for a wide range of vision tasks.
+
+
+Accessible AI Models
+--------------------
+
+We are excited to announce our latest advancement: a new initiative designed to seamlessly integrate lightweight AI models into Kornia. This addition is crafted to empower developers, researchers, and enthusiasts to harness the full potential of accessible AI, simplifying complex vision tasks and accelerating innovation.
+
+We have curated a selection of lightweight AI models, including YuNet, Loftr, and SAM, optimized for performance and efficiency. These models offer efficient computations that do not require expensive GPUs, making cutting-edge AI accessible to everyone. We welcome the whole community of developers and researchers who are passionate about advancing computer vision, throwing PRs for your lightning fast models!
+
+
+Classic Operators
+-----------------
+
 .. image:: https://github.com/kornia/data/raw/main/kornia_paper_mosaic.png
    :align: center
 
