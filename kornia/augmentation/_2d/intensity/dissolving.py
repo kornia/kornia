@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
@@ -44,7 +44,7 @@ class RandomDissolving(IntensityAugmentationBase2D):
         version: str = "2.1",
         p: float = 0.5,
         keepdim: bool = False,
-        **kwargs
+        **kwargs,
     ) -> None:
         super().__init__(p=p, same_on_batch=True, keepdim=keepdim)
         self.step_range = step_range
