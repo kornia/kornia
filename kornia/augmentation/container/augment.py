@@ -498,7 +498,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             if len(inputs) == 1 and isinstance(inputs[0], dict):
                 original_keys, in_data_keys, inputs, invalid_data = self._preproc_dict_data(inputs[0])
             else:
-                in_data_keys = kwargs["data_keys"] if "data_keys" in kwargs else self.data_keys
+                in_data_keys = kwargs.get("data_keys", self.data_keys)
             data_keys = self.transform_op.preproc_datakeys(in_data_keys)
 
             if len(data_keys) > 1 and data_keys.index(DataKey.INPUT):
@@ -506,7 +506,14 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 idx = data_keys.index(DataKey.INPUT)
                 if output_type == "tensor":
                     self._output_image = _output_image
-                    self._output_image[idx] = self._detach_tensor_to_cpu(_output_image[idx])
+                    if isinstance(_output_image, dict):
+                        self._output_image[original_keys[idx]] = self._detach_tensor_to_cpu(
+                            _output_image[original_keys[idx]]
+                        )
+                    else:
+                        self._output_image[idx] = self._detach_tensor_to_cpu(_output_image[idx])
+                elif isinstance(_output_image, dict):
+                    self._output_image[original_keys[idx]] = _output_image[original_keys[idx]]
                 else:
                     self._output_image[idx] = _output_image[idx]
             else:
