@@ -501,7 +501,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 in_data_keys = kwargs.get("data_keys", self.data_keys)
             data_keys = self.transform_op.preproc_datakeys(in_data_keys)
 
-            if len(data_keys) > 1 and data_keys.index(DataKey.INPUT):
+            if len(data_keys) > 1 and DataKey.INPUT in data_keys:
                 # NOTE: we may update it later for more supports of drawing boxes, etc.
                 idx = data_keys.index(DataKey.INPUT)
                 if output_type == "tensor":
