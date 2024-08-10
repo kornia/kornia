@@ -44,7 +44,7 @@ class RandomDissolving(IntensityAugmentationBase2D):
         version: str = "2.1",
         p: float = 0.5,
         keepdim: bool = False,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         super().__init__(p=p, same_on_batch=True, keepdim=keepdim)
         self.step_range = step_range

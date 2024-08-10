@@ -1,3 +1,4 @@
+from typing import Any
 import torch
 
 from kornia.core import ImageModule, Module, Tensor
@@ -11,13 +12,13 @@ class _DissolvingWraper_HF:
         self.tokenizer = self.model.tokenizer
         self.model.scheduler.set_timesteps(self.num_ddim_steps)
         self.total_steps = len(self.model.scheduler.timesteps)  # Total number of sampling steps.
-        self.prompt = None
-        self.context = None
+        self.prompt: str
+        self.context: Tensor
 
     def predict_start_from_noise(self, noise_pred: Tensor, timestep: int, latent: Tensor) -> Tensor:
         return (
-            torch.sqrt(1.0 / self.scheduler.alphas_cumprod[timestep]) * latent
-            - torch.sqrt(1.0 / self.scheduler.alphas_cumprod[timestep] - 1) * noise_pred
+            torch.sqrt(1.0 / self.model.scheduler.alphas_cumprod[timestep]) * latent
+            - torch.sqrt(1.0 / self.model.scheduler.alphas_cumprod[timestep] - 1) * noise_pred
         )
 
     @torch.no_grad()
@@ -60,15 +61,11 @@ class _DissolvingWraper_HF:
         # NOTE: This implementation use a reversed timesteps but can reach to
         # a stable dissolving effect.
         t = self.num_ddim_steps - self.model.scheduler.timesteps[i]
-        latent = self.scheduler.scale_model_input(latent, t)
+        latent = self.model.scheduler.scale_model_input(latent, t)
         cond_embeddings = cond_embeddings.repeat(latent.size(0), 1, 1)
         noise_pred = self.model.unet(latent, t, cond_embeddings).sample
         pred_x0 = self.predict_start_from_noise(noise_pred, t, latent)
         return pred_x0
-
-    @property
-    def scheduler(self):
-        return self.model.scheduler
 
     @torch.no_grad()
     def dissolve(self, image: Tensor, t: int) -> Tensor:
@@ -102,13 +99,13 @@ class StableDiffusionDissolving(ImageModule):
         **kwargs: additional arguments for `.from_pretrained`.
     """
 
-    def __init__(self, version: str = "2.1", **kwargs):
+    def __init__(self, version: str = "2.1", **kwargs: Any):
         super().__init__()
         StableDiffusionPipeline = diffusers.StableDiffusionPipeline
         DDIMScheduler = diffusers.DDIMScheduler
 
         # Load the scheduler and model pipeline from diffusers library
-        scheduler = DDIMScheduler(
+        scheduler = DDIMScheduler(  # type:ignore
             beta_start=0.00085,
             beta_end=0.012,
             beta_schedule="scaled_linear",
@@ -118,15 +115,15 @@ class StableDiffusionDissolving(ImageModule):
         )
 
         if version == "1.4":
-            self._sdm_model = StableDiffusionPipeline.from_pretrained(
+            self._sdm_model = StableDiffusionPipeline.from_pretrained(  # type:ignore
                 "CompVis/stable-diffusion-v1-4", scheduler=scheduler, **kwargs
             )
         elif version == "1.5":
-            self._sdm_model = StableDiffusionPipeline.from_pretrained(
+            self._sdm_model = StableDiffusionPipeline.from_pretrained(  # type:ignore
                 "runwayml/stable-diffusion-v1-5", scheduler=scheduler, **kwargs
             )
         elif version == "2.1":
-            self._sdm_model = StableDiffusionPipeline.from_pretrained(
+            self._sdm_model = StableDiffusionPipeline.from_pretrained(  # type:ignore
                 "stabilityai/stable-diffusion-2-1", scheduler=scheduler, **kwargs
             )
         else:
