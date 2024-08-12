@@ -23,6 +23,7 @@ from kornia.augmentation import (
     RandomClahe,
     RandomContrast,
     RandomCrop,
+    RandomDissolving,
     RandomElasticTransform,
     RandomEqualize,
     RandomErasing,
@@ -5091,6 +5092,7 @@ class TestMultiprocessing:
         torch.cuda.empty_cache()
 
 
+@pytest.mark.slow
 class TestRandomJPEG(BaseTester):
     torch.manual_seed(0)  # for random reproductibility
 
@@ -5133,3 +5135,31 @@ class TestRandomJPEG(BaseTester):
         img_jpeg_mean_grad_ref = torch.tensor([0.1919])
         # We use a slightly higher tolerance since our implementation varies from the reference implementation
         self.assert_close(img.grad.mean().view(-1), img_jpeg_mean_grad_ref, rtol=0.01, atol=0.01)
+
+
+class TestRandomDissolving(BaseTester):
+    torch.manual_seed(0)  # for random reproductibility
+
+    def test_smoke(self):
+        images = torch.rand(4, 3, 16, 16)
+        aug = RandomDissolving(p=1.0)
+        images_aug = aug(images)
+        assert images_aug.shape == images.shape
+
+    def test_same_on_batch(self, device, dtype):
+        images = torch.rand(1, 3, 16, 16).repeat(2, 1, 1, 1)
+        aug = RandomDissolving(same_on_batch=True)
+        images_aug = aug(images)
+        self.assert_close(images_aug[0], images_aug[1])
+
+    def test_single_jpeg_quality(self, device, dtype):
+        images = torch.rand(4, 3, 16, 16)
+        aug = RandomDissolving(p=1.0)
+        images_aug = aug(images)
+        assert images_aug.shape == images.shape
+
+    def test_single_image(self, device, dtype):
+        images = torch.rand(3, 16, 16)
+        aug = RandomDissolving(p=1.0, keepdim=True)
+        images_aug = aug(images)
+        assert images_aug.shape == images.shape
