@@ -520,6 +520,28 @@ class TestRandomTransplantation(BaseTester):
         self.assert_close(image_out, image_out2)
         self.assert_close(mask_out, mask_out2)
 
+    @pytest.mark.parametrize("wrapper", [AugmentationSequential])
+    def test_dict_input(self, wrapper, device, dtype):
+        torch.manual_seed(22)
+        image = torch.rand(4, 3, 10, 10, device=device, dtype=dtype)
+        mask = torch.randint(0, 2, (4, 10, 10), device=device, dtype=dtype)
+
+        f = wrapper(RandomTransplantation(p=1), data_keys=None)
+        torch.manual_seed(22)
+        dict_input = {"image": image, "mask": mask}
+        aug_dict_output = f(dict_input)
+        torch.manual_seed(22)
+        dict_input2 = {"mask": mask, "image": image}
+        aug_dict_output2 = f(dict_input2)
+
+        image_out = aug_dict_output["image"]
+        mask_out = aug_dict_output["mask"]
+        image_out2 = aug_dict_output2["image"]
+        mask_out2 = aug_dict_output2["mask"]
+
+        self.assert_close(image_out, image_out2)
+        self.assert_close(mask_out, mask_out2)
+
     @pytest.mark.parametrize("n_spatial", [2, 3])
     def test_sequential(self, n_spatial, device, dtype):
         torch.manual_seed(22)
