@@ -1,3 +1,4 @@
+import os
 import sys
 from functools import partial
 from itertools import product
@@ -16,6 +17,9 @@ try:
     _backends_non_experimental = torch._dynamo.list_backends()
 except ImportError:
     _backends_non_experimental = []
+
+
+WEIGHTS_CACHE_DIR = "weights/"
 
 
 def get_test_devices() -> Dict[str, torch.device]:
@@ -189,7 +193,9 @@ def pytest_sessionstart(session):
             ex
         ) and "Dynamo is not supported on Python 3.12+" not in str(ex):
             raise ex
-    # TODO: cache all torch.load weights/states here to not impact on test suite
+
+    os.makedirs(WEIGHTS_CACHE_DIR, exist_ok=True)
+    torch.hub.set_dir(WEIGHTS_CACHE_DIR)
 
 
 def _get_env_info() -> Dict[str, Dict[str, str]]:
@@ -249,7 +255,7 @@ def pytest_report_header(config):
     import onnx
 
     env_info = _get_env_info()
-
+    CACHED_WEIGTHS = os.listdir(WEIGHTS_CACHE_DIR)
     if "cpu" in env_info:
         desired_cpu_info = ["Model name", "Architecture", "CPU(s)", "Thread(s) per core", "CPU max MHz", "CPU min MHz"]
         cpu_info = "cpu info:\n" + "\n".join(
@@ -276,6 +282,7 @@ dev deps:
     - onnx-{onnx.__version__}
 {gcc_info}
 available optimizers: {TEST_OPTIMIZER_BACKEND}
+model weights cached: {CACHED_WEIGTHS}
 """
 
 

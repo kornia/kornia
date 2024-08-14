@@ -13,41 +13,88 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+
+  pre-tests:
+    runs-on: ubuntu-latest
+    outputs:
+      hash: ${{ steps.hashid.outputs.weights-hash }}
+    steps:
+    - uses: kornia/workflows/.github/actions/env@v1.12.1
+    - uses: actions/cache@v4
+      id: cache-weights
+      with:
+        path: weights/
+        key: model-weights-${{ hashFiles('.github/download-models-weights.py') }}
+        enableCrossOsArchive: true
+
+    - name: Download models weights...
+      if: steps.cache-weights.outputs.cache-hit != 'true'
+      run: python .github/download-models-weights.py -t weights/
+
+    - name: write hashid
+      id: hashid
+      run: echo "weights-hash=${{ hashFiles('.github/download-models-weights.py') }}" >> "$GITHUB_OUTPUT"
+
   tests-cpu:
+    needs: [pre-tests]
     strategy:
       fail-fast: true
       matrix:
         os: ['Ubuntu-latest', 'Windows-latest']
         pytorch-dtype: ['float32', 'float64']
 
-    uses: kornia/workflows/.github/workflows/tests.yml@v1.11.0
+    uses: kornia/workflows/.github/workflows/tests.yml@v1.12.1
     with:
       os: ${{ matrix.os }}
       python-version: '["3.8", "3.12"]'
       pytorch-version: '["1.9.1", "2.4.0"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
+      cache-path: weights/
+      cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
+      cache-restore-keys: |
+        model-weights-${{ needs.pre-tests.outputs.hash }}
+        model-weights-
 
   tests-cpu-macos:
-    uses: kornia/workflows/.github/workflows/tests.yml@v1.11.0
+    needs: [pre-tests]
+    uses: kornia/workflows/.github/workflows/tests.yml@v1.12.1
     with:
       os: 'MacOS-latest'
       python-version: '["3.8", "3.12"]'
       pytorch-dtype: 'float32'
+      cache-path: weights/
+      cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
+      cache-restore-keys: |
+        model-weights-${{ needs.pre-tests.outputs.hash }}
+        model-weights-
 
 
   coverage:
-    uses: kornia/workflows/.github/workflows/coverage.yml@v1.11.0
+    needs: [pre-tests]
+    uses: kornia/workflows/.github/workflows/coverage.yml@v1.12.1
+    with:
+      cache-path: weights/
+      cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
+      cache-restore-keys: |
+        model-weights-${{ needs.pre-tests.outputs.hash }}
+        model-weights-
 
   typing:
-    uses: kornia/workflows/.github/workflows/mypy.yml@v1.11.0
+    uses: kornia/workflows/.github/workflows/mypy.yml@v1.12.1
 
   tutorials:
     uses: kornia/workflows/.github/workflows/tutorials.yml@v1.12.1
 
   docs:
-    uses: kornia/workflows/.github/workflows/docs.yml@v1.11.0
+    needs: [pre-tests]
+    uses: kornia/workflows/.github/workflows/docs.yml@v1.12.1
     with:
       python-version: '["3.11"]'
+      cache-path: weights/
+      cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
+      cache-restore-keys: |
+        model-weights-${{ needs.pre-tests.outputs.hash }}
+        model-weights-
 
   collector:
     needs: [coverage, tests-cpu, tutorials, typing, docs]
@@ -60,6 +107,7 @@ jobs:
 
   tests-nightly:
     if:  contains(github.event.pull_request.labels.*.name, 'nightly')
+    needs: [pre-tests]
     name: ${{ matrix.os }} - torch-nightly, ${{ matrix.pytorch-dtype }}
 
     strategy:
@@ -68,8 +116,13 @@ jobs:
         os: ['Ubuntu-latest', 'Windows-latest'] #, 'MacOS-latest'] add it when https://github.com/pytorch/pytorch/pull/89262 be merged
         pytorch-dtype: ['float32', 'float64']
 
-    uses: kornia/workflows/.github/workflows/tests.yml@v1.11.0
+    uses: kornia/workflows/.github/workflows/tests.yml@v1.12.1
     with:
       os: ${{ matrix.os }}
       pytorch-version: '["nightly"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
+      cache-path: weights/
+      cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}
+      cache-restore-keys: |
+        model-weights-${{ needs.pre-tests.outputs.hash }}
+        model-weights-
