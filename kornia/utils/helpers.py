@@ -316,7 +316,10 @@ def is_autocast_enabled(both: bool = True) -> bool:
         return False
 
     if both:
-        return torch.is_autocast_enabled() or torch.is_autocast_enabled("cpu")
+        if torch_version_ge(2, 4):
+            return torch.is_autocast_enabled() or torch.is_autocast_enabled("cpu")
+        else:
+            return torch.is_autocast_enabled() or torch.is_autocast_cpu_enabled()
 
     return torch.is_autocast_enabled()
 
