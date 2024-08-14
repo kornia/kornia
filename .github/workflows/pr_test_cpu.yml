@@ -47,7 +47,7 @@ jobs:
   docs:
     uses: kornia/workflows/.github/workflows/docs.yml@v1.10.1
     with:
-      python-version: "3.11"
+      python-version: '["3.11"]'
 
   collector:
     needs: [coverage, tests-cpu, tutorials, typing, docs]
