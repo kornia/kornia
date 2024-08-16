@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 import torch
 
@@ -5,6 +7,11 @@ import kornia
 from kornia.contrib.face_detection import FaceKeypoint
 
 from testing.base import BaseTester
+
+try:
+    import onnxruntime as ort
+except ImportError:
+    ort = None
 
 
 class TestFaceDetection(BaseTester):
@@ -14,10 +21,11 @@ class TestFaceDetection(BaseTester):
 
     @pytest.mark.slow
     @pytest.mark.parametrize("batch_size", [1, 2, 4])
-    def test_valid(self, batch_size, device, dtype):
+    @pytest.mark.parametrize("model_type", ["yunet_n", "yunet_s"])
+    def test_valid(self, device, dtype, batch_size, model_type):
         torch.manual_seed(44)
         img = torch.rand(batch_size, 3, 320, 320, device=device, dtype=dtype)
-        face_detection = kornia.contrib.FaceDetector().to(device, dtype)
+        face_detection = kornia.contrib.FaceDetector(model_type=model_type).to(device, dtype)
         dets = face_detection(img)
         assert isinstance(dets, list)
         assert len(dets) == batch_size  # same as the number of images
@@ -26,7 +34,23 @@ class TestFaceDetection(BaseTester):
         assert dets[0].shape[1] == 15  # dims of each detection
 
     @pytest.mark.slow
+    @pytest.mark.skipif(ort is None, reason="ONNXRuntime is not installed.")
+    def test_export_onnx(self, device, dtype, tmp_path: Path):
+        face_detection = kornia.contrib.FaceDetector().to(device, dtype)
+        face_detection.eval()
+        fake_image = torch.rand(1, 3, 320, 320, device=device, dtype=dtype)
+        model_path = tmp_path / "face_detector.onnx"
+        torch.onnx.export(
+            face_detection,
+            fake_image,
+            model_path,
+            verbose=True,
+            opset_version=11,
+        )
+
+    @pytest.mark.slow
     def test_jit(self, device, dtype):
+        # jit is unhappy with ConvDPUnit
         op = kornia.contrib.FaceDetector().to(device, dtype)
         op_jit = torch.jit.script(op)
         assert op_jit is not None
