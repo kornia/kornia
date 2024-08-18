@@ -4,7 +4,6 @@ import torch
 from torch import nn
 
 from kornia.core import Module, Parameter, Tensor, tensor, zeros
-from kornia.utils.helpers import map_location_to_cpu
 
 urls: Dict[str, str] = {}
 urls["liberty"] = "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_LIB.pth"  # pylint: disable
@@ -209,7 +208,7 @@ class HyNet(Module):
         self.desc_norm = nn.LocalResponseNorm(2 * self.dim_desc, 2.0 * self.dim_desc, 0.5, 0.0)
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls["liberty"], map_location=map_location_to_cpu)
+            pretrained_dict = torch.hub.load_state_dict_from_url(urls["liberty"], map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 

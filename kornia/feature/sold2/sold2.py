@@ -8,7 +8,7 @@ from kornia.core import Module, Tensor, concatenate, pad, stack
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.feature.sold2.structures import DetectorCfg, LineMatcherCfg
 from kornia.geometry.conversions import normalize_pixel_coordinates
-from kornia.utils import dataclass_to_dict, dict_to_dataclass, map_location_to_cpu
+from kornia.utils import dataclass_to_dict, dict_to_dataclass
 
 from .backbones import SOLD2Net
 from .sold2_detector import LineSegmentDetectionModule, line_map_to_segments, prob_to_junctions
@@ -64,7 +64,7 @@ class SOLD2(Module):
         # Load the pre-trained model
         self.model = SOLD2Net(dataclass_to_dict(self.config))
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(urls["wireframe"], map_location=map_location_to_cpu)
+            pretrained_dict = torch.hub.load_state_dict_from_url(urls["wireframe"], map_location=torch.device("cpu"))
             state_dict = self.adapt_state_dict(pretrained_dict["model_state_dict"])
             self.model.load_state_dict(state_dict)
         self.eval()

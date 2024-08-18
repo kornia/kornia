@@ -197,10 +197,10 @@ class DeDoDe(Module):
             amp_dtype=amp_dtype,
         )
         model.detector.load_state_dict(
-            torch.hub.load_state_dict_from_url(urls["detector"][detector_weights], map_location=map_location_to_cpu)
+            torch.hub.load_state_dict_from_url(urls["detector"][detector_weights], map_location=torch.device("cpu"))
         )
         model.descriptor.load_state_dict(
-            torch.hub.load_state_dict_from_url(urls["descriptor"][descriptor_weights], map_location=map_location_to_cpu)
+            torch.hub.load_state_dict_from_url(urls["descriptor"][descriptor_weights], map_location=torch.device("cpu"))
         )
         model.eval()
         return model

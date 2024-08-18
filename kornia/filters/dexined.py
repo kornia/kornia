@@ -11,7 +11,6 @@ from torch import nn
 
 from kornia.core import Module, Tensor, concatenate
 from kornia.core.check import KORNIA_CHECK
-from kornia.utils import map_location_to_cpu
 
 url: str = "http://cmp.felk.cvut.cz/~mishkdmy/models/DexiNed_BIPED_10.pth"
 
@@ -221,7 +220,7 @@ class DexiNed(Module):
 
     def load_from_file(self, path_file: str) -> None:
         # use torch.hub to load pretrained model
-        pretrained_dict = torch.hub.load_state_dict_from_url(path_file, map_location=map_location_to_cpu)
+        pretrained_dict = torch.hub.load_state_dict_from_url(path_file, map_location=torch.device("cpu"))
         self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 

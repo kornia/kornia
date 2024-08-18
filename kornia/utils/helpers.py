@@ -5,7 +5,7 @@ import warnings
 from dataclasses import asdict, fields, is_dataclass
 from functools import wraps
 from inspect import isclass, isfunction
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union, overload
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar
 
 import torch
 from torch.linalg import inv_ex
@@ -66,16 +66,10 @@ def get_cuda_or_mps_device_if_available() -> torch.device:
         return get_cuda_device_if_available()
 
 
-@overload
-def map_location_to_cpu(storage: Tensor, location: str) -> Tensor: ...
-
-
-@overload
-def map_location_to_cpu(storage: str) -> str: ...
-
-
-def map_location_to_cpu(storage: Union[str, Tensor], *args: Any, **kwargs: Any) -> Union[str, Tensor]:
+def map_location_to_cpu(storage: torch.TypedStorage, location: str) -> torch.TypedStorage:
     """Map location of device to CPU, util for loading things from HUB."""
+    if isinstance(storage, (torch.TypedStorage, Tensor)):
+        return storage.cpu()
     return storage
 
 

@@ -9,7 +9,6 @@ from kornia.core import Tensor, cos, sin, tensor, zeros
 from kornia.filters import GaussianBlur2d, SpatialGradient
 from kornia.geometry.conversions import cart2pol
 from kornia.utils import create_meshgrid
-from kornia.utils.helpers import map_location_to_cpu
 
 # Precomputed coefficients for Von Mises kernel, given N and K(appa).
 sqrt2: float = 1.4142135623730951
@@ -534,7 +533,7 @@ class MKDDescriptor(nn.Module):
         # Load supervised(lw)/unsupervised(pca) model trained on training_set.
         if self.whitening is not None:
             whitening_models = torch.hub.load_state_dict_from_url(
-                urls[self.kernel_type], map_location=map_location_to_cpu
+                urls[self.kernel_type], map_location=torch.device("cpu")
             )
             whitening_model = whitening_models[training_set]
             self.whitening_layer = Whitening(
@@ -582,7 +581,7 @@ class MKDDescriptor(nn.Module):
 
 
 def load_whitening_model(kernel_type: str, training_set: str) -> Dict[str, Any]:
-    whitening_models = torch.hub.load_state_dict_from_url(urls[kernel_type], map_location=map_location_to_cpu)
+    whitening_models = torch.hub.load_state_dict_from_url(urls[kernel_type], map_location=torch.device("cpu"))
     whitening_model = whitening_models[training_set]
     return whitening_model
 
