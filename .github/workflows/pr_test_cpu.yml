@@ -42,7 +42,7 @@ jobs:
     uses: kornia/workflows/.github/workflows/mypy.yml@v1.11.0
 
   tutorials:
-    uses: kornia/workflows/.github/workflows/tutorials.yml@v1.11.0
+    uses: kornia/workflows/.github/workflows/tutorials.yml@v1.12.1
 
   docs:
     uses: kornia/workflows/.github/workflows/docs.yml@v1.11.0
