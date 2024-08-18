@@ -8,7 +8,6 @@ import torch.nn.functional as F
 from torch import nn
 
 from kornia.geometry.bbox import nms as nms_kornia
-from kornia.utils.helpers import map_location_to_cpu
 
 __all__ = ["FaceDetector", "FaceDetectorResult", "FaceKeypoint"]
 
@@ -289,7 +288,7 @@ class YuFaceDetectNet(nn.Module):
 
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(url, map_location=map_location_to_cpu)
+            pretrained_dict = torch.hub.load_state_dict_from_url(url, map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 

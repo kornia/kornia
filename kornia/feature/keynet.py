@@ -8,7 +8,6 @@ from typing_extensions import TypedDict
 from kornia.core import Module, Tensor, concatenate
 from kornia.filters import SpatialGradient
 from kornia.geometry.transform import pyrdown
-from kornia.utils.helpers import map_location_to_cpu
 
 from .scale_space_detector import Detector_config, MultiResolutionDetector, get_default_detector_config
 
@@ -145,7 +144,7 @@ class KeyNet(Module):
         )
         # use torch.hub to load pretrained model
         if pretrained:
-            pretrained_dict = torch.hub.load_state_dict_from_url(KeyNet_URL, map_location=map_location_to_cpu)
+            pretrained_dict = torch.hub.load_state_dict_from_url(KeyNet_URL, map_location=torch.device("cpu"))
             self.load_state_dict(pretrained_dict["state_dict"], strict=True)
         self.eval()
 
