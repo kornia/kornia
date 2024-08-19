@@ -1,6 +1,7 @@
 import os
 
 import torch
+import pypose as pp
 
 
 def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
@@ -107,19 +108,15 @@ def iterative_closest_point(
     prev_error = 0
 
     for iter in range(max_iterations):
-        distances = torch.cdist(points_in_a, points_in_b)
+        distances = torch.cdist(src, points_in_b)
         min_idx = torch.argmin(distances, dim=1)
 
-        points_in_b = points_in_b[min_idx]
-
         a_mean = torch.mean(src, dim=0)
-        b_mean = torch.mean(points_in_b, dim=0)
+        b_mean = torch.mean(points_in_b[min_idx], dim=0)
 
-        # a_center = points_in_a - a_mean
-        # b_center = points_in_b - b_mean
 
         a_center = src - a_mean
-        b_center = points_in_b - b_mean
+        b_center = points_in_b[min_idx] - b_mean
 
         H = a_center.T @ b_center
 
@@ -133,15 +130,11 @@ def iterative_closest_point(
 
         t = b_mean.T - R @ a_mean.T
 
-        src = (src.T @ R + t.unsqueeze(-1)).T
+        src = (R @ src.T + t.unsqueeze(-1)).T
 
-        mean_error = torch.mean(torch.norm(src - points_in_b, dim=1))
-
+        mean_error = torch.mean(torch.norm(src - points_in_b[min_idx], dim=1))
         if torch.abs(prev_error - mean_error) < tolerance:
             break
         prev_error = mean_error
-        print((torch.abs(prev_error - mean_error)), iter)
 
-    # print(points_in_a)
-
-    return 0
+    return pp.svdtf(src, points_in_a)

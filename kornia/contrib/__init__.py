@@ -15,7 +15,6 @@ from .histogram_matching import histogram_matching, interp
 from .image_stitching import ImageStitcher
 from .kmeans import KMeans
 from .lambda_module import Lambda
-from .lpd import *
 from .models.tiny_vit import TinyViT
 from .object_detection import ObjectDetector
 from .vit import VisionTransformer
