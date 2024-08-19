@@ -27,7 +27,7 @@ from .misc import (
     vec_like,
 )
 from .one_hot import one_hot
-from .pointcloud_io import load_pointcloud_ply, save_pointcloud_ply, iterative_closest_point
+from .pointcloud_io import iterative_closest_point, load_pointcloud_ply, save_pointcloud_ply
 
 __all__ = [
     "batched_forward",

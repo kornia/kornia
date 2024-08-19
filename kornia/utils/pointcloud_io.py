@@ -1,7 +1,7 @@
 import os
 
-import torch
 import pypose as pp
+import torch
 
 
 def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
@@ -113,7 +113,6 @@ def iterative_closest_point(
 
         a_mean = torch.mean(src, dim=0)
         b_mean = torch.mean(points_in_b[min_idx], dim=0)
-
 
         a_center = src - a_mean
         b_center = points_in_b[min_idx] - b_mean
