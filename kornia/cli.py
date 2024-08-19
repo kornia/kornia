@@ -2,62 +2,29 @@
 
 import argparse
 import logging
-from dataclasses import dataclass
 from pathlib import Path
 
-import torch
-
-from kornia.contrib import FaceDetector
+from kornia.contrib.face_detection import YuFaceDetectNet
 
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class ExportOnnxModelConfig:
-    """Configuration for exporting a model to ONNX format."""
-
-    model: torch.nn.Module
-    img: torch.Tensor
-    output_path: Path
-    input_names: list[str]
-    output_names: list[str]
-    dynamic_axes: dict[str, dict[int, str]]
-
-
-def export_onnx_model(config: ExportOnnxModelConfig) -> None:
-    """Export a model to ONNX format."""
-    torch.onnx.export(
-        config.model,
-        config.img,
-        config.output_path,
-        input_names=config.input_names,
-        output_names=config.output_names,
-        dynamic_axes=config.dynamic_axes,
-    )
-
-    if config.output_path.exists():
-        logger.info("Model exported to %s", config.output_path)
-    else:
-        logger.error("Error exporting model to %s", config.output_path)
-
-
-def export_onnx_model_config_resolver(model_name: str, output_path: Path) -> ExportOnnxModelConfig:
+def export_onnx_model_resolver(model_name: str, output_path: Path) -> None:
     """Resolve the configuration for exporting a model to ONNX format."""
-    if model_name == "kornia/yunet":
-        face_detector = FaceDetector()
-        config = ExportOnnxModelConfig(
-            model=face_detector.model,
-            img=torch.rand(1, 3, 320, 320),
-            output_path=output_path / "yunet.onnx",
+    if "yunet" in model_name:
+        onnx_model_path = output_path / "yunet.onnx"
+        res = YuFaceDetectNet("test", pretrained=True).to_onnx(
+            image_shape={"channels": 3, "height": 320, "width": 320},
+            onnx_model_path=onnx_model_path,
             input_names=["images"],
             output_names=["loc", "conf", "iou"],
             dynamic_axes={"images": {0: "B"}},
         )
+        if res:
+            logger.info("Model exported to %s", onnx_model_path)
     else:
         raise ValueError(f"Model {model_name} not supported")
-
-    return config
 
 
 def main() -> None:
@@ -89,8 +56,7 @@ def main() -> None:
     if args.command == "export":
         if args.format == "onnx":
             logger.info("Exporting model %s to ONNX format", args.model)
-            config: ExportOnnxModelConfig = export_onnx_model_config_resolver(args.model, args.output_path)
-            export_onnx_model(config)
+            export_onnx_model_resolver(args.model, args.output_path)
         else:
             logger.error("Format %s not supported", args.format)
     else:
