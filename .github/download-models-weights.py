@@ -1,7 +1,7 @@
 import argparse
 
-import torch
 import diffusers
+import torch
 
 models = {
     "sold2_wireframe": ("torchhub", "http://cmp.felk.cvut.cz/~mishkdmy/models/sold2_wireframe.pth"),
@@ -29,6 +29,7 @@ if __name__ == "__main__":
             print(f"Downloading `{name}` from diffusers. Caching to dir `{args.target_directory}`")
             if path == "StableDiffusionPipeline":
                 diffusers.StableDiffusionPipeline.from_pretrained(
-                    name, cache_dir=args.target_directory, device_map=torch.device("cpu"))
+                    name, cache_dir=args.target_directory, device_map=torch.device("cpu")
+                )
 
     raise SystemExit(0)

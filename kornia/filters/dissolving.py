@@ -1,4 +1,5 @@
 from typing import Any
+
 import torch
 
 from kornia.core import ImageModule, Module, Tensor
