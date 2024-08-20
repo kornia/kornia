@@ -4,11 +4,13 @@ import torch
 from kornia.core import Tensor
 from kornia.filters.dissolving import StableDiffusionDissolving
 
+WEIGHTS_CACHE_DIR = "weights/"
+
 
 class TestStableDiffusionDissolving:
     @pytest.fixture(scope="class")
     def sdm_2_1(self):
-        return StableDiffusionDissolving(version="2.1")
+        return StableDiffusionDissolving(version="2.1", cache_dir=WEIGHTS_CACHE_DIR, device_map=torch.device("cpu"))
 
     @pytest.fixture(scope="class")
     def dummy_image(self):

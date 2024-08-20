@@ -2,6 +2,7 @@ import argparse
 
 import diffusers
 import torch
+import os
 
 models = {
     "sold2_wireframe": ("torchhub", "http://cmp.felk.cvut.cz/~mishkdmy/models/sold2_wireframe.pth"),
