@@ -7,3 +7,4 @@ pre-commit>=2
 pytest==8.3.2
 pytest-timeout
 requests
+diffusers
