@@ -1,10 +1,15 @@
 import argparse
 
 import torch
+import diffusers
 
-fonts = {
-    "sold2_wireframe": "http://cmp.felk.cvut.cz/~mishkdmy/models/sold2_wireframe.pth",
+models = {
+    "sold2_wireframe": ("torchhub", "http://cmp.felk.cvut.cz/~mishkdmy/models/sold2_wireframe.pth"),
+    "CompVis/stable-diffusion-v1-4": ("diffusers", "StableDiffusionPipeline"),
+    "runwayml/stable-diffusion-v1-5": ("diffusers", "StableDiffusionPipeline"),
+    "stabilityai/stable-diffusion-v2-1": ("diffusers", "StableDiffusionPipeline"),
 }
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser("WeightsDownloader")
@@ -13,9 +18,17 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     torch.hub.set_dir(args.target_directory)
+    # For HuggingFace model caching
+    os.environ["HF_HOME"] = args.target_directory
 
-    for name, url in fonts.items():
-        print(f"Downloading weights of `{name}` from `url`. Caching to dir `{args.target_directory}`")
-        torch.hub.load_state_dict_from_url(url, model_dir=args.target_directory, map_location=torch.device("cpu"))
+    for name, (src, path) in models.items():
+        if src == "torchhub":
+            print(f"Downloading weights of `{name}` from `{path}`. Caching to dir `{args.target_directory}`")
+            torch.hub.load_state_dict_from_url(url, model_dir=args.target_directory, map_location=torch.device("cpu"))
+        elif src == "diffusers":
+            print(f"Downloading `{name}` from diffusers. Caching to dir `{args.target_directory}`")
+            if path == "StableDiffusionPipeline":
+                diffusers.StableDiffusionPipeline.from_pretrained(
+                    name, cache_dir=args.target_directory, device_map=torch.device("cpu"))
 
     raise SystemExit(0)
