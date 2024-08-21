@@ -8,7 +8,7 @@ models = {
     "sold2_wireframe": ("torchhub", "http://cmp.felk.cvut.cz/~mishkdmy/models/sold2_wireframe.pth"),
     "CompVis/stable-diffusion-v1-4": ("diffusers", "StableDiffusionPipeline"),
     "runwayml/stable-diffusion-v1-5": ("diffusers", "StableDiffusionPipeline"),
-    "stabilityai/stable-diffusion-v2-1": ("diffusers", "StableDiffusionPipeline"),
+    "stabilityai/stable-diffusion-2-1": ("diffusers", "StableDiffusionPipeline"),
 }
 
 
