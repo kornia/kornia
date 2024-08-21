@@ -30,7 +30,7 @@ if __name__ == "__main__":
             print(f"Downloading `{name}` from diffusers. Caching to dir `{args.target_directory}`")
             if path == "StableDiffusionPipeline":
                 diffusers.StableDiffusionPipeline.from_pretrained(
-                    name, cache_dir=args.target_directory, device_map="cpu"
+                    name, cache_dir=args.target_directory, device_map="auto"
                 )
 
     raise SystemExit(0)
