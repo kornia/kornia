@@ -25,7 +25,7 @@ if __name__ == "__main__":
     for name, (src, path) in models.items():
         if src == "torchhub":
             print(f"Downloading weights of `{name}` from `{path}`. Caching to dir `{args.target_directory}`")
-            torch.hub.load_state_dict_from_url(url, model_dir=args.target_directory, map_location=torch.device("cpu"))
+            torch.hub.load_state_dict_from_url(path, model_dir=args.target_directory, map_location=torch.device("cpu"))
         elif src == "diffusers":
             print(f"Downloading `{name}` from diffusers. Caching to dir `{args.target_directory}`")
             if path == "StableDiffusionPipeline":
