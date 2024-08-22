@@ -5141,14 +5141,14 @@ class TestRandomDissolving(BaseTester):
     torch.manual_seed(0)  # for random reproductibility
 
     def test_smoke(self):
-        images = torch.rand(4, 3, 16, 16)
+        images = torch.rand(2, 3, 16, 16)
         aug = RandomDissolving(p=1.0, cache_dir="weights/")
         images_aug = aug(images)
         assert images_aug.shape == images.shape
 
     def test_same_on_batch(self, device, dtype):
         images = torch.rand(1, 3, 16, 16).repeat(2, 1, 1, 1)
-        aug = RandomDissolving(same_on_batch=True, cache_dir="weights/")
+        aug = RandomDissolving(p=1.0, same_on_batch=True, cache_dir="weights/")
         images_aug = aug(images)
         self.assert_close(images_aug[0], images_aug[1])
 
