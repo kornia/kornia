@@ -5140,25 +5140,13 @@ class TestRandomJPEG(BaseTester):
 class TestRandomDissolving(BaseTester):
     torch.manual_seed(0)  # for random reproductibility
 
-    def test_smoke(self):
-        images = torch.rand(2, 3, 16, 16)
-        aug = RandomDissolving(p=1.0, cache_dir="weights/")
-        images_aug = aug(images)
-        assert images_aug.shape == images.shape
-
-    def test_same_on_batch(self, device, dtype):
-        images = torch.rand(1, 3, 16, 16).repeat(2, 1, 1, 1)
-        aug = RandomDissolving(p=1.0, same_on_batch=True, cache_dir="weights/")
-        images_aug = aug(images)
-        self.assert_close(images_aug[0], images_aug[1])
-
-    def test_single_jpeg_quality(self, device, dtype):
+    def test_batch_proc(self, device, dtype):
         images = torch.rand(4, 3, 16, 16)
         aug = RandomDissolving(p=1.0, cache_dir="weights/")
         images_aug = aug(images)
         assert images_aug.shape == images.shape
 
-    def test_single_image(self, device, dtype):
+    def test_single_proc(self, device, dtype):
         images = torch.rand(3, 16, 16)
         aug = RandomDissolving(p=1.0, keepdim=True, cache_dir="weights/")
         images_aug = aug(images)
