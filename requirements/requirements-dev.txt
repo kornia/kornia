@@ -1,3 +1,4 @@
+accelerate
 coverage
 diffusers
 mypy
@@ -9,4 +10,3 @@ pytest==8.3.2
 pytest-timeout
 requests
 transformers
-accelerate
