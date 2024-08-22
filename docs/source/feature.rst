@@ -1,5 +1,102 @@
-kornia.feature
-==============
+Local Features and Image Matching
+=================================
+
+This module provides a set of tools to detect and describe local features in images. The module is designed to be
+compatible with the PyTorch ecosystem and provides a set of models and differentiable operations to be used in deep learning
+pipelines.
+
+The module is divided into three main components:
+
+1. **Detectors**: These are models that are used to detect keypoints in images. The module provides a set of detectors that
+   are based on different algorithms such as Harris, GFTT, Hessian, and DoG. The module also provides a set of detectors that
+   are based on deep learning models such as KeyNet, DISK and DeDoDe.
+2. **Descriptors**: These are models that are used to describe the local features detected by the detectors. The module
+   provides a set of descriptors that are based on different algorithms such as SIFT, HardNet, and TFeat. The module also
+   provides a set of descriptors that are based on deep learning models such as HyNet, SOSNet, and LAFDescriptor.
+3. **Matching**: These are models that are used to match the local features detected and described by the detectors and
+   descriptors. The module provides a set of matching algorithms such as nearest neighbor, mutual nearest neighbor, and
+   geometrically aware matching. Besides this, the module also contains AdaLAM hancrafted and LightGlue learned matchers.
+   Finally, the module provides LoFTR - detector-less semi-dense image matching model.
+
+Besides this, the module also provides a set of tools to work with local affine frames (LAF) such as extracting patches,
+normalizing, denormalizing, and rotating LAFs. The module also provides a set of models to estimate the affine shape of
+LAFs such as LAFAffineShapeEstimator and PatchAffineShapeEstimator. The module also provides a set of models to estimate
+the orientation of LAFs such as OriNet and LAFOrienter.
+
+
+Finally, kind of addition, module contains a DeFMO model for the task of video frame interpolation, specifically high speed objects debluring.
+
+Benchmarks and recommendations
+--------------------------------
+
+The following table shows the performance of the different models on `IMC2021 benchmark <https://www.cs.ubc.ca/research/image-matching-challenge/2021/leaderboard/>`_ .
+
+
+.. list-table:: IMC2021 Benchmark, 8000 features
+   :widths: 50 50 50 50 50
+   :header-rows: 1
+
+   * - Feature name
+     - Stereo mAA @ 10 degrees, PhotoTourism.
+     - Multiview mAA @ 10 degrees, PhotoTourism.
+     - Stereo mAA @ 10 degrees, PragueParks.
+     - Multiview mAA @ 10 degrees, PragueParks.
+   * - DISK-LightGlue
+     - 0.6184
+     - 0.7741
+     - 0.6116
+     - 0.4988
+   * - LoFTR
+     - 0.6090
+     - 0.7609
+     - 0.7546
+     - 0.4711
+   * - OpenCV-DoG-HardNet-LightGlue
+     - 0.5850
+     - 0.7587
+     - 0.6525
+     - 0.4973
+   * - OpenCV-DoG-AffNet-HardNet8-AdaLAM
+     - 0.5502
+     - 0.7522
+     - 0.5998
+     - 0.4712
+   * - Upright SIFT (OpenCV)
+     - 0.5122
+     - 0.6849
+     - 0.6060
+     - 0.4439
+
+
+.. list-table:: IMC2021 Benchmark, 2048 features
+   :widths: 50 50 50 50 50
+   :header-rows: 1
+
+   * - Feature name
+     - Stereo mAA @ 10 degrees, PhotoTourism.
+     - Multiview mAA @ 10 degrees, PhotoTourism.
+     - Stereo mAA @ 10 degrees, PragueParks.
+     - Multiview mAA @ 10 degrees, PragueParks.
+   * - DISK-LightGlue
+     - 0.5720
+     - 0.7543
+     - 0.5099
+     - 0.4565
+   * - OpenCV-DoG-HardNet-LightGlue
+     - 0.3954
+     - 0.6272
+     - 0.5157
+     - 0.4456
+   * - Upright SIFT (OpenCV)
+     - 0.3827
+     - 0.5545
+     - 0.4136
+     - 0.3607
+
+LoFTR works the best for indoor scenes, whereas DISK and DeDoDe + LightGlue work the best for outdoor scenes.
+The DeDoDe and speed benchmarks are coming soon.
+For some other use-cases you may want to use SIFT, or SIFT + HardNet + LightGlue, e.g. for remote sensing or medical imaging.
+
 
 .. currentmodule:: kornia.feature
 
