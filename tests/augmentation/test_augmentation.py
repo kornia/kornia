@@ -5142,7 +5142,7 @@ class TestRandomDissolving(BaseTester):
 
     def test_smoke(self):
         images = torch.rand(4, 3, 16, 16)
-        aug = RandomDissolving(p=1.0)
+        aug = RandomDissolving(p=1.0, cache_dir="weights/")
         images_aug = aug(images)
         assert images_aug.shape == images.shape
 
