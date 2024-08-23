@@ -37,7 +37,7 @@ English | [简体中文](README_zh-CN.md)
 2. **Advanced Augmentations**<br>
 Perform powerful data augmentation with Kornia’s built-in functions, ideal for training robust AI models.
     - **Augmentation Pipeline**: AugmentationSequential, PatchSequential, VideoSequential, etc.
-    - **Automatic Augmentation**: AutoAugment, RandAugment, TrivialAugment. 
+    - **Automatic Augmentation**: AutoAugment, RandAugment, TrivialAugment.
 3. **AI Models**<br>
 Leverage pre-trained AI models optimized for a variety of vision tasks, all within the Kornia ecosystem.
     - **Face Detection**: YuNet
@@ -108,7 +108,7 @@ output = StableDiffusionDissolving()(img, step_number=500)
 output.save("Kornia-enhanced.jpg")
 ```
 
-In addition, Kornia offers lots of 
+In addition, Kornia offers lots of
 
 ## Call For Contributors
 
