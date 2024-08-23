@@ -13,7 +13,7 @@ from kornia.geometry.conversions import (
     normalize_quaternion,
     quaternion_from_euler,
     quaternion_to_rotation_matrix,
-    rotation_matrix_to_quaternion,
+    rotation_matrix_to_quaternion, quaternion_to_axis_angle,
 )
 from kornia.geometry.linalg import batched_dot_product
 
@@ -310,6 +310,17 @@ class Quaternion(Module):
             tensor([[0.8776, 0.4794, 0.0000, 0.0000]], requires_grad=True)
         """
         return cls(axis_angle_to_quaternion(axis_angle))
+
+    def to_axis_angle(self) -> Tensor:
+        """Convert the quaternion to a rotation matrix of shape :math:`(B, 3, 3)`.
+
+        Example:
+            >>> q = Quaternion.identity()
+            >>> axis_angle = q.to_axis_angle()
+            >>> axis_angle
+            tensor([0., 0., 0.], grad_fn=<AsStridedBackward0>)
+        """
+        return quaternion_to_axis_angle(self.q)
 
     @classmethod
     def identity(
