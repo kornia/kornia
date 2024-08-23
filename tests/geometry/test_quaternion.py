@@ -210,23 +210,34 @@ class TestQuaternion:
 
     @pytest.mark.parametrize("batch_size", (None, 1, 2, 5))
     def test_to_axis_angle(self, device, dtype, batch_size):
-
         # batch_s = 5
         # random_coefs = Quaternion.random(batch_s).data
-        random_coefs = torch.tensor([[2.5398e-04, -2.2677e-01, -8.3897e-01, 4.9467e-01],
-                                     [-1.7005e-01, -1.0974e-01, 3.7635e-01, -9.0410e-01],
-                                     [9.1273e-01, 4.8935e-02, -6.2994e-03, 4.0558e-01],
-                                     [-9.8316e-01, 5.4078e-03, 1.4471e-01, 1.1145e-01],
-                                     [4.5794e-02, -7.0831e-01, 6.7577e-01, 1.9883e-01]], device=device, dtype=dtype)
+        random_coefs = torch.tensor(
+            [
+                [2.5398e-04, -2.2677e-01, -8.3897e-01, 4.9467e-01],
+                [-1.7005e-01, -1.0974e-01, 3.7635e-01, -9.0410e-01],
+                [9.1273e-01, 4.8935e-02, -6.2994e-03, 4.0558e-01],
+                [-9.8316e-01, 5.4078e-03, 1.4471e-01, 1.1145e-01],
+                [4.5794e-02, -7.0831e-01, 6.7577e-01, 1.9883e-01],
+            ],
+            device=device,
+            dtype=dtype,
+        )
 
         q = Quaternion(random_coefs)
         axis_angle_actual = q.to_axis_angle()
 
-        axis_angle_expected = torch.tensor([[-0.7123, -2.6353,  1.5538],
-                                            [0.3118, -1.0693,  2.5687],
-                                            [0.1008, -0.0130,  0.8356],
-                                            [-0.0109, -0.2911, -0.2242],
-                                            [-2.1626,  2.0632,  0.6071]], device=device, dtype=dtype)
+        axis_angle_expected = torch.tensor(
+            [
+                [-0.7123, -2.6353, 1.5538],
+                [0.3118, -1.0693, 2.5687],
+                [0.1008, -0.0130, 0.8356],
+                [-0.0109, -0.2911, -0.2242],
+                [-2.1626, 2.0632, 0.6071],
+            ],
+            device=device,
+            dtype=dtype,
+        )
 
         self.assert_close(axis_angle_expected, axis_angle_actual, 1e-4, 1e-4)
 
