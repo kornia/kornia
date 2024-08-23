@@ -320,7 +320,7 @@ class Quaternion(Module):
             >>> axis_angle
             tensor([0., 0., 0.], grad_fn=<AsStridedBackward0>)
         """
-        return quaternion_to_axis_angle(self.q)
+        return quaternion_to_axis_angle(self.data)
 
     @classmethod
     def identity(
