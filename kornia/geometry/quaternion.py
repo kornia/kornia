@@ -281,10 +281,7 @@ class Quaternion(Module):
         return cls(q)
 
     def to_euler(self) -> Tuple[Tensor, Tensor, Tensor]:
-        """Create a quaternion from euler angles.
-
-        Args:
-            matrix: the rotation matrix to convert of shape :math:`(B, 3, 3)`.
+        """Convert the quaternion to a triple of Euler angles (roll, pitch, yaw).
 
         Example:
             >>> q = Quaternion(tensor([2., 0., 1., 1.]))
