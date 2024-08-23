@@ -5137,6 +5137,7 @@ class TestRandomJPEG(BaseTester):
         self.assert_close(img.grad.mean().view(-1), img_jpeg_mean_grad_ref, rtol=0.01, atol=0.01)
 
 
+@pytest.mark.slow
 class TestRandomDissolving(BaseTester):
     torch.manual_seed(0)  # for random reproductibility
 

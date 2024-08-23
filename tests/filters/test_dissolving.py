@@ -7,6 +7,7 @@ from kornia.filters.dissolving import StableDiffusionDissolving
 WEIGHTS_CACHE_DIR = "weights/"
 
 
+@pytest.mark.slow
 class TestStableDiffusionDissolving:
     @pytest.fixture(scope="class")
     def sdm_2_1(self):
