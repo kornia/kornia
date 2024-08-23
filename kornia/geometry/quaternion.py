@@ -262,7 +262,7 @@ class Quaternion(Module):
 
     @classmethod
     def from_euler(cls, roll: Tensor, pitch: Tensor, yaw: Tensor) -> "Quaternion":
-        """Create a quaternion from euler angles.
+        """Create a quaternion from Euler angles.
 
         Args:
             roll: the roll euler angle.
