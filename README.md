@@ -100,12 +100,13 @@ augmentation_pipeline = AugmentationSequential(
     RandomAffine((-45., 45.), p=1.),
     RandomBrightness((0.,1.), p=1.)
 )
+# Leveraging StableDiffusion models
+dslv_op = StableDiffusionDissolving()
 
 img = augmentation_pipeline(img)
+dslv_op(img, step_number=500)
 
-# Leveraging StableDiffusion models
-output = StableDiffusionDissolving()(img, step_number=500)
-output.save("Kornia-enhanced.jpg")
+dslv_op.save("Kornia-enhanced.jpg")
 ```
 
 In addition, Kornia offers lots of
