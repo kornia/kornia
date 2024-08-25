@@ -150,11 +150,6 @@ dslv_op(img, step_number=500)
 dslv_op.save("Kornia-enhanced.jpg")
 ```
 
-<<<<<<< HEAD
-In addition, Kornia offers lots of
-
-=======
->>>>>>> 02403f6d (updated)
 ## Call For Contributors
 
 Are you passionate about computer vision, AI, and open-source development? Join us in shaping the future of Kornia! We are actively seeking contributors to help expand and enhance our library, making it even more powerful, accessible, and versatile. Whether you're an experienced developer or just starting, there's a place for you in our community.
