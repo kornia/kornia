@@ -72,20 +72,6 @@ Leverage pre-trained AI models optimized for a variety of vision tasks, all with
 
 </details>
 
-#### From source with editable mode
-
-  ```bash
-  pip install -e .
-  ```
-
-#### From Github url (latest version)
-
-  ```bash
-  pip install git+https://github.com/kornia/kornia
-  ```
-
-</details>
-
 ## Sponsorship
 
 Kornia is an open-source project that is developed and maintained by volunteers. Whether you're using it for research or commercial purposes, consider sponsoring or collaborating with us. Your support will help ensure Kornia's growth and ongoing innovation. Reach out to us today and be a part of shaping the future of this exciting initiative!
