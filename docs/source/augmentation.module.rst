@@ -61,6 +61,7 @@ Geometric
 .. autoclass:: RandomHorizontalFlip
 .. autoclass:: RandomPerspective
 .. autoclass:: RandomResizedCrop
+.. autoclass:: RandomRot90
 .. autoclass:: RandomRotation
 .. autoclass:: RandomShear
 .. autoclass:: RandomThinPlateSpline
