@@ -87,7 +87,11 @@ def load_pointcloud_ply(filename: str, header_size: int = 8) -> torch.Tensor:
 
 
 def iterative_closest_point(
-    points_in_a: torch.Tensor, points_in_b: torch.Tensor, max_iterations: int = 20, tolerance: float = 1e-4,  verbose: bool = False
+    points_in_a: torch.Tensor,
+    points_in_b: torch.Tensor,
+    max_iterations: int = 20,
+    tolerance: float = 1e-4,
+    verbose: bool = False,
 ) -> torch.Tensor:
     """Compute the relative transformation between two point clouds.
 
