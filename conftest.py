@@ -196,6 +196,8 @@ def pytest_sessionstart(session):
 
     os.makedirs(WEIGHTS_CACHE_DIR, exist_ok=True)
     torch.hub.set_dir(WEIGHTS_CACHE_DIR)
+    # For HuggingFace model caching
+    os.environ["HF_HOME"] = WEIGHTS_CACHE_DIR
 
 
 def _get_env_info() -> Dict[str, Dict[str, str]]:

@@ -1,3 +1,4 @@
+from . import external
 from ._backend import (
     Device,
     Dtype,
@@ -35,6 +36,7 @@ from .module import ImageModule
 from .tensor_wrapper import TensorWrapper  # type: ignore
 
 __all__ = [
+    "external",
     "arange",
     "concatenate",
     "Device",

@@ -1,4 +1,6 @@
+accelerate
 coverage
+diffusers
 mypy
 numpy<3
 onnx
@@ -7,3 +9,4 @@ pre-commit>=2
 pytest==8.3.2
 pytest-timeout
 requests
+transformers
