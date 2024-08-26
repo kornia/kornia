@@ -64,4 +64,4 @@ class TestICP:
         icp = pp.module.ICP()
         pp_icp = icp(src, dst)
 
-        assert_close(kornia_results, pp_icp)
+        torch.allclose(kornia_results,pp_icp)
