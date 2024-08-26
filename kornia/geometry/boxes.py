@@ -392,9 +392,19 @@ class Boxes:
 
     def compute_area(self) -> torch.Tensor:
         """Returns :math:`(B, N)`."""
-        w = self._data[..., 1, 0] - self._data[..., 0, 0]
-        h = self._data[..., 2, 1] - self._data[..., 0, 1]
-        return (w * h).unsqueeze(0) if self._data.ndim == 3 else (w * h)
+        coords = self._data.view((-1, 4, 2)) if self._data.ndim == 4 else self._data
+        # calculate centroid of the box
+        centroid = coords.mean(dim=1, keepdim=True)
+        # calculate the angle from centroid to each corner
+        angles = torch.atan2(coords[..., 1] - centroid[..., 1], coords[..., 0] - centroid[..., 0])
+        # sort the corners by angle to get an order for shoelace formula
+        _, clockwise_indices = torch.sort(angles, dim=1, descending=True)
+        # gather the corners in the new order
+        ordered_corners = torch.gather(coords, 1, clockwise_indices.unsqueeze(-1).expand(-1, -1, 2))
+        x, y = ordered_corners[..., 0], ordered_corners[..., 1]
+        # Gaussian/Shoelace formula https://en.wikipedia.org/wiki/Shoelace_formula
+        area = 0.5 * torch.abs(torch.sum((x * torch.roll(y, 1, 1)) - (y * torch.roll(x, 1, 1)), dim=1))
+        return area.view(self._data.shape[:2]) if self._data.ndim == 4 else area
 
     @classmethod
     def from_tensor(
