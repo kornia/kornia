@@ -3,6 +3,8 @@ import os
 import pypose as pp
 import torch
 
+from kornia.core.check import KORNIA_CHECK_SHAPE
+
 
 def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
     r"""Utility function to save to disk a pointcloud in PLY format.
@@ -85,7 +87,7 @@ def load_pointcloud_ply(filename: str, header_size: int = 8) -> torch.Tensor:
 
 
 def iterative_closest_point(
-    points_in_a: torch.Tensor, points_in_b: torch.Tensor, max_iterations: int = 20, tolerance: float = 1e-4
+    points_in_a: torch.Tensor, points_in_b: torch.Tensor, max_iterations: int = 20, tolerance: float = 1e-4,  verbose: bool = False
 ) -> torch.Tensor:
     """Compute the relative transformation between two point clouds.
 
@@ -95,13 +97,16 @@ def iterative_closest_point(
 
     Args:
         points_in_a: The point cloud in the source coordinates frame A  with shape Nx3
-        points_in_b:  The point cloud in the source coordinates frame A with shape Nx
+        points_in_b:  The point cloud in the source coordinates frame A with shape Nx3
         max_iterations (int): Maximum number of iterations to run.
         tolerance (float): Tolerance criteria for stopping.
 
      Return:
         The relative transformation between the two pointcloud with shape 3x4
     """
+
+    KORNIA_CHECK_SHAPE(points_in_a, ["B", "3"])
+    KORNIA_CHECK_SHAPE(points_in_b, ["B", "3"])
 
     src = points_in_a.clone()
     prev_error = 0
@@ -134,5 +139,7 @@ def iterative_closest_point(
         if torch.abs(prev_error - mean_error) < tolerance:
             break
         prev_error = mean_error
+        if verbose:
+            print(f"ICP Mean error: {mean_error}, iter: {iter}")
 
     return pp.svdtf(src, points_in_a)
