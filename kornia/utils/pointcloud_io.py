@@ -104,7 +104,6 @@ def iterative_closest_point(
     """
 
     src = points_in_a.clone()
-    # dst = points_in_b.clone()
     prev_error = 0
 
     for iter in range(max_iterations):
