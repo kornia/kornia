@@ -24,7 +24,7 @@ English | [简体中文](README_zh-CN.md)
 </p>
 </div>
 
-**Kornia** is a differentiable computer vision library that provides a rich set of differentiable image processing and vision algorithms. Built on [PyTorch](https://pytorch.org),Kornia integrates seamlessly into existing AI workflows, allowing you to leverage powerful [batch transformations](), [auto-differentiation]() and [GPU acceleration](). Whether you’re working on image transformations, augmentations, or AI-driven image processing, Kornia equips you with the tools you need to bring your ideas to life.
+**Kornia** is a differentiable computer vision library that provides a rich set of differentiable image processing and geometric vision algorithms. Built on top of [PyTorch](https://pytorch.org), Kornia integrates seamlessly into existing AI workflows, allowing you to leverage powerful [batch transformations](), [auto-differentiation]() and [GPU acceleration](). Whether you’re working on image transformations, augmentations, or AI-driven image processing, Kornia equips you with the tools you need to bring your ideas to life.
 
 ## Key Components
 1. **Differentiable Image Processing**<br>
@@ -47,7 +47,7 @@ Leverage pre-trained AI models optimized for a variety of vision tasks, all with
     - **Classification**: MobileViT, VisionTransformer.
 
 <details>
-  <summary>See here for methods that we support!</summary>
+<summary>See here for some of the methods that we support! (>500 ops in total !)</summary>
 
 | **Category**               | **Methods/Models**                                                                                                   |
 |----------------------------|---------------------------------------------------------------------------------------------------------------------|
@@ -110,23 +110,31 @@ Kornia is an open-source project that is developed and maintained by volunteers.
 
 ## Quick Start
 
-Kornia is not just another computer vision library — it's your gateway to effortless image transformation and augmentation.
+Kornia is not just another computer vision library — it's your gateway to effortless Computer Vision and AI.
 
 ```python
 import numpy as np
-from PIL import Image
+import kornia_rs as kr
+
 from kornia.augmentation import AugmentationSequential, RandomAffine, RandomBrightness
 from kornia.filters import StableDiffusionDissolving
 
 # Load and prepare your image
-img = Image.open("img.jpeg").resize((256, 256))
-img = np.stack([np.array(img)] * 2)  # Example for numpy input
+img: np.ndarray = kr.read_image_any("img.jpeg")
+img = kr.resize(img, (256, 256), interpolation="bilinear")
+
+# alternatively, load image with PIL
+# img = Image.open("img.jpeg").resize((256, 256))
+# img = np.array(img)
+
+img = np.stack([img] * 2)  # batch images
 
 # Define an augmentation pipeline
 augmentation_pipeline = AugmentationSequential(
     RandomAffine((-45., 45.), p=1.),
     RandomBrightness((0.,1.), p=1.)
 )
+
 # Leveraging StableDiffusion models
 dslv_op = StableDiffusionDissolving()
 
