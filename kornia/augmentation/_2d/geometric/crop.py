@@ -120,17 +120,13 @@ class RandomCrop(GeometricAugmentationBase2D):
             # If crop width is larger than input width pad equally left and right
             if needed_padding[1] > 0:
                 # Only use the extra padding if actually needed after possible fixed padding
-                if needed_padding[1] > padding[0]:
-                    padding[0] = needed_padding[1]
-                if needed_padding[1] > padding[1]:
-                    padding[1] = needed_padding[1]
+                padding[0] = max(needed_padding[1], padding[0])
+                padding[1] = max(needed_padding[1], padding[1])
             # If crop height is larger than input height pad equally top and bottom
             if needed_padding[0] > 0:
                 # Only use the extra padding if actually needed after possible fixed padding
-                if needed_padding[0] > padding[2]:
-                    padding[2] = needed_padding[0]
-                if needed_padding[0] > padding[3]:
-                    padding[3] = needed_padding[0]
+                padding[2] = max(needed_padding[0], padding[2])
+                padding[3] = max(needed_padding[0], padding[3])
         return padding
 
     def precrop_padding(
