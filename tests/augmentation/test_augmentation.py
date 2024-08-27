@@ -48,7 +48,7 @@ from kornia.augmentation import (
     RandomRain,
     RandomResizedCrop,
     RandomRGBShift,
-    RandomRot90,
+    RandomRotation90,
     RandomRotation,
     RandomSaltAndPepperNoise,
     RandomSaturation,
@@ -698,13 +698,13 @@ class TestRandomRotationAlternative(CommonTests):
             self._create_augmentation_from_params(degrees=(360.0, -360.0))
 
 
-class TestRandomRot90(CommonTests):
+class TestRandomRotation90(CommonTests):
     possible_params: Dict["str", Tuple] = {
         "times": ((-3, 3), (1, 1)),
         "resample": (0, Resample.BILINEAR.name, Resample.BILINEAR),
         "align_corners": (False, True),
     }
-    _augmentation_cls = RandomRot90
+    _augmentation_cls = RandomRotation90
     _default_param_set: Dict["str", Any] = {
         "times": (-3, 3),
         "align_corners": True,

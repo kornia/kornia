@@ -112,7 +112,7 @@ class RandomRotation(GeometricAugmentationBase2D):
         )
 
 
-class RandomRot90(GeometricAugmentationBase2D):
+class RandomRotation90(GeometricAugmentationBase2D):
     r"""Apply a random 90 * n degree rotation to a tensor image or a batch of tensor images.
 
     Args:
@@ -129,30 +129,32 @@ class RandomRot90(GeometricAugmentationBase2D):
         - Output: :math:`(B, C, H, W)`
 
     .. note::
-        This function internally uses :func:`kornia.geometry.transform.affine`.
+        This function internally uses :func:`kornia.geometry.transform.affine`. This version is relatively
+        slow as it operates based on affine transformations.
 
     Examples:
         >>> rng = torch.manual_seed(1)
+        >>> torch.set_printoptions(sci_mode=False)
         >>> input = torch.tensor([[1., 0., 0., 2.],
         ...                       [0., 0., 0., 0.],
         ...                       [0., 1., 2., 0.],
         ...                       [0., 0., 1., 2.]])
-        >>> aug = RandomRot90(times=(1, 1), p=1.)
+        >>> aug = RandomRotation90(times=(1, 1), p=1.)
         >>> out = aug(input)
         >>> out
-        tensor([[[[2.0000e+00, 0.0000e+00, 0.0000e+00, 2.0000e+00],
-                  [0.0000e+00, 2.3842e-07, 2.0000e+00, 1.0000e+00],
-                  [5.9605e-08, 3.5527e-15, 1.0000e+00, 0.0000e+00],
-                  [1.0000e+00, 5.9605e-08, 0.0000e+00, 0.0000e+00]]]])
+        tensor([[[[    2.0000,     0.0000,     0.0000,     2.0000],
+                  [    0.0000,     0.0000,     2.0000,     1.0000],
+                  [    0.0000,     0.0000,     1.0000,     0.0000],
+                  [    1.0000,     0.0000,     0.0000,     0.0000]]]])
         >>> aug.transform_matrix
-        tensor([[[-4.3711e-08,  1.0000e+00,  1.1921e-07],
-                 [-1.0000e+00, -4.3711e-08,  3.0000e+00],
-                 [ 0.0000e+00,  0.0000e+00,  1.0000e+00]]])
+        tensor([[[    -0.0000,      1.0000,      0.0000],
+                 [    -1.0000,     -0.0000,      3.0000],
+                 [     0.0000,      0.0000,      1.0000]]])
         >>> inv = aug.inverse(out)
 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
         >>> input = torch.randn(1, 3, 32, 32)
-        >>> aug = RandomRot90(times=(-1, 1), p=1.)
+        >>> aug = RandomRotation90(times=(-1, 1), p=1.)
         >>> (aug(input) == aug(input, params=aug._params)).all()
         tensor(True)
     """
@@ -173,7 +175,7 @@ class RandomRot90(GeometricAugmentationBase2D):
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         # TODO: Update to use `get_rotation_matrix2d`
-        angles: Tensor = 90.0 * params["times"].long().to(input)
+        angles: Tensor = 90. * params["times"].round().to(input)
 
         center: Tensor = _compute_tensor_center(input)
         rotation_mat: Tensor = _compute_rotation_matrix(angles, center.expand(angles.shape[0], -1))
