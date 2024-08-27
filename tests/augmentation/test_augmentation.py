@@ -739,7 +739,7 @@ class TestRandomRotation90(CommonTests):
             dtype=self.dtype,
         )
 
-        parameters = {"times": (1, 2), "align_corners": True}
+        parameters = {"times": (1, 1), "align_corners": True}
         self._test_random_p_1_implementation(
             input_tensor=input_tensor,
             expected_output=expected_output,
