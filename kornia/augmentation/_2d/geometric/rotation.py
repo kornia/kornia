@@ -175,7 +175,7 @@ class RandomRotation90(GeometricAugmentationBase2D):
 
     def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         # TODO: Update to use `get_rotation_matrix2d`
-        angles: Tensor = 90. * params["times"].round().to(input)
+        angles: Tensor = 90.0 * params["times"].round().to(input)
 
         center: Tensor = _compute_tensor_center(input)
         rotation_mat: Tensor = _compute_rotation_matrix(angles, center.expand(angles.shape[0], -1))
