@@ -183,7 +183,7 @@ def erosion(
 
     if engine == "unfold":
         output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
-        output, _ = torch.min(output - neighborhood, 4)
+        output, _ = torch.min(output.sub_(neighborhood), 4)
         output, _ = torch.min(output, 4)
     elif engine == "convolution":
         B, C, H, W = tensor.size()
