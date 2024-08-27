@@ -184,8 +184,9 @@ def transform_points(trans_01: Tensor, points_1: Tensor) -> Tensor:
     shape_inp = list(points_1.shape)
     points_1 = points_1.reshape(-1, points_1.shape[-2], points_1.shape[-1])
     trans_01 = trans_01.reshape(-1, trans_01.shape[-2], trans_01.shape[-1])
-    # We expand trans_01 to match the dimensions needed for bmm
-    trans_01 = torch.repeat_interleave(trans_01, repeats=points_1.shape[0] // trans_01.shape[0], dim=0)
+    # We expand trans_01 to match the dimensions needed for bmm. repeats input divison is cast
+    # to integer so onnx doesn't record the value as a tensor and get a device mismatch
+    trans_01 = torch.repeat_interleave(trans_01, repeats=int(points_1.shape[0] // trans_01.shape[0]), dim=0)
     # to homogeneous
     points_1_h = convert_points_to_homogeneous(points_1)  # BxNxD+1
     # transform coordinates
