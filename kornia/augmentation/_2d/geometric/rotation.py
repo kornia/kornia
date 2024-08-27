@@ -151,6 +151,7 @@ class RandomRotation90(GeometricAugmentationBase2D):
                  [    -1.0000,     -0.0000,      3.0000],
                  [     0.0000,      0.0000,      1.0000]]])
         >>> inv = aug.inverse(out)
+        >>> torch.set_printoptions(profile='default')
 
     To apply the exact augmenation again, you may take the advantage of the previous parameter state:
         >>> input = torch.randn(1, 3, 32, 32)
