@@ -182,7 +182,7 @@ def erosion(
         neighborhood[kernel == 0] = -max_val
 
     if engine == "unfold":
-        output = output.unfold(2, se_h, 1).unfold(3, se_w, 1)
+        output = output.unfold(2, se_h, 1).unfold(3, se_w, 1).contiguous()
         output, _ = torch.min(output.sub_(neighborhood), 4)
         output, _ = torch.min(output, 4)
     elif engine == "convolution":
