@@ -351,5 +351,5 @@ def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], c
     x_left, x_right = _get_convex_edges(polygons, h_i, w_i)
     ws = torch.arange(w_i, device=device, dtype=dtype_p)[None, None, :]
     fill_region = (ws >= x_left[..., :, None]) & (ws <= x_right[..., :, None])
-    images = (~fill_region[:, None]) * images + fill_region[:, None] * colors[..., None, None]
+    images.mul_(~fill_region[:, None]).add_(fill_region[:, None] * colors[..., None, None])
     return images
