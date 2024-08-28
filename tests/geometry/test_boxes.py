@@ -277,29 +277,14 @@ class TestBoxes2D(BaseTester):
         self.gradcheck(partial(apply_boxes_method, method="get_boxes_shape"), (t_boxes1,))
         self.gradcheck(lambda x: Boxes.from_tensor(x, mode="xyxy_plus").data, (t_boxes_xyxy,))
         self.gradcheck(lambda x: Boxes.from_tensor(x, mode="xywh").data, (t_boxes_xyxy1,))
-    
+
     def test_compute_area(self):
         # Rectangle
-        box_1 = [
-            [0.0, 0.0],
-            [100.0, 0.0],
-            [100.0, 50.0],
-            [0.0, 50.0]
-        ]
+        box_1 = [[0.0, 0.0], [100.0, 0.0], [100.0, 50.0], [0.0, 50.0]]
         # Trapezoid
-        box_2 = [
-            [0.0, 0.0],
-            [60.0, 0.0],
-            [40.0, 50.0],
-            [20.0, 50.0]
-        ]
+        box_2 = [[0.0, 0.0], [60.0, 0.0], [40.0, 50.0], [20.0, 50.0]]
         # Parallelogram
-        box_3 = [
-            [0.0, 0.0],
-            [100.0, 0.0],
-            [120.0, 50.0],
-            [20.0, 50.0]
-        ]
+        box_3 = [[0.0, 0.0], [100.0, 0.0], [120.0, 50.0], [20.0, 50.0]]
         # Random quadrilateral
         box_4 = [
             [50.0, 50.0],
@@ -315,20 +300,21 @@ class TestBoxes2D(BaseTester):
             [0.0, 0.5],
         ]
         # Rectangle with minus coordinates
-        box_6 = [
-            [-500.0, -500.0],
-            [-300.0, -500.0],
-            [-300.0, -300.0],
-            [-500.0, -300.0]
-        ]
+        box_6 = [[-500.0, -500.0], [-300.0, -500.0], [-300.0, -300.0], [-500.0, -300.0]]
 
         expected_values = [5000.0, 2000.0, 5000.0, 31925.0, 11287.5, 40000.0]
         box_coordinates = torch.tensor([box_1, box_2, box_3, box_4, box_5, box_6])
         computed_areas = Boxes(box_coordinates).compute_area().tolist()
-        computed_areas_w_batch = Boxes(box_coordinates.reshape(2, 3, 4, 2)).compute_area().tolist() 
+        computed_areas_w_batch = Boxes(box_coordinates.reshape(2, 3, 4, 2)).compute_area().tolist()
         flattened_computed_areas_w_batch = [area for batch in computed_areas_w_batch for area in batch]
-        assert all([computed_area == expected_area for computed_area, expected_area in zip(computed_areas, expected_values)])
-        assert all([computed_area == expected_area for computed_area, expected_area in zip(flattened_computed_areas_w_batch, expected_values)])
+        assert all(
+            computed_area == expected_area for computed_area, expected_area in zip(computed_areas, expected_values)
+        )
+        assert all(
+            computed_area == expected_area
+            for computed_area, expected_area in zip(flattened_computed_areas_w_batch, expected_values)
+        )
+
 
 class TestTransformBoxes2D(BaseTester):
     def test_transform_boxes(self, device, dtype):
