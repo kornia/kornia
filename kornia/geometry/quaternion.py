@@ -312,7 +312,7 @@ class Quaternion(Module):
         return cls(axis_angle_to_quaternion(axis_angle))
 
     def to_axis_angle(self) -> Tensor:
-        """Convert the quaternion to a rotation matrix of shape :math:`(B, 3, 3)`.
+        """Converts the quaternion to an axis-angle representation.
 
         Example:
             >>> q = Quaternion.identity()
