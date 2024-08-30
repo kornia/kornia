@@ -12,8 +12,9 @@ from kornia.geometry.conversions import (
     euler_from_quaternion,
     normalize_quaternion,
     quaternion_from_euler,
+    quaternion_to_axis_angle,
     quaternion_to_rotation_matrix,
-    rotation_matrix_to_quaternion, quaternion_to_axis_angle,
+    rotation_matrix_to_quaternion,
 )
 from kornia.geometry.linalg import batched_dot_product
 
