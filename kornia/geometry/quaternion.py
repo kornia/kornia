@@ -12,6 +12,7 @@ from kornia.geometry.conversions import (
     euler_from_quaternion,
     normalize_quaternion,
     quaternion_from_euler,
+    quaternion_to_axis_angle,
     quaternion_to_rotation_matrix,
     rotation_matrix_to_quaternion,
 )
@@ -262,7 +263,7 @@ class Quaternion(Module):
 
     @classmethod
     def from_euler(cls, roll: Tensor, pitch: Tensor, yaw: Tensor) -> "Quaternion":
-        """Create a quaternion from euler angles.
+        """Create a quaternion from Euler angles.
 
         Args:
             roll: the roll euler angle.
@@ -281,10 +282,7 @@ class Quaternion(Module):
         return cls(q)
 
     def to_euler(self) -> Tuple[Tensor, Tensor, Tensor]:
-        """Create a quaternion from euler angles.
-
-        Args:
-            matrix: the rotation matrix to convert of shape :math:`(B, 3, 3)`.
+        """Convert the quaternion to a triple of Euler angles (roll, pitch, yaw).
 
         Example:
             >>> q = Quaternion(tensor([2., 0., 1., 1.]))
@@ -313,6 +311,17 @@ class Quaternion(Module):
             tensor([[0.8776, 0.4794, 0.0000, 0.0000]], requires_grad=True)
         """
         return cls(axis_angle_to_quaternion(axis_angle))
+
+    def to_axis_angle(self) -> Tensor:
+        """Converts the quaternion to an axis-angle representation.
+
+        Example:
+            >>> q = Quaternion.identity()
+            >>> axis_angle = q.to_axis_angle()
+            >>> axis_angle
+            tensor([0., 0., 0.], grad_fn=<AsStridedBackward0>)
+        """
+        return quaternion_to_axis_angle(self.data)
 
     @classmethod
     def identity(
