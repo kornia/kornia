@@ -1,0 +1,68 @@
+name: Benchmark (PR)
+
+on:
+  push:
+    branches: [test-me-*]
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, ready_for_review]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+
+jobs:
+  benchmark_cpu:
+    # NOTE: from https://github.com/benchmark-action/github-action-benchmark?tab=readme-ov-file#stability-of-virtual-environment
+    #As far as watching the benchmark results of examples in this repository, the amplitude of the benchmarks
+    #is about +- 10~20%. If your benchmarks use some resources such as networks or file I/O, the amplitude
+    #might be bigger.
+    name: CPU Pytest benchmark
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: kornia/workflows/.github/actions/env@v1.5.3
+      with:
+        fetch-depth: 25 # this is to make sure we obtain the target base commit
+
+    - name: Setup benchmarks
+      run: |
+        echo "HEAD_JSON=$(mktemp)" >> $GITHUB_ENV
+        echo "BASE_JSON=$(mktemp)" >> $GITHUB_ENV
+        echo "PR_COMMENT=$(mktemp)" >>  $GITHUB_ENV
+
+    - name: Install benchmark requirements
+      run: pip install -r requirements/requirements-benchmarks.txt
+
+    - name: Run benchmarks BASE
+      # TODO: Save it using actions/cache then we don't need to regenerate it.
+      # By caching the result, it will also use the same information across PR's
+      run: |
+        cd benchmarks/
+        git checkout ${{ github.event.pull_request.base.sha }}
+        pytest ./ -vvv --benchmark-json ${{ env.BASE_JSON }}
+
+    - name: Run benchmarks HEAD
+      run: |
+        cd benchmarks/
+        git checkout ${{ github.sha }}
+        pytest ./ -vvv --benchmark-json ${{ env.HEAD_JSON }}
+
+    - name: Comment benchmark result
+      uses: benchmark-action/github-action-benchmark@v1
+      with:
+        tool: "pytest"
+        ref: ${{ github.sha }}
+        output-file-path: ${{ env.HEAD_JSON }}
+        external-data-json-path: ${{ env.BASE_JSON }}
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        comment-always: true
+        comment-on-alert: true
+        fail-on-alert: true
+        summary-always: true
+        skip-fetch-gh-pages: true
+        auto-push: false
+        save-data-file: false
+        # alert-comment-cc-users: '@johnnv1 @edgarriba'
