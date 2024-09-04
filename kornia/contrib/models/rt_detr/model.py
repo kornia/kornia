@@ -195,7 +195,7 @@ class RTDETR(ModelBase[RTDETRConfig]):
             return new_name
 
         def _state_dict_proc(state_dict: Dict[str, Tensor]) -> Dict[str, Tensor]:
-            state_dict = state_dict["ema"]["module"]
+            state_dict = state_dict["ema"]["module"]  # type:ignore
             new_state_dict = {}
 
             # Apply the regex-based mapping function to each key
