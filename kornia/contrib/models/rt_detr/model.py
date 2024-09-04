@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Optional
+from typing import Optional
 
 import torch
 
@@ -194,7 +194,7 @@ class RTDETR(ModelBase[RTDETRConfig]):
 
             return new_name
 
-        def _state_dict_proc(state_dict: Dict[str, Tensor]) -> Dict[str, Tensor]:
+        def _state_dict_proc(state_dict: dict[str, Tensor]) -> dict[str, Tensor]:
             state_dict = state_dict["ema"]["module"]  # type:ignore
             new_state_dict = {}
 

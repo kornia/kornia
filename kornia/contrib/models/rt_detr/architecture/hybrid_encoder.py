@@ -153,7 +153,7 @@ class AIFI(Module):
 
 class TransformerEncoder(nn.Module):
     def __init__(self, encoder_layer: nn.Module, num_layers: int) -> None:
-        super(TransformerEncoder, self).__init__()
+        super().__init__()
         self.layers = nn.ModuleList([copy.deepcopy(encoder_layer) for _ in range(num_layers)])
         self.num_layers = num_layers
 

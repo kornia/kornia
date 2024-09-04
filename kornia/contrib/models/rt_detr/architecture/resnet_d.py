@@ -7,7 +7,6 @@ https://github.com/PaddlePaddle/PaddleDetection/blob/release/2.6/ppdet/modeling/
 from __future__ import annotations
 
 from collections import OrderedDict
-from typing import List, Tuple
 
 from torch import nn
 
@@ -104,7 +103,7 @@ class ResNetD(Module):
     @staticmethod
     def make_stage(
         in_channels: int, out_channels: int, stride: int, n_blocks: int, block: type[BasicBlockD | BottleneckD]
-    ) -> Tuple[Module, int]:
+    ) -> tuple[Module, int]:
         stage = Block(
             nn.Sequential(
                 block(in_channels, out_channels, stride, False),
@@ -113,7 +112,7 @@ class ResNetD(Module):
         )
         return stage, out_channels * block.expansion
 
-    def forward(self, x: Tensor) -> List[Tensor]:
+    def forward(self, x: Tensor) -> list[Tensor]:
         x = self.conv1(x)
         res2 = self.res_layers[0](x)
         res3 = self.res_layers[1](res2)
