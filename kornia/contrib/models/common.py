@@ -34,11 +34,11 @@ class ConvNormAct(nn.Sequential):
             padding = (kernel_size - 1) // 2
         conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, 1, groups, False)
         norm = nn.BatchNorm2d(out_channels)
-        act = {"relu": nn.ReLU, "silu": nn.SiLU, "none": nn.Identity}[act](inplace=True)
+        activation = {"relu": nn.ReLU, "silu": nn.SiLU, "none": nn.Identity}[act](inplace=True)
 
         self.__setattr__(conv_naming, conv)
         self.__setattr__(norm_naming, norm)
-        self.__setattr__(act_naming, act)
+        self.__setattr__(act_naming, activation)
 
 
 # Lightly adapted from
