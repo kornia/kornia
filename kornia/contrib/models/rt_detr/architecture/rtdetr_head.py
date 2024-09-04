@@ -3,8 +3,8 @@
 
 from __future__ import annotations
 
-from typing import Optional
 import copy
+from typing import Optional
 
 import torch
 from torch import nn
@@ -198,9 +198,7 @@ class TransformerDecoder(Module):
         super().__init__()
         # self.layers = decoder_layers
         # TODO: come back to this later
-        self.layers = nn.ModuleList([
-           copy.deepcopy(decoder_layer) for _ in range(num_layers)
-        ])
+        self.layers = nn.ModuleList([copy.deepcopy(decoder_layer) for _ in range(num_layers)])
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
         self.eval_idx = eval_idx if eval_idx >= 0 else num_layers + eval_idx
@@ -304,7 +302,9 @@ class RTDETRHead(Module):
 
         # denoising part
         if num_denoising > 0:
-            self.denoising_class_embed = nn.Embedding(num_classes + 1, hidden_dim, padding_idx=num_classes)  # not used in evaluation
+            self.denoising_class_embed = nn.Embedding(
+                num_classes + 1, hidden_dim, padding_idx=num_classes
+            )  # not used in evaluation
 
         # decoder embedding
         self.query_pos_head = MLP(4, 2 * hidden_dim, hidden_dim, num_layers=2)

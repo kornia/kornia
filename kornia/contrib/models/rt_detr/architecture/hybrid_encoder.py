@@ -4,8 +4,8 @@ ppdet/modeling/transformers/hybrid_encoder.py."""
 
 from __future__ import annotations
 
-from typing import Optional
 import copy
+from typing import Optional
 
 import torch
 import torch.nn.functional as F
@@ -208,11 +208,14 @@ class CCFM(Module):
 class HybridEncoder(Module):
     def __init__(self, in_channels: list[int], hidden_dim: int, dim_feedforward: int, expansion: float = 1.0) -> None:
         super().__init__()
-        self.input_proj = nn.ModuleList([
-            ConvNormAct(  # To align the naming strategy for the official weights
-                in_ch, hidden_dim, 1, act="none", conv_naming="0", norm_naming="1", act_naming="2"
-            ) for in_ch in in_channels
-        ])
+        self.input_proj = nn.ModuleList(
+            [
+                ConvNormAct(  # To align the naming strategy for the official weights
+                    in_ch, hidden_dim, 1, act="none", conv_naming="0", norm_naming="1", act_naming="2"
+                )
+                for in_ch in in_channels
+            ]
+        )
         encoder_layer = AIFI(hidden_dim, 8, dim_feedforward)
         self.encoder = nn.Sequential(TransformerEncoder(encoder_layer, 1))
         self.ccfm = CCFM(len(in_channels), hidden_dim, expansion)

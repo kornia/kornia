@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Dict
-import re
+from typing import Dict, Optional
 
 import torch
+
 from kornia.contrib.models.base import ModelBase
 from kornia.contrib.models.rt_detr.architecture.hgnetv2 import PPHGNetV2
 from kornia.contrib.models.rt_detr.architecture.hybrid_encoder import HybridEncoder
@@ -15,13 +16,12 @@ from kornia.contrib.models.rt_detr.architecture.resnet_d import ResNetD
 from kornia.contrib.models.rt_detr.architecture.rtdetr_head import RTDETRHead
 from kornia.core import Tensor
 
-
 URLs = {
-    'rtdetr_r18vd': 'https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r18vd_dec3_6x_coco_from_paddle.pth',
-    'rtdetr_r34vd': 'https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r34vd_dec4_6x_coco_from_paddle.pth',
-    'rtdetr_r50vd_m': 'https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r50vd_m_6x_coco_from_paddle.pth',
-    'rtdetr_r50vd': 'https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r50vd_6x_coco_from_paddle.pth',
-    'rtdetr_r101vd': 'https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r101vd_6x_coco_from_paddle.pth',
+    "rtdetr_r18vd": "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r18vd_dec3_6x_coco_from_paddle.pth",
+    "rtdetr_r34vd": "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r34vd_dec4_6x_coco_from_paddle.pth",
+    "rtdetr_r50vd_m": "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r50vd_m_6x_coco_from_paddle.pth",
+    "rtdetr_r50vd": "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r50vd_6x_coco_from_paddle.pth",
+    "rtdetr_r101vd": "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r101vd_6x_coco_from_paddle.pth",
 }
 
 
@@ -175,28 +175,26 @@ class RTDETR(ModelBase[RTDETRConfig]):
         """
 
         state_dict = torch.hub.load_state_dict_from_url(
-            URLs[model_name],
-            map_location="cuda:0" if torch.cuda.is_available() else "cpu"
+            URLs[model_name], map_location="cuda:0" if torch.cuda.is_available() else "cpu"
         )
 
         def map_name(old_name: str) -> str:
             # Start with the old name
             new_name = old_name
 
-            new_name = re.sub('encoder.pan_blocks', 'encoder.ccfm.pan_blocks', new_name)
-            new_name = re.sub('encoder.downsample_convs', 'encoder.ccfm.downsample_convs', new_name)
-            new_name = re.sub('encoder.fpn_blocks', 'encoder.ccfm.fpn_blocks', new_name)
-            new_name = re.sub('encoder.lateral_convs', 'encoder.ccfm.lateral_convs', new_name)
+            new_name = re.sub("encoder.pan_blocks", "encoder.ccfm.pan_blocks", new_name)
+            new_name = re.sub("encoder.downsample_convs", "encoder.ccfm.downsample_convs", new_name)
+            new_name = re.sub("encoder.fpn_blocks", "encoder.ccfm.fpn_blocks", new_name)
+            new_name = re.sub("encoder.lateral_convs", "encoder.ccfm.lateral_convs", new_name)
 
             # Backbone renaming
-            new_name = re.sub(f'.branch2b.', '.convs.branch2b.', new_name)
-            new_name = re.sub(f'.branch2a.', '.convs.branch2a.', new_name)
-            new_name = re.sub(f'.branch2c.', '.convs.branch2c.', new_name)
+            new_name = re.sub(".branch2b.", ".convs.branch2b.", new_name)
+            new_name = re.sub(".branch2a.", ".convs.branch2a.", new_name)
+            new_name = re.sub(".branch2c.", ".convs.branch2c.", new_name)
 
             return new_name
 
         def _state_dict_proc(state_dict: Dict[str, Tensor]) -> Dict[str, Tensor]:
-
             state_dict = state_dict["ema"]["module"]
             new_state_dict = {}
 

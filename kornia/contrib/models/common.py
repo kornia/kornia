@@ -7,11 +7,18 @@ from torch import nn
 from kornia.core import Module, Tensor, pad
 
 
-
 class ConvNormAct(nn.Sequential):
     def __init__(
-        self, in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, act: str = "relu", groups: int = 1,
-        conv_naming: str = "conv", norm_naming: str = "norm", act_naming: str = "act"
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int,
+        stride: int = 1,
+        act: str = "relu",
+        groups: int = 1,
+        conv_naming: str = "conv",
+        norm_naming: str = "norm",
+        act_naming: str = "act",
     ) -> None:
         super().__init__()
         if kernel_size % 2 == 0:

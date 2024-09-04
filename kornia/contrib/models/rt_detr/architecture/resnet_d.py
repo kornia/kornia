@@ -5,8 +5,9 @@ https://github.com/PaddlePaddle/PaddleDetection/blob/release/2.6/ppdet/modeling/
 """
 
 from __future__ import annotations
-from typing import List, Tuple
+
 from collections import OrderedDict
+from typing import List, Tuple
 
 from torch import nn
 
@@ -17,10 +18,9 @@ from kornia.core.check import KORNIA_CHECK
 
 def _make_shortcut(in_channels: int, out_channels: int, stride: int) -> Module:
     return (
-        nn.Sequential(OrderedDict([
-            ("pool", nn.AvgPool2d(2, 2)),
-            ("conv", ConvNormAct(in_channels, out_channels, 1, act="none"))
-        ]))
+        nn.Sequential(
+            OrderedDict([("pool", nn.AvgPool2d(2, 2)), ("conv", ConvNormAct(in_channels, out_channels, 1, act="none"))])
+        )
         if stride == 2
         else ConvNormAct(in_channels, out_channels, 1, act="none")
     )
@@ -32,10 +32,14 @@ class BasicBlockD(Module):
     def __init__(self, in_channels: int, out_channels: int, stride: int, shortcut: bool) -> None:
         KORNIA_CHECK(stride in {1, 2})
         super().__init__()
-        self.convs = nn.Sequential(OrderedDict([
-            ("branch2a", ConvNormAct(in_channels, out_channels, 3, stride=stride)),
-            ("branch2b", ConvNormAct(out_channels, out_channels, 3, act="none")),
-        ]))
+        self.convs = nn.Sequential(
+            OrderedDict(
+                [
+                    ("branch2a", ConvNormAct(in_channels, out_channels, 3, stride=stride)),
+                    ("branch2b", ConvNormAct(out_channels, out_channels, 3, act="none")),
+                ]
+            )
+        )
         self.short = nn.Identity() if shortcut else _make_shortcut(in_channels, out_channels, stride)
         self.relu = nn.ReLU(inplace=True)
 
@@ -50,11 +54,15 @@ class BottleneckD(Module):
         KORNIA_CHECK(stride in {1, 2})
         super().__init__()
         expanded_out_channels = out_channels * self.expansion
-        self.convs = nn.Sequential(OrderedDict([
-            ("branch2a", ConvNormAct(in_channels, out_channels, 1)),
-            ("branch2b", ConvNormAct(out_channels, out_channels, 3, stride=stride)),
-            ("branch2c", ConvNormAct(out_channels, expanded_out_channels, 1, act="none")),
-        ]))
+        self.convs = nn.Sequential(
+            OrderedDict(
+                [
+                    ("branch2a", ConvNormAct(in_channels, out_channels, 1)),
+                    ("branch2b", ConvNormAct(out_channels, out_channels, 3, stride=stride)),
+                    ("branch2c", ConvNormAct(out_channels, expanded_out_channels, 1, act="none")),
+                ]
+            )
+        )
         self.short = nn.Identity() if shortcut else _make_shortcut(in_channels, expanded_out_channels, stride)
         self.relu = nn.ReLU(inplace=True)
 
@@ -73,12 +81,16 @@ class ResNetD(Module):
         KORNIA_CHECK(len(n_blocks) == 4)
         super().__init__()
         in_channels = 64
-        self.conv1 = nn.Sequential(OrderedDict([
-            ("conv1_1", ConvNormAct(3, in_channels // 2, 3, stride=2)),
-            ("conv1_2", ConvNormAct(in_channels // 2, in_channels // 2, 3)),
-            ("conv1_3", ConvNormAct(in_channels // 2, in_channels, 3)),
-            ("pool", nn.MaxPool2d(3, stride=2, padding=1)),
-        ]))
+        self.conv1 = nn.Sequential(
+            OrderedDict(
+                [
+                    ("conv1_1", ConvNormAct(3, in_channels // 2, 3, stride=2)),
+                    ("conv1_2", ConvNormAct(in_channels // 2, in_channels // 2, 3)),
+                    ("conv1_3", ConvNormAct(in_channels // 2, in_channels, 3)),
+                    ("pool", nn.MaxPool2d(3, stride=2, padding=1)),
+                ]
+            )
+        )
 
         res2, in_channels = self.make_stage(in_channels, 64, 1, n_blocks[0], block)
         res3, in_channels = self.make_stage(in_channels, 128, 2, n_blocks[1], block)
@@ -93,10 +105,12 @@ class ResNetD(Module):
     def make_stage(
         in_channels: int, out_channels: int, stride: int, n_blocks: int, block: type[BasicBlockD | BottleneckD]
     ) -> Tuple[Module, int]:
-        stage = Block(nn.Sequential(
-            block(in_channels, out_channels, stride, False),
-            *[block(out_channels * block.expansion, out_channels, 1, True) for _ in range(n_blocks - 1)],
-        ))
+        stage = Block(
+            nn.Sequential(
+                block(in_channels, out_channels, stride, False),
+                *[block(out_channels * block.expansion, out_channels, 1, True) for _ in range(n_blocks - 1)],
+            )
+        )
         return stage, out_channels * block.expansion
 
     def forward(self, x: Tensor) -> List[Tensor]:
