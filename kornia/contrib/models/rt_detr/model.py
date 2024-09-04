@@ -180,9 +180,9 @@ class RTDETR(ModelBase[RTDETRConfig]):
         )
 
         def map_name(old_name: str) -> str:
-            # Start with the old name
             new_name = old_name
 
+            # Encoder renaming
             new_name = re.sub("encoder.pan_blocks", "encoder.ccfm.pan_blocks", new_name)
             new_name = re.sub("encoder.downsample_convs", "encoder.ccfm.downsample_convs", new_name)
             new_name = re.sub("encoder.fpn_blocks", "encoder.ccfm.fpn_blocks", new_name)
