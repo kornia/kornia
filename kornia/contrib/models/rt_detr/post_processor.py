@@ -4,7 +4,6 @@ from __future__ import annotations
 import torch
 
 from kornia.core import Module, Tensor, concatenate
-from kornia.image.base import ImageSize
 
 
 class DETRPostProcessor(Module):
@@ -12,7 +11,7 @@ class DETRPostProcessor(Module):
         super().__init__()
         self.confidence_threshold = confidence_threshold
 
-    def forward(self, logits: Tensor, boxes: Tensor, original_sizes: list[ImageSize]) -> list[Tensor]:
+    def forward(self, logits: Tensor, boxes: Tensor, original_sizes: Tensor) -> list[Tensor]:
         """Post-process outputs from DETR.
 
         Args:
@@ -20,7 +19,8 @@ class DETRPostProcessor(Module):
                 queries, :math:`K` is the number of classes.
             boxes: tensor with shape :math:`(N, Q, 4)`, where :math:`N` is the batch size, :math:`Q` is the number of
                 queries.
-            original_sizes: list of tuples, each tuple represent (img_height, img_width).
+            original_sizes: tensor with shape :math:`(N, 2)`, where :math:`N` is the batch size and each element
+                represents the image size of (img_height, img_width).
 
         Returns:
             Processed detections. For each image, the detections have shape (D, 6), where D is the number of detections
@@ -38,8 +38,8 @@ class DETRPostProcessor(Module):
         boxes_xy = concatenate([cxcy - wh * 0.5, wh], -1)
 
         sizes_wh = torch.empty(1, 1, 2, device=boxes.device, dtype=boxes.dtype)
-        sizes_wh[..., 0] = original_sizes[0].width
-        sizes_wh[..., 1] = original_sizes[0].height
+        sizes_wh[..., 0] = original_sizes[0][0]
+        sizes_wh[..., 1] = original_sizes[0][0]
         sizes_wh = sizes_wh.repeat(1, 1, 2)
 
         boxes_xy = boxes_xy * sizes_wh
