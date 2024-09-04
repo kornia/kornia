@@ -167,6 +167,7 @@ class RTDETR(ModelBase[RTDETRConfig]):
             model.load_checkpoint(config.checkpoint)
         return model
 
+    @staticmethod
     def from_pretrained(model_name: str) -> RTDETR:
         """Load model from pretrained weights.
 
