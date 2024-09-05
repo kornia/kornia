@@ -276,7 +276,8 @@ class RTDETRHead(Module):
         super().__init__()
         self.num_queries = num_queries
         # TODO: verify this is correct
-        assert len(in_channels) <= num_levels
+        if len(in_channels) > num_levels:
+            raise ValueError(f"`num_levels` cannot be greater than {len(in_channels)}. Got {num_levels}.")
         self.num_levels = num_levels
 
         # build the input projection layers
