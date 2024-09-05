@@ -39,7 +39,7 @@ class DETRPostProcessor(Module):
 
         sizes_wh = torch.empty(1, 1, 2, device=boxes.device, dtype=boxes.dtype)
         sizes_wh[..., 0] = original_sizes[0][0]
-        sizes_wh[..., 1] = original_sizes[0][0]
+        sizes_wh[..., 1] = original_sizes[0][1]
         sizes_wh = sizes_wh.repeat(1, 1, 2)
 
         boxes_xy = boxes_xy * sizes_wh

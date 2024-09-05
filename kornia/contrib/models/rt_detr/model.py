@@ -233,8 +233,6 @@ class RTDETR(ModelBase[RTDETRConfig]):
               :math:`K` is the number of classes.
             - **boxes** - Tensor of shape :math:`(N, Q, 4)`, where :math:`Q` is the number of queries.
         """
-        # if self.training:
-        #     raise RuntimeError("Only evaluation mode is supported. Please call model.eval().")
 
         feats = self.backbone(images)
         feats_buf = self.encoder(feats)

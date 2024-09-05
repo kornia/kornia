@@ -113,12 +113,17 @@ class ResizePreProcessor(Module):
         self.interpolation_mode = interpolation_mode
 
     def forward(self, imgs: list[Tensor]) -> tuple[Tensor, Tensor]:
+        """
+        Returns:
+            resized_imgs: resized images in a batch.
+            original_sizes: the original image sizes of (height, width).
+        """
         # TODO: support other input formats e.g. file path, numpy
         resized_imgs, original_sizes = [], []
         for i in range(len(imgs)):
             img = imgs[i]
             # NOTE: assume that image layout is CHW
-            original_sizes.append([img.shape[1], img.shape[2]])
+            original_sizes.append([img.shape[-2], img.shape[-1]])
             resized_imgs.append(
                 # TODO: fix kornia resize to support onnx
                 torch.nn.functional.interpolate(img.unsqueeze(0), size=self.size, mode=self.interpolation_mode)

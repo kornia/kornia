@@ -196,8 +196,6 @@ class TransformerDecoderLayer(Module):
 class TransformerDecoder(Module):
     def __init__(self, hidden_dim: int, decoder_layer: nn.Module, num_layers: int, eval_idx: int = -1) -> None:
         super().__init__()
-        # self.layers = decoder_layers
-        # TODO: come back to this later
         self.layers = nn.ModuleList([copy.deepcopy(decoder_layer) for _ in range(num_layers)])
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
@@ -271,14 +269,15 @@ class RTDETRHead(Module):
         num_decoder_layers: int,
         num_heads: int = 8,
         num_decoder_points: int = 4,
-        # num_levels: int = 3,
+        num_levels: int = 3,
         dropout: float = 0.0,
         num_denoising: int = 100,
     ) -> None:
         super().__init__()
         self.num_queries = num_queries
         # TODO: verify this is correct
-        self.num_levels = len(in_channels)
+        assert len(in_channels) <= num_levels
+        self.num_levels = num_levels
 
         # build the input projection layers
         self.input_proj = nn.ModuleList()
@@ -292,7 +291,7 @@ class RTDETRHead(Module):
             embed_dim=hidden_dim,
             num_heads=num_heads,
             dropout=dropout,
-            num_levels=len(in_channels),
+            num_levels=self.num_levels,
             num_points=num_decoder_points,
         )
 
