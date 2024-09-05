@@ -6,9 +6,8 @@ from typing import Optional
 
 import torch
 
-from kornia.core import Module, Tensor, concatenate
+from kornia.core import Module, Tensor, as_tensor, concatenate
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.image.base import ImageSize
 
 __all__ = [
     "BoundingBoxDataFormat",
@@ -113,18 +112,18 @@ class ResizePreProcessor(Module):
         self.size = size
         self.interpolation_mode = interpolation_mode
 
-    def forward(self, imgs: list[Tensor]) -> tuple[Tensor, list[ImageSize]]:
+    def forward(self, imgs: list[Tensor]) -> tuple[Tensor, Tensor]:
         # TODO: support other input formats e.g. file path, numpy
         resized_imgs, original_sizes = [], []
         for i in range(len(imgs)):
             img = imgs[i]
             # NOTE: assume that image layout is CHW
-            original_sizes.append(ImageSize(height=img.shape[1], width=img.shape[2]))
+            original_sizes.append([img.shape[1], img.shape[2]])
             resized_imgs.append(
                 # TODO: fix kornia resize to support onnx
                 torch.nn.functional.interpolate(img.unsqueeze(0), size=self.size, mode=self.interpolation_mode)
             )
-        return concatenate(resized_imgs), original_sizes
+        return concatenate(resized_imgs), as_tensor(original_sizes)
 
 
 # TODO: move this to kornia.models as AlgorithmicModel api
