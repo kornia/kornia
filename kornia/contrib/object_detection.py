@@ -168,7 +168,9 @@ class ObjectDetector(Module):
         return detections
 
     def draw(self, images: list[Tensor], output_type: str = "torch") -> list[Tensor] | Image.Image:  # type: ignore
-        """Very simple drawing. Needs to be more fancy later.
+        """Very simple drawing.
+
+        Needs to be more fancy later.
         """
         detections = self.forward(images)
         output = []
@@ -176,14 +178,12 @@ class ObjectDetector(Module):
             out_img = image[None].clone()
             for out in detection:
                 out_img = draw_rectangle(
-                    out_img,
-                    torch.Tensor([[[out[-4], out[-3], out[-4] + out[-2], out[-3] + out[-1]]]])
+                    out_img, torch.Tensor([[[out[-4], out[-3], out[-4] + out[-2], out[-3] + out[-1]]]])
                 )
             if output_type == "torch":
                 output.append(out_img)
             elif output_type == "pil":
-                output.append(Image.fromarray(
-                    (out_img[0] * 255).permute(1, 2, 0).numpy().astype(np.uint8)))  # type: ignore
+                output.append(Image.fromarray((out_img[0] * 255).permute(1, 2, 0).numpy().astype(np.uint8)))  # type: ignore
         return output
 
     def compile(

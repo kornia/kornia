@@ -213,7 +213,7 @@ class RTDETR(ModelBase[RTDETRConfig]):
 
         model.load_state_dict(_state_dict_proc(state_dict))
         return model
-    
+
     @staticmethod
     def from_name(model_name: str, num_classes: int = 80) -> RTDETR:
         """Load model without pretrained weights.
@@ -234,7 +234,7 @@ class RTDETR(ModelBase[RTDETRConfig]):
             model = RTDETR.from_config(RTDETRConfig(RTDETRModelType.resnet101d, num_classes))
         else:
             raise ValueError
-        
+
         return model
 
     def forward(self, images: Tensor) -> tuple[Tensor, Tensor]:
