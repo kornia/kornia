@@ -175,6 +175,9 @@ class RTDETR(ModelBase[RTDETRConfig]):
             model_name: 'rtdetr_r18vd', 'rtdetr_r34vd', 'rtdetr_r50vd_m', 'rtdetr_r50vd', 'rtdetr_r101vd'.
         """
 
+        if model_name not in URLs:
+            raise ValueError(f"No pretrained model for '{model_name}'. Please select from {list(URLs.keys())}.")
+
         state_dict = torch.hub.load_state_dict_from_url(
             URLs[model_name], map_location="cuda:0" if torch.cuda.is_available() else "cpu"
         )
@@ -206,20 +209,32 @@ class RTDETR(ModelBase[RTDETRConfig]):
 
             return new_state_dict
 
-        if model_name == "rtdetr_r18vd":
-            model = RTDETR.from_config(RTDETRConfig(RTDETRModelType.resnet18d, 80))
-        elif model_name == "rtdetr_r34vd":
-            model = RTDETR.from_config(RTDETRConfig(RTDETRModelType.resnet34d, 80))
-        elif model_name == "rtdetr_r50vd_m":
-            model = RTDETR.from_config(RTDETRConfig(RTDETRModelType.resnet50d, 80))
-        elif model_name == "rtdetr_r50vd":
-            model = RTDETR.from_config(RTDETRConfig(RTDETRModelType.resnet50d, 80))
-        elif model_name == "rtdetr_r101vd":
-            model = RTDETR.from_config(RTDETRConfig(RTDETRModelType.resnet101d, 80))
-        else:
-            raise ValueError
+        model = RTDETR.from_name(model_name, num_classes=80)
 
         model.load_state_dict(_state_dict_proc(state_dict))
+        return model
+    
+    @staticmethod
+    def from_name(model_name: str, num_classes: int = 80) -> RTDETR:
+        """Load model without pretrained weights.
+
+        Args:
+            model_name: 'rtdetr_r18vd', 'rtdetr_r34vd', 'rtdetr_r50vd_m', 'rtdetr_r50vd', 'rtdetr_r101vd'.
+        """
+
+        if model_name == "rtdetr_r18vd":
+            model = RTDETR.from_config(RTDETRConfig(RTDETRModelType.resnet18d, num_classes))
+        elif model_name == "rtdetr_r34vd":
+            model = RTDETR.from_config(RTDETRConfig(RTDETRModelType.resnet34d, num_classes))
+        elif model_name == "rtdetr_r50vd_m":
+            model = RTDETR.from_config(RTDETRConfig(RTDETRModelType.resnet50d, num_classes))
+        elif model_name == "rtdetr_r50vd":
+            model = RTDETR.from_config(RTDETRConfig(RTDETRModelType.resnet50d, num_classes))
+        elif model_name == "rtdetr_r101vd":
+            model = RTDETR.from_config(RTDETRConfig(RTDETRModelType.resnet101d, num_classes))
+        else:
+            raise ValueError
+        
         return model
 
     def forward(self, images: Tensor) -> tuple[Tensor, Tensor]:
