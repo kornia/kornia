@@ -8,6 +8,8 @@ import torch
 
 from kornia.core import Module, Tensor, as_tensor, concatenate
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.external import PILImage as Image
+from kornia.core.external import numpy as np
 from kornia.utils.draw import draw_rectangle
 
 __all__ = [
@@ -165,7 +167,7 @@ class ObjectDetector(Module):
         detections = self.post_processor(logits, boxes, images_sizes)
         return detections
 
-    def draw(self, images: list[Tensor]) -> list[Tensor]:
+    def draw(self, images: list[Tensor], output_type: str = "torch") -> list[Tensor] | Image.Image:  # type: ignore
         """Very simple drawing. Needs to be more fancy later.
         """
         detections = self.forward(images)
@@ -177,7 +179,11 @@ class ObjectDetector(Module):
                     out_img,
                     torch.Tensor([[[out[-4], out[-3], out[-4] + out[-2], out[-3] + out[-1]]]])
                 )
-            output.append(out_img)
+            if output_type == "torch":
+                output.append(out_img)
+            elif output_type == "pil":
+                output.append(Image.fromarray(
+                    (out_img[0] * 255).permute(1, 2, 0).numpy().astype(np.uint8)))  # type: ignore
         return output
 
     def compile(
