@@ -171,7 +171,7 @@ class ObjectDetector(Module):
         detections = self.forward(images)
         output = []
         for image, detection in zip(images, detections):
-            out_img = image.clone()
+            out_img = image[None].clone()
             for out in detection:
                 out_img = draw_rectangle(
                     out_img,
