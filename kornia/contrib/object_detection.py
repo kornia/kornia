@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import datetime
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
@@ -11,6 +13,7 @@ from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.external import PILImage as Image
 from kornia.core.external import numpy as np
 from kornia.utils.draw import draw_rectangle
+from kornia.io import write_image
 
 __all__ = [
     "BoundingBoxDataFormat",
@@ -181,10 +184,27 @@ class ObjectDetector(Module):
                     out_img, torch.Tensor([[[out[-4], out[-3], out[-4] + out[-2], out[-3] + out[-1]]]])
                 )
             if output_type == "torch":
-                output.append(out_img)
+                output.append(out_img[0])
             elif output_type == "pil":
                 output.append(Image.fromarray((out_img[0] * 255).permute(1, 2, 0).numpy().astype(np.uint8)))  # type: ignore
+            else:
+                raise RuntimeError(f"Unsupported output type `{output_type}`.")
         return output
+
+    def save(self, images: list[Tensor], directory: Optional[str] = None) -> None:
+        """Saves the output image(s) to a directory.
+
+        Args:
+            name: Directory to save the images.
+            n_row: Number of images displayed in each row of the grid.
+        """
+        if directory is None:
+            name = f"detection-{datetime.datetime.now(tz=datetime.timezone.utc).strftime('%Y%m%d%H%M%S')!s}"
+            directory = os.path.join("Kornia_outputs", name)
+        outputs = self.draw(images)
+        os.makedirs(directory, exist_ok=True)
+        for i, out_image in enumerate(outputs):
+            write_image(os.path.join(directory, f"{str(i).zfill(6)}.jpg"), out_image.mul(255.0).byte())
 
     def compile(
         self,
