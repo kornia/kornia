@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import os
 import datetime
+import os
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
@@ -12,8 +12,8 @@ from kornia.core import Module, Tensor, as_tensor, concatenate
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.external import PILImage as Image
 from kornia.core.external import numpy as np
-from kornia.utils.draw import draw_rectangle
 from kornia.io import write_image
+from kornia.utils.draw import draw_rectangle
 
 __all__ = [
     "BoundingBoxDataFormat",
