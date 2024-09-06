@@ -8,6 +8,7 @@ import torch
 
 from kornia.core import Module, Tensor, as_tensor, concatenate
 from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.utils.draw import draw_rectangle
 
 __all__ = [
     "BoundingBoxDataFormat",
@@ -163,6 +164,21 @@ class ObjectDetector(Module):
         logits, boxes = self.model(images)
         detections = self.post_processor(logits, boxes, images_sizes)
         return detections
+
+    def draw(self, images: list[Tensor]) -> list[Tensor]:
+        """Very simple drawing. Needs to be more fancy later.
+        """
+        detections = self.forward(images)
+        output = []
+        for image, detection in zip(images, detections):
+            out_img = image.clone()
+            for out in detection:
+                out_img = draw_rectangle(
+                    out_img,
+                    torch.Tensor([[[out[-4], out[-3], out[-4] + out[-2], out[-3] + out[-1]]]])
+                )
+            output.append(out_img)
+        return output
 
     def compile(
         self,
