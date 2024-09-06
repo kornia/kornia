@@ -66,7 +66,7 @@ class RTDETRDetectorBuilder:
         return ObjectDetector(
             model,
             ResizePreProcessor((image_size, image_size)) if image_size is not None else nn.Identity(),
-            DETRPostProcessor(confidence_threshold)
+            DETRPostProcessor(confidence_threshold),
         )
 
     @staticmethod
