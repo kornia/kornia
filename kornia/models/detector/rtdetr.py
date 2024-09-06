@@ -18,15 +18,19 @@ class RTDETRDetectorBuilder:
         if model_name is not None and config is not None:
             raise ValueError("Either `model_name` or `config` should be `None`.")
 
-        if model_name is None and config is None:
-            warnings.warn("No `model_name` or `config` found. Will build `rtdetr_r18vd`.")
-            model_name = "rtdetr_r18vd"
-
         if config is not None:
             model = RTDETR.from_config(config)
-        elif pretrained:
-            model = RTDETR.from_pretrained(model_name)
+        elif model_name is not None:
+            if pretrained:
+                model = RTDETR.from_pretrained(model_name)
+            else:
+                model = RTDETR.from_name(model_name)
         else:
-            model = RTDETR.from_name(model_name)
+            warnings.warn("No `model_name` or `config` found. Will build pretrained `rtdetr_r18vd`.")
+            model = RTDETR.from_pretrained("rtdetr_r18vd")
 
-        return ObjectDetector(model, ResizePreProcessor(image_size), DETRPostProcessor(confidence_threshold))
+        return ObjectDetector(
+            model,
+            ResizePreProcessor(image_size),
+            DETRPostProcessor(confidence_threshold)
+        )
