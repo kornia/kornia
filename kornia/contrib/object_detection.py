@@ -167,12 +167,10 @@ class ObjectDetector(Module):
         detections = self.post_processor(logits, boxes, images_sizes)
         return detections
 
-    def draw(
-        self,
-        images: list[Tensor],
-        output_type: str = "torch"
-    ) -> list[Tensor] | list[Image.Image]:  # type: ignore
-        """Very simple drawing. Needs to be more fancy later.
+    def draw(self, images: list[Tensor], output_type: str = "torch") -> list[Tensor] | list[Image.Image]:  # type: ignore
+        """Very simple drawing.
+
+        Needs to be more fancy later.
         """
         detections = self.forward(images)
         output = []

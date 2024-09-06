@@ -29,8 +29,4 @@ class RTDETRDetectorBuilder:
             warnings.warn("No `model_name` or `config` found. Will build pretrained `rtdetr_r18vd`.")
             model = RTDETR.from_pretrained("rtdetr_r18vd")
 
-        return ObjectDetector(
-            model,
-            ResizePreProcessor(image_size),
-            DETRPostProcessor(confidence_threshold)
-        )
+        return ObjectDetector(model, ResizePreProcessor(image_size), DETRPostProcessor(confidence_threshold))
