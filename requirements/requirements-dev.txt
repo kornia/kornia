@@ -4,6 +4,7 @@ diffusers
 mypy
 numpy<3
 onnx
+onnxruntime
 pillow
 pre-commit>=2
 pytest==8.3.3
@@ -12,5 +13,3 @@ requests
 setuptools>=61.2  # needed by pytorch dynamo / triton
 transformers
 types-requests
-onnx
-onnxruntime
