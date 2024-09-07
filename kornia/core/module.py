@@ -15,14 +15,14 @@ from .external import numpy as np
 
 class ONNXExportMixin:
     ONNX_EXPORTABLE: bool = True
-    ONNX_DEFAULT_INPUTSHAPE: tuple[int, int, int, int] = [-1, -1, -1, -1]
-    ONNX_DEFAULT_OUTPUTSHAPE: tuple[int, int, int, int] = [-1, -1, -1, -1]
+    ONNX_DEFAULT_INPUTSHAPE: list[int] = [-1, -1, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: list[int] = [-1, -1, -1, -1]
 
     def to_onnx(
         self,
         onnx_name: Optional[str] = None,
-        input_shape: Optional[tuple[int, int, int, int]] = None,
-        output_shape: Optional[tuple[int, int, int, int]] = None,
+        input_shape: Optional[list[int]] = None,
+        output_shape: Optional[list[int]] = None,
     ) -> None:
         if not self.ONNX_EXPORTABLE:
             raise RuntimeError("This object cannot be exported to ONNX.")
@@ -46,7 +46,7 @@ class ONNXExportMixin:
         }
 
         torch.onnx.export(
-            self,
+            self,  # type: ignore
             dummy_input,
             onnx_name,
             export_params=True,

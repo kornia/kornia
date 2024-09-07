@@ -2,7 +2,8 @@ accelerate
 coverage
 diffusers
 mypy
-numpy<2
+numpy<3
+types-requests
 onnx
 pillow
 pre-commit>=2

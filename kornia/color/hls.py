@@ -142,8 +142,8 @@ class RgbToHls(Module):
         >>> output = hls(input)  # 2x3x4x5
     """
 
-    ONNX_DEFAULT_INPUTSHAPE: tuple[int, int, int, int] = [-1, 3, -1, -1]
-    ONNX_DEFAULT_OUTPUTSHAPE: tuple[int, int, int, int] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_INPUTSHAPE: list[int] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: list[int] = [-1, 3, -1, -1]
 
     def forward(self, image: Tensor) -> Tensor:
         return rgb_to_hls(image)
@@ -170,8 +170,8 @@ class HlsToRgb(Module):
         >>> output = rgb(input)  # 2x3x4x5
     """
 
-    ONNX_DEFAULT_INPUTSHAPE: tuple[int, int, int, int] = [-1, 3, -1, -1]
-    ONNX_DEFAULT_OUTPUTSHAPE: tuple[int, int, int, int] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_INPUTSHAPE: list[int] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: list[int] = [-1, 3, -1, -1]
 
     def forward(self, image: Tensor) -> Tensor:
         return hls_to_rgb(image)

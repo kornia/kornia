@@ -116,8 +116,8 @@ class RgbToHsv(Module):
         >>> output = hsv(input)  # 2x3x4x5
     """
 
-    ONNX_DEFAULT_INPUTSHAPE: tuple[int, int, int, int] = [-1, 3, -1, -1]
-    ONNX_DEFAULT_OUTPUTSHAPE: tuple[int, int, int, int] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_INPUTSHAPE: list[int] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: list[int] = [-1, 3, -1, -1]
 
     def __init__(self, eps: float = 1e-6) -> None:
         super().__init__()
@@ -145,8 +145,8 @@ class HsvToRgb(Module):
         >>> output = rgb(input)  # 2x3x4x5
     """
 
-    ONNX_DEFAULT_INPUTSHAPE: tuple[int, int, int, int] = [-1, 3, -1, -1]
-    ONNX_DEFAULT_OUTPUTSHAPE: tuple[int, int, int, int] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_INPUTSHAPE: list[int] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: list[int] = [-1, 3, -1, -1]
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return hsv_to_rgb(image)
