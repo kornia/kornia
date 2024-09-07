@@ -5,6 +5,7 @@ import torch
 from torch import nn
 
 from kornia.core import ones, ones_like, zeros
+from kornia.core import ImageModule as Module
 from kornia.filters import gaussian_blur2d
 from kornia.utils import _extract_device_dtype
 from kornia.utils.image import perform_keep_shape_image
@@ -648,7 +649,7 @@ def rescale(
     return resize(input, size, interpolation=interpolation, align_corners=align_corners, antialias=antialias)
 
 
-class Resize(nn.Module):
+class Resize(Module):
     r"""Resize the input torch.Tensor to the given size.
 
     Args:
@@ -704,7 +705,7 @@ class Resize(nn.Module):
         )
 
 
-class Affine(nn.Module):
+class Affine(Module):
     r"""Apply multiple elementary affine transforms simultaneously.
 
     Args:
@@ -800,7 +801,7 @@ class Affine(nn.Module):
         return affine(input, matrix[..., :2, :3], self.mode, self.padding_mode, self.align_corners)
 
 
-class Rescale(nn.Module):
+class Rescale(Module):
     r"""Rescale the input torch.Tensor with the given factor.
 
     Args:
@@ -843,7 +844,7 @@ class Rescale(nn.Module):
         )
 
 
-class Rotate(nn.Module):
+class Rotate(Module):
     r"""Rotate the tensor anti-clockwise about the centre.
 
     Args:
@@ -888,7 +889,7 @@ class Rotate(nn.Module):
         return rotate(input, self.angle, self.center, self.mode, self.padding_mode, self.align_corners)
 
 
-class Translate(nn.Module):
+class Translate(Module):
     r"""Translate the tensor in pixel units.
 
     Args:
@@ -925,7 +926,7 @@ class Translate(nn.Module):
         return translate(input, self.translation, self.mode, self.padding_mode, self.align_corners)
 
 
-class Scale(nn.Module):
+class Scale(Module):
     r"""Scale the tensor by a factor.
 
     Args:
@@ -972,7 +973,7 @@ class Scale(nn.Module):
         return scale(input, self.scale_factor, self.center, self.mode, self.padding_mode, self.align_corners)
 
 
-class Shear(nn.Module):
+class Shear(Module):
     r"""Shear the tensor.
 
     Args:

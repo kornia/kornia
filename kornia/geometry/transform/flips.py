@@ -1,6 +1,7 @@
 import torch
 
-from kornia.core import Module, Tensor
+from kornia.core import Tensor
+from kornia.core import ImageModule as Module
 
 __all__ = ["Vflip", "Hflip", "Rot180", "rot180", "hflip", "vflip"]
 
