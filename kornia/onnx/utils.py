@@ -94,6 +94,9 @@ class ONNXLoader:
 
         os.makedirs(os.path.dirname(file_path), exist_ok=True)  # Create the cache directory if it doesn't exist
 
+        if not url.startswith(("http:", "https:")):
+            raise ValueError("URL must start with 'http:' or 'https:'")
+
         # Download the file and save it
         try:
             urllib.request.urlretrieve(url, file_path)
@@ -109,8 +112,6 @@ class ONNXLoader:
         """
         url = f"https://huggingface.co/api/models/kornia/ONNX_models/tree/main/{folder}"
 
-        if not url.startswith(("http:", "https:")):
-            raise ValueError("URL must start with 'http:' or 'https:'")
         response = requests.get(url, timeout=10)
 
         if response.status_code == 200:
