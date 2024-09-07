@@ -34,6 +34,7 @@ class RTDETRDetectorBuilder:
         Args:
             model_name:
                 Name of the RT-DETR model to load. Can be one of the available pretrained models.
+                Including 'rtdetr_r18vd', 'rtdetr_r34vd', 'rtdetr_r50vd_m', 'rtdetr_r50vd', 'rtdetr_r101vd'.
             config:
                 A custom configuration object for building the RT-DETR model.
             pretrained:
