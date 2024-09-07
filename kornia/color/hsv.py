@@ -1,4 +1,5 @@
 import math
+from typing import ClassVar
 
 import torch
 

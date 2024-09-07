@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import ClassVar, Tuple
 
 import torch
 

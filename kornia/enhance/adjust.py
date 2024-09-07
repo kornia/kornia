@@ -1,5 +1,5 @@
 from math import pi
-from typing import Optional, Union
+from typing import Optional, ClassVar, Union
 
 import torch
 

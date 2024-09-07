@@ -1,4 +1,4 @@
-from typing import Union, cast
+from typing import ClassVar, Union, cast
 
 import torch
 

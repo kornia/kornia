@@ -2,7 +2,7 @@
 
 https://github.com/scikit-image/scikit-image/blob/a48bf6774718c64dade4548153ae16065b595ca9/skimage/color/colorconv.py
 """
-
+from typing import ClassVar
 import torch
 
 from kornia.core import ImageModule as Module
