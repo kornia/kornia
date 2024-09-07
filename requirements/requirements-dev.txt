@@ -3,7 +3,6 @@ coverage
 diffusers
 mypy
 numpy<3
-types-requests
 onnx
 pillow
 pre-commit>=2
@@ -12,3 +11,4 @@ pytest-timeout
 requests
 setuptools>=61.2  # needed by pytorch dynamo / triton
 transformers
+types-requests
