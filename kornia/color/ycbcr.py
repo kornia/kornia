@@ -1,4 +1,5 @@
-from typing import ClassVar, List
+from __future__ import annotations
+from typing import ClassVar
 
 import torch
 
@@ -123,8 +124,8 @@ class RgbToYcbcr(Module):
         >>> output = ycbcr(input)  # 2x3x4x5
     """
 
-    ONNX_DEFAULT_INPUTSHAPE: ClassVar[List[int]] = [-1, 3, -1, -1]
-    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[List[int]] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, image: Tensor) -> Tensor:
         return rgb_to_ycbcr(image)
@@ -148,8 +149,8 @@ class YcbcrToRgb(Module):
         >>> output = rgb(input)  # 2x3x4x5
     """
 
-    ONNX_DEFAULT_INPUTSHAPE: ClassVar[List[int]] = [-1, 3, -1, -1]
-    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[List[int]] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, image: Tensor) -> Tensor:
         return ycbcr_to_rgb(image)

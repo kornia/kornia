@@ -1,3 +1,4 @@
+from __future__ import annotations
 from enum import Enum
 from typing import ClassVar, List
 
@@ -289,8 +290,8 @@ class RawToRgb(Module):
         >>> output = rgb(rawinput)  # 2x3x4x5
     """
 
-    ONNX_DEFAULT_INPUTSHAPE: ClassVar[List[int]] = [-1, 1, -1, -1]
-    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[List[int]] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 1, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def __init__(self, cfa: CFA) -> None:
         super().__init__()
@@ -318,8 +319,8 @@ class RgbToRaw(Module):
         >>> output = raw(rgbinput)  # 2x1x4x6
     """
 
-    ONNX_DEFAULT_INPUTSHAPE: ClassVar[List[int]] = [-1, 3, -1, -1]
-    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[List[int]] = [-1, 1, -1, -1]
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 1, -1, -1]
 
     def __init__(self, cfa: CFA) -> None:
         super().__init__()
