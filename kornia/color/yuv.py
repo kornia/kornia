@@ -293,8 +293,8 @@ class RgbToYuv(Module):
         [1] https://es.wikipedia.org/wiki/YUV#RGB_a_Y'UV
     """
 
-    ONNX_DEFAULT_INPUTSHAPE: list[int] = [-1, 3, -1, -1]
-    ONNX_DEFAULT_OUTPUTSHAPE: list[int] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, input: Tensor) -> Tensor:
         return rgb_to_yuv(input)
@@ -391,8 +391,8 @@ class YuvToRgb(Module):
         >>> output = rgb(input)  # 2x3x4x5
     """
 
-    ONNX_DEFAULT_INPUTSHAPE: list[int] = [-1, 3, -1, -1]
-    ONNX_DEFAULT_OUTPUTSHAPE: list[int] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, input: Tensor) -> Tensor:
         return yuv_to_rgb(input)

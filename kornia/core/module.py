@@ -2,7 +2,7 @@ import datetime
 import math
 import os
 from functools import wraps
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import Any, Callable, ClassVar, List, Optional, Tuple, Union
 
 import torch
 
@@ -15,8 +15,8 @@ from .external import numpy as np
 
 class ONNXExportMixin:
     ONNX_EXPORTABLE: bool = True
-    ONNX_DEFAULT_INPUTSHAPE: list[int] = [-1, -1, -1, -1]
-    ONNX_DEFAULT_OUTPUTSHAPE: list[int] = [-1, -1, -1, -1]
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, -1, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, -1, -1, -1]
 
     def to_onnx(
         self,

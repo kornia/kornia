@@ -125,8 +125,8 @@ class GrayscaleToRgb(Module):
         >>> output = rgb(input)  # 2x3x4x5
     """
 
-    ONNX_DEFAULT_INPUTSHAPE: list[int] = [-1, 1, -1, -1]
-    ONNX_DEFAULT_OUTPUTSHAPE: list[int] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 1, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, image: Tensor) -> Tensor:
         return grayscale_to_rgb(image)
@@ -150,8 +150,8 @@ class RgbToGrayscale(Module):
         >>> output = gray(input)  # 2x1x4x5
     """
 
-    ONNX_DEFAULT_INPUTSHAPE: list[int] = [-1, 3, -1, -1]
-    ONNX_DEFAULT_OUTPUTSHAPE: list[int] = [-1, 1, -1, -1]
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 1, -1, -1]
 
     def __init__(self, rgb_weights: Optional[Tensor] = None) -> None:
         super().__init__()
@@ -181,8 +181,8 @@ class BgrToGrayscale(Module):
         >>> output = gray(input)  # 2x1x4x5
     """
 
-    ONNX_DEFAULT_INPUTSHAPE: list[int] = [-1, 3, -1, -1]
-    ONNX_DEFAULT_OUTPUTSHAPE: list[int] = [-1, 1, -1, -1]
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 1, -1, -1]
 
     def forward(self, image: Tensor) -> Tensor:
         return bgr_to_grayscale(image)
