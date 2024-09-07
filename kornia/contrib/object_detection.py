@@ -12,6 +12,7 @@ from kornia.core import Module, Tensor, as_tensor, concatenate
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.external import PILImage as Image
 from kornia.core.external import numpy as np
+from kornia.geometry.transform import resize
 from kornia.io import write_image
 from kornia.utils.draw import draw_rectangle
 
@@ -126,13 +127,12 @@ class ResizePreProcessor(Module):
         """
         # TODO: support other input formats e.g. file path, numpy
         resized_imgs, original_sizes = [], []
-        for i in range(len(imgs)):
+        for i in range(imgs.shape[0]):
             img = imgs[i]
-            # NOTE: assume that image layout is CHW
             original_sizes.append([img.shape[-2], img.shape[-1]])
             resized_imgs.append(
-                # TODO: fix kornia resize to support onnx
-                torch.nn.functional.interpolate(img.unsqueeze(0), size=self.size, mode=self.interpolation_mode)
+                # TODO: fix kornia resize warnings
+                resize(img[None], size=self.size, interpolation=self.interpolation_mode)
             )
         return concatenate(resized_imgs), as_tensor(original_sizes)
 
@@ -181,7 +181,8 @@ class ObjectDetector(Module):
             out_img = image[None].clone()
             for out in detection:
                 out_img = draw_rectangle(
-                    out_img, torch.Tensor([[[out[-4], out[-3], out[-4] + out[-2], out[-3] + out[-1]]]])
+                    out_img,
+                    torch.Tensor([[[out[-4], out[-3], out[-4] + out[-2], out[-3] + out[-1]]]]),
                 )
             if output_type == "torch":
                 output.append(out_img[0])
@@ -204,7 +205,10 @@ class ObjectDetector(Module):
         outputs = self.draw(images)
         os.makedirs(directory, exist_ok=True)
         for i, out_image in enumerate(outputs):
-            write_image(os.path.join(directory, f"{str(i).zfill(6)}.jpg"), out_image.mul(255.0).byte())
+            write_image(
+                os.path.join(directory, f"{str(i).zfill(6)}.jpg"),
+                out_image.mul(255.0).byte(),
+            )
 
     def compile(
         self,

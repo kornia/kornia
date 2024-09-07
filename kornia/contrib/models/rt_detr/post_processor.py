@@ -1,11 +1,35 @@
+"""Post-processor for the RT-DETR model."""
+
 from __future__ import annotations
 
-# TODO:
 import torch
 
 from kornia.core import Module, Tensor, concatenate
 
 
+def mod(a, b):
+    """Compute the modulo operation for two numbers.
+
+    This function calculates the remainder of the division of 'a' by 'b'
+    using the formula: a - (a // b) * b, which is equivalent to the modulo operation.
+
+    Args:
+        a: The dividend.
+        b: The divisor.
+
+    Returns:
+        The remainder of a divided by b.
+
+    Example:
+        >>> mod(7, 3)
+        1
+        >>> mod(8.5, 3.2)
+        2.1
+    """
+    return a - (a // b) * b
+
+
+# TODO: deprecate the confidence threshold and add the num_top_queries as a parameter and num_classes as a parameter
 class DETRPostProcessor(Module):
     def __init__(self, confidence_threshold: float) -> None:
         super().__init__()
@@ -45,16 +69,13 @@ class DETRPostProcessor(Module):
         boxes_xy = boxes_xy * sizes_wh
         scores = logits.sigmoid()  # RT-DETR was trained with focal loss. thus sigmoid is used instead of softmax
 
-        # the original code is slightly different
-        # it allows 1 bounding box to have multiple classes (multi-label)
-        scores, labels = scores.max(-1)
+        # retrieve the boxes with the highest score for each class
+        # https://github.com/lyuwenyu/RT-DETR/blob/b6bf0200b249a6e35b44e0308b6058f55b99696b/rtdetrv2_pytorch/src/zoo/rtdetr/rtdetr_postprocessor.py#L55-L62
+        num_top_queries = 300  # TODO: make this configurable
+        num_classes = 80  # TODO: make this configurable
+        scores, index = torch.topk(scores.flatten(1), num_top_queries, dim=-1)
+        labels = mod(index, num_classes)
+        index = index // num_classes
+        boxes = boxes_xy.gather(dim=1, index=index.unsqueeze(-1).repeat(1, 1, boxes_xy.shape[-1]))
 
-        detections: list[Tensor] = []
-        for i in range(scores.shape[0]):
-            mask = scores[i] >= self.confidence_threshold
-            labels_i = labels[i, mask].unsqueeze(-1)
-            scores_i = scores[i, mask].unsqueeze(-1)
-            boxes_i = boxes_xy[i, mask]
-            detections.append(concatenate([labels_i, scores_i, boxes_i], -1))
-
-        return detections
+        return concatenate([labels[..., None], scores[..., None], boxes], -1)
