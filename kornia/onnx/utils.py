@@ -1,6 +1,6 @@
-from typing import Optional
 import os
 import urllib.request
+from typing import Optional
 
 from kornia.core.external import onnx
 
@@ -19,6 +19,7 @@ class ONNXLoader:
         # Load a local converted/downloaded operator
         onnx_loader.load_model("operators/kornia.color.gray.GrayscaleToRgb")
     """
+
     def __init__(self, cache_dir: Optional[str] = None):
         self.cache_dir = cache_dir
 
@@ -41,12 +42,10 @@ class ONNXLoader:
 
         # The filename is the model name (without directory path)
         file_name = f"{model_name.split('/')[-1]}.onnx"
-        file_path = os.path.join(cache_dir, '/'.join(model_name.split('/')[:-1]), file_name)
+        file_path = os.path.join(cache_dir, "/".join(model_name.split("/")[:-1]), file_name)
         return file_path
 
-    def load_model(
-        self, model_name: str, download: bool = False, **kwargs
-    ) -> onnx.ModelProto:
+    def load_model(self, model_name: str, download: bool = False, **kwargs) -> onnx.ModelProto:
         """Loads an ONNX model from the local cache or downloads it from Hugging Face if necessary.
 
         Args:
@@ -60,7 +59,7 @@ class ONNXLoader:
             onnx.ModelProto: The loaded ONNX model.
         """
         if model_name.startswith("hf://"):
-            model_name = model_name[len("hf://"):]
+            model_name = model_name[len("hf://") :]
             file_path = self._get_file_path(model_name, self.cache_dir)
             if not os.path.exists(file_path):
                 # Construct the raw URL for the ONNX file
@@ -70,7 +69,7 @@ class ONNXLoader:
 
         if os.path.exists(model_name):
             return onnx.load(model_name)  # type:ignore
-        
+
         raise ValueError(f"File {model_name} not found")
 
     def download(

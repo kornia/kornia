@@ -43,7 +43,7 @@ class ONNXSequential:
         providers: Optional[list[str]] = None,
         session_options: Optional[ort.SessionOptions] = None,  # type:ignore
         io_maps: Optional[list[tuple[str, str]]] = None,
-        cache_dir: str = None
+        cache_dir: str = None,
     ) -> None:
         self.onnx_loader = ONNXLoader(cache_dir)
         self.operators = args
