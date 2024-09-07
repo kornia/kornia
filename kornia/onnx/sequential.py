@@ -67,15 +67,15 @@ class ONNXSequential:
             raise ValueError("No operators found.")
 
         combined_op = self._load_op(self.operators[0])
-        combined_op = onnx.compose.add_prefix(combined_op, prefix=f"K{str(0).zfill(2)}-")
+        combined_op = onnx.compose.add_prefix(combined_op, prefix=f"K{str(0).zfill(2)}-")  # type:ignore
 
         for i, op in enumerate(self.operators[1:]):
-            next_op = onnx.compose.add_prefix(self._load_op(op), prefix=f"K{str(i + 1).zfill(2)}-")
+            next_op = onnx.compose.add_prefix(self._load_op(op), prefix=f"K{str(i + 1).zfill(2)}-")  # type:ignore
             if io_maps is None:
                 io_map = [(f"K{str(i).zfill(2)}-output", f"K{str(i + 1).zfill(2)}-input")]
             else:
                 io_map = [(f"K{str(i).zfill(2)}-{it[0]}", f"K{str(i + 1).zfill(2)}-{it[1]}") for it in io_maps[i]]
-            combined_op = onnx.compose.merge_models(combined_op, next_op, io_map=io_map)
+            combined_op = onnx.compose.merge_models(combined_op, next_op, io_map=io_map)  # type:ignore
 
         return combined_op
 
@@ -86,10 +86,12 @@ class ONNXSequential:
             file_path: str
                 The file path to export the combined ONNX model.
         """
-        onnx.save(self._combined_op, file_path)
+        onnx.save(self._combined_op, file_path)  # type:ignore
 
     def create_session(
-        self, providers: Optional[list[str]] = None, session_options: Optional[ort.SessionOptions] = None
+        self,
+        providers: Optional[list[str]] = None,
+        session_options: Optional[ort.SessionOptions] = None  # type:ignore
     ) -> ort.InferenceSession:  # type:ignore
         """Create an optimized ONNXRuntime InferenceSession for the combined model.
 
@@ -102,13 +104,10 @@ class ONNXSequential:
         Returns:
             ort.InferenceSession: The ONNXRuntime session optimized for inference.
         """
-        if providers is None:
+        if session_options is None:
             sess_options = ort.SessionOptions()  # type:ignore
             sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_EXTENDED  # type:ignore
-        if session_options is None:
-            sess_options = ort.SessionOptions()
-            sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
-        session = ort.InferenceSession(
+        session = ort.InferenceSession(  # type:ignore
             self._combined_op.SerializeToString(),
             sess_options=sess_options,
             providers=providers or ["CPUExecutionProvider"],
