@@ -1,4 +1,5 @@
 from typing import ClassVar
+
 import torch
 
 from kornia.core import ImageModule as Module
