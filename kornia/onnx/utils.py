@@ -100,14 +100,9 @@ class ONNXLoader:
             raise ValueError(f"Error in resolving `{url}`. {e}.")
 
     @staticmethod
-<<<<<<< HEAD
-    def _fetch_repo_contents(folder: str) -> list[dict]:
-        """Fetches the contents of the Hugging Face repository using the Hugging Face API.
-=======
     def _fetch_repo_contents(folder: str) -> list[dict[str, Any]]:
         """
         Fetches the contents of the Hugging Face repository using the Hugging Face API.
->>>>>>> 1b3c0dbb (fix typing)
 
         Returns:
             List[dict]: A list of all files in the repository as dictionaries containing file details.
@@ -121,17 +116,8 @@ class ONNXLoader:
             raise ValueError(f"Failed to fetch repository contents: {response.status_code}")
 
     @staticmethod
-<<<<<<< HEAD
-    def list_operators() -> list[str]:
-        """Lists all available ONNX operators in the 'operators' folder of the Hugging Face repository.
-
-        Returns:
-            List[str]: A list of operator file paths.
-        """
-=======
     def list_operators() -> None:
         """Lists all available ONNX operators in the 'operators' folder of the Hugging Face repository."""
->>>>>>> 1b3c0dbb (fix typing)
         repo_contents = ONNXLoader._fetch_repo_contents("operators")
 
         # Filter for operators in the 'operators' directory
@@ -140,17 +126,8 @@ class ONNXLoader:
         pprint.pp(operators)
 
     @staticmethod
-<<<<<<< HEAD
-    def list_models() -> list[str]:
-        """Lists all available ONNX models in the 'models' folder of the Hugging Face repository.
-
-        Returns:
-            List[str]: A list of model file paths.
-        """
-=======
     def list_models() -> None:
         """Lists all available ONNX models in the 'models' folder of the Hugging Face repository."""
->>>>>>> 1b3c0dbb (fix typing)
         repo_contents = ONNXLoader._fetch_repo_contents("models")
 
         # Filter for models in the 'models' directory
