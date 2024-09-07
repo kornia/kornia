@@ -1,8 +1,9 @@
-import requests
-import pprint
 import os
+import pprint
 import urllib.request
 from typing import Any, Optional
+
+import requests
 
 from kornia.core.external import onnx
 
@@ -101,8 +102,7 @@ class ONNXLoader:
 
     @staticmethod
     def _fetch_repo_contents(folder: str) -> list[dict[str, Any]]:
-        """
-        Fetches the contents of the Hugging Face repository using the Hugging Face API.
+        """Fetches the contents of the Hugging Face repository using the Hugging Face API.
 
         Returns:
             List[dict]: A list of all files in the repository as dictionaries containing file details.
