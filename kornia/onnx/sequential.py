@@ -4,6 +4,8 @@ from kornia.core.external import numpy as np
 from kornia.core.external import onnx
 from kornia.core.external import onnxruntime as ort
 
+from .utils import ONNXLoader
+
 __all__ = ["ONNXSequential"]
 
 
@@ -22,6 +24,17 @@ class ONNXSequential:
             If None, we assume the default input name and output name are "input" and "output" accordingly, and
             only one input and output node for each graph.
             If not None, `io_maps[0]` shall represent the `io_map` for combining the first and second ONNX models.
+        cache_dir:
+            cache_dir: The directory where ONNX models are cached locally (only for downloading from HuggingFace).
+                Defaults to None, which will use a default `.kornia_onnx_models` directory.
+
+    .. code-block:: python
+        # Load ops from HuggingFace repos then chain to your own model!
+        model = kornia.onnx.ONNXSequential(
+            "hf://operators/kornia.color.gray.RgbToGrayscale",
+            "hf://operators/kornia.geometry.transform.affwarp.Resize_512x512",
+            "MY_OTHER_MODEL.onnx"
+        )
     """
 
     def __init__(
@@ -30,7 +43,9 @@ class ONNXSequential:
         providers: Optional[list[str]] = None,
         session_options: Optional[ort.SessionOptions] = None,  # type:ignore
         io_maps: Optional[list[tuple[str, str]]] = None,
+        cache_dir: str = None
     ) -> None:
+        self.onnx_loader = ONNXLoader(cache_dir)
         self.operators = args
         self._combined_op = self._combine(io_maps)
         self._session = self.create_session()
@@ -45,7 +60,7 @@ class ONNXSequential:
             onnx.ModelProto: The loaded ONNX model.
         """
         if isinstance(arg, str):
-            return onnx.load(arg)  # type:ignore
+            return self.onnx_loader.load_model(arg)  # type:ignore
         return arg
 
     def _combine(self, io_maps: Optional[list[tuple[str, str]]] = None) -> onnx.ModelProto:  # type:ignore

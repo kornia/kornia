@@ -172,6 +172,9 @@ class SpatialGradient(Module):
         >>> output = SpatialGradient()(input)  # 1x3x2x4x4
     """
 
+    ONNX_DEFAULT_INPUTSHAPE: tuple[int, int, int, int] = [-1, -1, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: tuple[int, int, int, int] = [-1, -1, 2, -1, -1]
+
     def __init__(self, mode: str = "sobel", order: int = 1, normalized: bool = True) -> None:
         super().__init__()
         self.normalized: bool = normalized
@@ -205,6 +208,9 @@ class SpatialGradient3d(Module):
         >>> output.shape
         torch.Size([1, 4, 3, 2, 4, 4])
     """
+
+    ONNX_DEFAULT_INPUTSHAPE: tuple[int, int, int, int] = [-1, -1, -1, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: tuple[int, int, int, int] = [-1, -1, -1, -1, -1, -1]
 
     def __init__(self, mode: str = "diff", order: int = 1) -> None:
         super().__init__()

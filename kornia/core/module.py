@@ -4,11 +4,59 @@ import os
 from functools import wraps
 from typing import Any, Callable, List, Optional, Tuple, Union
 
+import torch
 import kornia
 
 from ._backend import Module, Tensor, from_numpy
 from .external import PILImage as Image
 from .external import numpy as np
+
+
+class ONNXExportMixin:
+
+    ONNX_EXPORTABLE: bool = True
+    ONNX_DEFAULT_INPUTSHAPE: tuple[int, int, int, int] = [-1, -1, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: tuple[int, int, int, int] = [-1, -1, -1, -1]
+
+    def to_onnx(
+        self,
+        onnx_name: Optional[str] = None,
+        input_shape: Optional[tuple[int, int, int, int]] = None,
+        output_shape: Optional[tuple[int, int, int, int]] = None,
+    ) -> None:
+        if not self.ONNX_EXPORTABLE:
+            raise RuntimeError("This object cannot be exported to ONNX.")
+
+        if input_shape is None:
+            input_shape = self.ONNX_DEFAULT_INPUTSHAPE
+        if output_shape is None:
+            output_shape = self.ONNX_DEFAULT_OUTPUTSHAPE
+
+        if onnx_name is None:
+            onnx_name = f"Kornia-{self.__class__.__name__}.onnx"
+
+        # Creating a dummy input with the given shape
+        psuedo_shape = (1, 3, 256, 256)
+        dummy_input = torch.randn(*[
+            (psuedo_shape[i] if dim == -1 else dim) for i, dim in enumerate(input_shape)])
+
+        # Dynamic axis configuration for input and output
+        dynamic_axes = {
+            'input': {i: 'dim_' + str(i) for i, dim in enumerate(input_shape) if dim == -1},
+            'output': {i: 'dim_' + str(i) for i, dim in enumerate(output_shape) if dim == -1}
+        }
+
+        torch.onnx.export(
+            self,
+            dummy_input,
+            onnx_name,
+            export_params=True,
+            opset_version=17,
+            do_constant_folding=True,
+            input_names=["input"],
+            output_names=["output"],
+            dynamic_axes=dynamic_axes,
+        )
 
 
 class ImageModuleMixIn:
@@ -219,7 +267,7 @@ class ImageModuleMixIn:
         kornia.io.write_image(name, out_image.mul(255.0).byte())
 
 
-class ImageModule(Module, ImageModuleMixIn):
+class ImageModule(Module, ImageModuleMixIn, ONNXExportMixin):
     """Handles image-based operations.
 
     This modules accepts multiple input and output data types, provides end-to-end

@@ -293,6 +293,9 @@ class RgbToYuv(Module):
         [1] https://es.wikipedia.org/wiki/YUV#RGB_a_Y'UV
     """
 
+    ONNX_DEFAULT_INPUTSHAPE: tuple[int, int, int, int] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: tuple[int, int, int, int] = [-1, 3, -1, -1]
+
     def forward(self, input: Tensor) -> Tensor:
         return rgb_to_yuv(input)
 
@@ -323,6 +326,9 @@ class RgbToYuv420(Module):
     Reference::
         [1] https://es.wikipedia.org/wiki/YUV#RGB_a_Y'UV
     """
+
+    # TODO: Handle multiple inputs and outputs models later
+    ONNX_EXPORTABLE = False
 
     def forward(self, yuvinput: Tensor) -> Tuple[Tensor, Tensor]:  # skipcq: PYL-R0201
         return rgb_to_yuv420(yuvinput)
@@ -355,6 +361,9 @@ class RgbToYuv422(Module):
         [1] https://es.wikipedia.org/wiki/YUV#RGB_a_Y'UV
     """
 
+    # TODO: Handle multiple inputs and outputs models later
+    ONNX_EXPORTABLE = False
+
     def forward(self, yuvinput: Tensor) -> Tuple[Tensor, Tensor]:  # skipcq: PYL-R0201
         return rgb_to_yuv422(yuvinput)
 
@@ -381,6 +390,9 @@ class YuvToRgb(Module):
         >>> rgb = YuvToRgb()
         >>> output = rgb(input)  # 2x3x4x5
     """
+
+    ONNX_DEFAULT_INPUTSHAPE: tuple[int, int, int, int] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: tuple[int, int, int, int] = [-1, 3, -1, -1]
 
     def forward(self, input: Tensor) -> Tensor:
         return yuv_to_rgb(input)
@@ -413,6 +425,9 @@ class Yuv420ToRgb(Module):
         >>> output = rgb(inputy, inputuv)  # 2x3x4x6
     """
 
+    # TODO: Handle multiple inputs and outputs models later
+    ONNX_EXPORTABLE = False
+
     def forward(self, inputy: Tensor, inputuv: Tensor) -> Tensor:  # skipcq: PYL-R0201
         return yuv420_to_rgb(inputy, inputuv)
 
@@ -443,6 +458,9 @@ class Yuv422ToRgb(Module):
         >>> rgb = Yuv422ToRgb()
         >>> output = rgb(inputy, inputuv)  # 2x3x4x6
     """
+
+    # TODO: Handle multiple inputs and outputs models later
+    ONNX_EXPORTABLE = False
 
     def forward(self, inputy: Tensor, inputuv: Tensor) -> Tensor:  # skipcq: PYL-R0201
         return yuv422_to_rgb(inputy, inputuv)

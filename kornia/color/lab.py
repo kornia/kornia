@@ -150,6 +150,9 @@ class RgbToLab(Module):
         [3] https://github.com/torch/image/blob/dc061b98fb7e946e00034a5fc73e883a299edc7f/generic/image.c#L1467
     """
 
+    ONNX_DEFAULT_INPUTSHAPE: tuple[int, int, int, int] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: tuple[int, int, int, int] = [-1, 3, -1, -1]
+
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return rgb_to_lab(image)
 
@@ -176,6 +179,9 @@ class LabToRgb(Module):
 
         [3] https://github.com/torch/image/blob/dc061b98fb7e946e00034a5fc73e883a299edc7f/generic/image.c#L1518
     """
+
+    ONNX_DEFAULT_INPUTSHAPE: tuple[int, int, int, int] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: tuple[int, int, int, int] = [-1, 3, -1, -1]
 
     def forward(self, image: torch.Tensor, clip: bool = True) -> torch.Tensor:
         return lab_to_rgb(image, clip)

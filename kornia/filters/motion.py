@@ -84,6 +84,9 @@ class MotionBlur3D(Module):
         >>> output = motion_blur(input)  # 2x4x5x7x9
     """
 
+    ONNX_DEFAULT_INPUTSHAPE: tuple[int, int, int, int] = [-1, -1, -1, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: tuple[int, int, int, int] = [-1, -1, -1, -1, -1]
+
     def __init__(
         self,
         kernel_size: int,

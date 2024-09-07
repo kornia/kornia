@@ -37,11 +37,14 @@ Here's how you can quickly get started with `ONNXSequential`:
       import numpy as np
       from kornia.onnx import ONNXSequential
 
-      # Initialize ONNXSequential with two models
-      onnx_seq = ONNXSequential("model1.onnx", "model2.onnx")
+      # Initialize ONNXSequential with two models, loading from our only repo
+      onnx_seq = ONNXSequential(
+         "hf://operators/kornia.color.gray.RgbToGrayscale",
+         "hf://operators/kornia.geometry.transform.affwarp.Resize_512x512"
+      )
 
       # Prepare some input data
-      input_data = np.random.randn(1, 3, 224, 224).astype(np.float32)
+      input_data = np.random.randn(1, 3, 256, 512).astype(np.float32)
 
       # Perform inference
       outputs = onnx_seq(input_data)
@@ -50,7 +53,7 @@ Here's how you can quickly get started with `ONNXSequential`:
       print(outputs)
 
    .. note::
-      By default, we assume each ONNX model contains only one input node named "input" and one output node named "output". For complex models, you may need to pass an `io_maps` arguement.
+      By default, we assume each ONNX model contains only one input node named "input" and one output node named "output". For complex models, you may need to pass an `io_maps` argument.
 
 3. **Input/Output Mapping Between Models**
 
@@ -77,7 +80,11 @@ Here's how you can quickly get started with `ONNXSequential`:
    .. code-block:: python
 
       # Initialize with CUDA execution provider
-      onnx_seq = ONNXSequential("model1.onnx", "model2.onnx", providers=['CUDAExecutionProvider'])
+      onnx_seq = ONNXSequential(
+         "hf://operators/kornia.color.gray.RgbToGrayscale",
+         "hf://operators/kornia.geometry.transform.affwarp.Resize_512x512",
+         providers=['CUDAExecutionProvider']
+      )
 
       # Run inference
       outputs = onnx_seq(input_data)

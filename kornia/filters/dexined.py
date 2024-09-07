@@ -180,6 +180,9 @@ class DexiNed(Module):
         torch.Size([1, 1, 320, 320])
     """
 
+    # TODO: Handle multiple inputs and outputs models later
+    ONNX_EXPORTABLE = False
+
     def __init__(self, pretrained: bool) -> None:
         super().__init__()
         self.block_1 = DoubleConvBlock(3, 32, 64, stride=2)

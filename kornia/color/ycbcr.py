@@ -121,6 +121,9 @@ class RgbToYcbcr(Module):
         >>> output = ycbcr(input)  # 2x3x4x5
     """
 
+    ONNX_DEFAULT_INPUTSHAPE: tuple[int, int, int, int] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: tuple[int, int, int, int] = [-1, 3, -1, -1]
+
     def forward(self, image: Tensor) -> Tensor:
         return rgb_to_ycbcr(image)
 
@@ -142,6 +145,9 @@ class YcbcrToRgb(Module):
         >>> rgb = YcbcrToRgb()
         >>> output = rgb(input)  # 2x3x4x5
     """
+
+    ONNX_DEFAULT_INPUTSHAPE: tuple[int, int, int, int] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: tuple[int, int, int, int] = [-1, 3, -1, -1]
 
     def forward(self, image: Tensor) -> Tensor:
         return ycbcr_to_rgb(image)

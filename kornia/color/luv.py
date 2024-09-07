@@ -141,6 +141,9 @@ class RgbToLuv(Module):
         [3] http://www.poynton.com/ColorFAQ.html
     """
 
+    ONNX_DEFAULT_INPUTSHAPE: tuple[int, int, int, int] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: tuple[int, int, int, int] = [-1, 3, -1, -1]
+
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return rgb_to_luv(image)
 
@@ -167,6 +170,9 @@ class LuvToRgb(Module):
 
         [3] http://www.poynton.com/ColorFAQ.html
     """
+
+    ONNX_DEFAULT_INPUTSHAPE: tuple[int, int, int, int] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: tuple[int, int, int, int] = [-1, 3, -1, -1]
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return luv_to_rgb(image)

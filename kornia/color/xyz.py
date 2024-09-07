@@ -91,6 +91,9 @@ class RgbToXyz(Module):
         [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
     """
 
+    ONNX_DEFAULT_INPUTSHAPE: tuple[int, int, int, int] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: tuple[int, int, int, int] = [-1, 3, -1, -1]
+
     def forward(self, image: Tensor) -> Tensor:
         return rgb_to_xyz(image)
 
@@ -113,6 +116,9 @@ class XyzToRgb(Module):
     Reference:
         [1] https://docs.opencv.org/4.0.1/de/d25/imgproc_color_conversions.html
     """
+
+    ONNX_DEFAULT_INPUTSHAPE: tuple[int, int, int, int] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: tuple[int, int, int, int] = [-1, 3, -1, -1]
 
     def forward(self, image: Tensor) -> Tensor:
         return xyz_to_rgb(image)

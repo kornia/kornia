@@ -125,6 +125,9 @@ class GrayscaleToRgb(Module):
         >>> output = rgb(input)  # 2x3x4x5
     """
 
+    ONNX_DEFAULT_INPUTSHAPE: tuple[int, int, int, int] = [-1, 1, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: tuple[int, int, int, int] = [-1, 3, -1, -1]
+
     def forward(self, image: Tensor) -> Tensor:
         return grayscale_to_rgb(image)
 
@@ -146,6 +149,9 @@ class RgbToGrayscale(Module):
         >>> gray = RgbToGrayscale()
         >>> output = gray(input)  # 2x1x4x5
     """
+
+    ONNX_DEFAULT_INPUTSHAPE: tuple[int, int, int, int] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: tuple[int, int, int, int] = [-1, 1, -1, -1]
 
     def __init__(self, rgb_weights: Optional[Tensor] = None) -> None:
         super().__init__()
@@ -174,6 +180,9 @@ class BgrToGrayscale(Module):
         >>> gray = BgrToGrayscale()
         >>> output = gray(input)  # 2x1x4x5
     """
+
+    ONNX_DEFAULT_INPUTSHAPE: tuple[int, int, int, int] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: tuple[int, int, int, int] = [-1, 1, -1, -1]
 
     def forward(self, image: Tensor) -> Tensor:
         return bgr_to_grayscale(image)
