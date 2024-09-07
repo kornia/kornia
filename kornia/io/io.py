@@ -66,9 +66,7 @@ def _to_uint8(image: Tensor) -> Tensor:
 
 
 def load_image(
-    path_file: str | Path,
-    desired_type: ImageLoadType = ImageLoadType.RGB32,
-    device: Device = "cpu"
+    path_file: str | Path, desired_type: ImageLoadType = ImageLoadType.RGB32, device: Device = "cpu"
 ) -> Tensor:
     """Read an image file and decode using the Kornia Rust backend.
 
