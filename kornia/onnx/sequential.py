@@ -91,7 +91,7 @@ class ONNXSequential:
     def create_session(
         self,
         providers: Optional[list[str]] = None,
-        session_options: Optional[ort.SessionOptions] = None  # type:ignore
+        session_options: Optional[ort.SessionOptions] = None,  # type:ignore
     ) -> ort.InferenceSession:  # type:ignore
         """Create an optimized ONNXRuntime InferenceSession for the combined model.
 
