@@ -23,12 +23,13 @@ class ONNXSequential:
             only one input and output node for each graph.
             If not None, `io_maps[0]` shall represent the `io_map` for combining the first and second ONNX models.
     """
+
     def __init__(
         self,
         *args: Union[onnx.ModelProto, str],  # type:ignore
         providers: Optional[list[str]] = None,
         session_options: Optional[ort.SessionOptions] = None,  # type:ignore
-        io_maps: Optional[list[tuple[str, str]]] = None
+        io_maps: Optional[list[tuple[str, str]]] = None,
     ) -> None:
         self.operators = args
         self._combined_op = self._combine(io_maps)
@@ -48,8 +49,8 @@ class ONNXSequential:
         return arg
 
     def _combine(self, io_maps: Optional[list[tuple[str, str]]] = None) -> onnx.ModelProto:  # type:ignore
-        """ Combine the provided ONNX models into a single ONNX graph. Optionally, map inputs and outputs
-            between operators using the `io_map`.
+        """Combine the provided ONNX models into a single ONNX graph. Optionally, map inputs and outputs between
+        operators using the `io_map`.
 
         Args:
             io_maps:
@@ -58,7 +59,7 @@ class ONNXSequential:
 
         Returns:
             onnx.ModelProto: The combined ONNX model as a single ONNX graph.
-        
+
         Raises:
             ValueError: If no operators are provided for combination.
         """
@@ -88,12 +89,10 @@ class ONNXSequential:
         onnx.save(self._combined_op, file_path)
 
     def create_session(
-        self,
-        providers: Optional[list[str]] = None,
-        session_options: Optional[ort.SessionOptions] = None
+        self, providers: Optional[list[str]] = None, session_options: Optional[ort.SessionOptions] = None
     ) -> ort.InferenceSession:  # type:ignore
         """Create an optimized ONNXRuntime InferenceSession for the combined model.
-        
+
         Args:
             providers:
                 Execution providers for ONNXRuntime (e.g., ['CUDAExecutionProvider', 'CPUExecutionProvider']).
@@ -112,7 +111,7 @@ class ONNXSequential:
         session = ort.InferenceSession(
             self._combined_op.SerializeToString(),
             sess_options=sess_options,
-            providers=providers or ['CPUExecutionProvider']
+            providers=providers or ["CPUExecutionProvider"],
         )
         return session
 
@@ -148,5 +147,5 @@ class ONNXSequential:
 
         ort_input_values = {ort_inputs[i].name: inputs[i] for i in range(len(ort_inputs))}
         outputs = self._session.run(None, ort_input_values)
-        
+
         return outputs

@@ -2,10 +2,9 @@ import warnings
 from typing import Optional, Tuple, Union
 
 import torch
-from torch import nn
 
-from kornia.core import ones, ones_like, zeros
 from kornia.core import ImageModule as Module
+from kornia.core import ones, ones_like, zeros
 from kornia.filters import gaussian_blur2d
 from kornia.utils import _extract_device_dtype
 from kornia.utils.image import perform_keep_shape_image
