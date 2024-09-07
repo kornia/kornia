@@ -1,12 +1,8 @@
-from typing import Any, Optional
 import requests
 import pprint
 import os
-import pprint
 import urllib.request
-from typing import Optional
-
-import requests
+from typing import Any, Optional
 
 from kornia.core.external import onnx
 
