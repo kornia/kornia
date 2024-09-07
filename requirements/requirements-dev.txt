@@ -13,5 +13,3 @@ requests
 setuptools>=61.2  # needed by pytorch dynamo / triton
 transformers
 types-requests
-onnx
-onnxruntime
