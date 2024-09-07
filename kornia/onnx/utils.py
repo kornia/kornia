@@ -1,8 +1,9 @@
-from typing import Optional
-import requests
-import pprint
 import os
+import pprint
 import urllib.request
+from typing import Optional
+
+import requests
 
 from kornia.core.external import onnx
 
@@ -101,8 +102,7 @@ class ONNXLoader:
 
     @staticmethod
     def _fetch_repo_contents(folder: str) -> list[dict]:
-        """
-        Fetches the contents of the Hugging Face repository using the Hugging Face API.
+        """Fetches the contents of the Hugging Face repository using the Hugging Face API.
 
         Returns:
             List[dict]: A list of all files in the repository as dictionaries containing file details.
@@ -117,8 +117,7 @@ class ONNXLoader:
 
     @staticmethod
     def list_operators() -> list[str]:
-        """
-        Lists all available ONNX operators in the 'operators' folder of the Hugging Face repository.
+        """Lists all available ONNX operators in the 'operators' folder of the Hugging Face repository.
 
         Returns:
             List[str]: A list of operator file paths.
@@ -126,14 +125,13 @@ class ONNXLoader:
         repo_contents = ONNXLoader._fetch_repo_contents("operators")
 
         # Filter for operators in the 'operators' directory
-        operators = [file['path'] for file in repo_contents]
+        operators = [file["path"] for file in repo_contents]
 
         pprint.pp(operators)
 
     @staticmethod
     def list_models() -> list[str]:
-        """
-        Lists all available ONNX models in the 'models' folder of the Hugging Face repository.
+        """Lists all available ONNX models in the 'models' folder of the Hugging Face repository.
 
         Returns:
             List[str]: A list of model file paths.
@@ -141,6 +139,6 @@ class ONNXLoader:
         repo_contents = ONNXLoader._fetch_repo_contents("models")
 
         # Filter for models in the 'models' directory
-        models = [file['path'] for file in repo_contents]
+        models = [file["path"] for file in repo_contents]
 
         pprint.pp(models)
