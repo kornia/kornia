@@ -39,9 +39,9 @@ class ONNXSequential:
 
     def __init__(
         self,
-        *args: Union[onnx.ModelProto, str],  # type:ignore
+        *args: Union["onnx.ModelProto", str],  # type:ignore
         providers: Optional[list[str]] = None,
-        session_options: Optional[ort.SessionOptions] = None,  # type:ignore
+        session_options: Optional["ort.SessionOptions"] = None,  # type:ignore
         io_maps: Optional[list[tuple[str, str]]] = None,
         cache_dir: Optional[str] = None,
     ) -> None:
@@ -50,7 +50,7 @@ class ONNXSequential:
         self._combined_op = self._combine(io_maps)
         self._session = self.create_session()
 
-    def _load_op(self, arg: Union[onnx.ModelProto, str]) -> onnx.ModelProto:  # type:ignore
+    def _load_op(self, arg: Union["onnx.ModelProto", str]) -> "onnx.ModelProto":  # type:ignore
         """Loads an ONNX model, either from a file path or use the provided ONNX ModelProto.
 
         Args:
@@ -63,7 +63,7 @@ class ONNXSequential:
             return self.onnx_loader.load_model(arg)
         return arg
 
-    def _combine(self, io_maps: Optional[list[tuple[str, str]]] = None) -> onnx.ModelProto:  # type:ignore
+    def _combine(self, io_maps: Optional[list[tuple[str, str]]] = None) -> "onnx.ModelProto":  # type:ignore
         """Combine the provided ONNX models into a single ONNX graph. Optionally, map inputs and outputs between
         operators using the `io_map`.
 
@@ -106,8 +106,8 @@ class ONNXSequential:
     def create_session(
         self,
         providers: Optional[list[str]] = None,
-        session_options: Optional[ort.SessionOptions] = None,  # type:ignore
-    ) -> ort.InferenceSession:  # type:ignore
+        session_options: Optional["ort.SessionOptions"] = None,  # type:ignore
+    ) -> "ort.InferenceSession":  # type:ignore
         """Create an optimized ONNXRuntime InferenceSession for the combined model.
 
         Args:
@@ -129,7 +129,7 @@ class ONNXSequential:
         )
         return session
 
-    def set_session(self, session: ort.InferenceSession) -> None:  # type: ignore
+    def set_session(self, session: "ort.InferenceSession") -> None:  # type: ignore
         """Set a custom ONNXRuntime InferenceSession.
 
         Args:
@@ -138,7 +138,7 @@ class ONNXSequential:
         """
         self._session = session
 
-    def get_session(self) -> ort.InferenceSession:  # type: ignore
+    def get_session(self) -> "ort.InferenceSession":  # type: ignore
         """Get the current ONNXRuntime InferenceSession.
 
         Returns:
@@ -146,7 +146,7 @@ class ONNXSequential:
         """
         return self._session
 
-    def __call__(self, *inputs: np.ndarray) -> list[np.ndarray]:  # type:ignore
+    def __call__(self, *inputs: "np.ndarray") -> list["np.ndarray"]:  # type:ignore
         """Perform inference using the combined ONNX model.
 
         Args:

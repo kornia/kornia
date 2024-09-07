@@ -50,7 +50,7 @@ class ONNXLoader:
         file_path = os.path.join(cache_dir, "/".join(model_name.split("/")[:-1]), file_name)
         return file_path
 
-    def load_model(self, model_name: str, download: bool = False, **kwargs) -> onnx.ModelProto:  # type:ignore
+    def load_model(self, model_name: str, download: bool = False, **kwargs) -> "onnx.ModelProto":  # type:ignore
         """Loads an ONNX model from the local cache or downloads it from Hugging Face if necessary.
 
         Args:
@@ -108,7 +108,10 @@ class ONNXLoader:
             List[dict]: A list of all files in the repository as dictionaries containing file details.
         """
         url = f"https://huggingface.co/api/models/kornia/ONNX_models/tree/main/{folder}"
-        response = requests.get(url)
+
+        if not url.startswith(("http:", "https:")):
+            raise ValueError("URL must start with 'http:' or 'https:'")
+        response = requests.get(url, timeout=10)
 
         if response.status_code == 200:
             return response.json()  # Returns the JSON content of the repo

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import ClassVar
+
 from kornia.core import ImageModule as Module
 from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK
@@ -84,8 +86,8 @@ class MotionBlur3D(Module):
         >>> output = motion_blur(input)  # 2x4x5x7x9
     """
 
-    ONNX_DEFAULT_INPUTSHAPE: list[int] = [-1, -1, -1, -1, -1]
-    ONNX_DEFAULT_OUTPUTSHAPE: list[int] = [-1, -1, -1, -1, -1]
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, -1, -1, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, -1, -1, -1, -1]
 
     def __init__(
         self,
