@@ -1,8 +1,12 @@
+from typing import Optional
+import requests
+import pprint
 import os
 import urllib.request
-from typing import Optional
 
 from kornia.core.external import onnx
+
+__all__ = ["ONNXLoader"]
 
 
 class ONNXLoader:
@@ -94,3 +98,49 @@ class ONNXLoader:
             urllib.request.urlretrieve(url, file_path)
         except urllib.error.HTTPError as e:
             raise ValueError(f"Error in resolving `{url}`. {e}.")
+
+    @staticmethod
+    def _fetch_repo_contents(folder: str) -> list[dict]:
+        """
+        Fetches the contents of the Hugging Face repository using the Hugging Face API.
+
+        Returns:
+            List[dict]: A list of all files in the repository as dictionaries containing file details.
+        """
+        url = f"https://huggingface.co/api/models/kornia/ONNX_models/tree/main/{folder}"
+        response = requests.get(url)
+
+        if response.status_code == 200:
+            return response.json()  # Returns the JSON content of the repo
+        else:
+            raise ValueError(f"Failed to fetch repository contents: {response.status_code}")
+
+    @staticmethod
+    def list_operators() -> list[str]:
+        """
+        Lists all available ONNX operators in the 'operators' folder of the Hugging Face repository.
+
+        Returns:
+            List[str]: A list of operator file paths.
+        """
+        repo_contents = ONNXLoader._fetch_repo_contents("operators")
+
+        # Filter for operators in the 'operators' directory
+        operators = [file['path'] for file in repo_contents]
+
+        pprint.pp(operators)
+
+    @staticmethod
+    def list_models() -> list[str]:
+        """
+        Lists all available ONNX models in the 'models' folder of the Hugging Face repository.
+
+        Returns:
+            List[str]: A list of model file paths.
+        """
+        repo_contents = ONNXLoader._fetch_repo_contents("models")
+
+        # Filter for models in the 'models' directory
+        models = [file['path'] for file in repo_contents]
+
+        pprint.pp(models)
