@@ -119,7 +119,7 @@ class ResizePreProcessor(Module):
         self.size = size
         self.interpolation_mode = interpolation_mode
 
-    def forward(self, imgs: list[Tensor]) -> tuple[Tensor, Tensor]:
+    def forward(self, imgs: Tensor) -> tuple[Tensor, Tensor]:
         """
         Returns:
             resized_imgs: resized images in a batch.

@@ -7,7 +7,7 @@ import torch
 from kornia.core import Module, Tensor, concatenate
 
 
-def mod(a, b):
+def mod(a: Tensor, b: int) -> Tensor:
     """Compute the modulo operation for two numbers.
 
     This function calculates the remainder of the division of 'a' by 'b'
@@ -35,7 +35,7 @@ class DETRPostProcessor(Module):
         super().__init__()
         self.confidence_threshold = confidence_threshold
 
-    def forward(self, logits: Tensor, boxes: Tensor, original_sizes: Tensor) -> list[Tensor]:
+    def forward(self, logits: Tensor, boxes: Tensor, original_sizes: Tensor) -> Tensor:
         """Post-process outputs from DETR.
 
         Args:
@@ -71,8 +71,8 @@ class DETRPostProcessor(Module):
 
         # retrieve the boxes with the highest score for each class
         # https://github.com/lyuwenyu/RT-DETR/blob/b6bf0200b249a6e35b44e0308b6058f55b99696b/rtdetrv2_pytorch/src/zoo/rtdetr/rtdetr_postprocessor.py#L55-L62
-        num_top_queries = 300  # TODO: make this configurable
-        num_classes = 80  # TODO: make this configurable
+        num_top_queries: int = 300  # TODO: make this configurable
+        num_classes: int = 80  # TODO: make this configurable
         scores, index = torch.topk(scores.flatten(1), num_top_queries, dim=-1)
         labels = mod(index, num_classes)
         index = index // num_classes
