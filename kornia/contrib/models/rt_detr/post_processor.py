@@ -34,8 +34,11 @@ def mod(a: Tensor, b: int) -> Tensor:
 # TODO: deprecate the confidence threshold and add the num_top_queries as a parameter and num_classes as a parameter
 class DETRPostProcessor(Module):
     def __init__(
-        self, confidence_threshold: Optional[float] = None, num_classes: int = 80,
-        num_top_queries: int = 300, confidence_filtering: bool = True
+        self,
+        confidence_threshold: Optional[float] = None,
+        num_classes: int = 80,
+        num_top_queries: int = 300,
+        confidence_filtering: bool = True,
     ) -> None:
         super().__init__()
         self.confidence_threshold = confidence_threshold

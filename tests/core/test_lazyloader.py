@@ -1,5 +1,6 @@
-import pytest
 from io import StringIO
+
+import pytest
 
 from kornia.core.external import LazyLoader
 
@@ -21,7 +22,7 @@ class TestLazyLoader:
         assert loader.module is not None  # Should be loaded now
 
     def test_lazy_loader_invalid_module(self, monkeypatch):
-        monkeypatch.setattr('sys.stdin', StringIO("n"))
+        monkeypatch.setattr("sys.stdin", StringIO("n"))
         # Test that LazyLoader raises an ImportError for an invalid module
         loader = LazyLoader("non_existent_module")
         with pytest.raises(ImportError) as excinfo:
