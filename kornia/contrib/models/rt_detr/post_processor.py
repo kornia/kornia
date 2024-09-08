@@ -1,6 +1,7 @@
 """Post-processor for the RT-DETR model."""
 
 from __future__ import annotations
+from typing import Optional
 
 import torch
 
@@ -31,9 +32,11 @@ def mod(a: Tensor, b: int) -> Tensor:
 
 # TODO: deprecate the confidence threshold and add the num_top_queries as a parameter and num_classes as a parameter
 class DETRPostProcessor(Module):
-    def __init__(self, confidence_threshold: float) -> None:
+    def __init__(self, confidence_threshold: Optional[float] = None, num_classes: int = 80, confidence_filtering: bool = True) -> None:
         super().__init__()
         self.confidence_threshold = confidence_threshold
+        self.num_classes = num_classes
+        self.confidence_filtering = confidence_filtering
 
     def forward(self, logits: Tensor, boxes: Tensor, original_sizes: Tensor) -> Tensor:
         """Post-process outputs from DETR.
@@ -77,6 +80,9 @@ class DETRPostProcessor(Module):
         boxes = boxes_xy.gather(dim=1, index=index.unsqueeze(-1).repeat(1, 1, boxes_xy.shape[-1]))
 
         all_boxes = concatenate([labels[..., None], scores[..., None], boxes], -1)
+
+        if not self.confidence_filtering or self.confidence_threshold == 0:
+            return all_boxes
 
         return all_boxes[(all_boxes[:, :, 1] > self.confidence_threshold).unsqueeze(-1).expand_as(all_boxes)].view(
             all_boxes.shape[0], -1, all_boxes.shape[-1]

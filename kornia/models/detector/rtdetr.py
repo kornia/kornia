@@ -27,6 +27,7 @@ class RTDETRDetectorBuilder:
         pretrained: bool = True,
         image_size: Optional[int] = 640,
         confidence_threshold: float = 0.5,
+        confidence_filtering: Optional[bool] = None,
     ) -> ObjectDetector:
         """Builds and returns an RT-DETR object detector model.
 
@@ -47,6 +48,9 @@ class RTDETRDetectorBuilder:
                 [480, 512, 544, 576, 608, 640, 640, 640, 672, 704, 736, 768, 800].
             confidence_threshold:
                 The confidence threshold used during post-processing to filter detections.
+            confidence_filtering:
+                If to perform filtering on resulting boxes. If None, the filtering will be blocked when exporting
+                to ONNX, while it would perform as per confidence_threshold when build the model.
 
         Returns:
             ObjectDetector
@@ -69,7 +73,11 @@ class RTDETRDetectorBuilder:
         return ObjectDetector(
             model,
             ResizePreProcessor((image_size, image_size)) if image_size is not None else nn.Identity(),
-            DETRPostProcessor(confidence_threshold),
+            DETRPostProcessor(
+                confidence_threshold,
+                num_classes=config.num_classes if config is not None else 80,
+                confidence_filtering=confidence_filtering or not torch.onnx.is_in_onnx_export
+            ),
         )
 
     @staticmethod
@@ -80,6 +88,7 @@ class RTDETRDetectorBuilder:
         pretrained: bool = True,
         image_size: Optional[int] = 640,
         confidence_threshold: float = 0.5,
+        confidence_filtering: Optional[bool] = None,
     ) -> tuple[str, ObjectDetector]:
         """Exports an RT-DETR object detection model to ONNX format.
 
@@ -99,6 +108,9 @@ class RTDETRDetectorBuilder:
                 [480, 512, 544, 576, 608, 640, 640, 640, 672, 704, 736, 768, 800].
             confidence_threshold:
                 The confidence threshold used during post-processing to filter detections.
+            confidence_filtering:
+                If to perform filtering on resulting boxes. If None, the filtering will be blocked when exporting
+                to ONNX, while it would perform as per confidence_threshold when build the model.
 
         Returns:
             - The name of the ONNX model.
@@ -111,6 +123,7 @@ class RTDETRDetectorBuilder:
             pretrained=pretrained,
             image_size=image_size,
             confidence_threshold=confidence_threshold,
+            confidence_filtering=confidence_filtering,
         )
         if onnx_name is None:
             _model_name = model_name
