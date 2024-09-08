@@ -4,7 +4,7 @@ import datetime
 import os
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
+from typing import Optional, Union
 
 import torch
 
@@ -119,7 +119,7 @@ class ResizePreProcessor(Module):
         self.size = size
         self.interpolation_mode = interpolation_mode
 
-    def forward(self, imgs: Tensor) -> tuple[Tensor, Tensor]:
+    def forward(self, imgs: Union[Tensor, list[Tensor]]) -> tuple[Tensor, Tensor]:
         """
         Returns:
             resized_imgs: resized images in a batch.
@@ -127,14 +127,18 @@ class ResizePreProcessor(Module):
         """
         # TODO: support other input formats e.g. file path, numpy
         resized_imgs, original_sizes = [], []
-        for i in range(imgs.shape[0]):
+
+        iters = len(imgs) if isinstance(imgs, list) else imgs.shape[0]
+        original_sizes = imgs.new_zeros((imgs.shape[0], 2))
+        for i in range(iters):
             img = imgs[i]
-            original_sizes.append([img.shape[-2], img.shape[-1]])
+            original_sizes[i, 0] = img.shape[-2]  # Height
+            original_sizes[i, 1] = img.shape[-1]  # Width
             resized_imgs.append(
                 # TODO: fix kornia resize warnings
                 resize(img[None], size=self.size, interpolation=self.interpolation_mode)
             )
-        return concatenate(resized_imgs), as_tensor(original_sizes)
+        return concatenate(resized_imgs), original_sizes
 
 
 # TODO: move this to kornia.models as AlgorithmicModel api
@@ -155,11 +159,12 @@ class ObjectDetector(Module):
         self.post_processor = post_processor.eval()
 
     @torch.inference_mode()
-    def forward(self, images: list[Tensor]) -> list[Tensor]:
+    def forward(self, images: Union[Tensor, list[Tensor]]) -> list[Tensor]:
         """Detect objects in a given list of images.
 
         Args:
-            images: list of RGB images. Each image is a Tensor with shape :math:`(3, H, W)`.
+            images: If list of RGB images. Each image is a Tensor with shape :math:`(3, H, W)`.
+                If Tensor, a Tensor with shape :math:`(B, 3, H, W)`.
 
         Returns:
             list of detections found in each image. For item in a batch, shape is :math:`(D, 6)`, where :math:`D` is the
@@ -170,12 +175,15 @@ class ObjectDetector(Module):
         detections = self.post_processor(logits, boxes, images_sizes)
         return detections
 
-    def draw(self, images: list[Tensor], output_type: str = "torch") -> list[Tensor] | list[Image.Image]:  # type: ignore
+    def draw(
+        self, images: Union[Tensor, list[Tensor]], detections: Optional[Tensor] = None, output_type: str = "torch"
+    ) -> Union[Tensor, list[Tensor], list[Image.Image]]:  # type: ignore
         """Very simple drawing.
 
         Needs to be more fancy later.
         """
-        detections = self.forward(images)
+        if detections is None:
+            detections = self.forward(images)
         output = []
         for image, detection in zip(images, detections):
             out_img = image[None].clone()
@@ -192,7 +200,9 @@ class ObjectDetector(Module):
                 raise RuntimeError(f"Unsupported output type `{output_type}`.")
         return output
 
-    def save(self, images: list[Tensor], directory: Optional[str] = None) -> None:
+    def save(
+        self, images: Union[Tensor, list[Tensor]], detections: Optional[Tensor] = None, directory: Optional[str] = None
+    ) -> None:
         """Saves the output image(s) to a directory.
 
         Args:
@@ -202,13 +212,14 @@ class ObjectDetector(Module):
         if directory is None:
             name = f"detection-{datetime.datetime.now(tz=datetime.timezone.utc).strftime('%Y%m%d%H%M%S')!s}"
             directory = os.path.join("Kornia_outputs", name)
-        outputs = self.draw(images)
+        outputs = self.draw(images, detections)
         os.makedirs(directory, exist_ok=True)
         for i, out_image in enumerate(outputs):
             write_image(
                 os.path.join(directory, f"{str(i).zfill(6)}.jpg"),
                 out_image.mul(255.0).byte(),
             )
+        print(f"Outputs are saved in {directory}")
 
     def compile(
         self,

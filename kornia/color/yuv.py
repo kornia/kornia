@@ -122,7 +122,7 @@ def yuv_to_rgb(image: Tensor) -> Tensor:
     if not isinstance(image, Tensor):
         raise TypeError(f"Input type is not a Tensor. Got {type(image)}")
 
-    if len(image.shape) < 3 or image.shape[-3] != 3:
+    if image.dim() < 3 or image.shape[-3] != 3:
         raise ValueError(f"Input size must have a shape of (*, 3, H, W). Got {image.shape}")
 
     y: Tensor = image[..., 0, :, :]

@@ -264,7 +264,7 @@ def perform_keep_shape_image(f: Callable[..., Tensor]) -> Callable[..., Tensor]:
         if not isinstance(input, Tensor):
             raise TypeError(f"Input input type is not a Tensor. Got {type(input)}")
 
-        if input.numel() == 0:
+        if input.shape.numel() == 0:
             raise ValueError("Invalid input tensor, it is empty.")
 
         input_shape = input.shape

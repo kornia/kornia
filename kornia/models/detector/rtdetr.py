@@ -9,6 +9,8 @@ from kornia.contrib.models.rt_detr.model import RTDETR, RTDETRConfig
 from kornia.contrib.object_detection import ObjectDetector, ResizePreProcessor
 from kornia.core import rand
 
+__all__ = ["RTDETRDetectorBuilder"]
+
 
 class RTDETRDetectorBuilder:
     """A builder class for constructing RT-DETR object detection models.
@@ -72,13 +74,13 @@ class RTDETRDetectorBuilder:
 
     @staticmethod
     def to_onnx(
-        onnx_name: Optional[str] = None,
         model_name: Optional[str] = None,
+        onnx_name: Optional[str] = None,
         config: Optional[RTDETRConfig] = None,
         pretrained: bool = True,
         image_size: Optional[int] = 640,
         confidence_threshold: float = 0.5,
-    ) -> None:
+    ) -> tuple[str, ObjectDetector]:
         """Exports an RT-DETR object detection model to ONNX format.
 
         Either `model_name` or `config` must be provided. If neither is provided,
@@ -99,8 +101,8 @@ class RTDETRDetectorBuilder:
                 The confidence threshold used during post-processing to filter detections.
 
         Returns:
-            ObjectDetector
-                An object detector instance initialized with the specified model, preprocessor, and post-processor.
+            - The name of the ONNX model.
+            - The exported torch model.
         """
 
         detector = RTDETRDetectorBuilder.build(
@@ -118,15 +120,14 @@ class RTDETRDetectorBuilder:
                 _model_name = "rtdetr_r18vd"
             onnx_name = f"Kornia-RTDETR-{_model_name}-{image_size}.onnx"
 
+        val_image = rand(1, 3, image_size, image_size)
         if image_size is None:
             val_image = rand(1, 3, 640, 640)
-            dynamic_axes = {
-                "input": {0: "batch_size", 2: "height", 3: "width"},
-                "output": {0: "batch_size", 2: "height", 3: "width"},
-            }
-        else:
-            val_image = rand(1, 3, image_size, image_size)
-            dynamic_axes = {"input": {0: "batch_size"}, "output": {0: "batch_size"}}
+
+        dynamic_axes = {
+            "input": {0: "batch_size", 2: "height", 3: "width"},
+            "output": {0: "batch_size"}
+        }
         torch.onnx.export(
             detector,
             val_image,
@@ -138,3 +139,5 @@ class RTDETRDetectorBuilder:
             output_names=["output"],
             dynamic_axes=dynamic_axes,
         )
+
+        return onnx_name, detector

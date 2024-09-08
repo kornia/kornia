@@ -61,10 +61,8 @@ class DETRPostProcessor(Module):
         cxcy, wh = boxes[..., :2], boxes[..., 2:]
         boxes_xy = concatenate([cxcy - wh * 0.5, wh], -1)
 
-        sizes_wh = torch.empty(1, 1, 2, device=boxes.device, dtype=boxes.dtype)
-        sizes_wh[..., 0] = original_sizes[0][1]
-        sizes_wh[..., 1] = original_sizes[0][0]
-        sizes_wh = sizes_wh.repeat(1, 1, 2)
+        # Get dynamic size from the input tensor itself
+        sizes_wh = original_sizes[0].flip(0).unsqueeze(0).unsqueeze(0).repeat(1, 1, 2)
 
         boxes_xy = boxes_xy * sizes_wh
         scores = logits.sigmoid()  # RT-DETR was trained with focal loss. thus sigmoid is used instead of softmax
@@ -78,4 +76,7 @@ class DETRPostProcessor(Module):
         index = index // num_classes
         boxes = boxes_xy.gather(dim=1, index=index.unsqueeze(-1).repeat(1, 1, boxes_xy.shape[-1]))
 
-        return concatenate([labels[..., None], scores[..., None], boxes], -1)
+        all_boxes = concatenate([labels[..., None], scores[..., None], boxes], -1)
+
+        return all_boxes[(all_boxes[:, :, 1] > self.confidence_threshold).unsqueeze(-1).expand_as(all_boxes)].view(
+            all_boxes.shape[0], -1, all_boxes.shape[-1])
