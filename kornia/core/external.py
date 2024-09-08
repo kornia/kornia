@@ -31,8 +31,13 @@ class LazyLoader:
         self.module: Optional[ModuleType] = None
 
     def _install_package(self, module_name: str) -> None:
+<<<<<<< HEAD
         logger.info(f"Installing `{module_name}` ...")
         subprocess.run(["pip", "install", "-U", module_name], shell=True)
+=======
+        logger.info(f"Installing `{self.module_name}` ...")
+        subprocess.run(["pip", "install", "-U", self.module_name], shell=False, check=False)
+>>>>>>> fb07bb9ff99dbd765ab39a30d0ddf8afc51e6591
 
     def _load(self) -> None:
         """Loads the module if it hasn't been loaded yet.

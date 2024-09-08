@@ -137,9 +137,7 @@ class ResizePreProcessor(Module):
             img = imgs[i]
             original_sizes[i, 0] = img.shape[-2]  # Height
             original_sizes[i, 1] = img.shape[-1]  # Width
-            resized_imgs.append(
-                resize(img[None], size=self.size, interpolation=self.interpolation_mode)
-            )
+            resized_imgs.append(resize(img[None], size=self.size, interpolation=self.interpolation_mode))
         return concatenate(resized_imgs), original_sizes
 
 
