@@ -109,7 +109,6 @@ class ONNXLoader:
         else:
             raise ValueError("URL must start with 'http:' or 'https:'")
 
-
     @staticmethod
     def _fetch_repo_contents(folder: str) -> list[dict[str, Any]]:
         """Fetches the contents of the Hugging Face repository using the Hugging Face API.
