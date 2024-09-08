@@ -2,6 +2,9 @@ import importlib
 import subprocess
 from types import ModuleType
 from typing import List, Optional
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class LazyLoader:
@@ -28,7 +31,7 @@ class LazyLoader:
         self.module: Optional[ModuleType] = None
 
     def _install_package(self, module_name: str) -> None:
-        print(f"Installing `{self.module_name}` ...")
+        logger.info(f"Installing `{self.module_name}` ...")
         subprocess.run(["pip", "install", "-U", self.module_name], check=False)
 
     def _load(self) -> None:

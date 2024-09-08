@@ -4,6 +4,7 @@ import datetime
 import os
 from dataclasses import dataclass
 from enum import Enum
+import logging
 from typing import Optional, Union
 
 import torch
@@ -24,6 +25,8 @@ __all__ = [
     "ObjectDetector",
     "ObjectDetectorResult",
 ]
+
+logger = logging.getLogger(__name__)
 
 
 class BoundingBoxDataFormat(Enum):
@@ -126,10 +129,10 @@ class ResizePreProcessor(Module):
             original_sizes: the original image sizes of (height, width).
         """
         # TODO: support other input formats e.g. file path, numpy
-        resized_imgs, original_sizes = [], []
+        resized_imgs: list[Tensor] = []
 
         iters = len(imgs) if isinstance(imgs, list) else imgs.shape[0]
-        original_sizes = imgs.new_zeros((imgs.shape[0], 2))
+        original_sizes = imgs.new_zeros((iters, 2))
         for i in range(iters):
             img = imgs[i]
             original_sizes[i, 0] = img.shape[-2]  # Height
@@ -159,7 +162,7 @@ class ObjectDetector(Module):
         self.post_processor = post_processor.eval()
 
     @torch.inference_mode()
-    def forward(self, images: Union[Tensor, list[Tensor]]) -> list[Tensor]:
+    def forward(self, images: Union[Tensor, list[Tensor]]) -> Tensor:
         """Detect objects in a given list of images.
 
         Args:
@@ -219,7 +222,7 @@ class ObjectDetector(Module):
                 os.path.join(directory, f"{str(i).zfill(6)}.jpg"),
                 out_image.mul(255.0).byte(),
             )
-        print(f"Outputs are saved in {directory}")
+        logger.info(f"Outputs are saved in {directory}")
 
     def compile(
         self,

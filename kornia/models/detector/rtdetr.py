@@ -133,9 +133,10 @@ class RTDETRDetectorBuilder:
                 _model_name = "rtdetr_r18vd"
             onnx_name = f"Kornia-RTDETR-{_model_name}-{image_size}.onnx"
 
-        val_image = rand(1, 3, image_size, image_size)
         if image_size is None:
             val_image = rand(1, 3, 640, 640)
+        else:
+            val_image = rand(1, 3, image_size, image_size)
 
         dynamic_axes = {"input": {0: "batch_size", 2: "height", 3: "width"}, "output": {0: "batch_size"}}
         torch.onnx.export(
