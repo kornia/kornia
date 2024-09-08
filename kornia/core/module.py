@@ -11,9 +11,26 @@ import kornia
 from ._backend import Module, Tensor, from_numpy
 from .external import PILImage as Image
 from .external import numpy as np
+from .external import onnx
 
 
 class ONNXExportMixin:
+    """Mixin class that provides ONNX export functionality for objects that support it.
+
+    Attributes:
+        ONNX_EXPORTABLE: 
+            A flag indicating whether the object can be exported to ONNX. Default is True.
+        ONNX_DEFAULT_INPUTSHAPE: 
+            Default input shape for the ONNX export. A list of integers where `-1` indicates 
+            dynamic dimensions. Default is [-1, -1, -1, -1].
+        ONNX_DEFAULT_OUTPUTSHAP: 
+            Default output shape for the ONNX export. A list of integers where `-1` indicates 
+            dynamic dimensions. Default is [-1, -1, -1, -1].
+
+    Note:
+        - If `ONNX_EXPORTABLE` is False, indicating that the object cannot be exported to ONNX.
+    """
+
     ONNX_EXPORTABLE: bool = True
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, -1, -1, -1]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, -1, -1, -1]
@@ -24,6 +41,24 @@ class ONNXExportMixin:
         input_shape: Optional[list[int]] = None,
         output_shape: Optional[list[int]] = None,
     ) -> None:
+        """Exports the current object to an ONNX model file.
+
+        Args:
+            onnx_name (Optional[str]): 
+                The name of the output ONNX file. If not provided, a default name in the 
+                format "Kornia-<ClassName>.onnx" will be used.
+            input_shape (Optional[list[int]]): 
+                The input shape for the model as a list of integers. If None, 
+                `ONNX_DEFAULT_INPUTSHAPE` will be used. Dynamic dimensions can be indicated by `-1`.
+            output_shape (Optional[list[int]]): 
+                The output shape for the model as a list of integers. If None, 
+                `ONNX_DEFAULT_OUTPUTSHAPE` will be used. Dynamic dimensions can be indicated by `-1`.
+
+        Notes:
+            - A dummy input tensor is created based on the provided or default input shape.
+            - Dynamic axes for input and output tensors are configured where dimensions are marked `-1`.
+            - The model is exported with `torch.onnx.export`, with constant folding enabled and opset version set to 17.
+        """
         if not self.ONNX_EXPORTABLE:
             raise RuntimeError("This object cannot be exported to ONNX.")
 
@@ -36,8 +71,8 @@ class ONNXExportMixin:
             onnx_name = f"Kornia-{self.__class__.__name__}.onnx"
 
         # Creating a dummy input with the given shape
-        psuedo_shape = (1, 3, 256, 256)
-        dummy_input = torch.randn(*[(psuedo_shape[i] if dim == -1 else dim) for i, dim in enumerate(input_shape)])
+        pseudo_shape = (1, 3, 256, 256)
+        dummy_input = torch.randn(*[(pseudo_shape[i] if dim == -1 else dim) for i, dim in enumerate(input_shape)])
 
         # Dynamic axis configuration for input and output
         dynamic_axes = {
@@ -56,6 +91,15 @@ class ONNXExportMixin:
             output_names=["output"],
             dynamic_axes=dynamic_axes,
         )
+        
+        onnx_model = onnx.load(onnx_name)  # type: ignore
+
+        for key, value in [("source", "kornia"), ("version", kornia.__version__), ("class", self.__class__.__name__)]:
+            metadata_props = onnx_model.metadata_props.add()  # type: ignore
+            metadata_props.key = key  # type: ignore
+            metadata_props.value = str(value)  # type: ignore
+
+        onnx.save(onnx_model, onnx_name)
 
 
 class ImageModuleMixIn:
