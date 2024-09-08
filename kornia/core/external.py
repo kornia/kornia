@@ -1,6 +1,5 @@
 import importlib
 import subprocess
-
 from types import ModuleType
 from typing import List, Optional
 
@@ -16,6 +15,7 @@ class LazyLoader:
         module_name: The name of the module to be lazily loaded.
         module: The actual module object, initialized to None and loaded upon first access.
     """
+
     auto_install: bool = False
 
     def __init__(self, module_name: str) -> None:
@@ -29,7 +29,7 @@ class LazyLoader:
 
     def _install_package(self, module_name: str) -> None:
         print(f"Installing `{self.module_name}` ...")
-        subprocess.run(["pip", "install", "-U", self.module_name]) 
+        subprocess.run(["pip", "install", "-U", self.module_name], check=False)
 
     def _load(self) -> None:
         """Loads the module if it hasn't been loaded yet.
@@ -49,9 +49,9 @@ class LazyLoader:
                         "Do you wish to install the dependency? [Y]es, [N]o, [A]ll."
                     )
                     if if_install.lower() == "y":
-                        subprocess.run(["pip", "install", "-U", self.module_name]) 
+                        subprocess.run(["pip", "install", "-U", self.module_name], check=False)
                     elif if_install.lower() == "a":
-                        subprocess.run(["pip", "install", "-U", self.module_name]) 
+                        subprocess.run(["pip", "install", "-U", self.module_name], check=False)
                         self.auto_install = True
                     else:
                         raise ImportError(

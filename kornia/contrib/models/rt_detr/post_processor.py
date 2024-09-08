@@ -79,4 +79,5 @@ class DETRPostProcessor(Module):
         all_boxes = concatenate([labels[..., None], scores[..., None], boxes], -1)
 
         return all_boxes[(all_boxes[:, :, 1] > self.confidence_threshold).unsqueeze(-1).expand_as(all_boxes)].view(
-            all_boxes.shape[0], -1, all_boxes.shape[-1])
+            all_boxes.shape[0], -1, all_boxes.shape[-1]
+        )

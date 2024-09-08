@@ -124,10 +124,7 @@ class RTDETRDetectorBuilder:
         if image_size is None:
             val_image = rand(1, 3, 640, 640)
 
-        dynamic_axes = {
-            "input": {0: "batch_size", 2: "height", 3: "width"},
-            "output": {0: "batch_size"}
-        }
+        dynamic_axes = {"input": {0: "batch_size", 2: "height", 3: "width"}, "output": {0: "batch_size"}}
         torch.onnx.export(
             detector,
             val_image,

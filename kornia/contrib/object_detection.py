@@ -8,7 +8,7 @@ from typing import Optional, Union
 
 import torch
 
-from kornia.core import Module, Tensor, as_tensor, concatenate
+from kornia.core import Module, Tensor, concatenate
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.external import PILImage as Image
 from kornia.core.external import numpy as np
