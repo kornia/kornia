@@ -17,7 +17,7 @@ class TestObjectDetector(BaseTester):
         config = RTDETRConfig("resnet50d", 10, head_num_queries=10)
         model = RTDETR.from_config(config).to(device, dtype).eval()
         pre_processor = kornia.contrib.object_detection.ResizePreProcessor((32, 32))
-        post_processor = DETRPostProcessor(confidence).to(device, dtype).eval()
+        post_processor = DETRPostProcessor(confidence, num_top_queries=3).to(device, dtype).eval()
         detector = kornia.contrib.ObjectDetector(model, pre_processor, post_processor)
 
         sizes = torch.randint(5, 10, (batch_size, 2)) * 32
@@ -40,7 +40,7 @@ class TestObjectDetector(BaseTester):
         config = RTDETRConfig(variant, 1)
         model = RTDETR.from_config(config).to(device=device, dtype=dtype).eval()
         pre_processor = kornia.contrib.object_detection.ResizePreProcessor(640)
-        post_processor = DETRPostProcessor(0.3)
+        post_processor = DETRPostProcessor(0.3, num_top_queries=3)
         detector = kornia.contrib.ObjectDetector(model, pre_processor, post_processor)
 
         data = torch.rand(3, 400, 640, device=device, dtype=dtype)

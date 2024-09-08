@@ -34,12 +34,14 @@ def mod(a: Tensor, b: int) -> Tensor:
 # TODO: deprecate the confidence threshold and add the num_top_queries as a parameter and num_classes as a parameter
 class DETRPostProcessor(Module):
     def __init__(
-        self, confidence_threshold: Optional[float] = None, num_classes: int = 80, confidence_filtering: bool = True
+        self, confidence_threshold: Optional[float] = None, num_classes: int = 80,
+        num_top_queries: int = 300, confidence_filtering: bool = True
     ) -> None:
         super().__init__()
         self.confidence_threshold = confidence_threshold
         self.num_classes = num_classes
         self.confidence_filtering = confidence_filtering
+        self.num_top_queries = num_top_queries
 
     def forward(self, logits: Tensor, boxes: Tensor, original_sizes: Tensor) -> Tensor:
         """Post-process outputs from DETR.
@@ -75,11 +77,9 @@ class DETRPostProcessor(Module):
 
         # retrieve the boxes with the highest score for each class
         # https://github.com/lyuwenyu/RT-DETR/blob/b6bf0200b249a6e35b44e0308b6058f55b99696b/rtdetrv2_pytorch/src/zoo/rtdetr/rtdetr_postprocessor.py#L55-L62
-        num_top_queries: int = 300  # TODO: make this configurable
-        num_classes: int = 80  # TODO: make this configurable
-        scores, index = torch.topk(scores.flatten(1), num_top_queries, dim=-1)
-        labels = mod(index, num_classes)
-        index = index // num_classes
+        scores, index = torch.topk(scores.flatten(1), self.num_top_queries, dim=-1)
+        labels = mod(index, self.num_classes)
+        index = index // self.num_classes
         boxes = boxes_xy.gather(dim=1, index=index.unsqueeze(-1).repeat(1, 1, boxes_xy.shape[-1]))
 
         all_boxes = concatenate([labels[..., None], scores[..., None], boxes], -1)
