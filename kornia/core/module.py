@@ -32,8 +32,8 @@ class ONNXExportMixin:
     """
 
     ONNX_EXPORTABLE: bool = True
-    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, -1, -1, -1]
-    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, -1, -1, -1]
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[List[int]] = [-1, -1, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[List[int]] = [-1, -1, -1, -1]
 
     def to_onnx(
         self,
@@ -95,11 +95,11 @@ class ONNXExportMixin:
         onnx_model = onnx.load(onnx_name)  # type: ignore
 
         for key, value in [("source", "kornia"), ("version", kornia.__version__), ("class", self.__class__.__name__)]:
-            metadata_props = onnx_model.metadata_props.add()  # type: ignore
-            metadata_props.key = key  # type: ignore
-            metadata_props.value = str(value)  # type: ignore
+            metadata_props = onnx_model.metadata_props.add()
+            metadata_props.key = key
+            metadata_props.value = str(value)
 
-        onnx.save(onnx_model, onnx_name)
+        onnx.save(onnx_model, onnx_name)  # type: ignore
 
 
 class ImageModuleMixIn:

@@ -1,5 +1,5 @@
 ONNXSequential: Chain Multiple ONNX Models with Ease
-=====================================================
+====================================================
 
 The `ONNXSequential` class is a powerful new feature that allows users to effortlessly combine and chain multiple ONNX models together. This is especially useful when you have several pre-trained models or custom ONNX operators that you want to execute sequentially as part of a larger pipeline.
 
@@ -91,7 +91,7 @@ Here's how you can quickly get started with `ONNXSequential`:
 
 
 Frequently Asked Questions (FAQ)
--------------------------------
+--------------------------------
 
 **1. Can I chain models from different sources?**
 
@@ -106,7 +106,7 @@ You can use the `io_map` parameter to control how outputs of one model are mappe
 Absolutely! You can pass your own session options to the `create_session` method to fine-tune performance, memory usage, or logging.
 
 Why Choose ONNXSequential?
----------------------------
+--------------------------
 
 With the increasing adoption of ONNX for model interoperability and deployment, `ONNXSequential` provides a simple yet powerful interface for combining models and operators. By leveraging ONNXRuntime’s optimization and execution provider capabilities, it gives you the flexibility to:
 - Deploy on different hardware (CPU, GPU).
