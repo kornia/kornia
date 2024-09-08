@@ -18,13 +18,13 @@ class ONNXExportMixin:
     """Mixin class that provides ONNX export functionality for objects that support it.
 
     Attributes:
-        ONNX_EXPORTABLE: 
+        ONNX_EXPORTABLE:
             A flag indicating whether the object can be exported to ONNX. Default is True.
-        ONNX_DEFAULT_INPUTSHAPE: 
-            Default input shape for the ONNX export. A list of integers where `-1` indicates 
+        ONNX_DEFAULT_INPUTSHAPE:
+            Default input shape for the ONNX export. A list of integers where `-1` indicates
             dynamic dimensions. Default is [-1, -1, -1, -1].
-        ONNX_DEFAULT_OUTPUTSHAP: 
-            Default output shape for the ONNX export. A list of integers where `-1` indicates 
+        ONNX_DEFAULT_OUTPUTSHAP:
+            Default output shape for the ONNX export. A list of integers where `-1` indicates
             dynamic dimensions. Default is [-1, -1, -1, -1].
 
     Note:
@@ -44,14 +44,14 @@ class ONNXExportMixin:
         """Exports the current object to an ONNX model file.
 
         Args:
-            onnx_name (Optional[str]): 
-                The name of the output ONNX file. If not provided, a default name in the 
+            onnx_name (Optional[str]):
+                The name of the output ONNX file. If not provided, a default name in the
                 format "Kornia-<ClassName>.onnx" will be used.
-            input_shape (Optional[list[int]]): 
-                The input shape for the model as a list of integers. If None, 
+            input_shape (Optional[list[int]]):
+                The input shape for the model as a list of integers. If None,
                 `ONNX_DEFAULT_INPUTSHAPE` will be used. Dynamic dimensions can be indicated by `-1`.
-            output_shape (Optional[list[int]]): 
-                The output shape for the model as a list of integers. If None, 
+            output_shape (Optional[list[int]]):
+                The output shape for the model as a list of integers. If None,
                 `ONNX_DEFAULT_OUTPUTSHAPE` will be used. Dynamic dimensions can be indicated by `-1`.
 
         Notes:
@@ -91,7 +91,7 @@ class ONNXExportMixin:
             output_names=["output"],
             dynamic_axes=dynamic_axes,
         )
-        
+
         onnx_model = onnx.load(onnx_name)  # type: ignore
 
         for key, value in [("source", "kornia"), ("version", kornia.__version__), ("class", self.__class__.__name__)]:
