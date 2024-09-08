@@ -132,13 +132,12 @@ class ResizePreProcessor(Module):
         resized_imgs: list[Tensor] = []
 
         iters = len(imgs) if isinstance(imgs, list) else imgs.shape[0]
-        original_sizes = imgs.new_zeros((iters, 2))
+        original_sizes = imgs[0].new_zeros((iters, 2))
         for i in range(iters):
             img = imgs[i]
             original_sizes[i, 0] = img.shape[-2]  # Height
             original_sizes[i, 1] = img.shape[-1]  # Width
             resized_imgs.append(
-                # TODO: fix kornia resize warnings
                 resize(img[None], size=self.size, interpolation=self.interpolation_mode)
             )
         return concatenate(resized_imgs), original_sizes
