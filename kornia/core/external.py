@@ -1,8 +1,8 @@
 import importlib
+import logging
 import subprocess
 from types import ModuleType
 from typing import List, Optional
-import logging
 
 logger = logging.getLogger(__name__)
 
