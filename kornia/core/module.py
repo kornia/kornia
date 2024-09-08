@@ -38,19 +38,19 @@ class ONNXExportMixin:
     def to_onnx(
         self,
         onnx_name: Optional[str] = None,
-        input_shape: Optional[list[int]] = None,
-        output_shape: Optional[list[int]] = None,
+        input_shape: Optional[List[int]] = None,
+        output_shape: Optional[List[int]] = None,
     ) -> None:
         """Exports the current object to an ONNX model file.
 
         Args:
-            onnx_name (Optional[str]):
+            onnx_name:
                 The name of the output ONNX file. If not provided, a default name in the
                 format "Kornia-<ClassName>.onnx" will be used.
-            input_shape (Optional[list[int]]):
+            input_shape:
                 The input shape for the model as a list of integers. If None,
                 `ONNX_DEFAULT_INPUTSHAPE` will be used. Dynamic dimensions can be indicated by `-1`.
-            output_shape (Optional[list[int]]):
+            output_shape:
                 The output shape for the model as a list of integers. If None,
                 `ONNX_DEFAULT_OUTPUTSHAPE` will be used. Dynamic dimensions can be indicated by `-1`.
 

@@ -95,13 +95,13 @@ class ONNXLoader:
         os.makedirs(os.path.dirname(file_path), exist_ok=True)  # Create the cache directory if it doesn't exist
 
         if not url.startswith(("http:", "https:")):
+            try:
+                urllib.request.urlretrieve(url, file_path)
+            except urllib.error.HTTPError as e:
+                raise ValueError(f"Error in resolving `{url}`. {e}.")
+        else:
             raise ValueError("URL must start with 'http:' or 'https:'")
 
-        # Download the file and save it
-        try:
-            urllib.request.urlretrieve(url, file_path)
-        except urllib.error.HTTPError as e:
-            raise ValueError(f"Error in resolving `{url}`. {e}.")
 
     @staticmethod
     def _fetch_repo_contents(folder: str) -> list[dict[str, Any]]:
