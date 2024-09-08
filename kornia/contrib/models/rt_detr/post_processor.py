@@ -25,8 +25,6 @@ def mod(a: Tensor, b: int) -> Tensor:
     Example:
         >>> mod(7, 3)
         1
-        >>> mod(8.5, 3.2)
-        2.1
     """
     return a - (a // b) * b
 

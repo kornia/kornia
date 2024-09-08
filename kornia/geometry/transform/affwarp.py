@@ -1,6 +1,7 @@
 from typing import Optional, Tuple, Union
 
 import torch
+import warnings
 from torch import nn
 
 from kornia.core import ones, ones_like, zeros
@@ -567,6 +568,8 @@ def resize(
 
     input_size = h, w = input.shape[-2:]
     if isinstance(size, int):
+        if torch.onnx.is_in_onnx_export():
+            warnings.warn("Please pass the size with a tuple when exporting to ONNX to correct the tracing.")
         aspect_ratio = w / h
         size = _side_to_image_size(size, aspect_ratio, side)
 
