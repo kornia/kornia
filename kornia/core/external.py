@@ -1,6 +1,7 @@
 import importlib
 import logging
 import subprocess
+import sys
 from types import ModuleType
 from typing import List, Optional
 
@@ -32,7 +33,7 @@ class LazyLoader:
 
     def _install_package(self, module_name: str) -> None:
         logger.info(f"Installing `{module_name}` ...")
-        subprocess.run(["pip", "install", "-U", module_name], shell=False, check=False)
+        subprocess.run([sys.executable, "-m", "pip", "install", "-U", module_name], shell=False, check=False)  # noqa: S603
 
     def _load(self) -> None:
         """Loads the module if it hasn't been loaded yet.
