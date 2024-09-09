@@ -1,6 +1,7 @@
 import os
 import pprint
 import urllib.request
+import logging
 from typing import Any, Optional
 
 import requests
@@ -9,13 +10,15 @@ from kornia.core.external import onnx
 
 __all__ = ["ONNXLoader"]
 
+logger = logging.getLogger(__name__)
+
 
 class ONNXLoader:
     """Manages ONNX models, handling local caching, downloading from Hugging Face, and loading models.
 
     Attributes:
         cache_dir: The directory where ONNX models are cached locally.
-            Defaults to None, which will use a default `.kornia_onnx_models` directory.
+            Defaults to None, which will use a default `.kornia_hub/onnx_models` directory.
 
     .. code-block:: python
         onnx_loader = ONNXLoader()
@@ -43,14 +46,14 @@ class ONNXLoader:
             if self.cache_dir is not None:
                 cache_dir = self.cache_dir
             else:
-                cache_dir = ".kornia_onnx_models"
+                cache_dir = ".kornia_hub/onnx_models"
 
         # The filename is the model name (without directory path)
         file_name = f"{model_name.split('/')[-1]}.onnx"
         file_path = os.path.join(cache_dir, "/".join(model_name.split("/")[:-1]), file_name)
         return file_path
 
-    def load_model(self, model_name: str, download: bool = False, **kwargs) -> "onnx.ModelProto":  # type:ignore
+    def load_model(self, model_name: str, download: bool = True, **kwargs) -> "onnx.ModelProto":  # type:ignore
         """Loads an ONNX model from the local cache or downloads it from Hugging Face if necessary.
 
         Args:
@@ -65,11 +68,15 @@ class ONNXLoader:
         """
         if model_name.startswith("hf://"):
             model_name = model_name[len("hf://") :]
-            file_path = self._get_file_path(model_name, self.cache_dir)
+            cache_dir = kwargs.get("cache_dir", None) or self.cache_dir
+            file_path = self._get_file_path(model_name, cache_dir)
             if not os.path.exists(file_path):
                 # Construct the raw URL for the ONNX file
-                url = f"https://huggingface.co/kornia/ONNX_models/resolve/main/{model_name}.onnx"
-                self.download(url, file_path, **kwargs)
+                if download:
+                    url = f"https://huggingface.co/kornia/ONNX_models/resolve/main/{model_name}.onnx"
+                    self.download(url, file_path)
+                else:
+                    raise ValueError(f"`{model_name}` is not found in `{file_path}`. You may set `download=True`.")
             return onnx.load(file_path)  # type:ignore
 
         if os.path.exists(model_name):
@@ -81,7 +88,6 @@ class ONNXLoader:
         self,
         url: str,
         file_path: str,
-        cache_dir: Optional[str] = None,
     ) -> None:
         """Downloads an ONNX model from the specified URL and saves it to the specified file path.
 
@@ -94,8 +100,9 @@ class ONNXLoader:
 
         os.makedirs(os.path.dirname(file_path), exist_ok=True)  # Create the cache directory if it doesn't exist
 
-        if not url.startswith(("http:", "https:")):
+        if url.startswith(("http:", "https:")):
             try:
+                logger.info(f"Downloading `{url}` to `{file_path}`.")
                 urllib.request.urlretrieve(url, file_path)
             except urllib.error.HTTPError as e:
                 raise ValueError(f"Error in resolving `{url}`. {e}.")
