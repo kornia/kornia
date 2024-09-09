@@ -34,6 +34,7 @@ class RTDETRModelType(Enum):
     resnet101d = 3
     hgnetv2_l = 4
     hgnetv2_x = 5
+    resnet50d_m = 6
 
 
 @dataclass
@@ -129,6 +130,13 @@ class RTDETR(ModelBase[RTDETRConfig]):
             neck_dim_feedforward = config.neck_dim_feedforward or 1024
             head_num_decoder_layers = config.head_num_decoder_layers or 6
             neck_expansion = config.neck_expansion or 1.0
+
+        elif model_type == RTDETRModelType.resnet50d_m:
+            backbone = ResNetD.from_config(50)
+            neck_hidden_dim = config.neck_hidden_dim or 256
+            neck_dim_feedforward = config.neck_dim_feedforward or 1024
+            head_num_decoder_layers = config.head_num_decoder_layers or 6
+            neck_expansion = config.neck_expansion or .5
 
         elif model_type == RTDETRModelType.resnet101d:
             backbone = ResNetD.from_config(101)
@@ -227,7 +235,7 @@ class RTDETR(ModelBase[RTDETRConfig]):
         elif model_name == "rtdetr_r34vd":
             model = RTDETR.from_config(RTDETRConfig(RTDETRModelType.resnet34d, num_classes))
         elif model_name == "rtdetr_r50vd_m":
-            model = RTDETR.from_config(RTDETRConfig(RTDETRModelType.resnet50d, num_classes))
+            model = RTDETR.from_config(RTDETRConfig(RTDETRModelType.resnet50d_m, num_classes))
         elif model_name == "rtdetr_r50vd":
             model = RTDETR.from_config(RTDETRConfig(RTDETRModelType.resnet50d, num_classes))
         elif model_name == "rtdetr_r101vd":

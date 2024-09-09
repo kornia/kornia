@@ -45,7 +45,7 @@ class RTDETRDetectorBuilder:
             image_size:
                 The size to which input images will be resized during preprocessing.
                 If None, no resizing will be performed before passing to the model. Recommended scales include
-                [480, 512, 544, 576, 608, 640, 640, 640, 672, 704, 736, 768, 800].
+                [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800].
             confidence_threshold:
                 The confidence threshold used during post-processing to filter detections.
             confidence_filtering:
@@ -105,7 +105,7 @@ class RTDETRDetectorBuilder:
             image_size:
                 The size to which input images will be resized during preprocessing.
                 If None, image_size will be dynamic. Recommended scales include
-                [480, 512, 544, 576, 608, 640, 640, 640, 672, 704, 736, 768, 800].
+                [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800].
             confidence_threshold:
                 The confidence threshold used during post-processing to filter detections.
             confidence_filtering:
