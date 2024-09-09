@@ -1,7 +1,7 @@
+import logging
 import os
 import pprint
 import urllib.request
-import logging
 from typing import Any, Optional
 
 import requests
