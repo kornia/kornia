@@ -136,7 +136,7 @@ class RTDETR(ModelBase[RTDETRConfig]):
             neck_hidden_dim = config.neck_hidden_dim or 256
             neck_dim_feedforward = config.neck_dim_feedforward or 1024
             head_num_decoder_layers = config.head_num_decoder_layers or 6
-            neck_expansion = config.neck_expansion or .5
+            neck_expansion = config.neck_expansion or 0.5
 
         elif model_type == RTDETRModelType.resnet101d:
             backbone = ResNetD.from_config(101)
