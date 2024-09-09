@@ -1,14 +1,21 @@
 from __future__ import annotations
 
+import datetime
+import logging
+import os
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
+from typing import Optional, Union
 
 import torch
 
 from kornia.core import Module, Tensor, concatenate
 from kornia.core.check import KORNIA_CHECK_SHAPE
-from kornia.image.base import ImageSize
+from kornia.core.external import PILImage as Image
+from kornia.core.external import numpy as np
+from kornia.geometry.transform import resize
+from kornia.io import write_image
+from kornia.utils.draw import draw_rectangle
 
 __all__ = [
     "BoundingBoxDataFormat",
@@ -18,6 +25,8 @@ __all__ = [
     "ObjectDetector",
     "ObjectDetectorResult",
 ]
+
+logger = logging.getLogger(__name__)
 
 
 class BoundingBoxDataFormat(Enum):
@@ -113,17 +122,22 @@ class ResizePreProcessor(Module):
         self.size = size
         self.interpolation_mode = interpolation_mode
 
-    def forward(self, imgs: list[Tensor]) -> tuple[Tensor, list[ImageSize]]:
+    def forward(self, imgs: Union[Tensor, list[Tensor]]) -> tuple[Tensor, Tensor]:
+        """
+        Returns:
+            resized_imgs: resized images in a batch.
+            original_sizes: the original image sizes of (height, width).
+        """
         # TODO: support other input formats e.g. file path, numpy
-        resized_imgs, original_sizes = [], []
-        for i in range(len(imgs)):
+        resized_imgs: list[Tensor] = []
+
+        iters = len(imgs) if isinstance(imgs, list) else imgs.shape[0]
+        original_sizes = imgs[0].new_zeros((iters, 2))
+        for i in range(iters):
             img = imgs[i]
-            # NOTE: assume that image layout is CHW
-            original_sizes.append(ImageSize(height=img.shape[1], width=img.shape[2]))
-            resized_imgs.append(
-                # TODO: fix kornia resize to support onnx
-                torch.nn.functional.interpolate(img.unsqueeze(0), size=self.size, mode=self.interpolation_mode)
-            )
+            original_sizes[i, 0] = img.shape[-2]  # Height
+            original_sizes[i, 1] = img.shape[-1]  # Width
+            resized_imgs.append(resize(img[None], size=self.size, interpolation=self.interpolation_mode))
         return concatenate(resized_imgs), original_sizes
 
 
@@ -145,11 +159,12 @@ class ObjectDetector(Module):
         self.post_processor = post_processor.eval()
 
     @torch.inference_mode()
-    def forward(self, images: list[Tensor]) -> list[Tensor]:
+    def forward(self, images: Union[Tensor, list[Tensor]]) -> Tensor:
         """Detect objects in a given list of images.
 
         Args:
-            images: list of RGB images. Each image is a Tensor with shape :math:`(3, H, W)`.
+            images: If list of RGB images. Each image is a Tensor with shape :math:`(3, H, W)`.
+                If Tensor, a Tensor with shape :math:`(B, 3, H, W)`.
 
         Returns:
             list of detections found in each image. For item in a batch, shape is :math:`(D, 6)`, where :math:`D` is the
@@ -159,6 +174,52 @@ class ObjectDetector(Module):
         logits, boxes = self.model(images)
         detections = self.post_processor(logits, boxes, images_sizes)
         return detections
+
+    def draw(
+        self, images: Union[Tensor, list[Tensor]], detections: Optional[Tensor] = None, output_type: str = "torch"
+    ) -> Union[Tensor, list[Tensor], list[Image.Image]]:  # type: ignore
+        """Very simple drawing.
+
+        Needs to be more fancy later.
+        """
+        if detections is None:
+            detections = self.forward(images)
+        output = []
+        for image, detection in zip(images, detections):
+            out_img = image[None].clone()
+            for out in detection:
+                out_img = draw_rectangle(
+                    out_img,
+                    torch.Tensor([[[out[-4], out[-3], out[-4] + out[-2], out[-3] + out[-1]]]]),
+                )
+            if output_type == "torch":
+                output.append(out_img[0])
+            elif output_type == "pil":
+                output.append(Image.fromarray((out_img[0] * 255).permute(1, 2, 0).numpy().astype(np.uint8)))  # type: ignore
+            else:
+                raise RuntimeError(f"Unsupported output type `{output_type}`.")
+        return output
+
+    def save(
+        self, images: Union[Tensor, list[Tensor]], detections: Optional[Tensor] = None, directory: Optional[str] = None
+    ) -> None:
+        """Saves the output image(s) to a directory.
+
+        Args:
+            name: Directory to save the images.
+            n_row: Number of images displayed in each row of the grid.
+        """
+        if directory is None:
+            name = f"detection-{datetime.datetime.now(tz=datetime.timezone.utc).strftime('%Y%m%d%H%M%S')!s}"
+            directory = os.path.join("Kornia_outputs", name)
+        outputs = self.draw(images, detections)
+        os.makedirs(directory, exist_ok=True)
+        for i, out_image in enumerate(outputs):
+            write_image(
+                os.path.join(directory, f"{str(i).zfill(6)}.jpg"),
+                out_image.mul(255.0).byte(),
+            )
+        logger.info(f"Outputs are saved in {directory}")
 
     def compile(
         self,

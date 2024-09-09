@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
+
+import torch
 
 from kornia.contrib.models.base import ModelBase
 from kornia.contrib.models.rt_detr.architecture.hgnetv2 import PPHGNetV2
@@ -12,6 +15,14 @@ from kornia.contrib.models.rt_detr.architecture.hybrid_encoder import HybridEnco
 from kornia.contrib.models.rt_detr.architecture.resnet_d import ResNetD
 from kornia.contrib.models.rt_detr.architecture.rtdetr_head import RTDETRHead
 from kornia.core import Tensor
+
+URLs = {
+    "rtdetr_r18vd": "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r18vd_dec3_6x_coco_from_paddle.pth",
+    "rtdetr_r34vd": "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r34vd_dec4_6x_coco_from_paddle.pth",
+    "rtdetr_r50vd_m": "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r50vd_m_6x_coco_from_paddle.pth",
+    "rtdetr_r50vd": "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r50vd_6x_coco_from_paddle.pth",
+    "rtdetr_r101vd": "https://github.com/lyuwenyu/storage/releases/download/v0.1/rtdetr_r101vd_6x_coco_from_paddle.pth",
+}
 
 
 class RTDETRModelType(Enum):
@@ -23,6 +34,7 @@ class RTDETRModelType(Enum):
     resnet101d = 3
     hgnetv2_l = 4
     hgnetv2_x = 5
+    resnet50d_m = 6
 
 
 @dataclass
@@ -65,7 +77,7 @@ class RTDETRConfig:
 class RTDETR(ModelBase[RTDETRConfig]):
     """RT-DETR Object Detection model, as described in https://arxiv.org/abs/2304.08069."""
 
-    def __init__(self, backbone: ResNetD | PPHGNetV2, neck: HybridEncoder, head: RTDETRHead):
+    def __init__(self, backbone: ResNetD | PPHGNetV2, encoder: HybridEncoder, decoder: RTDETRHead):
         """Construct RT-DETR Object Detection model.
 
         Args:
@@ -75,8 +87,8 @@ class RTDETR(ModelBase[RTDETRConfig]):
         """
         super().__init__()
         self.backbone = backbone
-        self.neck = neck
-        self.head = head
+        self.encoder = encoder
+        self.decoder = decoder
 
     @staticmethod
     def from_config(config: RTDETRConfig) -> RTDETR:
@@ -119,6 +131,13 @@ class RTDETR(ModelBase[RTDETRConfig]):
             head_num_decoder_layers = config.head_num_decoder_layers or 6
             neck_expansion = config.neck_expansion or 1.0
 
+        elif model_type == RTDETRModelType.resnet50d_m:
+            backbone = ResNetD.from_config(50)
+            neck_hidden_dim = config.neck_hidden_dim or 256
+            neck_dim_feedforward = config.neck_dim_feedforward or 1024
+            head_num_decoder_layers = config.head_num_decoder_layers or 6
+            neck_expansion = config.neck_expansion or 0.5
+
         elif model_type == RTDETRModelType.resnet101d:
             backbone = ResNetD.from_config(101)
             neck_hidden_dim = config.neck_hidden_dim or 384
@@ -156,6 +175,76 @@ class RTDETR(ModelBase[RTDETRConfig]):
             model.load_checkpoint(config.checkpoint)
         return model
 
+    @staticmethod
+    def from_pretrained(model_name: str) -> RTDETR:
+        """Load model from pretrained weights.
+
+        Args:
+            model_name: 'rtdetr_r18vd', 'rtdetr_r34vd', 'rtdetr_r50vd_m', 'rtdetr_r50vd', 'rtdetr_r101vd'.
+        """
+
+        if model_name not in URLs:
+            raise ValueError(f"No pretrained model for '{model_name}'. Please select from {list(URLs.keys())}.")
+
+        state_dict = torch.hub.load_state_dict_from_url(
+            URLs[model_name], map_location="cuda:0" if torch.cuda.is_available() else "cpu"
+        )
+
+        def map_name(old_name: str) -> str:
+            new_name = old_name
+
+            # Encoder renaming
+            new_name = re.sub("encoder.pan_blocks", "encoder.ccfm.pan_blocks", new_name)
+            new_name = re.sub("encoder.downsample_convs", "encoder.ccfm.downsample_convs", new_name)
+            new_name = re.sub("encoder.fpn_blocks", "encoder.ccfm.fpn_blocks", new_name)
+            new_name = re.sub("encoder.lateral_convs", "encoder.ccfm.lateral_convs", new_name)
+
+            # Backbone renaming
+            new_name = re.sub(".branch2b.", ".convs.branch2b.", new_name)
+            new_name = re.sub(".branch2a.", ".convs.branch2a.", new_name)
+            new_name = re.sub(".branch2c.", ".convs.branch2c.", new_name)
+
+            return new_name
+
+        def _state_dict_proc(state_dict: dict[str, Tensor]) -> dict[str, Tensor]:
+            state_dict = state_dict["ema"]["module"]  # type:ignore
+            new_state_dict = {}
+
+            # Apply the regex-based mapping function to each key
+            for old_name in state_dict.keys():
+                new_name = map_name(old_name)
+                new_state_dict[new_name] = state_dict[old_name]
+
+            return new_state_dict
+
+        model = RTDETR.from_name(model_name, num_classes=80)
+
+        model.load_state_dict(_state_dict_proc(state_dict))
+        return model
+
+    @staticmethod
+    def from_name(model_name: str, num_classes: int = 80) -> RTDETR:
+        """Load model without pretrained weights.
+
+        Args:
+            model_name: 'rtdetr_r18vd', 'rtdetr_r34vd', 'rtdetr_r50vd_m', 'rtdetr_r50vd', 'rtdetr_r101vd'.
+        """
+
+        if model_name == "rtdetr_r18vd":
+            model = RTDETR.from_config(RTDETRConfig(RTDETRModelType.resnet18d, num_classes))
+        elif model_name == "rtdetr_r34vd":
+            model = RTDETR.from_config(RTDETRConfig(RTDETRModelType.resnet34d, num_classes))
+        elif model_name == "rtdetr_r50vd_m":
+            model = RTDETR.from_config(RTDETRConfig(RTDETRModelType.resnet50d_m, num_classes))
+        elif model_name == "rtdetr_r50vd":
+            model = RTDETR.from_config(RTDETRConfig(RTDETRModelType.resnet50d, num_classes))
+        elif model_name == "rtdetr_r101vd":
+            model = RTDETR.from_config(RTDETRConfig(RTDETRModelType.resnet101d, num_classes))
+        else:
+            raise ValueError
+
+        return model
+
     def forward(self, images: Tensor) -> tuple[Tensor, Tensor]:
         """Detect objects in an image.
 
@@ -167,10 +256,8 @@ class RTDETR(ModelBase[RTDETRConfig]):
               :math:`K` is the number of classes.
             - **boxes** - Tensor of shape :math:`(N, Q, 4)`, where :math:`Q` is the number of queries.
         """
-        if self.training:
-            raise RuntimeError("Only evaluation mode is supported. Please call model.eval().")
 
         feats = self.backbone(images)
-        feats_buf = self.neck(feats)
-        logits, boxes = self.head(feats_buf)
+        feats_buf = self.encoder(feats)
+        logits, boxes = self.decoder(feats_buf)
         return logits, boxes

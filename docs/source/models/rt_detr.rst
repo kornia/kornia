@@ -1,6 +1,28 @@
 Real-Time Detection Transformer (RT-DETR)
 =========================================
 
+.. code-block:: python
+
+    from kornia.io import load_image
+    from kornia.models.detector.rtdetr import RTDETRDetectorBuilder
+
+    input_img = load_image(img_path)[None]  # Load image to BCHW
+
+    # NOTE: available models: 'rtdetr_r18vd', 'rtdetr_r34vd', 'rtdetr_r50vd_m', 'rtdetr_r50vd', 'rtdetr_r101vd'.
+    # NOTE: recommended image scales: [480, 512, 544, 576, 608, 640, 640, 640, 672, 704, 736, 768, 800]
+    detector = RTDETRDetectorBuilder.build("rtdetr_r18vd", image_size=640)
+
+    # get the output boxes
+    boxes = detector(input_img)
+
+    # draw the bounding boxes on the images directly.
+    output = detector.draw(input_img, output_type="pil")
+    output[0].save("Kornia-RTDETR-output.png")
+
+    # convert the whole model to ONNX directly
+    RTDETRDetectorBuilder.to_onnx("RTDETR-640.onnx", model_name="rtdetr_r18vd", image_size=640)
+
+
 .. card::
     :link: https://arxiv.org/abs/2304.08069
 

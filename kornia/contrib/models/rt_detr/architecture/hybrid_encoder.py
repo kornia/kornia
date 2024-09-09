@@ -4,6 +4,7 @@ ppdet/modeling/transformers/hybrid_encoder.py."""
 
 from __future__ import annotations
 
+import copy
 from typing import Optional
 
 import torch
@@ -80,15 +81,16 @@ class AIFI(Module):
     def __init__(self, embed_dim: int, num_heads: int, dim_feedforward: int, dropout: float = 0.0) -> None:
         super().__init__()
         self.self_attn = nn.MultiheadAttention(embed_dim, num_heads, dropout)  # NOTE: batch_first = False
-        self.dropout1 = nn.Dropout(dropout)
-        self.norm1 = nn.LayerNorm(embed_dim)
 
         self.linear1 = nn.Linear(embed_dim, dim_feedforward)
-        self.act = nn.GELU()
         self.dropout = nn.Dropout(dropout)
         self.linear2 = nn.Linear(dim_feedforward, embed_dim)
+
+        self.dropout1 = nn.Dropout(dropout)
         self.dropout2 = nn.Dropout(dropout)
+        self.norm1 = nn.LayerNorm(embed_dim)
         self.norm2 = nn.LayerNorm(embed_dim)
+        self.act = nn.GELU()
 
     def forward(self, x: Tensor) -> Tensor:
         # using post-norm
@@ -149,6 +151,20 @@ class AIFI(Module):
         return pos_emb.unsqueeze(1)  # (H * W, 1, C)
 
 
+class TransformerEncoder(nn.Module):
+    def __init__(self, encoder_layer: nn.Module, num_layers: int) -> None:
+        super().__init__()
+        self.layers = nn.ModuleList([copy.deepcopy(encoder_layer) for _ in range(num_layers)])
+        self.num_layers = num_layers
+
+    def forward(self, src: Tensor) -> Tensor:  # NOTE: Missing src_mask: Tensor = None, pos_embed: Tensor = None
+        output = src
+        for layer in self.layers:
+            output = layer(output)
+
+        return output
+
+
 class CCFM(Module):
     def __init__(self, num_fmaps: int, hidden_dim: int, expansion: float = 1.0) -> None:
         super().__init__()
@@ -192,12 +208,20 @@ class CCFM(Module):
 class HybridEncoder(Module):
     def __init__(self, in_channels: list[int], hidden_dim: int, dim_feedforward: int, expansion: float = 1.0) -> None:
         super().__init__()
-        self.input_proj = nn.ModuleList([ConvNormAct(in_ch, hidden_dim, 1, act="none") for in_ch in in_channels])
-        self.aifi = AIFI(hidden_dim, 8, dim_feedforward)
+        self.input_proj = nn.ModuleList(
+            [
+                ConvNormAct(  # To align the naming strategy for the official weights
+                    in_ch, hidden_dim, 1, act="none", conv_naming="0", norm_naming="1", act_naming="2"
+                )
+                for in_ch in in_channels
+            ]
+        )
+        encoder_layer = AIFI(hidden_dim, 8, dim_feedforward)
+        self.encoder = nn.Sequential(TransformerEncoder(encoder_layer, 1))
         self.ccfm = CCFM(len(in_channels), hidden_dim, expansion)
 
     def forward(self, fmaps: list[Tensor]) -> list[Tensor]:
         projected_maps = [proj(fmap) for proj, fmap in zip(self.input_proj, fmaps)]
-        projected_maps[-1] = self.aifi(projected_maps[-1])
+        projected_maps[-1] = self.encoder(projected_maps[-1])
         new_fmaps = self.ccfm(projected_maps)
         return new_fmaps

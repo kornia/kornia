@@ -1,6 +1,11 @@
 import importlib
+import logging
+import subprocess
+import sys
 from types import ModuleType
 from typing import List, Optional
+
+logger = logging.getLogger(__name__)
 
 
 class LazyLoader:
@@ -15,6 +20,8 @@ class LazyLoader:
         module: The actual module object, initialized to None and loaded upon first access.
     """
 
+    auto_install: bool = False
+
     def __init__(self, module_name: str) -> None:
         """Initializes the LazyLoader with the name of the module.
 
@@ -23,6 +30,10 @@ class LazyLoader:
         """
         self.module_name = module_name
         self.module: Optional[ModuleType] = None
+
+    def _install_package(self, module_name: str) -> None:
+        logger.info(f"Installing `{module_name}` ...")
+        subprocess.run([sys.executable, "-m", "pip", "install", "-U", module_name], shell=False, check=False)  # noqa: S603
 
     def _load(self) -> None:
         """Loads the module if it hasn't been loaded yet.
@@ -34,10 +45,23 @@ class LazyLoader:
             try:
                 self.module = importlib.import_module(self.module_name)
             except ImportError as e:
-                raise ImportError(
-                    f"Optional dependency '{self.module_name}' is not installed. "
-                    f"Please install it to use this functionality."
-                ) from e
+                if self.auto_install:
+                    self._install_package(self.module_name)
+                else:
+                    if_install = input(
+                        f"Optional dependency '{self.module_name}' is not installed. "
+                        "Do you wish to install the dependency? [Y]es, [N]o, [A]ll."
+                    )
+                    if if_install.lower() == "y":
+                        self._install_package(self.module_name)
+                    elif if_install.lower() == "a":
+                        self.auto_install = True
+                        self._install_package(self.module_name)
+                    else:
+                        raise ImportError(
+                            f"Optional dependency '{self.module_name}' is not installed. "
+                            f"Please install it to use this functionality."
+                        ) from e
 
     def __getattr__(self, item: str) -> object:
         """Loads the module (if not already loaded) and returns the requested attribute.

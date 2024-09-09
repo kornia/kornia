@@ -9,7 +9,16 @@ from kornia.core import Module, Tensor, pad
 
 class ConvNormAct(nn.Sequential):
     def __init__(
-        self, in_channels: int, out_channels: int, kernel_size: int, stride: int = 1, act: str = "relu", groups: int = 1
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int,
+        stride: int = 1,
+        act: str = "relu",
+        groups: int = 1,
+        conv_naming: str = "conv",
+        norm_naming: str = "norm",
+        act_naming: str = "act",
     ) -> None:
         super().__init__()
         if kernel_size % 2 == 0:
@@ -23,9 +32,13 @@ class ConvNormAct(nn.Sequential):
             padding = 0
         else:
             padding = (kernel_size - 1) // 2
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, 1, groups, False)
-        self.norm = nn.BatchNorm2d(out_channels)
-        self.act = {"relu": nn.ReLU, "silu": nn.SiLU, "none": nn.Identity}[act](inplace=True)
+        conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding, 1, groups, False)
+        norm = nn.BatchNorm2d(out_channels)
+        activation = {"relu": nn.ReLU, "silu": nn.SiLU, "none": nn.Identity}[act](inplace=True)
+
+        self.__setattr__(conv_naming, conv)
+        self.__setattr__(norm_naming, norm)
+        self.__setattr__(act_naming, activation)
 
 
 # Lightly adapted from

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import copy
 from typing import Optional
 
 import torch
@@ -192,14 +193,10 @@ class TransformerDecoderLayer(Module):
         return out
 
 
-class TransformerDecoder:
-    def __init__(self, hidden_dim: int, decoder_layers: nn.ModuleList, num_layers: int, eval_idx: int = -1) -> None:
+class TransformerDecoder(Module):
+    def __init__(self, hidden_dim: int, decoder_layer: nn.Module, num_layers: int, eval_idx: int = -1) -> None:
         super().__init__()
-        self.layers = decoder_layers
-        # TODO: come back to this later
-        # self.layers = nn.ModuleList([
-        #    copy.deepcopy(decoder_layer) for _ in range(num_layers)
-        # ])
+        self.layers = nn.ModuleList([copy.deepcopy(decoder_layer) for _ in range(num_layers)])
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
         self.eval_idx = eval_idx if eval_idx >= 0 else num_layers + eval_idx
@@ -272,13 +269,16 @@ class RTDETRHead(Module):
         num_decoder_layers: int,
         num_heads: int = 8,
         num_decoder_points: int = 4,
-        # num_levels: int = 3,
+        num_levels: int = 3,
         dropout: float = 0.0,
+        num_denoising: int = 100,
     ) -> None:
         super().__init__()
         self.num_queries = num_queries
         # TODO: verify this is correct
-        self.num_levels = len(in_channels)
+        if len(in_channels) > num_levels:
+            raise ValueError(f"`num_levels` cannot be greater than {len(in_channels)}. Got {num_levels}.")
+        self.num_levels = num_levels
 
         # build the input projection layers
         self.input_proj = nn.ModuleList()
@@ -288,25 +288,23 @@ class RTDETRHead(Module):
         # https://github.com/lyuwenyu/RT-DETR/blob/main/rtdetr_pytorch/src/zoo/rtdetr/rtdetr_decoder.py#L403-L410
 
         # NOTE: need to be integrated with the TransformerDecoderLayer
-        self.decoder_layers = nn.ModuleList(
-            [
-                TransformerDecoderLayer(
-                    embed_dim=hidden_dim,
-                    num_heads=num_heads,
-                    dropout=dropout,
-                    num_levels=len(in_channels),
-                    num_points=num_decoder_points,
-                )
-                for _ in range(num_decoder_layers)
-            ]
+        decoder_layer = TransformerDecoderLayer(
+            embed_dim=hidden_dim,
+            num_heads=num_heads,
+            dropout=dropout,
+            num_levels=self.num_levels,
+            num_points=num_decoder_points,
         )
 
         self.decoder = TransformerDecoder(
-            hidden_dim=hidden_dim, decoder_layers=self.decoder_layers, num_layers=num_decoder_layers
+            hidden_dim=hidden_dim, decoder_layer=decoder_layer, num_layers=num_decoder_layers
         )
 
         # denoising part
-        self.denoising_class_embed = nn.Embedding(num_classes, hidden_dim)  # not used in evaluation
+        if num_denoising > 0:
+            self.denoising_class_embed = nn.Embedding(
+                num_classes + 1, hidden_dim, padding_idx=num_classes
+            )  # not used in evaluation
 
         # decoder embedding
         self.query_pos_head = MLP(4, 2 * hidden_dim, hidden_dim, num_layers=2)
@@ -334,7 +332,7 @@ class RTDETRHead(Module):
         )
 
         # decoder
-        out_bboxes, out_logits = self.decoder.forward(
+        out_bboxes, out_logits = self.decoder(
             target,
             init_ref_points_unact,
             memory,
