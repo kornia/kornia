@@ -1,6 +1,6 @@
 coverage
 mypy
-numpy<3
+numpy<2
 onnx
 pillow
 pre-commit>=2
