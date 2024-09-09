@@ -11,8 +11,13 @@ def rgb_to_yuv(image: Tensor) -> Tensor:
 
     .. image:: _static/img/rgb_to_yuv.png
 
-    The image data is assumed to be in the range of :math:`(0, 1)`. The range of the output is of :math:`(0, 1)` to luma and the ranges of U and V are :math:`(-0.436, 0.436)` and :math:`(−0.615, 0.615)`, respectively.
-    The YUV model adopted here follows M/PAL values (see [BT.470-5](https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf), Table 2, items 2.5 and 2.6).
+    The image data is assumed to be in the range of :math:`(0, 1)`. The range of the output is of
+    :math:`(0, 1)` to luma and the ranges of U and V are :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`,
+    respectively.
+
+    The YUV model adopted here follows M/PAL values (see
+    `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
+    items 2.5 and 2.6).
 
     Args:
         image: RGB Image to be converted to YUV with shape :math:`(*, 3, H, W)`.
@@ -48,9 +53,12 @@ def rgb_to_yuv420(image: Tensor) -> Tuple[Tensor, Tensor]:
 
     Input need to be padded to be evenly divisible by 2 horizontal and vertical.
 
-    The image data is assumed to be in the range of :math:`(0, 1)`. The range of the output is of :math:`(0, 1)` to luma and the ranges of U and V are :math:`(-0.436, 0.436)` and :math:`(−0.615, 0.615)`, respectively.
-    The YUV model adopted here follows M/PAL values (see [BT.470-5](https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf), Table 2, items 2.5 and 2.6).
+    The image data is assumed to be in the range of :math:`(0, 1)`. The range of the output is of :math:`(0, 1)` to
+    luma and the ranges of U and V are :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`, respectively.
 
+    The YUV model adopted here follows M/PAL values (see
+    `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
+    items 2.5 and 2.6).
 
     Args:
         image: RGB Image to be converted to YUV with shape :math:`(*, 3, H, W)`.
@@ -82,8 +90,13 @@ def rgb_to_yuv422(image: Tensor) -> Tuple[Tensor, Tensor]:
 
     Input need to be padded to be evenly divisible by 2 vertical.
 
-    The image data is assumed to be in the range of :math:`(0, 1)`. The range of the output is of :math:`(0, 1)` to luma and the ranges of U and V are :math:`(-0.436, 0.436)` and :math:`(−0.615, 0.615)`, respectively.
-    The YUV model adopted here follows M/PAL values (see [BT.470-5](https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf), Table 2, items 2.5 and 2.6).
+    The image data is assumed to be in the range of :math:`(0, 1)`. The range of the output is of
+    :math:`(0, 1)` to luma and the ranges of U and V are :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`,
+    respectively.
+
+    The YUV model adopted here follows M/PAL values (see
+    `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
+    items 2.5 and 2.6).
 
     Args:
         image: RGB Image to be converted to YUV with shape :math:`(*, 3, H, W)`.
@@ -113,8 +126,12 @@ def rgb_to_yuv422(image: Tensor) -> Tuple[Tensor, Tensor]:
 def yuv_to_rgb(image: Tensor) -> Tensor:
     r"""Convert an YUV image to RGB.
 
-    The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are :math:`(-0.436, 0.436)` and :math:`(−0.615, 0.615)`, respectively.
-    YUV formula follows M/PAL values (see [BT.470-5](https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf), Table 2, items 2.5 and 2.6).
+    The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are
+    :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`, respectively.
+
+    YUV formula follows M/PAL values (see
+    `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
+    items 2.5 and 2.6).
 
     Args:
         image: YUV Image to be converted to RGB with shape :math:`(*, 3, H, W)`.
@@ -150,8 +167,12 @@ def yuv420_to_rgb(imagey: Tensor, imageuv: Tensor) -> Tensor:
 
     Input need to be padded to be evenly divisible by 2 horizontal and vertical.
 
-    The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are :math:`(-0.436, 0.436)` and :math:`(−0.615, 0.615)`, respectively.
-    YUV formula follows M/PAL values (see [BT.470-5](https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf), Table 2, items 2.5 and 2.6).
+    The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are
+    :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`, respectively.
+
+    YUV formula follows M/PAL values (see
+    `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
+    items 2.5 and 2.6).
 
     Args:
         imagey: Y (luma) Image plane to be converted to RGB with shape :math:`(*, 1, H, W)`.
@@ -200,10 +221,14 @@ def yuv420_to_rgb(imagey: Tensor, imageuv: Tensor) -> Tensor:
 def yuv422_to_rgb(imagey: Tensor, imageuv: Tensor) -> Tensor:
     r"""Convert an YUV422 image to RGB.
 
-    Input need to be padded to be evenly divisible by 2 vertical. 
+    Input need to be padded to be evenly divisible by 2 vertical.
 
-    The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are :math:`(-0.436, 0.436)` and :math:`(−0.615, 0.615)`, respectively.
-    YUV formula follows M/PAL values (see [BT.470-5](https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf), Table 2, items 2.5 and 2.6).
+    The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are
+    :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`, respectively.
+
+    YUV formula follows M/PAL values (see
+    `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
+    items 2.5 and 2.6).
 
     Args:
         imagey: Y (luma) Image plane to be converted to RGB with shape :math:`(*, 1, H, W)`.
@@ -248,7 +273,9 @@ class RgbToYuv(Module):
 
     The image data is assumed to be in the range of :math:`(0, 1)`.
 
-    YUV formula follows M/PAL values (see [BT.470-5](https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf), Table 2, items 2.5 and 2.6).
+    YUV formula follows M/PAL values (see
+    `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
+    items 2.5 and 2.6).
 
     Returns:
         YUV version of the image.
@@ -277,7 +304,9 @@ class RgbToYuv420(Module):
 
     The image data is assumed to be in the range of :math:`(0, 1)`.
 
-    YUV formula follows M/PAL values (see [BT.470-5](https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf), Table 2, items 2.5 and 2.6).
+    YUV formula follows M/PAL values (see
+    `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
+    items 2.5 and 2.6).
 
     Returns:
         YUV420 version of the image.
@@ -304,9 +333,11 @@ class RgbToYuv422(Module):
 
     Width must be evenly disvisible by 2.
 
-    The image data is assumed to be in the range of :math:`(0, 1)`. 
+    The image data is assumed to be in the range of :math:`(0, 1)`.
 
-    YUV formula follows M/PAL values (see [BT.470-5](https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf), Table 2, items 2.5 and 2.6).
+    YUV formula follows M/PAL values (see
+    `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
+    items 2.5 and 2.6).
 
     Returns:
         YUV422 version of the image.
@@ -331,9 +362,12 @@ class RgbToYuv422(Module):
 class YuvToRgb(Module):
     r"""Convert an image from YUV to RGB.
 
-    The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are :math:`(-0.436, 0.436)` and :math:`(−0.615, 0.615)`, respectively.
-    
-    YUV formula follows M/PAL values (see [BT.470-5](https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf), Table 2, items 2.5 and 2.6).
+    The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are
+    :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`, respectively.
+
+    YUV formula follows M/PAL values (see
+    `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
+    items 2.5 and 2.6).
 
     Returns:
         RGB version of the image.
@@ -357,9 +391,12 @@ class Yuv420ToRgb(Module):
 
     Width and Height must be evenly divisible by 2.
 
-    The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are :math:`(-0.436, 0.436)` and :math:`(−0.615, 0.615)`, respectively.
+    The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are
+    :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`, respectively.
 
-    YUV formula follows M/PAL values (see [BT.470-5](https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf), Table 2, items 2.5 and 2.6).
+    YUV formula follows M/PAL values (see
+    `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
+    items 2.5 and 2.6).
 
     Returns:
         RGB version of the image.
@@ -384,10 +421,13 @@ class Yuv422ToRgb(Module):
     r"""Convert an image from YUV to RGB.
 
     Width must be evenly divisible by 2.
-    
-    The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are :math:`(-0.436, 0.436)` and :math:`(−0.615, 0.615)`, respectively.
-    
-    YUV formula follows M/PAL values (see [BT.470-5](https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf), Table 2, items 2.5 and 2.6).
+
+    The image data is assumed to be in the range of :math:`(0, 1)` for luma (Y). The ranges of U and V are
+    :math:`(-0.436, 0.436)` and :math:`(-0.615, 0.615)`, respectively.
+
+    YUV formula follows M/PAL values (see
+    `BT.470-5 <https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.470-5-199802-S!!PDF-E.pdf>`_, Table 2,
+    items 2.5 and 2.6).
 
     Returns:
         RGB version of the image.
