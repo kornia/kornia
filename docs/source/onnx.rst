@@ -81,8 +81,9 @@ Here's how you can quickly get started with `ONNXSequential`:
 
       # Initialize with CUDA execution provider
       onnx_seq = ONNXSequential(
-         "hf://operators/kornia.color.gray.RgbToGrayscale",
-         "hf://operators/kornia.geometry.transform.affwarp.Resize_512x512",
+         "hf://operators/kornia.geometry.transform.flips.Hflip",
+         # Or you may use a local model with either a filepath "YOUR_OWN_MODEL.onnx" or a loaded ONNX model.
+         "hf://models/kornia.models.detection.rtdetr_r18vd_640x640",
          providers=['CUDAExecutionProvider']
       )
 
@@ -121,4 +122,15 @@ Get started today and streamline your ONNX workflows!
 API Documentation
 -----------------
 .. autoclass:: kornia.onnx.sequential.ONNXSequential
+    :members:
+
+.. autoclass:: kornia.onnx.utils.ONNXLoader
+
+    .. code-block:: python
+        onnx_loader = ONNXLoader()
+        # Load a HuggingFace operator
+        onnx_loader.load_model("hf://operators/kornia.color.gray.GrayscaleToRgb")
+        # Load a local converted/downloaded operator
+        onnx_loader.load_model("operators/kornia.color.gray.GrayscaleToRgb")
+
     :members:

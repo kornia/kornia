@@ -19,13 +19,6 @@ class ONNXLoader:
     Attributes:
         cache_dir: The directory where ONNX models are cached locally.
             Defaults to None, which will use a default `.kornia_hub/onnx_models` directory.
-
-    .. code-block:: python
-        onnx_loader = ONNXLoader()
-        # Load a HuggingFace operator
-        onnx_loader.load_model("hf://operators/kornia.color.gray.GrayscaleToRgb")
-        # Load a local converted/downloaded operator
-        onnx_loader.load_model("operators/kornia.color.gray.GrayscaleToRgb")
     """
 
     def __init__(self, cache_dir: Optional[str] = None):
@@ -103,7 +96,7 @@ class ONNXLoader:
         if url.startswith(("http:", "https:")):
             try:
                 logger.info(f"Downloading `{url}` to `{file_path}`.")
-                urllib.request.urlretrieve(url, file_path)
+                urllib.request.urlretrieve(url, file_path)  # noqa: S310
             except urllib.error.HTTPError as e:
                 raise ValueError(f"Error in resolving `{url}`. {e}.")
         else:

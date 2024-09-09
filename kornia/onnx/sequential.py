@@ -27,14 +27,6 @@ class ONNXSequential:
         cache_dir:
             cache_dir: The directory where ONNX models are cached locally (only for downloading from HuggingFace).
                 Defaults to None, which will use a default `.kornia_onnx_models` directory.
-
-    .. code-block:: python
-        # Load ops from HuggingFace repos then chain to your own model!
-        model = kornia.onnx.ONNXSequential(
-            "hf://operators/kornia.color.gray.RgbToGrayscale",
-            "hf://operators/kornia.geometry.transform.affwarp.Resize_512x512",
-            "MY_OTHER_MODEL.onnx"
-        )
     """
 
     def __init__(
