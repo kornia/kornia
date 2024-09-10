@@ -1,14 +1,13 @@
-import os
 import logging
-import torch
-import kornia
-import requests
-from io import BytesIO
+import os
 from typing import Optional, Union
 
-from kornia.io import load_image
+import requests
+
+import kornia
 from kornia.core import Tensor, stack
 from kornia.core.external import PILImage as Image
+from kornia.io import load_image
 
 __all__ = [
     "get_sample_images",
@@ -36,11 +35,13 @@ def download_image(url: str, save_to: str) -> None:
 
 
 def get_sample_images(
-    resize: tuple[int, int] = None, paths: list[str] = IMAGE_URLS, download: bool = True,
-    cache_dir: Optional[str] = None
+    resize: tuple[int, int] = None,
+    paths: list[str] = IMAGE_URLS,
+    download: bool = True,
+    cache_dir: Optional[str] = None,
 ) -> Union[Tensor, list[Tensor]]:
     """Loads multiple images from the given URLs.
-    
+
     Optionally download them, resize them if specified, and return them as a batch of tensors or a list of tensors.
 
     Args:

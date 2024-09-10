@@ -63,5 +63,5 @@ __all__ = [
     "is_mps_tensor_safe",
     "dataclass_to_dict",
     "dict_to_dataclass",
-    "get_sample_images"
+    "get_sample_images",
 ]

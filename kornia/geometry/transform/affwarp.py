@@ -1,5 +1,5 @@
 import warnings
-from typing import ClassVar, Optional, Tuple, Union
+from typing import Optional, Tuple, Union
 
 import torch
 

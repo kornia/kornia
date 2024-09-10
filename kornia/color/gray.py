@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import ClassVar, List, Optional
+from typing import ClassVar, Optional
 
 import torch
 
