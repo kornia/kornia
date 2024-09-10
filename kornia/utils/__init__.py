@@ -28,6 +28,7 @@ from .misc import (
 )
 from .one_hot import one_hot
 from .pointcloud_io import load_pointcloud_ply, save_pointcloud_ply
+from .sample import get_sample_images
 
 __all__ = [
     "batched_forward",
@@ -62,4 +63,5 @@ __all__ = [
     "is_mps_tensor_safe",
     "dataclass_to_dict",
     "dict_to_dataclass",
+    "get_sample_images"
 ]
