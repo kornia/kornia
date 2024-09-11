@@ -36,10 +36,10 @@ def download_image(url: str, save_to: str) -> None:
 
 def get_sample_images(
     resize: Optional[tuple[int, int]] = None,
-    paths: list[str] = IMAGE_URLS,
+    paths: List[str] = IMAGE_URLS,
     download: bool = True,
     cache_dir: Optional[str] = None,
-) -> Union[Tensor, list[Tensor]]:
+) -> Union[Tensor, List[Tensor]]:
     """Loads multiple images from the given URLs.
 
     Optionally download them, resize them if specified, and return them as a batch of tensors or a list of tensors.
