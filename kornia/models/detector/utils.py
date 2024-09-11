@@ -1,12 +1,10 @@
-from typing import Optional
-
 from kornia.core import Module
 
 
 class BoxFiltering(Module):
     def __init__(self) -> None:
         super().__init__()
-    
+
     def forward(self, boxes: Tensor, confidence_threshold: Tensor) -> Tensor:
         """Filter boxes according to the desired threshold.
 
