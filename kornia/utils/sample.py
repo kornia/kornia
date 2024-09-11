@@ -31,7 +31,7 @@ def download_image(url: str, save_to: str) -> None:
         save_to: The file path where the downloaded image will be saved.
     """
     im = Image.open(requests.get(url, stream=True, timeout=30).raw)  # type:ignore
-    im.save(save_to)  # type: ignore
+    im.save(save_to)
 
 
 def get_sample_images(
