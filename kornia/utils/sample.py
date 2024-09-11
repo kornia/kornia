@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Optional, Union
+from typing import List, Optional, Union
 
 import requests
 
@@ -13,7 +13,7 @@ __all__ = [
     "get_sample_images",
 ]
 
-IMAGE_URLS: list[str] = [
+IMAGE_URLS: List[str] = [
     "https://raw.githubusercontent.com/kornia/data/main/panda.jpg",
     "https://raw.githubusercontent.com/kornia/data/main/simba.png",
     "https://raw.githubusercontent.com/kornia/data/main/girona.png",
@@ -30,12 +30,12 @@ def download_image(url: str, save_to: str) -> None:
         url: The URL of the image to download.
         save_to: The file path where the downloaded image will be saved.
     """
-    im = Image.open(requests.get(url, stream=True).raw)  # type:ignore
+    im = Image.open(requests.get(url, stream=True, timeout=30).raw)  # type:ignore
     im.save(save_to)  # type: ignore
 
 
 def get_sample_images(
-    resize: tuple[int, int] = None,
+    resize: Optional[tuple[int, int]] = None,
     paths: list[str] = IMAGE_URLS,
     download: bool = True,
     cache_dir: Optional[str] = None,

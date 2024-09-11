@@ -1,4 +1,4 @@
-from kornia.core import Module
+from kornia.core import Module, Tensor
 
 
 class BoxFiltering(Module):
