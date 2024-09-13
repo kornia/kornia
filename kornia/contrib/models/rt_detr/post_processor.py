@@ -49,7 +49,7 @@ class DETRPostProcessor(Module):
             tensor(confidence_threshold) if confidence_threshold is not None else None, filter_as_zero=filter_as_zero
         )
 
-    def forward(self, logits: Tensor, boxes: Tensor, original_sizes: Tensor) -> Union[Tensor, List[Tensor]]:
+    def forward(self, logits: Tensor, boxes: Tensor, original_sizes: Tensor) -> Union[Tensor, list[Tensor]]:
         """Post-process outputs from DETR.
 
         Args:

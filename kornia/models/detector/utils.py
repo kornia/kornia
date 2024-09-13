@@ -1,4 +1,4 @@
-from typing import Any, ClassVar, List, Optional, Tuple, Union
+from typing import Any, ClassVar, List, Optional, Tuple, Union, cast
 
 from kornia.core import Module, ONNXExportMixin, Tensor, rand
 
@@ -28,11 +28,13 @@ class BoxFiltering(Module, ONNXExportMixin):
             if confidence_threshold is None:
                 raise ValueError("`confidence_threshold` must be provided if not set in the constructor.")
 
+        filtered_boxes: Union[Tensor, List[Tensor]]
         if self.filter_as_zero:
             box_mask = (boxes[:, :, 1] > confidence_threshold).unsqueeze(-1).expand_as(boxes)
             filtered_boxes = boxes * box_mask.float()
         else:
-            filtered_boxes: list[Tensor] = []
+            filtered_boxes = cast(list[Tensor], filtered_boxes)
+            filtered_boxes = []
             for i in range(boxes.shape[0]):
                 box = boxes[i : i + 1][
                     (boxes[i : i + 1, :, 1] > confidence_threshold).unsqueeze(-1).expand_as(boxes[i : i + 1])
