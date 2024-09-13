@@ -1,4 +1,4 @@
-from typing import Optional, Union
+from typing import List, Optional, Tuple, Union
 
 from kornia.core.external import numpy as np
 from kornia.core.external import onnx
@@ -30,9 +30,9 @@ class ONNXSequential:
     def __init__(
         self,
         *args: Union["onnx.ModelProto", str],  # type:ignore
-        providers: Optional[list[str]] = None,
+        providers: Optional[List[str]] = None,
         session_options: Optional["ort.SessionOptions"] = None,  # type:ignore
-        io_maps: Optional[list[tuple[str, str]]] = None,
+        io_maps: Optional[List[Tuple[str, str]]] = None,
         cache_dir: Optional[str] = None,
     ) -> None:
         self.onnx_loader = ONNXLoader(cache_dir)
@@ -53,7 +53,7 @@ class ONNXSequential:
             return self.onnx_loader.load_model(arg)
         return arg
 
-    def _combine(self, io_maps: Optional[list[tuple[str, str]]] = None) -> "onnx.ModelProto":  # type:ignore
+    def _combine(self, io_maps: Optional[List[Tuple[str, str]]] = None) -> "onnx.ModelProto":  # type:ignore
         """Combine the provided ONNX models into a single ONNX graph. Optionally, map inputs and outputs between
         operators using the `io_map`.
 
@@ -92,7 +92,7 @@ class ONNXSequential:
 
     def create_session(
         self,
-        providers: Optional[list[str]] = None,
+        providers: Optional[List[str]] = None,
         session_options: Optional["ort.SessionOptions"] = None,  # type:ignore
     ) -> "ort.InferenceSession":  # type:ignore
         """Create an optimized ONNXRuntime InferenceSession for the combined model.
@@ -133,7 +133,7 @@ class ONNXSequential:
         """
         return self._session
 
-    def __call__(self, *inputs: "np.ndarray") -> list["np.ndarray"]:  # type:ignore
+    def __call__(self, *inputs: "np.ndarray") -> List["np.ndarray"]:  # type:ignore
         """Perform inference using the combined ONNX model.
 
         Args:
