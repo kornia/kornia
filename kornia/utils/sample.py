@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import List, Optional, Union
+from typing import List, Optional, Tuple, Union
 
 import requests
 
@@ -35,7 +35,7 @@ def download_image(url: str, save_to: str) -> None:
 
 
 def get_sample_images(
-    resize: Optional[tuple[int, int]] = None,
+    resize: Optional[Tuple[int, int]] = None,
     paths: List[str] = IMAGE_URLS,
     download: bool = True,
     cache_dir: Optional[str] = None,
@@ -66,9 +66,12 @@ def get_sample_images(
         if path.startswith("http"):
             name = os.path.basename(path)
             fname = os.path.join(cache_dir, name)
-            if not os.path.exists(fname):
+            if not os.path.exists(fname) and download:
                 logging.info(f"Downloading `{path}` to `{fname}`.")
                 download_image(path, fname)
+            elif not os.path.exists(fname) and not download:
+                logging.error(
+                    f"Image `{path}` not found at `{fname}`. You may want to set `download=True` to download it.")
         else:
             fname = path
         img_tensor = load_image(fname)
