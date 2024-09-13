@@ -33,13 +33,13 @@ class BoxFiltering(Module, ONNXExportMixin):
             box_mask = (boxes[:, :, 1] > confidence_threshold).unsqueeze(-1).expand_as(boxes)
             filtered_boxes = boxes * box_mask.float()
         else:
-            filtered_boxes = cast(list[Tensor], filtered_boxes)
             filtered_boxes = []
+            filtered_boxes = cast(list[Tensor], filtered_boxes)
             for i in range(boxes.shape[0]):
-                box = boxes[i : i + 1][
-                    (boxes[i : i + 1, :, 1] > confidence_threshold).unsqueeze(-1).expand_as(boxes[i : i + 1])
+                box = boxes[i][
+                    (boxes[i, :, 1] > confidence_threshold).unsqueeze(-1).expand_as(boxes[i])
                 ]
-                filtered_boxes.append(box.view(1, -1, boxes.shape[-1]))
+                filtered_boxes.append(box.view(-1, boxes.shape[-1]))
 
         return filtered_boxes
 

@@ -29,7 +29,7 @@ class TestObjectDetector(BaseTester):
         assert pre_processor_out[0].shape[-2] == 32
         assert len(detections) == batch_size
         for dets in detections:
-            assert dets.shape[1] == 6
+            assert dets.shape[1] == 6, dets.shape
             assert torch.all(dets[:, 0].int() == dets[:, 0])
             assert torch.all(dets[:, 1] >= 0.3)
 

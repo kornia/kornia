@@ -126,8 +126,8 @@ def normalize(data: Tensor, mean: Tensor, std: Tensor) -> Tensor:
         mean = torch.as_tensor(mean, device=data.device, dtype=data.dtype)
         std = torch.as_tensor(std, device=data.device, dtype=data.dtype)
 
-    mean = mean[..., :, None]
-    std = std[..., :, None]
+    mean = mean[..., None]
+    std = std[..., None]
 
     out: Tensor = (data.view(shape[0], shape[1], -1) - mean) / std
 
@@ -234,8 +234,8 @@ def denormalize(data: Tensor, mean: Union[Tensor, float], std: Union[Tensor, flo
         mean = torch.as_tensor(mean, device=data.device, dtype=data.dtype)
         std = torch.as_tensor(std, device=data.device, dtype=data.dtype)
 
-    mean = mean[..., :, None]
-    std = std[..., :, None]
+    mean = mean[..., None]
+    std = std[..., None]
 
     out: Tensor = (data.view(shape[0], shape[1], -1) * std) + mean
 

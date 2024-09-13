@@ -1,5 +1,5 @@
 import warnings
-from typing import Optional
+from typing import Optional, Tuple
 
 import torch
 from torch import nn
@@ -88,7 +88,7 @@ class RTDETRDetectorBuilder:
         image_size: Optional[int] = 640,
         confidence_threshold: float = 0.5,
         confidence_filtering: Optional[bool] = None,
-    ) -> tuple[str, ObjectDetector]:
+    ) -> Tuple[str, ObjectDetector]:
         """Exports an RT-DETR object detection model to ONNX format.
 
         Either `model_name` or `config` must be provided. If neither is provided,
