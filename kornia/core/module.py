@@ -109,7 +109,7 @@ class ONNXExportMixin:
             ("source", "kornia"),
             ("version", kornia.__version__),
             ("class", self.__class__.__name__),
-            *self.ADDITIONAL_METADATA
+            *self.ADDITIONAL_METADATA,
         ]:
             metadata_props = onnx_model.metadata_props.add()
             metadata_props.key = key
