@@ -129,8 +129,8 @@ API Documentation
     .. code-block:: python
         onnx_loader = ONNXLoader()
         # Load a HuggingFace operator
-        onnx_loader.load_model("hf://operators/kornia.color.gray.GrayscaleToRgb")
+        onnx_loader.load_model("hf://operators/kornia.color.gray.GrayscaleToRgb")  # doctest: +SKIP
         # Load a local converted/downloaded operator
-        onnx_loader.load_model("operators/kornia.color.gray.GrayscaleToRgb")
+        onnx_loader.load_model("operators/kornia.color.gray.GrayscaleToRgb")  # doctest: +SKIP
 
     :members:

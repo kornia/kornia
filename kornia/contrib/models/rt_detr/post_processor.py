@@ -6,7 +6,7 @@ from typing import List, Optional, Union
 
 import torch
 
-from kornia.core import Module, Tensor, concatenate
+from kornia.core import Module, Tensor, concatenate, tensor
 from kornia.models.detector.utils import BoxFiltering
 
 
@@ -45,7 +45,10 @@ class DETRPostProcessor(Module):
         self.num_classes = num_classes
         self.confidence_filtering = confidence_filtering
         self.num_top_queries = num_top_queries
-        self.box_filtering = BoxFiltering(confidence_threshold, filter_as_zero=filter_as_zero)
+        self.box_filtering = BoxFiltering(
+            tensor(confidence_threshold) if confidence_threshold is not None else None,
+            filter_as_zero=filter_as_zero
+        )
 
     def forward(self, logits: Tensor, boxes: Tensor, original_sizes: Tensor) -> Union[Tensor, List[Tensor]]:
         """Post-process outputs from DETR.
