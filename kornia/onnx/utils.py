@@ -2,7 +2,7 @@ import logging
 import os
 import pprint
 import urllib.request
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional
 
 import requests
 
@@ -103,7 +103,7 @@ class ONNXLoader:
             raise ValueError("URL must start with 'http:' or 'https:'")
 
     @staticmethod
-    def _fetch_repo_contents(folder: str) -> list[dict[str, Any]]:
+    def _fetch_repo_contents(folder: str) -> List[Dict[str, Any]]:
         """Fetches the contents of the Hugging Face repository using the Hugging Face API.
 
         Returns:
