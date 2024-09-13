@@ -71,7 +71,8 @@ def get_sample_images(
                 download_image(path, fname)
             elif not os.path.exists(fname) and not download:
                 logging.error(
-                    f"Image `{path}` not found at `{fname}`. You may want to set `download=True` to download it.")
+                    f"Image `{path}` not found at `{fname}`. You may want to set `download=True` to download it."
+                )
         else:
             fname = path
         img_tensor = load_image(fname)
