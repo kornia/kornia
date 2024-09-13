@@ -15,6 +15,7 @@ from . import (
     io,
     losses,
     metrics,
+    models,
     morphology,
     onnx,
     tracking,

@@ -2,13 +2,13 @@ import datetime
 import math
 import os
 from functools import wraps
-from typing import Any, Callable, ClassVar, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, ClassVar, List, Optional, Tuple, Union
 
 import torch
 
 import kornia
 
-from ._backend import Module, Tensor, from_numpy
+from ._backend import Module, Tensor, from_numpy, rand
 from .external import PILImage as Image
 from .external import numpy as np
 from .external import onnx
@@ -26,6 +26,10 @@ class ONNXExportMixin:
         ONNX_DEFAULT_OUTPUTSHAP:
             Default output shape for the ONNX export. A list of integers where `-1` indicates
             dynamic dimensions. Default is [-1, -1, -1, -1].
+        ONNX_EXPORT_PSEUDO_SHAPE:
+            This is used to create a dummy input tensor for the ONNX export. Default is [1, 3, 256, 256].
+            It dimension shall match the ONNX_DEFAULT_INPUTSHAPE and ONNX_DEFAULT_OUTPUTSHAPE.
+            Non-image dimensions are allowed.
 
     Note:
         - If `ONNX_EXPORTABLE` is False, indicating that the object cannot be exported to ONNX.
@@ -34,6 +38,8 @@ class ONNXExportMixin:
     ONNX_EXPORTABLE: bool = True
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[List[int]] = [-1, -1, -1, -1]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[List[int]] = [-1, -1, -1, -1]
+    ONNX_EXPORT_PSEUDO_SHAPE: ClassVar[List[int]] = [1, 3, 256, 256]
+    ADDITIONAL_METADATA: ClassVar[List[Tuple[str, str]]] = []
 
     def to_onnx(
         self,
@@ -70,15 +76,8 @@ class ONNXExportMixin:
         if onnx_name is None:
             onnx_name = f"Kornia-{self.__class__.__name__}.onnx"
 
-        # Creating a dummy input with the given shape
-        pseudo_shape = (1, 3, 256, 256)
-        dummy_input = torch.randn(*[(pseudo_shape[i] if dim == -1 else dim) for i, dim in enumerate(input_shape)])
-
-        # Dynamic axis configuration for input and output
-        dynamic_axes = {
-            "input": {i: "dim_" + str(i) for i, dim in enumerate(input_shape) if dim == -1},
-            "output": {i: "dim_" + str(i) for i, dim in enumerate(output_shape) if dim == -1},
-        }
+        dummy_input = self._create_dummy_input(input_shape)
+        dynamic_axes = self._create_dynamic_axes(input_shape, output_shape)
 
         torch.onnx.export(
             self,  # type: ignore
@@ -92,9 +91,26 @@ class ONNXExportMixin:
             dynamic_axes=dynamic_axes,
         )
 
+        self._add_metadata(onnx_name)
+
+    def _create_dummy_input(self, input_shape: List[int]) -> Union[Tuple[Any, ...], Tensor]:
+        return rand(*[
+            (self.ONNX_EXPORT_PSEUDO_SHAPE[i] if dim == -1 else dim) for i, dim in enumerate(input_shape)])
+
+    def _create_dynamic_axes(self, input_shape: List[int], output_shape: List[int]) -> Dict[str, Dict[int, str]]:
+        return {
+            "input": {i: "dim_" + str(i) for i, dim in enumerate(input_shape) if dim == -1},
+            "output": {i: "dim_" + str(i) for i, dim in enumerate(output_shape) if dim == -1},
+        }
+
+    def _add_metadata(self, onnx_name: str) -> None:
         onnx_model = onnx.load(onnx_name)  # type: ignore
 
-        for key, value in [("source", "kornia"), ("version", kornia.__version__), ("class", self.__class__.__name__)]:
+        for key, value in [
+            ("source", "kornia"),
+            ("version", kornia.__version__),
+            ("class", self.__class__.__name__),
+        ] + self.ADDITIONAL_METADATA:
             metadata_props = onnx_model.metadata_props.add()
             metadata_props.key = key
             metadata_props.value = str(value)

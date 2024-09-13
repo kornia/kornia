@@ -26,7 +26,7 @@ class RTDETRDetectorBuilder:
         config: Optional[RTDETRConfig] = None,
         pretrained: bool = True,
         image_size: Optional[int] = 640,
-        confidence_threshold: float = 0.5,
+        confidence_threshold: Optional[float] = None,
         confidence_filtering: Optional[bool] = None,
     ) -> ObjectDetector:
         """Builds and returns an RT-DETR object detector model.
@@ -46,11 +46,6 @@ class RTDETRDetectorBuilder:
                 The size to which input images will be resized during preprocessing.
                 If None, no resizing will be performed before passing to the model. Recommended scales include
                 [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800].
-            confidence_threshold:
-                The confidence threshold used during post-processing to filter detections.
-            confidence_filtering:
-                If to perform filtering on resulting boxes. If None, the filtering will be blocked when exporting
-                to ONNX, while it would perform as per confidence_threshold when build the model.
 
         Returns:
             ObjectDetector
@@ -70,13 +65,17 @@ class RTDETRDetectorBuilder:
             warnings.warn("No `model_name` or `config` found. Will build pretrained `rtdetr_r18vd`.")
             model = RTDETR.from_pretrained("rtdetr_r18vd")
 
+        if confidence_threshold is None:
+            confidence_threshold = config.confidence_threshold if config is not None else 0.3
+
         return ObjectDetector(
             model,
             ResizePreProcessor((image_size, image_size)) if image_size is not None else nn.Identity(),
             DETRPostProcessor(
-                confidence_threshold,
-                num_classes=config.num_classes if config is not None else 80,
+                confidence_threshold=confidence_threshold,
                 confidence_filtering=confidence_filtering or not torch.onnx.is_in_onnx_export(),
+                num_classes=model.decoder.num_classes,
+                num_top_queries=model.decoder.num_queries,
             ),
         )
 
