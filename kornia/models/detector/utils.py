@@ -1,4 +1,4 @@
-from typing import Any, ClassVar, List, Optional, Tuple, Union, cast
+from typing import Any, ClassVar, List, Optional, Tuple, Union
 
 from kornia.core import Module, ONNXExportMixin, Tensor, rand
 
