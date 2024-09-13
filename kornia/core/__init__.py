@@ -32,7 +32,7 @@ from ._backend import (
     zeros,
     zeros_like,
 )
-from .module import ImageModule, ONNXExportMixin, ImageModuleMixIn
+from .module import ImageModule, ImageModuleMixIn, ONNXExportMixin
 from .tensor_wrapper import TensorWrapper  # type: ignore
 
 __all__ = [

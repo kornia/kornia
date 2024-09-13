@@ -2,7 +2,7 @@ import datetime
 import math
 import os
 from functools import wraps
-from typing import Any, Callable, Dict, ClassVar, List, Optional, Tuple, Union
+from typing import Any, Callable, ClassVar, Dict, List, Optional, Tuple, Union
 
 import torch
 
@@ -94,8 +94,7 @@ class ONNXExportMixin:
         self._add_metadata(onnx_name)
 
     def _create_dummy_input(self, input_shape: List[int]) -> Union[Tuple[Any, ...], Tensor]:
-        return rand(*[
-            (self.ONNX_EXPORT_PSEUDO_SHAPE[i] if dim == -1 else dim) for i, dim in enumerate(input_shape)])
+        return rand(*[(self.ONNX_EXPORT_PSEUDO_SHAPE[i] if dim == -1 else dim) for i, dim in enumerate(input_shape)])
 
     def _create_dynamic_axes(self, input_shape: List[int], output_shape: List[int]) -> Dict[str, Dict[int, str]]:
         return {
