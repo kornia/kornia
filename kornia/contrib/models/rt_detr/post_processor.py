@@ -46,8 +46,7 @@ class DETRPostProcessor(Module):
         self.confidence_filtering = confidence_filtering
         self.num_top_queries = num_top_queries
         self.box_filtering = BoxFiltering(
-            tensor(confidence_threshold) if confidence_threshold is not None else None,
-            filter_as_zero=filter_as_zero
+            tensor(confidence_threshold) if confidence_threshold is not None else None, filter_as_zero=filter_as_zero
         )
 
     def forward(self, logits: Tensor, boxes: Tensor, original_sizes: Tensor) -> Union[Tensor, List[Tensor]]:
