@@ -1,9 +1,11 @@
 import os
-import pytest
-from unittest import mock
-from onnx import ModelProto  # Assuming `onnx` is installed and ModelProto is part of the library
-from kornia.onnx.utils import ONNXLoader
 import urllib
+from unittest import mock
+
+import pytest
+from onnx import ModelProto  # Assuming `onnx` is installed and ModelProto is part of the library
+
+from kornia.onnx.utils import ONNXLoader
 
 
 class TestONNXLoader:
@@ -51,7 +53,7 @@ class TestONNXLoader:
             assert model == mock_model
             mock_urlretrieve.assert_called_once_with(
                 "https://huggingface.co/kornia/ONNX_models/resolve/main/operators/some_model.onnx",
-                ".test_cache/operators/some_model.onnx"
+                ".test_cache/operators/some_model.onnx",
             )
 
     def test_load_model_file_not_found(self, loader):
@@ -71,7 +73,10 @@ class TestONNXLoader:
         mock_makedirs.assert_called_once_with(os.path.dirname(file_path), exist_ok=True)
         mock_urlretrieve.assert_called_once_with(url, file_path)
 
-    @mock.patch("urllib.request.urlretrieve", side_effect=urllib.error.HTTPError(url=None, code=404, msg="Not Found", hdrs=None, fp=None))
+    @mock.patch(
+        "urllib.request.urlretrieve",
+        side_effect=urllib.error.HTTPError(url=None, code=404, msg="Not Found", hdrs=None, fp=None),
+    )
     def test_download_failure(self, mock_urlretrieve, loader):
         url = "https://huggingface.co/non_existent_model.onnx"
         file_path = ".test_cache/non_existent_model.onnx"

@@ -2,10 +2,10 @@ import os
 from pathlib import Path
 from typing import Union
 
+from kornia.contrib.object_detection import ObjectDetector
+from kornia.core import Tensor
 from kornia.core.external import boxmot
 from kornia.core.external import numpy as np
-from kornia.core import Tensor
-from kornia.contrib.object_detection import ObjectDetector
 from kornia.models.detector.rtdetr import RTDETRDetectorBuilder
 from kornia.utils.image import tensor_to_image
 
@@ -46,22 +46,29 @@ class BoxMotTracker:
     """
 
     def __init__(
-        self, detector: Union[ObjectDetector, str] = "rtdetr_r18vd", tracker_model_name: str = "BoTSORT",
-        tracker_model_weights: str = "osnet_x0_25_msmt17.pt",  device: str = "cpu", fp16: bool = False, **kwargs
+        self,
+        detector: Union[ObjectDetector, str] = "rtdetr_r18vd",
+        tracker_model_name: str = "BoTSORT",
+        tracker_model_weights: str = "osnet_x0_25_msmt17.pt",
+        device: str = "cpu",
+        fp16: bool = False,
+        **kwargs,
     ) -> None:
         super().__init__()
         if isinstance(detector, str):
             if detector.startswith("rtdetr"):
                 detector = RTDETRDetectorBuilder.build(model_name=detector)
             else:
-                raise ValueError(f"Detector `{detector}` not available. You may pass an ObjectDetector instance instead.")
+                raise ValueError(
+                    f"Detector `{detector}` not available. You may pass an ObjectDetector instance instead."
+                )
         self.detector = detector
         os.makedirs(".kornia_hub/models/boxmot", exist_ok=True)
         self.tracker = getattr(boxmot, tracker_model_name)(
             model_weights=Path(os.path.join(".kornia_hub/models/boxmot", tracker_model_weights)),
             device=device,
             fp16=fp16,
-            **kwargs
+            **kwargs,
         )
 
     def update(self, image: Tensor) -> None:
@@ -72,9 +79,7 @@ class BoxMotTracker:
         """
 
         if not (image.ndim == 4 and image.shape[0] == 1) and not image.ndim == 3:
-            raise ValueError(
-                f"Input tensor must be of shape (1, 3, H, W) or (3, H, W). Got {image.shape}"
-            )
+            raise ValueError(f"Input tensor must be of shape (1, 3, H, W) or (3, H, W). Got {image.shape}")
 
         if image.ndim == 3:
             image = image.unsqueeze(0)
@@ -104,7 +109,7 @@ class BoxMotTracker:
             detections, frame_raw
         )  # --> M X (x, y, x, y, id, conf, cls, ind)
 
-    def visualize(self, image: Tensor, show_trajectories: bool =True) -> np.ndarray:  # type: ignore
+    def visualize(self, image: Tensor, show_trajectories: bool = True) -> np.ndarray:  # type: ignore
         """Visualize the results of the tracker.
 
         Args:
