@@ -2,7 +2,7 @@ accelerate
 coverage
 diffusers
 mypy
-numpy<3
+numpy<2
 onnx
 onnxruntime
 pillow

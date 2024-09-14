@@ -86,7 +86,7 @@ class RTDETRDetectorBuilder:
         config: Optional[RTDETRConfig] = None,
         pretrained: bool = True,
         image_size: Optional[int] = 640,
-        confidence_threshold: float = 0.5,
+        confidence_threshold: Optional[float] = None,
         confidence_filtering: Optional[bool] = None,
     ) -> Tuple[str, ObjectDetector]:
         """Exports an RT-DETR object detection model to ONNX format.

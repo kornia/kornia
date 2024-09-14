@@ -8,6 +8,7 @@ from kornia.core import Tensor
 
 __all__ = ["pi", "DType", "Resample", "BorderType", "SamplePadding", "TKEnum"]
 
+# NOTE: to remove later
 logging.basicConfig(level=logging.INFO)
 
 pi = torch.tensor(3.14159265358979323846)
