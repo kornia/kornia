@@ -1,11 +1,12 @@
 from typing import Optional
 
 import kornia
-from kornia.core import Module, Tensor, tensor
+from kornia.core import Module, Tensor, tensor, zeros_like, ones_like
+from kornia.core.module import ONNXExportMixin
 from kornia.core.external import segmentation_models_pytorch as smp
 
 
-class SegmentationModels(Module):
+class SegmentationModels(Module, ONNXExportMixin):
     """SegmentationModel is a module that wraps a segmentation model.
 
     This module uses SegmentationModel library for segmentation.
@@ -27,6 +28,9 @@ class SegmentationModels(Module):
         Pretrained weights for the whole model are not available.
     """
 
+    ONNX_DEFAULT_INPUTSHAPE = (-1, 3, -1, -1)
+    ONNX_DEFAULT_OUTPUTSHAPE = (-1, -1, -1, -1)
+
     def __init__(
         self,
         model_name: str = "Unet",
@@ -47,27 +51,30 @@ class SegmentationModels(Module):
         )
 
     def preprocessing(self, input: Tensor) -> Tensor:
-        if self.preproc_params["input_space"] == "RGB":
+        # Ensure the color space transformation is ONNX-friendly
+        input_space = self.preproc_params["input_space"]
+        input = kornia.color.rgb_to_bgr(input) if input_space == "BGR" else input  # Assume input is already RGB if not BGR
+
+        # Normalize input range if needed
+        input_range = self.preproc_params["input_range"]
+        if input_range[1] == 255:
+            input = input * 255.0
+        elif input_range[1] == 1:
             pass
-        elif self.preproc_params["input_space"] == "BGR":
-            input = kornia.color.rgb_to_bgr(input)
         else:
-            raise ValueError(f"Unsupported input space: {self.preproc_params['input_space']}")
+            raise ValueError(f"Unsupported input range: {input_range}")
 
-        if self.preproc_params["input_range"] is not None:
-            if input.max() > 1 and self.preproc_params["input_range"][1] == 1:
-                input = input / 255.0
-
-        if self.preproc_params["mean"] is None:
-            mean = tensor(self.preproc_params["mean"]).to(input.device)
+        # Handle mean and std normalization
+        if self.preproc_params["mean"] is not None:
+            mean = tensor([self.preproc_params["mean"]]).to(input.device)
         else:
-            mean = tensor(self.preproc_params["mean"]).to(input.device)
+            mean = zeros_like(input)
 
-        if self.preproc_params["std"] is None:
-            std = tensor(self.preproc_params["std"]).to(input.device)
+        if self.preproc_params["std"] is not None:
+            std = tensor([self.preproc_params["std"]]).to(input.device)
         else:
-            std = tensor(self.preproc_params["std"]).to(input.device)
-
+            std = ones_like(input)
+        
         return kornia.enhance.normalize(input, mean, std)
 
     def forward(self, input: Tensor) -> Tensor:

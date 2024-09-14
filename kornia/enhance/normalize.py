@@ -105,7 +105,10 @@ def normalize(data: Tensor, mean: Tensor, std: Tensor) -> Tensor:
         if not isinstance(mean, Tensor) or not isinstance(std, Tensor):
             raise ValueError("Only tensor is accepted when converting to ONNX.")
         if mean.shape[0] != 1 or std.shape[0] != 1:
-            raise ValueError("Batch dimension must be one for broadcasting when converting to ONNX.")
+            raise ValueError(
+                "Batch dimension must be one for broadcasting when converting to ONNX."
+                f"Try changing mean shape and std shape from ({mean.shape}, {std.shape}) to (1, C) or (1, C, 1, 1)."
+            )
     else:
         if isinstance(mean, float):
             mean = torch.tensor([mean] * shape[1], device=data.device, dtype=data.dtype)

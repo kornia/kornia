@@ -112,7 +112,7 @@ class ONNXSequential:
         session = ort.InferenceSession(  # type:ignore
             self._combined_op.SerializeToString(),
             sess_options=sess_options,
-            providers=providers or ["CPUExecutionProvider"],
+            providers=providers or ['CUDAExecutionProvider', 'CPUExecutionProvider'],
         )
         return session
 
