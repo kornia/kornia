@@ -1,4 +1,5 @@
 accelerate
+boxmot
 coverage
 diffusers
 mypy

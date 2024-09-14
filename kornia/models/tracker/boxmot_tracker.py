@@ -90,24 +90,23 @@ class BoxMotTracker:
 
         detections = np.array(  # type: ignore
             [
-                detections[:, 2],
-                detections[:, 3],
-                detections[:, 2] + detections[:, 4],
-                detections[:, 3] + detections[:, 5],
-                detections[:, 1],
-                detections[:, 0],
+                detections[:, 2],  # type: ignore
+                detections[:, 3],  # type: ignore
+                detections[:, 2] + detections[:, 4],  # type: ignore
+                detections[:, 3] + detections[:, 5],  # type: ignore
+                detections[:, 1],  # type: ignore
+                detections[:, 0],  # type: ignore
             ]
         ).T
 
-        if detections.shape[0] == 0:
+        if detections.shape[0] == 0:  # type: ignore
             # empty N X (x, y, x, y, conf, cls)
             detections = np.empty((0, 6))  # type: ignore
 
         frame_raw = (tensor_to_image(image) * 255).astype(np.uint8)  # type: ignore
 
-        return self.tracker.update(  # type: ignore
-            detections, frame_raw
-        )  # --> M X (x, y, x, y, id, conf, cls, ind)
+        # --> M X (x, y, x, y, id, conf, cls, ind)
+        return self.tracker.update(detections, frame_raw)  # type: ignore
 
     def visualize(self, image: Tensor, show_trajectories: bool = True) -> np.ndarray:  # type: ignore
         """Visualize the results of the tracker.
@@ -119,8 +118,8 @@ class BoxMotTracker:
         Returns:
             The image with the results of the tracker.
         """
-        frame_raw = (tensor_to_image(image) * 255).astype(np.uint8)  # type: ignore
+        frame_raw = (tensor_to_image(image) * 255).astype(np.uint8)
         self.update(image)
-        self.tracker.plot_results(frame_raw, show_trajectories=show_trajectories)  # type: ignore
+        self.tracker.plot_results(frame_raw, show_trajectories=show_trajectories)
 
         return frame_raw
