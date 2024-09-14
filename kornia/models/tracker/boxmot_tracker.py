@@ -9,6 +9,8 @@ from kornia.core.external import numpy as np
 from kornia.models.detector.rtdetr import RTDETRDetectorBuilder
 from kornia.utils.image import tensor_to_image
 
+__all__ = ["BoxMotTracker"]
+
 
 class BoxMotTracker:
     """BoxMotTracker is a module that wraps a detector and a tracker model.
