@@ -112,7 +112,7 @@ class ONNXSequential:
         session = ort.InferenceSession(  # type:ignore
             self._combined_op.SerializeToString(),
             sess_options=sess_options,
-            providers=providers or ['CUDAExecutionProvider', 'CPUExecutionProvider'],
+            providers=providers or ['CPUExecutionProvider'],
         )
         return session
 
@@ -132,6 +132,14 @@ class ONNXSequential:
             ort.InferenceSession: The current ONNXRuntime session.
         """
         return self._session
+
+    def as_cpu(self) -> None:
+        """Set the session to run on CPU."""
+        self._session = self.create_session(providers=['CPUExecutionProvider'])
+
+    def as_cuda(self, device_id: int = 0) -> None:
+        """Set the session to run on CUDA."""
+        self._session = self.create_session(providers=[('CUDAExecutionProvider', {'device_id': device_id})])
 
     def __call__(self, *inputs: "np.ndarray") -> List["np.ndarray"]:  # type:ignore
         """Perform inference using the combined ONNX model.
