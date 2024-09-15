@@ -2,10 +2,10 @@ import os
 from pathlib import Path
 from typing import Union
 
-from kornia.models.detector.base import ObjectDetector
 from kornia.core import Tensor
 from kornia.core.external import boxmot
 from kornia.core.external import numpy as np
+from kornia.models.detector.base import ObjectDetector
 from kornia.models.detector.rtdetr import RTDETRDetectorBuilder
 from kornia.utils.image import tensor_to_image
 

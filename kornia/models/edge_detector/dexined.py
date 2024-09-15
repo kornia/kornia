@@ -1,20 +1,17 @@
 from typing import Optional, Tuple
+
 import torch
-import torch.nn as nn
+from torch import nn
 
 from kornia.core import rand
-
 from kornia.filters.dexined import DexiNed
 from kornia.models.edge_detector.base import EdgeDetector
-from kornia.models.utils import ResizePreProcessor, ResizePostProcessor
+from kornia.models.utils import ResizePostProcessor, ResizePreProcessor
 
 
 class DexiNedBuilder:
-
     @staticmethod
-    def build(
-        pretrained: bool = True, image_size: Optional[int] = 352
-    ) -> EdgeDetector:
+    def build(pretrained: bool = True, image_size: Optional[int] = 352) -> EdgeDetector:
         model = DexiNed(pretrained=pretrained)
         return EdgeDetector(
             model,

@@ -1,9 +1,9 @@
 from typing import Optional
 
 import kornia
-from kornia.core import Module,Tensor, tensor, zeros_like, ones_like
-from kornia.core.module import ONNXExportMixin
+from kornia.core import Module, Tensor, ones_like, tensor, zeros_like
 from kornia.core.external import segmentation_models_pytorch as smp
+from kornia.core.module import ONNXExportMixin
 
 
 class SegmentationModels(Module, ONNXExportMixin):
@@ -53,7 +53,9 @@ class SegmentationModels(Module, ONNXExportMixin):
     def preprocessing(self, input: Tensor) -> Tensor:
         # Ensure the color space transformation is ONNX-friendly
         input_space = self.preproc_params["input_space"]
-        input = kornia.color.rgb_to_bgr(input) if input_space == "BGR" else input  # Assume input is already RGB if not BGR
+        input = (
+            kornia.color.rgb_to_bgr(input) if input_space == "BGR" else input
+        )  # Assume input is already RGB if not BGR
 
         # Normalize input range if needed
         input_range = self.preproc_params["input_range"]
@@ -74,7 +76,7 @@ class SegmentationModels(Module, ONNXExportMixin):
             std = tensor([self.preproc_params["std"]]).to(input.device)
         else:
             std = ones_like(input)
-        
+
         return kornia.enhance.normalize(input, mean, std)
 
     def forward(self, input: Tensor) -> Tensor:

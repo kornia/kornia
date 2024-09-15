@@ -11,6 +11,7 @@ class EdgeDetector(Module):
 
     This module uses EdgeDetectionModel library for edge detection.
     """
+
     # NOTE: We need to implement this class for better visualization and user experience.
 
     def __init__(self, model: Module, pre_processor: Module, post_processor: Module) -> None:
@@ -52,9 +53,7 @@ class EdgeDetector(Module):
         """
         ...
 
-    def save(
-        self, images: Union[Tensor, list[Tensor]], output_type: str = "torch"
-    ) -> None:
+    def save(self, images: Union[Tensor, list[Tensor]], output_type: str = "torch") -> None:
         """Save the segmentation results.
 
         Args:

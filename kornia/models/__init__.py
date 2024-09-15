@@ -1,3 +1,1 @@
-from . import detector
-from . import segmentor
-from . import tracker
+from . import detector, segmentor, tracker

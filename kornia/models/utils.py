@@ -1,6 +1,6 @@
+import warnings
 from typing import Union
 
-import warnings
 import torch
 from torch import Tensor
 
@@ -50,9 +50,7 @@ class ResizePostProcessor(Module):
         super().__init__()
         self.interpolation_mode = interpolation_mode
 
-    def forward(
-        self, imgs: Union[Tensor, list[Tensor]], original_sizes: Tensor
-    ) -> Tensor:
+    def forward(self, imgs: Union[Tensor, list[Tensor]], original_sizes: Tensor) -> Tensor:
         """
         Returns:
             resized_imgs: resized images in a batch.
@@ -66,8 +64,9 @@ class ResizePostProcessor(Module):
             for i in range(iters):
                 img = imgs[i]
                 size = original_sizes[i]
-                resized_imgs.append(resize(
-                    img[None], size=size.cpu().long().numpy().tolist(), interpolation=self.interpolation_mode))
+                resized_imgs.append(
+                    resize(img[None], size=size.cpu().long().numpy().tolist(), interpolation=self.interpolation_mode)
+                )
         else:
             warnings.warn(
                 "ResizePostProcessor is not supported in ONNX export. "

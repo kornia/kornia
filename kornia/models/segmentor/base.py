@@ -9,6 +9,7 @@ class SemanticSegmentation(Module):
 
     This module uses SegmentationModel library for semantic segmentation.
     """
+
     # NOTE: We need to implement this class for better visualization and user experience.
 
     def __init__(self, model: Module, pre_processor: Module) -> None:
@@ -48,9 +49,7 @@ class SemanticSegmentation(Module):
         """
         ...
 
-    def save(
-        self, images: Union[Tensor, list[Tensor]], output_type: str = "torch"
-    ) -> None:
+    def save(self, images: Union[Tensor, list[Tensor]], output_type: str = "torch") -> None:
         """Save the segmentation results.
 
         Args:
