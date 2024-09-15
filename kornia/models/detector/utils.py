@@ -6,6 +6,13 @@ __all__ = ["BoxFiltering"]
 
 
 class BoxFiltering(Module, ONNXExportMixin):
+    """Filter boxes according to the desired threshold.
+
+    Args:
+        confidence_threshold: an 0-d scalar that represents the desired threshold.
+        filter_as_zero: whether to filter boxes as zero.
+    """
+
     ONNX_DEFAULT_INPUTSHAPE: ClassVar[List[int]] = [-1, -1, 6]
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[List[int]] = [-1, -1, 6]
     ONNX_EXPORT_PSEUDO_SHAPE: ClassVar[List[int]] = [5, 20, 6]

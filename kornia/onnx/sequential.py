@@ -137,9 +137,9 @@ class ONNXSequential:
         """Set the session to run on CPU."""
         self._session = self.create_session(providers=['CPUExecutionProvider'])
 
-    def as_cuda(self, device_id: int = 0) -> None:
+    def as_cuda(self, device: int = 0) -> None:
         """Set the session to run on CUDA."""
-        self._session = self.create_session(providers=[('CUDAExecutionProvider', {'device_id': device_id})])
+        self._session = self.create_session(providers=[('CUDAExecutionProvider', {'device_id': device})])
 
     def __call__(self, *inputs: "np.ndarray") -> List["np.ndarray"]:  # type:ignore
         """Perform inference using the combined ONNX model.

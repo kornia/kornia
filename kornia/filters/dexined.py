@@ -125,8 +125,7 @@ class UpConvBlock(Module):
 
     def forward(self, x: Tensor, out_shape: list[int]) -> Tensor:
         out = self.features(x)
-        if out.shape[-2:] != out_shape:
-            out = F.interpolate(out, out_shape, mode="bilinear")
+        out = F.interpolate(out, out_shape, mode="bilinear")
         return out
 
 
@@ -176,7 +175,7 @@ class DexiNed(Module):
         >>> img = torch.rand(1, 3, 320, 320)
         >>> net = DexiNed(pretrained=False)
         >>> out = net(img)
-        >>> out[-1].shape
+        >>> out.shape
         torch.Size([1, 1, 320, 320])
     """
 
@@ -228,7 +227,7 @@ class DexiNed(Module):
         self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
-    def forward(self, x: Tensor) -> list[Tensor]:
+    def get_features(self, x: Tensor) -> list[Tensor]:
         # Block 1
         block_1 = self.block_1(x)
         block_1_side = self.side_1(block_1)
@@ -272,11 +271,13 @@ class DexiNed(Module):
         out_5 = self.up_block_5(block_5, out_shape)
         out_6 = self.up_block_6(block_6, out_shape)
         results = [out_1, out_2, out_3, out_4, out_5, out_6]
+        return results
+
+    def forward(self, x: Tensor) -> Tensor:
+        features = self.get_features(x)
 
         # concatenate multiscale outputs
-        block_cat = concatenate(results, 1)  # Bx6xHxW
+        block_cat = concatenate(features, 1)  # Bx6xHxW
         block_cat = self.block_cat(block_cat)  # Bx1xHxW
 
-        # return results
-        results.append(block_cat)
-        return results
+        return block_cat

@@ -6,7 +6,8 @@ from torch import nn
 
 from kornia.contrib.models.rt_detr import DETRPostProcessor
 from kornia.contrib.models.rt_detr.model import RTDETR, RTDETRConfig
-from kornia.contrib.object_detection import ObjectDetector, ResizePreProcessor
+from kornia.models.detector.base import ObjectDetector
+from kornia.models.utils import ResizePreProcessor
 from kornia.core import rand
 
 __all__ = ["RTDETRDetectorBuilder"]
