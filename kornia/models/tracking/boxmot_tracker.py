@@ -1,17 +1,17 @@
-import os
 import datetime
 import logging
+import os
 from pathlib import Path
-from typing import Union, Optional
+from typing import Optional, Union
 
+from kornia.config import kornia_config
 from kornia.core import Tensor, tensor
 from kornia.core.external import boxmot
 from kornia.core.external import numpy as np
+from kornia.io import write_image
 from kornia.models.detection.base import ObjectDetector
 from kornia.models.detection.rtdetr import RTDETRDetectorBuilder
 from kornia.utils.image import tensor_to_image
-from kornia.config import kornia_config
-from kornia.io import write_image
 
 __all__ = ["BoxMotTracker"]
 
@@ -51,7 +51,7 @@ class BoxMotTracker:
         frame_rate: Frame rate of the video being processed. Used to scale the track buffer size.
         fuse_first_associate: Whether to fuse appearance and motion information during the first association step.
         with_reid: Whether to use ReID (Re-Identification) features for association.
-    
+
     .. code-block:: python
 
         import kornia
@@ -60,7 +60,7 @@ class BoxMotTracker:
         for i in range(4):  # At least 4 frames are needed to initialize the tracking position
             model.update(image)
         model.save(image)
-    
+
     .. note::
         At least 4 frames are needed to initialize the tracking position.
     """
@@ -144,9 +144,7 @@ class BoxMotTracker:
 
         return tensor(frame_raw).permute(2, 0, 1)
 
-    def save(
-        self, image: Tensor, show_trajectories: bool = True, directory: Optional[str] = None
-    ) -> None:
+    def save(self, image: Tensor, show_trajectories: bool = True, directory: Optional[str] = None) -> None:
         """Save the model to ONNX format.
 
         Args:
@@ -159,6 +157,7 @@ class BoxMotTracker:
 
         os.makedirs(directory, exist_ok=True)
         write_image(
-            os.path.join(directory, f"{str(0).zfill(6)}.jpg"), output.byte(),
+            os.path.join(directory, f"{str(0).zfill(6)}.jpg"),
+            output.byte(),
         )
         logger.info(f"Outputs are saved in {directory}")

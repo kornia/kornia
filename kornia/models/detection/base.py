@@ -21,7 +21,6 @@ __all__ = [
 ]
 
 
-
 class BoundingBoxDataFormat(Enum):
     """Enum class that maps bounding box data format."""
 

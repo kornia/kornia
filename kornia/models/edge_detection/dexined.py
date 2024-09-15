@@ -18,14 +18,13 @@ class DexiNedBuilder:
         image = kornia.utils.sample.get_sample_images()[0][None]
         model = DexiNedBuilder.build()
         model.save(image)
-
     """
 
     @staticmethod
     def build(model_name: str = "dexined", pretrained: bool = True, image_size: Optional[int] = 352) -> EdgeDetector:
         if model_name.lower() == "dexined":
             # Normalize then scale to [0, 255]
-            norm = Normalize(mean=tensor([[0.485, 0.456, 0.406]]), std=tensor([[1. / 255.] * 3]))
+            norm = Normalize(mean=tensor([[0.485, 0.456, 0.406]]), std=tensor([[1.0 / 255.0] * 3]))
             model = nn.Sequential(norm, DexiNed(pretrained=pretrained), nn.Sigmoid())
         else:
             raise ValueError(f"Model {model_name} not found. Please choose from 'DexiNed'.")

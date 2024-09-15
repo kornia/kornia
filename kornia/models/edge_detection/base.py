@@ -1,4 +1,4 @@
-from typing import Union, Optional
+from typing import Optional, Union
 
 from kornia.color.gray import grayscale_to_rgb
 from kornia.core import Tensor
@@ -30,8 +30,10 @@ class EdgeDetector(ModelBase):
         return self.post_processor(out_images, image_sizes)
 
     def visualize(
-        self, images: Union[Tensor, list[Tensor]], edge_maps: Optional[Union[Tensor, list[Tensor]]] = None,
-        output_type: str = "torch"
+        self,
+        images: Union[Tensor, list[Tensor]],
+        edge_maps: Optional[Union[Tensor, list[Tensor]]] = None,
+        output_type: str = "torch",
     ) -> Union[Tensor, list[Tensor], list[Image.Image]]:  # type: ignore
         """Draw the segmentation results.
 
@@ -51,8 +53,11 @@ class EdgeDetector(ModelBase):
         return self._tensor_to_type(output, output_type, is_batch=isinstance(images, Tensor))
 
     def save(
-        self, images: Union[Tensor, list[Tensor]], edge_maps: Optional[Union[Tensor, list[Tensor]]] = None,
-        directory: Optional[str] = None, output_type: str = "torch"
+        self,
+        images: Union[Tensor, list[Tensor]],
+        edge_maps: Optional[Union[Tensor, list[Tensor]]] = None,
+        directory: Optional[str] = None,
+        output_type: str = "torch",
     ) -> None:
         """Save the segmentation results.
 
