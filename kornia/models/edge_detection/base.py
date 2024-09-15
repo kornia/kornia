@@ -3,6 +3,7 @@ from typing import Union
 from kornia.core import Tensor
 from kornia.core.external import PILImage as Image
 from kornia.models.base import ModelBase
+
 __all__ = ["EdgeDetector"]
 
 

@@ -14,9 +14,9 @@ from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.external import PILImage as Image
 from kornia.core.external import numpy as np
 from kornia.io import write_image
+from kornia.models.base import ModelBase
 from kornia.utils.draw import draw_rectangle
 from kornia.utils.image import tensor_to_image
-from kornia.models.base import ModelBase
 
 __all__ = [
     "BoundingBoxDataFormat",

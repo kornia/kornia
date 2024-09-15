@@ -1,5 +1,6 @@
-from kornia.core import Module
 from typing import Optional
+
+from kornia.core import Module
 
 
 class ModelBase(Module):
@@ -7,7 +8,9 @@ class ModelBase(Module):
 
     name: str = "model"
 
-    def __init__(self, model: Module, pre_processor: Module, post_processor: Module, name: Optional[str] = None) -> None:
+    def __init__(
+        self, model: Module, pre_processor: Module, post_processor: Module, name: Optional[str] = None
+    ) -> None:
         """Construct an Object Detector object.
 
         Args:
