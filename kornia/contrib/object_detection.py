@@ -29,8 +29,7 @@ __all__ = [
 
 class BoundingBox(BoundingBoxBase):
     warnings.warn(
-        "BoundingBox is deprecated and will be removed in v0.8.0. "
-        "Use kornia.models.detector.BoundingBox instead.",
+        "BoundingBox is deprecated and will be removed in v0.8.0. " "Use kornia.models.detector.BoundingBox instead.",
         DeprecationWarning,
     )
 

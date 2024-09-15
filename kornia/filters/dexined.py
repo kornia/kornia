@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from typing import ClassVar, List, Optional
+from typing import ClassVar, Optional
 
 import torch
 import torch.nn.functional as F

@@ -1,8 +1,8 @@
 accelerate
 boxmot
 coverage
-distutils
 diffusers
+distutils
 mypy
 numpy<3
 onnx
