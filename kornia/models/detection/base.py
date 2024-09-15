@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 
@@ -157,7 +157,7 @@ class ObjectDetector(ModelBase):
         onnx_name: Optional[str] = None,
         image_size: Optional[int] = 640,
         include_pre_and_post_processor: bool = True,
-    ) -> Tuple[str, ObjectDetector]:
+    ) -> tuple[str, ObjectDetector]:
         """Exports an RT-DETR object detection model to ONNX format.
 
         Either `model_name` or `config` must be provided. If neither is provided,

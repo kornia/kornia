@@ -179,8 +179,8 @@ class DexiNed(Module):
         torch.Size([1, 1, 320, 320])
     """
 
-    ONNX_DEFAULT_INPUTSHAPE: ClassVar[List[int]] = [-1, 3, -1, -1]
-    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[List[int]] = [-1, 1, -1, -1]
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 1, -1, -1]
 
     def __init__(self, pretrained: bool) -> None:
         super().__init__()
