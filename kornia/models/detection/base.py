@@ -5,17 +5,18 @@ import logging
 import os
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Union
+from typing import Optional, Tuple, Union
 
 import torch
 
-from kornia.core import Module, Tensor
+from kornia.core import Tensor, rand
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.external import PILImage as Image
 from kornia.core.external import numpy as np
 from kornia.io import write_image
 from kornia.utils.draw import draw_rectangle
 from kornia.utils.image import tensor_to_image
+from kornia.models.base import ModelBase
 
 __all__ = [
     "BoundingBoxDataFormat",
@@ -103,22 +104,10 @@ def results_from_detections(detections: Tensor, format: str | BoundingBoxDataFor
     return results
 
 
-# TODO: move this to kornia.models as AlgorithmicModel api
-class ObjectDetector(Module):
+class ObjectDetector(ModelBase):
     """This class wraps an object detection model and performs pre-processing and post-processing."""
 
-    def __init__(self, model: Module, pre_processor: Module, post_processor: Module) -> None:
-        """Construct an Object Detector object.
-
-        Args:
-            model: an object detection model.
-            pre_processor: a pre-processing module
-            post_processor: a post-processing module.
-        """
-        super().__init__()
-        self.model = model.eval()
-        self.pre_processor = pre_processor.eval()
-        self.post_processor = post_processor.eval()
+    name: str = "ObjectDetector"
 
     @torch.inference_mode()
     def forward(self, images: Union[Tensor, list[Tensor]]) -> Tensor:
@@ -182,6 +171,54 @@ class ObjectDetector(Module):
                 out_image.mul(255.0).byte(),
             )
         logger.info(f"Outputs are saved in {directory}")
+
+    def to_onnx(
+        self,
+        onnx_name: Optional[str] = None,
+        image_size: Optional[int] = 640,
+        include_pre_and_post_processor: bool = True,
+    ) -> Tuple[str, ObjectDetector]:
+        """Exports an RT-DETR object detection model to ONNX format.
+
+        Either `model_name` or `config` must be provided. If neither is provided,
+        a default pretrained model (`rtdetr_r18vd`) will be built.
+
+        Args:
+            onnx_name:
+                The name of the ONNX model.
+            image_size:
+                The size to which input images will be resized during preprocessing.
+                If None, image_size will be dynamic.
+                For RTDETR, recommended scales include [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800].
+            include_pre_and_post_processor:
+                Whether to include the pre-processor and post-processor in the exported model.
+
+        Returns:
+            - The name of the ONNX model.
+        """
+        if onnx_name is None:
+            onnx_name = f"kornia_{self.name}_{image_size}.onnx"
+
+        if image_size is None:
+            val_image = rand(1, 3, 640, 640)
+            dynamic_axes = {"input": {0: "batch_size"}, "output": {0: "batch_size"}}
+        else:
+            val_image = rand(1, 3, image_size, image_size)
+            dynamic_axes = {"input": {0: "batch_size", 2: "height", 3: "width"}, "output": {0: "batch_size"}}
+
+        torch.onnx.export(
+            self if include_pre_and_post_processor else self.model,
+            val_image,
+            onnx_name,
+            export_params=True,
+            opset_version=17,
+            do_constant_folding=True,
+            input_names=["input"],
+            output_names=["output"],
+            dynamic_axes=dynamic_axes,
+        )
+
+        return onnx_name
 
     def compile(
         self,

@@ -54,7 +54,7 @@ class SegmentationModels(Module, ONNXExportMixin):
         # Ensure the color space transformation is ONNX-friendly
         input_space = self.preproc_params["input_space"]
         input = (
-            kornia.color.rgb_to_bgr(input) if input_space == "BGR" else input
+            kornia.color.rgb.rgb_to_bgr(input) if input_space == "BGR" else input
         )  # Assume input is already RGB if not BGR
 
         # Normalize input range if needed
@@ -68,12 +68,12 @@ class SegmentationModels(Module, ONNXExportMixin):
 
         # Handle mean and std normalization
         if self.preproc_params["mean"] is not None:
-            mean = tensor([self.preproc_params["mean"]]).to(input.device)
+            mean = tensor([self.preproc_params["mean"]], device=input.device)
         else:
             mean = zeros_like(input)
 
         if self.preproc_params["std"] is not None:
-            std = tensor([self.preproc_params["std"]]).to(input.device)
+            std = tensor([self.preproc_params["std"]], device=input.device)
         else:
             std = ones_like(input)
 

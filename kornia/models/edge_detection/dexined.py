@@ -11,8 +11,12 @@ from kornia.models.utils import ResizePostProcessor, ResizePreProcessor
 
 class DexiNedBuilder:
     @staticmethod
-    def build(pretrained: bool = True, image_size: Optional[int] = 352) -> EdgeDetector:
-        model = DexiNed(pretrained=pretrained)
+    def build(model_name: str = "dexined", pretrained: bool = True, image_size: Optional[int] = 352) -> EdgeDetector:
+        if model_name.lower() == "dexined":
+            model = DexiNed(pretrained=pretrained)
+        else:
+            raise ValueError(f"Model {model_name} not found. Please choose from 'DexiNed'.")
+
         return EdgeDetector(
             model,
             ResizePreProcessor(image_size, image_size) if image_size is not None else nn.Identity(),
@@ -21,13 +25,14 @@ class DexiNedBuilder:
 
     @staticmethod
     def to_onnx(
+        model_name: str = "dexined",
         onnx_name: Optional[str] = None,
         pretrained: bool = True,
         image_size: Optional[int] = 352,
     ) -> Tuple[str, EdgeDetector]:
-        edge_detector = DexiNedBuilder.build(pretrained, image_size)
+        edge_detector = DexiNedBuilder.build(model_name, pretrained, image_size)
         if onnx_name is None:
-            onnx_name = f"kornia_dexined_{image_size}.onnx"
+            onnx_name = f"kornia_{model_name.lower()}_{image_size}.onnx"
 
         if image_size is None:
             val_image = rand(1, 3, 352, 352)

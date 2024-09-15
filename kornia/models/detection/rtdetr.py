@@ -1,12 +1,11 @@
 import warnings
-from typing import Optional, Tuple
+from typing import Optional
 
 import torch
 from torch import nn
 
 from kornia.contrib.models.rt_detr import DETRPostProcessor
 from kornia.contrib.models.rt_detr.model import RTDETR, RTDETRConfig
-from kornia.core import rand
 from kornia.models.detection.base import ObjectDetector
 from kornia.models.utils import ResizePreProcessor
 
@@ -71,7 +70,7 @@ class RTDETRDetectorBuilder:
 
         return ObjectDetector(
             model,
-            ResizePreProcessor((image_size, image_size)) if image_size is not None else nn.Identity(),
+            ResizePreProcessor(image_size, image_size) if image_size is not None else nn.Identity(),
             DETRPostProcessor(
                 confidence_threshold=confidence_threshold,
                 confidence_filtering=confidence_filtering or not torch.onnx.is_in_onnx_export(),
@@ -79,76 +78,3 @@ class RTDETRDetectorBuilder:
                 num_top_queries=model.decoder.num_queries,
             ),
         )
-
-    @staticmethod
-    def to_onnx(
-        model_name: Optional[str] = None,
-        onnx_name: Optional[str] = None,
-        config: Optional[RTDETRConfig] = None,
-        pretrained: bool = True,
-        image_size: Optional[int] = 640,
-        confidence_threshold: Optional[float] = None,
-        confidence_filtering: Optional[bool] = None,
-    ) -> Tuple[str, ObjectDetector]:
-        """Exports an RT-DETR object detection model to ONNX format.
-
-        Either `model_name` or `config` must be provided. If neither is provided,
-        a default pretrained model (`rtdetr_r18vd`) will be built.
-
-        Args:
-            model_name:
-                Name of the RT-DETR model to load. Can be one of the available pretrained models.
-            config:
-                A custom configuration object for building the RT-DETR model.
-            pretrained:
-                Whether to load a pretrained version of the model (applies when `model_name` is provided).
-            image_size:
-                The size to which input images will be resized during preprocessing.
-                If None, image_size will be dynamic. Recommended scales include
-                [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800].
-            confidence_threshold:
-                The confidence threshold used during post-processing to filter detections.
-            confidence_filtering:
-                If to perform filtering on resulting boxes. If None, the filtering will be blocked when exporting
-                to ONNX, while it would perform as per confidence_threshold when build the model.
-
-        Returns:
-            - The name of the ONNX model.
-            - The exported torch model.
-        """
-
-        detector = RTDETRDetectorBuilder.build(
-            model_name=model_name,
-            config=config,
-            pretrained=pretrained,
-            image_size=image_size,
-            confidence_threshold=confidence_threshold,
-            confidence_filtering=confidence_filtering,
-        )
-        if onnx_name is None:
-            _model_name = model_name
-            if model_name is None and config is not None:
-                _model_name = "rtdetr_customized"
-            elif model_name is None and config is None:
-                _model_name = "rtdetr_r18vd"
-            onnx_name = f"kornia_{_model_name}_{image_size}.onnx"
-
-        if image_size is None:
-            val_image = rand(1, 3, 640, 640)
-        else:
-            val_image = rand(1, 3, image_size, image_size)
-
-        dynamic_axes = {"input": {0: "batch_size", 2: "height", 3: "width"}, "output": {0: "batch_size"}}
-        torch.onnx.export(
-            detector,
-            val_image,
-            onnx_name,
-            export_params=True,
-            opset_version=17,
-            do_constant_folding=True,
-            input_names=["input"],
-            output_names=["output"],
-            dynamic_axes=dynamic_axes,
-        )
-
-        return onnx_name, detector
