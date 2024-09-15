@@ -3,17 +3,30 @@ from typing import Optional, Tuple
 import torch
 from torch import nn
 
-from kornia.core import rand
+from kornia.core import rand, tensor
+from kornia.enhance.normalize import Normalize
 from kornia.filters.dexined import DexiNed
 from kornia.models.edge_detection.base import EdgeDetector
 from kornia.models.utils import ResizePostProcessor, ResizePreProcessor
 
 
 class DexiNedBuilder:
+    """DexiNedBuilder is a class that builds a DexiNed model.
+
+    .. code-block:: python
+
+        image = kornia.utils.sample.get_sample_images()[0][None]
+        model = DexiNedBuilder.build()
+        model.save(image)
+
+    """
+
     @staticmethod
     def build(model_name: str = "dexined", pretrained: bool = True, image_size: Optional[int] = 352) -> EdgeDetector:
         if model_name.lower() == "dexined":
-            model = DexiNed(pretrained=pretrained)
+            # Normalize then scale to [0, 255]
+            norm = Normalize(mean=tensor([[0.485, 0.456, 0.406]]), std=tensor([[1. / 255.] * 3]))
+            model = nn.Sequential(norm, DexiNed(pretrained=pretrained), nn.Sigmoid())
         else:
             raise ValueError(f"Model {model_name} not found. Please choose from 'DexiNed'.")
 

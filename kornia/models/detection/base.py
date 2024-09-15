@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import datetime
-import logging
-import os
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional, Tuple, Union
@@ -12,11 +9,8 @@ import torch
 from kornia.core import Tensor, rand
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.external import PILImage as Image
-from kornia.core.external import numpy as np
-from kornia.io import write_image
 from kornia.models.base import ModelBase
 from kornia.utils.draw import draw_rectangle
-from kornia.utils.image import tensor_to_image
 
 __all__ = [
     "BoundingBoxDataFormat",
@@ -26,7 +20,6 @@ __all__ = [
     "ObjectDetectorResult",
 ]
 
-logger = logging.getLogger(__name__)
 
 
 class BoundingBoxDataFormat(Enum):
@@ -107,10 +100,10 @@ def results_from_detections(detections: Tensor, format: str | BoundingBoxDataFor
 class ObjectDetector(ModelBase):
     """This class wraps an object detection model and performs pre-processing and post-processing."""
 
-    name: str = "ObjectDetector"
+    name: str = "detection"
 
     @torch.inference_mode()
-    def forward(self, images: Union[Tensor, list[Tensor]]) -> Tensor:
+    def forward(self, images: Union[Tensor, list[Tensor]]) -> Union[Tensor, list[Tensor]]:
         """Detect objects in a given list of images.
 
         Args:
@@ -126,7 +119,7 @@ class ObjectDetector(ModelBase):
         detections = self.post_processor(logits, boxes, images_sizes)
         return detections
 
-    def draw(
+    def visualize(
         self, images: Union[Tensor, list[Tensor]], detections: Optional[Tensor] = None, output_type: str = "torch"
     ) -> Union[Tensor, list[Tensor], list[Image.Image]]:  # type: ignore
         """Very simple drawing.
@@ -143,13 +136,9 @@ class ObjectDetector(ModelBase):
                     out_img,
                     torch.Tensor([[[out[-4], out[-3], out[-4] + out[-2], out[-3] + out[-1]]]]),
                 )
-            if output_type == "torch":
-                output.append(out_img[0])
-            elif output_type == "pil":
-                output.append(Image.fromarray((tensor_to_image(out_img[0]) * 255).astype(np.uint8)))  # type: ignore
-            else:
-                raise RuntimeError(f"Unsupported output type `{output_type}`.")
-        return output
+            output.append(out_img[0])
+
+        return self._tensor_to_type(output, output_type, is_batch=isinstance(images, Tensor))
 
     def save(
         self, images: Union[Tensor, list[Tensor]], detections: Optional[Tensor] = None, directory: Optional[str] = None
@@ -157,20 +146,12 @@ class ObjectDetector(ModelBase):
         """Saves the output image(s) to a directory.
 
         Args:
-            name: Directory to save the images.
-            n_row: Number of images displayed in each row of the grid.
+            images: input tensor.
+            detections: detection tensor.
+            directory: directory to save the images.
         """
-        if directory is None:
-            name = f"detection_{datetime.datetime.now(tz=datetime.timezone.utc).strftime('%Y%m%d%H%M%S')!s}"
-            directory = os.path.join("kornia_outputs", name)
-        outputs = self.draw(images, detections)
-        os.makedirs(directory, exist_ok=True)
-        for i, out_image in enumerate(outputs):
-            write_image(
-                os.path.join(directory, f"{str(i).zfill(6)}.jpg"),
-                out_image.mul(255.0).byte(),
-            )
-        logger.info(f"Outputs are saved in {directory}")
+        outputs = self.visualize(images, detections)
+        self._save_outputs(outputs, directory)
 
     def to_onnx(
         self,

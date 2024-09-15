@@ -1,15 +1,21 @@
 import os
+import datetime
+import logging
 from pathlib import Path
-from typing import Union
+from typing import Union, Optional
 
-from kornia.core import Tensor
+from kornia.core import Tensor, tensor
 from kornia.core.external import boxmot
 from kornia.core.external import numpy as np
 from kornia.models.detection.base import ObjectDetector
 from kornia.models.detection.rtdetr import RTDETRDetectorBuilder
 from kornia.utils.image import tensor_to_image
+from kornia.config import kornia_config
+from kornia.io import write_image
 
 __all__ = ["BoxMotTracker"]
+
+logger = logging.getLogger(__name__)
 
 
 class BoxMotTracker:
@@ -45,12 +51,26 @@ class BoxMotTracker:
         frame_rate: Frame rate of the video being processed. Used to scale the track buffer size.
         fuse_first_associate: Whether to fuse appearance and motion information during the first association step.
         with_reid: Whether to use ReID (Re-Identification) features for association.
+    
+    .. code-block:: python
+
+        import kornia
+        image = kornia.utils.sample.get_sample_images()[0][None]
+        model = BoxMotTracker()
+        for i in range(4):  # At least 4 frames are needed to initialize the tracking position
+            model.update(image)
+        model.save(image)
+    
+    .. note::
+        At least 4 frames are needed to initialize the tracking position.
     """
+
+    name: str = "boxmot_tracker"
 
     def __init__(
         self,
         detector: Union[ObjectDetector, str] = "rtdetr_r18vd",
-        tracker_model_name: str = "BoTSORT",
+        tracker_model_name: str = "DeepOCSORT",
         tracker_model_weights: str = "osnet_x0_25_msmt17.pt",
         device: str = "cpu",
         fp16: bool = False,
@@ -65,9 +85,9 @@ class BoxMotTracker:
                     f"Detector `{detector}` not available. You may pass an ObjectDetector instance instead."
                 )
         self.detector = detector
-        os.makedirs(".kornia_hub/models/boxmot", exist_ok=True)
+        os.makedirs(f"{kornia_config.hub_models_dir}/boxmot", exist_ok=True)
         self.tracker = getattr(boxmot, tracker_model_name)(
-            model_weights=Path(os.path.join(".kornia_hub/models/boxmot", tracker_model_weights)),
+            model_weights=Path(os.path.join(f"{kornia_config.hub_models_dir}/boxmot", tracker_model_weights)),
             device=device,
             fp16=fp16,
             **kwargs,
@@ -106,11 +126,10 @@ class BoxMotTracker:
             detections = np.empty((0, 6))  # type: ignore
 
         frame_raw = (tensor_to_image(image) * 255).astype(np.uint8)  # type: ignore
-
         # --> M X (x, y, x, y, id, conf, cls, ind)
         return self.tracker.update(detections, frame_raw)  # type: ignore
 
-    def visualize(self, image: Tensor, show_trajectories: bool = True) -> np.ndarray:  # type: ignore
+    def visualize(self, image: Tensor, show_trajectories: bool = True) -> Tensor:
         """Visualize the results of the tracker.
 
         Args:
@@ -121,7 +140,25 @@ class BoxMotTracker:
             The image with the results of the tracker.
         """
         frame_raw = (tensor_to_image(image) * 255).astype(np.uint8)
-        self.update(image)
         self.tracker.plot_results(frame_raw, show_trajectories=show_trajectories)
 
-        return frame_raw
+        return tensor(frame_raw).permute(2, 0, 1)
+
+    def save(
+        self, image: Tensor, show_trajectories: bool = True, directory: Optional[str] = None
+    ) -> None:
+        """Save the model to ONNX format.
+
+        Args:
+            image: The input image.
+        """
+        if directory is None:
+            name = f"{self.name}_{datetime.datetime.now(tz=datetime.timezone.utc).strftime('%Y%m%d%H%M%S')!s}"
+            directory = os.path.join("kornia_outputs", name)
+        output = self.visualize(image, show_trajectories=show_trajectories)
+
+        os.makedirs(directory, exist_ok=True)
+        write_image(
+            os.path.join(directory, f"{str(0).zfill(6)}.jpg"), output.byte(),
+        )
+        logger.info(f"Outputs are saved in {directory}")

@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from enum import Enum
 
-__all__ = ["config", "InstallationMode"]
+__all__ = ["kornia_config", "InstallationMode"]
 
 
 class InstallationMode(str, Enum):

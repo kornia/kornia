@@ -3,7 +3,7 @@ boxmot
 coverage
 diffusers
 mypy
-numpy>1.24.4,<2
+numpy<3
 onnx
 onnxruntime
 pillow

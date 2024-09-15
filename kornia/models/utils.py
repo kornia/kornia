@@ -50,7 +50,7 @@ class ResizePostProcessor(Module):
         super().__init__()
         self.interpolation_mode = interpolation_mode
 
-    def forward(self, imgs: Union[Tensor, list[Tensor]], original_sizes: Tensor) -> Tensor:
+    def forward(self, imgs: Union[Tensor, list[Tensor]], original_sizes: Tensor) -> Union[Tensor, list[Tensor]]:
         """
         Returns:
             resized_imgs: resized images in a batch.

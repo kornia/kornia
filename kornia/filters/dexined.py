@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from typing import Optional
+from typing import ClassVar, Optional, List
 
 import torch
 import torch.nn.functional as F
@@ -179,8 +179,8 @@ class DexiNed(Module):
         torch.Size([1, 1, 320, 320])
     """
 
-    # TODO: Handle multiple inputs and outputs models later
-    ONNX_EXPORTABLE = False
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[List[int]] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[List[int]] = [-1, 1, -1, -1]
 
     def __init__(self, pretrained: bool) -> None:
         super().__init__()

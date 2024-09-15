@@ -18,6 +18,13 @@ class RTDETRDetectorBuilder:
     This class provides static methods to:
         - Build an object detection model from a model name or configuration.
         - Export the model to ONNX format for inference.
+    
+    .. code-block:: python
+
+        image = kornia.utils.sample.get_sample_images()[0][None]
+        model = RTDETRDetectorBuilder.build()
+        model.save(image)
+
     """
 
     @staticmethod
