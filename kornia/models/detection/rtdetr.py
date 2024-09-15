@@ -7,7 +7,7 @@ from torch import nn
 from kornia.contrib.models.rt_detr import DETRPostProcessor
 from kornia.contrib.models.rt_detr.model import RTDETR, RTDETRConfig
 from kornia.core import rand
-from kornia.models.detector.base import ObjectDetector
+from kornia.models.detection.base import ObjectDetector
 from kornia.models.utils import ResizePreProcessor
 
 __all__ = ["RTDETRDetectorBuilder"]
@@ -128,10 +128,10 @@ class RTDETRDetectorBuilder:
         if onnx_name is None:
             _model_name = model_name
             if model_name is None and config is not None:
-                _model_name = "rtdetr-customized"
+                _model_name = "rtdetr_customized"
             elif model_name is None and config is None:
                 _model_name = "rtdetr_r18vd"
-            onnx_name = f"Kornia-RTDETR-{_model_name}-{image_size}.onnx"
+            onnx_name = f"kornia_{_model_name}_{image_size}.onnx"
 
         if image_size is None:
             val_image = rand(1, 3, 640, 640)

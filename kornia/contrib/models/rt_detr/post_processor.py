@@ -7,7 +7,7 @@ from typing import Optional, Union
 import torch
 
 from kornia.core import Module, Tensor, concatenate, tensor
-from kornia.models.detector.utils import BoxFiltering
+from kornia.models.detection.utils import BoxFiltering
 
 
 def mod(a: Tensor, b: int) -> Tensor:

@@ -5,17 +5,18 @@ from torch import nn
 
 from kornia.core import rand
 from kornia.filters.dexined import DexiNed
-from kornia.models.edge_detector.base import EdgeDetector
+from kornia.models.edge_detection.base import EdgeDetector
 from kornia.models.utils import ResizePostProcessor, ResizePreProcessor
 
 
 class DexiNedBuilder:
+
     @staticmethod
     def build(pretrained: bool = True, image_size: Optional[int] = 352) -> EdgeDetector:
         model = DexiNed(pretrained=pretrained)
         return EdgeDetector(
             model,
-            ResizePreProcessor((image_size, image_size)) if image_size is not None else nn.Identity(),
+            ResizePreProcessor(image_size, image_size) if image_size is not None else nn.Identity(),
             ResizePostProcessor() if image_size is not None else nn.Identity(),
         )
 
@@ -27,7 +28,7 @@ class DexiNedBuilder:
     ) -> Tuple[str, EdgeDetector]:
         edge_detector = DexiNedBuilder.build(pretrained, image_size)
         if onnx_name is None:
-            onnx_name = f"Kornia-DexiNed-{image_size}.onnx"
+            onnx_name = f"kornia_dexined_{image_size}.onnx"
 
         if image_size is None:
             val_image = rand(1, 3, 352, 352)

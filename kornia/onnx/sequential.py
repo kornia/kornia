@@ -3,6 +3,7 @@ from typing import List, Optional, Tuple, Union
 from kornia.core.external import numpy as np
 from kornia.core.external import onnx
 from kornia.core.external import onnxruntime as ort
+from kornia.config import kornia_config
 
 from .utils import ONNXLoader
 
@@ -10,7 +11,7 @@ __all__ = ["ONNXSequential", "load"]
 
 
 class ONNXSequential:
-    """ONNXSequential to chain multiple ONNX operators together.
+    f"""ONNXSequential to chain multiple ONNX operators together.
 
     Args:
         *args: A variable number of ONNX models (either ONNX ModelProto objects or file paths).
@@ -24,7 +25,7 @@ class ONNXSequential:
             only one input and output node for each graph.
             If not None, `io_maps[0]` shall represent the `io_map` for combining the first and second ONNX models.
         cache_dir: The directory where ONNX models are cached locally (only for downloading from HuggingFace).
-            Defaults to None, which will use a default `.kornia_hub/onnx_models` directory.
+            Defaults to None, which will use a default `{kornia_config.hub_onnx_dir}` directory.
     """
 
     def __init__(

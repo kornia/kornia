@@ -14,16 +14,16 @@ class ResizePreProcessor(Module):
     Additionally, also returns the original image sizes for further post-processing.
     """
 
-    def __init__(self, size: tuple[int, int], interpolation_mode: str = "bilinear") -> None:
+    def __init__(self, height: int, width: int, interpolation_mode: str = "bilinear") -> None:
         """
         Args:
-            size: images will be resized to this value. If a 2-integer tuple is given, it is interpreted as
-                (height, width).
+            height: height of the resized image.
+            width: width of the resized image.
             interpolation_mode: interpolation mode for image resizing. Supported values: ``nearest``, ``bilinear``,
                 ``bicubic``, ``area``, and ``nearest-exact``.
         """
         super().__init__()
-        self.size = size
+        self.size = (height, width)
         self.interpolation_mode = interpolation_mode
 
     def forward(self, imgs: Union[Tensor, list[Tensor]]) -> tuple[Tensor, Tensor]:

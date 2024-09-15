@@ -7,18 +7,18 @@ from typing import Any, Dict, List, Optional
 import requests
 
 from kornia.core.external import onnx
-
+from kornia.config import kornia_config
 __all__ = ["ONNXLoader"]
 
 logger = logging.getLogger(__name__)
 
 
 class ONNXLoader:
-    """Manages ONNX models, handling local caching, downloading from Hugging Face, and loading models.
+    f"""Manages ONNX models, handling local caching, downloading from Hugging Face, and loading models.
 
     Attributes:
         cache_dir: The directory where ONNX models are cached locally.
-            Defaults to None, which will use a default `.kornia_hub/onnx_models` directory.
+            Defaults to None, which will use a default `{kornia_config.hub_onnx_dir}` directory.
     """
 
     def __init__(self, cache_dir: Optional[str] = None):
@@ -39,7 +39,7 @@ class ONNXLoader:
             if self.cache_dir is not None:
                 cache_dir = self.cache_dir
             else:
-                cache_dir = ".kornia_hub/onnx_models"
+                cache_dir = kornia_config.hub_onnx_dir
 
         # The filename is the model name (without directory path)
         file_name = f"{model_name.split('/')[-1]}.onnx"
@@ -61,7 +61,7 @@ class ONNXLoader:
         """
         if model_name.startswith("hf://"):
             model_name = model_name[len("hf://") :]
-            cache_dir = kwargs.get("cache_dir", None) or self.cache_dir
+            cache_dir = kwargs.get(kornia_config.hub_onnx_dir, None) or self.cache_dir
             file_path = self._get_file_path(model_name, cache_dir)
             if not os.path.exists(file_path):
                 # Construct the raw URL for the ONNX file

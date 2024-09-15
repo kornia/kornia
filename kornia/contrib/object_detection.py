@@ -1,18 +1,18 @@
 import warnings
 
-from kornia.models.detector.base import (
+from kornia.models.detection.base import (
     BoundingBox as BoundingBoxBase,
 )
-from kornia.models.detector.base import (
+from kornia.models.detection.base import (
     BoundingBoxDataFormat,
 )
-from kornia.models.detector.base import (
+from kornia.models.detection.base import (
     ObjectDetector as ObjectDetectorBase,
 )
-from kornia.models.detector.base import (
+from kornia.models.detection.base import (
     ObjectDetectorResult as ObjectDetectorResultBase,
 )
-from kornia.models.detector.base import (
+from kornia.models.detection.base import (
     results_from_detections as results_from_detections_base,
 )
 from kornia.models.utils import ResizePreProcessor as ResizePreProcessorBase

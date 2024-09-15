@@ -15,6 +15,7 @@ from kornia.core.external import PILImage as Image
 from kornia.core.external import numpy as np
 from kornia.io import write_image
 from kornia.utils.draw import draw_rectangle
+from kornia.utils.image import tensor_to_image
 
 __all__ = [
     "BoundingBoxDataFormat",
@@ -156,7 +157,7 @@ class ObjectDetector(Module):
             if output_type == "torch":
                 output.append(out_img[0])
             elif output_type == "pil":
-                output.append(Image.fromarray((out_img[0] * 255).permute(1, 2, 0).numpy().astype(np.uint8)))  # type: ignore
+                output.append(Image.fromarray((tensor_to_image(out_img[0]) * 255).astype(np.uint8)))  # type: ignore
             else:
                 raise RuntimeError(f"Unsupported output type `{output_type}`.")
         return output
@@ -171,8 +172,8 @@ class ObjectDetector(Module):
             n_row: Number of images displayed in each row of the grid.
         """
         if directory is None:
-            name = f"detection-{datetime.datetime.now(tz=datetime.timezone.utc).strftime('%Y%m%d%H%M%S')!s}"
-            directory = os.path.join("Kornia_outputs", name)
+            name = f"detection_{datetime.datetime.now(tz=datetime.timezone.utc).strftime('%Y%m%d%H%M%S')!s}"
+            directory = os.path.join("kornia_outputs", name)
         outputs = self.draw(images, detections)
         os.makedirs(directory, exist_ok=True)
         for i, out_image in enumerate(outputs):

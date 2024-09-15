@@ -5,6 +5,8 @@ import sys
 from types import ModuleType
 from typing import List, Optional
 
+from kornia.config import kornia_config, InstallationMode
+
 logger = logging.getLogger(__name__)
 
 
@@ -45,23 +47,36 @@ class LazyLoader:
             try:
                 self.module = importlib.import_module(self.module_name)
             except ImportError as e:
-                if self.auto_install:
+                if kornia_config.lazyloader.installation_mode == InstallationMode.AUTO or self.auto_install:
                     self._install_package(self.module_name)
-                else:
+                elif kornia_config.lazyloader.installation_mode == InstallationMode.ASK:
+                    to_ask = True
                     if_install = input(
                         f"Optional dependency '{self.module_name}' is not installed. "
+                        "You may silent this prompt by `kornia_config.lazyloader.installation_mode = 'auto'`. "
                         "Do you wish to install the dependency? [Y]es, [N]o, [A]ll."
                     )
-                    if if_install.lower() == "y":
-                        self._install_package(self.module_name)
-                    elif if_install.lower() == "a":
-                        self.auto_install = True
-                        self._install_package(self.module_name)
-                    else:
-                        raise ImportError(
-                            f"Optional dependency '{self.module_name}' is not installed. "
-                            f"Please install it to use this functionality."
-                        ) from e
+                    while to_ask:
+                        if if_install.lower() == "y" or if_install.lower() == "yes":
+                            self._install_package(self.module_name)
+                            to_ask = False
+                        elif if_install.lower() == "a" or if_install.lower() == "all":
+                            self.auto_install = True
+                            self._install_package(self.module_name)
+                            to_ask = False
+                        elif if_install.lower() == "n" or if_install.lower() == "no":
+                            raise ImportError(
+                                f"Optional dependency '{self.module_name}' is not installed. "
+                                f"Please install it to use this functionality."
+                            ) from e
+                        else:
+                            if_install = input("Invalid input. Please enter 'Y', 'N', or 'A'.")
+
+                elif kornia_config.lazyloader.installation_mode == InstallationMode.RAISE:
+                    raise ImportError(
+                        f"Optional dependency '{self.module_name}' is not installed. "
+                        f"Please install it to use this functionality."
+                    ) from e
 
     def __getattr__(self, item: str) -> object:
         """Loads the module (if not already loaded) and returns the requested attribute.

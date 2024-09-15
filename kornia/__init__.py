@@ -10,6 +10,7 @@ from . import (
     color,
     contrib,
     core,
+    config,
     enhance,
     feature,
     io,

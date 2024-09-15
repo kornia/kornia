@@ -1,1 +1,1 @@
-from . import detector, segmentor, tracker
+from . import detection, segmentation, tracking
