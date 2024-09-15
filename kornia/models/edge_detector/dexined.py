@@ -26,10 +26,8 @@ class DexiNedBuilder:
         image_size: Optional[int] = 352,
     ) -> Tuple[str, EdgeDetector]:
         edge_detector = DexiNedBuilder.build(pretrained, image_size)
-        model_name = "DexiNed"
         if onnx_name is None:
-            _model_name = model_name
-            onnx_name = f"Kornia-RTDETR-{_model_name}-{image_size}.onnx"
+            onnx_name = f"Kornia-DexiNed-{image_size}.onnx"
 
         if image_size is None:
             val_image = rand(1, 3, 352, 352)
