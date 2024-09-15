@@ -10,7 +10,6 @@ from kornia.models.utils import ResizePostProcessor, ResizePreProcessor
 
 
 class DexiNedBuilder:
-
     @staticmethod
     def build(pretrained: bool = True, image_size: Optional[int] = 352) -> EdgeDetector:
         model = DexiNed(pretrained=pretrained)

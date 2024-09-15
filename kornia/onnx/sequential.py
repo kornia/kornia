@@ -1,9 +1,9 @@
 from typing import List, Optional, Tuple, Union
 
+from kornia.config import kornia_config
 from kornia.core.external import numpy as np
 from kornia.core.external import onnx
 from kornia.core.external import onnxruntime as ort
-from kornia.config import kornia_config
 
 from .utils import ONNXLoader
 

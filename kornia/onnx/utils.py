@@ -6,8 +6,9 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
-from kornia.core.external import onnx
 from kornia.config import kornia_config
+from kornia.core.external import onnx
+
 __all__ = ["ONNXLoader"]
 
 logger = logging.getLogger(__name__)

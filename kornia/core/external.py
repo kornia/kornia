@@ -5,7 +5,7 @@ import sys
 from types import ModuleType
 from typing import List, Optional
 
-from kornia.config import kornia_config, InstallationMode
+from kornia.config import InstallationMode, kornia_config
 
 logger = logging.getLogger(__name__)
 
