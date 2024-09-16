@@ -1,9 +1,8 @@
 accelerate
-boxmot
 coverage
 diffusers
 mypy
-numpy==1.26.4  # For Boxmot
+numpy<3
 onnx
 onnxruntime
 pillow
