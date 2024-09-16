@@ -1,7 +1,7 @@
 import datetime
 import logging
 import os
-from typing import Optional, Union, List
+from typing import List, Optional, Union
 
 from kornia.core import Module, Tensor, stack
 from kornia.core.external import PILImage as Image

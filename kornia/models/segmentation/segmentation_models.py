@@ -1,4 +1,4 @@
-from typing import Optional, ClassVar, List
+from typing import ClassVar, List, Optional
 
 import kornia
 from kornia.core import Module, Tensor, ones_like, tensor, zeros_like
