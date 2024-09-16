@@ -108,7 +108,7 @@ class BoxMotTracker:
 
         detections: Union[Tensor, list[Tensor]] = self.detector(image)
 
-        detections = detections[0].cpu().numpy()  # Batch size is 1
+        detections = detections.cpu().numpy()[0]  # Batch size is 1
 
         detections = np.array(  # type: ignore
             [
@@ -125,9 +125,9 @@ class BoxMotTracker:
             # empty N X (x, y, x, y, conf, cls)
             detections = np.empty((0, 6))  # type: ignore
 
-        frame_raw = (tensor_to_image(image) * 255).astype(np.uint8)  # type: ignore
+        frame_raw = (tensor_to_image(image) * 255).astype(np.uint8)
         # --> M X (x, y, x, y, id, conf, cls, ind)
-        return self.tracker.update(detections, frame_raw)  # type: ignore
+        return self.tracker.update(detections, frame_raw)
 
     def visualize(self, image: Tensor, show_trajectories: bool = True) -> Tensor:
         """Visualize the results of the tracker.

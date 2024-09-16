@@ -1,7 +1,7 @@
 import datetime
 import logging
 import os
-from typing import Optional, Union
+from typing import Optional, Union, List
 
 from kornia.core import Module, Tensor, stack
 from kornia.core.external import PILImage as Image
@@ -35,8 +35,8 @@ class ModelBase(Module):
             self.name = name
 
     def _tensor_to_type(
-        self, output: list[Tensor], output_type: str, is_batch: bool = False
-    ) -> Union[Tensor, list[Tensor], list[Image.Image]]:  # type: ignore
+        self, output: List[Tensor], output_type: str, is_batch: bool = False
+    ) -> Union[Tensor, List[Tensor], List[Image.Image]]:  # type: ignore
         if output_type == "torch":
             if is_batch:
                 return stack(output)
@@ -46,7 +46,7 @@ class ModelBase(Module):
         raise RuntimeError(f"Unsupported output type `{output_type}`.")
 
     def _save_outputs(
-        self, outputs: Union[Tensor, list[Tensor]], directory: Optional[str] = None, suffix: str = ""
+        self, outputs: Union[Tensor, List[Tensor]], directory: Optional[str] = None, suffix: str = ""
     ) -> None:
         """Save the output image(s) to a directory.
 

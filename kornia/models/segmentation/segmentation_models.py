@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, ClassVar, List
 
 import kornia
 from kornia.core import Module, Tensor, ones_like, tensor, zeros_like
@@ -28,8 +28,8 @@ class SegmentationModels(Module, ONNXExportMixin):
         Pretrained weights for the whole model are not available.
     """
 
-    ONNX_DEFAULT_INPUTSHAPE = (-1, 3, -1, -1)
-    ONNX_DEFAULT_OUTPUTSHAPE = (-1, -1, -1, -1)
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[List[int]] = (-1, 3, -1, -1)
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[List[int]] = (-1, -1, -1, -1)
 
     def __init__(
         self,

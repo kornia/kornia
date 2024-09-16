@@ -125,10 +125,9 @@ class ObjectDetector(ModelBase):
 
         Needs to be more fancy later.
         """
-        if detections is None:
-            detections = self.forward(images)
+        dets = detections or self.forward(images)
         output = []
-        for image, detection in zip(images, detections):
+        for image, detection in zip(images, dets):
             out_img = image[None].clone()
             for out in detection:
                 out_img = draw_rectangle(
@@ -157,7 +156,7 @@ class ObjectDetector(ModelBase):
         onnx_name: Optional[str] = None,
         image_size: Optional[int] = 640,
         include_pre_and_post_processor: bool = True,
-    ) -> tuple[str, ObjectDetector]:
+    ) -> str:
         """Exports an RT-DETR object detection model to ONNX format.
 
         Either `model_name` or `config` must be provided. If neither is provided,

@@ -12,7 +12,7 @@ class InstallationMode(str, Enum):
     # Raise an error if the dependencies are not installed
     RAISE = "RAISE"
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         if isinstance(other, str):
             return self.value.lower() == other.lower()  # Case-insensitive comparison
         return super().__eq__(other)
@@ -26,7 +26,7 @@ class LazyLoaderConfig:
         return self._installation_mode
 
     @installation_mode.setter
-    def installation_mode(self, value: str):
+    def installation_mode(self, value: str) -> None:
         # Allow setting via string by converting to the Enum
         if isinstance(value, str):
             try:
