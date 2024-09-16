@@ -4,7 +4,7 @@ coverage
 diffusers
 distutils
 mypy
-numpy<3
+numpy<3,>=2.19.0
 onnx
 onnxruntime
 pillow
