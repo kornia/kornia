@@ -57,21 +57,20 @@ class ResizePostProcessor(Module):
             original_sizes: the original image sizes of (height, width).
         """
         # TODO: support other input formats e.g. file path, numpy
-        resized_imgs: Union[Tensor, list[Tensor]] = []
+        resized_imgs: list[Tensor] = []
 
-        if not torch.onnx.is_in_onnx_export():
-            iters = len(imgs) if isinstance(imgs, list) else imgs.shape[0]
-            for i in range(iters):
-                img = imgs[i]
-                size = original_sizes[i]
-                resized_imgs.append(
-                    resize(img[None], size=size.cpu().long().numpy().tolist(), interpolation=self.interpolation_mode)
-                )
-        else:
+        if torch.onnx.is_in_onnx_export():
             warnings.warn(
                 "ResizePostProcessor is not supported in ONNX export. "
                 "The output will not be resized back to the original size."
             )
-            resized_imgs = imgs
+            return imgs
 
+        iters = len(imgs) if isinstance(imgs, list) else imgs.shape[0]
+        for i in range(iters):
+            img = imgs[i]
+            size = original_sizes[i]
+            resized_imgs.append(
+                resize(img[None], size=size.cpu().long().numpy().tolist(), interpolation=self.interpolation_mode)
+            )
         return resized_imgs

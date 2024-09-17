@@ -729,9 +729,10 @@ class TestDexiNed(BaseTester):
     def test_smoke(self, device, dtype):
         img = torch.rand(2, 3, 32, 32, device=device, dtype=dtype)
         net = DexiNed(pretrained=False).to(device, dtype)
+        feat = net.get_features(img)
+        assert len(feat) == 6
         out = net(img)
-        assert len(out) == 7
-        assert out[-1].shape == (2, 1, 32, 32)
+        assert out.shape == (2, 1, 32, 32)
 
     @pytest.mark.slow
     @pytest.mark.parametrize("data", ["dexined"], indirect=True)

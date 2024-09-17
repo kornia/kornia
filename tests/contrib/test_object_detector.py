@@ -16,7 +16,7 @@ class TestObjectDetector(BaseTester):
         confidence = 0.3
         config = RTDETRConfig("resnet50d", 10, head_num_queries=10)
         model = RTDETR.from_config(config).to(device, dtype).eval()
-        pre_processor = kornia.contrib.object_detection.ResizePreProcessor((32, 32))
+        pre_processor = kornia.contrib.object_detection.ResizePreProcessor(32, 32)
         post_processor = DETRPostProcessor(confidence, num_top_queries=3).to(device, dtype).eval()
         detector = kornia.contrib.ObjectDetector(model, pre_processor, post_processor)
 
@@ -39,7 +39,7 @@ class TestObjectDetector(BaseTester):
     def test_onnx(self, device, dtype, tmp_path: Path, variant: str):
         config = RTDETRConfig(variant, 1)
         model = RTDETR.from_config(config).to(device=device, dtype=dtype).eval()
-        pre_processor = kornia.contrib.object_detection.ResizePreProcessor((640, 640))
+        pre_processor = kornia.contrib.object_detection.ResizePreProcessor(640, 640)
         post_processor = DETRPostProcessor(0.3, num_top_queries=3)
         detector = kornia.contrib.ObjectDetector(model, pre_processor, post_processor)
 

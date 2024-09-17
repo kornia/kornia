@@ -112,16 +112,16 @@ class BoxMotTracker:
 
         detections = np.array(  # type: ignore
             [
-                detections[:, 2],  # type: ignore
-                detections[:, 3],  # type: ignore
-                detections[:, 2] + detections[:, 4],  # type: ignore
-                detections[:, 3] + detections[:, 5],  # type: ignore
-                detections[:, 1],  # type: ignore
-                detections[:, 0],  # type: ignore
+                detections[:, 2],
+                detections[:, 3],
+                detections[:, 2] + detections[:, 4],
+                detections[:, 3] + detections[:, 5],
+                detections[:, 1],
+                detections[:, 0],
             ]
         ).T
 
-        if detections.shape[0] == 0:  # type: ignore
+        if detections.shape[0] == 0:
             # empty N X (x, y, x, y, conf, cls)
             detections = np.empty((0, 6))  # type: ignore
 
