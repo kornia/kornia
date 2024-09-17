@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import warnings
 from typing import Any
 
@@ -35,7 +37,7 @@ class BoundingBox(BoundingBoxBase):
     )
 
 
-def results_from_detections(*args: Any, **kwargs: Any):
+def results_from_detections(*args: Any, **kwargs: Any) -> list[ObjectDetectorResultBase]:
     warnings.warn(
         "results_from_detections is deprecated and will be removed in v0.8.0. "
         "Use kornia.models.detector.results_from_detections instead.",
