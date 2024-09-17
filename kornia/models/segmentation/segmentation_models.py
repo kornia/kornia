@@ -1,4 +1,4 @@
-from typing import ClassVar, List, Optional
+from typing import Any, ClassVar, List, Optional
 
 import kornia
 from kornia.core import Module, Tensor, ones_like, tensor, zeros_like
@@ -28,8 +28,8 @@ class SegmentationModels(Module, ONNXExportMixin):
         Pretrained weights for the whole model are not available.
     """
 
-    ONNX_DEFAULT_INPUTSHAPE: ClassVar[List[int]] = (-1, 3, -1, -1)
-    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[List[int]] = (-1, -1, -1, -1)
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[List[int]] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[List[int]] = [-1, -1, -1, -1]
 
     def __init__(
         self,
@@ -38,7 +38,7 @@ class SegmentationModels(Module, ONNXExportMixin):
         encoder_weights: Optional[str] = "imagenet",
         in_channels: int = 3,
         classes: int = 1,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         super().__init__()
         self.preproc_params = smp.encoders.get_preprocessing_params(encoder_name)  # type: ignore

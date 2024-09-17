@@ -1,5 +1,5 @@
 import warnings
-from typing import Union
+from typing import Union, List, Tuple
 
 import torch
 from torch import Tensor
@@ -26,7 +26,7 @@ class ResizePreProcessor(Module):
         self.size = (height, width)
         self.interpolation_mode = interpolation_mode
 
-    def forward(self, imgs: Union[Tensor, list[Tensor]]) -> tuple[Tensor, Tensor]:
+    def forward(self, imgs: Union[Tensor, List[Tensor]]) -> Tuple[Tensor, Tensor]:
         """
         Returns:
             resized_imgs: resized images in a batch.
@@ -50,14 +50,14 @@ class ResizePostProcessor(Module):
         super().__init__()
         self.interpolation_mode = interpolation_mode
 
-    def forward(self, imgs: Union[Tensor, list[Tensor]], original_sizes: Tensor) -> Union[Tensor, list[Tensor]]:
+    def forward(self, imgs: Union[Tensor, List[Tensor]], original_sizes: Tensor) -> Union[Tensor, List[Tensor]]:
         """
         Returns:
             resized_imgs: resized images in a batch.
             original_sizes: the original image sizes of (height, width).
         """
         # TODO: support other input formats e.g. file path, numpy
-        resized_imgs: list[Tensor] = []
+        resized_imgs: Union[Tensor, list[Tensor]] = []
 
         if not torch.onnx.is_in_onnx_export():
             iters = len(imgs) if isinstance(imgs, list) else imgs.shape[0]

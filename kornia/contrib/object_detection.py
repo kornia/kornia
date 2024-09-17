@@ -1,4 +1,5 @@
 import warnings
+from typing import Any
 
 from kornia.models.detection.base import (
     BoundingBox as BoundingBoxBase,
@@ -34,7 +35,7 @@ class BoundingBox(BoundingBoxBase):
     )
 
 
-def results_from_detections(*args, **kwargs):
+def results_from_detections(*args: Any, **kwargs: Any):
     warnings.warn(
         "results_from_detections is deprecated and will be removed in v0.8.0. "
         "Use kornia.models.detector.results_from_detections instead.",

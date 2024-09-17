@@ -2,7 +2,7 @@ import datetime
 import logging
 import os
 from pathlib import Path
-from typing import Optional, Union
+from typing import Any,Optional, Union
 
 from kornia.config import kornia_config
 from kornia.core import Tensor, tensor
@@ -74,7 +74,7 @@ class BoxMotTracker:
         tracker_model_weights: str = "osnet_x0_25_msmt17.pt",
         device: str = "cpu",
         fp16: bool = False,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         super().__init__()
         if isinstance(detector, str):
@@ -106,9 +106,9 @@ class BoxMotTracker:
         if image.ndim == 3:
             image = image.unsqueeze(0)
 
-        detections: Union[Tensor, list[Tensor]] = self.detector(image)
+        detections_raw: Union[Tensor, list[Tensor]] = self.detector(image)
 
-        detections = detections.cpu().numpy()[0]  # Batch size is 1
+        detections = detections_raw[0].cpu().numpy()  # Batch size is 1
 
         detections = np.array(  # type: ignore
             [
