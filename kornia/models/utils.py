@@ -1,5 +1,5 @@
 import warnings
-from typing import Union, List, Tuple
+from typing import List, Tuple, Union
 
 import torch
 from torch import Tensor
