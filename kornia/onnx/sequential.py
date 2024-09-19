@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
 
 from kornia.config import kornia_config
 from kornia.core.external import numpy as np
@@ -138,9 +138,42 @@ class ONNXSequential:
         """Set the session to run on CPU."""
         self._session.set_providers(["CPUExecutionProvider"])
 
-    def as_cuda(self, device: int = 0) -> None:
-        """Set the session to run on CUDA."""
-        self._session.set_providers(["CUDAExecutionProvider"], provider_options=[{"device_id": device}])
+    def as_cuda(self, device_id: int = 0, **kwargs: Any) -> None:
+        """Set the session to run on CUDA.
+        
+        We set the ONNX runtime session to use CUDAExecutionProvider. For other CUDAExecutionProvider configurations,
+        or CUDA/cuDNN/ONNX version issues,
+        you may refer to https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html.
+
+        Args:
+            device_id: Select GPU to execute.
+        """
+        self._session.set_providers(["CUDAExecutionProvider"], provider_options=[{"device_id": device_id, **kwargs}])
+
+    def as_tensorrt(self, device_id: int = 0, **kwargs: Any) -> None:
+        """Set the session to run on TensorRT.
+        
+        We set the ONNX runtime session to use TensorrtExecutionProvider. For other TensorrtExecutionProvider configurations,
+        or CUDA/cuDNN/ONNX/TensorRT version issues,
+        you may refer to https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html.
+
+        Args:
+            device_id: select GPU to execute.
+        """
+        self._session.set_providers(["TensorrtExecutionProvider"], provider_options=[{"device_id": device_id, **kwargs}])
+
+    def as_openvino(self, device_type: str = "GPU", **kwargs: Any) -> None:
+        """Set the session to run on TensorRT.
+        
+        We set the ONNX runtime session to use OpenVINOExecutionProvider. For other OpenVINOExecutionProvider configurations,
+        or CUDA/cuDNN/ONNX/TensorRT version issues,
+        you may refer to https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html.
+
+        Args:
+            device_type: CPU, NPU, GPU, GPU.0, GPU.1 based on the avaialable GPUs, NPU, Any valid Hetero combination,
+                Any valid Multi or Auto devices combination.
+        """
+        self._session.set_providers(["OpenVINOExecutionProvider"], provider_options=[{"device_type": device_type, **kwargs}])
 
     def __call__(self, *inputs: "np.ndarray") -> List["np.ndarray"]:  # type:ignore
         """Perform inference using the combined ONNX model.

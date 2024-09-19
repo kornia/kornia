@@ -53,9 +53,12 @@ class SegmentationModels(Module, ONNXExportMixin):
     def preprocessing(self, input: Tensor) -> Tensor:
         # Ensure the color space transformation is ONNX-friendly
         input_space = self.preproc_params["input_space"]
-        input = (
-            kornia.color.rgb.rgb_to_bgr(input) if input_space == "BGR" else input
-        )  # Assume input is already RGB if not BGR
+        if input_space == "BGR":
+            input = kornia.color.rgb.bgr_to_rgb(input)
+        elif input_space == "RGB":
+            pass
+        else:
+            raise ValueError(f"Unsupported input space: {input_space}")
 
         # Normalize input range if needed
         input_range = self.preproc_params["input_range"]

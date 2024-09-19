@@ -1,6 +1,6 @@
 from typing import Any, ClassVar, List, Optional, Tuple, Union
 
-from kornia.core import Module, ONNXExportMixin, Tensor, rand
+from kornia.core import Module, ONNXExportMixin, Tensor, tensor, rand
 
 __all__ = ["BoxFiltering"]
 
@@ -10,6 +10,7 @@ class BoxFiltering(Module, ONNXExportMixin):
 
     Args:
         confidence_threshold: an 0-d scalar that represents the desired threshold.
+        classes_to_keep: a 1-d list of classes to keep. If None, keep all classes.
         filter_as_zero: whether to filter boxes as zero.
     """
 
@@ -17,35 +18,72 @@ class BoxFiltering(Module, ONNXExportMixin):
     ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[List[int]] = [-1, -1, 6]
     ONNX_EXPORT_PSEUDO_SHAPE: ClassVar[List[int]] = [5, 20, 6]
 
-    def __init__(self, confidence_threshold: Optional[Tensor] = None, filter_as_zero: bool = False) -> None:
+    def __init__(
+        self,
+        confidence_threshold: Optional[Union[Tensor, float]] = None,
+        classes_to_keep: Optional[Union[Tensor, List[int]]] = None,
+        filter_as_zero: bool = False
+    ) -> None:
         super().__init__()
         self.filter_as_zero = filter_as_zero
-        self.confidence_threshold = confidence_threshold
+        self.classes_to_keep = None
+        self.confidence_threshold = None
+        if classes_to_keep is not None:
+            self.classes_to_keep = classes_to_keep if isinstance(
+                classes_to_keep, Tensor) else tensor(classes_to_keep)
+        if confidence_threshold is not None:
+            self.confidence_threshold = confidence_threshold or confidence_threshold if isinstance(
+                confidence_threshold, Tensor) else tensor(confidence_threshold)
 
-    def forward(self, boxes: Tensor, confidence_threshold: Optional[Tensor] = None) -> Union[Tensor, List[Tensor]]:
+    def forward(
+        self, boxes: Tensor, confidence_threshold: Optional[Tensor] = None, classes_to_keep: Optional[Tensor] = None
+    ) -> Union[Tensor, List[Tensor]]:
         """Filter boxes according to the desired threshold.
+        
+        To be ONNX-friendly, the inputs for direct forwarding need to be all tensors.
 
         Args:
             boxes: [B, D, 6], where B is the batchsize,  D is the number of detections in the image,
                 6 represent (class_id, confidence_score, x, y, w, h).
             confidence_threshold: an 0-d scalar that represents the desired threshold.
+            classes_to_keep: a 1-d tensor of classes to keep. If None, keep all classes.
+        
+        Returns:
+            Union[Tensor, List[Tensor]]
+                If `filter_as_zero` is True, return a tensor of shape [D, 6], where D is the total number of
+                detections as input.
+                If `filter_as_zero` is False, return a list of tensors of shape [D, 6], where D is the number of
+                valid detections for each element in the batch.
         """
-        if confidence_threshold is None:
-            confidence_threshold = self.confidence_threshold
-            if confidence_threshold is None:
-                raise ValueError("`confidence_threshold` must be provided if not set in the constructor.")
+        # Apply confidence filtering
+        confidence_threshold = confidence_threshold or self.confidence_threshold or 0.  # If None, use 0 as threshold
+        confidence_mask = boxes[:, :, 1] > confidence_threshold  # [B, D]
 
-        filtered_boxes: Union[Tensor, List[Tensor]]
-        if self.filter_as_zero:
-            box_mask = (boxes[:, :, 1] > confidence_threshold).unsqueeze(-1).expand_as(boxes)
-            filtered_boxes = boxes * box_mask.float()
+        # Apply class filtering
+        classes_to_keep = classes_to_keep or self.classes_to_keep
+        if classes_to_keep is not None:
+            class_ids = boxes[:, :, 0:1]  # [B, D, 1]
+            classes_to_keep = classes_to_keep.view(1, 1, -1)  # [1, 1, C] for broadcasting
+            class_mask = (class_ids == classes_to_keep).any(dim=-1)  # [B, D]
         else:
-            filtered_boxes = []
-            for i in range(boxes.shape[0]):
-                box = boxes[i][(boxes[i, :, 1] > confidence_threshold).unsqueeze(-1).expand_as(boxes[i])]
-                filtered_boxes.append(box.view(-1, boxes.shape[-1]))
+            # If no class filtering is needed, just use a mask of all `True`
+            class_mask = (confidence_mask * 0 + 1).bool()
 
-        return filtered_boxes
+        # Combine the confidence and class masks
+        combined_mask = confidence_mask & class_mask  # [B, D]
+
+        if self.filter_as_zero:
+            filtered_boxes = boxes * combined_mask[:, :, None]
+            return filtered_boxes
+
+        filtered_boxes_list = []
+        for i in range(boxes.shape[0]):
+            box = boxes[i]
+            mask = combined_mask[i]  # [D]
+            valid_boxes = box[mask]
+            filtered_boxes_list.append(valid_boxes)
+
+        return filtered_boxes_list
 
     def _create_dummy_input(self, input_shape: List[int]) -> Union[Tuple[Any, ...], Tensor]:
         pseudo_input = rand(
