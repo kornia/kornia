@@ -14,14 +14,14 @@ class TestONNXLoader:
         return ONNXLoader(cache_dir=".test_cache")
 
     def test_get_file_path_with_custom_cache_dir(self, loader):
-        model_name = "operators/some_model"
-        expected_path = ".test_cache/operators/some_model.onnx"
+        model_name = os.path.join("operators", "some_model")
+        expected_path = os.path.join(".test_cache", "operators", "some_model.onnx")
         assert loader._get_file_path(model_name, loader.cache_dir) == expected_path
 
     def test_get_file_path_with_default_cache_dir(self):
         loader = ONNXLoader()
-        model_name = "operators/some_model"
-        expected_path = ".kornia_hub/onnx_models/operators/some_model.onnx"
+        model_name = os.path.join("operators", "some_model")
+        expected_path = os.path.join(".kornia_hub", "onnx_models", "operators", "some_model.onnx")
         assert loader._get_file_path(model_name, None) == expected_path
 
     @mock.patch("onnx.load")
@@ -53,7 +53,7 @@ class TestONNXLoader:
             assert model == mock_model
             mock_urlretrieve.assert_called_once_with(
                 "https://huggingface.co/kornia/ONNX_models/resolve/main/operators/some_model.onnx",
-                ".test_cache/operators/some_model.onnx",
+                os.path.join(".test_cache", "operators", "some_model.onnx"),
             )
 
     def test_load_model_file_not_found(self, loader):
@@ -66,7 +66,7 @@ class TestONNXLoader:
     @mock.patch("os.makedirs")
     def test_download_success(self, mock_makedirs, mock_urlretrieve, loader):
         url = "https://huggingface.co/some_model.onnx"
-        file_path = ".test_cache/some_model.onnx"
+        file_path = os.path.join(".test_cache", "some_model.onnx")
 
         loader.download(url, file_path)
 
@@ -79,7 +79,7 @@ class TestONNXLoader:
     )
     def test_download_failure(self, mock_urlretrieve, loader):
         url = "https://huggingface.co/non_existent_model.onnx"
-        file_path = ".test_cache/non_existent_model.onnx"
+        file_path = os.path.join(".test_cache", "non_existent_model.onnx")
 
         with pytest.raises(ValueError, match="Error in resolving"):
             loader.download(url, file_path)
@@ -88,11 +88,11 @@ class TestONNXLoader:
     def test_fetch_repo_contents_success(self, mock_get):
         mock_response = mock.Mock()
         mock_response.status_code = 200
-        mock_response.json.return_value = [{"path": "operators/model.onnx"}]
+        mock_response.json.return_value = [{"path": os.path.join("operators", "model.onnx")}]
         mock_get.return_value = mock_response
 
         contents = ONNXLoader._fetch_repo_contents("operators")
-        assert contents == [{"path": "operators/model.onnx"}]
+        assert contents == [{"path": os.path.join("operators", "model.onnx")}]
 
     @mock.patch("requests.get")
     def test_fetch_repo_contents_failure(self, mock_get):
@@ -105,18 +105,18 @@ class TestONNXLoader:
 
     @mock.patch("kornia.onnx.utils.ONNXLoader._fetch_repo_contents")
     def test_list_operators(self, mock_fetch_repo_contents, capsys):
-        mock_fetch_repo_contents.return_value = [{"path": "operators/some_model.onnx"}]
+        mock_fetch_repo_contents.return_value = [{"path": os.path.join("operators", "some_model.onnx")}]
 
         ONNXLoader.list_operators()
 
         captured = capsys.readouterr()
-        assert "operators/some_model.onnx" in captured.out
+        assert os.path.join("operators", "some_model.onnx").replace('\\', "\\\\") in captured.out  # .replace() for Windows
 
     @mock.patch("kornia.onnx.utils.ONNXLoader._fetch_repo_contents")
     def test_list_models(self, mock_fetch_repo_contents, capsys):
-        mock_fetch_repo_contents.return_value = [{"path": "models/some_model.onnx"}]
+        mock_fetch_repo_contents.return_value = [{"path": os.path.join("operators", "some_model.onnx")}]
 
         ONNXLoader.list_models()
 
         captured = capsys.readouterr()
-        assert "models/some_model.onnx" in captured.out
+        assert os.path.join("operators", "some_model.onnx").replace('\\', "\\\\") in captured.out  # .replace() for Windows

@@ -43,8 +43,8 @@ class ONNXLoader:
                 cache_dir = kornia_config.hub_onnx_dir
 
         # The filename is the model name (without directory path)
-        file_name = f"{model_name.split('/')[-1]}.onnx"
-        file_path = os.path.join(cache_dir, "/".join(model_name.split("/")[:-1]), file_name)
+        file_name = f"{os.path.split(model_name)[-1]}.onnx"
+        file_path = os.path.join(*os.path.split(cache_dir), *os.path.split(model_name)[:-1], file_name)
         return file_path
 
     def load_model(self, model_name: str, download: bool = True, **kwargs) -> "onnx.ModelProto":  # type:ignore

@@ -7,6 +7,8 @@ from torch import Tensor
 from kornia.core import Module, concatenate
 from kornia.geometry.transform import resize
 
+__all__ = ["ResizePreProcessor", "ResizePostProcessor"]
+
 
 class ResizePreProcessor(Module):
     """This module resizes a list of image tensors to the given size.
