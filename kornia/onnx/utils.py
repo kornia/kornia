@@ -54,6 +54,7 @@ class ONNXLoader:
             model_name: The name of the ONNX model or operator. For Hugging Face-hosted models,
                 use the format 'hf://model_name'. Valid `model_name` can be found on
                 https://huggingface.co/kornia/ONNX_models.
+                Or a URL to the ONNX model.
             download: If True, the model will be downloaded from Hugging Face if it's not already in the local cache.
             **kwargs: Additional arguments to pass to the download method, if needed.
 
@@ -71,6 +72,11 @@ class ONNXLoader:
                     self.download(url, file_path)
                 else:
                     raise ValueError(f"`{model_name}` is not found in `{file_path}`. You may set `download=True`.")
+            return onnx.load(file_path)  # type:ignore
+        elif model_name.startswith("https://"):
+            cache_dir = kwargs.get(kornia_config.hub_onnx_dir, None) or self.cache_dir
+            file_path = self._get_file_path(model_name, cache_dir)
+            self.download(model_name, file_path)
             return onnx.load(file_path)  # type:ignore
 
         if os.path.exists(model_name):
