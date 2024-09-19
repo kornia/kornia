@@ -1,6 +1,6 @@
 from typing import Any, ClassVar, List, Optional, Tuple, Union
 
-from kornia.core import Module, ONNXExportMixin, Tensor, tensor, rand
+from kornia.core import Module, ONNXExportMixin, Tensor, rand, tensor
 
 __all__ = ["BoxFiltering"]
 
@@ -22,24 +22,26 @@ class BoxFiltering(Module, ONNXExportMixin):
         self,
         confidence_threshold: Optional[Union[Tensor, float]] = None,
         classes_to_keep: Optional[Union[Tensor, List[int]]] = None,
-        filter_as_zero: bool = False
+        filter_as_zero: bool = False,
     ) -> None:
         super().__init__()
         self.filter_as_zero = filter_as_zero
         self.classes_to_keep = None
         self.confidence_threshold = None
         if classes_to_keep is not None:
-            self.classes_to_keep = classes_to_keep if isinstance(
-                classes_to_keep, Tensor) else tensor(classes_to_keep)
+            self.classes_to_keep = classes_to_keep if isinstance(classes_to_keep, Tensor) else tensor(classes_to_keep)
         if confidence_threshold is not None:
-            self.confidence_threshold = confidence_threshold or confidence_threshold if isinstance(
-                confidence_threshold, Tensor) else tensor(confidence_threshold)
+            self.confidence_threshold = (
+                confidence_threshold or confidence_threshold
+                if isinstance(confidence_threshold, Tensor)
+                else tensor(confidence_threshold)
+            )
 
     def forward(
         self, boxes: Tensor, confidence_threshold: Optional[Tensor] = None, classes_to_keep: Optional[Tensor] = None
     ) -> Union[Tensor, List[Tensor]]:
         """Filter boxes according to the desired threshold.
-        
+
         To be ONNX-friendly, the inputs for direct forwarding need to be all tensors.
 
         Args:
@@ -47,7 +49,7 @@ class BoxFiltering(Module, ONNXExportMixin):
                 6 represent (class_id, confidence_score, x, y, w, h).
             confidence_threshold: an 0-d scalar that represents the desired threshold.
             classes_to_keep: a 1-d tensor of classes to keep. If None, keep all classes.
-        
+
         Returns:
             Union[Tensor, List[Tensor]]
                 If `filter_as_zero` is True, return a tensor of shape [D, 6], where D is the total number of
@@ -56,7 +58,7 @@ class BoxFiltering(Module, ONNXExportMixin):
                 valid detections for each element in the batch.
         """
         # Apply confidence filtering
-        confidence_threshold = confidence_threshold or self.confidence_threshold or 0.  # If None, use 0 as threshold
+        confidence_threshold = confidence_threshold or self.confidence_threshold or 0.0  # If None, use 0 as threshold
         confidence_mask = boxes[:, :, 1] > confidence_threshold  # [B, D]
 
         # Apply class filtering
