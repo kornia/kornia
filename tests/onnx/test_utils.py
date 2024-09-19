@@ -110,7 +110,9 @@ class TestONNXLoader:
         ONNXLoader.list_operators()
 
         captured = capsys.readouterr()
-        assert os.path.join("operators", "some_model.onnx").replace('\\', "\\\\") in captured.out  # .replace() for Windows
+        assert (
+            os.path.join("operators", "some_model.onnx").replace("\\", "\\\\") in captured.out
+        )  # .replace() for Windows
 
     @mock.patch("kornia.onnx.utils.ONNXLoader._fetch_repo_contents")
     def test_list_models(self, mock_fetch_repo_contents, capsys):
@@ -119,4 +121,6 @@ class TestONNXLoader:
         ONNXLoader.list_models()
 
         captured = capsys.readouterr()
-        assert os.path.join("operators", "some_model.onnx").replace('\\', "\\\\") in captured.out  # .replace() for Windows
+        assert (
+            os.path.join("operators", "some_model.onnx").replace("\\", "\\\\") in captured.out
+        )  # .replace() for Windows
