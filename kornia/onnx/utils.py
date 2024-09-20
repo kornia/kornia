@@ -43,8 +43,11 @@ class ONNXLoader:
                 cache_dir = kornia_config.hub_onnx_dir
 
         # The filename is the model name (without directory path)
-        file_name = f"{os.path.split(model_name)[-1]}.onnx"
-        file_path = os.path.join(*os.path.split(cache_dir), *os.path.split(model_name)[:-1], file_name)
+        if not model_name.endswith(".onnx"):
+            file_name = f"{os.path.split(model_name)[-1]}.onnx"
+        else:
+            file_name = os.path.split(model_name)[-1]
+        file_path = os.path.join(*cache_dir.split(os.sep), *model_name.split(os.sep)[:-1], file_name)
         return file_path
 
     def load_model(self, model_name: str, download: bool = True, **kwargs) -> "onnx.ModelProto":  # type:ignore
@@ -61,22 +64,27 @@ class ONNXLoader:
         Returns:
             onnx.ModelProto: The loaded ONNX model.
         """
+        
+        def _download_if_not_exists(url: str, file_path: str) -> None:
+            if not os.path.exists(file_path):
+                # Construct the raw URL for the ONNX file
+                if download:
+                    self.download(url, file_path)
+                else:
+                    raise ValueError(f"`{model_name}` is not found in `{file_path}`. You may set `download=True`.")
+
         if model_name.startswith("hf://"):
             model_name = model_name[len("hf://") :]
             cache_dir = kwargs.get(kornia_config.hub_onnx_dir, None) or self.cache_dir
             file_path = self._get_file_path(model_name, cache_dir)
-            if not os.path.exists(file_path):
-                # Construct the raw URL for the ONNX file
-                if download:
-                    url = f"https://huggingface.co/kornia/ONNX_models/resolve/main/{model_name}.onnx"
-                    self.download(url, file_path)
-                else:
-                    raise ValueError(f"`{model_name}` is not found in `{file_path}`. You may set `download=True`.")
+            url = f"https://huggingface.co/kornia/ONNX_models/resolve/main/{model_name}.onnx"
+            _download_if_not_exists(url, file_path)
             return onnx.load(file_path)  # type:ignore
-        elif model_name.startswith("https://"):
+
+        elif model_name.startswith("http://") or model_name.startswith("https://"):
             cache_dir = kwargs.get(kornia_config.hub_onnx_dir, None) or self.cache_dir
-            file_path = self._get_file_path(model_name, cache_dir)
-            self.download(model_name, file_path)
+            file_path = self._get_file_path(os.path.split(model_name)[-1], cache_dir)
+            _download_if_not_exists(model_name, file_path)
             return onnx.load(file_path)  # type:ignore
 
         if os.path.exists(model_name):

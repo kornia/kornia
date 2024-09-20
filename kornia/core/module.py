@@ -1,6 +1,7 @@
 import datetime
 import math
 import os
+import io
 from functools import wraps
 from typing import Any, Callable, ClassVar, Dict, List, Optional, Tuple, Union
 
@@ -8,7 +9,7 @@ import torch
 
 import kornia
 
-from ._backend import Module, Tensor, from_numpy, rand
+from ._backend import Module, Sequential, Tensor, from_numpy, rand
 from .external import PILImage as Image
 from .external import numpy as np
 from .external import onnx
@@ -46,7 +47,8 @@ class ONNXExportMixin:
         onnx_name: Optional[str] = None,
         input_shape: Optional[List[int]] = None,
         output_shape: Optional[List[int]] = None,
-    ) -> None:
+        save: bool = True
+    ) -> "onnx.ModelProto":  # type: ignore
         """Exports the current object to an ONNX model file.
 
         Args:
@@ -59,6 +61,8 @@ class ONNXExportMixin:
             output_shape:
                 The output shape for the model as a list of integers. If None,
                 `ONNX_DEFAULT_OUTPUTSHAPE` will be used. Dynamic dimensions can be indicated by `-1`.
+            save:
+                If to save the model or load it.
 
         Notes:
             - A dummy input tensor is created based on the provided or default input shape.
@@ -79,10 +83,11 @@ class ONNXExportMixin:
         dummy_input = self._create_dummy_input(input_shape)
         dynamic_axes = self._create_dynamic_axes(input_shape, output_shape)
 
+        onnx_buffer = io.BytesIO()
         torch.onnx.export(
             self,  # type: ignore
             dummy_input,
-            onnx_name,
+            onnx_buffer,
             export_params=True,
             opset_version=17,
             do_constant_folding=True,
@@ -90,8 +95,13 @@ class ONNXExportMixin:
             output_names=["output"],
             dynamic_axes=dynamic_axes,
         )
+        onnx_buffer.seek(0)
+        onnx_model = onnx.load(onnx_buffer)  # type: ignore
 
-        self._add_metadata(onnx_name)
+        onnx_model = self._add_metadata(onnx_model)
+        if save:
+            onnx.save(onnx_model, onnx_name)  # type: ignore
+        return onnx_model
 
     def _create_dummy_input(self, input_shape: List[int]) -> Union[Tuple[Any, ...], Tensor]:
         return rand(*[(self.ONNX_EXPORT_PSEUDO_SHAPE[i] if dim == -1 else dim) for i, dim in enumerate(input_shape)])
@@ -102,9 +112,7 @@ class ONNXExportMixin:
             "output": {i: "dim_" + str(i) for i, dim in enumerate(output_shape) if dim == -1},
         }
 
-    def _add_metadata(self, onnx_name: str) -> None:
-        onnx_model = onnx.load(onnx_name)  # type: ignore
-
+    def _add_metadata(self, onnx_model: "onnx.ModelProto") -> "onnx.ModelProto":  # type: ignore
         for key, value in [
             ("source", "kornia"),
             ("version", kornia.__version__),
@@ -114,9 +122,7 @@ class ONNXExportMixin:
             metadata_props = onnx_model.metadata_props.add()
             metadata_props.key = key
             metadata_props.value = str(value)
-
-        onnx.save(onnx_model, onnx_name)  # type: ignore
-
+        return onnx_model
 
 class ImageModuleMixIn:
     """A MixIn that handles image-based operations.
@@ -328,6 +334,63 @@ class ImageModuleMixIn:
 
 class ImageModule(Module, ImageModuleMixIn, ONNXExportMixin):
     """Handles image-based operations.
+
+    This modules accepts multiple input and output data types, provides end-to-end
+    visualization, file saving features. Note that this module fits the classes that
+    return one image tensor only.
+
+    Note:
+        The additional add-on features increase the use of memories. To restore the
+        original behaviour, you may set `disable_features = True`.
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._disable_features: bool = False
+
+    @property
+    def disable_features(self) -> bool:
+        return self._disable_features
+
+    @disable_features.setter
+    def disable_features(self, value: bool = True) -> None:
+        self._disable_features = value
+
+    def __call__(
+        self,
+        *inputs: Any,
+        input_names_to_handle: Optional[List[Any]] = None,
+        output_type: str = "tensor",
+        **kwargs: Any,
+    ) -> Any:
+        """Overwrites the __call__ function to handle various inputs.
+
+        Args:
+            input_names_to_handle: List of input names to convert, if None, handle all inputs.
+            output_type: Desired output type ('tensor', 'numpy', or 'pil').
+
+        Returns:
+            Callable: Decorated function with converted input and output types.
+        """
+
+        # Wrap the forward method with the decorator
+        if not self._disable_features:
+            decorated_forward = self.convert_input_output(
+                input_names_to_handle=input_names_to_handle, output_type=output_type
+            )(super().__call__)
+            _output_image = decorated_forward(*inputs, **kwargs)
+            if output_type == "tensor":
+                self._output_image = self._detach_tensor_to_cpu(_output_image)
+            else:
+                self._output_image = _output_image
+        else:
+            _output_image = super().__call__(*inputs, **kwargs)
+        return _output_image
+
+
+
+class ImageSequential(Sequential, ImageModuleMixIn, ONNXExportMixin):
+    """Handles image-based operations as a sequential module.
 
     This modules accepts multiple input and output data types, provides end-to-end
     visualization, file saving features. Note that this module fits the classes that

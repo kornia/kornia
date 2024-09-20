@@ -1,3 +1,4 @@
+import os
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -43,8 +44,8 @@ class LazyLoaderConfig:
 class KorniaConfig:
     output_dir: str = "kornia_outputs"
     hub_cache_dir: str = ".kornia_hub"
-    hub_models_dir: str = ".kornia_hub/models"
-    hub_onnx_dir: str = ".kornia_hub/onnx_models"
+    hub_models_dir: str = os.path.join(".kornia_hub", "models")
+    hub_onnx_dir: str = os.path.join(".kornia_hub", "onnx_models")
     lazyloader: LazyLoaderConfig = field(default_factory=LazyLoaderConfig)
 
 
