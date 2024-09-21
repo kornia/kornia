@@ -1,4 +1,5 @@
 from typing import Union
+
 from kornia.core import ImageModule as Module
 from kornia.core import Tensor, tensor
 
@@ -9,6 +10,7 @@ class Rescale(Module):
     Args:
         factor: The scaling factor. Could be a float or a 0-d tensor.
     """
+
     def __init__(self, factor: Union[float, Tensor]) -> None:
         super().__init__()
         if isinstance(factor, float):

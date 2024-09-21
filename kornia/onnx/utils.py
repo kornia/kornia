@@ -1,16 +1,17 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
 import pprint
 import urllib.request
-import json
 from typing import (
     Any,
     Dict,
     List,
     Optional,
 )
+
 import requests
 
 import kornia
@@ -81,7 +82,7 @@ class ONNXLoader:
 
         raise RuntimeError(f"File `{file_path}` not found.")
 
-    def load_model(self, model_name: str, download: bool = True, **kwargs) -> "onnx.ModelProto":  # type:ignore
+    def load_model(self, model_name: str, download: bool = True, **kwargs) -> onnx.ModelProto:  # type:ignore
         """Loads an ONNX model from the local cache or downloads it from Hugging Face if necessary.
 
         Args:
@@ -130,7 +131,7 @@ class ONNXLoader:
         """
         if os.path.exists(file_path):
             return
-        
+
         if not download_if_not_exists:
             raise ValueError(f"`{file_path}` not found. You may set `download=True`.")
 
@@ -183,11 +184,11 @@ class ONNXLoader:
 
 
 def io_name_conversion(
-    onnx_model: "onnx.ModelProto",  # type:ignore
-    io_name_mapping: dict[str, str]
-) -> "onnx.ModelProto":  # type:ignore
+    onnx_model: onnx.ModelProto,  # type:ignore
+    io_name_mapping: dict[str, str],
+) -> onnx.ModelProto:  # type:ignore
     """Converts the input and output names of an ONNX model to 'input' and 'output'.
-    
+
     Args:
         onnx_model: The ONNX model to convert.
         io_name_mapping: A dictionary mapping the original input and output names to the new ones.
@@ -202,7 +203,7 @@ def io_name_conversion(
         out_name = onnx_model.graph.output[i].name
         if out_name in io_name_mapping:
             onnx_model.graph.output[i].name = io_name_mapping[out_name]
-    
+
     # Convert intermediate nodes
     for i in range(len(onnx_model.graph.node)):
         for j in range(len(onnx_model.graph.node[i].input)):
@@ -217,9 +218,9 @@ def io_name_conversion(
 
 
 def add_metadata(
-    onnx_model: "onnx.ModelProto",  # type: ignore
-    additional_metadata: List[tuple[str, str]] = None
-) -> "onnx.ModelProto":  # type: ignore
+    onnx_model: onnx.ModelProto,  # type: ignore
+    additional_metadata: List[tuple[str, str]] = None,
+) -> onnx.ModelProto:  # type: ignore
     for key, value in [
         ("source", "kornia"),
         ("version", kornia.__version__),

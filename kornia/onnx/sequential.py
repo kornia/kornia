@@ -1,5 +1,5 @@
-from typing import Any, List, Optional, Tuple, Union
 import io
+from typing import Any, List, Optional, Tuple, Union
 
 from kornia.config import kornia_config
 from kornia.core.external import numpy as np
@@ -43,8 +43,7 @@ class ONNXSequential:
         self.onnx_loader = ONNXLoader(cache_dir)
         self.operators = self.load_ops(*args)
         if auto_ir_version_conversion:
-            self.operators = self._auto_version_conversion(
-                *self.operators, target_ir_version=target_ir_version)
+            self.operators = self._auto_version_conversion(*self.operators, target_ir_version=target_ir_version)
         self._combined_op = self._combine(*self.operators, io_maps=io_maps)
         self._session = self.create_session(providers=providers, session_options=session_options)
 
@@ -115,9 +114,9 @@ class ONNXSequential:
         raise ValueError(f"Invalid argument type. Got {type(arg)}")
 
     def _combine(
-        self, 
+        self,
         *args: List["onnx.ModelProto"],  # type:ignore
-        io_maps: Optional[List[Tuple[str, str]]] = None
+        io_maps: Optional[List[Tuple[str, str]]] = None,
     ) -> "onnx.ModelProto":  # type:ignore
         """Combine the provided ONNX models into a single ONNX graph. Optionally, map inputs and outputs between
         operators using the `io_map`.

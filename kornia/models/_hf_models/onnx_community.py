@@ -1,52 +1,56 @@
-from future import __annotations__
-
 import os
 from typing import Any, Optional
 
-from kornia.core import ImageSequential
-from kornia.onnx.utils import ONNXLoader, io_name_conversion
-from kornia.onnx import ONNXSequential, load, add_metadata
 from kornia.config import kornia_config
+from kornia.core import ImageSequential
 from kornia.core.external import onnx
 from kornia.models.base import ModelBaseMixin
+from kornia.onnx import ONNXSequential, add_metadata, load
+from kornia.onnx.utils import ONNXLoader, io_name_conversion
+
 from .preprocessor import PreprocessingLoader
 
 
 class ONNXComunnityModelLoader:
-
-    def __init__(
-        self, model_name: str, model_type: str = "model", cache_dir: Optional[str] = None
-    ) -> None:
+    def __init__(self, model_name: str, model_type: str = "model", cache_dir: Optional[str] = None) -> None:
         self.model_name = model_name
         self.model_type = model_type
-        
+
         if cache_dir is None:
             cache_dir = kornia_config.hub_onnx_dir
         self.loader = ONNXLoader(cache_dir=os.path.join(cache_dir, self.model_name))
-        self.model_url = f"https://huggingface.co/onnx-community/{self.model_name}/resolve/main/onnx/{self.model_type}.onnx"
-        self.config_url = f"https://huggingface.co/onnx-community/{self.model_name}/resolve/main/preprocessor_config.json"
+        self.model_url = (
+            f"https://huggingface.co/onnx-community/{self.model_name}/resolve/main/onnx/{self.model_type}.onnx"
+        )
+        self.config_url = (
+            f"https://huggingface.co/onnx-community/{self.model_name}/resolve/main/preprocessor_config.json"
+        )
 
-    def load_model(self, download: bool = True, io_name_mapping: Optional[dict[str, str]] = None, **kwargs: Any) -> "onnx.ModelProto":  # type:ignore
+    def load_model(
+        self, download: bool = True, io_name_mapping: Optional[dict[str, str]] = None, **kwargs: Any
+    ) -> "onnx.ModelProto":  # type:ignore
         onnx_model = self.loader.load_model(self.model_url, download=download, **kwargs)
         json_req = self.loader.load_config(self.config_url)
 
-        onnx_model = self._add_metadata(onnx_model, {
-            "input_size": (json_req["size"]["height"], json_req["size"]["width"])
-        })
+        onnx_model = self._add_metadata(
+            onnx_model, {"input_size": (json_req["size"]["height"], json_req["size"]["width"])}
+        )
 
         if io_name_mapping is not None:
             onnx_model = io_name_conversion(onnx_model, io_name_mapping)
 
         return onnx_model
 
-    def load_preprocessing(self,) -> ImageSequential:
+    def load_preprocessing(
+        self,
+    ) -> ImageSequential:
         json_req = self.loader.load_config(self.config_url)
         return PreprocessingLoader.from_json(json_req)
 
     def _add_metadata(
         self,
         model: "onnx.ModelProto",  # type:ignore
-        additional_metadata: dict[str, Any] = {}
+        additional_metadata: dict[str, Any] = {},
     ) -> "onnx.ModelProto":  # type:ignore
         for key, value in additional_metadata.items():
             metadata_props = model.metadata_props.add()
@@ -56,7 +60,6 @@ class ONNXComunnityModelLoader:
 
 
 class ONNXComunnityModel(ONNXSequential, ModelBaseMixin):
-
     name: str = "onnx_community_model"
 
     def __init__(
@@ -83,7 +86,7 @@ class ONNXComunnityModel(ONNXSequential, ModelBaseMixin):
         include_pre_and_post_processor: bool = True,
         save: bool = True,
         additional_metadata: list[tuple[str, str]] = [],
-        **kwargs: Any
+        **kwargs: Any,
     ) -> ONNXSequential:  # type: ignore
         """Exports a depth estimation model to ONNX format.
 

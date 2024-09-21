@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Optional, Union, List, Tuple
+from typing import Any, List, Optional, Tuple, Union
 
 import torch
 
@@ -158,8 +158,8 @@ class ObjectDetector(ModelBase):
         include_pre_and_post_processor: bool = True,
         save: bool = True,
         additional_metadata: List[Tuple[str, str]] = [],
-        **kwargs: Any
-    ) -> "onnx.ModelProto":  # type: ignore
+        **kwargs: Any,
+    ) -> onnx.ModelProto:  # type: ignore
         """Exports an RT-DETR object detection model to ONNX format.
 
         Either `model_name` or `config` must be provided. If neither is provided,
@@ -191,7 +191,7 @@ class ObjectDetector(ModelBase):
             model=self if include_pre_and_post_processor else self.model,
             save=save,
             additional_metadata=additional_metadata,
-            **kwargs
+            **kwargs,
         )
 
     def compile(

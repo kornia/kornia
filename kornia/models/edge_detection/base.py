@@ -1,4 +1,4 @@
-from typing import Any, Optional, Union, List, Tuple
+from typing import Any, List, Optional, Tuple, Union
 
 from kornia.color.gray import grayscale_to_rgb
 from kornia.core import Tensor
@@ -80,7 +80,7 @@ class EdgeDetector(ModelBase):
         include_pre_and_post_processor: bool = True,
         save: bool = True,
         additional_metadata: List[Tuple[str, str]] = [],
-        **kwargs: Any
+        **kwargs: Any,
     ) -> "onnx.ModelProto":  # type: ignore
         """Exports the current edge detection model to an ONNX model file.
 
@@ -109,5 +109,5 @@ class EdgeDetector(ModelBase):
             model=self if include_pre_and_post_processor else self.model,
             save=save,
             additional_metadata=additional_metadata,
-            **kwargs
+            **kwargs,
         )
