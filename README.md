@@ -112,6 +112,9 @@ Kornia is an open-source project that is developed and maintained by volunteers.
 
 Kornia is not just another computer vision library — it's your gateway to effortless Computer Vision and AI.
 
+<details>
+<summary>Get started with Kornia image transformation and augmentation!</summary>
+
 ```python
 import numpy as np
 import kornia_rs as kr
@@ -143,6 +146,71 @@ dslv_op(img, step_number=500)
 
 dslv_op.save("Kornia-enhanced.jpg")
 ```
+
+</details>
+
+<details>
+<summary>Find out Kornia ONNX models with ONNXSequential!</summary>
+
+```python
+import numpy as np
+from kornia.onnx import ONNXSequential
+# Chain ONNX models from HuggingFace repo and your own local model together
+onnx_seq = ONNXSequential(
+    "hf://operators/kornia.geometry.transform.flips.Hflip",
+    "hf://models/kornia.models.detection.rtdetr_r18vd_640x640",  # Or you may use "YOUR_OWN_MODEL.onnx"
+)
+# Prepare some input data
+input_data = np.random.randn(1, 3, 384, 512).astype(np.float32)
+# Perform inference
+outputs = onnx_seq(input_data)
+# Print the model outputs
+print(outputs)
+
+# Export a new ONNX model that chains up all three models together!
+onnx_seq.export("chained_model.onnx")
+```
+</details>
+
+<details>
+<summary>Try out with Kornia asynchronous ONNX excecution!</summary>
+
+```python
+
+    import torch
+
+    # Initialize the pipeline
+    pipeline = ONNXSequentialAsync(
+        "hf://operators/kornia.geometry.transform.flips.Hflip",
+        "hf://models/kornia.models.detection.rtdetr_r18vd_640x640",
+        providers=['CPUExecutionProvider']
+    )
+
+    # Prepare a list to hold asynchronous tasks
+    tasks = []
+    totalsize, batchsize = 10, 3
+
+    # Enqueue multiple inputs for processing
+    for i in range(totalsize):
+        # Example input data: random numpy arrays matching the first stage's input shape
+        input_data = torch.rand(1, 3, 640, 640).numpy()
+        task = asyncio.create_task(pipeline.pipeline(input_data))
+        tasks.append(task)
+        print(f"Enqueued input {i + 1}")
+
+    # Wait for all tasks to complete in a batch of 3
+    for i in range(totalsize // batchsize):
+        print(f"Batch {i} completed")
+        # Await all tasks and collect results
+        results = await asyncio.gather(*tasks[i * batchsize : (i + 1) * batchsize])
+        # Process the results
+        for idx, output in enumerate(results):
+            print(f"Output for input {idx+1}: {output[0].shape}")
+
+    # Stop the pipeline after processing
+    await pipeline.stop()
+```
+</details>
 
 ## Call For Contributors
 
