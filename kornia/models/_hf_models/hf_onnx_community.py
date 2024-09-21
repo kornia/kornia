@@ -21,6 +21,7 @@ class HFONNXComunnityModelLoader:
         cache_dir: The directory where models are cached locally.
             Defaults to None, which will use a default `{kornia_config.hub_onnx_dir}` directory.
     """
+
     def __init__(self, model_name: str, model_type: str = "model", cache_dir: Optional[str] = None) -> None:
         self.model_name = model_name
         self.model_type = model_type

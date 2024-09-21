@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 import torch
 
@@ -161,7 +161,7 @@ class ObjectDetector(ModelBase):
         additional_metadata: list[tuple[str, str]] = [],
         *args: Any,  # To silent mypy
         **kwargs: Any,
-    ) -> "onnx.ModelProto":  # type: ignore
+    ) -> onnx.ModelProto:  # type: ignore
         """Exports an RT-DETR object detection model to ONNX format.
 
         Either `model_name` or `config` must be provided. If neither is provided,

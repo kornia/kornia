@@ -17,10 +17,10 @@ from .utils import ONNXLoader
 class ONNXRuntimeMixin:
     def create_session(
         self,
-        op: "onnx.ModelProto",  # type:ignore
+        op: onnx.ModelProto,  # type:ignore
         providers: Optional[List[str]] = None,
-        session_options: Optional["ort.SessionOptions"] = None,  # type:ignore
-    ) -> "ort.InferenceSession":  # type:ignore
+        session_options: Optional[ort.SessionOptions] = None,  # type:ignore
+    ) -> ort.InferenceSession:  # type:ignore
         """Create an optimized ONNXRuntime InferenceSession for the combined model.
 
         Args:
@@ -42,7 +42,7 @@ class ONNXRuntimeMixin:
         )
         return session
 
-    def set_session(self, session: "ort.InferenceSession") -> None:  # type: ignore
+    def set_session(self, session: ort.InferenceSession) -> None:  # type: ignore
         """Set a custom ONNXRuntime InferenceSession.
 
         Args:
@@ -51,7 +51,7 @@ class ONNXRuntimeMixin:
         """
         self._session = session
 
-    def get_session(self) -> "ort.InferenceSession":  # type: ignore
+    def get_session(self) -> ort.InferenceSession:  # type: ignore
         """Get the current ONNXRuntime InferenceSession.
 
         Returns:
@@ -104,7 +104,7 @@ class ONNXRuntimeMixin:
             ["OpenVINOExecutionProvider"], provider_options=[{"device_type": device_type, **kwargs}]
         )
 
-    def __call__(self, *inputs: "np.ndarray") -> List["np.ndarray"]:  # type:ignore
+    def __call__(self, *inputs: np.ndarray) -> List[np.ndarray]:  # type:ignore
         """Perform inference using the combined ONNX model.
 
         Args:
@@ -121,12 +121,11 @@ class ONNXRuntimeMixin:
 
 
 class ONNXMixin:
-
     def _load_op(
         self,
-        arg: Union["onnx.ModelProto", str],  # type:ignore
-        cache_dir: Optional[str] = None
-    ) -> "onnx.ModelProto":  # type:ignore
+        arg: Union[onnx.ModelProto, str],  # type:ignore
+        cache_dir: Optional[str] = None,
+    ) -> onnx.ModelProto:  # type:ignore
         """Loads an ONNX model, either from a file path or use the provided ONNX ModelProto.
 
         Args:
@@ -143,9 +142,9 @@ class ONNXMixin:
 
     def _load_ops(
         self,
-        *args: Union["onnx.ModelProto", str],  # type:ignore
+        *args: Union[onnx.ModelProto, str],  # type:ignore
         cache_dir: Optional[str] = None,
-    ) -> List["onnx.ModelProto"]:  # type:ignore
+    ) -> List[onnx.ModelProto]:  # type:ignore
         """Loads multiple ONNX models or operators and returns them as a list.
 
         Args:
@@ -163,9 +162,9 @@ class ONNXMixin:
 
     def _export(
         self,
-        op: "onnx.ModelProto",  # type:ignore
+        op: onnx.ModelProto,  # type:ignore
         file_path: str,
-        **kwargs: Any
+        **kwargs: Any,
     ) -> None:
         """Export the combined ONNX model to a file.
 
@@ -177,9 +176,9 @@ class ONNXMixin:
 
     def _add_metadata(
         self,
-        op: "onnx.ModelProto",  # type:ignore
-        additional_metadata: List[tuple[str, str]] = []
-    ) -> "onnx.ModelProto":  # type:ignore
+        op: onnx.ModelProto,  # type:ignore
+        additional_metadata: List[tuple[str, str]] = [],
+    ) -> onnx.ModelProto:  # type:ignore
         """Add metadata to the combined ONNX model.
 
         Args:
@@ -192,10 +191,10 @@ class ONNXMixin:
 
     def _onnx_version_conversion(
         self,
-        op: "onnx.ModelProto",  # type:ignore
+        op: onnx.ModelProto,  # type:ignore
         target_ir_version: Optional[int] = None,
         target_opset_version: Optional[int] = None,
-    ) -> "onnx.ModelProto":  # type:ignore
+    ) -> onnx.ModelProto:  # type:ignore
         """Automatic conversion of the model's IR/OPSET version to the given target version.
 
         Args:
@@ -209,7 +208,8 @@ class ONNXMixin:
             loaded_model = onnx.load_model_from_string(model_bytes.getvalue())  # type:ignore
             if target_opset_version is not None:
                 loaded_model = onnx.version_converter.convert_version(  # type:ignore
-                    loaded_model, target_opset_version)
+                    loaded_model, target_opset_version
+                )
             onnx.checker.check_model(loaded_model)
             # Set the IR version if it passed the checking
             if target_ir_version is not None:

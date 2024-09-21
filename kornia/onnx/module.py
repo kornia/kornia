@@ -38,15 +38,14 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
         self.op = self._load_op(op, cache_dir)
         if target_ir_version is not None or target_opset_version is not None:
             self.op = self._onnx_version_conversion(
-                self.op, target_ir_version=target_ir_version, target_opset_version=target_opset_version)
+                self.op, target_ir_version=target_ir_version, target_opset_version=target_opset_version
+            )
         self._session = self.create_session(self.op, providers=providers, session_options=session_options)
 
     def export(self, file_path: str, **kwargs: Any) -> None:
         return super()._export(self.op, file_path, **kwargs)
 
-    def add_metadata(
-        self, additional_metadata: List[Tuple[str]] = []
-    ) -> "onnx.ModelProto":  # type:ignore
+    def add_metadata(self, additional_metadata: List[Tuple[str]] = []) -> "onnx.ModelProto":  # type:ignore
         return super()._add_metadata(self.op, additional_metadata)
 
     async def run(self, *inputs: "np.ndarray") -> List["np.ndarray"]:  # type:ignore
@@ -64,7 +63,16 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
         outputs = await loop.run_in_executor(None, self._session.run, None, ort_input_values)
 
         # NOTE: important to make sure the pipeline runs well.
-        if isinstance(outputs, (tuple, list,)) and len(outputs) == 1:
+        if (
+            isinstance(
+                outputs,
+                (
+                    tuple,
+                    list,
+                ),
+            )
+            and len(outputs) == 1
+        ):
             return outputs[0]
         else:
             return outputs  # Adjust as necessary for multiple outputs

@@ -19,8 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 class ONNXLoader:
-    """Manages ONNX models, handling local caching, downloading from Hugging Face, and loading models.
-    """
+    """Manages ONNX models, handling local caching, downloading from Hugging Face, and loading models."""
 
     @classmethod
     def _get_file_path(cls, model_name: str, cache_dir: Optional[str], suffix: str = ".onnx") -> str:

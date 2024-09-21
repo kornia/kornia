@@ -1,1 +1,1 @@
-from .hf_onnx_community import HFONNXComunnityModelLoader, HFONNXComunnityModel
+from .hf_onnx_community import HFONNXComunnityModel, HFONNXComunnityModelLoader

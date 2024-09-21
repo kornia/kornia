@@ -46,7 +46,8 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
         self.operators = self._load_ops(*args, cache_dir=cache_dir)
         if auto_ir_version_conversion:
             self.operators = self._auto_version_conversion(
-                *self.operators, target_ir_version=target_ir_version, target_opset_version=target_opset_version)
+                *self.operators, target_ir_version=target_ir_version, target_opset_version=target_opset_version
+            )
         self._combined_op = self._combine(*self.operators, io_maps=io_maps)
         self._session = self.create_session(self._combined_op, providers=providers, session_options=session_options)
 
@@ -74,7 +75,8 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
         op_list = []
         for op in args:
             op = super()._onnx_version_conversion(
-                op, target_ir_version=target_ir_version, target_opset_version=target_opset_version)
+                op, target_ir_version=target_ir_version, target_opset_version=target_opset_version
+            )
             op_list.append(op)
         return op_list
 
@@ -113,9 +115,7 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
     def export(self, file_path: str, **kwargs: Any) -> None:
         return super()._export(self._combined_op, file_path, **kwargs)
 
-    def add_metadata(
-        self, additional_metadata: List[Tuple[str]] = []
-    ) -> "onnx.ModelProto":  # type:ignore
+    def add_metadata(self, additional_metadata: List[Tuple[str]] = []) -> "onnx.ModelProto":  # type:ignore
         return super()._add_metadata(self._combined_op, additional_metadata)
 
     async def run(self, *inputs: "np.ndarray") -> List["np.ndarray"]:  # type:ignore
@@ -134,7 +134,16 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
         outputs = await loop.run_in_executor(None, self._session.run, None, ort_input_values)
 
         # NOTE: important to make sure the pipeline runs well.
-        if isinstance(outputs, (tuple, list,)) and len(outputs) == 1:
+        if (
+            isinstance(
+                outputs,
+                (
+                    tuple,
+                    list,
+                ),
+            )
+            and len(outputs) == 1
+        ):
             return outputs[0]
         else:
             return outputs  # Adjust as necessary for multiple outputs

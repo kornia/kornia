@@ -91,9 +91,10 @@ class BoxFiltering(Module, ONNXExportMixin):
         self, input_shape: List[int], pseudo_shape: Optional[List[int]] = None
     ) -> Union[Tuple[Any, ...], Tensor]:
         pseudo_input = rand(
-            *[(
-                (self.ONNX_EXPORT_PSEUDO_SHAPE[i] if pseudo_shape is None else pseudo_shape[i]) if dim == -1 else dim
-            ) for i, dim in enumerate(input_shape)]
+            *[
+                ((self.ONNX_EXPORT_PSEUDO_SHAPE[i] if pseudo_shape is None else pseudo_shape[i]) if dim == -1 else dim)
+                for i, dim in enumerate(input_shape)
+            ]
         )
         if self.confidence_threshold is None:
             return pseudo_input, 0.1

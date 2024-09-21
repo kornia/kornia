@@ -5,11 +5,11 @@ from typing import Any, List, Optional, Tuple, Union
 from kornia.core.external import onnx
 from kornia.core.external import onnxruntime as ort
 
+from .mixin import ONNXMixin, ONNXRuntimeMixin
 from .module import ONNXModule
 from .sequential import ONNXSequential
-from .mixin import ONNXMixin, ONNXRuntimeMixin
 
-__all__ = ["PipelineItem",  "ONNXSequentialAsync"]
+__all__ = ["PipelineItem", "ONNXSequentialAsync"]
 
 
 @dataclass
@@ -20,6 +20,7 @@ class PipelineItem:
         input_data: The input data for the pipeline.
         future: A Future object to hold the result of the pipeline processing.
     """
+
     input_data: Any
     future: asyncio.Future
 
@@ -48,7 +49,7 @@ class ONNXSequentialAsync(ONNXMixin, ONNXRuntimeMixin):
         providers: Optional[List[str]] = None,
         session_options: Optional["ort.SessionOptions"] = None,  # type:ignore
         cache_dir: Optional[str] = None,
-        verbose: bool = True
+        verbose: bool = True,
     ) -> None:
         self.operators = self.load_ops_as_modules(*args, cache_dir=cache_dir)
         self.num_stages = len(self.operators)
@@ -78,7 +79,13 @@ class ONNXSequentialAsync(ONNXMixin, ONNXRuntimeMixin):
         """
         op_list = []
         for arg in args:
-            if isinstance(arg, (ONNXModule, ONNXSequential,)):
+            if isinstance(
+                arg,
+                (
+                    ONNXModule,
+                    ONNXSequential,
+                ),
+            ):
                 op_list.append(arg)
             else:
                 op_list.append(super()._load_op(arg, cache_dir=cache_dir))
@@ -87,7 +94,7 @@ class ONNXSequentialAsync(ONNXMixin, ONNXRuntimeMixin):
     def load_ops_as_modules(
         self,
         *args: Union["onnx.ModelProto", str],  # type:ignore
-        cache_dir: str | None = None
+        cache_dir: str | None = None,
     ) -> List[ONNXModule]:  # type:ignore
         ops = self._load_ops(*args, cache_dir=cache_dir)
         return list([ONNXModule(op) for op in ops])
@@ -136,17 +143,14 @@ class ONNXSequentialAsync(ONNXMixin, ONNXRuntimeMixin):
     def export(self, file_path: str, **kwargs: Any) -> None:
         raise RuntimeError("export is not supported for `ONNXSequentialAsync`")
 
-    def add_metadata(
-        self, additional_metadata: List[Tuple[str]] = []
-    ) -> "onnx.ModelProto":  # type:ignore
+    def add_metadata(self, additional_metadata: List[Tuple[str]] = []) -> "onnx.ModelProto":  # type:ignore
         raise RuntimeError("export is not supported for `ONNXSequentialAsync`")
 
     async def _worker(self, stage_idx: int) -> None:
-        """
-        Worker coroutine responsible for processing items in a specific pipeline stage.
+        """Worker coroutine responsible for processing items in a specific pipeline stage.
 
         Args:
-            stage_idx: 
+            stage_idx:
                 The index of the stage this worker is responsible for.
         """
         current_stage = self.operators[stage_idx]
@@ -166,15 +170,13 @@ class ONNXSequentialAsync(ONNXMixin, ONNXRuntimeMixin):
                 data = item.input_data
                 # Run the current stage
                 output = await current_stage.run(data)
-                
+
                 if next_queue is not None:
                     # Pass the output to the next stage
                     new_item = PipelineItem(input_data=output, future=item.future)
                     await next_queue.put(new_item)
-                else:
-                    # Last stage: set the result in the future
-                    if not item.future.cancelled():
-                        item.future.set_result(output)
+                elif not item.future.cancelled():
+                    item.future.set_result(output)
             except Exception as e:
                 if not item.future.cancelled():
                     item.future.set_exception(e)
@@ -213,11 +215,10 @@ class ONNXSequentialAsync(ONNXMixin, ONNXRuntimeMixin):
                 print("ONNX Pipeline stopped.")
 
     async def pipeline(self, input_data: Any) -> Any:
-        """
-        Enqueues input data for processing through the pipeline and awaits the result.
+        """Enqueues input data for processing through the pipeline and awaits the result.
 
         Args:
-            input_data: 
+            input_data:
                 The input data to process through the pipeline. Typically a NumPy array matching the
                 input shape expected by the first pipeline stage.
         """

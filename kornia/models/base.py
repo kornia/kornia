@@ -14,7 +14,6 @@ logger = logging.getLogger(__name__)
 
 
 class ModelBaseMixin:
-
     name: str = "model"
 
     def _tensor_to_type(
