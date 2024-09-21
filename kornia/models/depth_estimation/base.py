@@ -1,13 +1,15 @@
+from __future__ import annotations
+
 from typing import Optional, Union
 
 from kornia.color.gray import grayscale_to_rgb
 from kornia.core import Tensor, tensor
 from kornia.core.external import PILImage as Image
 
-from .._hf_models.onnx_community import ONNXComunnityModel
+from .._hf_models.hf_onnx_community import HFONNXComunnityModel
 
 
-class DepthEstimation(ONNXComunnityModel):
+class DepthEstimation(HFONNXComunnityModel):
     name: str = "depth_estimation"
 
     def __call__(self, images: Tensor) -> Tensor:

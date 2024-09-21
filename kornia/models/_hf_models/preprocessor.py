@@ -2,7 +2,7 @@ from typing import Any
 
 import requests
 
-from kornia.core import ImageSequential, Tensor, tensor
+from kornia.core import ImageSequential, Module, Tensor, tensor
 from kornia.enhance.normalize import Normalize
 from kornia.enhance.rescale import Rescale
 from kornia.geometry.transform import Resize
@@ -34,7 +34,7 @@ class PreprocessingLoader:
         raise RuntimeError(f"Unsupported image processor type: {req['image_processor_type']}")
 
     @staticmethod
-    def from_json(req: dict[str, Any]) -> "PreprocessingLoader":
+    def from_json(req: dict[str, Any]) -> ImageSequential:
         if req["image_processor_type"] == "DPTImageProcessor":
             return DPTImageProcessor.from_json(req)
         raise RuntimeError(f"Unsupported image processor type: {req['image_processor_type']}")
@@ -43,7 +43,7 @@ class PreprocessingLoader:
 class DPTImageProcessor(PreprocessingLoader):
     @staticmethod
     def from_json(json_data: dict[str, Any]) -> ImageSequential:
-        preproc_list = []
+        preproc_list: list[Module] = []
         if json_data["do_pad"]:
             raise NotImplementedError
         if json_data["do_resize"]:

@@ -14,6 +14,9 @@ logger = logging.getLogger(__name__)
 
 
 class ModelBaseMixin:
+
+    name: str = "model"
+
     def _tensor_to_type(
         self, output: List[Tensor], output_type: str, is_batch: bool = False
     ) -> Union[Tensor, List[Tensor], List[Image.Image]]:  # type: ignore
@@ -49,8 +52,6 @@ class ModelBaseMixin:
 
 class ModelBase(Module, ONNXExportMixin, ModelBaseMixin):
     """This class wraps a model and performs pre-processing and post-processing."""
-
-    name: str = "model"
 
     def __init__(
         self, model: Module, pre_processor: Module, post_processor: Module, name: Optional[str] = None

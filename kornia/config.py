@@ -42,11 +42,15 @@ class LazyLoaderConfig:
 
 @dataclass
 class KorniaConfig:
+    hub_models_dir: str
+    hub_onnx_dir: str
     output_dir: str = "kornia_outputs"
     hub_cache_dir: str = ".kornia_hub"
-    hub_models_dir: str = os.path.join(".kornia_hub", "models")
-    hub_onnx_dir: str = os.path.join(".kornia_hub", "onnx_models")
     lazyloader: LazyLoaderConfig = field(default_factory=LazyLoaderConfig)
 
+    def __post_init__(self):
+        self.hub_models_dir = self.hub_models_dir or os.path.join(".kornia_hub", "models")
+        self.hub_onnx_dir = self.hub_onnx_dir or os.path.join(".kornia_hub", "onnx_models")
 
-kornia_config = KorniaConfig()
+
+kornia_config = KorniaConfig(None, None)

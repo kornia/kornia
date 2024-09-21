@@ -3,17 +3,22 @@ ONNXSequential: Chain Multiple ONNX Models with Ease
 
 The `ONNXSequential` class is a powerful new feature that allows users to effortlessly combine and chain multiple ONNX models together. This is especially useful when you have several pre-trained models or custom ONNX operators that you want to execute sequentially as part of a larger pipeline.
 
-Whether you're working with models for inference, experimentation, or optimization, `ONNXSequential` makes it easier to manage, combine, and run ONNX models in a streamlined manner. It also supports flexibility in execution environments with ONNXRuntime’s execution providers (CPU, CUDA, etc.).
+Whether you're working with models for inference, experimentation, or optimization, `ONNXSequential` makes it easier to manage, combine, and run ONNX models in a streamlined manner. It also supports flexibility in execution environments with ONNXRuntime's execution providers (CPU, CUDA, etc.).
 
 Key Features
 ------------
 
 - **Seamless Model Chaining**: Combine multiple ONNX models into a single computational graph.
 - **Flexible Input/Output Mapping**: Control how the outputs of one model are passed as inputs to the next.
-- **Optimized Execution**: Automatically create optimized `ONNXRuntime` sessions to speed up inference.
 - **Export to ONNX**: Save the combined model into a single ONNX file for easy deployment and sharing.
-- **Execution Providers Support**: Utilize ONNXRuntime's execution providers (e.g., `CUDAExecutionProvider`, `CPUExecutionProvider`) for accelerated inference on different hardware.
 - **PyTorch-like Interface**: Use the `ONNXSequential` class like a PyTorch `nn.Sequential` model, including calling it directly for inference.
+
+Optimized Execution
+-------------------
+- **ONNXRuntime**: Automatically create optimized `ONNXRuntime` sessions to speed up inference.
+- **Execution Providers Support**: Utilize ONNXRuntime's execution providers (e.g., `CUDAExecutionProvider`, `CPUExecutionProvider`, `TensorrtExecutionProvider`, `OpenVINOExecutionProvider`) for accelerated inference on different hardware.
+- **Concurrent Sessions**: You can manage multiple inference sessions concurrently, allowing for parallel processing of multiple inputs.
+- **Asynchronous API**: We offer asyncio-based execution along with the runtime's asynchronous functions to perform non-blocking inference.
 
 Quickstart Guide
 ----------------
@@ -91,6 +96,45 @@ Here's how you can quickly get started with `ONNXSequential`:
       outputs = onnx_seq(input_data)
 
 
+Asynchronous Execution
+----------------------
+Meanwhile, we offer `ONNXSequentialAsync` pipeline to process multiple ONNX models in an asynchronous manner. Different from `ONNXSequential` that combines different graphs into one single static graph, this `ONNXSequentialAsync` can execute those multiple ONNX models asynchronously, achieving a higher level of parallism.
+
+.. code-block:: python
+
+    import torch
+
+    # Initialize the pipeline
+    pipeline = ONNXSequentialAsync(
+        "hf://operators/kornia.geometry.transform.flips.Hflip",
+        "hf://models/kornia.models.detection.rtdetr_r18vd_640x640",
+        providers=['CPUExecutionProvider']
+    )
+
+    # Prepare a list to hold asynchronous tasks
+    tasks = []
+    totalsize, batchsize = 10, 3
+
+    # Enqueue multiple inputs for processing
+    for i in range(totalsize):
+        # Example input data: random numpy arrays matching the first stage's input shape
+        input_data = torch.rand(1, 3, 640, 640).numpy()
+        task = asyncio.create_task(pipeline.pipeline(input_data))
+        tasks.append(task)
+        print(f"Enqueued input {i + 1}")
+
+    # Wait for all tasks to complete in a batch of 3
+    for i in range(totalsize // batchsize):
+        print(f"Batch {i} completed")
+        # Await all tasks and collect results
+        results = await asyncio.gather(*tasks[i * batchsize : (i + 1) * batchsize])
+        # Process the results
+        for idx, output in enumerate(results):
+            print(f"Output for input {idx+1}: {output[0].shape}")
+
+    # Stop the pipeline after processing
+    await pipeline.stop()
+
 Frequently Asked Questions (FAQ)
 --------------------------------
 
@@ -109,8 +153,8 @@ Absolutely! You can pass your own session options to the `create_session` method
 Why Choose ONNXSequential?
 --------------------------
 
-With the increasing adoption of ONNX for model interoperability and deployment, `ONNXSequential` provides a simple yet powerful interface for combining models and operators. By leveraging ONNXRuntime’s optimization and execution provider capabilities, it gives you the flexibility to:
-- Deploy on different hardware (CPU, GPU).
+With the increasing adoption of ONNX for model interoperability and deployment, `ONNXSequential` provides a simple yet powerful interface for combining models and operators. By leveraging ONNXRuntime's optimization and execution provider capabilities, it gives you the flexibility to:
+- Deploy on different hardware (CPU, GPU, TensorRT, OpenVINO, etc.).
 - Run complex pipelines in production environments.
 - Combine and experiment with models effortlessly.
 
@@ -121,17 +165,22 @@ Get started today and streamline your ONNX workflows!
 
 API Documentation
 -----------------
+.. autoclass:: kornia.onnx.module.ONNXModule
+    :members:
+
 .. autoclass:: kornia.onnx.sequential.ONNXSequential
+    :members:
+
+.. autoclass:: kornia.onnx.sequential_async.ONNXSequentialAsync
     :members:
 
 .. autoclass:: kornia.onnx.utils.ONNXLoader
 
     .. code-block:: python
 
-        onnx_loader = ONNXLoader()
         # Load a HuggingFace operator
-        onnx_loader.load_model("hf://operators/kornia.color.gray.GrayscaleToRgb")  # doctest: +SKIP
+        ONNXLoader.load_model("hf://operators/kornia.color.gray.GrayscaleToRgb")  # doctest: +SKIP
         # Load a local converted/downloaded operator
-        onnx_loader.load_model("operators/kornia.color.gray.GrayscaleToRgb")  # doctest: +SKIP
+        ONNXLoader.load_model("operators/kornia.color.gray.GrayscaleToRgb")  # doctest: +SKIP
 
     :members:

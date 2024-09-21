@@ -103,9 +103,9 @@ class EdgeDetector(ModelBase):
 
         return super().to_onnx(
             onnx_name,
-            input_shape=(-1, 3, image_size or -1, image_size or -1),
-            output_shape=(-1, 1, image_size or -1, image_size or -1),
-            pseudo_shape=(1, 3, image_size or 352, image_size or 352),
+            input_shape=[-1, 3, image_size or -1, image_size or -1],
+            output_shape=[-1, 1, image_size or -1, image_size or -1],
+            pseudo_shape=[1, 3, image_size or 352, image_size or 352],
             model=self if include_pre_and_post_processor else self.model,
             save=save,
             additional_metadata=additional_metadata,

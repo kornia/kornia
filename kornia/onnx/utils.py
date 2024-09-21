@@ -5,12 +5,7 @@ import logging
 import os
 import pprint
 import urllib.request
-from typing import (
-    Any,
-    Dict,
-    List,
-    Optional,
-)
+from typing import Any, Optional
 
 import requests
 
@@ -24,32 +19,24 @@ logger = logging.getLogger(__name__)
 
 
 class ONNXLoader:
-    f"""Manages ONNX models, handling local caching, downloading from Hugging Face, and loading models.
-
-    Attributes:
-        cache_dir: The directory where ONNX models are cached locally.
-            Defaults to None, which will use a default `{kornia_config.hub_onnx_dir}` directory.
+    """Manages ONNX models, handling local caching, downloading from Hugging Face, and loading models.
     """
 
-    def __init__(self, cache_dir: Optional[str] = None):
-        self.cache_dir = cache_dir
-
-    def _get_file_path(self, model_name: str, cache_dir: Optional[str], suffix: str = ".onnx") -> str:
-        """Constructs the file path for the ONNX model based on the model name and cache directory.
+    @classmethod
+    def _get_file_path(cls, model_name: str, cache_dir: Optional[str], suffix: str = ".onnx") -> str:
+        f"""Constructs the file path for the ONNX model based on the model name and cache directory.
 
         Args:
             model_name: The name of the model or operator, typically in the format 'operators/model_name'.
             cache_dir: The directory where the model should be cached.
+                Defaults to None, which will use a default `{kornia_config.hub_onnx_dir}` directory.
 
         Returns:
             str: The full local path where the model should be stored or loaded from.
         """
         # Determine the local file path
         if cache_dir is None:
-            if self.cache_dir is not None:
-                cache_dir = self.cache_dir
-            else:
-                cache_dir = kornia_config.hub_onnx_dir
+            cache_dir = kornia_config.hub_onnx_dir
 
         # The filename is the model name (without directory path)
         if not model_name.endswith(suffix):
@@ -59,7 +46,8 @@ class ONNXLoader:
         file_path = os.path.join(*cache_dir.split(os.sep), *model_name.split(os.sep)[:-1], file_name)
         return file_path
 
-    def load_config(self, url: str, download: bool = True, **kwargs) -> dict[str, Any]:
+    @classmethod
+    def load_config(cls, url: str, download: bool = True, **kwargs: Any) -> dict[str, Any]:
         """Loads JSON config from the specified URL.
 
         Args:
@@ -70,9 +58,9 @@ class ONNXLoader:
             dict[str, Any]: The loaded preprocessor config.
         """
         if url.startswith(("http:", "https:")):
-            cache_dir = kwargs.get("cache_dir", None) or self.cache_dir
-            file_path = self._get_file_path(os.path.split(url)[-1], cache_dir, suffix=".json")
-            self.download(url, file_path, download_if_not_exists=download)
+            cache_dir = kwargs.get("cache_dir", None)
+            file_path = cls._get_file_path(os.path.split(url)[-1], cache_dir, suffix=".json")
+            cls.download(url, file_path, download_if_not_exists=download)
             with open(file_path) as f:
                 json_data = json.load(f)
                 return json_data
@@ -82,7 +70,8 @@ class ONNXLoader:
 
         raise RuntimeError(f"File `{file_path}` not found.")
 
-    def load_model(self, model_name: str, download: bool = True, **kwargs) -> onnx.ModelProto:  # type:ignore
+    @classmethod
+    def load_model(cls, model_name: str, download: bool = True, **kwargs) -> onnx.ModelProto:  # type:ignore
         """Loads an ONNX model from the local cache or downloads it from Hugging Face if necessary.
 
         Args:
@@ -91,6 +80,8 @@ class ONNXLoader:
                 https://huggingface.co/kornia/ONNX_models.
                 Or a URL to the ONNX model.
             download: If True, the model will be downloaded from Hugging Face if it's not already in the local cache.
+            cache_dir: The directory where the model should be cached.
+                Defaults to None, which will use a default `{kornia_config.hub_onnx_dir}` directory.
             **kwargs: Additional arguments to pass to the download method, if needed.
 
         Returns:
@@ -98,26 +89,26 @@ class ONNXLoader:
         """
         if model_name.startswith("hf://"):
             model_name = model_name[len("hf://") :]
-            cache_dir = kwargs.get("cache_dir", None) or self.cache_dir
-            file_path = self._get_file_path(model_name, cache_dir)
+            cache_dir = kwargs.get("cache_dir", None)
+            file_path = cls._get_file_path(model_name, cache_dir)
             url = f"https://huggingface.co/kornia/ONNX_models/resolve/main/{model_name}.onnx"
-            self.download(url, file_path, download_if_not_exists=download)
+            cls.download(url, file_path, download_if_not_exists=download)
             return onnx.load(file_path)  # type:ignore
 
         elif model_name.startswith("http://") or model_name.startswith("https://"):
-            cache_dir = kwargs.get("cache_dir", None) or self.cache_dir
-            file_path = self._get_file_path(os.path.split(model_name)[-1], cache_dir)
-            self.download(model_name, file_path, download_if_not_exists=download)
+            cache_dir = kwargs.get("cache_dir", None)
+            file_path = cls._get_file_path(os.path.split(model_name)[-1], cache_dir)
+            cls.download(model_name, file_path, download_if_not_exists=download)
             return onnx.load(file_path)  # type:ignore
 
-        if os.path.exists(model_name):
-            assert False, type(onnx.load(model_name))
-            return onnx.load(model_name)  # type:ignore
+        elif os.path.exists(model_name):
+            return onnx.load(model_name)
 
         raise ValueError(f"File {model_name} not found")
 
+    @classmethod
     def download(
-        self,
+        cls,
         url: str,
         file_path: str,
         download_if_not_exists: bool = True,
@@ -147,11 +138,11 @@ class ONNXLoader:
             raise ValueError("URL must start with 'http:' or 'https:'")
 
     @staticmethod
-    def _fetch_repo_contents(folder: str) -> List[Dict[str, Any]]:
+    def _fetch_repo_contents(folder: str) -> list[dict[str, Any]]:
         """Fetches the contents of the Hugging Face repository using the Hugging Face API.
 
         Returns:
-            List[dict]: A list of all files in the repository as dictionaries containing file details.
+            A list of all files in the repository as dictionaries containing file details.
         """
         url = f"https://huggingface.co/api/models/kornia/ONNX_models/tree/main/{folder}"
 
@@ -162,20 +153,20 @@ class ONNXLoader:
         else:
             raise ValueError(f"Failed to fetch repository contents: {response.status_code}")
 
-    @staticmethod
-    def list_operators() -> None:
+    @classmethod
+    def list_operators(cls) -> None:
         """Lists all available ONNX operators in the 'operators' folder of the Hugging Face repository."""
-        repo_contents = ONNXLoader._fetch_repo_contents("operators")
+        repo_contents = cls._fetch_repo_contents("operators")
 
         # Filter for operators in the 'operators' directory
         operators = [file["path"] for file in repo_contents]
 
         pprint.pp(operators)
 
-    @staticmethod
-    def list_models() -> None:
+    @classmethod
+    def list_models(cls) -> None:
         """Lists all available ONNX models in the 'models' folder of the Hugging Face repository."""
-        repo_contents = ONNXLoader._fetch_repo_contents("models")
+        repo_contents = cls._fetch_repo_contents("models")
 
         # Filter for models in the 'models' directory
         models = [file["path"] for file in repo_contents]
@@ -219,8 +210,21 @@ def io_name_conversion(
 
 def add_metadata(
     onnx_model: onnx.ModelProto,  # type: ignore
-    additional_metadata: List[tuple[str, str]] = None,
+    additional_metadata: list[tuple[str, str]] = [],
 ) -> onnx.ModelProto:  # type: ignore
+    """Adds metadata to an ONNX model.
+
+    The metadata includes the source library (set to "kornia"), the version of kornia,
+    and any additional metadata provided as a list of key-value pairs.
+
+    Args:
+        onnx_model: The ONNX model to add metadata to.
+        additional_metadata: A list of tuples, where each tuple contains a key and a value
+            for the additional metadata to add to the ONNX model.
+
+    Returns:
+        The ONNX model with the added metadata.
+    """
     for key, value in [
         ("source", "kornia"),
         ("version", kornia.__version__),

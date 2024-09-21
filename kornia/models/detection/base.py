@@ -9,6 +9,7 @@ import torch
 from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.external import PILImage as Image
+from kornia.core.external import onnx
 from kornia.models.base import ModelBase
 from kornia.utils.draw import draw_rectangle
 
@@ -157,9 +158,10 @@ class ObjectDetector(ModelBase):
         image_size: Optional[int] = 640,
         include_pre_and_post_processor: bool = True,
         save: bool = True,
-        additional_metadata: List[Tuple[str, str]] = [],
+        additional_metadata: list[tuple[str, str]] = [],
+        *args: Any,  # To silent mypy
         **kwargs: Any,
-    ) -> onnx.ModelProto:  # type: ignore
+    ) -> "onnx.ModelProto":  # type: ignore
         """Exports an RT-DETR object detection model to ONNX format.
 
         Either `model_name` or `config` must be provided. If neither is provided,
@@ -185,9 +187,10 @@ class ObjectDetector(ModelBase):
 
         return super().to_onnx(
             onnx_name,
-            input_shape=(-1, 3, image_size or -1, image_size or -1),
-            output_shape=(-1, -1, 6),
-            pseudo_shape=(1, 3, image_size or 352, image_size or 352),
+            *args,
+            input_shape=[-1, 3, image_size or -1, image_size or -1],
+            output_shape=[-1, -1, 6],
+            pseudo_shape=[1, 3, image_size or 352, image_size or 352],
             model=self if include_pre_and_post_processor else self.model,
             save=save,
             additional_metadata=additional_metadata,

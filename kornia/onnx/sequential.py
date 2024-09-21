@@ -1,17 +1,16 @@
-import io
+import asyncio
 from typing import Any, List, Optional, Tuple, Union
 
 from kornia.config import kornia_config
-from kornia.core.external import numpy as np
 from kornia.core.external import onnx
 from kornia.core.external import onnxruntime as ort
 
-from .utils import ONNXLoader, add_metadata
+from .mixin import ONNXMixin, ONNXRuntimeMixin
 
-__all__ = ["ONNXSequential", "load"]
+__all__ = ["ONNXSequential"]
 
 
-class ONNXSequential:
+class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
     f"""ONNXSequential to chain multiple ONNX operators together.
 
     Args:
@@ -27,7 +26,10 @@ class ONNXSequential:
             If not None, `io_maps[0]` shall represent the `io_map` for combining the first and second ONNX models.
         cache_dir: The directory where ONNX models are cached locally (only for downloading from HuggingFace).
             Defaults to None, which will use a default `{kornia_config.hub_onnx_dir}` directory.
-        auto_ir_version_conversion: If True, automatically convert the model's IR version to 9.
+        auto_ir_version_conversion: If True, automatically convert the model's IR version to 9, and OPSET version to 17.
+            Other versions may be pointed to by `target_ir_version` and `target_opset_version`.
+        target_ir_version: The target IR version to convert to.
+        target_opset_version: The target OPSET version to convert to.
     """
 
     def __init__(
@@ -39,13 +41,14 @@ class ONNXSequential:
         cache_dir: Optional[str] = None,
         auto_ir_version_conversion: bool = True,
         target_ir_version: Optional[int] = None,
+        target_opset_version: Optional[int] = None,
     ) -> None:
-        self.onnx_loader = ONNXLoader(cache_dir)
-        self.operators = self.load_ops(*args)
+        self.operators = self._load_ops(*args, cache_dir=cache_dir)
         if auto_ir_version_conversion:
-            self.operators = self._auto_version_conversion(*self.operators, target_ir_version=target_ir_version)
+            self.operators = self._auto_version_conversion(
+                *self.operators, target_ir_version=target_ir_version, target_opset_version=target_opset_version)
         self._combined_op = self._combine(*self.operators, io_maps=io_maps)
-        self._session = self.create_session(providers=providers, session_options=session_options)
+        self._session = self.create_session(self._combined_op, providers=providers, session_options=session_options)
 
     def _auto_version_conversion(
         self,
@@ -62,6 +65,7 @@ class ONNXSequential:
             target_ir_version: The target IR version to convert to.
             target_opset_version: The target OPSET version to convert to.
         """
+        # TODO: maybe another logic for versioning.
         if target_ir_version is None:
             target_ir_version = 9
         if target_opset_version is None:
@@ -69,49 +73,10 @@ class ONNXSequential:
 
         op_list = []
         for op in args:
-            if op.ir_version != target_ir_version or op.opset_import[0].version != target_opset_version:
-                # Check if all ops are supported in the current IR version
-                model_bytes = io.BytesIO()
-                onnx.save_model(op, model_bytes)
-                loaded_model = onnx.load_model_from_string(model_bytes.getvalue())
-                loaded_model = onnx.version_converter.convert_version(loaded_model, 17)
-                onnx.checker.check_model(loaded_model)
-                # Set the IR version if it passed the checking
-                loaded_model.ir_version = target_ir_version
-                op = loaded_model
+            op = super()._onnx_version_conversion(
+                op, target_ir_version=target_ir_version, target_opset_version=target_opset_version)
             op_list.append(op)
         return op_list
-
-    def load_ops(self, *args: Union["onnx.ModelProto", str]) -> List["onnx.ModelProto"]:  # type:ignore
-        """Loads multiple ONNX models or operators and returns them as a list.
-
-        Args:
-            *args: A variable number of ONNX models (either ONNX ModelProto objects or file paths).
-                For Hugging Face-hosted models, use the format 'hf://model_name'. Valid `model_name` can be found on
-                https://huggingface.co/kornia/ONNX_models. Or a URL to the ONNX model.
-
-        Returns:
-            List[onnx.ModelProto]: The loaded ONNX models as a list of ONNX graphs.
-        """
-        op_list = []
-        for arg in args:
-            op_list.append(self._load_op(arg))
-        return op_list
-
-    def _load_op(self, arg: Union["onnx.ModelProto", str]) -> "onnx.ModelProto":  # type:ignore
-        """Loads an ONNX model, either from a file path or use the provided ONNX ModelProto.
-
-        Args:
-            arg: Either an ONNX ModelProto object or a file path to an ONNX model.
-
-        Returns:
-            onnx.ModelProto: The loaded ONNX model.
-        """
-        if isinstance(arg, str):
-            return self.onnx_loader.load_model(arg)
-        if isinstance(arg, onnx.ModelProto):  # type:ignore
-            return arg
-        raise ValueError(f"Invalid argument type. Got {type(arg)}")
 
     def _combine(
         self,
@@ -146,140 +111,30 @@ class ONNXSequential:
         return combined_op
 
     def export(self, file_path: str, **kwargs: Any) -> None:
-        """Export the combined ONNX model to a file.
+        return super()._export(self._combined_op, file_path, **kwargs)
+
+    def add_metadata(
+        self, additional_metadata: List[Tuple[str]] = []
+    ) -> "onnx.ModelProto":  # type:ignore
+        return super()._add_metadata(self._combined_op, additional_metadata)
+
+    async def run(self, *inputs: "np.ndarray") -> List["np.ndarray"]:  # type:ignore
+        """Perform inference asynchronously using the ONNX model.
 
         Args:
-            file_path:
-                The file path to export the combined ONNX model.
-        """
-        onnx.save(self._combined_op, file_path, **kwargs)  # type:ignore
-
-    def add_metadata(self, additional_metadata: List[tuple[str, str]] = []) -> None:
-        """Add metadata to the combined ONNX model.
-
-        Args:
-            additional_metadata:
-                A list of tuples representing additional metadata to add to the combined ONNX model.
-                Example: [("version", 0.1)], [("date", 20240909)].
-        """
-        self._combined_op = add_metadata(self._combined_op, additional_metadata)
-
-    def create_session(
-        self,
-        providers: Optional[List[str]] = None,
-        session_options: Optional["ort.SessionOptions"] = None,  # type:ignore
-    ) -> "ort.InferenceSession":  # type:ignore
-        """Create an optimized ONNXRuntime InferenceSession for the combined model.
-
-        Args:
-            providers:
-                Execution providers for ONNXRuntime (e.g., ['CUDAExecutionProvider', 'CPUExecutionProvider']).
-            session_options:
-                Optional ONNXRuntime session options for session configuration and optimizations.
-
-        Returns:
-            ort.InferenceSession: The ONNXRuntime session optimized for inference.
-        """
-        if session_options is None:
-            sess_options = ort.SessionOptions()  # type:ignore
-            sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_EXTENDED  # type:ignore
-        session = ort.InferenceSession(  # type:ignore
-            self._combined_op.SerializeToString(),
-            sess_options=sess_options,
-            providers=providers or ["CPUExecutionProvider"],
-        )
-        return session
-
-    def set_session(self, session: "ort.InferenceSession") -> None:  # type: ignore
-        """Set a custom ONNXRuntime InferenceSession.
-
-        Args:
-            session: ort.InferenceSession
-                The custom ONNXRuntime session to be set for inference.
-        """
-        self._session = session
-
-    def get_session(self) -> "ort.InferenceSession":  # type: ignore
-        """Get the current ONNXRuntime InferenceSession.
-
-        Returns:
-            ort.InferenceSession: The current ONNXRuntime session.
-        """
-        return self._session
-
-    def as_cpu(self) -> None:
-        """Set the session to run on CPU."""
-        self._session.set_providers(["CPUExecutionProvider"])
-
-    def as_cuda(self, device_id: int = 0, **kwargs: Any) -> None:
-        """Set the session to run on CUDA.
-
-        We set the ONNX runtime session to use CUDAExecutionProvider. For other CUDAExecutionProvider configurations,
-        or CUDA/cuDNN/ONNX version issues,
-        you may refer to https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html.
-
-        Args:
-            device_id: Select GPU to execute.
-        """
-        self._session.set_providers(["CUDAExecutionProvider"], provider_options=[{"device_id": device_id, **kwargs}])
-
-    def as_tensorrt(self, device_id: int = 0, **kwargs: Any) -> None:
-        """Set the session to run on TensorRT.
-
-        We set the ONNX runtime session to use TensorrtExecutionProvider. For other TensorrtExecutionProvider configurations,
-        or CUDA/cuDNN/ONNX/TensorRT version issues,
-        you may refer to https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html.
-
-        Args:
-            device_id: select GPU to execute.
-        """
-        self._session.set_providers(
-            ["TensorrtExecutionProvider"], provider_options=[{"device_id": device_id, **kwargs}]
-        )
-
-    def as_openvino(self, device_type: str = "GPU", **kwargs: Any) -> None:
-        """Set the session to run on TensorRT.
-
-        We set the ONNX runtime session to use OpenVINOExecutionProvider. For other OpenVINOExecutionProvider configurations,
-        or CUDA/cuDNN/ONNX/TensorRT version issues,
-        you may refer to https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html.
-
-        Args:
-            device_type: CPU, NPU, GPU, GPU.0, GPU.1 based on the avaialable GPUs, NPU, Any valid Hetero combination,
-                Any valid Multi or Auto devices combination.
-        """
-        self._session.set_providers(
-            ["OpenVINOExecutionProvider"], provider_options=[{"device_type": device_type, **kwargs}]
-        )
-
-    def __call__(self, *inputs: "np.ndarray") -> List["np.ndarray"]:  # type:ignore
-        """Perform inference using the combined ONNX model.
-
-        Args:
-            *inputs: Inputs to the ONNX model. The number of inputs must match the expected inputs of the session.
+            *inputs: Inputs to the ONNX model. The number of inputs must match the
+                expected inputs of the session.
 
         Returns:
             List: The outputs from the ONNX model inference.
         """
+        loop = asyncio.get_event_loop()
         ort_inputs = self._session.get_inputs()
-        if len(ort_inputs) != len(inputs):
-            raise ValueError(f"Expected {len(ort_inputs)} for the session while only {len(inputs)} received.")
-
         ort_input_values = {ort_inputs[i].name: inputs[i] for i in range(len(ort_inputs))}
-        outputs = self._session.run(None, ort_input_values)
+        outputs = await loop.run_in_executor(None, self._session.run, None, ort_input_values)
 
-        return outputs
-
-
-def load(model_name: str) -> "ONNXSequential":
-    """Load an ONNX model from either a file path or HuggingFace.
-
-    The loaded model is an ONNXSequential object, of which you may run the model with
-    the `__call__` method, with less boilerplate.
-
-    Args:
-        model_name: The name of the model to load. For Hugging Face-hosted models,
-            use the format 'hf://model_name'. Valid `model_name` can be found on
-            https://huggingface.co/kornia/ONNX_models. Or a URL to the ONNX model.
-    """
-    return ONNXSequential(model_name)
+        # NOTE: important to make sure the pipeline runs well.
+        if isinstance(outputs, (tuple, list,)) and len(outputs) == 1:
+            return outputs[0]
+        else:
+            return outputs  # Adjust as necessary for multiple outputs

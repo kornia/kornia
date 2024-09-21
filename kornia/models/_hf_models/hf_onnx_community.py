@@ -12,7 +12,15 @@ from kornia.onnx.utils import ONNXLoader, io_name_conversion
 from .preprocessor import PreprocessingLoader
 
 
-class ONNXComunnityModelLoader:
+class HFONNXComunnityModelLoader:
+    f"""Initializes the ONNXComunnityModelLoader for onnx-community repo of Hugging Face.
+
+    Args:
+        model_name: The name of the model to load.
+        model_type: The type of the model to load.
+        cache_dir: The directory where models are cached locally.
+            Defaults to None, which will use a default `{kornia_config.hub_onnx_dir}` directory.
+    """
     def __init__(self, model_name: str, model_type: str = "model", cache_dir: Optional[str] = None) -> None:
         self.model_name = model_name
         self.model_type = model_type
@@ -60,7 +68,7 @@ class ONNXComunnityModelLoader:
         return model
 
 
-class ONNXComunnityModel(ONNXSequential, ModelBaseMixin):
+class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
     name: str = "onnx_community_model"
 
     def __init__(
@@ -75,7 +83,8 @@ class ONNXComunnityModel(ONNXSequential, ModelBaseMixin):
         if post_processor is not None:
             model_list.append(post_processor)
         super().__init__(*model_list)
-        self.name = name
+        if self.name is not None:
+            self.name = name
         self.model = model
         self.pre_processor = pre_processor
         self.post_processor = post_processor
@@ -102,7 +111,7 @@ class ONNXComunnityModel(ONNXSequential, ModelBaseMixin):
         save: bool = True,
         additional_metadata: list[tuple[str, str]] = [],
         **kwargs: Any,
-    ) -> ONNXSequential:  # type: ignore
+    ) -> ONNXSequential:
         """Exports a depth estimation model to ONNX format.
 
         Args:
