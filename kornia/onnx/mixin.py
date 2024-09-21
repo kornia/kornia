@@ -3,13 +3,13 @@ from __future__ import annotations
 import io
 from typing import (
     Any,
-    list,
     Optional,
     Union,
+    list,
 )
 
-from kornia.core.external import onnx
 from kornia.core.external import numpy as np
+from kornia.core.external import onnx
 from kornia.core.external import onnxruntime as ort
 from kornia.onnx.utils import add_metadata
 

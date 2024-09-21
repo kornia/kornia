@@ -1,6 +1,6 @@
-import os
 import importlib
 import logging
+import os
 import subprocess
 import sys
 from types import ModuleType
@@ -44,7 +44,7 @@ class LazyLoader:
         This method is called internally when an attribute of the module is accessed for the first time. It attempts to
         import the module and raises an ImportError with a custom message if the module is not installed.
         """
-        if os.getenv('SPHINX_BUILD') == '1':
+        if os.getenv("SPHINX_BUILD") == "1":
             logger.info(f"Sphinx detected, skipping loading of '{self.module_name}'")
             return
 

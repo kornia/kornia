@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from typing import Any, Optional, Union
 
 from kornia.config import kornia_config
@@ -28,9 +29,9 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
 
     def __init__(
         self,
-        op: Union["onnx.ModelProto", str],  # type:ignore
+        op: Union[onnx.ModelProto, str],  # type:ignore
         providers: Optional[list[str]] = None,
-        session_options: Optional["ort.SessionOptions"] = None,  # type:ignore
+        session_options: Optional[ort.SessionOptions] = None,  # type:ignore
         cache_dir: Optional[str] = None,
         target_ir_version: Optional[int] = None,
         target_opset_version: Optional[int] = None,
@@ -45,11 +46,11 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
     def export(self, file_path: str, **kwargs: Any) -> None:
         return super()._export(self.op, file_path, **kwargs)
 
-    def add_metadata(self, additional_metadata: list[tuple[str, str]] = []) -> "onnx.ModelProto":  # type:ignore
+    def add_metadata(self, additional_metadata: list[tuple[str, str]] = []) -> onnx.ModelProto:  # type:ignore
         return super()._add_metadata(self.op, additional_metadata)
 
 
-def load(model_name: str) -> "ONNXModule":
+def load(model_name: str) -> ONNXModule:
     """Load an ONNX model from either a file path or HuggingFace.
 
     The loaded model is an ONNXModule object, of which you may run the model with

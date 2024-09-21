@@ -23,10 +23,18 @@ class DepthEstimation(HFONNXComunnityModel):
             list of detections found in each image. For item in a batch, shape is :math:`(D, 6)`, where :math:`D` is the
             number of detections in the given image, :math:`6` represents class id, score, and `xywh` bounding box.
         """
-        if isinstance(images, (list, tuple,)):
+        if isinstance(
+            images,
+            (
+                list,
+                tuple,
+            ),
+        ):
             results = [super().__call__(image.cpu().numpy()) for image in images]
-            results = [self.resize_back(
-                tensor(result, device=image.device, dtype=image.dtype), image) for result, image in zip(results, images)]
+            results = [
+                self.resize_back(tensor(result, device=image.device, dtype=image.dtype), image)
+                for result, image in zip(results, images)
+            ]
             return results
 
         results = super().__call__(images.cpu().numpy())

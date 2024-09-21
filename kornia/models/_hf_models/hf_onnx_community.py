@@ -1,4 +1,3 @@
-import ast
 import os
 from typing import Any, Optional
 
@@ -7,7 +6,7 @@ from kornia.core import ImageSequential, Tensor
 from kornia.core.external import onnx
 from kornia.geometry.transform import resize
 from kornia.models.base import ModelBaseMixin
-from kornia.onnx import ONNXSequential, load
+from kornia.onnx import ONNXSequential
 from kornia.onnx.utils import ONNXLoader, io_name_conversion
 
 from .preprocessor import PreprocessingLoader

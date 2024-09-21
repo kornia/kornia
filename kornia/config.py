@@ -50,6 +50,5 @@ class KorniaConfig:
 
 
 kornia_config = KorniaConfig(
-    hub_models_dir=os.path.join(".kornia_hub", "models"),
-    hub_onnx_dir=os.path.join(".kornia_hub", "onnx_models")
+    hub_models_dir=os.path.join(".kornia_hub", "models"), hub_onnx_dir=os.path.join(".kornia_hub", "onnx_models")
 )
