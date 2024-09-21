@@ -266,3 +266,9 @@ intersphinx_mapping = {
     "numpy": ("http://numpy.org/doc/stable/", None),
     "torch": ("http://pytorch.org/docs/stable/", None),
 }
+
+# mock these modules and won't try to actually import them
+autodoc_mock_imports = [
+    "boxmot", 
+    "segmentation_models_pytorch"
+]
