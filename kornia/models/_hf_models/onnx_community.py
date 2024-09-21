@@ -2,9 +2,10 @@ import os
 from typing import Any, Optional
 
 from kornia.config import kornia_config
-from kornia.core import ImageSequential
+from kornia.core import ImageSequential, Tensor
 from kornia.core.external import onnx
 from kornia.models.base import ModelBaseMixin
+from kornia.geometry.transform import resize
 from kornia.onnx import ONNXSequential, add_metadata, load
 from kornia.onnx.utils import ONNXLoader, io_name_conversion
 
@@ -78,6 +79,20 @@ class ONNXComunnityModel(ONNXSequential, ModelBaseMixin):
         self.model = model
         self.pre_processor = pre_processor
         self.post_processor = post_processor
+
+    def resize_back(self, images: Tensor, target_images: Tensor) -> Tensor:
+        """Resize the input images back to the original size of target images.
+
+        Args:
+            images: The input images to be resized.
+            target_images: The target images whose size is used as the reference for resizing.
+
+        Returns:
+            The resized images.
+        """
+        if isinstance(target_images, Tensor):
+            return resize(images, target_images.shape[-2:])
+        raise RuntimeError
 
     def to_onnx(
         self,

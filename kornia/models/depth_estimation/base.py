@@ -22,7 +22,8 @@ class DepthEstimation(ONNXComunnityModel):
             number of detections in the given image, :math:`6` represents class id, score, and `xywh` bounding box.
         """
         results = super().__call__(images.cpu().numpy())
-        return tensor(results, device=images.device, dtype=images.dtype)
+        results = tensor(results, device=images.device, dtype=images.dtype)
+        return self.resize_back(results, images)
 
     def visualize(
         self,
