@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Union
+from typing import Any, Optional, Union, List, Tuple
 
 import torch
 
-from kornia.core import Tensor, rand
+from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.core.external import PILImage as Image
 from kornia.models.base import ModelBase
@@ -156,7 +156,10 @@ class ObjectDetector(ModelBase):
         onnx_name: Optional[str] = None,
         image_size: Optional[int] = 640,
         include_pre_and_post_processor: bool = True,
-    ) -> str:
+        save: bool = True,
+        additional_metadata: List[Tuple[str, str]] = [],
+        **kwargs: Any
+    ) -> "onnx.ModelProto":  # type: ignore
         """Exports an RT-DETR object detection model to ONNX format.
 
         Either `model_name` or `config` must be provided. If neither is provided,
@@ -164,40 +167,32 @@ class ObjectDetector(ModelBase):
 
         Args:
             onnx_name:
-                The name of the ONNX model.
+                The name of the output ONNX file. If not provided, a default name in the
+                format "Kornia-<ClassName>.onnx" will be used.
             image_size:
                 The size to which input images will be resized during preprocessing.
                 If None, image_size will be dynamic.
                 For RTDETR, recommended scales include [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800].
             include_pre_and_post_processor:
                 Whether to include the pre-processor and post-processor in the exported model.
-
-        Returns:
-            - The name of the ONNX model.
+            save:
+                If to save the model or load it.
+            additional_metadata:
+                Additional metadata to add to the ONNX model.
         """
         if onnx_name is None:
             onnx_name = f"kornia_{self.name}_{image_size}.onnx"
 
-        if image_size is None:
-            val_image = rand(1, 3, 640, 640)
-            dynamic_axes = {"input": {0: "batch_size"}, "output": {0: "batch_size"}}
-        else:
-            val_image = rand(1, 3, image_size, image_size)
-            dynamic_axes = {"input": {0: "batch_size", 2: "height", 3: "width"}, "output": {0: "batch_size"}}
-
-        torch.onnx.export(
-            self if include_pre_and_post_processor else self.model,
-            val_image,
+        return super().to_onnx(
             onnx_name,
-            export_params=True,
-            opset_version=17,
-            do_constant_folding=True,
-            input_names=["input"],
-            output_names=["output"],
-            dynamic_axes=dynamic_axes,
+            input_shape=(-1, 3, image_size or -1, image_size or -1),
+            output_shape=(-1, -1, 6),
+            pseudo_shape=(1, 3, image_size or 352, image_size or 352),
+            model=self if include_pre_and_post_processor else self.model,
+            save=save,
+            additional_metadata=additional_metadata,
+            **kwargs
         )
-
-        return onnx_name
 
     def compile(
         self,

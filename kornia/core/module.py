@@ -1,3 +1,4 @@
+import copy
 import datetime
 import math
 import os
@@ -13,6 +14,7 @@ from ._backend import Module, Sequential, Tensor, from_numpy, rand
 from .external import PILImage as Image
 from .external import numpy as np
 from .external import onnx
+from kornia.onnx.utils import add_metadata
 
 
 class ONNXExportMixin:
@@ -47,7 +49,11 @@ class ONNXExportMixin:
         onnx_name: Optional[str] = None,
         input_shape: Optional[List[int]] = None,
         output_shape: Optional[List[int]] = None,
-        save: bool = True
+        pseudo_shape: Optional[List[int]] = None,
+        model: Optional[Module] = None,
+        save: bool = True,
+        additional_metadata: List[Tuple[str, str]] = [],
+        **kwargs: Any
     ) -> "onnx.ModelProto":  # type: ignore
         """Exports the current object to an ONNX model file.
 
@@ -61,8 +67,17 @@ class ONNXExportMixin:
             output_shape:
                 The output shape for the model as a list of integers. If None,
                 `ONNX_DEFAULT_OUTPUTSHAPE` will be used. Dynamic dimensions can be indicated by `-1`.
+            pseudo_shape:
+                The pseudo shape for the model as a list of integers. If None,
+                `ONNX_EXPORT_PSEUDO_SHAPE` will be used.
+            model:
+                The model to export. If not provided, the current object will be used.
             save:
                 If to save the model or load it.
+            additional_metadata:
+                Additional metadata to add to the ONNX model.
+            **kwargs:
+                Additional keyword arguments to pass to the `torch.onnx.export` function.
 
         Notes:
             - A dummy input tensor is created based on the provided or default input shape.
@@ -80,14 +95,10 @@ class ONNXExportMixin:
         if onnx_name is None:
             onnx_name = f"Kornia-{self.__class__.__name__}.onnx"
 
-        dummy_input = self._create_dummy_input(input_shape)
+        dummy_input = self._create_dummy_input(input_shape, pseudo_shape)
         dynamic_axes = self._create_dynamic_axes(input_shape, output_shape)
 
-        onnx_buffer = io.BytesIO()
-        torch.onnx.export(
-            self,  # type: ignore
-            dummy_input,
-            onnx_buffer,
+        default_args = dict(
             export_params=True,
             opset_version=17,
             do_constant_folding=True,
@@ -95,16 +106,31 @@ class ONNXExportMixin:
             output_names=["output"],
             dynamic_axes=dynamic_axes,
         )
+        default_args.update(kwargs)
+
+        onnx_buffer = io.BytesIO()
+        torch.onnx.export(
+            model or self,  # type: ignore
+            dummy_input,
+            onnx_buffer,
+            **default_args
+        )
         onnx_buffer.seek(0)
         onnx_model = onnx.load(onnx_buffer)  # type: ignore
 
-        onnx_model = self._add_metadata(onnx_model)
+        additional_metadata = copy.deepcopy(additional_metadata)
+        additional_metadata.extend(self.ADDITIONAL_METADATA)
+        onnx_model = add_metadata(onnx_model, additional_metadata)
         if save:
             onnx.save(onnx_model, onnx_name)  # type: ignore
         return onnx_model
 
-    def _create_dummy_input(self, input_shape: List[int]) -> Union[Tuple[Any, ...], Tensor]:
-        return rand(*[(self.ONNX_EXPORT_PSEUDO_SHAPE[i] if dim == -1 else dim) for i, dim in enumerate(input_shape)])
+    def _create_dummy_input(
+        self, input_shape: List[int], pseudo_shape: Optional[List[int]] = None
+    ) -> Union[Tuple[Any, ...], Tensor]:
+        return rand(*[(
+            (self.ONNX_EXPORT_PSEUDO_SHAPE[i] if pseudo_shape is None else pseudo_shape[i]) if dim == -1 else dim
+        ) for i, dim in enumerate(input_shape)])
 
     def _create_dynamic_axes(self, input_shape: List[int], output_shape: List[int]) -> Dict[str, Dict[int, str]]:
         return {
@@ -112,17 +138,6 @@ class ONNXExportMixin:
             "output": {i: "dim_" + str(i) for i, dim in enumerate(output_shape) if dim == -1},
         }
 
-    def _add_metadata(self, onnx_model: "onnx.ModelProto") -> "onnx.ModelProto":  # type: ignore
-        for key, value in [
-            ("source", "kornia"),
-            ("version", kornia.__version__),
-            ("class", self.__class__.__name__),
-            *self.ADDITIONAL_METADATA,
-        ]:
-            metadata_props = onnx_model.metadata_props.add()
-            metadata_props.key = key
-            metadata_props.value = str(value)
-        return onnx_model
 
 class ImageModuleMixIn:
     """A MixIn that handles image-based operations.

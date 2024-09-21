@@ -4,6 +4,7 @@ import os
 from typing import List, Optional, Union
 
 from kornia.core import Module, Tensor, stack
+from kornia.core.module import ONNXExportMixin
 from kornia.core.external import PILImage as Image
 from kornia.core.external import numpy as np
 from kornia.io import write_image
@@ -12,28 +13,7 @@ from kornia.utils.image import tensor_to_image
 logger = logging.getLogger(__name__)
 
 
-class ModelBase(Module):
-    """This class wraps a model and performs pre-processing and post-processing."""
-
-    name: str = "model"
-
-    def __init__(
-        self, model: Module, pre_processor: Module, post_processor: Module, name: Optional[str] = None
-    ) -> None:
-        """Construct an Object Detector object.
-
-        Args:
-            model: an object detection model.
-            pre_processor: a pre-processing module
-            post_processor: a post-processing module.
-        """
-        super().__init__()
-        self.model = model.eval()
-        self.pre_processor = pre_processor.eval()
-        self.post_processor = post_processor.eval()
-        if name is not None:
-            self.name = name
-
+class ModelBaseMixin:
     def _tensor_to_type(
         self, output: List[Tensor], output_type: str, is_batch: bool = False
     ) -> Union[Tensor, List[Tensor], List[Image.Image]]:  # type: ignore
@@ -65,3 +45,26 @@ class ModelBase(Module):
                 out_image.mul(255.0).byte(),
             )
         logger.info(f"Outputs are saved in {directory}")
+
+
+class ModelBase(Module, ONNXExportMixin, ModelBaseMixin):
+    """This class wraps a model and performs pre-processing and post-processing."""
+
+    name: str = "model"
+
+    def __init__(
+        self, model: Module, pre_processor: Module, post_processor: Module, name: Optional[str] = None
+    ) -> None:
+        """Construct an Object Detector object.
+
+        Args:
+            model: an object detection model.
+            pre_processor: a pre-processing module
+            post_processor: a post-processing module.
+        """
+        super().__init__()
+        self.model = model.eval()
+        self.pre_processor = pre_processor.eval()
+        self.post_processor = post_processor.eval()
+        if name is not None:
+            self.name = name

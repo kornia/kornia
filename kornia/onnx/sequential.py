@@ -1,11 +1,12 @@
 from typing import Any, List, Optional, Tuple, Union
+import io
 
 from kornia.config import kornia_config
 from kornia.core.external import numpy as np
 from kornia.core.external import onnx
 from kornia.core.external import onnxruntime as ort
 
-from .utils import ONNXLoader
+from .utils import ONNXLoader, add_metadata
 
 __all__ = ["ONNXSequential", "load"]
 
@@ -16,7 +17,7 @@ class ONNXSequential:
     Args:
         *args: A variable number of ONNX models (either ONNX ModelProto objects or file paths).
             For Hugging Face-hosted models, use the format 'hf://model_name'. Valid `model_name` can be found on
-            https://huggingface.co/kornia/ONNX_models.
+            https://huggingface.co/kornia/ONNX_models. Or a URL to the ONNX model.
         providers: A list of execution providers for ONNXRuntime
             (e.g., ['CUDAExecutionProvider', 'CPUExecutionProvider']).
         session_options: Optional ONNXRuntime session options for optimizing the session.
@@ -26,6 +27,7 @@ class ONNXSequential:
             If not None, `io_maps[0]` shall represent the `io_map` for combining the first and second ONNX models.
         cache_dir: The directory where ONNX models are cached locally (only for downloading from HuggingFace).
             Defaults to None, which will use a default `{kornia_config.hub_onnx_dir}` directory.
+        auto_ir_version_conversion: If True, automatically convert the model's IR version to 9.
     """
 
     def __init__(
@@ -35,11 +37,67 @@ class ONNXSequential:
         session_options: Optional["ort.SessionOptions"] = None,  # type:ignore
         io_maps: Optional[List[Tuple[str, str]]] = None,
         cache_dir: Optional[str] = None,
+        auto_ir_version_conversion: bool = True,
+        target_ir_version: Optional[int] = None,
     ) -> None:
         self.onnx_loader = ONNXLoader(cache_dir)
-        self.operators = args
-        self._combined_op = self._combine(io_maps)
+        self.operators = self.load_ops(*args)
+        if auto_ir_version_conversion:
+            self.operators = self._auto_version_conversion(
+                *self.operators, target_ir_version=target_ir_version)
+        self._combined_op = self._combine(*self.operators, io_maps=io_maps)
         self._session = self.create_session(providers=providers, session_options=session_options)
+
+    def _auto_version_conversion(
+        self,
+        *args: List["onnx.ModelProto"],  # type:ignore
+        target_ir_version: Optional[int] = None,
+        target_opset_version: Optional[int] = None,
+    ) -> List["onnx.ModelProto"]:  # type:ignore
+        """Automatic conversion of the model's IR/OPSET version to the given target version.
+
+        If `target_ir_version` is not provided, the model is converted to 9 by default.
+        If `target_opset_version` is not provided, the model is converted to 17 by default.
+
+        Args:
+            target_ir_version: The target IR version to convert to.
+            target_opset_version: The target OPSET version to convert to.
+        """
+        if target_ir_version is None:
+            target_ir_version = 9
+        if target_opset_version is None:
+            target_opset_version = 17
+
+        op_list = []
+        for op in args:
+            if op.ir_version != target_ir_version or op.opset_import[0].version != target_opset_version:
+                # Check if all ops are supported in the current IR version
+                model_bytes = io.BytesIO()
+                onnx.save_model(op, model_bytes)
+                loaded_model = onnx.load_model_from_string(model_bytes.getvalue())
+                loaded_model = onnx.version_converter.convert_version(loaded_model, 17)
+                onnx.checker.check_model(loaded_model)
+                # Set the IR version if it passed the checking
+                loaded_model.ir_version = target_ir_version
+                op = loaded_model
+            op_list.append(op)
+        return op_list
+
+    def load_ops(self, *args: Union["onnx.ModelProto", str]) -> List["onnx.ModelProto"]:  # type:ignore
+        """Loads multiple ONNX models or operators and returns them as a list.
+
+        Args:
+            *args: A variable number of ONNX models (either ONNX ModelProto objects or file paths).
+                For Hugging Face-hosted models, use the format 'hf://model_name'. Valid `model_name` can be found on
+                https://huggingface.co/kornia/ONNX_models. Or a URL to the ONNX model.
+
+        Returns:
+            List[onnx.ModelProto]: The loaded ONNX models as a list of ONNX graphs.
+        """
+        op_list = []
+        for arg in args:
+            op_list.append(self._load_op(arg))
+        return op_list
 
     def _load_op(self, arg: Union["onnx.ModelProto", str]) -> "onnx.ModelProto":  # type:ignore
         """Loads an ONNX model, either from a file path or use the provided ONNX ModelProto.
@@ -52,9 +110,15 @@ class ONNXSequential:
         """
         if isinstance(arg, str):
             return self.onnx_loader.load_model(arg)
-        return arg
+        if isinstance(arg, onnx.ModelProto):  # type:ignore
+            return arg
+        raise ValueError(f"Invalid argument type. Got {type(arg)}")
 
-    def _combine(self, io_maps: Optional[List[Tuple[str, str]]] = None) -> "onnx.ModelProto":  # type:ignore
+    def _combine(
+        self, 
+        *args: List["onnx.ModelProto"],  # type:ignore
+        io_maps: Optional[List[Tuple[str, str]]] = None
+    ) -> "onnx.ModelProto":  # type:ignore
         """Combine the provided ONNX models into a single ONNX graph. Optionally, map inputs and outputs between
         operators using the `io_map`.
 
@@ -66,14 +130,14 @@ class ONNXSequential:
         Returns:
             onnx.ModelProto: The combined ONNX model as a single ONNX graph.
         """
-        if len(self.operators) == 0:
+        if len(args) == 0:
             raise ValueError("No operators found.")
 
-        combined_op = self._load_op(self.operators[0])
+        combined_op = args[0]
         combined_op = onnx.compose.add_prefix(combined_op, prefix=f"K{str(0).zfill(2)}-")  # type:ignore
 
-        for i, op in enumerate(self.operators[1:]):
-            next_op = onnx.compose.add_prefix(self._load_op(op), prefix=f"K{str(i + 1).zfill(2)}-")  # type:ignore
+        for i, op in enumerate(args[1:]):
+            next_op = onnx.compose.add_prefix(op, prefix=f"K{str(i + 1).zfill(2)}-")  # type:ignore
             if io_maps is None:
                 io_map = [(f"K{str(i).zfill(2)}-output", f"K{str(i + 1).zfill(2)}-input")]
             else:
@@ -82,14 +146,24 @@ class ONNXSequential:
 
         return combined_op
 
-    def export(self, file_path: str) -> None:
+    def export(self, file_path: str, **kwargs: Any) -> None:
         """Export the combined ONNX model to a file.
 
         Args:
             file_path:
                 The file path to export the combined ONNX model.
         """
-        onnx.save(self._combined_op, file_path)  # type:ignore
+        onnx.save(self._combined_op, file_path, **kwargs)  # type:ignore
+
+    def add_metadata(self, additional_metadata: List[tuple[str, str]] = []) -> None:
+        """Add metadata to the combined ONNX model.
+
+        Args:
+            additional_metadata:
+                A list of tuples representing additional metadata to add to the combined ONNX model.
+                Example: [("version", 0.1)], [("date", 20240909)].
+        """
+        self._combined_op = add_metadata(self._combined_op, additional_metadata)
 
     def create_session(
         self,
@@ -207,6 +281,6 @@ def load(model_name: str) -> "ONNXSequential":
     Args:
         model_name: The name of the model to load. For Hugging Face-hosted models,
             use the format 'hf://model_name'. Valid `model_name` can be found on
-            https://huggingface.co/kornia/ONNX_models.
+            https://huggingface.co/kornia/ONNX_models. Or a URL to the ONNX model.
     """
     return ONNXSequential(model_name)

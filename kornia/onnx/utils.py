@@ -1,15 +1,23 @@
+from __future__ import annotations
+
 import logging
 import os
 import pprint
 import urllib.request
-from typing import Any, Dict, List, Optional
-
+import json
+from typing import (
+    Any,
+    Dict,
+    List,
+    Optional,
+)
 import requests
 
+import kornia
 from kornia.config import kornia_config
 from kornia.core.external import onnx
 
-__all__ = ["ONNXLoader"]
+__all__ = ["ONNXLoader", "io_name_conversion", "add_metadata"]
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +33,7 @@ class ONNXLoader:
     def __init__(self, cache_dir: Optional[str] = None):
         self.cache_dir = cache_dir
 
-    def _get_file_path(self, model_name: str, cache_dir: Optional[str]) -> str:
+    def _get_file_path(self, model_name: str, cache_dir: Optional[str], suffix: str = ".onnx") -> str:
         """Constructs the file path for the ONNX model based on the model name and cache directory.
 
         Args:
@@ -43,12 +51,35 @@ class ONNXLoader:
                 cache_dir = kornia_config.hub_onnx_dir
 
         # The filename is the model name (without directory path)
-        if not model_name.endswith(".onnx"):
-            file_name = f"{os.path.split(model_name)[-1]}.onnx"
+        if not model_name.endswith(suffix):
+            file_name = f"{os.path.split(model_name)[-1]}{suffix}"
         else:
             file_name = os.path.split(model_name)[-1]
         file_path = os.path.join(*cache_dir.split(os.sep), *model_name.split(os.sep)[:-1], file_name)
         return file_path
+
+    def load_config(self, url: str, download: bool = True, **kwargs) -> dict[str, Any]:
+        """Loads JSON config from the specified URL.
+
+        Args:
+            url: The URL of the preprocessor config to load.
+            download: If True, the config will be downloaded if it's not already in the local cache.
+
+        Returns:
+            dict[str, Any]: The loaded preprocessor config.
+        """
+        if url.startswith(("http:", "https:")):
+            cache_dir = kwargs.get("cache_dir", None) or self.cache_dir
+            file_path = self._get_file_path(os.path.split(url)[-1], cache_dir, suffix=".json")
+            self.download(url, file_path, download_if_not_exists=download)
+            with open(file_path) as f:
+                json_data = json.load(f)
+                return json_data
+
+        if not download:
+            raise RuntimeError(f"File `{file_path}` not found. You may set `download=True`.")
+
+        raise RuntimeError(f"File `{file_path}` not found.")
 
     def load_model(self, model_name: str, download: bool = True, **kwargs) -> "onnx.ModelProto":  # type:ignore
         """Loads an ONNX model from the local cache or downloads it from Hugging Face if necessary.
@@ -64,30 +95,22 @@ class ONNXLoader:
         Returns:
             onnx.ModelProto: The loaded ONNX model.
         """
-        
-        def _download_if_not_exists(url: str, file_path: str) -> None:
-            if not os.path.exists(file_path):
-                # Construct the raw URL for the ONNX file
-                if download:
-                    self.download(url, file_path)
-                else:
-                    raise ValueError(f"`{model_name}` is not found in `{file_path}`. You may set `download=True`.")
-
         if model_name.startswith("hf://"):
             model_name = model_name[len("hf://") :]
-            cache_dir = kwargs.get(kornia_config.hub_onnx_dir, None) or self.cache_dir
+            cache_dir = kwargs.get("cache_dir", None) or self.cache_dir
             file_path = self._get_file_path(model_name, cache_dir)
             url = f"https://huggingface.co/kornia/ONNX_models/resolve/main/{model_name}.onnx"
-            _download_if_not_exists(url, file_path)
+            self.download(url, file_path, download_if_not_exists=download)
             return onnx.load(file_path)  # type:ignore
 
         elif model_name.startswith("http://") or model_name.startswith("https://"):
-            cache_dir = kwargs.get(kornia_config.hub_onnx_dir, None) or self.cache_dir
+            cache_dir = kwargs.get("cache_dir", None) or self.cache_dir
             file_path = self._get_file_path(os.path.split(model_name)[-1], cache_dir)
-            _download_if_not_exists(model_name, file_path)
+            self.download(model_name, file_path, download_if_not_exists=download)
             return onnx.load(file_path)  # type:ignore
 
         if os.path.exists(model_name):
+            assert False, type(onnx.load(model_name))
             return onnx.load(model_name)  # type:ignore
 
         raise ValueError(f"File {model_name} not found")
@@ -96,15 +119,20 @@ class ONNXLoader:
         self,
         url: str,
         file_path: str,
+        download_if_not_exists: bool = True,
     ) -> None:
         """Downloads an ONNX model from the specified URL and saves it to the specified file path.
 
         Args:
             url: The URL of the ONNX model to download.
             file_path: The local path where the downloaded model should be saved.
-            cache_dir: The directory to use for caching the file, defaults to the instance cache
-                directory if not provided.
+            download_if_not_exists: If True, the file will be downloaded if it's not already downloaded.
         """
+        if os.path.exists(file_path):
+            return
+        
+        if not download_if_not_exists:
+            raise ValueError(f"`{file_path}` not found. You may set `download=True`.")
 
         os.makedirs(os.path.dirname(file_path), exist_ok=True)  # Create the cache directory if it doesn't exist
 
@@ -152,3 +180,52 @@ class ONNXLoader:
         models = [file["path"] for file in repo_contents]
 
         pprint.pp(models)
+
+
+def io_name_conversion(
+    onnx_model: "onnx.ModelProto",  # type:ignore
+    io_name_mapping: dict[str, str]
+) -> "onnx.ModelProto":  # type:ignore
+    """Converts the input and output names of an ONNX model to 'input' and 'output'.
+    
+    Args:
+        onnx_model: The ONNX model to convert.
+        io_name_mapping: A dictionary mapping the original input and output names to the new ones.
+    """
+    # Convert I/O nodes
+    for i in range(len(onnx_model.graph.input)):
+        in_name = onnx_model.graph.input[i].name
+        if in_name in io_name_mapping:
+            onnx_model.graph.input[i].name = io_name_mapping[in_name]
+
+    for i in range(len(onnx_model.graph.output)):
+        out_name = onnx_model.graph.output[i].name
+        if out_name in io_name_mapping:
+            onnx_model.graph.output[i].name = io_name_mapping[out_name]
+    
+    # Convert intermediate nodes
+    for i in range(len(onnx_model.graph.node)):
+        for j in range(len(onnx_model.graph.node[i].input)):
+            if onnx_model.graph.node[i].input[j] in io_name_mapping:
+                onnx_model.graph.node[i].input[j] = io_name_mapping[in_name]
+
+    for j in range(len(onnx_model.graph.node[i].output)):
+        if onnx_model.graph.node[i].output[j] in io_name_mapping:
+            onnx_model.graph.node[i].output[j] = io_name_mapping[out_name]
+
+    return onnx_model
+
+
+def add_metadata(
+    onnx_model: "onnx.ModelProto",  # type: ignore
+    additional_metadata: List[tuple[str, str]] = None
+) -> "onnx.ModelProto":  # type: ignore
+    for key, value in [
+        ("source", "kornia"),
+        ("version", kornia.__version__),
+        *additional_metadata,
+    ]:
+        metadata_props = onnx_model.metadata_props.add()
+        metadata_props.key = key
+        metadata_props.value = str(value)
+    return onnx_model

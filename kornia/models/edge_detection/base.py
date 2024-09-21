@@ -1,8 +1,9 @@
-from typing import Optional, Union
+from typing import Any, Optional, Union, List, Tuple
 
 from kornia.color.gray import grayscale_to_rgb
 from kornia.core import Tensor
 from kornia.core.external import PILImage as Image
+from kornia.core.external import onnx
 from kornia.models.base import ModelBase
 
 __all__ = ["EdgeDetector"]
@@ -71,3 +72,42 @@ class EdgeDetector(ModelBase):
         outputs = self.visualize(images, edge_maps, output_type)
         self._save_outputs(images, directory, suffix="_src")
         self._save_outputs(outputs, directory, suffix="_edge")
+
+    def to_onnx(
+        self,
+        onnx_name: Optional[str] = None,
+        image_size: Optional[int] = 352,
+        include_pre_and_post_processor: bool = True,
+        save: bool = True,
+        additional_metadata: List[Tuple[str, str]] = [],
+        **kwargs: Any
+    ) -> "onnx.ModelProto":  # type: ignore
+        """Exports the current edge detection model to an ONNX model file.
+
+        Args:
+            onnx_name:
+                The name of the output ONNX file. If not provided, a default name in the
+                format "Kornia-<ClassName>.onnx" will be used.
+            image_size:
+                The size to which input images will be resized during preprocessing.
+                If None, image_size will be dynamic. For DexiNed, recommended scale is 352.
+            include_pre_and_post_processor:
+                Whether to include the pre-processor and post-processor in the exported model.
+            save:
+                If to save the model or load it.
+            additional_metadata:
+                Additional metadata to add to the ONNX model.
+        """
+        if onnx_name is None:
+            onnx_name = f"kornia_{self.name}_{image_size}.onnx"
+
+        return super().to_onnx(
+            onnx_name,
+            input_shape=(-1, 3, image_size or -1, image_size or -1),
+            output_shape=(-1, 1, image_size or -1, image_size or -1),
+            pseudo_shape=(1, 3, image_size or 352, image_size or 352),
+            model=self if include_pre_and_post_processor else self.model,
+            save=save,
+            additional_metadata=additional_metadata,
+            **kwargs
+        )
