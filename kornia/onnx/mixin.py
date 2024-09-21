@@ -5,7 +5,6 @@ from typing import (
     Any,
     Optional,
     Union,
-    list,
 )
 
 from kornia.core.external import numpy as np

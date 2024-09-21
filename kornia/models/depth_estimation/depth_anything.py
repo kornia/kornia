@@ -1,6 +1,6 @@
 from typing import Optional
 
-from .._hf_models import HFONNXComunnityModelLoader
+from kornia.models._hf_models import HFONNXComunnityModelLoader
 from .base import DepthEstimation
 
 

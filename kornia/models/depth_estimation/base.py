@@ -6,7 +6,7 @@ from kornia.color.gray import grayscale_to_rgb
 from kornia.core import Tensor, tensor
 from kornia.core.external import PILImage as Image
 
-from .._hf_models.hf_onnx_community import HFONNXComunnityModel
+from kornia.models._hf_models import HFONNXComunnityModel
 
 
 class DepthEstimation(HFONNXComunnityModel):
