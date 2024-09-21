@@ -268,7 +268,4 @@ intersphinx_mapping = {
 }
 
 # mock these modules and won't try to actually import them
-autodoc_mock_imports = [
-    "boxmot", 
-    "segmentation_models_pytorch"
-]
+autodoc_mock_imports = ["boxmot", "segmentation_models_pytorch"]
