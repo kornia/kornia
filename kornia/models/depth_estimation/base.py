@@ -12,7 +12,7 @@ from .._hf_models.hf_onnx_community import HFONNXComunnityModel
 class DepthEstimation(HFONNXComunnityModel):
     name: str = "depth_estimation"
 
-    def __call__(self, images: Tensor) -> Tensor:
+    def __call__(self, images: Union[Tensor, list[Tensor]]) -> Union[Tensor, list[Tensor]]:  # type: ignore[override]
         """Detect objects in a given list of images.
 
         Args:
@@ -23,6 +23,12 @@ class DepthEstimation(HFONNXComunnityModel):
             list of detections found in each image. For item in a batch, shape is :math:`(D, 6)`, where :math:`D` is the
             number of detections in the given image, :math:`6` represents class id, score, and `xywh` bounding box.
         """
+        if isinstance(images, (list, tuple,)):
+            results = [super().__call__(image.cpu().numpy()) for image in images]
+            results = [self.resize_back(
+                tensor(result, device=image.device, dtype=image.dtype), image) for result, image in zip(results, images)]
+            return results
+
         results = super().__call__(images.cpu().numpy())
         results = tensor(results, device=images.device, dtype=images.dtype)
         return self.resize_back(results, images)

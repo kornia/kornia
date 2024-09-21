@@ -1,3 +1,4 @@
+import os
 import importlib
 import logging
 import subprocess
@@ -43,6 +44,10 @@ class LazyLoader:
         This method is called internally when an attribute of the module is accessed for the first time. It attempts to
         import the module and raises an ImportError with a custom message if the module is not installed.
         """
+        if os.getenv('SPHINX_BUILD') == '1':
+            logger.info(f"Sphinx detected, skipping loading of '{self.module_name}'")
+            return
+
         if self.module is None:
             try:
                 self.module = importlib.import_module(self.module_name)
@@ -106,6 +111,10 @@ class LazyLoader:
         return dir(self.module)
 
 
+# NOTE: This section is used for lazy loading of external modules. However, sphinx
+#       would also try to support lazy loading of external modules. To avoid that, we
+#       may set the module name to `autodoc_mock_imports` in conf.py to avoid undesired
+#       installation of external modules.
 numpy = LazyLoader("numpy")
 PILImage = LazyLoader("PIL.Image")
 diffusers = LazyLoader("diffusers")

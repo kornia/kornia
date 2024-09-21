@@ -4,7 +4,7 @@ from .._hf_models import HFONNXComunnityModelLoader
 from .base import DepthEstimation
 
 
-class DepthAnythingBuilder:
+class DepthAnythingONNXBuilder:
     @staticmethod
     def build(
         model_name: str = "depth-anything-v2-small", model_type: str = "model", cache_dir: Optional[str] = None

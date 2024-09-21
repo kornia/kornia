@@ -95,46 +95,6 @@ Here's how you can quickly get started with `ONNXSequential`:
       # Run inference
       outputs = onnx_seq(input_data)
 
-
-Asynchronous Execution
-----------------------
-Meanwhile, we offer `ONNXSequentialAsync` pipeline to process multiple ONNX models in an asynchronous manner. Different from `ONNXSequential` that combines different graphs into one single static graph, this `ONNXSequentialAsync` can execute those multiple ONNX models asynchronously, achieving a higher level of parallism.
-
-.. code-block:: python
-
-    import torch
-
-    # Initialize the pipeline
-    pipeline = ONNXSequentialAsync(
-        "hf://operators/kornia.geometry.transform.flips.Hflip",
-        "hf://models/kornia.models.detection.rtdetr_r18vd_640x640",
-        providers=['CPUExecutionProvider']
-    )
-
-    # Prepare a list to hold asynchronous tasks
-    tasks = []
-    totalsize, batchsize = 10, 3
-
-    # Enqueue multiple inputs for processing
-    for i in range(totalsize):
-        # Example input data: random numpy arrays matching the first stage's input shape
-        input_data = torch.rand(1, 3, 640, 640).numpy()
-        task = asyncio.create_task(pipeline.pipeline(input_data))
-        tasks.append(task)
-        print(f"Enqueued input {i + 1}")
-
-    # Wait for all tasks to complete in a batch of 3
-    for i in range(totalsize // batchsize):
-        print(f"Batch {i} completed")
-        # Await all tasks and collect results
-        results = await asyncio.gather(*tasks[i * batchsize : (i + 1) * batchsize])
-        # Process the results
-        for idx, output in enumerate(results):
-            print(f"Output for input {idx+1}: {output[0].shape}")
-
-    # Stop the pipeline after processing
-    await pipeline.stop()
-
 Frequently Asked Questions (FAQ)
 --------------------------------
 
@@ -169,9 +129,6 @@ API Documentation
     :members:
 
 .. autoclass:: kornia.onnx.sequential.ONNXSequential
-    :members:
-
-.. autoclass:: kornia.onnx.sequential_async.ONNXSequentialAsync
     :members:
 
 .. autoclass:: kornia.onnx.utils.ONNXLoader

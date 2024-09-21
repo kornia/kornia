@@ -73,7 +73,7 @@ class EdgeDetector(ModelBase):
         self._save_outputs(images, directory, suffix="_src")
         self._save_outputs(outputs, directory, suffix="_edge")
 
-    def to_onnx(
+    def to_onnx(  # type: ignore[override]
         self,
         onnx_name: Optional[str] = None,
         image_size: Optional[int] = 352,

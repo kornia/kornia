@@ -152,14 +152,13 @@ class ObjectDetector(ModelBase):
         outputs = self.visualize(images, detections)
         self._save_outputs(outputs, directory)
 
-    def to_onnx(
+    def to_onnx(  # type: ignore[override]
         self,
         onnx_name: Optional[str] = None,
         image_size: Optional[int] = 640,
         include_pre_and_post_processor: bool = True,
         save: bool = True,
         additional_metadata: list[tuple[str, str]] = [],
-        *args: Any,  # To silent mypy
         **kwargs: Any,
     ) -> onnx.ModelProto:  # type: ignore
         """Exports an RT-DETR object detection model to ONNX format.
@@ -187,7 +186,6 @@ class ObjectDetector(ModelBase):
 
         return super().to_onnx(
             onnx_name,
-            *args,
             input_shape=[-1, 3, image_size or -1, image_size or -1],
             output_shape=[-1, -1, 6],
             pseudo_shape=[1, 3, image_size or 352, image_size or 352],

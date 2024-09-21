@@ -23,7 +23,7 @@ class PreprocessingLoader:
 
     @staticmethod
     def get_json_from_url(url: str) -> dict[str, Any]:
-        req = requests.get(url, headers={"Accept": "application/json"})
+        req = requests.get(url, headers={"Accept": "application/json"},  timeout=30)
         return req.json()
 
     @staticmethod

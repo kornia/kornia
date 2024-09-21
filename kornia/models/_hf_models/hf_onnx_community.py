@@ -1,3 +1,4 @@
+import ast
 import os
 from typing import Any, Optional
 
@@ -6,7 +7,7 @@ from kornia.core import ImageSequential, Tensor
 from kornia.core.external import onnx
 from kornia.geometry.transform import resize
 from kornia.models.base import ModelBaseMixin
-from kornia.onnx import ONNXSequential, add_metadata, load
+from kornia.onnx import ONNXSequential, load
 from kornia.onnx.utils import ONNXLoader, io_name_conversion
 
 from .preprocessor import PreprocessingLoader
@@ -28,7 +29,7 @@ class HFONNXComunnityModelLoader:
 
         if cache_dir is None:
             cache_dir = kornia_config.hub_onnx_dir
-        self.loader = ONNXLoader(cache_dir=os.path.join(cache_dir, self.model_name))
+        self.cache_dir = os.path.join(cache_dir, self.model_name)
         self.model_url = (
             f"https://huggingface.co/onnx-community/{self.model_name}/resolve/main/onnx/{self.model_type}.onnx"
         )
@@ -39,8 +40,8 @@ class HFONNXComunnityModelLoader:
     def load_model(
         self, download: bool = True, io_name_mapping: Optional[dict[str, str]] = None, **kwargs: Any
     ) -> "onnx.ModelProto":  # type:ignore
-        onnx_model = self.loader.load_model(self.model_url, download=download, **kwargs)
-        json_req = self.loader.load_config(self.config_url)
+        onnx_model = ONNXLoader.load_model(self.model_url, download=download, cache_dir=self.cache_dir, **kwargs)
+        json_req = ONNXLoader.load_config(self.config_url, cache_dir=self.cache_dir)
 
         onnx_model = self._add_metadata(
             onnx_model, {"input_size": (json_req["size"]["height"], json_req["size"]["width"])}
@@ -107,23 +108,17 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
     def to_onnx(
         self,
         onnx_name: Optional[str] = None,
-        image_size: Optional[int] = None,
         include_pre_and_post_processor: bool = True,
         save: bool = True,
         additional_metadata: list[tuple[str, str]] = [],
         **kwargs: Any,
-    ) -> ONNXSequential:
+    ) -> "onnx.ModelProto":  # type:ignore
         """Exports a depth estimation model to ONNX format.
 
         Args:
             onnx_name:
                 The name of the output ONNX file. If not provided, a default name in the
                 format "Kornia-<ClassName>.onnx" will be used.
-            image_size:
-                The size to which input images will be resized during preprocessing.
-                If None, image_size will be dynamic.
-                If None and `include_pre_and_post_processor=False`, image_size will be
-                infered from the model metadata.
             include_pre_and_post_processor:
                 Whether to include the pre-processor and post-processor in the exported model.
             save:
@@ -134,20 +129,13 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
         if onnx_name is None:
             onnx_name = f"kornia_{self.name}.onnx"
 
-        if image_size is None:
-            if not include_pre_and_post_processor:
-                for prop in self.model.metadata_props:
-                    if prop.key == "input_size":
-                        image_size: tuple[int, int] = eval(prop.value)
-                        break
-
-        if include_pre_and_post_processor:
-            add_metadata(self.model, additional_metadata)
+        if not include_pre_and_post_processor:
+            self._add_metadata(self.model, additional_metadata)
             if save:
-                onnx.save(self.model, onnx_name, **kwargs)
-            return load(self.model)
+                self._export(self.model, onnx_name, **kwargs)
+            return self.model
 
+        self._add_metadata(self._combined_op, additional_metadata)
         if save:
-            self.add_metadata(additional_metadata)
-            self.export(onnx_name, **kwargs)
-        return self
+            self._export(self._combined_op, onnx_name, **kwargs)
+        return self._combined_op

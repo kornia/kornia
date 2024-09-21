@@ -4,6 +4,8 @@ import os
 import sys
 from datetime import datetime, timezone
 
+os.environ['SPHINX_BUILD'] = '1'
+
 # readthedocs generated the whole documentation in an isolated environment
 # by cloning the git repo. Thus, any on-the-fly operation will not effect
 # on the resulting documentation. We therefore need to import and run the

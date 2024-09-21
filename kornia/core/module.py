@@ -98,14 +98,14 @@ class ONNXExportMixin:
         dummy_input = self._create_dummy_input(input_shape, pseudo_shape)
         dynamic_axes = self._create_dynamic_axes(input_shape, output_shape)
 
-        default_args: dict[str, Any] = dict(
-            export_params=True,
-            opset_version=17,
-            do_constant_folding=True,
-            input_names=["input"],
-            output_names=["output"],
-            dynamic_axes=dynamic_axes,
-        )
+        default_args: dict[str, Any] = {
+            "export_params": True,
+            "opset_version": 17,
+            "do_constant_folding": True,
+            "input_names": ["input"],
+            "output_names": ["output"],
+            "dynamic_axes": dynamic_axes,
+        }
         default_args.update(kwargs)
 
         onnx_buffer = io.BytesIO()

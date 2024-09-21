@@ -3,11 +3,13 @@ from __future__ import annotations
 import io
 from typing import (
     Any,
-    List,
+    list,
     Optional,
+    Union,
 )
 
 from kornia.core.external import onnx
+from kornia.core.external import numpy as np
 from kornia.core.external import onnxruntime as ort
 from kornia.onnx.utils import add_metadata
 
@@ -18,7 +20,7 @@ class ONNXRuntimeMixin:
     def create_session(
         self,
         op: onnx.ModelProto,  # type:ignore
-        providers: Optional[List[str]] = None,
+        providers: Optional[list[str]] = None,
         session_options: Optional[ort.SessionOptions] = None,  # type:ignore
     ) -> ort.InferenceSession:  # type:ignore
         """Create an optimized ONNXRuntime InferenceSession for the combined model.
@@ -104,14 +106,14 @@ class ONNXRuntimeMixin:
             ["OpenVINOExecutionProvider"], provider_options=[{"device_type": device_type, **kwargs}]
         )
 
-    def __call__(self, *inputs: np.ndarray) -> List[np.ndarray]:  # type:ignore
+    def __call__(self, *inputs: np.ndarray) -> list[np.ndarray]:  # type:ignore
         """Perform inference using the combined ONNX model.
 
         Args:
             *inputs: Inputs to the ONNX model. The number of inputs must match the expected inputs of the session.
 
         Returns:
-            List: The outputs from the ONNX model inference.
+            list: The outputs from the ONNX model inference.
         """
         ort_inputs = self._session.get_inputs()
         ort_input_values = {ort_inputs[i].name: inputs[i] for i in range(len(ort_inputs))}
@@ -144,7 +146,7 @@ class ONNXMixin:
         self,
         *args: Union[onnx.ModelProto, str],  # type:ignore
         cache_dir: Optional[str] = None,
-    ) -> List[onnx.ModelProto]:  # type:ignore
+    ) -> list[onnx.ModelProto]:  # type:ignore
         """Loads multiple ONNX models or operators and returns them as a list.
 
         Args:
@@ -153,7 +155,7 @@ class ONNXMixin:
                 https://huggingface.co/kornia/ONNX_models. Or a URL to the ONNX model.
 
         Returns:
-            List[onnx.ModelProto]: The loaded ONNX models as a list of ONNX graphs.
+            list[onnx.ModelProto]: The loaded ONNX models as a list of ONNX graphs.
         """
         op_list = []
         for arg in args:
@@ -177,7 +179,7 @@ class ONNXMixin:
     def _add_metadata(
         self,
         op: onnx.ModelProto,  # type:ignore
-        additional_metadata: List[tuple[str, str]] = [],
+        additional_metadata: list[tuple[str, str]] = [],
     ) -> onnx.ModelProto:  # type:ignore
         """Add metadata to the combined ONNX model.
 

@@ -101,7 +101,7 @@ class ONNXLoader:
             return onnx.load(file_path)  # type:ignore
 
         elif os.path.exists(model_name):
-            return onnx.load(model_name)
+            return onnx.load(model_name)  # type:ignore
 
         raise ValueError(f"File {model_name} not found")
 

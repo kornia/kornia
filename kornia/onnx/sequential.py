@@ -1,7 +1,7 @@
-import asyncio
 from typing import Any, List, Optional, Tuple, Union
 
 from kornia.config import kornia_config
+from kornia.core.external import numpy as np
 from kornia.core.external import onnx
 from kornia.core.external import onnxruntime as ort
 
@@ -117,33 +117,3 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
 
     def add_metadata(self, additional_metadata: List[Tuple[str]] = []) -> "onnx.ModelProto":  # type:ignore
         return super()._add_metadata(self._combined_op, additional_metadata)
-
-    async def run(self, *inputs: "np.ndarray") -> List["np.ndarray"]:  # type:ignore
-        """Perform inference asynchronously using the ONNX model.
-
-        Args:
-            *inputs: Inputs to the ONNX model. The number of inputs must match the
-                expected inputs of the session.
-
-        Returns:
-            List: The outputs from the ONNX model inference.
-        """
-        loop = asyncio.get_event_loop()
-        ort_inputs = self._session.get_inputs()
-        ort_input_values = {ort_inputs[i].name: inputs[i] for i in range(len(ort_inputs))}
-        outputs = await loop.run_in_executor(None, self._session.run, None, ort_input_values)
-
-        # NOTE: important to make sure the pipeline runs well.
-        if (
-            isinstance(
-                outputs,
-                (
-                    tuple,
-                    list,
-                ),
-            )
-            and len(outputs) == 1
-        ):
-            return outputs[0]
-        else:
-            return outputs  # Adjust as necessary for multiple outputs

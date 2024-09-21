@@ -1,5 +1,5 @@
-import asyncio
-from typing import Any, List, Optional, Tuple, Union
+from __future__ import annotations
+from typing import Any, Optional, Union
 
 from kornia.config import kornia_config
 from kornia.core.external import onnx
@@ -29,7 +29,7 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
     def __init__(
         self,
         op: Union["onnx.ModelProto", str],  # type:ignore
-        providers: Optional[List[str]] = None,
+        providers: Optional[list[str]] = None,
         session_options: Optional["ort.SessionOptions"] = None,  # type:ignore
         cache_dir: Optional[str] = None,
         target_ir_version: Optional[int] = None,
@@ -45,37 +45,8 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
     def export(self, file_path: str, **kwargs: Any) -> None:
         return super()._export(self.op, file_path, **kwargs)
 
-    def add_metadata(self, additional_metadata: List[Tuple[str]] = []) -> "onnx.ModelProto":  # type:ignore
+    def add_metadata(self, additional_metadata: list[tuple[str, str]] = []) -> "onnx.ModelProto":  # type:ignore
         return super()._add_metadata(self.op, additional_metadata)
-
-    async def run(self, *inputs: "np.ndarray") -> List["np.ndarray"]:  # type:ignore
-        """Perform inference asynchronously using the ONNX model.
-
-        Args:
-            *inputs: Inputs to the ONNX model. The number of inputs must match the expected inputs of the session.
-
-        Returns:
-            List: The outputs from the ONNX model inference.
-        """
-        loop = asyncio.get_event_loop()
-        ort_inputs = self._session.get_inputs()
-        ort_input_values = {ort_inputs[i].name: inputs[i] for i in range(len(ort_inputs))}
-        outputs = await loop.run_in_executor(None, self._session.run, None, ort_input_values)
-
-        # NOTE: important to make sure the pipeline runs well.
-        if (
-            isinstance(
-                outputs,
-                (
-                    tuple,
-                    list,
-                ),
-            )
-            and len(outputs) == 1
-        ):
-            return outputs[0]
-        else:
-            return outputs  # Adjust as necessary for multiple outputs
 
 
 def load(model_name: str) -> "ONNXModule":
