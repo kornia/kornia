@@ -5,7 +5,6 @@ from typing import Optional, Union
 from kornia.color.gray import grayscale_to_rgb
 from kornia.core import Tensor, tensor
 from kornia.core.external import PILImage as Image
-
 from kornia.models._hf_models import HFONNXComunnityModel
 
 
