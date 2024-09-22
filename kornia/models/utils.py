@@ -7,7 +7,7 @@ from torch import Tensor
 from kornia.core import Module, concatenate
 from kornia.geometry.transform import resize
 
-__all__ = ["ResizePreProcessor", "ResizePostProcessor", "InputConverter", "OutputConverter"]
+__all__ = ["ResizePreProcessor", "ResizePostProcessor", "OutputRangePostProcessor"]
 
 
 class ResizePreProcessor(Module):
