@@ -2,7 +2,6 @@ import warnings
 from typing import Optional
 
 import torch
-from torch import nn
 
 from kornia.contrib.models.rt_detr import DETRPostProcessor
 from kornia.contrib.models.rt_detr.model import RTDETR, RTDETRConfig

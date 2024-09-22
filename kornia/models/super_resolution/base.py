@@ -1,4 +1,5 @@
 from typing import Any, List, Optional, Tuple, Union
+
 import torch
 
 from kornia.core import Tensor
@@ -10,8 +11,7 @@ __all__ = ["SuperResolution"]
 
 
 class SuperResolution(ModelBase):
-    """SuperResolution is a module that wraps an super resolution model.
-    """
+    """SuperResolution is a module that wraps an super resolution model."""
 
     name: str = "super_resolution"
     input_image_size: Optional[int]
@@ -30,7 +30,13 @@ class SuperResolution(ModelBase):
             output tensor.
         """
         output = self.pre_processor(images)
-        if isinstance(output, (list, tuple,)):
+        if isinstance(
+            output,
+            (
+                list,
+                tuple,
+            ),
+        ):
             images = output[0]
         else:
             images = output

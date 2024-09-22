@@ -1,5 +1,3 @@
-from typing import Optional
-
 from torch import nn
 
 from kornia.core import tensor

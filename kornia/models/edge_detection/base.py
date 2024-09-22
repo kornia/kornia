@@ -1,4 +1,5 @@
 from typing import Any, List, Optional, Tuple, Union
+
 import torch
 
 from kornia.color.gray import grayscale_to_rgb
