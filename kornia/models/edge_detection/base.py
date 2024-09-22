@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from typing import Any, List, Optional, Tuple, Union
 
 import torch
@@ -83,7 +84,7 @@ class EdgeDetector(ModelBase):
         save: bool = True,
         additional_metadata: List[Tuple[str, str]] = [],
         **kwargs: Any,
-    ) -> "onnx.ModelProto":  # type: ignore
+    ) -> onnx.ModelProto:  # type: ignore
         """Exports the current edge detection model to an ONNX model file.
 
         Args:
