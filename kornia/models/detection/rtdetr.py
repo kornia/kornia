@@ -72,6 +72,7 @@ class RTDETRDetectorBuilder:
         else:
             warnings.warn("No `model_name` or `config` found. Will build pretrained `rtdetr_r18vd`.")
             model = RTDETR.from_pretrained("rtdetr_r18vd")
+            image_size = RTDETRConfig.from_name("rtdetr_r18vd").input_size
 
         if confidence_threshold is None:
             confidence_threshold = config.confidence_threshold if config is not None else 0.3

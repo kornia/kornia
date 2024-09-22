@@ -20,19 +20,19 @@ class RRDBNetBuilder:
     @staticmethod
     def build(model_name: str = "RealESRNet_x4plus", pretrained: bool = True) -> SuperResolution:
         if model_name == "RealESRGAN_x4plus":
-            model = basicsr.archs.rrdbnet_arch.RRDBNet(
+            model = basicsr.archs.rrdbnet_arch.RRDBNet(  # type: ignore
                 num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4
             )
         elif model_name == "RealESRNet_x4plus":
-            model = basicsr.archs.rrdbnet_arch.RRDBNet(
+            model = basicsr.archs.rrdbnet_arch.RRDBNet(  # type: ignore
                 num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4
             )
         elif model_name == "RealESRGAN_x4plus_anime_6B":
-            model = basicsr.archs.rrdbnet_arch.RRDBNet(
+            model = basicsr.archs.rrdbnet_arch.RRDBNet(  # type: ignore
                 num_in_ch=3, num_out_ch=3, num_feat=64, num_block=6, num_grow_ch=32, scale=4
             )
         elif model_name == "RealESRGAN_x2plus":
-            model = basicsr.archs.rrdbnet_arch.RRDBNet(
+            model = basicsr.archs.rrdbnet_arch.RRDBNet(  # type: ignore
                 num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=2
             )
         else:
@@ -47,8 +47,7 @@ class RRDBNetBuilder:
             model_path = CachedDownloader.download_to_cache(
                 url, model_name, download=True, suffix=".pth", cache_dir=kornia_config.hub_onnx_dir
             )
-
-        model.load_state_dict(torch.load(model_path, map_location=torch.device("cpu"))["params_ema"], strict=True)
+            model.load_state_dict(torch.load(model_path, map_location=torch.device("cpu"))["params_ema"], strict=True)
         model.eval()
 
         return SuperResolution(
