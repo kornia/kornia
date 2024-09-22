@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import Any, Optional, Union
 
-from kornia.config import kornia_config
 from kornia.core.external import onnx
 from kornia.core.external import onnxruntime as ort
+from kornia.config import kornia_config
 
 from .mixin import ONNXMixin, ONNXRuntimeMixin
 

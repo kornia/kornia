@@ -11,17 +11,16 @@ __all__ = ["EdgeDetector"]
 
 class EdgeDetector(ModelBase):
     """EdgeDetector is a module that wraps an edge detection model.
-
-    This module uses EdgeDetectionModel library for edge detection.
     """
 
     name: str = "edge_detection"
 
     def forward(self, images: Union[Tensor, list[Tensor]]) -> Union[Tensor, list[Tensor]]:
-        """Forward pass of the semantic segmentation model.
+        """Forward pass of the edge detection model.
 
         Args:
-            images: input tensor.
+            images: If list of RGB images. Each image is a Tensor with shape :math:`(3, H, W)`.
+                If Tensor, a Tensor with shape :math:`(B, 3, H, W)`.
 
         Returns:
             output tensor.
@@ -36,7 +35,7 @@ class EdgeDetector(ModelBase):
         edge_maps: Optional[Union[Tensor, list[Tensor]]] = None,
         output_type: str = "torch",
     ) -> Union[Tensor, list[Tensor], list[Image.Image]]:  # type: ignore
-        """Draw the segmentation results.
+        """Draw the edge detection results.
 
         Args:
             images: input tensor.
@@ -60,7 +59,7 @@ class EdgeDetector(ModelBase):
         directory: Optional[str] = None,
         output_type: str = "torch",
     ) -> None:
-        """Save the segmentation results.
+        """Save the edge detection results.
 
         Args:
             images: input tensor.

@@ -22,18 +22,6 @@ class PreprocessingLoader:
         return Resize((height, width))
 
     @staticmethod
-    def get_json_from_url(url: str) -> dict[str, Any]:
-        req = requests.get(url, headers={"Accept": "application/json"}, timeout=30)
-        return req.json()
-
-    @staticmethod
-    def from_url(url: str) -> "PreprocessingLoader":
-        req = PreprocessingLoader.get_json_from_url(url)
-        if req["image_processor_type"] == "DPTImageProcessor":
-            return DPTImageProcessor.from_json(req)
-        raise RuntimeError(f"Unsupported image processor type: {req['image_processor_type']}")
-
-    @staticmethod
     def from_json(req: dict[str, Any]) -> ImageSequential:
         if req["image_processor_type"] == "DPTImageProcessor":
             return DPTImageProcessor.from_json(req)
@@ -56,7 +44,7 @@ class DPTImageProcessor(PreprocessingLoader):
         if json_data["do_normalize"]:
             preproc_list.append(
                 PreprocessingLoader.normalize(
-                    mean=tensor([json_data["image_mean"]]) / 255, std=tensor([json_data["image_std"]]) / 255
+                    mean=tensor([json_data["image_mean"]]), std=tensor([json_data["image_std"]])
                 )
             )
         return ImageSequential(*preproc_list)

@@ -14,9 +14,9 @@ class DexiNedBuilder:
 
     .. code-block:: python
 
-        image = kornia.utils.sample.get_sample_images()[0][None]
+        images = kornia.utils.sample.get_sample_images()
         model = DexiNedBuilder.build()
-        model.save(image)
+        model.save(images)
     """
 
     @staticmethod

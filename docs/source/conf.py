@@ -3,8 +3,10 @@ import inspect
 import os
 import sys
 from datetime import datetime, timezone
+import builtins
 
-os.environ["SPHINX_BUILD"] = "1"
+# To add an evnironment variable
+builtins.__sphinx_build__ = True
 
 # readthedocs generated the whole documentation in an isolated environment
 # by cloning the git repo. Thus, any on-the-fly operation will not effect

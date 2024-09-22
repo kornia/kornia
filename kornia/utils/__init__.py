@@ -1,4 +1,5 @@
 from ._compat import torch_meshgrid
+from .download import CachedDownloader
 from .draw import draw_convex_polygon, draw_line, draw_point2d, draw_rectangle
 from .grid import create_meshgrid, create_meshgrid3d
 from .helpers import (
@@ -64,4 +65,5 @@ __all__ = [
     "dataclass_to_dict",
     "dict_to_dataclass",
     "get_sample_images",
+    "CachedDownloader",
 ]

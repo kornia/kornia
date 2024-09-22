@@ -22,6 +22,7 @@ class ModelBaseMixin:
         if output_type == "torch":
             if is_batch:
                 return stack(output)
+            return output
         elif output_type == "pil":
             return [Image.fromarray((tensor_to_image(out_img) * 255).astype(np.uint8)) for out_img in output]  # type: ignore
 

@@ -31,6 +31,13 @@ class DepthAnythingONNXBuilder:
 
         Returns:
             str: The name of the output ONNX file.
+
+        .. code-block:: python
+
+            images = kornia.utils.sample.get_sample_images()
+            model = DepthAnythingONNXBuilder.build()
+            model.save(images)
+
         """
         if model_name not in [
             "depth-anything-v2-small",

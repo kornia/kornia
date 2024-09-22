@@ -114,5 +114,5 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
     def export(self, file_path: str, **kwargs: Any) -> None:
         return super()._export(self._combined_op, file_path, **kwargs)
 
-    def add_metadata(self, additional_metadata: List[Tuple[str]] = []) -> "onnx.ModelProto":  # type:ignore
+    def add_metadata(self, additional_metadata: List[Tuple[str, str]] = []) -> "onnx.ModelProto":  # type:ignore
         return super()._add_metadata(self._combined_op, additional_metadata)

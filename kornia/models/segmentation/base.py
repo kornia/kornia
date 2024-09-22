@@ -15,7 +15,8 @@ class SemanticSegmentation(ModelBase):
         """Forward pass of the semantic segmentation model.
 
         Args:
-            x: input tensor.
+            images: If list of RGB images. Each image is a Tensor with shape :math:`(3, H, W)`.
+                If Tensor, a Tensor with shape :math:`(B, 3, H, W)`.
 
         Returns:
             output tensor.

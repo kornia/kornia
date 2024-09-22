@@ -49,8 +49,8 @@ def get_sample_images(
               Defaults to a pre-defined constant `IMAGE_URLS` if not provided.
         resize: Optional target size for resizing all images as a tuple (height, width).
             If not provided, the images will not be resized, and their original sizes will be retained.
-        download (bool): Whether to download the images if they are not already cached. Defaults to True.
-        cache_dir (Optional[str]): The directory where the downloaded images will be cached.
+        download: Whether to download the images if they are not already cached. Defaults to True.
+        cache_dir: The directory where the downloaded images will be cached.
             Defaults to ".kornia_hub/images".
 
     Returns:
@@ -82,5 +82,5 @@ def get_sample_images(
 
     if resize is not None:
         return stack(tensors)
-    else:
-        return tensors
+
+    return tensors

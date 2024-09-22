@@ -4,10 +4,10 @@ from typing import ClassVar, Optional
 
 import torch
 
-from kornia.color.rgb import bgr_to_rgb
 from kornia.core import ImageModule as Module
 from kornia.core import Tensor, concatenate
 from kornia.core.check import KORNIA_CHECK_IS_TENSOR
+from kornia.color.rgb import bgr_to_rgb
 
 
 def grayscale_to_rgb(image: Tensor) -> Tensor:

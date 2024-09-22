@@ -54,7 +54,7 @@ class HFONNXComunnityModelLoader:
     def load_preprocessing(
         self,
     ) -> ImageSequential:
-        json_req = self.loader.load_config(self.config_url)
+        json_req = ONNXLoader.load_config(self.config_url)
         return PreprocessingLoader.from_json(json_req)
 
     def _add_metadata(
@@ -84,7 +84,7 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
         if post_processor is not None:
             model_list.append(post_processor)
         super().__init__(*model_list)
-        if self.name is not None:
+        if name is not None:
             self.name = name
         self.model = model
         self.pre_processor = pre_processor

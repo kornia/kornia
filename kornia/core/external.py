@@ -1,6 +1,5 @@
 import importlib
 import logging
-import os
 import subprocess
 import sys
 from types import ModuleType
@@ -44,9 +43,12 @@ class LazyLoader:
         This method is called internally when an attribute of the module is accessed for the first time. It attempts to
         import the module and raises an ImportError with a custom message if the module is not installed.
         """
-        if os.getenv("SPHINX_BUILD") == "1":
-            logger.info(f"Sphinx detected, skipping loading of '{self.module_name}'")
-            return
+        try:
+            if __sphinx_build__:  # type:ignore
+                logger.info(f"Sphinx detected, skipping loading of '{self.module_name}'")
+                return
+        except NameError:
+            pass
 
         if self.module is None:
             try:
@@ -82,6 +84,7 @@ class LazyLoader:
                         f"Optional dependency '{self.module_name}' is not installed. "
                         f"Please install it to use this functionality."
                     ) from e
+                self.module = importlib.import_module(self.module_name)
 
     def __getattr__(self, item: str) -> object:
         """Loads the module (if not already loaded) and returns the requested attribute.
@@ -122,3 +125,5 @@ onnx = LazyLoader("onnx")
 onnxruntime = LazyLoader("onnxruntime")
 boxmot = LazyLoader("boxmot")
 segmentation_models_pytorch = LazyLoader("segmentation_models_pytorch")
+basicsr = LazyLoader("basicsr")
+realesrgan = LazyLoader("realesrgan")

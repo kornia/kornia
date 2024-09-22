@@ -29,28 +29,32 @@ class DepthEstimation(HFONNXComunnityModel):
                 tuple,
             ),
         ):
-            results = [super().__call__(image.cpu().numpy()) for image in images]
+            results = [super(DepthEstimation, self).__call__(image[None].cpu().numpy())[0] for image in images]
             results = [
                 self.resize_back(tensor(result, device=image.device, dtype=image.dtype), image)
                 for result, image in zip(results, images)
             ]
             return results
 
-        results = super().__call__(images.cpu().numpy())
-        results = tensor(results, device=images.device, dtype=images.dtype)
-        return self.resize_back(results, images)
+        result = super().__call__(images.cpu().numpy())[0]
+        result = tensor(result, device=images.device, dtype=images.dtype)
+        return self.resize_back(result, images)
 
     def visualize(
         self,
         images: Tensor,
         depth_maps: Optional[Union[Tensor, list[Tensor]]] = None,
         output_type: str = "torch",
+        depth_type: str = "relative",
+        max_depth: int = 80,
     ) -> Union[Tensor, list[Tensor], list[Image.Image]]:  # type: ignore
         """Draw the segmentation results.
 
         Args:
             images: input tensor.
             output_type: type of the output.
+            depth_type: 'metric' or 'relative' depth.
+            max_depth: maximum depth value. Only valid for metric depth.
 
         Returns:
             output tensor.
@@ -59,7 +63,13 @@ class DepthEstimation(HFONNXComunnityModel):
             depth_maps = self(images)
         output = []
         for depth_map in depth_maps:
-            output.append(grayscale_to_rgb(depth_map)[0])
+            if depth_type == "metric":
+                depth_map = depth_map / max_depth
+            elif depth_type == "relative":
+                depth_map = depth_map / depth_map.max()
+            else:
+                raise ValueError(f"Unsupported depth type `{depth_type}`.")
+            output.append(grayscale_to_rgb(depth_map))
 
         return self._tensor_to_type(output, output_type, is_batch=isinstance(images, Tensor))
 
@@ -69,16 +79,20 @@ class DepthEstimation(HFONNXComunnityModel):
         depth_maps: Optional[Union[Tensor, list[Tensor]]] = None,
         directory: Optional[str] = None,
         output_type: str = "torch",
+        depth_type: str = "relative",
+        max_depth: int = 80,
     ) -> None:
         """Save the segmentation results.
 
         Args:
             images: input tensor.
             output_type: type of the output.
+            depth_type: 'metric' or 'relative' depth.
+            max_depth: maximum depth value. Only valid for metric depth.
 
         Returns:
             output tensor.
         """
-        outputs = self.visualize(images, depth_maps, output_type)
+        outputs = self.visualize(images, depth_maps, output_type, depth_type=depth_type, max_depth=max_depth)
         self._save_outputs(images, directory, suffix="_src")
         self._save_outputs(outputs, directory, suffix="_depth")
