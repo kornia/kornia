@@ -20,7 +20,7 @@ class DexiNedBuilder:
     """
 
     @staticmethod
-    def build(model_name: str = "dexined", pretrained: bool = True, image_size: Optional[int] = 352) -> EdgeDetector:
+    def build(model_name: str = "dexined", pretrained: bool = True, image_size: int = 352) -> EdgeDetector:
         if model_name.lower() == "dexined":
             # Normalize then scale to [0, 255]
             norm = Normalize(mean=tensor([[0.485, 0.456, 0.406]]), std=tensor([[1.0 / 255.0] * 3]))
@@ -30,7 +30,7 @@ class DexiNedBuilder:
 
         return EdgeDetector(
             model,
-            ResizePreProcessor(image_size, image_size) if image_size is not None else nn.Identity(),
-            ResizePostProcessor() if image_size is not None else nn.Identity(),
+            ResizePreProcessor(image_size, image_size),
+            ResizePostProcessor(),
             name="dexined",
         )

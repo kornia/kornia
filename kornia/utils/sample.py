@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import List, Optional, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
 
 import requests
 
@@ -39,6 +39,8 @@ def get_sample_images(
     paths: List[str] = IMAGE_URLS,
     download: bool = True,
     cache_dir: Optional[str] = None,
+    as_list: Optional[bool] = None,
+    **kwargs: Any,
 ) -> Union[Tensor, List[Tensor]]:
     """Loads multiple images from the given URLs.
 
@@ -52,6 +54,9 @@ def get_sample_images(
         download: Whether to download the images if they are not already cached. Defaults to True.
         cache_dir: The directory where the downloaded images will be cached.
             Defaults to ".kornia_hub/images".
+        as_list: if to keep the output as a list. If None and `resize` is None, the output will be a list.
+            If None and `resize` is not None, the output will be a single tensor.
+        **kwargs: Additional keyword arguments to pass to `kornia.geometry.resize`.
 
     Returns:
         torch.Tensor | list[torch.Tensor]:
@@ -77,10 +82,10 @@ def get_sample_images(
             fname = path
         img_tensor = load_image(fname)
         if resize is not None:
-            img_tensor = kornia.geometry.resize(img_tensor, resize)
+            img_tensor = kornia.geometry.resize(img_tensor, resize, **kwargs)
         tensors.append(img_tensor)
 
-    if resize is not None:
+    if not as_list and resize is not None:
         return stack(tensors)
 
     return tensors

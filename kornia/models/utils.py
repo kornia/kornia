@@ -7,7 +7,7 @@ from torch import Tensor
 from kornia.core import Module, concatenate
 from kornia.geometry.transform import resize
 
-__all__ = ["ResizePreProcessor", "ResizePostProcessor"]
+__all__ = ["ResizePreProcessor", "ResizePostProcessor", "InputConverter", "OutputConverter"]
 
 
 class ResizePreProcessor(Module):
@@ -76,3 +76,15 @@ class ResizePostProcessor(Module):
                 resize(img[None], size=size.cpu().long().numpy().tolist(), interpolation=self.interpolation_mode)
             )
         return resized_imgs
+
+
+class OutputRangePostProcessor(Module):
+    def __init__(self, min_val: float = 0.0, max_val: float = 1.0) -> None:
+        super().__init__()
+        self.min_val = min_val
+        self.max_val = max_val
+
+    def forward(self, imgs: Union[Tensor, List[Tensor]]) -> Union[Tensor, List[Tensor]]:
+        if isinstance(imgs, Tensor):
+            return torch.clamp(imgs, self.min_val, self.max_val)
+        return [img.clamp_(self.min_val, self.max_val) for img in imgs]

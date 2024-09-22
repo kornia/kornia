@@ -1,23 +1,26 @@
 from typing import Any, List, Optional, Tuple, Union
 import torch
 
-from kornia.color.gray import grayscale_to_rgb
 from kornia.core import Tensor
 from kornia.core.external import PILImage as Image
 from kornia.core.external import onnx
 from kornia.models.base import ModelBase
 
-__all__ = ["EdgeDetector"]
+__all__ = ["SuperResolution"]
 
 
-class EdgeDetector(ModelBase):
-    """EdgeDetector is a module that wraps an edge detection model."""
+class SuperResolution(ModelBase):
+    """SuperResolution is a module that wraps an super resolution model.
+    """
 
-    name: str = "edge_detection"
+    name: str = "super_resolution"
+    input_image_size: Optional[int]
+    output_image_size: Optional[int]
+    pseudo_image_size: Optional[int]
 
     @torch.inference_mode()
     def forward(self, images: Union[Tensor, list[Tensor]]) -> Union[Tensor, list[Tensor]]:
-        """Forward pass of the edge detection model.
+        """Forward pass of the super resolution model.
 
         Args:
             images: If list of RGB images. Each image is a Tensor with shape :math:`(3, H, W)`.
@@ -26,9 +29,16 @@ class EdgeDetector(ModelBase):
         Returns:
             output tensor.
         """
-        images, image_sizes = self.pre_processor(images)
-        out_images = self.model(images)
-        return self.post_processor(out_images, image_sizes)
+        output = self.pre_processor(images)
+        if isinstance(output, (list, tuple,)):
+            images = output[0]
+        else:
+            images = output
+        if isinstance(images, list):
+            out_images = [self.model(image[None])[0] for image in images]
+        else:
+            out_images = self.model(images)
+        return self.post_processor(out_images)
 
     def visualize(
         self,
@@ -36,7 +46,7 @@ class EdgeDetector(ModelBase):
         edge_maps: Optional[Union[Tensor, list[Tensor]]] = None,
         output_type: str = "torch",
     ) -> Union[Tensor, list[Tensor], list[Image.Image]]:  # type: ignore
-        """Draw the edge detection results.
+        """Draw the super resolution results.
 
         Args:
             images: input tensor.
@@ -49,7 +59,7 @@ class EdgeDetector(ModelBase):
             edge_maps = self.forward(images)
         output = []
         for edge_map in edge_maps:
-            output.append(grayscale_to_rgb(edge_map)[0])
+            output.append(edge_map)
 
         return self._tensor_to_type(output, output_type, is_batch=isinstance(images, Tensor))
 
@@ -60,7 +70,7 @@ class EdgeDetector(ModelBase):
         directory: Optional[str] = None,
         output_type: str = "torch",
     ) -> None:
-        """Save the edge detection results.
+        """Save the super resolution results.
 
         Args:
             images: input tensor.
@@ -71,18 +81,17 @@ class EdgeDetector(ModelBase):
         """
         outputs = self.visualize(images, edge_maps, output_type)
         self._save_outputs(images, directory, suffix="_src")
-        self._save_outputs(outputs, directory, suffix="_edge")
+        self._save_outputs(outputs, directory, suffix="_sr")
 
     def to_onnx(  # type: ignore[override]
         self,
         onnx_name: Optional[str] = None,
-        image_size: Optional[int] = 352,
         include_pre_and_post_processor: bool = True,
         save: bool = True,
         additional_metadata: List[Tuple[str, str]] = [],
         **kwargs: Any,
     ) -> "onnx.ModelProto":  # type: ignore
-        """Exports the current edge detection model to an ONNX model file.
+        """Exports the current super resolution model to an ONNX model file.
 
         Args:
             onnx_name:
@@ -99,13 +108,13 @@ class EdgeDetector(ModelBase):
                 Additional metadata to add to the ONNX model.
         """
         if onnx_name is None:
-            onnx_name = f"kornia_{self.name}_{image_size}.onnx"
+            onnx_name = f"kornia_{self.name}.onnx"
 
         return super().to_onnx(
             onnx_name,
-            input_shape=[-1, 3, image_size or -1, image_size or -1],
-            output_shape=[-1, 1, image_size or -1, image_size or -1],
-            pseudo_shape=[1, 3, image_size or 352, image_size or 352],
+            input_shape=[-1, 3, self.input_image_size or -1, self.input_image_size or -1],
+            output_shape=[-1, 3, self.output_image_size or -1, self.output_image_size or -1],
+            pseudo_shape=[1, 3, self.pseudo_image_size or 352, self.pseudo_image_size or 352],
             model=self if include_pre_and_post_processor else self.model,
             save=save,
             additional_metadata=additional_metadata,

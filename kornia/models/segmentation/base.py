@@ -1,4 +1,5 @@
 from typing import Union
+import torch
 
 from kornia.core import Tensor
 from kornia.core.external import PILImage as Image
@@ -11,6 +12,7 @@ class SemanticSegmentation(ModelBase):
     This module uses SegmentationModel library for semantic segmentation.
     """
 
+    @torch.inference_mode()
     def forward(self, images: Union[Tensor, list[Tensor]]) -> Union[Tensor, list[Tensor]]:
         """Forward pass of the semantic segmentation model.
 
