@@ -10,8 +10,7 @@ __all__ = ["EdgeDetector"]
 
 
 class EdgeDetector(ModelBase):
-    """EdgeDetector is a module that wraps an edge detection model.
-    """
+    """EdgeDetector is a module that wraps an edge detection model."""
 
     name: str = "edge_detection"
 

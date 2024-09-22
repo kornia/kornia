@@ -1,7 +1,5 @@
 from typing import Any
 
-import requests
-
 from kornia.core import ImageSequential, Module, Tensor, tensor
 from kornia.enhance.normalize import Normalize
 from kornia.enhance.rescale import Rescale

@@ -34,8 +34,12 @@ class ONNXLoader(CachedDownloader):
         """
         if url.startswith(("http:", "https:")):
             file_path = cls.download_to_cache(
-                url, os.path.split(url)[-1], download=download, suffix=".json",
-                cache_dir=kornia_config.hub_onnx_dir, **kwargs
+                url,
+                os.path.split(url)[-1],
+                download=download,
+                suffix=".json",
+                cache_dir=kornia_config.hub_onnx_dir,
+                **kwargs,
             )
             with open(file_path) as f:
                 json_data = json.load(f)
@@ -73,8 +77,12 @@ class ONNXLoader(CachedDownloader):
 
         elif model_name.startswith("http://") or model_name.startswith("https://"):
             file_path = cls.download_to_cache(
-                model_name, os.path.split(model_name)[-1], download=download, suffix=".onnx",
-                cache_dir=kornia_config.hub_onnx_dir, **kwargs
+                model_name,
+                os.path.split(model_name)[-1],
+                download=download,
+                suffix=".onnx",
+                cache_dir=kornia_config.hub_onnx_dir,
+                **kwargs,
             )
             return onnx.load(file_path)  # type:ignore
 

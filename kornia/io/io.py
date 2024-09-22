@@ -3,10 +3,10 @@ from __future__ import annotations
 from enum import Enum
 from pathlib import Path
 
-import kornia
 import kornia_rs
 import torch
 
+import kornia
 from kornia.core import Device, Tensor
 from kornia.core.check import KORNIA_CHECK
 from kornia.utils import image_to_tensor, tensor_to_image

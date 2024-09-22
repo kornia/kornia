@@ -59,8 +59,10 @@ class BoxFiltering(Module, ONNXExportMixin):
                 valid detections for each element in the batch.
         """
         # Apply confidence filtering
-        zero_tensor = tensor(0., device=boxes.device, dtype=boxes.dtype)
-        confidence_threshold = confidence_threshold or self.confidence_threshold or zero_tensor  # If None, use 0 as threshold
+        zero_tensor = tensor(0.0, device=boxes.device, dtype=boxes.dtype)
+        confidence_threshold = (
+            confidence_threshold or self.confidence_threshold or zero_tensor
+        )  # If None, use 0 as threshold
         confidence_mask = boxes[:, :, 1] > confidence_threshold  # [B, D]
 
         # Apply class filtering

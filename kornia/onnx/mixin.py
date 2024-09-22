@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import copy
 import io
-import torch
 from typing import (
     Any,
     ClassVar,
     Optional,
     Union,
 )
+
+import torch
 
 from kornia.core import Module, Tensor, rand
 from kornia.core.external import numpy as np
@@ -56,7 +57,7 @@ class ONNXExportMixin:
         save: bool = True,
         additional_metadata: list[tuple[str, str]] = [],
         **kwargs: Any,
-    ) -> "onnx.ModelProto":  # type: ignore
+    ) -> onnx.ModelProto:  # type: ignore
         """Exports the current object to an ONNX model file.
 
         Args:
@@ -234,7 +235,7 @@ class ONNXRuntimeMixin:
             ["OpenVINOExecutionProvider"], provider_options=[{"device_type": device_type, **kwargs}]
         )
 
-    def __call__(self, *inputs: "np.ndarray") -> list["np.ndarray"]:  # type:ignore
+    def __call__(self, *inputs: np.ndarray) -> list[np.ndarray]:  # type:ignore
         """Perform inference using the combined ONNX model.
 
         Args:
