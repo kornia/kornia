@@ -24,14 +24,18 @@ class LazyLoader:
 
     auto_install: bool = False
 
-    def __init__(self, module_name: str) -> None:
+    def __init__(self, module_name: str, dev_dependency: bool = False) -> None:
         """Initializes the LazyLoader with the name of the module.
 
         Args:
-            module_name (str): The name of the module to be lazily loaded.
+            module_name: The name of the module to be lazily loaded.
+            dev_dependency: If the dependency is required in the dev environment.
+                If True, the module will be loaded in the dev environment.
+                If False, the module will not be loaded in the dev environment.
         """
         self.module_name = module_name
         self.module: Optional[ModuleType] = None
+        self.dev_dependency = dev_dependency
 
     def _install_package(self, module_name: str) -> None:
         logger.info(f"Installing `{module_name}` ...")
@@ -43,15 +47,16 @@ class LazyLoader:
         This method is called internally when an attribute of the module is accessed for the first time. It attempts to
         import the module and raises an ImportError with a custom message if the module is not installed.
         """
-        if "--doctest-modules" in sys.argv:
-            logger.info(f"Doctest detected, skipping loading of '{self.module_name}'")
-            return
-        try:
-            if __sphinx_build__:  # type:ignore
-                logger.info(f"Sphinx detected, skipping loading of '{self.module_name}'")
+        if not self.dev_dependency:
+            if '--doctest-modules' in sys.argv:
+                logger.info(f"Doctest detected, skipping loading of '{self.module_name}'")
                 return
-        except NameError:
-            pass
+            try:
+                if __sphinx_build__:  # type:ignore
+                    logger.info(f"Sphinx detected, skipping loading of '{self.module_name}'")
+                    return
+            except NameError:
+                pass
 
         if self.module is None:
             try:
@@ -121,10 +126,10 @@ class LazyLoader:
 #       would also try to support lazy loading of external modules. To avoid that, we
 #       may set the module name to `autodoc_mock_imports` in conf.py to avoid undesired
 #       installation of external modules.
-numpy = LazyLoader("numpy")
-PILImage = LazyLoader("PIL.Image")
+numpy = LazyLoader("numpy", dev_dependency=True)
+PILImage = LazyLoader("PIL.Image", dev_dependency=True)
+onnx = LazyLoader("onnx", dev_dependency=True)
 diffusers = LazyLoader("diffusers")
-onnx = LazyLoader("onnx")
 onnxruntime = LazyLoader("onnxruntime")
 boxmot = LazyLoader("boxmot")
 segmentation_models_pytorch = LazyLoader("segmentation_models_pytorch")
