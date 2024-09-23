@@ -751,7 +751,7 @@ class TestDexiNed(BaseTester):
             dtype=dtype,
         )
 
-        out = model(img)[-1]
+        out = model(img)
         self.assert_close(out, expect, atol=3e-4, rtol=3e-4)
 
     @pytest.mark.skip(reason="DexiNed do not compile with dynamo.")
