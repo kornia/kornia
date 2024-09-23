@@ -78,12 +78,13 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
         pre_processor: Optional["onnx.ModelProto"] = None,  # type: ignore
         post_processor: Optional["onnx.ModelProto"] = None,  # type: ignore
         name: Optional[str] = None,
+        auto_ir_version_conversion: bool = True
     ) -> None:
         model_list = [] if pre_processor is None else [pre_processor]
         model_list.append(model)
         if post_processor is not None:
             model_list.append(post_processor)
-        super().__init__(*model_list)
+        super().__init__(*model_list, auto_ir_version_conversion=auto_ir_version_conversion)
         if name is not None:
             self.name = name
         self.model = model

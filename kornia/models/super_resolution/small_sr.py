@@ -47,7 +47,7 @@ class SmallSRNet(Module):
         self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
-    def forward(self, x):
+    def forward(self, x: Tensor) -> Tensor:
         x = self.relu(self.conv1(x))
         x = self.relu(self.conv2(x))
         x = self.relu(self.conv3(x))

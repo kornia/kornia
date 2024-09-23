@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 import torch
 
@@ -82,7 +82,7 @@ class EdgeDetector(ModelBase):
         image_size: Optional[int] = 352,
         include_pre_and_post_processor: bool = True,
         save: bool = True,
-        additional_metadata: List[Tuple[str, str]] = [],
+        additional_metadata: list[tuple[str, str]] = [],
         **kwargs: Any,
     ) -> onnx.ModelProto:  # type: ignore
         """Exports the current edge detection model to an ONNX model file.

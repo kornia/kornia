@@ -146,7 +146,8 @@ class ONNXExportMixin:
 
 
 class ONNXRuntimeMixin:
-    def create_session(
+
+    def _create_session(
         self,
         op: onnx.ModelProto,  # type:ignore
         providers: Optional[list[str]] = None,
@@ -290,6 +291,38 @@ class ONNXMixin:
         for arg in args:
             op_list.append(self._load_op(arg, cache_dir=cache_dir))
         return op_list
+
+    def _combine(
+        self,
+        *args: list["onnx.ModelProto"],  # type:ignore
+        io_maps: Optional[list[tuple[str, str]]] = None,
+    ) -> "onnx.ModelProto":  # type:ignore
+        """Combine the provided ONNX models into a single ONNX graph. Optionally, map inputs and outputs between
+        operators using the `io_map`.
+
+        Args:
+            io_maps:
+                A list of list of tuples representing input-output mappings for combining the models.
+                Example: [[(model1_output_name, model2_input_name)], [(model2_output_name, model3_input_name)]].
+
+        Returns:
+            onnx.ModelProto: The combined ONNX model as a single ONNX graph.
+        """
+        if len(args) == 0:
+            raise ValueError("No operators found.")
+
+        combined_op = args[0]
+        combined_op = onnx.compose.add_prefix(combined_op, prefix=f"K{str(0).zfill(2)}-")  # type:ignore
+
+        for i, op in enumerate(args[1:]):
+            next_op = onnx.compose.add_prefix(op, prefix=f"K{str(i + 1).zfill(2)}-")  # type:ignore
+            if io_maps is None:
+                io_map = [(f"K{str(i).zfill(2)}-output", f"K{str(i + 1).zfill(2)}-input")]
+            else:
+                io_map = [(f"K{str(i).zfill(2)}-{it[0]}", f"K{str(i + 1).zfill(2)}-{it[1]}") for it in io_maps[i]]
+            combined_op = onnx.compose.merge_models(combined_op, next_op, io_map=io_map)  # type:ignore
+
+        return combined_op
 
     def _export(
         self,

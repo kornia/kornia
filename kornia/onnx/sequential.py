@@ -1,4 +1,5 @@
-from typing import Any, List, Optional, Tuple, Union
+from future import __annotations__
+from typing import Any, Optional, Union
 
 from kornia.config import kornia_config
 from kornia.core.external import onnx
@@ -34,11 +35,11 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
     def __init__(
         self,
         *args: Union["onnx.ModelProto", str],  # type:ignore
-        providers: Optional[List[str]] = None,
+        providers: Optional[list[str]] = None,
         session_options: Optional["ort.SessionOptions"] = None,  # type:ignore
-        io_maps: Optional[List[Tuple[str, str]]] = None,
+        io_maps: Optional[list[tuple[str, str]]] = None,
         cache_dir: Optional[str] = None,
-        auto_ir_version_conversion: bool = True,
+        auto_ir_version_conversion: bool = False,
         target_ir_version: Optional[int] = None,
         target_opset_version: Optional[int] = None,
     ) -> None:
@@ -47,15 +48,15 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
             self.operators = self._auto_version_conversion(
                 *self.operators, target_ir_version=target_ir_version, target_opset_version=target_opset_version
             )
-        self._combined_op = self._combine(*self.operators, io_maps=io_maps)
-        self._session = self.create_session(self._combined_op, providers=providers, session_options=session_options)
+        self._combined_op = self.combine(io_maps=io_maps)
+        self._session = self.create_session(providers=providers, session_options=session_options)
 
     def _auto_version_conversion(
         self,
-        *args: List["onnx.ModelProto"],  # type:ignore
+        *args: list["onnx.ModelProto"],  # type:ignore
         target_ir_version: Optional[int] = None,
         target_opset_version: Optional[int] = None,
-    ) -> List["onnx.ModelProto"]:  # type:ignore
+    ) -> list["onnx.ModelProto"]:  # type:ignore
         """Automatic conversion of the model's IR/OPSET version to the given target version.
 
         If `target_ir_version` is not provided, the model is converted to 9 by default.
@@ -79,40 +80,16 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
             op_list.append(op)
         return op_list
 
-    def _combine(
-        self,
-        *args: List["onnx.ModelProto"],  # type:ignore
-        io_maps: Optional[List[Tuple[str, str]]] = None,
-    ) -> "onnx.ModelProto":  # type:ignore
-        """Combine the provided ONNX models into a single ONNX graph. Optionally, map inputs and outputs between
-        operators using the `io_map`.
+    def combine(self, io_maps: list[tuple[str]] | None = None) -> "onnx.ModelProto":  # type: ignore
+        return super()._combine(*self.operators, io_maps=io_maps)
 
-        Args:
-            io_maps:
-                A list of list of tuples representing input-output mappings for combining the models.
-                Example: [[(model1_output_name, model2_input_name)], [(model2_output_name, model3_input_name)]].
-
-        Returns:
-            onnx.ModelProto: The combined ONNX model as a single ONNX graph.
-        """
-        if len(args) == 0:
-            raise ValueError("No operators found.")
-
-        combined_op = args[0]
-        combined_op = onnx.compose.add_prefix(combined_op, prefix=f"K{str(0).zfill(2)}-")  # type:ignore
-
-        for i, op in enumerate(args[1:]):
-            next_op = onnx.compose.add_prefix(op, prefix=f"K{str(i + 1).zfill(2)}-")  # type:ignore
-            if io_maps is None:
-                io_map = [(f"K{str(i).zfill(2)}-output", f"K{str(i + 1).zfill(2)}-input")]
-            else:
-                io_map = [(f"K{str(i).zfill(2)}-{it[0]}", f"K{str(i + 1).zfill(2)}-{it[1]}") for it in io_maps[i]]
-            combined_op = onnx.compose.merge_models(combined_op, next_op, io_map=io_map)  # type:ignore
-
-        return combined_op
+    def create_session(
+        self, providers: list[str] | None = None, session_options: Any | None = None
+    ) -> ort.InferenceSession:  # type: ignore
+        return super()._create_session(self._combined_op, providers, session_options)
 
     def export(self, file_path: str, **kwargs: Any) -> None:
         return super()._export(self._combined_op, file_path, **kwargs)
 
-    def add_metadata(self, additional_metadata: List[Tuple[str, str]] = []) -> "onnx.ModelProto":  # type:ignore
+    def add_metadata(self, additional_metadata: list[tuple[str, str]] = []) -> "onnx.ModelProto":  # type:ignore
         return super()._add_metadata(self._combined_op, additional_metadata)

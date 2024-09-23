@@ -42,7 +42,7 @@ class TestONNXSequential:
 
         # Test combining multiple ONNX models with io_maps
         onnx_sequential = ONNXSequential(mock_model_proto, mock_model_proto)
-        combined_op = onnx_sequential._combine([("output1", "input2")])
+        combined_op = onnx_sequential.combine([("output1", "input2")])
 
         assert isinstance(combined_op, onnx.ModelProto)
 
