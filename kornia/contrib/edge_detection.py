@@ -33,7 +33,7 @@ class EdgeDetector(Module):
 
     def postprocess(self, data: List[Tensor]) -> Tensor:
         # input are intermediate layer -- for inference we need only last.
-        return data[-1]  # Bx1xHxW
+        return data  # Bx1xHxW
 
     def forward(self, image: Tensor) -> Tensor:
         KORNIA_CHECK_SHAPE(image, ["B", "3", "H", "W"])
