@@ -74,7 +74,9 @@ class ONNXLoader(CachedDownloader):
                 kornia_config.hub_onnx_dir, model_name.split("/")[0]
             )
             kwargs.update({"cache_dir": cache_dir})
-            file_path = cls.download_to_cache(url, model_name.split("/")[1], download=download, suffix=".onnx", **kwargs)
+            file_path = cls.download_to_cache(
+                url, model_name.split("/")[1], download=download, suffix=".onnx", **kwargs
+            )
             return onnx.load(file_path)  # type:ignore
 
         elif model_name.startswith("http://") or model_name.startswith("https://"):
