@@ -41,7 +41,13 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
             self.op = self._onnx_version_conversion(
                 self.op, target_ir_version=target_ir_version, target_opset_version=target_opset_version
             )
-        self._session = self.create_session(self.op, providers=providers, session_options=session_options)
+        session = self.create_session(providers=providers, session_options=session_options)
+        self.set_session(session=session)
+
+    def create_session(
+        self, providers: list[str] | None = None, session_options: Any | None = None
+    ) -> ort.InferenceSession:  # type: ignore
+        return super()._create_session(self.op, providers, session_options)
 
     def export(self, file_path: str, **kwargs: Any) -> None:
         return super()._export(self.op, file_path, **kwargs)

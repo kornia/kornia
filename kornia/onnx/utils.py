@@ -9,8 +9,8 @@ from typing import Any
 import requests
 
 import kornia
-from kornia.config import kornia_config
 from kornia.core.external import onnx
+from kornia.core.external import numpy as np
 from kornia.utils.download import CachedDownloader
 
 __all__ = ["ONNXLoader", "io_name_conversion", "add_metadata"]
@@ -38,7 +38,6 @@ class ONNXLoader(CachedDownloader):
                 os.path.split(url)[-1],
                 download=download,
                 suffix=".json",
-                cache_dir=kornia_config.hub_onnx_dir,
                 **kwargs,
             )
             with open(file_path) as f:
@@ -71,7 +70,7 @@ class ONNXLoader(CachedDownloader):
             model_name = model_name[len("hf://") :]
             url = f"https://huggingface.co/kornia/ONNX_models/resolve/main/{model_name}.onnx"
             file_path = cls.download_to_cache(
-                url, model_name, download=download, suffix=".onnx", cache_dir=kornia_config.hub_onnx_dir, **kwargs
+                url, model_name, download=download, suffix=".onnx", **kwargs
             )
             return onnx.load(file_path)  # type:ignore
 
@@ -81,7 +80,6 @@ class ONNXLoader(CachedDownloader):
                 os.path.split(model_name)[-1],
                 download=download,
                 suffix=".onnx",
-                cache_dir=kornia_config.hub_onnx_dir,
                 **kwargs,
             )
             return onnx.load(file_path)  # type:ignore
@@ -188,3 +186,19 @@ def add_metadata(
         metadata_props.key = key
         metadata_props.value = str(value)
     return onnx_model
+
+
+def onnx_type_to_numpy(onnx_type: str) -> Any:
+    type_mapping = {
+        'tensor(float)': np.float32,  # type: ignore
+        'tensor(float16)': np.float16,  # type: ignore
+        'tensor(double)': np.float64,  # type: ignore
+        'tensor(int32)': np.int32,  # type: ignore
+        'tensor(int64)': np.int64,  # type: ignore
+        'tensor(uint8)': np.uint8,  # type: ignore
+        'tensor(int8)': np.int8,  # type: ignore
+        'tensor(bool)': np.bool_,  # type: ignore
+    }
+    if onnx_type not in type_mapping:
+        raise TypeError(f"ONNX type {onnx_type} not understood")
+    return type_mapping[onnx_type]

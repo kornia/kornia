@@ -49,7 +49,8 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
                 *self.operators, target_ir_version=target_ir_version, target_opset_version=target_opset_version
             )
         self._combined_op = self.combine(io_maps=io_maps)
-        self._session = self.create_session(providers=providers, session_options=session_options)
+        session = self.create_session(providers=providers, session_options=session_options)
+        self.set_session(session=session)
 
     def _auto_version_conversion(
         self,
