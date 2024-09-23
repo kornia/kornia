@@ -1,5 +1,3 @@
-from typing import List
-
 from kornia.core import Module, Tensor
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.filters.dexined import DexiNed
