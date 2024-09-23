@@ -9,6 +9,11 @@ from typing import Any
 import requests
 
 import kornia
+<<<<<<< HEAD
+=======
+from kornia.config import kornia_config
+from kornia.core.external import onnx
+>>>>>>> c6f18101 (update)
 from kornia.core.external import numpy as np
 from kornia.core.external import onnx
 from kornia.utils.download import CachedDownloader
@@ -69,10 +74,17 @@ class ONNXLoader(CachedDownloader):
         if model_name.startswith("hf://"):
             model_name = model_name[len("hf://") :]
             url = f"https://huggingface.co/kornia/ONNX_models/resolve/main/{model_name}.onnx"
-            file_path = cls.download_to_cache(url, model_name, download=download, suffix=".onnx", **kwargs)
+            cache_dir = kwargs.get(
+                "cache_dir", None) or os.path.join(kornia_config.hub_onnx_dir, model_name.split("/")[0])
+            kwargs.update({"cache_dir": cache_dir})
+            file_path = cls.download_to_cache(
+                url, model_name, download=download, suffix=".onnx", **kwargs
+            )
             return onnx.load(file_path)  # type:ignore
 
         elif model_name.startswith("http://") or model_name.startswith("https://"):
+            cache_dir = kwargs.get("cache_dir", None) or kornia_config.hub_onnx_dir
+            kwargs.update({"cache_dir": cache_dir})
             file_path = cls.download_to_cache(
                 model_name,
                 os.path.split(model_name)[-1],

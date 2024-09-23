@@ -80,7 +80,7 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
             op_list.append(op)
         return op_list
 
-    def combine(self, io_maps: list[tuple[str]] | None = None) -> "onnx.ModelProto":  # type: ignore
+    def combine(self, io_maps: list[tuple[str, str]] | None = None) -> "onnx.ModelProto":  # type: ignore
         return super()._combine(*self.operators, io_maps=io_maps)
 
     def create_session(

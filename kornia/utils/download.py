@@ -64,6 +64,7 @@ class CachedDownloader:
             download_if_not_exists: If True, the file will be downloaded if it's not already downloaded.
         """
         if os.path.exists(file_path):
+            logger.info(f"Loading `{url}` from `{file_path}`.")
             return
 
         if not download_if_not_exists:

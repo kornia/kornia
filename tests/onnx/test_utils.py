@@ -50,7 +50,7 @@ class TestONNXLoader:
             assert model == mock_model
             mock_urlretrieve.assert_called_once_with(
                 "https://huggingface.co/kornia/ONNX_models/resolve/main/operators/some_model.onnx",
-                os.path.join(".kornia_hub", "onnx_models", "some_model.onnx"),
+                os.path.join(".kornia_hub", "onnx_models", "operators", "some_model.onnx"),
             )
 
     def test_load_model_file_not_found(self):
