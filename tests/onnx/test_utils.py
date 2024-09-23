@@ -9,8 +9,9 @@ from kornia.onnx.utils import ONNXLoader
 
 
 class TestONNXLoader:
-
-    def test_get_file_path_with_custom_cache_dir(self,):
+    def test_get_file_path_with_custom_cache_dir(
+        self,
+    ):
         model_name = os.path.join("operators", "some_model")
         expected_path = os.path.join(".test_cache", "operators", "some_model.onnx")
         assert ONNXLoader._get_file_path(model_name, ".test_cache", suffix=".onnx") == expected_path

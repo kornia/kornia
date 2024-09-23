@@ -9,8 +9,8 @@ from typing import Any
 import requests
 
 import kornia
-from kornia.core.external import onnx
 from kornia.core.external import numpy as np
+from kornia.core.external import onnx
 from kornia.utils.download import CachedDownloader
 
 __all__ = ["ONNXLoader", "io_name_conversion", "add_metadata"]
@@ -69,9 +69,7 @@ class ONNXLoader(CachedDownloader):
         if model_name.startswith("hf://"):
             model_name = model_name[len("hf://") :]
             url = f"https://huggingface.co/kornia/ONNX_models/resolve/main/{model_name}.onnx"
-            file_path = cls.download_to_cache(
-                url, model_name, download=download, suffix=".onnx", **kwargs
-            )
+            file_path = cls.download_to_cache(url, model_name, download=download, suffix=".onnx", **kwargs)
             return onnx.load(file_path)  # type:ignore
 
         elif model_name.startswith("http://") or model_name.startswith("https://"):
@@ -190,14 +188,14 @@ def add_metadata(
 
 def onnx_type_to_numpy(onnx_type: str) -> Any:
     type_mapping = {
-        'tensor(float)': np.float32,  # type: ignore
-        'tensor(float16)': np.float16,  # type: ignore
-        'tensor(double)': np.float64,  # type: ignore
-        'tensor(int32)': np.int32,  # type: ignore
-        'tensor(int64)': np.int64,  # type: ignore
-        'tensor(uint8)': np.uint8,  # type: ignore
-        'tensor(int8)': np.int8,  # type: ignore
-        'tensor(bool)': np.bool_,  # type: ignore
+        "tensor(float)": np.float32,  # type: ignore
+        "tensor(float16)": np.float16,  # type: ignore
+        "tensor(double)": np.float64,  # type: ignore
+        "tensor(int32)": np.int32,  # type: ignore
+        "tensor(int64)": np.int64,  # type: ignore
+        "tensor(uint8)": np.uint8,  # type: ignore
+        "tensor(int8)": np.int8,  # type: ignore
+        "tensor(bool)": np.bool_,  # type: ignore
     }
     if onnx_type not in type_mapping:
         raise TypeError(f"ONNX type {onnx_type} not understood")

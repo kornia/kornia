@@ -146,7 +146,6 @@ class ONNXExportMixin:
 
 
 class ONNXRuntimeMixin:
-
     def _create_session(
         self,
         op: onnx.ModelProto,  # type:ignore
@@ -294,9 +293,9 @@ class ONNXMixin:
 
     def _combine(
         self,
-        *args: list["onnx.ModelProto"],  # type:ignore
+        *args: list[onnx.ModelProto],  # type:ignore
         io_maps: Optional[list[tuple[str, str]]] = None,
-    ) -> "onnx.ModelProto":  # type:ignore
+    ) -> onnx.ModelProto:  # type:ignore
         """Combine the provided ONNX models into a single ONNX graph. Optionally, map inputs and outputs between
         operators using the `io_map`.
 
