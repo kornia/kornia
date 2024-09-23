@@ -9,11 +9,8 @@ from typing import Any
 import requests
 
 import kornia
-<<<<<<< HEAD
-=======
 from kornia.config import kornia_config
 from kornia.core.external import onnx
->>>>>>> c6f18101 (update)
 from kornia.core.external import numpy as np
 from kornia.core.external import onnx
 from kornia.utils.download import CachedDownloader
