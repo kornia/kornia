@@ -51,7 +51,7 @@ class SuperResolution(ModelBase):
         images: Union[Tensor, list[Tensor]],
         edge_maps: Optional[Union[Tensor, list[Tensor]]] = None,
         output_type: str = "torch",
-    ) -> Union[Tensor, list[Tensor], list[Image.Image]]:  # type: ignore
+    ) -> Union[Tensor, list[Tensor], list["Image.Image"]]:  # type: ignore
         """Draw the super resolution results.
 
         Args:

@@ -43,6 +43,9 @@ class LazyLoader:
         This method is called internally when an attribute of the module is accessed for the first time. It attempts to
         import the module and raises an ImportError with a custom message if the module is not installed.
         """
+        if '--doctest-modules' in sys.argv:
+            logger.info(f"Doctest detected, skipping loading of '{self.module_name}'")
+            return
         try:
             if __sphinx_build__:  # type:ignore
                 logger.info(f"Sphinx detected, skipping loading of '{self.module_name}'")

@@ -30,7 +30,7 @@ class SemanticSegmentation(ModelBase):
 
     def visualize(
         self, images: Union[Tensor, list[Tensor]], output_type: str = "torch"
-    ) -> Union[Tensor, list[Tensor], list[Image.Image]]:  # type: ignore
+    ) -> Union[Tensor, list[Tensor], list["Image.Image"]]:  # type: ignore
         """Draw the segmentation results.
 
         Args:
