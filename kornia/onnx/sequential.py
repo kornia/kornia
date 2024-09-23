@@ -1,3 +1,4 @@
+from future import __annotations__
 from typing import Any, Optional, Union
 
 from kornia.config import kornia_config
