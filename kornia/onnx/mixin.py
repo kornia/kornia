@@ -29,7 +29,7 @@ class ONNXExportMixin:
         ONNX_DEFAULT_INPUTSHAPE:
             Default input shape for the ONNX export. A list of integers where `-1` indicates
             dynamic dimensions. Default is [-1, -1, -1, -1].
-        ONNX_DEFAULT_OUTPUTSHAP:
+        ONNX_DEFAULT_OUTPUTSHAPE:
             Default output shape for the ONNX export. A list of integers where `-1` indicates
             dynamic dimensions. Default is [-1, -1, -1, -1].
         ONNX_EXPORT_PSEUDO_SHAPE:

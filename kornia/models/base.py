@@ -18,7 +18,7 @@ class ModelBaseMixin:
 
     def _tensor_to_type(
         self, output: List[Tensor], output_type: str, is_batch: bool = False
-    ) -> Union[Tensor, List[Tensor], List[Image.Image]]:  # type: ignore
+    ) -> Union[Tensor, List[Tensor], List["Image.Image"]]:  # type: ignore
         if output_type == "torch":
             if is_batch:
                 return stack(output)
