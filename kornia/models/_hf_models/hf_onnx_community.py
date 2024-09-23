@@ -20,11 +20,13 @@ class HFONNXComunnityModelLoader:
         model_type: The type of the model to load.
         cache_dir: The directory where models are cached locally.
             Defaults to None, which will use a default `{kornia_config.hub_onnx_dir}` directory.
+        with_data: Whether to download the model weights such as `model.onnx_data`.
     """
 
-    def __init__(self, model_name: str, model_type: str = "model", cache_dir: Optional[str] = None) -> None:
+    def __init__(self, model_name: str, model_type: str = "model", cache_dir: Optional[str] = None, with_data: bool = False) -> None:
         self.model_name = model_name
         self.model_type = model_type
+        self.with_data = with_data
 
         if cache_dir is None:
             cache_dir = kornia_config.hub_onnx_dir
@@ -39,12 +41,8 @@ class HFONNXComunnityModelLoader:
     def load_model(
         self, download: bool = True, io_name_mapping: Optional[dict[str, str]] = None, **kwargs: Any
     ) -> "onnx.ModelProto":  # type:ignore
-        onnx_model = ONNXLoader.load_model(self.model_url, download=download, cache_dir=self.cache_dir, **kwargs)
-        json_req = ONNXLoader.load_config(self.config_url, cache_dir=self.cache_dir)
-
-        onnx_model = self._add_metadata(
-            onnx_model, {"input_size": (json_req["size"]["height"], json_req["size"]["width"])}
-        )
+        onnx_model = ONNXLoader.load_model(
+            self.model_url, download=download, with_data=self.with_data, cache_dir=self.cache_dir, **kwargs)
 
         if io_name_mapping is not None:
             onnx_model = io_name_conversion(onnx_model, io_name_mapping)
@@ -79,12 +77,13 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
         post_processor: Optional["onnx.ModelProto"] = None,  # type: ignore
         name: Optional[str] = None,
         auto_ir_version_conversion: bool = True,
+        io_maps: Optional[list[tuple[str, str]]] = None,
     ) -> None:
         model_list = [] if pre_processor is None else [pre_processor]
         model_list.append(model)
         if post_processor is not None:
             model_list.append(post_processor)
-        super().__init__(*model_list, auto_ir_version_conversion=auto_ir_version_conversion)
+        super().__init__(*model_list, auto_ir_version_conversion=auto_ir_version_conversion, io_maps=io_maps)
         if name is not None:
             self.name = name
         self.model = model

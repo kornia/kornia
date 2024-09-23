@@ -56,7 +56,7 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
         return super()._add_metadata(self.op, additional_metadata)
 
 
-def load(model_name: str) -> ONNXModule:
+def load(model_name: Union["onnx.ModelProto", str]) -> ONNXModule:  # type:ignore
     """Load an ONNX model from either a file path or HuggingFace.
 
     The loaded model is an ONNXModule object, of which you may run the model with

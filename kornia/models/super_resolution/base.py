@@ -10,6 +10,7 @@ from kornia.models.base import ModelBase
 __all__ = ["SuperResolution"]
 
 
+# TODO: support patching -> SR -> unpatching pipeline
 class SuperResolution(ModelBase):
     """SuperResolution is a module that wraps an super resolution model."""
 

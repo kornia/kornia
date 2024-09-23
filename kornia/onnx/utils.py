@@ -51,7 +51,7 @@ class ONNXLoader(CachedDownloader):
         raise RuntimeError(f"File `{file_path}` not found.")
 
     @classmethod
-    def load_model(cls, model_name: str, download: bool = True, **kwargs) -> onnx.ModelProto:  # type:ignore
+    def load_model(cls, model_name: str, download: bool = True, with_data: bool = False, **kwargs) -> onnx.ModelProto:  # type:ignore
         """Loads an ONNX model from the local cache or downloads it from Hugging Face if necessary.
 
         Args:
@@ -62,6 +62,7 @@ class ONNXLoader(CachedDownloader):
             download: If True, the model will be downloaded from Hugging Face if it's not already in the local cache.
             cache_dir: The directory where the model should be cached.
                 Defaults to None, which will use a default `{kornia_config.hub_onnx_dir}` directory.
+            with_data: If True, the model will be loaded with its `.onnx_data` weights.
             **kwargs: Additional arguments to pass to the download method, if needed.
 
         Returns:
@@ -77,6 +78,11 @@ class ONNXLoader(CachedDownloader):
             file_path = cls.download_to_cache(
                 url, model_name.split("/")[1], download=download, suffix=".onnx", **kwargs
             )
+            if with_data:
+                url_data = f"https://huggingface.co/kornia/ONNX_models/resolve/main/{model_name}.onnx_data"
+                cls.download_to_cache(
+                    url_data, model_name.split("/")[1], download=download, suffix=".onnx_data", **kwargs
+                )
             return onnx.load(file_path)  # type:ignore
 
         elif model_name.startswith("http://") or model_name.startswith("https://"):
@@ -89,6 +95,11 @@ class ONNXLoader(CachedDownloader):
                 suffix=".onnx",
                 **kwargs,
             )
+            if with_data:
+                url_data = model_name[:-5] + ".onnx_data"
+                cls.download_to_cache(
+                    url_data, os.path.split(model_name)[-1][:-5] + ".onnx_data", download=download, suffix=".onnx_data", **kwargs
+                )
             return onnx.load(file_path)  # type:ignore
 
         elif os.path.exists(model_name):
