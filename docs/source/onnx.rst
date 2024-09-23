@@ -110,6 +110,46 @@ You can use the `io_map` parameter to control how outputs of one model are mappe
 
 Absolutely! You can pass your own session options to the `create_session` method to fine-tune performance, memory usage, or logging.
 
+**4. How to run with CUDA?
+
+For using CUDA ONNXRuntime, you need to install `onnxruntime-gpu`.
+For handling different CUDA version, you may refer to
+https://github.com/microsoft/onnxruntime/issues/21769#issuecomment-2295342211.
+
+For example, to install `onnxruntime-gpu==1.19.2` under CUDA 11.X, you may install with:
+
+.. code-block:: console
+
+   pip install onnxruntime-gpu==1.19.2 --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-11/pypi/simple/
+
+You may then convert your sequence to CUDA, such as:
+
+.. code-block:: python
+
+   import kornia
+   onnx_seq = ONNXSequential(
+      "hf://operators/kornia.geometry.transform.flips.Hflip",
+      "hf://models/kornia.models.detection.rtdetr_r18vd_640x640",  # Or you may use "YOUR_OWN_MODEL.onnx"
+   )
+   inp = kornia.utils.sample.get_sample_images()[0].numpy()[None]
+   import time
+   onnx_seq.as_cuda()
+   onnx_seq(inp)  # GPU warm up
+   start_time = time.time()
+   onnx_seq(inp)
+   print("--- GPU %s seconds ---" % (time.time() - start_time))
+   onnx_seq.as_cpu()
+   start_time = time.time()
+   onnx_seq(inp)
+   print("--- %s seconds ---" % (time.time() - start_time))
+
+You may get a decent improvement:
+
+.. code-block:: console
+
+   --- GPU 0.014804363250732422 seconds ---
+   --- CPU 0.17681646347045898 seconds ---
+
 Why Choose ONNXSequential?
 --------------------------
 

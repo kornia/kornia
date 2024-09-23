@@ -201,6 +201,11 @@ class ONNXRuntimeMixin:
         For other CUDAExecutionProvider configurations, or CUDA/cuDNN/ONNX version issues,
         you may refer to https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html.
 
+        Note:
+            For using CUDA ONNXRuntime, you need to install `onnxruntime-gpu`.
+            For handling different CUDA version, you may refer to
+            https://github.com/microsoft/onnxruntime/issues/21769#issuecomment-2295342211.
+
         Args:
             device_id: Select GPU to execute.
         """
