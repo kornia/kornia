@@ -110,7 +110,7 @@ You can use the `io_map` parameter to control how outputs of one model are mappe
 
 Absolutely! You can pass your own session options to the `create_session` method to fine-tune performance, memory usage, or logging.
 
-**4. How to run with CUDA?
+**4. How to run with CUDA?**
 
 For using CUDA ONNXRuntime, you need to install `onnxruntime-gpu`.
 For handling different CUDA version, you may refer to
