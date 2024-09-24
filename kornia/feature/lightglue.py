@@ -651,7 +651,7 @@ class LightGlue(Module):
     def confidence_threshold(self, layer_index: int) -> float:
         """Scaled confidence threshold."""
         threshold = 0.8 + 0.1 * math.exp(-4.0 * layer_index / self.conf.n_layers)
-        return min(max(threshold, 1), 0)
+        return min(max(threshold, 0), 1)
 
     def get_pruning_mask(self, confidences: Tensor, scores: Tensor, layer_index: int) -> Tensor:
         """Mask points which should be removed."""
