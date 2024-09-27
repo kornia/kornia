@@ -23,7 +23,9 @@ class HFONNXComunnityModelLoader:
         with_data: Whether to download the model weights such as `model.onnx_data`.
     """
 
-    def __init__(self, model_name: str, model_type: str = "model", cache_dir: Optional[str] = None, with_data: bool = False) -> None:
+    def __init__(
+        self, model_name: str, model_type: str = "model", cache_dir: Optional[str] = None, with_data: bool = False
+    ) -> None:
         self.model_name = model_name
         self.model_type = model_type
         self.with_data = with_data
@@ -42,7 +44,8 @@ class HFONNXComunnityModelLoader:
         self, download: bool = True, io_name_mapping: Optional[dict[str, str]] = None, **kwargs: Any
     ) -> "onnx.ModelProto":  # type:ignore
         onnx_model = ONNXLoader.load_model(
-            self.model_url, download=download, with_data=self.with_data, cache_dir=self.cache_dir, **kwargs)
+            self.model_url, download=download, with_data=self.with_data, cache_dir=self.cache_dir, **kwargs
+        )
 
         if io_name_mapping is not None:
             onnx_model = io_name_conversion(onnx_model, io_name_mapping)

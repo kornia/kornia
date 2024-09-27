@@ -1,6 +1,8 @@
 from __future__ import annotations
+
 from typing import Any, Optional
-import torch.nn as nn
+
+from torch import nn
 
 import kornia
 from kornia.core import ones_like, tensor, zeros_like
@@ -17,7 +19,7 @@ class SegmentationModelsBuilder:
         encoder_weights: Optional[str] = "imagenet",
         in_channels: int = 3,
         classes: int = 1,
-        activation='softmax',
+        activation="softmax",
         **kwargs: Any,
     ) -> SemanticSegmentation:
         """SegmentationModel is a module that wraps a segmentation model.
@@ -56,7 +58,7 @@ class SegmentationModelsBuilder:
             model=segmentation_model,
             pre_processor=preprocessor,
             post_processor=nn.Identity(),
-            name=f"{model_name}_{encoder_name}"
+            name=f"{model_name}_{encoder_name}",
         )
 
     @staticmethod
@@ -74,7 +76,7 @@ class SegmentationModelsBuilder:
         # Normalize input range if needed
         input_range = preproc_params["input_range"]
         if input_range[1] == 255:
-            proc_sequence.append(kornia.enhance.Normalize(mean=0., std=1 / 255.))
+            proc_sequence.append(kornia.enhance.Normalize(mean=0.0, std=1 / 255.0))
         elif input_range[1] == 1:
             pass
         else:
@@ -93,6 +95,7 @@ class SegmentationModelsBuilder:
         proc_sequence.append(kornia.enhance.Normalize(mean=mean, std=std))
 
         return kornia.augmentation.container.ImageSequential(*proc_sequence)
+
 
 if __name__ == "__main__":
     m = SegmentationModelsBuilder.build(classes=10)

@@ -150,7 +150,7 @@ class ONNXRuntimeMixin:
         self,
         op: onnx.ModelProto,  # type:ignore
         providers: Optional[list[str]] = None,
-        session_options: Optional["ort.InferenceSession"] = None,  # type:ignore
+        session_options: Optional[ort.InferenceSession] = None,  # type:ignore
     ) -> ort.InferenceSession:  # type:ignore
         """Create an optimized ONNXRuntime InferenceSession for the combined model.
 
@@ -173,7 +173,7 @@ class ONNXRuntimeMixin:
         )
         return session
 
-    def set_session(self, session: "ort.InferenceSession") -> None:  # type: ignore
+    def set_session(self, session: ort.InferenceSession) -> None:  # type: ignore
         """Set a custom ONNXRuntime InferenceSession.
 
         Args:
@@ -182,7 +182,7 @@ class ONNXRuntimeMixin:
         """
         self._session = session
 
-    def get_session(self) -> "ort.InferenceSession":  # type: ignore
+    def get_session(self) -> ort.InferenceSession:  # type: ignore
         """Get the current ONNXRuntime InferenceSession.
 
         Returns:

@@ -98,7 +98,11 @@ class ONNXLoader(CachedDownloader):
             if with_data:
                 url_data = model_name[:-5] + ".onnx_data"
                 cls.download_to_cache(
-                    url_data, os.path.split(model_name)[-1][:-5] + ".onnx_data", download=download, suffix=".onnx_data", **kwargs
+                    url_data,
+                    os.path.split(model_name)[-1][:-5] + ".onnx_data",
+                    download=download,
+                    suffix=".onnx_data",
+                    **kwargs,
                 )
             return onnx.load(file_path)  # type:ignore
 

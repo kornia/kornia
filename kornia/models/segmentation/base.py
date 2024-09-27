@@ -1,4 +1,4 @@
-from typing import ClassVar, List, Union, Optional
+from typing import ClassVar, List, Optional, Union
 
 import torch
 
@@ -28,7 +28,13 @@ class SemanticSegmentation(ModelBase):
         Returns:
             output tensor.
         """
-        if isinstance(images, (list, tuple,)):
+        if isinstance(
+            images,
+            (
+                list,
+                tuple,
+            ),
+        ):
             images = torch.stack(images, dim=0)
 
         images = self.pre_processor(images)
@@ -78,7 +84,13 @@ class SemanticSegmentation(ModelBase):
         if semantic_masks is None:
             semantic_masks = self.forward(images)
 
-        if isinstance(semantic_masks, (list, tuple,)):
+        if isinstance(
+            semantic_masks,
+            (
+                list,
+                tuple,
+            ),
+        ):
             semantic_masks = torch.stack(semantic_masks, dim=0)
 
         # Generate a color for each class
@@ -94,7 +106,8 @@ class SemanticSegmentation(ModelBase):
             output = output.permute(0, 3, 1, 2)
         else:
             raise ValueError(
-                "Only muliclass segmentation is supported. Please ensure a softmax is used, or submit a PR.")
+                "Only muliclass segmentation is supported. Please ensure a softmax is used, or submit a PR."
+            )
 
         return self._tensor_to_type(output, output_type, is_batch=True)
 
@@ -120,9 +133,8 @@ class SemanticSegmentation(ModelBase):
             manual_seed: The manual seed to use for the colormap.
         """
 
-        colored_masks = self.visualize(
-            images, semantic_masks, output_type, colormap=colormap, manual_seed=manual_seed)
-        overlayed = kornia.enhance.add_weighted(images, 0.5, colored_masks, 0.5, 1.)
+        colored_masks = self.visualize(images, semantic_masks, output_type, colormap=colormap, manual_seed=manual_seed)
+        overlayed = kornia.enhance.add_weighted(images, 0.5, colored_masks, 0.5, 1.0)
 
         self._save_outputs(images, directory, suffix="_src")
         self._save_outputs(colored_masks, directory, suffix="_mask")
