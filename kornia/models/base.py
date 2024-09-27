@@ -17,11 +17,17 @@ class ModelBaseMixin:
     name: str = "model"
 
     def _tensor_to_type(
-        self, output: List[Tensor], output_type: str, is_batch: bool = False
+        self, output: Union[Tensor, List[Tensor]], output_type: str, is_batch: bool = False
     ) -> Union[Tensor, List[Tensor], List["Image.Image"]]:  # type: ignore
         if output_type == "torch":
-            if is_batch:
+            if is_batch and not isinstance(output, Tensor):
                 return stack(output)
+            elif is_batch and isinstance(output, Tensor):
+                return output
+            elif not is_batch and isinstance(output, Tensor):
+                return [o for o in output]
+            elif not is_batch and not isinstance(output, Tensor):
+                return output
             return output
         elif output_type == "pil":
             return [Image.fromarray((tensor_to_image(out_img) * 255).astype(np.uint8)) for out_img in output]  # type: ignore

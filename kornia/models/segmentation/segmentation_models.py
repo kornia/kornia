@@ -1,87 +1,100 @@
-from typing import Any, ClassVar, List, Optional
+from __future__ import annotations
+from typing import Any, Optional
+import torch.nn as nn
 
 import kornia
-from kornia.core import Module, Tensor, ones_like, tensor, zeros_like
+from kornia.core import ones_like, tensor, zeros_like
 from kornia.core.external import segmentation_models_pytorch as smp
-from kornia.core.module import ONNXExportMixin
+
+from .base import SemanticSegmentation
 
 
-class SegmentationModels(Module, ONNXExportMixin):
-    """SegmentationModel is a module that wraps a segmentation model.
-
-    This module uses SegmentationModel library for segmentation.
-
-    Args:
-        model_name: Name of the model to use. Valid options are:
-            "Unet", "UnetPlusPlus", "MAnet", "LinkNet", "FPN", "PSPNet", "PAN", "DeepLabV3", "DeepLabV3Plus".
-        encoder_name: Name of the encoder to use.
-        encoder_depth: Depth of the encoder.
-        encoder_weights: Weights of the encoder.
-        decoder_channels: Number of channels in the decoder.
-        in_channels: Number of channels in the input.
-        classes: Number of classes to predict.
-        **kwargs: Additional arguments to pass to the model. Detailed arguments can be found at:
-            https://github.com/qubvel-org/segmentation_models.pytorch/tree/main/segmentation_models_pytorch/decoders
-
-    Note:
-        Only encoder weights are available.
-        Pretrained weights for the whole model are not available.
-    """
-
-    ONNX_DEFAULT_INPUTSHAPE: ClassVar[List[int]] = [-1, 3, -1, -1]
-    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[List[int]] = [-1, -1, -1, -1]
-
-    def __init__(
-        self,
+class SegmentationModelsBuilder:
+    @staticmethod
+    def build(
         model_name: str = "Unet",
         encoder_name: str = "resnet34",
         encoder_weights: Optional[str] = "imagenet",
         in_channels: int = 3,
         classes: int = 1,
+        activation='softmax',
         **kwargs: Any,
-    ) -> None:
-        super().__init__()
-        self.preproc_params = smp.encoders.get_preprocessing_params(encoder_name)  # type: ignore
-        self.segmentation_model = getattr(smp, model_name)(
+    ) -> SemanticSegmentation:
+        """SegmentationModel is a module that wraps a segmentation model.
+
+        This module uses SegmentationModel library for segmentation.
+
+        Args:
+            model_name: Name of the model to use. Valid options are:
+                "Unet", "UnetPlusPlus", "MAnet", "LinkNet", "FPN", "PSPNet", "PAN", "DeepLabV3", "DeepLabV3Plus".
+            encoder_name: Name of the encoder to use.
+            encoder_depth: Depth of the encoder.
+            encoder_weights: Weights of the encoder.
+            decoder_channels: Number of channels in the decoder.
+            in_channels: Number of channels in the input.
+            classes: Number of classes to predict.
+            **kwargs: Additional arguments to pass to the model. Detailed arguments can be found at:
+                https://github.com/qubvel-org/segmentation_models.pytorch/tree/main/segmentation_models_pytorch/decoders
+
+        Note:
+            Only encoder weights are available.
+            Pretrained weights for the whole model are not available.
+        """
+
+        preproc_params = smp.encoders.get_preprocessing_params(encoder_name)  # type: ignore
+        preprocessor = SegmentationModelsBuilder.get_preprocessing_pipeline(preproc_params)
+        segmentation_model = getattr(smp, model_name)(
             encoder_name=encoder_name,
             encoder_weights=encoder_weights,
             in_channels=in_channels,
             classes=classes,
+            activation=activation,
             **kwargs,
         )
 
-    def preprocessing(self, input: Tensor) -> Tensor:
+        return SemanticSegmentation(
+            model=segmentation_model,
+            pre_processor=preprocessor,
+            post_processor=nn.Identity(),
+            name=f"{model_name}_{encoder_name}"
+        )
+
+    @staticmethod
+    def get_preprocessing_pipeline(preproc_params: dict[str, Any]) -> kornia.augmentation.container.ImageSequential:
         # Ensure the color space transformation is ONNX-friendly
-        input_space = self.preproc_params["input_space"]
+        proc_sequence = []
+        input_space = preproc_params["input_space"]
         if input_space == "BGR":
-            input = kornia.color.rgb.bgr_to_rgb(input)
+            proc_sequence.append(kornia.color.BgrToRgb(input))
         elif input_space == "RGB":
             pass
         else:
             raise ValueError(f"Unsupported input space: {input_space}")
 
         # Normalize input range if needed
-        input_range = self.preproc_params["input_range"]
+        input_range = preproc_params["input_range"]
         if input_range[1] == 255:
-            input = input * 255.0
+            proc_sequence.append(kornia.enhance.Normalize(mean=0., std=1 / 255.))
         elif input_range[1] == 1:
             pass
         else:
             raise ValueError(f"Unsupported input range: {input_range}")
 
         # Handle mean and std normalization
-        if self.preproc_params["mean"] is not None:
-            mean = tensor([self.preproc_params["mean"]], device=input.device)
+        if preproc_params["mean"] is not None:
+            mean = tensor([preproc_params["mean"]])
         else:
             mean = zeros_like(input)
 
-        if self.preproc_params["std"] is not None:
-            std = tensor([self.preproc_params["std"]], device=input.device)
+        if preproc_params["std"] is not None:
+            std = tensor([preproc_params["std"]])
         else:
             std = ones_like(input)
+        proc_sequence.append(kornia.enhance.Normalize(mean=mean, std=std))
 
-        return kornia.enhance.normalize(input, mean, std)
+        return kornia.augmentation.container.ImageSequential(*proc_sequence)
 
-    def forward(self, input: Tensor) -> Tensor:
-        input = self.preprocessing(input)
-        return self.segmentation_model(input)
+if __name__ == "__main__":
+    m = SegmentationModelsBuilder.build(classes=10)
+    image = kornia.utils.sample.get_sample_images((224, 224), as_list=False)
+    m.save(image)
