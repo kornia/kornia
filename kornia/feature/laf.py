@@ -443,7 +443,7 @@ def extract_patches_from_pyramid(
             patches = F.grid_sample(
                 cur_img[i : i + 1].expand(grid.shape[0], ch, h, w), grid, padding_mode="border", align_corners=False
             )
-            out[i].masked_scatter_(scale_mask.view(-1, 1, 1, 1), patches)
+            out[i].masked_scatter_(scale_mask.view(-1, 1, 1, 1), patches.to(nlaf.dtype))
         we_are_in_business = min(cur_img.size(2), cur_img.size(3)) >= PS
         if not we_are_in_business:
             break
