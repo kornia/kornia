@@ -106,7 +106,7 @@ class TestSolvePnpDlt(BaseTester):
         intrinsics, _, world_points, img_points = self._get_test_data(num_points, device, torch.float64)
         weights = torch.rand(*world_points.shape[:2], device=device, dtype=torch.float64).abs()
         self.gradcheck(kornia.geometry.solve_pnp_dlt, (world_points, img_points, intrinsics, weights))
-        
+
     @pytest.mark.parametrize("num_points", (6, 20))
     def test_pred_world_to_cam(self, num_points, device, dtype):
         intrinsics, gt_world_to_cam, world_points, img_points = self._get_test_data(num_points, device, dtype)
