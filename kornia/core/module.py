@@ -5,7 +5,6 @@ from functools import wraps
 from typing import Any, Callable, List, Optional, Tuple, Union
 
 import kornia
-from kornia.onnx.mixin import ONNXExportMixin
 
 from ._backend import Module, Sequential, Tensor, from_numpy
 from .external import PILImage as Image
@@ -220,7 +219,7 @@ class ImageModuleMixIn:
         kornia.io.write_image(name, out_image.mul(255.0).byte())
 
 
-class ImageModule(Module, ImageModuleMixIn, ONNXExportMixin):
+class ImageModule(Module, ImageModuleMixIn, kornia.onnx.mixin.ONNXExportMixin):
     """Handles image-based operations.
 
     This modules accepts multiple input and output data types, provides end-to-end
@@ -276,7 +275,7 @@ class ImageModule(Module, ImageModuleMixIn, ONNXExportMixin):
         return _output_image
 
 
-class ImageSequential(Sequential, ImageModuleMixIn, ONNXExportMixin):
+class ImageSequential(Sequential, ImageModuleMixIn, kornia.onnx.mixin.ONNXExportMixin):
     """Handles image-based operations as a sequential module.
 
     This modules accepts multiple input and output data types, provides end-to-end
