@@ -7,7 +7,7 @@ from kornia.core import arange, ones_like, where, zeros
 from kornia.geometry.conversions import convert_points_to_homogeneous
 from kornia.geometry.linalg import transform_points
 from kornia.utils import eye_like
-from kornia.utils.helpers import _torch_linalg_svdvals
+from kornia.utils.helpers import _torch_linalg_svdvals, _torch_svd_cast
 from kornia.core.check import KORNIA_CHECK_SHAPE, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SHAPE
 
 
@@ -74,8 +74,8 @@ def solve_pnp_dlt(
           the points in the image space.
         intrinsics : A tensor with shape :math:`(B, 3, 3)` representing
           the intrinsic matrices.
-        weights : This parameter is not used currently and is just a
-          placeholder for API consistency.
+        weights : A tensor with shape :math:`(B, N)` representing the
+            weights for each point. If None, all points are considered to be equally important.
         svd_eps : A small float value to avoid numerical precision issues.
 
     Returns:
@@ -198,8 +198,16 @@ def solve_pnp_dlt(
     system[:, 0::2, 8:12] = world_points_norm_h * (-1) * img_points_norm[..., 0:1]
     system[:, 1::2, 8:12] = world_points_norm_h * (-1) * img_points_norm[..., 1:2]
 
+    # Apply weights to the system if provided
+    if weights is not None:
+        if weights.shape != (B, N):
+            raise AssertionError(f"Weights should have shape (B, N). Got {weights.shape}.")
+        weights_expanded = weights.unsqueeze(-1).repeat(1, 2, 1).view(B, 2 * N, 1)
+        # Multiply the system matrix by the expanded weights
+        system = system * weights_expanded
+
     # Getting the solution vectors.
-    _, _, v = torch.svd(system)
+    _, _, v = _torch_svd_cast(system)
     solution = v[..., -1]
 
     # Reshaping the solution vectors to the correct shape.

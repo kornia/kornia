@@ -99,15 +99,36 @@ class TestSolvePnpDlt(BaseTester):
     @pytest.mark.parametrize("num_points", (6,))
     def test_gradcheck(self, num_points, device):
         intrinsics, _, world_points, img_points = self._get_test_data(num_points, device, torch.float64)
-
         self.gradcheck(kornia.geometry.solve_pnp_dlt, (world_points, img_points, intrinsics))
 
+    @pytest.mark.parametrize("num_points", (8,))
+    def test_gradcheck_weights(self, num_points, device):
+        intrinsics, _, world_points, img_points = self._get_test_data(num_points, device, torch.float64)
+        weights = torch.rand(*world_points.shape[:2], device=device, dtype=torch.float64).abs()
+        self.gradcheck(kornia.geometry.solve_pnp_dlt, (world_points, img_points, intrinsics, weights))
+        
     @pytest.mark.parametrize("num_points", (6, 20))
     def test_pred_world_to_cam(self, num_points, device, dtype):
         intrinsics, gt_world_to_cam, world_points, img_points = self._get_test_data(num_points, device, dtype)
 
         pred_world_to_cam = kornia.geometry.solve_pnp_dlt(world_points, img_points, intrinsics)
         self.assert_close(pred_world_to_cam, gt_world_to_cam, atol=1e-4, rtol=1e-4)
+
+    @pytest.mark.parametrize("num_points", (16, 20))
+    def test_pred_world_to_cam_weighted(self, num_points, device, dtype):
+        intrinsics, gt_world_to_cam, world_points, img_points = self._get_test_data(num_points, device, dtype)
+        weights = torch.ones(*world_points.shape[:2], device=device, dtype=dtype)
+        pred_world_to_cam = kornia.geometry.solve_pnp_dlt(world_points, img_points, intrinsics, weights)
+        self.assert_close(pred_world_to_cam, gt_world_to_cam, atol=1e-4, rtol=1e-4)
+
+    @pytest.mark.parametrize("num_points", (25,))
+    def test_pred_world_to_cam_weighted_rand(self, num_points, device, dtype):
+        intrinsics, gt_world_to_cam, world_points, img_points = self._get_test_data(num_points, device, dtype)
+        weights = torch.ones(*world_points.shape[:2], device=device, dtype=dtype)
+        weights[0, 0:1] = 0
+        world_points[0, 0:1] *= 0.9
+        pred_world_to_cam = kornia.geometry.solve_pnp_dlt(world_points, img_points, intrinsics, weights)
+        self.assert_close(pred_world_to_cam, gt_world_to_cam, atol=1e-4, rtol=2e-2)
 
     @pytest.mark.parametrize("num_points", (6, 20))
     def test_project(self, num_points, device, dtype):
