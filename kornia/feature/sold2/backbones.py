@@ -2,7 +2,7 @@
 
 import functools
 import operator
-from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Type, Union
+from typing import Dict, List, Optional, Tuple, Type, Union
 
 import torch
 import torch.nn.functional as F
@@ -10,38 +10,9 @@ from torch import nn
 from torch.nn.functional import pixel_shuffle, softmax
 
 from kornia.core import Module, Tensor
-
-
-class HourglassConfig(NamedTuple):
-    depth: int
-    num_stacks: int
-    num_blocks: int
-    num_classes: int
-    input_channels: int
-    head: Type[Module]
-
+from kornia.feature.sold2.structures import BackboneCfg, DetectorCfg, PixelShuffleDecoderCfg, SuperpointDecoderCfg
 
 # [Hourglass backbone classes]
-class HourglassBackbone(Module):
-    """Hourglass network, taken from https://github.com/zhou13/lcnn.
-
-    Args:
-        input_channel: number of input channels.
-        depth: number of residual blocks per hourglass module.
-        num_stacks: number of hourglass modules stacked together.
-        num_blocks: number of layers in each residual block.
-        num_classes: number of heads for the output of a hourglass module.
-    """
-
-    def __init__(
-        self, input_channel: int = 1, depth: int = 4, num_stacks: int = 2, num_blocks: int = 1, num_classes: int = 5
-    ) -> None:
-        super().__init__()
-        self.head = MultitaskHead
-        self.net = hg(HourglassConfig(depth, num_stacks, num_blocks, num_classes, input_channel, head=self.head))
-
-    def forward(self, input_images: Tensor) -> Tensor:
-        return self.net(input_images)
 
 
 class MultitaskHead(Module):
@@ -239,16 +210,36 @@ class HourglassNet(Module):
         return y
 
 
-def hg(cfg: HourglassConfig) -> HourglassNet:
-    return HourglassNet(
-        Bottleneck2D,
-        head=cfg.head,
-        depth=cfg.depth,
-        num_stacks=cfg.num_stacks,
-        num_blocks=cfg.num_blocks,
-        num_classes=cfg.num_classes,
-        input_channels=cfg.input_channels,
-    )
+class HourglassBackbone(Module):
+    """Hourglass network, taken from https://github.com/zhou13/lcnn.
+
+    Args:
+        config (BackboneCfg): Configuration object containing parameters for setting up the hourglass network.
+            - input_channel: number of input channels
+            - depth: number of residual blocks per hourglass module
+            - num_stacks: number of hourglass modules stacked together
+            - num_blocks: number of layers in each residual block
+            - num_classes: number of heads for the output of a hourglass module
+    """
+
+    def __init__(self, config: BackboneCfg) -> None:
+        super().__init__()
+        self.head = MultitaskHead
+        self.net = self.create_hourglass_net(config)
+
+    def create_hourglass_net(self, config: BackboneCfg) -> HourglassNet:
+        return HourglassNet(
+            Bottleneck2D,
+            head=self.head,
+            depth=config.depth,
+            num_stacks=config.num_stacks,
+            num_blocks=config.num_blocks,
+            num_classes=config.num_classes,
+            input_channels=config.input_channels,
+        )
+
+    def forward(self, input_images: Tensor) -> Tensor:
+        return self.net(input_images)
 
 
 # [Backbone decoders]
@@ -261,13 +252,14 @@ class SuperpointDecoder(Module):
         the junction heatmap, with shape (B, H, W).
     """
 
-    def __init__(self, input_feat_dim: int = 128, grid_size: int = 8) -> None:
+    def __init__(self, config: SuperpointDecoderCfg) -> None:
         super().__init__()
+        self.config = config
         self.relu = nn.ReLU(inplace=True)
         # Perform strided convolution when using lcnn backbone.
-        self.convPa = nn.Conv2d(input_feat_dim, 256, kernel_size=3, stride=2, padding=1)
+        self.convPa = nn.Conv2d(self.config.input_feat_dim, 256, kernel_size=3, stride=2, padding=1)
         self.convPb = nn.Conv2d(256, 65, kernel_size=1, stride=1, padding=0)
-        self.grid_size = grid_size
+        self.grid_size = self.config.grid_size
 
     def forward(self, input_features: Tensor) -> Tensor:
         feat = self.relu(self.convPa(input_features))
@@ -290,10 +282,11 @@ class PixelShuffleDecoder(Module):
         the (B, 1, H, W) line heatmap.
     """
 
-    def __init__(self, input_feat_dim: int = 128, num_upsample: int = 2, output_channel: int = 2) -> None:
+    def __init__(self, config: PixelShuffleDecoderCfg) -> None:
         super().__init__()
+        self.config = config
         # Get channel parameters
-        self.channel_conf = self.get_channel_conf(num_upsample)
+        self.channel_conf = self.get_channel_conf(self.config.num_upsample)
 
         # Define the pixel shuffle
         self.pixshuffle = nn.PixelShuffle(2)
@@ -303,7 +296,7 @@ class PixelShuffleDecoder(Module):
         # The input block
         conv_block_lst.append(
             nn.Sequential(
-                nn.Conv2d(input_feat_dim, self.channel_conf[0], kernel_size=3, stride=1, padding=1),
+                nn.Conv2d(self.config.input_feat_dim, self.channel_conf[0], kernel_size=3, stride=1, padding=1),
                 nn.BatchNorm2d(self.channel_conf[0]),
                 nn.ReLU(inplace=True),
             )
@@ -321,7 +314,9 @@ class PixelShuffleDecoder(Module):
 
         # Output block
         conv_block_lst.append(
-            nn.Sequential(nn.Conv2d(self.channel_conf[-1], output_channel, kernel_size=1, stride=1, padding=0))
+            nn.Sequential(
+                nn.Conv2d(self.channel_conf[-1], self.config.output_channels, kernel_size=1, stride=1, padding=0)
+            )
         )
         self.conv_block_lst = nn.ModuleList(conv_block_lst)
 
@@ -374,7 +369,7 @@ class SOLD2Net(Module):
     """Full network for SOLD².
 
     Args:
-        model_cfg: the configuration as a Dict.
+        model_cfg: the configuration as dataclass.
     Returns:
         a Dict with the following values:
             junctions: heatmap of junctions.
@@ -382,23 +377,22 @@ class SOLD2Net(Module):
             descriptors: semi-dense descriptors.
     """
 
-    def __init__(self, model_cfg: Dict[str, Any]) -> None:
+    def __init__(self, model_cfg: DetectorCfg) -> None:
         super().__init__()
-        self.cfg = model_cfg
+        self.cfg = model_cfg if model_cfg is not None else DetectorCfg()
 
         # Backbone
-        self.backbone_net = HourglassBackbone(**self.cfg["backbone_cfg"])
-        feat_channel = 256
+        self.backbone_net = HourglassBackbone(self.cfg.backbone_cfg)
 
         # Junction decoder
-        self.junction_decoder = SuperpointDecoder(feat_channel, self.cfg["grid_size"])
+        self.junction_decoder = SuperpointDecoder(self.cfg.super_point_decoder_cfg.input_feat_dim)
 
         # Line heatmap decoder
-        self.heatmap_decoder = PixelShuffleDecoder(feat_channel, num_upsample=2)
+        self.heatmap_decoder = PixelShuffleDecoder(self.cfg.pixel_shuffle_decoder_cfg)
 
         # Descriptor decoder
         if "use_descriptor" in self.cfg:
-            self.descriptor_decoder = SuperpointDescriptor(feat_channel)
+            self.descriptor_decoder = SuperpointDescriptor(self.cfg.super_point_decoder_cfg.input_feat_dim)
 
     def forward(self, input_images: Tensor) -> Dict[str, Tensor]:
         # The backbone
