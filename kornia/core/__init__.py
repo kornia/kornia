@@ -39,7 +39,7 @@ from .mixin import (
     ONNXMixin,
     ONNXRuntimeMixin,
 )
-from .module import ImageModule, ImageModuleMixIn, ImageSequential
+from .module import ImageModule, ImageSequential
 from .tensor_wrapper import TensorWrapper  # type: ignore
 
 __all__ = [

@@ -121,7 +121,7 @@ class ONNXExportMixin:
 
         additional_metadata = copy.deepcopy(additional_metadata)
         additional_metadata.extend(self.ADDITIONAL_METADATA)
-        onnx_model = add_metadata(onnx_model, additional_metadata)
+        onnx_model = kornia.onnx.utils.add_metadata(onnx_model, additional_metadata)
         if save:
             onnx.save(onnx_model, onnx_name)  # type: ignore
         return onnx_model
