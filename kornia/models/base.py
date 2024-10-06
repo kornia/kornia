@@ -25,12 +25,14 @@ class ModelBaseMixin:
             elif is_batch and isinstance(output, Tensor):
                 return output
             elif not is_batch and isinstance(output, Tensor):
-                return list(o for o in output)
+                out = [o for o in output]
+                return list(out)
             elif not is_batch and not isinstance(output, Tensor):
                 return output
             return output
         elif output_type == "pil":
-            return list(Image.fromarray((tensor_to_image(out_img) * 255).astype(np.uint8)) for out_img in output)  # type: ignore
+            out = [Image.fromarray((tensor_to_image(out_img) * 255).astype(np.uint8)) for out_img in output]  # type: ignore
+            return list(out)
 
         raise RuntimeError(f"Unsupported output type `{output_type}`.")
 
