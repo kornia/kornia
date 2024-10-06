@@ -1,7 +1,7 @@
 from typing import Any, ClassVar, List, Optional, Tuple, Union
 
 from kornia.core import Module, Tensor, rand, tensor
-from kornia.onnx import ONNXExportMixin
+from kornia.core.mixin.onnx import ONNXExportMixin
 
 __all__ = ["BoxFiltering"]
 

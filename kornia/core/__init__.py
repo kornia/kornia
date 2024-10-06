@@ -35,6 +35,12 @@ from ._backend import (
 )
 from .module import ImageModule, ImageModuleMixIn, ImageSequential
 from .tensor_wrapper import TensorWrapper  # type: ignore
+from .mixin import (
+    ONNXMixin,
+    ONNXExportMixin,
+    ONNXRuntimeMixin,
+    ImageModuleMixIn,
+)
 
 __all__ = [
     "external",
@@ -74,4 +80,7 @@ __all__ = [
     "ImageModule",
     "ImageSequential",
     "ImageModuleMixIn",
+    "ONNXMixin",
+    "ONNXExportMixin",
+    "ONNXRuntimeMixin",
 ]

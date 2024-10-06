@@ -10,14 +10,12 @@ from typing import (
 )
 
 import torch
+import kornia
 
 from kornia.core import Module, Tensor, rand
 from kornia.core.external import numpy as np
 from kornia.core.external import onnx
 from kornia.core.external import onnxruntime as ort
-from kornia.onnx.utils import add_metadata
-
-from .utils import ONNXLoader
 
 
 class ONNXExportMixin:
@@ -271,7 +269,7 @@ class ONNXMixin:
             onnx.ModelProto: The loaded ONNX model.
         """
         if isinstance(arg, str):
-            return ONNXLoader.load_model(arg, cache_dir=cache_dir)
+            return kornia.onnx.utils.ONNXLoader.load_model(arg, cache_dir=cache_dir)
         if isinstance(arg, onnx.ModelProto):  # type:ignore
             return arg
         raise ValueError(f"Invalid argument type. Got {type(arg)}")
@@ -354,7 +352,7 @@ class ONNXMixin:
                 A list of tuples representing additional metadata to add to the combined ONNX model.
                 Example: [("version", 0.1)], [("date", 20240909)].
         """
-        op = add_metadata(op, additional_metadata)
+        op = kornia.onnx.utils.add_metadata(op, additional_metadata)
         return op
 
     def _onnx_version_conversion(

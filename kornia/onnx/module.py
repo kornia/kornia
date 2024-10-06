@@ -5,8 +5,7 @@ from typing import Any, Optional, Union
 from kornia.config import kornia_config
 from kornia.core.external import onnx
 from kornia.core.external import onnxruntime as ort
-
-from .mixin import ONNXMixin, ONNXRuntimeMixin
+from kornia.core.mixin.onnx import ONNXMixin, ONNXRuntimeMixin
 
 __all__ = ["ONNXModule", "load"]
 
