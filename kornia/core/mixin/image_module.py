@@ -5,7 +5,6 @@ from functools import wraps
 from typing import Any, Callable, List, Optional, Tuple, Union
 
 import kornia
-
 from kornia.core._backend import Tensor, from_numpy
 from kornia.core.external import PILImage as Image
 from kornia.core.external import numpy as np

@@ -10,8 +10,8 @@ from typing import (
 )
 
 import torch
-import kornia
 
+import kornia
 from kornia.core import Module, Tensor, rand
 from kornia.core.external import numpy as np
 from kornia.core.external import onnx

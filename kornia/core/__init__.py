@@ -33,14 +33,14 @@ from ._backend import (
     zeros,
     zeros_like,
 )
+from .mixin import (
+    ImageModuleMixIn,
+    ONNXExportMixin,
+    ONNXMixin,
+    ONNXRuntimeMixin,
+)
 from .module import ImageModule, ImageModuleMixIn, ImageSequential
 from .tensor_wrapper import TensorWrapper  # type: ignore
-from .mixin import (
-    ONNXMixin,
-    ONNXExportMixin,
-    ONNXRuntimeMixin,
-    ImageModuleMixIn,
-)
 
 __all__ = [
     "external",
