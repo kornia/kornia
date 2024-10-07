@@ -19,6 +19,20 @@ class ModelBaseMixin:
     def _tensor_to_type(
         self, output: Union[Tensor, List[Tensor]], output_type: str, is_batch: bool = False
     ) -> Union[Tensor, List[Tensor], List["Image.Image"]]:  # type: ignore
+        """
+        Converts the output tensor to the desired type.
+
+        Args:
+            output: The output tensor or list of tensors.
+            output_type: The desired output type. Accepted values are "torch" and "pil".
+            is_batch: If True, the output is expected to be a batch of tensors.
+
+        Returns:
+            The converted output tensor or list of tensors.
+ 
+        Raises:
+            RuntimeError: If the output type is not supported.
+        """
         if output_type == "torch":
             if is_batch and not isinstance(output, Tensor):
                 return stack(output)

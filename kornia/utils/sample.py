@@ -40,6 +40,7 @@ def get_sample_images(
     download: bool = True,
     cache_dir: Optional[str] = None,
     as_list: Optional[bool] = None,
+    divisible_factor: Optional[int] = None,
     **kwargs: Any,
 ) -> Union[Tensor, List[Tensor]]:
     """Loads multiple images from the given URLs.
@@ -56,6 +57,8 @@ def get_sample_images(
             Defaults to ".kornia_hub/images".
         as_list: if to keep the output as a list. If None and `resize` is None, the output will be a list.
             If None and `resize` is not None, the output will be a single tensor.
+        divisible_factor:
+            If not None, the images will be resized to the nearest multiple of `divisible_factor`.
         **kwargs: Additional keyword arguments to pass to `kornia.geometry.resize`.
 
     Returns:
@@ -83,6 +86,8 @@ def get_sample_images(
         img_tensor = load_image(fname)
         if resize is not None:
             img_tensor = kornia.geometry.resize(img_tensor, resize, **kwargs)
+        if divisible_factor is not None:
+            img_tensor = kornia.geometry.transform.resize_to_be_divisible(img_tensor, divisible_factor, **kwargs)
         tensors.append(img_tensor)
 
     if not as_list and resize is not None:

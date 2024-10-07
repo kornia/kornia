@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import ClassVar, List, Optional, Union
 
 import torch
@@ -28,6 +30,8 @@ class SemanticSegmentation(ModelBase):
         Returns:
             output tensor.
         """
+        outputs: Union[Tensor, list[Tensor]]
+
         if isinstance(
             images,
             (
@@ -35,11 +39,18 @@ class SemanticSegmentation(ModelBase):
                 tuple,
             ),
         ):
-            images = torch.stack(images, dim=0)
+            outputs = []
+            for image in images:
+                image = self.pre_processor(image[None])
+                output = self.model(image)
+                output = self.post_processor(output)
+                outputs.append(output[0])
+        else:
+            images = self.pre_processor(images)
+            outputs = self.model(images)
+            outputs = self.post_processor(outputs)
 
-        images = self.pre_processor(images)
-        output = self.model(images)
-        return self.post_processor(output)
+        return outputs
 
     def get_colormap(self, num_classes: int, colormap: str = "random", manual_seed: int = 2147) -> Tensor:
         """Get a color map of size num_classes.
@@ -61,6 +72,49 @@ class SemanticSegmentation(ModelBase):
             raise ValueError(f"Unsupported colormap: {colormap}")
 
         return colors
+
+    def visualize_output(self, semantic_mask: Tensor, colors: Tensor) -> Tensor:
+        """Visualize the output of the segmentation model.
+
+        Args:
+            semantic_mask: The output of the segmentation model. Shape should be (C, H, W) or (B, C, H, W).
+            colors: The color map to use for visualizing the output of the segmentation model. Shape should be (num_classes, 3).
+
+        Returns:
+            A tensor of shape (3, H, W) or (B, 3, H, W) representing the visualized output of the segmentation model.
+
+        Raises:
+            ValueError: If the shape of the semantic mask is not of shape (C, H, W) or (B, C, H, W).
+            ValueError: If the shape of the colors is not of shape (num_classes, 3).
+            ValueError: If only muliclass segmentation is supported. Please ensure a softmax is used, or submit a PR.
+        """
+        if semantic_mask.dim() == 3:
+            channel_dim = 0
+        elif semantic_mask.dim() == 4:
+            channel_dim = 1
+        else:
+            raise ValueError(f"Semantic mask must be of shape (C, H, W) or (B, C, H, W), got {semantic_mask.shape}.")
+
+        if torch.allclose(
+            semantic_mask.sum(dim=channel_dim), torch.tensor(1, dtype=semantic_mask.dtype, device=semantic_mask.device)
+        ):
+            # Softmax is used, thus, muliclass segmentation
+            semantic_mask = semantic_mask.argmax(dim=channel_dim, keepdim=True)
+            # Create a colormap for each pixel based on the class with the highest probability
+            output = colors[semantic_mask.squeeze(channel_dim)]
+            if semantic_mask.dim() == 3:
+                output = output.permute(2, 0, 1)
+            elif semantic_mask.dim() == 4:
+                output = output.permute(0, 3, 1, 2)
+            else:
+                raise ValueError(
+                    f"Semantic mask must be of shape (C, H, W) or (B, C, H, W), got {semantic_mask.shape}.")
+        else:
+            raise ValueError(
+                "Only muliclass segmentation is supported. Please ensure a softmax is used, or submit a PR."
+            )
+
+        return output
 
     def visualize(
         self,
@@ -84,6 +138,7 @@ class SemanticSegmentation(ModelBase):
         if semantic_masks is None:
             semantic_masks = self.forward(images)
 
+        outputs: Union[Tensor, list[Tensor]]
         if isinstance(
             semantic_masks,
             (
@@ -91,25 +146,20 @@ class SemanticSegmentation(ModelBase):
                 tuple,
             ),
         ):
-            semantic_masks = torch.stack(semantic_masks, dim=0)
+            outputs = []
+            for semantic_mask in semantic_masks:
+                if semantic_mask.ndim != 3:
+                    raise ValueError(f"Semantic mask must be of shape (C, H, W), got {semantic_mask.shape}.")
+                # Generate a color for each class
+                colors = self.get_colormap(semantic_mask.size(0), colormap, manual_seed=manual_seed)
+                outputs.append(self.visualize_output(semantic_mask, colors))
 
-        # Generate a color for each class
-        colors = self.get_colormap(semantic_masks.size(1), colormap, manual_seed=manual_seed)
-
-        if torch.allclose(
-            semantic_masks.sum(dim=1), torch.tensor(1, dtype=semantic_masks.dtype, device=semantic_masks.device)
-        ):
-            # Softmax is used, thus, muliclass segmentation
-            semantic_masks = semantic_masks.argmax(dim=1, keepdim=True)
-            # Create a colormap for each pixel based on the class with the highest probability
-            output = colors[semantic_masks.squeeze(1)]
-            output = output.permute(0, 3, 1, 2)
         else:
-            raise ValueError(
-                "Only muliclass segmentation is supported. Please ensure a softmax is used, or submit a PR."
-            )
+            # Generate a color for each class
+            colors = self.get_colormap(semantic_masks.size(1), colormap, manual_seed=manual_seed)
+            outputs = self.visualize_output(semantic_masks, colors)
 
-        return self._tensor_to_type(output, output_type, is_batch=True)
+        return self._tensor_to_type(outputs, output_type, is_batch=True if isinstance(outputs, Tensor) else False)
 
     def save(
         self,
@@ -134,23 +184,16 @@ class SemanticSegmentation(ModelBase):
         """
 
         colored_masks = self.visualize(images, semantic_masks, output_type, colormap=colormap, manual_seed=manual_seed)
-        if isinstance(images, Tensor):
-            overlayed = kornia.enhance.add_weighted(images, 0.5, colored_masks, 0.5, 1.0)
-        elif isinstance(
-            images,
-            (
-                list,
-                tuple,
-            ),
-        ):
-            overlayed = []
+        overlaid: Union[Tensor, list[Tensor]]
+        if isinstance(images, Tensor) and isinstance(colored_masks, Tensor):
+            overlaid = kornia.enhance.add_weighted(images, 0.5, colored_masks, 0.5, 1.0)
+        elif isinstance(images, (list, tuple,)) and isinstance(colored_masks, (list, tuple,)):
+            overlaid = []
             for i in range(len(images)):
-                overlayed.append(
-                    kornia.enhance.add_weighted(images[i : i + 1], 0.5, colored_masks[i : i + 1], 0.5, 1.0)[0]
-                )
+                overlaid.append(kornia.enhance.add_weighted(images[i][None], 0.5, colored_masks[i][None], 0.5, 1.0)[0])
         else:
             raise ValueError(f"`images` should be a Tensor or a list of Tensors. Got {type(images)}")
 
         self._save_outputs(images, directory, suffix="_src")
         self._save_outputs(colored_masks, directory, suffix="_mask")
-        self._save_outputs(overlayed, directory, suffix="_overlay")
+        self._save_outputs(overlaid, directory, suffix="_overlay")
