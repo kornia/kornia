@@ -4,7 +4,6 @@ import os
 from functools import wraps
 from typing import Any, Callable, List, Optional, Tuple, Union
 
-import kornia
 from kornia.core._backend import Tensor, from_numpy
 from kornia.core.external import PILImage as Image
 from kornia.core.external import numpy as np
@@ -20,7 +19,9 @@ class ImageModuleMixIn:
     _output_image: Any
 
     def convert_input_output(
-        self, input_names_to_handle: Optional[List[Any]] = None, output_type: str = "tensor"
+        self,
+        input_names_to_handle: Optional[List[Any]] = None,
+        output_type: str = "tensor",
     ) -> Callable[[Any], Any]:
         """Decorator to convert input and output types for a function.
 
@@ -108,11 +109,21 @@ class ImageModuleMixIn:
             Tensor: The converted tensor.
         """
         if isinstance(x, (str,)):
-            return kornia.io.load_image(x, kornia.io.ImageLoadType.UNCHANGED) / 255
+            try:
+                from kornia.io import ImageLoadType, load_image  # pylint: disable=C0415
+            except ImportError as exc:
+                raise ImportError("Kornia not installed. Please install Kornia to use this feature.") from exc
+
+            return load_image(x, ImageLoadType.UNCHANGED) / 255
         if isinstance(x, (Tensor,)):
             return x
         if isinstance(x, (np.ndarray,)):  # type: ignore
-            return kornia.utils.image.image_to_tensor(x) / 255
+            try:
+                from kornia.utils.image import image_to_tensor  # pylint: disable=C0415
+            except ImportError as exc:
+                raise ImportError("Kornia not installed. Please install Kornia to use this feature.") from exc
+
+            return image_to_tensor(x) / 255
         if isinstance(x, (Image.Image,)):  # type: ignore
             return from_numpy(np.array(x)).permute(2, 0, 1).float() / 255  # type: ignore
         raise TypeError("Input type not supported")
@@ -187,9 +198,14 @@ class ImageModuleMixIn:
         if len(self._output_image.shape) == 3:
             out_image = self._output_image
         elif len(self._output_image.shape) == 4:
+            try:
+                from kornia.utils.image import make_grid  # pylint: disable=C0415
+            except ImportError as exc:
+                raise ImportError("Kornia not installed. Please install Kornia to use this feature.") from exc
+
             if n_row is None:
                 n_row = math.ceil(self._output_image.shape[0] ** 0.5)
-            out_image = kornia.utils.image.make_grid(self._output_image, n_row, padding=2)
+            out_image = make_grid(self._output_image, n_row, padding=2)
         else:
             raise ValueError
 
@@ -207,6 +223,12 @@ class ImageModuleMixIn:
             name: Directory to save the images.
             n_row: Number of images displayed in each row of the grid.
         """
+        try:
+            from kornia.io import write_image  # pylint: disable=C0415
+            from kornia.utils.image import make_grid  # pylint: disable=C0415
+        except ImportError as exc:
+            raise ImportError("Kornia not installed. Please install Kornia to use this feature.") from exc
+
         if name is None:
             name = f"Kornia-{datetime.datetime.now(tz=datetime.timezone.utc).strftime('%Y%m%d%H%M%S')!s}.jpg"
         if len(self._output_image.shape) == 3:
@@ -214,5 +236,5 @@ class ImageModuleMixIn:
         if len(self._output_image.shape) == 4:
             if n_row is None:
                 n_row = math.ceil(self._output_image.shape[0] ** 0.5)
-            out_image = kornia.utils.image.make_grid(self._output_image, n_row, padding=2)
-        kornia.io.write_image(name, out_image.mul(255.0).byte())
+            out_image = make_grid(self._output_image, n_row, padding=2)
+        write_image(name, out_image.mul(255.0).byte())
