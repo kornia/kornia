@@ -5,7 +5,7 @@ from typing import Any, Optional
 from torch import nn
 
 import kornia
-from kornia.core import ones_like, tensor, zeros_like
+from kornia.core import tensor, Module
 from kornia.core.external import segmentation_models_pytorch as smp
 
 from .base import SemanticSegmentation
@@ -19,7 +19,7 @@ class SegmentationModelsBuilder:
         encoder_weights: Optional[str] = "imagenet",
         in_channels: int = 3,
         classes: int = 1,
-        activation="softmax",
+        activation: str = "softmax",
         **kwargs: Any,
     ) -> SemanticSegmentation:
         """SegmentationModel is a module that wraps a segmentation model.
@@ -64,10 +64,10 @@ class SegmentationModelsBuilder:
     @staticmethod
     def get_preprocessing_pipeline(preproc_params: dict[str, Any]) -> kornia.augmentation.container.ImageSequential:
         # Ensure the color space transformation is ONNX-friendly
-        proc_sequence = []
+        proc_sequence: list[Module] = []
         input_space = preproc_params["input_space"]
         if input_space == "BGR":
-            proc_sequence.append(kornia.color.BgrToRgb(input))
+            proc_sequence.append(kornia.color.BgrToRgb())
         elif input_space == "RGB":
             pass
         else:
@@ -86,18 +86,12 @@ class SegmentationModelsBuilder:
         if preproc_params["mean"] is not None:
             mean = tensor([preproc_params["mean"]])
         else:
-            mean = zeros_like(input)
+            mean = 0.
 
         if preproc_params["std"] is not None:
             std = tensor([preproc_params["std"]])
         else:
-            std = ones_like(input)
+            std = 1.
         proc_sequence.append(kornia.enhance.Normalize(mean=mean, std=std))
 
         return kornia.augmentation.container.ImageSequential(*proc_sequence)
-
-
-if __name__ == "__main__":
-    m = SegmentationModelsBuilder.build(classes=10)
-    image = kornia.utils.sample.get_sample_images((224, 224), as_list=False)
-    m.save(image)

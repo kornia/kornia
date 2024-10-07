@@ -41,7 +41,7 @@ class SemanticSegmentation(ModelBase):
         output = self.model(images)
         return self.post_processor(output)
 
-    def get_colormap(self, num_classes, colormap: str = "random", manual_seed: int = 2147) -> torch.Tensor:
+    def get_colormap(self, num_classes: int, colormap: str = "random", manual_seed: int = 2147) -> Tensor:
         """Get a color map of size num_classes.
 
         Args:
@@ -134,7 +134,14 @@ class SemanticSegmentation(ModelBase):
         """
 
         colored_masks = self.visualize(images, semantic_masks, output_type, colormap=colormap, manual_seed=manual_seed)
-        overlayed = kornia.enhance.add_weighted(images, 0.5, colored_masks, 0.5, 1.0)
+        if isinstance(images, Tensor):
+            overlayed = kornia.enhance.add_weighted(images, 0.5, colored_masks, 0.5, 1.0)
+        elif isinstance(images, (list, tuple,)):
+            overlayed = []
+            for i in range(len(images)):
+                overlayed.append(kornia.enhance.add_weighted(images[i:i + 1], 0.5, colored_masks[i:i + 1], 0.5, 1.0)[0])
+        else:
+            raise ValueError(f"`images` should be a Tensor or a list of Tensors. Got {type(images)}")
 
         self._save_outputs(images, directory, suffix="_src")
         self._save_outputs(colored_masks, directory, suffix="_mask")

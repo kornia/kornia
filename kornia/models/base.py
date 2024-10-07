@@ -25,8 +25,7 @@ class ModelBaseMixin:
             elif is_batch and isinstance(output, Tensor):
                 return output
             elif not is_batch and isinstance(output, Tensor):
-                out = [o for o in output]
-                return list(out)
+                return list(output)
             elif not is_batch and not isinstance(output, Tensor):
                 return output
             return output
