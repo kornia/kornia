@@ -5,7 +5,7 @@ from typing import Any, Optional
 from torch import nn
 
 import kornia
-from kornia.core import tensor, Module
+from kornia.core import Module, tensor
 from kornia.core.external import segmentation_models_pytorch as smp
 
 from .base import SemanticSegmentation
@@ -86,12 +86,12 @@ class SegmentationModelsBuilder:
         if preproc_params["mean"] is not None:
             mean = tensor([preproc_params["mean"]])
         else:
-            mean = 0.
+            mean = 0.0
 
         if preproc_params["std"] is not None:
             std = tensor([preproc_params["std"]])
         else:
-            std = 1.
+            std = 1.0
         proc_sequence.append(kornia.enhance.Normalize(mean=mean, std=std))
 
         return kornia.augmentation.container.ImageSequential(*proc_sequence)

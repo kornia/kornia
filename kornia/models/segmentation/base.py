@@ -136,10 +136,18 @@ class SemanticSegmentation(ModelBase):
         colored_masks = self.visualize(images, semantic_masks, output_type, colormap=colormap, manual_seed=manual_seed)
         if isinstance(images, Tensor):
             overlayed = kornia.enhance.add_weighted(images, 0.5, colored_masks, 0.5, 1.0)
-        elif isinstance(images, (list, tuple,)):
+        elif isinstance(
+            images,
+            (
+                list,
+                tuple,
+            ),
+        ):
             overlayed = []
             for i in range(len(images)):
-                overlayed.append(kornia.enhance.add_weighted(images[i:i + 1], 0.5, colored_masks[i:i + 1], 0.5, 1.0)[0])
+                overlayed.append(
+                    kornia.enhance.add_weighted(images[i : i + 1], 0.5, colored_masks[i : i + 1], 0.5, 1.0)[0]
+                )
         else:
             raise ValueError(f"`images` should be a Tensor or a list of Tensors. Got {type(images)}")
 
