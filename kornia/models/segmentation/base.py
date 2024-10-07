@@ -108,7 +108,8 @@ class SemanticSegmentation(ModelBase):
                 output = output.permute(0, 3, 1, 2)
             else:
                 raise ValueError(
-                    f"Semantic mask must be of shape (C, H, W) or (B, C, H, W), got {semantic_mask.shape}.")
+                    f"Semantic mask must be of shape (C, H, W) or (B, C, H, W), got {semantic_mask.shape}."
+                )
         else:
             raise ValueError(
                 "Only muliclass segmentation is supported. Please ensure a softmax is used, or submit a PR."
@@ -123,7 +124,7 @@ class SemanticSegmentation(ModelBase):
         output_type: str = "torch",
         colormap: str = "random",
         manual_seed: int = 2147,
-    ) -> Union[Tensor, list[Tensor], list["Image.Image"]]:  # type: ignore
+    ) -> Union[Tensor, list[Tensor], list[Image.Image]]:  # type: ignore
         """Visualize the segmentation masks.
 
         Args:
@@ -187,7 +188,19 @@ class SemanticSegmentation(ModelBase):
         overlaid: Union[Tensor, list[Tensor]]
         if isinstance(images, Tensor) and isinstance(colored_masks, Tensor):
             overlaid = kornia.enhance.add_weighted(images, 0.5, colored_masks, 0.5, 1.0)
-        elif isinstance(images, (list, tuple,)) and isinstance(colored_masks, (list, tuple,)):
+        elif isinstance(
+            images,
+            (
+                list,
+                tuple,
+            ),
+        ) and isinstance(
+            colored_masks,
+            (
+                list,
+                tuple,
+            ),
+        ):
             overlaid = []
             for i in range(len(images)):
                 overlaid.append(kornia.enhance.add_weighted(images[i][None], 0.5, colored_masks[i][None], 0.5, 1.0)[0])

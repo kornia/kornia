@@ -4,7 +4,7 @@ from typing import Optional, Tuple, Union
 import torch
 
 from kornia.core import ImageModule as Module
-from kornia.core import ones, ones_like, zeros, Tensor
+from kornia.core import Tensor, ones, ones_like, zeros
 from kornia.filters import gaussian_blur2d
 from kornia.utils import _extract_device_dtype
 from kornia.utils.image import perform_keep_shape_image
@@ -65,9 +65,7 @@ def _compute_rotation_matrix(angle: Tensor, center: Tensor) -> Tensor:
     return matrix
 
 
-def _compute_rotation_matrix3d(
-    yaw: Tensor, pitch: Tensor, roll: Tensor, center: Tensor
-) -> Tensor:
+def _compute_rotation_matrix3d(yaw: Tensor, pitch: Tensor, roll: Tensor, center: Tensor) -> Tensor:
     """Compute a pure affine rotation matrix."""
     if len(yaw.shape) == len(pitch.shape) == len(roll.shape) == 0:
         yaw = yaw.unsqueeze(dim=0)
@@ -609,7 +607,7 @@ def resize(
 
 def resize_to_be_divisible(
     input: Tensor,
-    divisible_factor: int, 
+    divisible_factor: int,
     interpolation: str = "bilinear",
     align_corners: Optional[bool] = None,
     side: str = "short",
@@ -630,7 +628,7 @@ def resize_to_be_divisible(
     Returns:
         Tensor: The resized tensor.
     """
-    
+
     if isinstance(input, Tensor) and len(input.shape) == 4:
         height, width = input.shape[2], input.shape[3]
     if isinstance(input, Tensor) and len(input.shape) == 3:
