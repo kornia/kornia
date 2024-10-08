@@ -86,12 +86,12 @@ class SegmentationModelsBuilder:
         if preproc_params["mean"] is not None:
             mean = tensor([preproc_params["mean"]])
         else:
-            mean = 0.0
+            mean = tensor(0.0)
 
         if preproc_params["std"] is not None:
             std = tensor([preproc_params["std"]])
         else:
-            std = 1.0
+            std = tensor(1.0)
         proc_sequence.append(kornia.enhance.Normalize(mean=mean, std=std))
 
         return kornia.augmentation.container.ImageSequential(*proc_sequence)

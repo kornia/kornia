@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import ClassVar, List, Optional, Union
+from typing import ClassVar, Optional, Union
 
 import torch
 
@@ -16,8 +16,8 @@ class SemanticSegmentation(ModelBase):
     This module uses SegmentationModel library for semantic segmentation.
     """
 
-    ONNX_DEFAULT_INPUTSHAPE: ClassVar[List[int]] = [-1, 3, -1, -1]
-    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[List[int]] = [-1, -1, -1, -1]
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, -1, -1, -1]
 
     @torch.inference_mode()
     def forward(self, images: Union[Tensor, list[Tensor]]) -> Union[Tensor, list[Tensor]]:
@@ -78,7 +78,8 @@ class SemanticSegmentation(ModelBase):
 
         Args:
             semantic_mask: The output of the segmentation model. Shape should be (C, H, W) or (B, C, H, W).
-            colors: The color map to use for visualizing the output of the segmentation model. Shape should be (num_classes, 3).
+            colors: The color map to use for visualizing the output of the segmentation model.
+                Shape should be (num_classes, 3).
 
         Returns:
             A tensor of shape (3, H, W) or (B, 3, H, W) representing the visualized output of the segmentation model.
