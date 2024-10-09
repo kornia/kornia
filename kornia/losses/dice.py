@@ -79,11 +79,6 @@ def dice_loss(
     # create the labels one hot tensor
     target_one_hot: Tensor = one_hot(target, num_classes=pred.shape[1], device=pred.device, dtype=pred.dtype)
 
-    # set dimensions for the appropriate averaging
-    dims: tuple[int, ...] = (2, 3)
-    if average == "micro":
-        dims = (1, *dims)
-
     # compute the actual dice score
     if weight is not None:
         KORNIA_CHECK_IS_TENSOR(weight, "weight must be Tensor or None.")
@@ -95,8 +90,19 @@ def dice_loss(
             weight.device == pred.device,
             f"weight and pred must be in the same device. Got: {weight.device} and {pred.device}",
         )
+    else:
+        weight = pred.new_ones(pred.shape[1])
+
+    # set dimensions for the appropriate averaging
+    dims: tuple[int, ...] = (2, 3)
+
+    if average == "micro":
+        dims = (1, *dims)
+
+        weight = weight.view(-1, 1, 1)
         pred_soft = pred_soft * weight
         target_one_hot = target_one_hot * weight
+
     intersection = torch.sum(pred_soft * target_one_hot, dims)
     cardinality = torch.sum(pred_soft + target_one_hot, dims)
 
@@ -104,6 +110,9 @@ def dice_loss(
     dice_loss = -dice_score + 1.0
 
     # reduce the loss across samples (and classes in case of `macro` averaging)
+    if average == "macro":
+        dice_loss = (dice_loss * weight).sum(-1) / weight.sum()
+
     dice_loss = torch.mean(dice_loss)
 
     return dice_loss
