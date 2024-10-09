@@ -65,14 +65,69 @@ class TestDiceLoss(BaseTester):
         loss = criterion(logits, labels)
         self.assert_close(loss, expected_loss, rtol=1e-3, atol=1e-3)
 
-    def test_weight(self, device, dtype):
+    @pytest.mark.parametrize("avg", ["micro", "macro"])
+    def test_weight(self, device, dtype, avg):
         num_classes = 3
         eps = 1e-8
-        logits = torch.zeros(2, num_classes, 4, 1, device=device, dtype=dtype)
-        labels = torch.zeros(2, 4, 1, device=device, dtype=torch.int64)
-        expected_loss = torch.tensor([2.0 / 3.0], device=device, dtype=dtype).squeeze()
-        weight = torch.tensor([0.0, 1.0, 1.0], device=device, dtype=dtype)
-        criterion = kornia.losses.DiceLoss(average="micro", eps=eps, weight=weight)
+        logits = torch.zeros(4, num_classes, 1, 4, device=device, dtype=dtype)
+        logits[:, 0, :, 0] = 100.0
+        logits[:, 2, :, 1:] = 100.0
+        labels = torch.tensor([0, 1, 2, 2], device=device, dtype=torch.int64).expand((4, 1, -1))
+
+        # class 0 is all correct
+        expected_loss = torch.tensor([0.0], device=device, dtype=dtype).squeeze()
+        weight = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype)
+        criterion = kornia.losses.DiceLoss(average=avg, eps=eps, weight=weight)
+        loss = criterion(logits, labels)
+        self.assert_close(loss, expected_loss, rtol=1e-3, atol=1e-3)
+
+        # class 1 is all incorrect
+        expected_loss = torch.tensor([1.0], device=device, dtype=dtype).squeeze()
+        weight = torch.tensor([0.0, 1.0, 0.0], device=device, dtype=dtype)
+        criterion = kornia.losses.DiceLoss(average=avg, eps=eps, weight=weight)
+        loss = criterion(logits, labels)
+        self.assert_close(loss, expected_loss, rtol=1e-3, atol=1e-3)
+
+        # class 2 is partially correct
+        expected_loss = torch.tensor([1.0 / 5.0], device=device, dtype=dtype).squeeze()
+        weight = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype)
+        criterion = kornia.losses.DiceLoss(average=avg, eps=eps, weight=weight)
+        loss = criterion(logits, labels)
+        self.assert_close(loss, expected_loss, rtol=1e-3, atol=1e-3)
+
+        # ignore class 3
+        expected_loss = kornia.losses.dice_loss(logits, labels, average=avg, eps=eps)
+        weight = torch.tensor([1.0, 1.0, 1.0, 0.0], device=device, dtype=dtype)
+        criterion = kornia.losses.DiceLoss(average=avg, eps=eps, weight=weight)
+        loss = criterion(torch.cat([logits, logits.new_zeros((4, 1, 1, 4))], dim=1), labels)
+        self.assert_close(loss, expected_loss, rtol=1e-3, atol=1e-3)
+
+        # test non binary weights
+        w_cl_0, w_cl_1 = 0.3, 0.7
+        if avg == "macro":
+            expected_loss = torch.tensor([0.7], device=device, dtype=dtype).squeeze()
+        else:
+            dims = (1, 2)
+            preds = logits.argmax(1)
+            tp_cl_0 = ((preds == 0) & (labels == 0)).sum(dims)
+            tp_cl_1 = ((preds == 1) & (labels == 1)).sum(dims)
+
+            fnfp_cl_0 = ((preds == 0) ^ (labels == 0)).sum(dims)
+            fnfp_cl_1 = ((preds == 1) ^ (labels == 1)).sum(dims)
+
+            expected_loss = (
+                (
+                    1
+                    - 2
+                    * (w_cl_0 * tp_cl_0 + w_cl_1 * tp_cl_1) ** 2
+                    / (w_cl_0 * (2 * tp_cl_0 + fnfp_cl_0) + w_cl_1 * (2 * tp_cl_1 + fnfp_cl_1) + eps)
+                )
+                .mean()
+                .to(dtype)
+            )
+
+        weight = torch.tensor([w_cl_0, w_cl_1, 0.0], device=device, dtype=dtype)
+        criterion = kornia.losses.DiceLoss(average=avg, eps=eps, weight=weight)
         loss = criterion(logits, labels)
         self.assert_close(loss, expected_loss, rtol=1e-3, atol=1e-3)
 
@@ -80,13 +135,13 @@ class TestDiceLoss(BaseTester):
         num_classes = 2
         eps = 1e-8
 
-        logits = torch.zeros(1, num_classes, 4, 1, device=device, dtype=dtype)
-        logits[:, 0, 0:3] = 10.0
-        logits[:, 0, 3:4] = 1.0
-        logits[:, 1, 0:3] = 1.0
-        logits[:, 1, 3:4] = 10.0
+        logits = torch.zeros(1, num_classes, 1, 4, device=device, dtype=dtype)
+        logits[:, 0, :, 0:3] = 10.0
+        logits[:, 0, :, 3:4] = 1.0
+        logits[:, 1, :, 0:3] = 1.0
+        logits[:, 1, :, 3:4] = 10.0
 
-        labels = torch.zeros(2, 4, 1, device=device, dtype=torch.int64)
+        labels = torch.zeros(2, 1, 4, device=device, dtype=torch.int64)
 
         exp_1_0 = torch.exp(torch.tensor([1.0], device=device, dtype=dtype))
         exp_10_0 = torch.exp(torch.tensor([10.0], device=device, dtype=dtype))
