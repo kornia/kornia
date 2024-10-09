@@ -15,7 +15,12 @@ from kornia.utils.one_hot import one_hot
 
 
 def dice_loss(
-    pred: Tensor, target: Tensor, average: str = "micro", eps: float = 1e-8, weight: Optional[Tensor] = None
+    pred: Tensor,
+    target: Tensor,
+    average: str = "micro",
+    eps: float = 1e-8,
+    weight: Optional[Tensor] = None,
+    ignore_index: int = -100,
 ) -> Tensor:
     r"""Criterion that computes Sørensen-Dice Coefficient loss.
 
@@ -48,6 +53,7 @@ def dice_loss(
             - ``'macro'``: Calculate the loss for each class separately and average the metrics across classes.
         eps: Scalar to enforce numerical stabiliy.
         weight: weights for classes with shape :math:`(num\_of\_classes,)`.
+        ignore_index: labels with this value are ignored in the loss computation.
 
     Return:
         One-element tensor of the computed loss.
@@ -76,8 +82,22 @@ def dice_loss(
     # compute softmax over the classes axis
     pred_soft: Tensor = pred.softmax(dim=1)
 
+    # check if all pixels are valid
+    valid_idx = target != ignore_index
+    all_valid = valid_idx.all()
+    if not all_valid:
+        # map invalid pixels to a valid mask for one hot encoding
+        # will be mapped to zero after
+        target[~valid_idx] = 0
+
     # create the labels one hot tensor
     target_one_hot: Tensor = one_hot(target, num_classes=pred.shape[1], device=pred.device, dtype=pred.dtype)
+
+    # mask ignore pixels
+    if not all_valid:
+        valid_idx.unsqueeze_(1)
+        target_one_hot = target_one_hot * valid_idx
+        pred_soft = pred_soft * valid_idx
 
     # set dimensions for the appropriate averaging
     dims: tuple[int, ...] = (2, 3)
@@ -138,6 +158,7 @@ class DiceLoss(nn.Module):
             - ``'macro'``: Calculate the loss for each class separately and average the metrics across classes.
         eps: Scalar to enforce numerical stabiliy.
         weight: weights for classes with shape :math:`(num\_of\_classes,)`.
+        ignore_index: labels with this value are ignored in the loss computation.
 
     Shape:
         - Pred: :math:`(N, C, H, W)` where C = number of classes.
@@ -153,11 +174,14 @@ class DiceLoss(nn.Module):
         >>> output.backward()
     """
 
-    def __init__(self, average: str = "micro", eps: float = 1e-8, weight: Optional[Tensor] = None) -> None:
+    def __init__(
+        self, average: str = "micro", eps: float = 1e-8, weight: Optional[Tensor] = None, ignore_index: int = -100
+    ) -> None:
         super().__init__()
         self.average = average
         self.eps = eps
         self.weight = weight
+        self.ignore_index = ignore_index
 
     def forward(self, pred: Tensor, target: Tensor) -> Tensor:
-        return dice_loss(pred, target, self.average, self.eps, self.weight)
+        return dice_loss(pred, target, self.average, self.eps, self.weight, self.ignore_index)

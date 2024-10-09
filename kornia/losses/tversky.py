@@ -11,7 +11,12 @@ from kornia.utils.one_hot import one_hot
 
 
 def tversky_loss(
-    pred: torch.Tensor, target: torch.Tensor, alpha: float, beta: float, eps: float = 1e-8
+    pred: torch.Tensor,
+    target: torch.Tensor,
+    alpha: float,
+    beta: float,
+    eps: float = 1e-8,
+    ignore_index: int = -100,
 ) -> torch.Tensor:
     r"""Criterion that computes Tversky Coefficient loss.
 
@@ -40,6 +45,7 @@ def tversky_loss(
         alpha: the first coefficient in the denominator.
         beta: the second coefficient in the denominator.
         eps: scalar for numerical stability.
+        ignore_index: labels with this value are ignored in the loss computation.
 
     Return:
         the computed loss.
@@ -66,8 +72,22 @@ def tversky_loss(
     # compute softmax over the classes axis
     pred_soft: torch.Tensor = F.softmax(pred, dim=1)
 
+    # check if all pixels are valid
+    valid_idx = target != ignore_index
+    all_valid = valid_idx.all()
+    if not all_valid:
+        # map invalid pixels to a valid mask for one hot encoding
+        # will be mapped to zero after
+        target[~valid_idx] = 0
+
     # create the labels one hot tensor
     target_one_hot: torch.Tensor = one_hot(target, num_classes=pred.shape[1], device=pred.device, dtype=pred.dtype)
+
+    # mask ignore pixels
+    if not all_valid:
+        valid_idx.unsqueeze_(1)
+        target_one_hot = target_one_hot * valid_idx
+        pred_soft = pred_soft * valid_idx
 
     # compute the actual dice score
     dims = (1, 2, 3)
@@ -107,6 +127,7 @@ class TverskyLoss(nn.Module):
         alpha: the first coefficient in the denominator.
         beta: the second coefficient in the denominator.
         eps: scalar for numerical stability.
+        ignore_index: labels with this value are ignored in the loss computation.
 
     Shape:
         - Pred: :math:`(N, C, H, W)` where C = number of classes.
@@ -122,11 +143,12 @@ class TverskyLoss(nn.Module):
         >>> output.backward()
     """
 
-    def __init__(self, alpha: float, beta: float, eps: float = 1e-8) -> None:
+    def __init__(self, alpha: float, beta: float, eps: float = 1e-8, ignore_index: int = -100) -> None:
         super().__init__()
         self.alpha: float = alpha
         self.beta: float = beta
         self.eps: float = eps
+        self.ignore_index = ignore_index
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        return tversky_loss(pred, target, self.alpha, self.beta, self.eps)
+        return tversky_loss(pred, target, self.alpha, self.beta, self.eps, self.ignore_index)
