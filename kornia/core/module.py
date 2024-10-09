@@ -1,14 +1,72 @@
+"""Module definition for Kornia."""
+
 import datetime
 import math
 import os
 from functools import wraps
-from typing import Any, Callable, List, Optional, Tuple, Union
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
+import torch
 
 import kornia
 
 from ._backend import Module, Tensor, from_numpy
 from .external import PILImage as Image
 from .external import numpy as np
+
+
+class KorniaModule(Module):
+    """Base class for all Kornia modules.
+
+    This class extends the PyTorch `Module` class and provides additional functionalities
+    to handle input and output types, and end-to-end visualization.
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+
+    def to_onnx(
+        self,
+        image_shape: Dict[str, int],
+        onnx_model_path: Path,
+        input_names: List[str],
+        output_names: List[str],
+        dynamic_axes: Dict[str, Dict[int, str]],
+    ) -> bool:
+        """Export the model to ONNX format.
+
+        Args:
+            image_shape: The shape of the input image. It must contain the number of channels, height, and width.
+            onnx_model_path: The path to save the ONNX model.
+            input_names: The names of the input tensors.
+            output_names: The names of the output tensors.
+            dynamic_axes: The dynamic axes of the model.
+        """
+        if "channels" not in image_shape:
+            raise ValueError("The image shape must contain the number of channels.")
+
+        if "height" not in image_shape:
+            raise ValueError("The image shape must contain the height.")
+
+        if "width" not in image_shape:
+            raise ValueError("The image shape must contain the width.")
+
+        input_image = torch.rand(1, image_shape["channels"], image_shape["height"], image_shape["width"])
+
+        torch.onnx.export(
+            self,
+            input_image,
+            onnx_model_path,
+            input_names=input_names,
+            output_names=output_names,
+            dynamic_axes=dynamic_axes,
+        )
+
+        if not onnx_model_path.exists():
+            return False
+
+        return True
 
 
 class ImageModuleMixIn:
@@ -21,7 +79,9 @@ class ImageModuleMixIn:
     _output_image: Any
 
     def convert_input_output(
-        self, input_names_to_handle: Optional[List[Any]] = None, output_type: str = "tensor"
+        self,
+        input_names_to_handle: Optional[List[Any]] = None,
+        output_type: str = "tensor",
     ) -> Callable[[Any], Any]:
         """Decorator to convert input and output types for a function.
 

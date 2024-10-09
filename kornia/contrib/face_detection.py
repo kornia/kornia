@@ -1,12 +1,15 @@
 # based on: https://github.com/ShiqiYu/libfacedetection.train/blob/74f3aa77c63234dd954d21286e9a60703b8d0868/tasks/task1/yufacedetectnet.py  # noqa
+from __future__ import annotations
+
 import math
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
+from typing import Optional
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
+from kornia.core.module import KorniaModule
 from kornia.geometry.bbox import nms as nms_kornia
 
 __all__ = ["FaceDetector", "FaceDetectorResult", "FaceKeypoint"]
@@ -40,7 +43,7 @@ class FaceDetectorResult:
             raise ValueError(f"Result must comes as vector of size(14). Got: {data.shape}.")
         self._data = data
 
-    def to(self, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> "FaceDetectorResult":
+    def to(self, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> FaceDetectorResult:
         """Like :func:`torch.nn.Module.to()` method."""
         self._data = self._data.to(device=device, dtype=dtype)
         return self
@@ -146,7 +149,11 @@ class FaceDetector(nn.Module):
     """
 
     def __init__(
-        self, top_k: int = 5000, confidence_threshold: float = 0.3, nms_threshold: float = 0.3, keep_top_k: int = 750
+        self,
+        top_k: int = 5000,
+        confidence_threshold: float = 0.3,
+        nms_threshold: float = 0.3,
+        keep_top_k: int = 750,
     ) -> None:
         super().__init__()
         self.top_k = top_k
@@ -170,11 +177,26 @@ class FaceDetector(nn.Module):
     def preprocess(self, image: torch.Tensor) -> torch.Tensor:
         return image
 
-    def postprocess(self, data: Dict[str, torch.Tensor], height: int, width: int) -> List[torch.Tensor]:
+    def postprocess(self, data: dict[str, torch.Tensor], height: int, width: int) -> list[torch.Tensor]:
         loc, conf, iou = data["loc"], data["conf"], data["iou"]
 
         scale = torch.tensor(
-            [width, height, width, height, width, height, width, height, width, height, width, height, width, height],
+            [
+                width,
+                height,
+                width,
+                height,
+                width,
+                height,
+                width,
+                height,
+                width,
+                height,
+                width,
+                height,
+                width,
+                height,
+            ],
             device=loc.device,
             dtype=loc.dtype,
         )  # 14
@@ -182,7 +204,7 @@ class FaceDetector(nn.Module):
         priors = _PriorBox(self.min_sizes, self.steps, self.clip, image_size=(height, width))
         priors = priors.to(loc.device, loc.dtype)
 
-        batched_dets: List[torch.Tensor] = []
+        batched_dets: list[torch.Tensor] = []
         for batch_elem in range(loc.shape[0]):
             boxes = _decode(loc[batch_elem], priors(), self.variance)  # Nx14
             boxes = boxes * scale
@@ -210,7 +232,7 @@ class FaceDetector(nn.Module):
             batched_dets.append(dets[: self.keep_top_k])
         return batched_dets
 
-    def forward(self, image: torch.Tensor) -> List[torch.Tensor]:
+    def forward(self, image: torch.Tensor) -> list[torch.Tensor]:
         r"""Detect faces in a given batch of images.
 
         Args:
@@ -231,7 +253,10 @@ class ConvDPUnit(nn.Sequential):
     def __init__(self, in_channels: int, out_channels: int, withBNRelu: bool = True) -> None:
         super().__init__()
         self.add_module("conv1", nn.Conv2d(in_channels, out_channels, 1, 1, 0, bias=True, groups=1))
-        self.add_module("conv2", nn.Conv2d(out_channels, out_channels, 3, 1, 1, bias=True, groups=out_channels))
+        self.add_module(
+            "conv2",
+            nn.Conv2d(out_channels, out_channels, 3, 1, 1, bias=True, groups=out_channels),
+        )
         if withBNRelu:
             self.add_module("bn", nn.BatchNorm2d(out_channels))
             self.add_module("relu", nn.ReLU(inplace=True))
@@ -253,7 +278,8 @@ class Conv4layerBlock(nn.Sequential):
         self.add_module("conv2", ConvDPUnit(in_channels, out_channels, withBNRelu))
 
 
-class YuFaceDetectNet(nn.Module):
+# class YuFaceDetectNet(nn.Module):
+class YuFaceDetectNet(KorniaModule):
     def __init__(self, phase: str, pretrained: bool) -> None:
         super().__init__()
         self.phase = phase
@@ -292,7 +318,7 @@ class YuFaceDetectNet(nn.Module):
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
-    def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
+    def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
         detection_sources, head_list = [], []
 
         x = self.model0(x)
@@ -338,7 +364,7 @@ class YuFaceDetectNet(nn.Module):
 
 
 # Adapted from https://github.com/Hakuyume/chainer-ssd
-def _decode(loc: torch.Tensor, priors: torch.Tensor, variances: List[float]) -> torch.Tensor:
+def _decode(loc: torch.Tensor, priors: torch.Tensor, variances: list[float]) -> torch.Tensor:
     """Decode locations from predictions using priors to undo the encoding we did for offset regression at train
     time.
 
@@ -368,7 +394,13 @@ def _decode(loc: torch.Tensor, priors: torch.Tensor, variances: List[float]) -> 
 
 
 class _PriorBox:
-    def __init__(self, min_sizes: List[List[int]], steps: List[int], clip: bool, image_size: Tuple[int, int]) -> None:
+    def __init__(
+        self,
+        min_sizes: list[list[int]],
+        steps: list[int],
+        clip: bool,
+        image_size: tuple[int, int],
+    ) -> None:
         self.min_sizes = min_sizes
         self.steps = steps
         self.clip = clip
@@ -381,23 +413,43 @@ class _PriorBox:
             if self.steps[i] != math.pow(2, (i + 3)):
                 raise ValueError("steps must be [8,16,32,64]")
 
-        self.feature_map_2th = [int(int((self.image_size[0] + 1) / 2) / 2), int(int((self.image_size[1] + 1) / 2) / 2)]
-        self.feature_map_3th = [int(self.feature_map_2th[0] / 2), int(self.feature_map_2th[1] / 2)]
-        self.feature_map_4th = [int(self.feature_map_3th[0] / 2), int(self.feature_map_3th[1] / 2)]
-        self.feature_map_5th = [int(self.feature_map_4th[0] / 2), int(self.feature_map_4th[1] / 2)]
-        self.feature_map_6th = [int(self.feature_map_5th[0] / 2), int(self.feature_map_5th[1] / 2)]
+        self.feature_map_2th = [
+            int(int((self.image_size[0] + 1) / 2) / 2),
+            int(int((self.image_size[1] + 1) / 2) / 2),
+        ]
+        self.feature_map_3th = [
+            int(self.feature_map_2th[0] / 2),
+            int(self.feature_map_2th[1] / 2),
+        ]
+        self.feature_map_4th = [
+            int(self.feature_map_3th[0] / 2),
+            int(self.feature_map_3th[1] / 2),
+        ]
+        self.feature_map_5th = [
+            int(self.feature_map_4th[0] / 2),
+            int(self.feature_map_4th[1] / 2),
+        ]
+        self.feature_map_6th = [
+            int(self.feature_map_5th[0] / 2),
+            int(self.feature_map_5th[1] / 2),
+        ]
 
-        self.feature_maps = [self.feature_map_3th, self.feature_map_4th, self.feature_map_5th, self.feature_map_6th]
+        self.feature_maps = [
+            self.feature_map_3th,
+            self.feature_map_4th,
+            self.feature_map_5th,
+            self.feature_map_6th,
+        ]
 
-    def to(self, device: torch.device, dtype: torch.dtype) -> "_PriorBox":
+    def to(self, device: torch.device, dtype: torch.dtype) -> _PriorBox:
         self.device = device
         self.dtype = dtype
         return self
 
     def __call__(self) -> torch.Tensor:
-        anchors: List[float] = []
+        anchors: list[float] = []
         for k, f in enumerate(self.feature_maps):
-            min_sizes: List[int] = self.min_sizes[k]
+            min_sizes: list[int] = self.min_sizes[k]
             # NOTE: the nested loop it's to make torchscript happy
             for i in range(f[0]):
                 for j in range(f[1]):
