@@ -250,7 +250,7 @@ def binary_focal_loss_with_logits(
 
         #  mask ignore pixels
         log_probs_neg = log_probs_neg * valid_idx
-        log_probs_pos = log_probs_neg * valid_idx
+        log_probs_pos = log_probs_pos * valid_idx
 
     pos_term: Tensor = -log_probs_neg.exp().pow(gamma) * target * log_probs_pos
     neg_term: Tensor = -log_probs_pos.exp().pow(gamma) * (1.0 - target) * log_probs_neg
