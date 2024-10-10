@@ -9,4 +9,5 @@ pre-commit>=2
 pytest==8.3.3
 pytest-timeout
 requests
+setuptools>=61.2  # needed by pytorch dynamo / triton
 transformers
