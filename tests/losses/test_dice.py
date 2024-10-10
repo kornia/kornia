@@ -125,6 +125,8 @@ class TestDiceLoss(BaseTester):
         num_classes = 3
         logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=torch.float64)
         labels = torch.randint(0, num_classes, (2, 3, 2), device=device)
+        ignore = torch.rand(2, 3, 2, device=device) > 0.8
+        labels[ignore] = -100
         self.gradcheck(kornia.losses.dice_loss, (logits, labels), dtypes=[torch.float64, torch.int64])
 
     def test_dynamo(self, device, dtype, torch_optimizer):

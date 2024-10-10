@@ -76,7 +76,7 @@ def focal_loss(
     if not all_valid:
         # map invalid pixels to a valid mask for one hot encoding
         # will be mapped to zero after
-        target[~valid_idx] = 0
+        target = target.where(valid_idx, target.new_zeros(1))
 
     # create the labels one hot tensor
     target_one_hot: Tensor = one_hot(target, num_classes=pred.shape[1], device=pred.device, dtype=pred.dtype)
@@ -244,9 +244,9 @@ def binary_focal_loss_with_logits(
     valid_idx = target != ignore_index
     all_valid = valid_idx.all()
     if not all_valid:
-        # map invalid pixels to a valid mask for one hot encoding
+        # map invalid pixels to a valid class
         # will be mapped to zero after
-        target[~valid_idx] = 0
+        target = target.where(valid_idx, target.new_zeros(1))
 
         #  mask ignore pixels
         log_probs_neg = log_probs_neg * valid_idx

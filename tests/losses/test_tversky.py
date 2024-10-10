@@ -67,6 +67,8 @@ class TestTverskyLoss(BaseTester):
         alpha, beta = 0.5, 0.5  # for tversky loss
         logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=torch.float64)
         labels = torch.randint(0, num_classes, (2, 3, 2), device=device)
+        ignore = torch.rand(2, 3, 2, device=device) > 0.8
+        labels[ignore] = -100
 
         self.gradcheck(
             kornia.losses.tversky_loss, (logits, labels, alpha, beta), dtypes=[torch.float64, torch.int64, None, None]
