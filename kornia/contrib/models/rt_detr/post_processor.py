@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Union
 
 import torch
 
-from kornia.core import Module, Tensor, concatenate
+from kornia.core import Module, Tensor, concatenate, tensor
+from kornia.models.detection.utils import BoxFiltering
 
 
 def mod(a: Tensor, b: int) -> Tensor:
@@ -37,14 +38,18 @@ class DETRPostProcessor(Module):
         num_classes: int = 80,
         num_top_queries: int = 300,
         confidence_filtering: bool = True,
+        filter_as_zero: bool = False,
     ) -> None:
         super().__init__()
         self.confidence_threshold = confidence_threshold
         self.num_classes = num_classes
         self.confidence_filtering = confidence_filtering
         self.num_top_queries = num_top_queries
+        self.box_filtering = BoxFiltering(
+            tensor(confidence_threshold) if confidence_threshold is not None else None, filter_as_zero=filter_as_zero
+        )
 
-    def forward(self, logits: Tensor, boxes: Tensor, original_sizes: Tensor) -> Tensor:
+    def forward(self, logits: Tensor, boxes: Tensor, original_sizes: Tensor) -> Union[Tensor, list[Tensor]]:
         """Post-process outputs from DETR.
 
         Args:
@@ -88,6 +93,4 @@ class DETRPostProcessor(Module):
         if not self.confidence_filtering or self.confidence_threshold == 0:
             return all_boxes
 
-        return all_boxes[(all_boxes[:, :, 1] > self.confidence_threshold).unsqueeze(-1).expand_as(all_boxes)].view(
-            all_boxes.shape[0], -1, all_boxes.shape[-1]
-        )
+        return self.box_filtering(all_boxes, self.confidence_threshold)

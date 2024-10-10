@@ -5,6 +5,7 @@ from ._backend import (
     Module,
     ModuleList,
     Parameter,
+    Sequential,
     Tensor,
     arange,
     as_tensor,
@@ -32,7 +33,13 @@ from ._backend import (
     zeros,
     zeros_like,
 )
-from .module import ImageModule
+from .mixin import (
+    ImageModuleMixIn,
+    ONNXExportMixin,
+    ONNXMixin,
+    ONNXRuntimeMixin,
+)
+from .module import ImageModule, ImageSequential
 from .tensor_wrapper import TensorWrapper  # type: ignore
 
 __all__ = [
@@ -43,6 +50,7 @@ __all__ = [
     "Dtype",
     "Module",
     "ModuleList",
+    "Sequential",
     "Tensor",
     "tensor",
     "Parameter",
@@ -70,4 +78,9 @@ __all__ = [
     "TensorWrapper",
     "map_coordinates",
     "ImageModule",
+    "ImageSequential",
+    "ImageModuleMixIn",
+    "ONNXMixin",
+    "ONNXExportMixin",
+    "ONNXRuntimeMixin",
 ]

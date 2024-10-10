@@ -87,6 +87,25 @@ class Sam(ModelBase[SamConfig]):
         self.mask_decoder = mask_decoder
 
     @staticmethod
+    def from_name(name: str) -> Sam:
+        """Build/load the SAM model based on it's name.
+
+        Args:
+            name: The name of the SAM model. Valid names are:
+                - 'vit_b'
+                - 'vit_l'
+                - 'vit_h'
+                - 'mobile_sam'
+
+        Returns:
+            The respective SAM model
+        """
+        if name in ["vit_b", "vit_l", "vit_h", "mobile_sam"]:
+            return Sam.from_config(SamConfig(name))
+        else:
+            raise ValueError(f"Invalid SAM model name: {name}")
+
+    @staticmethod
     def from_config(config: SamConfig) -> Sam:
         """Build/load the SAM model based on it's config.
 
