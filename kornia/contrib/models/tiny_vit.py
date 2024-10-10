@@ -85,7 +85,10 @@ class PatchMerging(Module):
 
     def forward(self, x: Tensor) -> Tensor:
         if x.ndim == 3:
-            x = x.transpose(1, 2).unflatten(2, self.input_resolution)  # (B, H * W, C) -> (B, C, H, W)
+            # x = x.transpose(1, 2).unflatten(2, self.input_resolution)  # (B, H * W, C) -> (B, C, H, W)
+            x = x.reshape(-1, self.input_resolution[0], self.input_resolution[1], x.shape[-1]).permute(
+                0, 3, 1, 2
+            )  # (B, H * W, C) -> (B, C, H, W)
         x = self.conv3(self.conv2(self.conv1(x)))
         x = x.flatten(2).transpose(1, 2)  # (B, C, H, W) -> (B, H * W, C)
         return x
@@ -423,7 +426,8 @@ class TinyViT(Module):
 
         if self.mobile_sam:
             # MobileSAM
-            x = x.unflatten(1, (self.feat_size, self.feat_size)).permute(0, 3, 1, 2)
+            # x = x.unflatten(1, (self.feat_size, self.feat_size)).permute(0, 3, 1, 2)
+            x = x.reshape(-1, self.feat_size, self.feat_size, x.shape[-1]).permute(0, 3, 1, 2)
             x = self.neck(x)  # type: ignore
         else:
             # classification
