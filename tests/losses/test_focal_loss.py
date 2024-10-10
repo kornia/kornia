@@ -63,6 +63,20 @@ class TestBinaryFocalLossWithLogits(BaseTester):
         ).shape
         assert actual_shape == expected_shape
 
+    @pytest.mark.parametrize("reduction,expected_shape", [("none", (2, 3, 2)), ("mean", ()), ("sum", ())])
+    @pytest.mark.parametrize("ignore_index", [-100, 255])
+    def test_shape_ignore_index(self, device, dtype, reduction, expected_shape, ignore_index):
+        logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
+        labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
+
+        ignore = torch.rand(2, 3, 2, device=device) > 0.6
+        labels[ignore] = ignore_index
+
+        actual_shape = kornia.losses.binary_focal_loss_with_logits(
+            logits, labels, alpha=0.8, gamma=0.5, reduction=reduction, ignore_index=ignore_index
+        ).shape
+        assert actual_shape == expected_shape
+
     def test_dynamo(self, device, dtype, torch_optimizer):
         logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
         labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
@@ -136,6 +150,44 @@ class TestFocalLoss(BaseTester):
             logits, labels, alpha=0.8, gamma=0.5, reduction=reduction, weight=weight
         ).shape
         assert actual_shape == expected_shape
+
+    @pytest.mark.parametrize("reduction,expected_shape", [("none", (2, 3, 3, 2)), ("mean", ()), ("sum", ())])
+    @pytest.mark.parametrize("ignore_index", [-100, 255])
+    def test_shape_ignore_index(self, device, dtype, reduction, expected_shape, ignore_index):
+        num_classes = 3
+        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
+        labels = torch.randint(num_classes, (2, 3, 2), device=device)
+
+        ignore = torch.rand(2, 3, 2, device=device) > 0.6
+        labels[ignore] = ignore_index
+
+        actual_shape = kornia.losses.focal_loss(
+            logits, labels, alpha=0.8, gamma=0.5, reduction=reduction, ignore_index=ignore_index
+        ).shape
+        assert actual_shape == expected_shape
+
+    @pytest.mark.parametrize("ignore_index", [-100, 255])
+    def test_value_ignore_index(self, device, dtype, ignore_index):
+        num_classes = 3
+        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
+        labels = torch.randint(num_classes, (2, 3, 2), device=device)
+
+        ignore = torch.rand(2, 3, 2, device=device) > 0.6
+        labels[ignore] = ignore_index
+
+        labels_extra_class = labels.clone()
+        labels_extra_class[ignore] = num_classes
+        logits_extra_class = torch.cat([logits, logits.new_full((2, 1, 3, 2), float("-inf"))], dim=1)
+
+        expected_values = kornia.losses.focal_loss(
+            logits_extra_class, labels_extra_class, alpha=0.8, gamma=0.5, reduction="none"
+        )[:, :-1, ...]
+
+        actual_values = kornia.losses.focal_loss(
+            logits, labels, alpha=0.8, gamma=0.5, reduction="none", ignore_index=ignore_index
+        )
+
+        self.assert_close(actual_values, expected_values)
 
     def test_dynamo(self, device, dtype, torch_optimizer):
         num_classes = 3
