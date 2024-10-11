@@ -16,7 +16,8 @@ class TestDiceLoss(BaseTester):
         criterion = kornia.losses.DiceLoss()
         assert criterion(logits, labels) is not None
 
-    def test_all_zeros(self, device, dtype):
+    @pytest.mark.parametrize("ignore_index", [-100, None])
+    def test_all_zeros(self, device, dtype, ignore_index):
         num_classes = 3
         logits = torch.zeros(2, num_classes, 1, 2, device=device, dtype=dtype)
         logits[:, 0] = 10.0
@@ -24,7 +25,7 @@ class TestDiceLoss(BaseTester):
         logits[:, 2] = 1.0
         labels = torch.zeros(2, 1, 2, device=device, dtype=torch.int64)
 
-        criterion = kornia.losses.DiceLoss()
+        criterion = kornia.losses.DiceLoss(ignore_index=ignore_index)
         loss = criterion(logits, labels)
         self.assert_close(loss, torch.zeros_like(loss), rtol=1e-3, atol=1e-3)
 

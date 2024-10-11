@@ -9,12 +9,13 @@ from testing.base import BaseTester
 
 class TestBinaryFocalLossWithLogits(BaseTester):
     @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
-    def test_value_same_as_torch_bce_loss(self, device, dtype, reduction):
+    @pytest.mark.parametrize("ignore_index", [-100, None])
+    def test_value_same_as_torch_bce_loss(self, device, dtype, reduction, ignore_index):
         logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
         labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
 
         focal_equivalent_bce_loss = kornia.losses.binary_focal_loss_with_logits(
-            logits, labels, alpha=None, gamma=0, reduction=reduction
+            logits, labels, alpha=None, gamma=0, reduction=reduction, ignore_index=ignore_index
         )
         torch_bce_loss = F.binary_cross_entropy_with_logits(logits, labels, reduction=reduction)
         self.assert_close(focal_equivalent_bce_loss, torch_bce_loss)

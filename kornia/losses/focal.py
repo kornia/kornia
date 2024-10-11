@@ -7,6 +7,7 @@ from torch import nn
 
 from kornia.core import Tensor, tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
+from kornia.losses._utils import mask_ignore_pixels
 from kornia.utils.one_hot import one_hot
 
 # based on:
@@ -20,7 +21,7 @@ def focal_loss(
     gamma: float = 2.0,
     reduction: str = "none",
     weight: Optional[Tensor] = None,
-    ignore_index: int = -100,
+    ignore_index: Optional[int] = -100,
 ) -> Tensor:
     r"""Criterion that computes Focal loss.
 
@@ -70,21 +71,15 @@ def focal_loss(
         f"pred and target must be in the same device. Got: {pred.device} and {target.device}",
     )
 
-    # check if all pixels are valid
-    valid_idx = target != ignore_index
-    all_valid = valid_idx.all()
-    if not all_valid:
-        # map invalid pixels to a valid mask for one hot encoding
-        # will be mapped to zero after
-        target = target.where(valid_idx, target.new_zeros(1))
+    target, target_mask = mask_ignore_pixels(target, ignore_index)
 
     # create the labels one hot tensor
     target_one_hot: Tensor = one_hot(target, num_classes=pred.shape[1], device=pred.device, dtype=pred.dtype)
 
     # mask ignore pixels
-    if not all_valid:
-        valid_idx.unsqueeze_(1)
-        target_one_hot = target_one_hot * valid_idx
+    if target_mask is not None:
+        target_mask.unsqueeze_(1)
+        target_one_hot = target_one_hot * target_mask
 
     # compute softmax over the classes axis
     log_pred_soft: Tensor = pred.log_softmax(1)
@@ -168,14 +163,14 @@ class FocalLoss(nn.Module):
         gamma: float = 2.0,
         reduction: str = "none",
         weight: Optional[Tensor] = None,
-        ignore_index: int = -100,
+        ignore_index: Optional[int] = -100,
     ) -> None:
         super().__init__()
         self.alpha: Optional[float] = alpha
         self.gamma: float = gamma
         self.reduction: str = reduction
         self.weight: Optional[Tensor] = weight
-        self.ignore_index = ignore_index
+        self.ignore_index: Optional[int] = ignore_index
 
     def forward(self, pred: Tensor, target: Tensor) -> Tensor:
         return focal_loss(pred, target, self.alpha, self.gamma, self.reduction, self.weight, self.ignore_index)
@@ -189,7 +184,7 @@ def binary_focal_loss_with_logits(
     reduction: str = "none",
     pos_weight: Optional[Tensor] = None,
     weight: Optional[Tensor] = None,
-    ignore_index: int = -100,
+    ignore_index: Optional[int] = -100,
 ) -> Tensor:
     r"""Criterion that computes Binary Focal loss.
 
@@ -240,17 +235,12 @@ def binary_focal_loss_with_logits(
     log_probs_pos: Tensor = nn.functional.logsigmoid(pred)
     log_probs_neg: Tensor = nn.functional.logsigmoid(-pred)
 
-    # check if all pixels are valid
-    valid_idx = target != ignore_index
-    all_valid = valid_idx.all()
-    if not all_valid:
-        # map invalid pixels to a valid class
-        # will be mapped to zero after
-        target = target.where(valid_idx, target.new_zeros(1))
+    target, target_mask = mask_ignore_pixels(target, ignore_index)
 
+    if target_mask is not None:
         #  mask ignore pixels
-        log_probs_neg = log_probs_neg * valid_idx
-        log_probs_pos = log_probs_pos * valid_idx
+        log_probs_neg = log_probs_neg * target_mask
+        log_probs_pos = log_probs_pos * target_mask
 
     pos_term: Tensor = -log_probs_neg.exp().pow(gamma) * target * log_probs_pos
     neg_term: Tensor = -log_probs_pos.exp().pow(gamma) * (1.0 - target) * log_probs_neg
@@ -347,7 +337,7 @@ class BinaryFocalLossWithLogits(nn.Module):
         reduction: str = "none",
         pos_weight: Optional[Tensor] = None,
         weight: Optional[Tensor] = None,
-        ignore_index: int = -100,
+        ignore_index: Optional[int] = -100,
     ) -> None:
         super().__init__()
         self.alpha: Optional[float] = alpha
@@ -355,7 +345,7 @@ class BinaryFocalLossWithLogits(nn.Module):
         self.reduction: str = reduction
         self.pos_weight: Optional[Tensor] = pos_weight
         self.weight: Optional[Tensor] = weight
-        self.ignore_index = ignore_index
+        self.ignore_index: Optional[int] = ignore_index
 
     def forward(self, pred: Tensor, target: Tensor) -> Tensor:
         return binary_focal_loss_with_logits(

@@ -35,7 +35,8 @@ class TestTverskyLoss(BaseTester):
             criterion(torch.rand(1, 1, 1, 1), torch.rand(1, 1, 1, 1, device="meta"))
         assert "pred and target must be in the same device. Got:" in str(errinfo)
 
-    def test_all_zeros(self, device, dtype):
+    @pytest.mark.parametrize("ignore_index", [-100, None])
+    def test_all_zeros(self, device, dtype, ignore_index):
         num_classes = 3
         logits = torch.zeros(2, num_classes, 1, 2, device=device, dtype=dtype)
         logits[:, 0] = 10.0
@@ -43,7 +44,7 @@ class TestTverskyLoss(BaseTester):
         logits[:, 2] = 1.0
         labels = torch.zeros(2, 1, 2, device=device, dtype=torch.int64)
 
-        criterion = kornia.losses.TverskyLoss(alpha=0.5, beta=0.5)
+        criterion = kornia.losses.TverskyLoss(alpha=0.5, beta=0.5, ignore_index=ignore_index)
         loss = criterion(logits, labels)
         self.assert_close(loss, torch.zeros_like(loss), atol=1e-3, rtol=1e-3)
 

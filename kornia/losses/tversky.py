@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from typing import Optional
+
 import torch
 import torch.nn.functional as F
 from torch import nn
 
+from kornia.losses._utils import mask_ignore_pixels
 from kornia.utils.one_hot import one_hot
 
 # based on:
@@ -16,7 +19,7 @@ def tversky_loss(
     alpha: float,
     beta: float,
     eps: float = 1e-8,
-    ignore_index: int = -100,
+    ignore_index: Optional[int] = -100,
 ) -> torch.Tensor:
     r"""Criterion that computes Tversky Coefficient loss.
 
@@ -72,22 +75,16 @@ def tversky_loss(
     # compute softmax over the classes axis
     pred_soft: torch.Tensor = F.softmax(pred, dim=1)
 
-    # check if all pixels are valid
-    valid_idx = target != ignore_index
-    all_valid = valid_idx.all()
-    if not all_valid:
-        # map invalid pixels to a valid mask for one hot encoding
-        # will be mapped to zero after
-        target = target.where(valid_idx, target.new_zeros(1))
+    target, target_mask = mask_ignore_pixels(target, ignore_index)
 
     # create the labels one hot tensor
     target_one_hot: torch.Tensor = one_hot(target, num_classes=pred.shape[1], device=pred.device, dtype=pred.dtype)
 
     # mask ignore pixels
-    if not all_valid:
-        valid_idx.unsqueeze_(1)
-        target_one_hot = target_one_hot * valid_idx
-        pred_soft = pred_soft * valid_idx
+    if target_mask is not None:
+        target_mask.unsqueeze_(1)
+        target_one_hot = target_one_hot * target_mask
+        pred_soft = pred_soft * target_mask
 
     # compute the actual dice score
     dims = (1, 2, 3)
@@ -143,12 +140,12 @@ class TverskyLoss(nn.Module):
         >>> output.backward()
     """
 
-    def __init__(self, alpha: float, beta: float, eps: float = 1e-8, ignore_index: int = -100) -> None:
+    def __init__(self, alpha: float, beta: float, eps: float = 1e-8, ignore_index: Optional[int] = -100) -> None:
         super().__init__()
         self.alpha: float = alpha
         self.beta: float = beta
         self.eps: float = eps
-        self.ignore_index = ignore_index
+        self.ignore_index: Optional[int] = ignore_index
 
     def forward(self, pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         return tversky_loss(pred, target, self.alpha, self.beta, self.eps, self.ignore_index)

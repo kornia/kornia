@@ -7,6 +7,7 @@ from torch import nn
 
 from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR
+from kornia.losses._utils import mask_ignore_pixels
 from kornia.utils.one_hot import one_hot
 
 # based on:
@@ -20,7 +21,7 @@ def dice_loss(
     average: str = "micro",
     eps: float = 1e-8,
     weight: Optional[Tensor] = None,
-    ignore_index: int = -100,
+    ignore_index: Optional[int] = -100,
 ) -> Tensor:
     r"""Criterion that computes Sørensen-Dice Coefficient loss.
 
@@ -82,22 +83,16 @@ def dice_loss(
     # compute softmax over the classes axis
     pred_soft: Tensor = pred.softmax(dim=1)
 
-    # check if all pixels are valid
-    valid_idx = target != ignore_index
-    all_valid = valid_idx.all()
-    if not all_valid:
-        # map invalid pixels to a valid mask for one hot encoding
-        # will be mapped to zero after
-        target = target.where(valid_idx, target.new_zeros(1))
+    target, target_mask = mask_ignore_pixels(target, ignore_index)
 
     # create the labels one hot tensor
     target_one_hot: Tensor = one_hot(target, num_classes=pred.shape[1], device=pred.device, dtype=pred.dtype)
 
     # mask ignore pixels
-    if not all_valid:
-        valid_idx.unsqueeze_(1)
-        target_one_hot = target_one_hot * valid_idx
-        pred_soft = pred_soft * valid_idx
+    if target_mask is not None:
+        target_mask.unsqueeze_(1)
+        target_one_hot = target_one_hot * target_mask
+        pred_soft = pred_soft * target_mask
 
     # set dimensions for the appropriate averaging
     dims: tuple[int, ...] = (2, 3)
@@ -175,7 +170,11 @@ class DiceLoss(nn.Module):
     """
 
     def __init__(
-        self, average: str = "micro", eps: float = 1e-8, weight: Optional[Tensor] = None, ignore_index: int = -100
+        self,
+        average: str = "micro",
+        eps: float = 1e-8,
+        weight: Optional[Tensor] = None,
+        ignore_index: Optional[int] = -100,
     ) -> None:
         super().__init__()
         self.average = average
