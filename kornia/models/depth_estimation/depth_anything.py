@@ -4,6 +4,8 @@ from kornia.models._hf_models import HFONNXComunnityModelLoader
 
 from .base import DepthEstimation
 
+__all__ = ["DepthAnythingONNXBuilder"]
+
 
 class DepthAnythingONNXBuilder:
     @staticmethod

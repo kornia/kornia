@@ -3,6 +3,7 @@ from . import (
     detection,
     edge_detection,
     segmentation,
+    super_resolution,
     tracking,
 )
 from .utils import *

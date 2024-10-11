@@ -10,6 +10,8 @@ from kornia.core.external import segmentation_models_pytorch as smp
 
 from .base import SemanticSegmentation
 
+__all__ = ["SegmentationModelsBuilder"]
+
 
 class SegmentationModelsBuilder:
     @staticmethod

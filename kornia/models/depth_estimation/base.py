@@ -7,6 +7,8 @@ from kornia.core import Tensor, tensor
 from kornia.core.external import PILImage as Image
 from kornia.models._hf_models import HFONNXComunnityModel
 
+__all__ = ["DepthEstimation"]
+
 
 class DepthEstimation(HFONNXComunnityModel):
     name: str = "depth_estimation"

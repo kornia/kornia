@@ -8,6 +8,8 @@ from kornia.utils.download import CachedDownloader
 
 from .base import SuperResolution
 
+__all__ = ["RRDBNetBuilder"]
+
 URLs = {
     "RealESRGAN_x4plus": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth",
     "RealESRNet_x4plus": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.1/RealESRNet_x4plus.pth",

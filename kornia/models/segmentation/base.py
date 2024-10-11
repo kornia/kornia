@@ -9,6 +9,8 @@ from kornia.core import Tensor
 from kornia.core.external import PILImage as Image
 from kornia.models.base import ModelBase
 
+__all__ = ["SemanticSegmentation"]
+
 
 class SemanticSegmentation(ModelBase):
     """Semantic Segmentation is a module that wraps a semantic segmentation model.

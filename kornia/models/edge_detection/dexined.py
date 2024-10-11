@@ -6,6 +6,8 @@ from kornia.filters.dexined import DexiNed
 from kornia.models.edge_detection.base import EdgeDetector
 from kornia.models.utils import ResizePostProcessor, ResizePreProcessor
 
+__all__ = ["DexiNedBuilder"]
+
 
 class DexiNedBuilder:
     """DexiNedBuilder is a class that builds a DexiNed model.

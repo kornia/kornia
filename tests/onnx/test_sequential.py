@@ -16,7 +16,9 @@ class TestONNXSequential:
         output_info = make_tensor_value_info("output", onnx.TensorProto.FLOAT, [1, 2])
         node = make_node("Identity", ["input"], ["output"])
         graph = make_graph([node], "test_graph", [input_info], [output_info])
-        model = make_model(graph)
+        op = onnx.OperatorSetIdProto()
+        op.version = 13
+        model = make_model(graph, opset_imports=[op])
         return model
 
     @pytest.fixture
