@@ -9,12 +9,13 @@ from testing.base import BaseTester
 
 class TestBinaryFocalLossWithLogits(BaseTester):
     @pytest.mark.parametrize("reduction", ["none", "mean", "sum"])
-    def test_value_same_as_torch_bce_loss(self, device, dtype, reduction):
+    @pytest.mark.parametrize("ignore_index", [-100, None])
+    def test_value_same_as_torch_bce_loss(self, device, dtype, reduction, ignore_index):
         logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
         labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
 
         focal_equivalent_bce_loss = kornia.losses.binary_focal_loss_with_logits(
-            logits, labels, alpha=None, gamma=0, reduction=reduction
+            logits, labels, alpha=None, gamma=0, reduction=reduction, ignore_index=ignore_index
         )
         torch_bce_loss = F.binary_cross_entropy_with_logits(logits, labels, reduction=reduction)
         self.assert_close(focal_equivalent_bce_loss, torch_bce_loss)
@@ -63,6 +64,20 @@ class TestBinaryFocalLossWithLogits(BaseTester):
         ).shape
         assert actual_shape == expected_shape
 
+    @pytest.mark.parametrize("reduction,expected_shape", [("none", (2, 3, 2)), ("mean", ()), ("sum", ())])
+    @pytest.mark.parametrize("ignore_index", [-100, 255])
+    def test_shape_ignore_index(self, device, dtype, reduction, expected_shape, ignore_index):
+        logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
+        labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
+
+        ignore = torch.rand(2, 3, 2, device=device) > 0.6
+        labels[ignore] = ignore_index
+
+        actual_shape = kornia.losses.binary_focal_loss_with_logits(
+            logits, labels, alpha=0.8, gamma=0.5, reduction=reduction, ignore_index=ignore_index
+        ).shape
+        assert actual_shape == expected_shape
+
     def test_dynamo(self, device, dtype, torch_optimizer):
         logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
         labels = torch.rand(2, 3, 2, dtype=dtype, device=device)
@@ -82,6 +97,16 @@ class TestBinaryFocalLossWithLogits(BaseTester):
         args = (0.25, 2.0)
         op = kornia.losses.binary_focal_loss_with_logits
         self.gradcheck(op, (logits, labels, *args))
+
+    def test_gradcheck_ignore_index(self, device):
+        logits = torch.rand(2, 3, 2, device=device, dtype=torch.float64)
+        labels = torch.rand(2, 3, 2, device=device, dtype=torch.float64)
+        ignore = torch.rand(2, 3, 2, device=device) > 0.8
+        labels[ignore] = -100
+
+        args = (0.25, 2.0)
+        op = kornia.losses.binary_focal_loss_with_logits
+        self.gradcheck(op, (logits, labels, *args), requires_grad=[True, False, False, False])
 
     def test_module(self, device, dtype):
         logits = torch.rand(2, 3, 2, dtype=dtype, device=device)
@@ -137,6 +162,44 @@ class TestFocalLoss(BaseTester):
         ).shape
         assert actual_shape == expected_shape
 
+    @pytest.mark.parametrize("reduction,expected_shape", [("none", (2, 3, 3, 2)), ("mean", ()), ("sum", ())])
+    @pytest.mark.parametrize("ignore_index", [-100, 255])
+    def test_shape_ignore_index(self, device, dtype, reduction, expected_shape, ignore_index):
+        num_classes = 3
+        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
+        labels = torch.randint(num_classes, (2, 3, 2), device=device)
+
+        ignore = torch.rand(2, 3, 2, device=device) > 0.6
+        labels[ignore] = ignore_index
+
+        actual_shape = kornia.losses.focal_loss(
+            logits, labels, alpha=0.8, gamma=0.5, reduction=reduction, ignore_index=ignore_index
+        ).shape
+        assert actual_shape == expected_shape
+
+    @pytest.mark.parametrize("ignore_index", [-100, 255])
+    def test_value_ignore_index(self, device, dtype, ignore_index):
+        num_classes = 3
+        logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=dtype)
+        labels = torch.randint(num_classes, (2, 3, 2), device=device)
+
+        ignore = torch.rand(2, 3, 2, device=device) > 0.6
+        labels[ignore] = ignore_index
+
+        labels_extra_class = labels.clone()
+        labels_extra_class[ignore] = num_classes
+        logits_extra_class = torch.cat([logits, logits.new_full((2, 1, 3, 2), float("-inf"))], dim=1)
+
+        expected_values = kornia.losses.focal_loss(
+            logits_extra_class, labels_extra_class, alpha=0.8, gamma=0.5, reduction="none"
+        )[:, :-1, ...]
+
+        actual_values = kornia.losses.focal_loss(
+            logits, labels, alpha=0.8, gamma=0.5, reduction="none", ignore_index=ignore_index
+        )
+
+        self.assert_close(actual_values, expected_values)
+
     def test_dynamo(self, device, dtype, torch_optimizer):
         num_classes = 3
         logits = torch.rand(2, num_classes, device=device, dtype=dtype)
@@ -154,6 +217,8 @@ class TestFocalLoss(BaseTester):
         num_classes = 3
         logits = torch.rand(2, num_classes, 3, 2, device=device, dtype=torch.float64)
         labels = torch.randint(num_classes, (2, 3, 2), device=device).long()
+        ignore = torch.rand(2, 3, 2, device=device) > 0.8
+        labels[ignore] = -100
 
         self.gradcheck(
             kornia.losses.focal_loss, (logits, labels, 0.25, 2.0), dtypes=[torch.float64, torch.int64, None, None]
