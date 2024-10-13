@@ -61,10 +61,10 @@ The `DexiNedBuilder` class implements a state-of-the-art edge detection model ba
 
 .. _SegmentationModels:
 
-SegmentationModels
-------------------
+SegmentationModelsBuilder
+-------------------------
 
-The `SegmentationModels` class offers a flexible API for implementing and running various segmentation models. It supports a variety of architectures such as UNet, FPN, and others, making it highly adaptable for tasks like semantic segmentation, instance segmentation, and more.
+The `SegmentationModelsBuilder` class offers a flexible API for implementing and running various segmentation models. It supports a variety of architectures such as UNet, FPN, and others, making it highly adaptable for tasks like semantic segmentation, instance segmentation, and more.
 
 **Key Methods:**
 
@@ -76,20 +76,20 @@ The `SegmentationModels` class offers a flexible API for implementing and runnin
 - `model_name`: (str) Name of the segmentation architecture to use, e.g., `"Unet"`, `"DeepLabV3"`.
 - `classes`: (int) The number of output classes for segmentation.
 
-.. autoclass:: kornia.models.segmentation.segmentation_models.SegmentationModels
+.. autoclass:: kornia.models.segmentation.segmentation_models.SegmentationModelsBuilder
    :members:
    :undoc-members:
    :show-inheritance:
 
    .. rubric:: Example
 
-   Here's an example of how to use `SegmentationModels` for binary segmentation:
+   Here's an example of how to use `SegmentationModelsBuilder` for binary segmentation:
 
    .. code-block:: python
 
        import kornia
        input_tensor = kornia.utils.sample.get_sample_images()[0][None]
-       model = kornia.models.segmentation.segmentation_models.SegmentationModels()
+       model = kornia.models.segmentation.segmentation_models.SegmentationModelsBuilder.build()
        segmented_output = model(input_tensor)
        print(segmented_output.shape)
 
