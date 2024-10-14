@@ -27,7 +27,7 @@ from .misc import (
     vec_like,
 )
 from .one_hot import one_hot
-from .pointcloud_io import iterative_closest_point, load_pointcloud_ply, save_pointcloud_ply
+from .pointcloud_io import load_pointcloud_ply, save_pointcloud_ply
 
 __all__ = [
     "batched_forward",
@@ -42,7 +42,6 @@ __all__ = [
     "image_list_to_tensor",
     "save_pointcloud_ply",
     "load_pointcloud_ply",
-    "iterative_closest_point",
     "draw_convex_polygon",
     "draw_rectangle",
     "draw_line",
