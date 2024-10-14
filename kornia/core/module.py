@@ -8,7 +8,7 @@ import torch
 
 import kornia
 
-from ._backend import Module, Tensor, from_numpy
+from ._backend import Module, Sequential, Tensor, from_numpy
 from .external import PILImage as Image
 from .external import numpy as np
 
