@@ -51,7 +51,7 @@ urls.Documentation = "https://kornia.readthedocs.io/en/latest"
 
 urls.Download = "https://github.com/kornia/kornia"
 
-urls.Homepage = "https://www.kornia.org"
+urls.Homepage = "https://kornia.github.io/"
 
 urls."Source Code" = "https://github.com/kornia/kornia"
 
