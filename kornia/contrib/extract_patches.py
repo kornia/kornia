@@ -371,7 +371,7 @@ def combine_tensor_patches(
     )
 
     if unpadding:
-        ones = pad(ones, pad=unpadding)  # type: ignore
+        ones = pad(ones, pad=unpadding)
     restored_size = ones.shape[2:]
 
     patches = patches.permute(0, 2, 3, 4, 1)
@@ -387,12 +387,12 @@ def combine_tensor_patches(
     unfold_ones = F.unfold(ones, kernel_size=window_size, stride=stride)
     norm_map = F.fold(input=unfold_ones, output_size=restored_size, kernel_size=window_size, stride=stride)
     if unpadding:
-        norm_map = pad(norm_map, [-i for i in unpadding])  # type: ignore
+        norm_map = pad(norm_map, [-i for i in unpadding])
 
     # Restored tensor
     saturated_restored_tensor = F.fold(input=patches, output_size=restored_size, kernel_size=window_size, stride=stride)
     if unpadding:
-        saturated_restored_tensor = pad(saturated_restored_tensor, [-i for i in unpadding])  # type: ignore
+        saturated_restored_tensor = pad(saturated_restored_tensor, [-i for i in unpadding])
 
     # Remove satuation effect due to multiple summations
     restored_tensor = saturated_restored_tensor / (norm_map + eps)

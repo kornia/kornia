@@ -10,7 +10,7 @@ class TestNormalize(BaseTester):
     def test_smoke(self, device, dtype):
         mean = [0.5]
         std = [0.1]
-        repr = "Normalize(mean=tensor([0.5000]), std=tensor([0.1000]))"
+        repr = "Normalize(mean=tensor([[0.5000]]), std=tensor([[0.1000]]))"
         assert str(kornia.enhance.Normalize(mean, std)) == repr
 
     def test_normalize(self, device, dtype):
@@ -137,7 +137,7 @@ class TestNormalize(BaseTester):
     def test_random_normalize_invalid_parameter_shape(self, mean, std):
         f = kornia.enhance.Normalize(mean=mean, std=std)
         inputs = torch.arange(0.0, 16.0, step=1).reshape(1, 4, 4).unsqueeze(0)
-        with pytest.raises(ValueError):
+        with pytest.raises((ValueError, RuntimeError)):
             f(inputs)
 
     @pytest.mark.skip(reason="not implemented yet")

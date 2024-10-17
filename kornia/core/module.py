@@ -1,14 +1,62 @@
+from __future__ import annotations
 import datetime
 import math
 import os
 from functools import wraps
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import Any, Callable, ClassVar, List, Optional, Tuple, Union
+
+import torch
 
 import kornia
 
-from ._backend import Module, Tensor, from_numpy
+from ._backend import Module, Sequential, Tensor, from_numpy
 from .external import PILImage as Image
 from .external import numpy as np
+
+
+class ONNXExportMixin:
+    ONNX_EXPORTABLE: bool = True
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, -1, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, -1, -1, -1]
+
+    def to_onnx(
+        self,
+        onnx_name: Optional[str] = None,
+        input_shape: Optional[list[int]] = None,
+        output_shape: Optional[list[int]] = None,
+    ) -> None:
+        if not self.ONNX_EXPORTABLE:
+            raise RuntimeError("This object cannot be exported to ONNX.")
+
+        if input_shape is None:
+            input_shape = self.ONNX_DEFAULT_INPUTSHAPE
+        if output_shape is None:
+            output_shape = self.ONNX_DEFAULT_OUTPUTSHAPE
+
+        if onnx_name is None:
+            onnx_name = f"Kornia-{self.__class__.__name__}.onnx"
+
+        # Creating a dummy input with the given shape
+        psuedo_shape = (1, 3, 256, 256)
+        dummy_input = torch.randn(*[(psuedo_shape[i] if dim == -1 else dim) for i, dim in enumerate(input_shape)])
+
+        # Dynamic axis configuration for input and output
+        dynamic_axes = {
+            "input": {i: "dim_" + str(i) for i, dim in enumerate(input_shape) if dim == -1},
+            "output": {i: "dim_" + str(i) for i, dim in enumerate(output_shape) if dim == -1},
+        }
+
+        torch.onnx.export(
+            self,  # type: ignore
+            dummy_input,
+            onnx_name,
+            export_params=True,
+            opset_version=17,
+            do_constant_folding=True,
+            input_names=["input"],
+            output_names=["output"],
+            dynamic_axes=dynamic_axes,
+        )
 
 
 class ImageModuleMixIn:
@@ -219,8 +267,64 @@ class ImageModuleMixIn:
         kornia.io.write_image(name, out_image.mul(255.0).byte())
 
 
-class ImageModule(Module, ImageModuleMixIn):
+class ImageModule(Module, ImageModuleMixIn, ONNXExportMixin):
     """Handles image-based operations.
+
+    This modules accepts multiple input and output data types, provides end-to-end
+    visualization, file saving features. Note that this module fits the classes that
+    return one image tensor only.
+
+    Note:
+        The additional add-on features increase the use of memories. To restore the
+        original behaviour, you may set `disable_features = True`.
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._disable_features: bool = False
+
+    @property
+    def disable_features(self) -> bool:
+        return self._disable_features
+
+    @disable_features.setter
+    def disable_features(self, value: bool = True) -> None:
+        self._disable_features = value
+
+    def __call__(
+        self,
+        *inputs: Any,
+        input_names_to_handle: Optional[List[Any]] = None,
+        output_type: str = "tensor",
+        **kwargs: Any,
+    ) -> Any:
+        """Overwrites the __call__ function to handle various inputs.
+
+        Args:
+            input_names_to_handle: List of input names to convert, if None, handle all inputs.
+            output_type: Desired output type ('tensor', 'numpy', or 'pil').
+
+        Returns:
+            Callable: Decorated function with converted input and output types.
+        """
+
+        # Wrap the forward method with the decorator
+        if not self._disable_features:
+            decorated_forward = self.convert_input_output(
+                input_names_to_handle=input_names_to_handle, output_type=output_type
+            )(super().__call__)
+            _output_image = decorated_forward(*inputs, **kwargs)
+            if output_type == "tensor":
+                self._output_image = self._detach_tensor_to_cpu(_output_image)
+            else:
+                self._output_image = _output_image
+        else:
+            _output_image = super().__call__(*inputs, **kwargs)
+        return _output_image
+
+
+class ImageSequential(Sequential, ImageModuleMixIn, ONNXExportMixin):
+    """Handles image-based operations as a sequential module.
 
     This modules accepts multiple input and output data types, provides end-to-end
     visualization, file saving features. Note that this module fits the classes that

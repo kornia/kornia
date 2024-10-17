@@ -63,6 +63,7 @@ class RTDETRConfig:
 
     model_type: RTDETRModelType | str | int
     num_classes: int
+    input_size: int = 640
     checkpoint: Optional[str] = None
 
     neck_hidden_dim: Optional[int] = None
@@ -72,6 +73,29 @@ class RTDETRConfig:
     head_num_queries: int = 300
     head_num_decoder_layers: Optional[int] = None
     confidence_threshold: float = 0.3
+
+    @staticmethod
+    def from_name(model_name: str, num_classes: int = 80) -> RTDETRConfig:
+        """Load model without pretrained weights.
+
+        Args:
+            model_name: 'rtdetr_r18vd', 'rtdetr_r34vd', 'rtdetr_r50vd_m', 'rtdetr_r50vd', 'rtdetr_r101vd'.
+        """
+
+        if model_name == "rtdetr_r18vd":
+            config = RTDETRConfig(RTDETRModelType.resnet18d, num_classes, input_size=640)
+        elif model_name == "rtdetr_r34vd":
+            config = RTDETRConfig(RTDETRModelType.resnet34d, num_classes, input_size=640)
+        elif model_name == "rtdetr_r50vd_m":
+            config = RTDETRConfig(RTDETRModelType.resnet50d_m, num_classes, input_size=640)
+        elif model_name == "rtdetr_r50vd":
+            config = RTDETRConfig(RTDETRModelType.resnet50d, num_classes, input_size=640)
+        elif model_name == "rtdetr_r101vd":
+            config = RTDETRConfig(RTDETRModelType.resnet101d, num_classes, input_size=640)
+        else:
+            raise ValueError
+
+        return config
 
 
 class RTDETR(ModelBase[RTDETRConfig]):
@@ -229,20 +253,7 @@ class RTDETR(ModelBase[RTDETRConfig]):
         Args:
             model_name: 'rtdetr_r18vd', 'rtdetr_r34vd', 'rtdetr_r50vd_m', 'rtdetr_r50vd', 'rtdetr_r101vd'.
         """
-
-        if model_name == "rtdetr_r18vd":
-            model = RTDETR.from_config(RTDETRConfig(RTDETRModelType.resnet18d, num_classes))
-        elif model_name == "rtdetr_r34vd":
-            model = RTDETR.from_config(RTDETRConfig(RTDETRModelType.resnet34d, num_classes))
-        elif model_name == "rtdetr_r50vd_m":
-            model = RTDETR.from_config(RTDETRConfig(RTDETRModelType.resnet50d_m, num_classes))
-        elif model_name == "rtdetr_r50vd":
-            model = RTDETR.from_config(RTDETRConfig(RTDETRModelType.resnet50d, num_classes))
-        elif model_name == "rtdetr_r101vd":
-            model = RTDETR.from_config(RTDETRConfig(RTDETRModelType.resnet101d, num_classes))
-        else:
-            raise ValueError
-
+        model = RTDETR.from_config(RTDETRConfig.from_name(model_name, num_classes))
         return model
 
     def forward(self, images: Tensor) -> tuple[Tensor, Tensor]:
