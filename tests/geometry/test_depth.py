@@ -387,3 +387,96 @@ class TestDepthFromDisparity(BaseTester):
 
         # evaluate function gradient
         self.gradcheck(kornia.geometry.depth.depth_from_disparity, (disparity, baseline, focal))
+
+
+class TestDepthFromPlaneEquation(BaseTester):
+    def test_smoke(self, device, dtype):
+        B = 2
+        N = 10
+        plane_normals = torch.randn(B, 3, device=device, dtype=dtype)
+        plane_offsets = torch.randn(B, 1, device=device, dtype=dtype)
+        points_uv = torch.randn(B, N, 2, device=device, dtype=dtype)
+        camera_matrix = torch.eye(3, device=device, dtype=dtype).unsqueeze(0).repeat(B, 1, 1)
+
+        depth = kornia.geometry.depth.depth_from_plane_equation(plane_normals, plane_offsets, points_uv, camera_matrix)
+        assert depth.shape == (B, N), f"Expected depth shape to be ({B}, {N}), but got {depth.shape}"
+
+    @pytest.mark.parametrize("batch_size", [1, 2, 4])
+    def test_shapes(self, batch_size, device, dtype):
+        B = batch_size
+        N = 10
+        plane_normals = torch.randn(B, 3, device=device, dtype=dtype)
+        plane_offsets = torch.randn(B, 1, device=device, dtype=dtype)
+        points_uv = torch.randn(B, N, 2, device=device, dtype=dtype)
+        camera_matrix = torch.eye(3, device=device, dtype=dtype).unsqueeze(0).repeat(B, 1, 1)
+
+        depth = kornia.geometry.depth.depth_from_plane_equation(plane_normals, plane_offsets, points_uv, camera_matrix)
+        assert depth.shape == (B, N), f"Expected depth shape to be ({B}, {N}), but got {depth.shape}"
+
+    @pytest.mark.parametrize("batch_size", [1, 2, 4])
+    def test_shapes_broadcast(self, batch_size, device, dtype):
+        B = batch_size
+        N = 10
+        plane_normals = torch.randn(1, 3, device=device, dtype=dtype)  # Broadcasting plane normals
+        plane_offsets = torch.randn(1, 1, device=device, dtype=dtype)
+        points_uv = torch.randn(B, N, 2, device=device, dtype=dtype)
+        camera_matrix = torch.eye(3, device=device, dtype=dtype)
+
+        depth = kornia.geometry.depth.depth_from_plane_equation(
+            plane_normals.expand(B, -1),
+            plane_offsets.expand(B, -1),
+            points_uv,
+            camera_matrix.expand(B, -1, -1)
+        )
+        assert depth.shape == (B, N), f"Expected depth shape to be ({B}, {N}), but got {depth.shape}"
+
+    def test_simple(self, device, dtype):
+        """
+        Test the function with a simple plane equation to verify numerical correctness.
+        Plane equation: z = 2 (plane normal [0, 0, 1], offset 2)
+        Expected depth for any point is 2.
+        """
+        # Define plane parameters
+        plane_normals = torch.tensor([[0.0, 0.0, 1.0]], device=device, dtype=dtype)  # Shape: (B, 3)
+        plane_offsets = torch.tensor([[2.0]], device=device, dtype=dtype)
+
+        # Define pixel coordinates
+        points_uv = torch.tensor(
+            [
+                [[0.0, 0.0],
+                 [1.0, 0.0],
+                 [0.0, 1.0],
+                 [1.0, 1.0]]
+            ],
+            device=device,
+            dtype=dtype,
+        )  # Shape: (B, N, 2)
+
+        # Camera intrinsic matrix (identity)
+        camera_matrix = torch.eye(3, device=device, dtype=dtype).unsqueeze(0)  # Shape: (B, 3, 3)
+
+        # Expected depth values
+        depth_expected = torch.tensor([[2.0, 2.0, 2.0, 2.0]], device=device, dtype=dtype)  # Shape: (B, N)
+
+        # Compute depth
+        depth = kornia.geometry.depth.depth_from_plane_equation(plane_normals, plane_offsets, points_uv, camera_matrix)
+
+        # Assert that the computed depth matches the expected depth
+        self.assert_close(depth, depth_expected, rtol=1e-6, atol=1e-6)
+
+    def test_gradcheck(self, device):
+        B = 2
+        N = 5
+        plane_normals = torch.rand(B, 3, device=device, dtype=torch.float64, requires_grad=True)
+        plane_offsets = torch.rand(B, 1, device=device, dtype=torch.float64, requires_grad=True)
+        points_uv = torch.rand(B, N, 2, device=device, dtype=torch.float64, requires_grad=True)
+        camera_matrix = torch.eye(3, device=device, dtype=torch.float64).unsqueeze(0).repeat(B, 1, 1)
+        camera_matrix.requires_grad_()
+
+        # Perform gradient check
+        self.gradcheck(
+            kornia.geometry.depth.depth_from_plane_equation,
+            (plane_normals, plane_offsets, points_uv, camera_matrix),
+            eps=1e-6,
+            atol=1e-4,
+        )
