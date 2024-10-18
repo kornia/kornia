@@ -1219,7 +1219,7 @@ def denormalize_points_with_intrinsics(point_2d_norm: Tensor, camera_matrix: Ten
 
     if len(cx.shape) < len(x_coord.shape): # broadcast intrinsics
         cx, cy, fx, fy = cx.unsqueeze(-1), cy.unsqueeze(-1), fx.unsqueeze(-1), fy.unsqueeze(-1)
-    
+
     # apply intrinsics ans return
     u_coord: Tensor = x_coord * fx + cx
     v_coord: Tensor = y_coord * fy + cy

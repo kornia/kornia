@@ -224,7 +224,7 @@ def depth_from_plane_equation(
     KORNIA_CHECK_SHAPE(plane_offsets, ["B", "1"])
     KORNIA_CHECK_SHAPE(points_uv, ["B", "N", "2"])
     KORNIA_CHECK_SHAPE(camera_matrix, ["B", "3", "3"])
-    
+
     # Normalize pixel coordinates
     points_xy = normalize_points_with_intrinsics(points_uv, camera_matrix)  # (B, N, 2)
     rays = convert_points_to_homogeneous(points_xy)  # (B, N, 3)
