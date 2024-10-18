@@ -25,6 +25,7 @@ __all__ = [
     "depth_warp",
     "DepthWarper",
     "depth_from_disparity",
+    "depth_from_plane_equation",
     "unproject_meshgrid",
 ]
 
@@ -198,6 +199,48 @@ def depth_to_normals(depth: Tensor, camera_matrix: Tensor, normalize_points: boo
 
     normals: Tensor = torch.cross(a, b, dim=1)  # Bx3xHxW
     return kornia_ops.normalize(normals, dim=1, p=2)
+
+
+def depth_from_plane_equation(
+    plane_normals: Tensor,
+    plane_offsets: Tensor,
+    points_uv: Tensor,
+    camera_matrix: Tensor,
+    eps: float = 1e-8
+) -> Tensor:
+    """
+    Compute depth values from plane equations and pixel coordinates.
+
+    Parameters:
+        plane_normals (Tensor): Plane normal vectors of shape (B, 3).
+        plane_offsets (Tensor): Plane offsets of shape (B).
+        points_uv (Tensor): Pixel coordinates of shape (B, N, 2).
+        camera_matrix (Tensor): Camera intrinsic matrix of shape (B, 3, 3).
+
+    Returns:
+        Tensor: Computed depth values at the given pixels, shape (B, N).
+    """
+    KORNIA_CHECK_SHAPE(plane_normals, ["*", "N", "3"])
+    KORNIA_CHECK_SHAPE(plane_offsets, ["*", "N"])
+    KORNIA_CHECK_SHAPE(points_uv, ["*", "N", "2"])
+    KORNIA_CHECK_SHAPE(camera_matrix, ["*", "3", "3"])
+    
+    points_xy = normalize_points_with_intrinsics(points_uv, camera_matrix)  # (B, N, 2)
+    rays = convert_points_to_homogeneous(points_xy)  # (B, N, 3)
+
+    # Reshape plane normals and offsets to match rays
+    plane_normals_exp = plane_normals.unsqueeze(1)  # (B, 1, 3)
+    plane_offsets_exp = plane_offsets.unsqueeze(1)  # (B, 1)
+
+    # Compute the denominator of the depth equation
+    denom = torch.sum(rays * plane_normals_exp, dim=-1)  # (B, N)
+    denom_abs = torch.abs(denom)
+    zero_mask = denom_abs < eps
+    denom = torch.where(zero_mask, eps * torch.sign(denom), denom)
+
+    # Compute depth from plane equation
+    depth = plane_offsets_exp / denom  # (B, N)
+    return depth
 
 
 def warp_frame_depth(

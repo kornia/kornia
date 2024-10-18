@@ -889,6 +889,12 @@ class TestDenormalizePointsWithIntrinsics(BaseTester):
         points_norm = kornia.geometry.conversions.denormalize_points_with_intrinsics(points_2d, camera_matrix)
         assert points_norm.shape == (2, 2)
 
+    def test_smoke_batch_n(self, device, dtype):
+        points_2d = torch.zeros(2, 9, 2, device=device, dtype=dtype)
+        camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(2, -1, -1)
+        points_norm = kornia.geometry.conversions.denormalize_points_with_intrinsics(points_2d, camera_matrix)
+        assert points_norm.shape == (2, 9, 2)
+
     def test_toy(self, device, dtype):
         point_2d = torch.tensor([[1.0, 1.0]], device=device, dtype=dtype)
         camera_matrix = torch.tensor(
@@ -929,6 +935,12 @@ class TestNormalizePointsWithIntrinsics(BaseTester):
         camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(2, -1, -1)
         points_norm = kornia.geometry.conversions.normalize_points_with_intrinsics(points_2d, camera_matrix)
         assert points_norm.shape == (2, 2)
+        
+    def test_smoke_batch_n(self, device, dtype):
+        points_2d = torch.zeros(2, 10, 2, device=device, dtype=dtype)
+        camera_matrix = torch.eye(3, device=device, dtype=dtype).expand(2, -1, -1)
+        points_norm = kornia.geometry.conversions.normalize_points_with_intrinsics(points_2d, camera_matrix)
+        assert points_norm.shape == (2, 10, 2)
 
     def test_norm_unnorm(self, device, dtype):
         point_2d = torch.tensor([[128.0, 128.0]], device=device, dtype=dtype)
