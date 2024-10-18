@@ -213,24 +213,25 @@ def depth_from_plane_equation(
 
     Parameters:
         plane_normals (Tensor): Plane normal vectors of shape (B, 3).
-        plane_offsets (Tensor): Plane offsets of shape (B).
+        plane_offsets (Tensor): Plane offsets of shape (B, 1).
         points_uv (Tensor): Pixel coordinates of shape (B, N, 2).
         camera_matrix (Tensor): Camera intrinsic matrix of shape (B, 3, 3).
 
     Returns:
         Tensor: Computed depth values at the given pixels, shape (B, N).
     """
-    KORNIA_CHECK_SHAPE(plane_normals, ["B", "N", "3"])
-    KORNIA_CHECK_SHAPE(plane_offsets, ["B", "N"])
+    KORNIA_CHECK_SHAPE(plane_normals, ["B", "3"])
+    KORNIA_CHECK_SHAPE(plane_offsets, ["B", "1"])
     KORNIA_CHECK_SHAPE(points_uv, ["B", "N", "2"])
     KORNIA_CHECK_SHAPE(camera_matrix, ["B", "3", "3"])
     
+    # Normalize pixel coordinates
     points_xy = normalize_points_with_intrinsics(points_uv, camera_matrix)  # (B, N, 2)
     rays = convert_points_to_homogeneous(points_xy)  # (B, N, 3)
 
-    # Reshape plane normals and offsets to match rays
+    # Reshape plane normals to match rays
     plane_normals_exp = plane_normals.unsqueeze(1)  # (B, 1, 3)
-    plane_offsets_exp = plane_offsets.unsqueeze(1)  # (B, 1)
+    # No need to unsqueeze plane_offsets; it is already (B, 1)
 
     # Compute the denominator of the depth equation
     denom = torch.sum(rays * plane_normals_exp, dim=-1)  # (B, N)
@@ -239,7 +240,7 @@ def depth_from_plane_equation(
     denom = torch.where(zero_mask, eps * torch.sign(denom), denom)
 
     # Compute depth from plane equation
-    depth = plane_offsets_exp / denom  # (B, N)
+    depth = plane_offsets / denom  # plane_offsets: (B, 1), denom: (B, N) -> depth: (B, N)
     return depth
 
 
