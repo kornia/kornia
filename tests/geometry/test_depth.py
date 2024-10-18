@@ -394,7 +394,7 @@ class TestDepthFromPlaneEquation(BaseTester):
         B = 2
         N = 10
         plane_normals = torch.randn(B, 3, device=device, dtype=dtype)
-        plane_offsets = torch.randn(B, device=device, dtype=dtype)
+        plane_offsets = torch.randn(B, 1, device=device, dtype=dtype)  # Shape adjusted to (B, 1)
         points_uv = torch.randn(B, N, 2, device=device, dtype=dtype)
         camera_matrix = torch.eye(3, device=device, dtype=dtype).unsqueeze(0).repeat(B, 1, 1)
     
@@ -406,7 +406,7 @@ class TestDepthFromPlaneEquation(BaseTester):
         B = batch_size
         N = 10
         plane_normals = torch.randn(B, 3, device=device, dtype=dtype)
-        plane_offsets = torch.randn(B, device=device, dtype=dtype)
+        plane_offsets = torch.randn(B, 1, device=device, dtype=dtype)  # Shape adjusted to (B, 1)
         points_uv = torch.randn(B, N, 2, device=device, dtype=dtype)
         camera_matrix = torch.eye(3, device=device, dtype=dtype).unsqueeze(0).repeat(B, 1, 1)
     
@@ -418,13 +418,13 @@ class TestDepthFromPlaneEquation(BaseTester):
         B = batch_size
         N = 10
         plane_normals = torch.randn(1, 3, device=device, dtype=dtype)  # Broadcasting plane normals
-        plane_offsets = torch.randn(1, device=device, dtype=dtype)     # Broadcasting plane offsets
+        plane_offsets = torch.randn(1, 1, device=device, dtype=dtype)  # Shape adjusted to (1, 1)
         points_uv = torch.randn(B, N, 2, device=device, dtype=dtype)
         camera_matrix = torch.eye(3, device=device, dtype=dtype)
     
         depth = kornia.geometry.depth.depth_from_plane_equation(
             plane_normals.expand(B, -1),
-            plane_offsets.expand(B),
+            plane_offsets.expand(B, -1),
             points_uv,
             camera_matrix.expand(B, -1, -1)
         )
@@ -440,7 +440,7 @@ class TestDepthFromPlaneEquation(BaseTester):
         N = 4
         # Define plane parameters
         plane_normals = torch.tensor([[0.0, 0.0, 1.0]], device=device, dtype=dtype)  # Shape: (B, 3)
-        plane_offsets = torch.tensor([2.0], device=device, dtype=dtype)  # Shape: (B,)
+        plane_offsets = torch.tensor([[2.0]], device=device, dtype=dtype)  # Shape adjusted to (B, 1)
     
         # Define pixel coordinates
         points_uv = torch.tensor(
@@ -470,7 +470,7 @@ class TestDepthFromPlaneEquation(BaseTester):
         B = 2
         N = 5
         plane_normals = torch.rand(B, 3, device=device, dtype=torch.float64, requires_grad=True)
-        plane_offsets = torch.rand(B, device=device, dtype=torch.float64, requires_grad=True)
+        plane_offsets = torch.rand(B, 1, device=device, dtype=torch.float64, requires_grad=True)  # Shape adjusted to (B, 1)
         points_uv = torch.rand(B, N, 2, device=device, dtype=torch.float64, requires_grad=True)
         camera_matrix = torch.eye(3, device=device, dtype=torch.float64).unsqueeze(0).repeat(B, 1, 1)
         camera_matrix.requires_grad_()
