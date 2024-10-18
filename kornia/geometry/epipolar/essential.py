@@ -273,15 +273,9 @@ def essential_from_fundamental(F_mat: torch.Tensor, K1: torch.Tensor, K2: torch.
     Returns:
         The essential matrix with shape :math:`(*, 3, 3)`.
     """
-    if not (len(F_mat.shape) >= 2 and F_mat.shape[-2:] == (3, 3)):
-        raise AssertionError(F_mat.shape)
-    if not (len(K1.shape) >= 2 and K1.shape[-2:] == (3, 3)):
-        raise AssertionError(K1.shape)
-    if not (len(K2.shape) >= 2 and K2.shape[-2:] == (3, 3)):
-        raise AssertionError(K2.shape)
-    if not len(F_mat.shape[:-2]) == len(K1.shape[:-2]) == len(K2.shape[:-2]):
-        raise AssertionError
-
+    KORNIA_CHECK_SHAPE(F_mat, ["*", "3", "3"])
+    KORNIA_CHECK_SHAPE(K1, ["*", "3", "3"])
+    KORNIA_CHECK_SHAPE(K2, ["*", "3", "3"])
     return K2.transpose(-2, -1) @ F_mat @ K1
 
 
@@ -298,8 +292,7 @@ def decompose_essential_matrix(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch
        A tuple containing the first and second possible rotation matrices and the translation vector.
        The shape of the tensors with be same input :math:`[(*, 3, 3), (*, 3, 3), (*, 3, 1)]`.
     """
-    if not (len(E_mat.shape) >= 2 and E_mat.shape[-2:]):
-        raise AssertionError(E_mat.shape)
+    KORNIA_CHECK_SHAPE(E_mat, ["*", "3", "3"])
 
     # decompose matrix by its singular values
     U, _, V = _torch_svd_cast(E_mat)
@@ -342,9 +335,8 @@ def decompose_essential_matrix_no_svd(E_mat: torch.Tensor) -> Tuple[torch.Tensor
        A tuple containing the first and second possible rotation matrices and the translation vector.
        The shape of the tensors with be same input :math:`[(*, 3, 3), (*, 3, 3), (*, 3, 1)]`.
     """
-    if not (len(E_mat.shape) >= 2 and E_mat.shape[-2:] == (3, 3)):
-        raise AssertionError(E_mat.shape)
-    elif len(E_mat.shape) != 3:
+    KORNIA_CHECK_SHAPE(E_mat, ["*", "3", "3"])
+    if len(E_mat.shape) != 3:
         E_mat = E_mat.view(-1, 3, 3)
 
     B = E_mat.shape[0]
@@ -407,15 +399,11 @@ def essential_from_Rt(R1: torch.Tensor, t1: torch.Tensor, R2: torch.Tensor, t2: 
     Returns:
         The Essential matrix with the shape :math:`(*, 3, 3)`.
     """
-    if not (len(R1.shape) >= 2 and R1.shape[-2:] == (3, 3)):
-        raise AssertionError(R1.shape)
-    if not (len(t1.shape) >= 2 and t1.shape[-2:] == (3, 1)):
-        raise AssertionError(t1.shape)
-    if not (len(R2.shape) >= 2 and R2.shape[-2:] == (3, 3)):
-        raise AssertionError(R2.shape)
-    if not (len(t2.shape) >= 2 and t2.shape[-2:] == (3, 1)):
-        raise AssertionError(t2.shape)
-
+    KORNIA_CHECK_SHAPE(R1, ["*", "3", "3"])
+    KORNIA_CHECK_SHAPE(R2, ["*", "3", "3"])
+    KORNIA_CHECK_SHAPE(t1, ["*", "3", "1"])
+    KORNIA_CHECK_SHAPE(t2, ["*", "3", "1"])
+    
     # first compute the camera relative motion
     R, t = relative_camera_motion(R1, t1, R2, t2)
 
@@ -438,8 +426,7 @@ def motion_from_essential(E_mat: torch.Tensor) -> Tuple[torch.Tensor, torch.Tens
         The rotation and translation containing the four possible combination for the retrieved motion.
         The tuple is as following :math:`[(*, 4, 3, 3), (*, 4, 3, 1)]`.
     """
-    if not (len(E_mat.shape) >= 2 and E_mat.shape[-2:] == (3, 3)):
-        raise AssertionError(E_mat.shape)
+    KORNIA_CHECK_SHAPE(E_mat, ["*", "3", "3"])
 
     # decompose the essential matrix by its possible poses
     R1, R2, t = decompose_essential_matrix(E_mat)
@@ -483,23 +470,16 @@ def motion_from_essential_choose_solution(
         The rotation and translation plus the 3d triangulated points.
         The tuple is as following :math:`[(*, 3, 3), (*, 3, 1), (*, N, 3)]`.
     """
-    if not (len(E_mat.shape) >= 2 and E_mat.shape[-2:] == (3, 3)):
-        raise AssertionError(E_mat.shape)
-    if not (len(K1.shape) >= 2 and K1.shape[-2:] == (3, 3)):
-        raise AssertionError(K1.shape)
-    if not (len(K2.shape) >= 2 and K2.shape[-2:] == (3, 3)):
-        raise AssertionError(K2.shape)
-    if not (len(x1.shape) >= 2 and x1.shape[-1] == 2):
-        raise AssertionError(x1.shape)
-    if not (len(x2.shape) >= 2 and x2.shape[-1] == 2):
-        raise AssertionError(x2.shape)
-    if not len(E_mat.shape[:-2]) == len(K1.shape[:-2]) == len(K2.shape[:-2]):
-        raise AssertionError
+    KORNIA_CHECK_SHAPE(E_mat, ["*", "3", "3"])
+    KORNIA_CHECK_SHAPE(K1, ["*", "3", "3"])
+    KORNIA_CHECK_SHAPE(K2, ["*", "3", "3"])
+    KORNIA_CHECK_SHAPE(x1, ["*", "N", "2"])
+    KORNIA_CHECK_SHAPE(x2, ["*", "N", "2"])
+    KORNIA_CHECK(len(E_mat.shape[:-2]) == len(K1.shape[:-2]) == len(K2.shape[:-2]))
+
     if mask is not None:
-        if len(mask.shape) < 1:
-            raise AssertionError(mask.shape)
-        if mask.shape != x1.shape[:-1]:
-            raise AssertionError(mask.shape)
+        KORNIA_CHECK_SHAPE(mask, ["*", "N"])
+        KORNIA_CHECK(mask.shape == x1.shape[:-1])
 
     unbatched = len(E_mat.shape) == 2
 
@@ -581,14 +561,10 @@ def relative_camera_motion(
         A tuple with the relative rotation matrix and
         translation vector with the shape of :math:`[(*, 3, 3), (*, 3, 1)]`.
     """
-    if not (len(R1.shape) >= 2 and R1.shape[-2:] == (3, 3)):
-        raise AssertionError(R1.shape)
-    if not (len(t1.shape) >= 2 and t1.shape[-2:] == (3, 1)):
-        raise AssertionError(t1.shape)
-    if not (len(R2.shape) >= 2 and R2.shape[-2:] == (3, 3)):
-        raise AssertionError(R2.shape)
-    if not (len(t2.shape) >= 2 and t2.shape[-2:] == (3, 1)):
-        raise AssertionError(t2.shape)
+    KORNIA_CHECK_SHAPE(R1, ["*", "3", "3"])
+    KORNIA_CHECK_SHAPE(R2, ["*", "3", "3"])
+    KORNIA_CHECK_SHAPE(t1, ["*", "3", "1"])
+    KORNIA_CHECK_SHAPE(t2, ["*", "3", "1"])
 
     # compute first the relative rotation
     R = R2 @ R1.transpose(-2, -1)
@@ -615,5 +591,4 @@ def find_essential(
 
     """
     E = run_5point(points1, points2, weights).to(points1.dtype)
-
     return E
