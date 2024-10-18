@@ -114,7 +114,7 @@ def depth_to_3d_v2(
 
 @deprecated(
     replace_with="depth_to_3d_v2",
-    version="0.7.0",
+    version="0.8.0",
     extra_reason=(
         " This function will be replaced with the `depth_to_3d_v2` behaviour, where the that does not require the"
         " creation of a meshgrid. The return shape can be not backward compatible between these implementations."
@@ -220,10 +220,10 @@ def depth_from_plane_equation(
     Returns:
         Tensor: Computed depth values at the given pixels, shape (B, N).
     """
-    KORNIA_CHECK_SHAPE(plane_normals, ["*", "N", "3"])
-    KORNIA_CHECK_SHAPE(plane_offsets, ["*", "N"])
-    KORNIA_CHECK_SHAPE(points_uv, ["*", "N", "2"])
-    KORNIA_CHECK_SHAPE(camera_matrix, ["*", "3", "3"])
+    KORNIA_CHECK_SHAPE(plane_normals, ["B", "N", "3"])
+    KORNIA_CHECK_SHAPE(plane_offsets, ["B", "N"])
+    KORNIA_CHECK_SHAPE(points_uv, ["B", "N", "2"])
+    KORNIA_CHECK_SHAPE(camera_matrix, ["B", "3", "3"])
     
     points_xy = normalize_points_with_intrinsics(points_uv, camera_matrix)  # (B, N, 2)
     rays = convert_points_to_homogeneous(points_xy)  # (B, N, 3)

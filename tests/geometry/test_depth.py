@@ -467,9 +467,6 @@ class TestDepthFromPlaneEquation(BaseTester):
         self.assert_close(depth, depth_expected, rtol=1e-6, atol=1e-6)
 
     def test_gradcheck(self, device):
-        """
-        Test the gradient computation of the function using PyTorch's gradcheck.
-        """
         B = 2
         N = 5
         plane_normals = torch.rand(B, 3, device=device, dtype=torch.float64, requires_grad=True)

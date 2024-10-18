@@ -1179,15 +1179,13 @@ def normalize_points_with_intrinsics(point_2d: Tensor, camera_matrix: Tensor) ->
     v_coord: Tensor = point_2d[..., 1]
 
     # unpack intrinsics
-
     fx: Tensor = camera_matrix[..., 0, 0]
     fy: Tensor = camera_matrix[..., 1, 1]
     cx: Tensor = camera_matrix[..., 0, 2]
     cy: Tensor = camera_matrix[..., 1, 2]
     
-    if len(cx.shape) < len(u_coord.shape):
+    if len(cx.shape) < len(u_coord.shape): # broadcast intrinsics
         cx, cy, fx, fy = cx.unsqueeze(-1), cy.unsqueeze(-1), fx.unsqueeze(-1), fy.unsqueeze(-1)
-    
     # projective
     x_coord: Tensor = (u_coord - cx) / fx
     y_coord: Tensor = (v_coord - cy) / fy
@@ -1230,7 +1228,7 @@ def denormalize_points_with_intrinsics(point_2d_norm: Tensor, camera_matrix: Ten
     cx: Tensor = camera_matrix[..., 0, 2]
     cy: Tensor = camera_matrix[..., 1, 2]
 
-    if len(cx.shape) < len(x_coord.shape):
+    if len(cx.shape) < len(x_coord.shape): # broadcast intrinsics
         cx, cy, fx, fy = cx.unsqueeze(-1), cy.unsqueeze(-1), fx.unsqueeze(-1), fy.unsqueeze(-1)
     
     # apply intrinsics ans return
