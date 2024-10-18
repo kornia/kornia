@@ -5,6 +5,7 @@ import torch
 from kornia.core import zeros
 from kornia.geometry.conversions import convert_points_from_homogeneous
 from kornia.utils.helpers import _torch_svd_cast
+from kornia.core.check import KORNIA_CHECK_SHAPE, KORNIA_CHECK_SAME_SHAPE
 
 # https://github.com/opencv/opencv_contrib/blob/master/modules/sfm/src/triangulation.cpp#L68
 
@@ -31,20 +32,10 @@ def triangulate_points(
     Returns:
         The reconstructed 3d points in the world frame with shape :math:`(*, N, 3)`.
     """
-    if not (len(P1.shape) >= 2 and P1.shape[-2:] == (3, 4)):
-        raise AssertionError(P1.shape)
-    if not (len(P2.shape) >= 2 and P2.shape[-2:] == (3, 4)):
-        raise AssertionError(P2.shape)
-    if len(P1.shape[:-2]) != len(P2.shape[:-2]):
-        raise AssertionError(P1.shape, P2.shape)
-    if not (len(points1.shape) >= 2 and points1.shape[-1] == 2):
-        raise AssertionError(points1.shape)
-    if not (len(points2.shape) >= 2 and points2.shape[-1] == 2):
-        raise AssertionError(points2.shape)
-    if len(points1.shape[:-2]) != len(points2.shape[:-2]):
-        raise AssertionError(points1.shape, points2.shape)
-    if len(P1.shape[:-2]) != len(points1.shape[:-2]):
-        raise AssertionError(P1.shape, points1.shape)
+    KORNIA_CHECK_SHAPE(P1, ["*", "3", "4"])
+    KORNIA_CHECK_SHAPE(P2, ["*", "3", "4"])
+    KORNIA_CHECK_SHAPE(points1, ["*", "N", "2"])
+    KORNIA_CHECK_SHAPE(points2, ["*", "N", "2"])
 
     # allocate and construct the equations matrix with shape (*, 4, 4)
     points_shape = max(points1.shape, points2.shape)  # this allows broadcasting
