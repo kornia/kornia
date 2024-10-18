@@ -142,17 +142,10 @@ def depth_to_3d(depth: Tensor, camera_matrix: Tensor, normalize_points: bool = F
         >>> depth_to_3d(depth, K).shape
         torch.Size([1, 3, 4, 4])
     """
-    if not isinstance(depth, Tensor):
-        raise TypeError(f"Input depht type is not a Tensor. Got {type(depth)}.")
-
-    if not (len(depth.shape) == 4 and depth.shape[-3] == 1):
-        raise ValueError(f"Input depth musth have a shape (B, 1, H, W). Got: {depth.shape}")
-
-    if not isinstance(camera_matrix, Tensor):
-        raise TypeError(f"Input camera_matrix type is not a Tensor. Got {type(camera_matrix)}.")
-
-    if not (len(camera_matrix.shape) == 3 and camera_matrix.shape[-2:] == (3, 3)):
-        raise ValueError(f"Input camera_matrix must have a shape (B, 3, 3). Got: {camera_matrix.shape}.")
+    KORNIA_CHECK_IS_TENSOR(depth)
+    KORNIA_CHECK_IS_TENSOR(camera_matrix)
+    KORNIA_CHECK_SHAPE(depth,  ["B", "1", "H", "W"])
+    KORNIA_CHECK_SHAPE(camera_matrix,  ["B", "3", "3"])
 
     # create base coordinates grid
     _, _, height, width = depth.shape
@@ -189,17 +182,10 @@ def depth_to_normals(depth: Tensor, camera_matrix: Tensor, normalize_points: boo
         >>> depth_to_normals(depth, K).shape
         torch.Size([1, 3, 4, 4])
     """
-    if not isinstance(depth, Tensor):
-        raise TypeError(f"Input depht type is not a Tensor. Got {type(depth)}.")
-
-    if not (len(depth.shape) == 4 and depth.shape[-3] == 1):
-        raise ValueError(f"Input depth musth have a shape (B, 1, H, W). Got: {depth.shape}")
-
-    if not isinstance(camera_matrix, Tensor):
-        raise TypeError(f"Input camera_matrix type is not a Tensor. Got {type(camera_matrix)}.")
-
-    if not (len(camera_matrix.shape) == 3 and camera_matrix.shape[-2:] == (3, 3)):
-        raise ValueError(f"Input camera_matrix must have a shape (B, 3, 3). Got: {camera_matrix.shape}.")
+    KORNIA_CHECK_IS_TENSOR(depth)
+    KORNIA_CHECK_IS_TENSOR(camera_matrix)
+    KORNIA_CHECK_SHAPE(depth,  ["B", "1", "H", "W"])
+    KORNIA_CHECK_SHAPE(camera_matrix,  ["B", "3", "3"])
 
     # compute the 3d points from depth
     xyz: Tensor = depth_to_3d(depth, camera_matrix, normalize_points)  # Bx3xHxW
@@ -233,29 +219,10 @@ def warp_frame_depth(
     Return:
         the warped tensor in the source frame with shape :math:`(B,3,H,W)`.
     """
-    if not isinstance(image_src, Tensor):
-        raise TypeError(f"Input image_src type is not a Tensor. Got {type(image_src)}.")
-
-    if not len(image_src.shape) == 4:
-        raise ValueError(f"Input image_src musth have a shape (B, D, H, W). Got: {image_src.shape}")
-
-    if not isinstance(depth_dst, Tensor):
-        raise TypeError(f"Input depht_dst type is not a Tensor. Got {type(depth_dst)}.")
-
-    if not (len(depth_dst.shape) == 4 and depth_dst.shape[-3] == 1):
-        raise ValueError(f"Input depth_dst musth have a shape (B, 1, H, W). Got: {depth_dst.shape}")
-
-    if not isinstance(src_trans_dst, Tensor):
-        raise TypeError(f"Input src_trans_dst type is not a Tensor. Got {type(src_trans_dst)}.")
-
-    if not (len(src_trans_dst.shape) == 3 and src_trans_dst.shape[-2:] == (4, 4)):
-        raise ValueError(f"Input src_trans_dst must have a shape (B, 4, 4). Got: {src_trans_dst.shape}.")
-
-    if not isinstance(camera_matrix, Tensor):
-        raise TypeError(f"Input camera_matrix type is not a Tensor. Got {type(camera_matrix)}.")
-
-    if not (len(camera_matrix.shape) == 3 and camera_matrix.shape[-2:] == (3, 3)):
-        raise ValueError(f"Input camera_matrix must have a shape (B, 3, 3). Got: {camera_matrix.shape}.")
+    KORNIA_CHECK_SHAPE(image_src, ["B", "D", "H", "W"])
+    KORNIA_CHECK_SHAPE(depth_dst, ["B", "1", "H", "W"])
+    KORNIA_CHECK_SHAPE(src_trans_dst, ["B", "4", "4"])
+    KORNIA_CHECK_SHAPE(camera_matrix, ["B", "3", "3"])
 
     # unproject source points to camera frame
     points_3d_dst: Tensor = depth_to_3d(depth_dst, camera_matrix, normalize_points)  # Bx3xHxW
