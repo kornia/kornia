@@ -6,12 +6,11 @@ import os
 import pprint
 from typing import Any
 
-import requests
-
 import kornia
 from kornia.config import kornia_config
 from kornia.core.external import numpy as np
 from kornia.core.external import onnx
+from kornia.core.external import requests
 from kornia.utils.download import CachedDownloader
 
 __all__ = ["ONNXLoader", "io_name_conversion", "add_metadata"]
@@ -120,7 +119,7 @@ class ONNXLoader(CachedDownloader):
         """
         url = f"https://huggingface.co/api/models/kornia/ONNX_models/tree/main/{folder}"
 
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=10)  # type:ignore
 
         if response.status_code == 200:
             return response.json()  # Returns the JSON content of the repo

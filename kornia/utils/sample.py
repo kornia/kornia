@@ -2,12 +2,11 @@ import logging
 import os
 from typing import Any, List, Optional, Tuple, Union
 
-import requests
-
 import kornia
 from kornia.core import Tensor, stack
 from kornia.core.external import PILImage as Image
 from kornia.io import load_image
+from kornia.core.external import requests
 
 __all__ = [
     "get_sample_images",
