@@ -10,6 +10,7 @@ tensor = torch.tensor
 Module = torch.nn.Module
 ModuleList = torch.nn.ModuleList
 Parameter = torch.nn.Parameter
+Sequential = torch.nn.Sequential
 
 # functions
 # NOTE: ideally we expose what we find in numpy

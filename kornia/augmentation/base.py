@@ -53,6 +53,10 @@ class _BasicAugmentationBase(Module):
           the batch form ``False``.
     """
 
+    # TODO: Hard to support. Many codes are not ONNX-friendly that contains lots of if-else blocks, etc.
+    # Please contribute if anyone interested.
+    ONNX_EXPORTABLE = False
+
     def __init__(
         self,
         p: float = 0.5,

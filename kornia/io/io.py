@@ -6,9 +6,7 @@ from pathlib import Path
 import kornia_rs
 import torch
 
-from kornia.color import rgb_to_grayscale, rgba_to_rgb
-from kornia.color.gray import grayscale_to_rgb
-from kornia.color.rgb import rgb_to_rgba
+import kornia
 from kornia.core import Device, Tensor
 from kornia.core.check import KORNIA_CHECK
 from kornia.utils import image_to_tensor, tensor_to_image
@@ -90,39 +88,39 @@ def load_image(
         if image.shape[0] == 1 and image.dtype == torch.uint8:
             return image
         elif image.shape[0] == 3 and image.dtype == torch.uint8:
-            gray8 = rgb_to_grayscale(image)
+            gray8 = kornia.color.rgb_to_grayscale(image)
             return gray8
         elif image.shape[0] == 4 and image.dtype == torch.uint8:
-            gray32 = rgb_to_grayscale(rgba_to_rgb(_to_float32(image)))
+            gray32 = kornia.color.rgb_to_grayscale(kornia.color.rgba_to_rgb(_to_float32(image)))
             return _to_uint8(gray32)
 
     elif desired_type == ImageLoadType.RGB8:
         if image.shape[0] == 3 and image.dtype == torch.uint8:
             return image
         elif image.shape[0] == 1 and image.dtype == torch.uint8:
-            rgb8 = grayscale_to_rgb(image)
+            rgb8 = kornia.color.grayscale_to_rgb(image)
             return rgb8
 
     elif desired_type == ImageLoadType.RGBA8:
         if image.shape[0] == 3 and image.dtype == torch.uint8:
-            rgba32 = rgb_to_rgba(_to_float32(image), 0.0)
+            rgba32 = kornia.color.rgb_to_rgba(_to_float32(image), 0.0)
             return _to_uint8(rgba32)
 
     elif desired_type == ImageLoadType.GRAY32:
         if image.shape[0] == 1 and image.dtype == torch.uint8:
             return _to_float32(image)
         elif image.shape[0] == 3 and image.dtype == torch.uint8:
-            gray32 = rgb_to_grayscale(_to_float32(image))
+            gray32 = kornia.color.rgb_to_grayscale(_to_float32(image))
             return gray32
         elif image.shape[0] == 4 and image.dtype == torch.uint8:
-            gray32 = rgb_to_grayscale(rgba_to_rgb(_to_float32(image)))
+            gray32 = kornia.color.rgb_to_grayscale(kornia.color.rgba_to_rgb(_to_float32(image)))
             return gray32
 
     elif desired_type == ImageLoadType.RGB32:
         if image.shape[0] == 3 and image.dtype == torch.uint8:
             return _to_float32(image)
         elif image.shape[0] == 1 and image.dtype == torch.uint8:
-            rgb32 = grayscale_to_rgb(_to_float32(image))
+            rgb32 = kornia.color.grayscale_to_rgb(_to_float32(image))
             return rgb32
 
     raise NotImplementedError(f"Unknown type: {desired_type}")

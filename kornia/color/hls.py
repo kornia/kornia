@@ -1,5 +1,6 @@
+from __future__ import annotations
 import math
-from typing import Tuple
+from typing import ClassVar, List, Tuple
 
 import torch
 
@@ -142,6 +143,9 @@ class RgbToHls(Module):
         >>> output = hls(input)  # 2x3x4x5
     """
 
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+
     def forward(self, image: Tensor) -> Tensor:
         return rgb_to_hls(image)
 
@@ -166,6 +170,9 @@ class HlsToRgb(Module):
         >>> rgb = HlsToRgb()
         >>> output = rgb(input)  # 2x3x4x5
     """
+
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, image: Tensor) -> Tensor:
         return hls_to_rgb(image)
