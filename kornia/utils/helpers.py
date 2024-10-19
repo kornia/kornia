@@ -345,7 +345,7 @@ def dict_to_dataclass(dict_obj: Dict[str, Any], dataclass_type: Type[T]) -> T:
         raise TypeError("Input conf must be dict")
     if not is_dataclass(dataclass_type):
         raise TypeError("dataclass_type must be a dataclass")
-    field_types: dict[str, Type[T]] = {f.name: f.type for f in fields(dataclass_type)}
+    field_types: dict[str, Any] = {f.name: f.type for f in fields(dataclass_type)}
     constructor_args = {}
     for key, value in dict_obj.items():
         if key in field_types and is_dataclass(field_types[key]):

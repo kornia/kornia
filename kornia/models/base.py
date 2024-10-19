@@ -6,7 +6,7 @@ from typing import List, Optional, Union
 from kornia.core import Module, Tensor, stack
 from kornia.core.external import PILImage as Image
 from kornia.core.external import numpy as np
-from kornia.core.module import ONNXExportMixin
+from kornia.core.mixin.onnx import ONNXExportMixin
 from kornia.io import write_image
 from kornia.utils.image import tensor_to_image
 
