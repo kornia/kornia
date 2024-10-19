@@ -12,51 +12,7 @@ import kornia
 from ._backend import Module, Sequential, Tensor, from_numpy
 from .external import PILImage as Image
 from .external import numpy as np
-
-
-class ONNXExportMixin:
-    ONNX_EXPORTABLE: bool = True
-    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, -1, -1, -1]
-    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, -1, -1, -1]
-
-    def to_onnx(
-        self,
-        onnx_name: Optional[str] = None,
-        input_shape: Optional[list[int]] = None,
-        output_shape: Optional[list[int]] = None,
-    ) -> None:
-        if not self.ONNX_EXPORTABLE:
-            raise RuntimeError("This object cannot be exported to ONNX.")
-
-        if input_shape is None:
-            input_shape = self.ONNX_DEFAULT_INPUTSHAPE
-        if output_shape is None:
-            output_shape = self.ONNX_DEFAULT_OUTPUTSHAPE
-
-        if onnx_name is None:
-            onnx_name = f"Kornia-{self.__class__.__name__}.onnx"
-
-        # Creating a dummy input with the given shape
-        psuedo_shape = (1, 3, 256, 256)
-        dummy_input = torch.randn(*[(psuedo_shape[i] if dim == -1 else dim) for i, dim in enumerate(input_shape)])
-
-        # Dynamic axis configuration for input and output
-        dynamic_axes = {
-            "input": {i: "dim_" + str(i) for i, dim in enumerate(input_shape) if dim == -1},
-            "output": {i: "dim_" + str(i) for i, dim in enumerate(output_shape) if dim == -1},
-        }
-
-        torch.onnx.export(
-            self,  # type: ignore
-            dummy_input,
-            onnx_name,
-            export_params=True,
-            opset_version=17,
-            do_constant_folding=True,
-            input_names=["input"],
-            output_names=["output"],
-            dynamic_axes=dynamic_axes,
-        )
+from .mixin.onnx import ONNXExportMixin
 
 
 class ImageModuleMixIn:
