@@ -183,7 +183,7 @@ class ImageModuleMixIn:
             return np.array(x)  # type: ignore
         raise TypeError("Input type not supported")
 
-    def to_pil(self, x: Any) -> Image.Image:  # type: ignore
+    def to_pil(self, x: Any) -> "Image.Image":  # type: ignore
         """Convert input to PIL image.
 
         Args:
