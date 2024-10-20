@@ -76,7 +76,7 @@ class RTDETRDetectorBuilder:
             DETRPostProcessor(
                 confidence_threshold,
                 num_classes=config.num_classes if config is not None else 80,
-                confidence_filtering=confidence_filtering or not torch.onnx.is_in_onnx_export,
+                confidence_filtering=confidence_filtering or not torch.onnx.is_in_onnx_export(),
             ),
         )
 
