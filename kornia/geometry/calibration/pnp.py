@@ -8,7 +8,7 @@ from kornia.geometry.conversions import convert_points_to_homogeneous
 from kornia.geometry.linalg import transform_points
 from kornia.utils import eye_like
 from kornia.utils.helpers import _torch_linalg_svdvals, _torch_svd_cast
-from kornia.core.check import KORNIA_CHECK_SHAPE, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SHAPE
+from kornia.core.check import KORNIA_CHECK_SHAPE, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK
 
 
 def _mean_isotropic_scale_normalize(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -123,46 +123,21 @@ def solve_pnp_dlt(
     # 3. http://rpg.ifi.uzh.ch/docs/teaching/2020/03_camera_calibration.pdf
     # 4. http://www.cs.cmu.edu/~16385/s17/Slides/11.3_Pose_Estimation.pdf
     # 5. https://www.ece.mcmaster.ca/~shirani/vision/hartley_ch7.pdf
+    accepted_dtypes = (torch.float32, torch.float64)
     KORNIA_CHECK_IS_TENSOR(world_points)
     KORNIA_CHECK_IS_TENSOR(img_points)
     KORNIA_CHECK_IS_TENSOR(intrinsics)
-
-    if (weights is not None) and (not isinstance(weights, torch.Tensor)):
-        raise AssertionError(
-            "If weights is not None, then weights should be an instance "
-            f"of torch.Tensor. Type of weights is {type(weights)}"
-        )
-
-    if not isinstance(svd_eps, float):
-        raise AssertionError(f"Type of svd_eps is not float. Got {type(svd_eps)}")
-
-    accepted_dtypes = (torch.float32, torch.float64)
-
-    if world_points.dtype not in accepted_dtypes:
-        raise AssertionError(
-            f"world_points must have one of the following dtypes {accepted_dtypes}. "
-            f"Currently it has {world_points.dtype}."
-        )
-
-    if img_points.dtype not in accepted_dtypes:
-        raise AssertionError(
-            f"img_points must have one of the following dtypes {accepted_dtypes}. Currently it has {img_points.dtype}."
-        )
-
-    if intrinsics.dtype not in accepted_dtypes:
-        raise AssertionError(
-            f"intrinsics must have one of the following dtypes {accepted_dtypes}. Currently it has {intrinsics.dtype}."
-        )
-
+    KORNIA_CHECK(isinstance(svd_eps, float))
+    KORNIA_CHECK(world_points.dtype in accepted_dtypes)
+    KORNIA_CHECK(img_points.dtype in accepted_dtypes)
+    KORNIA_CHECK(intrinsics.dtype in accepted_dtypes)
     KORNIA_CHECK_SHAPE(world_points, ["B", "N", "3"])
     KORNIA_CHECK_SHAPE(img_points, ["B", "N", "2"])
     KORNIA_CHECK_SHAPE(intrinsics, ["B", "3", "3"])
     KORNIA_CHECK_SAME_SHAPE(world_points[:,:, 0], img_points[:,:, 0])
-
-    if world_points.shape[1] < 6:
-        raise AssertionError(
-            f"At least 6 points are required to use this function. Got {world_points.shape[1]} points."
-        )
+    KORNIA_CHECK(world_points.shape[1] >= 6)
+    if (weights is not None):
+        KORNIA_CHECK_IS_TENSOR(weights)
 
     B, N = world_points.shape[:2]
 
