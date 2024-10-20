@@ -4,7 +4,7 @@ import torch
 from torch.linalg import qr as linalg_qr
 
 from kornia.core import arange, ones_like, where, zeros
-from kornia.geometry.conversions import convert_points_to_homogeneous
+from kornia.geometry.conversions import convert_points_to_homogeneous, normalize_points_with_intrinsics
 from kornia.geometry.linalg import transform_points
 from kornia.utils import eye_like
 from kornia.utils.helpers import _torch_linalg_svdvals, _torch_svd_cast
@@ -45,7 +45,7 @@ def solve_pnp_dlt(
     img_points: torch.Tensor,
     intrinsics: torch.Tensor,
     weights: Optional[torch.Tensor] = None,
-    svd_eps: float = 1e-4,
+    svd_eps: float = 1e-4
 ) -> torch.Tensor:
     r"""This function attempts to solve the Perspective-n-Point (PnP) problem using Direct Linear Transform (DLT).
 
@@ -155,14 +155,10 @@ def solve_pnp_dlt(
             "element of the batch) lie on a line or if all world_points (of any "
             "element of the batch) lie on a plane."
         )
-
-    intrinsics_inv = torch.inverse(intrinsics)
     world_points_norm_h = convert_points_to_homogeneous(world_points_norm)
 
-    # Transforming img_points with intrinsics_inv to get img_points_inv
-    img_points_inv = transform_points(intrinsics_inv, img_points)
-
     # Normalizing img_points_inv
+    img_points_inv = normalize_points_with_intrinsics(img_points, intrinsics)
     img_points_norm, img_transform_norm = _mean_isotropic_scale_normalize(img_points_inv)
     inv_img_transform_norm = torch.inverse(img_transform_norm)
 
@@ -177,9 +173,12 @@ def solve_pnp_dlt(
     if weights is not None:
         if weights.shape != (B, N):
             raise AssertionError(f"Weights should have shape (B, N). Got {weights.shape}.")
+        #weights_expanded = torch.diag_embed(weights.repeat(1, 2), dim1=-2, dim2=-1)#
         weights_expanded = weights.unsqueeze(-1).repeat(1, 2, 1).view(B, 2 * N, 1)
+        system = weights_expanded * system
         # Multiply the system matrix by the expanded weights
-        system = system * weights_expanded
+        print(f'{system.shape=}, {weights_expanded.shape=}')
+        #system = weights_expanded @ system
 
     # Getting the solution vectors.
     _, _, v = _torch_svd_cast(system)
