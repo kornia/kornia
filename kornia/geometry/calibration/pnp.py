@@ -173,12 +173,9 @@ def solve_pnp_dlt(
     if weights is not None:
         if weights.shape != (B, N):
             raise AssertionError(f"Weights should have shape (B, N). Got {weights.shape}.")
-        #weights_expanded = torch.diag_embed(weights.repeat(1, 2), dim1=-2, dim2=-1)#
-        weights_expanded = weights.unsqueeze(-1).repeat(1, 2, 1).view(B, 2 * N, 1)
-        system = weights_expanded * system
+        weights_expanded = weights.unsqueeze(-1).repeat(1, 1, 2).view(B, 2 * N, 1)
         # Multiply the system matrix by the expanded weights
-        print(f'{system.shape=}, {weights_expanded.shape=}')
-        #system = weights_expanded @ system
+        system = weights_expanded * system
 
     # Getting the solution vectors.
     _, _, v = _torch_svd_cast(system)

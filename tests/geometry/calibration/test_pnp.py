@@ -125,13 +125,11 @@ class TestSolvePnpDlt(BaseTester):
         torch.manual_seed(0)
         intrinsics, gt_world_to_cam, world_points, img_points = self._get_test_data(num_points, device, dtype)
         weights = torch.ones(*world_points.shape[:2], device=device, dtype=dtype)
-        weights[0, 0:1] = 1e-9
-        world_points[0, 0:1] *= 0.9
+        weights[0, 0:2] = 1e-9
+        world_points[0, 0:1] *= 0.1
+        world_points[0, 1:2] += 100
         pred_world_to_cam = kornia.geometry.solve_pnp_dlt(world_points, img_points, intrinsics, weights)
-        # Rotation matric is stable
-        self.assert_close(pred_world_to_cam[..., :3], gt_world_to_cam[..., :3], atol=1e-4, rtol=2e-2)
-        # Translation scale is in pixels, so absolute error in couple of pixels is acceptable
-        self.assert_close(pred_world_to_cam[..., 3], gt_world_to_cam[..., 3], atol=1.0, rtol=1e-1)
+        self.assert_close(pred_world_to_cam, gt_world_to_cam, atol=1e-4, rtol=1e-3)
 
 
     @pytest.mark.parametrize("num_points", (6, 20))
