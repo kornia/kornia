@@ -53,5 +53,5 @@ class RandomJPEG(IntensityAugmentationBase2D):
     def apply_transform(
         self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
-        jpeg_output: Tensor = jpeg_codec_differentiable(input, params["jpeg_quality"])
+        jpeg_output: Tensor = jpeg_codec_differentiable(input, params["jpeg_quality"].to(input))
         return jpeg_output
