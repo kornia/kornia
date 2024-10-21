@@ -14,6 +14,10 @@ from .rgb import (
     RgbToBgr,
     RgbToLinearRgb,
     RgbToRgba,
+    RgbToRgb255,
+    Rgb255ToNormals,
+    Rgb255ToRgb,
+    NormalsToRgb255,
     bgr_to_rgb,
     bgr_to_rgba,
     linear_rgb_to_rgb,
@@ -22,6 +26,10 @@ from .rgb import (
     rgb_to_rgba,
     rgba_to_bgr,
     rgba_to_rgb,
+    rgb255_to_normals,
+    rgb255_to_rgb,
+    rgb_to_rgb255,
+    normals_to_rgb255
 )
 from .sepia import Sepia, sepia_from_rgb
 from .xyz import RgbToXyz, XyzToRgb, rgb_to_xyz, xyz_to_rgb
@@ -105,6 +113,14 @@ __all__ = [
     "rgb_to_linear_rgb",
     "rgba_to_rgb",
     "rgba_to_bgr",
+    "rgb_to_rgb255",
+    "rgb255_to_rgb",
+    "rgb255_to_normals",
+    "normals_to_rgb255",
+    "Rgb255ToNormals",
+    "Rgb255ToRgb",
+    "NormalsToRgb255",
+    "RgbToRgb255",
     "RgbaToRgb",
     "RgbaToBgr",
     "RgbToLinearRgb",
