@@ -39,11 +39,21 @@ RGB
 .. autofunction:: rgb_to_linear_rgb
 .. autofunction:: linear_rgb_to_rgb
 
+.. autofunction:: rgb_to_rgb255
+.. autofunction:: rgb255_to_rgb
+.. autofunction:: rgb255_to_normals
+.. autofunction:: normals_to_rgb255
+
 .. autoclass:: RgbToBgr
 .. autoclass:: BgrToRgb
 
 .. autoclass:: LinearRgbToRgb
 .. autoclass:: RgbToLinearRgb
+.. autoclass:: Rgb255ToRgb
+.. autoclass:: RgbToRgb255
+.. autoclass:: Rgb255ToNormals
+.. autoclass:: NormalsToRgb255
+
 
 RGBA
 ----
