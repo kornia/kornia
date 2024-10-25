@@ -26,6 +26,27 @@ Ready to use with state-of-the art Deep Learning models:
    >>> logits = classifier(img)    # BxN
    >>> scores = logits.argmax(-1)  # B
 
+Multi-framework support
+-----------------------
+
+You can now use Kornia with `NumPy <https://numpy.org/>`_, `TensorFlow <https://www.tensorflow.org/>`_, and `JAX <https://jax.readthedocs.io/en/latest/index.html>`_.
+
+.. code:: python
+
+  >>> import kornia
+  >>> tf_kornia = kornia.to_tensorflow()
+
+.. raw:: html
+
+   <p align="center">
+        Powered by 
+        <a href="https://github.com/ivy-llc/ivy" target="_blank">
+            <div class="dark-light" style="display: block;" align="center">
+                <img class="dark-light" width="15%" src="https://raw.githubusercontent.com/ivy-llc/assets/refs/heads/main/assets/logos/ivy-long.svg"/>
+            </div>
+        </a>
+    </p>
+
 Join the community
 ------------------
 
@@ -45,6 +66,7 @@ Join the community
    get-started/installation
    get-started/about
    Tutorials <https://kornia.github.io/tutorials/>
+   get-started/multi-framework-support
    get-started/training
    OpenCV AI Kit <https://docs.luxonis.com/en/latest/pages/tutorials/creating-custom-nn-models/#kornia>
    get-started/governance
