@@ -54,9 +54,11 @@ class LazyLoader:
                     )
                     if if_install.lower() == "y":
                         self._install_package(self.module_name)
+                        self.module = importlib.import_module(self.module_name)
                     elif if_install.lower() == "a":
                         self.auto_install = True
                         self._install_package(self.module_name)
+                        self.module = importlib.import_module(self.module_name)
                     else:
                         raise ImportError(
                             f"Optional dependency '{self.module_name}' is not installed. "
