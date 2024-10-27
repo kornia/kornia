@@ -1,5 +1,5 @@
-import ivy
 import kornia
+from kornia.core.external import ivy
 
 
 def to_jax():

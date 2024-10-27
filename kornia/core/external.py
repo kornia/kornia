@@ -91,6 +91,7 @@ class LazyLoader:
         return dir(self.module)
 
 
+ivy = LazyLoader("ivy")
 numpy = LazyLoader("numpy")
 PILImage = LazyLoader("PIL.Image")
 diffusers = LazyLoader("diffusers")
