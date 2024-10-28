@@ -11,7 +11,7 @@ within the context of an Open Source community.
 
    >>> import kornia.geometry as K
    >>> registrator = K.ImageRegistrator('similarity')
-   >>> model = registrator(img1, img2)
+   >>> model = registrator.register(img1, img2)
 
 Ready to use with state-of-the art Deep Learning models:
 
