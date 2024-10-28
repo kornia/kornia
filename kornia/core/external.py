@@ -74,10 +74,12 @@ class LazyLoader:
                     while to_ask:
                         if if_install.lower() == "y" or if_install.lower() == "yes":
                             self._install_package(self.module_name)
+                            self.module = importlib.import_module(self.module_name)
                             to_ask = False
                         elif if_install.lower() == "a" or if_install.lower() == "all":
                             self.auto_install = True
                             self._install_package(self.module_name)
+                            self.module = importlib.import_module(self.module_name)
                             to_ask = False
                         elif if_install.lower() == "n" or if_install.lower() == "no":
                             raise ImportError(
