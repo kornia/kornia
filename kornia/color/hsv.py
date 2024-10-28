@@ -1,4 +1,6 @@
+from __future__ import annotations
 import math
+from typing import ClassVar, List
 
 import torch
 
@@ -116,6 +118,9 @@ class RgbToHsv(Module):
         >>> output = hsv(input)  # 2x3x4x5
     """
 
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+
     def __init__(self, eps: float = 1e-6) -> None:
         super().__init__()
         self.eps = eps
@@ -141,6 +146,9 @@ class HsvToRgb(Module):
         >>> rgb = HsvToRgb()
         >>> output = rgb(input)  # 2x3x4x5
     """
+
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return hsv_to_rgb(image)

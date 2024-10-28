@@ -2,8 +2,8 @@
 
 https://github.com/scikit-image/scikit-image/blob/a48bf6774718c64dade4548153ae16065b595ca9/skimage/color/colorconv.py
 """
-
-from typing import Tuple
+from __future__ import annotations
+from typing import ClassVar, List, Tuple
 
 import torch
 
@@ -141,6 +141,9 @@ class RgbToLuv(Module):
         [3] http://www.poynton.com/ColorFAQ.html
     """
 
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return rgb_to_luv(image)
 
@@ -167,6 +170,9 @@ class LuvToRgb(Module):
 
         [3] http://www.poynton.com/ColorFAQ.html
     """
+
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return luv_to_rgb(image)

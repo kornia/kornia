@@ -11,9 +11,38 @@ within the context of an Open Source community.
 
    >>> import kornia.geometry as K
    >>> registrator = K.ImageRegistrator('similarity')
-   >>> model = registrator(img1, img2)
+   >>> model = registrator.register(img1, img2)
 
 Ready to use with state-of-the art Deep Learning models:
+
+DexiNed edge detection model.
+
+.. code-block:: python
+
+      image = kornia.utils.sample.get_sample_images()[0][None]
+      model = DexiNedBuilder.build()
+      model.save(image)
+
+RTDETRDetector for object detection.
+
+.. code-block:: python
+
+      image = kornia.utils.sample.get_sample_images()[0][None]
+      model = RTDETRDetectorBuilder.build()
+      model.save(image)
+
+BoxMotTracker for object tracking.
+
+.. code-block:: python
+
+      import kornia
+      image = kornia.utils.sample.get_sample_images()[0][None]
+      model = BoxMotTracker()
+      for i in range(4):
+         model.update(image)
+      model.save(image)
+
+Vision Transformer for image classification.
 
 .. code:: python
 
@@ -88,9 +117,11 @@ Join the community
    io
    image
    losses
+   models
    metrics
    morphology
    nerf
+   onnx
    tracking
    testing
    utils

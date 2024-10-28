@@ -1,4 +1,6 @@
+from __future__ import annotations
 from enum import Enum
+from typing import ClassVar, List
 
 import torch
 
@@ -288,6 +290,9 @@ class RawToRgb(Module):
         >>> output = rgb(rawinput)  # 2x3x4x5
     """
 
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 1, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+
     def __init__(self, cfa: CFA) -> None:
         super().__init__()
         self.cfa = cfa
@@ -313,6 +318,9 @@ class RgbToRaw(Module):
         >>> raw = RgbToRaw(CFA.GB)
         >>> output = raw(rgbinput)  # 2x1x4x6
     """
+
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 1, -1, -1]
 
     def __init__(self, cfa: CFA) -> None:
         super().__init__()
