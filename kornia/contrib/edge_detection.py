@@ -1,5 +1,3 @@
-from typing import List
-
 from kornia.core import Module, Tensor
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.filters.dexined import DexiNed
@@ -31,9 +29,8 @@ class EdgeDetector(Module):
     def preprocess(self, image: Tensor) -> Tensor:
         return image
 
-    def postprocess(self, data: List[Tensor]) -> Tensor:
-        # input are intermediate layer -- for inference we need only last.
-        return data[-1]  # Bx1xHxW
+    def postprocess(self, data: Tensor) -> Tensor:
+        return data
 
     def forward(self, image: Tensor) -> Tensor:
         KORNIA_CHECK_SHAPE(image, ["B", "3", "H", "W"])

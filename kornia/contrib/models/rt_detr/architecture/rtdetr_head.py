@@ -274,6 +274,7 @@ class RTDETRHead(Module):
         num_denoising: int = 100,
     ) -> None:
         super().__init__()
+        self.num_classes = num_classes
         self.num_queries = num_queries
         # TODO: verify this is correct
         if len(in_channels) > num_levels:
