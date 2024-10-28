@@ -170,6 +170,9 @@ class Canny(Module):
         torch.Size([5, 1, 4, 4])
     """
 
+    # TODO: Handle multiple inputs and outputs models later
+    ONNX_EXPORTABLE = False
+
     def __init__(
         self,
         low_threshold: float = 0.1,
