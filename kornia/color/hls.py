@@ -1,6 +1,7 @@
 from __future__ import annotations
+
 import math
-from typing import ClassVar, List, Tuple
+from typing import ClassVar
 
 import torch
 
@@ -36,7 +37,7 @@ def rgb_to_hls(image: Tensor, eps: float = 1e-8) -> Tensor:
 
     _RGB2HSL_IDX = tensor([[[0.0]], [[1.0]], [[2.0]]], device=image.device, dtype=image.dtype)  # 3x1x1
 
-    _img_max: Tuple[Tensor, Tensor] = image.max(-3)
+    _img_max: tuple[Tensor, Tensor] = image.max(-3)
     maxc = _img_max[0]
     imax = _img_max[1]
     minc: Tensor = image.min(-3)[0]
@@ -53,7 +54,11 @@ def rgb_to_hls(image: Tensor, eps: float = 1e-8) -> Tensor:
         # so, h, l and s require inplace operations
         # NOTE: stack() increases in a 10% the cost in colab
         image_hls = torch.empty_like(image)
-        h, l_, s = image_hls[..., 0, :, :], image_hls[..., 1, :, :], image_hls[..., 2, :, :]
+        h, l_, s = (
+            image_hls[..., 0, :, :],
+            image_hls[..., 1, :, :],
+            image_hls[..., 2, :, :],
+        )
         torch.add(maxc, minc, out=l_)  # l = max + min
         torch.sub(maxc, minc, out=s)  # s = max - min
 

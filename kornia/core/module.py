@@ -1,12 +1,12 @@
 from __future__ import annotations
+
 import datetime
 import math
 import os
 from functools import wraps
-from typing import Any, Callable, ClassVar, List, Optional, Tuple, Union
+from typing import Any, Callable, Optional, Union
 
-import torch
-
+# TODO: not use top level import
 import kornia
 
 from ._backend import Module, Sequential, Tensor, from_numpy
@@ -25,7 +25,9 @@ class ImageModuleMixIn:
     _output_image: Any
 
     def convert_input_output(
-        self, input_names_to_handle: Optional[List[Any]] = None, output_type: str = "tensor"
+        self,
+        input_names_to_handle: Optional[list[Any]] = None,
+        output_type: str = "tensor",
     ) -> Callable[[Any], Any]:
         """Decorator to convert input and output types for a function.
 
@@ -39,7 +41,7 @@ class ImageModuleMixIn:
 
         def decorator(func: Callable[[Any], Any]) -> Callable[[Any], Any]:
             @wraps(func)
-            def wrapper(*args: Any, **kwargs: Any) -> Union[Any, List[Any]]:
+            def wrapper(*args: Any, **kwargs: Any) -> Union[Any, list[Any]]:
                 # If input_names_to_handle is None, handle all inputs
                 if input_names_to_handle is None:
                     # Convert all args to tensors
@@ -139,7 +141,7 @@ class ImageModuleMixIn:
             return np.array(x)  # type: ignore
         raise TypeError("Input type not supported")
 
-    def to_pil(self, x: Any) -> "Image.Image":  # type: ignore
+    def to_pil(self, x: Any) -> Image.Image:  # type: ignore
         """Convert input to PIL image.
 
         Args:
@@ -165,8 +167,8 @@ class ImageModuleMixIn:
         raise TypeError("Input type not supported")
 
     def _detach_tensor_to_cpu(
-        self, output_image: Union[Tensor, List[Tensor], Tuple[Tensor]]
-    ) -> Union[Tensor, List[Tensor], Tuple[Tensor]]:
+        self, output_image: Union[Tensor, list[Tensor], tuple[Tensor]]
+    ) -> Union[Tensor, list[Tensor], tuple[Tensor]]:
         if isinstance(output_image, (Tensor,)):
             return output_image.detach().cpu()
         if isinstance(
@@ -250,7 +252,7 @@ class ImageModule(Module, ImageModuleMixIn, ONNXExportMixin):
     def __call__(
         self,
         *inputs: Any,
-        input_names_to_handle: Optional[List[Any]] = None,
+        input_names_to_handle: Optional[list[Any]] = None,
         output_type: str = "tensor",
         **kwargs: Any,
     ) -> Any:
@@ -306,7 +308,7 @@ class ImageSequential(Sequential, ImageModuleMixIn, ONNXExportMixin):
     def __call__(
         self,
         *inputs: Any,
-        input_names_to_handle: Optional[List[Any]] = None,
+        input_names_to_handle: Optional[list[Any]] = None,
         output_type: str = "tensor",
         **kwargs: Any,
     ) -> Any:

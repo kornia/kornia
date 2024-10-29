@@ -1,5 +1,6 @@
 from __future__ import annotations
-from typing import ClassVar, Tuple
+
+from typing import ClassVar
 
 import torch
 
@@ -49,7 +50,7 @@ def rgb_to_yuv(image: Tensor) -> Tensor:
     return out
 
 
-def rgb_to_yuv420(image: Tensor) -> Tuple[Tensor, Tensor]:
+def rgb_to_yuv420(image: Tensor) -> tuple[Tensor, Tensor]:
     r"""Convert an RGB image to YUV 420 (subsampled).
 
     Input need to be padded to be evenly divisible by 2 horizontal and vertical.
@@ -83,10 +84,13 @@ def rgb_to_yuv420(image: Tensor) -> Tuple[Tensor, Tensor]:
 
     yuvimage = rgb_to_yuv(image)
 
-    return (yuvimage[..., :1, :, :], yuvimage[..., 1:3, :, :].unfold(-2, 2, 2).unfold(-2, 2, 2).mean((-1, -2)))
+    return (
+        yuvimage[..., :1, :, :],
+        yuvimage[..., 1:3, :, :].unfold(-2, 2, 2).unfold(-2, 2, 2).mean((-1, -2)),
+    )
 
 
-def rgb_to_yuv422(image: Tensor) -> Tuple[Tensor, Tensor]:
+def rgb_to_yuv422(image: Tensor) -> tuple[Tensor, Tensor]:
     r"""Convert an RGB image to YUV 422 (subsampled).
 
     Input need to be padded to be evenly divisible by 2 vertical.
@@ -213,7 +217,10 @@ def yuv420_to_rgb(imagey: Tensor, imageuv: Tensor) -> Tensor:
         )
 
     # first upsample
-    yuv444image = torch.cat([imagey, imageuv.repeat_interleave(2, dim=-1).repeat_interleave(2, dim=-2)], dim=-3)
+    yuv444image = torch.cat(
+        [imagey, imageuv.repeat_interleave(2, dim=-1).repeat_interleave(2, dim=-2)],
+        dim=-3,
+    )
     # then convert the yuv444 tensor
 
     return yuv_to_rgb(yuv444image)
@@ -331,7 +338,7 @@ class RgbToYuv420(Module):
     # TODO: Handle multiple inputs and outputs models later
     ONNX_EXPORTABLE = False
 
-    def forward(self, yuvinput: Tensor) -> Tuple[Tensor, Tensor]:  # skipcq: PYL-R0201
+    def forward(self, yuvinput: Tensor) -> tuple[Tensor, Tensor]:  # skipcq: PYL-R0201
         return rgb_to_yuv420(yuvinput)
 
 
@@ -365,7 +372,7 @@ class RgbToYuv422(Module):
     # TODO: Handle multiple inputs and outputs models later
     ONNX_EXPORTABLE = False
 
-    def forward(self, yuvinput: Tensor) -> Tuple[Tensor, Tensor]:  # skipcq: PYL-R0201
+    def forward(self, yuvinput: Tensor) -> tuple[Tensor, Tensor]:  # skipcq: PYL-R0201
         return rgb_to_yuv422(yuvinput)
 
 
