@@ -131,7 +131,6 @@ class TestSolvePnpDlt(BaseTester):
         pred_world_to_cam = kornia.geometry.solve_pnp_dlt(world_points, img_points, intrinsics, weights)
         self.assert_close(pred_world_to_cam, gt_world_to_cam, atol=1e-4, rtol=1e-3)
 
-
     @pytest.mark.parametrize("num_points", (6, 20))
     def test_project(self, num_points, device, dtype):
         intrinsics, _, world_points, img_points = self._get_test_data(num_points, device, dtype)

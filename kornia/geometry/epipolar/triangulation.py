@@ -3,9 +3,9 @@
 import torch
 
 from kornia.core import zeros
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.conversions import convert_points_from_homogeneous
 from kornia.utils.helpers import _torch_svd_cast
-from kornia.core.check import KORNIA_CHECK_SHAPE, KORNIA_CHECK_SAME_SHAPE
 
 # https://github.com/opencv/opencv_contrib/blob/master/modules/sfm/src/triangulation.cpp#L68
 

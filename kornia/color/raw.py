@@ -1,6 +1,7 @@
 from __future__ import annotations
+
 from enum import Enum
-from typing import ClassVar, List
+from typing import ClassVar
 
 import torch
 

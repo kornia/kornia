@@ -1,3 +1,5 @@
+"""Module for transpiling Kornia to other frameworks."""
+
 import kornia
 from kornia.core.external import ivy
 
@@ -5,10 +7,10 @@ from kornia.core.external import ivy
 def to_jax():
     """Convert Kornia to JAX.
 
-    Transpiles the Kornia library to JAX using [ivy](https://github.com/ivy-llc/ivy). The transpilation process 
-    occurs lazily, so the transpilation on a given kornia function/class will only occur when it's called or instantiated
-    for the first time. This will make any functions/classes slow when being used for the first time, but any
-    subsequent uses should be as fast as expected.
+    Transpiles the Kornia library to JAX using [ivy](https://github.com/ivy-llc/ivy). The transpilation process
+    occurs lazily, so the transpilation on a given kornia function/class will only occur when it's called or
+    instantiated for the first time. This will make any functions/classes slow when being used for the first time,
+    but any subsequent uses should be as fast as expected.
 
     Return:
         The Kornia library transpiled to JAX
@@ -30,10 +32,10 @@ def to_jax():
 def to_numpy():
     """Convert Kornia to NumPy.
 
-    Transpiles the Kornia library to NumPy using [ivy](https://github.com/ivy-llc/ivy). The transpilation process 
-    occurs lazily, so the transpilation on a given kornia function/class will only occur when it's called or instantiated
-    for the first time. This will make any functions/classes slow when being used for the first time, but any
-    subsequent uses should be as fast as expected.
+    Transpiles the Kornia library to NumPy using [ivy](https://github.com/ivy-llc/ivy). The transpilation process
+    occurs lazily, so the transpilation on a given kornia function/class will only occur when it's called or
+    instantiated for the first time. This will make any functions/classes slow when being used for the first time,
+    but any subsequent uses should be as fast as expected.
 
     Return:
         The Kornia library transpiled to NumPy
@@ -58,10 +60,10 @@ def to_numpy():
 def to_tensorflow():
     """Convert Kornia to TensorFlow.
 
-    Transpiles the Kornia library to TensorFlow using [ivy](https://github.com/ivy-llc/ivy). The transpilation process 
-    occurs lazily, so the transpilation on a given kornia function/class will only occur when it's called or instantiated
-    for the first time. This will make any functions/classes slow when being used for the first time, but any
-    subsequent uses should be as fast as expected.
+    Transpiles the Kornia library to TensorFlow using [ivy](https://github.com/ivy-llc/ivy). The transpilation process
+    occurs lazily, so the transpilation on a given kornia function/class will only occur when it's called or
+    instantiated for the first time. This will make any functions/classes slow when being used for the first time,
+    but any subsequent uses should be as fast as expected.
 
     Return:
         The Kornia library transpiled to TensorFlow

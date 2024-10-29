@@ -403,7 +403,7 @@ def essential_from_Rt(R1: torch.Tensor, t1: torch.Tensor, R2: torch.Tensor, t2: 
     KORNIA_CHECK_SHAPE(R2, ["*", "3", "3"])
     KORNIA_CHECK_SHAPE(t1, ["*", "3", "1"])
     KORNIA_CHECK_SHAPE(t2, ["*", "3", "1"])
-    
+
     # first compute the camera relative motion
     R, t = relative_camera_motion(R1, t1, R2, t2)
 

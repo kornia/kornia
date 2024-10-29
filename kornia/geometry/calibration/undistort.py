@@ -5,10 +5,10 @@ from typing import Optional
 import torch
 
 from kornia.core import stack
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.transform import remap
 from kornia.utils import create_meshgrid
-from kornia.core.check import KORNIA_CHECK_SHAPE
 
 from .distort import distort_points, tilt_projection
 
@@ -48,7 +48,7 @@ def undistort_points(
     """
     KORNIA_CHECK_SHAPE(points, ["*", "N", "2"])
     KORNIA_CHECK_SHAPE(K, ["*", "3", "3"])
-    
+
     if points.dim() < 2 and points.shape[-1] != 2:
         raise ValueError(f"points shape is invalid. Got {points.shape}.")
 

@@ -423,16 +423,13 @@ class TestDepthFromPlaneEquation(BaseTester):
         camera_matrix = torch.eye(3, device=device, dtype=dtype)
 
         depth = kornia.geometry.depth.depth_from_plane_equation(
-            plane_normals.expand(B, -1),
-            plane_offsets.expand(B, -1),
-            points_uv,
-            camera_matrix.expand(B, -1, -1)
+            plane_normals.expand(B, -1), plane_offsets.expand(B, -1), points_uv, camera_matrix.expand(B, -1, -1)
         )
         assert depth.shape == (B, N), f"Expected depth shape to be ({B}, {N}), but got {depth.shape}"
 
     def test_simple(self, device, dtype):
-        """
-        Test the function with a simple plane equation to verify numerical correctness.
+        """Test the function with a simple plane equation to verify numerical correctness.
+
         Plane equation: z = 2 (plane normal [0, 0, 1], offset 2)
         Expected depth for any point is 2.
         """
@@ -442,12 +439,7 @@ class TestDepthFromPlaneEquation(BaseTester):
 
         # Define pixel coordinates
         points_uv = torch.tensor(
-            [
-                [[0.0, 0.0],
-                 [1.0, 0.0],
-                 [0.0, 1.0],
-                 [1.0, 1.0]]
-            ],
+            [[[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]],
             device=device,
             dtype=dtype,
         )  # Shape: (B, N, 2)

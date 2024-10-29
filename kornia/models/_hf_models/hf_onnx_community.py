@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import os
 from typing import Any, Optional
 
@@ -43,7 +44,7 @@ class HFONNXComunnityModelLoader:
 
     def load_model(
         self, download: bool = True, io_name_mapping: Optional[dict[str, str]] = None, **kwargs: Any
-    ) -> "onnx.ModelProto":  # type:ignore
+    ) -> onnx.ModelProto:  # type:ignore
         onnx_model = ONNXLoader.load_model(
             self.model_url, download=download, with_data=self.with_data, cache_dir=self.cache_dir, **kwargs
         )
@@ -61,9 +62,9 @@ class HFONNXComunnityModelLoader:
 
     def _add_metadata(
         self,
-        model: "onnx.ModelProto",  # type:ignore
+        model: onnx.ModelProto,  # type:ignore
         additional_metadata: dict[str, Any] = {},
-    ) -> "onnx.ModelProto":  # type:ignore
+    ) -> onnx.ModelProto:  # type:ignore
         for key, value in additional_metadata.items():
             metadata_props = model.metadata_props.add()
             metadata_props.key = key
@@ -76,9 +77,9 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
 
     def __init__(
         self,
-        model: "onnx.ModelProto",  # type: ignore
-        pre_processor: Optional["onnx.ModelProto"] = None,  # type: ignore
-        post_processor: Optional["onnx.ModelProto"] = None,  # type: ignore
+        model: onnx.ModelProto,  # type: ignore
+        pre_processor: Optional[onnx.ModelProto] = None,  # type: ignore
+        post_processor: Optional[onnx.ModelProto] = None,  # type: ignore
         name: Optional[str] = None,
         auto_ir_version_conversion: bool = True,
         io_maps: Optional[list[tuple[str, str]]] = None,
@@ -115,7 +116,7 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
         save: bool = True,
         additional_metadata: list[tuple[str, str]] = [],
         **kwargs: Any,
-    ) -> "onnx.ModelProto":  # type:ignore
+    ) -> onnx.ModelProto:  # type:ignore
         """Exports a depth estimation model to ONNX format.
 
         Args:

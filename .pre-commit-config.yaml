@@ -13,11 +13,11 @@ repos:
       - id: requirements-txt-fixer
       - id: pretty-format-json
         exclude: ^$|.devcontainer
-
-  - repo: https://github.com/tox-dev/pyproject-fmt
-    rev: "2.4.3"
-    hooks:
-      - id: pyproject-fmt
+  # TODO: enable pyproject-fmt again if it's not breaking the build
+  #- repo: https://github.com/tox-dev/pyproject-fmt
+  #  rev: "2.4.3"
+  #  hooks:
+  #    - id: pyproject-fmt
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.7.0
@@ -37,7 +37,7 @@ repos:
           - "*.bib,*.ipynb"
 
   - repo: https://github.com/PyCQA/docformatter
-    rev: v1.7.5
+    rev: 06907d0
     hooks:
       - id: docformatter
-        args: [--in-place, --wrap-summaries=115, --wrap-descriptions=120]
+        args: [--in-place, --config, ./pyproject.toml, --wrap-summaries=115, --wrap-descriptions=120]

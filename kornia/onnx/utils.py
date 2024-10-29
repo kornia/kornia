@@ -9,8 +9,7 @@ from typing import Any
 import kornia
 from kornia.config import kornia_config
 from kornia.core.external import numpy as np
-from kornia.core.external import onnx
-from kornia.core.external import requests
+from kornia.core.external import onnx, requests
 from kornia.utils.download import CachedDownloader
 
 __all__ = ["ONNXLoader", "io_name_conversion", "add_metadata"]

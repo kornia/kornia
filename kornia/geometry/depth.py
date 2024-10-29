@@ -145,8 +145,8 @@ def depth_to_3d(depth: Tensor, camera_matrix: Tensor, normalize_points: bool = F
     """
     KORNIA_CHECK_IS_TENSOR(depth)
     KORNIA_CHECK_IS_TENSOR(camera_matrix)
-    KORNIA_CHECK_SHAPE(depth,  ["B", "1", "H", "W"])
-    KORNIA_CHECK_SHAPE(camera_matrix,  ["B", "3", "3"])
+    KORNIA_CHECK_SHAPE(depth, ["B", "1", "H", "W"])
+    KORNIA_CHECK_SHAPE(camera_matrix, ["B", "3", "3"])
 
     # create base coordinates grid
     _, _, height, width = depth.shape
@@ -185,8 +185,8 @@ def depth_to_normals(depth: Tensor, camera_matrix: Tensor, normalize_points: boo
     """
     KORNIA_CHECK_IS_TENSOR(depth)
     KORNIA_CHECK_IS_TENSOR(camera_matrix)
-    KORNIA_CHECK_SHAPE(depth,  ["B", "1", "H", "W"])
-    KORNIA_CHECK_SHAPE(camera_matrix,  ["B", "3", "3"])
+    KORNIA_CHECK_SHAPE(depth, ["B", "1", "H", "W"])
+    KORNIA_CHECK_SHAPE(camera_matrix, ["B", "3", "3"])
 
     # compute the 3d points from depth
     xyz: Tensor = depth_to_3d(depth, camera_matrix, normalize_points)  # Bx3xHxW
@@ -202,14 +202,9 @@ def depth_to_normals(depth: Tensor, camera_matrix: Tensor, normalize_points: boo
 
 
 def depth_from_plane_equation(
-    plane_normals: Tensor,
-    plane_offsets: Tensor,
-    points_uv: Tensor,
-    camera_matrix: Tensor,
-    eps: float = 1e-8
+    plane_normals: Tensor, plane_offsets: Tensor, points_uv: Tensor, camera_matrix: Tensor, eps: float = 1e-8
 ) -> Tensor:
-    """
-    Compute depth values from plane equations and pixel coordinates.
+    """Compute depth values from plane equations and pixel coordinates.
 
     Parameters:
         plane_normals (Tensor): Plane normal vectors of shape (B, 3).

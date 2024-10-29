@@ -4,11 +4,11 @@ import torch
 from torch.linalg import qr as linalg_qr
 
 from kornia.core import arange, ones_like, where, zeros
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
 from kornia.geometry.conversions import convert_points_to_homogeneous, normalize_points_with_intrinsics
 from kornia.geometry.linalg import transform_points
 from kornia.utils import eye_like
 from kornia.utils.helpers import _torch_linalg_svdvals, _torch_svd_cast
-from kornia.core.check import KORNIA_CHECK_SHAPE, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK
 
 
 def _mean_isotropic_scale_normalize(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -45,7 +45,7 @@ def solve_pnp_dlt(
     img_points: torch.Tensor,
     intrinsics: torch.Tensor,
     weights: Optional[torch.Tensor] = None,
-    svd_eps: float = 1e-4
+    svd_eps: float = 1e-4,
 ) -> torch.Tensor:
     r"""This function attempts to solve the Perspective-n-Point (PnP) problem using Direct Linear Transform (DLT).
 
@@ -134,9 +134,9 @@ def solve_pnp_dlt(
     KORNIA_CHECK_SHAPE(world_points, ["B", "N", "3"])
     KORNIA_CHECK_SHAPE(img_points, ["B", "N", "2"])
     KORNIA_CHECK_SHAPE(intrinsics, ["B", "3", "3"])
-    KORNIA_CHECK_SAME_SHAPE(world_points[:,:, 0], img_points[:,:, 0])
+    KORNIA_CHECK_SAME_SHAPE(world_points[:, :, 0], img_points[:, :, 0])
     KORNIA_CHECK(world_points.shape[1] >= 6)
-    if (weights is not None):
+    if weights is not None:
         KORNIA_CHECK_IS_TENSOR(weights)
 
     B, N = world_points.shape[:2]

@@ -68,7 +68,7 @@ You can now use Kornia with `NumPy <https://numpy.org/>`_, `TensorFlow <https://
 .. raw:: html
 
    <p align="center">
-        Powered by 
+        Powered by
         <a href="https://github.com/ivy-llc/ivy" target="_blank">
             <div class="dark-light" style="display: block;" align="center">
                 <img class="dark-light" width="15%" src="https://raw.githubusercontent.com/ivy-llc/assets/refs/heads/main/assets/logos/ivy-long.svg"/>
