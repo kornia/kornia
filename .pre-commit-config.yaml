@@ -13,7 +13,7 @@ repos:
       - id: requirements-txt-fixer
       - id: pretty-format-json
         exclude: ^$|.devcontainer
-
+  # TODO: enable pyproject-fmt again if it's not breaking the build
   #- repo: https://github.com/tox-dev/pyproject-fmt
   #  rev: "2.4.3"
   #  hooks:
@@ -37,8 +37,7 @@ repos:
           - "*.bib,*.ipynb"
 
   - repo: https://github.com/PyCQA/docformatter
-    rev: 06907d0
+    rev: v1.7.5
     hooks:
       - id: docformatter
-        additional_dependencies: [tomli]
-        args: [--in-place, --config, ./pyproject.toml,--wrap-summaries=115, --wrap-descriptions=120]
+        args: [--in-place, --wrap-summaries=115, --wrap-descriptions=120]
