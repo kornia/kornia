@@ -1,6 +1,7 @@
 accelerate
 coverage
 diffusers
+ivy>=1.0.0.0
 mypy
 numpy<2
 onnx
