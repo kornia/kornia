@@ -11,7 +11,7 @@ Multi-Framework Support
 =======================
 
 Kornia can now be used with `TensorFlow <https://www.tensorflow.org/>`_, `JAX <https://jax.readthedocs.io/en/latest/index.html>`_,
-and `Numpy <https://numpy.org/>`_ thanks to an integration with `Ivy <https://github.com/ivy-llc/ivy>`_. 
+and `Numpy <https://numpy.org/>`_ thanks to an integration with `Ivy <https://github.com/ivy-llc/ivy>`_.
 
 This can be accomplished using the following functions, which are now part of the Kornia api:
 
@@ -56,7 +56,7 @@ So what's happening here? Let's break it down.
 
 #. Subsequent function calls
 
-    The good news is any calls of the function after the initial call will be much faster, as it has already been transpiled, 
+    The good news is any calls of the function after the initial call will be much faster, as it has already been transpiled,
     and should approximately match the speed of the original kornia function.
 
     .. code-block:: python
@@ -112,7 +112,7 @@ Limitations
 From the Ivy Team
 -----------------
 
-We hope you find using Kornia with TensorFlow, JAX and NumPy useful! Ivy is still very much under development, 
+We hope you find using Kornia with TensorFlow, JAX and NumPy useful! Ivy is still very much under development,
 so if you find any issues/bugs, feel free to raise an issue on the `ivy <https://github.com/ivy-llc/ivy>`_ repository.
 We'd also really appreciate a star, if you'd like to show your support!
 

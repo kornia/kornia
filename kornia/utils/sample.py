@@ -5,8 +5,8 @@ from typing import Any, List, Optional, Tuple, Union
 import kornia
 from kornia.core import Tensor, stack
 from kornia.core.external import PILImage as Image
-from kornia.io import load_image
 from kornia.core.external import requests
+from kornia.io import load_image
 
 __all__ = [
     "get_sample_images",

@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from typing import ClassVar, Union, cast
 
 import torch
@@ -234,13 +235,13 @@ def linear_rgb_to_rgb(image: Tensor) -> Tensor:
 
 def normals_to_rgb255(image: Tensor) -> Tensor:
     r"""Convert surface normals to RGB [0, 255] for visualization purposes.
-    
+
     Args:
         image: surface normals to be converted to RGB with quantization of shape :math:`(*,3,H,W)`.
-    
+
     Returns:
         RGB version of the image with shape of shape :math:`(*,3,H,W)`.
-    
+
     Example:
         >>> input = torch.rand(2, 3, 4, 5)
         >>> output = normals_to_rgb255(input) # 2x3x4x5
@@ -248,7 +249,7 @@ def normals_to_rgb255(image: Tensor) -> Tensor:
     KORNIA_CHECK_IS_COLOR(image)
     rgb255 = (0.5 * (image + 1.0)).clip(0.0, 1.0) * 255
     return rgb255
-    
+
 
 def rgb_to_rgb255(image: Tensor) -> Tensor:
     r"""Convert an image from RGB to RGB [0, 255] for visualization purposes.

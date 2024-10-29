@@ -1,6 +1,7 @@
 from __future__ import annotations
+
 import math
-from typing import ClassVar, List
+from typing import ClassVar
 
 import torch
 
