@@ -28,7 +28,7 @@ def to_jax() -> ModuleType:
         kornia,
         source="torch",
         target="jax",
-    )
+    )  # type: ignore
 
 
 def to_numpy() -> ModuleType:
@@ -56,7 +56,7 @@ def to_numpy() -> ModuleType:
         kornia,
         source="torch",
         target="numpy",
-    )
+    )  # type: ignore
 
 
 def to_tensorflow() -> ModuleType:
@@ -81,4 +81,4 @@ def to_tensorflow() -> ModuleType:
         kornia,
         source="torch",
         target="tensorflow",
-    )
+    )  # type: ignore
