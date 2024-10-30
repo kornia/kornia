@@ -1,10 +1,12 @@
 """Module for transpiling Kornia to other frameworks."""
 
+from types import ModuleType
+
 import kornia
 from kornia.core.external import ivy
 
 
-def to_jax():
+def to_jax() -> ModuleType:
     """Convert Kornia to JAX.
 
     Transpiles the Kornia library to JAX using [ivy](https://github.com/ivy-llc/ivy). The transpilation process
@@ -26,10 +28,10 @@ def to_jax():
         kornia,
         source="torch",
         target="jax",
-    )
+    )  # type: ignore
 
 
-def to_numpy():
+def to_numpy() -> ModuleType:
     """Convert Kornia to NumPy.
 
     Transpiles the Kornia library to NumPy using [ivy](https://github.com/ivy-llc/ivy). The transpilation process
@@ -54,10 +56,10 @@ def to_numpy():
         kornia,
         source="torch",
         target="numpy",
-    )
+    )  # type: ignore
 
 
-def to_tensorflow():
+def to_tensorflow() -> ModuleType:
     """Convert Kornia to TensorFlow.
 
     Transpiles the Kornia library to TensorFlow using [ivy](https://github.com/ivy-llc/ivy). The transpilation process
@@ -79,4 +81,4 @@ def to_tensorflow():
         kornia,
         source="torch",
         target="tensorflow",
-    )
+    )  # type: ignore
