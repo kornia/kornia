@@ -1,8 +1,9 @@
 """Module for transpiling Kornia to other frameworks."""
 
+from types import ModuleType
+
 import kornia
 from kornia.core.external import ivy
-from types import ModuleType
 
 
 def to_jax() -> ModuleType:
@@ -27,7 +28,7 @@ def to_jax() -> ModuleType:
         kornia,
         source="torch",
         target="jax",
-    ) # type: ignore
+    )
 
 
 def to_numpy() -> ModuleType:
@@ -55,7 +56,7 @@ def to_numpy() -> ModuleType:
         kornia,
         source="torch",
         target="numpy",
-    ) # type: ignore
+    )
 
 
 def to_tensorflow() -> ModuleType:
@@ -80,4 +81,4 @@ def to_tensorflow() -> ModuleType:
         kornia,
         source="torch",
         target="tensorflow",
-    ) # type: ignore
+    )
