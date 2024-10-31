@@ -7,7 +7,7 @@ Everyone is welcome to get involved with the project. There are different ways t
 1. Ask/Answer questions:
     - Where can you ask questions?
       1. using the GitHub discussion at Kornia repo: [GH Discussions](https://github.com/kornia/kornia/discussions)
-      2. our slack workspace to keep in touch with our core contributors and the community:
+      2. Our Slack workspace to keep in touch with our core contributors and the community:
          [Join Here](https://join.slack.com/t/kornia/shared_invite/zt-csobk21g-2AQRi~X9Uu6PLMuUZdvfjA)
       3. using the `#kornia` tag in [PyTorch Discuss](https://discuss.pytorch.org)
     - Please, don't use GitHub issues for Q&A.
@@ -170,7 +170,7 @@ We welcome contributions to the Kornia documentation! If you'd like to improve o
 ## Benchmarking
 
 We have a benchmark suite configured in [benchmarks/](./benchmarks/). We used the
- [pytest-benchmark](https://pypi.org/project/pytest-benchmark/) library to benchmark our functions units.
+ [pytest-benchmark](https://pypi.org/project/pytest-benchmark/) library to benchmark our function units.
 
 Our [Makefile](./Makefile) has an `benchmark` command as an alias on how to run our benchmarks.
 
@@ -192,10 +192,10 @@ $ make benchmark BENCHMARK_BACKENDS='inductor,eager'
 $ make benchmark BENCHMARK_OPTS='--device=cuda -vv'
 ```
 
-We use the same tests generator suite, so you can setup the device within `--device`, the dtype within
+We use the same tests generator suite, so you can set up the device within `--device`, the dtype within
 `--dtype`, and the optimizer backend within `--optimizer`.
 
-The optimizer backend supported on the suite, are the torch compile backend on non experimental mode,
+The optimizer backend supported on the suite, is the torch compile backend on non-experimental mode,
  and the `''` or `None` which will do the same as `eager` mode and do anything, and `'jit'` which will
  try to `torch.jit.script` the operation.
 
@@ -236,7 +236,7 @@ maintainable.
     It is also a good idea to group the tests for functionalities
   - At [testing/](./testing/) directory we have a bunch of functions to help you to produce meaningful tests. Feel free,
     to add any functionality which you that you think is essential and can be used with the test suite. Under this
-    testing directory should go all code which are needed under the tests and aren't tests or pytest configs (fixtures,
+    testing, directory should go all code which are needed under the tests and aren't tests or pytest configs (fixtures,
     etc).
 
     ```python
@@ -334,7 +334,7 @@ maintainable.
 
   - We follow [PEP8 style guide](https://www.python.org/dev/peps/pep-0008).
   - Use `pre-commit` to autoformat each commit before push: [pre-commit.com](https://pre-commit.com)
-    For doing so, just install it for this repository by running the command: `pre-commit install` on your terminal
+    To do so, just install it for this repository by running the command: `pre-commit install` on your terminal
 
 - Changes to PEP8:
   - Line length is 120 characters.
@@ -347,11 +347,11 @@ maintainable.
 
 -  Using 3rd party libraries:
   - Everything from the standard library (https://docs.python.org/3/library/) and PyTorch (https://pytorch.org/) is OK.
-    It doesn’t means, that one should import `urllib` just because, but doing it when needed is fine.
+    It doesn’t mean, that one should import `urllib` just because, but doing it when needed is fine.
 
 # Pull Request
 
-Once you finish implementing a feature or bug-fix, please send a Pull Request to https://github.com/kornia/kornia
+Once you finish implementing a feature or bug fix, please send a Pull Request to https://github.com/kornia/kornia
 through the website.
 
 If you are not familiar with creating a Pull Request, here are some guides:
