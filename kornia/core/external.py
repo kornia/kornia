@@ -128,6 +128,7 @@ class LazyLoader:
 #       would also try to support lazy loading of external modules. To avoid that, we
 #       may set the module name to `autodoc_mock_imports` in conf.py to avoid undesired
 #       installation of external modules.
+ivy = LazyLoader("ivy", dev_dependency=True)
 numpy = LazyLoader("numpy", dev_dependency=True)
 PILImage = LazyLoader("PIL.Image", dev_dependency=True)
 onnx = LazyLoader("onnx", dev_dependency=True)
@@ -138,4 +139,3 @@ boxmot = LazyLoader("boxmot")
 segmentation_models_pytorch = LazyLoader("segmentation_models_pytorch")
 basicsr = LazyLoader("basicsr")
 requests = LazyLoader("requests")
-ivy = LazyLoader("ivy")
