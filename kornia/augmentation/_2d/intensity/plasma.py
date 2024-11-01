@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Optional
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
@@ -36,8 +36,8 @@ class RandomPlasmaBrightness(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        roughness: Tuple[float, float] = (0.1, 0.7),
-        intensity: Tuple[float, float] = (0.0, 1.0),
+        roughness: tuple[float, float] = (0.1, 0.7),
+        intensity: tuple[float, float] = (0.0, 1.0),
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
@@ -48,7 +48,7 @@ class RandomPlasmaBrightness(IntensityAugmentationBase2D):
         )
 
     def apply_transform(
-        self, image: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, image: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         B, C, H, W = image.shape
         roughness = params["roughness"].to(image)
@@ -87,7 +87,7 @@ class RandomPlasmaContrast(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        roughness: Tuple[float, float] = (0.1, 0.7),
+        roughness: tuple[float, float] = (0.1, 0.7),
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
@@ -96,7 +96,7 @@ class RandomPlasmaContrast(IntensityAugmentationBase2D):
         self._param_generator = rg.PlainUniformGenerator((roughness, "roughness", None, None))
 
     def apply_transform(
-        self, image: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, image: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         B, C, H, W = image.shape
         roughness = params["roughness"].to(image)
@@ -135,9 +135,9 @@ class RandomPlasmaShadow(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        roughness: Tuple[float, float] = (0.1, 0.7),
-        shade_intensity: Tuple[float, float] = (-1.0, 0.0),
-        shade_quantity: Tuple[float, float] = (0.0, 1.0),
+        roughness: tuple[float, float] = (0.1, 0.7),
+        shade_intensity: tuple[float, float] = (-1.0, 0.0),
+        shade_quantity: tuple[float, float] = (0.0, 1.0),
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
@@ -150,7 +150,7 @@ class RandomPlasmaShadow(IntensityAugmentationBase2D):
         )
 
     def apply_transform(
-        self, image: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, image: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         B, _, H, W = image.shape
         roughness = params["roughness"].to(image)

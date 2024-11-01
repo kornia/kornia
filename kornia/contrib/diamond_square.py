@@ -1,6 +1,6 @@
 # based on: https://github.com/anguelos/tormentor/blob/e8050ac235b0c7ad3c7d931cfa47c308a305c486/diamond_square/diamond_square.py  # noqa: E501
 import math
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable, Optional, Union
 
 import torch
 
@@ -10,8 +10,8 @@ from kornia.enhance import normalize_min_max
 from kornia.filters import filter2d
 
 # the default kernels for the diamond square
-default_diamond_kernel: List[List[float]] = [[0.25, 0.0, 0.25], [0.0, 0.0, 0.0], [0.25, 0.0, 0.25]]
-default_square_kernel: List[List[float]] = [[0.0, 0.25, 0.0], [0.25, 0.0, 0.25], [0.0, 0.25, 0.0]]
+default_diamond_kernel: list[list[float]] = [[0.25, 0.0, 0.25], [0.0, 0.0, 0.0], [0.25, 0.0, 0.25]]
+default_square_kernel: list[list[float]] = [[0.0, 0.25, 0.0], [0.25, 0.0, 0.25], [0.0, 0.25, 0.0]]
 
 
 def _diamond_square_seed(
@@ -138,11 +138,11 @@ def _one_diamond_one_square(
 
 
 def diamond_square(
-    output_size: Tuple[int, int, int, int],
+    output_size: tuple[int, int, int, int],
     roughness: Union[float, Tensor] = 0.5,
     random_scale: Union[float, Tensor] = 1.0,
     random_fn: Callable[..., Tensor] = torch.rand,
-    normalize_range: Optional[Tuple[float, float]] = None,
+    normalize_range: Optional[tuple[float, float]] = None,
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,
 ) -> Tensor:

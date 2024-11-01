@@ -1,4 +1,3 @@
-from typing import Dict
 
 import torch
 import torch.nn.functional as F
@@ -7,7 +6,7 @@ from torch import nn
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.utils.helpers import is_mps_tensor_safe
 
-urls: Dict[str, str] = {}
+urls: dict[str, str] = {}
 urls["hardnet++"] = "https://github.com/DagnyT/hardnet/raw/master/pretrained/pretrained_all_datasets/HardNet++.pth"
 urls["liberty_aug"] = (
     "https://github.com/DagnyT/hardnet/raw/master/pretrained/train_liberty_with_aug/checkpoint_liberty_with_aug.pth"

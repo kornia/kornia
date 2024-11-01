@@ -1,5 +1,5 @@
 from collections.abc import Iterator
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Union
 
 from torch.distributions import Categorical
 
@@ -10,7 +10,7 @@ from kornia.core import Module, tensor
 
 from . import ops
 
-imagenet_policy: List[SUBPOLICY_CONFIG] = [
+imagenet_policy: list[SUBPOLICY_CONFIG] = [
     [("posterize", 0.4, 8), ("rotate", 0.6, 9)],
     [("solarize", 0.6, 5), ("auto_contrast", 0.6, None)],
     [("equalize", 0.8, None), ("equalize", 0.6, None)],
@@ -39,7 +39,7 @@ imagenet_policy: List[SUBPOLICY_CONFIG] = [
 ]
 
 
-cifar10_policy: List[SUBPOLICY_CONFIG] = [
+cifar10_policy: list[SUBPOLICY_CONFIG] = [
     [("invert", 0.1, None), ("contrast", 0.2, 6)],
     [("rotate", 0.7, 2), ("translate_x", 0.3, 9)],
     [("sharpness", 0.8, 1), ("sharpness", 0.9, 3)],
@@ -68,7 +68,7 @@ cifar10_policy: List[SUBPOLICY_CONFIG] = [
 ]
 
 
-svhn_policy: List[SUBPOLICY_CONFIG] = [
+svhn_policy: list[SUBPOLICY_CONFIG] = [
     [("shear_x", 0.9, 4), ("invert", 0.2, None)],
     [("shear_y", 0.9, 8), ("invert", 0.7, None)],
     [("equalize", 0.6, None), ("solarize", 0.6, 6)],
@@ -120,7 +120,7 @@ class AutoAugment(PolicyAugmentBase):
     """
 
     def __init__(
-        self, policy: Union[str, List[SUBPOLICY_CONFIG]] = "imagenet", transformation_matrix_mode: str = "silent"
+        self, policy: Union[str, list[SUBPOLICY_CONFIG]] = "imagenet", transformation_matrix_mode: str = "silent"
     ) -> None:
         if policy == "imagenet":
             _policy = imagenet_policy
@@ -140,7 +140,7 @@ class AutoAugment(PolicyAugmentBase):
     def compose_subpolicy_sequential(self, subpolicy: SUBPOLICY_CONFIG) -> PolicySequential:
         return PolicySequential(*[getattr(ops, name)(prob, mag) for name, prob, mag in subpolicy])
 
-    def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, Module]]:
+    def get_forward_sequence(self, params: Optional[list[ParamItem]] = None) -> Iterator[tuple[str, Module]]:
         if params is None:
             idx = self.rand_selector.sample((1,))
             return self.get_children_by_indices(idx)

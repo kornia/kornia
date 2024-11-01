@@ -1,5 +1,5 @@
 from collections.abc import Iterable
-from typing import List, Union
+from typing import Union
 
 import torch
 
@@ -61,7 +61,7 @@ class PinholeCamera:
         return True
 
     @staticmethod
-    def _check_consistent_device(data_iter: List[Tensor]) -> None:
+    def _check_consistent_device(data_iter: list[Tensor]) -> None:
         first = data_iter[0]
         for data in data_iter:
             KORNIA_CHECK_SAME_DEVICE(data, first)

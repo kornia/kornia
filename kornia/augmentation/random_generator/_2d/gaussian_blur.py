@@ -1,4 +1,4 @@
-from typing import Dict, Tuple, Union
+from typing import Union
 
 import torch
 from torch import Tensor
@@ -32,7 +32,7 @@ class RandomGaussianBlurGenerator(RandomGeneratorBase):
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
     """
 
-    def __init__(self, sigma: Union[Tuple[float, float], Tensor] = (0.1, 2.0)) -> None:
+    def __init__(self, sigma: Union[tuple[float, float], Tensor] = (0.1, 2.0)) -> None:
         super().__init__()
         if sigma[1] < sigma[0]:
             raise TypeError(f"sigma_max should be higher than sigma_min: {sigma} passed.")
@@ -54,7 +54,7 @@ class RandomGaussianBlurGenerator(RandomGeneratorBase):
 
         self.sigma_sampler = UniformDistribution(sigma[0], sigma[1], validate_args=False)
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         sigma = _adapted_rsampling((batch_size,), self.sigma_sampler, same_on_batch)

@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Optional
 
 from torch.optim import Optimizer, lr_scheduler
 from torch.utils.data import DataLoader
@@ -22,7 +22,7 @@ class ImageClassifierTrainer(Trainer):
         `example <https://github.com/kornia/tutorials/tree/master/scripts/training/image_classifier/>`__.
     """
 
-    def compute_metrics(self, *args: Tensor) -> Dict[str, float]:
+    def compute_metrics(self, *args: Tensor) -> dict[str, float]:
         if len(args) != 2:
             raise AssertionError
         out, target = args
@@ -41,7 +41,7 @@ class SemanticSegmentationTrainer(Trainer):
         `example <https://github.com/kornia/tutorials/tree/master/scripts/training/semantic_segmentation/>`__.
     """
 
-    def compute_metrics(self, *args: Tensor) -> Dict[str, float]:
+    def compute_metrics(self, *args: Tensor) -> dict[str, float]:
         if len(args) != 2:
             raise AssertionError
         out, target = args
@@ -70,7 +70,7 @@ class ObjectDetectionTrainer(Trainer):
         scheduler: lr_scheduler._LRScheduler,
         config: Configuration,
         num_classes: int,
-        callbacks: Optional[Dict[str, Callable[..., None]]] = None,
+        callbacks: Optional[dict[str, Callable[..., None]]] = None,
         loss_computed_by_model: Optional[bool] = None,
     ) -> None:
         if callbacks is None:
@@ -80,7 +80,7 @@ class ObjectDetectionTrainer(Trainer):
         self.loss_computed_by_model = loss_computed_by_model
         self.num_classes = num_classes
 
-    def on_model(self, model: Module, sample: Dict[str, Tensor]) -> Tensor:
+    def on_model(self, model: Module, sample: dict[str, Tensor]) -> Tensor:
         if self.loss_computed_by_model and model.training:
             return model(sample["input"], sample["target"])
         return model(sample["input"])
@@ -95,7 +95,7 @@ class ObjectDetectionTrainer(Trainer):
             raise RuntimeError("`criterion` should not be None if `loss_computed_by_model` is False.")
         return self.criterion(*args)
 
-    def compute_metrics(self, *args: Tuple[Dict[str, Tensor]]) -> Dict[str, float]:
+    def compute_metrics(self, *args: tuple[dict[str, Tensor]]) -> dict[str, float]:
         if (
             isinstance(args[0], dict)
             and "boxes" in args[0]

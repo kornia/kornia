@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple, Union, cast
+from typing import Optional, Union, cast
 
 import torch
 from torch import Size
@@ -9,7 +9,7 @@ from kornia.geometry import transform_points
 __all__ = ["Keypoints", "Keypoints3D"]
 
 
-def _merge_keypoint_list(keypoints: List[Tensor]) -> Tensor:
+def _merge_keypoint_list(keypoints: list[Tensor]) -> Tensor:
     raise NotImplementedError
 
 
@@ -21,8 +21,8 @@ class Keypoints:
         raise_if_not_floating_point: will raise if the Tensor isn't float
     """
 
-    def __init__(self, keypoints: Union[Tensor, List[Tensor]], raise_if_not_floating_point: bool = True) -> None:
-        self._N: Optional[List[int]] = None
+    def __init__(self, keypoints: Union[Tensor, list[Tensor]], raise_if_not_floating_point: bool = True) -> None:
+        self._N: Optional[list[int]] = None
 
         if isinstance(keypoints, list):
             keypoints, self._N = _merge_keypoint_list(keypoints)
@@ -57,7 +57,7 @@ class Keypoints:
         return self
 
     @property
-    def shape(self) -> Union[Tuple[int, ...], Size]:
+    def shape(self) -> Union[tuple[int, ...], Size]:
         return self.data.shape
 
     @property
@@ -76,7 +76,7 @@ class Keypoints:
 
     def index_put(
         self,
-        indices: Union[Tuple[Tensor, ...], List[Tensor]],
+        indices: Union[tuple[Tensor, ...], list[Tensor]],
         values: Union[Tensor, "Keypoints"],
         inplace: bool = False,
     ) -> "Keypoints":
@@ -149,7 +149,7 @@ class Keypoints:
     def from_tensor(cls, keypoints: Tensor) -> "Keypoints":
         return cls(keypoints)
 
-    def to_tensor(self, as_padded_sequence: bool = False) -> Union[Tensor, List[Tensor]]:
+    def to_tensor(self, as_padded_sequence: bool = False) -> Union[Tensor, list[Tensor]]:
         r"""Cast :class:`Keypoints` to a tensor. ``mode`` controls which 2D keypoints format should be use to
         represent keypoints in the tensor.
 
@@ -176,7 +176,7 @@ class VideoKeypoints(Keypoints):
     temporal_channel_size: int
 
     @classmethod
-    def from_tensor(cls, boxes: Union[Tensor, List[Tensor]], validate_boxes: bool = True) -> "VideoKeypoints":
+    def from_tensor(cls, boxes: Union[Tensor, list[Tensor]], validate_boxes: bool = True) -> "VideoKeypoints":
         if isinstance(boxes, (list,)) or (boxes.dim() != 4 or boxes.shape[-1] != 2):
             raise ValueError("Input box type is not yet supported. Please input an `BxTxNx2` tensor directly.")
 
@@ -215,8 +215,8 @@ class Keypoints3D:
         raise_if_not_floating_point: will raise if the Tensor isn't float
     """
 
-    def __init__(self, keypoints: Union[Tensor, List[Tensor]], raise_if_not_floating_point: bool = True) -> None:
-        self._N: Optional[List[int]] = None
+    def __init__(self, keypoints: Union[Tensor, list[Tensor]], raise_if_not_floating_point: bool = True) -> None:
+        self._N: Optional[list[int]] = None
 
         if isinstance(keypoints, list):
             keypoints, self._N = _merge_keypoint_list(keypoints)
@@ -294,7 +294,7 @@ class Keypoints3D:
     def from_tensor(cls, keypoints: Tensor) -> "Keypoints3D":
         return cls(keypoints)
 
-    def to_tensor(self, as_padded_sequence: bool = False) -> Union[Tensor, List[Tensor]]:
+    def to_tensor(self, as_padded_sequence: bool = False) -> Union[Tensor, list[Tensor]]:
         r"""Cast :class:`Keypoints` to a tensor. ``mode`` controls which 2D keypoints format should be use to
         represent keypoints in the tensor.
 

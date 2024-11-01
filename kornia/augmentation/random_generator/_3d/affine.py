@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 
@@ -61,29 +61,29 @@ class AffineGenerator3D(RandomGeneratorBase):
         degrees: Union[
             torch.Tensor,
             float,
-            Tuple[float, float],
-            Tuple[float, float, float],
-            Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]],
+            tuple[float, float],
+            tuple[float, float, float],
+            tuple[tuple[float, float], tuple[float, float], tuple[float, float]],
         ],
-        translate: Optional[Union[torch.Tensor, Tuple[float, float, float]]] = None,
+        translate: Optional[Union[torch.Tensor, tuple[float, float, float]]] = None,
         scale: Optional[
             Union[
-                torch.Tensor, Tuple[float, float], Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]
+                torch.Tensor, tuple[float, float], tuple[tuple[float, float], tuple[float, float], tuple[float, float]]
             ]
         ] = None,
         shears: Union[
             None,
             torch.Tensor,
             float,
-            Tuple[float, float],
-            Tuple[float, float, float, float, float, float],
-            Tuple[
-                Tuple[float, float],
-                Tuple[float, float],
-                Tuple[float, float],
-                Tuple[float, float],
-                Tuple[float, float],
-                Tuple[float, float],
+            tuple[float, float],
+            tuple[float, float, float, float, float, float],
+            tuple[
+                tuple[float, float],
+                tuple[float, float],
+                tuple[float, float],
+                tuple[float, float],
+                tuple[float, float],
+                tuple[float, float],
             ],
         ] = None,
     ) -> None:
@@ -142,7 +142,7 @@ class AffineGenerator3D(RandomGeneratorBase):
             validate_args=False,
         )
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         depth = batch_shape[-3]
         height = batch_shape[-2]

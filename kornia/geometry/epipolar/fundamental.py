@@ -1,6 +1,6 @@
 """Module containing the functionalities for computing the Fundamental Matrix."""
 
-from typing import Literal, Optional, Tuple
+from typing import Literal, Optional
 
 import torch
 
@@ -12,7 +12,7 @@ from kornia.geometry.solvers import solve_cubic
 from kornia.utils.helpers import _torch_svd_cast, safe_inverse_with_mask
 
 
-def normalize_points(points: Tensor, eps: float = 1e-8) -> Tuple[Tensor, Tensor]:
+def normalize_points(points: Tensor, eps: float = 1e-8) -> tuple[Tensor, Tensor]:
     r"""Normalizes points (isotropic).
 
     Computes the transformation matrix such that the two principal moments of the set of points

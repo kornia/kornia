@@ -1,4 +1,4 @@
-from typing import Tuple, Union
+from typing import Union
 
 import torch.nn.functional as F
 
@@ -14,9 +14,9 @@ __all__ = ["elastic_transform2d"]
 def elastic_transform2d(
     image: Tensor,
     noise: Tensor,
-    kernel_size: Tuple[int, int] = (63, 63),
-    sigma: Union[Tuple[float, float], Tensor] = (32.0, 32.0),
-    alpha: Union[Tuple[float, float], Tensor] = (1.0, 1.0),
+    kernel_size: tuple[int, int] = (63, 63),
+    sigma: Union[tuple[float, float], Tensor] = (32.0, 32.0),
+    alpha: Union[tuple[float, float], Tensor] = (1.0, 1.0),
     align_corners: bool = False,
     mode: str = "bilinear",
     padding_mode: str = "zeros",

@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Union
 
 import torch
 import torch.nn.functional as F
@@ -12,18 +12,18 @@ from kornia.utils import create_meshgrid
 
 # Precomputed coefficients for Von Mises kernel, given N and K(appa).
 sqrt2: float = 1.4142135623730951
-COEFFS_N1_K1: List[float] = [0.38214156, 0.48090413]
-COEFFS_N2_K8: List[float] = [0.14343168, 0.268285, 0.21979234]
-COEFFS_N3_K8: List[float] = [0.14343168, 0.268285, 0.21979234, 0.15838885]
-COEFFS: Dict[str, List[float]] = {"xy": COEFFS_N1_K1, "rhophi": COEFFS_N2_K8, "theta": COEFFS_N3_K8}
+COEFFS_N1_K1: list[float] = [0.38214156, 0.48090413]
+COEFFS_N2_K8: list[float] = [0.14343168, 0.268285, 0.21979234]
+COEFFS_N3_K8: list[float] = [0.14343168, 0.268285, 0.21979234, 0.15838885]
+COEFFS: dict[str, list[float]] = {"xy": COEFFS_N1_K1, "rhophi": COEFFS_N2_K8, "theta": COEFFS_N3_K8}
 
-urls: Dict[str, str] = {
+urls: dict[str, str] = {
     k: f"https://github.com/manyids2/mkd_pytorch/raw/master/mkd_pytorch/mkd-{k}-64.pth"
     for k in ["cart", "polar", "concat"]
 }
 
 
-def get_grid_dict(patch_size: int = 32) -> Dict[str, Tensor]:
+def get_grid_dict(patch_size: int = 32) -> dict[str, Tensor]:
     r"""Get cartesian and polar parametrizations of grid."""
     kgrid = create_meshgrid(height=patch_size, width=patch_size, normalized_coordinates=True)
     x = kgrid[0, :, :, 0]
@@ -111,7 +111,7 @@ class VonMisesKernel(nn.Module):
         >>> emb = vm(oris) # 23x7x32x32
     """
 
-    def __init__(self, patch_size: int, coeffs: Union[List[Union[float, int]], Tuple[Union[float, int], ...]]) -> None:
+    def __init__(self, patch_size: int, coeffs: Union[list[Union[float, int]], tuple[Union[float, int], ...]]) -> None:
         super().__init__()
 
         self.patch_size = patch_size
@@ -213,7 +213,7 @@ class EmbedGradients(nn.Module):
         return f"{self.__class__.__name__}(patch_size={self.patch_size}, relative={self.relative})"
 
 
-def spatial_kernel_embedding(kernel_type: str, grids: Dict[str, Tensor]) -> Tensor:
+def spatial_kernel_embedding(kernel_type: str, grids: dict[str, Tensor]) -> Tensor:
     r"""Compute embeddings for cartesian and polar parametrizations."""
     factors = {"phi": 1.0, "rho": pi / sqrt2, "x": pi / 2, "y": pi / 2}
     if kernel_type == "cart":
@@ -317,7 +317,7 @@ class ExplicitSpacialEncoding(nn.Module):
         gmask = torch.exp(-1 * norm_rho**2 / sigma**2)
         return gmask
 
-    def init_kron(self) -> Tuple[Tensor, Tensor]:
+    def init_kron(self) -> tuple[Tensor, Tensor]:
         """Initialize helper variables to calculate kronecker."""
         kron = get_kron_order(self.in_dims, self.d_emb)
         _emb = torch.jit.annotate(Tensor, self.emb)
@@ -387,7 +387,7 @@ class Whitening(nn.Module):
     def __init__(
         self,
         xform: str,
-        whitening_model: Union[Dict[str, Dict[str, Tensor]], None],
+        whitening_model: Union[dict[str, dict[str, Tensor]], None],
         in_dims: int,
         output_dims: int = 128,
         keval: int = 40,
@@ -413,7 +413,7 @@ class Whitening(nn.Module):
         if whitening_model is not None:
             self.load_whitening_parameters(whitening_model)
 
-    def load_whitening_parameters(self, whitening_model: Dict[str, Dict[str, Tensor]]) -> None:
+    def load_whitening_parameters(self, whitening_model: dict[str, dict[str, Tensor]]) -> None:
         algo = "lw" if self.xform == "lw" else "pca"
         wh_model = whitening_model[algo]
         self.mean.data = wh_model["mean"]
@@ -580,7 +580,7 @@ class MKDDescriptor(nn.Module):
         )
 
 
-def load_whitening_model(kernel_type: str, training_set: str) -> Dict[str, Any]:
+def load_whitening_model(kernel_type: str, training_set: str) -> dict[str, Any]:
     whitening_models = torch.hub.load_state_dict_from_url(urls[kernel_type], map_location=torch.device("cpu"))
     whitening_model = whitening_models[training_set]
     return whitening_model

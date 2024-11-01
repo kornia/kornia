@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 
@@ -31,8 +31,8 @@ class TranslateGenerator(RandomGeneratorBase):
 
     def __init__(
         self,
-        translate_x: Optional[Union[Tensor, Tuple[float, float]]] = None,
-        translate_y: Optional[Union[Tensor, Tuple[float, float]]] = None,
+        translate_x: Optional[Union[Tensor, tuple[float, float]]] = None,
+        translate_y: Optional[Union[Tensor, tuple[float, float]]] = None,
     ) -> None:
         super().__init__()
         self.translate_x = translate_x
@@ -64,7 +64,7 @@ class TranslateGenerator(RandomGeneratorBase):
                 _translate_y[..., 0], _translate_y[..., 1], validate_args=False
             )
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, Tensor]:
         batch_size = batch_shape[0]
         height = batch_shape[-2]
         width = batch_shape[-1]

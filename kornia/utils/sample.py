@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 import kornia
 from kornia.core import Tensor, stack
@@ -12,7 +12,7 @@ __all__ = [
     "get_sample_images",
 ]
 
-IMAGE_URLS: List[str] = [
+IMAGE_URLS: list[str] = [
     "https://raw.githubusercontent.com/kornia/data/main/panda.jpg",
     "https://raw.githubusercontent.com/kornia/data/main/simba.png",
     "https://raw.githubusercontent.com/kornia/data/main/girona.png",
@@ -34,14 +34,14 @@ def download_image(url: str, save_to: str) -> None:
 
 
 def get_sample_images(
-    resize: Optional[Tuple[int, int]] = None,
-    paths: List[str] = IMAGE_URLS,
+    resize: Optional[tuple[int, int]] = None,
+    paths: list[str] = IMAGE_URLS,
     download: bool = True,
     cache_dir: Optional[str] = None,
     as_list: Optional[bool] = None,
     divisible_factor: Optional[int] = None,
     **kwargs: Any,
-) -> Union[Tensor, List[Tensor]]:
+) -> Union[Tensor, list[Tensor]]:
     """Loads multiple images from the given URLs.
 
     Optionally download them, resize them if specified, and return them as a batch of tensors or a list of tensors.

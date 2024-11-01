@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 import torch
 
@@ -41,8 +41,8 @@ class RandomJigsaw(MixAugmentationBaseV2):
 
     def __init__(
         self,
-        grid: Tuple[int, int] = (4, 4),
-        data_keys: List[Union[str, int, DataKey]] = [DataKey.INPUT],
+        grid: tuple[int, int] = (4, 4),
+        data_keys: list[Union[str, int, DataKey]] = [DataKey.INPUT],
         p: float = 0.5,
         same_on_batch: bool = False,
         keepdim: bool = False,
@@ -53,7 +53,7 @@ class RandomJigsaw(MixAugmentationBaseV2):
         self.flags = {"grid": grid}
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], maybe_flags: Optional[Dict[str, Any]] = None
+        self, input: Tensor, params: dict[str, Tensor], maybe_flags: Optional[dict[str, Any]] = None
     ) -> Tensor:
         # different from the Base class routine. This function will not refer to any non-transformation images.
         batch_prob = params["batch_prob"]

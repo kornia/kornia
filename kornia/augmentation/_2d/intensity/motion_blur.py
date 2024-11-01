@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Optional, Union, cast
 
 import torch
 
@@ -67,9 +67,9 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        kernel_size: Union[int, Tuple[int, int]],
-        angle: Union[Tensor, float, Tuple[float, float]],
-        direction: Union[Tensor, float, Tuple[float, float]],
+        kernel_size: Union[int, tuple[int, int]],
+        angle: Union[Tensor, float, tuple[float, float]],
+        direction: Union[Tensor, float, tuple[float, float]],
         border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,
         resample: Union[str, int, Resample] = Resample.NEAREST.name,
         same_on_batch: bool = False,
@@ -80,16 +80,16 @@ class RandomMotionBlur(IntensityAugmentationBase2D):
         self._param_generator = rg.MotionBlurGenerator(kernel_size, angle, direction)
         self.flags = {"border_type": BorderType.get(border_type), "resample": Resample.get(resample)}
 
-    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, Tensor]:
+    def generate_parameters(self, batch_shape: tuple[int, ...]) -> dict[str, Tensor]:
         params = super().generate_parameters(batch_shape)
         params["idx"] = tensor([0]) if batch_shape[0] == 0 else torch.randint(batch_shape[0], (1,))
         return params
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         # sample a kernel size
-        kernel_size_list: List[int] = params["ksize_factor"].tolist()
+        kernel_size_list: list[int] = params["ksize_factor"].tolist()
 
         # 1. We have to apply the same kernel size to all samples in the batch, thus we take the previously
         # selected random index --- `params["idx"][0]` --- to determine the applied kernel size.

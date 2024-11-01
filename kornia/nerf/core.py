@@ -1,7 +1,7 @@
-from typing import List, Union
+from typing import Union
 
 from kornia.core import Tensor
 
-ImagePaths = List[str]
-ImageTensors = List[Tensor]
+ImagePaths = list[str]
+ImageTensors = list[Tensor]
 Images = Union[ImagePaths, ImageTensors]

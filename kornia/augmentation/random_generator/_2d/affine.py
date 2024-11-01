@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 
@@ -46,10 +46,10 @@ class AffineGenerator(RandomGeneratorBase):
 
     def __init__(
         self,
-        degrees: Union[Tensor, float, Tuple[float, float]],
-        translate: Optional[Union[Tensor, Tuple[float, float]]] = None,
-        scale: Optional[Union[Tensor, Tuple[float, float], Tuple[float, float, float, float]]] = None,
-        shear: Optional[Union[Tensor, float, Tuple[float, float]]] = None,
+        degrees: Union[Tensor, float, tuple[float, float]],
+        translate: Optional[Union[Tensor, tuple[float, float]]] = None,
+        scale: Optional[Union[Tensor, tuple[float, float], tuple[float, float, float, float]]] = None,
+        shear: Optional[Union[Tensor, float, tuple[float, float]]] = None,
     ) -> None:
         super().__init__()
         self.degrees = degrees
@@ -134,7 +134,7 @@ class AffineGenerator(RandomGeneratorBase):
         self.shear_x_sampler = shear_x_sampler
         self.shear_y_sampler = shear_y_sampler
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, Tensor]:
         batch_size = batch_shape[0]
         height = batch_shape[-2]
         width = batch_shape[-1]

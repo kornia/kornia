@@ -1,5 +1,5 @@
 from collections.abc import Iterator
-from typing import Dict, List, Optional, Tuple, Union, cast
+from typing import Optional, Union, cast
 
 import torch
 
@@ -11,7 +11,7 @@ from kornia.core import Module, Tensor
 
 from . import ops
 
-default_policy: List[SUBPOLICY_CONFIG] = [
+default_policy: list[SUBPOLICY_CONFIG] = [
     [("auto_contrast", 0, 1)],
     [("equalize", 0, 1)],
     [("invert", 0, 1)],
@@ -58,7 +58,7 @@ class RandAugment(PolicyAugmentBase):
         self,
         n: int,
         m: int,
-        policy: Optional[List[SUBPOLICY_CONFIG]] = None,
+        policy: Optional[list[SUBPOLICY_CONFIG]] = None,
         transformation_matrix_mode: str = "silent",
     ) -> None:
         if m <= 0 or m >= 30:
@@ -84,7 +84,7 @@ class RandAugment(PolicyAugmentBase):
         name, low, high = subpolicy[0]
         return PolicySequential(*[getattr(ops, name)(low, high)])
 
-    def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, Module]]:
+    def get_forward_sequence(self, params: Optional[list[ParamItem]] = None) -> Iterator[tuple[str, Module]]:
         if params is None:
             idx = self.rand_selector(
                 self.n,
@@ -93,10 +93,10 @@ class RandAugment(PolicyAugmentBase):
 
         return self.get_children_by_params(params)
 
-    def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
-        named_modules: Iterator[Tuple[str, Module]] = self.get_forward_sequence()
-        params: List[ParamItem] = []
-        mod_param: Union[Dict[str, Tensor], List[ParamItem]]
+    def forward_parameters(self, batch_shape: torch.Size) -> list[ParamItem]:
+        named_modules: Iterator[tuple[str, Module]] = self.get_forward_sequence()
+        params: list[ParamItem] = []
+        mod_param: Union[dict[str, Tensor], list[ParamItem]]
         m = torch.tensor([self.m / 30] * batch_shape[0])
 
         for name, module in named_modules:

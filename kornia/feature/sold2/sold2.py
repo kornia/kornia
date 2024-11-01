@@ -1,5 +1,5 @@
 import warnings
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Optional
 
 import torch
 import torch.nn.functional as F
@@ -13,7 +13,7 @@ from kornia.utils import dataclass_to_dict, dict_to_dataclass
 from .backbones import SOLD2Net
 from .sold2_detector import LineSegmentDetectionModule, line_map_to_segments, prob_to_junctions
 
-urls: Dict[str, str] = {}
+urls: dict[str, str] = {}
 urls["wireframe"] = "http://cmp.felk.cvut.cz/~mishkdmy/models/sold2_wireframe.pth"
 
 
@@ -75,7 +75,7 @@ class SOLD2(Module):
         # Initialize the line matcher
         self.line_matcher = WunschLineMatcher(self.config.line_matcher_cfg)
 
-    def forward(self, img: Tensor) -> Dict[str, Any]:
+    def forward(self, img: Tensor) -> dict[str, Any]:
         """
         Args:
             img: batched images with shape :math:`(B, 1, H, W)`.
@@ -120,7 +120,7 @@ class SOLD2(Module):
         """
         return self.line_matcher(line_seg1, line_seg2, desc1, desc2)
 
-    def adapt_state_dict(self, state_dict: Dict[str, Any]) -> Dict[str, Any]:
+    def adapt_state_dict(self, state_dict: dict[str, Any]) -> dict[str, Any]:
         del state_dict["w_junc"]
         del state_dict["w_heatmap"]
         del state_dict["w_desc"]
@@ -196,7 +196,7 @@ class WunschLineMatcher(Module):
 
         return matches
 
-    def sample_line_points(self, line_seg: Tensor) -> Tuple[Tensor, Tensor]:
+    def sample_line_points(self, line_seg: Tensor) -> tuple[Tensor, Tensor]:
         """Regularly sample points along each line segments, with a minimal distance between each point.
 
         Pad the remaining points.
@@ -300,7 +300,7 @@ class WunschLineMatcher(Module):
         return nw_grid[:, -1, -1]
 
 
-def keypoints_to_grid(keypoints: Tensor, img_size: Tuple[int, int]) -> Tensor:
+def keypoints_to_grid(keypoints: Tensor, img_size: tuple[int, int]) -> Tensor:
     """Convert a list of keypoints into a grid in [-1, 1]² that can be used in torch.nn.functional.interpolate.
 
     Args:

@@ -1,5 +1,5 @@
 from functools import wraps
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, Optional
 
 import torch
 from torch import nn
@@ -55,7 +55,7 @@ def image_to_tensor(image: Any, keepdim: bool = True) -> Tensor:
     return tensor.unsqueeze(0) if not keepdim else tensor
 
 
-def image_list_to_tensor(images: List[Any]) -> Tensor:
+def image_list_to_tensor(images: list[Any]) -> Tensor:
     """Converts a list of numpy images to a PyTorch 4d tensor image.
 
     Args:
@@ -75,7 +75,7 @@ def image_list_to_tensor(images: List[Any]) -> Tensor:
     if len(images[0].shape) != 3:
         raise ValueError("Input images must be three dimensional arrays")
 
-    list_of_tensors: List[Tensor] = []
+    list_of_tensors: list[Tensor] = []
     for image in images:
         list_of_tensors.append(image_to_tensor(image))
     tensor: Tensor = torch.stack(list_of_tensors)

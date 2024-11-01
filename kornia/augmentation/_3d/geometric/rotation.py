@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 import kornia
 from kornia.augmentation import random_generator as rg
@@ -75,8 +75,8 @@ class RandomRotation3D(GeometricAugmentationBase3D):
         degrees: Union[
             Tensor,
             float,
-            Tuple[float, float, float],
-            Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]],
+            tuple[float, float, float],
+            tuple[tuple[float, float], tuple[float, float], tuple[float, float]],
         ],
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         same_on_batch: bool = False,
@@ -88,7 +88,7 @@ class RandomRotation3D(GeometricAugmentationBase3D):
         self.flags = {"resample": Resample.get(resample), "align_corners": align_corners}
         self._param_generator = rg.RotationGenerator3D(degrees)
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
         yaw: Tensor = params["yaw"].to(input)
         pitch: Tensor = params["pitch"].to(input)
         roll: Tensor = params["roll"].to(input)
@@ -105,7 +105,7 @@ class RandomRotation3D(GeometricAugmentationBase3D):
         return trans_mat
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         if not isinstance(transform, Tensor):
             raise TypeError(f"Expected the transform to be a Tensor. Gotcha {type(transform)}")

@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 from torch.distributions import Uniform
@@ -31,7 +31,7 @@ class CropGenerator(RandomGeneratorBase):
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
     """
 
-    def __init__(self, size: Union[Tuple[int, int], Tensor], resize_to: Optional[Tuple[int, int]] = None) -> None:
+    def __init__(self, size: Union[tuple[int, int], Tensor], resize_to: Optional[tuple[int, int]] = None) -> None:
         super().__init__()
         self.size = size
         self.resize_to = resize_to
@@ -45,7 +45,7 @@ class CropGenerator(RandomGeneratorBase):
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         self.rand_sampler = Uniform(tensor(0.0, device=device, dtype=dtype), tensor(1.0, device=device, dtype=dtype))
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.size if isinstance(self.size, Tensor) else None])
@@ -168,9 +168,9 @@ class ResizedCropGenerator(CropGenerator):
 
     def __init__(
         self,
-        output_size: Tuple[int, int],
-        scale: Union[Tensor, Tuple[float, float]],
-        ratio: Union[Tensor, Tuple[float, float]],
+        output_size: tuple[int, int],
+        scale: Union[Tensor, tuple[float, float]],
+        ratio: Union[Tensor, tuple[float, float]],
     ) -> None:
         if not (
             len(output_size) == 2
@@ -197,7 +197,7 @@ class ResizedCropGenerator(CropGenerator):
         self.rand_sampler = Uniform(tensor(0.0, device=device, dtype=dtype), tensor(1.0, device=device, dtype=dtype))
         self.log_ratio_sampler = Uniform(torch.log(ratio[0]), torch.log(ratio[1]), validate_args=False)
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, Tensor]:
         batch_size = batch_shape[0]
         size = (batch_shape[-2], batch_shape[-1])
         _device, _dtype = _extract_device_dtype([self.scale, self.ratio])
@@ -252,8 +252,8 @@ class ResizedCropGenerator(CropGenerator):
 
 
 def center_crop_generator(
-    batch_size: int, height: int, width: int, size: Tuple[int, int], device: Device = torch.device("cpu")
-) -> Dict[str, Tensor]:
+    batch_size: int, height: int, width: int, size: tuple[int, int], device: Device = torch.device("cpu")
+) -> dict[str, Tensor]:
     r"""Get parameters for ```center_crop``` transformation for center crop transform.
 
     Args:

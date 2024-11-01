@@ -85,8 +85,8 @@ def tensor_to_gradcheck_var(
 T = TypeVar("T")
 
 
-def dict_to(data: Dict[T, Any], device: Device, dtype: Dtype) -> Dict[T, Any]:
-    out: Dict[T, Any] = {}
+def dict_to(data: dict[T, Any], device: Device, dtype: Dtype) -> dict[T, Any]:
+    out: dict[T, Any] = {}
     for key, val in data.items():
         out[key] = val.to(device, dtype) if isinstance(val, Tensor) else val
     return out
@@ -198,13 +198,13 @@ class BaseTester(ABC):
 
 def generate_two_view_random_scene(
     device: Device = torch.device("cpu"), dtype: Dtype = torch.float32
-) -> Dict[str, Tensor]:
+) -> dict[str, Tensor]:
     from kornia.geometry import epipolar as epi
 
     num_views: int = 2
     num_points: int = 30
 
-    scene: Dict[str, Tensor] = epi.generate_scene(num_views, num_points)
+    scene: dict[str, Tensor] = epi.generate_scene(num_views, num_points)
 
     # internal parameters (same K)
     K1 = scene["K"].to(device, dtype)
@@ -250,7 +250,7 @@ def generate_two_view_random_scene(
     }
 
 
-def cartesian_product_of_parameters(**possible_parameters: Sequence[Any]) -> Iterator[Dict[str, Any]]:
+def cartesian_product_of_parameters(**possible_parameters: Sequence[Any]) -> Iterator[dict[str, Any]]:
     """Create cartesian product of given parameters."""
     parameter_names = possible_parameters.keys()
     possible_values = [possible_parameters[parameter_name] for parameter_name in parameter_names]
@@ -259,7 +259,7 @@ def cartesian_product_of_parameters(**possible_parameters: Sequence[Any]) -> Ite
         yield dict(zip(parameter_names, param_combination))
 
 
-def default_with_one_parameter_changed(*, default: Dict[str, Any] = {}, **possible_parameters: Any) -> Any:
+def default_with_one_parameter_changed(*, default: dict[str, Any] = {}, **possible_parameters: Any) -> Any:
     if not isinstance(default, dict):
         raise AssertionError(f"default should be a dict not a {type(default)}")
 
@@ -290,7 +290,7 @@ def _get_precision_by_name(
     return tol_val_default
 
 
-def _default_tolerances(*inputs: Any) -> Tuple[float, float]:
+def _default_tolerances(*inputs: Any) -> tuple[float, float]:
     rtols, atols = zip(*[_DTYPE_PRECISIONS.get(torch.as_tensor(input_).dtype, (0.0, 0.0)) for input_ in inputs])
     return max(rtols), max(atols)
 
