@@ -16,7 +16,7 @@ license = { text = "Apache-2.0" }
 authors = [
   { name = "Edgar Riba", email = "edgar@kornia.org" },
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 classifiers = [
   "Development Status :: 4 - Beta",
   "Environment :: Console",
@@ -29,7 +29,6 @@ classifiers = [
   "Natural Language :: English",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.8",
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
@@ -97,7 +96,7 @@ kornia = [
 universal = true
 
 [tool.ruff]
-target-version = "py38"
+target-version = "py39"
 
 line-length = 120
 format.skip-magic-trailing-comma = false
