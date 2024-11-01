@@ -1,4 +1,5 @@
-from typing import Dict, Iterator, List, Optional, Tuple, Union, cast
+from collections.abc import Iterator
+from typing import Dict, List, Optional, Tuple, Union, cast
 
 import torch
 

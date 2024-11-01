@@ -1,4 +1,5 @@
-from typing import TYPE_CHECKING, List, Optional, Sequence, Tuple, Union
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import torch
 from torch.utils.data import BatchSampler, DataLoader, Dataset, RandomSampler, SequentialSampler

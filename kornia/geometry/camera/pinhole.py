@@ -1,4 +1,5 @@
-from typing import Iterable, List, Union
+from collections.abc import Iterable
+from typing import List, Union
 
 import torch
 

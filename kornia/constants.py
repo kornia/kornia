@@ -1,6 +1,7 @@
 import logging
+from collections.abc import Iterator
 from enum import Enum, EnumMeta
-from typing import Iterator, Type, TypeVar, Union
+from typing import Type, TypeVar, Union
 
 import torch
 

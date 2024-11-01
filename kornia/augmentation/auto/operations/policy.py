@@ -1,4 +1,5 @@
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
+from collections.abc import Iterator
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 from torch import Size
 

@@ -1,4 +1,5 @@
-from typing import Iterator, List, Optional, Tuple
+from collections.abc import Iterator
+from typing import List, Optional, Tuple
 
 import torch
 from torch.distributions import Categorical

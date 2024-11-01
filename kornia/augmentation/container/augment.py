@@ -1,5 +1,6 @@
 import warnings
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union, cast
+from collections.abc import Sequence
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 import torch
 

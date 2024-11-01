@@ -1,5 +1,6 @@
+from collections.abc import Iterator
 from itertools import cycle, islice
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 

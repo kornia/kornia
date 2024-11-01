@@ -4,9 +4,10 @@ import importlib.util
 import math
 import warnings
 from abc import ABC, abstractmethod
+from collections.abc import Iterator, Sequence
 from copy import deepcopy
 from itertools import product
-from typing import Any, Callable, Dict, Iterator, Optional, Sequence, Tuple, TypeVar, Union
+from typing import Any, Callable, Dict, Optional, Tuple, TypeVar, Union
 
 import torch
 from torch.autograd import gradcheck

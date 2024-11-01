@@ -1,6 +1,7 @@
 from collections import OrderedDict
+from collections.abc import Iterator
 from itertools import zip_longest
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 from torch import nn
