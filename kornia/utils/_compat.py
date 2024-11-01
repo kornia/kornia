@@ -1,4 +1,5 @@
-from typing import TYPE_CHECKING, Any, Callable, ContextManager, Optional, TypeVar
+from contextlib import AbstractContextManager as ContextManager
+from typing import TYPE_CHECKING, Any, Callable, Optional, TypeVar
 
 import torch
 from packaging import version

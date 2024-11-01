@@ -9,7 +9,7 @@
 #   https://github.com/rwightman/pytorch-image-models/tree/master/timm/layers/patch_embed.py
 
 import logging
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any, Callable
 
 import torch
 from torch import Tensor, nn

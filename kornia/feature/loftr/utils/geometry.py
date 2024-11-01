@@ -1,4 +1,3 @@
-
 import torch
 
 from kornia.core import Tensor

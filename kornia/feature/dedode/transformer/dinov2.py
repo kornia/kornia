@@ -11,7 +11,7 @@
 import math
 from collections.abc import Sequence
 from functools import partial
-from typing import Callable, Tuple, Union
+from typing import Callable, Union
 
 import torch
 import torch.utils.checkpoint
