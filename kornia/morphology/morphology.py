@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Optional
 
 import torch
@@ -74,7 +76,7 @@ def dilation(
         origin = [se_h // 2, se_w // 2]
 
     # pad
-    pad_e: list[int] = [origin[1], se_w - origin[1] - 1, origin[0], se_h - origin[0] - 1]
+    pad_e = [origin[1], se_w - origin[1] - 1, origin[0], se_h - origin[0] - 1]
     if border_type == "geodesic":
         border_value = -max_val
         border_type = "constant"
@@ -167,7 +169,7 @@ def erosion(
         origin = [se_h // 2, se_w // 2]
 
     # pad
-    pad_e: list[int] = [origin[1], se_w - origin[1] - 1, origin[0], se_h - origin[0] - 1]
+    pad_e = [origin[1], se_w - origin[1] - 1, origin[0], se_h - origin[0] - 1]
     if border_type == "geodesic":
         border_value = max_val
         border_type = "constant"
