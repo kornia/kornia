@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import List, Optional  # noqa: UP035
 
 import torch
 import torch.nn.functional as F
@@ -18,7 +18,7 @@ def dilation(
     tensor: torch.Tensor,
     kernel: torch.Tensor,
     structuring_element: Optional[torch.Tensor] = None,
-    origin: Optional[list[int]] = None,
+    origin: Optional[List[int]] = None,
     border_type: str = "geodesic",
     border_value: float = 0.0,
     max_val: float = 1e4,
@@ -111,7 +111,7 @@ def erosion(
     tensor: torch.Tensor,
     kernel: torch.Tensor,
     structuring_element: Optional[torch.Tensor] = None,
-    origin: Optional[list[int]] = None,
+    origin: Optional[List[int]] = None,
     border_type: str = "geodesic",
     border_value: float = 0.0,
     max_val: float = 1e4,
@@ -205,7 +205,7 @@ def opening(
     tensor: torch.Tensor,
     kernel: torch.Tensor,
     structuring_element: Optional[torch.Tensor] = None,
-    origin: Optional[list[int]] = None,
+    origin: Optional[List[int]] = None,
     border_type: str = "geodesic",
     border_value: float = 0.0,
     max_val: float = 1e4,
@@ -282,7 +282,7 @@ def closing(
     tensor: torch.Tensor,
     kernel: torch.Tensor,
     structuring_element: Optional[torch.Tensor] = None,
-    origin: Optional[list[int]] = None,
+    origin: Optional[List[int]] = None,
     border_type: str = "geodesic",
     border_value: float = 0.0,
     max_val: float = 1e4,
@@ -360,7 +360,7 @@ def gradient(
     tensor: torch.Tensor,
     kernel: torch.Tensor,
     structuring_element: Optional[torch.Tensor] = None,
-    origin: Optional[list[int]] = None,
+    origin: Optional[List[int]] = None,
     border_type: str = "geodesic",
     border_value: float = 0.0,
     max_val: float = 1e4,
@@ -426,7 +426,7 @@ def top_hat(
     tensor: torch.Tensor,
     kernel: torch.Tensor,
     structuring_element: Optional[torch.Tensor] = None,
-    origin: Optional[list[int]] = None,
+    origin: Optional[List[int]] = None,
     border_type: str = "geodesic",
     border_value: float = 0.0,
     max_val: float = 1e4,
@@ -497,7 +497,7 @@ def bottom_hat(
     tensor: torch.Tensor,
     kernel: torch.Tensor,
     structuring_element: Optional[torch.Tensor] = None,
-    origin: Optional[list[int]] = None,
+    origin: Optional[List[int]] = None,
     border_type: str = "geodesic",
     border_value: float = 0.0,
     max_val: float = 1e4,

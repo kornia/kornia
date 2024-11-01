@@ -162,6 +162,7 @@ lint.ignore = [
   "PLR0915", # Allow condition check in list comprehension
   "PLW2901", # Allow overwritten values on loops
   "UP007",   # Prefer Optional[], Union[] over | due to torch jit scripting
+  "UP006",   # Prefer List[], over list due to torch jit scripting
 ]
 
 lint.per-file-ignores."*/__init__.py" = [
