@@ -1,4 +1,4 @@
-from typing import Dict, List, Tuple, Union
+from typing import Union
 
 import torch
 
@@ -47,10 +47,10 @@ class ColorJitterGenerator(RandomGeneratorBase):
 
     def __init__(
         self,
-        brightness: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
-        contrast: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
-        saturation: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
-        hue: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
+        brightness: Union[Tensor, float, tuple[float, float], list[float]] = 0.0,
+        contrast: Union[Tensor, float, tuple[float, float], list[float]] = 0.0,
+        saturation: Union[Tensor, float, tuple[float, float], list[float]] = 0.0,
+        hue: Union[Tensor, float, tuple[float, float], list[float]] = 0.0,
     ) -> None:
         super().__init__()
         self.brightness = brightness
@@ -77,7 +77,7 @@ class ColorJitterGenerator(RandomGeneratorBase):
         self.hue_sampler = UniformDistribution(hue[0], hue[1], validate_args=False)
         self.saturation_sampler = UniformDistribution(saturation[0], saturation[1], validate_args=False)
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, Tensor]:
         batch_size = batch_shape[0]
         brightness_factor = _adapted_rsampling((batch_size,), self.brightness_sampler, same_on_batch)
         contrast_factor = _adapted_rsampling((batch_size,), self.contrast_sampler, same_on_batch)

@@ -1,7 +1,7 @@
 # based on: https://github.com/ShiqiYu/libfacedetection.train/blob/74f3aa77c63234dd954d21286e9a60703b8d0868/tasks/task1/yufacedetectnet.py  # noqa
 import math
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
+from typing import Optional
 
 import torch
 import torch.nn.functional as F
@@ -170,7 +170,7 @@ class FaceDetector(nn.Module):
     def preprocess(self, image: torch.Tensor) -> torch.Tensor:
         return image
 
-    def postprocess(self, data: Dict[str, torch.Tensor], height: int, width: int) -> List[torch.Tensor]:
+    def postprocess(self, data: dict[str, torch.Tensor], height: int, width: int) -> list[torch.Tensor]:
         loc, conf, iou = data["loc"], data["conf"], data["iou"]
 
         scale = torch.tensor(
@@ -182,7 +182,7 @@ class FaceDetector(nn.Module):
         priors = _PriorBox(self.min_sizes, self.steps, self.clip, image_size=(height, width))
         priors = priors.to(loc.device, loc.dtype)
 
-        batched_dets: List[torch.Tensor] = []
+        batched_dets: list[torch.Tensor] = []
         for batch_elem in range(loc.shape[0]):
             boxes = _decode(loc[batch_elem], priors(), self.variance)  # Nx14
             boxes = boxes * scale
@@ -210,7 +210,7 @@ class FaceDetector(nn.Module):
             batched_dets.append(dets[: self.keep_top_k])
         return batched_dets
 
-    def forward(self, image: torch.Tensor) -> List[torch.Tensor]:
+    def forward(self, image: torch.Tensor) -> list[torch.Tensor]:
         r"""Detect faces in a given batch of images.
 
         Args:
@@ -292,7 +292,7 @@ class YuFaceDetectNet(nn.Module):
             self.load_state_dict(pretrained_dict, strict=True)
         self.eval()
 
-    def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
+    def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
         detection_sources, head_list = [], []
 
         x = self.model0(x)
@@ -338,7 +338,7 @@ class YuFaceDetectNet(nn.Module):
 
 
 # Adapted from https://github.com/Hakuyume/chainer-ssd
-def _decode(loc: torch.Tensor, priors: torch.Tensor, variances: List[float]) -> torch.Tensor:
+def _decode(loc: torch.Tensor, priors: torch.Tensor, variances: list[float]) -> torch.Tensor:
     """Decode locations from predictions using priors to undo the encoding we did for offset regression at train
     time.
 
@@ -368,7 +368,7 @@ def _decode(loc: torch.Tensor, priors: torch.Tensor, variances: List[float]) -> 
 
 
 class _PriorBox:
-    def __init__(self, min_sizes: List[List[int]], steps: List[int], clip: bool, image_size: Tuple[int, int]) -> None:
+    def __init__(self, min_sizes: list[list[int]], steps: list[int], clip: bool, image_size: tuple[int, int]) -> None:
         self.min_sizes = min_sizes
         self.steps = steps
         self.clip = clip
@@ -395,9 +395,9 @@ class _PriorBox:
         return self
 
     def __call__(self) -> torch.Tensor:
-        anchors: List[float] = []
+        anchors: list[float] = []
         for k, f in enumerate(self.feature_maps):
-            min_sizes: List[int] = self.min_sizes[k]
+            min_sizes: list[int] = self.min_sizes[k]
             # NOTE: the nested loop it's to make torchscript happy
             for i in range(f[0]):
                 for j in range(f[1]):

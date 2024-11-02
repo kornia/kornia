@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, Optional, Tuple, Type, TypeVar
+from typing import Any, Callable, Optional, TypeVar
 
 import torch
 from torch.distributions import Distribution, Uniform
@@ -12,7 +12,7 @@ T = TypeVar("T")
 class _PostInitInjectionMetaClass(type):
     """To inject the ``__post_init__`` function after the creation of each instance."""
 
-    def __call__(cls: Type[T], *args: Any, **kwargs: Any) -> T:
+    def __call__(cls: type[T], *args: Any, **kwargs: Any) -> T:
         obj = type.__call__(cls, *args, **kwargs)
         obj.__post_init__()
         return obj
@@ -54,7 +54,7 @@ class RandomGeneratorBase(Module, metaclass=_PostInitInjectionMetaClass):
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         raise NotImplementedError
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, Tensor]:
         raise NotImplementedError
 
 
@@ -87,13 +87,13 @@ class DistributionWithMapper(Distribution):
         self.dist = dist
         self.map_fn = map_fn
 
-    def rsample(self, sample_shape: Tuple[int, ...]) -> Tensor:  # type: ignore[override]
+    def rsample(self, sample_shape: tuple[int, ...]) -> Tensor:  # type: ignore[override]
         out = self.dist.rsample(torch.Size(sample_shape))
         if self.map_fn is not None:
             out = self.map_fn(out)
         return out
 
-    def sample(self, sample_shape: Tuple[int, ...]) -> Tensor:  # type: ignore[override]
+    def sample(self, sample_shape: tuple[int, ...]) -> Tensor:  # type: ignore[override]
         out = self.dist.sample(torch.Size(sample_shape))
         if self.map_fn is not None:
             out = self.map_fn(out)

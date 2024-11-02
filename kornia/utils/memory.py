@@ -1,10 +1,10 @@
-from typing import Any, Dict
+from typing import Any
 
 from kornia.core import Device, Module, Tensor, concatenate
 
 
 def batched_forward(
-    model: Module, data: Tensor, device: Device, batch_size: int = 128, **kwargs: Dict[str, Any]
+    model: Module, data: Tensor, device: Device, batch_size: int = 128, **kwargs: dict[str, Any]
 ) -> Tensor:
     r"""Convenience function, which allows to run the forward in micro-batches.
 

@@ -1,6 +1,6 @@
 """Module containing functionals for intensity normalisation."""
 
-from typing import List, Tuple, Union
+from typing import Union
 
 import torch
 
@@ -42,8 +42,8 @@ class Normalize(Module):
 
     def __init__(
         self,
-        mean: Union[Tensor, Tuple[float], List[float], float],
-        std: Union[Tensor, Tuple[float], List[float], float],
+        mean: Union[Tensor, tuple[float], list[float], float],
+        std: Union[Tensor, tuple[float], list[float], float],
     ) -> None:
         super().__init__()
 

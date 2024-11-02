@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 from torch.distributions import Bernoulli, Beta, Uniform
@@ -36,7 +36,7 @@ class CutmixGenerator(RandomGeneratorBase):
 
     def __init__(
         self,
-        cut_size: Optional[Union[torch.Tensor, Tuple[float, float]]] = None,
+        cut_size: Optional[Union[torch.Tensor, tuple[float, float]]] = None,
         beta: Optional[Union[torch.Tensor, float]] = None,
         num_mix: int = 1,
         p: float = 1.0,
@@ -75,7 +75,7 @@ class CutmixGenerator(RandomGeneratorBase):
             tensor(0.0, device=device, dtype=dtype), tensor(1.0, device=device, dtype=dtype), validate_args=False
         )
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         height = batch_shape[-2]
         width = batch_shape[-1]

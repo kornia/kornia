@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 import torch
 
@@ -61,10 +61,10 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        gain: Optional[Union[float, Tuple[float, float]]] = (0.01, 0.15),
-        center: Optional[Union[float, Tuple[float, float]]] = (0.1, 0.9),
-        sigma: Optional[Union[float, Tuple[float, float]]] = (0.2, 1.0),
-        sign: Optional[Union[float, Tuple[float, float]]] = (-1.0, 1.0),
+        gain: Optional[Union[float, tuple[float, float]]] = (0.01, 0.15),
+        center: Optional[Union[float, tuple[float, float]]] = (0.1, 0.9),
+        sigma: Optional[Union[float, tuple[float, float]]] = (0.2, 1.0),
+        sign: Optional[Union[float, tuple[float, float]]] = (-1.0, 1.0),
         p: float = 0.5,
         same_on_batch: bool = False,
         keepdim: bool = False,
@@ -145,8 +145,8 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
 
         def _apply_transform(
             input: Tensor,
-            params: Dict[str, Tensor],
-            flags: Dict[str, Any],
+            params: dict[str, Tensor],
+            flags: dict[str, Any],
             transform: Optional[Tensor] = None,
         ) -> Tensor:
             return input.add_(params["gradient"]).clamp_(0, 1)
@@ -156,8 +156,8 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
     def apply_transform(
         self,
         input: Tensor,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any],
+        params: dict[str, Tensor],
+        flags: dict[str, Any],
         transform: Optional[Tensor] = None,
     ) -> Tensor:
         r"""Apply random gaussian gradient illumination to the input image."""
@@ -170,7 +170,7 @@ class RandomGaussianIllumination(IntensityAugmentationBase2D):
         dynamic: bool = False,
         backend: str = "inductor",
         mode: Optional[str] = None,
-        options: Optional[Dict[Any, Any]] = None,
+        options: Optional[dict[Any, Any]] = None,
         disable: bool = False,
     ) -> "RandomGaussianIllumination":
         self._fn = torch.compile(

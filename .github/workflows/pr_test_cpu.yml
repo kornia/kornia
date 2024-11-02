@@ -46,7 +46,7 @@ jobs:
     uses: kornia/workflows/.github/workflows/tests.yml@v1.12.1
     with:
       os: ${{ matrix.os }}
-      python-version: '["3.8", "3.12"]'
+      python-version: '["3.9", "3.12"]'
       pytorch-version: '["1.9.1", "2.4.0"]'
       pytorch-dtype: ${{ matrix.pytorch-dtype }}
       cache-path: weights/
@@ -60,7 +60,7 @@ jobs:
     uses: kornia/workflows/.github/workflows/tests.yml@v1.12.1
     with:
       os: 'MacOS-latest'
-      python-version: '["3.8", "3.12"]'
+      python-version: '["3.9", "3.12"]'
       pytorch-dtype: 'float32'
       cache-path: weights/
       cache-key: model-weights-${{ needs.pre-tests.outputs.hash }}

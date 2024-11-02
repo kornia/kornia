@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Optional
 
 import torch
 
@@ -49,14 +49,14 @@ class RandomThinPlateSpline(AugmentationBase2D):
         self.flags = {"align_corners": align_corners}
         self.dist = torch.distributions.Uniform(-scale, scale)
 
-    def generate_parameters(self, shape: Tuple[int, ...]) -> Dict[str, Tensor]:
+    def generate_parameters(self, shape: tuple[int, ...]) -> dict[str, Tensor]:
         B, _, _, _ = shape
         src = tensor([[[-1.0, -1.0], [-1.0, 1.0], [1.0, -1.0], [1.0, 1.0], [0.0, 0.0]]]).expand(B, 5, 2)  # Bx5x2
         dst = src + self.dist.rsample(src.shape)
         return {"src": src, "dst": dst}
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         src = params["src"].to(input)
         dst = params["dst"].to(input)

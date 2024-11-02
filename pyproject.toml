@@ -7,8 +7,10 @@ name = "kornia"
 description = "Open Source Differentiable Computer Vision Library for PyTorch"
 keywords = ["computer vision", "deep learning", "pytorch"]
 license = { text = "Apache-2.0" }
-authors = [{ name = "Edgar Riba", email = "edgar@kornia.org" }]
-requires-python = ">=3.8"
+authors = [
+  { name = "Edgar Riba", email = "edgar@kornia.org" },
+]
+requires-python = ">=3.9"
 classifiers = [
   "Development Status :: 4 - Beta",
   "Environment :: Console",
@@ -21,7 +23,6 @@ classifiers = [
   "Natural Language :: English",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.8",
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
@@ -66,7 +67,7 @@ kornia = ["py.typed"]
 universal = true
 
 [tool.ruff]
-target-version = "py38"
+target-version = "py39"
 line-length = 120
 
 [tool.ruff.format]
@@ -135,6 +136,7 @@ ignore = [
   "PLR0915", # Allow condition check in list comprehension
   "PLW2901", # Allow overwritten values on loops
   "UP007",   # Prefer Optional[], Union[] over | due to torch jit scripting
+  "UP006",   # Prefer List[], over list due to torch jit scripting
 ]
 
 [tool.ruff.lint.isort]

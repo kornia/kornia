@@ -1,4 +1,4 @@
-from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar
+from typing import Callable, Optional, TypeVar
 
 import torch
 from torch import nn
@@ -28,11 +28,11 @@ class OperationBase(Module):
     def __init__(
         self,
         operation: _AugmentationBase,
-        initial_magnitude: Optional[List[Tuple[str, Optional[float]]]] = None,
+        initial_magnitude: Optional[list[tuple[str, Optional[float]]]] = None,
         temperature: float = 0.1,
         is_batch_operation: bool = False,
         magnitude_fn: Optional[Callable[[Tensor], Tensor]] = None,
-        gradient_estimator: Optional[Type[Function]] = None,
+        gradient_estimator: Optional[type[Function]] = None,
         symmetric_megnitude: bool = False,
     ) -> None:
         super().__init__()
@@ -78,7 +78,7 @@ class OperationBase(Module):
 
         return magnitude_fn
 
-    def _init_magnitude(self, initial_magnitude: Optional[List[Tuple[str, Optional[float]]]]) -> None:
+    def _init_magnitude(self, initial_magnitude: Optional[list[tuple[str, Optional[float]]]]) -> None:
         if isinstance(initial_magnitude, (list, tuple)):
             if not all(isinstance(ini_mag, (list, tuple)) and len(ini_mag) == 2 for ini_mag in initial_magnitude):
                 raise ValueError(f"`initial_magnitude` shall be a list of 2-element tuples. Got {initial_magnitude}")
@@ -119,7 +119,7 @@ class OperationBase(Module):
     def eval(self: T) -> T:
         return self.train(False)
 
-    def forward_parameters(self, batch_shape: torch.Size, mag: Optional[Tensor] = None) -> Dict[str, Tensor]:
+    def forward_parameters(self, batch_shape: torch.Size, mag: Optional[Tensor] = None) -> dict[str, Tensor]:
         if mag is None:
             mag = self.magnitude
         # Need to setup the sampler again for each update.
@@ -138,7 +138,7 @@ class OperationBase(Module):
 
         return params
 
-    def forward(self, input: Tensor, params: Optional[Dict[str, Tensor]] = None) -> Tensor:
+    def forward(self, input: Tensor, params: Optional[dict[str, Tensor]] = None) -> Tensor:
         if params is None:
             params = self.forward_parameters(input.shape)
 

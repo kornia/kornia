@@ -1,4 +1,5 @@
-from typing import Iterator, List, Optional, Tuple
+from collections.abc import Iterator
+from typing import Optional
 
 import torch
 from torch.distributions import Categorical
@@ -9,7 +10,7 @@ from kornia.augmentation.auto.rand_augment import ops
 from kornia.augmentation.container.params import ParamItem
 from kornia.core import Module
 
-default_policy: List[SUBPOLICY_CONFIG] = [
+default_policy: list[SUBPOLICY_CONFIG] = [
     # [("identity", 0, 1)],
     [("auto_contrast", 0, 1)],
     [("equalize", 0, 1)],
@@ -49,7 +50,7 @@ class TrivialAugment(PolicyAugmentBase):
     """
 
     def __init__(
-        self, policy: Optional[List[SUBPOLICY_CONFIG]] = None, transformation_matrix_mode: str = "silent"
+        self, policy: Optional[list[SUBPOLICY_CONFIG]] = None, transformation_matrix_mode: str = "silent"
     ) -> None:
         if policy is None:
             _policy = default_policy
@@ -66,7 +67,7 @@ class TrivialAugment(PolicyAugmentBase):
         name, low, high = subpolicy[0]
         return PolicySequential(*[getattr(ops, name)(low, high)])
 
-    def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, Module]]:
+    def get_forward_sequence(self, params: Optional[list[ParamItem]] = None) -> Iterator[tuple[str, Module]]:
         if params is None:
             idx = self.rand_selector.sample((1,))
             return self.get_children_by_indices(idx)

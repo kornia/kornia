@@ -1,4 +1,4 @@
-from typing import Optional, Tuple
+from typing import Optional
 
 import torch
 from torch.linalg import qr as linalg_qr
@@ -11,7 +11,7 @@ from kornia.utils import eye_like
 from kornia.utils.helpers import _torch_linalg_svdvals, _torch_svd_cast
 
 
-def _mean_isotropic_scale_normalize(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Tensor, torch.Tensor]:
+def _mean_isotropic_scale_normalize(points: torch.Tensor, eps: float = 1e-8) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Normalizes points.
 
     Args:

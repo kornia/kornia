@@ -1,11 +1,11 @@
-from typing import Callable, Dict, List, Optional, Type
+from typing import Callable, Optional
 
 import torch
 from torch import nn
 
 from kornia.core import Module, Tensor, concatenate, stack
 
-urls: Dict[str, str] = {}
+urls: dict[str, str] = {}
 urls["defmo_encoder"] = "http://ptak.felk.cvut.cz/personal/rozumden/defmo_saved_models/encoder_best.pt"
 urls["defmo_rendering"] = "http://ptak.felk.cvut.cz/personal/rozumden/defmo_saved_models/rendering_best.pt"
 
@@ -94,13 +94,13 @@ class Bottleneck(Module):
 class ResNet(Module):
     def __init__(
         self,
-        block: Type[Bottleneck],
-        layers: List[int],
+        block: type[Bottleneck],
+        layers: list[int],
         num_classes: int = 1000,
         zero_init_residual: bool = False,
         groups: int = 1,
         width_per_group: int = 64,
-        replace_stride_with_dilation: Optional[List[bool]] = None,
+        replace_stride_with_dilation: Optional[list[bool]] = None,
         norm_layer: Optional[Callable[..., Module]] = None,
     ) -> None:
         super().__init__()
@@ -147,7 +147,7 @@ class ResNet(Module):
                     nn.init.constant_(m.bn3.weight, 0)
 
     def _make_layer(
-        self, block: Type[Bottleneck], planes: int, blocks: int, stride: int = 1, dilate: bool = False
+        self, block: type[Bottleneck], planes: int, blocks: int, stride: int = 1, dilate: bool = False
     ) -> nn.Sequential:
         norm_layer = self._norm_layer
         downsample = None

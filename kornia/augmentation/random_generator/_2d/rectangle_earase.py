@@ -1,4 +1,4 @@
-from typing import Dict, Tuple, Union
+from typing import Union
 
 import torch
 
@@ -34,8 +34,8 @@ class RectangleEraseGenerator(RandomGeneratorBase):
 
     def __init__(
         self,
-        scale: Union[Tensor, Tuple[float, float]] = (0.02, 0.33),
-        ratio: Union[Tensor, Tuple[float, float]] = (0.3, 3.3),
+        scale: Union[Tensor, tuple[float, float]] = (0.02, 0.33),
+        ratio: Union[Tensor, tuple[float, float]] = (0.3, 3.3),
         value: float = 0.0,
     ) -> None:
         super().__init__()
@@ -70,7 +70,7 @@ class RectangleEraseGenerator(RandomGeneratorBase):
             tensor(0, device=device, dtype=dtype), tensor(1, device=device, dtype=dtype), validate_args=False
         )
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, Tensor]:
         batch_size = batch_shape[0]
         height = batch_shape[-2]
         width = batch_shape[-1]

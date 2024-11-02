@@ -1,4 +1,4 @@
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 import torch
 
@@ -20,7 +20,7 @@ class SuperResolution(ModelBase):
     pseudo_image_size: Optional[int]
 
     @torch.inference_mode()
-    def forward(self, images: Union[Tensor, List[Tensor]]) -> Union[Tensor, List[Tensor]]:
+    def forward(self, images: Union[Tensor, list[Tensor]]) -> Union[Tensor, list[Tensor]]:
         """Forward pass of the super resolution model.
 
         Args:
@@ -49,10 +49,10 @@ class SuperResolution(ModelBase):
 
     def visualize(
         self,
-        images: Union[Tensor, List[Tensor]],
-        edge_maps: Optional[Union[Tensor, List[Tensor]]] = None,
+        images: Union[Tensor, list[Tensor]],
+        edge_maps: Optional[Union[Tensor, list[Tensor]]] = None,
         output_type: str = "torch",
-    ) -> Union[Tensor, List[Tensor], List["Image.Image"]]:  # type: ignore
+    ) -> Union[Tensor, list[Tensor], list["Image.Image"]]:  # type: ignore
         """Draw the super resolution results.
 
         Args:
@@ -72,8 +72,8 @@ class SuperResolution(ModelBase):
 
     def save(
         self,
-        images: Union[Tensor, List[Tensor]],
-        edge_maps: Optional[Union[Tensor, List[Tensor]]] = None,
+        images: Union[Tensor, list[Tensor]],
+        edge_maps: Optional[Union[Tensor, list[Tensor]]] = None,
         directory: Optional[str] = None,
         output_type: str = "torch",
     ) -> None:
@@ -95,7 +95,7 @@ class SuperResolution(ModelBase):
         onnx_name: Optional[str] = None,
         include_pre_and_post_processor: bool = True,
         save: bool = True,
-        additional_metadata: List[Tuple[str, str]] = [],
+        additional_metadata: list[tuple[str, str]] = [],
         **kwargs: Any,
     ) -> "onnx.ModelProto":  # type: ignore
         """Exports the current super resolution model to an ONNX model file.

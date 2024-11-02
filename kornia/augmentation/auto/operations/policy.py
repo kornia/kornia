@@ -1,4 +1,5 @@
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
+from collections.abc import Iterator
+from typing import Any, Optional, Union, cast
 
 from torch import Size
 
@@ -22,7 +23,7 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
     def __init__(self, *operations: OperationBase) -> None:
         self.validate_operations(*operations)
         super().__init__(*operations)
-        self._valid_ops_for_transform_computation: Tuple[Any, ...] = (OperationBase,)
+        self._valid_ops_for_transform_computation: tuple[Any, ...] = (OperationBase,)
 
     def _update_transform_matrix_for_valid_op(self, module: Module) -> None:
         self._transform_matrices.append(module.transform_matrix)
@@ -32,7 +33,7 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
         return super().clear_state()
 
     def validate_operations(self, *operations: OperationBase) -> None:
-        invalid_ops: List[OperationBase] = []
+        invalid_ops: list[OperationBase] = []
         for op in operations:
             if not isinstance(op, OperationBase):
                 invalid_ops.append(op)
@@ -46,9 +47,9 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
     def get_transformation_matrix(
         self,
         input: Tensor,
-        params: Optional[List[ParamItem]] = None,
+        params: Optional[list[ParamItem]] = None,
         recompute: bool = False,
-        extra_args: Dict[str, Any] = {},
+        extra_args: dict[str, Any] = {},
     ) -> Tensor:
         """Compute the transformation matrix according to the provided parameters.
 
@@ -60,7 +61,7 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
         """
         if params is None:
             raise NotImplementedError("requires params to be provided.")
-        named_modules: Iterator[Tuple[str, Module]] = self.get_forward_sequence(params)
+        named_modules: Iterator[tuple[str, Module]] = self.get_forward_sequence(params)
 
         # Define as 1 for broadcasting
         res_mat: Tensor = self.identity_matrix(_transform_input(input))
@@ -90,16 +91,16 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
                 return False
         return True
 
-    def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, Module]]:
+    def get_forward_sequence(self, params: Optional[list[ParamItem]] = None) -> Iterator[tuple[str, Module]]:
         if params is not None:
             return super().get_children_by_params(params)
         return self.named_children()
 
-    def forward_parameters(self, batch_shape: Size) -> List[ParamItem]:
-        named_modules: Iterator[Tuple[str, Module]] = self.get_forward_sequence()
+    def forward_parameters(self, batch_shape: Size) -> list[ParamItem]:
+        named_modules: Iterator[tuple[str, Module]] = self.get_forward_sequence()
 
-        params: List[ParamItem] = []
-        mod_param: Union[Dict[str, Tensor], List[ParamItem]]
+        params: list[ParamItem] = []
+        mod_param: Union[dict[str, Tensor], list[ParamItem]]
         for name, module in named_modules:
             module = cast(OperationBase, module)
             mod_param = module.op.forward_parameters(batch_shape)
@@ -107,7 +108,7 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
             params.append(param)
         return params
 
-    def transform_inputs(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
+    def transform_inputs(self, input: Tensor, params: list[ParamItem], extra_args: dict[str, Any] = {}) -> Tensor:
         for param in params:
             module = self.get_submodule(param.name)
             input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)

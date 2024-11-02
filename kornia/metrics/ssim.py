@@ -1,5 +1,3 @@
-from typing import List
-
 import torch
 from torch import nn
 
@@ -7,7 +5,7 @@ from kornia.filters import filter2d_separable, get_gaussian_kernel1d
 from kornia.filters.filter import _compute_padding
 
 
-def _crop(img: torch.Tensor, cropping_shape: List[int]) -> torch.Tensor:
+def _crop(img: torch.Tensor, cropping_shape: list[int]) -> torch.Tensor:
     """Crop out the part of "valid" convolution area."""
     return torch.nn.functional.pad(
         img, (-cropping_shape[2], -cropping_shape[3], -cropping_shape[0], -cropping_shape[1])
@@ -85,7 +83,7 @@ def ssim(
     mu1: torch.Tensor = filter2d_separable(img1, kernel, kernel)
     mu2: torch.Tensor = filter2d_separable(img2, kernel, kernel)
 
-    cropping_shape: List[int] = []
+    cropping_shape: list[int] = []
     if padding == "valid":
         height = width = kernel.shape[-1]
         cropping_shape = _compute_padding([height, width])

@@ -1,4 +1,5 @@
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
+from collections.abc import Iterator
+from typing import Any, Optional, Union, cast
 
 import torch
 
@@ -100,8 +101,8 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         *args: Module,
         same_on_batch: Optional[bool] = None,
         keepdim: Optional[bool] = None,
-        random_apply: Union[int, bool, Tuple[int, int]] = False,
-        random_apply_weights: Optional[List[float]] = None,
+        random_apply: Union[int, bool, tuple[int, int]] = False,
+        random_apply_weights: Optional[list[float]] = None,
         if_unsupported_ops: str = "raise",
         disable_item_features: bool = True,
         disable_sequential_features: bool = False,
@@ -122,8 +123,8 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         self.if_unsupported_ops = if_unsupported_ops
 
     def _read_random_apply(
-        self, random_apply: Union[int, bool, Tuple[int, int]], max_length: int
-    ) -> Union[Tuple[int, int], bool]:
+        self, random_apply: Union[int, bool, tuple[int, int]], max_length: int
+    ) -> Union[tuple[int, int], bool]:
         """Process the scenarios for random apply."""
         if isinstance(random_apply, (bool,)) and random_apply is False:
             random_apply = False
@@ -151,7 +152,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
             raise AssertionError(f"Expect a tuple of (int, int). Got {random_apply}.")
         return random_apply
 
-    def get_random_forward_sequence(self, with_mix: bool = True) -> Tuple[Iterator[Tuple[str, Module]], bool]:
+    def get_random_forward_sequence(self, with_mix: bool = True) -> tuple[Iterator[tuple[str, Module]], bool]:
         """Get a forward sequence when random apply is in need.
 
         Args:
@@ -187,7 +188,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
 
         return self.get_children_by_indices(indices), mix_added
 
-    def get_mix_augmentation_indices(self, named_modules: Iterator[Tuple[str, Module]]) -> List[int]:
+    def get_mix_augmentation_indices(self, named_modules: Iterator[tuple[str, Module]]) -> list[int]:
         """Get all the mix augmentations since they are label-involved.
 
         Special operations needed for label-involved augmentations.
@@ -195,7 +196,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         # NOTE: MixV2 will not be a special op in the future.
         return [idx for idx, (_, child) in enumerate(named_modules) if isinstance(child, K.MixAugmentationBaseV2)]
 
-    def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, Module]]:
+    def get_forward_sequence(self, params: Optional[list[ParamItem]] = None) -> Iterator[tuple[str, Module]]:
         if params is None:
             # Mix augmentation can only be applied once per forward
             mix_indices = self.get_mix_augmentation_indices(self.named_children())
@@ -213,11 +214,11 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
 
         return self.get_children_by_params(params)
 
-    def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
-        named_modules: Iterator[Tuple[str, Module]] = self.get_forward_sequence()
+    def forward_parameters(self, batch_shape: torch.Size) -> list[ParamItem]:
+        named_modules: Iterator[tuple[str, Module]] = self.get_forward_sequence()
 
-        params: List[ParamItem] = []
-        mod_param: Union[Dict[str, Tensor], List[ParamItem]]
+        params: list[ParamItem] = []
+        mod_param: Union[dict[str, Tensor], list[ParamItem]]
         for name, module in named_modules:
             if isinstance(module, (_AugmentationBase, K.MixAugmentationBaseV2, ImageSequentialBase)):
                 mod_param = module.forward_parameters(batch_shape)
@@ -235,9 +236,9 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
     def get_transformation_matrix(
         self,
         input: Tensor,
-        params: Optional[List[ParamItem]] = None,
+        params: Optional[list[ParamItem]] = None,
         recompute: bool = False,
-        extra_args: Dict[str, Any] = {},
+        extra_args: dict[str, Any] = {},
     ) -> Optional[Tensor]:
         """Compute the transformation matrix according to the provided parameters.
 
@@ -249,7 +250,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         """
         if params is None:
             raise NotImplementedError("requires params to be provided.")
-        named_modules: Iterator[Tuple[str, Module]] = self.get_forward_sequence(params)
+        named_modules: Iterator[tuple[str, Module]] = self.get_forward_sequence(params)
 
         # Define as 1 for broadcasting
         res_mat: Optional[Tensor] = None
@@ -278,7 +279,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
                 if isinstance(module, (K.AugmentationSequential,)) and not recompute:
                     mat = as_tensor(module._transform_matrix, device=input.device, dtype=input.dtype)
                 else:
-                    maybe_param_data = cast(Optional[List[ParamItem]], param.data)
+                    maybe_param_data = cast(Optional[list[ParamItem]], param.data)
                     _mat = module.get_transformation_matrix(
                         input, maybe_param_data, recompute=recompute, extra_args=extra_args
                     )
@@ -313,7 +314,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
     def __call__(
         self,
         *inputs: Any,
-        input_names_to_handle: Optional[List[Any]] = None,
+        input_names_to_handle: Optional[list[Any]] = None,
         output_type: str = "tensor",
         **kwargs: Any,
     ) -> Any:

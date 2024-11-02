@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 from torch import Tensor
@@ -252,7 +252,7 @@ def draw_rectangle(
     return image
 
 
-def _get_convex_edges(polygon: Tensor, h: int, w: int) -> Tuple[Tensor, Tensor]:
+def _get_convex_edges(polygon: Tensor, h: int, w: int) -> tuple[Tensor, Tensor]:
     r"""Gets the left and right edges of a polygon for each y-coordinate y \in [0, h)
     Args:
         polygons: represents polygons to draw in BxNx2
@@ -292,7 +292,7 @@ def _get_convex_edges(polygon: Tensor, h: int, w: int) -> Tuple[Tensor, Tensor]:
     return x_left, x_right
 
 
-def _batch_polygons(polygons: List[Tensor]) -> Tensor:
+def _batch_polygons(polygons: list[Tensor]) -> Tensor:
     r"""Converts a List of variable length polygons into a fixed size tensor.
 
     Works by repeating the last element in the tensor.
@@ -311,7 +311,7 @@ def _batch_polygons(polygons: List[Tensor]) -> Tensor:
     return batched_polygons
 
 
-def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], colors: Tensor) -> Tensor:
+def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, list[Tensor]], colors: Tensor) -> Tensor:
     r"""Draws convex polygons on a batch of image tensors.
 
     Args:
@@ -338,7 +338,7 @@ def draw_convex_polygon(images: Tensor, polygons: Union[Tensor, List[Tensor]], c
     # TODO: implement optional linetypes for smooth edges
     KORNIA_CHECK_SHAPE(images, ["B", "C", "H", "W"])
     b_i, c_i, h_i, w_i, device = *images.shape, images.device
-    if isinstance(polygons, List):
+    if isinstance(polygons, list):
         polygons = _batch_polygons(polygons)
     b_p, _, xy, device_p, dtype_p = *polygons.shape, polygons.device, polygons.dtype
     if len(colors.shape) == 1:

@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple
+from typing import Optional
 
 import torch
 
@@ -80,7 +80,7 @@ class ImageStitcher(Module):
             raise NotImplementedError(f"Unsupported blending method {self.blending_method}. Use `naive`.")
         return out
 
-    def preprocess(self, image_1: Tensor, image_2: Tensor) -> Dict[str, Tensor]:
+    def preprocess(self, image_1: Tensor, image_2: Tensor) -> dict[str, Tensor]:
         """Preprocess input to the required format."""
         # TODO: probably perform histogram matching here.
         if isinstance(self.matcher, (LoFTR, LocalFeatureMatcher)):
@@ -100,7 +100,7 @@ class ImageStitcher(Module):
             return image
         return image[..., :index]
 
-    def on_matcher(self, data: Dict[str, Tensor]) -> Dict[str, Tensor]:
+    def on_matcher(self, data: dict[str, Tensor]) -> dict[str, Tensor]:
         return self.matcher(data)
 
     def stitch_pair(
@@ -109,7 +109,7 @@ class ImageStitcher(Module):
         images_right: Tensor,
         mask_left: Optional[Tensor] = None,
         mask_right: Optional[Tensor] = None,
-    ) -> Tuple[Tensor, Tensor]:
+    ) -> tuple[Tensor, Tensor]:
         # Compute the transformed images
         input_dict = self.preprocess(images_left, images_right)
         out_shape = (images_left.shape[-2], images_left.shape[-1] + images_right.shape[-1])

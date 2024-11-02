@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.random_generator._2d import LinearCornerIlluminationGenerator, LinearIlluminationGenerator
@@ -55,8 +55,8 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        gain: Optional[Union[float, Tuple[float, float]]] = (0.01, 0.2),
-        sign: Optional[Union[float, Tuple[float, float]]] = (-1.0, 1.0),
+        gain: Optional[Union[float, tuple[float, float]]] = (0.01, 0.2),
+        sign: Optional[Union[float, tuple[float, float]]] = (-1.0, 1.0),
         p: float = 0.5,
         same_on_batch: bool = False,
         keepdim: bool = False,
@@ -104,8 +104,8 @@ class RandomLinearIllumination(IntensityAugmentationBase2D):
     def apply_transform(
         self,
         input: Tensor,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any],
+        params: dict[str, Tensor],
+        flags: dict[str, Any],
         transform: Optional[Tensor] = None,
     ) -> Tensor:
         r"""Apply random gaussian gradient illumination to the input image."""
@@ -162,8 +162,8 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        gain: Optional[Union[float, Tuple[float, float]]] = (0.01, 0.2),
-        sign: Optional[Union[float, Tuple[float, float]]] = (-1.0, 1.0),
+        gain: Optional[Union[float, tuple[float, float]]] = (0.01, 0.2),
+        sign: Optional[Union[float, tuple[float, float]]] = (-1.0, 1.0),
         p: float = 0.5,
         same_on_batch: bool = False,
         keepdim: bool = False,
@@ -211,8 +211,8 @@ class RandomLinearCornerIllumination(IntensityAugmentationBase2D):
     def apply_transform(
         self,
         input: Tensor,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any],
+        params: dict[str, Tensor],
+        flags: dict[str, Any],
         transform: Optional[Tensor] = None,
     ) -> Tensor:
         r"""Apply random gaussian gradient illumination to the input image."""

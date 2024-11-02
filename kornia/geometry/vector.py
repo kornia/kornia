@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Union, cast
+from typing import Optional, Union, cast
 
 from kornia.core import Device, Dtype, Tensor, as_tensor, normalize, rand, stack
 from kornia.core.check import KORNIA_CHECK
@@ -48,7 +48,7 @@ class Vector3(TensorWrapper):
 
     @classmethod
     def random(
-        cls, shape: Optional[Tuple[int, ...]] = None, device: Optional[Device] = None, dtype: Dtype = None
+        cls, shape: Optional[tuple[int, ...]] = None, device: Optional[Device] = None, dtype: Dtype = None
     ) -> "Vector3":
         if shape is None:
             shape = ()
@@ -88,7 +88,7 @@ class Vector3(TensorWrapper):
         if isinstance(x, float):
             return wrap(as_tensor((x, y, z), device=device, dtype=dtype), Vector3)
         # TODO: this is totally insane ...
-        tensors: Tuple[Tensor, ...] = (x, cast(Tensor, y), cast(Tensor, z))
+        tensors: tuple[Tensor, ...] = (x, cast(Tensor, y), cast(Tensor, z))
         return wrap(stack(tensors, -1), Vector3)
 
 
@@ -121,7 +121,7 @@ class Vector2(TensorWrapper):
         return Scalar(batched_squared_norm(self.data))
 
     @classmethod
-    def random(cls, shape: Optional[Tuple[int, ...]] = None, device: Device = None, dtype: Dtype = None) -> "Vector2":
+    def random(cls, shape: Optional[tuple[int, ...]] = None, device: Device = None, dtype: Dtype = None) -> "Vector2":
         if shape is None:
             shape = ()
         return cls(rand((*shape, 2), device=device, dtype=dtype))
@@ -135,7 +135,7 @@ class Vector2(TensorWrapper):
         if isinstance(x, float):
             return wrap(as_tensor((x, y), device=device, dtype=dtype), Vector2)
         # TODO: this is totally insane ...
-        tensors: Tuple[Tensor, ...] = (x, cast(Tensor, y))
+        tensors: tuple[Tensor, ...] = (x, cast(Tensor, y))
         return wrap(stack(tensors, -1), Vector2)
 
 

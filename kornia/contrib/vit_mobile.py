@@ -1,4 +1,4 @@
-from typing import Any, Dict, Tuple
+from typing import Any
 
 import torch
 from torch import nn
@@ -20,7 +20,7 @@ class PreNorm(Module):
         self.norm = nn.LayerNorm(dim)
         self.fn = fn
 
-    def forward(self, x: Tensor, **kwargs: Dict[str, Any]) -> Tensor:
+    def forward(self, x: Tensor, **kwargs: dict[str, Any]) -> Tensor:
         return self.fn(self.norm(x), **kwargs)
 
 
@@ -168,7 +168,7 @@ class MobileViTBlock(Module):
         depth: int,
         channel: int,
         kernel_size: int,
-        patch_size: Tuple[int, int],
+        patch_size: tuple[int, int],
         mlp_dim: int,
         dropout: float = 0.0,
     ) -> None:
@@ -233,7 +233,7 @@ class MobileViT(Module):
     """
 
     def __init__(
-        self, mode: str = "xxs", in_channels: int = 3, patch_size: Tuple[int, int] = (2, 2), dropout: float = 0.0
+        self, mode: str = "xxs", in_channels: int = 3, patch_size: tuple[int, int] = (2, 2), dropout: float = 0.0
     ) -> None:
         super().__init__()
         if mode == "xxs":

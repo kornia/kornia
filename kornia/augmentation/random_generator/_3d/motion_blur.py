@@ -1,4 +1,4 @@
-from typing import Dict, Tuple, Union
+from typing import Union
 
 import torch
 
@@ -38,14 +38,14 @@ class MotionBlurGenerator3D(RandomGeneratorBase):
 
     def __init__(
         self,
-        kernel_size: Union[int, Tuple[int, int]],
+        kernel_size: Union[int, tuple[int, int]],
         angle: Union[
             Tensor,
             float,
-            Tuple[float, float, float],
-            Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]],
+            tuple[float, float, float],
+            tuple[tuple[float, float], tuple[float, float], tuple[float, float]],
         ],
-        direction: Union[Tensor, float, Tuple[float, float]],
+        direction: Union[Tensor, float, tuple[float, float]],
     ) -> None:
         super().__init__()
         self.kernel_size = kernel_size
@@ -78,7 +78,7 @@ class MotionBlurGenerator3D(RandomGeneratorBase):
         self.roll_sampler = UniformDistribution(angle[2][0], angle[2][1], validate_args=False)
         self.direction_sampler = UniformDistribution(direction[0], direction[1], validate_args=False)
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
+    def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         # self.ksize_factor.expand((batch_size, -1))

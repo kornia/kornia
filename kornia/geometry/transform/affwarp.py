@@ -1,5 +1,5 @@
 import warnings
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 
@@ -510,7 +510,7 @@ def shear(
     return affine(tensor, shear_matrix[..., :2, :3], mode, padding_mode, align_corners)
 
 
-def _side_to_image_size(side_size: int, aspect_ratio: float, side: str = "short") -> Tuple[int, int]:
+def _side_to_image_size(side_size: int, aspect_ratio: float, side: str = "short") -> tuple[int, int]:
     if side not in ("short", "long", "vert", "horz"):
         raise ValueError(f"side can be one of 'short', 'long', 'vert', and 'horz'. Got '{side}'")
     if side == "vert":
@@ -525,7 +525,7 @@ def _side_to_image_size(side_size: int, aspect_ratio: float, side: str = "short"
 @perform_keep_shape_image
 def resize(
     input: Tensor,
-    size: Union[int, Tuple[int, int]],
+    size: Union[int, tuple[int, int]],
     interpolation: str = "bilinear",
     align_corners: Optional[bool] = None,
     side: str = "short",
@@ -641,7 +641,7 @@ def resize_to_be_divisible(
 
 def rescale(
     input: Tensor,
-    factor: Union[float, Tuple[float, float]],
+    factor: Union[float, tuple[float, float]],
     interpolation: str = "bilinear",
     align_corners: Optional[bool] = None,
     antialias: bool = False,
@@ -713,14 +713,14 @@ class Resize(Module):
 
     def __init__(
         self,
-        size: Union[int, Tuple[int, int]],
+        size: Union[int, tuple[int, int]],
         interpolation: str = "bilinear",
         align_corners: Optional[bool] = None,
         side: str = "short",
         antialias: bool = False,
     ) -> None:
         super().__init__()
-        self.size: Union[int, Tuple[int, int]] = size
+        self.size: Union[int, tuple[int, int]] = size
         self.interpolation: str = interpolation
         self.align_corners: Optional[bool] = align_corners
         self.side: str = side
@@ -859,13 +859,13 @@ class Rescale(Module):
 
     def __init__(
         self,
-        factor: Union[float, Tuple[float, float]],
+        factor: Union[float, tuple[float, float]],
         interpolation: str = "bilinear",
         align_corners: bool = True,
         antialias: bool = False,
     ) -> None:
         super().__init__()
-        self.factor: Union[float, Tuple[float, float]] = factor
+        self.factor: Union[float, tuple[float, float]] = factor
         self.interpolation: str = interpolation
         self.align_corners: Optional[bool] = align_corners
         self.antialias: bool = antialias
