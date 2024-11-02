@@ -699,13 +699,13 @@ class TestRandomRotationAlternative(CommonTests):
 
 
 class TestRandomRotation90(CommonTests):
-    possible_params: Dict["str", Tuple] = {
+    possible_params: dict["str", Tuple] = {
         "times": ((-3, 3), (1, 1)),
         "resample": (0, Resample.BILINEAR.name, Resample.BILINEAR),
         "align_corners": (False, True),
     }
     _augmentation_cls = RandomRotation90
-    _default_param_set: Dict["str", Any] = {
+    _default_param_set: dict["str", Any] = {
         "times": (-3, 3),
         "align_corners": True,
     }
@@ -776,10 +776,10 @@ class TestRandomRotation90(CommonTests):
 
 
 class TestRandomGrayscaleAlternative(CommonTests):
-    possible_params: Dict["str", Tuple] = {}
+    possible_params: dict["str", Tuple] = {}
 
     _augmentation_cls = RandomGrayscale
-    _default_param_set: Dict["str", Any] = {}
+    _default_param_set: dict["str", Any] = {}
 
     @pytest.fixture(params=[_default_param_set], scope="class")
     def param_set(self, request):
