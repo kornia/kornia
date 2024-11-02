@@ -13,11 +13,6 @@ repos:
       - id: requirements-txt-fixer
       - id: pretty-format-json
         exclude: ^$|.devcontainer
-  # TODO: enable pyproject-fmt again if it's not breaking the build
-  #- repo: https://github.com/tox-dev/pyproject-fmt
-  #  rev: "2.4.3"
-  #  hooks:
-  #    - id: pyproject-fmt
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.7.0
