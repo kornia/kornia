@@ -1,17 +1,11 @@
 [build-system]
 build-backend = "setuptools.build_meta"
-requires = [
-  "setuptools>=61.2",
-]
+requires = ["setuptools>=61.2"]
 
 [project]
 name = "kornia"
 description = "Open Source Differentiable Computer Vision Library for PyTorch"
-keywords = [
-  "computer vision",
-  "deep learning",
-  "pytorch",
-]
+keywords = ["computer vision", "deep learning", "pytorch"]
 license = { text = "Apache-2.0" }
 authors = [
   { name = "Edgar Riba", email = "edgar@kornia.org" },
@@ -37,70 +31,50 @@ classifiers = [
   "Topic :: Scientific/Engineering :: Image Processing",
   "Topic :: Software Development :: Libraries",
 ]
-dynamic = [
-  "dependencies",
-  "optional-dependencies",
-  "readme",
-  "version",
-]
+dynamic = ["dependencies", "optional-dependencies", "readme", "version"]
 
-urls."Bug Tracker" = "https://github.com/kornia/kornia/issues"
-
-urls.Documentation = "https://kornia.readthedocs.io/en/latest"
-
-urls.Download = "https://github.com/kornia/kornia"
-
-urls.Homepage = "https://kornia.github.io/"
-
-urls."Source Code" = "https://github.com/kornia/kornia"
+[project.urls]
+"Bug Tracker" = "https://github.com/kornia/kornia/issues"
+Documentation = "https://kornia.readthedocs.io/en/latest"
+Download = "https://github.com/kornia/kornia"
+Issues = "https://github.com/kornia/kornia/issues"
+Homepage = "https://kornia.github.io/"
+"Source Code" = "https://github.com/kornia/kornia"
 
 [tool.setuptools]
 zip-safe = true
-license-files = [
-  "LICENSE",
-]
+license-files = ["LICENSE"]
 include-package-data = false
 
 [tool.setuptools.dynamic]
-dependencies = { file = [
-  "requirements/requirements.txt",
-] }
+dependencies = { file = ["requirements/requirements.txt"] }
 version = { attr = "kornia.__version__" }
-readme = { file = [
-  "README.md",
-], content-type = "text/markdown" }
+readme = { file = ["README.md"], content-type = "text/markdown" }
 
 [tool.setuptools.dynamic.optional-dependencies]
 dev = { file = "requirements/requirements-dev.txt" }
-docs = { file = [
-  "requirements/requirements-docs.txt",
-] }
-x = { file = [
-  "requirements/requirements-x.txt",
-] }
+docs = { file = ["requirements/requirements-docs.txt"] }
+x = { file = ["requirements/requirements-x.txt"] }
 
 [tool.setuptools.packages.find]
-exclude = [
-  "docs*",
-  "test*",
-  "examples*",
-]
+exclude = ["docs*", "test*", "examples*"]
 namespaces = false
 
 [tool.setuptools.package-data]
-kornia = [
-  "py.typed",
-]
+kornia = ["py.typed"]
 
 [tool.distutils.bdist_wheel]
 universal = true
 
 [tool.ruff]
 target-version = "py39"
-
 line-length = 120
-format.skip-magic-trailing-comma = false
-lint.select = [
+
+[tool.ruff.format]
+skip-magic-trailing-comma = false
+
+[tool.ruff.lint]
+select = [
   "AIR",   # Airflow
   "ASYNC", # flake8-async
   "BLE",   # flake8-blind-except
@@ -158,71 +132,59 @@ lint.select = [
   # "TD",   # flake8-todos
   # "TRY",  # tryceratops
 ]
-lint.ignore = [
+ignore = [
   "PLR0915", # Allow condition check in list comprehension
   "PLW2901", # Allow overwritten values on loops
   "UP007",   # Prefer Optional[], Union[] over | due to torch jit scripting
   "UP006",   # Prefer List[], over list due to torch jit scripting
 ]
 
-lint.per-file-ignores."*/__init__.py" = [
-  "F401",
-  "F403",
-] # Allow unused imports and star imports
-lint.per-file-ignores."benchmarks/*" = [
+[tool.ruff.lint.isort]
+forced-separate = ["testing", "tests"]
+known-first-party = ["kornia"]
+split-on-trailing-comma = true
+
+[tool.ruff.lint.mccabe]
+max-complexity = 20
+
+[tool.ruff.lint.pylint]
+allow-magic-value-types = ["bytes", "float", "int", "str"]
+max-args = 30                                              # Recommended: 5
+max-branches = 21                                          # Recommended: 12
+max-returns = 13                                           # Recommended: 6
+max-statements = 64                                        # Recommended: 50
+
+[tool.ruff.lint.per-file-ignores]
+"*/__init__.py" = ["F401", "F403"] # Allow unused imports and star imports
+"benchmarks/*" = [
   "BLE",
   "RUF005",
   "RUF012",
   "S101",
   "S311",
 ] # allow assert, random, ignore BLE, mutable class attr
-lint.per-file-ignores."docs/*" = [
+"docs/*" = [
   "PLR0912",
   "PLR0915",
   "S101",
 ] # allow assert, ignore max branches and statements
-lint.per-file-ignores."docs/generate_examples.py" = [
-  "C901",
-] # Allow too complex function
-lint.per-file-ignores."kornia/__init__.py" = [
-  "I001",
-] # Allow unsorted imports
-lint.per-file-ignores."kornia/feature/dedode/*" = [
+"docs/generate_examples.py" = ["C901"] # Allow too complex function
+"kornia/__init__.py" = ["I001"] # Allow unsorted imports
+"kornia/feature/dedode/*" = [
   "C408",
   "F401",
   "F841",
   "FLY002",
   "PLR1714",
 ] # allow DINOv2 things
-lint.per-file-ignores."testing/*" = [
-  "S101",
-] # allow assert
-lint.per-file-ignores."tests/*" = [
+"testing/*" = ["S101"] # allow assert
+"tests/*" = [
   "BLE",
   "RUF005",
   "RUF012",
   "S101",
   "S311",
 ] # allow assert, random, ignore BLE, mutable class attr
-lint.isort.forced-separate = [
-  "testing",
-  "tests",
-]
-lint.isort.known-first-party = [
-  "kornia",
-]
-lint.isort.split-on-trailing-comma = true
-lint.mccabe.max-complexity = 20
-lint.pylint.allow-magic-value-types = [
-  "bytes",
-  "float",
-  "int",
-  "str",
-]
-lint.pylint.max-args = 30 # Recommended: 5
-lint.pylint.max-branches = 21 # Recommended: 12
-lint.pylint.max-returns = 13 # Recommended: 6
-lint.pylint.max-statements = 64 # Recommended: 50
 
 [tool.pytest.ini_options]
 addopts = "--color=yes"
@@ -235,13 +197,8 @@ markers = [
 
 [tool.coverage.run]
 branch = true
-source = [
-  'kornia/',
-]
-omit = [
-  '*/__main__.py',
-  '*/setup.py',
-]
+source = ['kornia/']
+omit = ['*/__main__.py', '*/setup.py']
 
 [tool.coverage.report]
 show_missing = true
@@ -280,9 +237,7 @@ check_untyped_defs = true
 disallow_any_generics = true
 disallow_incomplete_defs = true
 disallow_untyped_defs = true
-files = [
-  "kornia/",
-]
+files = ["kornia/"]
 ignore_missing_imports = true
 no_implicit_optional = true
 pretty = true
@@ -295,13 +250,5 @@ module = "kornia.feature.dedode.transformer.*"
 ignore_errors = true
 
 [tool.pydocstyle]
-ignore = [
-  'D105',
-  'D107',
-  'D203',
-  'D204',
-  'D213',
-  'D406',
-  'D407',
-]
+ignore = ['D105', 'D107', 'D203', 'D204', 'D213', 'D406', 'D407']
 match = '.*\.py'
