@@ -778,7 +778,6 @@ class TestRandomRotation90(CommonTests):
 class TestRandomGrayscaleAlternative(CommonTests):
     possible_params: dict["str", tuple] = {}
 
-
     _augmentation_cls = RandomGrayscale
     _default_param_set: dict["str", Any] = {}
 
