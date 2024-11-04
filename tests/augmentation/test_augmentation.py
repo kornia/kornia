@@ -49,6 +49,7 @@ from kornia.augmentation import (
     RandomResizedCrop,
     RandomRGBShift,
     RandomRotation,
+    RandomRotation90,
     RandomSaltAndPepperNoise,
     RandomSaturation,
     RandomSnow,
@@ -695,6 +696,83 @@ class TestRandomRotationAlternative(CommonTests):
             self._create_augmentation_from_params(degrees=(-360.0, 361.0))
         with pytest.raises(ValueError):
             self._create_augmentation_from_params(degrees=(360.0, -360.0))
+
+
+class TestRandomRotation90(CommonTests):
+    possible_params: dict["str", tuple] = {
+        "times": ((-3, 3), (1, 1)),
+        "resample": (0, Resample.BILINEAR.name, Resample.BILINEAR),
+        "align_corners": (False, True),
+    }
+    _augmentation_cls = RandomRotation90
+    _default_param_set: dict["str", Any] = {
+        "times": (-3, 3),
+        "align_corners": True,
+    }
+
+    @pytest.fixture(params=[_default_param_set], scope="class")
+    def param_set(self, request):
+        return request.param
+
+    @pytest.mark.parametrize(
+        "input_shape,expected_output_shape",
+        [((3, 4, 5), (1, 3, 4, 5)), ((2, 3, 4, 5), (2, 3, 4, 5))],
+    )
+    def test_cardinality(self, input_shape, expected_output_shape):
+        self._test_cardinality_implementation(
+            input_shape=input_shape,
+            expected_output_shape=expected_output_shape,
+            params=self._default_param_set,
+        )
+
+    def test_random_p_1(self):
+        torch.manual_seed(42)
+
+        input_tensor = torch.tensor(
+            [[[0.1, 0.2, 0.3], [0.4, 0.5, 0.6], [0.7, 0.8, 0.9]]],
+            device=self.device,
+            dtype=self.dtype,
+        )
+        expected_output = torch.tensor(
+            [[[[0.3, 0.6, 0.9], [0.2, 0.5, 0.8], [0.1, 0.4, 0.7]]]],
+            device=self.device,
+            dtype=self.dtype,
+        )
+
+        parameters = {"times": (1, 1), "align_corners": True}
+        self._test_random_p_1_implementation(
+            input_tensor=input_tensor,
+            expected_output=expected_output,
+            params=parameters,
+        )
+
+    def test_batch(self):
+        if self.dtype == torch.float16:
+            pytest.skip("not work for half-precision")
+
+        torch.manual_seed(12)
+
+        input_tensor = torch.tensor(
+            [[[[0.1, 0.2, 0.3], [0.4, 0.5, 0.6], [0.7, 0.8, 0.9]]]],
+            device=self.device,
+            dtype=self.dtype,
+        ).repeat((2, 1, 1, 1))
+        expected_output = input_tensor
+        expected_transformation = kornia.eye_like(3, input_tensor)
+        parameters = {"times": (0, 0), "align_corners": True}
+        self._test_random_p_1_implementation(
+            input_tensor=input_tensor,
+            expected_output=expected_output,
+            expected_transformation=expected_transformation,
+            params=parameters,
+        )
+
+    def test_exception(self):
+        # Wrong type
+        with pytest.raises(TypeError):
+            self._create_augmentation_from_params(times="")
+        with pytest.raises(ValueError):
+            self._create_augmentation_from_params(times=(30, 60), align_corners=0)
 
 
 class TestRandomGrayscaleAlternative(CommonTests):
