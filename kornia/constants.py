@@ -1,7 +1,6 @@
 import logging
-from collections.abc import Iterator
 from enum import Enum, EnumMeta
-from typing import TypeVar, Union
+from typing import Iterator, Type, TypeVar, Union
 
 import torch
 
@@ -36,7 +35,7 @@ class _KORNIA_EnumMeta(EnumMeta):
         return " | ".join(f"{self.__name__}.{val.name}" for val in self)
 
 
-def _get(cls: type[T], value: TKEnum[T]) -> T:
+def _get(cls: Type[T], value: TKEnum[T]) -> T:
     if isinstance(value, str):
         return cls[value.upper()]
 

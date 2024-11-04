@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import torch
 
 from kornia.geometry.bbox import infer_bbox_shape3d, validate_bbox3d
@@ -10,7 +12,7 @@ __all__ = ["crop_and_resize3d", "crop_by_boxes3d", "crop_by_transform_mat3d", "c
 def crop_and_resize3d(
     tensor: torch.Tensor,
     boxes: torch.Tensor,
-    size: tuple[int, int, int],
+    size: Tuple[int, int, int],
     interpolation: str = "bilinear",
     align_corners: bool = False,
 ) -> torch.Tensor:
@@ -109,7 +111,7 @@ def crop_and_resize3d(
 
 
 def center_crop3d(
-    tensor: torch.Tensor, size: tuple[int, int, int], interpolation: str = "bilinear", align_corners: bool = True
+    tensor: torch.Tensor, size: Tuple[int, int, int], interpolation: str = "bilinear", align_corners: bool = True
 ) -> torch.Tensor:
     r"""Crop the 3D volumes (5D tensor) at the center.
 
@@ -329,7 +331,7 @@ def crop_by_boxes3d(
 def crop_by_transform_mat3d(
     tensor: torch.Tensor,
     transform: torch.Tensor,
-    out_size: tuple[int, int, int],
+    out_size: Tuple[int, int, int],
     mode: str = "bilinear",
     padding_mode: str = "zeros",
     align_corners: bool = True,

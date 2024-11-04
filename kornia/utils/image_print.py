@@ -6,7 +6,7 @@ Taken from https://gist.github.com/klange/1687427
 """
 
 import re
-from typing import Union
+from typing import Tuple, Union
 
 from torch import float16, float32, float64
 
@@ -298,7 +298,7 @@ def short2rgb(short: str) -> str:
     return SHORT2RGB_DICT[short]
 
 
-def rgb2short(rgb: str) -> tuple[str, str]:
+def rgb2short(rgb: str) -> Tuple[str, str]:
     """Find the closest xterm-256 approximation to the given RGB value.
 
     Args:

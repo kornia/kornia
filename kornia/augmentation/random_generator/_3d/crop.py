@@ -1,4 +1,4 @@
-from typing import Optional, Union
+from typing import Dict, Optional, Tuple, Union
 
 import torch
 from torch.distributions import Uniform
@@ -30,7 +30,7 @@ class CropGenerator3D(RandomGeneratorBase):
     """
 
     def __init__(
-        self, size: Union[tuple[int, int, int], Tensor], resize_to: Optional[tuple[int, int, int]] = None
+        self, size: Union[Tuple[int, int, int], Tensor], resize_to: Optional[Tuple[int, int, int]] = None
     ) -> None:
         super().__init__()
         self.size = size
@@ -45,7 +45,7 @@ class CropGenerator3D(RandomGeneratorBase):
     def make_samplers(self, device: torch.device, dtype: torch.dtype) -> None:
         self.rand_sampler = Uniform(tensor(0.0, device=device, dtype=dtype), tensor(1.0, device=device, dtype=dtype))
 
-    def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, Tensor]:
+    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size, _, depth, height, width = batch_shape
         _common_param_check(batch_size, same_on_batch)
         _device, _dtype = _extract_device_dtype([self.size if isinstance(self.size, Tensor) else None])
@@ -141,9 +141,9 @@ def center_crop_generator3d(
     depth: int,
     height: int,
     width: int,
-    size: tuple[int, int, int],
+    size: Tuple[int, int, int],
     device: Device = torch.device("cpu"),
-) -> dict[str, Tensor]:
+) -> Dict[str, Tensor]:
     r"""Get parameters for ```center_crop3d``` transformation for center crop transform.
 
     Args:

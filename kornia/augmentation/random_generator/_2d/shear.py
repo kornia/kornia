@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Dict, Tuple, Union
 
 import torch
 
@@ -33,7 +33,7 @@ class ShearGenerator(RandomGeneratorBase):
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
     """
 
-    def __init__(self, shear: Union[Tensor, float, tuple[float, float], tuple[float, float, float, float]]) -> None:
+    def __init__(self, shear: Union[Tensor, float, Tuple[float, float], Tuple[float, float, float, float]]) -> None:
         super().__init__()
         self.shear = shear
 
@@ -68,7 +68,7 @@ class ShearGenerator(RandomGeneratorBase):
         self.shear_x_sampler = shear_x_sampler
         self.shear_y_sampler = shear_y_sampler
 
-    def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, Tensor]:
+    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         height = batch_shape[-2]
         width = batch_shape[-1]

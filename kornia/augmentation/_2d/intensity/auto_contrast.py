@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.core import Tensor
@@ -30,7 +30,7 @@ class RandomAutoContrast(IntensityAugmentationBase2D):
         self.clip_output = clip_output
 
     def apply_transform(
-        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         out = normalize_min_max(input)
 

@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 from torch import Tensor
 
@@ -52,10 +52,10 @@ class RandomEqualize3D(IntensityAugmentationBase3D):
     def __init__(self, p: float = 0.5, same_on_batch: bool = False, keepdim: bool = False) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
 
-    def compute_transformation(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return self.identity_matrix(input)
 
     def apply_transform(
-        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         return equalize3d(input)

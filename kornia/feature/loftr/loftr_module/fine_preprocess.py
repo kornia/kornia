@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Dict, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -8,7 +8,7 @@ from kornia.core import Module, Tensor
 
 
 class FinePreprocess(Module):
-    def __init__(self, config: dict[str, Any]) -> None:
+    def __init__(self, config: Dict[str, Any]) -> None:
         super().__init__()
 
         self.config = config
@@ -30,8 +30,8 @@ class FinePreprocess(Module):
                 nn.init.kaiming_normal_(p, mode="fan_out", nonlinearity="relu")
 
     def forward(
-        self, feat_f0: Tensor, feat_f1: Tensor, feat_c0: Tensor, feat_c1: Tensor, data: dict[str, Any]
-    ) -> tuple[Tensor, Tensor]:
+        self, feat_f0: Tensor, feat_f1: Tensor, feat_c0: Tensor, feat_c1: Tensor, data: Dict[str, Any]
+    ) -> Tuple[Tensor, Tensor]:
         W = self.W
         stride = data["hw0_f"][0] // data["hw0_c"][0]
 

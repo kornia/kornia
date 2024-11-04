@@ -1,3 +1,5 @@
+from typing import Dict, List, Tuple
+
 import torch
 
 from kornia.core import Tensor, concatenate, tensor, zeros
@@ -6,14 +8,14 @@ from .mean_iou import mean_iou_bbox
 
 
 def mean_average_precision(
-    pred_boxes: list[Tensor],
-    pred_labels: list[Tensor],
-    pred_scores: list[Tensor],
-    gt_boxes: list[Tensor],
-    gt_labels: list[Tensor],
+    pred_boxes: List[Tensor],
+    pred_labels: List[Tensor],
+    pred_scores: List[Tensor],
+    gt_boxes: List[Tensor],
+    gt_labels: List[Tensor],
     n_classes: int,
     threshold: float = 0.5,
-) -> tuple[Tensor, dict[int, float]]:
+) -> Tuple[Tensor, Dict[int, float]]:
     """Calculate the Mean Average Precision (mAP) of detected objects.
 
     Code altered from https://github.com/sgrvinod/a-PyTorch-Tutorial-to-Object-Detection/blob/master/utils.py#L271.

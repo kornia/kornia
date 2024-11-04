@@ -1,5 +1,5 @@
 import warnings
-from typing import Union
+from typing import List, Tuple, Union
 
 import torch
 from torch import Tensor
@@ -28,7 +28,7 @@ class ResizePreProcessor(Module):
         self.size = (height, width)
         self.interpolation_mode = interpolation_mode
 
-    def forward(self, imgs: Union[Tensor, list[Tensor]]) -> tuple[Tensor, Tensor]:
+    def forward(self, imgs: Union[Tensor, List[Tensor]]) -> Tuple[Tensor, Tensor]:
         """
         Returns:
             resized_imgs: resized images in a batch.
@@ -52,7 +52,7 @@ class ResizePostProcessor(Module):
         super().__init__()
         self.interpolation_mode = interpolation_mode
 
-    def forward(self, imgs: Union[Tensor, list[Tensor]], original_sizes: Tensor) -> Union[Tensor, list[Tensor]]:
+    def forward(self, imgs: Union[Tensor, List[Tensor]], original_sizes: Tensor) -> Union[Tensor, List[Tensor]]:
         """
         Returns:
             resized_imgs: resized images in a batch.
@@ -84,7 +84,7 @@ class OutputRangePostProcessor(Module):
         self.min_val = min_val
         self.max_val = max_val
 
-    def forward(self, imgs: Union[Tensor, list[Tensor]]) -> Union[Tensor, list[Tensor]]:
+    def forward(self, imgs: Union[Tensor, List[Tensor]]) -> Union[Tensor, List[Tensor]]:
         if isinstance(imgs, Tensor):
             return torch.clamp(imgs, self.min_val, self.max_val)
         return [img.clamp_(self.min_val, self.max_val) for img in imgs]

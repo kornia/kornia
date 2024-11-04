@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
@@ -54,7 +54,7 @@ class RandomSaturation(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        saturation: tuple[float, float] = (1.0, 1.0),
+        saturation: Tuple[float, float] = (1.0, 1.0),
         same_on_batch: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
@@ -64,7 +64,7 @@ class RandomSaturation(IntensityAugmentationBase2D):
         self._param_generator = rg.PlainUniformGenerator((self.saturation, "saturation_factor", None, None))
 
     def apply_transform(
-        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         saturation_factor = params["saturation_factor"].to(input)
         return adjust_saturation(input, saturation_factor)

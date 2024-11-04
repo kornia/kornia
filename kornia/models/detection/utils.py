@@ -1,4 +1,4 @@
-from typing import Any, ClassVar, Optional, Union
+from typing import Any, ClassVar, List, Optional, Tuple, Union
 
 from kornia.core import Module, Tensor, rand, tensor
 from kornia.core.mixin.onnx import ONNXExportMixin
@@ -15,14 +15,14 @@ class BoxFiltering(Module, ONNXExportMixin):
         filter_as_zero: whether to filter boxes as zero.
     """
 
-    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, -1, 6]
-    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, -1, 6]
-    ONNX_EXPORT_PSEUDO_SHAPE: ClassVar[list[int]] = [5, 20, 6]
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[List[int]] = [-1, -1, 6]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[List[int]] = [-1, -1, 6]
+    ONNX_EXPORT_PSEUDO_SHAPE: ClassVar[List[int]] = [5, 20, 6]
 
     def __init__(
         self,
         confidence_threshold: Optional[Union[Tensor, float]] = None,
-        classes_to_keep: Optional[Union[Tensor, list[int]]] = None,
+        classes_to_keep: Optional[Union[Tensor, List[int]]] = None,
         filter_as_zero: bool = False,
     ) -> None:
         super().__init__()
@@ -40,7 +40,7 @@ class BoxFiltering(Module, ONNXExportMixin):
 
     def forward(
         self, boxes: Tensor, confidence_threshold: Optional[Tensor] = None, classes_to_keep: Optional[Tensor] = None
-    ) -> Union[Tensor, list[Tensor]]:
+    ) -> Union[Tensor, List[Tensor]]:
         """Filter boxes according to the desired threshold.
 
         To be ONNX-friendly, the inputs for direct forwarding need to be all tensors.
@@ -92,8 +92,8 @@ class BoxFiltering(Module, ONNXExportMixin):
         return filtered_boxes_list
 
     def _create_dummy_input(
-        self, input_shape: list[int], pseudo_shape: Optional[list[int]] = None
-    ) -> Union[tuple[Any, ...], Tensor]:
+        self, input_shape: List[int], pseudo_shape: Optional[List[int]] = None
+    ) -> Union[Tuple[Any, ...], Tensor]:
         pseudo_input = rand(
             *[
                 ((self.ONNX_EXPORT_PSEUDO_SHAPE[i] if pseudo_shape is None else pseudo_shape[i]) if dim == -1 else dim)

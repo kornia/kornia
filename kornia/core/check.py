@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from typing import Any, Optional, TypeVar, cast
+from typing import Any, Optional, Sequence, TypeVar, cast
 
 from torch import float16, float32, float64
 from typing_extensions import TypeGuard

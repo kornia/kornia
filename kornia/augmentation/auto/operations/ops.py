@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Tuple
 
 import kornia.augmentation as K
 from kornia.augmentation.auto.operations.base import OperationBase
@@ -65,7 +65,7 @@ class Brightness(OperationBase):
         self,
         initial_magnitude: Optional[float] = 0.5,
         initial_probability: float = 0.5,
-        magnitude_range: tuple[float, float] = (0.2, 1.8),
+        magnitude_range: Tuple[float, float] = (0.2, 1.8),
         temperature: float = 0.1,
         symmetric_megnitude: bool = False,
     ) -> None:
@@ -93,7 +93,7 @@ class Contrast(OperationBase):
         self,
         initial_magnitude: Optional[float] = 0.5,
         initial_probability: float = 0.5,
-        magnitude_range: tuple[float, float] = (0.2, 1.8),
+        magnitude_range: Tuple[float, float] = (0.2, 1.8),
         temperature: float = 0.1,
         symmetric_megnitude: bool = False,
     ) -> None:
@@ -121,7 +121,7 @@ class Hue(OperationBase):
         self,
         initial_magnitude: Optional[float] = 0.0,
         initial_probability: float = 0.5,
-        magnitude_range: tuple[float, float] = (-0.5, 0.5),
+        magnitude_range: Tuple[float, float] = (-0.5, 0.5),
         temperature: float = 0.1,
         symmetric_megnitude: bool = False,
     ) -> None:
@@ -149,7 +149,7 @@ class Saturate(OperationBase):
         self,
         initial_magnitude: Optional[float] = 0.5,
         initial_probability: float = 0.5,
-        magnitude_range: tuple[float, float] = (0.2, 1.8),
+        magnitude_range: Tuple[float, float] = (0.2, 1.8),
         temperature: float = 0.1,
         symmetric_megnitude: bool = False,
     ) -> None:
@@ -246,7 +246,7 @@ class Posterize(OperationBase):
         self,
         initial_magnitude: Optional[float] = 4.0,
         initial_probability: float = 0.5,
-        magnitude_range: tuple[float, float] = (1.0, 8.0),
+        magnitude_range: Tuple[float, float] = (1.0, 8.0),
         temperature: float = 0.1,
         symmetric_megnitude: bool = False,
     ) -> None:
@@ -279,7 +279,7 @@ class Solarize(OperationBase):
         self,
         initial_magnitude: Optional[float] = 0.5,
         initial_probability: float = 0.5,
-        magnitude_range: tuple[float, float] = (0.0, 1.0),
+        magnitude_range: Tuple[float, float] = (0.0, 1.0),
         temperature: float = 0.1,
         symmetric_megnitude: bool = False,
     ) -> None:
@@ -311,7 +311,7 @@ class SolarizeAdd(OperationBase):
         self,
         initial_magnitude: Optional[float] = 0.0,
         initial_probability: float = 0.5,
-        magnitude_range: tuple[float, float] = (-0.3, 0.3),
+        magnitude_range: Tuple[float, float] = (-0.3, 0.3),
         temperature: float = 0.1,
         symmetric_megnitude: bool = False,
     ) -> None:
@@ -340,7 +340,7 @@ class Sharpness(OperationBase):
         self,
         initial_magnitude: Optional[float] = 0.5,
         initial_probability: float = 0.5,
-        magnitude_range: tuple[float, float] = (0.1, 1.9),
+        magnitude_range: Tuple[float, float] = (0.1, 1.9),
         temperature: float = 0.1,
         symmetric_megnitude: bool = False,
     ) -> None:
@@ -403,7 +403,7 @@ class Rotate(OperationBase):
         self,
         initial_magnitude: Optional[float] = 15.0,
         initial_probability: float = 0.5,
-        magnitude_range: tuple[float, float] = (0.0, 30.0),
+        magnitude_range: Tuple[float, float] = (0.0, 30.0),
         temperature: float = 0.1,
         symmetric_megnitude: bool = True,
     ) -> None:
@@ -441,7 +441,7 @@ class ShearX(OperationBase):
         self,
         initial_magnitude: Optional[float] = 0.1,
         initial_probability: float = 0.5,
-        magnitude_range: tuple[float, float] = (0.0, 0.3),
+        magnitude_range: Tuple[float, float] = (0.0, 0.3),
         temperature: float = 0.1,
         symmetric_megnitude: bool = True,
     ) -> None:
@@ -480,7 +480,7 @@ class ShearY(OperationBase):
         self,
         initial_magnitude: Optional[float] = 0.1,
         initial_probability: float = 0.5,
-        magnitude_range: tuple[float, float] = (0.0, 0.3),
+        magnitude_range: Tuple[float, float] = (0.0, 0.3),
         temperature: float = 0.1,
         symmetric_megnitude: bool = True,
     ) -> None:
@@ -519,7 +519,7 @@ class TranslateX(OperationBase):
         self,
         initial_magnitude: Optional[float] = 0.2,
         initial_probability: float = 0.5,
-        magnitude_range: tuple[float, float] = (0.0, 0.5),
+        magnitude_range: Tuple[float, float] = (0.0, 0.5),
         temperature: float = 0.1,
         symmetric_megnitude: bool = True,
     ) -> None:
@@ -552,7 +552,7 @@ class TranslateY(OperationBase):
         self,
         initial_magnitude: Optional[float] = 0.2,
         initial_probability: float = 0.5,
-        magnitude_range: tuple[float, float] = (0.0, 0.5),
+        magnitude_range: Tuple[float, float] = (0.0, 0.5),
         temperature: float = 0.1,
         symmetric_megnitude: bool = True,
     ) -> None:

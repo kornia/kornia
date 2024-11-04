@@ -2,7 +2,7 @@
 
 import functools
 import operator
-from typing import Any, NamedTuple, Optional, Union
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple, Type, Union
 
 import torch
 import torch.nn.functional as F
@@ -18,7 +18,7 @@ class HourglassConfig(NamedTuple):
     num_blocks: int
     num_classes: int
     input_channels: int
-    head: type[Module]
+    head: Type[Module]
 
 
 # [Hourglass backbone classes]
@@ -68,7 +68,7 @@ class MultitaskHead(Module):
 
 class Bottleneck2D(Module):
     def __init__(
-        self, inplanes: int, planes: int, stride: Union[int, tuple[int, int]] = 1, downsample: Optional[Module] = None
+        self, inplanes: int, planes: int, stride: Union[int, Tuple[int, int]] = 1, downsample: Optional[Module] = None
     ) -> None:
         super().__init__()
 
@@ -106,20 +106,20 @@ class Bottleneck2D(Module):
 
 
 class Hourglass(Module):
-    def __init__(self, block: type[Bottleneck2D], num_blocks: int, planes: int, depth: int, expansion: int = 2) -> None:
+    def __init__(self, block: Type[Bottleneck2D], num_blocks: int, planes: int, depth: int, expansion: int = 2) -> None:
         super().__init__()
         self.depth = depth
         self.block = block
         self.expansion = expansion
         self.hg = self._make_hour_glass(block, num_blocks, planes, depth)
 
-    def _make_residual(self, block: type[Bottleneck2D], num_blocks: int, planes: int) -> Module:
+    def _make_residual(self, block: Type[Bottleneck2D], num_blocks: int, planes: int) -> Module:
         layers = []
         for _ in range(0, num_blocks):
             layers.append(block(planes * self.expansion, planes))
         return nn.Sequential(*layers)
 
-    def _make_hour_glass(self, block: type[Bottleneck2D], num_blocks: int, planes: int, depth: int) -> nn.ModuleList:
+    def _make_hour_glass(self, block: Type[Bottleneck2D], num_blocks: int, planes: int, depth: int) -> nn.ModuleList:
         hgl = []
         for i in range(depth):
             res = []
@@ -153,8 +153,8 @@ class HourglassNet(Module):
 
     def __init__(
         self,
-        block: type[Bottleneck2D],
-        head: type[Module],
+        block: Type[Bottleneck2D],
+        head: Type[Module],
         depth: int,
         num_stacks: int,
         num_blocks: int,
@@ -195,7 +195,7 @@ class HourglassNet(Module):
         self.score_ = nn.ModuleList(score_)
 
     def _make_residual(
-        self, block: type[Bottleneck2D], planes: int, blocks: int, stride: Union[int, tuple[int, int]] = 1
+        self, block: Type[Bottleneck2D], planes: int, blocks: int, stride: Union[int, Tuple[int, int]] = 1
     ) -> Module:
         downsample = None
         if stride != 1 or self.inplanes != planes * self.expansion:
@@ -325,7 +325,7 @@ class PixelShuffleDecoder(Module):
         )
         self.conv_block_lst = nn.ModuleList(conv_block_lst)
 
-    def get_channel_conf(self, num_upsample: int) -> list[int]:
+    def get_channel_conf(self, num_upsample: int) -> List[int]:
         """Get num of channels based on number of upsampling."""
         if num_upsample == 2:
             return [256, 64, 16]
@@ -382,7 +382,7 @@ class SOLD2Net(Module):
             descriptors: semi-dense descriptors.
     """
 
-    def __init__(self, model_cfg: dict[str, Any]) -> None:
+    def __init__(self, model_cfg: Dict[str, Any]) -> None:
         super().__init__()
         self.cfg = model_cfg
 
@@ -400,7 +400,7 @@ class SOLD2Net(Module):
         if "use_descriptor" in self.cfg:
             self.descriptor_decoder = SuperpointDescriptor(feat_channel)
 
-    def forward(self, input_images: Tensor) -> dict[str, Tensor]:
+    def forward(self, input_images: Tensor) -> Dict[str, Tensor]:
         # The backbone
         features = self.backbone_net(input_images)
 

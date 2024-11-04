@@ -1,11 +1,11 @@
-from typing import Optional
+from typing import Optional, Tuple
 
 from kornia.core import ImageModule as Module
 from kornia.core import Tensor
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_SHAPE
 
 
-def integral_tensor(input: Tensor, dim: Optional[tuple[int, ...]] = None) -> Tensor:
+def integral_tensor(input: Tensor, dim: Optional[Tuple[int, ...]] = None) -> Tensor:
     """Calculates integral of the input tensor.
 
     The algorithm computes the integral image by summing over the specified dimensions.
@@ -91,7 +91,7 @@ class IntegralTensor(Module):
                 [ 3.,  6.,  9., 12., 15.]])
     """
 
-    def __init__(self, dim: Optional[tuple[int, ...]] = None) -> None:
+    def __init__(self, dim: Optional[Tuple[int, ...]] = None) -> None:
         super().__init__()
         self.dim = dim
 

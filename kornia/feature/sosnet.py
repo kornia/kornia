@@ -1,9 +1,11 @@
+from typing import Dict
+
 import torch
 from torch import nn
 
 from kornia.core.check import KORNIA_CHECK_SHAPE
 
-urls: dict[str, str] = {}
+urls: Dict[str, str] = {}
 urls["lib"] = "https://github.com/yuruntian/SOSNet/raw/master/sosnet-weights/sosnet_32x32_liberty.pth"
 urls["hp_a"] = "https://github.com/yuruntian/SOSNet/raw/master/sosnet-weights/sosnet_32x32_hpatches_a.pth"
 

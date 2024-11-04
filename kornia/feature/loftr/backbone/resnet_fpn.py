@@ -1,4 +1,4 @@
-from typing import Any, Union
+from typing import Any, Dict, List, Type, Union
 
 import torch.nn.functional as F
 from torch import nn
@@ -47,7 +47,7 @@ class ResNetFPN_8_2(nn.Module):
     Each block has 2 layers.
     """
 
-    def __init__(self, config: dict[str, Any]) -> None:
+    def __init__(self, config: Dict[str, Any]) -> None:
         super().__init__()
         # Config
         block = BasicBlock
@@ -90,7 +90,7 @@ class ResNetFPN_8_2(nn.Module):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
 
-    def _make_layer(self, block: Union[type[BasicBlock], Module], dim: int, stride: int = 1) -> nn.Sequential:
+    def _make_layer(self, block: Union[Type[BasicBlock], Module], dim: int, stride: int = 1) -> nn.Sequential:
         layer1 = block(self.in_planes, dim, stride=stride)
         layer2 = block(dim, dim, stride=1)
         layers = (layer1, layer2)
@@ -98,7 +98,7 @@ class ResNetFPN_8_2(nn.Module):
         self.in_planes = dim
         return nn.Sequential(*layers)
 
-    def forward(self, x: Tensor) -> list[Tensor]:
+    def forward(self, x: Tensor) -> List[Tensor]:
         # ResNet Backbone
         x0 = self.relu(self.bn1(self.conv1(x)))
         x1 = self.layer1(x0)  # 1/2
@@ -125,7 +125,7 @@ class ResNetFPN_16_4(nn.Module):
     Each block has 2 layers.
     """
 
-    def __init__(self, config: dict[str, Any]) -> None:
+    def __init__(self, config: Dict[str, Any]) -> None:
         super().__init__()
         # Config
         block = BasicBlock
@@ -170,7 +170,7 @@ class ResNetFPN_16_4(nn.Module):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
 
-    def _make_layer(self, block: Union[type[BasicBlock], Module], dim: int, stride: int = 1) -> nn.Sequential:
+    def _make_layer(self, block: Union[Type[BasicBlock], Module], dim: int, stride: int = 1) -> nn.Sequential:
         layer1 = block(self.in_planes, dim, stride=stride)
         layer2 = block(dim, dim, stride=1)
         layers = (layer1, layer2)
@@ -178,7 +178,7 @@ class ResNetFPN_16_4(nn.Module):
         self.in_planes = dim
         return nn.Sequential(*layers)
 
-    def forward(self, x: Tensor) -> list[Tensor]:
+    def forward(self, x: Tensor) -> List[Tensor]:
         # ResNet Backbone
         x0 = self.relu(self.bn1(self.conv1(x)))
         x1 = self.layer1(x0)  # 1/2

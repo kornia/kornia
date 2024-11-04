@@ -1,4 +1,4 @@
-from typing import Literal, Optional
+from typing import Dict, Literal, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -11,7 +11,7 @@ from kornia.utils.helpers import map_location_to_cpu
 from .dedode_models import DeDoDeDescriptor, DeDoDeDetector, get_descriptor, get_detector
 from .utils import dedode_denormalize_pixel_coordinates, sample_keypoints
 
-urls: dict[str, dict[str, str]] = {
+urls: Dict[str, Dict[str, str]] = {
     "detector": {
         "L-upright": "https://github.com/Parskatt/DeDoDe/releases/download/dedode_pretrained_models/dedode_detector_L.pth",
         "L-C4": "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/dedode_detector_C4.pth",
@@ -67,7 +67,7 @@ class DeDoDe(Module):
         n: Optional[int] = 10_000,
         apply_imagenet_normalization: bool = True,
         pad_if_not_divisible: bool = True,
-    ) -> tuple[Tensor, Tensor, Tensor]:
+    ) -> Tuple[Tensor, Tensor, Tensor]:
         """Detects and describes keypoints in the input images.
 
         Args:
@@ -103,7 +103,7 @@ class DeDoDe(Module):
         pad_if_not_divisible: bool = True,
         crop_h: Optional[int] = None,
         crop_w: Optional[int] = None,
-    ) -> tuple[Tensor, Tensor]:
+    ) -> Tuple[Tensor, Tensor]:
         """Detects keypoints in the input images.
 
         Args:

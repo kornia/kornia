@@ -1,6 +1,6 @@
 import math
 import warnings
-from typing import Optional
+from typing import Dict, Optional
 
 import torch
 from torch import nn
@@ -19,7 +19,7 @@ from .laf import (
     set_laf_orientation,
 )
 
-urls: dict[str, str] = {}
+urls: Dict[str, str] = {}
 urls["affnet"] = "https://github.com/ducha-aiki/affnet/raw/master/pretrained/AffNet.pth"
 
 

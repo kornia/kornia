@@ -1,4 +1,4 @@
-from typing import Any, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
@@ -61,7 +61,7 @@ class RandomRotation(GeometricAugmentationBase2D):
 
     def __init__(
         self,
-        degrees: Union[Tensor, float, tuple[float, float], list[float]],
+        degrees: Union[Tensor, float, Tuple[float, float], List[float]],
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         same_on_batch: bool = False,
         align_corners: bool = True,
@@ -73,7 +73,7 @@ class RandomRotation(GeometricAugmentationBase2D):
 
         self.flags = {"resample": Resample.get(resample), "align_corners": align_corners}
 
-    def compute_transformation(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         # TODO: Update to use `get_rotation_matrix2d`
         angles: Tensor = params["degrees"].to(input)
 
@@ -88,7 +88,7 @@ class RandomRotation(GeometricAugmentationBase2D):
         return trans_mat
 
     def apply_transform(
-        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         if not isinstance(transform, Tensor):
             raise TypeError(f"Expected the `transform` be a Tensor. Got {type(transform)}.")
@@ -98,9 +98,9 @@ class RandomRotation(GeometricAugmentationBase2D):
     def inverse_transform(
         self,
         input: Tensor,
-        flags: dict[str, Any],
+        flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
-        size: Optional[tuple[int, int]] = None,
+        size: Optional[Tuple[int, int]] = None,
     ) -> Tensor:
         if not isinstance(transform, Tensor):
             raise TypeError(f"Expected the `transform` be a Tensor. Got {type(transform)}.")

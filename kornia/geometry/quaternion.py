@@ -3,7 +3,7 @@
 # https://github.com/KieranWynn/pyquaternion/blob/master/pyquaternion/quaternion.py
 # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/Quaternion.h
 from math import pi
-from typing import Optional, Union
+from typing import Optional, Tuple, Union
 
 from kornia.core import Device, Dtype, Module, Parameter, Tensor, concatenate, rand, stack, tensor, where
 from kornia.core.check import KORNIA_CHECK_TYPE
@@ -161,7 +161,7 @@ class Quaternion(Module):
         return self._data
 
     @property
-    def coeffs(self) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+    def coeffs(self) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
         """Return a tuple with the underlying coefficients in WXYZ order."""
         return self.w, self.x, self.y, self.z
 
@@ -217,7 +217,7 @@ class Quaternion(Module):
         return self.data[..., 3]
 
     @property
-    def shape(self) -> tuple[int, ...]:
+    def shape(self) -> Tuple[int, ...]:
         """Return the shape of the underlying data with shape :math:`(B, 4)`."""
         return tuple(self.data.shape)
 
@@ -281,7 +281,7 @@ class Quaternion(Module):
         q = stack((w, x, y, z), -1)
         return cls(q)
 
-    def to_euler(self) -> tuple[Tensor, Tensor, Tensor]:
+    def to_euler(self) -> Tuple[Tensor, Tensor, Tensor]:
         """Convert the quaternion to a triple of Euler angles (roll, pitch, yaw).
 
         Example:

@@ -2,7 +2,7 @@ import math
 import warnings
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Callable, ClassVar, Optional
+from typing import Any, Callable, ClassVar, Dict, List, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -52,7 +52,7 @@ def normalize_keypoints(kpts: Tensor, size: Tensor) -> Tensor:
     return kpts
 
 
-def pad_to_length(x: Tensor, length: int) -> tuple[Tensor, Tensor]:
+def pad_to_length(x: Tensor, length: int) -> Tuple[Tensor, Tensor]:
     if length <= x.shape[-2]:
         return x, ones_like(x[..., :1], dtype=torch.bool)
     pad = ones(*x.shape[:-2], length - x.shape[-2], x.shape[-1], device=x.device, dtype=x.dtype)
@@ -93,7 +93,7 @@ class TokenConfidence(Module):
         super().__init__()
         self.token = nn.Sequential(nn.Linear(dim, 1), nn.Sigmoid())
 
-    def forward(self, desc0: Tensor, desc1: Tensor) -> tuple[Tensor, Tensor]:
+    def forward(self, desc0: Tensor, desc1: Tensor) -> Tuple[Tensor, Tensor]:
         """Get confidence tokens."""
         dtype = self.token[0].weight.dtype
         orig_dtype = desc0.dtype
@@ -198,10 +198,10 @@ class CrossBlock(Module):
         else:
             self.flash = None  # type: ignore
 
-    def map_(self, func: Callable, x0: Tensor, x1: Tensor) -> tuple[Tensor, Tensor]:  # type: ignore
+    def map_(self, func: Callable, x0: Tensor, x1: Tensor) -> Tuple[Tensor, Tensor]:  # type: ignore
         return func(x0), func(x1)
 
-    def forward(self, x0: Tensor, x1: Tensor, mask: Optional[Tensor] = None) -> tuple[Tensor, Tensor]:
+    def forward(self, x0: Tensor, x1: Tensor, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
         qk0, qk1 = self.map_(self.to_qk, x0, x1)
         v0, v1 = self.map_(self.to_v, x0, x1)
         qk0, qk1, v0, v1 = (t.unflatten(-1, (self.heads, -1)).transpose(1, 2) for t in (qk0, qk1, v0, v1))
@@ -280,7 +280,7 @@ class MatchAssignment(Module):
         self.matchability = nn.Linear(dim, 1, bias=True)
         self.final_proj = nn.Linear(dim, dim, bias=True)
 
-    def forward(self, desc0: Tensor, desc1: Tensor) -> tuple[Tensor, Tensor]:
+    def forward(self, desc0: Tensor, desc1: Tensor) -> Tuple[Tensor, Tensor]:
         """Build assignment matrix from descriptors."""
         mdesc0, mdesc1 = self.final_proj(desc0), self.final_proj(desc1)
         _, _, d = mdesc0.shape
@@ -295,7 +295,7 @@ class MatchAssignment(Module):
         return torch.sigmoid(self.matchability(desc)).squeeze(-1)
 
 
-def filter_matches(scores: Tensor, th: float) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+def filter_matches(scores: Tensor, th: float) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
     """Obtain matches from a log assignment matrix [Bx M+1 x N+1]."""
     max0, max1 = scores[:, :-1, :-1].max(2), scores[:, :-1, :-1].max(1)
     m0, m1 = max0.indices, max1.indices
@@ -315,7 +315,7 @@ def filter_matches(scores: Tensor, th: float) -> tuple[Tensor, Tensor, Tensor, T
 
 
 class LightGlue(Module):
-    default_conf: ClassVar[dict[str, Any]] = {
+    default_conf: ClassVar[Dict[str, Any]] = {
         "name": "lightglue",  # just for interfacing
         "input_dim": 256,  # input descriptor dimension (autoselected from weights)
         "descriptor_dim": 256,
@@ -334,18 +334,18 @@ class LightGlue(Module):
 
     # Point pruning involves an overhead (gather).
     # Therefore, we only activate it if there are enough keypoints.
-    pruning_keypoint_thresholds: ClassVar[dict[str, Any]] = {
+    pruning_keypoint_thresholds: ClassVar[Dict[str, Any]] = {
         "cpu": -1,
         "mps": -1,
         "cuda": 1024,
         "flash": 1536,
     }
-    required_data_keys: ClassVar[list[str]] = ["image0", "image1"]
+    required_data_keys: ClassVar[List[str]] = ["image0", "image1"]
 
     version: ClassVar[str] = "v0.1_arxiv"
     url: ClassVar[str] = "https://github.com/cvg/LightGlue/releases/download/{}/{}_lightglue.pth"
 
-    features: ClassVar[dict[str, Any]] = {
+    features: ClassVar[Dict[str, Any]] = {
         "superpoint": {
             "weights": "superpoint_lightglue",
             "input_dim": 256,
@@ -459,7 +459,7 @@ class LightGlue(Module):
         self.static_lengths = None
 
     def compile(
-        self, mode: str = "reduce-overhead", static_lengths: list[int] = [256, 512, 768, 1024, 1280, 1536]
+        self, mode: str = "reduce-overhead", static_lengths: List[int] = [256, 512, 768, 1024, 1280, 1536]
     ) -> None:
         if self.conf.width_confidence != -1:
             warnings.warn(

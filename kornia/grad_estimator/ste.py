@@ -1,4 +1,4 @@
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Tuple
 
 from torch import Tensor, nn
 from torch.autograd import Function
@@ -42,7 +42,7 @@ class STEFunction(Function):
         return output
 
     @staticmethod
-    def backward(ctx: Any, grad_output: Tensor) -> tuple[Tensor, Tensor, None]:  # type: ignore[override]
+    def backward(ctx: Any, grad_output: Tensor) -> Tuple[Tensor, Tensor, None]:  # type: ignore[override]
         if ctx.grad_fn is None:
             return grad_output.sum_to_size(ctx.in_shape), grad_output.sum_to_size(ctx.out_shape), None
         return (

@@ -59,12 +59,13 @@ class TestBasicAugmentationBase(BaseTester):
         input = torch.rand((12, 3, 4, 5), device=device, dtype=dtype)
         expected_output = input[..., :2, :2] if keepdim else input.unsqueeze(dim=0)[..., :2, :2]
         augmentation = _BasicAugmentationBase(p=0.3, p_batch=1.0, keepdim=keepdim)
-        with (
-            patch.object(augmentation, "apply_transform", autospec=True) as apply_transform,
-            patch.object(augmentation, "generate_parameters", autospec=True) as generate_parameters,
-            patch.object(augmentation, "transform_tensor", autospec=True) as transform_tensor,
-            patch.object(augmentation, "transform_output_tensor", autospec=True) as transform_output_tensor,
-        ):
+        with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform, patch.object(
+            augmentation, "generate_parameters", autospec=True
+        ) as generate_parameters, patch.object(
+            augmentation, "transform_tensor", autospec=True
+        ) as transform_tensor, patch.object(
+            augmentation, "transform_output_tensor", autospec=True
+        ) as transform_output_tensor:
             generate_parameters.side_effect = lambda shape: {
                 "degrees": torch.arange(0, shape[0], device=device, dtype=dtype)
             }
@@ -85,10 +86,9 @@ class TestAugmentationBase2D(BaseTester):
         expected_output = torch.rand((2, 3, 4, 5), device=device, dtype=dtype)
         augmentation = AugmentationBase2D(p=1.0)
 
-        with (
-            patch.object(augmentation, "apply_transform", autospec=True) as apply_transform,
-            patch.object(augmentation, "generate_parameters", autospec=True) as generate_parameters,
-        ):
+        with patch.object(augmentation, "apply_transform", autospec=True) as apply_transform, patch.object(
+            augmentation, "generate_parameters", autospec=True
+        ) as generate_parameters:
             # Calling the augmentation with a single tensor shall return the expected tensor using the generated params.
             params = {"params": {}, "flags": {"foo": 0}}
             generate_parameters.return_value = params

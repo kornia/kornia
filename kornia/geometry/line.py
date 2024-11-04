@@ -1,7 +1,6 @@
 # kornia.geometry.line module inspired by Eigen::geometry::ParametrizedLine
 # https://gitlab.com/libeigen/eigen/-/blob/master/Eigen/src/Geometry/ParametrizedLine.h
-from collections.abc import Iterator
-from typing import Optional, Union
+from typing import Iterator, Optional, Tuple, Union
 
 import torch
 
@@ -132,7 +131,7 @@ class ParametrizedLine(Module):
     # - intersection_point
 
     # TODO: add tests, and possibly return a mask
-    def intersect(self, plane: Hyperplane, eps: float = 1e-6) -> tuple[Tensor, Tensor]:
+    def intersect(self, plane: Hyperplane, eps: float = 1e-6) -> Tuple[Tensor, Tensor]:
         """Return the intersection point between the line and a given plane.
 
         Args:

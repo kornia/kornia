@@ -1,6 +1,6 @@
 import math
 import warnings
-from typing import Any, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 
@@ -12,7 +12,7 @@ from kornia.utils import dataclass_to_dict, dict_to_dataclass, torch_meshgrid
 
 from .backbones import SOLD2Net
 
-urls: dict[str, str] = {}
+urls: Dict[str, str] = {}
 urls["wireframe"] = "https://www.polybox.ethz.ch/index.php/s/blOrW89gqSLoHOk/download"
 
 
@@ -66,7 +66,7 @@ class SOLD2_detector(Module):
         # Initialize the line detector with a configuration from the dataclass
         self.line_detector = LineSegmentDetectionModule(self.config.line_detector_cfg)
 
-    def adapt_state_dict(self, state_dict: dict[str, Any]) -> dict[str, Any]:
+    def adapt_state_dict(self, state_dict: Dict[str, Any]) -> Dict[str, Any]:
         del state_dict["w_junc"]
         del state_dict["w_heatmap"]
         del state_dict["w_desc"]
@@ -76,7 +76,7 @@ class SOLD2_detector(Module):
         del state_dict["heatmap_decoder.conv_block_lst.2.bias"]
         return state_dict
 
-    def forward(self, img: Tensor) -> dict[str, Any]:
+    def forward(self, img: Tensor) -> Dict[str, Any]:
         """
         Args:
             img: batched images with shape :math:`(B, 1, H, W)`.
@@ -171,7 +171,7 @@ class LineSegmentDetectionModule:
         if self.use_junction_refinement and self.junction_refine_cfg is None:
             raise ValueError("[Error] Missing junction refinement config.")
 
-    def detect(self, junctions: Tensor, heatmap: Tensor) -> tuple[Tensor, Tensor, Tensor]:
+    def detect(self, junctions: Tensor, heatmap: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
         """Main function performing line segment detection."""
         KORNIA_CHECK_SHAPE(heatmap, ["H", "W"])
         H, W = heatmap.shape
@@ -371,7 +371,7 @@ class LineSegmentDetectionModule:
 
     def refine_junction_perturb(
         self, junctions: Tensor, line_map: Tensor, heatmap: Tensor, H: int, W: int, device: torch.device
-    ) -> tuple[Tensor, Tensor]:
+    ) -> Tuple[Tensor, Tensor]:
         """Refine the line endpoints in a similar way as in LSD."""
         # Fetch refinement parameters
         if not isinstance(self.junction_refine_cfg, JunctionRefineCfg):

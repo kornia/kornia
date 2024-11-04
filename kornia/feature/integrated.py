@@ -1,5 +1,5 @@
 import warnings
-from typing import ClassVar, Optional
+from typing import ClassVar, Dict, List, Optional, Tuple
 
 import torch
 
@@ -124,7 +124,7 @@ class LocalFeature(Module):
             raise ValueError(f"Scaling coef should be >= 0, got {scaling_coef}")
         self.scaling_coef = scaling_coef
 
-    def forward(self, img: Tensor, mask: Optional[Tensor] = None) -> tuple[Tensor, Tensor, Tensor]:
+    def forward(self, img: Tensor, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor, Tensor]:
         """
         Args:
             img: image to extract features with shape :math:`(B,C,H,W)`.
@@ -308,12 +308,12 @@ class LocalFeatureMatcher(Module):
         self.matcher = matcher
         self.eval()
 
-    def extract_features(self, image: Tensor, mask: Optional[Tensor] = None) -> dict[str, Tensor]:
+    def extract_features(self, image: Tensor, mask: Optional[Tensor] = None) -> Dict[str, Tensor]:
         """Function for feature extraction from simple image."""
         lafs0, resps0, descs0 = self.local_feature(image, mask)
         return {"lafs": lafs0, "responses": resps0, "descriptors": descs0}
 
-    def no_match_output(self, device: Device, dtype: torch.dtype) -> dict[str, Tensor]:
+    def no_match_output(self, device: Device, dtype: torch.dtype) -> Dict[str, Tensor]:
         return {
             "keypoints0": torch.empty(0, 2, device=device, dtype=dtype),
             "keypoints1": torch.empty(0, 2, device=device, dtype=dtype),
@@ -323,7 +323,7 @@ class LocalFeatureMatcher(Module):
             "batch_indexes": torch.empty(0, device=device, dtype=torch.long),
         }
 
-    def forward(self, data: dict[str, Tensor]) -> dict[str, Tensor]:
+    def forward(self, data: Dict[str, Tensor]) -> Dict[str, Tensor]:
         """
         Args:
             data: dictionary containing the input data in the following format:
@@ -346,13 +346,13 @@ class LocalFeatureMatcher(Module):
 
         if ("lafs0" not in data.keys()) or ("descriptors0" not in data.keys()):
             # One can supply pre-extracted local features
-            feats_dict0: dict[str, Tensor] = self.extract_features(data["image0"])
+            feats_dict0: Dict[str, Tensor] = self.extract_features(data["image0"])
             lafs0, descs0 = feats_dict0["lafs"], feats_dict0["descriptors"]
         else:
             lafs0, descs0 = data["lafs0"], data["descriptors0"]
 
         if ("lafs1" not in data.keys()) or ("descriptors1" not in data.keys()):
-            feats_dict1: dict[str, Tensor] = self.extract_features(data["image1"])
+            feats_dict1: Dict[str, Tensor] = self.extract_features(data["image1"])
             lafs1, descs1 = feats_dict1["lafs"], feats_dict1["descriptors"]
         else:
             lafs1, descs1 = data["lafs1"], data["descriptors1"]
@@ -360,12 +360,12 @@ class LocalFeatureMatcher(Module):
         keypoints0: Tensor = get_laf_center(lafs0)
         keypoints1: Tensor = get_laf_center(lafs1)
 
-        out_keypoints0: list[Tensor] = []
-        out_keypoints1: list[Tensor] = []
-        out_confidence: list[Tensor] = []
-        out_batch_indexes: list[Tensor] = []
-        out_lafs0: list[Tensor] = []
-        out_lafs1: list[Tensor] = []
+        out_keypoints0: List[Tensor] = []
+        out_keypoints1: List[Tensor] = []
+        out_confidence: List[Tensor] = []
+        out_batch_indexes: List[Tensor] = []
+        out_lafs0: List[Tensor] = []
+        out_lafs1: List[Tensor] = []
 
         for batch_idx in range(num_image_pairs):
             dists, idxs = self.matcher(descs0[batch_idx], descs1[batch_idx])
@@ -409,7 +409,7 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
         params: LightGlue params.
     """
 
-    known_modes: ClassVar[list[str]] = [
+    known_modes: ClassVar[List[str]] = [
         "aliked",
         "dedodeb",
         "dedodeg",
@@ -421,7 +421,7 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
         "superpoint",
     ]
 
-    def __init__(self, feature_name: str = "disk", params: dict = {}) -> None:  # type: ignore
+    def __init__(self, feature_name: str = "disk", params: Dict = {}) -> None:  # type: ignore
         feature_name_: str = feature_name.lower()
         super().__init__(feature_name_)
         self.feature_name = feature_name_
@@ -434,9 +434,9 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
         desc2: Tensor,
         lafs1: Tensor,
         lafs2: Tensor,
-        hw1: Optional[tuple[int, int]] = None,
-        hw2: Optional[tuple[int, int]] = None,
-    ) -> tuple[Tensor, Tensor]:
+        hw1: Optional[Tuple[int, int]] = None,
+        hw2: Optional[Tuple[int, int]] = None,
+    ) -> Tuple[Tensor, Tensor]:
         """
         Args:
             desc1: Batch of descriptors of a shape :math:`(B1, D)`.
