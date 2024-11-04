@@ -699,7 +699,7 @@ class TestRandomRotationAlternative(CommonTests):
 
 
 class TestRandomRotation90(CommonTests):
-    possible_params: dict["str", Tuple] = {
+    possible_params: dict["str", tuple] = {
         "times": ((-3, 3), (1, 1)),
         "resample": (0, Resample.BILINEAR.name, Resample.BILINEAR),
         "align_corners": (False, True),
