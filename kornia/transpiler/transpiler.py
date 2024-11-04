@@ -18,11 +18,15 @@ def to_jax() -> ModuleType:
         The Kornia library transpiled to JAX
 
     Example:
-        >>> import kornia
-        >>> jax_kornia = kornia.to_jax()
-        >>> import jax
-        >>> input = jax.random.normal(jax.random.key(42), shape=(2, 3, 4, 5))
-        >>> gray = jax_kornia.color.gray.rgb_to_grayscale(input)
+
+    .. highlight:: python
+    .. code-block:: python
+
+        import kornia
+        jax_kornia = kornia.to_jax()
+        import jax
+        input = jax.random.normal(jax.random.key(42), shape=(2, 3, 4, 5))
+        gray = jax_kornia.color.gray.rgb_to_grayscale(input)
     """
     return ivy.transpile(
         kornia,
@@ -43,11 +47,15 @@ def to_numpy() -> ModuleType:
         The Kornia library transpiled to NumPy
 
     Example:
-        >>> import kornia
-        >>> np_kornia = kornia.to_numpy()
-        >>> import numpy as np
-        >>> input = np.random.normal(size=(2, 3, 4, 5))
-        >>> gray = np_kornia.color.gray.rgb_to_grayscale(input)
+
+    .. highlight:: python
+    .. code-block:: python
+
+        import kornia
+        np_kornia = kornia.to_numpy()
+        import numpy as np
+        input = np.random.normal(size=(2, 3, 4, 5))
+        gray = np_kornia.color.gray.rgb_to_grayscale(input)
 
     Note:
         Ivy does not currently support transpiling trainable modules to NumPy.
@@ -71,11 +79,15 @@ def to_tensorflow() -> ModuleType:
         The Kornia library transpiled to TensorFlow
 
     Example:
-        >>> import kornia
-        >>> tf_kornia = kornia.to_tensorflow()
-        >>> import tensorflow as tf
-        >>> input = tf.random.normal((2, 3, 4, 5))
-        >>> gray = tf_kornia.color.gray.rgb_to_grayscale(input)
+
+    .. highlight:: python
+    .. code-block:: python
+
+        import kornia
+        tf_kornia = kornia.to_tensorflow()
+        import tensorflow as tf
+        input = tf.random.normal((2, 3, 4, 5))
+        gray = tf_kornia.color.gray.rgb_to_grayscale(input)
     """
     return ivy.transpile(
         kornia,
