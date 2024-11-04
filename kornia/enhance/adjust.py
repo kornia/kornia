@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 from math import pi
-from typing import Optional, Union
+from typing import ClassVar, Optional, Union
 
 import torch
 
@@ -1042,6 +1044,9 @@ class AdjustSaturation(Module):
         tensor(0.)
     """
 
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+
     def __init__(self, saturation_factor: Union[float, Tensor]) -> None:
         super().__init__()
         self.saturation_factor: Union[float, Tensor] = saturation_factor
@@ -1089,6 +1094,9 @@ class AdjustSaturationWithGraySubtraction(Module):
         tensor(0.)
     """
 
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+
     def __init__(self, saturation_factor: Union[float, Tensor]) -> None:
         super().__init__()
         self.saturation_factor: Union[float, Tensor] = saturation_factor
@@ -1135,6 +1143,9 @@ class AdjustHue(Module):
         >>> AdjustHue(y)(x).shape
         torch.Size([2, 3, 3, 3])
     """
+
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def __init__(self, hue_factor: Union[float, Tensor]) -> None:
         super().__init__()

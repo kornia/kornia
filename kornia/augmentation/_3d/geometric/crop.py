@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
@@ -64,8 +64,8 @@ class RandomCrop3D(GeometricAugmentationBase3D):
 
     def __init__(
         self,
-        size: Tuple[int, int, int],
-        padding: Optional[Union[int, Tuple[int, int, int], Tuple[int, int, int, int, int, int]]] = None,
+        size: tuple[int, int, int],
+        padding: Optional[Union[int, tuple[int, int, int], tuple[int, int, int, int, int, int]]] = None,
         pad_if_needed: Optional[bool] = False,
         fill: int = 0,
         padding_mode: str = "constant",
@@ -88,7 +88,7 @@ class RandomCrop3D(GeometricAugmentationBase3D):
         }
         self._param_generator = rg.CropGenerator3D(size, None)
 
-    def precrop_padding(self, input: Tensor, flags: Optional[Dict[str, Any]] = None) -> Tensor:
+    def precrop_padding(self, input: Tensor, flags: Optional[dict[str, Any]] = None) -> Tensor:
         flags = self.flags if flags is None else flags
         padding = flags["padding"]
         if padding is not None:
@@ -116,13 +116,13 @@ class RandomCrop3D(GeometricAugmentationBase3D):
 
         return input
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
         transform: Tensor = get_perspective_transform3d(params["src"].to(input), params["dst"].to(input))
         transform = transform.expand(input.shape[0], -1, -1)
         return transform
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         if not isinstance(transform, Tensor):
             raise TypeError(f"Expected the transform to be a Tensor. Gotcha {type(transform)}")
@@ -131,7 +131,7 @@ class RandomCrop3D(GeometricAugmentationBase3D):
             input, transform, flags["size"], mode=flags["resample"].name.lower(), align_corners=flags["align_corners"]
         )
 
-    def forward(self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs: Any) -> Tensor:
+    def forward(self, input: Tensor, params: Optional[dict[str, Tensor]] = None, **kwargs: Any) -> Tensor:
         # TODO: need to align 2D implementations
         input = self.precrop_padding(input)
         return super().forward(input, params)

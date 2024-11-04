@@ -1,5 +1,5 @@
 import math
-from typing import List, Optional, Tuple
+from typing import Optional
 
 import torch
 import torch.nn.functional as F
@@ -41,7 +41,7 @@ def _scale_index_to_scale(max_coords: Tensor, sigmas: Tensor, num_levels: int) -
     return out
 
 
-def _create_octave_mask(mask: Tensor, octave_shape: List[int]) -> Tensor:
+def _create_octave_mask(mask: Tensor, octave_shape: list[int]) -> Tensor:
     r"""Downsample a mask based on the given octave shape."""
     mask_shape = octave_shape[-2:]
     mask_octave = F.interpolate(mask, mask_shape, mode="bilinear", align_corners=False)
@@ -114,13 +114,13 @@ class ScaleSpaceDetector(Module):
             f"aff={self.aff.__repr__()})"
         )
 
-    def detect(self, img: Tensor, num_feats: int, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
+    def detect(self, img: Tensor, num_feats: int, mask: Optional[Tensor] = None) -> tuple[Tensor, Tensor]:
         dev: Device = img.device
         dtype: torch.dtype = img.dtype
-        sigmas: List[Tensor]
+        sigmas: list[Tensor]
         sp, sigmas, _ = self.scale_pyr(img)
-        all_responses: List[Tensor] = []
-        all_lafs: List[Tensor] = []
+        all_responses: list[Tensor] = []
+        all_lafs: list[Tensor] = []
         px_size = 0.5 if self.scale_pyr.double_image else 1.0
         for oct_idx, octave in enumerate(sp):
             sigmas_oct = sigmas[oct_idx]
@@ -206,7 +206,7 @@ class ScaleSpaceDetector(Module):
         lafs = torch.gather(lafs, 1, idxs.unsqueeze(-1).unsqueeze(-1).repeat(1, 1, 2, 3))
         return responses, lafs
 
-    def forward(self, img: Tensor, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
+    def forward(self, img: Tensor, mask: Optional[Tensor] = None) -> tuple[Tensor, Tensor]:
         """Three stage local feature detection. First the location and scale of interest points are determined by
         detect function. Then affine shape and orientation.
 
@@ -297,8 +297,8 @@ class MultiResolutionDetector(Module):
         return mask * score_map
 
     def detect_features_on_single_level(
-        self, level_img: Tensor, num_kp: int, factor: Tuple[float, float]
-    ) -> Tuple[Tensor, Tensor]:
+        self, level_img: Tensor, num_kp: int, factor: tuple[float, float]
+    ) -> tuple[Tensor, Tensor]:
         det_map = self.nms(self.remove_borders(self.model(level_img)))
         device = level_img.device
         dtype = level_img.dtype
@@ -316,9 +316,9 @@ class MultiResolutionDetector(Module):
         lafs = laf_from_center_scale_ori(xy_projected, scale, zeros(1, current_kp_num, 1, device=device, dtype=dtype))
         return scores_sorted[:num_kp], lafs
 
-    def detect(self, img: Tensor, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
+    def detect(self, img: Tensor, mask: Optional[Tensor] = None) -> tuple[Tensor, Tensor]:
         # Compute points per level
-        num_features_per_level: List[float] = []
+        num_features_per_level: list[float] = []
         tmp = 0.0
         factor_points = self.scale_factor_levels**2
         levels = self.num_pyramid_levels + self.num_upscale_levels + 1
@@ -331,8 +331,8 @@ class MultiResolutionDetector(Module):
         _, _, h, w = img.shape
         img_up = img
         cur_img = img
-        all_responses: List[Tensor] = []
-        all_lafs: List[Tensor] = []
+        all_responses: list[Tensor] = []
+        all_lafs: list[Tensor] = []
         # Extract features from the upper levels
         for idx_level in range(self.num_upscale_levels):
             nf = num_features_per_level[len(num_features_per_level) - self.num_pyramid_levels - 1 - (idx_level + 1)]
@@ -374,7 +374,7 @@ class MultiResolutionDetector(Module):
             lafs = torch.gather(lafs, 1, idxs[..., None, None].expand(-1, -1, 2, 3))
         return responses, lafs
 
-    def forward(self, img: Tensor, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
+    def forward(self, img: Tensor, mask: Optional[Tensor] = None) -> tuple[Tensor, Tensor]:
         """Three stage local feature detection. First the location and scale of interest points are determined by
         detect function. Then affine shape and orientation.
 

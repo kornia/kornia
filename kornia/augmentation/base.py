@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any, Callable, Dict, Optional, Tuple, Union
+from typing import Any, Callable, Optional, Union
 
 import torch
 from torch.distributions import Bernoulli, Distribution, RelaxedBernoulli
@@ -17,7 +17,7 @@ from kornia.geometry.boxes import Boxes
 from kornia.geometry.keypoints import Keypoints
 from kornia.utils import is_autocast_enabled
 
-TensorWithTransformMat = Union[Tensor, Tuple[Tensor, Tensor]]
+TensorWithTransformMat = Union[Tensor, tuple[Tensor, Tensor]]
 
 
 # Trick mypy into not applying contravariance rules to inputs by defining
@@ -53,6 +53,10 @@ class _BasicAugmentationBase(Module):
           the batch form ``False``.
     """
 
+    # TODO: Hard to support. Many codes are not ONNX-friendly that contains lots of if-else blocks, etc.
+    # Please contribute if anyone interested.
+    ONNX_EXPORTABLE = False
+
     def __init__(
         self,
         p: float = 0.5,
@@ -65,7 +69,7 @@ class _BasicAugmentationBase(Module):
         self.p_batch = p_batch
         self.same_on_batch = same_on_batch
         self.keepdim = keepdim
-        self._params: Dict[str, Tensor] = {}
+        self._params: dict[str, Tensor] = {}
         self._p_gen: Distribution
         self._p_batch_gen: Distribution
         if p != 0.0 or p != 1.0:
@@ -73,7 +77,7 @@ class _BasicAugmentationBase(Module):
         if p_batch != 0.0 or p_batch != 1.0:
             self._p_batch_gen = Bernoulli(self.p_batch)
         self._param_generator: Optional[RandomGeneratorBase] = None
-        self.flags: Dict[str, Any] = {}
+        self.flags: dict[str, Any] = {}
         self.set_rng_device_and_dtype(torch.device("cpu"), torch.get_default_dtype())
 
     apply_transform: Callable[..., Tensor] = _apply_transform_unimplemented
@@ -112,11 +116,11 @@ class _BasicAugmentationBase(Module):
         """Check if the input tensor is formatted as expected."""
         raise NotImplementedError
 
-    def transform_output_tensor(self, output: Tensor, output_shape: Tuple[int, ...]) -> Tensor:
+    def transform_output_tensor(self, output: Tensor, output_shape: tuple[int, ...]) -> Tensor:
         """Standardize output tensors."""
         return _transform_output_shape(output, output_shape) if self.keepdim else output
 
-    def generate_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, Tensor]:
+    def generate_parameters(self, batch_shape: tuple[int, ...]) -> dict[str, Tensor]:
         if self._param_generator is not None:
             return self._param_generator(batch_shape, self.same_on_batch)
         return {}
@@ -134,7 +138,7 @@ class _BasicAugmentationBase(Module):
 
     def __batch_prob_generator__(
         self,
-        batch_shape: Tuple[int, ...],
+        batch_shape: tuple[int, ...],
         p: float,
         p_batch: float,
         same_on_batch: bool,
@@ -169,10 +173,10 @@ class _BasicAugmentationBase(Module):
 
     def _process_kwargs_to_params_and_flags(
         self,
-        params: Optional[Dict[str, Tensor]] = None,
-        flags: Optional[Dict[str, Any]] = None,
+        params: Optional[dict[str, Tensor]] = None,
+        flags: Optional[dict[str, Any]] = None,
         **kwargs: Any,
-    ) -> Tuple[Dict[str, Tensor], Dict[str, Any]]:
+    ) -> tuple[dict[str, Tensor], dict[str, Any]]:
         # NOTE: determine how to save self._params
         save_kwargs = kwargs["save_kwargs"] if "save_kwargs" in kwargs else False
 
@@ -189,7 +193,7 @@ class _BasicAugmentationBase(Module):
         flags = override_parameters(flags, kwargs, in_place=False)
         return params, flags
 
-    def forward_parameters(self, batch_shape: Tuple[int, ...]) -> Dict[str, Tensor]:
+    def forward_parameters(self, batch_shape: tuple[int, ...]) -> dict[str, Tensor]:
         batch_prob = self.__batch_prob_generator__(batch_shape, self.p, self.p_batch, self.same_on_batch)
         to_apply = batch_prob > 0.5
         _params = self.generate_parameters(torch.Size((int(to_apply.sum().item()), *batch_shape[1:])))
@@ -202,10 +206,10 @@ class _BasicAugmentationBase(Module):
         _params.update({"forward_input_shape": input_size})
         return _params
 
-    def apply_func(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def apply_func(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
         return self.apply_transform(input, params, flags)
 
-    def forward(self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs: Any) -> Tensor:
+    def forward(self, input: Tensor, params: Optional[dict[str, Tensor]] = None, **kwargs: Any) -> Tensor:
         """Perform forward operations.
 
         Args:
@@ -253,8 +257,8 @@ class _AugmentationBase(_BasicAugmentationBase):
     def apply_transform(
         self,
         input: Tensor,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any],
+        params: dict[str, Tensor],
+        flags: dict[str, Any],
         transform: Optional[Tensor] = None,
     ) -> Tensor:
         # apply transform for the input image tensor
@@ -263,8 +267,8 @@ class _AugmentationBase(_BasicAugmentationBase):
     def apply_non_transform(
         self,
         input: Tensor,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any],
+        params: dict[str, Tensor],
+        flags: dict[str, Any],
         transform: Optional[Tensor] = None,
     ) -> Tensor:
         # apply additional transform for the images that are skipped from transformation
@@ -274,8 +278,8 @@ class _AugmentationBase(_BasicAugmentationBase):
     def transform_inputs(
         self,
         input: Tensor,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any],
+        params: dict[str, Tensor],
+        flags: dict[str, Any],
         transform: Optional[Tensor] = None,
         **kwargs: Any,
     ) -> Tensor:
@@ -316,8 +320,8 @@ class _AugmentationBase(_BasicAugmentationBase):
     def transform_masks(
         self,
         input: Tensor,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any],
+        params: dict[str, Tensor],
+        flags: dict[str, Any],
         transform: Optional[Tensor] = None,
         **kwargs: Any,
     ) -> Tensor:
@@ -352,8 +356,8 @@ class _AugmentationBase(_BasicAugmentationBase):
     def transform_boxes(
         self,
         input: Boxes,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any],
+        params: dict[str, Tensor],
+        flags: dict[str, Any],
         transform: Optional[Tensor] = None,
         **kwargs: Any,
     ) -> Boxes:
@@ -389,8 +393,8 @@ class _AugmentationBase(_BasicAugmentationBase):
     def transform_keypoints(
         self,
         input: Keypoints,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any],
+        params: dict[str, Tensor],
+        flags: dict[str, Any],
         transform: Optional[Tensor] = None,
         **kwargs: Any,
     ) -> Keypoints:
@@ -424,8 +428,8 @@ class _AugmentationBase(_BasicAugmentationBase):
     def transform_classes(
         self,
         input: Tensor,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any],
+        params: dict[str, Tensor],
+        flags: dict[str, Any],
         transform: Optional[Tensor] = None,
         **kwargs: Any,
     ) -> Tensor:
@@ -453,8 +457,8 @@ class _AugmentationBase(_BasicAugmentationBase):
     def apply_non_transform_mask(
         self,
         input: Tensor,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any],
+        params: dict[str, Tensor],
+        flags: dict[str, Any],
         transform: Optional[Tensor] = None,
     ) -> Tensor:
         """Process masks corresponding to the inputs that are no transformation applied."""
@@ -463,8 +467,8 @@ class _AugmentationBase(_BasicAugmentationBase):
     def apply_transform_mask(
         self,
         input: Tensor,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any],
+        params: dict[str, Tensor],
+        flags: dict[str, Any],
         transform: Optional[Tensor] = None,
     ) -> Tensor:
         """Process masks corresponding to the inputs that are transformed."""
@@ -473,8 +477,8 @@ class _AugmentationBase(_BasicAugmentationBase):
     def apply_non_transform_box(
         self,
         input: Boxes,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any],
+        params: dict[str, Tensor],
+        flags: dict[str, Any],
         transform: Optional[Tensor] = None,
     ) -> Boxes:
         """Process boxes corresponding to the inputs that are no transformation applied."""
@@ -483,8 +487,8 @@ class _AugmentationBase(_BasicAugmentationBase):
     def apply_transform_box(
         self,
         input: Boxes,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any],
+        params: dict[str, Tensor],
+        flags: dict[str, Any],
         transform: Optional[Tensor] = None,
     ) -> Boxes:
         """Process boxes corresponding to the inputs that are transformed."""
@@ -493,8 +497,8 @@ class _AugmentationBase(_BasicAugmentationBase):
     def apply_non_transform_keypoint(
         self,
         input: Keypoints,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any],
+        params: dict[str, Tensor],
+        flags: dict[str, Any],
         transform: Optional[Tensor] = None,
     ) -> Keypoints:
         """Process keypoints corresponding to the inputs that are no transformation applied."""
@@ -503,8 +507,8 @@ class _AugmentationBase(_BasicAugmentationBase):
     def apply_transform_keypoint(
         self,
         input: Keypoints,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any],
+        params: dict[str, Tensor],
+        flags: dict[str, Any],
         transform: Optional[Tensor] = None,
     ) -> Keypoints:
         """Process keypoints corresponding to the inputs that are transformed."""
@@ -513,8 +517,8 @@ class _AugmentationBase(_BasicAugmentationBase):
     def apply_non_transform_class(
         self,
         input: Tensor,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any],
+        params: dict[str, Tensor],
+        flags: dict[str, Any],
         transform: Optional[Tensor] = None,
     ) -> Tensor:
         """Process class tags corresponding to the inputs that are no transformation applied."""
@@ -523,8 +527,8 @@ class _AugmentationBase(_BasicAugmentationBase):
     def apply_transform_class(
         self,
         input: Tensor,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any],
+        params: dict[str, Tensor],
+        flags: dict[str, Any],
         transform: Optional[Tensor] = None,
     ) -> Tensor:
         """Process class tags corresponding to the inputs that are transformed."""
@@ -533,8 +537,8 @@ class _AugmentationBase(_BasicAugmentationBase):
     def apply_func(
         self,
         in_tensor: Tensor,
-        params: Dict[str, Tensor],
-        flags: Optional[Dict[str, Any]] = None,
+        params: dict[str, Tensor],
+        flags: Optional[dict[str, Any]] = None,
     ) -> Tensor:
         if flags is None:
             flags = self.flags

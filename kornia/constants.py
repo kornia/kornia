@@ -1,11 +1,16 @@
+import logging
+from collections.abc import Iterator
 from enum import Enum, EnumMeta
-from typing import Iterator, Type, TypeVar, Union
+from typing import TypeVar, Union
 
 import torch
 
 from kornia.core import Tensor
 
 __all__ = ["pi", "DType", "Resample", "BorderType", "SamplePadding", "TKEnum"]
+
+# NOTE: to remove later
+logging.basicConfig(level=logging.INFO)
 
 pi = torch.tensor(3.14159265358979323846)
 
@@ -31,7 +36,7 @@ class _KORNIA_EnumMeta(EnumMeta):
         return " | ".join(f"{self.__name__}.{val.name}" for val in self)
 
 
-def _get(cls: Type[T], value: TKEnum[T]) -> T:
+def _get(cls: type[T], value: TKEnum[T]) -> T:
     if isinstance(value, str):
         return cls[value.upper()]
 

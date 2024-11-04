@@ -1,6 +1,9 @@
 furo
+ivy>=1.0.0.0
 kornia_moons
 matplotlib
+onnx
+onnxruntime
 opencv-python
 PyYAML>=5.1
 sphinx

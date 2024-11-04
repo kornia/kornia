@@ -1,5 +1,5 @@
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Optional, Union
 
 import torch
 from torch.distributions import Beta, Uniform
@@ -58,7 +58,7 @@ def _validate_input3d(f: Callable[..., Any]) -> Callable[..., Any]:
     return wrapper
 
 
-def _infer_batch_shape(input: Union[Tensor, Tuple[Tensor, Tensor]]) -> torch.Size:
+def _infer_batch_shape(input: Union[Tensor, tuple[Tensor, Tensor]]) -> torch.Size:
     r"""Infer input shape.
 
     Input may be either (tensor,) or (tensor, transform_matrix)
@@ -70,7 +70,7 @@ def _infer_batch_shape(input: Union[Tensor, Tuple[Tensor, Tensor]]) -> torch.Siz
     return tensor.shape
 
 
-def _infer_batch_shape3d(input: Union[Tensor, Tuple[Tensor, Tensor]]) -> torch.Size:
+def _infer_batch_shape3d(input: Union[Tensor, tuple[Tensor, Tensor]]) -> torch.Size:
     r"""Infer input shape.
 
     Input may be either (tensor,) or (tensor, transform_matrix)
@@ -186,7 +186,7 @@ def _transform_input3d(input: Tensor) -> Tensor:
     return input
 
 
-def _validate_input_dtype(input: Tensor, accepted_dtypes: List[torch.dtype]) -> None:
+def _validate_input_dtype(input: Tensor, accepted_dtypes: list[torch.dtype]) -> None:
     r"""Check if the dtype of the input tensor is in the range of accepted_dtypes
     Args:
         input: Tensor
@@ -197,7 +197,7 @@ def _validate_input_dtype(input: Tensor, accepted_dtypes: List[torch.dtype]) -> 
 
 
 def _transform_output_shape(
-    output: Tensor, shape: Tuple[int, ...], *, reference_shape: Optional[Tensor] = None
+    output: Tensor, shape: tuple[int, ...], *, reference_shape: Optional[Tensor] = None
 ) -> Tensor:
     r"""Collapse the broadcasted batch dimensions an input tensor to be the specified shape.
     Args:
@@ -220,7 +220,7 @@ def _transform_output_shape(
     return out_tensor
 
 
-def _validate_shape(shape: Union[Tuple[int, ...], torch.Size], required_shapes: Tuple[str, ...] = ("BCHW",)) -> None:
+def _validate_shape(shape: Union[tuple[int, ...], torch.Size], required_shapes: tuple[str, ...] = ("BCHW",)) -> None:
     r"""Check if the dtype of the input tensor is in the range of accepted_dtypes
     Args:
         shape: tensor shape
@@ -252,7 +252,7 @@ def _validate_input_shape(input: Tensor, channel_index: int, number: int) -> boo
 
 
 def _adapted_rsampling(
-    shape: Union[Tuple[int, ...], torch.Size],
+    shape: Union[tuple[int, ...], torch.Size],
     dist: torch.distributions.Distribution,
     same_on_batch: Optional[bool] = False,
 ) -> Tensor:
@@ -272,7 +272,7 @@ def _adapted_rsampling(
 
 
 def _adapted_sampling(
-    shape: Union[Tuple[int, ...], torch.Size],
+    shape: Union[tuple[int, ...], torch.Size],
     dist: torch.distributions.Distribution,
     same_on_batch: Optional[bool] = False,
 ) -> Tensor:
@@ -290,7 +290,7 @@ def _adapted_sampling(
 
 
 def _adapted_uniform(
-    shape: Union[Tuple[int, ...], torch.Size],
+    shape: Union[tuple[int, ...], torch.Size],
     low: Union[float, Tensor],
     high: Union[float, Tensor],
     same_on_batch: bool = False,
@@ -315,7 +315,7 @@ def _adapted_uniform(
 
 
 def _adapted_beta(
-    shape: Union[Tuple[int, ...], torch.Size],
+    shape: Union[tuple[int, ...], torch.Size],
     a: Union[float, Tensor],
     b: Union[float, Tensor],
     same_on_batch: bool = False,
@@ -335,12 +335,12 @@ def _adapted_beta(
     return _adapted_rsampling(shape, dist, same_on_batch)
 
 
-def _shape_validation(param: Tensor, shape: Union[Tuple[int, ...], List[int]], name: str) -> None:
+def _shape_validation(param: Tensor, shape: Union[tuple[int, ...], list[int]], name: str) -> None:
     if param.shape != torch.Size(shape):
         raise AssertionError(f"Invalid shape for {name}. Expected {shape}. Got {param.shape}")
 
 
-def deepcopy_dict(params: Dict[str, Any]) -> Dict[str, Any]:
+def deepcopy_dict(params: dict[str, Any]) -> dict[str, Any]:
     """Perform deep copy on any dict.
 
     Support tensor copying here.
@@ -356,11 +356,11 @@ def deepcopy_dict(params: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def override_parameters(
-    params: Dict[str, Any],
-    params_override: Optional[Dict[str, Any]] = None,
+    params: dict[str, Any],
+    params_override: Optional[dict[str, Any]] = None,
     if_none_exist: str = "ignore",
     in_place: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Override params dict w.r.t params_override.
 
     Args:

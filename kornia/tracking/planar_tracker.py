@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple
+from typing import Optional
 
 import torch
 
@@ -40,8 +40,8 @@ class HomographyTracker(Module):
 
         # placeholders
         self.target: Tensor
-        self.target_initial_representation: Dict[str, Tensor] = {}
-        self.target_fast_representation: Dict[str, Tensor] = {}
+        self.target_initial_representation: dict[str, Tensor] = {}
+        self.target_fast_representation: dict[str, Tensor] = {}
         self.previous_homography: Optional[Tensor] = None
 
         self.inliers_num: int = 0
@@ -73,20 +73,20 @@ class HomographyTracker(Module):
     def reset_tracking(self) -> None:
         self.previous_homography = None
 
-    def no_match(self) -> Tuple[Tensor, bool]:
+    def no_match(self) -> tuple[Tensor, bool]:
         self.inliers_num = 0
         self.keypoints0_num = 0
         self.keypoints1_num = 0
         return torch.empty(3, 3, device=self.device, dtype=self.dtype), False
 
-    def match_initial(self, x: Tensor) -> Tuple[Tensor, bool]:
+    def match_initial(self, x: Tensor) -> tuple[Tensor, bool]:
         """The frame `x` is matched with initial_matcher and  verified with ransac."""
-        input_dict: Dict[str, Tensor] = {"image0": self.target, "image1": x}
+        input_dict: dict[str, Tensor] = {"image0": self.target, "image1": x}
 
         for k, v in self.target_initial_representation.items():
             input_dict[f"{k}0"] = v
 
-        match_dict: Dict[str, Tensor] = self.initial_matcher(input_dict)
+        match_dict: dict[str, Tensor] = self.initial_matcher(input_dict)
         keypoints0 = match_dict["keypoints0"][match_dict["batch_indexes"] == 0]
         keypoints1 = match_dict["keypoints1"][match_dict["batch_indexes"] == 0]
 
@@ -105,7 +105,7 @@ class HomographyTracker(Module):
 
         return H, True
 
-    def track_next_frame(self, x: Tensor) -> Tuple[Tensor, bool]:
+    def track_next_frame(self, x: Tensor) -> tuple[Tensor, bool]:
         """The frame `x` is prewarped according to the previous frame homography, matched with fast_matcher
         verified with ransac."""
         if self.previous_homography is not None:  # mypy, shut up
@@ -116,7 +116,7 @@ class HomographyTracker(Module):
         Hinv = torch.inverse(Hwarp)
         h, w = self.target.shape[2:]
         frame_warped = warp_perspective(x, Hinv, (h, w))
-        input_dict: Dict[str, Tensor] = {"image0": self.target, "image1": frame_warped}
+        input_dict: dict[str, Tensor] = {"image0": self.target, "image1": frame_warped}
         for k, v in self.target_fast_representation.items():
             input_dict[f"{k}0"] = v
 
@@ -142,7 +142,7 @@ class HomographyTracker(Module):
         self.previous_homography = H.clone()
         return H, True
 
-    def forward(self, x: Tensor) -> Tuple[Tensor, bool]:
+    def forward(self, x: Tensor) -> tuple[Tensor, bool]:
         if self.previous_homography is not None:
             return self.track_next_frame(x)
         return self.match_initial(x)

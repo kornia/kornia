@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 from torch.distributions import Bernoulli
@@ -28,7 +28,7 @@ class MixupGenerator(RandomGeneratorBase):
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
     """
 
-    def __init__(self, lambda_val: Optional[Union[torch.Tensor, Tuple[float, float]]] = None, p: float = 1.0) -> None:
+    def __init__(self, lambda_val: Optional[Union[torch.Tensor, tuple[float, float]]] = None, p: float = 1.0) -> None:
         super().__init__()
         self.lambda_val = lambda_val
         self.p = p
@@ -47,7 +47,7 @@ class MixupGenerator(RandomGeneratorBase):
         self.lambda_sampler = UniformDistribution(lambda_val[0], lambda_val[1], validate_args=False)
         self.prob_sampler = Bernoulli(torch.tensor(float(self.p), device=device, dtype=dtype))
 
-    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
+    def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
 
         _common_param_check(batch_size, same_on_batch)

@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 import torch
 
@@ -70,10 +70,10 @@ class ColorJitter(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        brightness: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
-        contrast: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
-        saturation: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
-        hue: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
+        brightness: Union[Tensor, float, tuple[float, float], list[float]] = 0.0,
+        contrast: Union[Tensor, float, tuple[float, float], list[float]] = 0.0,
+        saturation: Union[Tensor, float, tuple[float, float], list[float]] = 0.0,
+        hue: Union[Tensor, float, tuple[float, float], list[float]] = 0.0,
         same_on_batch: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
@@ -95,8 +95,8 @@ class ColorJitter(IntensityAugmentationBase2D):
     def apply_transform(
         self,
         input: Tensor,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any],
+        params: dict[str, Tensor],
+        flags: dict[str, Any],
         transform: Optional[Tensor] = None,
     ) -> Tensor:
         transforms = [
@@ -132,7 +132,7 @@ class ColorJitter(IntensityAugmentationBase2D):
         dynamic: bool = False,
         backend: str = "inductor",
         mode: Optional[str] = None,
-        options: Optional[Dict[Any, Any]] = None,
+        options: Optional[dict[Any, Any]] = None,
         disable: bool = False,
     ) -> "ColorJitter":
         self.brightness_fn = torch.compile(

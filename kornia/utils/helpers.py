@@ -5,7 +5,7 @@ import warnings
 from dataclasses import asdict, fields, is_dataclass
 from functools import wraps
 from inspect import isclass, isfunction
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union, overload
+from typing import TYPE_CHECKING, Any, Callable, Optional, TypeVar, Union, overload
 
 import torch
 from torch.linalg import inv_ex
@@ -113,7 +113,7 @@ def deprecated(
     return _deprecated
 
 
-def _extract_device_dtype(tensor_list: List[Optional[Any]]) -> Tuple[torch.device, torch.dtype]:
+def _extract_device_dtype(tensor_list: list[Optional[Any]]) -> tuple[torch.device, torch.dtype]:
     """Check if all the input are in the same device (only if when they are Tensor).
 
     If so, it would return a tuple of (device, dtype). Default: (cpu, ``get_default_dtype()``).
@@ -172,7 +172,7 @@ def _torch_histc_cast(input: Tensor, bins: int, min: int, max: int) -> Tensor:
     return torch.histc(input.to(dtype), bins, min, max).to(input.dtype)
 
 
-def _torch_svd_cast(input: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
+def _torch_svd_cast(input: Tensor) -> tuple[Tensor, Tensor, Tensor]:
     """Helper function to make torch.svd work with other than fp32/64.
 
     The function torch.svd is only implemented for fp32/64 which makes
@@ -235,7 +235,7 @@ def _torch_solve_cast(A: Tensor, B: Tensor) -> Tensor:
     return out.to(A.dtype)
 
 
-def safe_solve_with_mask(B: Tensor, A: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
+def safe_solve_with_mask(B: Tensor, A: Tensor) -> tuple[Tensor, Tensor, Tensor]:
     r"""Helper function, which avoids crashing because of singular matrix input and outputs the mask of valid
     solution."""
     if not torch_version_ge(1, 10):
@@ -278,7 +278,7 @@ def safe_solve_with_mask(B: Tensor, A: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
     return X.to(B.dtype), A_LU.to(A.dtype), valid_mask
 
 
-def safe_inverse_with_mask(A: Tensor) -> Tuple[Tensor, Tensor]:
+def safe_inverse_with_mask(A: Tensor) -> tuple[Tensor, Tensor]:
     r"""Helper function, which avoids crashing because of non-invertable matrix input and outputs the mask of valid
     solution."""
 
@@ -339,13 +339,13 @@ def dataclass_to_dict(obj: Any) -> Any:
 T = TypeVar("T")
 
 
-def dict_to_dataclass(dict_obj: Dict[str, Any], dataclass_type: Type[T]) -> T:
+def dict_to_dataclass(dict_obj: dict[str, Any], dataclass_type: type[T]) -> T:
     """Recursively convert dictionaries to dataclass instances."""
     if not isinstance(dict_obj, dict):
         raise TypeError("Input conf must be dict")
     if not is_dataclass(dataclass_type):
         raise TypeError("dataclass_type must be a dataclass")
-    field_types = {f.name: f.type for f in fields(dataclass_type)}
+    field_types: dict[str, Any] = {f.name: f.type for f in fields(dataclass_type)}
     constructor_args = {}
     for key, value in dict_obj.items():
         if key in field_types and is_dataclass(field_types[key]):

@@ -3,7 +3,9 @@
 https://github.com/scikit-image/scikit-image/blob/a48bf6774718c64dade4548153ae16065b595ca9/skimage/color/colorconv.py
 """
 
-from typing import Tuple
+from __future__ import annotations
+
+from typing import ClassVar
 
 import torch
 
@@ -48,10 +50,14 @@ def rgb_to_luv(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     z: torch.Tensor = xyz_im[..., 2, :, :]
 
     threshold = 0.008856
-    L: torch.Tensor = torch.where(y > threshold, 116.0 * torch.pow(y.clamp(min=threshold), 1.0 / 3.0) - 16.0, 903.3 * y)
+    L: torch.Tensor = torch.where(
+        y > threshold,
+        116.0 * torch.pow(y.clamp(min=threshold), 1.0 / 3.0) - 16.0,
+        903.3 * y,
+    )
 
     # Compute reference white point
-    xyz_ref_white: Tuple[float, float, float] = (0.95047, 1.0, 1.08883)
+    xyz_ref_white: tuple[float, float, float] = (0.95047, 1.0, 1.08883)
     u_w: float = (4 * xyz_ref_white[0]) / (xyz_ref_white[0] + 15 * xyz_ref_white[1] + 3 * xyz_ref_white[2])
     v_w: float = (9 * xyz_ref_white[1]) / (xyz_ref_white[0] + 15 * xyz_ref_white[1] + 3 * xyz_ref_white[2])
 
@@ -94,7 +100,7 @@ def luv_to_rgb(image: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
     y: torch.Tensor = torch.where(L > 7.999625, torch.pow((L + 16) / 116, 3.0), L / 903.3)
 
     # Compute white point
-    xyz_ref_white: Tuple[float, float, float] = (0.95047, 1.0, 1.08883)
+    xyz_ref_white: tuple[float, float, float] = (0.95047, 1.0, 1.08883)
     u_w: float = (4 * xyz_ref_white[0]) / (xyz_ref_white[0] + 15 * xyz_ref_white[1] + 3 * xyz_ref_white[2])
     v_w: float = (9 * xyz_ref_white[1]) / (xyz_ref_white[0] + 15 * xyz_ref_white[1] + 3 * xyz_ref_white[2])
 
@@ -141,6 +147,9 @@ class RgbToLuv(Module):
         [3] http://www.poynton.com/ColorFAQ.html
     """
 
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return rgb_to_luv(image)
 
@@ -167,6 +176,9 @@ class LuvToRgb(Module):
 
         [3] http://www.poynton.com/ColorFAQ.html
     """
+
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         return luv_to_rgb(image)

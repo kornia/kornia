@@ -1,11 +1,12 @@
 """Module for image projections."""
 
-from typing import Tuple, Union
+from typing import Union
 
 import torch
 from torch.linalg import qr as linalg_qr
 
 from kornia.core import Tensor, concatenate, ones_like, pad, stack, zeros_like
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.utils import eye_like, vec_like
 from kornia.utils.helpers import _torch_svd_cast
 
@@ -91,12 +92,9 @@ def projection_from_KRt(K: Tensor, R: Tensor, t: Tensor) -> Tensor:
     Returns:
        The projection matrix P with shape :math:`(B, 4, 4)`.
     """
-    if K.shape[-2:] != (3, 3):
-        raise AssertionError(K.shape)
-    if R.shape[-2:] != (3, 3):
-        raise AssertionError(R.shape)
-    if t.shape[-2:] != (3, 1):
-        raise AssertionError(t.shape)
+    KORNIA_CHECK_SHAPE(K, ["*", "3", "3"])
+    KORNIA_CHECK_SHAPE(R, ["*", "3", "3"])
+    KORNIA_CHECK_SHAPE(t, ["*", "3", "1"])
     if not len(K.shape) == len(R.shape) == len(t.shape):
         raise AssertionError
 
@@ -110,7 +108,7 @@ def projection_from_KRt(K: Tensor, R: Tensor, t: Tensor) -> Tensor:
     return K @ Rt
 
 
-def KRt_from_projection(P: Tensor, eps: float = 1e-6) -> Tuple[Tensor, Tensor, Tensor]:
+def KRt_from_projection(P: Tensor, eps: float = 1e-6) -> tuple[Tensor, Tensor, Tensor]:
     r"""Decompose the Projection matrix into Camera-Matrix, Rotation Matrix and Translation vector.
 
     Args:
@@ -121,11 +119,7 @@ def KRt_from_projection(P: Tensor, eps: float = 1e-6) -> Tuple[Tensor, Tensor, T
         - The Rotation matrix with shape :math:`(B, 3, 3)`.
         - The Translation vector with shape :math:`(B, 3)`.
     """
-    if P.shape[-2:] != (3, 4):
-        raise AssertionError("P must be of shape [B, 3, 4]")
-    if len(P.shape) != 3:
-        raise AssertionError
-
+    KORNIA_CHECK_SHAPE(P, ["*", "3", "4"])
     submat_3x3 = P[:, 0:3, 0:3]
     last_column = P[:, 0:3, 3].unsqueeze(-1)
 
@@ -167,7 +161,7 @@ def depth_from_point(R: Tensor, t: Tensor, X: Tensor) -> Tensor:
 # adapted from:
 # https://github.com/opencv/opencv_contrib/blob/master/modules/sfm/src/fundamental.cpp#L61
 # https://github.com/mapillary/OpenSfM/blob/master/opensfm/multiview.py#L14
-def _nullspace(A: Tensor) -> Tuple[Tensor, Tensor]:
+def _nullspace(A: Tensor) -> tuple[Tensor, Tensor]:
     """Compute the null space of A.
 
     Return the smallest singular value and the corresponding vector.
@@ -185,10 +179,7 @@ def projections_from_fundamental(F_mat: Tensor) -> Tensor:
     Returns:
         The projection matrices with shape :math:`(B, 3, 4, 2)`.
     """
-    if len(F_mat.shape) != 3:
-        raise AssertionError(F_mat.shape)
-    if F_mat.shape[-2:] != (3, 3):
-        raise AssertionError(F_mat.shape)
+    KORNIA_CHECK_SHAPE(F_mat, ["*", "3", "3"])
 
     R1 = eye_like(3, F_mat)  # Bx3x3
     t1 = vec_like(3, F_mat)  # Bx3

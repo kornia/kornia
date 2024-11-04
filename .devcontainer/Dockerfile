@@ -1,7 +1,7 @@
 # See here for image contents: https://github.com/microsoft/vscode-dev-containers/blob/main/containers/python-3/.devcontainer/base.Dockerfile
 
-# [Choice] Python version: 3, 3.10, 3.9, 3.8
-ARG VARIANT="3.8"
+# [Choice] Python version: 3, 3.10, 3.9
+ARG VARIANT="3.9"
 FROM mcr.microsoft.com/vscode/devcontainers/python:${VARIANT}
 
 # [Option] Install Node.js

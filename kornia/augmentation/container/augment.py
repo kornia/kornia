@@ -1,5 +1,6 @@
 import warnings
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union, cast
+from collections.abc import Sequence
+from typing import Any, Optional, Union, cast
 
 import torch
 
@@ -27,7 +28,7 @@ _IMG_OPTIONS = {DataKey.INPUT, DataKey.IMAGE}
 _MSK_OPTIONS = {DataKey.MASK}
 _CLS_OPTIONS = {DataKey.CLASS, DataKey.LABEL}
 
-MaskDataType = Union[Tensor, List[Tensor]]
+MaskDataType = Union[Tensor, list[Tensor]]
 
 
 class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
@@ -208,18 +209,18 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
     def __init__(
         self,
         *args: Union[_AugmentationBase, ImageSequential],
-        data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = [DataKey.INPUT],
+        data_keys: Optional[Union[list[str], list[int], list[DataKey]]] = [DataKey.INPUT],
         same_on_batch: Optional[bool] = None,
         keepdim: Optional[bool] = None,
-        random_apply: Union[int, bool, Tuple[int, int]] = False,
-        random_apply_weights: Optional[List[float]] = None,
+        random_apply: Union[int, bool, tuple[int, int]] = False,
+        random_apply_weights: Optional[list[float]] = None,
         transformation_matrix_mode: str = "silent",
-        extra_args: Dict[DataKey, Dict[str, Any]] = {
+        extra_args: dict[DataKey, dict[str, Any]] = {
             DataKey.MASK: {"resample": Resample.NEAREST, "align_corners": None}
         },
     ) -> None:
         self._transform_matrix: Optional[Tensor]
-        self._transform_matrices: List[Optional[Tensor]] = []
+        self._transform_matrices: list[Optional[Tensor]] = []
 
         super().__init__(
             *args,
@@ -231,13 +232,13 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         self._parse_transformation_matrix_mode(transformation_matrix_mode)
 
-        self._valid_ops_for_transform_computation: Tuple[Any, ...] = (
+        self._valid_ops_for_transform_computation: tuple[Any, ...] = (
             RigidAffineAugmentationBase2D,
             RigidAffineAugmentationBase3D,
             AugmentationSequential,
         )
 
-        self.data_keys: Optional[List[DataKey]]
+        self.data_keys: Optional[list[DataKey]]
         if data_keys is not None:
             self.data_keys = [DataKey.get(inp) for inp in data_keys]
         else:
@@ -281,10 +282,10 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
     def inverse(  # type: ignore[override]
         self,
-        *args: Union[DataType, Dict[str, DataType]],
-        params: Optional[List[ParamItem]] = None,
-        data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None,
-    ) -> Union[DataType, List[DataType], Dict[str, DataType]]:
+        *args: Union[DataType, dict[str, DataType]],
+        params: Optional[list[ParamItem]] = None,
+        data_keys: Optional[Union[list[str], list[int], list[DataKey]]] = None,
+    ) -> Union[DataType, list[DataType], dict[str, DataType]]:
         """Reverse the transformation applied.
 
         Number of input tensors must align with the number of``data_keys``. If ``data_keys`` is not set, use
@@ -312,7 +313,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 )
             params = self._params
 
-        outputs: List[DataType] = in_args
+        outputs: list[DataType] = in_args
         for param in params[::-1]:
             module = self.get_submodule(param.name)
             outputs = self.transform_op.inverse(  # type: ignore
@@ -335,15 +336,15 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         return outputs
 
-    def _validate_args_datakeys(self, *args: DataType, data_keys: List[DataKey]) -> None:
+    def _validate_args_datakeys(self, *args: DataType, data_keys: list[DataKey]) -> None:
         if len(args) != len(data_keys):
             raise AssertionError(
                 f"The number of inputs must align with the number of data_keys. Got {len(args)} and {len(data_keys)}."
             )
         # TODO: validate args batching, and its consistency
 
-    def _arguments_preproc(self, *args: DataType, data_keys: List[DataKey]) -> List[DataType]:
-        inp: List[DataType] = []
+    def _arguments_preproc(self, *args: DataType, data_keys: list[DataKey]) -> list[DataType]:
+        inp: list[DataType] = []
         for arg, dcate in zip(args, data_keys):
             if DataKey.get(dcate) in _IMG_OPTIONS:
                 arg = cast(Tensor, arg)
@@ -351,7 +352,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
                 inp.append(arg)
             elif DataKey.get(dcate) in _MSK_OPTIONS:
                 if isinstance(inp, list):
-                    arg = cast(List[Tensor], arg)
+                    arg = cast(list[Tensor], arg)
                     self.mask_dtype = arg[0].dtype
                 else:
                     arg = cast(Tensor, arg)
@@ -368,9 +369,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         return inp
 
     def _arguments_postproc(
-        self, in_args: List[DataType], out_args: List[DataType], data_keys: List[DataKey]
-    ) -> List[DataType]:
-        out: List[DataType] = []
+        self, in_args: list[DataType], out_args: list[DataType], data_keys: list[DataKey]
+    ) -> list[DataType]:
+        out: list[DataType] = []
         for in_arg, out_arg, dcate in zip(in_args, out_args, data_keys):
             if DataKey.get(dcate) in _IMG_OPTIONS:
                 # It is tensor type already.
@@ -408,10 +409,10 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
     def forward(  # type: ignore[override]
         self,
-        *args: Union[DataType, Dict[str, DataType]],
-        params: Optional[List[ParamItem]] = None,
-        data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None,
-    ) -> Union[DataType, List[DataType], Dict[str, DataType]]:
+        *args: Union[DataType, dict[str, DataType]],
+        params: Optional[list[ParamItem]] = None,
+        data_keys: Optional[Union[list[str], list[int], list[DataKey]]] = None,
+    ) -> Union[DataType, list[DataType], dict[str, DataType]]:
         """Compute multiple tensors simultaneously according to ``self.data_keys``."""
         self.clear_state()
 
@@ -441,7 +442,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             else:
                 raise ValueError("`params` must be provided whilst INPUT is not in data_keys.")
 
-        outputs: Union[Tensor, List[DataType]] = in_args
+        outputs: Union[Tensor, list[DataType]] = in_args
         for param in params:
             module = self.get_submodule(param.name)
             outputs = self.transform_op.transform(  # type: ignore
@@ -472,7 +473,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
     def __call__(
         self,
         *inputs: Any,
-        input_names_to_handle: Optional[List[Any]] = None,
+        input_names_to_handle: Optional[list[Any]] = None,
         output_type: str = "tensor",
         **kwargs: Any,
     ) -> Any:
@@ -523,8 +524,8 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         return _output_image
 
     def _preproc_dict_data(
-        self, data: Dict[str, DataType]
-    ) -> Tuple[Tuple[str, ...], List[DataKey], Tuple[DataType, ...], Optional[Dict[str, Any]]]:
+        self, data: dict[str, DataType]
+    ) -> tuple[tuple[str, ...], list[DataKey], tuple[DataType, ...], Optional[dict[str, Any]]]:
         if self.data_keys is not None:
             raise ValueError("If you are using a dictionary as input, the data_keys should be None.")
 
@@ -536,7 +537,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
         return keys, data_keys, data_unpacked, invalid_data
 
-    def _read_datakeys_from_dict(self, keys: Sequence[str]) -> Tuple[List[DataKey], Optional[List[str]]]:
+    def _read_datakeys_from_dict(self, keys: Sequence[str]) -> tuple[list[DataKey], Optional[list[str]]]:
         def retrieve_key(key: str) -> DataKey:
             """Try to retrieve the datakey value by matching `<datakey>*`"""
             # Alias cases, like INPUT, will not be get by the enum iterator.
@@ -608,7 +609,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
             arg = cast(Tensor, arg)
             return Boxes.from_tensor(arg, mode=mode)
 
-    def _postproc_boxes(self, in_arg: DataType, out_arg: Boxes, dcate: DataKey) -> Union[Tensor, List[Tensor], Boxes]:
+    def _postproc_boxes(self, in_arg: DataType, out_arg: Boxes, dcate: DataKey) -> Union[Tensor, list[Tensor], Boxes]:
         if DataKey.get(dcate) in [DataKey.BBOX]:
             mode = "vertices_plus"
         elif DataKey.get(dcate) in [DataKey.BBOX_XYXY]:
@@ -628,7 +629,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         dtype = None
 
         if self.contains_video_sequential:
-            arg = cast(Union[Tensor, List[Tensor]], arg)
+            arg = cast(Union[Tensor, list[Tensor]], arg)
             if isinstance(arg, list):
                 if not torch.is_floating_point(arg[0]):
                     dtype = arg[0].dtype
@@ -653,7 +654,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
 
     def _postproc_keypoint(
         self, in_arg: DataType, out_arg: Keypoints, dcate: DataKey
-    ) -> Union[Tensor, List[Tensor], Keypoints]:
+    ) -> Union[Tensor, list[Tensor], Keypoints]:
         if isinstance(in_arg, (Keypoints,)):
             return out_arg
         else:

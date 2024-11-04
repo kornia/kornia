@@ -1,16 +1,17 @@
-from typing import Optional, Tuple
+from typing import Optional
 
 import torch
 from torch.linalg import qr as linalg_qr
 
 from kornia.core import arange, ones_like, where, zeros
-from kornia.geometry.conversions import convert_points_to_homogeneous
+from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
+from kornia.geometry.conversions import convert_points_to_homogeneous, normalize_points_with_intrinsics
 from kornia.geometry.linalg import transform_points
 from kornia.utils import eye_like
-from kornia.utils.helpers import _torch_linalg_svdvals
+from kornia.utils.helpers import _torch_linalg_svdvals, _torch_svd_cast
 
 
-def _mean_isotropic_scale_normalize(points: torch.Tensor, eps: float = 1e-8) -> Tuple[torch.Tensor, torch.Tensor]:
+def _mean_isotropic_scale_normalize(points: torch.Tensor, eps: float = 1e-8) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Normalizes points.
 
     Args:
@@ -21,12 +22,7 @@ def _mean_isotropic_scale_normalize(points: torch.Tensor, eps: float = 1e-8) -> 
        Tuple containing the normalized points in the shape :math:`(B, N, D)` and the transformation matrix
        in the shape :math:`(B, D+1, D+1)`.
     """
-    if not isinstance(points, torch.Tensor):
-        raise AssertionError(f"points is not an instance of torch.Tensor. Type of points is {type(points)}")
-
-    if len(points.shape) != 3:
-        raise AssertionError(f"points must be of shape (B, N, D). Got shape {points.shape}.")
-
+    KORNIA_CHECK_SHAPE(points, ["B", "N", "D"])
     x_mean = torch.mean(points, dim=1, keepdim=True)  # Bx1xD
     scale = (points - x_mean).norm(dim=-1, p=2).mean(dim=-1)  # B
 
@@ -78,8 +74,8 @@ def solve_pnp_dlt(
           the points in the image space.
         intrinsics : A tensor with shape :math:`(B, 3, 3)` representing
           the intrinsic matrices.
-        weights : This parameter is not used currently and is just a
-          placeholder for API consistency.
+        weights : A tensor with shape :math:`(B, N)` representing the
+            weights for each point. If None, all points are considered to be equally important.
         svd_eps : A small float value to avoid numerical precision issues.
 
     Returns:
@@ -127,64 +123,21 @@ def solve_pnp_dlt(
     # 3. http://rpg.ifi.uzh.ch/docs/teaching/2020/03_camera_calibration.pdf
     # 4. http://www.cs.cmu.edu/~16385/s17/Slides/11.3_Pose_Estimation.pdf
     # 5. https://www.ece.mcmaster.ca/~shirani/vision/hartley_ch7.pdf
-
-    if not isinstance(world_points, torch.Tensor):
-        raise AssertionError(
-            f"world_points is not an instance of torch.Tensor. Type of world_points is {type(world_points)}"
-        )
-
-    if not isinstance(img_points, torch.Tensor):
-        raise AssertionError(f"img_points is not an instance of torch.Tensor. Type of img_points is {type(img_points)}")
-
-    if not isinstance(intrinsics, torch.Tensor):
-        raise AssertionError(f"intrinsics is not an instance of torch.Tensor. Type of intrinsics is {type(intrinsics)}")
-
-    if (weights is not None) and (not isinstance(weights, torch.Tensor)):
-        raise AssertionError(
-            "If weights is not None, then weights should be an instance "
-            f"of torch.Tensor. Type of weights is {type(weights)}"
-        )
-
-    if not isinstance(svd_eps, float):
-        raise AssertionError(f"Type of svd_eps is not float. Got {type(svd_eps)}")
-
     accepted_dtypes = (torch.float32, torch.float64)
-
-    if world_points.dtype not in accepted_dtypes:
-        raise AssertionError(
-            f"world_points must have one of the following dtypes {accepted_dtypes}. "
-            f"Currently it has {world_points.dtype}."
-        )
-
-    if img_points.dtype not in accepted_dtypes:
-        raise AssertionError(
-            f"img_points must have one of the following dtypes {accepted_dtypes}. Currently it has {img_points.dtype}."
-        )
-
-    if intrinsics.dtype not in accepted_dtypes:
-        raise AssertionError(
-            f"intrinsics must have one of the following dtypes {accepted_dtypes}. Currently it has {intrinsics.dtype}."
-        )
-
-    if (len(world_points.shape) != 3) or (world_points.shape[2] != 3):
-        raise AssertionError(f"world_points must be of shape (B, N, 3). Got shape {world_points.shape}.")
-
-    if (len(img_points.shape) != 3) or (img_points.shape[2] != 2):
-        raise AssertionError(f"img_points must be of shape (B, N, 2). Got shape {img_points.shape}.")
-
-    if (len(intrinsics.shape) != 3) or (intrinsics.shape[1:] != (3, 3)):
-        raise AssertionError(f"intrinsics must be of shape (B, 3, 3). Got shape {intrinsics.shape}.")
-
-    if world_points.shape[1] != img_points.shape[1]:
-        raise AssertionError("world_points and img_points must have equal number of points.")
-
-    if (world_points.shape[0] != img_points.shape[0]) or (world_points.shape[0] != intrinsics.shape[0]):
-        raise AssertionError("world_points, img_points and intrinsics must have the same batch size.")
-
-    if world_points.shape[1] < 6:
-        raise AssertionError(
-            f"At least 6 points are required to use this function. Got {world_points.shape[1]} points."
-        )
+    KORNIA_CHECK_IS_TENSOR(world_points)
+    KORNIA_CHECK_IS_TENSOR(img_points)
+    KORNIA_CHECK_IS_TENSOR(intrinsics)
+    KORNIA_CHECK(isinstance(svd_eps, float))
+    KORNIA_CHECK(world_points.dtype in accepted_dtypes)
+    KORNIA_CHECK(img_points.dtype in accepted_dtypes)
+    KORNIA_CHECK(intrinsics.dtype in accepted_dtypes)
+    KORNIA_CHECK_SHAPE(world_points, ["B", "N", "3"])
+    KORNIA_CHECK_SHAPE(img_points, ["B", "N", "2"])
+    KORNIA_CHECK_SHAPE(intrinsics, ["B", "3", "3"])
+    KORNIA_CHECK_SAME_SHAPE(world_points[:, :, 0], img_points[:, :, 0])
+    KORNIA_CHECK(world_points.shape[1] >= 6)
+    if weights is not None:
+        KORNIA_CHECK_IS_TENSOR(weights)
 
     B, N = world_points.shape[:2]
 
@@ -202,14 +155,10 @@ def solve_pnp_dlt(
             "element of the batch) lie on a line or if all world_points (of any "
             "element of the batch) lie on a plane."
         )
-
-    intrinsics_inv = torch.inverse(intrinsics)
     world_points_norm_h = convert_points_to_homogeneous(world_points_norm)
 
-    # Transforming img_points with intrinsics_inv to get img_points_inv
-    img_points_inv = transform_points(intrinsics_inv, img_points)
-
     # Normalizing img_points_inv
+    img_points_inv = normalize_points_with_intrinsics(img_points, intrinsics)
     img_points_norm, img_transform_norm = _mean_isotropic_scale_normalize(img_points_inv)
     inv_img_transform_norm = torch.inverse(img_transform_norm)
 
@@ -220,8 +169,16 @@ def solve_pnp_dlt(
     system[:, 0::2, 8:12] = world_points_norm_h * (-1) * img_points_norm[..., 0:1]
     system[:, 1::2, 8:12] = world_points_norm_h * (-1) * img_points_norm[..., 1:2]
 
+    # Apply weights to the system if provided
+    if weights is not None:
+        if weights.shape != (B, N):
+            raise AssertionError(f"Weights should have shape (B, N). Got {weights.shape}.")
+        weights_expanded = weights.unsqueeze(-1).repeat(1, 1, 2).view(B, 2 * N, 1)
+        # Multiply the system matrix by the expanded weights
+        system = weights_expanded * system
+
     # Getting the solution vectors.
-    _, _, v = torch.svd(system)
+    _, _, v = _torch_svd_cast(system)
     solution = v[..., -1]
 
     # Reshaping the solution vectors to the correct shape.

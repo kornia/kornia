@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from typing import List
-
 # All colormaps has 64 base colors. Extracted from matplotlib.
 # https://matplotlib.org/stable/users/explain/colors/colormaps.html
 
 
-RGBColor = List[float]
+RGBColor = list[float]
 
 
 def get_autumn_base() -> list[RGBColor]:

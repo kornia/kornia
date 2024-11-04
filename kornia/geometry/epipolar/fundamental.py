@@ -1,18 +1,18 @@
 """Module containing the functionalities for computing the Fundamental Matrix."""
 
-from typing import Literal, Optional, Tuple
+from typing import Literal, Optional
 
 import torch
 
 from kornia.core import Tensor, concatenate, ones_like, stack, where, zeros
-from kornia.core.check import KORNIA_CHECK_SHAPE
+from kornia.core.check import KORNIA_CHECK_SAME_SHAPE, KORNIA_CHECK_SHAPE
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.solvers import solve_cubic
 from kornia.utils.helpers import _torch_svd_cast, safe_inverse_with_mask
 
 
-def normalize_points(points: Tensor, eps: float = 1e-8) -> Tuple[Tensor, Tensor]:
+def normalize_points(points: Tensor, eps: float = 1e-8) -> tuple[Tensor, Tensor]:
     r"""Normalizes points (isotropic).
 
     Computes the transformation matrix such that the two principal moments of the set of points
@@ -179,12 +179,14 @@ def run_8point(points1: Tensor, points2: Tensor, weights: Optional[Tensor] = Non
     Returns:
         the computed fundamental matrix with shape :math:`(B, 3, 3)`.
     """
-    if points1.shape != points2.shape:
-        raise AssertionError(points1.shape, points2.shape)
+    KORNIA_CHECK_SHAPE(points1, ["B", "N", "2"])
+    KORNIA_CHECK_SHAPE(points2, ["B", "N", "2"])
+    KORNIA_CHECK_SAME_SHAPE(points1, points2)
     if points1.shape[1] < 8:
         raise AssertionError(points1.shape)
     if weights is not None:
-        if not (len(weights.shape) == 2 and weights.shape[1] == points1.shape[1]):
+        KORNIA_CHECK_SHAPE(weights, ["B", "N"])
+        if not (weights.shape[1] == points1.shape[1]):
             raise AssertionError(weights.shape)
 
     points1_norm, transform1 = normalize_points(points1)
@@ -345,12 +347,9 @@ def fundamental_from_essential(E_mat: Tensor, K1: Tensor, K2: Tensor) -> Tensor:
     Returns:
         The fundamental matrix with shape :math:`(*, 3, 3)`.
     """
-    if not (len(E_mat.shape) >= 2 and E_mat.shape[-2:] == (3, 3)):
-        raise AssertionError(E_mat.shape)
-    if not (len(K1.shape) >= 2 and K1.shape[-2:] == (3, 3)):
-        raise AssertionError(K1.shape)
-    if not (len(K2.shape) >= 2 and K2.shape[-2:] == (3, 3)):
-        raise AssertionError(K2.shape)
+    KORNIA_CHECK_SHAPE(E_mat, ["*", "3", "3"])
+    KORNIA_CHECK_SHAPE(K1, ["*", "3", "3"])
+    KORNIA_CHECK_SHAPE(K2, ["*", "3", "3"])
     if not len(E_mat.shape[:-2]) == len(K1.shape[:-2]) == len(K2.shape[:-2]):
         raise AssertionError
 
@@ -372,10 +371,8 @@ def fundamental_from_projections(P1: Tensor, P2: Tensor) -> Tensor:
     Returns:
          The fundamental matrix with shape :math:`(*, 3, 3)`.
     """
-    if not (len(P1.shape) >= 2 and P1.shape[-2:] == (3, 4)):
-        raise AssertionError(P1.shape)
-    if not (len(P2.shape) >= 2 and P2.shape[-2:] == (3, 4)):
-        raise AssertionError(P2.shape)
+    KORNIA_CHECK_SHAPE(P1, ["*", "3", "4"])
+    KORNIA_CHECK_SHAPE(P2, ["*", "3", "4"])
     if P1.shape[:-2] != P2.shape[:-2]:
         raise AssertionError
 

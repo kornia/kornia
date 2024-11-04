@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 import torch
 from torch import Tensor
@@ -54,8 +54,8 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        kernel_size: Union[Tuple[int, int], int],
-        sigma: Union[Tuple[float, float], Tensor],
+        kernel_size: Union[tuple[int, int], int],
+        sigma: Union[tuple[float, float], Tensor],
         border_type: str = "reflect",
         separable: bool = True,
         same_on_batch: bool = False,
@@ -76,8 +76,8 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
     def apply_transform(
         self,
         input: Tensor,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any],
+        params: dict[str, Tensor],
+        flags: dict[str, Any],
         transform: Optional[Tensor] = None,
     ) -> Tensor:
         sigma = params["sigma"].unsqueeze(-1).expand(-1, 2)
@@ -96,7 +96,7 @@ class RandomGaussianBlur(IntensityAugmentationBase2D):
         dynamic: bool = False,
         backend: str = "inductor",
         mode: Optional[str] = None,
-        options: Optional[Dict[Any, Any]] = None,
+        options: Optional[dict[Any, Any]] = None,
         disable: bool = False,
     ) -> "RandomGaussianBlur":
         self._gaussian_blur2d_fn = torch.compile(

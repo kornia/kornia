@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.random_generator._2d import SaltAndPepperGenerator
@@ -60,8 +60,8 @@ class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        amount: Optional[Union[float, Tuple[float, float]]] = (0.01, 0.06),
-        salt_vs_pepper: Optional[Union[float, Tuple[float, float]]] = (0.4, 0.6),
+        amount: Optional[Union[float, tuple[float, float]]] = (0.01, 0.06),
+        salt_vs_pepper: Optional[Union[float, tuple[float, float]]] = (0.4, 0.6),
         p: float = 0.5,
         same_on_batch: bool = False,
         keepdim: bool = False,
@@ -111,8 +111,8 @@ class RandomSaltAndPepperNoise(IntensityAugmentationBase2D):
     def apply_transform(
         self,
         input: Tensor,
-        params: Dict[str, Tensor],
-        flags: Dict[str, Any],
+        params: dict[str, Tensor],
+        flags: dict[str, Any],
         transform: Optional[Tensor] = None,
     ) -> Tensor:
         r"""Apply random Salt and Pepper noise transformation to the input image."""

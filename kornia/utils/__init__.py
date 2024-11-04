@@ -1,4 +1,5 @@
 from ._compat import torch_meshgrid
+from .download import CachedDownloader
 from .draw import draw_convex_polygon, draw_line, draw_point2d, draw_rectangle
 from .grid import create_meshgrid, create_meshgrid3d
 from .helpers import (
@@ -28,6 +29,7 @@ from .misc import (
 )
 from .one_hot import one_hot
 from .pointcloud_io import load_pointcloud_ply, save_pointcloud_ply
+from .sample import get_sample_images
 
 __all__ = [
     "batched_forward",
@@ -62,4 +64,6 @@ __all__ = [
     "is_mps_tensor_safe",
     "dataclass_to_dict",
     "dict_to_dataclass",
+    "get_sample_images",
+    "CachedDownloader",
 ]

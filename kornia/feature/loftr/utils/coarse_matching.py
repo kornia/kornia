@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Union
+from typing import Any, Optional, Union
 
 import torch
 import torch.nn.functional as F
@@ -60,7 +60,7 @@ def compute_max_candidates(p_m0: Tensor, p_m1: Tensor) -> Tensor:
 
 
 class CoarseMatching(Module):
-    def __init__(self, config: Dict[str, Any]) -> None:
+    def __init__(self, config: dict[str, Any]) -> None:
         super().__init__()
         self.config = config
         # general config
@@ -90,7 +90,7 @@ class CoarseMatching(Module):
         self,
         feat_c0: Tensor,
         feat_c1: Tensor,
-        data: Dict[str, Tensor],
+        data: dict[str, Tensor],
         mask_c0: Optional[Tensor] = None,
         mask_c1: Optional[Tensor] = None,
     ) -> None:
@@ -150,7 +150,7 @@ class CoarseMatching(Module):
         data.update(**self.get_coarse_match(conf_matrix, data))
 
     @torch.no_grad()
-    def get_coarse_match(self, conf_matrix: Tensor, data: Dict[str, Tensor]) -> Dict[str, Tensor]:
+    def get_coarse_match(self, conf_matrix: Tensor, data: dict[str, Tensor]) -> dict[str, Tensor]:
         """
         Args:
             conf_matrix (torch.Tensor): [N, L, S]

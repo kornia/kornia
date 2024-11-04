@@ -5,6 +5,7 @@ from typing import Optional
 import torch
 
 from kornia.core import stack
+from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.geometry.linalg import transform_points
 from kornia.geometry.transform import remap
 from kornia.utils import create_meshgrid
@@ -45,16 +46,16 @@ def undistort_points(
                  [-0.0697,  0.0228],
                  [-0.1843, -0.1606]]])
     """
+    KORNIA_CHECK_SHAPE(points, ["*", "N", "2"])
+    KORNIA_CHECK_SHAPE(K, ["*", "3", "3"])
+
     if points.dim() < 2 and points.shape[-1] != 2:
         raise ValueError(f"points shape is invalid. Got {points.shape}.")
 
-    if K.shape[-2:] != (3, 3):
-        raise ValueError(f"K matrix shape is invalid. Got {K.shape}.")
-
     if new_K is None:
         new_K = K
-    elif new_K.shape[-2:] != (3, 3):
-        raise ValueError(f"new_K matrix shape is invalid. Got {new_K.shape}.")
+    else:
+        KORNIA_CHECK_SHAPE(new_K, ["*", "3", "3"])
 
     if dist.shape[-1] not in [4, 5, 8, 12, 14]:
         raise ValueError(f"Invalid number of distortion coefficients. Got {dist.shape[-1]}")

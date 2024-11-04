@@ -1,5 +1,4 @@
 import math
-from typing import Tuple
 
 import torch
 
@@ -88,7 +87,7 @@ def batch_2x2_det(m: Tensor) -> Tensor:
     return a * d - b * c
 
 
-def batch_2x2_ellipse(m: Tensor) -> Tuple[Tensor, Tensor]:
+def batch_2x2_ellipse(m: Tensor) -> tuple[Tensor, Tensor]:
     am = m[..., 0, 0]
     bm = m[..., 0, 1]
     cm = m[..., 1, 0]

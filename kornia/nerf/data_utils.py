@@ -1,4 +1,5 @@
-from typing import TYPE_CHECKING, List, Optional, Sequence, Tuple, Union
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Optional, Union
 
 import torch
 from torch.utils.data import BatchSampler, DataLoader, Dataset, RandomSampler, SequentialSampler
@@ -10,14 +11,14 @@ from kornia.io import ImageLoadType, load_image
 from kornia.nerf.core import Images, ImageTensors
 from kornia.nerf.samplers import RandomRaySampler, RaySampler, UniformRaySampler
 
-RayGroup = Tuple[Tensor, Tensor, Optional[Tensor]]
+RayGroup = tuple[Tensor, Tensor, Optional[Tensor]]
 
 
-def _is_list_of_str(lst: Sequence[object]) -> TypeGuard[List[str]]:
+def _is_list_of_str(lst: Sequence[object]) -> TypeGuard[list[str]]:
     return isinstance(lst, list) and all(isinstance(x, str) for x in lst)
 
 
-def _is_list_of_tensors(lst: Sequence[object]) -> TypeGuard[List[Tensor]]:
+def _is_list_of_tensors(lst: Sequence[object]) -> TypeGuard[list[Tensor]]:
     return isinstance(lst, list) and all(isinstance(x, Tensor) for x in lst)
 
 
@@ -38,7 +39,7 @@ class RayDataset(Dataset[RayGroup]):
     ) -> None:
         super().__init__()
         self._ray_sampler: Optional[RaySampler] = None
-        self._imgs: Optional[List[Tensor]] = None
+        self._imgs: Optional[list[Tensor]] = None
         self._cameras = cameras
         self._min_depth = min_depth
         self._max_depth = max_depth
@@ -115,8 +116,8 @@ class RayDataset(Dataset[RayGroup]):
                 )
 
     @staticmethod
-    def _load_images(img_paths: List[str]) -> List[Tensor]:
-        imgs: List[Tensor] = []
+    def _load_images(img_paths: list[str]) -> list[Tensor]:
+        imgs: list[Tensor] = []
         for img_path in img_paths:
             imgs.append(load_image(img_path, ImageLoadType.UNCHANGED))
         return imgs
@@ -126,7 +127,7 @@ class RayDataset(Dataset[RayGroup]):
             return len(self._ray_sampler)
         return 0
 
-    def __getitem__(self, idxs: Union[int, List[int]]) -> RayGroup:
+    def __getitem__(self, idxs: Union[int, list[int]]) -> RayGroup:
         r"""Gets a dataset item.
 
         Args:
@@ -162,7 +163,7 @@ def instantiate_ray_dataloader(dataset: RayDataset, batch_size: int = 1, shuffle
         shuffle: Whether to shuffle rays or sample then sequentially: bool
     """
 
-    def collate_rays(items: List[RayGroup]) -> RayGroup:
+    def collate_rays(items: list[RayGroup]) -> RayGroup:
         return items[0]
 
     if TYPE_CHECKING:

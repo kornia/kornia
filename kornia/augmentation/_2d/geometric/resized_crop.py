@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
@@ -62,9 +62,9 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
 
     def __init__(
         self,
-        size: Tuple[int, int],
-        scale: Union[Tensor, Tuple[float, float]] = (0.08, 1.0),
-        ratio: Union[Tensor, Tuple[float, float]] = (3.0 / 4.0, 4.0 / 3.0),
+        size: tuple[int, int],
+        scale: Union[Tensor, tuple[float, float]] = (0.08, 1.0),
+        ratio: Union[Tensor, tuple[float, float]] = (3.0 / 4.0, 4.0 / 3.0),
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         same_on_batch: bool = False,
         align_corners: bool = True,
@@ -83,7 +83,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
             "padding_mode": "zeros",
         }
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
         if flags["cropping_mode"] in ("resample", "slice"):
             transform: Tensor = get_perspective_transform(params["src"].to(input), params["dst"].to(input))
             transform = transform.expand(input.shape[0], -1, -1)
@@ -91,7 +91,7 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
         raise NotImplementedError(f"Not supported type: {flags['cropping_mode']}.")
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         if flags["cropping_mode"] == "resample":  # uses bilinear interpolation to crop
             if not isinstance(transform, Tensor):
@@ -118,9 +118,9 @@ class RandomResizedCrop(GeometricAugmentationBase2D):
     def inverse_transform(
         self,
         input: Tensor,
-        flags: Dict[str, Any],
+        flags: dict[str, Any],
         transform: Optional[Tensor] = None,
-        size: Optional[Tuple[int, int]] = None,
+        size: Optional[tuple[int, int]] = None,
     ) -> Tensor:
         if flags["cropping_mode"] != "resample":
             raise NotImplementedError(

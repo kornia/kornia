@@ -112,6 +112,9 @@ Kornia is an open-source project that is developed and maintained by volunteers.
 
 Kornia is not just another computer vision library — it's your gateway to effortless Computer Vision and AI.
 
+<details>
+<summary>Get started with Kornia image transformation and augmentation!</summary>
+
 ```python
 import numpy as np
 import kornia_rs as kr
@@ -143,6 +146,49 @@ dslv_op(img, step_number=500)
 
 dslv_op.save("Kornia-enhanced.jpg")
 ```
+
+</details>
+
+<details>
+<summary>Find out Kornia ONNX models with ONNXSequential!</summary>
+
+```python
+import numpy as np
+from kornia.onnx import ONNXSequential
+# Chain ONNX models from HuggingFace repo and your own local model together
+onnx_seq = ONNXSequential(
+    "hf://operators/kornia.geometry.transform.flips.Hflip",
+    "hf://models/kornia.models.detection.rtdetr_r18vd_640x640",  # Or you may use "YOUR_OWN_MODEL.onnx"
+)
+# Prepare some input data
+input_data = np.random.randn(1, 3, 384, 512).astype(np.float32)
+# Perform inference
+outputs = onnx_seq(input_data)
+# Print the model outputs
+print(outputs)
+
+# Export a new ONNX model that chains up all three models together!
+onnx_seq.export("chained_model.onnx")
+```
+</details>
+
+## Multi-framework support
+
+You can now use Kornia with [TensorFlow](https://www.tensorflow.org/), [JAX](https://jax.readthedocs.io/en/latest/index.html), and [NumPy](https://numpy.org/). See [Multi-Framework Support](docs/source/get-started/multi-framework-support.rst) for more details.
+
+```python
+import kornia
+tf_kornia = kornia.to_tensorflow()
+```
+
+<p align="center">
+  Powered by
+  <a href="https://github.com/ivy-llc/ivy" target="_blank">
+    <div class="dark-light" style="display: block;" align="center">
+      <img class="dark-light" width="15%" src="https://raw.githubusercontent.com/ivy-llc/assets/refs/heads/main/assets/logos/ivy-long.svg"/>
+    </div>
+  </a>
+</p>
 
 ## Call For Contributors
 

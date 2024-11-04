@@ -1,6 +1,7 @@
 from collections import OrderedDict
+from collections.abc import Iterator
 from itertools import zip_longest
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Optional
 
 import torch
 from torch import nn
@@ -32,7 +33,7 @@ class BasicSequentialBase(nn.Sequential):
                 raise NotImplementedError(f"Only Module are supported at this moment. Got {mod}.")
             _args.update({f"{mod.__class__.__name__}_{idx}": mod})
         super().__init__(_args)
-        self._params: Optional[List[ParamItem]] = None
+        self._params: Optional[list[ParamItem]] = None
 
     def get_submodule(self, target: str) -> Module:
         """Get submodule.
@@ -57,7 +58,7 @@ class BasicSequentialBase(nn.Sequential):
         if len(target) == 0:
             return self
 
-        atoms: List[str] = target.split(".")
+        atoms: list[str] = target.split(".")
         mod = self
 
         for item in atoms:
@@ -76,21 +77,21 @@ class BasicSequentialBase(nn.Sequential):
         self._params = None
 
     # TODO: Implement this for all submodules.
-    def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
+    def forward_parameters(self, batch_shape: torch.Size) -> list[ParamItem]:
         raise NotImplementedError
 
-    def get_children_by_indices(self, indices: Tensor) -> Iterator[Tuple[str, Module]]:
+    def get_children_by_indices(self, indices: Tensor) -> Iterator[tuple[str, Module]]:
         modules = list(self.named_children())
         for idx in indices:
             yield modules[idx]
 
-    def get_children_by_params(self, params: List[ParamItem]) -> Iterator[Tuple[str, Module]]:
+    def get_children_by_params(self, params: list[ParamItem]) -> Iterator[tuple[str, Module]]:
         modules = list(self.named_children())
         # TODO: Wrong params passed here when nested ImageSequential
         for param in params:
             yield modules[list(dict(self.named_children()).keys()).index(param.name)]
 
-    def get_params_by_module(self, named_modules: Iterator[Tuple[str, Module]]) -> Iterator[ParamItem]:
+    def get_params_by_module(self, named_modules: Iterator[tuple[str, Module]]) -> Iterator[ParamItem]:
         # This will not take module._params
         for name, _ in named_modules:
             yield ParamItem(name, None)
@@ -150,7 +151,7 @@ class SequentialBase(BasicSequentialBase):
         self._keepdim = keepdim
         self.update_attribute(keepdim=keepdim)
 
-    def autofill_dim(self, input: Tensor, dim_range: Tuple[int, int] = (2, 4)) -> Tuple[torch.Size, torch.Size]:
+    def autofill_dim(self, input: Tensor, dim_range: tuple[int, int] = (2, 4)) -> tuple[torch.Size, torch.Size]:
         """Fill tensor dim to the upper bound of dim_range.
 
         If input tensor dim is smaller than the lower bound of dim_range, an error will be thrown out.
@@ -171,9 +172,9 @@ class ImageSequentialBase(SequentialBase):
     def get_transformation_matrix(
         self,
         input: Tensor,
-        params: Optional[List[ParamItem]] = None,
+        params: Optional[list[ParamItem]] = None,
         recompute: bool = False,
-        extra_args: Dict[str, Any] = {},
+        extra_args: dict[str, Any] = {},
     ) -> Optional[Tensor]:
         """Compute the transformation matrix according to the provided parameters.
 
@@ -185,48 +186,48 @@ class ImageSequentialBase(SequentialBase):
         """
         raise NotImplementedError
 
-    def forward_parameters(self, batch_shape: torch.Size) -> List[ParamItem]:
+    def forward_parameters(self, batch_shape: torch.Size) -> list[ParamItem]:
         raise NotImplementedError
 
-    def get_forward_sequence(self, params: Optional[List[ParamItem]] = None) -> Iterator[Tuple[str, Module]]:
+    def get_forward_sequence(self, params: Optional[list[ParamItem]] = None) -> Iterator[tuple[str, Module]]:
         """Get module sequence by input params."""
         raise NotImplementedError
 
-    def transform_inputs(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
+    def transform_inputs(self, input: Tensor, params: list[ParamItem], extra_args: dict[str, Any] = {}) -> Tensor:
         for param in params:
             module = self.get_submodule(param.name)
             input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
         return input
 
-    def inverse_inputs(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
+    def inverse_inputs(self, input: Tensor, params: list[ParamItem], extra_args: dict[str, Any] = {}) -> Tensor:
         for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
             input = InputSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
         return input
 
-    def transform_masks(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
+    def transform_masks(self, input: Tensor, params: list[ParamItem], extra_args: dict[str, Any] = {}) -> Tensor:
         for param in params:
             module = self.get_submodule(param.name)
             input = MaskSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
         return input
 
-    def inverse_masks(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
+    def inverse_masks(self, input: Tensor, params: list[ParamItem], extra_args: dict[str, Any] = {}) -> Tensor:
         for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
             input = MaskSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
         return input
 
-    def transform_boxes(self, input: Boxes, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Boxes:
+    def transform_boxes(self, input: Boxes, params: list[ParamItem], extra_args: dict[str, Any] = {}) -> Boxes:
         for param in params:
             module = self.get_submodule(param.name)
             input = BoxSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
         return input
 
-    def inverse_boxes(self, input: Boxes, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Boxes:
+    def inverse_boxes(self, input: Boxes, params: list[ParamItem], extra_args: dict[str, Any] = {}) -> Boxes:
         for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
             input = BoxSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
         return input
 
     def transform_keypoints(
-        self, input: Keypoints, params: List[ParamItem], extra_args: Dict[str, Any] = {}
+        self, input: Keypoints, params: list[ParamItem], extra_args: dict[str, Any] = {}
     ) -> Keypoints:
         for param in params:
             module = self.get_submodule(param.name)
@@ -234,14 +235,14 @@ class ImageSequentialBase(SequentialBase):
         return input
 
     def inverse_keypoints(
-        self, input: Keypoints, params: List[ParamItem], extra_args: Dict[str, Any] = {}
+        self, input: Keypoints, params: list[ParamItem], extra_args: dict[str, Any] = {}
     ) -> Keypoints:
         for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
             input = KeypointSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
         return input
 
     def inverse(
-        self, input: Tensor, params: Optional[List[ParamItem]] = None, extra_args: Dict[str, Any] = {}
+        self, input: Tensor, params: Optional[list[ParamItem]] = None, extra_args: dict[str, Any] = {}
     ) -> Tensor:
         """Inverse transformation.
 
@@ -261,7 +262,7 @@ class ImageSequentialBase(SequentialBase):
         return input
 
     def forward(
-        self, input: Tensor, params: Optional[List[ParamItem]] = None, extra_args: Dict[str, Any] = {}
+        self, input: Tensor, params: Optional[list[ParamItem]] = None, extra_args: dict[str, Any] = {}
     ) -> Tensor:
         self.clear_state()
 
@@ -279,13 +280,13 @@ class ImageSequentialBase(SequentialBase):
 class TransformMatrixMinIn:
     """Enables computation matrix computation."""
 
-    _valid_ops_for_transform_computation: Tuple[Any, ...] = ()
+    _valid_ops_for_transform_computation: tuple[Any, ...] = ()
     _transformation_matrix_arg: str = "silent"
 
     def __init__(self, *args, **kwargs) -> None:  # type:ignore
         super().__init__(*args, **kwargs)
         self._transform_matrix: Optional[Tensor] = None
-        self._transform_matrices: List[Optional[Tensor]] = []
+        self._transform_matrices: list[Optional[Tensor]] = []
 
     def _parse_transformation_matrix_mode(self, transformation_matrix_mode: str) -> None:
         _valid_transformation_matrix_args = {"silence", "silent", "rigid", "skip"}

@@ -1,4 +1,4 @@
-from typing import Any, Optional, Tuple
+from typing import Any, Optional
 
 import torch
 from torch import nn
@@ -16,7 +16,7 @@ class Decoder(nn.Module):
 
     def forward(
         self, features: Tensor, context: Optional[Tensor] = None, scale: Optional[int] = None
-    ) -> Tuple[Tensor, Optional[Tensor]]:
+    ) -> tuple[Tensor, Optional[Tensor]]:
         if context is not None:
             features = torch.cat((features, context), dim=1)
         stuff = self.layers[scale](features)

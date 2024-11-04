@@ -1,6 +1,6 @@
 """Module containing functionals for intensity normalisation."""
 
-from typing import List, Tuple, Union
+from typing import Union
 
 import torch
 
@@ -42,8 +42,8 @@ class Normalize(Module):
 
     def __init__(
         self,
-        mean: Union[Tensor, Tuple[float], List[float], float],
-        std: Union[Tensor, Tuple[float], List[float], float],
+        mean: Union[Tensor, tuple[float], list[float], float],
+        std: Union[Tensor, tuple[float], list[float], float],
     ) -> None:
         super().__init__()
 
@@ -54,10 +54,10 @@ class Normalize(Module):
             std = torch.tensor([std])
 
         if isinstance(mean, (tuple, list)):
-            mean = torch.tensor(mean)
+            mean = torch.tensor(mean)[None]
 
         if isinstance(std, (tuple, list)):
-            std = torch.tensor(std)
+            std = torch.tensor(std)[None]
 
         self.mean = mean
         self.std = std
@@ -100,28 +100,37 @@ def normalize(data: Tensor, mean: Tensor, std: Tensor) -> Tensor:
         torch.Size([1, 4, 3, 3])
     """
     shape = data.shape
-    if len(mean.shape) == 0 or mean.shape[0] == 1:
-        mean = mean.expand(shape[1])
-    if len(std.shape) == 0 or std.shape[0] == 1:
-        std = std.expand(shape[1])
 
-    # Allow broadcast on channel dimension
-    if mean.shape and mean.shape[0] != 1:
-        if mean.shape[0] != data.shape[1] and mean.shape[:2] != data.shape[:2]:
-            raise ValueError(f"mean length and number of channels do not match. Got {mean.shape} and {data.shape}.")
+    if torch.onnx.is_in_onnx_export():
+        if not isinstance(mean, Tensor) or not isinstance(std, Tensor):
+            raise ValueError("Only tensor is accepted when converting to ONNX.")
+        if mean.shape[0] != 1 or std.shape[0] != 1:
+            raise ValueError(
+                "Batch dimension must be one for broadcasting when converting to ONNX."
+                f"Try changing mean shape and std shape from ({mean.shape}, {std.shape}) to (1, C) or (1, C, 1, 1)."
+            )
+    else:
+        if isinstance(mean, float):
+            mean = torch.tensor([mean] * shape[1], device=data.device, dtype=data.dtype)
 
-    # Allow broadcast on channel dimension
-    if std.shape and std.shape[0] != 1:
-        if std.shape[0] != data.shape[1] and std.shape[:2] != data.shape[:2]:
-            raise ValueError(f"std length and number of channels do not match. Got {std.shape} and {data.shape}.")
+        if isinstance(std, float):
+            std = torch.tensor([std] * shape[1], device=data.device, dtype=data.dtype)
 
-    mean = torch.as_tensor(mean, device=data.device, dtype=data.dtype)
-    std = torch.as_tensor(std, device=data.device, dtype=data.dtype)
+        # Allow broadcast on channel dimension
+        if mean.shape and mean.shape[0] != 1:
+            if mean.shape[0] != data.shape[1] and mean.shape[:2] != data.shape[:2]:
+                raise ValueError(f"mean length and number of channels do not match. Got {mean.shape} and {data.shape}.")
 
-    if mean.shape:
-        mean = mean[..., :, None]
-    if std.shape:
-        std = std[..., :, None]
+        # Allow broadcast on channel dimension
+        if std.shape and std.shape[0] != 1:
+            if std.shape[0] != data.shape[1] and std.shape[:2] != data.shape[:2]:
+                raise ValueError(f"std length and number of channels do not match. Got {std.shape} and {data.shape}.")
+
+        mean = torch.as_tensor(mean, device=data.device, dtype=data.dtype)
+        std = torch.as_tensor(std, device=data.device, dtype=data.dtype)
+
+    mean = mean[..., None]
+    std = std[..., None]
 
     out: Tensor = (data.view(shape[0], shape[1], -1) - mean) / std
 
@@ -203,38 +212,33 @@ def denormalize(data: Tensor, mean: Union[Tensor, float], std: Union[Tensor, flo
     """
     shape = data.shape
 
-    if isinstance(mean, float):
-        mean = torch.tensor([mean] * shape[1], device=data.device, dtype=data.dtype)
+    if torch.onnx.is_in_onnx_export():
+        if not isinstance(mean, Tensor) or not isinstance(std, Tensor):
+            raise ValueError("Only tensor is accepted when converting to ONNX.")
+        if mean.shape[0] != 1 or std.shape[0] != 1:
+            raise ValueError("Batch dimension must be one for broadcasting when converting to ONNX.")
+    else:
+        if isinstance(mean, float):
+            mean = torch.tensor([mean] * shape[1], device=data.device, dtype=data.dtype)
 
-    if isinstance(std, float):
-        std = torch.tensor([std] * shape[1], device=data.device, dtype=data.dtype)
+        if isinstance(std, float):
+            std = torch.tensor([std] * shape[1], device=data.device, dtype=data.dtype)
 
-    if not isinstance(data, Tensor):
-        raise TypeError(f"data should be a tensor. Got {type(data)}")
+        # Allow broadcast on channel dimension
+        if mean.shape and mean.shape[0] != 1:
+            if mean.shape[0] != data.shape[-3] and mean.shape[:2] != data.shape[:2]:
+                raise ValueError(f"mean length and number of channels do not match. Got {mean.shape} and {data.shape}.")
 
-    if not isinstance(mean, Tensor):
-        raise TypeError(f"mean should be a tensor or a float. Got {type(mean)}")
+        # Allow broadcast on channel dimension
+        if std.shape and std.shape[0] != 1:
+            if std.shape[0] != data.shape[-3] and std.shape[:2] != data.shape[:2]:
+                raise ValueError(f"std length and number of channels do not match. Got {std.shape} and {data.shape}.")
 
-    if not isinstance(std, Tensor):
-        raise TypeError(f"std should be a tensor or float. Got {type(std)}")
+        mean = torch.as_tensor(mean, device=data.device, dtype=data.dtype)
+        std = torch.as_tensor(std, device=data.device, dtype=data.dtype)
 
-    # Allow broadcast on channel dimension
-    if mean.shape and mean.shape[0] != 1:
-        if mean.shape[0] != data.shape[-3] and mean.shape[:2] != data.shape[:2]:
-            raise ValueError(f"mean length and number of channels do not match. Got {mean.shape} and {data.shape}.")
-
-    # Allow broadcast on channel dimension
-    if std.shape and std.shape[0] != 1:
-        if std.shape[0] != data.shape[-3] and std.shape[:2] != data.shape[:2]:
-            raise ValueError(f"std length and number of channels do not match. Got {std.shape} and {data.shape}.")
-
-    mean = torch.as_tensor(mean, device=data.device, dtype=data.dtype)
-    std = torch.as_tensor(std, device=data.device, dtype=data.dtype)
-
-    if mean.shape:
-        mean = mean[..., :, None]
-    if std.shape:
-        std = std[..., :, None]
+    mean = mean[..., None]
+    std = std[..., None]
 
     out: Tensor = (data.view(shape[0], shape[1], -1) * std) + mean
 

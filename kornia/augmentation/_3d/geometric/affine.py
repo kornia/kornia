@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Optional, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.geometric.base import GeometricAugmentationBase3D
@@ -86,27 +86,27 @@ class RandomAffine3D(GeometricAugmentationBase3D):
         degrees: Union[
             Tensor,
             float,
-            Tuple[float, float],
-            Tuple[float, float, float],
-            Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]],
+            tuple[float, float],
+            tuple[float, float, float],
+            tuple[tuple[float, float], tuple[float, float], tuple[float, float]],
         ],
-        translate: Optional[Union[Tensor, Tuple[float, float, float]]] = None,
+        translate: Optional[Union[Tensor, tuple[float, float, float]]] = None,
         scale: Optional[
-            Union[Tensor, Tuple[float, float], Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]]]
+            Union[Tensor, tuple[float, float], tuple[tuple[float, float], tuple[float, float], tuple[float, float]]]
         ] = None,
         shears: Union[
             None,
             Tensor,
             float,
-            Tuple[float, float],
-            Tuple[float, float, float, float, float, float],
-            Tuple[
-                Tuple[float, float],
-                Tuple[float, float],
-                Tuple[float, float],
-                Tuple[float, float],
-                Tuple[float, float],
-                Tuple[float, float],
+            tuple[float, float],
+            tuple[float, float, float, float, float, float],
+            tuple[
+                tuple[float, float],
+                tuple[float, float],
+                tuple[float, float],
+                tuple[float, float],
+                tuple[float, float],
+                tuple[float, float],
             ],
         ] = None,
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
@@ -124,7 +124,7 @@ class RandomAffine3D(GeometricAugmentationBase3D):
         self.flags = {"resample": Resample.get(resample), "align_corners": align_corners}
         self._param_generator = rg.AffineGenerator3D(degrees, translate, scale, shears)
 
-    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
         transform: Tensor = get_affine_matrix3d(
             params["translations"],
             params["center"],
@@ -140,7 +140,7 @@ class RandomAffine3D(GeometricAugmentationBase3D):
         return transform
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         if not isinstance(transform, Tensor):
             raise TypeError(f"Expected the transform to be a Tensor. Gotcha {type(transform)}")

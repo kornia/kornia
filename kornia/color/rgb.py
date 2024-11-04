@@ -1,9 +1,12 @@
-from typing import Union, cast
+from __future__ import annotations
+
+from typing import ClassVar, Union, cast
 
 import torch
 
 from kornia.core import ImageModule as Module
-from kornia.core import Tensor
+from kornia.core import Tensor, normalize
+from kornia.core.check import KORNIA_CHECK_IS_COLOR
 
 
 def rgb_to_bgr(image: Tensor) -> Tensor:
@@ -230,6 +233,78 @@ def linear_rgb_to_rgb(image: Tensor) -> Tensor:
     return rgb
 
 
+def normals_to_rgb255(image: Tensor) -> Tensor:
+    r"""Convert surface normals to RGB [0, 255] for visualization purposes.
+
+    Args:
+        image: surface normals to be converted to RGB with quantization of shape :math:`(*,3,H,W)`.
+
+    Returns:
+        RGB version of the image with shape of shape :math:`(*,3,H,W)`.
+
+    Example:
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> output = normals_to_rgb255(input) # 2x3x4x5
+    """
+    KORNIA_CHECK_IS_COLOR(image)
+    rgb255 = (0.5 * (image + 1.0)).clip(0.0, 1.0) * 255
+    return rgb255
+
+
+def rgb_to_rgb255(image: Tensor) -> Tensor:
+    r"""Convert an image from RGB to RGB [0, 255] for visualization purposes.
+
+    Args:
+        image: RGB Image to be converted to RGB [0, 255] of shape :math:`(*,3,H,W)`.
+
+    Returns:
+        RGB version of the image with shape of shape :math:`(*,3,H,W)`.
+
+    Example:
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> output = rgb_to_rgb255(input) # 2x3x4x5
+    """
+    KORNIA_CHECK_IS_COLOR(image)
+    rgb255 = (image * 255).clip(0.0, 255.0)
+    return rgb255
+
+
+def rgb255_to_rgb(image: Tensor) -> Tensor:
+    r"""Convert an image from RGB [0, 255] to RGB for visualization purposes.
+
+    Args:
+        image: RGB Image to be converted to RGB of shape :math:`(*,3,H,W)`.
+
+    Returns:
+        RGB version of the image with shape of shape :math:`(*,3,H,W)`.
+
+    Example:
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> output = rgb255_to_rgb(input) # 2x3x4x5
+    """
+    KORNIA_CHECK_IS_COLOR(image)
+    rgb = image / 255.0
+    return rgb
+
+
+def rgb255_to_normals(image: Tensor) -> Tensor:
+    r"""Convert an image from RGB [0, 255] to surface normals for visualization purposes.
+
+    Args:
+        image: RGB Image to be converted to surface normals of shape :math:`(*,3,H,W)`.
+
+    Returns:
+        surface normals version of the image with shape of shape :math:`(*,3,H,W)`.
+
+    Example:
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> output = rgb255_to_normals(input) # 2x3x4x5
+    """
+    KORNIA_CHECK_IS_COLOR(image)
+    normals = normalize((image / 255.0) * 2.0 - 1.0, dim=-3, p=2.0)
+    return normals
+
+
 class BgrToRgb(Module):
     r"""Convert image from BGR to RGB.
 
@@ -247,6 +322,9 @@ class BgrToRgb(Module):
         >>> rgb = BgrToRgb()
         >>> output = rgb(input)  # 2x3x4x5
     """
+
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, image: Tensor) -> Tensor:
         return bgr_to_rgb(image)
@@ -269,6 +347,9 @@ class RgbToBgr(Module):
         >>> bgr = RgbToBgr()
         >>> output = bgr(input)  # 2x3x4x5
     """
+
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, image: Tensor) -> Tensor:
         return rgb_to_bgr(image)
@@ -297,6 +378,9 @@ class RgbToRgba(Module):
         >>> rgba = RgbToRgba(1.)
         >>> output = rgba(input)  # 2x4x4x5
     """
+
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 4, -1, -1]
 
     def __init__(self, alpha_val: Union[float, Tensor]) -> None:
         super().__init__()
@@ -330,6 +414,9 @@ class BgrToRgba(Module):
         >>> output = rgba(input)  # 2x4x4x5
     """
 
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 4, -1, -1]
+
     def __init__(self, alpha_val: Union[float, Tensor]) -> None:
         super().__init__()
         self.alpha_val = alpha_val
@@ -356,6 +443,9 @@ class RgbaToRgb(Module):
         >>> output = rgba(input)  # 2x3x4x5
     """
 
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 4, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+
     def forward(self, image: Tensor) -> Tensor:
         return rgba_to_rgb(image)
 
@@ -377,6 +467,9 @@ class RgbaToBgr(Module):
         >>> rgba = RgbaToBgr()
         >>> output = rgba(input)  # 2x3x4x5
     """
+
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 4, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
 
     def forward(self, image: Tensor) -> Tensor:
         return rgba_to_bgr(image)
@@ -408,6 +501,9 @@ class RgbToLinearRgb(Module):
         [3] https://en.wikipedia.org/wiki/SRGB
     """
 
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+
     def forward(self, image: Tensor) -> Tensor:
         return rgb_to_linear_rgb(image)
 
@@ -437,5 +533,88 @@ class LinearRgbToRgb(Module):
         [3] https://en.wikipedia.org/wiki/SRGB
     """
 
+    ONNX_DEFAULT_INPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+    ONNX_DEFAULT_OUTPUTSHAPE: ClassVar[list[int]] = [-1, 3, -1, -1]
+
     def forward(self, image: Tensor) -> Tensor:
         return linear_rgb_to_rgb(image)
+
+
+class NormalsToRgb255(Module):
+    r"""Convert surface normals to RGB [0, 255] for visualization purposes.
+
+    Returns:
+        RGB version of the image.
+
+    Shape:
+        - image: :math:`(*, 3, H, W)`
+        - output: :math:`(*, 3, H, W)`
+
+    Example:
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> rgb = NormalsToRgb255()
+        >>> output = rgb(input)  # 2x3x4x5
+    """
+
+    def forward(self, image: Tensor) -> Tensor:
+        return normals_to_rgb255(image)
+
+
+class RgbToRgb255(Module):
+    r"""Convert an image from RGB to RGB [0, 255] for visualization purposes.
+
+    Returns:
+        RGB version of the image.
+
+    Shape:
+        - image: :math:`(*, 3, H, W)`
+        - output: :math:`(*, 3, H, W)`
+
+    Example:
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> rgb = RgbToRgb255()
+        >>> output = rgb(input)  # 2x3x4x5
+    """
+
+    def forward(self, image: Tensor) -> Tensor:
+        return rgb_to_rgb255(image)
+
+
+class Rgb255ToRgb(Module):
+    r"""Convert an image from RGB [0, 255] to RGB for visualization purposes.
+
+    Returns:
+        RGB version of the image.
+
+    Shape:
+        - image: :math:`(*, 3, H, W)`
+        - output: :math:`(*, 3, H, W)`
+
+    Example:
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> rgb = Rgb255ToRgb()
+        >>> output = rgb(input)  # 2x3x4x5
+    """
+
+    def forward(self, image: Tensor) -> Tensor:
+        return rgb255_to_rgb(image)
+
+
+class Rgb255ToNormals(Module):
+    r"""Convert an image from RGB [0, 255] to surface normals for visualization purposes.
+
+    Returns:
+        surface normals version of the image.
+
+    Shape:
+        - image: :math:`(*, 3, H, W)`
+        - output: :math:`(*, 3, H, W)`
+
+    Example:
+        >>> input = torch.rand(2, 3, 4, 5)
+        >>> normals = Rgb255ToNormals()
+        >>> output = normals(input)  # 2x3x4x5
+    """
+
+    def forward(self, image: Tensor) -> Tensor:
+        return rgb255_to_normals(image)

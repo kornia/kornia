@@ -1,5 +1,5 @@
 import math
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 from typing_extensions import NotRequired, TypedDict
@@ -49,7 +49,7 @@ class AdalamConfig(TypedDict):
     mnn: NotRequired[Tensor]
 
 
-def _no_match(dm: Tensor) -> Tuple[Tensor, Tensor]:
+def _no_match(dm: Tensor) -> tuple[Tensor, Tensor]:
     """Helper function, which output empty tensors.
 
     Returns:
@@ -63,7 +63,7 @@ def _no_match(dm: Tensor) -> Tuple[Tensor, Tensor]:
 
 def select_seeds(
     dist1: Tensor, R1: Union[float, Tensor], scores1: Tensor, fnn12: Tensor, mnn: Optional[Tensor]
-) -> Tuple[Tensor, Tensor]:
+) -> tuple[Tensor, Tensor]:
     """Select seed correspondences among the set of available matches.
 
     dist1: Precomputed distance matrix between keypoints in image I_1
@@ -113,7 +113,7 @@ def extract_neighborhood_sets(
     SCALE_RATE_THR: float,
     SEARCH_EXP: float,
     MIN_INLIERS: float,
-) -> Tuple[Tensor, Tensor, Tensor, Tensor]:
+) -> tuple[Tensor, Tensor, Tensor, Tensor]:
     """Assign keypoints to seed points. This checks both the distance and the agreement of the local transformation
     if available.
 
@@ -185,7 +185,7 @@ def extract_local_patterns(
     im1seeds: Tensor,
     im2seeds: Tensor,
     scores: Tensor,
-) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
     """Prepare local neighborhoods around each seed for the parallel RANSACs. This involves two steps: 1) Collect
     all selected keypoints and refer them with respect to their seed point 2) Sort keypoints by score for the
     progressive sampling to pick the best samples first.
@@ -245,14 +245,14 @@ def adalam_core(
     scores1: Tensor,
     config: AdalamConfig,
     mnn: Optional[Tensor] = None,
-    im1shape: Optional[Tuple[int, int]] = None,
-    im2shape: Optional[Tuple[int, int]] = None,
+    im1shape: Optional[tuple[int, int]] = None,
+    im2shape: Optional[tuple[int, int]] = None,
     o1: Optional[Tensor] = None,
     o2: Optional[Tensor] = None,
     s1: Optional[Tensor] = None,
     s2: Optional[Tensor] = None,
     return_dist: bool = False,
-) -> Union[Tuple[Tensor, Tensor], Tensor]:
+) -> Union[tuple[Tensor, Tensor], Tensor]:
     """Call the core functionality of AdaLAM, i.e. just outlier filtering. No sanity check is performed on the
     inputs.
 

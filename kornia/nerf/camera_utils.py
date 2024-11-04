@@ -1,5 +1,5 @@
 import math
-from typing import List, Tuple, Union
+from typing import Union
 
 import torch
 
@@ -10,7 +10,7 @@ from kornia.geometry.conversions import quaternion_to_rotation_matrix
 
 def parse_colmap_output(
     cameras_path: str, images_path: str, device: Device, dtype: torch.dtype
-) -> Tuple[List[str], PinholeCamera]:
+) -> tuple[list[str], PinholeCamera]:
     r"""Parses colmap output to create an PinholeCamera for aligned scene cameras.
 
     Args:
@@ -46,7 +46,7 @@ def parse_colmap_output(
                 self._cx = int(split_line[6])
                 self._cy = int(split_line[7])
 
-    cameras_params: List[CameraParams] = []
+    cameras_params: list[CameraParams] = []
     for line in lines:
         if line.startswith("#"):
             continue
@@ -56,11 +56,11 @@ def parse_colmap_output(
     # Parse camera quaternions and translation vectors
     with open(images_path) as f:
         lines = f.readlines()
-    intrinsics: List[Tensor] = []
-    extrinsics: List[Tensor] = []
-    heights: List[int] = []
-    widths: List[int] = []
-    img_names: List[str] = []
+    intrinsics: list[Tensor] = []
+    extrinsics: list[Tensor] = []
+    heights: list[int] = []
+    widths: list[int] = []
+    img_names: list[str] = []
     for line in lines:
         if line.startswith("#"):
             continue
@@ -110,7 +110,7 @@ def parse_colmap_output(
     return img_names, cameras
 
 
-def cameras_for_ids(cameras: PinholeCamera, camera_ids: Union[List[int], Tensor]) -> PinholeCamera:
+def cameras_for_ids(cameras: PinholeCamera, camera_ids: Union[list[int], Tensor]) -> PinholeCamera:
     r"""Takes a PinholeCamera camera object and a set of camera indices and creates a new PinholeCamera object for
     the requested cameras.
 

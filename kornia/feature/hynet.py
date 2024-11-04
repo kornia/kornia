@@ -1,11 +1,9 @@
-from typing import Dict
-
 import torch
 from torch import nn
 
 from kornia.core import Module, Parameter, Tensor, tensor, zeros
 
-urls: Dict[str, str] = {}
+urls: dict[str, str] = {}
 urls["liberty"] = "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_LIB.pth"  # pylint: disable
 urls["notredame"] = "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_ND.pth"  # pylint: disable
 urls["yosemite"] = "https://github.com/ducha-aiki/Key.Net-Pytorch/raw/main/model/HyNet/weights/HyNet_YOS.pth"  # pylint: disable

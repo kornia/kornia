@@ -1,4 +1,4 @@
-from typing import Any, Optional, Tuple
+from typing import Any, Optional
 
 import torch
 from torch import nn
@@ -70,7 +70,7 @@ class VGG_DINOv2(Module):
         self.vgg = VGG19(**vgg_kwargs)
         self.frozen_dinov2 = FrozenDINOv2(**dinov2_kwargs)
 
-    def forward(self, x: Tensor) -> Tuple[Tensor, Tuple[int, int]]:
+    def forward(self, x: Tensor) -> tuple[Tensor, tuple[int, int]]:
         feats_vgg, sizes_vgg = self.vgg(x)
         feat_dinov2, size_dinov2 = self.frozen_dinov2(x)
         return feats_vgg + feat_dinov2, sizes_vgg + size_dinov2

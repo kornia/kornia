@@ -1,4 +1,4 @@
-from typing import Dict, Literal, Optional, Tuple
+from typing import Literal, Optional
 
 import torch
 import torch.nn.functional as F
@@ -6,13 +6,12 @@ import torch.nn.functional as F
 from kornia.core import Module, Tensor
 from kornia.core.check import KORNIA_CHECK_SHAPE
 from kornia.enhance.normalize import Normalize
-from kornia.geometry.conversions import denormalize_pixel_coordinates
 from kornia.utils.helpers import map_location_to_cpu
 
 from .dedode_models import DeDoDeDescriptor, DeDoDeDetector, get_descriptor, get_detector
-from .utils import sample_keypoints
+from .utils import dedode_denormalize_pixel_coordinates, sample_keypoints
 
-urls: Dict[str, Dict[str, str]] = {
+urls: dict[str, dict[str, str]] = {
     "detector": {
         "L-upright": "https://github.com/Parskatt/DeDoDe/releases/download/dedode_pretrained_models/dedode_detector_L.pth",
         "L-C4": "https://github.com/georg-bn/rotation-steerers/releases/download/release-2/dedode_detector_C4.pth",
@@ -68,7 +67,7 @@ class DeDoDe(Module):
         n: Optional[int] = 10_000,
         apply_imagenet_normalization: bool = True,
         pad_if_not_divisible: bool = True,
-    ) -> Tuple[Tensor, Tensor, Tensor]:
+    ) -> tuple[Tensor, Tensor, Tensor]:
         """Detects and describes keypoints in the input images.
 
         Args:
@@ -93,7 +92,7 @@ class DeDoDe(Module):
             images = torch.nn.functional.pad(images, (0, pd_w, 0, pd_h), value=0.0)
         keypoints, scores = self.detect(images, n=n, apply_imagenet_normalization=False, crop_h=h, crop_w=w)
         descriptions = self.describe(images, keypoints, apply_imagenet_normalization=False)
-        return denormalize_pixel_coordinates(keypoints, H, W), scores, descriptions
+        return dedode_denormalize_pixel_coordinates(keypoints, H, W), scores, descriptions
 
     @torch.inference_mode()
     def detect(
@@ -104,7 +103,7 @@ class DeDoDe(Module):
         pad_if_not_divisible: bool = True,
         crop_h: Optional[int] = None,
         crop_w: Optional[int] = None,
-    ) -> Tuple[Tensor, Tensor]:
+    ) -> tuple[Tensor, Tensor]:
         """Detects keypoints in the input images.
 
         Args:

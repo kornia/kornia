@@ -1,5 +1,4 @@
 import inspect
-from typing import List
 
 import pytest
 import torch
@@ -17,7 +16,7 @@ from testing.base import BaseTester
 from tests.augmentation.test_container import reproducibility_test
 
 
-def _find_all_ops() -> List[OperationBase]:
+def _find_all_ops() -> list[OperationBase]:
     _ops = [op for _, op in inspect.getmembers(ops, inspect.isclass)]
     return [op() for op in _ops if issubclass(op, OperationBase) and op != OperationBase]
 

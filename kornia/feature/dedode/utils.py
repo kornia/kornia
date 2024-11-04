@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 import torch.nn.functional as F
@@ -9,7 +9,7 @@ from kornia.core import Tensor
 @torch.no_grad()
 def sample_keypoints(
     scoremap: Tensor, num_samples: Optional[int] = 10_000, return_scoremap: bool = True, increase_coverage: bool = True
-) -> Union[Tensor, Tuple[Tensor, Tensor]]:
+) -> Union[Tensor, tuple[Tensor, Tensor]]:
     device = scoremap.device
     dtype = scoremap.dtype
     B, H, W = scoremap.shape
@@ -34,3 +34,14 @@ def get_grid(B: int, H: int, W: int, device: torch.device) -> torch.Tensor:
     )
     x1_n = torch.stack((x1_n_[2], x1_n_[1]), dim=-1).reshape(B, H * W, 2)
     return x1_n
+
+
+def dedode_denormalize_pixel_coordinates(flow: torch.Tensor, h: int, w: int) -> torch.Tensor:
+    flow = torch.stack(
+        (
+            w * (flow[..., 0] + 1) / 2,
+            h * (flow[..., 1] + 1) / 2,
+        ),
+        dim=-1,
+    )
+    return flow

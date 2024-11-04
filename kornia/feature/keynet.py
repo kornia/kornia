@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Optional
 
 import torch
 import torch.nn.functional as F
@@ -153,7 +153,7 @@ class KeyNet(Module):
         x - input image
         """
         shape_im = x.shape
-        feats: List[Tensor] = [self.feature_extractor(x)]
+        feats: list[Tensor] = [self.feature_extractor(x)]
         for i in range(1, self.num_levels):
             x = pyrdown(x, factor=1.2)
             feats_i = self.feature_extractor(x)

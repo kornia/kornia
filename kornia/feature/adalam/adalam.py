@@ -2,7 +2,7 @@
 # https://github.com/cavalli1234/AdaLAM
 # Copyright (c) 2020, Luca Cavalli
 
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 import torch
 
@@ -36,10 +36,10 @@ def match_adalam(
     lafs1: Tensor,
     lafs2: Tensor,
     config: Optional[AdalamConfig] = None,
-    hw1: Optional[Tuple[int, int]] = None,
-    hw2: Optional[Tuple[int, int]] = None,
+    hw1: Optional[tuple[int, int]] = None,
+    hw2: Optional[tuple[int, int]] = None,
     dm: Optional[Tensor] = None,
-) -> Tuple[Tensor, Tensor]:
+) -> tuple[Tensor, Tensor]:
     """Function, which performs descriptor matching, followed by AdaLAM filtering (see :cite:`AdaLAM2020` for more
     details)
 
@@ -114,14 +114,14 @@ class AdalamFilter:
         putative_matches: Tensor,
         scores: Tensor,
         mnn: Optional[Tensor] = None,
-        im1shape: Optional[Tuple[int, int]] = None,
-        im2shape: Optional[Tuple[int, int]] = None,
+        im1shape: Optional[tuple[int, int]] = None,
+        im2shape: Optional[tuple[int, int]] = None,
         o1: Optional[Tensor] = None,
         o2: Optional[Tensor] = None,
         s1: Optional[Tensor] = None,
         s2: Optional[Tensor] = None,
         return_dist: bool = False,
-    ) -> Union[Tuple[Tensor, Tensor], Tensor]:
+    ) -> Union[tuple[Tensor, Tensor], Tensor]:
         """Call the core functionality of AdaLAM, i.e. just outlier filtering. No sanity check is performed on the
         inputs.
 
@@ -181,14 +181,14 @@ class AdalamFilter:
         k2: Tensor,
         d1: Tensor,
         d2: Tensor,
-        im1shape: Optional[Tuple[int, int]] = None,
-        im2shape: Optional[Tuple[int, int]] = None,
+        im1shape: Optional[tuple[int, int]] = None,
+        im2shape: Optional[tuple[int, int]] = None,
         o1: Optional[Tensor] = None,
         o2: Optional[Tensor] = None,
         s1: Optional[Tensor] = None,
         s2: Optional[Tensor] = None,
         return_dist: bool = False,
-    ) -> Union[Tuple[Tensor, Tensor], Tensor]:
+    ) -> Union[tuple[Tensor, Tensor], Tensor]:
         """Standard matching and filtering with AdaLAM. This function:
 
             - performs some elementary sanity check on the inputs;

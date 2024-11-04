@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Optional
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
@@ -54,14 +54,14 @@ class RandomHue(IntensityAugmentationBase2D):
     """
 
     def __init__(
-        self, hue: Tuple[float, float] = (0.0, 0.0), same_on_batch: bool = False, p: float = 1.0, keepdim: bool = False
+        self, hue: tuple[float, float] = (0.0, 0.0), same_on_batch: bool = False, p: float = 1.0, keepdim: bool = False
     ) -> None:
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self.hue: Tensor = _range_bound(hue, "hue", bounds=(-0.5, 0.5))
         self._param_generator = rg.PlainUniformGenerator((self.hue, "hue_factor", None, None))
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         hue_factor = params["hue_factor"].to(input)
         return adjust_hue(input, hue_factor * 2 * pi)

@@ -1,5 +1,3 @@
-from typing import Dict
-
 import pytest
 import torch
 from torch.autograd import gradcheck
@@ -33,7 +31,7 @@ class TestTriangulation:
     def test_two_view(self, device, dtype):
         num_views: int = 2
         num_points: int = 10
-        scene: Dict[str, torch.Tensor] = epi.generate_scene(num_views, num_points)
+        scene: dict[str, torch.Tensor] = epi.generate_scene(num_views, num_points)
 
         P1 = scene["P"][0:1]
         P2 = scene["P"][1:2]

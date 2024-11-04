@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 import torch
 from torch import Tensor
@@ -58,7 +58,7 @@ class RandomGrayscale(IntensityAugmentationBase2D):
         self.rgb_weights = rgb_weights
 
     def apply_transform(
-        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         # Make sure it returns (*, 3, H, W)
         grayscale = torch.ones_like(input)

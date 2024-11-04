@@ -1,8 +1,12 @@
+import builtins
 import importlib.util
 import inspect
 import os
 import sys
 from datetime import datetime, timezone
+
+# To add an evnironment variable
+builtins.__sphinx_build__ = True
 
 # readthedocs generated the whole documentation in an isolated environment
 # by cloning the git repo. Thus, any on-the-fly operation will not effect
@@ -266,3 +270,6 @@ intersphinx_mapping = {
     "numpy": ("http://numpy.org/doc/stable/", None),
     "torch": ("http://pytorch.org/docs/stable/", None),
 }
+
+# mock these modules and won't try to actually import them
+autodoc_mock_imports = ["boxmot", "segmentation_models_pytorch"]

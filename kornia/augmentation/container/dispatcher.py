@@ -1,4 +1,4 @@
-from typing import List, Tuple, Union
+from typing import Union
 
 from torch import Tensor, nn
 
@@ -41,7 +41,7 @@ class ManyToManyAugmentationDispather(nn.Module):
                 raise ValueError(f"Please wrap your augmentations[`{i}`] with `AugmentationSequentials`.")
         return True
 
-    def forward(self, *input: Union[List[Tensor], List[Tuple[Tensor]]]) -> Union[List[Tensor], List[Tuple[Tensor]]]:
+    def forward(self, *input: Union[list[Tensor], list[tuple[Tensor]]]) -> Union[list[Tensor], list[tuple[Tensor]]]:
         return [aug(*inp) for inp, aug in zip(input, self.augmentations)]
 
 
@@ -91,5 +91,5 @@ class ManyToOneAugmentationDispather(nn.Module):
                 )
         return True
 
-    def forward(self, *input: Union[Tensor, Tuple[Tensor]]) -> Union[List[Tensor], List[Tuple[Tensor]]]:
+    def forward(self, *input: Union[Tensor, tuple[Tensor]]) -> Union[list[Tensor], list[tuple[Tensor]]]:
         return [aug(*input) for aug in self.augmentations]
