@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional, Sequence, Union
 
 import torch
 from torch.autograd import gradcheck

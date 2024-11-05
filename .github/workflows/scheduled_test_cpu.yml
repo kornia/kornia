@@ -5,6 +5,7 @@ on:
     branches: [main, test-me-*]
   schedule:
     - cron: "0 4 * * *"
+  workflow_call:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

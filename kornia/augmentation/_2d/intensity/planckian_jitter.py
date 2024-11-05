@@ -1,4 +1,4 @@
-from typing import Any, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
@@ -144,7 +144,7 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
     def __init__(
         self,
         mode: str = "blackbody",
-        select_from: Optional[Union[int, list[int]]] = None,
+        select_from: Optional[Union[int, List[int]]] = None,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,
@@ -167,7 +167,7 @@ class RandomPlanckianJitter(IntensityAugmentationBase2D):
         self._param_generator = rg.PlanckianJitterGenerator([_param_min, _param_max])
 
     def apply_transform(
-        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         list_idx = params["idx"].tolist()
         KORNIA_CHECK_SHAPE(input, ["*", "3", "H", "W"])

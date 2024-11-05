@@ -2,7 +2,7 @@
 
 import math
 from functools import partial
-from typing import Callable, Optional
+from typing import Callable, Optional, Tuple
 
 import torch
 
@@ -110,7 +110,7 @@ class RANSAC(Module):
         H = self.minimal_solver(kp1, kp2, torch.ones(batch_size, sample_size, dtype=kp1.dtype, device=kp1.device))
         return H
 
-    def verify(self, kp1: Tensor, kp2: Tensor, models: Tensor, inl_th: float) -> tuple[Tensor, Tensor, float]:
+    def verify(self, kp1: Tensor, kp2: Tensor, models: Tensor, inl_th: float) -> Tuple[Tensor, Tensor, float]:
         if len(kp1.shape) == 2:
             kp1 = kp1[None]
         if len(kp2.shape) == 2:
@@ -128,7 +128,7 @@ class RANSAC(Module):
         inliers_best = inl[best_model_idx]
         return model_best, inliers_best, best_model_score
 
-    def remove_bad_samples(self, kp1: Tensor, kp2: Tensor) -> tuple[Tensor, Tensor]:
+    def remove_bad_samples(self, kp1: Tensor, kp2: Tensor) -> Tuple[Tensor, Tensor]:
         """"""
         # ToDo: add (model-specific) verification of the samples,
         # E.g. constraints on not to be a degenerate sample
@@ -173,7 +173,7 @@ class RANSAC(Module):
                     f" {kp2.shape}"
                 )
 
-    def forward(self, kp1: Tensor, kp2: Tensor, weights: Optional[Tensor] = None) -> tuple[Tensor, Tensor]:
+    def forward(self, kp1: Tensor, kp2: Tensor, weights: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
         r"""Main forward method to execute the RANSAC algorithm.
 
         Args:

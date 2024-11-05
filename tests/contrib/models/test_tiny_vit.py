@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 import torch
 
@@ -35,6 +37,7 @@ class TestTinyViT(BaseTester):
     @pytest.mark.skip("not implemented")
     def test_module(self): ...
 
+    @pytest.mark.skipif(sys.version_info.major == 3 and sys.version_info.minor == 8, reason="not working for py3.8")
     def test_dynamo(self, device, dtype, torch_optimizer):
         op = TinyViT().to(device=device, dtype=dtype)
         img = torch.rand(1, 3, op.img_size, op.img_size, device=device, dtype=dtype)

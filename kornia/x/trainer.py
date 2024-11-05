@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Dict, Optional
 
 # the accelerator library is a requirement for the Trainer
 # but it is optional for grousnd base user of kornia.
@@ -69,7 +69,7 @@ class Trainer:
         optimizer: Optimizer,
         scheduler: lr_scheduler._LRScheduler,
         config: Configuration,
-        callbacks: dict[str, Callable[..., None]] = {},
+        callbacks: Dict[str, Callable[..., None]] = {},
     ) -> None:
         # setup the accelerator
         if Accelerator is None:
@@ -160,7 +160,7 @@ class Trainer:
     # events stubs
 
     @torch.no_grad()
-    def evaluate(self) -> dict[str, AverageMeter]:
+    def evaluate(self) -> Dict[str, AverageMeter]:
         self.model.eval()
         stats = StatsTracker()
         for sample_id, sample in enumerate(self.valid_dataloader):
@@ -187,13 +187,13 @@ class Trainer:
 
     def on_epoch_start(self, *args: Any, **kwargs: Any) -> None: ...
 
-    def preprocess(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
+    def preprocess(self, x: Dict[str, Tensor]) -> Dict[str, Tensor]:
         return x
 
-    def augmentations(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
+    def augmentations(self, x: Dict[str, Tensor]) -> Dict[str, Tensor]:
         return x
 
-    def compute_metrics(self, *args: Any) -> dict[str, float]:
+    def compute_metrics(self, *args: Any) -> Dict[str, float]:
         """Compute metrics during the evaluation."""
         return {}
 
@@ -202,14 +202,14 @@ class Trainer:
             raise RuntimeError("`criterion` should not be None.")
         return self.criterion(*args)
 
-    def on_before_model(self, x: dict[str, Tensor]) -> dict[str, Tensor]:
+    def on_before_model(self, x: Dict[str, Tensor]) -> Dict[str, Tensor]:
         return x
 
-    def on_model(self, model: Module, sample: dict[str, Tensor]) -> Tensor:
+    def on_model(self, model: Module, sample: Dict[str, Tensor]) -> Tensor:
         return model(sample["input"])
 
-    def on_after_model(self, output: Tensor, sample: dict[str, Tensor]) -> None: ...
+    def on_after_model(self, output: Tensor, sample: Dict[str, Tensor]) -> None: ...
 
-    def on_checkpoint(self, *args: Any, **kwargs: dict[str, Any]) -> None: ...
+    def on_checkpoint(self, *args: Any, **kwargs: Dict[str, Any]) -> None: ...
 
-    def on_epoch_end(self, *args: Any, **kwargs: dict[str, Any]) -> None: ...
+    def on_epoch_end(self, *args: Any, **kwargs: Dict[str, Any]) -> None: ...

@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 
 import torch
 import torch.nn.functional as F
@@ -139,13 +139,13 @@ class ImageRegistrator(Module):
     def __init__(
         self,
         model_type: Union[str, BaseModel] = "homography",
-        optimizer: type[optim.Optimizer] = optim.Adam,
+        optimizer: Type[optim.Optimizer] = optim.Adam,
         loss_fn: Callable[..., Tensor] = F.l1_loss,
         pyramid_levels: int = 5,
         lr: float = 1e-3,
         num_iterations: int = 100,
         tolerance: float = 1e-4,
-        warper: Optional[type[BaseWarper]] = None,
+        warper: Optional[Type[BaseWarper]] = None,
     ) -> None:
         super().__init__()
         self.known_models = ["homography", "similarity", "translation", "scale", "rotation"]
@@ -203,7 +203,7 @@ class ImageRegistrator(Module):
 
     def register(
         self, src_img: Tensor, dst_img: Tensor, verbose: bool = False, output_intermediate_models: bool = False
-    ) -> Union[Tensor, tuple[Tensor, list[Tensor]]]:
+    ) -> Union[Tensor, Tuple[Tensor, List[Tensor]]]:
         r"""Estimate the tranformation' which warps src_img into dst_img by gradient descent. The shape of the
         tensors is not checked, because it may depend on the model, e.g. volume registration.
 
@@ -219,7 +219,7 @@ class ImageRegistrator(Module):
         """
         self.reset_model()
         # ToDo: better parameter passing to optimizer
-        _opt_args: dict[str, Any] = {}
+        _opt_args: Dict[str, Any] = {}
         _opt_args["lr"] = self.lr
         opt = self.optimizer(self.model.parameters(), **_opt_args)
 

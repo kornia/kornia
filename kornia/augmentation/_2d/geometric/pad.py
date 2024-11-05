@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 from torch import Tensor
@@ -46,18 +46,18 @@ class PadTo(GeometricAugmentationBase2D):
     """
 
     def __init__(
-        self, size: tuple[int, int], pad_mode: str = "constant", pad_value: float = 0, keepdim: bool = False
+        self, size: Tuple[int, int], pad_mode: str = "constant", pad_value: float = 0, keepdim: bool = False
     ) -> None:
         super().__init__(p=1.0, same_on_batch=True, p_batch=1.0, keepdim=keepdim)
         self.flags = {"size": size, "pad_mode": pad_mode, "pad_value": pad_value}
 
     # TODO: It is incorrect to return identity
     # TODO: Having a resampled version with ``warp_affine``
-    def compute_transformation(self, image: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
+    def compute_transformation(self, image: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return self.identity_matrix(image)
 
     def apply_transform(
-        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         _, _, height, width = input.shape
         height_pad: int = flags["size"][0] - height
@@ -69,9 +69,9 @@ class PadTo(GeometricAugmentationBase2D):
     def inverse_transform(
         self,
         input: Tensor,
-        flags: dict[str, Any],
+        flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
-        size: Optional[tuple[int, int]] = None,
+        size: Optional[Tuple[int, int]] = None,
     ) -> Tensor:
         if size is None:
             raise RuntimeError("`size` has to be a tuple. Got None.")

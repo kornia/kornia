@@ -9,9 +9,8 @@
 #   https://github.com/rwightman/pytorch-image-models/tree/master/timm/models/vision_transformer.py
 
 import math
-from collections.abc import Sequence
 from functools import partial
-from typing import Callable, Union
+from typing import Callable, Sequence, Tuple, Union
 
 import torch
 import torch.utils.checkpoint
@@ -271,7 +270,7 @@ class DinoVisionTransformer(nn.Module):
         reshape: bool = False,
         return_class_token: bool = False,
         norm=True,
-    ) -> tuple[Union[torch.Tensor, tuple[torch.Tensor]]]:
+    ) -> Tuple[Union[torch.Tensor, Tuple[torch.Tensor]]]:
         if self.chunked_blocks:
             outputs = self._get_intermediate_layers_chunked(x, n)
         else:

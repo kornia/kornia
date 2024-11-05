@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
 from kornia.augmentation.random_generator._2d import ChannelDropoutGenerator
@@ -82,7 +82,7 @@ class RandomChannelDropout(IntensityAugmentationBase2D):
         self._param_generator = ChannelDropoutGenerator(self.num_drop_channels)
 
     def apply_transform(
-        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         KORNIA_CHECK_SHAPE(input, ["B", "C", "H", "W"])
         KORNIA_CHECK(

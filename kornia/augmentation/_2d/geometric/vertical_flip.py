@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
 from kornia.core import Tensor, as_tensor, tensor
@@ -45,23 +45,23 @@ class RandomVerticalFlip(GeometricAugmentationBase2D):
         tensor(True)
     """
 
-    def compute_transformation(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         h: int = int(params["forward_input_shape"][-2])
         flip_mat: Tensor = tensor([[1, 0, 0], [0, -1, h - 1], [0, 0, 1]], device=input.device, dtype=input.dtype)
 
         return flip_mat.expand(input.shape[0], 3, 3)
 
     def apply_transform(
-        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         return vflip(input)
 
     def inverse_transform(
         self,
         input: Tensor,
-        flags: dict[str, Any],
+        flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
-        size: Optional[tuple[int, int]] = None,
+        size: Optional[Tuple[int, int]] = None,
     ) -> Tensor:
         if not isinstance(transform, Tensor):
             raise TypeError(f"Expected the `transform` be a Tensor. Got {type(transform)}.")

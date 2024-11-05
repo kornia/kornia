@@ -1,4 +1,4 @@
-from typing import Any, Optional, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
@@ -59,7 +59,7 @@ class RandomShear(GeometricAugmentationBase2D):
 
     def __init__(
         self,
-        shear: Union[Tensor, float, tuple[float, float], tuple[float, float, float, float]],
+        shear: Union[Tensor, float, Tuple[float, float], Tuple[float, float, float, float]],
         resample: Union[str, int, Resample] = Resample.BILINEAR.name,
         same_on_batch: bool = False,
         align_corners: bool = False,
@@ -75,7 +75,7 @@ class RandomShear(GeometricAugmentationBase2D):
             "align_corners": align_corners,
         }
 
-    def compute_transformation(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return get_shear_matrix2d(
             as_tensor(params["center"], device=input.device, dtype=input.dtype),
             deg2rad(as_tensor(params["shear_x"], device=input.device, dtype=input.dtype)),
@@ -83,7 +83,7 @@ class RandomShear(GeometricAugmentationBase2D):
         )
 
     def apply_transform(
-        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         _, _, height, width = input.shape
         if not isinstance(transform, Tensor):
@@ -101,9 +101,9 @@ class RandomShear(GeometricAugmentationBase2D):
     def inverse_transform(
         self,
         input: Tensor,
-        flags: dict[str, Any],
+        flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
-        size: Optional[tuple[int, int]] = None,
+        size: Optional[Tuple[int, int]] = None,
     ) -> Tensor:
         if not isinstance(transform, Tensor):
             raise TypeError(f"Expected the `transform` be a Tensor. Got {type(transform)}.")

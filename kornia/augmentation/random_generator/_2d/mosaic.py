@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Dict, Optional, Tuple
 
 import torch
 from torch.distributions import Uniform
@@ -36,9 +36,9 @@ class MosaicGenerator(RandomGeneratorBase):
 
     def __init__(
         self,
-        output_size: Optional[tuple[int, int]] = None,
-        mosaic_grid: tuple[int, int] = (2, 2),
-        start_ratio_range: tuple[float, float] = (0.3, 0.7),
+        output_size: Optional[Tuple[int, int]] = None,
+        mosaic_grid: Tuple[int, int] = (2, 2),
+        start_ratio_range: Tuple[float, float] = (0.3, 0.7),
     ) -> None:
         super().__init__()
         self.output_size = output_size
@@ -59,7 +59,7 @@ class MosaicGenerator(RandomGeneratorBase):
             validate_args=False,
         )
 
-    def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, torch.Tensor]:
+    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, torch.Tensor]:
         batch_size = batch_shape[0]
         input_sizes = (batch_shape[-2], batch_shape[-1])
         # output_size = input_sizes if self.output_size is None else self.output_size

@@ -1,11 +1,11 @@
-from typing import Optional
+from typing import Optional, Tuple
 
 import torch
 
 from kornia.core import Tensor
 
 
-def marginal_pdf(values: Tensor, bins: Tensor, sigma: Tensor, epsilon: float = 1e-10) -> tuple[Tensor, Tensor]:
+def marginal_pdf(values: Tensor, bins: Tensor, sigma: Tensor, epsilon: float = 1e-10) -> Tuple[Tensor, Tensor]:
     """Calculate the marginal probability distribution function of the input tensor based on the number of
     histogram bins.
 
@@ -154,7 +154,7 @@ def image_histogram2d(
     return_pdf: bool = False,
     kernel: str = "triangular",
     eps: float = 1e-10,
-) -> tuple[Tensor, Tensor]:
+) -> Tuple[Tensor, Tensor]:
     """Estimate the histogram of the input image(s).
 
     The calculation uses triangular kernel density estimation.

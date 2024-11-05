@@ -1,10 +1,12 @@
+from typing import List
+
 from kornia.core import Module, Tensor, pad
 from kornia.core.check import KORNIA_CHECK, KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.filters import filter3d, get_gaussian_kernel3d
 from kornia.filters.filter import _compute_padding
 
 
-def _crop(img: Tensor, cropping_shape: list[int]) -> Tensor:
+def _crop(img: Tensor, cropping_shape: List[int]) -> Tensor:
     """Crop out the part of "valid" convolution area."""
     return pad(
         img,
@@ -76,7 +78,7 @@ def ssim3d(
     mu1: Tensor = filter3d(img1, kernel)
     mu2: Tensor = filter3d(img2, kernel)
 
-    cropping_shape: list[int] = []
+    cropping_shape: List[int] = []
     if padding == "valid":
         depth, height, width = kernel.shape[-3:]
         cropping_shape = _compute_padding([depth, height, width])

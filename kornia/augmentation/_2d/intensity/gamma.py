@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
@@ -53,8 +53,8 @@ class RandomGamma(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        gamma: tuple[float, float] = (1.0, 1.0),
-        gain: tuple[float, float] = (1.0, 1.0),
+        gamma: Tuple[float, float] = (1.0, 1.0),
+        gain: Tuple[float, float] = (1.0, 1.0),
         same_on_batch: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
@@ -65,7 +65,7 @@ class RandomGamma(IntensityAugmentationBase2D):
         )
 
     def apply_transform(
-        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         gamma_factor = params["gamma_factor"].to(input)
         gain_factor = params["gain_factor"].to(input)

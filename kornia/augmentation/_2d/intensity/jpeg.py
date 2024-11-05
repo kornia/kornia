@@ -1,4 +1,4 @@
-from typing import Any, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
@@ -41,7 +41,7 @@ class RandomJPEG(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        jpeg_quality: Union[Tensor, float, tuple[float, float], list[float]] = 50.0,
+        jpeg_quality: Union[Tensor, float, Tuple[float, float], List[float]] = 50.0,
         same_on_batch: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
@@ -51,7 +51,7 @@ class RandomJPEG(IntensityAugmentationBase2D):
         self._param_generator = rg.JPEGGenerator(jpeg_quality)
 
     def apply_transform(
-        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         jpeg_output: Tensor = jpeg_codec_differentiable(input, params["jpeg_quality"])
         return jpeg_output

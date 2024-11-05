@@ -3,7 +3,7 @@ import logging
 import subprocess
 import sys
 from types import ModuleType
-from typing import Optional
+from typing import List, Optional
 
 from kornia.config import InstallationMode, kornia_config
 
@@ -111,7 +111,7 @@ class LazyLoader:
         self._load()
         return getattr(self.module, item)
 
-    def __dir__(self) -> list[str]:
+    def __dir__(self) -> List[str]:
         """Loads the module (if not already loaded) and returns the list of attributes of the module.
 
         This method is called when the built-in dir() function is used on the LazyLoader instance.

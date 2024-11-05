@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
@@ -56,7 +56,7 @@ class RandomBrightness(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        brightness: tuple[float, float] = (1.0, 1.0),
+        brightness: Tuple[float, float] = (1.0, 1.0),
         clip_output: bool = True,
         same_on_batch: bool = False,
         p: float = 1.0,
@@ -69,7 +69,7 @@ class RandomBrightness(IntensityAugmentationBase2D):
         self.clip_output = clip_output
 
     def apply_transform(
-        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         brightness_factor = params["brightness_factor"].to(input)
         return adjust_brightness(input, brightness_factor - 1, self.clip_output)

@@ -1,4 +1,4 @@
-from typing import Any, Optional, Union
+from typing import Any, List, Optional, Tuple, Union
 
 import torch
 
@@ -14,10 +14,10 @@ def _common_param_check(batch_size: int, same_on_batch: Optional[bool] = None) -
 
 
 def _range_bound(
-    factor: Union[Tensor, float, tuple[float, float], list[float]],
+    factor: Union[Tensor, float, Tuple[float, float], List[float]],
     name: str,
     center: Optional[float] = 0.0,
-    bounds: Optional[tuple[float, float]] = (0, float("inf")),
+    bounds: Optional[Tuple[float, float]] = (0, float("inf")),
     check: Optional[str] = "joint",
     device: torch.device = torch.device("cpu"),
     dtype: torch.dtype = torch.get_default_dtype(),
@@ -51,7 +51,7 @@ def _range_bound(
     return factor_bound
 
 
-def _joint_range_check(ranged_factor: Tensor, name: str, bounds: Optional[tuple[float, float]] = None) -> None:
+def _joint_range_check(ranged_factor: Tensor, name: str, bounds: Optional[Tuple[float, float]] = None) -> None:
     """Check if bounds[0] <= ranged_factor[0] <= ranged_factor[1] <= bounds[1]"""
     if bounds is None:
         bounds = (float("-inf"), float("inf"))
@@ -68,7 +68,7 @@ def _joint_range_check(ranged_factor: Tensor, name: str, bounds: Optional[tuple[
 def _singular_range_check(
     ranged_factor: Tensor,
     name: str,
-    bounds: Optional[tuple[float, float]] = None,
+    bounds: Optional[Tuple[float, float]] = None,
     skip_none: bool = False,
     mode: str = "2d",
 ) -> None:
@@ -96,7 +96,7 @@ def _singular_range_check(
 
 
 def _tuple_range_reader(
-    input_range: Union[Tensor, float, tuple[Any, ...]],
+    input_range: Union[Tensor, float, Tuple[Any, ...]],
     target_size: int,
     device: Optional[torch.device] = None,
     dtype: Optional[torch.dtype] = None,

@@ -1,4 +1,4 @@
-from typing import Any, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
@@ -56,10 +56,10 @@ class ColorJiggle(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        brightness: Union[Tensor, float, tuple[float, float], list[float]] = 0.0,
-        contrast: Union[Tensor, float, tuple[float, float], list[float]] = 0.0,
-        saturation: Union[Tensor, float, tuple[float, float], list[float]] = 0.0,
-        hue: Union[Tensor, float, tuple[float, float], list[float]] = 0.0,
+        brightness: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
+        contrast: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
+        saturation: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
+        hue: Union[Tensor, float, Tuple[float, float], List[float]] = 0.0,
         same_on_batch: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
@@ -72,7 +72,7 @@ class ColorJiggle(IntensityAugmentationBase2D):
         self._param_generator = rg.ColorJiggleGenerator(brightness, contrast, saturation, hue)
 
     def apply_transform(
-        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         transforms = [
             lambda img: adjust_brightness(img, params["brightness_factor"] - 1)

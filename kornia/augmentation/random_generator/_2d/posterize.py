@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Dict, Tuple, Union
 
 import torch
 
@@ -28,7 +28,7 @@ class PosterizeGenerator(RandomGeneratorBase):
         ``self.set_rng_device_and_dtype(device="cuda", dtype=torch.float64)``.
     """
 
-    def __init__(self, bits: Union[float, tuple[float, float], Tensor]) -> None:
+    def __init__(self, bits: Union[float, Tuple[float, float], Tensor]) -> None:
         super().__init__()
         self.bits_factor = bits
 
@@ -46,7 +46,7 @@ class PosterizeGenerator(RandomGeneratorBase):
         _joint_range_check(bits, "bits", (0, 8))
         self.bit_sampler = UniformDistribution(bits[0], bits[1], validate_args=False)
 
-    def forward(self, batch_shape: tuple[int, ...], same_on_batch: bool = False) -> dict[str, Tensor]:
+    def forward(self, batch_shape: Tuple[int, ...], same_on_batch: bool = False) -> Dict[str, Tensor]:
         batch_size = batch_shape[0]
         _common_param_check(batch_size, same_on_batch)
         _device, _ = _extract_device_dtype([self.bits_factor if isinstance(self.bits_factor, Tensor) else None])

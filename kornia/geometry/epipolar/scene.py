@@ -1,6 +1,7 @@
 """Module to generate synthetic 3d scenes."""
 
 import math
+from typing import Dict
 
 import torch
 
@@ -11,7 +12,7 @@ from kornia.geometry.linalg import transform_points
 from .projection import projection_from_KRt, random_intrinsics
 
 
-def generate_scene(num_views: int, num_points: int) -> dict[str, torch.Tensor]:
+def generate_scene(num_views: int, num_points: int) -> Dict[str, torch.Tensor]:
     # Generate the 3d points
     points3d = rand(1, num_points, 3)  # NxMx3
 

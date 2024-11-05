@@ -1,4 +1,4 @@
-from typing import Any, Optional, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._3d.intensity.base import IntensityAugmentationBase3D
@@ -76,14 +76,14 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
 
     def __init__(
         self,
-        kernel_size: Union[int, tuple[int, int]],
+        kernel_size: Union[int, Tuple[int, int]],
         angle: Union[
             Tensor,
             float,
-            tuple[float, float, float],
-            tuple[tuple[float, float], tuple[float, float], tuple[float, float]],
+            Tuple[float, float, float],
+            Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]],
         ],
-        direction: Union[Tensor, float, tuple[float, float]],
+        direction: Union[Tensor, float, Tuple[float, float]],
         border_type: Union[int, str, BorderType] = BorderType.CONSTANT.name,
         resample: Union[str, int, Resample] = Resample.NEAREST.name,
         same_on_batch: bool = False,
@@ -94,11 +94,11 @@ class RandomMotionBlur3D(IntensityAugmentationBase3D):
         self.flags = {"border_type": BorderType.get(border_type), "resample": Resample.get(resample)}
         self._param_generator = rg.MotionBlurGenerator3D(kernel_size, angle, direction)
 
-    def compute_transformation(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return self.identity_matrix(input)
 
     def apply_transform(
-        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         kernel_size = int(params["ksize_factor"].unique().item())
         angle = params["angle_factor"]

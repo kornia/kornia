@@ -1,4 +1,4 @@
-from typing import Any, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.mix.base import MixAugmentationBaseV2
@@ -70,17 +70,17 @@ class RandomCutMixV2(MixAugmentationBaseV2):
     def __init__(
         self,
         num_mix: int = 1,
-        cut_size: Optional[Union[Tensor, tuple[float, float]]] = None,
+        cut_size: Optional[Union[Tensor, Tuple[float, float]]] = None,
         beta: Optional[Union[Tensor, float]] = None,
         same_on_batch: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
-        data_keys: list[Union[str, int, DataKey]] = [DataKey.INPUT],
+        data_keys: List[Union[str, int, DataKey]] = [DataKey.INPUT],
     ) -> None:
         super().__init__(p=1.0, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim, data_keys=data_keys)
         self._param_generator: rg.CutmixGenerator = rg.CutmixGenerator(cut_size, beta, num_mix, p=p)
 
-    def apply_transform_class(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
+    def apply_transform_class(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         height, width = params["image_shape"]
 
         out_labels = []
@@ -102,7 +102,7 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         return stack(out_labels, 0)
 
     def apply_non_transform_class(
-        self, input: Tensor, params: dict[str, Tensor], flags: Optional[dict[str, Any]] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         out_labels = []
         lam = zeros((len(input)), device=input.device, dtype=DType.to_torch(int(params["dtype"].item())))
@@ -121,7 +121,7 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         return stack(out_labels, 0)
 
     def apply_transform(
-        self, input: Tensor, params: dict[str, Tensor], maybe_flags: Optional[dict[str, Any]] = None
+        self, input: Tensor, params: Dict[str, Tensor], maybe_flags: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         height, width = input.size(2), input.size(3)
 

@@ -1,4 +1,4 @@
-from typing import Any, Optional, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.geometric.base import GeometricAugmentationBase2D
@@ -68,13 +68,13 @@ class RandomPerspective(GeometricAugmentationBase2D):
         super().__init__(p=p, same_on_batch=same_on_batch, keepdim=keepdim)
         self._param_generator = rg.PerspectiveGenerator(distortion_scale, sampling_method=sampling_method)
 
-        self.flags: dict[str, Any] = {"align_corners": align_corners, "resample": Resample.get(resample)}
+        self.flags: Dict[str, Any] = {"align_corners": align_corners, "resample": Resample.get(resample)}
 
-    def compute_transformation(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
+    def compute_transformation(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return get_perspective_transform(params["start_points"].to(input), params["end_points"].to(input))
 
     def apply_transform(
-        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         _, _, height, width = input.shape
         if not isinstance(transform, Tensor):
@@ -87,9 +87,9 @@ class RandomPerspective(GeometricAugmentationBase2D):
     def inverse_transform(
         self,
         input: Tensor,
-        flags: dict[str, Any],
+        flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
-        size: Optional[tuple[int, int]] = None,
+        size: Optional[Tuple[int, int]] = None,
     ) -> Tensor:
         if not isinstance(transform, Tensor):
             raise TypeError(f"Expected the `transform` be a Tensor. Got {type(transform)}.")

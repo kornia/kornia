@@ -1,5 +1,4 @@
-from contextlib import AbstractContextManager as ContextManager
-from typing import TYPE_CHECKING, Any, Callable, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, ContextManager, List, Optional, Tuple, TypeVar
 
 import torch
 from packaging import version
@@ -31,16 +30,16 @@ def torch_version_ge(major: int, minor: int, patch: Optional[int] = None) -> boo
 
 if TYPE_CHECKING:
     # TODO: remove this branch when kornia relies on torch >= 1.10.0
-    def torch_meshgrid(tensors: list[Tensor], indexing: Optional[str] = None) -> tuple[Tensor, ...]: ...
+    def torch_meshgrid(tensors: List[Tensor], indexing: Optional[str] = None) -> Tuple[Tensor, ...]: ...
 
 elif torch_version_ge(1, 10, 0):
 
-    def torch_meshgrid(tensors: list[Tensor], indexing: str):
+    def torch_meshgrid(tensors: List[Tensor], indexing: str):
         return torch.meshgrid(tensors, indexing=indexing)
 
 else:
     # TODO: remove this branch when kornia relies on torch >= 1.10.0
-    def torch_meshgrid(tensors: list[Tensor], indexing: str):
+    def torch_meshgrid(tensors: List[Tensor], indexing: str):
         return torch.meshgrid(tensors)
 
 

@@ -1,6 +1,6 @@
 """Module for image projections."""
 
-from typing import Union
+from typing import Tuple, Union
 
 import torch
 from torch.linalg import qr as linalg_qr
@@ -108,7 +108,7 @@ def projection_from_KRt(K: Tensor, R: Tensor, t: Tensor) -> Tensor:
     return K @ Rt
 
 
-def KRt_from_projection(P: Tensor, eps: float = 1e-6) -> tuple[Tensor, Tensor, Tensor]:
+def KRt_from_projection(P: Tensor, eps: float = 1e-6) -> Tuple[Tensor, Tensor, Tensor]:
     r"""Decompose the Projection matrix into Camera-Matrix, Rotation Matrix and Translation vector.
 
     Args:
@@ -161,7 +161,7 @@ def depth_from_point(R: Tensor, t: Tensor, X: Tensor) -> Tensor:
 # adapted from:
 # https://github.com/opencv/opencv_contrib/blob/master/modules/sfm/src/fundamental.cpp#L61
 # https://github.com/mapillary/OpenSfM/blob/master/opensfm/multiview.py#L14
-def _nullspace(A: Tensor) -> tuple[Tensor, Tensor]:
+def _nullspace(A: Tensor) -> Tuple[Tensor, Tensor]:
     """Compute the null space of A.
 
     Return the smallest singular value and the corresponding vector.

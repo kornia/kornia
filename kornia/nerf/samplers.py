@@ -1,4 +1,5 @@
 import math
+from typing import Dict, List, Tuple
 
 import torch
 
@@ -76,7 +77,7 @@ class RaySampler:
             camera_ids: list of camera ids for each pixel coordinates: List[int]
         """
 
-        def __init__(self, points_2d: Tensor, camera_ids: list[int]) -> None:
+        def __init__(self, points_2d: Tensor, camera_ids: List[int]) -> None:
             self._points_2d = points_2d  # (*, N, 2)
             self._camera_ids = camera_ids
 
@@ -85,10 +86,10 @@ class RaySampler:
             return self._points_2d
 
         @property
-        def camera_ids(self) -> list[int]:
+        def camera_ids(self) -> List[int]:
             return self._camera_ids
 
-    def _calc_ray_params(self, cameras: PinholeCamera, points_2d_camera: dict[int, Points2D]) -> None:
+    def _calc_ray_params(self, cameras: PinholeCamera, points_2d_camera: Dict[int, Points2D]) -> None:
         r"""Calculates ray parameters: origins, directions. Also stored are camera ids for each ray, and its pixel
         coordinates.
 
@@ -135,7 +136,7 @@ class RaySampler:
             self._origins, self._directions = self.transform_ray_params_world_to_ndc(cameras)
         self._points_2d = torch.cat(points_2d)
 
-    def transform_ray_params_world_to_ndc(self, cameras: PinholeCamera) -> tuple[Tensor, Tensor]:
+    def transform_ray_params_world_to_ndc(self, cameras: PinholeCamera) -> Tuple[Tensor, Tensor]:
         r"""Transforms ray parameters to normalized coordinate device (camera) system (NDC)
 
         Args:
@@ -193,11 +194,11 @@ class RaySampler:
         def __init__(self) -> None:
             self._x: Tensor
             self._y: Tensor
-            self._camera_ids: list[int] = []
+            self._camera_ids: List[int] = []
 
     @staticmethod
     def _add_points2d_as_flat_tensors_to_num_ray_dict(
-        n: int, x: Tensor, y: Tensor, camera_id: int, points2d_as_flat_tensors: dict[int, Points2D_FlatTensors]
+        n: int, x: Tensor, y: Tensor, camera_id: int, points2d_as_flat_tensors: Dict[int, Points2D_FlatTensors]
     ) -> None:
         r"""Adds x/y pixel coordinates for all rays casted by a scene camera to dictionary of pixel coordinates
         grouped by total number of rays."""
@@ -212,8 +213,8 @@ class RaySampler:
 
     @staticmethod
     def _build_num_ray_dict_of_points2d(
-        points2d_as_flat_tensors: dict[int, Points2D_FlatTensors],
-    ) -> dict[int, Points2D]:
+        points2d_as_flat_tensors: Dict[int, Points2D_FlatTensors],
+    ) -> Dict[int, Points2D]:
         r"""Builds a dictionary of ray pixel points, by total number of rays as key. The dictionary groups rays by
         the total amount of rays, which allows the case of casting different number of rays from each scene camera.
 
@@ -225,7 +226,7 @@ class RaySampler:
             dictionary of Points2D objects that holds information on pixel 2d coordinates of each ray and the camera
               id it was casted by: Dict[int, Points2D]
         """
-        num_ray_dict_of_points2d: dict[int, RaySampler.Points2D] = {}
+        num_ray_dict_of_points2d: Dict[int, RaySampler.Points2D] = {}
         for n, points2d_as_flat_tensor in points2d_as_flat_tensors.items():
             num_cams = len(points2d_as_flat_tensor._camera_ids)
             points_2d = (
@@ -250,7 +251,7 @@ class RandomRaySampler(RaySampler):
     def __init__(self, min_depth: float, max_depth: float, ndc: bool, device: Device, dtype: torch.dtype) -> None:
         super().__init__(min_depth, max_depth, ndc, device, dtype)
 
-    def sample_points_2d(self, heights: Tensor, widths: Tensor, num_img_rays: Tensor) -> dict[int, RaySampler.Points2D]:
+    def sample_points_2d(self, heights: Tensor, widths: Tensor, num_img_rays: Tensor) -> Dict[int, RaySampler.Points2D]:
         r"""Randomly sample pixel points in 2d.
 
         Args:
@@ -263,7 +264,7 @@ class RandomRaySampler(RaySampler):
               id it was casted by: Dict[int, Points2D]
         """
         num_img_rays = num_img_rays.int()
-        points2d_as_flat_tensors: dict[int, RaySampler.Points2D_FlatTensors] = {}
+        points2d_as_flat_tensors: Dict[int, RaySampler.Points2D_FlatTensors] = {}
         for camera_id, (height, width, n) in enumerate(zip(heights.tolist(), widths.tolist(), num_img_rays.tolist())):
             y_rand = torch.trunc(torch.rand(n, device=self._device, dtype=self._dtype) * height)
             x_rand = torch.trunc(torch.rand(n, device=self._device, dtype=self._dtype) * width)
@@ -306,7 +307,7 @@ class RandomGridRaySampler(RandomRaySampler):
     def __init__(self, min_depth: float, max_depth: float, ndc: bool, device: Device, dtype: torch.dtype) -> None:
         super().__init__(min_depth, max_depth, ndc, device, dtype)
 
-    def sample_points_2d(self, heights: Tensor, widths: Tensor, num_img_rays: Tensor) -> dict[int, RaySampler.Points2D]:
+    def sample_points_2d(self, heights: Tensor, widths: Tensor, num_img_rays: Tensor) -> Dict[int, RaySampler.Points2D]:
         r"""Randomly sample pixel points in 2d over a regular row-column grid.
 
         Args:
@@ -320,7 +321,7 @@ class RandomGridRaySampler(RandomRaySampler):
               id it was casted by: Dict[int, Points2D]
         """
         num_img_rays = num_img_rays.int()
-        points2d_as_flat_tensors: dict[int, RaySampler.Points2D_FlatTensors] = {}
+        points2d_as_flat_tensors: Dict[int, RaySampler.Points2D_FlatTensors] = {}
         for camera_id, (height, width, n) in enumerate(zip(heights.tolist(), widths.tolist(), num_img_rays.tolist())):
             n_sqrt = int(math.sqrt(n))
             y_rand = torch.randperm(int(height), device=self._device, dtype=self._dtype)[: min(int(height), n_sqrt)]
@@ -347,7 +348,7 @@ class UniformRaySampler(RaySampler):
 
     def sample_points_2d(
         self, heights: Tensor, widths: Tensor, sampling_step: int = 1
-    ) -> dict[int, RaySampler.Points2D]:
+    ) -> Dict[int, RaySampler.Points2D]:
         r"""Uniformly sample pixel points in 2d for all scene camera pixels.
 
         Args:
@@ -361,7 +362,7 @@ class UniformRaySampler(RaySampler):
         """
         heights = heights.int()
         widths = widths.int()
-        points2d_as_flat_tensors: dict[int, RaySampler.Points2D_FlatTensors] = {}
+        points2d_as_flat_tensors: Dict[int, RaySampler.Points2D_FlatTensors] = {}
         for camera_id, (height, width) in enumerate(zip(heights.tolist(), widths.tolist())):
             n = height * width
             y_grid, x_grid = torch_meshgrid(

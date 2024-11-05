@@ -1,6 +1,4 @@
-from __future__ import annotations
-
-from typing import List, Optional  # noqa: UP035
+from typing import List, Optional
 
 import torch
 import torch.nn.functional as F
@@ -76,7 +74,7 @@ def dilation(
         origin = [se_h // 2, se_w // 2]
 
     # pad
-    pad_e = [origin[1], se_w - origin[1] - 1, origin[0], se_h - origin[0] - 1]
+    pad_e: List[int] = [origin[1], se_w - origin[1] - 1, origin[0], se_h - origin[0] - 1]
     if border_type == "geodesic":
         border_value = -max_val
         border_type = "constant"
@@ -169,7 +167,7 @@ def erosion(
         origin = [se_h // 2, se_w // 2]
 
     # pad
-    pad_e = [origin[1], se_w - origin[1] - 1, origin[0], se_h - origin[0] - 1]
+    pad_e: List[int] = [origin[1], se_w - origin[1] - 1, origin[0], se_h - origin[0] - 1]
     if border_type == "geodesic":
         border_value = max_val
         border_type = "constant"

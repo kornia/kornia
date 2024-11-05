@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import torch
 
@@ -35,8 +35,8 @@ class RandomSnow(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        snow_coefficient: tuple[float, float] = (0.5, 0.5),
-        brightness: tuple[float, float] = (2, 2),
+        snow_coefficient: Tuple[float, float] = (0.5, 0.5),
+        brightness: Tuple[float, float] = (2, 2),
         same_on_batch: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
@@ -50,7 +50,7 @@ class RandomSnow(IntensityAugmentationBase2D):
         )
 
     def apply_transform(
-        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         KORNIA_CHECK(input.shape[1] == 3, "Number of color channels should be 3.")
         KORNIA_CHECK(len(input.shape) in (3, 4), "Wrong input dimension.")

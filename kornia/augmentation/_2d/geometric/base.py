@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from kornia.augmentation._2d.base import RigidAffineAugmentationBase2D
 from kornia.constants import Resample
@@ -24,9 +24,9 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
     def inverse_transform(
         self,
         input: Tensor,
-        flags: dict[str, Any],
+        flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
-        size: Optional[tuple[int, int]] = None,
+        size: Optional[Tuple[int, int]] = None,
     ) -> Tensor:
         """By default, the exact transformation as ``apply_transform`` will be used."""
         raise NotImplementedError
@@ -36,7 +36,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         return _torch_inverse_cast(transform)
 
     def get_transformation_matrix(
-        self, input: Tensor, params: Optional[dict[str, Tensor]] = None, flags: Optional[dict[str, Any]] = None
+        self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, flags: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         """Obtain transformation matrices.
 
@@ -53,13 +53,13 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         return as_tensor(transform, device=input.device, dtype=input.dtype)
 
     def apply_non_transform_mask(
-        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         """Process masks corresponding to the inputs that are no transformation applied."""
         return input
 
     def apply_transform_mask(
-        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         """Process masks corresponding to the inputs that are transformed.
 
@@ -76,13 +76,13 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         return output
 
     def apply_non_transform_box(
-        self, input: Boxes, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Boxes:
         """Process boxes corresponding to the inputs that are no transformation applied."""
         return input
 
     def apply_transform_box(
-        self, input: Boxes, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Boxes:
         """Process boxes corresponding to the inputs that are transformed."""
         if transform is None:
@@ -93,13 +93,13 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         return input.transform_boxes_(transform)
 
     def apply_non_transform_keypoint(
-        self, input: Keypoints, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Keypoints:
         """Process keypoints corresponding to the inputs that are no transformation applied."""
         return input
 
     def apply_transform_keypoint(
-        self, input: Keypoints, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Keypoints, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Keypoints:
         """Process keypoints corresponding to the inputs that are transformed."""
         if transform is None:
@@ -110,13 +110,13 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
         return input.transform_keypoints_(transform)
 
     def apply_non_transform_class(
-        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         """Process class tags corresponding to the inputs that are no transformation applied."""
         return input
 
     def apply_transform_class(
-        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         """Process class tags corresponding to the inputs that are transformed."""
         return input
@@ -124,8 +124,8 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
     def inverse_inputs(
         self,
         input: Tensor,
-        params: dict[str, Tensor],
-        flags: dict[str, Any],
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
         **kwargs: Any,
     ) -> Tensor:
@@ -138,7 +138,7 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
             self._params if params is None else params, flags, **kwargs
         )
 
-        size: Optional[tuple[int, int]] = None
+        size: Optional[Tuple[int, int]] = None
         if "forward_input_shape" in params:
             # Majorly for cropping functions
             _size = params["forward_input_shape"].tolist()
@@ -162,8 +162,8 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
     def inverse_masks(
         self,
         input: Tensor,
-        params: dict[str, Tensor],
-        flags: dict[str, Any],
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
         **kwargs: Any,
     ) -> Tensor:
@@ -179,8 +179,8 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
     def inverse_boxes(
         self,
         input: Boxes,
-        params: dict[str, Tensor],
-        flags: dict[str, Any],
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
         **kwargs: Any,
     ) -> Boxes:
@@ -209,8 +209,8 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
     def inverse_keypoints(
         self,
         input: Keypoints,
-        params: dict[str, Tensor],
-        flags: dict[str, Any],
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
         **kwargs: Any,
     ) -> Keypoints:
@@ -247,14 +247,14 @@ class GeometricAugmentationBase2D(RigidAffineAugmentationBase2D):
     def inverse_classes(
         self,
         input: Tensor,
-        params: dict[str, Tensor],
-        flags: dict[str, Any],
+        params: Dict[str, Tensor],
+        flags: Dict[str, Any],
         transform: Optional[Tensor] = None,
         **kwargs: Any,
     ) -> Tensor:
         return input
 
-    def inverse(self, input: Tensor, params: Optional[dict[str, Tensor]] = None, **kwargs: Any) -> Tensor:
+    def inverse(self, input: Tensor, params: Optional[Dict[str, Tensor]] = None, **kwargs: Any) -> Tensor:
         """Perform inverse operations.
 
         Args:

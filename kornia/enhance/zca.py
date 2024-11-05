@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import List, Optional, Tuple
 
 import torch
 
@@ -160,7 +160,7 @@ class ZCAWhitening(Module):
 
 def zca_mean(
     inp: Tensor, dim: int = 0, unbiased: bool = True, eps: float = 1e-6, return_inverse: bool = False
-) -> tuple[Tensor, Tensor, Optional[Tensor]]:
+) -> Tuple[Tensor, Tensor, Optional[Tensor]]:
     r"""Compute the ZCA whitening matrix and mean vector.
 
     The output can be used with :py:meth:`~kornia.color.linear_transform`.
@@ -222,7 +222,7 @@ def zca_mean(
 
     feat_dims = concatenate([torch.arange(0, dim), torch.arange(dim + 1, len(inp_size))])
 
-    new_order: list[int] = concatenate([tensor([dim]), feat_dims]).tolist()
+    new_order: List[int] = concatenate([tensor([dim]), feat_dims]).tolist()
 
     inp_permute = inp.permute(new_order)
 
@@ -355,8 +355,8 @@ def linear_transform(inp: Tensor, transform_matrix: Tensor, mean_vector: Tensor,
     perm = concatenate([tensor([dim]), feat_dims])
     perm_inv = torch.argsort(perm)
 
-    new_order: list[int] = perm.tolist()
-    inv_order: list[int] = perm_inv.tolist()
+    new_order: List[int] = perm.tolist()
+    inv_order: List[int] = perm_inv.tolist()
 
     feature_sizes = tensor(inp_size[0:dim] + inp_size[dim + 1 : :])
     num_features: int = int(torch.prod(feature_sizes).item())

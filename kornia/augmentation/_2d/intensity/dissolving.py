@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from kornia.augmentation import random_generator as rg
 from kornia.augmentation._2d.intensity.base import IntensityAugmentationBase2D
@@ -40,7 +40,7 @@ class RandomDissolving(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        step_range: tuple[float, float] = (100, 500),
+        step_range: Tuple[float, float] = (100, 500),
         version: str = "2.1",
         p: float = 0.5,
         keepdim: bool = False,
@@ -52,6 +52,6 @@ class RandomDissolving(IntensityAugmentationBase2D):
         self._param_generator = rg.PlainUniformGenerator((self.step_range, "step_range_factor", None, None))
 
     def apply_transform(
-        self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any], transform: Optional[Tensor] = None
+        self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any], transform: Optional[Tensor] = None
     ) -> Tensor:
         return self._dslv(input, params["step_range_factor"][0].long().item())

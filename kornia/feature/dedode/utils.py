@@ -1,4 +1,4 @@
-from typing import Optional, Union
+from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
@@ -9,7 +9,7 @@ from kornia.core import Tensor
 @torch.no_grad()
 def sample_keypoints(
     scoremap: Tensor, num_samples: Optional[int] = 10_000, return_scoremap: bool = True, increase_coverage: bool = True
-) -> Union[Tensor, tuple[Tensor, Tensor]]:
+) -> Union[Tensor, Tuple[Tensor, Tensor]]:
     device = scoremap.device
     dtype = scoremap.dtype
     B, H, W = scoremap.shape

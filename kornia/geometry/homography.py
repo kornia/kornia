@@ -1,5 +1,5 @@
 import warnings
-from typing import Optional
+from typing import Optional, Tuple
 
 import torch
 
@@ -12,7 +12,7 @@ from .conversions import convert_points_from_homogeneous, convert_points_to_homo
 from .epipolar import normalize_points
 from .linalg import transform_points
 
-TupleTensor = tuple[Tensor, Tensor]
+TupleTensor = Tuple[Tensor, Tensor]
 
 
 def oneway_transfer_error(pts1: Tensor, pts2: Tensor, H: Tensor, squared: bool = True, eps: float = 1e-8) -> Tensor:

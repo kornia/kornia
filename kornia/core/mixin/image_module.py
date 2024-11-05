@@ -2,7 +2,7 @@ import datetime
 import math
 import os
 from functools import wraps
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, List, Optional, Tuple, Union
 
 from kornia.core._backend import Tensor, from_numpy
 from kornia.core.external import PILImage as Image
@@ -20,7 +20,7 @@ class ImageModuleMixIn:
 
     def convert_input_output(
         self,
-        input_names_to_handle: Optional[list[Any]] = None,
+        input_names_to_handle: Optional[List[Any]] = None,
         output_type: str = "tensor",
     ) -> Callable[[Any], Any]:
         """Decorator to convert input and output types for a function.
@@ -35,7 +35,7 @@ class ImageModuleMixIn:
 
         def decorator(func: Callable[[Any], Any]) -> Callable[[Any], Any]:
             @wraps(func)
-            def wrapper(*args: Any, **kwargs: Any) -> Union[Any, list[Any]]:
+            def wrapper(*args: Any, **kwargs: Any) -> Union[Any, List[Any]]:
                 # If input_names_to_handle is None, handle all inputs
                 if input_names_to_handle is None:
                     # Convert all args to tensors
@@ -165,8 +165,8 @@ class ImageModuleMixIn:
         raise TypeError("Input type not supported")
 
     def _detach_tensor_to_cpu(
-        self, output_image: Union[Tensor, list[Tensor], tuple[Tensor]]
-    ) -> Union[Tensor, list[Tensor], tuple[Tensor]]:
+        self, output_image: Union[Tensor, List[Tensor], Tuple[Tensor]]
+    ) -> Union[Tensor, List[Tensor], Tuple[Tensor]]:
         if isinstance(output_image, (Tensor,)):
             return output_image.detach().cpu()
         if isinstance(

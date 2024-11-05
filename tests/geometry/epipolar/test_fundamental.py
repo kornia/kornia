@@ -1,3 +1,5 @@
+from typing import Dict
+
 import pytest
 import torch
 
@@ -235,7 +237,7 @@ class TestFindFundamental(BaseTester):
         self.assert_close(F_mat, Fm_expected, rtol=1e-3, atol=1e-3)
 
     def test_synthetic_sampson_7point(self, device, dtype):
-        scene: dict[str, torch.Tensor] = generate_two_view_random_scene(device, dtype)
+        scene: Dict[str, torch.Tensor] = generate_two_view_random_scene(device, dtype)
         x1 = scene["x1"][:, :7, :]
         x2 = scene["x2"][:, :7, :]
         F_est = epi.find_fundamental(x1, x2, None, "7POINT")
@@ -247,7 +249,7 @@ class TestFindFundamental(BaseTester):
 
     @pytest.mark.xfail()
     def test_epipolar_constraint_7point(self, device, dtype):
-        scene: dict[str, torch.Tensor] = generate_two_view_random_scene(device, dtype)
+        scene: Dict[str, torch.Tensor] = generate_two_view_random_scene(device, dtype)
         x1 = scene["x1"][:, :7, :]
         x2 = scene["x2"][:, :7, :]
         F_est = epi.find_fundamental(x1, x2, None, "7POINT")
@@ -259,7 +261,7 @@ class TestFindFundamental(BaseTester):
                 self.assert_close(mean_error, torch.tensor(0.0, device=device, dtype=dtype), atol=1e-4, rtol=1e-4)
 
     def test_synthetic_sampson(self, device, dtype):
-        scene: dict[str, torch.Tensor] = generate_two_view_random_scene(device, dtype)
+        scene: Dict[str, torch.Tensor] = generate_two_view_random_scene(device, dtype)
 
         x1 = scene["x1"]
         x2 = scene["x2"]

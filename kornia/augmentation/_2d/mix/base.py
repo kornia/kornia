@@ -1,4 +1,4 @@
-from typing import Any, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import torch
 
@@ -38,7 +38,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         p_batch: float,
         same_on_batch: bool = False,
         keepdim: bool = False,
-        data_keys: list[Union[str, int, DataKey]] = [DataKey.INPUT],
+        data_keys: List[Union[str, int, DataKey]] = [DataKey.INPUT],
     ) -> None:
         super().__init__(p, p_batch=p_batch, same_on_batch=same_on_batch, keepdim=keepdim)
         self.data_keys = [DataKey.get(inp) for inp in data_keys]
@@ -52,15 +52,15 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         else:
             return _transform_input_by_shape(input, reference_shape=shape, match_channel=match_channel)
 
-    def apply_transform(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
+    def apply_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         # NOTE: apply_transform receives the whole tensor, but returns only altered elements.
         raise NotImplementedError
 
-    def apply_non_transform(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
+    def apply_non_transform(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         # For the images where batch_prob == False.
         return input
 
-    def transform_input(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
+    def transform_input(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         batch_prob = params["batch_prob"]
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         ori_shape = input.shape
@@ -75,7 +75,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         output = _transform_output_shape(output, ori_shape) if self.keepdim else output
         return output
 
-    def transform_mask(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
+    def transform_mask(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         batch_prob = params["batch_prob"]
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         output = input
@@ -85,7 +85,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
             output = self.apply_transform_mask(input, params, flags)
         return output
 
-    def transform_boxes(self, input: Union[Tensor, Boxes], params: dict[str, Tensor], flags: dict[str, Any]) -> Boxes:
+    def transform_boxes(self, input: Union[Tensor, Boxes], params: Dict[str, Tensor], flags: Dict[str, Any]) -> Boxes:
         # input is BxNx4x2 or Boxes.
         if isinstance(input, Tensor):
             if not (len(input.shape) == 4 and input.shape[2:] == torch.Size([4, 2])):
@@ -100,7 +100,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
             output = self.apply_transform_boxes(output, params, flags)
         return output
 
-    def transform_keypoint(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
+    def transform_keypoint(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         batch_prob = params["batch_prob"]
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         output = input
@@ -110,7 +110,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
             output = self.apply_transform_keypoint(input, params, flags)
         return output
 
-    def transform_class(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
+    def transform_class(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         batch_prob = params["batch_prob"]
         to_apply = batch_prob > 0.5  # NOTE: in case of Relaxed Distributions.
         output = input
@@ -120,37 +120,37 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
             output = self.apply_transform_class(input, params, flags)
         return output
 
-    def apply_non_transform_mask(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
+    def apply_non_transform_mask(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         raise NotImplementedError
 
-    def apply_transform_mask(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
+    def apply_transform_mask(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         raise NotImplementedError
 
-    def apply_non_transform_boxes(self, input: Boxes, params: dict[str, Tensor], flags: dict[str, Any]) -> Boxes:
+    def apply_non_transform_boxes(self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Boxes:
         return input
 
-    def apply_transform_boxes(self, input: Boxes, params: dict[str, Tensor], flags: dict[str, Any]) -> Boxes:
+    def apply_transform_boxes(self, input: Boxes, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Boxes:
         raise NotImplementedError
 
-    def apply_non_transform_keypoint(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
+    def apply_non_transform_keypoint(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return input
 
-    def apply_transform_keypoint(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
+    def apply_transform_keypoint(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         raise NotImplementedError
 
-    def apply_non_transform_class(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
+    def apply_non_transform_class(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         return input
 
-    def apply_transform_class(self, input: Tensor, params: dict[str, Tensor], flags: dict[str, Any]) -> Tensor:
+    def apply_transform_class(self, input: Tensor, params: Dict[str, Tensor], flags: Dict[str, Any]) -> Tensor:
         raise NotImplementedError
 
     def forward(  # type: ignore[override]
         self,
         *input: Tensor,
-        params: Optional[dict[str, Tensor]] = None,
-        data_keys: Optional[list[Union[str, int, DataKey]]] = None,
-    ) -> Union[Tensor, list[Tensor]]:
-        keys: list[DataKey]
+        params: Optional[Dict[str, Tensor]] = None,
+        data_keys: Optional[List[Union[str, int, DataKey]]] = None,
+    ) -> Union[Tensor, List[Tensor]]:
+        keys: List[DataKey]
         if data_keys is None:
             keys = self.data_keys
         else:
@@ -165,7 +165,7 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         else:
             self._params = params
 
-        outputs: list[Tensor] = []
+        outputs: List[Tensor] = []
         for dcate, _input in zip(keys, input):
             output: Tensor
             if dcate == DataKey.INPUT:
