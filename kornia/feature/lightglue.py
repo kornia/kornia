@@ -45,7 +45,7 @@ def math_clamp(x, min_, max_):  # type: ignore
 @custom_fwd(cast_inputs=torch.float32)
 def normalize_keypoints(kpts: Tensor, size: Tensor) -> Tensor:
     if isinstance(size, torch.Size):
-        size = Tensor(size)[None]
+        size = torch.tensor(size)[None]
     shift = size.float().to(kpts) / 2
     scale = size.max(1).values.float().to(kpts) / 2
     kpts = (kpts - shift[:, None]) / scale[:, None, None]
