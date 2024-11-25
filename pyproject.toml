@@ -112,7 +112,7 @@ select = [
   "B008",
   "B011",
   "B015",
-  # "B017",
+  "B017",
   # "B018",
   # "B021",
   # "B027",
@@ -200,6 +200,7 @@ max-statements = 64                                        # Recommended: 50
   "RUF012",
   "S101",
   "S311",
+  "B017", # Check for Exception since KORNIA_CHECK raises it
 ] # allow assert, random, ignore BLE, mutable class attr
 
 [tool.pytest.ini_options]
