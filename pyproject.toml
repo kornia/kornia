@@ -103,6 +103,21 @@ select = [
   # "A",    # flake8-builtins
   # "ANN",  # flake8-annotations
   # "ARG",  # flake8-unused-arguments
+  "B002", "B003", "B004", "B005", "B009", "B010", "B012", "B013",
+  "B014",  "B016", "B019", "B020",  "B022", "B023", "B024", "B025",
+  "B026",  "B029", "B030", "B031", "B032", "B033", "B034", "B035", "B039",
+  "B901", "B905", "B909"
+  # "B006"
+  # "B007"
+  # "B008"
+  # "B011"
+  # "B015",
+  # "B017",
+  # "B018",
+  # "B021",
+  # "B027",
+  # "B028",
+  # "B904",
   # "B",    # flake8-bugbear
   # "COM",  # flake8-commas
   # "D",    # pydocstyle
