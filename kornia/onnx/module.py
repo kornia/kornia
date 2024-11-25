@@ -51,7 +51,7 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
     def export(self, file_path: str, **kwargs: Any) -> None:
         return super()._export(self.op, file_path, **kwargs)
 
-    def add_metadata(self, additional_metadata: list[tuple[str, str]] = []) -> onnx.ModelProto:  # type:ignore
+    def add_metadata(self, additional_metadata: Optional[list[tuple[str, str]]] = None) -> onnx.ModelProto:  # type:ignore
         return super()._add_metadata(self.op, additional_metadata)
 
 

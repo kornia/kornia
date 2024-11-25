@@ -2,7 +2,7 @@ import math
 import warnings
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Callable, ClassVar, Dict, List, Optional, Tuple
+from typing import Any, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple
 
 import torch
 import torch.nn.functional as F
@@ -459,7 +459,7 @@ class LightGlue(Module):
         self.static_lengths = None
 
     def compile(
-        self, mode: str = "reduce-overhead", static_lengths: List[int] = [256, 512, 768, 1024, 1280, 1536]
+        self, mode: str = "reduce-overhead", static_lengths: Sequence[int] = (256, 512, 768, 1024, 1280, 1536)
     ) -> None:
         if self.conf.width_confidence != -1:
             warnings.warn(

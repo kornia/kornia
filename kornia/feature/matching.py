@@ -487,13 +487,13 @@ class GeometryAwareDescriptorMatcher(Module):
 
     known_modes: ClassVar[List[str]] = ["fginn", "adalam"]
 
-    def __init__(self, match_mode: str = "fginn", params: Dict[str, Tensor] = {}) -> None:
+    def __init__(self, match_mode: str = "fginn", params: Optional[Dict[str, Tensor]] = None) -> None:
         super().__init__()
         _match_mode: str = match_mode.lower()
         if _match_mode not in self.known_modes:
             raise NotImplementedError(f"{match_mode} is not supported. Try one of {self.known_modes}")
         self.match_mode = _match_mode
-        self.params = params
+        self.params = params or {}
 
     def forward(self, desc1: Tensor, desc2: Tensor, lafs1: Tensor, lafs2: Tensor) -> Tuple[Tensor, Tensor]:
         """

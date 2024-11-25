@@ -48,7 +48,7 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
         input: Tensor,
         params: Optional[List[ParamItem]] = None,
         recompute: bool = False,
-        extra_args: Dict[str, Any] = {},
+        extra_args: Optional[Dict[str, Any]] = None,
     ) -> Tensor:
         """Compute the transformation matrix according to the provided parameters.
 
@@ -107,7 +107,9 @@ class PolicySequential(TransformMatrixMinIn, ImageSequentialBase):
             params.append(param)
         return params
 
-    def transform_inputs(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
+    def transform_inputs(
+        self, input: Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
+    ) -> Tensor:
         for param in params:
             module = self.get_submodule(param.name)
             input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)

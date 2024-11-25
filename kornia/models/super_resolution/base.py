@@ -95,7 +95,7 @@ class SuperResolution(ModelBase):
         onnx_name: Optional[str] = None,
         include_pre_and_post_processor: bool = True,
         save: bool = True,
-        additional_metadata: List[Tuple[str, str]] = [],
+        additional_metadata: Optional[List[Tuple[str, str]]] = None,
         **kwargs: Any,
     ) -> "onnx.ModelProto":  # type: ignore
         """Exports the current super resolution model to an ONNX model file.

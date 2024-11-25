@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any
+from typing import Any, Optional
 
 
-def default_with_one_parameter_changed(*, default: dict[str, Any] = {}, **possible_parameters: Any) -> Any:
+def default_with_one_parameter_changed(*, default: Optional[dict[str, Any]] = None, **possible_parameters: Any) -> Any:
+    if default is None:
+        default = {}
     if not isinstance(default, dict):
         raise AssertionError(f"default should be a dict not a {type(default)}")
 

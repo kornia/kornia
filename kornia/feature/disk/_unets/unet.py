@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 from torch import nn
 
 from kornia.core import Module, Tensor
@@ -8,14 +10,19 @@ from .blocks import ThinUnetDownBlock, ThinUnetUpBlock
 
 
 class Unet(Module):
-    def __init__(self, in_features: int = 1, up: list[int] = [], down: list[int] = [], size: int = 5) -> None:
+    def __init__(
+        self, in_features: int = 1, up: Optional[list[int]] = None, down: Optional[list[int]] = None, size: int = 5
+    ) -> None:
         super().__init__()
-
+        if up is None:
+            up = []
+        self.up = up
+        if down is None:
+            down = []
+        self.down = down
         if not len(down) == len(up) + 1:
             raise ValueError("`down` must be 1 item longer than `up`")
 
-        self.up = up
-        self.down = down
         self.in_features = in_features
 
         down_dims = [in_features, *down]

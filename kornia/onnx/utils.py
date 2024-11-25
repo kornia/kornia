@@ -4,7 +4,7 @@ import json
 import logging
 import os
 import pprint
-from typing import Any
+from typing import Any, Optional
 
 import kornia
 from kornia.config import kornia_config
@@ -182,7 +182,7 @@ def io_name_conversion(
 
 def add_metadata(
     onnx_model: onnx.ModelProto,  # type: ignore
-    additional_metadata: list[tuple[str, str]] = [],
+    additional_metadata: Optional[list[tuple[str, str]]] = None,
 ) -> onnx.ModelProto:  # type: ignore
     """Adds metadata to an ONNX model.
 
@@ -197,6 +197,8 @@ def add_metadata(
     Returns:
         The ONNX model with the added metadata.
     """
+    if additional_metadata is None:
+        additional_metadata = []
     for key, value in [
         ("source", "kornia"),
         ("version", kornia.__version__),

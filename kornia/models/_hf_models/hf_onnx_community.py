@@ -63,8 +63,10 @@ class HFONNXComunnityModelLoader:
     def _add_metadata(
         self,
         model: onnx.ModelProto,  # type:ignore
-        additional_metadata: dict[str, Any] = {},
+        additional_metadata: Optional[dict[str, Any]] = None,
     ) -> onnx.ModelProto:  # type:ignore
+        if additional_metadata is None:
+            additional_metadata = {}
         for key, value in additional_metadata.items():
             metadata_props = model.metadata_props.add()
             metadata_props.key = key
@@ -114,7 +116,7 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
         onnx_name: Optional[str] = None,
         include_pre_and_post_processor: bool = True,
         save: bool = True,
-        additional_metadata: list[tuple[str, str]] = [],
+        additional_metadata: Optional[list[tuple[str, str]]] = None,
         **kwargs: Any,
     ) -> onnx.ModelProto:  # type:ignore
         """Exports a depth estimation model to ONNX format.

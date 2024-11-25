@@ -421,10 +421,12 @@ class LightGlueMatcher(GeometryAwareDescriptorMatcher):
         "superpoint",
     ]
 
-    def __init__(self, feature_name: str = "disk", params: Dict = {}) -> None:  # type: ignore
+    def __init__(self, feature_name: str = "disk", params: Optional[Dict] = None) -> None:  # type: ignore
         feature_name_: str = feature_name.lower()
         super().__init__(feature_name_)
         self.feature_name = feature_name_
+        if params is None:
+            params = {}
         self.params = params
         self.matcher = LightGlue(self.feature_name, **params)
 

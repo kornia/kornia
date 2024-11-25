@@ -200,7 +200,9 @@ class VideoSequential(ImageSequential):
             params.append(param)
         return params
 
-    def transform_inputs(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
+    def transform_inputs(
+        self, input: Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
+    ) -> Tensor:
         frame_num: int = input.size(self._temporal_channel)
         input = self._input_shape_convert_in(input, frame_num)
 
@@ -209,7 +211,9 @@ class VideoSequential(ImageSequential):
         input = self._input_shape_convert_back(input, frame_num)
         return input
 
-    def inverse_inputs(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
+    def inverse_inputs(
+        self, input: Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
+    ) -> Tensor:
         frame_num: int = input.size(self._temporal_channel)
         input = self._input_shape_convert_in(input, frame_num)
 
@@ -218,7 +222,9 @@ class VideoSequential(ImageSequential):
         input = self._input_shape_convert_back(input, frame_num)
         return input
 
-    def transform_masks(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
+    def transform_masks(
+        self, input: Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
+    ) -> Tensor:
         frame_num: int = input.size(self._temporal_channel)
         input = self._input_shape_convert_in(input, frame_num)
 
@@ -227,7 +233,9 @@ class VideoSequential(ImageSequential):
         input = self._input_shape_convert_back(input, frame_num)
         return input
 
-    def inverse_masks(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
+    def inverse_masks(
+        self, input: Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
+    ) -> Tensor:
         frame_num: int = input.size(self._temporal_channel)
         input = self._input_shape_convert_in(input, frame_num)
 
@@ -237,7 +245,7 @@ class VideoSequential(ImageSequential):
         return input
 
     def transform_boxes(  # type: ignore[override]
-        self, input: Union[Tensor, Boxes], params: List[ParamItem], extra_args: Dict[str, Any] = {}
+        self, input: Union[Tensor, Boxes], params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Union[Tensor, Boxes]:
         """Transform bounding boxes.
 
@@ -255,7 +263,7 @@ class VideoSequential(ImageSequential):
         return input
 
     def inverse_boxes(  # type: ignore[override]
-        self, input: Union[Tensor, Boxes], params: List[ParamItem], extra_args: Dict[str, Any] = {}
+        self, input: Union[Tensor, Boxes], params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Union[Tensor, Boxes]:
         """Transform bounding boxes.
 
@@ -273,7 +281,7 @@ class VideoSequential(ImageSequential):
         return input
 
     def transform_keypoints(  # type: ignore[override]
-        self, input: Union[Tensor, Keypoints], params: List[ParamItem], extra_args: Dict[str, Any] = {}
+        self, input: Union[Tensor, Keypoints], params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Union[Tensor, Keypoints]:
         """Transform bounding boxes.
 
@@ -291,7 +299,7 @@ class VideoSequential(ImageSequential):
         return input
 
     def inverse_keypoints(  # type: ignore[override]
-        self, input: Union[Tensor, Keypoints], params: List[ParamItem], extra_args: Dict[str, Any] = {}
+        self, input: Union[Tensor, Keypoints], params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Union[Tensor, Keypoints]:
         """Transform bounding boxes.
 
@@ -309,7 +317,7 @@ class VideoSequential(ImageSequential):
         return input
 
     def inverse(
-        self, input: Tensor, params: Optional[List[ParamItem]] = None, extra_args: Dict[str, Any] = {}
+        self, input: Tensor, params: Optional[List[ParamItem]] = None, extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         """Inverse transformation.
 
@@ -325,7 +333,7 @@ class VideoSequential(ImageSequential):
         return self.inverse_inputs(input, params, extra_args=extra_args)
 
     def forward(
-        self, input: Tensor, params: Optional[List[ParamItem]] = None, extra_args: Dict[str, Any] = {}
+        self, input: Tensor, params: Optional[List[ParamItem]] = None, extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         """Define the video computation performed."""
         if len(input.shape) != 5:

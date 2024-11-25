@@ -66,7 +66,7 @@ class RandomMosaic(MixAugmentationBaseV2):
         mosaic_grid: Tuple[int, int] = (2, 2),
         start_ratio_range: Tuple[float, float] = (0.3, 0.7),
         min_bbox_size: float = 0.0,
-        data_keys: List[Union[str, int, DataKey]] = [DataKey.INPUT],
+        data_keys: Optional[List[Union[str, int, DataKey]]] = None,
         p: float = 0.7,
         keepdim: bool = False,
         padding_mode: str = "constant",

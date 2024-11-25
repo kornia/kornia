@@ -258,7 +258,9 @@ def cartesian_product_of_parameters(**possible_parameters: Sequence[Any]) -> Ite
         yield dict(zip(parameter_names, param_combination))
 
 
-def default_with_one_parameter_changed(*, default: Dict[str, Any] = {}, **possible_parameters: Any) -> Any:
+def default_with_one_parameter_changed(*, default: Optional[Dict[str, Any]] = None, **possible_parameters: Any) -> Any:
+    if default is None:
+        default = {}
     if not isinstance(default, dict):
         raise AssertionError(f"default should be a dict not a {type(default)}")
 

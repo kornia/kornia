@@ -47,7 +47,7 @@ class ModelBase(ABC, Module, Generic[ModelConfig]):
         dynamic: bool = False,
         backend: str = "inductor",
         mode: Optional[str] = None,
-        options: dict[Any, Any] = {},
+        options: Optional[dict[Any, Any]] = None,
         disable: bool = False,
     ) -> ModelBase[ModelConfig]:
         compiled = torch.compile(

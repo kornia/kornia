@@ -53,7 +53,7 @@ class ONNXExportMixin:
         pseudo_shape: Optional[list[int]] = None,
         model: Optional[Module] = None,
         save: bool = True,
-        additional_metadata: list[tuple[str, str]] = [],
+        additional_metadata: Optional[list[tuple[str, str]]] = None,
         **kwargs: Any,
     ) -> onnx.ModelProto:  # type: ignore
         """Exports the current object to an ONNX model file.
@@ -119,6 +119,8 @@ class ONNXExportMixin:
         onnx_buffer.seek(0)
         onnx_model = onnx.load(onnx_buffer)  # type: ignore
 
+        if additional_metadata is None:
+            additional_metadata = []
         additional_metadata = copy.deepcopy(additional_metadata)
         additional_metadata.extend(self.ADDITIONAL_METADATA)
         onnx_model = kornia.onnx.utils.add_metadata(onnx_model, additional_metadata)
@@ -343,7 +345,7 @@ class ONNXMixin:
     def _add_metadata(
         self,
         op: onnx.ModelProto,  # type:ignore
-        additional_metadata: list[tuple[str, str]] = [],
+        additional_metadata: Optional[list[tuple[str, str]]] = None,
     ) -> onnx.ModelProto:  # type:ignore
         """Add metadata to the combined ONNX model.
 
