@@ -142,7 +142,7 @@ def center_crop_generator3d(
     height: int,
     width: int,
     size: Tuple[int, int, int],
-    device: Device = torch.device("cpu"),
+    device: Optional[Device] = None,
 ) -> Dict[str, Tensor]:
     r"""Get parameters for ```center_crop3d``` transformation for center crop transform.
 
@@ -162,6 +162,8 @@ def center_crop_generator3d(
     Note:
         No random number will be generated.
     """
+    if device is None:
+        device = torch.device("cpu")
     if not isinstance(size, (tuple, list)) and len(size) == 3:
         raise ValueError(f"Input size must be a tuple/list of length 3. Got {size}")
     if not (

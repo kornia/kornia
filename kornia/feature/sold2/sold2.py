@@ -137,9 +137,11 @@ class WunschLineMatcher(Module):
     TODO: move it later in kornia.feature.matching
     """
 
-    def __init__(self, config: LineMatcherCfg = LineMatcherCfg()) -> None:
+    def __init__(self, config: Optional[LineMatcherCfg] = None) -> None:
         super().__init__()
         # Initialize the parameters
+        if config is None:
+            config = LineMatcherCfg()
         self.config = config
         self.cross_check = self.config.cross_check
         self.num_samples = self.config.num_samples

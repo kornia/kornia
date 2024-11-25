@@ -52,7 +52,7 @@ def warp_perspective(
     mode: str = "bilinear",
     padding_mode: str = "zeros",
     align_corners: bool = True,
-    fill_value: Tensor = zeros(3),  # needed for jit
+    fill_value: Optional[Tensor] = None,  # needed for jit
 ) -> Tensor:
     r"""Apply a perspective transformation to an image.
 
@@ -104,6 +104,8 @@ def warp_perspective(
 
     # fill padding is only supported for 3 channels because we can't set fill_value default
     # to None as this gives jit issues.
+    if fill_value is None:
+        fill_value = zeros(3)
     if padding_mode == "fill" and fill_value.shape != torch.Size([3]):
         raise ValueError(f"Padding_tensor only supported for 3 channels. Got {fill_value.shape}")
 
@@ -135,7 +137,7 @@ def warp_affine(
     mode: str = "bilinear",
     padding_mode: str = "zeros",
     align_corners: bool = True,
-    fill_value: Tensor = zeros(3),  # needed for jit
+    fill_value: Optional[Tensor] = None,  # needed for jit
 ) -> Tensor:
     r"""Apply an affine transformation to a tensor.
 
@@ -198,6 +200,8 @@ def warp_affine(
     grid = F.affine_grid(src_norm_trans_dst_norm[:, :2, :], [B, C, dsize[0], dsize[1]], align_corners=align_corners)
 
     if padding_mode == "fill":
+        if fill_value is None:
+            fill_value = zeros(3)
         return _fill_and_warp(src, grid, align_corners=align_corners, mode=mode, fill_value=fill_value)
 
     return F.grid_sample(src, grid, align_corners=align_corners, mode=mode, padding_mode=padding_mode)

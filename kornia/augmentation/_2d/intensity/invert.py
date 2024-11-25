@@ -42,7 +42,7 @@ class RandomInvert(IntensityAugmentationBase2D):
 
     def __init__(
         self,
-        max_val: Union[float, Tensor] = torch.tensor(1.0),
+        max_val: Union[float, Tensor] = 1.0,
         same_on_batch: bool = False,
         p: float = 0.5,
         keepdim: bool = False,

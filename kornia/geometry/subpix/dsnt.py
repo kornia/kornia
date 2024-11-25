@@ -3,6 +3,8 @@ r"""Implementation of "differentiable spatial to numerical" (soft-argmax) operat
 
 from __future__ import annotations
 
+from typing import Optional
+
 import torch
 
 from kornia.core import Tensor, concatenate, softmax
@@ -15,7 +17,7 @@ def _validate_batched_image_tensor_input(tensor: Tensor) -> None:
     KORNIA_CHECK_SHAPE(tensor, ["B", "C", "H", "W"])
 
 
-def spatial_softmax2d(input: Tensor, temperature: Tensor = torch.tensor(1.0)) -> Tensor:
+def spatial_softmax2d(input: Tensor, temperature: Optional[Tensor] = None) -> Tensor:
     r"""Apply the Softmax function over features in each image channel.
 
     Note that this function behaves differently to :py:class:`torch.nn.Softmax2d`, which
@@ -41,6 +43,8 @@ def spatial_softmax2d(input: Tensor, temperature: Tensor = torch.tensor(1.0)) ->
     _validate_batched_image_tensor_input(input)
 
     batch_size, channels, height, width = input.shape
+    if temperature is None:
+        temperature = torch.tensor(1.0)
     temperature = temperature.to(device=input.device, dtype=input.dtype)
     x = input.view(batch_size, channels, -1)
 

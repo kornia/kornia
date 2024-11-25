@@ -1,4 +1,4 @@
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 import torch
 from torch.distributions import Bernoulli
@@ -48,7 +48,7 @@ def random_prob_generator(
     batch_size: int,
     p: float = 0.5,
     same_on_batch: bool = False,
-    device: torch.device = torch.device("cpu"),
+    device: Optional[torch.device] = None,
     dtype: torch.dtype = torch.float32,
 ) -> Tensor:
     r"""Generate random probabilities for a batch of inputs.
@@ -67,6 +67,8 @@ def random_prob_generator(
     Note:
         The generated random numbers are not reproducible across different devices and dtypes.
     """
+    if device is None:
+        device = torch.device("cpu")
     _common_param_check(batch_size, same_on_batch)
     if not isinstance(p, (int, float)) or p > 1 or p < 0:
         raise TypeError(f"The probability should be a float number within [0, 1]. Got {type(p)}.")

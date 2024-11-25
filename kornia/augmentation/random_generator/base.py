@@ -32,7 +32,7 @@ class RandomGeneratorBase(Module, metaclass=_PostInitInjectionMetaClass):
 
     def set_rng_device_and_dtype(
         self,
-        device: torch.device = torch.device("cpu"),
+        device: Optional[torch.device] = None,
         dtype: torch.dtype = torch.float32,
     ) -> None:
         """Change the random generation device and dtype.
@@ -40,6 +40,8 @@ class RandomGeneratorBase(Module, metaclass=_PostInitInjectionMetaClass):
         Note:
             The generated random numbers are not reproducible across different devices and dtypes.
         """
+        if device is None:
+            device = torch.device("cpu")
         if self.device != device or self.dtype != dtype:
             self.make_samplers(device, dtype)
             self.device = device

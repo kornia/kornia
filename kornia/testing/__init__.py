@@ -195,11 +195,11 @@ class BaseTester(ABC):
         return gradcheck(func, inputs, raise_exception=raise_exception, fast_mode=fast_mode, **kwargs)
 
 
-def generate_two_view_random_scene(
-    device: Device = torch.device("cpu"), dtype: Dtype = torch.float32
-) -> Dict[str, Tensor]:
+def generate_two_view_random_scene(device: Optional[Device] = None, dtype: Dtype = torch.float32) -> Dict[str, Tensor]:
     from kornia.geometry import epipolar as epi
 
+    if device is None:
+        device = torch.device("cpu")
     num_views: int = 2
     num_points: int = 30
 

@@ -84,12 +84,14 @@ class RANSAC(Module):
         else:
             raise NotImplementedError(f"{model_type} is unknown. Try one of {self.supported_models}")
 
-    def sample(self, sample_size: int, pop_size: int, batch_size: int, device: Device = torch.device("cpu")) -> Tensor:
+    def sample(self, sample_size: int, pop_size: int, batch_size: int, device: Optional[Device] = None) -> Tensor:
         """Minimal sampler, but unlike traditional RANSAC we sample in batches to get benefit of the parallel
         processing, esp.
 
         on GPU.
         """
+        if device is None:
+            device = torch.device("cpu")
         rand = torch.rand(batch_size, pop_size, device=device)
         _, out = rand.topk(k=sample_size, dim=1)
         return out

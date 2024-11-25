@@ -79,23 +79,33 @@ class ScaleSpaceDetector(Module):
         self,
         num_features: int = 500,
         mr_size: float = 6.0,
-        scale_pyr_module: Module = ScalePyramid(3, 1.6, 15),
-        resp_module: Module = BlobHessian(),
-        nms_module: Module = ConvSoftArgmax3d(
-            (3, 3, 3), (1, 1, 1), (1, 1, 1), normalized_coordinates=False, output_value=True
-        ),
-        ori_module: Module = PassLAF(),
-        aff_module: Module = PassLAF(),
+        scale_pyr_module: Optional[Module] = None,
+        resp_module: Optional[Module] = None,
+        nms_module: Optional[Module] = None,
+        ori_module: Optional[Module] = None,
+        aff_module: Optional[Module] = None,
         minima_are_also_good: bool = False,
         scale_space_response: bool = False,
     ) -> None:
         super().__init__()
         self.mr_size = mr_size
         self.num_features = num_features
+        if scale_pyr_module is None:
+            scale_pyr_module = ScalePyramid(3, 1.6, 15)
         self.scale_pyr = scale_pyr_module
+        if resp_module is None:
+            resp_module = BlobHessian()
         self.resp = resp_module
+        if nms_module is None:
+            nms_module = ConvSoftArgmax3d(
+                (3, 3, 3), (1, 1, 1), (1, 1, 1), normalized_coordinates=False, output_value=True
+            )
         self.nms = nms_module
+        if ori_module is None:
+            ori_module = PassLAF()
         self.ori = ori_module
+        if aff_module is None:
+            aff_module = PassLAF()
         self.aff = aff_module
         self.minima_are_also_good = minima_are_also_good
         # scale_space_response should be True if the response function works on scale space
@@ -265,12 +275,14 @@ class MultiResolutionDetector(Module):
         self,
         model: Module,
         num_features: int = 2048,
-        config: Detector_config = get_default_detector_config(),
+        config: Optional[Detector_config] = None,
         ori_module: Optional[Module] = None,
         aff_module: Optional[Module] = None,
     ) -> None:
         super().__init__()
         self.model = model
+        if config is None:
+            config = get_default_detector_config()
         # Load extraction configuration
         self.num_pyramid_levels = config["pyramid_levels"]
         self.num_upscale_levels = config["up_levels"]

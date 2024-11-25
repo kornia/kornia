@@ -52,11 +52,14 @@ class VisualPrompter:
 
     def __init__(
         self,
-        config: SamConfig = SamConfig(model_type="vit_h", pretrained=True),
+        config: Optional[SamConfig] = None,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
     ) -> None:
         super().__init__()
+        if config is None:
+            config = SamConfig(model_type="vit_h", pretrained=True)
+
         if isinstance(config, SamConfig):
             self.model = Sam.from_config(config)
             transforms = (LongestMaxSize(self.model.image_encoder.img_size, p=1.0),)

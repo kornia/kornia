@@ -19,10 +19,14 @@ def _range_bound(
     center: Optional[float] = 0.0,
     bounds: Optional[Tuple[float, float]] = (0, float("inf")),
     check: Optional[str] = "joint",
-    device: torch.device = torch.device("cpu"),
-    dtype: torch.dtype = torch.get_default_dtype(),
+    device: Optional[torch.device] = None,
+    dtype: Optional[torch.dtype] = None,
 ) -> Tensor:
     r"""Check inputs and compute the corresponding factor bounds."""
+    if device is None:
+        device = torch.device("cpu")
+    if dtype is None:
+        dtype = torch.get_default_dtype()
     if not isinstance(factor, (Tensor)):
         factor = tensor(factor, device=device, dtype=dtype)
     factor_bound: Tensor

@@ -155,10 +155,14 @@ class SIFTFeature(LocalFeature):
         num_features: int = 8000,
         upright: bool = False,
         rootsift: bool = True,
-        device: Device = torch.device("cpu"),
-        config: Detector_config = get_default_detector_config(),
+        device: Optional[Device] = None,
+        config: Optional[Detector_config] = None,
     ) -> None:
         patch_size: int = 41
+        if device is None:
+            device = torch.device("cpu")
+        if config is None:
+            config = get_default_detector_config()
         detector = MultiResolutionDetector(
             BlobDoGSingle(1.0, 1.6),
             num_features,
@@ -184,8 +188,10 @@ class SIFTFeatureScaleSpace(LocalFeature):
         num_features: int = 8000,
         upright: bool = False,
         rootsift: bool = True,
-        device: Device = torch.device("cpu"),
+        device: Optional[Device] = None,
     ) -> None:
+        if device is None:
+            device = torch.device("cpu")
         patch_size: int = 41
         detector = ScaleSpaceDetector(
             num_features,
@@ -210,9 +216,13 @@ class GFTTAffNetHardNet(LocalFeature):
         self,
         num_features: int = 8000,
         upright: bool = False,
-        device: Device = torch.device("cpu"),
-        config: Detector_config = get_default_detector_config(),
+        device: Optional[Device] = None,
+        config: Optional[Detector_config] = None,
     ) -> None:
+        if device is None:
+            device = torch.device("cpu")
+        if config is None:
+            config = get_default_detector_config()
         detector = MultiResolutionDetector(
             CornerGFTT(),
             num_features,
@@ -231,9 +241,13 @@ class HesAffNetHardNet(LocalFeature):
         self,
         num_features: int = 2048,
         upright: bool = False,
-        device: Device = torch.device("cpu"),
-        config: Detector_config = get_default_detector_config(),
+        device: Optional[Device] = None,
+        config: Optional[Detector_config] = None,
     ) -> None:
+        if device is None:
+            device = torch.device("cpu")
+        if config is None:
+            config = get_default_detector_config()
         detector = MultiResolutionDetector(
             BlobHessian(),
             num_features,
@@ -252,9 +266,11 @@ class KeyNetHardNet(LocalFeature):
         self,
         num_features: int = 8000,
         upright: bool = False,
-        device: Device = torch.device("cpu"),
+        device: Optional[Device] = None,
         scale_laf: float = 1.0,
     ) -> None:
+        if device is None:
+            device = torch.device("cpu")
         ori_module = PassLAF() if upright else LAFOrienter(angle_detector=OriNet(True))
         detector = KeyNetDetector(True, num_features=num_features, ori_module=ori_module).to(device)
         descriptor = LAFDescriptor(None, patch_size=32, grayscale_descriptor=True).to(device)
@@ -271,9 +287,11 @@ class KeyNetAffNetHardNet(LocalFeature):
         self,
         num_features: int = 8000,
         upright: bool = False,
-        device: Device = torch.device("cpu"),
+        device: Optional[Device] = None,
         scale_laf: float = 1.0,
     ) -> None:
+        if device is None:
+            device = torch.device("cpu")
         ori_module = PassLAF() if upright else LAFOrienter(angle_detector=OriNet(True))
         detector = KeyNetDetector(
             True, num_features=num_features, ori_module=ori_module, aff_module=LAFAffNetShapeEstimator(True).eval()
