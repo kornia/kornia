@@ -26,7 +26,7 @@ class TestLazyLoader:
         # Test that LazyLoader raises an ImportError for an invalid module
         loader = LazyLoader("non_existent_module")
         with pytest.raises(ImportError) as excinfo:
-            loader.non_existent_attribute  # Accessing any attribute should raise the error
+            _ = loader.non_existent_attribute  # Accessing any attribute should raise the error
 
         assert "Optional dependency 'non_existent_module' is not installed" in str(excinfo.value)
 
@@ -56,4 +56,4 @@ class TestLazyLoader:
         # Test that accessing a non-existing attribute raises an AttributeError after loading
         loader = LazyLoader("math")
         with pytest.raises(AttributeError):
-            loader.non_existent_attribute
+            _ = loader.non_existent_attribute
