@@ -463,7 +463,7 @@ class DescriptorMatcherWithSteerer(Module):
                     dist, idx, rot1to2 = dist_new, idx_new, r
         elif self.steer_mode == "local":
             dm = _cdist(desc1, desc2)
-            for r in range(1, self.steerer_order):
+            for _ in range(1, self.steerer_order):
                 desc1 = self.steerer.steer_descriptions(desc1, normalize=normalize)
                 dm_new = _cdist(desc1, desc2)
                 dm = torch.minimum(dm, dm_new)

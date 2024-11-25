@@ -203,7 +203,7 @@ class ImageSequentialBase(SequentialBase):
     def inverse_inputs(
         self, input: Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
-        for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
+        for (_, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
             input = InputSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
         return input
 
@@ -218,7 +218,7 @@ class ImageSequentialBase(SequentialBase):
     def inverse_masks(
         self, input: Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
-        for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
+        for (_, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
             input = MaskSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
         return input
 
@@ -233,7 +233,7 @@ class ImageSequentialBase(SequentialBase):
     def inverse_boxes(
         self, input: Boxes, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Boxes:
-        for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
+        for (_, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
             input = BoxSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
         return input
 
@@ -248,7 +248,7 @@ class ImageSequentialBase(SequentialBase):
     def inverse_keypoints(
         self, input: Keypoints, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Keypoints:
-        for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
+        for (_, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
             input = KeypointSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
         return input
 

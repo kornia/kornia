@@ -209,7 +209,7 @@ class RANSAC(Module):
             # Store far-the-best model and (optionally) do a local optimization
             if model_score > best_score_total:
                 # Local optimization
-                for lo_step in range(self.max_lo_iters):
+                for _ in range(self.max_lo_iters):
                     model_lo = self.polish_model(kp1, kp2, inliers)
                     if (model_lo is None) or (len(model_lo) == 0):
                         continue

@@ -154,7 +154,7 @@ class KeyNet(Module):
         """
         shape_im = x.shape
         feats: List[Tensor] = [self.feature_extractor(x)]
-        for i in range(1, self.num_levels):
+        for _ in range(1, self.num_levels):
             x = pyrdown(x, factor=1.2)
             feats_i = self.feature_extractor(x)
             feats_i = F.interpolate(feats_i, size=(shape_im[2], shape_im[3]), mode="bilinear")

@@ -34,7 +34,7 @@ class Unet(Module):
         bot_dims = [down[-1], *up]
         hor_dims = down_dims[-2::-1]
         self.path_up = nn.ModuleList()
-        for i, (d_bot, d_hor, d_out) in enumerate(zip(bot_dims, hor_dims, up)):
+        for _, (d_bot, d_hor, d_out) in enumerate(zip(bot_dims, hor_dims, up)):
             up_block = ThinUnetUpBlock(d_bot, d_hor, d_out, size=size)
             self.path_up.append(up_block)
 
