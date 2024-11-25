@@ -7,7 +7,7 @@ import torch
 
 from kornia.color import hsv_to_rgb, rgb_to_grayscale, rgb_to_hsv
 from kornia.core import ImageModule as Module
-from kornia.core import Parameter, Tensor
+from kornia.core import Parameter, Tensor, tensor
 from kornia.core.check import (
     KORNIA_CHECK,
     KORNIA_CHECK_IS_COLOR_OR_GRAY,
@@ -1003,11 +1003,13 @@ def invert(image: Tensor, max_val: Optional[Tensor] = None) -> Tensor:
         raise AssertionError(f"Input is not a Tensor. Got: {type(input)}")
 
     if max_val is None:
-        max_val = Tensor([1.0])
-    if not isinstance(max_val, Tensor):
-        raise AssertionError(f"max_val is not a Tensor. Got: {type(max_val)}")
+        _max_val = tensor([1.0])
+    else:
+        _max_val = max_val
+    if not isinstance(_max_val, Tensor):
+        raise AssertionError(f"max_val is not a Tensor. Got: {type(_max_val)}")
 
-    return max_val.to(image) - image
+    return _max_val.to(image) - image
 
 
 class AdjustSaturation(Module):
