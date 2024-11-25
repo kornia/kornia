@@ -208,7 +208,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
     def __init__(
         self,
         *args: Union[_AugmentationBase, ImageSequential],
-        data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = None,
+        data_keys: Optional[Union[Sequence[str], Sequence[int], Sequence[DataKey]]] = (DataKey.INPUT,),
         same_on_batch: Optional[bool] = None,
         keepdim: Optional[bool] = None,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
@@ -239,7 +239,7 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         if data_keys is not None:
             self.data_keys = [DataKey.get(inp) for inp in data_keys]
         else:
-            self.data_keys = [DataKey.INPUT]
+            self.data_keys = data_keys
 
         if self.data_keys:
             if any(in_type not in DataKey for in_type in self.data_keys):
