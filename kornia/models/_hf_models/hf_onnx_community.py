@@ -15,13 +15,13 @@ from .preprocessor import PreprocessingLoader
 
 
 class HFONNXComunnityModelLoader:
-    f"""Initializes the ONNXComunnityModelLoader for onnx-community repo of Hugging Face.
+    """Initializes the ONNXComunnityModelLoader for onnx-community repo of Hugging Face.
 
     Args:
         model_name: The name of the model to load.
         model_type: The type of the model to load.
         cache_dir: The directory where models are cached locally.
-            Defaults to None, which will use a default `{kornia_config.hub_onnx_dir}` directory.
+            Defaults to None, which will use a default `kornia.config.hub_onnx_dir` directory.
         with_data: Whether to download the model weights such as `model.onnx_data`.
     """
 
