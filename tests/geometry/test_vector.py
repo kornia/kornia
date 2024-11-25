@@ -10,9 +10,9 @@ class TestVector3(BaseTester):
     def test_smoke(self, device, dtype):
         vec = Vector3.random(device=device, dtype=dtype)
         assert vec.shape == (3,)
-        vec.x is not None
-        vec.y is not None
-        vec.z is not None
+        assert vec.x is not None
+        assert vec.y is not None
+        assert vec.z is not None
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_getitem(self, device, dtype, batch_size):
@@ -82,8 +82,8 @@ class TestVector2(BaseTester):
     def test_smoke(self, device, dtype):
         vec = Vector2.random(device=device, dtype=dtype)
         assert vec.shape == (2,)
-        vec.x is not None
-        vec.y is not None
+        assert vec.x is not None
+        assert vec.y is not None
 
     @pytest.mark.parametrize("batch_size", (1, 2, 5))
     def test_getitem(self, device, dtype, batch_size):
