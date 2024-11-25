@@ -134,14 +134,15 @@ class BaseTester(ABC):
     def test_cardinality(self, device: Device, dtype: Dtype) -> None:
         raise NotImplementedError("Implement a stupid routine.")
 
-    # TODO: add @abstractmethod
+    @abstractmethod
     def test_dynamo(self, device: Device, dtype: Dtype, torch_optimizer: Callable[..., Any]) -> None:
-        pass  # TODO: raise NotImplementedError -- now we see a bunch of dynamo tests running by inheritance
+        raise NotImplementedError("Implement a stupid routine.")
 
     @abstractmethod
     def test_gradcheck(self, device: Device) -> None:
         raise NotImplementedError("Implement a stupid routine.")
 
+    @abstractmethod
     def test_module(self, device: Device, dtype: Dtype) -> None:
         pass
 
