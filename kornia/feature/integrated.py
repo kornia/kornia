@@ -49,7 +49,7 @@ def get_laf_descriptors(
 
     timg: Tensor = img
     if lafs.shape[1] == 0:
-        warnings.warn(f"LAF contains no keypoints {lafs.shape}, returning empty tensor")
+        warnings.warn(f"LAF contains no keypoints {lafs.shape}, returning empty tensor", stacklevel=1)
         return torch.empty(lafs.shape[0], lafs.shape[1], 128, dtype=lafs.dtype, device=lafs.device)
     if grayscale_descriptor and img.size(1) == 3:
         timg = rgb_to_grayscale(img)

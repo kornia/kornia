@@ -475,7 +475,8 @@ def transform_bbox(
             "Previous behaviour produces incorrect box coordinates if a flip transformation performed on boxes."
             "The previous wrong behaviour has been corrected and will be removed in the future versions."
             "If you wish to keep the previous behaviour, please set `restore_coordinates=False`."
-            "Otherwise, set `restore_coordinates=True` as an acknowledgement."
+            "Otherwise, set `restore_coordinates=True` as an acknowledgement.",
+            stacklevel=1,
         )
 
     # convert boxes to format xyxy

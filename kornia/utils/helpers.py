@@ -240,7 +240,7 @@ def safe_solve_with_mask(B: Tensor, A: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
     solution."""
     if not torch_version_ge(1, 10):
         sol = _torch_solve_cast(A, B)
-        warnings.warn("PyTorch version < 1.10, solve validness mask maybe not correct", RuntimeWarning)
+        warnings.warn("PyTorch version < 1.10, solve validness mask maybe not correct", RuntimeWarning, stacklevel=1)
         return sol, sol, torch.ones(len(A), dtype=torch.bool, device=A.device)
     # Based on https://github.com/pytorch/pytorch/issues/31546#issuecomment-694135622
     if not isinstance(B, Tensor):

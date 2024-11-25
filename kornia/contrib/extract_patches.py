@@ -351,7 +351,8 @@ def combine_tensor_patches(
                     "This means we probably cannot correctly recombine patches. By enabling `allow_auto_unpadding`, "
                     "the input will be unpadded to fit the window and stride.\n"
                     "If the patches have been obtained through `extract_tensor_patches` with the correct padding or "
-                    "the argument `allow_auto_padding`, this will result in a correct reconstruction."
+                    "the argument `allow_auto_padding`, this will result in a correct reconstruction.",
+                    stacklevel=1,
                 )
             else:
                 unpadding = compute_padding(original_size=original_size, window_size=window_size, stride=stride)
@@ -463,7 +464,8 @@ def extract_tensor_patches(
                     f"The window will not fit into the image. \nWindow size: {window_size}\nStride: {stride}\n"
                     f"Image size: {original_size}\n"
                     "This means that the final incomplete patches will be dropped. By enabling `allow_auto_padding`, "
-                    "the input will be padded to fit the window and stride."
+                    "the input will be padded to fit the window and stride.",
+                    stacklevel=1,
                 )
             else:
                 padding = compute_padding(original_size=original_size, window_size=window_size, stride=stride)

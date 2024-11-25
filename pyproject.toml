@@ -116,7 +116,7 @@ select = [
   "B018",
   "B021",
   "B027",
-  # "B028",
+  "B028",
   # "B904",
   # "B",    # flake8-bugbear
   # "COM",  # flake8-commas

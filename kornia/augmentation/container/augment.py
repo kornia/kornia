@@ -254,7 +254,9 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         self.contains_3d_augmentation: bool = False
         for arg in args:
             if isinstance(arg, PatchSequential) and not arg.is_intensity_only():
-                warnings.warn("Geometric transformation detected in PatchSeqeuntial, which would break bbox, mask.")
+                warnings.warn(
+                    "Geometric transformation detected in PatchSeqeuntial, which would break bbox, mask.", stacklevel=1
+                )
             if isinstance(arg, VideoSequential):
                 self.contains_video_sequential = True
             # NOTE: only for images are supported for 3D.

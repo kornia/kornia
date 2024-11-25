@@ -475,7 +475,7 @@ def _load_pretrained(model: TinyViT, url: str) -> TinyViT:
 
     if state_dict["head.weight"].shape[0] != model.head.out_features:
         msg = "Number of classes does not match pre-trained checkpoint's. Resetting classification head to zeros"
-        warnings.warn(msg)
+        warnings.warn(msg, stacklevel=1)
         state_dict["head.weight"] = torch.zeros_like(model.head.weight)
         state_dict["head.bias"] = torch.zeros_like(model.head.bias)
 

@@ -205,7 +205,7 @@ class Sam(ModelBase[SamConfig]):
                     SamModelType.mobile_sam: "https://github.com/ChaoningZhang/MobileSAM/raw/a509aac54fdd7af59f843135f2f7cee307283c88/weights/mobile_sam.pt",
                 }[model_type]
             else:
-                warnings.warn("checkpoint is not None. pretrained=True is ignored")
+                warnings.warn("checkpoint is not None. pretrained=True is ignored", stacklevel=1)
 
         if checkpoint:
             model.load_checkpoint(checkpoint)

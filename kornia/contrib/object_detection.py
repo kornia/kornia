@@ -37,6 +37,7 @@ class BoundingBox(BoundingBoxBase):
             "BoundingBox is deprecated and will be removed in v0.8.0. "
             "Use kornia.models.detection.BoundingBox instead.",
             DeprecationWarning,
+            stacklevel=1,
         )
 
 
@@ -45,6 +46,7 @@ def results_from_detections(*args: Any, **kwargs: Any) -> list[ObjectDetectorRes
         "results_from_detections is deprecated and will be removed in v0.8.0. "
         "Use kornia.models.detection.results_from_detections instead.",
         DeprecationWarning,
+        stacklevel=1,
     )
     return results_from_detections_base(*args, **kwargs)
 
@@ -56,6 +58,7 @@ class ResizePreProcessor(ResizePreProcessorBase):
             "ResizePreProcessor is deprecated and will be removed in v0.8.0. "
             "Use kornia.models.utils.ResizePreProcessor instead.",
             DeprecationWarning,
+            stacklevel=1,
         )
 
 
@@ -66,6 +69,7 @@ class ObjectDetector(ObjectDetectorBase):
             "ObjectDetector is deprecated and will be removed in v0.8.0. "
             "Use kornia.models.detection.ObjectDetector instead.",
             DeprecationWarning,
+            stacklevel=1,
         )
 
 
@@ -76,4 +80,5 @@ class ObjectDetectorResult(ObjectDetectorResultBase):
             "ObjectDetectorResult is deprecated and will be removed in v0.8.0. "
             "Use kornia.models.detection.ObjectDetectorResult instead.",
             DeprecationWarning,
+            stacklevel=1,
         )

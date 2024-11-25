@@ -70,7 +70,7 @@ class RTDETRDetectorBuilder:
                 model = RTDETR.from_name(model_name)
                 image_size = RTDETRConfig.from_name(model_name).input_size
         else:
-            warnings.warn("No `model_name` or `config` found. Will build pretrained `rtdetr_r18vd`.")
+            warnings.warn("No `model_name` or `config` found. Will build pretrained `rtdetr_r18vd`.", stacklevel=1)
             model = RTDETR.from_pretrained("rtdetr_r18vd")
             image_size = RTDETRConfig.from_name("rtdetr_r18vd").input_size
 

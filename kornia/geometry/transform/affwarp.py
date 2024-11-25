@@ -568,7 +568,9 @@ def resize(
     input_size = h, w = input.shape[-2:]
     if isinstance(size, int):
         if torch.onnx.is_in_onnx_export():
-            warnings.warn("Please pass the size with a tuple when exporting to ONNX to correct the tracing.")
+            warnings.warn(
+                "Please pass the size with a tuple when exporting to ONNX to correct the tracing.", stacklevel=1
+            )
         aspect_ratio = w / h
         size = _side_to_image_size(size, aspect_ratio, side)
 
