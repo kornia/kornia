@@ -84,4 +84,4 @@ def test_create_spiral_path(device, dtype, colmap_cameras_path, colmap_images_pa
     try:
         create_spiral_path(cameras, 1, 30, 3)
     except Exception as err:
-        raise AssertionError(err)
+        raise AssertionError from err

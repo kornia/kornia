@@ -77,6 +77,6 @@ class CachedDownloader:
                 logger.info(f"Downloading `{url}` to `{file_path}`.")
                 urllib.request.urlretrieve(url, file_path)  # noqa: S310
             except urllib.error.HTTPError as e:
-                raise ValueError(f"Error in resolving `{url}`. {e}.")
+                raise ValueError(f"Error in resolving `{url}`.") from e
         else:
             raise ValueError("URL must start with 'http:' or 'https:'")

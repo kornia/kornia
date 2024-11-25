@@ -33,7 +33,9 @@ class LazyLoaderConfig:
             try:
                 self._installation_mode = InstallationMode(value.upper())
             except ValueError:
-                raise ValueError(f"{value} is not a valid InstallationMode. Choose from: {list(InstallationMode)}")
+                raise ValueError(
+                    f"{value} is not a valid InstallationMode. Choose from: {list(InstallationMode)}"
+                ) from None
         elif isinstance(value, InstallationMode):
             self._installation_mode = value
         else:

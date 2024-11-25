@@ -181,7 +181,7 @@ class TestRandomAffineBackward:
             try:
                 loss.backward()
             except Exception as e:
-                raise AssertionError(list(aug.named_parameters()), e)
+                raise AssertionError(list(aug.named_parameters())) from e
             opt.step()
 
         if not isinstance(degrees, (int, float, list, tuple)):
