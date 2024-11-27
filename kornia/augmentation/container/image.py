@@ -237,7 +237,7 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         input: Tensor,
         params: Optional[List[ParamItem]] = None,
         recompute: bool = False,
-        extra_args: Dict[str, Any] = {},
+        extra_args: Optional[Dict[str, Any]] = None,
     ) -> Optional[Tensor]:
         """Compute the transformation matrix according to the provided parameters.
 
@@ -249,6 +249,8 @@ class ImageSequential(ImageSequentialBase, ImageModuleForSequentialMixIn):
         """
         if params is None:
             raise NotImplementedError("requires params to be provided.")
+        if extra_args is None:
+            extra_args = {}
         named_modules: Iterator[Tuple[str, Module]] = self.get_forward_sequence(params)
 
         # Define as 1 for broadcasting

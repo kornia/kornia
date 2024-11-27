@@ -69,7 +69,7 @@ class Trainer:
         optimizer: Optimizer,
         scheduler: lr_scheduler._LRScheduler,
         config: Configuration,
-        callbacks: Dict[str, Callable[..., None]] = {},
+        callbacks: Optional[Dict[str, Callable[..., None]]] = None,
     ) -> None:
         # setup the accelerator
         if Accelerator is None:
@@ -86,6 +86,8 @@ class Trainer:
         self.config = config
 
         # configure callbacks
+        if callbacks is None:
+            callbacks = {}
         for fn_name, fn in callbacks.items():
             if fn_name not in callbacks_whitelist:
                 raise ValueError(f"Not supported: {fn_name}.")

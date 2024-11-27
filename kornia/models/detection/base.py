@@ -158,7 +158,7 @@ class ObjectDetector(ModelBase):
         image_size: Optional[int] = 640,
         include_pre_and_post_processor: bool = True,
         save: bool = True,
-        additional_metadata: list[tuple[str, str]] = [],
+        additional_metadata: Optional[list[tuple[str, str]]] = None,
         **kwargs: Any,
     ) -> onnx.ModelProto:  # type: ignore
         """Exports an RT-DETR object detection model to ONNX format.

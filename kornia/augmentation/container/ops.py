@@ -42,7 +42,7 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
 
     @classmethod
     @abstractmethod
-    def transform(cls, input: T, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}) -> T:
+    def transform(cls, input: T, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None) -> T:
         """Apply a transformation with respect to the parameters.
 
         Args:
@@ -55,7 +55,7 @@ class SequentialOpsInterface(Generic[T], metaclass=ABCMeta):
 
     @classmethod
     @abstractmethod
-    def inverse(cls, input: T, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}) -> T:
+    def inverse(cls, input: T, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None) -> T:
         """Inverse a transformation with respect to the parameters.
 
         Args:
@@ -181,7 +181,11 @@ def get_geometric_only_param(module: "K.container.ImageSequentialBase", param: L
 
 class InputSequentialOps(SequentialOpsInterface[Tensor]):
     @classmethod
-    def transform(cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}) -> Tensor:
+    def transform(
+        cls, input: Tensor, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
+    ) -> Tensor:
+        if extra_args is None:
+            extra_args = {}
         if isinstance(module, (_AugmentationBase, K.MixAugmentationBaseV2)):
             input = module(input, params=cls.get_instance_module_param(param), data_keys=[DataKey.INPUT], **extra_args)
         elif isinstance(module, (K.container.ImageSequentialBase,)):
@@ -195,7 +199,11 @@ class InputSequentialOps(SequentialOpsInterface[Tensor]):
         return input
 
     @classmethod
-    def inverse(cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}) -> Tensor:
+    def inverse(
+        cls, input: Tensor, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
+    ) -> Tensor:
+        if extra_args is None:
+            extra_args = {}
         if isinstance(module, K.GeometricAugmentationBase2D):
             input = module.inverse(input, params=cls.get_instance_module_param(param), **extra_args)
         elif isinstance(module, (K.GeometricAugmentationBase3D,)):
@@ -215,7 +223,9 @@ class ClassSequentialOps(SequentialOpsInterface[Tensor]):
     """Apply and inverse transformations for class labels if needed."""
 
     @classmethod
-    def transform(cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}) -> Tensor:
+    def transform(
+        cls, input: Tensor, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
+    ) -> Tensor:
         if isinstance(module, K.MixAugmentationBaseV2):
             raise NotImplementedError(
                 "The support for class labels for mix augmentations that change the class label is not yet supported."
@@ -223,7 +233,9 @@ class ClassSequentialOps(SequentialOpsInterface[Tensor]):
         return input
 
     @classmethod
-    def inverse(cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}) -> Tensor:
+    def inverse(
+        cls, input: Tensor, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
+    ) -> Tensor:
         return input
 
 
@@ -231,7 +243,9 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
     """Apply and inverse transformations for mask tensors."""
 
     @classmethod
-    def transform(cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}) -> Tensor:
+    def transform(
+        cls, input: Tensor, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
+    ) -> Tensor:
         """Apply a transformation with respect to the parameters.
 
         Args:
@@ -240,6 +254,8 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
                 to apply transformations.
             param: the corresponding parameters to the module.
         """
+        if extra_args is None:
+            extra_args = {}
 
         if isinstance(module, (K.GeometricAugmentationBase2D,)):
             input = module.transform_masks(
@@ -276,7 +292,7 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
 
     @classmethod
     def transform_list(
-        cls, input: List[Tensor], module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}
+        cls, input: List[Tensor], module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
     ) -> List[Tensor]:
         """Apply a transformation with respect to the parameters.
 
@@ -286,6 +302,8 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
                 to apply transformations.
             param: the corresponding parameters to the module.
         """
+        if extra_args is None:
+            extra_args = {}
         if isinstance(module, (K.GeometricAugmentationBase2D,)):
             tfm_input = []
             params = cls.get_instance_module_param(param)
@@ -337,7 +355,9 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
         return input
 
     @classmethod
-    def inverse(cls, input: Tensor, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}) -> Tensor:
+    def inverse(
+        cls, input: Tensor, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
+    ) -> Tensor:
         """Inverse a transformation with respect to the parameters.
 
         Args:
@@ -346,6 +366,8 @@ class MaskSequentialOps(SequentialOpsInterface[Tensor]):
                 to apply transformations.
             param: the corresponding parameters to the module.
         """
+        if extra_args is None:
+            extra_args = {}
 
         if isinstance(module, (K.GeometricAugmentationBase2D,)):
             if module.transform_matrix is None:
@@ -380,7 +402,9 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
     """
 
     @classmethod
-    def transform(cls, input: Boxes, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}) -> Boxes:
+    def transform(
+        cls, input: Boxes, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
+    ) -> Boxes:
         """Apply a transformation with respect to the parameters.
 
         Args:
@@ -389,6 +413,8 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
                 to apply transformations.
             param: the corresponding parameters to the module.
         """
+        if extra_args is None:
+            extra_args = {}
         _input = input.clone()
 
         if isinstance(module, (K.GeometricAugmentationBase2D,)):
@@ -421,7 +447,9 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
         return _input
 
     @classmethod
-    def inverse(cls, input: Boxes, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}) -> Boxes:
+    def inverse(
+        cls, input: Boxes, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
+    ) -> Boxes:
         """Inverse a transformation with respect to the parameters.
 
         Args:
@@ -430,6 +458,8 @@ class BoxSequentialOps(SequentialOpsInterface[Boxes]):
                 to apply transformations.
             param: the corresponding parameters to the module.
         """
+        if extra_args is None:
+            extra_args = {}
         _input = input.clone()
 
         if isinstance(module, (K.GeometricAugmentationBase2D,)):
@@ -468,7 +498,7 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
 
     @classmethod
     def transform(
-        cls, input: Keypoints, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}
+        cls, input: Keypoints, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
     ) -> Keypoints:
         """Apply a transformation with respect to the parameters.
 
@@ -478,6 +508,8 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
                 to apply transformations.
             param: the corresponding parameters to the module.
         """
+        if extra_args is None:
+            extra_args = {}
         _input = input.clone()
 
         if isinstance(module, (K.GeometricAugmentationBase2D,)):
@@ -511,7 +543,9 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
         return _input
 
     @classmethod
-    def inverse(cls, input: Keypoints, module: Module, param: ParamItem, extra_args: Dict[str, Any] = {}) -> Keypoints:
+    def inverse(
+        cls, input: Keypoints, module: Module, param: ParamItem, extra_args: Optional[Dict[str, Any]] = None
+    ) -> Keypoints:
         """Inverse a transformation with respect to the parameters.
 
         Args:
@@ -520,6 +554,8 @@ class KeypointSequentialOps(SequentialOpsInterface[Keypoints]):
                 to apply transformations.
             param: the corresponding parameters to the module.
         """
+        if extra_args is None:
+            extra_args = {}
         _input = input.clone()
 
         if isinstance(module, (K.GeometricAugmentationBase2D,)):

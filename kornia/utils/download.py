@@ -17,12 +17,12 @@ class CachedDownloader:
 
     @classmethod
     def _get_file_path(cls, model_name: str, cache_dir: Optional[str], suffix: Optional[str] = None) -> str:
-        f"""Constructs the file path for the ONNX model based on the model name and cache directory.
+        """Constructs the file path for the ONNX model based on the model name and cache directory.
 
         Args:
             model_name: The name of the model or operator, typically in the format 'operators/model_name'.
             cache_dir: The directory where the model should be cached.
-                Defaults to None, which will use a default `{kornia_config.hub_onnx_dir}` directory.
+                Defaults to None, which will use a default `kornia.config.hub_onnx_dir` directory.
 
         Returns:
             str: The full local path where the model should be stored or loaded from.
@@ -77,6 +77,6 @@ class CachedDownloader:
                 logger.info(f"Downloading `{url}` to `{file_path}`.")
                 urllib.request.urlretrieve(url, file_path)  # noqa: S310
             except urllib.error.HTTPError as e:
-                raise ValueError(f"Error in resolving `{url}`. {e}.")
+                raise ValueError(f"Error in resolving `{url}`.") from e
         else:
             raise ValueError("URL must start with 'http:' or 'https:'")

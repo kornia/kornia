@@ -78,7 +78,7 @@ class CoarseMatching(Module):
             try:
                 from .superglue import log_optimal_transport
             except ImportError:
-                raise ImportError("download superglue.py first!")
+                raise ImportError("download superglue.py first!") from None
             self.log_optimal_transport = log_optimal_transport
             self.bin_score = nn.Parameter(torch.tensor(config["skh_init_bin_score"], requires_grad=True))
             self.skh_iters = config["skh_iters"]

@@ -7,7 +7,7 @@ import torch
 
 from kornia.color import hsv_to_rgb, rgb_to_grayscale, rgb_to_hsv
 from kornia.core import ImageModule as Module
-from kornia.core import Parameter, Tensor
+from kornia.core import Parameter, Tensor, tensor
 from kornia.core.check import (
     KORNIA_CHECK,
     KORNIA_CHECK_IS_COLOR_OR_GRAY,
@@ -976,7 +976,7 @@ def equalize3d(input: Tensor) -> Tensor:
     return torch.stack(res)
 
 
-def invert(image: Tensor, max_val: Tensor = Tensor([1.0])) -> Tensor:
+def invert(image: Tensor, max_val: Optional[Tensor] = None) -> Tensor:
     r"""Invert the values of an input image tensor by its maximum value.
 
     .. image:: _static/img/invert.png
@@ -1002,10 +1002,14 @@ def invert(image: Tensor, max_val: Tensor = Tensor([1.0])) -> Tensor:
     if not isinstance(image, Tensor):
         raise AssertionError(f"Input is not a Tensor. Got: {type(input)}")
 
-    if not isinstance(max_val, Tensor):
-        raise AssertionError(f"max_val is not a Tensor. Got: {type(max_val)}")
+    if max_val is None:
+        _max_val = tensor([1.0])
+    else:
+        _max_val = max_val
+    if not isinstance(_max_val, Tensor):
+        raise AssertionError(f"max_val is not a Tensor. Got: {type(_max_val)}")
 
-    return max_val.to(image) - image
+    return _max_val.to(image) - image
 
 
 class AdjustSaturation(Module):
@@ -1425,8 +1429,10 @@ class Invert(Module):
         torch.Size([1, 3, 4, 4])
     """
 
-    def __init__(self, max_val: Tensor = torch.tensor(1.0)) -> None:
+    def __init__(self, max_val: Optional[Tensor] = None) -> None:
         super().__init__()
+        if max_val is None:
+            max_val = torch.tensor(1.0)
         if not isinstance(max_val, Parameter):
             self.register_buffer("max_val", max_val)
         else:

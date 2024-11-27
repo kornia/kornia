@@ -311,7 +311,7 @@ class PatchSequential(ImageSequential):
         return input.reshape(in_shape)
 
     def transform_inputs(  # type: ignore[override]
-        self, input: Tensor, params: List[PatchParamItem], extra_args: Dict[str, Any] = {}
+        self, input: Tensor, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         pad = self.compute_padding(input, self.padding)
         input = self.extract_patches(input, self.grid_size, pad)
@@ -321,7 +321,7 @@ class PatchSequential(ImageSequential):
         return input
 
     def inverse_inputs(  # type: ignore[override]
-        self, input: Tensor, params: List[PatchParamItem], extra_args: Dict[str, Any] = {}
+        self, input: Tensor, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         if self.is_intensity_only():
             return input
@@ -329,7 +329,7 @@ class PatchSequential(ImageSequential):
         raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
 
     def transform_masks(  # type: ignore[override]
-        self, input: Tensor, params: List[PatchParamItem], extra_args: Dict[str, Any] = {}
+        self, input: Tensor, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         if self.is_intensity_only():
             return input
@@ -337,7 +337,7 @@ class PatchSequential(ImageSequential):
         raise NotImplementedError("PatchSequential for boxes cannot be used with geometric transformations.")
 
     def inverse_masks(  # type: ignore[override]
-        self, input: Tensor, params: List[PatchParamItem], extra_args: Dict[str, Any] = {}
+        self, input: Tensor, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         if self.is_intensity_only():
             return input
@@ -345,7 +345,7 @@ class PatchSequential(ImageSequential):
         raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
 
     def transform_boxes(  # type: ignore[override]
-        self, input: Boxes, params: List[PatchParamItem], extra_args: Dict[str, Any] = {}
+        self, input: Boxes, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Boxes:
         if self.is_intensity_only():
             return input
@@ -353,7 +353,7 @@ class PatchSequential(ImageSequential):
         raise NotImplementedError("PatchSequential for boxes cannot be used with geometric transformations.")
 
     def inverse_boxes(  # type: ignore[override]
-        self, input: Boxes, params: List[PatchParamItem], extra_args: Dict[str, Any] = {}
+        self, input: Boxes, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Boxes:
         if self.is_intensity_only():
             return input
@@ -361,7 +361,7 @@ class PatchSequential(ImageSequential):
         raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
 
     def transform_keypoints(  # type: ignore[override]
-        self, input: Keypoints, params: List[PatchParamItem], extra_args: Dict[str, Any] = {}
+        self, input: Keypoints, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Keypoints:
         if self.is_intensity_only():
             return input
@@ -369,7 +369,7 @@ class PatchSequential(ImageSequential):
         raise NotImplementedError("PatchSequential for keypoints cannot be used with geometric transformations.")
 
     def inverse_keypoints(  # type: ignore[override]
-        self, input: Keypoints, params: List[PatchParamItem], extra_args: Dict[str, Any] = {}
+        self, input: Keypoints, params: List[PatchParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Keypoints:
         if self.is_intensity_only():
             return input
@@ -377,7 +377,7 @@ class PatchSequential(ImageSequential):
         raise NotImplementedError("PatchSequential inverse cannot be used with geometric transformations.")
 
     def inverse(  # type: ignore[override]
-        self, input: Tensor, params: Optional[List[PatchParamItem]] = None, extra_args: Dict[str, Any] = {}
+        self, input: Tensor, params: Optional[List[PatchParamItem]] = None, extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         """Inverse transformation.
 

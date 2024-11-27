@@ -106,7 +106,7 @@ class DISK(Module):
         return features
 
     @classmethod
-    def from_pretrained(cls, checkpoint: str = "depth", device: torch.device = torch.device("cpu")) -> DISK:
+    def from_pretrained(cls, checkpoint: str = "depth", device: Optional[torch.device] = None) -> DISK:
         r"""Loads a pretrained model.
 
         Depth model was trained using depth map supervision and is slightly more precise but biased to detect keypoints
@@ -129,6 +129,8 @@ class DISK(Module):
         if checkpoint not in urls:
             raise ValueError(f"Unknown pretrained model: {checkpoint}")
 
+        if device is None:
+            device = torch.device("cpu")
         pretrained_dict = torch.hub.load_state_dict_from_url(urls[checkpoint], map_location=device)
 
         model: DISK = cls().to(device)

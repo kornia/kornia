@@ -173,7 +173,7 @@ class ImageSequentialBase(SequentialBase):
         input: Tensor,
         params: Optional[List[ParamItem]] = None,
         recompute: bool = False,
-        extra_args: Dict[str, Any] = {},
+        extra_args: Optional[Dict[str, Any]] = None,
     ) -> Optional[Tensor]:
         """Compute the transformation matrix according to the provided parameters.
 
@@ -192,41 +192,53 @@ class ImageSequentialBase(SequentialBase):
         """Get module sequence by input params."""
         raise NotImplementedError
 
-    def transform_inputs(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
+    def transform_inputs(
+        self, input: Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
+    ) -> Tensor:
         for param in params:
             module = self.get_submodule(param.name)
             input = InputSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
         return input
 
-    def inverse_inputs(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
-        for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
+    def inverse_inputs(
+        self, input: Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
+    ) -> Tensor:
+        for (_, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
             input = InputSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
         return input
 
-    def transform_masks(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
+    def transform_masks(
+        self, input: Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
+    ) -> Tensor:
         for param in params:
             module = self.get_submodule(param.name)
             input = MaskSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
         return input
 
-    def inverse_masks(self, input: Tensor, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Tensor:
-        for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
+    def inverse_masks(
+        self, input: Tensor, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
+    ) -> Tensor:
+        for (_, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
             input = MaskSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
         return input
 
-    def transform_boxes(self, input: Boxes, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Boxes:
+    def transform_boxes(
+        self, input: Boxes, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
+    ) -> Boxes:
         for param in params:
             module = self.get_submodule(param.name)
             input = BoxSequentialOps.transform(input, module=module, param=param, extra_args=extra_args)
         return input
 
-    def inverse_boxes(self, input: Boxes, params: List[ParamItem], extra_args: Dict[str, Any] = {}) -> Boxes:
-        for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
+    def inverse_boxes(
+        self, input: Boxes, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
+    ) -> Boxes:
+        for (_, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
             input = BoxSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
         return input
 
     def transform_keypoints(
-        self, input: Keypoints, params: List[ParamItem], extra_args: Dict[str, Any] = {}
+        self, input: Keypoints, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Keypoints:
         for param in params:
             module = self.get_submodule(param.name)
@@ -234,14 +246,14 @@ class ImageSequentialBase(SequentialBase):
         return input
 
     def inverse_keypoints(
-        self, input: Keypoints, params: List[ParamItem], extra_args: Dict[str, Any] = {}
+        self, input: Keypoints, params: List[ParamItem], extra_args: Optional[Dict[str, Any]] = None
     ) -> Keypoints:
-        for (name, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
+        for (_, module), param in zip_longest(list(self.get_forward_sequence(params))[::-1], params[::-1]):
             input = KeypointSequentialOps.inverse(input, module=module, param=param, extra_args=extra_args)
         return input
 
     def inverse(
-        self, input: Tensor, params: Optional[List[ParamItem]] = None, extra_args: Dict[str, Any] = {}
+        self, input: Tensor, params: Optional[List[ParamItem]] = None, extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         """Inverse transformation.
 
@@ -261,7 +273,7 @@ class ImageSequentialBase(SequentialBase):
         return input
 
     def forward(
-        self, input: Tensor, params: Optional[List[ParamItem]] = None, extra_args: Dict[str, Any] = {}
+        self, input: Tensor, params: Optional[List[ParamItem]] = None, extra_args: Optional[Dict[str, Any]] = None
     ) -> Tensor:
         self.clear_state()
 

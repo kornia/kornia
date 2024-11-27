@@ -42,7 +42,7 @@ class RandomJigsaw(MixAugmentationBaseV2):
     def __init__(
         self,
         grid: Tuple[int, int] = (4, 4),
-        data_keys: List[Union[str, int, DataKey]] = [DataKey.INPUT],
+        data_keys: Optional[List[Union[str, int, DataKey]]] = None,
         p: float = 0.5,
         same_on_batch: bool = False,
         keepdim: bool = False,

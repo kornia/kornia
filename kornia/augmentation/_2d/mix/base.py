@@ -38,10 +38,12 @@ class MixAugmentationBaseV2(_BasicAugmentationBase):
         p_batch: float,
         same_on_batch: bool = False,
         keepdim: bool = False,
-        data_keys: List[Union[str, int, DataKey]] = [DataKey.INPUT],
+        data_keys: Optional[List[Union[str, int, DataKey]]] = None,
     ) -> None:
         super().__init__(p, p_batch=p_batch, same_on_batch=same_on_batch, keepdim=keepdim)
-        self.data_keys = [DataKey.get(inp) for inp in data_keys]
+        self.data_keys = [DataKey.INPUT]
+        if data_keys is not None:
+            self.data_keys = [DataKey.get(inp) for inp in data_keys]
 
     def transform_tensor(self, input: Tensor, *, shape: Optional[Tensor] = None, match_channel: bool = True) -> Tensor:
         """Convert any incoming (H, W), (C, H, W) and (B, C, H, W) into (B, C, H, W)."""

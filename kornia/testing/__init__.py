@@ -134,14 +134,15 @@ class BaseTester(ABC):
     def test_cardinality(self, device: Device, dtype: Dtype) -> None:
         raise NotImplementedError("Implement a stupid routine.")
 
-    # TODO: add @abstractmethod
+    @abstractmethod
     def test_dynamo(self, device: Device, dtype: Dtype, torch_optimizer: Callable[..., Any]) -> None:
-        pass  # TODO: raise NotImplementedError -- now we see a bunch of dynamo tests running by inheritance
+        raise NotImplementedError("Implement a stupid routine.")
 
     @abstractmethod
     def test_gradcheck(self, device: Device) -> None:
         raise NotImplementedError("Implement a stupid routine.")
 
+    @abstractmethod
     def test_module(self, device: Device, dtype: Dtype) -> None:
         pass
 
@@ -195,11 +196,11 @@ class BaseTester(ABC):
         return gradcheck(func, inputs, raise_exception=raise_exception, fast_mode=fast_mode, **kwargs)
 
 
-def generate_two_view_random_scene(
-    device: Device = torch.device("cpu"), dtype: Dtype = torch.float32
-) -> Dict[str, Tensor]:
+def generate_two_view_random_scene(device: Optional[Device] = None, dtype: Dtype = torch.float32) -> Dict[str, Tensor]:
     from kornia.geometry import epipolar as epi
 
+    if device is None:
+        device = torch.device("cpu")
     num_views: int = 2
     num_points: int = 30
 
@@ -258,7 +259,9 @@ def cartesian_product_of_parameters(**possible_parameters: Sequence[Any]) -> Ite
         yield dict(zip(parameter_names, param_combination))
 
 
-def default_with_one_parameter_changed(*, default: Dict[str, Any] = {}, **possible_parameters: Any) -> Any:
+def default_with_one_parameter_changed(*, default: Optional[Dict[str, Any]] = None, **possible_parameters: Any) -> Any:
+    if default is None:
+        default = {}
     if not isinstance(default, dict):
         raise AssertionError(f"default should be a dict not a {type(default)}")
 

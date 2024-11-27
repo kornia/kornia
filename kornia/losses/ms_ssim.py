@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Sequence
 
 import torch
 import torch.nn.functional as F
@@ -56,7 +56,7 @@ class MS_SSIMLoss(nn.Module):
 
     def __init__(
         self,
-        sigmas: list[float] = [0.5, 1.0, 2.0, 4.0, 8.0],
+        sigmas: Sequence[float] = (0.5, 1.0, 2.0, 4.0, 8.0),
         data_range: float = 1.0,
         K: tuple[float, float] = (0.01, 0.03),
         alpha: float = 0.025,

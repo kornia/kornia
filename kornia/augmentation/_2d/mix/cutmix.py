@@ -75,7 +75,7 @@ class RandomCutMixV2(MixAugmentationBaseV2):
         same_on_batch: bool = False,
         p: float = 1.0,
         keepdim: bool = False,
-        data_keys: List[Union[str, int, DataKey]] = [DataKey.INPUT],
+        data_keys: Optional[List[Union[str, int, DataKey]]] = None,
     ) -> None:
         super().__init__(p=1.0, p_batch=p, same_on_batch=same_on_batch, keepdim=keepdim, data_keys=data_keys)
         self._param_generator: rg.CutmixGenerator = rg.CutmixGenerator(cut_size, beta, num_mix, p=p)

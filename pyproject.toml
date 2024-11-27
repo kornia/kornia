@@ -77,6 +77,7 @@ skip-magic-trailing-comma = false
 select = [
   "AIR",   # Airflow
   "ASYNC", # flake8-async
+  "B",    # flake8-bugbear
   "BLE",   # flake8-blind-except
   "C4",    # flake8-comprehensions
   "C90",   # McCabe cyclomatic complexity
@@ -103,7 +104,6 @@ select = [
   # "A",    # flake8-builtins
   # "ANN",  # flake8-annotations
   # "ARG",  # flake8-unused-arguments
-  # "B",    # flake8-bugbear
   # "COM",  # flake8-commas
   # "D",    # pydocstyle
   # "DJ",   # flake8-django
@@ -185,6 +185,7 @@ max-statements = 64                                        # Recommended: 50
   "RUF012",
   "S101",
   "S311",
+  "B017", # Check for Exception since KORNIA_CHECK raises it
 ] # allow assert, random, ignore BLE, mutable class attr
 
 [tool.pytest.ini_options]

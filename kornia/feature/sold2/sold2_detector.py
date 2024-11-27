@@ -134,8 +134,10 @@ class LineSegmentDetectionModule:
         >>> line_map, junctions, _ = module.detect(junctions, heatmap)
     """
 
-    def __init__(self, config: LineDetectorCfg = LineDetectorCfg()) -> None:
+    def __init__(self, config: Optional[LineDetectorCfg] = None) -> None:
         # Load LineDetectorCfg
+        if config is None:
+            config = LineDetectorCfg()
         self.config = config
 
         # Line detection parameters

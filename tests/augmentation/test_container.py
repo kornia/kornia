@@ -42,7 +42,7 @@ def reproducibility_test(input, seq):
             if isinstance(o1, (torch.Tensor,)) and isinstance(o2, (torch.Tensor,))
         ]
     else:
-        assert False, ("cannot compare", type(output_1), type(output_2))
+        raise AssertionError(f"cannot compare {type(output_1)} {type(output_2)}")
 
 
 class TestVideoSequential:

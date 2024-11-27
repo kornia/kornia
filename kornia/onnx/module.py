@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any, Optional, Union
 
-from kornia.config import kornia_config
 from kornia.core.external import onnx
 from kornia.core.external import onnxruntime as ort
 from kornia.core.mixin.onnx import ONNXMixin, ONNXRuntimeMixin
@@ -11,7 +10,7 @@ __all__ = ["ONNXModule", "load"]
 
 
 class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
-    f"""ONNXModule to wrap an ONNX operator.
+    """ONNXModule to wrap an ONNX operator.
 
     Args:
         arg: A variable number of ONNX models (either ONNX ModelProto objects or file paths).
@@ -21,7 +20,7 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
             (e.g., ['CUDAExecutionProvider', 'CPUExecutionProvider']).
         session_options: Optional ONNXRuntime session options for optimizing the session.
         cache_dir: The directory where ONNX models are cached locally (only for downloading from HuggingFace).
-            Defaults to None, which will use a default `{kornia_config.hub_onnx_dir}` directory.
+            Defaults to None, which will use a default `kornia.config.hub_onnx_dir` directory.
         target_ir_version: The target IR version to convert to.
         target_opset_version: The target OPSET version to convert to.
     """
@@ -51,7 +50,7 @@ class ONNXModule(ONNXMixin, ONNXRuntimeMixin):
     def export(self, file_path: str, **kwargs: Any) -> None:
         return super()._export(self.op, file_path, **kwargs)
 
-    def add_metadata(self, additional_metadata: list[tuple[str, str]] = []) -> onnx.ModelProto:  # type:ignore
+    def add_metadata(self, additional_metadata: Optional[list[tuple[str, str]]] = None) -> onnx.ModelProto:  # type:ignore
         return super()._add_metadata(self.op, additional_metadata)
 
 

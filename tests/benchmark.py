@@ -7,7 +7,7 @@ from torch.utils import benchmark
 results = []
 
 sizes = [1, 64, 1024]
-for b, n in product(sizes, sizes):
+for b, _ in product(sizes, sizes):
     # label and sub_label are the rows
     # description is the column
     label = "get_perspective_transform"

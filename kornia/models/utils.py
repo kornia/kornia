@@ -64,7 +64,8 @@ class ResizePostProcessor(Module):
         if torch.onnx.is_in_onnx_export():
             warnings.warn(
                 "ResizePostProcessor is not supported in ONNX export. "
-                "The output will not be resized back to the original size."
+                "The output will not be resized back to the original size.",
+                stacklevel=1,
             )
             return imgs
 

@@ -82,7 +82,7 @@ class EdgeDetector(ModelBase):
         image_size: Optional[int] = 352,
         include_pre_and_post_processor: bool = True,
         save: bool = True,
-        additional_metadata: list[tuple[str, str]] = [],
+        additional_metadata: Optional[list[tuple[str, str]]] = None,
         **kwargs: Any,
     ) -> onnx.ModelProto:  # type: ignore
         """Exports the current edge detection model to an ONNX model file.

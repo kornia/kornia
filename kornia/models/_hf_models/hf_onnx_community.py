@@ -15,13 +15,13 @@ from .preprocessor import PreprocessingLoader
 
 
 class HFONNXComunnityModelLoader:
-    f"""Initializes the ONNXComunnityModelLoader for onnx-community repo of Hugging Face.
+    """Initializes the ONNXComunnityModelLoader for onnx-community repo of Hugging Face.
 
     Args:
         model_name: The name of the model to load.
         model_type: The type of the model to load.
         cache_dir: The directory where models are cached locally.
-            Defaults to None, which will use a default `{kornia_config.hub_onnx_dir}` directory.
+            Defaults to None, which will use a default `kornia.config.hub_onnx_dir` directory.
         with_data: Whether to download the model weights such as `model.onnx_data`.
     """
 
@@ -63,8 +63,10 @@ class HFONNXComunnityModelLoader:
     def _add_metadata(
         self,
         model: onnx.ModelProto,  # type:ignore
-        additional_metadata: dict[str, Any] = {},
+        additional_metadata: Optional[dict[str, Any]] = None,
     ) -> onnx.ModelProto:  # type:ignore
+        if additional_metadata is None:
+            additional_metadata = {}
         for key, value in additional_metadata.items():
             metadata_props = model.metadata_props.add()
             metadata_props.key = key
@@ -114,7 +116,7 @@ class HFONNXComunnityModel(ONNXSequential, ModelBaseMixin):
         onnx_name: Optional[str] = None,
         include_pre_and_post_processor: bool = True,
         save: bool = True,
-        additional_metadata: list[tuple[str, str]] = [],
+        additional_metadata: Optional[list[tuple[str, str]]] = None,
         **kwargs: Any,
     ) -> onnx.ModelProto:  # type:ignore
         """Exports a depth estimation model to ONNX format.

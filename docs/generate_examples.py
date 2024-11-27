@@ -211,7 +211,7 @@ def main():
 
     mix_augmentations_list = {"RandomMixUpV2": ((), 2, 20), "RandomCutMixV2": ((), 2, 2019)}
     # ITERATE OVER THE TRANSFORMS
-    for aug_name, (args, num_samples, seed) in mix_augmentations_list.items():
+    for aug_name, (args, _, seed) in mix_augmentations_list.items():
         img_in = torch.cat([img1, img2])
         # dynamically create the class instance
         cls = getattr(mod, aug_name)
@@ -328,7 +328,7 @@ def main():
         "ApplyColorMap": ((K.color.ColorMap("winter", 256),), 1),
     }
     # ITERATE OVER THE TRANSFORMS
-    for fn_name, (args, num_samples) in color_transforms_list.items():
+    for fn_name, (args, _) in color_transforms_list.items():
         # import function and apply
         fn = getattr(mod, fn_name)
         if fn_name == "grayscale_to_rgb":
@@ -528,7 +528,7 @@ def main():
         "in_range": (((0.314, 0.2, 0.2), (0.47, 1.0, 1.0), True), 1),
     }
     # ITERATE OVER THE TRANSFORMS
-    for fn_name, (args, num_samples) in transforms.items():
+    for fn_name, (args, _) in transforms.items():
         img_hsv = K.color.rgb_to_hsv(img1)
         h, s, v = torch.split(img_hsv, split_size_or_sections=1, dim=1)
         h = h / (2 * torch.pi)

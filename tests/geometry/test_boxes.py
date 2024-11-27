@@ -120,13 +120,13 @@ class TestBoxes2D(BaseTester):
 
         try:
             Boxes.from_tensor(box_xyxy, mode="xyxy")
-            assert False, "Boxes.from_tensor should have raised any exception"
+            raise AssertionError("Boxes.from_tensor should have raised any exception")
         except ValueError:
             pass
 
         try:
             Boxes.from_tensor(box_xyxy_plus, mode="xyxy_plus")
-            assert False, "Boxes.from_tensor should have raised any exception"
+            raise AssertionError("Boxes.from_tensor should have raised any exception")
         except ValueError:
             pass
 
@@ -561,13 +561,13 @@ class TestBbox3D(BaseTester):
 
         try:
             Boxes3D.from_tensor(box_xyzxyz, mode="xyzxyz")
-            assert False, "Boxes3D.from_tensor should have raised any exception"
+            raise AssertionError("Boxes3D.from_tensor should have raised any exception")
         except ValueError:
             pass
 
         try:
             Boxes3D.from_tensor(box_xyzxyz_plus, mode="xyzxyz_plus")
-            assert False, "Boxes3D.from_tensor should have raised any exception"
+            raise AssertionError("Boxes3D.from_tensor should have raised any exception")
         except ValueError:
             pass
 

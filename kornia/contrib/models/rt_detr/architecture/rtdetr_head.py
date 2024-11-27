@@ -364,7 +364,7 @@ class RTDETRHead(Module):
         spatial_shapes: list[tuple[int, int]] = []
         level_start_index: list[int] = [0]
 
-        for i, feat in enumerate(proj_feats):
+        for _, feat in enumerate(proj_feats):
             _, _, h, w = feat.shape
             # [b, c, h, w] -> [b, h*w, c]
             feat_flatten_list.append(feat.flatten(2).permute(0, 2, 1))

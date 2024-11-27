@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import itertools
 import warnings
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 import torch
 import torch.nn.functional as F
@@ -332,10 +332,10 @@ class TinyViT(Module):
         img_size: int = 224,
         in_chans: int = 3,
         num_classes: int = 1000,
-        embed_dims: list[int] = [96, 192, 384, 768],
-        depths: list[int] = [2, 2, 6, 2],
-        num_heads: list[int] = [3, 6, 12, 24],
-        window_sizes: list[int] = [7, 7, 14, 7],
+        embed_dims: Sequence[int] = (96, 192, 384, 768),
+        depths: Sequence[int] = (2, 2, 6, 2),
+        num_heads: Sequence[int] = (3, 6, 12, 24),
+        window_sizes: Sequence[int] = (7, 7, 14, 7),
         mlp_ratio: float = 4.0,
         drop_rate: float = 0.0,
         drop_path_rate: float = 0.0,
@@ -475,7 +475,7 @@ def _load_pretrained(model: TinyViT, url: str) -> TinyViT:
 
     if state_dict["head.weight"].shape[0] != model.head.out_features:
         msg = "Number of classes does not match pre-trained checkpoint's. Resetting classification head to zeros"
-        warnings.warn(msg)
+        warnings.warn(msg, stacklevel=1)
         state_dict["head.weight"] = torch.zeros_like(model.head.weight)
         state_dict["head.bias"] = torch.zeros_like(model.head.bias)
 

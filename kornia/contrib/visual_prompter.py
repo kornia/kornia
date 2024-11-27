@@ -52,11 +52,14 @@ class VisualPrompter:
 
     def __init__(
         self,
-        config: SamConfig = SamConfig(model_type="vit_h", pretrained=True),
+        config: Optional[SamConfig] = None,
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
     ) -> None:
         super().__init__()
+        if config is None:
+            config = SamConfig(model_type="vit_h", pretrained=True)
+
         if isinstance(config, SamConfig):
             self.model = Sam.from_config(config)
             transforms = (LongestMaxSize(self.model.image_encoder.img_size, p=1.0),)
@@ -163,9 +166,11 @@ class VisualPrompter:
         return masks
 
     def _transform_prompts(
-        self, *prompts: Tensor | Boxes | Keypoints, data_keys: list[str] = []
+        self, *prompts: Tensor | Boxes | Keypoints, data_keys: Optional[list[str]] = None
     ) -> dict[str, Tensor | Boxes | Keypoints]:
         transformed_prompts = self.transforms(*prompts, data_keys=data_keys, params=self._tfs_params)
+        if data_keys is None:
+            data_keys = []
 
         # prevent unpacking tensor when creating the output dict (issue #2627)
         if not isinstance(transformed_prompts, (list, tuple)):
@@ -295,7 +300,7 @@ class VisualPrompter:
         dynamic: bool = False,
         backend: str = "inductor",
         mode: Optional[str] = None,
-        options: dict[Any, Any] = {},
+        options: Optional[dict[Any, Any]] = None,
         disable: bool = False,
     ) -> None:
         """Applies `torch.compile(...)`/dynamo API into the VisualPrompter API.

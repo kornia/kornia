@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 import torch
 
 import kornia.geometry.epipolar as epi
@@ -32,8 +34,10 @@ def create_random_fundamental_matrix(
 
 
 def generate_two_view_random_scene(
-    device: torch.device = torch.device("cpu"), dtype: torch.dtype = torch.float32
+    device: Optional[torch.device] = None, dtype: torch.dtype = torch.float32
 ) -> dict[str, torch.Tensor]:
+    if device is None:
+        device = torch.device("cpu")
     num_views: int = 2
     num_points: int = 30
 

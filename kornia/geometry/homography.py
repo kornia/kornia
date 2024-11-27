@@ -172,7 +172,7 @@ def find_homography_dlt(
         try:
             _, _, V = _torch_svd_cast(A)
         except RuntimeError:
-            warnings.warn("SVD did not converge", RuntimeWarning)
+            warnings.warn("SVD did not converge", RuntimeWarning, stacklevel=1)
             return torch.empty((points1_norm.size(0), 3, 3), device=device, dtype=dtype)
         H = V[..., -1].view(-1, 3, 3)
     elif solver == "lu":
@@ -306,7 +306,7 @@ def find_homography_lines_dlt(ls1: Tensor, ls2: Tensor, weights: Optional[Tensor
     try:
         _, _, V = _torch_svd_cast(A)
     except RuntimeError:
-        warnings.warn("SVD did not converge", RuntimeWarning)
+        warnings.warn("SVD did not converge", RuntimeWarning, stacklevel=1)
         return torch.empty((points1_norm.size(0), 3, 3), device=device, dtype=dtype)
 
     H = V[..., -1].view(-1, 3, 3)

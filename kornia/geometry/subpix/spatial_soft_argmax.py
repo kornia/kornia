@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 import torch
 import torch.nn.functional as F
 
@@ -14,7 +16,7 @@ from .dsnt import spatial_expectation2d, spatial_softmax2d
 from .nms import nms3d
 
 
-def _get_window_grid_kernel2d(h: int, w: int, device: torch.device = torch.device("cpu")) -> Tensor:
+def _get_window_grid_kernel2d(h: int, w: int, device: Optional[torch.device] = None) -> Tensor:
     r"""Helper function, which generates a kernel to with window coordinates, residual to window center.
 
     Args:
@@ -25,13 +27,15 @@ def _get_window_grid_kernel2d(h: int, w: int, device: torch.device = torch.devic
     Returns:
         conv_kernel [2x1xhxw]
     """
+    if device is None:
+        device = torch.device("cpu")
     window_grid2d = create_meshgrid(h, w, False, device=device)
     window_grid2d = normalize_pixel_coordinates(window_grid2d, h, w)
     conv_kernel = window_grid2d.permute(3, 0, 1, 2)
     return conv_kernel
 
 
-def _get_center_kernel2d(h: int, w: int, device: torch.device = torch.device("cpu")) -> Tensor:
+def _get_center_kernel2d(h: int, w: int, device: Optional[torch.device] = None) -> Tensor:
     r"""Helper function, which generates a kernel to return center coordinates, when applied with F.conv2d to 2d
     coordinates grid.
 
@@ -43,6 +47,8 @@ def _get_center_kernel2d(h: int, w: int, device: torch.device = torch.device("cp
     Returns:
         conv_kernel [2x2xhxw].
     """
+    if device is None:
+        device = torch.device("cpu")
     center_kernel = zeros(2, 2, h, w, device=device)
 
     #  If the size is odd, we have one pixel for center, if even - 2
@@ -62,7 +68,7 @@ def _get_center_kernel2d(h: int, w: int, device: torch.device = torch.device("cp
     return center_kernel
 
 
-def _get_center_kernel3d(d: int, h: int, w: int, device: torch.device = torch.device("cpu")) -> Tensor:
+def _get_center_kernel3d(d: int, h: int, w: int, device: Optional[torch.device] = None) -> Tensor:
     r"""Helper function, which generates a kernel to return center coordinates, when applied with F.conv2d to 3d
     coordinates grid.
 
@@ -75,6 +81,8 @@ def _get_center_kernel3d(d: int, h: int, w: int, device: torch.device = torch.de
     Returns:
         conv_kernel [3x3xdxhxw].
     """
+    if device is None:
+        torch.device("cpu")
     center_kernel = zeros(3, 3, d, h, w, device=device)
     #  If the size is odd, we have one pixel for center, if even - 2
     if h % 2 != 0:
@@ -100,7 +108,7 @@ def _get_center_kernel3d(d: int, h: int, w: int, device: torch.device = torch.de
     return center_kernel
 
 
-def _get_window_grid_kernel3d(d: int, h: int, w: int, device: torch.device = torch.device("cpu")) -> Tensor:
+def _get_window_grid_kernel3d(d: int, h: int, w: int, device: Optional[torch.device] = None) -> Tensor:
     r"""Helper function, which generates a kernel to return coordinates, residual to window center.
 
     Args:
@@ -112,6 +120,8 @@ def _get_window_grid_kernel3d(d: int, h: int, w: int, device: torch.device = tor
     Returns:
         conv_kernel [3x1xdxhxw]
     """
+    if device is None:
+        device = torch.device("cpu")
     grid2d = create_meshgrid(h, w, True, device=device)
     if d > 1:
         z = torch.linspace(-1, 1, d, device=device).view(d, 1, 1, 1)
@@ -134,7 +144,7 @@ class ConvSoftArgmax2d(Module):
         kernel_size: tuple[int, int] = (3, 3),
         stride: tuple[int, int] = (1, 1),
         padding: tuple[int, int] = (1, 1),
-        temperature: Tensor | float = tensor(1.0),
+        temperature: Tensor | float = 1.0,
         normalized_coordinates: bool = True,
         eps: float = 1e-8,
         output_value: bool = False,
@@ -185,7 +195,7 @@ class ConvSoftArgmax3d(Module):
         kernel_size: tuple[int, int, int] = (3, 3, 3),
         stride: tuple[int, int, int] = (1, 1, 1),
         padding: tuple[int, int, int] = (1, 1, 1),
-        temperature: Tensor | float = tensor(1.0),
+        temperature: Tensor | float = 1.0,
         normalized_coordinates: bool = False,
         eps: float = 1e-8,
         output_value: bool = True,
@@ -233,7 +243,7 @@ def conv_soft_argmax2d(
     kernel_size: tuple[int, int] = (3, 3),
     stride: tuple[int, int] = (1, 1),
     padding: tuple[int, int] = (1, 1),
-    temperature: Tensor | float = tensor(1.0),
+    temperature: Tensor | float = 1.0,
     normalized_coordinates: bool = True,
     eps: float = 1e-8,
     output_value: bool = False,
@@ -346,7 +356,7 @@ def conv_soft_argmax3d(
     kernel_size: tuple[int, int, int] = (3, 3, 3),
     stride: tuple[int, int, int] = (1, 1, 1),
     padding: tuple[int, int, int] = (1, 1, 1),
-    temperature: Tensor | float = tensor(1.0),
+    temperature: Tensor | float = 1.0,
     normalized_coordinates: bool = False,
     eps: float = 1e-8,
     output_value: bool = True,
@@ -470,7 +480,7 @@ def conv_soft_argmax3d(
 
 
 def spatial_soft_argmax2d(
-    input: Tensor, temperature: Tensor = tensor(1.0), normalized_coordinates: bool = True
+    input: Tensor, temperature: Optional[Tensor] = None, normalized_coordinates: bool = True
 ) -> Tensor:
     r"""Compute the Spatial Soft-Argmax 2D of a given input heatmap.
 
@@ -492,6 +502,8 @@ def spatial_soft_argmax2d(
         >>> spatial_soft_argmax2d(input, normalized_coordinates=False)
         tensor([[[1.0000, 1.0000]]])
     """
+    if temperature is None:
+        temperature = tensor(1.0)
     input_soft: Tensor = spatial_softmax2d(input, temperature)
     output: Tensor = spatial_expectation2d(input_soft, normalized_coordinates)
     return output
@@ -503,8 +515,10 @@ class SpatialSoftArgmax2d(Module):
     See :func:`~kornia.geometry.subpix.spatial_soft_argmax2d` for details.
     """
 
-    def __init__(self, temperature: Tensor = tensor(1.0), normalized_coordinates: bool = True) -> None:
+    def __init__(self, temperature: Optional[Tensor] = None, normalized_coordinates: bool = True) -> None:
         super().__init__()
+        if temperature is None:
+            temperature = tensor(1.0)
         self.temperature: Tensor = temperature
         self.normalized_coordinates: bool = normalized_coordinates
 

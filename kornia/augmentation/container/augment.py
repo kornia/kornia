@@ -208,15 +208,13 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
     def __init__(
         self,
         *args: Union[_AugmentationBase, ImageSequential],
-        data_keys: Optional[Union[List[str], List[int], List[DataKey]]] = [DataKey.INPUT],
+        data_keys: Optional[Union[Sequence[str], Sequence[int], Sequence[DataKey]]] = (DataKey.INPUT,),
         same_on_batch: Optional[bool] = None,
         keepdim: Optional[bool] = None,
         random_apply: Union[int, bool, Tuple[int, int]] = False,
         random_apply_weights: Optional[List[float]] = None,
         transformation_matrix_mode: str = "silent",
-        extra_args: Dict[DataKey, Dict[str, Any]] = {
-            DataKey.MASK: {"resample": Resample.NEAREST, "align_corners": None}
-        },
+        extra_args: Optional[Dict[DataKey, Dict[str, Any]]] = None,
     ) -> None:
         self._transform_matrix: Optional[Tensor]
         self._transform_matrices: List[Optional[Tensor]] = []
@@ -256,14 +254,16 @@ class AugmentationSequential(TransformMatrixMinIn, ImageSequential):
         self.contains_3d_augmentation: bool = False
         for arg in args:
             if isinstance(arg, PatchSequential) and not arg.is_intensity_only():
-                warnings.warn("Geometric transformation detected in PatchSeqeuntial, which would break bbox, mask.")
+                warnings.warn(
+                    "Geometric transformation detected in PatchSeqeuntial, which would break bbox, mask.", stacklevel=1
+                )
             if isinstance(arg, VideoSequential):
                 self.contains_video_sequential = True
             # NOTE: only for images are supported for 3D.
             if isinstance(arg, AugmentationBase3D):
                 self.contains_3d_augmentation = True
         self._transform_matrix = None
-        self.extra_args = extra_args
+        self.extra_args = extra_args or {DataKey.MASK: {"resample": Resample.NEAREST, "align_corners": None}}
 
     def clear_state(self) -> None:
         self._reset_transform_matrix_state()

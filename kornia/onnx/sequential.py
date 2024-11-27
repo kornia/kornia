@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any, Optional, Union
 
-from kornia.config import kornia_config
 from kornia.core.external import onnx
 from kornia.core.external import onnxruntime as ort
 from kornia.core.mixin import ONNXMixin, ONNXRuntimeMixin
@@ -11,7 +10,7 @@ __all__ = ["ONNXSequential"]
 
 
 class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
-    f"""ONNXSequential to chain multiple ONNX operators together.
+    """ONNXSequential to chain multiple ONNX operators together.
 
     Args:
         *args: A variable number of ONNX models (either ONNX ModelProto objects or file paths).
@@ -25,7 +24,7 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
             only one input and output node for each graph.
             If not None, `io_maps[0]` shall represent the `io_map` for combining the first and second ONNX models.
         cache_dir: The directory where ONNX models are cached locally (only for downloading from HuggingFace).
-            Defaults to None, which will use a default `{kornia_config.hub_onnx_dir}` directory.
+            Defaults to None, which will use a default `kornia.config.hub_onnx_dir` directory.
         auto_ir_version_conversion: If True, automatically convert the model's IR version to 9, and OPSET version to 17.
             Other versions may be pointed to by `target_ir_version` and `target_opset_version`.
         target_ir_version: The target IR version to convert to.
@@ -92,5 +91,5 @@ class ONNXSequential(ONNXMixin, ONNXRuntimeMixin):
     def export(self, file_path: str, **kwargs: Any) -> None:
         return super()._export(self._combined_op, file_path, **kwargs)
 
-    def add_metadata(self, additional_metadata: list[tuple[str, str]] = []) -> onnx.ModelProto:  # type:ignore
+    def add_metadata(self, additional_metadata: Optional[list[tuple[str, str]]] = None) -> onnx.ModelProto:  # type:ignore
         return super()._add_metadata(self._combined_op, additional_metadata)
