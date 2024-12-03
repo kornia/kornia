@@ -40,7 +40,7 @@ def save_pointcloud_ply(filename: str, pointcloud: torch.Tensor) -> None:
         f.write("ply\n")
         f.write("format ascii 1.0\n")
         f.write("comment arraiy generated\n")
-        f.write("element vertex %d\n" % num_points)
+        f.write(f"element vertex {num_points}\n")
         f.write("property double x\n")
         f.write("property double y\n")
         f.write("property double z\n")

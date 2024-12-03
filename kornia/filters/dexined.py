@@ -87,7 +87,7 @@ class _DenseBlock(nn.Sequential):
         super().__init__()
         for i in range(num_layers):
             layer = _DenseLayer(input_features, out_features)
-            self.add_module("denselayer%d" % (i + 1), layer)
+            self.add_module(f"denselayer{(i + 1)}", layer)
             input_features = out_features
 
     def forward(self, x: list[Tensor]) -> list[Tensor]:
