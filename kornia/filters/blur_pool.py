@@ -11,11 +11,11 @@ from .median import _compute_zero_padding  # TODO: Move to proper place
 
 __all__ = [
     "BlurPool2D",
-    "MaxBlurPool2D",
     "EdgeAwareBlurPool2D",
+    "MaxBlurPool2D",
     "blur_pool2d",
-    "max_blur_pool2d",
     "edge_aware_blur_pool2d",
+    "max_blur_pool2d",
 ]
 
 

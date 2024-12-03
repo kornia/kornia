@@ -5,7 +5,7 @@ from kornia.core.check import KORNIA_CHECK
 from kornia.core.tensor_wrapper import TensorWrapper, wrap  # type: ignore[attr-defined]
 from kornia.geometry.linalg import batched_dot_product, batched_squared_norm
 
-__all__ = ["Vector3", "Vector2", "Scalar"]
+__all__ = ["Scalar", "Vector2", "Vector3"]
 
 
 # TODO: implement more functionality to validate

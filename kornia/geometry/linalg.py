@@ -7,15 +7,15 @@ from kornia.core.check import KORNIA_CHECK_IS_TENSOR, KORNIA_CHECK_SHAPE
 from kornia.geometry.conversions import convert_points_from_homogeneous, convert_points_to_homogeneous
 
 __all__ = [
-    "compose_transformations",
-    "relative_transformation",
-    "inverse_transformation",
-    "transform_points",
-    "point_line_distance",
-    "squared_norm",
-    "batched_squared_norm",
     "batched_dot_product",
+    "batched_squared_norm",
+    "compose_transformations",
     "euclidean_distance",
+    "inverse_transformation",
+    "point_line_distance",
+    "relative_transformation",
+    "squared_norm",
+    "transform_points",
 ]
 
 

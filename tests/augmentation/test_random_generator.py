@@ -449,7 +449,7 @@ class TestColorJitterGen(RandomGeneratorBaseTests):
 
     def test_random_gen(self, device, dtype):
         # TODO(jian): crashes with pytorch 1.10, cuda and fp64
-        if torch_version_ge(1, 10) and "cuda" in str(device) or dtype == torch.float64:
+        if (torch_version_ge(1, 10) and "cuda" in str(device)) or dtype == torch.float64:
             pytest.skip("AssertionError: cannot reproduce the same result")
         torch.manual_seed(42)
         batch_size = 8

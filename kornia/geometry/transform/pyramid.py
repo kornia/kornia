@@ -13,10 +13,10 @@ __all__ = [
     "PyrDown",
     "PyrUp",
     "ScalePyramid",
+    "build_laplacian_pyramid",
+    "build_pyramid",
     "pyrdown",
     "pyrup",
-    "build_pyramid",
-    "build_laplacian_pyramid",
     "upscale_double",
 ]
 

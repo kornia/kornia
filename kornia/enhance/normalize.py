@@ -7,7 +7,7 @@ import torch
 from kornia.core import ImageModule as Module
 from kornia.core import Tensor
 
-__all__ = ["normalize", "normalize_min_max", "denormalize", "Normalize", "Denormalize"]
+__all__ = ["Denormalize", "Normalize", "denormalize", "normalize", "normalize_min_max"]
 
 
 class Normalize(Module):

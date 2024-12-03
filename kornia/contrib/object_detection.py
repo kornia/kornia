@@ -21,12 +21,12 @@ from kornia.models.detection.base import (
 from kornia.models.utils import ResizePreProcessor as ResizePreProcessorBase
 
 __all__ = [
-    "BoundingBoxDataFormat",
     "BoundingBox",
-    "results_from_detections",
-    "ResizePreProcessor",
+    "BoundingBoxDataFormat",
     "ObjectDetector",
     "ObjectDetectorResult",
+    "ResizePreProcessor",
+    "results_from_detections",
 ]
 
 

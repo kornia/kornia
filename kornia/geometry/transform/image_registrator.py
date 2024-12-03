@@ -11,7 +11,7 @@ from kornia.geometry.conversions import angle_to_rotation_matrix, convert_affine
 from .homography_warper import BaseWarper, HomographyWarper
 from .pyramid import build_pyramid
 
-__all__ = ["ImageRegistrator", "Homography", "Similarity", "BaseModel"]
+__all__ = ["BaseModel", "Homography", "ImageRegistrator", "Similarity"]
 
 
 class BaseModel(Module):

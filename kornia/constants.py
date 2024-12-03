@@ -6,7 +6,7 @@ import torch
 
 from kornia.core import Tensor
 
-__all__ = ["pi", "DType", "Resample", "BorderType", "SamplePadding", "TKEnum"]
+__all__ = ["BorderType", "DType", "Resample", "SamplePadding", "TKEnum", "pi"]
 
 # NOTE: to remove later
 logging.basicConfig(level=logging.INFO)

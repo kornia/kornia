@@ -27,7 +27,7 @@ warnings.warn(
 )
 warnings.simplefilter("default", DeprecationWarning)
 
-__all__ = ["tensor_to_gradcheck_var", "create_eye_batch", "xla_is_available", "assert_close"]
+__all__ = ["assert_close", "create_eye_batch", "tensor_to_gradcheck_var", "xla_is_available"]
 
 
 @deprecated(

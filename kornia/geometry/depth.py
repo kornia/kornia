@@ -18,15 +18,15 @@ from .conversions import normalize_pixel_coordinates, normalize_points_with_intr
 from .linalg import compose_transformations, convert_points_to_homogeneous, inverse_transformation, transform_points
 
 __all__ = [
-    "depth_to_3d",
-    "depth_to_3d_v2",
-    "depth_to_normals",
-    "warp_frame_depth",
-    "depth_warp",
     "DepthWarper",
     "depth_from_disparity",
     "depth_from_plane_equation",
+    "depth_to_3d",
+    "depth_to_3d_v2",
+    "depth_to_normals",
+    "depth_warp",
     "unproject_meshgrid",
+    "warp_frame_depth",
 ]
 
 
